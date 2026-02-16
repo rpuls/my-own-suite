@@ -1,0 +1,6 @@
+---
+# Docker integration for Homepage (VPS deployment)
+# Connects to the Docker socket for container monitoring
+
+my-docker:
+  socket: /var/run/docker.sock

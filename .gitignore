@@ -1,0 +1,34 @@
+# Environment files
+.env
+vps/.env
+
+# VPS persistent data
+vps/services/vaultwarden/data/*
+!vps/services/vaultwarden/data/.gitkeep
+
+# Railway service data (if any)
+railway/services/*/data/
+
+# Shared config local overrides
+shared/configs/local/
+
+# Caddy data
+vps/services/caddy/data/
+
+# Docker volumes (if using local bind mounts)
+caddy_data/
+caddy_config/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/

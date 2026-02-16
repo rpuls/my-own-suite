@@ -1,0 +1,50 @@
+services:
+  caddy:
+    image: caddy:latest
+    container_name: mos-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - mos-network
+    depends_on:
+      - homepage
+      - vaultwarden
+
+  homepage:
+    image: ghcr.io/benphelps/homepage:latest
+    container_name: mos-homepage
+    restart: unless-stopped
+    volumes:
+      - ../shared/configs/homepage:/app/config
+      - homepage_images:/app/public/images
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - mos-network
+
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: mos-vaultwarden
+    restart: unless-stopped
+    environment:
+      - DOMAIN=${DOMAIN:-http://localhost}
+      - ADMIN_TOKEN=${VAULTWARDEN_ADMIN_TOKEN:-}
+      - SIGNUPS_ALLOWED=${VAULTWARDEN_SIGNUPS_ALLOWED:-true}
+    volumes:
+      - ./services/vaultwarden/data:/data
+    networks:
+      - mos-network
+
+volumes:
+  caddy_data:
+  caddy_config:
+  homepage_images:
+
+networks:
+  mos-network:
+    driver: bridge

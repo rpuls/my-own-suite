@@ -1,0 +1,22 @@
+{
+	local_certs
+}
+
+https://localhost {
+	tls internal
+	
+	# Route for Vaultwarden (must come before homepage to match first)
+	handle_path /vaultwarden/* {
+		reverse_proxy vaultwarden:80
+	}
+	
+	# Route for Vaultwarden short path
+	handle_path /vw/* {
+		reverse_proxy vaultwarden:80
+	}
+	
+	# Route for homepage (root) - handles all other requests
+	handle {
+		reverse_proxy homepage:3000
+	}
+}
