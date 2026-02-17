@@ -20,7 +20,7 @@
     - Funkyton:
         href: https://www.funkyton.com
         description: Open source resources and tools
-        icon: mdi:open-source-initiative
+        icon: https://res.cloudinary.com/hczpmiapo/image/upload/v1771353952/Static%20assets/Logos/funkyton-F-icon_gtpfml.png
     - Test Message:
         href: https://example.com
         description: ${TEST_MESSAGE}
