@@ -1,0 +1,11 @@
+---
+title: My-Own-Suite
+logo: false
+icon: mdi:cube-outline
+header: true
+description: Self-hosted services dashboard
+theme: default
+color: zinc
+cardBlur: md
+columns: 3
+host: false

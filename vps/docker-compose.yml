@@ -3,6 +3,8 @@ services:
     image: caddy:latest
     container_name: mos-caddy
     restart: unless-stopped
+    environment:
+      - BASE_URL=${BASE_URL}
     ports:
       - "80:80"
       - "443:443"
@@ -17,11 +19,16 @@ services:
       - vaultwarden
 
   homepage:
-    image: ghcr.io/benphelps/homepage:latest
+    build:
+      context: ./services/homepage
+      dockerfile: Dockerfile
     container_name: mos-homepage
     restart: unless-stopped
+    environment:
+      - VAULTWARDEN_URL=${VAULTWARDEN_URL}
+      - TEST_MESSAGE=${TEST_MESSAGE:-}
+      - HOMEPAGE_ALLOWED_HOSTS=${HOMEPAGE_ALLOWED_HOSTS}
     volumes:
-      - ../shared/configs/homepage:/app/config
       - homepage_images:/app/public/images
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
@@ -32,7 +39,7 @@ services:
     container_name: mos-vaultwarden
     restart: unless-stopped
     environment:
-      - DOMAIN=${DOMAIN:-http://localhost}
+      - DOMAIN=${BASE_URL}
       - ADMIN_TOKEN=${VAULTWARDEN_ADMIN_TOKEN:-}
       - SIGNUPS_ALLOWED=${VAULTWARDEN_SIGNUPS_ALLOWED:-true}
     volumes:

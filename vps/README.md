@@ -1,162 +1,91 @@
-# My-Own-Suite VPS Deployment
+# VPS Deployment
 
-This directory contains the Docker Compose-based deployment for running My-Own-Suite on a VPS or local server.
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    VPS Deployment                        │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│   ┌─────────┐    ┌─────────────┐    ┌─────────────┐    │
-│   │  Caddy  │───▶│  Homepage   │    │ Vaultwarden │    │
-│   │ :80,443 │    │   :3000     │    │    :80      │    │
-│   └─────────┘    └─────────────┘    └─────────────┘    │
-│        │                                     │          │
-│        └─────────────────────────────────────┘          │
-│                    mos-network                          │
-└─────────────────────────────────────────────────────────┘
-```
+Self-hosted services suite with Homepage dashboard, Vaultwarden password manager, and Caddy reverse proxy.
 
 ## Quick Start
 
-### Automated Installation
-
-```bash
-cd vps
-chmod +x scripts/install.sh
-./scripts/install.sh
-```
-
-### Manual Setup
-
-1. **Prerequisites**:
-   - Docker and Docker Compose installed
-   - Ports 80 and 443 available
-
-2. **Configure Environment**:
+1. **Copy environment file**
    ```bash
-   cp ../.env.example .env
-   # Edit .env with your settings
+   cp .env.example .env
    ```
 
-3. **Start Services**:
-   ```bash
-   docker compose up -d
+2. **Edit `.env` with your domain**
+   ```env
+   DOMAIN=yourdomain.com
+   BASE_URL=https://yourdomain.com
+   HOMEPAGE_ALLOWED_HOSTS=yourdomain.com
+   VAULTWARDEN_URL=https://yourdomain.com/vaultwarden/
    ```
 
-4. **Access Services**:
-   - Dashboard: `https://your-domain.com/`
-   - Vaultwarden: `https://your-domain.com/vaultwarden/`
+3. **Deploy**
+   ```bash
+   docker-compose up -d
+   ```
 
-## Services
-
-| Service | Port | Description |
-|---------|------|-------------|
-| Caddy | 80, 443 | Reverse proxy with automatic HTTPS |
-| Homepage | 3000 (internal) | Dashboard for all services |
-| Vaultwarden | 80 (internal) | Password manager |
+4. **Access your services**
+   - Dashboard: `https://yourdomain.com/`
+   - Vaultwarden: `https://yourdomain.com/vaultwarden/`
 
 ## Configuration
 
-### Environment Variables
+### Required Environment Variables
 
-Create a `.env` file in this directory:
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `DOMAIN` | Your domain (no protocol) | `example.com` |
+| `BASE_URL` | Full URL with protocol | `https://example.com` |
+| `HOMEPAGE_ALLOWED_HOSTS` | Host for homepage validation | `example.com` |
+| `VAULTWARDEN_URL` | Full Vaultwarden URL with trailing slash | `https://example.com/vaultwarden/` |
 
-```env
-DOMAIN=https://your-domain.com
-EMAIL=admin@example.com
-VAULTWARDEN_ADMIN_TOKEN=your-secure-token
-VAULTWARDEN_SIGNUPS_ALLOWED=true
+### Optional Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `VAULTWARDEN_ADMIN_TOKEN` | Admin access token | (empty) |
+| `VAULTWARDEN_SIGNUPS_ALLOWED` | Allow new users | `true` |
+| `TEST_MESSAGE` | Test message on dashboard | (empty) |
+
+## Customizing the Dashboard
+
+Edit `services/homepage/config/services.template.yaml` to add/modify services.
+
+```yaml
+- My Category:
+    - My Service:
+        href: ${MY_SERVICE_URL}    # Placeholder from env var
+        description: My service
+        icon: service.png
+
+- Static Category:
+    - Static Service:
+        href: https://example.com  # Static URL, always visible
+        description: Always shown
+        icon: mdi:web
 ```
 
-### Caddyfile
+## Local Development
 
-The `Caddyfile` configures routing and SSL:
+For local testing with `localhost`:
 
-- `/` → Homepage dashboard
-- `/vaultwarden/*` → Vaultwarden password manager
-- `/vw/*` → Vaultwarden short path
+```env
+DOMAIN=localhost
+BASE_URL=https://localhost
+HOMEPAGE_ALLOWED_HOSTS=localhost
+VAULTWARDEN_URL=https://localhost/vaultwarden/
+```
 
-To add new services, add routes to the Caddyfile.
+Note: Caddy uses self-signed certificates for localhost. Accept the browser warning.
 
-### Homepage Configuration
-
-Homepage config files are located in `../shared/configs/homepage/`:
-
-- `services.yaml` - Service links and status
-- `settings.yaml` - Dashboard settings
-- `bookmarks.yaml` - Quick links
-- `widgets.yaml` - Dashboard widgets
-- `docker.yaml` - Docker integration
-
-## Data Persistence
-
-Data is stored in:
+## File Structure
 
 ```
 vps/
-└── services/
-    └── vaultwarden/
-        └── data/     # Password database
-```
-
-**Important**: Back up the `services/vaultwarden/data/` directory regularly.
-
-## Management Commands
-
-```bash
-# Start services
-docker compose up -d
-
-# Stop services
-docker compose down
-
-# View logs
-docker compose logs -f
-
-# Restart a service
-docker compose restart caddy
-
-# Update images
-docker compose pull && docker compose up -d
-```
-
-## Adding New Services
-
-1. Add service definition to `docker-compose.yml`
-2. Add route to `Caddyfile`
-3. Add entry to `../shared/configs/homepage/services.yaml`
-4. Run `docker compose up -d`
-
-## Security Notes
-
-- Change `VAULTWARDEN_ADMIN_TOKEN` to a secure value
-- Set `VAULTWARDEN_SIGNUPS_ALLOWED=false` after creating your account
-- Use HTTPS in production (Caddy handles this automatically)
-- Keep your `.env` file secure and never commit it
-
-## Troubleshooting
-
-### Port Already in Use
-
-If ports 80 or 443 are in use:
-```bash
-# Check what's using the ports
-sudo lsof -i :80
-sudo lsof -i :443
-```
-
-### SSL Certificate Issues
-
-Caddy automatically manages certificates. To force renewal:
-```bash
-docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
-```
-
-### Container Won't Start
-
-Check logs for details:
-```bash
-docker compose logs <service-name>
+├── .env                    # Your configuration (gitignored)
+├── .env.example            # Template
+├── docker-compose.yml      # Main deployment file
+├── Caddyfile               # Reverse proxy config
+├── services/
+│   ├── homepage/           # Dashboard service
+│   └── vaultwarden/        # Password manager
+└── scripts/
+    └── install.sh          # Server setup script

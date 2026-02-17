@@ -2,7 +2,7 @@
 	local_certs
 }
 
-https://localhost {
+{$BASE_URL} {
 	tls internal
 	
 	# Route for Vaultwarden (must come before homepage to match first)
