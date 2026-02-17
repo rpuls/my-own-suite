@@ -1,7 +1,7 @@
 # Railway Homepage Service
 # Custom build that generates config from environment variables
 
-FROM ghcr.io/benphelps/homepage:latest
+FROM ghcr.io/gethomepage/homepage:latest
 
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
