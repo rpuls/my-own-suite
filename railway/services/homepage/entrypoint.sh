@@ -8,17 +8,20 @@ SERVICES_FILE="$CONFIG_DIR/services.yaml"
 
 # Generate services.yaml from environment variable
 if [ -n "$VAULTWARDEN_URL" ]; then
+    # Strip any surrounding quotes from the URL (in case Railway UI added them)
+    CLEAN_URL=$(echo "$VAULTWARDEN_URL" | sed 's/^"//;s/"$//')
+    
     cat > "$SERVICES_FILE" << EOF
 ---
 # My-Own-Suite Services Dashboard (Railway)
 
 - Password Manager:
     - Vaultwarden:
-        href: ${VAULTWARDEN_URL}
+        href: "$CLEAN_URL"
         description: Self-hosted password manager
         icon: vaultwarden.png
 EOF
-    echo "Generated services.yaml with VAULTWARDEN_URL: $VAULTWARDEN_URL"
+    echo "Generated services.yaml with VAULTWARDEN_URL: $CLEAN_URL"
 else
     echo "Warning: VAULTWARDEN_URL not set. Using default services.yaml"
     # Create a default services.yaml if not exists

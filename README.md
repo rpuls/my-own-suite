@@ -1,40 +1,70 @@
 # My-Own-Suite
 
-A self-hostable personal SaaS stack that gives you full ownership of your data and services. Deploy to a VPS, Railway, or your preferred cloud platform.
+**Own your data. Own your tools. Own your stack.**
+
+My-Own-Suite is the **Swiss Army knife of self-hosted open-source software** — a carefully curated suite of open-source alternatives to common SaaS products, bundled together and deployable with minimal effort.
+
+It’s designed for people who want the convenience of modern SaaS **without giving up control, privacy, or digital sovereignty**.
+
+---
 
 ## What is My-Own-Suite?
 
-My-Own-Suite is a collection of self-hosted services designed to replace commercial SaaS products with alternatives you control. Whether you want to escape vendor lock-in, protect your privacy, or simply have full control over your infrastructure, this suite provides a clean, modular approach to personal hosting.
+Most people don’t want to become system administrators — they just want tools that work.
 
-### Included Services
+My-Own-Suite bridges that gap.
+
+It provides a **ready-made personal SaaS stack**: password management, file storage, documents, photos, identity, and more — all running on infrastructure **you control**, whether that’s a VPS, Railway, or another cloud provider.
+
+Think of it as:
+
+- 🧰 A **Swiss Army knife**: many tools, one cohesive system  
+- 🔓 An **exit hatch from Big Tech SaaS**  
+- 🏠 A **personal cloud**, not someone else’s product  
+
+You can deploy everything at once, extend it gradually, and migrate between platforms without redesigning your setup.
+
+---
+
+## Included Services
 
 | Service | Description | Status |
-|---------|-------------|--------|
-| [Homepage](https://gethomepage.dev/) | Modern dashboard for all your services | ✅ Ready |
+|------|-------------|--------|
+| [Homepage](https://gethomepage.dev/) | Clean, modern dashboard for all services | ✅ Ready |
 | [Vaultwarden](https://github.com/dani-garcia/vaultwarden) | Bitwarden-compatible password manager | ✅ Ready |
 
-### Planned Services
+---
 
-- **Nextcloud** - File sync and share
-- **Immich** - Photo backup and management
-- **Paperless-ngx** - Document management
-- **Authentik** - Identity provider
-- **OnlyOffice** - Document editing
+## Planned Services
+
+The roadmap focuses on replacing common proprietary SaaS categories with best-in-class open source alternatives:
+
+- **Nextcloud** — File sync & collaboration  
+- **Immich** — Photo backup & management  
+- **Paperless-ngx** — Document archive & OCR  
+- **Authentik** — Identity & single sign-on  
+- **OnlyOffice** — Document editing  
+
+The goal is not “everything” — it’s **the right tools, integrated well**.
+
+---
 
 ## Deployment Options
 
-My-Own-Suite supports multiple deployment targets with no structural conflicts:
+My-Own-Suite is built as a **single monorepo** with **first-class support for multiple deployment targets** — no hacks, no forks.
 
 | Platform | Directory | Best For |
-|----------|-----------|----------|
-| VPS / Docker Compose | [`/vps`](./vps) | Full control, bare metal, private servers |
-| Railway | [`/railway`](./railway) | Managed infrastructure, automatic scaling |
+|--------|-----------|----------|
+| VPS / Docker Compose | `/vps` | Full control, private servers |
+| Railway | `/railway` | Managed infrastructure, fast setup |
 
-Choose your deployment path:
+Each platform is isolated and opinionated, but shares the same philosophy and service layout.
 
-### VPS Deployment
+---
 
-Ideal for self-hosting on your own server or VPS provider (DigitalOcean, Linode, Hetzner, etc.).
+## VPS Deployment
+
+Best for full self-hosting on providers like Hetzner, DigitalOcean, or a home server.
 
 ```bash
 cd vps
@@ -54,12 +84,7 @@ chmod +x scripts/install.sh
 
 Ideal for managed cloud hosting with automatic scaling.
 
-```bash
-# In Railway Dashboard:
-# 1. Create PostgreSQL database
-# 2. Deploy services from this repo
-# 3. Set environment variables
-```
+<Deploy template coming soon!>
 
 **Features:**
 - Service-per-folder model
@@ -146,40 +171,6 @@ cp .env.example vps/.env
 cd vps
 docker compose up -d
 ```
-
-### Railway Quick Start
-
-1. Fork this repository
-2. Create a Railway project
-3. Add PostgreSQL database
-4. Deploy Vaultwarden (root: `railway/services/vaultwarden`)
-5. Deploy Homepage (root: `railway/services/homepage`)
-6. Set environment variables
-
-## Configuration
-
-### Environment Variables
-
-Core variables used across deployments:
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DOMAIN` | Your public domain | `https://myserver.com` |
-| `VAULTWARDEN_ADMIN_TOKEN` | Admin panel access | Random 48-char string |
-| `VAULTWARDEN_SIGNUPS_ALLOWED` | Allow new accounts | `true` / `false` |
-| `VAULTWARDEN_URL` | (Railway) Vaultwarden URL | `https://vw.up.railway.app` |
-
-Platform-specific variables are documented in each platform's README.
-
-### Homepage Configuration
-
-Homepage configuration files are in `/shared/configs/homepage/`:
-
-- `services.yaml` - Service links and status monitoring
-- `settings.yaml` - Dashboard title, theme, layout
-- `bookmarks.yaml` - Quick links
-- `widgets.yaml` - Search, resources, etc.
-- `docker.yaml` - Docker socket integration (VPS only)
 
 ## Security
 
