@@ -1,0 +1,34 @@
+# Homepage Services Template
+#
+# This template defines your dashboard structure.
+# The replacer will inject values from environment variables.
+#
+# Placeholders: ${ENV_VAR_NAME}
+# - If all placeholders in a service are resolved, it appears on the dashboard
+# - If any placeholder cannot be resolved, the entire service is removed
+# - Empty categories are automatically removed
+#
+# Customize freely: move categories, add services, change descriptions, etc.
+
+- Security:
+    - Vaultwarden:
+        href: ${VAULTWARDEN_URL}
+        description: Self-hosted password manager
+        icon: vaultwarden.png
+
+- Open Source Resources:
+    - Funkyton:
+        href: https://www.funkyton.com
+        description: Open source resources and tools
+        icon: mdi:open-source-initiative
+    - Test Message:
+        href: https://example.com
+        description: ${TEST_MESSAGE}
+        icon: mdi:message-text
+
+# Add more categories and services below
+# - Communication:
+#     - My Chat App:
+#         href: ${CHAT_URL}
+#         description: Team chat
+#         icon: mdi:chat
