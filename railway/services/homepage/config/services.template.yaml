@@ -24,7 +24,7 @@
     - Test Message:
         href: https://example.com
         description: ${TEST_MESSAGE}
-        icon: mdi:tag-text-outline
+        icon: mdi-tag-text-outline
 
 # Add more categories and services below
 # - Communication:
