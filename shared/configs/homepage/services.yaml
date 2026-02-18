@@ -1,9 +1,0 @@
----
-# My-Own-Suite Services Dashboard
-
-- Password Manager:
-    - Vaultwarden:
-        href: https://localhost/vaultwarden/
-        description: Self-hosted password manager
-        icon: vaultwarden.png
-        siteMonitor: http://vaultwarden:80
