@@ -1,10 +1,21 @@
+# ===========================================
+# My-Own-Suite Docker Compose
+# ===========================================
+# Architecture:
+# - Root .env: DOMAIN variable (shared across all services)
+# - services/<app>/.env: App-specific settings (tokens, flags)
+# ===========================================
+
 services:
+  # -------------------------------------------
+  # Caddy - Reverse Proxy (entry point)
+  # -------------------------------------------
   caddy:
     image: caddy:latest
     container_name: mos-caddy
     restart: unless-stopped
-    environment:
-      - BASE_URL=${BASE_URL}
+    env_file:
+      - .env
     ports:
       - "80:80"
       - "443:443"
@@ -16,32 +27,39 @@ services:
       - mos-network
     depends_on:
       - homepage
-      - vaultwarden
 
+  # -------------------------------------------
+  # Homepage - Main Dashboard
+  # -------------------------------------------
   homepage:
     build:
       context: ../../apps/homepage
       dockerfile: Dockerfile
     container_name: mos-homepage
     restart: unless-stopped
-    environment:
-      - VAULTWARDEN_URL=${VAULTWARDEN_URL}
-      - TEST_MESSAGE=${TEST_MESSAGE:-}
-      - HOMEPAGE_ALLOWED_HOSTS=${HOMEPAGE_ALLOWED_HOSTS}
+    env_file:
+      - .env
+      - ./services/homepage/.env
     volumes:
       - homepage_images:/app/public/images
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - mos-network
 
+  # -------------------------------------------
+  # Vaultwarden - Password Manager
+  # -------------------------------------------
   vaultwarden:
     image: vaultwarden/server:latest
     container_name: mos-vaultwarden
     restart: unless-stopped
+    profiles:
+      - vaultwarden
+    env_file:
+      - .env
+      - ./services/vaultwarden/.env
     environment:
-      - DOMAIN=${BASE_URL}
-      - ADMIN_TOKEN=${VAULTWARDEN_ADMIN_TOKEN:-}
-      - SIGNUPS_ALLOWED=${VAULTWARDEN_SIGNUPS_ALLOWED:-true}
+      - DOMAIN=http://vaultwarden.${DOMAIN}
     volumes:
       - vaultwarden_data:/data
     networks:

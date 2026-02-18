@@ -1,22 +1,17 @@
-{
-	local_certs
+# ===========================================
+# My-Own-Suite Caddyfile
+# ===========================================
+# Subdomain routing using DOMAIN from .env
+# Local: homepage.localhost, vaultwarden.localhost
+# Production: homepage.yourdomain.com, vaultwarden.yourdomain.com
+# ===========================================
+
+# Homepage Dashboard
+http://homepage.{$DOMAIN} {
+	reverse_proxy homepage:3000
 }
 
-{$BASE_URL} {
-	tls internal
-	
-	# Route for Vaultwarden (must come before homepage to match first)
-	handle_path /vaultwarden/* {
-		reverse_proxy vaultwarden:80
-	}
-	
-	# Route for Vaultwarden short path
-	handle_path /vw/* {
-		reverse_proxy vaultwarden:80
-	}
-	
-	# Route for homepage (root) - handles all other requests
-	handle {
-		reverse_proxy homepage:3000
-	}
+# Vaultwarden Password Manager
+http://vaultwarden.{$DOMAIN} {
+	reverse_proxy vaultwarden:80
 }
