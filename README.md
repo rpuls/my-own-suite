@@ -56,7 +56,8 @@ My-Own-Suite is built as a **single monorepo** with **first-class support for mu
 | Platform | Directory | Best For |
 |--------|-----------|----------|
 | VPS / Docker Compose | `/vps` | Full control, private servers |
-| Railway | `/railway` | Managed infrastructure, fast setup |
+| Railway | `/platform` | One-click deploy template, managed infrastructure |
+| Dokploy | `/platform` | Self-hosted PaaS, managed infrastructure |
 
 Each platform is isolated and opinionated, but shares the same philosophy and service layout.
 
@@ -80,11 +81,13 @@ chmod +x scripts/install.sh
 
 👉 [See VPS Documentation](./vps/README.md)
 
-### Railway Deployment
+### Platform Deployment
 
-Ideal for managed cloud hosting with automatic scaling.
+Deploy to managed platforms like Railway or Dokploy.
 
-<Deploy template coming soon!>
+**Railway** — One-click deploy template (coming soon!)
+
+**Dokploy** — Self-hosted PaaS (setup guide coming soon!)
 
 **Features:**
 - Service-per-folder model
@@ -92,7 +95,7 @@ Ideal for managed cloud hosting with automatic scaling.
 - Independent scaling per service
 - No server management
 
-👉 [See Railway Documentation](./railway/README.md)
+👉 [See Platform Documentation](./platform/README.md)
 
 ## Architecture
 
@@ -109,8 +112,8 @@ my-own-suite/
 │   └── services/
 │       └── vaultwarden/
 │           └── data/         # Persistent storage
-├── railway/                  # Railway deployment
-│   ├── README.md             # Railway guide
+├── platform/                 # Platform deployment (Railway, Dokploy)
+│   ├── README.md             # Platform guide
 │   └── services/
 │       ├── homepage/
 │       │   ├── Dockerfile
@@ -153,7 +156,7 @@ My-Own-Suite uses a monorepo structure to keep all deployment options in sync:
 ### Prerequisites
 
 - Docker and Docker Compose (for VPS)
-- Railway account (for Railway)
+- Railway account or Dokploy server (for platform deployment)
 - A domain name (recommended)
 
 ### VPS Quick Start
@@ -189,10 +192,11 @@ docker compose up -d
 3. **HTTPS**: Always use HTTPS in production
    - VPS: Caddy handles this automatically
    - Railway: Automatic HTTPS
+   - Dokploy: Using Let's Encrypt
 
 4. **Backups**: Regularly backup your data directories
    - VPS: `vps/services/vaultwarden/data/`
-   - Railway: Use Railway's backup features for PostgreSQL
+   - Platform: Use your platform's backup features
 
 5. **Updates**: Keep images updated
    ```bash
@@ -219,4 +223,5 @@ MIT License - Feel free to use, modify, and distribute.
 - [Homepage Documentation](https://gethomepage.dev/)
 - [Vaultwarden Wiki](https://github.com/dani-garcia/vaultwarden/wiki)
 - [Railway Documentation](https://docs.railway.app/)
+- [Dokploy Documentation](https://docs.dokploy.com/)
 - [Caddy Documentation](https://caddyserver.com/docs/)

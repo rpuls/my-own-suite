@@ -6,8 +6,8 @@ vps/.env
 vps/services/vaultwarden/data/*
 !vps/services/vaultwarden/data/.gitkeep
 
-# Railway service data (if any)
-railway/services/*/data/
+# Platform service data (Railway, Dokploy, etc.)
+platform/services/*/data/
 
 # Shared config local overrides
 shared/configs/local/
