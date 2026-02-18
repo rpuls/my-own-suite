@@ -16,6 +16,12 @@
         description: Self-hosted password manager
         icon: vaultwarden.png
 
+- Storage:
+    - Seafile:
+        href: ${SEAFILE_URL}
+        description: Self-hosted file sync and share
+        icon: mdi-folder-sync
+
 - Open Source Resources:
     - Funkyton:
         href: https://www.funkyton.com

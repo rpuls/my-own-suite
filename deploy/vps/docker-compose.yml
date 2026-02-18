@@ -65,11 +65,63 @@ services:
     networks:
       - mos-network
 
+  # -------------------------------------------
+  # Seafile - File Sync and Share
+  # -------------------------------------------
+  seafile-mysql:
+    image: mysql:8.0
+    container_name: mos-seafile-mysql
+    restart: unless-stopped
+    profiles:
+      - seafile
+    env_file:
+      - ./services/seafile/.env
+    environment:
+      - MYSQL_LOG_CONSOLE=true
+    volumes:
+      - seafile_mysql_data:/var/lib/mysql
+    networks:
+      - mos-network
+
+  seafile-memcached:
+    image: memcached:1.6
+    container_name: mos-seafile-memcached
+    restart: unless-stopped
+    profiles:
+      - seafile
+    networks:
+      mos-network:
+        aliases:
+          - memcached
+
+  seafile:
+    build:
+      context: ../../apps/seafile
+      dockerfile: Dockerfile
+    container_name: mos-seafile
+    restart: unless-stopped
+    profiles:
+      - seafile
+    env_file:
+      - .env
+      - ./services/seafile/.env
+    environment:
+      - SEAFILE_SERVER_HOSTNAME=seafile.${DOMAIN}
+    volumes:
+      - seafile_data:/shared
+    networks:
+      - mos-network
+    depends_on:
+      - seafile-mysql
+      - seafile-memcached
+
 volumes:
   caddy_data:
   caddy_config:
   homepage_images:
   vaultwarden_data:
+  seafile_data:
+  seafile_mysql_data:
 
 networks:
   mos-network:

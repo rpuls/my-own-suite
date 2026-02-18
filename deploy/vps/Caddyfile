@@ -15,3 +15,8 @@ http://homepage.{$DOMAIN} {
 http://vaultwarden.{$DOMAIN} {
 	reverse_proxy vaultwarden:80
 }
+
+# Seafile File Sync
+http://seafile.{$DOMAIN} {
+	reverse_proxy seafile:80
+}

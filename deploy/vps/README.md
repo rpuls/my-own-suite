@@ -120,3 +120,28 @@ Add to `apps/homepage/config/services.template.yaml`:
         href: ${<APP_NAME>_URL}
         description: App description
         icon: app-icon.png
+```
+
+### 7. Rebuild the Homepage container
+The homepage copies `services.template.yaml` at build time. After modifying it:
+```bash
+docker compose up -d --build homepage
+```
+
+### 8. Test the deployment locally
+```bash
+# Start with the new app profile
+docker compose --profile <app-name> up -d
+
+# Check container status
+docker compose ps
+
+# Check app logs (look for initialization errors)
+docker compose logs <app-name> --tail 50
+
+# Test the app is accessible (should return 200, 302, or similar)
+curl -sI http://<app-name>.localhost/
+
+# Verify homepage shows the new tile
+docker exec mos-homepage cat /app/config/services.yaml
+```
