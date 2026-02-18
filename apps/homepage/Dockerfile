@@ -1,8 +1,8 @@
-# VPS Homepage Service
+# Homepage Dashboard Service
 # Custom build that generates config from environment variables
 
 # ============================================
-# Stage 1: Build TypeScript Config Replacer
+# Stage 1: Build TypeScript Config Generator
 # ============================================
 FROM node:20-alpine AS builder
 
@@ -22,15 +22,15 @@ RUN npm run build
 # ============================================
 FROM ghcr.io/gethomepage/homepage:latest
 
-# Copy built config replacer (only production dependencies needed at runtime)
+# Copy built config generator (only production dependencies needed at runtime)
 COPY --from=builder /build/dist /app/config-generator/dist
 COPY --from=builder /build/node_modules/yaml /app/config-generator/node_modules/yaml
 COPY --from=builder /build/package.json /app/config-generator/
 
-# Copy config files
+# Copy static config files (bookmarks, widgets, etc.)
 COPY config/ /app/config/
 
-# Copy entrypoint
+# Copy simplified entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

@@ -31,4 +31,4 @@
 #     - My Chat App:
 #         href: ${CHAT_URL}
 #         description: Team chat
-#         icon: mdi:chat
+#         icon: mdi-chat

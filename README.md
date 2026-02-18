@@ -4,23 +4,23 @@
 
 My-Own-Suite is the **Swiss Army knife of self-hosted open-source software** — a carefully curated suite of open-source alternatives to common SaaS products, bundled together and deployable with minimal effort.
 
-It’s designed for people who want the convenience of modern SaaS **without giving up control, privacy, or digital sovereignty**.
+It's designed for people who want the convenience of modern SaaS **without giving up control, privacy, or digital sovereignty**.
 
 ---
 
 ## What is My-Own-Suite?
 
-Most people don’t want to become system administrators — they just want tools that work.
+Most people don't want to become system administrators — they just want tools that work.
 
 My-Own-Suite bridges that gap.
 
-It provides a **ready-made personal SaaS stack**: password management, file storage, documents, photos, identity, and more — all running on infrastructure **you control**, whether that’s a VPS, Railway, or another cloud provider.
+It provides a **ready-made personal SaaS stack**: password management, file storage, documents, photos, identity, and more — all running on infrastructure **you control**, whether that's a VPS, Railway, or another cloud provider.
 
 Think of it as:
 
-- 🧰 A **Swiss Army knife**: many tools, one cohesive system  
-- 🔓 An **exit hatch from Big Tech SaaS**  
-- 🏠 A **personal cloud**, not someone else’s product  
+- 🧰 A **Swiss Army knife**: many tools, one cohesive system
+- 🔓 An **exit hatch from Big Tech SaaS**
+- 🏠 A **personal cloud**, not someone else's product
 
 You can deploy everything at once, extend it gradually, and migrate between platforms without redesigning your setup.
 
@@ -39,13 +39,13 @@ You can deploy everything at once, extend it gradually, and migrate between plat
 
 The roadmap focuses on replacing common proprietary SaaS categories with best-in-class open source alternatives:
 
-- **Nextcloud** — File sync & collaboration  
-- **Immich** — Photo backup & management  
-- **Paperless-ngx** — Document archive & OCR  
-- **Authentik** — Identity & single sign-on  
-- **OnlyOffice** — Document editing  
+- **Nextcloud** — File sync & collaboration
+- **Immich** — Photo backup & management
+- **Paperless-ngx** — Document archive & OCR
+- **Authentik** — Identity & single sign-on
+- **OnlyOffice** — Document editing
 
-The goal is not “everything” — it’s **the right tools, integrated well**.
+The goal is not "everything" — it's **the right tools, integrated well**.
 
 ---
 
@@ -55,11 +55,11 @@ My-Own-Suite is built as a **single monorepo** with **first-class support for mu
 
 | Platform | Directory | Best For |
 |--------|-----------|----------|
-| VPS / Docker Compose | `/vps` | Full control, private servers |
-| Railway | `/platform` | One-click deploy template, managed infrastructure |
-| Dokploy | `/platform` | Self-hosted PaaS, managed infrastructure |
+| VPS / Docker Compose | `/deploy/vps` | Full control, private servers |
+| Railway | Deploy template | One-click deploy, managed infrastructure |
+| Dokploy | Deploy template | Self-hosted PaaS, managed infrastructure |
 
-Each platform is isolated and opinionated, but shares the same philosophy and service layout.
+All deployments share the same application source from `/apps`, ensuring identical behavior across platforms.
 
 ---
 
@@ -68,7 +68,7 @@ Each platform is isolated and opinionated, but shares the same philosophy and se
 Best for full self-hosting on providers like Hetzner, DigitalOcean, or a home server.
 
 ```bash
-cd vps
+cd deploy/vps
 chmod +x scripts/install.sh
 ./scripts/install.sh
 ```
@@ -79,23 +79,19 @@ chmod +x scripts/install.sh
 - All services on a single domain
 - Full control over networking
 
-👉 [See VPS Documentation](./vps/README.md)
+👉 [See VPS Documentation](./deploy/vps/README.md)
 
 ### Platform Deployment
 
-Deploy to managed platforms like Railway or Dokploy.
+**Railway** — Deploy template coming soon!
 
-**Railway** — One-click deploy template (coming soon!)
-
-**Dokploy** — Self-hosted PaaS (setup guide coming soon!)
+**Dokploy** — Deploy template coming soon!
 
 **Features:**
-- Service-per-folder model
+- One-click deployment
 - Automatic HTTPS
 - Independent scaling per service
 - No server management
-
-👉 [See Platform Documentation](./platform/README.md)
 
 ## Architecture
 
@@ -104,34 +100,30 @@ my-own-suite/
 ├── README.md                 # This file
 ├── .env.example              # Environment template
 ├── .gitignore
-├── vps/                      # VPS deployment
-│   ├── docker-compose.yml    # Main orchestration
-│   ├── Caddyfile             # Reverse proxy config
-│   ├── scripts/
-│   │   └── install.sh        # Automated installer
-│   └── services/
-│       └── vaultwarden/
-│           └── data/         # Persistent storage
-├── platform/                 # Platform deployment (Railway, Dokploy)
-│   ├── README.md             # Platform guide
-│   └── services/
-│       ├── homepage/
-│       │   ├── Dockerfile
-│       │   ├── railway.json
-│       │   └── entrypoint.sh
-│       └── vaultwarden/
-│           ├── Dockerfile
-│           ├── railway.json
-│           └── README.md
-└── shared/                   # Shared configurations
-    └── configs/
-        └── homepage/
-            ├── services.yaml
-            ├── settings.yaml
-            ├── bookmarks.yaml
-            ├── widgets.yaml
-            └── docker.yaml
+├── apps/                     # Shared applications (single source of truth)
+│   ├── homepage/
+│   │   ├── Dockerfile
+│   │   ├── entrypoint.sh
+│   │   ├── config/           # Dashboard configuration
+│   │   └── config-generator/ # TypeScript config generator
+│   └── vaultwarden/
+│       ├── Dockerfile        # Platform-optimized (PostgreSQL support)
+│       └── README.md
+└── deploy/                   # Deployment configurations
+    └── vps/                  # VPS/Docker Compose deployment
+        ├── docker-compose.yml
+        ├── Caddyfile
+        ├── .env.example
+        └── scripts/
+            └── install.sh
 ```
+
+### Why This Structure?
+
+- **`/apps`** — Contains all application code, shared across all deployment platforms
+- **`/deploy`** — Platform-specific configuration (docker-compose, Caddyfile, etc.)
+- **Single source of truth** — Both VPS and platform deployments use the same `/apps` code
+- **No duplication** — Fix a bug in homepage, it's fixed everywhere
 
 ## Philosophy
 
@@ -140,8 +132,8 @@ my-own-suite/
 My-Own-Suite uses a monorepo structure to keep all deployment options in sync:
 
 - **Single source of truth** - One repository, multiple deployment targets
-- **Shared configurations** - Common configs in `/shared` prevent duplication
-- **Platform independence** - Each platform's specifics isolated in their directory
+- **Shared applications** - All platforms build from `/apps`
+- **Platform independence** - Each platform's specifics isolated in `/deploy`
 - **Future-proof** - Add new platforms without restructuring
 
 ### Design Principles
@@ -156,7 +148,6 @@ My-Own-Suite uses a monorepo structure to keep all deployment options in sync:
 ### Prerequisites
 
 - Docker and Docker Compose (for VPS)
-- Railway account or Dokploy server (for platform deployment)
 - A domain name (recommended)
 
 ### VPS Quick Start
@@ -167,11 +158,11 @@ git clone https://github.com/yourusername/my-own-suite.git
 cd my-own-suite
 
 # Configure
-cp .env.example vps/.env
-# Edit vps/.env with your domain and settings
+cp .env.example deploy/vps/.env
+# Edit deploy/vps/.env with your domain and settings
 
 # Deploy
-cd vps
+cd deploy/vps
 docker compose up -d
 ```
 
@@ -191,12 +182,10 @@ docker compose up -d
 
 3. **HTTPS**: Always use HTTPS in production
    - VPS: Caddy handles this automatically
-   - Railway: Automatic HTTPS
-   - Dokploy: Using Let's Encrypt
+   - Railway/Dokploy: Automatic HTTPS
 
-4. **Backups**: Regularly backup your data directories
-   - VPS: `vps/services/vaultwarden/data/`
-   - Platform: Use your platform's backup features
+4. **Backups**: Regularly backup your data volumes
+   - VPS: Docker named volumes managed by compose
 
 5. **Updates**: Keep images updated
    ```bash

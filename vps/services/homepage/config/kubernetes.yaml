@@ -1,6 +1,0 @@
----
-# For configuration options see: https://github.com/benphelps/homepage/wiki/Kubernetes-Integration
-
-# Uncomment to enable Kubernetes integration
-# my-kubernetes:
-#   mode: cluster

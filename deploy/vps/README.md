@@ -19,7 +19,7 @@ Self-hosted services suite with Homepage dashboard, Vaultwarden password manager
 
 3. **Deploy**
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 
 4. **Access your services**
@@ -47,7 +47,7 @@ Self-hosted services suite with Homepage dashboard, Vaultwarden password manager
 
 ## Customizing the Dashboard
 
-Edit `services/homepage/config/services.template.yaml` to add/modify services.
+Edit `../../apps/homepage/config/services.template.yaml` to add/modify services.
 
 ```yaml
 - My Category:
@@ -60,7 +60,7 @@ Edit `services/homepage/config/services.template.yaml` to add/modify services.
     - Static Service:
         href: https://example.com  # Static URL, always visible
         description: Always shown
-        icon: mdi:web
+        icon: mdi-web
 ```
 
 ## Local Development
@@ -76,16 +76,24 @@ VAULTWARDEN_URL=https://localhost/vaultwarden/
 
 Note: Caddy uses self-signed certificates for localhost. Accept the browser warning.
 
-## File Structure
+## Architecture
+
+This deployment uses shared applications from `/apps`:
 
 ```
-vps/
-├── .env                    # Your configuration (gitignored)
-├── .env.example            # Template
-├── docker-compose.yml      # Main deployment file
-├── Caddyfile               # Reverse proxy config
-├── services/
-│   ├── homepage/           # Dashboard service
-│   └── vaultwarden/        # Password manager
+apps/
+├── homepage/
+│   ├── Dockerfile
+│   ├── entrypoint.sh
+│   ├── config/               # Dashboard configuration
+│   └── config-generator/     # TypeScript config generator
+└── vaultwarden/
+    └── README.md
+
+deploy/vps/
+├── .env                      # Your configuration (gitignored)
+├── .env.example              # Template
+├── docker-compose.yml        # Main deployment file
+├── Caddyfile                 # Reverse proxy config
 └── scripts/
-    └── install.sh          # Server setup script
+    └── install.sh            # Server setup script

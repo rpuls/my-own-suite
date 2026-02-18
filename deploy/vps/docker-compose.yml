@@ -20,7 +20,7 @@ services:
 
   homepage:
     build:
-      context: ./services/homepage
+      context: ../../apps/homepage
       dockerfile: Dockerfile
     container_name: mos-homepage
     restart: unless-stopped
@@ -43,7 +43,7 @@ services:
       - ADMIN_TOKEN=${VAULTWARDEN_ADMIN_TOKEN:-}
       - SIGNUPS_ALLOWED=${VAULTWARDEN_SIGNUPS_ALLOWED:-true}
     volumes:
-      - ./services/vaultwarden/data:/data
+      - vaultwarden_data:/data
     networks:
       - mos-network
 
@@ -51,6 +51,7 @@ volumes:
   caddy_data:
   caddy_config:
   homepage_images:
+  vaultwarden_data:
 
 networks:
   mos-network:

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Homepage Entrypoint for Railway
+# Homepage Entrypoint
 # Runs the config generator, then starts the homepage server
 
 echo "Starting Homepage configuration..."

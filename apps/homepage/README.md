@@ -8,7 +8,7 @@ This service uses a **template-replacer** pattern: a YAML template defines the d
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│                    Railway Deploy                          │
+│                    Container Startup                       │
 │                                                            │
 │  ┌─────────────────┐    ┌─────────────────────────────┐    │
 │  │   Env Vars      │    │   Template Replacer (TS)    │    │
