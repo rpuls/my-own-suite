@@ -36,4 +36,9 @@ if [ -n "${MEMCACHED_SERVER:-}" ]; then
   fi
 fi
 
+# Railway private networking may connect from IPv6 addresses. Upstream bootstrap
+# sets MYSQL_USER_HOST to %.%.%.% (IPv4 style), which causes "Access denied"
+# for seafile@<ipv6>. Widen to '%' for compatibility.
+sed -i "s|'MYSQL_USER_HOST': '%.%.%.%'|'MYSQL_USER_HOST': '%'|g" /scripts/bootstrap.py || true
+
 exec /sbin/my_init -- /scripts/enterpoint.sh
