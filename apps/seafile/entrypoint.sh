@@ -8,24 +8,6 @@ if [ -f /etc/syslog-ng/syslog-ng.conf ]; then
   sed -i "s/stats(freq(0));/stats_freq(0);/g" /etc/syslog-ng/syslog-ng.conf || true
 fi
 
-# Map Railway MySQL variables to Seafile expected variables.
-# Keep explicit Seafile vars if user already provided them.
-[ -n "${DB_HOST:-}" ] || [ -z "${MYSQLHOST:-}" ] || export DB_HOST="${MYSQLHOST}"
-[ -n "${DB_PORT:-}" ] || [ -z "${MYSQLPORT:-}" ] || export DB_PORT="${MYSQLPORT}"
-
-if [ -z "${DB_ROOT_PASSWD:-}" ]; then
-  if [ -n "${MYSQL_ROOT_PASSWORD:-}" ]; then
-    export DB_ROOT_PASSWD="${MYSQL_ROOT_PASSWORD}"
-  elif [ -n "${MYSQLPASSWORD:-}" ]; then
-    export DB_ROOT_PASSWD="${MYSQLPASSWORD}"
-  fi
-fi
-
-# Accept either MEMCACHED_SERVER or Railway's MEMCACHE_PRIVATE_SERVER.
-if [ -z "${MEMCACHED_SERVER:-}" ] && [ -n "${MEMCACHE_PRIVATE_SERVER:-}" ]; then
-  export MEMCACHED_SERVER="${MEMCACHE_PRIVATE_SERVER}"
-fi
-
 # Patch bootstrap default for first initialization.
 if [ -n "${MEMCACHED_SERVER:-}" ]; then
   sed -i "s|LOCATION': 'memcached:11211'|LOCATION': '${MEMCACHED_SERVER}'|g" /scripts/bootstrap.py
@@ -39,6 +21,7 @@ fi
 # Railway private networking may connect from IPv6 addresses. Upstream bootstrap
 # sets MYSQL_USER_HOST to %.%.%.% (IPv4 style), which causes "Access denied"
 # for seafile@<ipv6>. Widen to '%' for compatibility.
-sed -i "s|'MYSQL_USER_HOST': '%.%.%.%'|'MYSQL_USER_HOST': '%'|g" /scripts/bootstrap.py || true
+DB_USER_HOST="${DB_USER_HOST:-%}"
+sed -i "s|'MYSQL_USER_HOST': '%.%.%.%'|'MYSQL_USER_HOST': '${DB_USER_HOST}'|g" /scripts/bootstrap.py || true
 
 exec /sbin/my_init -- /scripts/enterpoint.sh
