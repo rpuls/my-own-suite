@@ -74,6 +74,8 @@ services:
     restart: unless-stopped
     profiles:
       - seafile
+    command:
+      - --default-authentication-plugin=mysql_native_password
     env_file:
       - ./services/seafile/.env
     environment:
@@ -95,9 +97,7 @@ services:
           - memcached
 
   seafile:
-    build:
-      context: ../../apps/seafile
-      dockerfile: Dockerfile
+    image: seafileltd/seafile-mc:11.0-latest
     container_name: mos-seafile
     restart: unless-stopped
     profiles:
