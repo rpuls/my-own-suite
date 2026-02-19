@@ -1,6 +1,13 @@
 #!/bin/sh
 set -eu
 
+# Railway can run this image on hosts where syslog-ng version differs from
+# the config syntax bundled in the image. Normalize the config before my_init.
+if [ -f /etc/syslog-ng/syslog-ng.conf ]; then
+  sed -i "s/@version: 4.3/@version: 3.35/g" /etc/syslog-ng/syslog-ng.conf || true
+  sed -i "s/stats(freq(0));/stats_freq(0);/g" /etc/syslog-ng/syslog-ng.conf || true
+fi
+
 # Map Railway MySQL variables to Seafile expected variables.
 # Keep explicit Seafile vars if user already provided them.
 [ -n "${DB_HOST:-}" ] || [ -z "${MYSQLHOST:-}" ] || export DB_HOST="${MYSQLHOST}"
