@@ -14,5 +14,7 @@ Self-hosted OnlyOffice Community Document Server.
 - The VPS deployment builds from `apps/onlyoffice/Dockerfile` (based on `onlyoffice/documentserver`).
 - The image enables `ds:example` and `ds:adminpanel` autostart so `/example/` and `/admin/` are available without manual setup.
 - Homepage is configured to link directly to `http://onlyoffice.${DOMAIN}/example/` for immediate first-run usability.
+- For Railway/Dokploy-style deployments, the entrypoint maps nginx to `${PORT}` automatically.
+- The entrypoint also strips wrapping quotes from key env values (`PORT`, `TZ`, `ALLOW_PRIVATE_IP_ADDRESS`, `JWT_ENABLED`, `JWT_SECRET`).
 - Keep `JWT_ENABLED=false` until integrating with a document provider.
 - Before integrating with Seafile, set `JWT_ENABLED=true` and define a strong `JWT_SECRET`.

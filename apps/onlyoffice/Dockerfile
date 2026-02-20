@@ -4,3 +4,11 @@ FROM onlyoffice/documentserver:latest
 # admin panel so /example and /admin do not return 502 after container start.
 RUN sed -i "s/autostart=false/autostart=true/g" /etc/supervisor/conf.d/ds-example.conf \
  && sed -i "s/autostart=false/autostart=true/g" /etc/supervisor/conf.d/ds-adminpanel.conf
+
+# Railway compatibility wrapper:
+# - Supports binding nginx to platform-provided PORT.
+# - Normalizes env values that may be wrapped in quotes by platform UIs.
+COPY entrypoint.sh /opt/onlyoffice/entrypoint.sh
+RUN chmod +x /opt/onlyoffice/entrypoint.sh
+
+ENTRYPOINT ["/opt/onlyoffice/entrypoint.sh"]
