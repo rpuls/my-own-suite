@@ -19,20 +19,34 @@ append_if_missing() {
   fi
 }
 
+upsert_setting() {
+  file="$1"
+  key="$2"
+  line="$3"
+  if grep -q "^${key}[[:space:]]*=" "$file"; then
+    sed -i "s|^${key}[[:space:]]*=.*|${line}|g" "$file"
+  else
+    echo "$line" >> "$file"
+  fi
+}
+
 patch_seahub_proxy_settings() {
   if [ ! -f "$SEAHUB_SETTINGS_FILE" ]; then
     return 0
   fi
 
+  protocol="${SEAFILE_SERVER_PROTOCOL:-http}"
+
+  if [ -n "${SEAFILE_SERVER_HOSTNAME:-}" ]; then
+    upsert_setting "$SEAHUB_SETTINGS_FILE" "SERVICE_URL" "SERVICE_URL = \"${protocol}://${SEAFILE_SERVER_HOSTNAME}\""
+    upsert_setting "$SEAHUB_SETTINGS_FILE" "FILE_SERVER_ROOT" "FILE_SERVER_ROOT = \"${protocol}://${SEAFILE_SERVER_HOSTNAME}/seafhttp\""
+    upsert_setting "$SEAHUB_SETTINGS_FILE" "CSRF_TRUSTED_ORIGINS" "CSRF_TRUSTED_ORIGINS = ['https://${SEAFILE_SERVER_HOSTNAME}']"
+  fi
+
   # Railway (and most PaaS ingress) terminates TLS at the proxy.
   # These settings make Django trust forwarded scheme/host so CSRF checks pass.
-  append_if_missing "$SEAHUB_SETTINGS_FILE" "SECURE_PROXY_SSL_HEADER" "SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')"
-  append_if_missing "$SEAHUB_SETTINGS_FILE" "USE_X_FORWARDED_HOST" "USE_X_FORWARDED_HOST = True"
-
-  # Keep trusted origin exact and without trailing slash.
-  if [ -n "${SEAFILE_SERVER_HOSTNAME:-}" ]; then
-    append_if_missing "$SEAHUB_SETTINGS_FILE" "CSRF_TRUSTED_ORIGINS" "CSRF_TRUSTED_ORIGINS = ['https://${SEAFILE_SERVER_HOSTNAME}']"
-  fi
+  upsert_setting "$SEAHUB_SETTINGS_FILE" "SECURE_PROXY_SSL_HEADER" "SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')"
+  upsert_setting "$SEAHUB_SETTINGS_FILE" "USE_X_FORWARDED_HOST" "USE_X_FORWARDED_HOST = True"
 }
 
 # Patch bootstrap default for first initialization.
