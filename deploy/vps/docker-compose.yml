@@ -118,6 +118,25 @@ services:
       - seafile-mysql
       - seafile-memcached
 
+  # -------------------------------------------
+  # OnlyOffice - Document Editing Suite
+  # -------------------------------------------
+  onlyoffice:
+    build:
+      context: ../../apps/onlyoffice
+      dockerfile: Dockerfile
+    container_name: mos-onlyoffice
+    restart: unless-stopped
+    profiles:
+      - onlyoffice
+    env_file:
+      - .env
+      - ./services/onlyoffice/.env
+    volumes:
+      - onlyoffice_data:/var/www/onlyoffice/Data
+    networks:
+      - mos-network
+
 volumes:
   caddy_data:
   caddy_config:
@@ -125,6 +144,7 @@ volumes:
   vaultwarden_data:
   seafile_data:
   seafile_mysql_data:
+  onlyoffice_data:
 
 networks:
   mos-network:

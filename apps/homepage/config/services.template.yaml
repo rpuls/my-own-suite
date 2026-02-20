@@ -22,6 +22,12 @@
         description: Self-hosted file sync and share
         icon: mdi-folder-sync
 
+- Productivity:
+    - OnlyOffice:
+        href: ${ONLYOFFICE_URL}
+        description: Self-hosted document editing suite
+        icon: mdi-file-document-edit-outline
+
 - Open Source Resources:
     - Funkyton:
         href: https://www.funkyton.com

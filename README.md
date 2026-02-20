@@ -32,6 +32,8 @@ You can deploy everything at once, extend it gradually, and migrate between plat
 |------|-------------|--------|
 | [Homepage](https://gethomepage.dev/) | Clean, modern dashboard for all services | ✅ Ready |
 | [Vaultwarden](https://github.com/dani-garcia/vaultwarden) | Bitwarden-compatible password manager | ✅ Ready |
+| [Seafile](https://www.seafile.com/) | File sync and sharing platform | ✅ Ready |
+| [OnlyOffice](https://www.onlyoffice.com/) | Document editing suite | ✅ Ready |
 
 ---
 
@@ -43,7 +45,6 @@ The roadmap focuses on replacing common proprietary SaaS categories with best-in
 - **Immich** — Photo backup & management
 - **Paperless-ngx** — Document archive & OCR
 - **Authentik** — Identity & single sign-on
-- **OnlyOffice** — Document editing
 
 The goal is not "everything" — it's **the right tools, integrated well**.
 
@@ -108,6 +109,12 @@ my-own-suite/
 │   │   └── config-generator/ # TypeScript config generator
 │   └── vaultwarden/
 │       ├── Dockerfile        # Platform-optimized (PostgreSQL support)
+│       └── README.md
+│   ├── seafile/
+│   │   ├── Dockerfile
+│   │   ├── entrypoint.sh
+│   │   └── README.md
+│   └── onlyoffice/
 │       └── README.md
 └── deploy/                   # Deployment configurations
     └── vps/                  # VPS/Docker Compose deployment

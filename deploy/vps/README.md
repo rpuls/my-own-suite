@@ -10,12 +10,20 @@ cd deploy/vps
 cp .env.example .env
 cp services/homepage/.env.example services/homepage/.env
 cp services/vaultwarden/.env.example services/vaultwarden/.env
+cp services/seafile/.env.example services/seafile/.env
+cp services/onlyoffice/.env.example services/onlyoffice/.env
 
 # Start core services (homepage + caddy)
 docker compose up -d
 
 # Start with Vaultwarden
 docker compose --profile vaultwarden up -d
+
+# Start with Seafile
+docker compose --profile seafile up -d
+
+# Start with OnlyOffice
+docker compose --profile onlyoffice up -d
 
 # Stop all services
 docker compose down
@@ -24,6 +32,9 @@ docker compose down
 ### Access
 - Homepage: http://homepage.localhost/
 - Vaultwarden: http://vaultwarden.localhost/
+- Seafile: http://seafile.localhost/
+- OnlyOffice: http://onlyoffice.localhost/
+- OnlyOffice test workspace: http://onlyoffice.localhost/example/
 
 ## Configuration
 
@@ -38,7 +49,13 @@ deploy/vps/
     ├── homepage/
     │   ├── .env                 # Service URLs using ${DOMAIN}
     │   └── .env.example
-    └── vaultwarden/
+    ├── vaultwarden/
+    │   ├── .env                 # App-specific settings
+    │   └── .env.example
+    ├── seafile/
+    │   ├── .env                 # App-specific settings
+    │   └── .env.example
+    └── onlyoffice/
         ├── .env                 # App-specific settings
         └── .env.example
 ```
@@ -51,9 +68,9 @@ DOMAIN=yourdomain.com   # Production
 ```
 
 All services automatically use the new domain:
-- Caddy routes: `homepage.{$DOMAIN}`, `vaultwarden.{$DOMAIN}`
-- Service URLs: `http://vaultwarden.${DOMAIN}`
-- Homepage links: `http://vaultwarden.${DOMAIN}`
+- Caddy routes: `homepage.{$DOMAIN}`, `vaultwarden.{$DOMAIN}`, `seafile.{$DOMAIN}`, `onlyoffice.{$DOMAIN}`
+- Service URLs: `http://vaultwarden.${DOMAIN}`, `http://seafile.${DOMAIN}`, `http://onlyoffice.${DOMAIN}`
+- Homepage links: same URLs from `services/homepage/.env`
 
 ## Adding a New App
 
