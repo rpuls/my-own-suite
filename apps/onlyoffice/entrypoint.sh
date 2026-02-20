@@ -33,20 +33,6 @@ configure_nginx_listen_port() {
   done
 }
 
-stabilize_example_forwarded_for() {
-  example_useraddress="${ONLYOFFICE_EXAMPLE_USERADDRESS:-127.0.0.1}"
-  escaped_useraddress="$(printf '%s' "$example_useraddress" | sed 's/[\/&]/\\&/g')"
-
-  for cfg in \
-    /etc/onlyoffice/documentserver-example/nginx/includes/ds-example.conf \
-    /etc/nginx/includes/ds-example.conf
-  do
-    if [ -f "$cfg" ]; then
-      sed -i "s|^[[:space:]]*proxy_set_header X-Forwarded-For .*;|  proxy_set_header X-Forwarded-For ${escaped_useraddress};|g" "$cfg"
-    fi
-  done
-}
-
 # Railway and similar platforms may present values with wrapping quotes.
 normalize_env_var "PORT"
 normalize_env_var "TZ"
@@ -54,14 +40,10 @@ normalize_env_var "ALLOW_PRIVATE_IP_ADDRESS"
 normalize_env_var "ALLOW_META_IP_ADDRESS"
 normalize_env_var "JWT_ENABLED"
 normalize_env_var "JWT_SECRET"
-normalize_env_var "ONLYOFFICE_EXAMPLE_USERADDRESS"
 
 # On platform deployments, bind nginx to the platform-provided PORT.
 if [ -n "${PORT:-}" ]; then
   configure_nginx_listen_port "${PORT}"
 fi
-
-# Keep example file storage key stable behind multi-proxy ingress.
-stabilize_example_forwarded_for
 
 exec /app/ds/run-document-server.sh

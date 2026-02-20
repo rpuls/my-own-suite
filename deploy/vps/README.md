@@ -34,7 +34,6 @@ docker compose down
 - Vaultwarden: http://vaultwarden.localhost/
 - Seafile: http://seafile.localhost/
 - OnlyOffice: http://onlyoffice.localhost/
-- OnlyOffice test workspace: http://onlyoffice.localhost/example/
 
 ## Configuration
 

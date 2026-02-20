@@ -25,7 +25,7 @@
 - Productivity:
     - OnlyOffice:
         href: ${ONLYOFFICE_URL}
-        description: Self-hosted document editing suite
+        description: Document editor service (Seafile integration pending)
         icon: mdi-file-document-edit-outline
 
 - Open Source Resources:
