@@ -59,7 +59,7 @@ sync_securelink_secret_to_nginx() {
     /etc/nginx/conf.d/ds.conf
   do
     if [ -f "$cfg" ]; then
-      sed -i "s|^[[:space:]]*set \\$secure_link_secret .*;|  set \\$secure_link_secret ${securelink_secret};|g" "$cfg"
+      sed -i 's|^[[:space:]]*set \$secure_link_secret .*;|  set \$secure_link_secret '"${securelink_secret}"';|g' "$cfg"
     fi
   done
 }
