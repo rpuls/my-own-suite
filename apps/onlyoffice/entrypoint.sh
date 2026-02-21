@@ -33,6 +33,16 @@ configure_nginx_listen_port() {
   done
 }
 
+sync_securelink_keys() {
+  # Keep docservice/nginx secure-link keys in sync; avoids Editor.bin 403
+  # on some managed platforms after restarts/redeploys.
+  if [ -x /app/ds/documentserver-update-securelink.sh ]; then
+    /app/ds/documentserver-update-securelink.sh >/dev/null 2>&1 || true
+  elif [ -x /usr/bin/documentserver-update-securelink.sh ]; then
+    /usr/bin/documentserver-update-securelink.sh >/dev/null 2>&1 || true
+  fi
+}
+
 # Railway and similar platforms may present values with wrapping quotes.
 normalize_env_var "PORT"
 normalize_env_var "TZ"
@@ -45,5 +55,7 @@ normalize_env_var "JWT_SECRET"
 if [ -n "${PORT:-}" ]; then
   configure_nginx_listen_port "${PORT}"
 fi
+
+sync_securelink_keys
 
 exec /app/ds/run-document-server.sh
