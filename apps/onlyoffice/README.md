@@ -9,6 +9,7 @@ Self-hosted OnlyOffice Community Document Server.
 - `ALLOW_META_IP_ADDRESS` - Allow callbacks to metadata/non-public cloud address ranges (useful on PaaS ingress networks)
 - `JWT_ENABLED` - Enable JWT protection (`true` or `false`)
 - `JWT_SECRET` - JWT secret used when `JWT_ENABLED=true`
+- `SECURE_LINK_SECRET` - Secret used by nginx secure-link validation for editor cache files (`/cache/files/...`)
 
 ## Persistence
 
@@ -22,7 +23,8 @@ Self-hosted OnlyOffice Community Document Server.
 - Homepage links to `http://onlyoffice.${DOMAIN}` (landing page) until Seafile integration is enabled.
 - The image enables `ds:adminpanel` autostart so `/admin/` is reachable after startup.
 - For PaaS deployments, the entrypoint maps nginx to `${PORT}` automatically.
-- The entrypoint strips wrapping quotes from key env values (`PORT`, `TZ`, `ALLOW_PRIVATE_IP_ADDRESS`, `ALLOW_META_IP_ADDRESS`, `JWT_ENABLED`, `JWT_SECRET`).
+- The entrypoint strips wrapping quotes from key env values (`PORT`, `TZ`, `ALLOW_PRIVATE_IP_ADDRESS`, `ALLOW_META_IP_ADDRESS`, `JWT_ENABLED`, `JWT_SECRET`, `SECURE_LINK_SECRET`).
 - On managed ingress platforms, set `ALLOW_META_IP_ADDRESS=true` when document callbacks/downloads fail with request-filter errors.
+- On managed platforms, set an explicit `SECURE_LINK_SECRET` so nginx and document server use the same cache URL signing secret.
 - Keep `JWT_ENABLED=false` until integrating with a document provider.
 - Before integrating with Seafile, set `JWT_ENABLED=true` and define a strong `JWT_SECRET`.
