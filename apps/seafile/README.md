@@ -21,6 +21,11 @@ Self-hosted file sync and share solution.
 - `SEAFILE_SERVER_HOSTNAME` - Public hostname users access Seafile with (no protocol).
 - `SEAFILE_SERVER_PROTOCOL` - Public protocol (`https` when behind TLS proxy).
 - `TIME_ZONE` - Time zone name, e.g. `Europe/Amsterdam`.
+- `VERIFY_ONLYOFFICE_CERTIFICATE` - Verify editor TLS certificate (`false` for local/self-signed setups).
+- `ONLYOFFICE_APIJS_URL` - Public URL to OnlyOffice Docs API JS.
+- `ONLYOFFICE_FORCE_SAVE` - Enable force-save behavior in OnlyOffice integration.
+- `ONLYOFFICE_INTERNAL_SEAFILE_URL` - Optional internal Seafile base URL for OnlyOffice server-to-server callbacks/downloads.
+- `ONLYOFFICE_JWT_SECRET` - Optional JWT secret (must match OnlyOffice when JWT is enabled).
 
 ## Persistence
 
@@ -38,3 +43,7 @@ Without `/shared`, credentials/config can drift between restarts and bootstrap/l
   - `SEAFILE_SERVER_HOSTNAME` is correct
   - `SEAFILE_SERVER_PROTOCOL=https`
   - trusted proxy/CSRF settings are applied in `seahub_settings.py` (this image entrypoint handles that automatically).
+- OnlyOffice integration settings are also injected into `seahub_settings.py` by this image entrypoint.
+  Integration is enabled automatically when `ONLYOFFICE_APIJS_URL` is non-empty.
+- If `ONLYOFFICE_INTERNAL_SEAFILE_URL` is set, the entrypoint patches Seafile's OnlyOffice runtime
+  so callback/download URLs use that internal base (while public URLs for users remain unchanged).

@@ -35,6 +35,14 @@ docker compose down
 - Seafile: http://seafile.localhost/
 - OnlyOffice: http://onlyoffice.localhost/
 
+### Local OnlyOffice + Seafile note
+- `.localhost` domains resolve to loopback inside containers.
+- Set `ONLYOFFICE_INTERNAL_SEAFILE_URL=http://seafile` in `services/seafile/.env` so OnlyOffice backend callbacks/downloads use Docker-internal networking.
+- After pulling changes, restart the relevant services:
+```bash
+docker compose up -d --build seafile onlyoffice caddy
+```
+
 ## Configuration
 
 ### Architecture
