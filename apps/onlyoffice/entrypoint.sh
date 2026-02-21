@@ -16,62 +16,6 @@ normalize_env_var() {
   fi
 }
 
-debug_print_env_format() {
-  # Set DEBUG_ENV_FORMAT=true to print sanitized env format diagnostics.
-  case "$(echo "${DEBUG_ENV_FORMAT:-false}" | tr '[:upper:]' '[:lower:]')" in
-    1|true|yes|on) ;;
-    *) return 0 ;;
-  esac
-
-  print_var() {
-    var_name="$1"
-    mask_mode="$2"
-    eval "val=\${$var_name:-}"
-    if [ -z "$val" ]; then
-      echo "[env-format] ${var_name}=<empty>"
-      return 0
-    fi
-
-    case "$mask_mode" in
-      secret)
-        val_len="$(printf '%s' "$val" | wc -c | tr -d ' ')"
-        starts_q="no"
-        ends_q="no"
-        case "$val" in
-          \"*) starts_q="double" ;;
-          \'*) starts_q="single" ;;
-        esac
-        case "$val" in
-          *\") ends_q="double" ;;
-          *\') ends_q="single" ;;
-        esac
-        echo "[env-format] ${var_name}=<redacted> len=${val_len} starts_with_quote=${starts_q} ends_with_quote=${ends_q}"
-        ;;
-      *)
-        starts_q="no"
-        ends_q="no"
-        case "$val" in
-          \"*) starts_q="double" ;;
-          \'*) starts_q="single" ;;
-        esac
-        case "$val" in
-          *\") ends_q="double" ;;
-          *\') ends_q="single" ;;
-        esac
-        echo "[env-format] ${var_name}='${val}' starts_with_quote=${starts_q} ends_with_quote=${ends_q}"
-        ;;
-    esac
-  }
-
-  print_var "PORT" plain
-  print_var "TZ" plain
-  print_var "ALLOW_PRIVATE_IP_ADDRESS" plain
-  print_var "ALLOW_META_IP_ADDRESS" plain
-  print_var "JWT_ENABLED" plain
-  print_var "JWT_SECRET" secret
-  print_var "STORAGE_FS_SECRET" secret
-}
-
 escape_for_single_quote() {
   # Escape single quotes for insertion into a single-quoted JS string.
   echo "$1" | sed "s/'/'\\\\''/g"
@@ -94,14 +38,30 @@ configure_nginx_listen_port() {
   done
 }
 
-sync_securelink_keys() {
-  # Keep docservice/nginx secure-link keys in sync; avoids Editor.bin 403
-  # on some managed platforms after restarts/redeploys.
-  if [ -x /app/ds/documentserver-update-securelink.sh ]; then
-    /app/ds/documentserver-update-securelink.sh >/dev/null 2>&1 || true
-  elif [ -x /usr/bin/documentserver-update-securelink.sh ]; then
-    /usr/bin/documentserver-update-securelink.sh >/dev/null 2>&1 || true
+sync_securelink_secret_to_nginx() {
+  # Avoid depending on documentserver-update-securelink.sh, which can fail on
+  # some managed runtimes (/proc/1/cpuset assumptions). We set nginx secret
+  # directly to match local.json storage.fs.secretString.
+  json_bin="/var/www/onlyoffice/documentserver/npm/json"
+  if [ ! -x "$json_bin" ]; then
+    return 0
   fi
+
+  securelink_secret="$("$json_bin" -f /etc/onlyoffice/documentserver/local.json 'storage.fs.secretString' 2>/dev/null || true)"
+  if [ -z "$securelink_secret" ]; then
+    return 0
+  fi
+
+  for cfg in \
+    /etc/onlyoffice/documentserver/nginx/ds.conf \
+    /etc/onlyoffice/documentserver/nginx/ds.conf.tmpl \
+    /etc/onlyoffice/documentserver/nginx/ds-ssl.conf.tmpl \
+    /etc/nginx/conf.d/ds.conf
+  do
+    if [ -f "$cfg" ]; then
+      sed -i "s|^[[:space:]]*set \\$secure_link_secret .*;|  set \\$secure_link_secret ${securelink_secret};|g" "$cfg"
+    fi
+  done
 }
 
 configure_storage_secret() {
@@ -129,7 +89,6 @@ normalize_env_var "ALLOW_META_IP_ADDRESS"
 normalize_env_var "JWT_ENABLED"
 normalize_env_var "JWT_SECRET"
 normalize_env_var "STORAGE_FS_SECRET"
-debug_print_env_format
 
 # On platform deployments, bind nginx to the platform-provided PORT.
 if [ -n "${PORT:-}" ]; then
@@ -137,6 +96,6 @@ if [ -n "${PORT:-}" ]; then
 fi
 
 configure_storage_secret
-sync_securelink_keys
+sync_securelink_secret_to_nginx
 
 exec /app/ds/run-document-server.sh
