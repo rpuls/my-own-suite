@@ -214,6 +214,15 @@ Please read our contributing guidelines before submitting PRs.
 
 MIT License - Feel free to use, modify, and distribute.
 
+## Website & Docs
+
+The Astro + Starlight website lives in `./site`.
+
+- Landing page: `/`
+- Documentation: `/docs`
+
+See `./site/README.md` for local development and Cloudflare Pages build settings.
+
 ## Resources
 
 - [Homepage Documentation](https://gethomepage.dev/)

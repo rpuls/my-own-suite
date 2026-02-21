@@ -1,0 +1,25 @@
+:root {
+  --sl-color-accent-low: hsl(158, 34%, 20%);
+  --sl-color-accent: hsl(158, 64%, 52%);
+  --sl-color-accent-high: hsl(158, 76%, 80%);
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: hsl(158, 48%, 90%);
+  --sl-color-accent: hsl(158, 66%, 32%);
+  --sl-color-accent-high: hsl(158, 72%, 22%);
+  --sl-color-bg: hsl(38, 30%, 98%);
+  --sl-color-bg-nav: hsl(36, 25%, 96%);
+  --sl-color-bg-sidebar: hsl(36, 25%, 96%);
+  --sl-color-bg-inline-code: hsl(36, 24%, 92%);
+}
+
+:root[data-theme='dark'] {
+  --sl-color-accent-low: hsl(158, 30%, 18%);
+  --sl-color-accent: hsl(158, 62%, 50%);
+  --sl-color-accent-high: hsl(158, 74%, 78%);
+  --sl-color-bg: hsl(205, 24%, 9%);
+  --sl-color-bg-nav: hsl(205, 22%, 11%);
+  --sl-color-bg-sidebar: hsl(205, 22%, 11%);
+  --sl-color-bg-inline-code: hsl(205, 20%, 15%);
+}

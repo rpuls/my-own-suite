@@ -1,0 +1,17 @@
+{
+  "name": "my-own-suite-site",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "astro": "^5.2.0",
+    "@astrojs/starlight": "^0.32.0"
+  }
+}
+
+
