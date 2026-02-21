@@ -47,3 +47,13 @@ Without `/shared`, credentials/config can drift between restarts and bootstrap/l
   Integration is enabled automatically when `ONLYOFFICE_APIJS_URL` is non-empty.
 - If `ONLYOFFICE_INTERNAL_SEAFILE_URL` is set, the entrypoint patches Seafile's OnlyOffice runtime
   so callback/download URLs use that internal base (while public URLs for users remain unchanged).
+
+## Runtime Modifications
+
+- This image intentionally patches Seafile runtime files during container start.
+- Why: Seafile + OnlyOffice callback/download behavior can break on private-network and localhost-style deployments where server-to-server URLs differ from browser URLs.
+- What is patched:
+  - `seahub_settings.py` (OnlyOffice and proxy-related settings)
+  - `seahub/onlyoffice/utils.py` (internal URL handling for editor open flow)
+  - `seahub/onlyoffice/views.py` (callback URL rewrite for `/cache/files/...` save flow)
+- Maintenance note: these patches are version-sensitive. After upgrading the Seafile base image, re-test open/save flows and review patch compatibility.

@@ -105,6 +105,7 @@ patch_seahub_onlyoffice_settings() {
 
 patch_seahub_onlyoffice_runtime() {
   onlyoffice_utils_file="/opt/seafile/seafile-server-latest/seahub/seahub/onlyoffice/utils.py"
+  onlyoffice_views_file="/opt/seafile/seafile-server-latest/seahub/seahub/onlyoffice/views.py"
   if [ ! -f "$onlyoffice_utils_file" ]; then
     return 0
   fi
@@ -135,6 +136,43 @@ def _get_onlyoffice_internal_seafile_url():\\
 " "$onlyoffice_utils_file"
 
   sed -i "s/base_url = get_site_scheme_and_netloc()/base_url = internal_seafile_url if internal_seafile_url else get_site_scheme_and_netloc()/g" "$onlyoffice_utils_file"
+
+  # If callback URL uses internal Seafile host, some OnlyOffice builds may send
+  # status.url back on the same host. Rewrite such cache URLs to OnlyOffice host.
+  if [ -f "$onlyoffice_views_file" ] && ! grep -q "_rewrite_onlyoffice_file_url_for_internal_callback" "$onlyoffice_views_file"; then
+    sed -i "s/from seahub.onlyoffice.settings import VERIFY_ONLYOFFICE_CERTIFICATE, ONLYOFFICE_JWT_SECRET/from seahub.onlyoffice.settings import VERIFY_ONLYOFFICE_CERTIFICATE, ONLYOFFICE_JWT_SECRET, ONLYOFFICE_APIJS_URL/g" "$onlyoffice_views_file"
+
+    sed -i "/logger = logging.getLogger('onlyoffice')/a\\
+\\
+def _rewrite_onlyoffice_file_url_for_internal_callback(url):\\
+    if not url:\\
+        return url\\
+\\
+    try:\\
+        parsed_url = urllib.parse.urlparse(url)\\
+        api_js_url = urllib.parse.urlparse(ONLYOFFICE_APIJS_URL)\\
+\\
+        if not api_js_url.scheme or not api_js_url.netloc:\\
+            return url\\
+\\
+        if parsed_url.path.startswith('/cache/files/') and parsed_url.netloc != api_js_url.netloc:\\
+            return urllib.parse.urlunparse((api_js_url.scheme, api_js_url.netloc, parsed_url.path, parsed_url.params, parsed_url.query, parsed_url.fragment))\\
+    except Exception as e:\\
+        logger.warning('rewrite onlyoffice file url failed: %s', e)\\
+\\
+    return url\\
+" "$onlyoffice_views_file"
+
+    sed -i "/url = post_data.get('url')/a\\
+        url = _rewrite_onlyoffice_file_url_for_internal_callback(url)\\
+" "$onlyoffice_views_file"
+  fi
+
+  # Update older runtime patch variants in-place (idempotent migration).
+  if [ -f "$onlyoffice_views_file" ]; then
+    sed -i "s/        service_url = urllib.parse.urlparse(get_service_url())//g" "$onlyoffice_views_file"
+    sed -i "s/        if parsed_url.scheme and parsed_url.netloc == service_url.netloc and parsed_url.path.startswith('\/cache\/files\/'):/        if parsed_url.path.startswith('\/cache\/files\/') and parsed_url.netloc != api_js_url.netloc:/g" "$onlyoffice_views_file"
+  fi
 }
 
 # Patch bootstrap default for first initialization.

@@ -28,3 +28,13 @@ Self-hosted OnlyOffice Community Document Server.
 - On managed platforms, set an explicit `SECURE_LINK_SECRET` so nginx and document server use the same cache URL signing secret.
 - Keep `JWT_ENABLED=false` until integrating with a document provider.
 - Before integrating with Seafile, set `JWT_ENABLED=true` and define a strong `JWT_SECRET`.
+
+## Runtime Modifications
+
+- This image stays close to upstream `onlyoffice/documentserver`, with a small startup wrapper in `entrypoint.sh`.
+- Why: managed platforms often inject `PORT` and env formatting that upstream scripts do not handle consistently.
+- What is modified:
+  - nginx listen port remap to `${PORT}` for PaaS compatibility
+  - normalization of selected env vars
+  - startup sync of nginx `secure_link_secret` from `SECURE_LINK_SECRET` to prevent `/cache/files/...` signature mismatches
+- Maintenance note: if upstream startup/config templates change, re-validate these steps after image upgrades.
