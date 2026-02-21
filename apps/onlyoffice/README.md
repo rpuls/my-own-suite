@@ -9,6 +9,12 @@ Self-hosted OnlyOffice Community Document Server.
 - `ALLOW_META_IP_ADDRESS` - Allow callbacks to metadata/non-public cloud address ranges (useful on PaaS ingress networks)
 - `JWT_ENABLED` - Enable JWT protection (`true` or `false`)
 - `JWT_SECRET` - JWT secret used when `JWT_ENABLED=true`
+- `STORAGE_FS_SECRET` - Optional fixed secret for signed `/cache/files/...` URLs (recommended on managed platforms)
+
+## Persistence
+
+- Mount persistent storage at `/var/www/onlyoffice/Data`.
+- This is required on VPS and managed platforms (Railway, Dokploy, etc.).
 
 ## Notes
 
@@ -19,5 +25,6 @@ Self-hosted OnlyOffice Community Document Server.
 - For PaaS deployments, the entrypoint maps nginx to `${PORT}` automatically.
 - The entrypoint strips wrapping quotes from key env values (`PORT`, `TZ`, `ALLOW_PRIVATE_IP_ADDRESS`, `ALLOW_META_IP_ADDRESS`, `JWT_ENABLED`, `JWT_SECRET`).
 - On managed ingress platforms, set `ALLOW_META_IP_ADDRESS=true` when document callbacks/downloads fail with request-filter errors.
+- On managed ingress platforms, set a stable `STORAGE_FS_SECRET` to avoid intermittent `Editor.bin` `403` errors caused by secure-link secret drift.
 - Keep `JWT_ENABLED=false` until integrating with a document provider.
 - Before integrating with Seafile, set `JWT_ENABLED=true` and define a strong `JWT_SECRET`.
