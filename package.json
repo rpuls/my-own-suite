@@ -2,6 +2,6 @@
   "name": "my-own-suite-monorepo",
   "private": true,
   "scripts": {
-    "build": "npm --prefix site ci && npm --prefix site run build"
+    "build": "cd site && npm ci && npm run build"
   }
 }
