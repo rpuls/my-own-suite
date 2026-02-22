@@ -23,3 +23,101 @@
   --sl-color-bg-sidebar: hsl(205, 22%, 11%);
   --sl-color-bg-inline-code: hsl(205, 20%, 15%);
 }
+
+.apps-overview {
+  margin: 1.25rem 0 1.6rem;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 14px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--sl-color-bg-nav) 85%, transparent), transparent 32%),
+    var(--sl-color-bg);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--sl-color-black) 14%, transparent);
+}
+
+.apps-overview table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.apps-overview thead th {
+  text-align: left;
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sl-color-text-accent);
+  background: color-mix(in srgb, var(--sl-color-accent-low) 42%, transparent);
+  padding: 0.72rem 0.9rem;
+  border-bottom: 1px solid var(--sl-color-hairline);
+}
+
+.apps-overview tbody th,
+.apps-overview tbody td {
+  padding: 0.9rem;
+  border-top: 1px solid var(--sl-color-hairline);
+  vertical-align: top;
+}
+
+.apps-overview thead th:first-child,
+.apps-overview tbody th:first-child,
+.apps-overview tbody td:first-child {
+  padding-inline-start: 0.9rem !important;
+}
+
+.apps-overview tbody tr:first-child th,
+.apps-overview tbody tr:first-child td {
+  border-top: 0;
+}
+
+.apps-overview tbody th {
+  width: 22%;
+  font-weight: 700;
+  color: var(--sl-color-white);
+}
+
+.apps-overview tbody td:nth-child(2) {
+  width: 26%;
+  font-weight: 600;
+  color: var(--sl-color-text-accent);
+}
+
+@media (max-width: 860px) {
+  .apps-overview thead {
+    display: none;
+  }
+
+  .apps-overview,
+  .apps-overview table,
+  .apps-overview tbody,
+  .apps-overview tr,
+  .apps-overview th,
+  .apps-overview td {
+    display: block;
+    width: 100%;
+  }
+
+  .apps-overview tr {
+    padding: 0.85rem 0.9rem;
+    border-top: 1px solid var(--sl-color-hairline);
+  }
+
+  .apps-overview tr:first-child {
+    border-top: 0;
+  }
+
+  .apps-overview tbody th,
+  .apps-overview tbody td {
+    border: 0;
+    padding: 0;
+  }
+
+  .apps-overview tbody th {
+    margin: 0 0 0.32rem;
+    font-size: 1rem;
+  }
+
+  .apps-overview tbody td:nth-child(2) {
+    margin: 0 0 0.3rem;
+    font-size: 0.93rem;
+  }
+}

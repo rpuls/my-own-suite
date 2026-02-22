@@ -1,0 +1,55 @@
+---
+title: Homepage
+description: Your launchpad for the suite.
+slug: docs/apps/homepage
+---
+
+The Homepage is your start screen for My Own Suite. You can think of Homepage as your desktop: one place to open each app without remembering multiple URLs.
+
+## Smart app visibility
+
+Homepage is generated from your current stack configuration.
+
+- If an app is active and has a valid URL, its tile appears on the dashboard.
+- If you remove an app from the stack (or remove its URL variable), that tile is automatically left out.
+- After rebuilding or restarting the Homepage service, the dashboard updates to match the stack you actually run.
+
+This keeps the dashboard clean, so people only see apps that are truly available.
+
+## Custom layout and tiles
+
+Homepage also works as a template-based system.
+
+- The dashboard structure is defined in `apps/homepage/config/services.template.yaml`.
+- You can reorder categories, rename labels, change descriptions/icons, and add your own links.
+- Changes are supported, but they are still configuration edits, so they are best handled by the person maintaining the deployment.
+
+## How to customize
+
+Use this as a quick map of where to edit what.
+
+1. App URLs and on/off visibility
+- File: `deploy/vps/services/homepage/.env`
+- Purpose: set values like `VAULTWARDEN_URL`, `SEAFILE_URL`, and `ONLYOFFICE_URL`.
+- Result: if a required URL is missing, that app tile is removed automatically.
+
+2. Dashboard structure and tile content
+- File: `apps/homepage/config/services.template.yaml`
+- Purpose: define categories, tile order, names, descriptions, and icons.
+- Result: lets you move things around and add your own custom tiles.
+
+3. Widgets and extra static config
+- Files: `apps/homepage/config/widgets.yaml`, `apps/homepage/config/bookmarks.yaml`, `apps/homepage/config/settings.yaml`
+- Purpose: control widgets, bookmarks, and general dashboard settings.
+
+4. Apply your changes
+- If you changed only environment values, restart Homepage.
+- If you changed template/config files under `apps/homepage/config`, rebuild Homepage so the updated files are included.
+- VPS example from `deploy/vps`: `docker compose up -d --build homepage`
+
+Customization is fully supported, but it is still maintenance-level configuration work rather than one-click UI editing.
+
+## Dependencies in the stack
+
+- Depends on: none
+- Used by: people who need quick access to the rest of the apps

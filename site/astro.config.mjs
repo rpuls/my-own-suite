@@ -13,6 +13,16 @@ export default defineConfig({
         {
           label: 'Docs',
           items: ['docs', 'docs/getting-started']
+        },
+        {
+          label: 'Apps',
+          items: [
+            'docs/apps/homepage',
+            'docs/apps/seafile',
+            'docs/apps/onlyoffice',
+            'docs/apps/immich',
+            'docs/apps/vaultwarden'
+          ]
         }
       ]
     })
