@@ -1,7 +1,29 @@
 {
   "name": "my-own-suite-site",
+  "description": "Official website and documentation for My Own Suite, an easy-to-deploy self-hosted stack of privacy-first open-source alternatives to common SaaS tools.",
   "private": true,
   "version": "0.0.1",
+  "homepage": "https://myownsuite.org/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rpuls/my-own-suite.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rpuls/my-own-suite/issues"
+  },
+  "keywords": [
+    "my-own-suite",
+    "self-hosted",
+    "digital-sovereignty",
+    "privacy",
+    "open-source-saas",
+    "astro",
+    "starlight",
+    "documentation",
+    "seafile",
+    "vaultwarden",
+    "onlyoffice"
+  ],
   "type": "module",
   "scripts": {
     "dev": "astro dev",

@@ -7,5 +7,5 @@ description: Self-hosted services dashboard
 theme: default
 color: zinc
 cardBlur: md
-columns: 3
+columns: 2
 host: false

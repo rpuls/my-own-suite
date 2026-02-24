@@ -1,134 +1,65 @@
-# Homepage Dashboard Service
+# Homepage
 
-A self-hosted dashboard for the My-Own-Suite project, built on [Homepage](https://gethomepage.dev/) with template-based configuration.
+Dashboard service for My Own Suite.
 
-## Architecture Overview
+## Customizations in this project
 
-This service uses a **template-replacer** pattern: a YAML template defines the dashboard structure, and placeholders are replaced with environment variable values at container startup. Services with unresolved placeholders are automatically removed.
+- Homepage config is generated at container start from a template.
+- `entrypoint.sh` runs `node /app/config-generator/dist/index.js /app/config` before starting Homepage.
+- Source template: `config/services.template.yaml`
+- Generated output: `config/services.yaml`
+- Generator behavior:
+  - Replaces `${ENV_VAR}` placeholders using runtime environment values.
+  - If any placeholder in a service is unresolved, that full service is removed.
+  - If a category has no remaining services, that category is removed.
+- Result: tiles appear only when their required env values exist.
 
-```
-┌────────────────────────────────────────────────────────────┐
-│                    Container Startup                       │
-│                                                            │
-│  ┌─────────────────┐    ┌─────────────────────────────┐    │
-│  │   Env Vars      │    │   Template Replacer (TS)    │    │
-│  │                 │───>│                             │    │
-│  │ VAULTWARDEN_URL │    │   - Reads template          │    │
-│  │ ...             │    │   - Replaces ${VAR} values  │    │
-│  └─────────────────┘    │   - Removes unresolved      │    │
-│                         │   - Outputs services.yaml   │    │
-│                         └──────────────┬──────────────┘    │
-│                                        │                   │
-│                                        ▼                   │
-│                         ┌─────────────────────────────┐    │
-│                         │   services.yaml             │    │
-│                         │   (generated config)        │    │
-│                         └──────────────┬──────────────┘    │
-│                                        │                   │
-│                                        ▼                   │
-│                         ┌─────────────────────────────┐    │
-│                         │   Homepage Server           │    │
-│                         │   (Node.js)                 │    │
-│                         └─────────────────────────────┘    │
-└────────────────────────────────────────────────────────────┘
-```
+## Environment variables
 
-## How It Works
+- `HOMEPAGE_ALLOWED_HOSTS`: Allowed hostnames for Homepage (`hostname1,hostname2,...`).
+- Any `${VAR_NAME}` used in `config/services.template.yaml`:
+  - Example: `${SEAFILE_URL}`, `${VAULTWARDEN_URL}`.
+  - If not set (or empty), dependent tile is excluded from final dashboard.
 
-### 1. Template File
+## How to edit tiles
 
-The dashboard structure is defined in `config/services.template.yaml`:
+1. Edit `apps/homepage/config/services.template.yaml`.
+2. Use placeholder URLs for tiles that should be conditional:
+   - `href: ${SEAFILE_URL}`
+3. Use static URLs for always-visible tiles:
+   - `href: https://example.com`
+4. Keep Homepage YAML structure:
+   - Category is a map key.
+   - Category value is a list of services.
+   - Service item shape is `ServiceName: { href, description, icon }`.
+
+Example:
 
 ```yaml
-- Security:
-    - Vaultwarden:
-        href: ${VAULTWARDEN_URL}
-        description: Self-hosted password manager
-        icon: vaultwarden.png
-
-- Communication:
-    - My Chat:
-        href: ${CHAT_URL}
-        description: Team chat
-        icon: mdi:chat
+- Storage:
+    - Seafile:
+        href: ${SEAFILE_URL}
+        description: Self-hosted file sync and share
+        icon: mdi-folder-sync
 ```
 
-### 2. Placeholder Replacement
+## How to apply changes
 
-The replacer finds `${ENV_VAR}` patterns and replaces them with environment variable values:
+- If you changed `services.template.yaml` or other files under `apps/homepage/config`:
+  - Rebuild Homepage image (from repo root):
+  - `npm run vps:rebuild`
+- If you changed only env values in `deploy/vps/services/homepage/.env`:
+  - Restarting Homepage is enough.
 
-- If the env var is set → placeholder is replaced with the value
-- If the env var is missing → the entire service is removed from output
-- If all services in a category are removed → the category is removed
+## Troubleshooting
 
-### 3. User Customization
+- Check generated config inside container:
+  - `docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps exec homepage sh -c "cat /app/config/services.yaml"`
+- Check generator logs:
+  - `docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps logs homepage --tail 200`
+- Common issue:
+  - Missing env var removes tile silently by design.
 
-Users can edit the template freely:
+## Official website
 
-- Move categories around (reorder lines)
-- Add custom services without env vars (static tiles)
-- Change descriptions, icons, etc.
-- Add new categories
-
-## Enabling/Disabling Services
-
-To enable a service:
-- Set the required environment variable(s) for that service
-
-To disable a service:
-- Remove the environment variable
-- Or remove/comment it from the template
-
-The next deployment will automatically update the dashboard.
-
-## Template Syntax
-
-### Placeholders
-
-```yaml
-href: ${SERVICE_URL}           # Replaced with env var
-description: Static text       # Left unchanged
-icon: ${SERVICE_ICON}          # Can use multiple placeholders
-```
-
-### Static Services (no env vars)
-
-```yaml
-- Personal:
-    - My Blog:
-        href: https://myblog.com
-        description: My personal blog
-        icon: mdi:post
-```
-
-Services without placeholders always appear in the dashboard.
-
-## File Structure
-
-```
-homepage/
-├── config-generator/       # Template replacer
-│   ├── src/
-│   │   └── index.ts       # Replacer logic
-│   └── dist/              # Compiled JavaScript (generated)
-├── config/
-│   ├── services.template.yaml  # Editable template
-│   ├── bookmarks.yaml          # Static bookmarks
-│   ├── docker.yaml             # Docker integration
-│   ├── kubernetes.yaml         # Kubernetes integration
-│   └── widgets.yaml            # Dashboard widgets
-├── Dockerfile             # Multi-stage Docker build
-├── entrypoint.sh          # Container startup script
-└── README.md              # This file
-```
-
-## Building
-
-The Dockerfile uses a multi-stage build:
-
-1. **Stage 1 (Builder)**: Compiles TypeScript to JavaScript
-2. **Stage 2 (Runtime)**: Copies compiled code and runs on Homepage base image
-
-## Environment Variables
-
-Each service in the template defines its own required environment variables through placeholders. Check the template for available variables.
+- https://gethomepage.dev/

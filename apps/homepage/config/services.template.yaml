@@ -10,33 +10,29 @@
 #
 # Customize freely: move categories, add services, change descriptions, etc.
 
+- Cloud Storage:
+    - Seafile:
+        href: ${SEAFILE_URL}
+        description: Self-hosted file sync and share
+        icon: https://cdn.simpleicons.org/seafile
+
+- My Shortcuts:
+    - Example Bookmark:
+        href: https://example.com
+        description: Replace with your own quick link
+        icon: mdi-bookmark-outline
+
 - Security:
     - Vaultwarden:
         href: ${VAULTWARDEN_URL}
         description: Self-hosted password manager
         icon: vaultwarden.png
 
-- Storage:
-    - Seafile:
-        href: ${SEAFILE_URL}
-        description: Self-hosted file sync and share
-        icon: mdi-folder-sync
-
-- Productivity:
-    - OnlyOffice:
-        href: ${ONLYOFFICE_URL}
-        description: Document editor backend for Seafile
-        icon: mdi-file-document-edit-outline
-
 - Open Source Resources:
     - Funkyton:
         href: https://www.funkyton.com
         description: Open source resources and tools
         icon: https://res.cloudinary.com/hczpmiapo/image/upload/v1771353952/Static%20assets/Logos/funkyton-F-icon_gtpfml.png
-    - Test Message:
-        href: https://example.com
-        description: ${TEST_MESSAGE}
-        icon: mdi-tag-text-outline
 
 # Add more categories and services below
 # - Communication:

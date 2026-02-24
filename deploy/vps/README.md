@@ -2,6 +2,13 @@
 
 ## Build and Run Locally
 
+### Quick commands from repo root
+
+```bash
+# Full reset + rebuild of the entire VPS stack (destructive: removes volumes/data)
+npm run vps:rebuild
+```
+
 ```bash
 # Navigate to deploy/vps
 cd deploy/vps

@@ -1,18 +1,61 @@
 ---
 title: Getting Started
-description: Deployment guides and templates are in progress.
+description: Run My Own Suite locally with Docker Compose.
 slug: docs/getting-started
 ---
 
-Getting started resources are currently being prepared.
+Use this to run the full stack locally on your machine.
 
-Current status:
+## Prerequisites
 
-1. Railway template: in progress.
-2. Dokploy guide: in progress.
-3. VPS / Local (Docker Compose) guide: in progress.
+- Docker Desktop installed and running
+- Node.js 20+ and npm
+- Git
 
-The public repository and full step-by-step deployment documentation are not available yet.
+## 1. Clone the repo
 
-If you want early updates, use the waitlist on the homepage.
+```bash
+git clone https://github.com/rpuls/my-own-suite.git
+cd my-own-suite
+```
+
+## 2. Create local env files
+
+From `deploy/vps`:
+
+```bash
+cp .env.example .env
+cp services/homepage/.env.example services/homepage/.env
+cp services/vaultwarden/.env.example services/vaultwarden/.env
+cp services/seafile/.env.example services/seafile/.env
+cp services/onlyoffice/.env.example services/onlyoffice/.env
+```
+
+If you are on PowerShell, use `Copy-Item` instead of `cp`.
+
+Required values to set before first run:
+
+- `deploy/vps/services/seafile/.env`
+  - `MYSQL_ROOT_PASSWORD`
+  - `DB_ROOT_PASSWD`
+  - `SEAFILE_ADMIN_EMAIL`
+  - `SEAFILE_ADMIN_PASSWORD`
+  - `SEAFILE_SERVER_HOSTNAME` (for local: `seafile.localhost`)
+
+## 3. Build and run everything
+
+From repo root:
+
+```bash
+npm run vps:rebuild
+```
+
+This command fully resets and rebuilds the stack (it removes Docker volumes/data).
+
+## 4. Open the apps
+
+- Homepage: `http://homepage.localhost/`
+- Seafile: `http://seafile.localhost/`
+- Vaultwarden: `http://vaultwarden.localhost/`
+- OnlyOffice: `http://onlyoffice.localhost/`
 
