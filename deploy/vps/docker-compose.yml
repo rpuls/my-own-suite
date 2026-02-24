@@ -142,7 +142,9 @@ services:
   # Stirling PDF - PDF Tools Suite
   # -------------------------------------------
   stirling-pdf:
-    image: stirlingtools/stirling-pdf:latest
+    build:
+      context: ../../apps/stirling-pdf
+      dockerfile: Dockerfile
     container_name: mos-stirling-pdf
     restart: unless-stopped
     profiles:

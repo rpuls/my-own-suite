@@ -4,7 +4,8 @@ Self-hosted PDF toolbox for merge, split, convert, OCR, and signing workflows.
 
 ## Customizations in this project
 
-- VPS deployment uses the official `stirlingtools/stirling-pdf` image directly.
+- A lightweight Dockerfile. Single source of truth for modifications or version lock-in.
+- VPS deployment uses the official `stirlingtools/stirling-pdf` runtime image.
 - App data/config/logs are persisted using named Docker volumes.
 
 ## Environment variables
