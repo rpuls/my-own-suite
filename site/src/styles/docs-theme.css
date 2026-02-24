@@ -24,6 +24,55 @@
   --sl-color-bg-inline-code: hsl(205, 20%, 15%);
 }
 
+.app-page {
+  display: none;
+}
+
+.main-pane:has(.app-page.app-homepage) h1#_top,
+.main-pane:has(.app-page.app-seafile) h1#_top,
+.main-pane:has(.app-page.app-onlyoffice) h1#_top,
+.main-pane:has(.app-page.app-immich) h1#_top,
+.main-pane:has(.app-page.app-vaultwarden) h1#_top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.main-pane:has(.app-page.app-homepage) h1#_top::after,
+.main-pane:has(.app-page.app-seafile) h1#_top::after,
+.main-pane:has(.app-page.app-onlyoffice) h1#_top::after,
+.main-pane:has(.app-page.app-immich) h1#_top::after,
+.main-pane:has(.app-page.app-vaultwarden) h1#_top::after {
+  content: '';
+  width: 2.4rem;
+  height: 2.4rem;
+  flex: 0 0 2.4rem;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.main-pane:has(.app-page.app-homepage) h1#_top::after {
+  background-image: url('../assets/logos/homepage.png');
+}
+
+.main-pane:has(.app-page.app-seafile) h1#_top::after {
+  background-image: url('../assets/logos/seafile.png');
+}
+
+.main-pane:has(.app-page.app-onlyoffice) h1#_top::after {
+  background-image: url('../assets/logos/OnlyOffice.png');
+}
+
+.main-pane:has(.app-page.app-immich) h1#_top::after {
+  background-image: url('../assets/logos/immich.png');
+}
+
+.main-pane:has(.app-page.app-vaultwarden) h1#_top::after {
+  background-image: url('../assets/logos/vaulwarden grey.png');
+}
+
 .apps-overview {
   margin: 1.25rem 0 1.6rem;
   border: 1px solid var(--sl-color-hairline);
