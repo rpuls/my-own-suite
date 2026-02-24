@@ -10,7 +10,7 @@
 #
 # Customize freely: move categories, add services, change descriptions, etc.
 
-- Cloud Storage:
+- My Files:
     - Seafile:
         href: ${SEAFILE_URL}
         description: Self-hosted file sync and share
@@ -22,21 +22,20 @@
         description: Replace with your own quick link
         icon: mdi-bookmark-outline
 
-- Security:
+- My Security:
     - Vaultwarden:
         href: ${VAULTWARDEN_URL}
         description: Self-hosted password manager
         icon: vaultwarden.png
+
+- My Tools:
+    - Stirling PDF:
+        href: ${STIRLING_PDF_URL}
+        description: Self-hosted PDF tools suite
+        icon: stirling-pdf.png
 
 - Open Source Resources:
     - Funkyton:
         href: https://www.funkyton.com
         description: Open source resources and tools
         icon: https://res.cloudinary.com/hczpmiapo/image/upload/v1771353952/Static%20assets/Logos/funkyton-F-icon_gtpfml.png
-
-# Add more categories and services below
-# - Communication:
-#     - My Chat App:
-#         href: ${CHAT_URL}
-#         description: Team chat
-#         icon: mdi-chat

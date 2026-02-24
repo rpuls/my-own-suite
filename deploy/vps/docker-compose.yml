@@ -138,6 +138,27 @@ services:
     networks:
       - mos-network
 
+  # -------------------------------------------
+  # Stirling PDF - PDF Tools Suite
+  # -------------------------------------------
+  stirling-pdf:
+    image: stirlingtools/stirling-pdf:latest
+    container_name: mos-stirling-pdf
+    restart: unless-stopped
+    profiles:
+      - stirling-pdf
+    env_file:
+      - .env
+      - ./services/stirling-pdf/.env
+    volumes:
+      - stirling_pdf_training_data:/usr/share/tessdata
+      - stirling_pdf_extra_configs:/configs
+      - stirling_pdf_custom_files:/customFiles/
+      - stirling_pdf_logs:/logs/
+      - stirling_pdf_pipeline:/pipeline/
+    networks:
+      - mos-network
+
 volumes:
   caddy_data:
   caddy_config:
@@ -146,6 +167,11 @@ volumes:
   seafile_data:
   seafile_mysql_data:
   onlyoffice_data:
+  stirling_pdf_training_data:
+  stirling_pdf_extra_configs:
+  stirling_pdf_custom_files:
+  stirling_pdf_logs:
+  stirling_pdf_pipeline:
 
 networks:
   mos-network:

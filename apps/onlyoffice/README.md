@@ -7,7 +7,6 @@ Self-hosted document editor backend (OnlyOffice Document Server).
 - Startup wrapper normalizes selected env values.
 - Supports dynamic listen port mapping for managed platforms.
 - Synchronizes nginx `secure_link_secret` with `SECURE_LINK_SECRET`.
-- Enables admin panel autostart.
 
 ## Environment variables
 

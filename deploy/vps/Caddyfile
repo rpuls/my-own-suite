@@ -25,3 +25,8 @@ http://seafile.{$DOMAIN} {
 http://onlyoffice.{$DOMAIN} {
 	reverse_proxy onlyoffice:80
 }
+
+# Stirling PDF Tools
+http://stirling-pdf.{$DOMAIN} {
+	reverse_proxy stirling-pdf:8080
+}

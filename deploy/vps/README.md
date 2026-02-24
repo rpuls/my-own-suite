@@ -32,6 +32,9 @@ docker compose --profile seafile up -d
 # Start with OnlyOffice
 docker compose --profile onlyoffice up -d
 
+# Start with Stirling PDF
+docker compose --profile stirling-pdf up -d
+
 # Stop all services
 docker compose down
 ```
@@ -40,7 +43,7 @@ docker compose down
 - Homepage: http://homepage.localhost/
 - Vaultwarden: http://vaultwarden.localhost/
 - Seafile: http://seafile.localhost/
-- OnlyOffice: http://onlyoffice.localhost/
+- Stirling PDF: http://stirling-pdf.localhost/
 
 ### Local OnlyOffice + Seafile note
 - `.localhost` domains resolve to loopback inside containers.
@@ -69,7 +72,10 @@ deploy/vps/
     ├── seafile/
     │   ├── .env                 # App-specific settings
     │   └── .env.example
-    └── onlyoffice/
+    ├── onlyoffice/
+    │   ├── .env                 # App-specific settings
+    │   └── .env.example
+    └── stirling-pdf/
         ├── .env                 # App-specific settings
         └── .env.example
 ```
@@ -82,8 +88,8 @@ DOMAIN=yourdomain.com   # Production
 ```
 
 All services automatically use the new domain:
-- Caddy routes: `homepage.{$DOMAIN}`, `vaultwarden.{$DOMAIN}`, `seafile.{$DOMAIN}`, `onlyoffice.{$DOMAIN}`
-- Service URLs: `http://vaultwarden.${DOMAIN}`, `http://seafile.${DOMAIN}`, `http://onlyoffice.${DOMAIN}`
+- Caddy routes: `homepage.{$DOMAIN}`, `vaultwarden.{$DOMAIN}`, `seafile.{$DOMAIN}`, `onlyoffice.{$DOMAIN}`, `stirling-pdf.{$DOMAIN}`
+- Service URLs: `http://vaultwarden.${DOMAIN}`, `http://seafile.${DOMAIN}`, `http://onlyoffice.${DOMAIN}`, `http://stirling-pdf.${DOMAIN}`
 - Homepage links: same URLs from `services/homepage/.env`
 
 ## Adding a New App
