@@ -31,7 +31,7 @@ Think of it as the Swiss Army knife of open-source tools, always within reach.
 | Dashboard | <img src="./site/src/assets/logos/homepage.png" alt="Homepage" width="18" /> **Homepage** | Link hubs and fragmented bookmarks |
 | Cloud Storage | <img src="./site/src/assets/logos/seafile.png" alt="Seafile" width="18" /> **Seafile** | Google Drive, Dropbox, OneDrive |
 | Office Suite | <img src="./site/src/assets/logos/OnlyOffice.png" alt="OnlyOffice" width="18" /> **OnlyOffice** | Google Docs, Microsoft 365 |
-| Password Manager | <img src="https://cdn.simpleicons.org/vaultwarden" alt="Vaultwarden" width="18" /> **Vaultwarden** | 1Password, LastPass, Bitwarden cloud |
+| Password Manager | <img src="./site/src/assets/logos/vaultwarden.png" alt="Vaultwarden" width="18" /> **Vaultwarden** | 1Password, LastPass, Bitwarden cloud |
 
 ---
 

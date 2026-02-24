@@ -70,7 +70,7 @@
 }
 
 .main-pane:has(.app-page.app-vaultwarden) h1#_top::after {
-  background-image: url('../assets/logos/vaulwarden grey.png');
+  background-image: url('../assets/logos/vaultwarden.png');
 }
 
 .apps-overview {
