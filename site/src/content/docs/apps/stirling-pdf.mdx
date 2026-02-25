@@ -19,6 +19,20 @@ Stirling PDF is your self-hosted PDF workspace. It gives you common document uti
 - Depends on: none
 - Used by: people who need day-to-day PDF workflows under their own control
 
+## Persistence
+
+- Mount a persistent volume at `/configs` to keep users and settings across restarts/redeploys.
+- If your platform supports more than one volume, optional paths are:
+  - `/pipeline`
+  - `/usr/share/tessdata`
+  - `/logs`
+  - `/customFiles`
+- If your deployment platform supports only one persistent volume per service, use `/configs` as the priority mount.
+
+## Health check
+
+- Recommended HTTP health endpoint: `/api/v1/info/status`
+
 ## Official website
 
 - [Stirling PDF](https://github.com/Stirling-Tools/Stirling-PDF)
