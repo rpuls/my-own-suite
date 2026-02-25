@@ -1,20 +1,4 @@
-# Seafile
-
-Self-hosted file sync and sharing service.
-
-## Requirements
-
-- Use MySQL `8.x` (recommended `mysql:8.0`).
-- Provide a reachable Memcached server (`host:port`).
-- Mount persistent storage at `/shared` for Seafile data and config.
-
-## Customizations in this project
-
-- Entry-point patches `seahub_settings.py` with proxy and OnlyOffice settings.
-- Adds runtime patching for OnlyOffice internal callback/download URL handling.
-- Patch targets are version-sensitive and should be revalidated after Seafile image upgrades.
-
-## Environment variables
+#### Environment variables
 
 - `DB_HOST`: MySQL host for Seafile.
 - `DB_PORT`: MySQL port (typically `3306`).
@@ -32,11 +16,26 @@ Self-hosted file sync and sharing service.
 - `ONLYOFFICE_INTERNAL_SEAFILE_URL`: Internal Seafile URL for OnlyOffice server-to-server traffic.
 - `ONLYOFFICE_JWT_SECRET`: JWT secret for OnlyOffice integration when JWT is enabled.
 
-## Persistence
+#### Volumes and persistence
 
 - Required volume mount: `/shared`
 - Without `/shared`, config and runtime state can drift across restarts.
 
-## Official website
+#### Dependencies and integrations
 
-- https://www.seafile.com/
+Requirements:
+- Use MySQL `8.x` (recommended `mysql:8.0`).
+- Provide a reachable Memcached server (`host:port`).
+- Mount persistent storage at `/shared` for Seafile data and config.
+
+Integrations:
+- Works with OnlyOffice for in-browser document editing.
+
+#### Customizations in this project
+
+- Entry-point patches `seahub_settings.py` with proxy and OnlyOffice settings.
+- Adds runtime patching for OnlyOffice internal callback/download URL handling.
+- Patch targets are version-sensitive and should be revalidated after Seafile image upgrades.
+
+
+

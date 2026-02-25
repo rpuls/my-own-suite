@@ -4,6 +4,13 @@ import starlight from '@astrojs/starlight'
 export default defineConfig({
   site: 'https://myownsuite.org',
   output: 'static',
+  vite: {
+    server: {
+      fs: {
+        allow: ['..']
+      }
+    }
+  },
   integrations: [
     starlight({
       title: 'My Own Suite',

@@ -136,6 +136,28 @@
   color: var(--sl-color-text-accent);
 }
 
+.tech-specs {
+  margin-top: 0.25rem;
+}
+
+.tech-specs :where(h1, h2, h3, h4, h5, h6) {
+  line-height: 1.3;
+  margin-top: 1rem;
+  margin-bottom: 0.45rem;
+}
+
+.tech-specs :where(h1) {
+  font-size: 1rem;
+}
+
+.tech-specs :where(h2) {
+  font-size: 0.95rem;
+}
+
+.tech-specs :where(h3, h4, h5, h6) {
+  font-size: 0.9rem;
+}
+
 @media (max-width: 860px) {
   .apps-overview thead {
     display: none;

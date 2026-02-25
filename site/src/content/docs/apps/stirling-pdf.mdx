@@ -4,35 +4,22 @@ description: Private PDF toolkit for conversion, editing, and automation.
 slug: docs/apps/stirling-pdf
 ---
 
+import * as TechSpecs from '../../../../../apps/stirling-pdf/README.md';
+
 <div className="app-page app-stirling-pdf" aria-hidden="true"></div>
 
-Stirling PDF is your self-hosted PDF workspace. It gives you common document utilities without uploading files to third-party services.
+Stirling PDF is your self-hosted PDF workspace. It provides common document utilities without uploading files to third-party services.
 
-## What it does
+### Technical specs
 
-- Merges, splits, and rearranges PDFs
-- Converts documents and images to PDF formats
-- Runs OCR and other PDF processing tools locally
+<div className="tech-specs">
+  <TechSpecs.Content />
+</div>
 
-## Dependencies in the stack
+## Links
 
-- Depends on: none
-- Used by: people who need day-to-day PDF workflows under their own control
+- [Stirling PDF repository](https://github.com/Stirling-Tools/Stirling-PDF)
 
-## Persistence
 
-- Mount a persistent volume at `/configs` to keep users and settings across restarts/redeploys.
-- If your platform supports more than one volume, optional paths are:
-  - `/pipeline`
-  - `/usr/share/tessdata`
-  - `/logs`
-  - `/customFiles`
-- If your deployment platform supports only one persistent volume per service, use `/configs` as the priority mount.
 
-## Health check
 
-- Recommended HTTP health endpoint: `/api/v1/info/status`
-
-## Official website
-
-- [Stirling PDF](https://github.com/Stirling-Tools/Stirling-PDF)
