@@ -2,5 +2,8 @@
 # Widgets for Railway Homepage
 
 - search:
-    provider: duckduckgo
+    provider: custom
+    url: https://www.startpage.com/sp/search?query=
+    suggestionUrl: https://www.startpage.com/osuggestions?q=
+    showSearchSuggestions: true
     target: _blank
