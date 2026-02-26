@@ -9,33 +9,38 @@
 # - Empty categories are automatically removed
 #
 # Customize freely: move categories, add services, change descriptions, etc.
+- My Own Suite:
+    - My Files:
+        - Seafile:
+            href: ${SEAFILE_URL}
+            description: Self-hosted file sync and share
+            icon: https://cdn.simpleicons.org/seafile
 
-- My Files:
-    - Seafile:
-        href: ${SEAFILE_URL}
-        description: Self-hosted file sync and share
-        icon: https://cdn.simpleicons.org/seafile
+    - My Security:
+        - Vaultwarden:
+            href: ${VAULTWARDEN_URL}
+            description: Self-hosted password manager
+            icon: vaultwarden.png
+
+    - My Tools:
+        - Stirling PDF:
+            href: ${STIRLING_PDF_URL}
+            description: Self-hosted PDF tools suite
+            icon: stirling-pdf.png
 
 - My Shortcuts:
-    - Example Bookmark:
-        href: https://example.com
-        description: Replace with your own quick link
-        icon: mdi-bookmark-outline
+    - My Bookmarks:
+        - Example Bookmark:
+            href: https://example.com
+            description: Replace with your own quick link
+            icon: mdi-bookmark-outline
 
-- My Security:
-    - Vaultwarden:
-        href: ${VAULTWARDEN_URL}
-        description: Self-hosted password manager
-        icon: vaultwarden.png
-
-- My Tools:
-    - Stirling PDF:
-        href: ${STIRLING_PDF_URL}
-        description: Self-hosted PDF tools suite
-        icon: stirling-pdf.png
-
-- Open Source Resources:
-    - Funkyton:
-        href: https://www.funkyton.com
-        description: Open source resources and tools
-        icon: https://res.cloudinary.com/hczpmiapo/image/upload/v1771353952/Static%20assets/Logos/funkyton-F-icon_gtpfml.png
+    - Open Source Resources:
+        - My Own Suite Docs:
+            href: https://myownsuite.org/docs/
+            description: My Own Suite official documentation
+            icon: mdi-book-open-page-variant
+        - Funkyton:
+            href: https://www.funkyton.com
+            description: Open source resources and tools
+            icon: https://res.cloudinary.com/hczpmiapo/image/upload/v1771353952/Static%20assets/Logos/funkyton-F-icon_gtpfml.png
