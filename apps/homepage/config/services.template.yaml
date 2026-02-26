@@ -16,17 +16,18 @@
             description: Self-hosted file sync and share
             icon: https://cdn.simpleicons.org/seafile
 
+    - My Tools:
+        - Stirling PDF:
+            href: ${STIRLING_PDF_URL}
+            description: Self-hosted PDF tools suite
+            icon: stirling-pdf.png
+
     - My Security:
         - Vaultwarden:
             href: ${VAULTWARDEN_URL}
             description: Self-hosted password manager
             icon: vaultwarden.png
 
-    - My Tools:
-        - Stirling PDF:
-            href: ${STIRLING_PDF_URL}
-            description: Self-hosted PDF tools suite
-            icon: stirling-pdf.png
 
 - My Shortcuts:
     - My Bookmarks:
