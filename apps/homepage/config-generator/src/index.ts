@@ -91,69 +91,61 @@ function replacePlaceholdersInObject(obj: unknown, env: Record<string, string | 
     return obj;
 }
 
-/**
- * Process a single service entry
- * Homepage services format: { ServiceName: { href, description, icon, ... } }
- * Returns the service with placeholders replaced, or null if should be removed
- */
-function processService(service: Record<string, unknown>, env: Record<string, string | undefined>): Record<string, unknown> | null {
-    // Replace placeholders
-    const replaced = replacePlaceholdersInObject(service, env);
-
-    // Check if any placeholders remain unresolved
-    if (hasAnyUnresolvedPlaceholders(replaced)) {
-        return null;
-    }
-
-    return replaced as Record<string, unknown>;
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
- * Process a category
- * Homepage category format: { CategoryName: [Service1, Service2, ...] }
- * Returns the category with processed services, or null if category should be removed
+ * Recursively process one tree entry.
+ * Rules:
+ * - Leaf tile is removed if one or more placeholders are unresolved.
+ * - Group/category/column is removed if all children are removed.
  */
-function processCategory(category: Record<string, unknown>, env: Record<string, string | undefined>): Record<string, unknown> | null {
-    const [categoryName, servicesArr] = Object.entries(category)[0];
-
-    if (!Array.isArray(servicesArr)) {
-        return category; // Keep as-is if not expected format
+function processEntry(entry: unknown, env: Record<string, string | undefined>): unknown | null {
+    if (!isObjectRecord(entry)) {
+        const replaced = replacePlaceholdersInObject(entry, env);
+        return hasAnyUnresolvedPlaceholders(replaced) ? null : replaced;
     }
 
-    const processedServices: Record<string, unknown>[] = [];
+    const pairs = Object.entries(entry);
+    if (pairs.length !== 1) {
+        const replaced = replacePlaceholdersInObject(entry, env);
+        return hasAnyUnresolvedPlaceholders(replaced) ? null : replaced;
+    }
 
-    for (const service of servicesArr) {
-        if (typeof service === 'object' && service !== null) {
-            const processed = processService(service as Record<string, unknown>, env);
+    const [name, value] = pairs[0];
+
+    // Group-like node (column/category/etc)
+    if (Array.isArray(value)) {
+        const children: unknown[] = [];
+        for (const child of value) {
+            const processed = processEntry(child, env);
             if (processed !== null) {
-                processedServices.push(processed);
+                children.push(processed);
             }
         }
+
+        // Remove group if all children were removed
+        if (children.length === 0) {
+            return null;
+        }
+
+        return { [name]: children };
     }
 
-    // Remove category if all services were removed
-    if (processedServices.length === 0) {
-        return null;
-    }
-
-    return { [categoryName]: processedServices };
+    // Leaf tile node
+    const replacedLeaf = replacePlaceholdersInObject(entry, env);
+    return hasAnyUnresolvedPlaceholders(replacedLeaf) ? null : replacedLeaf;
 }
 
-/**
- * Process the entire template
- */
 function processTemplate(template: unknown[], env: Record<string, string | undefined>): unknown[] {
     const result: unknown[] = [];
-
-    for (const category of template) {
-        if (typeof category === 'object' && category !== null && !Array.isArray(category)) {
-            const processed = processCategory(category as Record<string, unknown>, env);
-            if (processed !== null) {
-                result.push(processed);
-            }
+    for (const entry of template) {
+        const processed = processEntry(entry, env);
+        if (processed !== null) {
+            result.push(processed);
         }
     }
-
     return result;
 }
 
@@ -161,40 +153,69 @@ function processTemplate(template: unknown[], env: Record<string, string | undef
  * Count services in template (for logging)
  */
 function countServices(template: unknown[]): { total: number; withPlaceholders: number } {
-    let total = 0;
-    let withPlaceholders = 0;
-
-    for (const category of template) {
-        if (typeof category !== 'object' || category === null || Array.isArray(category)) continue;
-
-        const servicesArr = Object.values(category)[0];
-        if (!Array.isArray(servicesArr)) continue;
-
-        for (const service of servicesArr) {
-            total++;
-            if (hasAnyUnresolvedPlaceholders(service)) {
-                withPlaceholders++;
-            }
+    function walk(node: unknown): { total: number; withPlaceholders: number } {
+        if (!isObjectRecord(node)) {
+            return { total: 0, withPlaceholders: 0 };
         }
+
+        const pairs = Object.entries(node);
+        if (pairs.length !== 1) {
+            return { total: 0, withPlaceholders: 0 };
+        }
+
+        const [, value] = pairs[0];
+        if (Array.isArray(value)) {
+            return value.reduce<{ total: number; withPlaceholders: number }>(
+                (acc, child) => {
+                    const childCounts = walk(child);
+                    acc.total += childCounts.total;
+                    acc.withPlaceholders += childCounts.withPlaceholders;
+                    return acc;
+                },
+                { total: 0, withPlaceholders: 0 }
+            );
+        }
+
+        return {
+            total: 1,
+            withPlaceholders: hasAnyUnresolvedPlaceholders(node) ? 1 : 0
+        };
     }
 
-    return { total, withPlaceholders };
+    return template.reduce<{ total: number; withPlaceholders: number }>(
+        (acc, entry) => {
+            const counts = walk(entry);
+            acc.total += counts.total;
+            acc.withPlaceholders += counts.withPlaceholders;
+            return acc;
+        },
+        { total: 0, withPlaceholders: 0 }
+    );
 }
 
 /**
  * Count services in output (for logging)
  */
 function countOutputServices(output: unknown[]): number {
-    let count = 0;
-    for (const category of output) {
-        if (typeof category === 'object' && category !== null && !Array.isArray(category)) {
-            const servicesArr = Object.values(category)[0];
-            if (Array.isArray(servicesArr)) {
-                count += servicesArr.length;
-            }
+    function walk(node: unknown): number {
+        if (!isObjectRecord(node)) {
+            return 0;
         }
+
+        const pairs = Object.entries(node);
+        if (pairs.length !== 1) {
+            return 0;
+        }
+
+        const [, value] = pairs[0];
+        if (Array.isArray(value)) {
+            return value.reduce((sum, child) => sum + walk(child), 0);
+        }
+
+        return 1;
     }
-    return count;
+
+    return output.reduce<number>((sum, entry) => sum + walk(entry), 0);
 }
 
 /**
