@@ -16,6 +16,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+      - ./services/radicale/.env
     ports:
       - "80:80"
       - "443:443"
@@ -161,6 +162,25 @@ services:
     networks:
       - mos-network
 
+  # -------------------------------------------
+  # Radicale - CalDAV/CardDAV Server
+  # -------------------------------------------
+  radicale:
+    build:
+      context: ../../apps/radicale
+      dockerfile: Dockerfile
+    container_name: mos-radicale
+    restart: unless-stopped
+    profiles:
+      - radicale
+    env_file:
+      - .env
+      - ./services/radicale/.env
+    volumes:
+      - radicale_data:/data
+    networks:
+      - mos-network
+
 volumes:
   caddy_data:
   caddy_config:
@@ -174,6 +194,7 @@ volumes:
   stirling_pdf_custom_files:
   stirling_pdf_logs:
   stirling_pdf_pipeline:
+  radicale_data:
 
 networks:
   mos-network:

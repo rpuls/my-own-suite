@@ -30,6 +30,22 @@
 
 
 - My Shortcuts:
+    - Calendar:
+        - Radicale:
+            href: ${RADICALE_URL}
+            description: Self-hosted calendar sync server
+            icon: mdi-calendar-month
+            widget:
+              type: calendar
+              view: monthly
+              maxEvents: 8
+              showTime: true
+              integrations:
+                - type: ical
+                  name: My Calendar
+                  url: ${RADICALE_ICAL_URL}
+                  color: cyan
+
     - My Bookmarks:
         - Example Bookmark:
             href: https://example.com

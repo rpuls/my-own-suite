@@ -30,3 +30,22 @@ http://onlyoffice.{$DOMAIN} {
 http://stirling-pdf.{$DOMAIN} {
 	reverse_proxy stirling-pdf:8080
 }
+
+# Radicale Calendar
+http://radicale.{$DOMAIN} {
+	reverse_proxy radicale:5232
+}
+
+# Internal Radicale iCal bridge for Homepage backend.
+# This endpoint is for private network use only (homepage -> caddy),
+# and keeps Radicale credentials out of Homepage widget URLs.
+http://caddy {
+	handle /internal/radicale-ical/{$RADICALE_ICAL_TOKEN} {
+		rewrite * /{$RADICALE_ADMIN_USERNAME}/default-calendar/?export
+		reverse_proxy radicale:5232 {
+			header_up Authorization "Basic {$RADICALE_BASIC_AUTH_B64}"
+		}
+	}
+
+	respond 404
+}
