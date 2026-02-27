@@ -33,6 +33,7 @@
 .main-pane:has(.app-page.app-onlyoffice) h1#_top,
 .main-pane:has(.app-page.app-immich) h1#_top,
 .main-pane:has(.app-page.app-stirling-pdf) h1#_top,
+.main-pane:has(.app-page.app-radicale) h1#_top,
 .main-pane:has(.app-page.app-vaultwarden) h1#_top {
   display: flex;
   align-items: center;
@@ -45,6 +46,7 @@
 .main-pane:has(.app-page.app-onlyoffice) h1#_top::after,
 .main-pane:has(.app-page.app-immich) h1#_top::after,
 .main-pane:has(.app-page.app-stirling-pdf) h1#_top::after,
+.main-pane:has(.app-page.app-radicale) h1#_top::after,
 .main-pane:has(.app-page.app-vaultwarden) h1#_top::after {
   content: '';
   width: 2.4rem;
@@ -73,6 +75,10 @@
 
 .main-pane:has(.app-page.app-stirling-pdf) h1#_top::after {
   background-image: url('../assets/logos/stirling-pdf.png');
+}
+
+.main-pane:has(.app-page.app-radicale) h1#_top::after {
+  background-image: url('../assets/logos/radicale.png');
 }
 
 .main-pane:has(.app-page.app-vaultwarden) h1#_top::after {

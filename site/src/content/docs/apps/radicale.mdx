@@ -1,0 +1,30 @@
+---
+title: Radicale
+description: Lightweight, privacy-first self-hosted calendar server.
+slug: docs/apps/radicale
+---
+
+import * as TechSpecs from '../../../../../apps/radicale/README.md';
+
+<div className="app-page app-radicale" aria-hidden="true"></div>
+
+Radicale is the calendar backend in My Own Suite. It is focused, lightweight, and easy to keep private while still syncing across devices through standard CalDAV clients.
+
+## Why Radicale was chosen
+
+- Single-purpose design: Radicale focuses on calendars and contacts instead of trying to be an all-in-one suite.
+- Open standards first: it works with CalDAV, so users can choose their own clients on desktop and mobile.
+- Lightweight operations: minimal moving parts, low resource usage, and predictable maintenance.
+- Active and widely used project: mature, known in the self-hosting ecosystem, and practical for long-term use.
+- Good fit for this stack: can stay private behind authentication while Homepage reads events through an internal bridge.
+
+### Technical specs
+
+<div className="tech-specs">
+  <TechSpecs.Content />
+</div>
+
+## Links
+
+- [Radicale website](https://radicale.org/)
+- [Radicale GitHub repository](https://github.com/Kozea/Radicale)

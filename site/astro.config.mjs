@@ -29,6 +29,7 @@ export default defineConfig({
             'docs/apps/onlyoffice',
             'docs/apps/immich',
             'docs/apps/stirling-pdf',
+            'docs/apps/radicale',
             'docs/apps/vaultwarden'
           ]
         }
