@@ -10,6 +10,31 @@ import * as TechSpecs from '../../../../../apps/radicale/README.md';
 
 Radicale is the calendar backend in My Own Suite. It is focused, lightweight, and easy to keep private while still syncing across devices through standard CalDAV clients.
 
+## Managing your calendar
+
+Homepage shows your events, but it does not create or edit them. Radicale is a CalDAV server, so event management happens in a calendar client.
+
+### Connect your phone
+
+- iPhone (native Calendar app):
+  - Go to `Settings -> Apps -> Calendar -> Calendar Accounts -> Add Account -> Add Other Account -> Add CalDAV Account`.
+  - Server: `https://radicale.<your-domain>`
+  - Username/password: your Radicale credentials.
+- Android:
+  - Install `DAVx5` for CalDAV sync.
+  - Add your Radicale account in DAVx5 using your server URL and credentials.
+  - Open your preferred calendar app to create and edit events.
+
+### Connect desktop clients
+
+- Most CalDAV clients work, including Thunderbird and Apple Calendar.
+- Use server URL `https://radicale.<your-domain>` with your Radicale credentials.
+
+### If auto-discovery fails
+
+Use the direct calendar collection URL:
+- `https://radicale.<your-domain>/<username>/default-calendar/`
+
 ## Why Radicale was chosen
 
 - Single-purpose design: Radicale focuses on calendars and contacts instead of trying to be an all-in-one suite.
@@ -28,3 +53,4 @@ Radicale is the calendar backend in My Own Suite. It is focused, lightweight, an
 
 - [Radicale website](https://radicale.org/)
 - [Radicale GitHub repository](https://github.com/Kozea/Radicale)
+- [DAVx5](https://www.davx5.com/)
