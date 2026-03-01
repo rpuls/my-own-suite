@@ -95,7 +95,7 @@ All services automatically use the new domain:
 ## Adding a New App
 
 ### 1. Create the app directory and .env.example
-Create `deploy/vps/services/<app-name>/.env.example`:
+Create `deploy/vps/apps/<app-name>/.env.example`:
 
 ```env
 # <App Name> Configuration
@@ -144,7 +144,7 @@ http://<app-name>.{$DOMAIN} {
 ```
 
 ### 5. Add URL to Homepage
-Add to `deploy/vps/services/homepage/.env`:
+Add to `deploy/vps/apps/homepage/.env`:
 ```env
 <APP_NAME>_URL=http://<app-name>.${DOMAIN}
 ```

@@ -3,17 +3,14 @@
 vps/.env
 
 # VPS persistent data
-vps/services/vaultwarden/data/*
-!vps/services/vaultwarden/data/.gitkeep
-
-# Platform service data (Railway, Dokploy, etc.)
-platform/services/*/data/
+vps/apps/vaultwarden/data/*
+!vps/apps/vaultwarden/data/.gitkeep
 
 # Shared config local overrides
 shared/configs/local/
 
 # Caddy data
-vps/services/caddy/data/
+vps/apps/caddy/data/
 
 # Docker volumes (if using local bind mounts)
 caddy_data/

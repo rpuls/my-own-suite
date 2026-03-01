@@ -37,7 +37,7 @@ Tile template example:
 
 - If you changed `services.template.yaml` or other files under `apps/homepage/config`:
   - Rebuild Homepage image (from repo root): `npm run vps:rebuild`
-- If you changed only env values in `deploy/vps/services/homepage/.env`:
+- If you changed only env values in `deploy/vps/apps/homepage/.env`:
   - Restarting Homepage is enough.
 
 #### Troubleshooting

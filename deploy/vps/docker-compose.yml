@@ -3,7 +3,7 @@
 # ===========================================
 # Architecture:
 # - Root .env: DOMAIN variable (shared across all services)
-# - services/<app>/.env: App-specific settings (tokens, flags)
+# - apps/<app>/.env: App-specific settings (tokens, flags)
 # ===========================================
 
 services:
@@ -16,7 +16,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-      - ./services/radicale/.env
+      - ./apps/radicale/.env
     ports:
       - "80:80"
       - "443:443"
@@ -40,7 +40,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-      - ./services/homepage/.env
+      - ./apps/homepage/.env
     volumes:
       - homepage_images:/app/public/images
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -58,7 +58,7 @@ services:
       - vaultwarden
     env_file:
       - .env
-      - ./services/vaultwarden/.env
+      - ./apps/vaultwarden/.env
     environment:
       - DOMAIN=http://vaultwarden.${DOMAIN}
     volumes:
@@ -78,7 +78,7 @@ services:
     command:
       - --default-authentication-plugin=mysql_native_password
     env_file:
-      - ./services/seafile/.env
+      - ./apps/seafile/.env
     environment:
       - MYSQL_LOG_CONSOLE=true
     volumes:
@@ -107,7 +107,7 @@ services:
       - seafile
     env_file:
       - .env
-      - ./services/seafile/.env
+      - ./apps/seafile/.env
     environment:
       - SEAFILE_SERVER_HOSTNAME=seafile.${DOMAIN}
       - MEMCACHED_SERVER=${MEMCACHED_SERVER:-memcached:11211}
@@ -133,7 +133,7 @@ services:
       - onlyoffice
     env_file:
       - .env
-      - ./services/onlyoffice/.env
+      - ./apps/onlyoffice/.env
     volumes:
       - onlyoffice_data:/var/www/onlyoffice/Data
     networks:
@@ -152,7 +152,7 @@ services:
       - stirling-pdf
     env_file:
       - .env
-      - ./services/stirling-pdf/.env
+      - ./apps/stirling-pdf/.env
     volumes:
       - stirling_pdf_training_data:/usr/share/tessdata
       - stirling_pdf_extra_configs:/configs
@@ -175,7 +175,7 @@ services:
       - radicale
     env_file:
       - .env
-      - ./services/radicale/.env
+      - ./apps/radicale/.env
     volumes:
       - radicale_data:/data
     networks:
