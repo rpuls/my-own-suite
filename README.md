@@ -5,58 +5,49 @@
   <a href="https://myownsuite.org/docs"><img alt="Docs" src="https://img.shields.io/badge/Docs-Read_Now-22c55e?style=for-the-badge"></a>
 </p>
 
-### What is My Own Suite
+> **One-click open source alternatives** to Google Drive, Google Calendar, 1Password, Microsoft 365, and more.  
+> Deploy anywhere: Railway, VPS, or homelab. Your data, your control.
 
-My Own Suite is not just a bundle of tools.
-It is a carefully selected stack of battle-tested open-source alternatives trusted by large communities and matured over many years of development.
-Each app is chosen for reliability, practical usability, and long-term maintainability.
-The goal is an experience close to enterprise SaaS, and in many cases better, while keeping your data and infrastructure under your control.
+### Solutions Included
 
-Think of it as the Swiss Army knife of open-source tools, always within reach.
-
-### Who is My Own Suite for
-
-- People who want data ownership without becoming full-time sysadmins.
-- People who value privacy and want more digital independence.
-- Users planning a realistic exit from Big Tech SaaS lock-in without sacrificing usability.
-- People who want to move to open source but do not have deep technical experience.
-
-
----
-
-## Solutions Included
-
-| Solution | App (icon + name) | Alternative to |
+| Solution | App | Alternative to |
 | --- | --- | --- |
-| Dashboard | <img src="./site/src/assets/logos/homepage.png" alt="Homepage" width="18" /> **Homepage** | Link hubs and fragmented bookmarks |
+| Dashboard | <img src="./site/src/assets/logos/homepage.png" alt="Homepage" width="18" /> **Homepage** | Link hubs, bookmarks |
 | Cloud Storage | <img src="./site/src/assets/logos/seafile.png" alt="Seafile" width="18" /> **Seafile** | Google Drive, Dropbox, OneDrive |
+| Calendar Sync | <img src="./site/src/assets/logos/radicale.png" alt="Radicale" width="18" /> **Radicale** | Google Calendar, iCloud, Outlook |
 | Office Suite | <img src="./site/src/assets/logos/OnlyOffice.png" alt="OnlyOffice" width="18" /> **OnlyOffice** | Google Docs, Microsoft 365 |
-| PDF Tools | <img src="./site/src/assets/logos/stirling-pdf.png" alt="Stirling PDF" width="18" /> **Stirling PDF** | Adobe Acrobat, iLovePDF, Smallpdf |
+| PDF Tools | <img src="./site/src/assets/logos/stirling-pdf.png" alt="Stirling PDF" width="18" /> **Stirling PDF** | Adobe Acrobat, Smallpdf |
 | Password Manager | <img src="./site/src/assets/logos/vaultwarden.png" alt="Vaultwarden" width="18" /> **Vaultwarden** | 1Password, LastPass, Bitwarden cloud |
 
----
+### Who It's For
+
+- Individuals, families, freelancers exiting Big Tech SaaS
+- Users who want **one-click privacy** without sysadmin complexity
+- Privacy enthusiasts ready for VPS or homelab upgrades
+- Developers seeking production-ready self-hosted stacks
+
+## 🚀 Quick Start
+
+### 1️⃣ **Easiest: Railway (Coming Soon)**
 
 ## Quick Start (Local VPS Stack)
 
+One-click deploy → fully automated stack
+
+### 2️⃣ **VPS/Local**
 ```bash
 git clone https://github.com/rpuls/my-own-suite.git
 cd my-own-suite
 npm run vps:rebuild
 ```
 
-`vps:rebuild` performs a full reset and rebuild, including Docker volumes.
-
-### Railway
-
-Deploy template coming soon.
-
-### Dockploy
+### 3️⃣ Dockploy
 
 Work in progress...
 
 ---
 
-## Resource Map
+## 📁 Navigation
 
 | Need | Go here |
 | --- | --- |
@@ -66,6 +57,7 @@ Work in progress...
 | Canonical VPS architecture + app onboarding steps | [deploy/vps/README.md](./deploy/vps/README.md) |
 | Homepage service details | [apps/homepage/README.md](./apps/homepage/README.md) |
 | Seafile service details | [apps/seafile/README.md](./apps/seafile/README.md) |
+| Radicale service details | [apps/radicale/README.md](./apps/radicale/README.md) |
 | OnlyOffice service details | [apps/onlyoffice/README.md](./apps/onlyoffice/README.md) |
 | Stirling PDF service details | [apps/stirling-pdf/README.md](./apps/stirling-pdf/README.md) |
 | Vaultwarden service details | [apps/vaultwarden/README.md](./apps/vaultwarden/README.md) |
