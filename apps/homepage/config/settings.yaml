@@ -4,8 +4,8 @@ logo: false
 icon: mdi:cube-outline
 header: true
 description: Self-hosted services dashboard
-theme: default
-color: zinc
+theme: dark
+color: slate
 cardBlur: md
 columns: 2
 host: false
