@@ -1,46 +1,84 @@
-#### Environment variables
+#### Service: `immich` (server)
 
-- `TZ`: Container timezone.
-- `DB_HOSTNAME`: PostgreSQL hostname reachable from Immich server.
-- `DB_PORT`: PostgreSQL port (typically `5432`).
-- `DB_USERNAME`: PostgreSQL username used by Immich.
-- `DB_PASSWORD`: PostgreSQL password used by Immich.
-- `DB_DATABASE_NAME`: PostgreSQL database name used by Immich.
-- `REDIS_HOSTNAME`: Redis hostname reachable from Immich server.
-- `REDIS_PORT`: Redis port (typically `6379`).
-- `IMMICH_MACHINE_LEARNING_URL`: Internal URL for machine-learning service.
-- `UPLOAD_LOCATION`: Upload storage path inside the Immich server container.
-- `POSTGRES_USER`: PostgreSQL bootstrap user for the database container.
-- `POSTGRES_PASSWORD`: PostgreSQL bootstrap password for the database container.
-- `POSTGRES_DB`: PostgreSQL bootstrap database name for the database container.
+Environment variables:
+- `TZ`
+- `DB_HOSTNAME`
+- `DB_PORT`
+- `DB_USERNAME`
+- `DB_PASSWORD`
+- `DB_DATABASE_NAME`
+- `REDIS_HOSTNAME`
+- `REDIS_PORT`
+- `REDIS_PASSWORD` (required when Redis auth is enabled)
+- `IMMICH_MACHINE_LEARNING_URL`
+- `UPLOAD_LOCATION`
 
-#### Volumes and persistence
+Volumes:
+- Required: `/usr/src/app/upload`
 
-- Required persistent mounts:
-  - `/usr/src/app/upload` (Immich library uploads and generated assets)
-  - `/var/lib/postgresql/data` (PostgreSQL data directory)
-- Recommended persistent mount:
-  - `/cache` for `immich-machine-learning` model cache.
+Start command:
+- Use the image default command (no override required).
 
-#### Health check
+Resource baseline:
+- Recommended minimum: `1 GB RAM`, `1 vCPU`
+- Preferred for smoother operation: `2 GB RAM`
 
-- Immich server endpoint: `/api/server/ping`
+#### Service: `immich-machine-learning`
 
-#### Dependencies and integrations
+Environment variables:
+- `TZ`
 
-- Requires PostgreSQL with vector extension support.
-- Requires Redis for queue/cache operations.
-- Requires `immich-machine-learning` service for face/object/smart-search features.
+Volumes:
+- Recommended: `/cache`
 
-#### Customizations in this project
+Start command:
+- Use the image default command (no override required).
 
-- `apps/immich/server/Dockerfile` is the Railway/VPS build target for Immich server.
-- `apps/immich/machine-learning/Dockerfile` is the Railway build target for Immich machine-learning worker.
-- `apps/immich/postgres/Dockerfile` is the Railway/VPS build target for Immich's vector-enabled PostgreSQL.
+Resource baseline:
+- Recommended minimum: `1 GB RAM`, `1 vCPU`
+- Preferred when processing large libraries: `2 GB RAM`
 
-#### Operational commands
+#### Service: `immich-postgres`
 
-- Start Immich profile (repo root):
-  - `docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps --profile immich up -d`
-- Inspect Immich logs:
-  - `docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps logs immich --tail 120`
+Environment variables:
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_DB`
+- `POSTGRES_INITDB_ARGS` (recommended: `--data-checksums`)
+- `PGDATA` (recommended on mounted volumes: `/var/lib/postgresql/data/pgdata`)
+
+Volumes:
+- Required: `/var/lib/postgresql/data`
+
+Start command:
+```bash
+/usr/local/bin/immich-docker-entrypoint.sh postgres -c config_file=/etc/postgresql/postgresql.conf -c shared_preload_libraries=vchord.so,vectors.so
+```
+
+Resource baseline:
+- Recommended minimum for stable bootstrap: `2 GB RAM`, `1 vCPU`
+- Preferred for smoother first-run import/indexing: `4 GB RAM`
+
+#### Service: `immich-redis`
+
+Environment variables:
+- `REDIS_PASSWORD` (required only if Redis auth is enabled)
+
+Volumes:
+- None required.
+
+Start command:
+- Use the image default command (no override required).
+- If Redis auth is enabled, override start command:
+```bash
+redis-server --requirepass "$REDIS_PASSWORD"
+```
+
+Resource baseline:
+- Recommended minimum: `256 MB RAM`, `0.5 vCPU`
+
+#### Required service wiring
+
+- `immich` -> `immich-postgres`: `DB_HOSTNAME`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE_NAME`
+- `immich` -> `immich-redis`: `REDIS_HOSTNAME`, `REDIS_PORT`, `REDIS_PASSWORD` (when Redis auth is enabled)
+- `immich` -> `immich-machine-learning`: `IMMICH_MACHINE_LEARNING_URL`
