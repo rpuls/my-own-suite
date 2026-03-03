@@ -181,6 +181,103 @@ services:
     networks:
       - mos-network
 
+  # -------------------------------------------
+  # Immich - Photos and Videos
+  # -------------------------------------------
+  immich:
+    build:
+      context: ../../apps/immich/server
+      dockerfile: Dockerfile
+    container_name: mos-immich
+    restart: unless-stopped
+    profiles:
+      - immich
+    env_file:
+      - .env
+      - ./apps/immich/.env
+    volumes:
+      - immich_upload:/usr/src/app/upload
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - mos-network
+    depends_on:
+      - immich-redis
+      - immich-postgres
+      - immich-machine-learning
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:2283/api/server/ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  immich-machine-learning:
+    build:
+      context: ../../apps/immich/machine-learning
+      dockerfile: Dockerfile
+    container_name: mos-immich-machine-learning
+    restart: unless-stopped
+    profiles:
+      - immich
+    env_file:
+      - ./apps/immich/.env
+    volumes:
+      - immich_model_cache:/cache
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - mos-network
+
+  immich-redis:
+    image: redis:6.2-alpine
+    container_name: mos-immich-redis
+    restart: unless-stopped
+    profiles:
+      - immich
+    networks:
+      - mos-network
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli ping >/dev/null || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  immich-postgres:
+    build:
+      context: ../../apps/immich/postgres
+      dockerfile: Dockerfile
+    container_name: mos-immich-postgres
+    restart: unless-stopped
+    profiles:
+      - immich
+    env_file:
+      - ./apps/immich/.env
+    environment:
+      - POSTGRES_INITDB_ARGS=--data-checksums
+    command: >-
+      postgres -c shared_preload_libraries=vchord.so,vectors.so
+      -c 'search_path="$$user", public, vectors'
+      -c logging_collector=on
+      -c max_wal_size=2GB
+      -c shared_buffers=512MB
+      -c wal_compression=on
+    volumes:
+      - immich_db:/var/lib/postgresql/data
+    networks:
+      - mos-network
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready --dbname=$${POSTGRES_DB} --username=$${POSTGRES_USER} || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
 volumes:
   caddy_data:
   caddy_config:
@@ -195,6 +292,9 @@ volumes:
   stirling_pdf_logs:
   stirling_pdf_pipeline:
   radicale_data:
+  immich_upload:
+  immich_model_cache:
+  immich_db:
 
 networks:
   mos-network:

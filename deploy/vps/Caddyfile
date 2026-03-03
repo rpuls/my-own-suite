@@ -36,6 +36,11 @@ http://radicale.{$DOMAIN} {
 	reverse_proxy radicale:5232
 }
 
+# Immich Photos
+http://immich.{$DOMAIN} {
+	reverse_proxy immich:2283
+}
+
 # Internal Radicale iCal bridge for Homepage backend.
 # This endpoint is for private network use only (homepage -> caddy),
 # and keeps Radicale credentials out of Homepage widget URLs.

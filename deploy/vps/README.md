@@ -15,16 +15,16 @@ cd deploy/vps
 
 # Copy example env files to .env (required before first run)
 cp .env.example .env
-cp services/homepage/.env.example services/homepage/.env
-cp services/vaultwarden/.env.example services/vaultwarden/.env
-cp services/seafile/.env.example services/seafile/.env
-cp services/onlyoffice/.env.example services/onlyoffice/.env
+cp apps/homepage/.env.example apps/homepage/.env
+cp apps/seafile/.env.example apps/seafile/.env
+cp apps/onlyoffice/.env.example apps/onlyoffice/.env
+cp apps/immich/.env.example apps/immich/.env
+cp apps/radicale/.env.example apps/radicale/.env
+cp apps/stirling-pdf/.env.example apps/stirling-pdf/.env
+cp apps/vaultwarden/.env.example apps/vaultwarden/.env
 
 # Start core services (homepage + caddy)
 docker compose up -d
-
-# Start with Vaultwarden
-docker compose --profile vaultwarden up -d
 
 # Start with Seafile
 docker compose --profile seafile up -d
@@ -32,8 +32,17 @@ docker compose --profile seafile up -d
 # Start with OnlyOffice
 docker compose --profile onlyoffice up -d
 
+# Start with Immich
+docker compose --profile immich up -d
+
+# Start with Radicale
+docker compose --profile radicale up -d
+
 # Start with Stirling PDF
 docker compose --profile stirling-pdf up -d
+
+# Start with Vaultwarden
+docker compose --profile vaultwarden up -d
 
 # Stop all services
 docker compose down
@@ -41,13 +50,16 @@ docker compose down
 
 ### Access
 - Homepage: http://homepage.localhost/
-- Vaultwarden: http://vaultwarden.localhost/
 - Seafile: http://seafile.localhost/
+- OnlyOffice: http://onlyoffice.localhost/
+- Immich: http://immich.localhost/
+- Radicale: http://radicale.localhost/
 - Stirling PDF: http://stirling-pdf.localhost/
+- Vaultwarden: http://vaultwarden.localhost/
 
 ### Local OnlyOffice + Seafile note
 - `.localhost` domains resolve to loopback inside containers.
-- Set `ONLYOFFICE_INTERNAL_SEAFILE_URL=http://seafile` in `services/seafile/.env` so OnlyOffice backend callbacks/downloads use Docker-internal networking.
+- Set `ONLYOFFICE_INTERNAL_SEAFILE_URL=http://seafile` in `apps/seafile/.env` so OnlyOffice backend callbacks/downloads use Docker-internal networking.
 - After pulling changes, restart the relevant services:
 ```bash
 docker compose up -d --build seafile onlyoffice caddy
@@ -58,29 +70,35 @@ docker compose up -d --build seafile onlyoffice caddy
 ### Architecture
 ```
 deploy/vps/
-├── .env                         # DOMAIN variable (shared)
-├── .env.example
-├── docker-compose.yml
-├── Caddyfile
-└── services/
-    ├── homepage/
-    │   ├── .env                 # Service URLs using ${DOMAIN}
-    │   └── .env.example
-    ├── vaultwarden/
-    │   ├── .env                 # App-specific settings
-    │   └── .env.example
-    ├── seafile/
-    │   ├── .env                 # App-specific settings
-    │   └── .env.example
-    ├── onlyoffice/
-    │   ├── .env                 # App-specific settings
-    │   └── .env.example
-    └── stirling-pdf/
-        ├── .env                 # App-specific settings
-        └── .env.example
+|-- .env                         # DOMAIN variable (shared)
+|-- .env.example
+|-- docker-compose.yml
+|-- Caddyfile
+`-- apps/
+    |-- homepage/
+    |   |-- .env                 # Service URLs using ${DOMAIN}
+    |   `-- .env.example
+    |-- seafile/
+    |   |-- .env                 # App-specific settings
+    |   `-- .env.example
+    |-- onlyoffice/
+    |   |-- .env                 # App-specific settings
+    |   `-- .env.example
+    |-- immich/
+    |   |-- .env                 # App-specific settings
+    |   `-- .env.example
+    |-- radicale/
+    |   |-- .env                 # App-specific settings
+    |   `-- .env.example
+    |-- stirling-pdf/
+    |   |-- .env                 # App-specific settings
+    |   `-- .env.example
+    `-- vaultwarden/
+        |-- .env                 # App-specific settings
+        `-- .env.example
 ```
 
-### Change Domain (Local → Production)
+### Change Domain (Local -> Production)
 Edit `deploy/vps/.env`:
 ```env
 DOMAIN=localhost        # Local
@@ -88,9 +106,9 @@ DOMAIN=yourdomain.com   # Production
 ```
 
 All services automatically use the new domain:
-- Caddy routes: `homepage.{$DOMAIN}`, `vaultwarden.{$DOMAIN}`, `seafile.{$DOMAIN}`, `onlyoffice.{$DOMAIN}`, `stirling-pdf.{$DOMAIN}`
-- Service URLs: `http://vaultwarden.${DOMAIN}`, `http://seafile.${DOMAIN}`, `http://onlyoffice.${DOMAIN}`, `http://stirling-pdf.${DOMAIN}`
-- Homepage links: same URLs from `services/homepage/.env`
+- Caddy routes: `homepage.{$DOMAIN}`, `seafile.{$DOMAIN}`, `onlyoffice.{$DOMAIN}`, `immich.{$DOMAIN}`, `radicale.{$DOMAIN}`, `stirling-pdf.{$DOMAIN}`, `vaultwarden.{$DOMAIN}`
+- Service URLs: `http://seafile.${DOMAIN}`, `http://onlyoffice.${DOMAIN}`, `http://immich.${DOMAIN}`, `http://radicale.${DOMAIN}`, `http://stirling-pdf.${DOMAIN}`, `http://vaultwarden.${DOMAIN}`
+- Homepage links: same URLs from `apps/homepage/.env`
 
 ## Adding a New App
 
@@ -108,7 +126,7 @@ SOME_SETTING=value
 
 ### 2. Copy and configure the .env file
 ```bash
-cp services/<app-name>/.env.example services/<app-name>/.env
+cp apps/<app-name>/.env.example apps/<app-name>/.env
 ```
 
 ### 3. Add service to docker-compose.yml
@@ -121,7 +139,7 @@ cp services/<app-name>/.env.example services/<app-name>/.env
       - <app-name>
     env_file:
       - .env
-      - ./services/<app-name>/.env
+      - ./apps/<app-name>/.env
     environment:
       - DOMAIN=http://<app-name>.${DOMAIN}  # If app needs its URL
     volumes:

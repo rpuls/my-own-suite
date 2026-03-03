@@ -25,10 +25,13 @@ From `deploy/vps`:
 
 ```bash
 cp .env.example .env
-cp services/homepage/.env.example services/homepage/.env
-cp services/vaultwarden/.env.example services/vaultwarden/.env
-cp services/seafile/.env.example services/seafile/.env
-cp services/onlyoffice/.env.example services/onlyoffice/.env
+cp apps/homepage/.env.example apps/homepage/.env
+cp apps/seafile/.env.example apps/seafile/.env
+cp apps/onlyoffice/.env.example apps/onlyoffice/.env
+cp apps/immich/.env.example apps/immich/.env
+cp apps/radicale/.env.example apps/radicale/.env
+cp apps/stirling-pdf/.env.example apps/stirling-pdf/.env
+cp apps/vaultwarden/.env.example apps/vaultwarden/.env
 ```
 
 If you are on PowerShell, use `Copy-Item` instead of `cp`.
@@ -56,10 +59,11 @@ This command fully resets and rebuilds the stack (it removes Docker volumes/data
 
 - Homepage: `http://homepage.localhost/`
 
-From Homepage you can open any application, dashobard style. But, each app can also be found on their dedicated URL:
+From Homepage you can open any application, dashboard style. Each app can also be found on its dedicated URL:
 
 - Seafile: `http://seafile.localhost/`
-- Vaultwarden: `http://vaultwarden.localhost/`
 - OnlyOffice: `http://onlyoffice.localhost/`
+- Immich: `http://immich.localhost/`
+- Radicale: `http://radicale.localhost/`
 - Stirling PDF: `http://stirling-pdf.localhost/`
-
+- Vaultwarden: `http://vaultwarden.localhost/`

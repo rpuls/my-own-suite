@@ -15,6 +15,10 @@
             href: ${SEAFILE_URL}
             description: Self-hosted file sync and share
             icon: https://cdn.simpleicons.org/seafile
+        - Immich:
+            href: ${IMMICH_URL}
+            description: Self-hosted photo and video backup
+            icon: immich.png
 
     - My Tools:
         - Stirling PDF:

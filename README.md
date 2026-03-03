@@ -14,8 +14,9 @@
 | --- | --- | --- |
 | Dashboard | <img src="./site/src/assets/logos/homepage.png" alt="Homepage" width="18" /> **Homepage** | Link hubs, bookmarks |
 | Cloud Storage | <img src="./site/src/assets/logos/seafile.png" alt="Seafile" width="18" /> **Seafile** | Google Drive, Dropbox, OneDrive |
-| Calendar Sync | <img src="./site/src/assets/logos/radicale.png" alt="Radicale" width="18" /> **Radicale** | Google Calendar, iCloud, Outlook |
 | Office Suite | <img src="./site/src/assets/logos/OnlyOffice.png" alt="OnlyOffice" width="18" /> **OnlyOffice** | Google Docs, Microsoft 365 |
+| Photo Library | <img src="./site/src/assets/logos/immich.png" alt="Immich" width="18" /> **Immich** | Google Photos, iCloud Photos |
+| Calendar Sync | <img src="./site/src/assets/logos/radicale.png" alt="Radicale" width="18" /> **Radicale** | Google Calendar, iCloud, Outlook |
 | PDF Tools | <img src="./site/src/assets/logos/stirling-pdf.png" alt="Stirling PDF" width="18" /> **Stirling PDF** | Adobe Acrobat, Smallpdf |
 | Password Manager | <img src="./site/src/assets/logos/vaultwarden.png" alt="Vaultwarden" width="18" /> **Vaultwarden** | 1Password, LastPass, Bitwarden cloud |
 
@@ -57,8 +58,9 @@ Work in progress...
 | Canonical VPS architecture + app onboarding steps | [deploy/vps/README.md](./deploy/vps/README.md) |
 | Homepage service details | [apps/homepage/README.md](./apps/homepage/README.md) |
 | Seafile service details | [apps/seafile/README.md](./apps/seafile/README.md) |
-| Radicale service details | [apps/radicale/README.md](./apps/radicale/README.md) |
 | OnlyOffice service details | [apps/onlyoffice/README.md](./apps/onlyoffice/README.md) |
+| Immich service details | [apps/immich/README.md](./apps/immich/README.md) |
+| Radicale service details | [apps/radicale/README.md](./apps/radicale/README.md) |
 | Stirling PDF service details | [apps/stirling-pdf/README.md](./apps/stirling-pdf/README.md) |
 | Vaultwarden service details | [apps/vaultwarden/README.md](./apps/vaultwarden/README.md) |
 
