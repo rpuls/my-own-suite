@@ -69,6 +69,30 @@ services:
       - vaultwarden_data:/data
     networks:
       - mos-network
+    depends_on:
+      - vaultwarden-postgres
+
+  vaultwarden-postgres:
+    build:
+      context: ../../apps/vaultwarden
+      dockerfile: Dockerfile.postgres
+    container_name: mos-vaultwarden-postgres
+    restart: unless-stopped
+    profiles:
+      - vaultwarden
+    env_file:
+      - ./apps/vaultwarden/.env
+    volumes:
+      - vaultwarden_postgres_data:/var/lib/postgresql/data
+    networks:
+      - mos-network
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready --dbname=$${POSTGRES_DB} --username=$${POSTGRES_USER} || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 5
 
   # -------------------------------------------
   # Seafile - File Sync and Share
@@ -293,6 +317,7 @@ volumes:
   caddy_config:
   homepage_images:
   vaultwarden_data:
+  vaultwarden_postgres_data:
   seafile_data:
   seafile_mysql_data:
   onlyoffice_data:

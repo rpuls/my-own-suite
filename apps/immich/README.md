@@ -77,6 +77,7 @@ Start command:
 ```bash
 valkey-server --requirepass "$REDIS_PASSWORD"
 ```
+- If your platform does not expand environment variables in start commands by default, run the command through a shell so `$REDIS_PASSWORD` is expanded at runtime (example pattern: `sh -lc '<command>'`).
 
 Resource baseline:
 - Recommended minimum: `256 MB RAM`, `0.5 vCPU`
