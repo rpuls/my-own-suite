@@ -8,6 +8,8 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "install": "^0.13.0",
+    "npm": "^11.11.0",
     "yaml": "^2.3.4"
   },
   "devDependencies": {

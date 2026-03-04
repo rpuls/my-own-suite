@@ -46,6 +46,7 @@ sync_secure_link_secret() {
     /etc/onlyoffice/documentserver/nginx/ds-ssl.conf.tmpl
   do
     if [ -f "$cfg" ]; then
+      # shellcheck disable=SC2016
       sed -i 's|^[[:space:]]*set \$secure_link_secret .*;|  set \$secure_link_secret '"${SECURE_LINK_SECRET}"';|g' "$cfg"
     fi
   done

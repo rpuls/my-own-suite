@@ -6,7 +6,7 @@
 echo "Starting Homepage configuration..."
 
 # Run the TypeScript config generator
-cd /app/config-generator
+cd /app/config-generator || exit 1
 node dist/index.js /app/config
 
 # Start homepage
