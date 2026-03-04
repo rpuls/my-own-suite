@@ -1,5 +1,4 @@
 # Immich PostgreSQL Service (Platform Deployments)
 # Stable Railway/VPS build target for Immich's vector-enabled Postgres image.
 
-FROM ghcr.io/immich-app/postgres:14-vectorchord0.3.0-pgvectors0.2.0
-
+FROM ghcr.io/immich-app/postgres@sha256:c570d9e1c2494f65d2a0a379a7f6df66e8441964254a30aa62cc58e8ebf1dee0

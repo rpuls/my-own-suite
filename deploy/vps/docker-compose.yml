@@ -11,7 +11,9 @@ services:
   # Caddy - Reverse Proxy (entry point)
   # -------------------------------------------
   caddy:
-    image: caddy:latest
+    build:
+      context: ../../apps/caddy
+      dockerfile: Dockerfile
     container_name: mos-caddy
     restart: unless-stopped
     env_file:
@@ -51,7 +53,9 @@ services:
   # Vaultwarden - Password Manager
   # -------------------------------------------
   vaultwarden:
-    image: vaultwarden/server:latest
+    build:
+      context: ../../apps/vaultwarden
+      dockerfile: Dockerfile
     container_name: mos-vaultwarden
     restart: unless-stopped
     profiles:
@@ -70,7 +74,9 @@ services:
   # Seafile - File Sync and Share
   # -------------------------------------------
   seafile-mysql:
-    image: mysql:8.0
+    build:
+      context: ../../apps/seafile
+      dockerfile: Dockerfile.mysql
     container_name: mos-seafile-mysql
     restart: unless-stopped
     profiles:
@@ -87,7 +93,9 @@ services:
       - mos-network
 
   seafile-memcached:
-    image: memcached:1.6
+    build:
+      context: ../../apps/seafile
+      dockerfile: Dockerfile.memcached
     container_name: mos-seafile-memcached
     restart: unless-stopped
     profiles:
@@ -186,7 +194,7 @@ services:
   # -------------------------------------------
   immich:
     build:
-      context: ../../apps/immich/server
+      context: ../../apps/immich
       dockerfile: Dockerfile
     container_name: mos-immich
     restart: unless-stopped
@@ -201,7 +209,7 @@ services:
     networks:
       - mos-network
     depends_on:
-      - immich-redis
+      - immich-valkey
       - immich-postgres
       - immich-machine-learning
     healthcheck:
@@ -217,8 +225,8 @@ services:
 
   immich-machine-learning:
     build:
-      context: ../../apps/immich/machine-learning
-      dockerfile: Dockerfile
+      context: ../../apps/immich
+      dockerfile: Dockerfile.machine-learning
     container_name: mos-immich-machine-learning
     restart: unless-stopped
     profiles:
@@ -231,9 +239,11 @@ services:
     networks:
       - mos-network
 
-  immich-redis:
-    image: redis:6.2-alpine
-    container_name: mos-immich-redis
+  immich-valkey:
+    build:
+      context: ../../apps/immich
+      dockerfile: Dockerfile.valkey
+    container_name: mos-immich-valkey
     restart: unless-stopped
     profiles:
       - immich
@@ -242,15 +252,15 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - redis-cli ping >/dev/null || exit 1
+        - valkey-cli ping >/dev/null || exit 1
       interval: 30s
       timeout: 5s
       retries: 5
 
   immich-postgres:
     build:
-      context: ../../apps/immich/postgres
-      dockerfile: Dockerfile
+      context: ../../apps/immich
+      dockerfile: Dockerfile.postgres
     container_name: mos-immich-postgres
     restart: unless-stopped
     profiles:

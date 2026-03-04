@@ -1,5 +1,9 @@
 #### Service: `immich` (server)
 
+Note:
+- This stack uses Valkey for caching.
+- Immich upstream requires `REDIS_*` environment variable names, so those names remain unchanged.
+
 Environment variables:
 - `TZ`
 - `DB_HOSTNAME`
@@ -7,9 +11,9 @@ Environment variables:
 - `DB_USERNAME`
 - `DB_PASSWORD`
 - `DB_DATABASE_NAME`
-- `REDIS_HOSTNAME`
+- `REDIS_HOSTNAME` (Valkey/Redis-compatible endpoint)
 - `REDIS_PORT`
-- `REDIS_PASSWORD` (required when Redis auth is enabled)
+- `REDIS_PASSWORD` (required when Valkey auth is enabled)
 - `IMMICH_MACHINE_LEARNING_URL`
 - `UPLOAD_LOCATION`
 
@@ -59,19 +63,19 @@ Resource baseline:
 - Recommended minimum for stable bootstrap: `2 GB RAM`, `1 vCPU`
 - Preferred for smoother first-run import/indexing: `4 GB RAM`
 
-#### Service: `immich-redis`
+#### Service: `immich-valkey`
 
 Environment variables:
-- `REDIS_PASSWORD` (required only if Redis auth is enabled)
+- `REDIS_PASSWORD` (required only if Valkey auth is enabled; Immich expects this `REDIS_*` name)
 
 Volumes:
 - None required.
 
 Start command:
 - Use the image default command (no override required).
-- If Redis auth is enabled, override start command:
+- If Valkey auth is enabled, override start command:
 ```bash
-redis-server --requirepass "$REDIS_PASSWORD"
+valkey-server --requirepass "$REDIS_PASSWORD"
 ```
 
 Resource baseline:
@@ -80,5 +84,5 @@ Resource baseline:
 #### Required service wiring
 
 - `immich` -> `immich-postgres`: `DB_HOSTNAME`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE_NAME`
-- `immich` -> `immich-redis`: `REDIS_HOSTNAME`, `REDIS_PORT`, `REDIS_PASSWORD` (when Redis auth is enabled)
+- `immich` -> `immich-valkey`: `REDIS_HOSTNAME`, `REDIS_PORT`, `REDIS_PASSWORD` (when Valkey auth is enabled)
 - `immich` -> `immich-machine-learning`: `IMMICH_MACHINE_LEARNING_URL`

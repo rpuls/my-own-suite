@@ -1,0 +1,125 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 5
+    groups:
+      root-npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/site"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:15"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 5
+    groups:
+      site-npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/apps/homepage/config-generator"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:30"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 5
+    groups:
+      homepage-config-generator:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "docker"
+    directory: "/deploy/vps"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:45"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 10
+    groups:
+      docker-compose-images:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "docker"
+    directory: "/apps/homepage"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "docker"
+    directory: "/apps/caddy"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:03"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "docker"
+    directory: "/apps/immich"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:05"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "docker"
+    directory: "/apps/onlyoffice"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:20"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "docker"
+    directory: "/apps/radicale"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:25"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "docker"
+    directory: "/apps/seafile"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:30"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "docker"
+    directory: "/apps/stirling-pdf"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:35"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "docker"
+    directory: "/apps/vaultwarden"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:40"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 10

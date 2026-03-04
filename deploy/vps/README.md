@@ -98,6 +98,13 @@ deploy/vps/
         `-- .env.example
 ```
 
+Container versioning model:
+- `docker-compose.yml` should use `build` (not direct `image`) for repo-managed services.
+- Base images are pinned in app Dockerfiles under `apps/<app>/`.
+- Dockerfile naming convention:
+  - Primary service: `apps/<app>/Dockerfile`
+  - Additional services: `apps/<app>/Dockerfile.<service>`
+
 ### Change Domain (Local -> Production)
 Edit `deploy/vps/.env`:
 ```env
@@ -132,7 +139,9 @@ cp apps/<app-name>/.env.example apps/<app-name>/.env
 ### 3. Add service to docker-compose.yml
 ```yaml
   <app-name>:
-    image: <app-image>
+    build:
+      context: ../../apps/<app-name>
+      dockerfile: Dockerfile
     container_name: mos-<app-name>
     restart: unless-stopped
     profiles:
@@ -147,6 +156,10 @@ cp apps/<app-name>/.env.example apps/<app-name>/.env
     networks:
       - mos-network
 ```
+
+If the app needs multiple containers, add additional root-level Dockerfiles:
+- `apps/<app-name>/Dockerfile.<service>`
+- In compose use `build.dockerfile: Dockerfile.<service>`
 
 Add the volume:
 ```yaml

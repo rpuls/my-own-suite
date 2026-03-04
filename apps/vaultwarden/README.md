@@ -6,10 +6,5 @@
 - `WEBSOCKET_ENABLED`: Enables websocket notifications.
 - `ROCKET_PORT` / `PORT`: Runtime port binding (platform-dependent).
 
-#### Customizations in this project
-
-- VPS deployment uses the official Vaultwarden image directly.
-- A lightweight Dockerfile is kept for platform deployment workflows.
-
 
 

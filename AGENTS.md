@@ -114,3 +114,59 @@ For each app page:
 - Preserve existing facts; do not drop meaningful technical details.
 - Rephrase/move content rather than delete unless it is redundant filler.
 - Keep wording concise and direct.
+
+## Container and Versioning Rules
+
+These rules are mandatory for app/service onboarding and version updates.
+
+### Single source of truth for container versions
+
+- Do not write runtime image tags/digests directly in `deploy/vps/docker-compose.yml`.
+- `deploy/vps/docker-compose.yml` must use `build:` entries that point to Dockerfiles in `apps/`.
+- Pin base images in Dockerfiles with immutable digests (`FROM image@sha256:...`).
+- Never use floating tags like `latest` or `release` in runtime Dockerfiles.
+
+### Required Dockerfile layout
+
+For each app, Dockerfiles must live in the app root folder:
+
+- Primary app service: `apps/<app>/Dockerfile`
+- Additional services: `apps/<app>/Dockerfile.<service>`
+
+Examples:
+
+- `apps/immich/Dockerfile`
+- `apps/immich/Dockerfile.machine-learning`
+- `apps/immich/Dockerfile.postgres`
+- `apps/immich/Dockerfile.valkey`
+- `apps/seafile/Dockerfile`
+- `apps/seafile/Dockerfile.mysql`
+- `apps/seafile/Dockerfile.memcached`
+
+Do not introduce new canonical Dockerfiles in nested subfolders like `apps/<app>/<service>/Dockerfile`.
+
+### Backward compatibility for existing paths
+
+- Dockerfile paths used by external deploy templates (Railway/Dokploy) are treated as stable API.
+- If a path is already used publicly, do not remove or move it in a patch/minor change.
+- If a path migration is needed:
+  - Keep the old Dockerfile as a compatibility stub.
+  - Add a deprecation comment pointing to the canonical root-level Dockerfile.
+  - Remove old paths only in a clearly documented breaking release.
+
+### Compose authoring rules when adding a service
+
+When adding a new service to `deploy/vps/docker-compose.yml`:
+
+- Use:
+  - `build.context: ../../apps/<app>`
+  - `build.dockerfile: Dockerfile` or `Dockerfile.<service>`
+- Do not use direct `image:` references for services managed by this repo.
+
+### Docs and automation updates required with each new service
+
+When adding/changing an app service, also update:
+
+- `apps/<app>/README.md` technical specs (env vars, volumes, healthchecks, dependencies).
+- `deploy/vps/apps/<app>/.env.example` when relevant.
+- `.github/dependabot.yml` Docker entries for the affected app root directory.

@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  docs-build:
+    name: Docs Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build docs site
+        run: npm run build
+
+  homepage-config-generator:
+    name: Homepage Config Generator Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/homepage/config-generator
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/homepage/config-generator/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build generator
+        run: npm run build
+
+  compose-validate:
+    name: Docker Compose Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare env files
+        shell: bash
+        run: |
+          cp deploy/vps/.env.example deploy/vps/.env
+          cp deploy/vps/apps/homepage/.env.example deploy/vps/apps/homepage/.env
+          cp deploy/vps/apps/seafile/.env.example deploy/vps/apps/seafile/.env
+          cp deploy/vps/apps/onlyoffice/.env.example deploy/vps/apps/onlyoffice/.env
+          cp deploy/vps/apps/immich/.env.example deploy/vps/apps/immich/.env
+          cp deploy/vps/apps/radicale/.env.example deploy/vps/apps/radicale/.env
+          cp deploy/vps/apps/stirling-pdf/.env.example deploy/vps/apps/stirling-pdf/.env
+          cp deploy/vps/apps/vaultwarden/.env.example deploy/vps/apps/vaultwarden/.env
+
+      - name: Validate compose config
+        run: docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps config -q
+
+  shellcheck:
+    name: Shell Scripts Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: ./apps
