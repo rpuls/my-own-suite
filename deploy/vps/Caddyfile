@@ -21,7 +21,7 @@ http://seafile.{$DOMAIN} {
 	reverse_proxy seafile:80
 }
 
-# OnlyOffice Document Server
+# ONLYOFFICE Document Server
 http://onlyoffice.{$DOMAIN} {
 	reverse_proxy onlyoffice:80
 }

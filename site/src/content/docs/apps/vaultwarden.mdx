@@ -36,7 +36,29 @@ Think of it like storing a locked safe in a warehouse:
 - The server only stores the locked safe.
 - Without the key, the safe cannot be opened.
 
+```mermaid
+flowchart LR
+  device["Your device<br/>(Bitwarden app / browser extension)"]
+  encrypt["Encrypt vault locally<br/>before upload"]
+  server["Vaultwarden server<br/>(stores encrypted vault)"]
+  db["Database<br/>(encrypted vault data)"]
+
+  device --> encrypt --> server --> db
+```
+
 Even if someone steals the database from the server, they only get encrypted vaults. Without your master password, those vaults are essentially useless.
+
+```mermaid
+flowchart LR
+  attacker["Attacker"]
+  stolen["Stolen database<br/>(encrypted vault)"]
+  master["Master password<br/>(not stored on server)"]
+  blocked["Can't read passwords<br/>(needs the key)"]
+
+  attacker --> stolen
+  stolen -.-> master
+  master --> blocked
+```
 
 ### Why self-hosting can actually be safer
 
@@ -91,7 +113,7 @@ No system can guarantee absolute security. This is a strong and widely used arch
 - To the extent permitted by law, we are not liable for lost data, account compromise, or any damages resulting from using this stack.
 - This section is informational and not legal advice.
 
-### Technical specs
+## Technical reference
 
 <div className="tech-specs">
   <TechSpecs.Content />
@@ -101,6 +123,3 @@ No system can guarantee absolute security. This is a strong and widely used arch
 
 - [Vaultwarden repository](https://github.com/dani-garcia/vaultwarden)
 - [Bitwarden help: Managing items](https://bitwarden.com/help/managing-items/)
-
-
-

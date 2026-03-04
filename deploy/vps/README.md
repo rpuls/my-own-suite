@@ -29,7 +29,7 @@ docker compose up -d
 # Start with Seafile
 docker compose --profile seafile up -d
 
-# Start with OnlyOffice
+# Start with ONLYOFFICE
 docker compose --profile onlyoffice up -d
 
 # Start with Immich
@@ -51,15 +51,15 @@ docker compose down
 ### Access
 - Homepage: http://homepage.localhost/
 - Seafile: http://seafile.localhost/
-- OnlyOffice: http://onlyoffice.localhost/
+- ONLYOFFICE: http://onlyoffice.localhost/
 - Immich: http://immich.localhost/
 - Radicale: http://radicale.localhost/
 - Stirling PDF: http://stirling-pdf.localhost/
 - Vaultwarden: http://vaultwarden.localhost/
 
-### Local OnlyOffice + Seafile note
+### Local ONLYOFFICE + Seafile note
 - `.localhost` domains resolve to loopback inside containers.
-- Set `ONLYOFFICE_INTERNAL_SEAFILE_URL=http://seafile` in `apps/seafile/.env` so OnlyOffice backend callbacks/downloads use Docker-internal networking.
+- Set `ONLYOFFICE_INTERNAL_SEAFILE_URL=http://seafile` in `apps/seafile/.env` so ONLYOFFICE backend callbacks/downloads use Docker-internal networking.
 - After pulling changes, restart the relevant services:
 ```bash
 docker compose up -d --build seafile onlyoffice caddy

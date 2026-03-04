@@ -10,11 +10,11 @@
 - `SEAFILE_SERVER_HOSTNAME`: Public Seafile hostname (no protocol).
 - `SEAFILE_SERVER_PROTOCOL`: Public scheme (`http` or `https`).
 - `TIME_ZONE`: Container timezone.
-- `VERIFY_ONLYOFFICE_CERTIFICATE`: Toggle TLS verification for OnlyOffice callbacks.
-- `ONLYOFFICE_APIJS_URL`: OnlyOffice Docs API JS URL. Enables OnlyOffice integration when set.
-- `ONLYOFFICE_FORCE_SAVE`: Enables/disables OnlyOffice force-save behavior.
-- `ONLYOFFICE_INTERNAL_SEAFILE_URL`: Internal Seafile URL for OnlyOffice server-to-server traffic.
-- `ONLYOFFICE_JWT_SECRET`: JWT secret for OnlyOffice integration when JWT is enabled.
+- `VERIFY_ONLYOFFICE_CERTIFICATE`: Toggle TLS verification for ONLYOFFICE callbacks.
+- `ONLYOFFICE_APIJS_URL`: ONLYOFFICE Docs API JS URL. Enables ONLYOFFICE integration when set.
+- `ONLYOFFICE_FORCE_SAVE`: Enables/disables ONLYOFFICE force-save behavior.
+- `ONLYOFFICE_INTERNAL_SEAFILE_URL`: Internal Seafile URL for ONLYOFFICE server-to-server traffic.
+- `ONLYOFFICE_JWT_SECRET`: JWT secret for ONLYOFFICE integration when JWT is enabled.
 
 #### Volumes and persistence
 
@@ -29,12 +29,12 @@ Requirements:
 - Mount persistent storage at `/shared` for Seafile data and config.
 
 Integrations:
-- Works with OnlyOffice for in-browser document editing.
+- Works with ONLYOFFICE for in-browser document editing.
 
 #### Customizations in this project
 
-- Entry-point patches `seahub_settings.py` with proxy and OnlyOffice settings.
-- Adds runtime patching for OnlyOffice internal callback/download URL handling.
+- Entry-point patches `seahub_settings.py` with proxy and ONLYOFFICE settings.
+- Adds runtime patching for ONLYOFFICE internal callback/download URL handling.
 - Patch targets are version-sensitive and should be revalidated after Seafile image upgrades.
 
 

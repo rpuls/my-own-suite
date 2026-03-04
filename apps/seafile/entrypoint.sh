@@ -110,7 +110,7 @@ patch_seahub_onlyoffice_runtime() {
     return 0
   fi
 
-  # Idempotent runtime patch: let OnlyOffice use an internal Seafile base URL
+  # Idempotent runtime patch: let ONLYOFFICE use an internal Seafile base URL
   # for server-to-server download/callback flows when configured.
   if grep -q "_get_onlyoffice_internal_seafile_url" "$onlyoffice_utils_file"; then
     return 0
@@ -137,8 +137,8 @@ def _get_onlyoffice_internal_seafile_url():\\
 
   sed -i "s/base_url = get_site_scheme_and_netloc()/base_url = internal_seafile_url if internal_seafile_url else get_site_scheme_and_netloc()/g" "$onlyoffice_utils_file"
 
-  # If callback URL uses internal Seafile host, some OnlyOffice builds may send
-  # status.url back on the same host. Rewrite such cache URLs to OnlyOffice host.
+  # If callback URL uses internal Seafile host, some ONLYOFFICE builds may send
+  # status.url back on the same host. Rewrite such cache URLs to ONLYOFFICE host.
   if [ -f "$onlyoffice_views_file" ] && ! grep -q "_rewrite_onlyoffice_file_url_for_internal_callback" "$onlyoffice_views_file"; then
     sed -i "s/from seahub.onlyoffice.settings import VERIFY_ONLYOFFICE_CERTIFICATE, ONLYOFFICE_JWT_SECRET/from seahub.onlyoffice.settings import VERIFY_ONLYOFFICE_CERTIFICATE, ONLYOFFICE_JWT_SECRET, ONLYOFFICE_APIJS_URL/g" "$onlyoffice_views_file"
 

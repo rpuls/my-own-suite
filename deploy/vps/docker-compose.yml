@@ -153,7 +153,7 @@ services:
       - seafile-memcached
 
   # -------------------------------------------
-  # OnlyOffice - Document Editing Suite
+  # ONLYOFFICE - Document Editing Suite
   # -------------------------------------------
   onlyoffice:
     build:
