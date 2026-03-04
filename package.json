@@ -23,6 +23,11 @@
   ],
   "license": "MIT",
   "private": true,
+  "packageManager": "npm@11.2.0",
+  "engines": {
+    "node": "22.x",
+    "npm": "11.x"
+  },
   "scripts": {
     "build": "cd site && npm install --no-audit --progress=false && npm run build",
     "vps:rebuild": "docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps down --volumes --remove-orphans && docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps --profile vaultwarden --profile seafile --profile onlyoffice --profile stirling-pdf --profile radicale --profile immich up -d --build --force-recreate"

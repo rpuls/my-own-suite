@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "Generates homepage dashboard config from environment variables",
   "main": "dist/index.js",
+  "packageManager": "npm@11.2.0",
+  "engines": {
+    "node": "22.x",
+    "npm": "11.x"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js"

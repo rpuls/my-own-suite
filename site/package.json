@@ -25,6 +25,11 @@
     "onlyoffice"
   ],
   "type": "module",
+  "packageManager": "npm@11.2.0",
+  "engines": {
+    "node": "22.x",
+    "npm": "11.x"
+  },
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
