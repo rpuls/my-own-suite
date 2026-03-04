@@ -1,4 +1,4 @@
-FROM onlyoffice/documentserver@sha256:fd00acbbbde3d8b1ead9b933aafa7c2df77e62c48b1b171886e6bef343c13882
+FROM onlyoffice/documentserver@sha256:e0a74be8c96fa91a9f55855e86ffb6d4d247d4c8d19dfaef7f441890a1bdbfd3
 
 # Platform compatibility wrapper:
 # - Supports binding nginx to platform-provided PORT.
