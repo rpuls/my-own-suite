@@ -2,6 +2,36 @@
 
 This file defines how AI agents should write and maintain documentation in this repository.
 
+## Mandatory Workflow (All Agent Tasks)
+
+These rules are required for every non-trivial change (docs, config, code, infra).
+
+1. **Never work directly on `main`.**
+   - If current branch is `main`, create and switch to a new branch before editing.
+   - Branch name format:
+     - `docs/<topic>`
+     - `fix/<topic>`
+     - `feat/<topic>`
+     - `chore/<topic>`
+2. **Maintain `CHANGELOG.md` during the work, not after.**
+   - Add/update an entry under `## [Unreleased]` in the same branch as the change.
+   - Keep entries concise and user-relevant.
+3. **Release process must follow `RELEASING.md`.**
+   - Do not invent ad-hoc versioning or release steps.
+4. **No direct pushes to `main` and no direct commits on `main`.**
+   - Use PR workflow only.
+5. **When a change affects compatibility contracts, call it out explicitly in changelog.**
+   - This includes env vars, compose service/profile names, Dockerfile paths, and persistent volume semantics.
+
+## Pre-Work Checklist (Agents)
+
+Before making edits, agents should confirm:
+
+- Current branch is **not** `main`.
+- `CHANGELOG.md` contains or will contain an `Unreleased` entry for the change.
+- Any needed docs split rules (MDX vs app README) are respected.
+- Local git hooks are installed (`npm run hooks:install`) so commits/pushes on `main` are blocked.
+
 ## Goal
 
 Use a strict split:

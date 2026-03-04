@@ -30,6 +30,7 @@
   },
   "scripts": {
     "build": "cd site && npm install --no-audit --progress=false && npm run build",
-    "vps:rebuild": "docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps down --volumes --remove-orphans && docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps --profile vaultwarden --profile seafile --profile onlyoffice --profile stirling-pdf --profile radicale --profile immich up -d --build --force-recreate"
+    "vps:rebuild": "docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps down --volumes --remove-orphans && docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps --profile vaultwarden --profile seafile --profile onlyoffice --profile stirling-pdf --profile radicale --profile immich up -d --build --force-recreate",
+    "hooks:install": "git config core.hooksPath .githooks"
   }
 }

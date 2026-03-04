@@ -1,0 +1,11 @@
+#!/bin/sh
+
+branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+
+if [ "$branch" = "main" ]; then
+  echo "ERROR: pushing from 'main' is blocked."
+  echo "Push a feature branch and open a PR instead."
+  exit 1
+fi
+
+exit 0
