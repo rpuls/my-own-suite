@@ -46,6 +46,10 @@ export default defineConfig({
             'docs/apps/radicale',
             'docs/apps/vaultwarden'
           ]
+        },
+        {
+          label: 'Project',
+          items: ['docs/releases']
         }
       ]
     })
