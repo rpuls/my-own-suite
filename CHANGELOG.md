@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Changed
+
+- Updated `AGENTS.md` app-doc pattern to use `### References` (instead of `### Technical specs`) as the canonical embedded README heading.
+
 ## [0.1.0] - 2026-03-04
 
 First official release of My Own Suite.
