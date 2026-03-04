@@ -23,9 +23,5 @@ Healthcheck:
 
 - `vaultwarden` -> `vaultwarden-postgres`: set `DATABASE_URL` to `postgresql://<user>:<pass>@vaultwarden-postgres:5432/<db>`
 
-#### Customizations in this project
 
-- Vaultwarden and Postgres are both repo-managed Dockerfile builds.
-- `apps/vaultwarden/Dockerfile` pins Vaultwarden image by digest.
-- `apps/vaultwarden/Dockerfile.postgres` pins Postgres image by digest.
 
