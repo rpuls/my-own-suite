@@ -6,9 +6,17 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Added
+
+- New root scripts for safer VPS onboarding:
+  - `npm run vps:init` to create missing `deploy/vps/**/*.env` files from `.env.example` templates without overwriting existing values.
+  - `npm run vps:doctor` to validate required env vars and cross-file configuration checks before startup.
+  - `npm run vps:up` to run a non-destructive full stack startup flow (`init` + `doctor` + compose up).
+
 ### Changed
 
 - Updated `AGENTS.md` app-doc pattern to use `### References` (instead of `### Technical specs`) as the canonical embedded README heading.
+- Updated getting-started documentation to use the new `vps:init -> vps:doctor -> vps:up` flow and keep `vps:rebuild` as an explicit destructive reset command.
 
 ## [0.1.0] - 2026-03-04
 
