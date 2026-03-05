@@ -8,8 +8,8 @@
 # 1) Create any missing env files from .env.example templates
 npm run vps:init
 
-# 2) Edit required values in deploy/vps/apps/*/.env
-#    (Seafile, Immich, Radicale, Vaultwarden)
+# 2) Optional: customize values in deploy/vps/**/*.env
+#    (required secrets are auto-generated during vps:init)
 
 # 3) Validate required values and cross-file wiring
 npm run vps:doctor

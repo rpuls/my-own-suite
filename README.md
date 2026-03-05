@@ -35,11 +35,8 @@ cd my-own-suite
 npm run vps:init
 ```
 
-Edit required values in:
-- `deploy/vps/apps/seafile/.env`: `MYSQL_ROOT_PASSWORD`, `DB_ROOT_PASSWD`, `SEAFILE_ADMIN_EMAIL`, `SEAFILE_ADMIN_PASSWORD`
-- `deploy/vps/apps/immich/.env`: `DB_PASSWORD`, `POSTGRES_PASSWORD`
-- `deploy/vps/apps/radicale/.env`: `RADICALE_ADMIN_PASSWORD`, `RADICALE_BASIC_AUTH_B64`, `RADICALE_ICAL_TOKEN`
-- `deploy/vps/apps/vaultwarden/.env`: `ADMIN_TOKEN`
+`vps:init` now auto-generates required secrets from template expressions in `*.env.example`.
+You can still customize values in `deploy/vps/**/*.env` before startup.
 
 Then validate and start:
 

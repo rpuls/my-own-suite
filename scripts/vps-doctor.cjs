@@ -46,7 +46,7 @@ function isMissing(value) {
 }
 
 function isPlaceholder(value) {
-  return /^(CHANGE_ME|REPLACE_ME)/.test(value);
+  return /^(CHANGE_ME|REPLACE_ME)/.test(value) || value.includes('${{');
 }
 
 const files = {

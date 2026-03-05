@@ -27,24 +27,11 @@ npm run vps:init
 
 This creates missing `.env` files from `deploy/vps/**/*.env.example` without overwriting existing values.
 
-## 3. Set required values
+## 3. Optional customization
 
-Before first run, set these values:
+`vps:init` auto-generates required secrets from template expressions in `*.env.example`.
 
-- `deploy/vps/apps/seafile/.env`
-  - `MYSQL_ROOT_PASSWORD`
-  - `DB_ROOT_PASSWD`
-  - `SEAFILE_ADMIN_EMAIL`
-  - `SEAFILE_ADMIN_PASSWORD`
-- `deploy/vps/apps/immich/.env`
-  - `DB_PASSWORD`
-  - `POSTGRES_PASSWORD`
-- `deploy/vps/apps/radicale/.env`
-  - `RADICALE_ADMIN_PASSWORD`
-  - `RADICALE_BASIC_AUTH_B64`
-  - `RADICALE_ICAL_TOKEN`
-- `deploy/vps/apps/vaultwarden/.env`
-  - `ADMIN_TOKEN`
+If you want to change defaults (email, domain, tokens, passwords), edit files in `deploy/vps/**/*.env`.
 
 ## 4. Run environment checks
 

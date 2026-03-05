@@ -12,6 +12,10 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
   - `npm run vps:init` to create missing `deploy/vps/**/*.env` files from `.env.example` templates without overwriting existing values.
   - `npm run vps:doctor` to validate required env vars and cross-file configuration checks before startup.
   - `npm run vps:up` to run a non-destructive full stack startup flow (`init` + `doctor` + compose up).
+- `vps:init` now renders template expressions in `.env.example`, including:
+  - `secret(length[, alphabet])`
+  - `secret(name, length[, alphabet])` for shared generated values across files
+  - `base64(text)` for derived values (for example `username:password` auth headers)
 
 ### Changed
 
