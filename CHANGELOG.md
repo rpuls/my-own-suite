@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-08
+
 ### Added
 
 - New root scripts for safer VPS onboarding:
@@ -19,8 +21,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
-- Updated `AGENTS.md` app-doc pattern to use `### References` (instead of `### Technical specs`) as the canonical embedded README heading.
-- Updated getting-started documentation to use the new `vps:init -> vps:doctor -> vps:up` flow and keep `vps:rebuild` as an explicit destructive reset command.
+- Updated VPS onboarding documentation to use the new `vps:init -> vps:doctor -> vps:up` flow and keep `vps:rebuild` as an explicit destructive reset command.
+- Updated app `.env.example` templates to support generated shared secrets and derived values during first-time setup.
 
 ## [0.1.0] - 2026-03-04
 
