@@ -197,10 +197,18 @@ When adding a new service to `deploy/vps/docker-compose.yml`:
   - `build.dockerfile: Dockerfile` or `Dockerfile.<service>`
 - Do not use direct `image:` references for services managed by this repo.
 
+### VPS env template layout
+
+- Runtime env templates live in:
+  - `deploy/vps/.env.template`
+  - `deploy/vps/services/<service>/.env.template`
+- Do not reintroduce runtime env templates under `deploy/vps/apps/`.
+- `deploy/vps/services/suite-manager/.env.template` is the shared control-plane input file for local/VPS setup.
+
 ### Docs and automation updates required with each new service
 
 When adding/changing an app service, also update:
 
 - `apps/<app>/README.md` technical specs (env vars, volumes, healthchecks, dependencies).
-- `deploy/vps/apps/<app>/.env.example` when relevant.
+- `deploy/vps/services/<service>/.env.template` when relevant.
 - `.github/dependabot.yml` Docker entries for the affected app root directory.

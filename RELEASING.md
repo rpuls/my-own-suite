@@ -36,7 +36,7 @@ Treat these as stable API unless intentionally released as a major version:
 
 - Dockerfile paths used by deploy templates.
 - Docker Compose profile names and service names.
-- Env var names in `deploy/vps/apps/*/.env.example`.
+- Env var names in `deploy/vps/.env.template` and `deploy/vps/services/*/.env.template`.
 - Persistent volume semantics/locations.
 - App URL patterns/subdomain expectations.
 

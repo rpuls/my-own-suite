@@ -25,13 +25,18 @@ cd my-own-suite
 npm run vps:init
 ```
 
-This creates missing `.env` files from `deploy/vps/**/*.env.example` without overwriting existing values.
+This creates missing `.env` files from `deploy/vps/**/*.env.template` without overwriting existing values.
 
 ## 3. Optional customization
 
-`vps:init` auto-generates required secrets from template expressions in `*.env.example`.
+`vps:init` auto-generates required secrets from template expressions in `*.env.template`.
 
-If you want to change defaults (email, domain, tokens, passwords), edit files in `deploy/vps/**/*.env`.
+The main first-run values live in `deploy/vps/services/suite-manager/.env`:
+
+- `OWNER_EMAIL`
+- `TIMEZONE`
+
+You can also change `DOMAIN` in `deploy/vps/.env` and adjust individual service env files in `deploy/vps/services/*.env` if needed.
 
 ## 4. Run environment checks
 

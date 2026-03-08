@@ -5,7 +5,7 @@
 ### Quick commands from repo root
 
 ```bash
-# 1) Create any missing env files from .env.example templates
+# 1) Create any missing env files from .env.template templates
 npm run vps:init
 
 # 2) Optional: customize values in deploy/vps/**/*.env
@@ -66,7 +66,7 @@ docker compose down
 
 ### Local ONLYOFFICE + Seafile note
 - `.localhost` domains resolve to loopback inside containers.
-- Set `ONLYOFFICE_INTERNAL_SEAFILE_URL=http://seafile` in `apps/seafile/.env` so ONLYOFFICE backend callbacks/downloads use Docker-internal networking.
+- Set `ONLYOFFICE_INTERNAL_SEAFILE_URL=http://seafile` in `services/seafile/.env` so ONLYOFFICE backend callbacks/downloads use Docker-internal networking.
 - After pulling changes, restart the relevant services:
 ```bash
 docker compose up -d --build seafile onlyoffice caddy
@@ -78,32 +78,60 @@ docker compose up -d --build seafile onlyoffice caddy
 ```
 deploy/vps/
 |-- .env                         # DOMAIN variable (shared)
-|-- .env.example
+|-- .env.template
 |-- docker-compose.yml
 |-- Caddyfile
-`-- apps/
+|-- apps/
+|   `-- ...
+`-- services/
+    |-- suite-manager/
+    |   |-- .env                 # Shared user-facing values (email, timezone)
+    |   `-- .env.template
     |-- homepage/
-    |   |-- .env                 # Service URLs using ${DOMAIN}
-    |   `-- .env.example
-    |-- seafile/
-    |   |-- .env                 # App-specific settings
-    |   `-- .env.example
-    |-- onlyoffice/
-    |   |-- .env                 # App-specific settings
-    |   `-- .env.example
+    |   |-- .env                 # Homepage settings
+    |   `-- .env.template
     |-- immich/
-    |   |-- .env                 # App-specific settings
-    |   `-- .env.example
+    |   |-- .env                 # Immich server settings
+    |   `-- .env.template
+    |-- immich-machine-learning/
+    |   |-- .env                 # Immich ML settings
+    |   `-- .env.template
+    |-- immich-postgres/
+    |   |-- .env                 # Immich PostgreSQL settings
+    |   `-- .env.template
+    |-- immich-valkey/
+    |   |-- .env                 # Immich Valkey settings
+    |   `-- .env.template
+    |-- seafile/
+    |   |-- .env                 # Seafile server settings
+    |   `-- .env.template
+    |-- seafile-mysql/
+    |   |-- .env                 # Seafile MySQL settings
+    |   `-- .env.template
+    |-- seafile-memcached/
+    |   |-- .env                 # Seafile Memcached settings
+    |   `-- .env.template
+    |-- onlyoffice/
+    |   |-- .env                 # ONLYOFFICE settings
+    |   `-- .env.template
     |-- radicale/
-    |   |-- .env                 # App-specific settings
-    |   `-- .env.example
+    |   |-- .env                 # Radicale settings
+    |   `-- .env.template
     |-- stirling-pdf/
-    |   |-- .env                 # App-specific settings
-    |   `-- .env.example
-    `-- vaultwarden/
-        |-- .env                 # App-specific settings
-        `-- .env.example
+    |   |-- .env                 # Stirling PDF settings
+    |   `-- .env.template
+    |-- vaultwarden/
+    |   |-- .env                 # Vaultwarden app settings
+    |   `-- .env.template
+    `-- vaultwarden-postgres/
+        |-- .env                 # Vaultwarden PostgreSQL settings
+        `-- .env.template
 ```
+
+Shared configuration model:
+- `deploy/vps/.env`: framework-level values such as `DOMAIN`
+- `deploy/vps/services/suite-manager/.env`: shared user-facing values reused across service env files
+- `deploy/vps/services/<service>/.env`: service-specific runtime settings for all deployable services
 
 Container versioning model:
 - `docker-compose.yml` should use `build` (not direct `image`) for repo-managed services.
@@ -122,25 +150,22 @@ DOMAIN=yourdomain.com   # Production
 All services automatically use the new domain:
 - Caddy routes: `homepage.{$DOMAIN}`, `seafile.{$DOMAIN}`, `onlyoffice.{$DOMAIN}`, `immich.{$DOMAIN}`, `radicale.{$DOMAIN}`, `stirling-pdf.{$DOMAIN}`, `vaultwarden.{$DOMAIN}`
 - Service URLs: `http://seafile.${DOMAIN}`, `http://onlyoffice.${DOMAIN}`, `http://immich.${DOMAIN}`, `http://radicale.${DOMAIN}`, `http://stirling-pdf.${DOMAIN}`, `http://vaultwarden.${DOMAIN}`
-- Homepage links: same URLs from `apps/homepage/.env`
+- Homepage links: same URLs from `services/homepage/.env`
 
 ## Adding a New App
 
-### 1. Create the app directory and .env.example
-Create `deploy/vps/apps/<app-name>/.env.example`:
+### 1. Create env templates
+Create a service-level template for runtime settings:
 
 ```env
-# <App Name> Configuration
-# Copy this file to .env and configure
-
-# App-specific settings only (no domain - that comes from root .env)
-ADMIN_TOKEN=
-SOME_SETTING=value
+# deploy/vps/services/<service-name>/.env.template
+# <Service Name> Configuration
+SERVICE_SETTING=value
 ```
 
 ### 2. Copy and configure the .env file
 ```bash
-cp apps/<app-name>/.env.example apps/<app-name>/.env
+cp services/<service-name>/.env.template services/<service-name>/.env
 ```
 
 ### 3. Add service to docker-compose.yml
@@ -155,7 +180,7 @@ cp apps/<app-name>/.env.example apps/<app-name>/.env
       - <app-name>
     env_file:
       - .env
-      - ./apps/<app-name>/.env
+      - ./services/<app-name>/.env
     environment:
       - DOMAIN=http://<app-name>.${DOMAIN}  # If app needs its URL
     volumes:
@@ -167,6 +192,7 @@ cp apps/<app-name>/.env.example apps/<app-name>/.env
 If the app needs multiple containers, add additional root-level Dockerfiles:
 - `apps/<app-name>/Dockerfile.<service>`
 - In compose use `build.dockerfile: Dockerfile.<service>`
+- Prefer `./services/<service-name>/.env` for service-specific env files
 
 Add the volume:
 ```yaml
@@ -182,7 +208,7 @@ http://<app-name>.{$DOMAIN} {
 ```
 
 ### 5. Add URL to Homepage
-Add to `deploy/vps/apps/homepage/.env`:
+Add to `deploy/vps/services/homepage/.env`:
 ```env
 <APP_NAME>_URL=http://<app-name>.${DOMAIN}
 ```

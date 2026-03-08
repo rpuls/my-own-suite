@@ -32,7 +32,7 @@ COPY config/ /app/config/
 
 # Copy simplified entrypoint
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 # Expose the default port
 EXPOSE 3000

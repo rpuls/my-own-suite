@@ -35,7 +35,7 @@ cd my-own-suite
 npm run vps:init
 ```
 
-`vps:init` now auto-generates required secrets from template expressions in `*.env.example`.
+`vps:init` now auto-generates required secrets from template expressions in `*.env.template`.
 You can still customize values in `deploy/vps/**/*.env` before startup.
 
 Then validate and start:
