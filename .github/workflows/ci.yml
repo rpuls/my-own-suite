@@ -69,17 +69,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare env files
-        shell: bash
-        run: |
-          cp deploy/vps/.env.example deploy/vps/.env
-          cp deploy/vps/apps/homepage/.env.example deploy/vps/apps/homepage/.env
-          cp deploy/vps/apps/seafile/.env.example deploy/vps/apps/seafile/.env
-          cp deploy/vps/apps/onlyoffice/.env.example deploy/vps/apps/onlyoffice/.env
-          cp deploy/vps/apps/immich/.env.example deploy/vps/apps/immich/.env
-          cp deploy/vps/apps/radicale/.env.example deploy/vps/apps/radicale/.env
-          cp deploy/vps/apps/stirling-pdf/.env.example deploy/vps/apps/stirling-pdf/.env
-          cp deploy/vps/apps/vaultwarden/.env.example deploy/vps/apps/vaultwarden/.env
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Render env files
+        run: node scripts/vps-init.cjs
+
+      - name: Validate rendered env files
+        run: node scripts/vps-doctor.cjs
 
       - name: Validate compose config
         run: docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps config -q
