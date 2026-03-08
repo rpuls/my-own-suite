@@ -74,3 +74,5 @@ npm run vps:rebuild
 ## Contributor Note
 
 For app integration work (especially "add a new app"), treat [deploy/vps/README.md](./deploy/vps/README.md) as the canonical step-by-step architecture guide.
+
+For day-to-day prototyping, use `staging` as the integration branch and reserve `main` for stable release-ready batches.

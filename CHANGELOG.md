@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Added
+
+- Added a minimal `apps/suite-manager` Node/TypeScript service that exposes a status endpoint and logs periodic Homepage health checks, providing a concrete deployment target for future shared bootstrap and monitoring work.
+
+### Changed
+
+- Documented a `staging` integration branch workflow so feature branches can be tested and batched before promotion to `main` releases.
+
 ## [0.2.0] - 2026-03-08
 
 ### Added
