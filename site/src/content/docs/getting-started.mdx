@@ -19,46 +19,47 @@ git clone https://github.com/rpuls/my-own-suite.git
 cd my-own-suite
 ```
 
-## 2. Create local env files
-
-From `deploy/vps`:
+## 2. Initialize env files
 
 ```bash
-cp apps/homepage/.env.example apps/homepage/.env
-cp apps/seafile/.env.example apps/seafile/.env
-cp apps/onlyoffice/.env.example apps/onlyoffice/.env
-cp apps/immich/.env.example apps/immich/.env
-cp apps/radicale/.env.example apps/radicale/.env
-cp apps/stirling-pdf/.env.example apps/stirling-pdf/.env
-cp apps/vaultwarden/.env.example apps/vaultwarden/.env
+npm run vps:init
 ```
 
-If you are on PowerShell, use `Copy-Item` instead of `cp`.
+This creates missing `.env` files from `deploy/vps/**/*.env.example` without overwriting existing values.
 
-Required values to set before first run:
+## 3. Optional customization
 
-- `deploy/vps/apps/seafile/.env`
-  - `MYSQL_ROOT_PASSWORD`
-  - `DB_ROOT_PASSWD`
-  - `SEAFILE_ADMIN_EMAIL`
-  - `SEAFILE_ADMIN_PASSWORD`
-  - `SEAFILE_SERVER_HOSTNAME` (for local: `seafile.localhost`)
+`vps:init` auto-generates required secrets from template expressions in `*.env.example`.
 
-## 3. Build and run everything
+If you want to change defaults (email, domain, tokens, passwords), edit files in `deploy/vps/**/*.env`.
 
-From repo root:
+## 4. Run environment checks
+
+```bash
+npm run vps:doctor
+```
+
+This validates required variables and cross-file wiring (including the Radicale token used by Homepage).
+
+## 5. Build and run the stack
+
+```bash
+npm run vps:up
+```
+
+Use this instead of `vps:rebuild` for normal startup.
+
+If you need a full destructive reset (removes Docker volumes/data):
 
 ```bash
 npm run vps:rebuild
 ```
 
-This command fully resets and rebuilds the stack (it removes Docker volumes/data).
-
-## 4. Open the apps
+## 6. Open the apps
 
 - Homepage: `http://homepage.localhost/`
 
-From Homepage you can open any application, dashboard style. Each app can also be found on its dedicated URL:
+From Homepage you can open each application. Direct URLs:
 
 - Seafile: `http://seafile.localhost/`
 - ONLYOFFICE: `http://onlyoffice.localhost/`

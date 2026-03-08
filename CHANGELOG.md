@@ -6,6 +6,24 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-08
+
+### Added
+
+- New root scripts for safer VPS onboarding:
+  - `npm run vps:init` to create missing `deploy/vps/**/*.env` files from `.env.example` templates without overwriting existing values.
+  - `npm run vps:doctor` to validate required env vars and cross-file configuration checks before startup.
+  - `npm run vps:up` to run a non-destructive full stack startup flow (`init` + `doctor` + compose up).
+- `vps:init` now renders template expressions in `.env.example`, including:
+  - `secret(length[, alphabet])`
+  - `secret(name, length[, alphabet])` for shared generated values across files
+  - `base64(text)` for derived values (for example `username:password` auth headers)
+
+### Changed
+
+- Updated VPS onboarding documentation to use the new `vps:init -> vps:doctor -> vps:up` flow and keep `vps:rebuild` as an explicit destructive reset command.
+- Updated app `.env.example` templates to support generated shared secrets and derived values during first-time setup.
+
 ## [0.1.0] - 2026-03-04
 
 First official release of My Own Suite.

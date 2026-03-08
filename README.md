@@ -23,32 +23,37 @@
 ### Who It's For
 
 - Individuals, families, freelancers exiting Big Tech SaaS
-- Users who want **one-click privacy** without sysadmin complexity
+- Users who want one-click privacy without sysadmin complexity
 - Privacy enthusiasts ready for VPS or homelab upgrades
 - Developers seeking production-ready self-hosted stacks
 
-## 🚀 Quick Start
-
-### 1️⃣ **Easiest: Railway (Coming Soon)**
-
 ## Quick Start (Local VPS Stack)
 
-One-click deploy → fully automated stack
-
-### 2️⃣ **VPS/Local**
 ```bash
 git clone https://github.com/rpuls/my-own-suite.git
 cd my-own-suite
+npm run vps:init
+```
+
+`vps:init` now auto-generates required secrets from template expressions in `*.env.example`.
+You can still customize values in `deploy/vps/**/*.env` before startup.
+
+Then validate and start:
+
+```bash
+npm run vps:doctor
+npm run vps:up
+```
+
+If you need a full destructive reset (removes volumes and data):
+
+```bash
 npm run vps:rebuild
 ```
 
-### 3️⃣ Dockploy
-
-Work in progress...
-
 ---
 
-## 📁 Navigation
+## Navigation
 
 | Need | Go here |
 | --- | --- |

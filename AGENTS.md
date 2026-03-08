@@ -43,7 +43,7 @@ No duplicated content across these two sources.
 ## Single Source of Truth
 
 - Technical specs must be authored in app README files only.
-- App MDX pages must embed the matching README under a `Technical specs` section.
+- App MDX pages must embed the matching README under a `References` section.
 - If technical content appears in MDX body text, move it to README.
 - If descriptive/end-user content appears in README, move it to MDX.
 
@@ -65,7 +65,7 @@ Do not include:
 - Container/runtime internals
 - Deployment command runbooks
 - Troubleshooting runbooks for operators
-- Duplicated "technical reference" title text
+- Duplicated `References` title text
 - Low-value filler sections (e.g. weak "Other relevant info")
 
 ### README (`apps/*/README.md`) is for maintainers/developers
@@ -92,7 +92,7 @@ Use this structure:
 
 1. Frontmatter + app logo marker div
 2. Description text (no `Application description` heading)
-3. `### Technical specs`
+3. `### References`
 4. Embedded README content via import/render
 5. `## Links`
 
@@ -111,7 +111,7 @@ import * as TechSpecs from '../../../../../apps/example/README.md';
 
 Example app helps users do X and Y in plain language.
 
-### Technical specs
+### References
 
 <div className="tech-specs">
   <TechSpecs.Content />
@@ -133,11 +133,11 @@ Example app helps users do X and Y in plain language.
 ## Quality Checklist (Before Finalizing)
 
 For each app page:
-- MDX contains only end-user content + links + embedded technical specs.
+- MDX contains only end-user content + links + embedded references.
 - README contains only technical/maintenance content.
 - No duplicated sentence appears in both MDX and README unless absolutely necessary.
 - No empty sections.
-- No redundant titles like "`<App> Technical Reference`" in embedded content.
+- No redundant titles like "`<App> References`" in embedded content.
 
 ## Editing Policy
 

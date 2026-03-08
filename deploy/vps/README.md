@@ -5,23 +5,30 @@
 ### Quick commands from repo root
 
 ```bash
-# Full reset + rebuild of the entire VPS stack (destructive: removes volumes/data)
+# 1) Create any missing env files from .env.example templates
+npm run vps:init
+
+# 2) Optional: customize values in deploy/vps/**/*.env
+#    (required secrets are auto-generated during vps:init)
+
+# 3) Validate required values and cross-file wiring
+npm run vps:doctor
+
+# 4) Build and start the full stack (non-destructive)
+npm run vps:up
+```
+
+Need a full destructive reset (removes volumes and data)?
+
+```bash
 npm run vps:rebuild
 ```
+
+Manual compose commands (advanced):
 
 ```bash
 # Navigate to deploy/vps
 cd deploy/vps
-
-# Copy example env files to .env (required before first run)
-cp .env.example .env
-cp apps/homepage/.env.example apps/homepage/.env
-cp apps/seafile/.env.example apps/seafile/.env
-cp apps/onlyoffice/.env.example apps/onlyoffice/.env
-cp apps/immich/.env.example apps/immich/.env
-cp apps/radicale/.env.example apps/radicale/.env
-cp apps/stirling-pdf/.env.example apps/stirling-pdf/.env
-cp apps/vaultwarden/.env.example apps/vaultwarden/.env
 
 # Start core services (homepage + caddy)
 docker compose up -d
