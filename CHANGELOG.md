@@ -23,6 +23,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 - Updated VPS onboarding documentation to use the new `vps:init -> vps:doctor -> vps:up` flow and keep `vps:rebuild` as an explicit destructive reset command.
 - Updated app `.env.example` templates to support generated shared secrets and derived values during first-time setup.
+- Updated CI compose validation to render and verify VPS env files before running `docker compose config`.
 
 ## [0.1.0] - 2026-03-04
 
