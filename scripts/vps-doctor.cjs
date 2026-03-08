@@ -49,16 +49,36 @@ function isPlaceholder(value) {
   return /^(CHANGE_ME|REPLACE_ME)/.test(value) || value.includes('${{');
 }
 
-const files = {
+const GLOBAL_FILES = {
   root: '.env',
-  homepage: 'apps/homepage/.env',
-  seafile: 'apps/seafile/.env',
-  onlyoffice: 'apps/onlyoffice/.env',
-  immich: 'apps/immich/.env',
-  radicale: 'apps/radicale/.env',
-  stirlingPdf: 'apps/stirling-pdf/.env',
-  vaultwarden: 'apps/vaultwarden/.env',
+  suiteManager: 'services/suite-manager/.env',
 };
+
+const APP_FILES = {};
+
+const SERVICE_FILES = {
+  homepage: 'services/homepage/.env',
+  onlyoffice: 'services/onlyoffice/.env',
+  radicale: 'services/radicale/.env',
+  stirlingPdf: 'services/stirling-pdf/.env',
+  seafile: 'services/seafile/.env',
+  seafileMysql: 'services/seafile-mysql/.env',
+  seafileMemcached: 'services/seafile-memcached/.env',
+  immich: 'services/immich/.env',
+  immichMachineLearning: 'services/immich-machine-learning/.env',
+  immichPostgres: 'services/immich-postgres/.env',
+  immichValkey: 'services/immich-valkey/.env',
+  vaultwarden: 'services/vaultwarden/.env',
+  vaultwardenPostgres: 'services/vaultwarden-postgres/.env',
+};
+const files = { ...GLOBAL_FILES, ...APP_FILES, ...SERVICE_FILES };
+const TIMEZONE_CHECKS = [
+  ['seafile', 'TIME_ZONE'],
+  ['immich', 'TZ'],
+  ['immichMachineLearning', 'TZ'],
+  ['onlyoffice', 'TZ'],
+  ['stirlingPdf', 'TZ'],
+];
 
 const env = {};
 const missingFiles = [];
@@ -93,15 +113,45 @@ function requireVar(fileName, key, opts = {}) {
   }
 }
 
+function warnIfTimezoneDiffersFromSuiteManager(fileName, key) {
+  if (!env.suiteManager || !env[fileName]) {
+    return;
+  }
+
+  const sharedTimezone = env.suiteManager.TIMEZONE || '';
+  const serviceTimezone = env[fileName][key] || '';
+
+  if (!isMissing(sharedTimezone) && serviceTimezone !== sharedTimezone) {
+    warnings.push(`${files[fileName]} ${key} differs from suite-manager TIMEZONE.`);
+  }
+}
+
 if (env.root) {
   requireVar('root', 'DOMAIN', { allowPlaceholder: false });
 }
 
+if (env.suiteManager) {
+  requireVar('suiteManager', 'OWNER_EMAIL', { allowPlaceholder: false });
+  requireVar('suiteManager', 'TIMEZONE', { allowPlaceholder: false });
+}
+
 if (env.seafile) {
-  requireVar('seafile', 'MYSQL_ROOT_PASSWORD', { allowPlaceholder: false });
   requireVar('seafile', 'DB_ROOT_PASSWD', { allowPlaceholder: false });
   requireVar('seafile', 'SEAFILE_ADMIN_EMAIL', { allowPlaceholder: false });
   requireVar('seafile', 'SEAFILE_ADMIN_PASSWORD', { allowPlaceholder: false });
+}
+
+if (env.seafileMysql) {
+  requireVar('seafileMysql', 'MYSQL_ROOT_PASSWORD', { allowPlaceholder: false });
+}
+
+if (env.seafile && env.seafileMysql) {
+  const mysqlRootPassword = env.seafileMysql.MYSQL_ROOT_PASSWORD || '';
+  const dbRootPassword = env.seafile.DB_ROOT_PASSWD || '';
+
+  if (!isMissing(mysqlRootPassword) && mysqlRootPassword !== dbRootPassword) {
+    errors.push('Seafile MYSQL_ROOT_PASSWORD and DB_ROOT_PASSWD must match for first-run bootstrap.');
+  }
 }
 
 if (env.radicale) {
@@ -117,19 +167,61 @@ if (env.homepage) {
 
 if (env.vaultwarden) {
   requireVar('vaultwarden', 'ADMIN_TOKEN', { allowPlaceholder: false });
+  requireVar('vaultwarden', 'DATABASE_URL', { allowPlaceholder: false });
+}
+
+if (env.vaultwardenPostgres) {
+  requireVar('vaultwardenPostgres', 'POSTGRES_USER', { allowPlaceholder: false });
+  requireVar('vaultwardenPostgres', 'POSTGRES_PASSWORD', { allowPlaceholder: false });
+  requireVar('vaultwardenPostgres', 'POSTGRES_DB', { allowPlaceholder: false });
+}
+
+if (env.vaultwarden && env.vaultwardenPostgres) {
+  const databaseUrl = env.vaultwarden.DATABASE_URL || '';
+  const pgUser = env.vaultwardenPostgres.POSTGRES_USER || '';
+  const pgPassword = env.vaultwardenPostgres.POSTGRES_PASSWORD || '';
+  const pgDb = env.vaultwardenPostgres.POSTGRES_DB || '';
+
+  const expectedParts = [
+    `${pgUser}:`,
+    `:${pgPassword}@vaultwarden-postgres:5432/`,
+    `/${pgDb}`,
+  ];
+
+  for (const part of expectedParts) {
+    if (!isMissing(part) && !databaseUrl.includes(part)) {
+      warnings.push('Vaultwarden DATABASE_URL differs from vaultwarden-postgres credentials.');
+      break;
+    }
+  }
 }
 
 if (env.immich) {
   requireVar('immich', 'DB_PASSWORD', { allowPlaceholder: false });
-  requireVar('immich', 'POSTGRES_PASSWORD', { allowPlaceholder: false });
+  requireVar('immich', 'DB_USERNAME', { allowPlaceholder: false });
+  requireVar('immich', 'DB_DATABASE_NAME', { allowPlaceholder: false });
+}
 
+if (env.immichPostgres) {
+  requireVar('immichPostgres', 'POSTGRES_USER', { allowPlaceholder: false });
+  requireVar('immichPostgres', 'POSTGRES_PASSWORD', { allowPlaceholder: false });
+  requireVar('immichPostgres', 'POSTGRES_DB', { allowPlaceholder: false });
+}
+
+if (env.immich && env.immichPostgres) {
   const dbUsername = env.immich.DB_USERNAME || '';
-  const pgUser = env.immich.POSTGRES_USER || '';
+  const pgUser = env.immichPostgres.POSTGRES_USER || '';
   const dbPassword = env.immich.DB_PASSWORD || '';
-  const pgPassword = env.immich.POSTGRES_PASSWORD || '';
+  const pgPassword = env.immichPostgres.POSTGRES_PASSWORD || '';
+  const dbName = env.immich.DB_DATABASE_NAME || '';
+  const pgDb = env.immichPostgres.POSTGRES_DB || '';
 
   if (dbUsername === pgUser && dbPassword !== pgPassword) {
     warnings.push('Immich DB_PASSWORD and POSTGRES_PASSWORD differ while DB_USERNAME matches POSTGRES_USER.');
+  }
+
+  if (dbName !== pgDb) {
+    warnings.push('Immich DB_DATABASE_NAME differs from immich-postgres POSTGRES_DB.');
   }
 }
 
@@ -151,6 +243,18 @@ if (env.homepage && env.radicale) {
       errors.push('RADICALE_ICAL_URL must include RADICALE_ICAL_TOKEN (or ${RADICALE_ICAL_TOKEN}) for Homepage calendar bridge.');
     }
   }
+}
+
+if (env.suiteManager && env.seafile) {
+  const sharedEmail = env.suiteManager.OWNER_EMAIL || '';
+
+  if (!isMissing(sharedEmail) && env.seafile.SEAFILE_ADMIN_EMAIL !== sharedEmail) {
+    warnings.push('Seafile SEAFILE_ADMIN_EMAIL differs from suite-manager OWNER_EMAIL.');
+  }
+}
+
+for (const [fileName, timezoneKey] of TIMEZONE_CHECKS) {
+  warnIfTimezoneDiffersFromSuiteManager(fileName, timezoneKey);
 }
 
 if (warnings.length > 0) {

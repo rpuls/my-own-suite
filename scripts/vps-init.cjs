@@ -7,19 +7,25 @@ const crypto = require('node:crypto');
 const rootDir = process.cwd();
 const vpsDir = path.join(rootDir, 'deploy', 'vps');
 const URL_SAFE_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_';
+const TEMPLATE_EXTENSIONS = ['.env.template'];
+const GLOBAL_TEMPLATE_FILES = new Set([
+  '.env.template',
+  'services/suite-manager/.env.template',
+]);
+const GLOBAL_TARGET_FILES = new Set(['.env', 'services/suite-manager/.env']);
 
-function collectEnvExamples(dir) {
+function collectEnvTemplates(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   let files = [];
 
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      files = files.concat(collectEnvExamples(fullPath));
+      files = files.concat(collectEnvTemplates(fullPath));
       continue;
     }
 
-    if (entry.isFile() && entry.name.endsWith('.env.example')) {
+    if (entry.isFile() && TEMPLATE_EXTENSIONS.some((extension) => entry.name.endsWith(extension))) {
       files.push(fullPath);
     }
   }
@@ -90,13 +96,60 @@ function splitArgs(raw) {
   return args;
 }
 
-function resolveLocalRefs(value, localVars) {
+function resolveRefs(value, vars) {
   return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (full, key) => {
-    if (Object.prototype.hasOwnProperty.call(localVars, key)) {
-      return localVars[key];
+    if (Object.prototype.hasOwnProperty.call(vars, key)) {
+      return vars[key];
     }
     return full;
   });
+}
+
+function readEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+
+  const map = {};
+  const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      continue;
+    }
+
+    const idx = line.indexOf('=');
+    if (idx < 1) {
+      continue;
+    }
+
+    const key = line.slice(0, idx).trim();
+    let value = line.slice(idx + 1).trim();
+
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    map[key] = value;
+  }
+
+  return map;
+}
+
+function getTemplateTargetPath(sourceRelPath) {
+  return sourceRelPath.replace(/\.env\.template$/, '.env');
+}
+
+function isGlobalTemplate(sourceRelPath) {
+  return GLOBAL_TEMPLATE_FILES.has(sourceRelPath);
+}
+
+function isGlobalTarget(targetRelPath) {
+  return GLOBAL_TARGET_FILES.has(targetRelPath);
 }
 
 function evalSecret(rawArgs, sharedSecrets) {
@@ -136,17 +189,64 @@ function evalSecret(rawArgs, sharedSecrets) {
   return randomFromAlphabet(length, alphabet);
 }
 
-function evalBase64(rawArgs, localVars) {
+function evalBase64(rawArgs, localVars, sharedVars) {
   const args = splitArgs(rawArgs);
   if (args.length !== 1) {
     throw new Error(`base64(text) requires exactly 1 argument. Got: ${rawArgs}`);
   }
 
-  const resolved = resolveLocalRefs(args[0], localVars);
+  const resolved = resolveRefs(args[0], { ...sharedVars, ...localVars });
   return Buffer.from(resolved, 'utf8').toString('base64');
 }
 
-function evaluateExpression(expr, localVars, sharedSecrets) {
+function evalShared(rawArgs, sharedVars) {
+  const args = splitArgs(rawArgs);
+  if (args.length !== 1) {
+    throw new Error(`shared(name) requires exactly 1 argument. Got: ${rawArgs}`);
+  }
+
+  const key = args[0];
+  if (!Object.prototype.hasOwnProperty.call(sharedVars, key)) {
+    throw new Error(`shared(${key}) is not defined yet`);
+  }
+
+  return sharedVars[key];
+}
+
+function evalUrl(rawArgs, sharedVars) {
+  const args = splitArgs(rawArgs);
+  if (args.length < 1 || args.length > 2) {
+    throw new Error(`url(service[, protocol]) requires 1 or 2 arguments. Got: ${rawArgs}`);
+  }
+
+  const service = args[0];
+  const protocol = args[1] || 'http';
+  const domain = sharedVars.DOMAIN;
+
+  if (!domain) {
+    throw new Error('url(...) requires shared DOMAIN to be defined first');
+  }
+
+  return `${protocol}://${service}.${domain}`;
+}
+
+function evalHost(rawArgs, sharedVars) {
+  const args = splitArgs(rawArgs);
+  if (args.length !== 1) {
+    throw new Error(`host(service) requires exactly 1 argument. Got: ${rawArgs}`);
+  }
+
+  const service = args[0];
+  const domain = sharedVars.DOMAIN;
+
+  if (!domain) {
+    throw new Error('host(...) requires shared DOMAIN to be defined first');
+  }
+
+  return `${service}.${domain}`;
+}
+
+function evaluateExpression(expr, localVars, sharedVars, sharedSecrets) {
   const match = expr.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\((.*)\)$/);
   if (!match) {
     throw new Error(`Invalid template expression: ${expr}`);
@@ -160,21 +260,33 @@ function evaluateExpression(expr, localVars, sharedSecrets) {
   }
 
   if (fn === 'base64') {
-    return evalBase64(args, localVars);
+    return evalBase64(args, localVars, sharedVars);
+  }
+
+  if (fn === 'shared') {
+    return evalShared(args, sharedVars);
+  }
+
+  if (fn === 'url') {
+    return evalUrl(args, sharedVars);
+  }
+
+  if (fn === 'host') {
+    return evalHost(args, sharedVars);
   }
 
   throw new Error(`Unsupported template function: ${fn}`);
 }
 
-function renderTemplate(value, localVars, sharedSecrets) {
+function renderTemplate(value, localVars, sharedVars, sharedSecrets) {
   return value.replace(/\$\{\{\s*([\s\S]*?)\s*\}\}/g, (_full, expr) => {
-    return evaluateExpression(expr, localVars, sharedSecrets);
+    return evaluateExpression(expr, localVars, sharedVars, sharedSecrets);
   });
 }
 
-function renderEnvFile(rawContent, sharedSecrets) {
+function renderEnvFile(rawContent, sharedVars, sharedSecrets, seedVars = {}) {
   const lines = rawContent.split(/\r?\n/);
-  const localVars = {};
+  const localVars = { ...seedVars };
   const out = [];
 
   for (const line of lines) {
@@ -188,30 +300,38 @@ function renderEnvFile(rawContent, sharedSecrets) {
 
     const key = line.slice(0, idx).trim();
     const value = line.slice(idx + 1);
-    const rendered = renderTemplate(value, localVars, sharedSecrets);
+    const rendered = Object.prototype.hasOwnProperty.call(seedVars, key)
+      ? seedVars[key]
+      : renderTemplate(value, localVars, sharedVars, sharedSecrets);
 
     localVars[key] = rendered;
     out.push(`${key}=${rendered}`);
   }
 
-  return out.join('\n');
+  return {
+    rendered: out.join('\n'),
+    localVars,
+  };
 }
 
-const sourceFiles = collectEnvExamples(vpsDir)
+const sourceFiles = collectEnvTemplates(vpsDir)
   .map((file) => path.relative(vpsDir, file).replace(/\\/g, '/'))
   .sort((a, b) => {
-    if (a === '.env.example') return -1;
-    if (b === '.env.example') return 1;
+    if (a === '.env.template') return -1;
+    if (b === '.env.template') return 1;
+    if (a === 'services/suite-manager/.env.template') return -1;
+    if (b === 'services/suite-manager/.env.template') return 1;
     return a.localeCompare(b);
   });
 
 let createdCount = 0;
 let skippedCount = 0;
 let errorCount = 0;
+const sharedVars = {};
 const sharedSecrets = {};
 
 for (const sourceRelPath of sourceFiles) {
-  const targetRelPath = sourceRelPath.replace(/\.example$/, '');
+  const targetRelPath = getTemplateTargetPath(sourceRelPath);
   const sourcePath = path.join(vpsDir, sourceRelPath);
   const targetPath = path.join(vpsDir, targetRelPath);
 
@@ -222,6 +342,12 @@ for (const sourceRelPath of sourceFiles) {
   }
 
   if (fs.existsSync(targetPath)) {
+    if (isGlobalTemplate(sourceRelPath) || isGlobalTarget(targetRelPath)) {
+      const existingVars = readEnvFile(targetPath);
+      if (existingVars) {
+        Object.assign(sharedVars, existingVars);
+      }
+    }
     skippedCount += 1;
     console.log(`Exists, skipped: deploy/vps/${targetRelPath}`);
     continue;
@@ -229,10 +355,14 @@ for (const sourceRelPath of sourceFiles) {
 
   try {
     const rawSource = fs.readFileSync(sourcePath, 'utf8');
-    const rendered = renderEnvFile(rawSource, sharedSecrets);
+    const { rendered, localVars } = renderEnvFile(rawSource, sharedVars, sharedSecrets);
 
     if (rendered.includes('${{')) {
       throw new Error(`Unresolved template expression in ${sourceRelPath}`);
+    }
+
+    if (isGlobalTemplate(sourceRelPath) || isGlobalTarget(targetRelPath)) {
+      Object.assign(sharedVars, localVars);
     }
 
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });

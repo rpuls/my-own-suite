@@ -35,7 +35,7 @@ cd my-own-suite
 npm run vps:init
 ```
 
-`vps:init` now auto-generates required secrets from template expressions in `*.env.example`.
+`vps:init` now auto-generates required secrets from template expressions in `*.env.template`.
 You can still customize values in `deploy/vps/**/*.env` before startup.
 
 Then validate and start:
@@ -74,3 +74,5 @@ npm run vps:rebuild
 ## Contributor Note
 
 For app integration work (especially "add a new app"), treat [deploy/vps/README.md](./deploy/vps/README.md) as the canonical step-by-step architecture guide.
+
+For day-to-day prototyping, use `staging` as the integration branch and reserve `main` for stable release-ready batches.

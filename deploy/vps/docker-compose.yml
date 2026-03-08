@@ -3,7 +3,8 @@
 # ===========================================
 # Architecture:
 # - Root .env: DOMAIN variable (shared across all services)
-# - apps/<app>/.env: App-specific settings (tokens, flags)
+# - services/suite-manager/.env: Shared user-facing settings
+# - services/<service>/.env: Service-specific settings
 # ===========================================
 
 services:
@@ -18,7 +19,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-      - ./apps/radicale/.env
+      - ./services/radicale/.env
     ports:
       - "80:80"
       - "443:443"
@@ -42,7 +43,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-      - ./apps/homepage/.env
+      - ./services/homepage/.env
     volumes:
       - homepage_images:/app/public/images
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -62,7 +63,7 @@ services:
       - vaultwarden
     env_file:
       - .env
-      - ./apps/vaultwarden/.env
+      - ./services/vaultwarden/.env
     environment:
       - DOMAIN=http://vaultwarden.${DOMAIN}
     volumes:
@@ -81,7 +82,7 @@ services:
     profiles:
       - vaultwarden
     env_file:
-      - ./apps/vaultwarden/.env
+      - ./services/vaultwarden-postgres/.env
     volumes:
       - vaultwarden_postgres_data:/var/lib/postgresql/data
     networks:
@@ -108,7 +109,7 @@ services:
     command:
       - --default-authentication-plugin=mysql_native_password
     env_file:
-      - ./apps/seafile/.env
+      - ./services/seafile-mysql/.env
     environment:
       - MYSQL_LOG_CONSOLE=true
     volumes:
@@ -124,6 +125,8 @@ services:
     restart: unless-stopped
     profiles:
       - seafile
+    env_file:
+      - ./services/seafile-memcached/.env
     networks:
       mos-network:
         aliases:
@@ -139,7 +142,7 @@ services:
       - seafile
     env_file:
       - .env
-      - ./apps/seafile/.env
+      - ./services/seafile/.env
     environment:
       - SEAFILE_SERVER_HOSTNAME=seafile.${DOMAIN}
       - MEMCACHED_SERVER=${MEMCACHED_SERVER:-memcached:11211}
@@ -165,7 +168,7 @@ services:
       - onlyoffice
     env_file:
       - .env
-      - ./apps/onlyoffice/.env
+      - ./services/onlyoffice/.env
     volumes:
       - onlyoffice_data:/var/www/onlyoffice/Data
     networks:
@@ -184,7 +187,7 @@ services:
       - stirling-pdf
     env_file:
       - .env
-      - ./apps/stirling-pdf/.env
+      - ./services/stirling-pdf/.env
     volumes:
       - stirling_pdf_training_data:/usr/share/tessdata
       - stirling_pdf_extra_configs:/configs
@@ -207,7 +210,7 @@ services:
       - radicale
     env_file:
       - .env
-      - ./apps/radicale/.env
+      - ./services/radicale/.env
     volumes:
       - radicale_data:/data
     networks:
@@ -226,7 +229,7 @@ services:
       - immich
     env_file:
       - .env
-      - ./apps/immich/.env
+      - ./services/immich/.env
     volumes:
       - immich_upload:/usr/src/app/upload
       - /etc/localtime:/etc/localtime:ro
@@ -256,7 +259,7 @@ services:
     profiles:
       - immich
     env_file:
-      - ./apps/immich/.env
+      - ./services/immich-machine-learning/.env
     volumes:
       - immich_model_cache:/cache
       - /etc/localtime:/etc/localtime:ro
@@ -271,6 +274,8 @@ services:
     restart: unless-stopped
     profiles:
       - immich
+    env_file:
+      - ./services/immich-valkey/.env
     networks:
       - mos-network
     healthcheck:
@@ -290,7 +295,7 @@ services:
     profiles:
       - immich
     env_file:
-      - ./apps/immich/.env
+      - ./services/immich-postgres/.env
     environment:
       - POSTGRES_INITDB_ARGS=--data-checksums
     command: >-

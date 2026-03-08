@@ -5,8 +5,22 @@ This document defines the official release workflow for this repository.
 ## Goals
 
 - Keep releases predictable and safe.
+- Keep rapid prototyping separate from stable releases.
 - Preserve cross-platform compatibility contracts already present in this repo.
 - Make upgrades easy for users and maintainers.
+
+## Branch Model
+
+- `feat/*`, `fix/*`, `docs/*`, `chore/*`: short-lived working branches.
+- `staging`: integration branch for fast testing on deployment platforms and bundled feature validation.
+- `main`: stable, release-grade branch used for published releases and production-ready templates.
+
+Default flow:
+
+1. Build the change on a short-lived branch.
+2. Merge it into `staging` for integration testing.
+3. Batch validated `staging` changes into a release branch.
+4. Merge the release branch into `main`.
 
 ## Versioning
 
@@ -22,7 +36,7 @@ Treat these as stable API unless intentionally released as a major version:
 
 - Dockerfile paths used by deploy templates.
 - Docker Compose profile names and service names.
-- Env var names in `deploy/vps/apps/*/.env.example`.
+- Env var names in `deploy/vps/.env.template` and `deploy/vps/services/*/.env.template`.
 - Persistent volume semantics/locations.
 - App URL patterns/subdomain expectations.
 
@@ -72,8 +86,8 @@ Version bump guidance:
 
 ## Standard Release Workflow
 
-1. Ensure `main` is green (CI passing).
-2. Create release branch from `main`:
+1. Ensure `staging` is green (CI passing) and contains the batch you want to release.
+2. Create release branch from `staging`:
    - `release/vX.Y.Z`
 3. Update `CHANGELOG.md`:
    - Sections: `Added`, `Changed`, `Fixed`, `Breaking` (if any).
@@ -82,10 +96,11 @@ Version bump guidance:
    - compose config validation
    - shell script lint parity with CI expectations
 5. Merge release branch into `main`.
-6. Create and push tag:
+6. Merge or fast-forward `main` back into `staging` if needed to keep branches aligned after release-only edits.
+7. Create and push tag:
    - `git tag vX.Y.Z`
    - `git push origin vX.Y.Z`
-7. Publish GitHub Release from tag `vX.Y.Z` with:
+8. Publish GitHub Release from tag `vX.Y.Z` with:
    - summary
    - upgrade steps
    - breaking changes (if any)
