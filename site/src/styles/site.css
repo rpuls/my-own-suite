@@ -1,36 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;900&display=swap');
-
-:root {
-  --bg: #061526;
-  --bg-soft: #0b2138;
-  --surface: rgba(255, 255, 255, 0.06);
-  --surface-border: rgba(255, 255, 255, 0.18);
-  --text: #eef4ff;
-  --muted: #b8c9de;
-  --accent: #63e2b3;
-  --accent-strong: #28bc84;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html,
-body {
-  margin: 0;
-  padding: 0;
-}
-
-body {
-  font-family: 'Open Sans', 'Segoe UI', sans-serif;
-  color: var(--text);
-  background:
-    radial-gradient(circle at 18% 12%, rgba(99, 226, 179, 0.2), transparent 38%),
-    radial-gradient(circle at 85% 0%, rgba(86, 188, 246, 0.16), transparent 34%),
-    linear-gradient(155deg, var(--bg), var(--bg-soft));
-  line-height: 1.6;
-  min-height: 100vh;
-}
+@import '../../../apps/suite-manager/frontend/src/styles/mos.css';
 
 .container {
   width: min(800px, 92vw);
@@ -293,9 +261,8 @@ summary:focus-visible {
 }
 
 .footer-link-disabled {
-  color: var(--muted);
-  font-size: 0.92rem;
   color: rgba(184, 201, 222, 0.72);
+  font-size: 0.92rem;
   cursor: not-allowed;
   position: relative;
   user-select: none;

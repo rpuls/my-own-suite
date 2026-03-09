@@ -6,6 +6,18 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Added
+
+- Added a real `suite-manager` onboarding surface for VPS/local deployments, including a Homepage `Finish Setup` entry, persistent onboarding state, a React/Vite frontend, and a lightweight Hono-based service scaffold for future suite-management features.
+- Added guided first-run access onboarding around Vaultwarden, including automatic account detection, a visible step-stack UI, and an assisted credential handoff flow for generated Seafile and Radicale accounts.
+- Added shared MOS styling reuse between the Astro site and `suite-manager`, plus lightweight SVG onboarding status icons using `lucide-react`.
+
+### Changed
+
+- Added shared `suite-manager` onboarding env inputs (`OWNER_NAME`, `BOOTSTRAP_TOKEN`, `SUITE_MANAGER_PUBLIC_URL`, `SUITE_MANAGER_STATE_DIR`) and expanded the suite-manager runtime env surface to consume existing Vaultwarden, Seafile, and Radicale bootstrap data.
+- Changed local/VPS Vaultwarden routing so it now uses HTTPS and advertises an HTTPS public URL, which is required for the web signup flow to work correctly.
+- Updated setup and VPS docs to reflect the new onboarding-first flow and local Vaultwarden HTTPS behavior.
+
 ## [0.3.0] - 2026-03-09
 
 ### Added

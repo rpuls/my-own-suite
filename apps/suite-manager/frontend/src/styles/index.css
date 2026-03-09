@@ -1,0 +1,316 @@
+@import './mos.css';
+
+.suite-app {
+  padding: clamp(2rem, 5vw, 3.8rem) 0 3rem;
+}
+
+.suite-hero {
+  padding-bottom: 1.5rem;
+}
+
+.suite-hero h1 {
+  margin: 0.2rem 0 0;
+  font-size: clamp(2.4rem, 7vw, 4.4rem);
+  line-height: 1.02;
+}
+
+.suite-lead {
+  max-width: 52rem;
+  margin: 0.9rem 0 0;
+  color: var(--muted);
+  font-size: clamp(1.02rem, 2vw, 1.18rem);
+}
+
+.suite-grid {
+  display: block;
+}
+
+.suite-steps {
+  display: grid;
+  gap: 0.95rem;
+  max-width: 860px;
+  margin: 0 auto 1rem;
+}
+
+.suite-step-card {
+  border: 1px solid var(--surface-border);
+  border-radius: 1.3rem;
+  background: var(--surface);
+  overflow: hidden;
+  transition:
+    border-color 220ms ease,
+    transform 220ms ease,
+    background 220ms ease;
+}
+
+.suite-step-card.is-active {
+  border-color: rgba(99, 226, 179, 0.4);
+  background: linear-gradient(180deg, rgba(99, 226, 179, 0.08), rgba(6, 21, 38, 0.94));
+}
+
+.suite-step-card.is-completed {
+  background: rgba(6, 21, 38, 0.88);
+}
+
+.suite-step-card.is-locked {
+  opacity: 0.75;
+}
+
+.suite-step-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.15rem 1.2rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.suite-step-header:disabled {
+  cursor: not-allowed;
+}
+
+.suite-step-heading h2 {
+  margin: 0;
+  font-size: 1.08rem;
+}
+
+.suite-step-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  border-radius: 999px;
+  padding: 0.24rem 0.68rem;
+  border: 1px solid var(--surface-border);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.suite-step-status.is-active {
+  border-color: rgba(99, 226, 179, 0.4);
+  color: var(--text);
+}
+
+.suite-step-status.is-completed {
+  border-color: rgba(99, 226, 179, 0.2);
+}
+
+.suite-step-status-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex: 0 0 auto;
+  stroke-width: 2.1;
+}
+
+.suite-step-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition:
+    grid-template-rows 260ms ease,
+    opacity 220ms ease,
+    padding 220ms ease;
+  opacity: 0;
+}
+
+.suite-step-body-inner {
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 1.2rem 0;
+}
+
+.suite-step-card.is-expanded .suite-step-body {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.suite-step-card.is-expanded .suite-step-body-inner {
+  padding: 0 1.2rem 1.2rem;
+}
+
+.suite-card {
+  padding: 1.2rem;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.suite-current h2,
+.suite-token-block h3 {
+  margin: 0.75rem 0 0;
+}
+
+.suite-meta,
+.suite-owner,
+.suite-provisioning-item p {
+  color: var(--muted);
+}
+
+.suite-token-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.suite-details {
+  margin: 1rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.suite-details li {
+  margin: 0.35rem 0;
+}
+
+.suite-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.suite-sequence {
+  display: grid;
+  gap: 1.15rem;
+  margin-top: 1rem;
+}
+
+.suite-sequence-step {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.suite-sequence-step h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.suite-field {
+  padding: 0.8rem 0.9rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-strong);
+}
+
+.suite-field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.suite-field-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.suite-field-label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.suite-field-value {
+  display: block;
+  margin-top: 0.25rem;
+  font-family: 'Courier New', monospace;
+  word-break: break-word;
+}
+
+.suite-field-secret-value {
+  min-height: 1.45rem;
+  letter-spacing: 0.08em;
+}
+
+.suite-field-secret-value.is-revealed {
+  white-space: pre-wrap;
+  letter-spacing: 0;
+}
+
+.suite-copy-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0.22rem 0.6rem;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.suite-copy-button:hover {
+  background: rgba(99, 226, 179, 0.12);
+  border-color: rgba(99, 226, 179, 0.4);
+}
+
+.suite-copy-button:active {
+  transform: scale(0.96);
+}
+
+.suite-inline-icon {
+  width: 0.88rem;
+  height: 0.88rem;
+  flex: 0 0 auto;
+}
+
+.suite-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.15rem;
+}
+
+.suite-token-block {
+  margin-top: 1.35rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--surface-border);
+}
+
+.suite-token-form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.suite-token-form input {
+  width: 100%;
+  border: 1px solid var(--surface-border);
+  border-radius: 0.85rem;
+  background: rgba(6, 21, 38, 0.72);
+  color: var(--text);
+  padding: 0.8rem 0.95rem;
+}
+
+.suite-empty,
+.suite-error {
+  margin: 0;
+}
+
+.suite-error {
+  color: var(--danger);
+}
+
+@media (max-width: 640px) {
+  .suite-step-header,
+  .suite-field-header,
+  .suite-token-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .suite-field-actions {
+    flex-wrap: wrap;
+  }
+}
