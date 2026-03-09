@@ -11,8 +11,13 @@ http://homepage.{$DOMAIN} {
 	reverse_proxy homepage:3000
 }
 
+# Suite Manager Onboarding
+http://suite-manager.{$DOMAIN} {
+	reverse_proxy suite-manager:3000
+}
+
 # Vaultwarden Password Manager
-http://vaultwarden.{$DOMAIN} {
+vaultwarden.{$DOMAIN} {
 	reverse_proxy vaultwarden:80
 }
 

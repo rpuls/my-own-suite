@@ -33,8 +33,10 @@ This creates missing `.env` files from `deploy/vps/**/*.env.template` without ov
 
 The main first-run values live in `deploy/vps/services/suite-manager/.env`:
 
+- `OWNER_NAME`
 - `OWNER_EMAIL`
 - `TIMEZONE`
+- `BOOTSTRAP_TOKEN`
 
 You can also change `DOMAIN` in `deploy/vps/.env` and adjust individual service env files in `deploy/vps/services/*.env` if needed.
 
@@ -60,7 +62,15 @@ If you need a full destructive reset (removes Docker volumes/data):
 npm run vps:rebuild
 ```
 
-## 6. Open the apps
+## 6. Finish onboarding
+
+- Suite Manager: `http://suite-manager.localhost/`
+
+Open `Suite Manager` first and complete the onboarding flow before you start using the rest of the suite.
+
+Homepage also includes a `Finish Setup` tile that points to the same onboarding flow.
+
+## 7. Open the apps
 
 - Homepage: `http://homepage.localhost/`
 
@@ -71,4 +81,5 @@ From Homepage you can open each application. Direct URLs:
 - Immich: `http://immich.localhost/`
 - Radicale: `http://radicale.localhost/`
 - Stirling PDF: `http://stirling-pdf.localhost/`
-- Vaultwarden: `http://vaultwarden.localhost/`
+- Vaultwarden: `https://vaultwarden.localhost/`
+- Suite Manager: `http://suite-manager.localhost/`

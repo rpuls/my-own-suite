@@ -10,6 +10,12 @@
 #
 # Customize freely: move categories, add services, change descriptions, etc.
 - My Own Suite:
+    - Finish Setup:
+        - Suite Manager:
+            href: http://suite-manager.${DOMAIN}
+            description: Guided onboarding for access, credentials, and first-run tasks
+            icon: mdi-progress-wrench
+
     - My Files:
         - Seafile:
             href: ${SEAFILE_URL}

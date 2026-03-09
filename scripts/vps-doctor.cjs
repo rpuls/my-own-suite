@@ -133,6 +133,14 @@ if (env.root) {
 if (env.suiteManager) {
   requireVar('suiteManager', 'OWNER_EMAIL', { allowPlaceholder: false });
   requireVar('suiteManager', 'TIMEZONE', { allowPlaceholder: false });
+
+  if (isMissing(env.suiteManager.OWNER_NAME || '')) {
+    warnings.push('services/suite-manager/.env OWNER_NAME is empty; suite-manager will fall back to "Owner".');
+  }
+
+  if (isMissing(env.suiteManager.BOOTSTRAP_TOKEN || '')) {
+    warnings.push('services/suite-manager/.env BOOTSTRAP_TOKEN is empty; onboarding secrets will not require an unlock token.');
+  }
 }
 
 if (env.seafile) {

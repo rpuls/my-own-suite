@@ -3,16 +3,33 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Minimal suite-manager service for shared config and health monitoring.",
+  "description": "Shared control-plane service for onboarding, health checks, and future suite automation.",
   "packageManager": "npm@11.2.0",
   "engines": {
     "node": "22.x",
     "npm": "11.x"
   },
   "dependencies": {
-    "axios": "^1.8.4"
+    "@hono/node-server": "^1.19.11",
+    "axios": "^1.8.4",
+    "hono": "^4.12.5",
+    "lucide-react": "^0.542.0",
+    "pg": "^8.16.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   },
   "scripts": {
+    "build": "npm run build:client",
+    "build:client": "vite build",
+    "dev:client": "vite",
+    "dev": "node --watch --experimental-strip-types src/index.ts",
     "start": "node --experimental-strip-types src/index.ts"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
   }
 }
