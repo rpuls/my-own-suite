@@ -6,8 +6,8 @@ import { Hono } from 'hono';
 
 import type { SuiteManagerConfig } from './config.ts';
 import { createHealthRouter } from './features/health/routes.ts';
-import { createOnboardingRouter } from './features/onboarding/routes.ts';
-import { OnboardingService } from './features/onboarding/service.ts';
+import { createOnboardingRouter } from './features/onboarding/main/routes.ts';
+import { OnboardingService } from './features/onboarding/main/service.ts';
 import { createStatusRouter } from './features/status/routes.ts';
 export function createApp(
   config: SuiteManagerConfig,

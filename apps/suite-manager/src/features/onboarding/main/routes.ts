@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 
-import type { SuiteManagerConfig } from '../../config.ts';
-import { isAuthorized } from './auth.ts';
-import { buildVaultwardenImportCsv } from './import-handoff.ts';
+import type { SuiteManagerConfig } from '../../../config.ts';
+import { buildVaultwardenImportCsv } from '../vaultwarden/import-handoff.ts';
+import { isAuthorized } from '../shared/auth.ts';
 import { OnboardingService } from './service.ts';
 
 export function createOnboardingRouter(

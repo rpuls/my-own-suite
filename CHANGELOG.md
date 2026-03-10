@@ -17,6 +17,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Added shared `suite-manager` onboarding env inputs (`OWNER_NAME`, `BOOTSTRAP_TOKEN`, `SUITE_MANAGER_PUBLIC_URL`, `SUITE_MANAGER_STATE_DIR`) and expanded the suite-manager runtime env surface to consume existing Vaultwarden, Seafile, and Radicale bootstrap data.
 - Changed local/VPS Vaultwarden routing so it now uses HTTPS and advertises an HTTPS public URL, which is required for the web signup flow to work correctly.
 - Updated setup and VPS docs to reflect the new onboarding-first flow and local Vaultwarden HTTPS behavior.
+- Refactored suite-manager onboarding into smaller `main`, `shared`, and `vaultwarden` modules on both the backend and frontend so future onboarding categories such as Radicale can be added without growing single large files.
+- Added a first Radicale onboarding category with an Android QR helper, manual fallback setup details, and explicit completion flow after Vaultwarden credential import.
 
 ## [0.3.0] - 2026-03-09
 

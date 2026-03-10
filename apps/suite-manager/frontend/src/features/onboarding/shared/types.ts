@@ -13,10 +13,18 @@ export type CurrentActionButton = {
   label: string;
 };
 
+export type ActionQrCode = {
+  alt: string;
+  caption?: string;
+  src: string;
+};
+
 export type CurrentActionSection = {
   action?: CurrentActionButton;
+  description?: string;
   field?: ActionField;
   id: string;
+  qrCode?: ActionQrCode;
   title: string;
 };
 
@@ -51,9 +59,4 @@ export type OnboardingModel = {
   requiresToken: boolean;
   steps: OnboardingStep[];
   title: string;
-};
-
-export type PersistedState = {
-  completedSteps: string[];
-  updatedAt: string | null;
 };

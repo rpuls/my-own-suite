@@ -189,6 +189,61 @@
   font-size: 1rem;
 }
 
+.suite-section-description {
+  margin: 0;
+  color: var(--muted);
+}
+
+.suite-device-selector {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.suite-device-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.suite-device-option {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 1rem;
+  border: 1px solid var(--surface-border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.suite-device-option:hover {
+  border-color: rgba(99, 226, 179, 0.4);
+  background: rgba(99, 226, 179, 0.08);
+}
+
+.suite-device-option.is-selected {
+  border-color: rgba(99, 226, 179, 0.55);
+  background: rgba(99, 226, 179, 0.12);
+}
+
+.suite-device-option:active {
+  transform: scale(0.98);
+}
+
+.suite-device-option-label {
+  font-weight: 600;
+}
+
+.suite-device-option-description {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .suite-field {
   padding: 0.8rem 0.9rem;
   border-radius: 0.9rem;
@@ -263,6 +318,31 @@
   width: 0.88rem;
   height: 0.88rem;
   flex: 0 0 auto;
+}
+
+.suite-qr-card {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.9rem;
+  border-radius: 1rem;
+  border: 1px solid var(--surface-border);
+  background: rgba(255, 255, 255, 0.04);
+  width: fit-content;
+}
+
+.suite-qr-image {
+  width: 220px;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.8rem;
+  background: white;
+}
+
+.suite-qr-caption {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .suite-actions {

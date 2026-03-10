@@ -1,6 +1,6 @@
 import { Client } from 'pg';
 
-import { log } from '../../lib/logger.ts';
+import { log } from '../../../lib/logger.ts';
 
 export type VaultwardenAccountStatus = 'pending' | 'ready' | 'unavailable';
 

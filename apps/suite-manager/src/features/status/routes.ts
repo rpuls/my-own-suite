@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 
 import type { SuiteManagerConfig } from '../../config.ts';
-import { OnboardingService } from '../onboarding/service.ts';
+import { OnboardingService } from '../onboarding/main/service.ts';
 
 export function createStatusRouter(
   config: SuiteManagerConfig,

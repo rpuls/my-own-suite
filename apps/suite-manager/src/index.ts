@@ -4,9 +4,9 @@ import process from 'node:process';
 import { createApp } from './app.ts';
 import { loadConfig } from './config.ts';
 import { HomepageHealthMonitor } from './features/health/monitor.ts';
-import { OnboardingService } from './features/onboarding/service.ts';
-import { OnboardingStateStore } from './features/onboarding/state-store.ts';
-import { VaultwardenObserver } from './features/onboarding/vaultwarden-observer.ts';
+import { OnboardingService } from './features/onboarding/main/service.ts';
+import { OnboardingStateStore } from './features/onboarding/shared/state-store.ts';
+import { VaultwardenObserver } from './features/onboarding/vaultwarden/observer.ts';
 import { log } from './lib/logger.ts';
 
 const config = loadConfig();

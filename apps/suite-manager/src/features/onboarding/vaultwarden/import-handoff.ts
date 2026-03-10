@@ -1,4 +1,4 @@
-import type { SuiteManagerConfig } from '../../config.ts';
+import type { SuiteManagerConfig } from '../../../config.ts';
 
 function csvCell(value: string): string {
   const normalized = value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
