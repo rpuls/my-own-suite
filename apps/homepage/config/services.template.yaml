@@ -12,7 +12,7 @@
 - My Own Suite:
     - Finish Setup:
         - Suite Manager:
-            href: http://suite-manager.${DOMAIN}
+            href: ${SUITE_MANAGER_URL}
             description: Guided onboarding for access, credentials, and first-run tasks
             icon: mdi-progress-wrench
 

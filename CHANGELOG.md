@@ -19,6 +19,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Updated setup and VPS docs to reflect the new onboarding-first flow and local Vaultwarden HTTPS behavior.
 - Refactored suite-manager onboarding into smaller `main`, `shared`, and `vaultwarden` modules on both the backend and frontend so future onboarding categories such as Radicale can be added without growing single large files.
 - Added a first Radicale onboarding category with an Android QR helper, manual fallback setup details, and explicit completion flow after Vaultwarden credential import.
+- Fixed the Homepage `Finish Setup` tile to use an explicit `SUITE_MANAGER_URL` env var instead of a VPS-only `${DOMAIN}` placeholder, so the tile can also work correctly on Railway.
 
 ## [0.3.0] - 2026-03-09
 
