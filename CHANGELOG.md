@@ -14,12 +14,17 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
+- Refreshed the default Homepage landing page with MOS-branded custom CSS, a denser but still restrained widget set (greeting, system glance, datetime, weather), and user-selectable Homepage theme/color controls instead of a fixed palette.
 - Added shared `suite-manager` onboarding env inputs (`OWNER_NAME`, `BOOTSTRAP_TOKEN`, `SUITE_MANAGER_PUBLIC_URL`, `SUITE_MANAGER_STATE_DIR`) and expanded the suite-manager runtime env surface to consume existing Vaultwarden, Seafile, and Radicale bootstrap data.
 - Changed local/VPS Vaultwarden routing so it now uses HTTPS and advertises an HTTPS public URL, which is required for the web signup flow to work correctly.
 - Updated setup and VPS docs to reflect the new onboarding-first flow and local Vaultwarden HTTPS behavior.
 - Refactored suite-manager onboarding into smaller `main`, `shared`, and `vaultwarden` modules on both the backend and frontend so future onboarding categories such as Radicale can be added without growing single large files.
 - Added a first Radicale onboarding category with an Android QR helper, manual fallback setup details, and explicit completion flow after Vaultwarden credential import.
+- Improved Radicale onboarding guidance so each device path now explains how to add the account inside the calendar client instead of opening the server URL as a browser page.
+- Refined the Radicale device selector and copy to recommend concrete apps per platform: Apple Calendar on iPhone/iPad and Mac, DAVx5 plus a calendar app on Android, and Thunderbird on Windows.
+- Simplified the onboarding escape hatch to a single warning-confirmed `Skip onboarding` button that just returns the user to Homepage instead of mutating onboarding state.
 - Fixed the Homepage `Finish Setup` tile to use an explicit `SUITE_MANAGER_URL` env var instead of a VPS-only `${DOMAIN}` placeholder, so the tile can also work correctly on Railway.
+- Updated the Homepage base image pin to the `v1.8.0` release digest to test whether newer upstream runtime behavior fixes the custom search widget regression.
 
 ## [0.3.0] - 2026-03-09
 

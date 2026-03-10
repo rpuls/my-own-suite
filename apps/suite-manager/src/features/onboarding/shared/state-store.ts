@@ -68,12 +68,16 @@ export class OnboardingStateStore {
       updatedAt: new Date().toISOString(),
     };
 
-    this.ensureStateDir();
-    fs.writeFileSync(this.stateFilePath, JSON.stringify(nextState, null, 2), 'utf8');
-    return nextState;
+    return this.save(nextState);
   }
 
   private ensureStateDir(): void {
     fs.mkdirSync(this.stateDir, { recursive: true });
+  }
+
+  private save(nextState: PersistedState): PersistedState {
+    this.ensureStateDir();
+    fs.writeFileSync(this.stateFilePath, JSON.stringify(nextState, null, 2), 'utf8');
+    return nextState;
   }
 }

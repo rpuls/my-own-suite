@@ -3,9 +3,10 @@ title: My-Own-Suite
 logo: false
 icon: mdi:cube-outline
 header: true
-description: Self-hosted services dashboard
-theme: dark
-color: slate
+description: Private self-hosted apps with a calmer default landing page
 cardBlur: md
 columns: 2
 host: false
+headerStyle: boxedWidgets
+iconStyle: theme
+useEqualHeights: true

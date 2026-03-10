@@ -1,4 +1,4 @@
-export type RadicaleDevice = 'android' | 'apple' | 'desktop';
+export type RadicaleDevice = 'android' | 'ios' | 'mac' | 'windows';
 
 type DeviceSelectorProps = {
   onSelect: (device: RadicaleDevice) => void;
@@ -7,9 +7,9 @@ type DeviceSelectorProps = {
 
 const deviceOptions: Array<{ description: string; id: RadicaleDevice; label: string }> = [
   {
-    description: 'iPhone, iPad, or Mac',
-    id: 'apple',
-    label: 'Apple',
+    description: 'iPhone or iPad',
+    id: 'ios',
+    label: 'iPhone / iPad',
   },
   {
     description: 'Android phone or tablet',
@@ -17,9 +17,14 @@ const deviceOptions: Array<{ description: string; id: RadicaleDevice; label: str
     label: 'Android',
   },
   {
-    description: 'Windows or another desktop setup',
-    id: 'desktop',
-    label: 'Windows / Desktop',
+    description: 'MacBook, iMac, or another Mac',
+    id: 'mac',
+    label: 'Mac',
+  },
+  {
+    description: 'Windows PC or laptop',
+    id: 'windows',
+    label: 'Windows',
   },
 ];
 

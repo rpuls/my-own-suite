@@ -1,0 +1,180 @@
+:root {
+  --mos-bg: #f6f2ea;
+  --mos-bg-soft: #ece7dc;
+  --mos-surface: rgba(255, 255, 255, 0.72);
+  --mos-surface-strong: rgba(255, 255, 255, 0.88);
+  --mos-border: rgba(13, 33, 56, 0.12);
+  --mos-text: #102136;
+  --mos-muted: #4f657d;
+  --mos-accent: #28bc84;
+  --mos-accent-soft: rgba(40, 188, 132, 0.16);
+  --mos-shadow: 0 18px 48px rgba(6, 21, 38, 0.12);
+}
+
+html.dark {
+  --mos-bg: #061526;
+  --mos-bg-soft: #0b2138;
+  --mos-surface: rgba(255, 255, 255, 0.06);
+  --mos-surface-strong: rgba(255, 255, 255, 0.1);
+  --mos-border: rgba(255, 255, 255, 0.16);
+  --mos-text: #eef4ff;
+  --mos-muted: #b8c9de;
+  --mos-accent: #63e2b3;
+  --mos-accent-soft: rgba(99, 226, 179, 0.16);
+  --mos-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+}
+
+body {
+  font-family: "Open Sans", "Segoe UI", sans-serif;
+  color: var(--mos-text);
+  background:
+    radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--mos-accent) 24%, transparent), transparent 34%),
+    radial-gradient(circle at 85% 0%, rgba(86, 188, 246, 0.14), transparent 30%),
+    linear-gradient(155deg, var(--mos-bg), var(--mos-bg-soft)) fixed !important;
+  background-repeat: no-repeat !important;
+  background-size: cover !important;
+}
+
+#page_wrapper::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(120deg, color-mix(in srgb, var(--mos-accent) 8%, transparent), transparent 42%),
+    linear-gradient(180deg, transparent, color-mix(in srgb, var(--mos-bg) 20%, transparent));
+  opacity: 0.9;
+}
+
+#information-widgets {
+  border: 1px solid var(--mos-border) !important;
+  border-radius: 1.25rem;
+  background: var(--mos-surface);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--mos-shadow);
+}
+
+.service-card,
+.bookmark-group a,
+dialog,
+.information-widget-search input,
+.information-widget-search button {
+  border: 1px solid var(--mos-border) !important;
+  background: var(--mos-surface) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(8px);
+}
+
+.service-card,
+.bookmark-group a {
+  border-radius: 1rem !important;
+  overflow: hidden !important;
+}
+
+.widget-container,
+.information-widget {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  backdrop-filter: none !important;
+}
+
+.information-widget-resource,
+#information-widgets-right > *,
+#information-widgets-right form,
+.information-widget-search,
+.information-widget-search .relative,
+.information-widget-search .relative > div {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  backdrop-filter: none !important;
+}
+
+.service-card::before,
+.bookmark-group a::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--mos-accent) 12%, transparent), transparent 55%);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.service-card:hover,
+.bookmark-group a:hover,
+.service-card:focus-within,
+.bookmark-group a:focus-visible {
+  transform: translateY(-2px);
+  background: var(--mos-surface-strong) !important;
+}
+
+.service-card:hover::before,
+.bookmark-group a:hover::before,
+.service-card:focus-within::before,
+.bookmark-group a:focus-visible::before {
+  opacity: 1;
+}
+
+.service-group-name,
+.bookmark-group-name {
+  color: var(--mos-accent) !important;
+  font-size: 0.78rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.service-name,
+.bookmark-name,
+.information-widget-search input,
+.information-widget-resource,
+.service-description,
+.bookmark-description,
+.resource-icon,
+.bookmark-icon {
+  color: var(--mos-text) !important;
+}
+
+.service-description,
+.bookmark-description,
+.mos-meta {
+  color: var(--mos-muted) !important;
+}
+
+.bookmark-icon {
+  background: var(--mos-accent-soft) !important;
+  border-radius: 0.95rem 0 0 0.95rem !important;
+}
+
+.information-widget-search input::placeholder {
+  color: var(--mos-muted) !important;
+}
+
+.information-widget-search button,
+.information-widget-search button svg {
+  color: var(--mos-text) !important;
+}
+
+#information-widgets .resource-usage,
+#information-widgets .resource-usage > div {
+  box-shadow: none !important;
+}
+
+.service-card,
+.bookmark-group a,
+.information-widget-search input,
+.information-widget-search button {
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+@media (max-width: 860px) {
+  #information-widgets {
+    border-radius: 1rem;
+  }
+}

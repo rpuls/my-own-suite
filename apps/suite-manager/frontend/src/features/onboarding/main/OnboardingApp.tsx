@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { StepCard } from '../shared/components/StepCard';
 import { ValueField } from '../shared/components/ValueField';
 import type { CurrentActionSection, OnboardingStep } from '../shared/types';
+import { DeviceGuide } from '../radicale/DeviceGuide';
 import { DeviceSelector, type RadicaleDevice } from '../radicale/DeviceSelector';
 import { CredentialsField } from '../vaultwarden/CredentialsField';
 import { useOnboarding } from './useOnboarding';
@@ -151,61 +152,127 @@ export default function OnboardingApp() {
   }
 
   function renderSection(section: CurrentActionSection, index: number) {
+    const renderedSection =
+      section.id.startsWith('manual-') || section.id === 'finish-radicale'
+        ? getRadicaleSection(section, radicaleDevice)
+        : section;
+
     return (
-      <section className="suite-sequence-step" key={section.id}>
+      <section className="suite-sequence-step" key={renderedSection.id}>
         <h3>
-          {index + 1}. {section.title}
+          {index + 1}. {renderedSection.title}
         </h3>
 
-        {section.description ? <p className="suite-section-description">{section.description}</p> : null}
+        {renderedSection.description ? <p className="suite-section-description">{renderedSection.description}</p> : null}
 
-        {section.field ? (
+        {renderedSection.field ? (
           <ValueField
-            copied={copiedField === section.field.value}
-            label={section.field.label}
-            onCopy={() => void copyValue(section.field!.value)}
-            value={section.field.value}
+            copied={copiedField === renderedSection.field.value}
+            label={renderedSection.field.label}
+            onCopy={() => void copyValue(renderedSection.field!.value)}
+            qrAlt={renderedSection.field.qrAlt}
+            qrValue={renderedSection.field.qrValue}
+            value={renderedSection.field.value}
           />
         ) : null}
 
-        {section.action?.kind === 'link' && section.action.href ? (
+        {renderedSection.action?.kind === 'link' && renderedSection.action.href ? (
           <div className="suite-actions">
-            <a className="mos-btn mos-btn-primary" href={section.action.href} rel="noreferrer" target="_blank">
-              {section.action.label}
+            <a className="mos-btn mos-btn-primary" href={renderedSection.action.href} rel="noreferrer" target="_blank">
+              {renderedSection.action.label}
             </a>
           </div>
         ) : null}
 
-        {section.qrCode ? (
-          <div className="suite-qr-card">
-            <img alt={section.qrCode.alt} className="suite-qr-image" src={section.qrCode.src} />
-            {section.qrCode.caption ? <span className="suite-qr-caption">{section.qrCode.caption}</span> : null}
-          </div>
-        ) : null}
-
-        {section.action?.kind === 'copy' && section.action.copyPath ? (
+        {renderedSection.action?.kind === 'copy' && renderedSection.action.copyPath ? (
           <CredentialsField
-            copied={copiedActionId === section.id}
-            onCopy={() => void copyImportContents(section.action!.copyPath!, section.id)}
-            onToggleVisibility={() => void toggleImportVisibility(section.action!.copyPath!, section.id)}
-            revealed={Boolean(revealedActionIds[section.id])}
-            value={importContents[section.id] || ''}
+            copied={copiedActionId === renderedSection.id}
+            onCopy={() => void copyImportContents(renderedSection.action!.copyPath!, renderedSection.id)}
+            onToggleVisibility={() => void toggleImportVisibility(renderedSection.action!.copyPath!, renderedSection.id)}
+            revealed={Boolean(revealedActionIds[renderedSection.id])}
+            value={importContents[renderedSection.id] || ''}
           />
         ) : null}
 
-        {section.action?.kind === 'trigger' && section.action.actionId ? (
+        {renderedSection.action?.kind === 'trigger' && renderedSection.action.actionId ? (
           <div className="suite-actions">
             <button
               className="mos-btn mos-btn-primary"
-              onClick={() => void triggerAction(section.action!.actionId!)}
+              onClick={() => void triggerAction(renderedSection.action!.actionId!)}
               type="button"
             >
-              {section.action.label}
+              {renderedSection.action.label}
             </button>
           </div>
         ) : null}
       </section>
     );
+  }
+
+  function getRadicaleSection(section: CurrentActionSection, device: RadicaleDevice | null): CurrentActionSection {
+    if (!device) {
+      return section;
+    }
+
+    if (section.id === 'manual-url' && section.field) {
+      if (device === 'ios') {
+        return {
+          ...section,
+          description:
+            'Paste this into the Server field on the Add CalDAV Account screen. Show QR only helps move the address to your iPhone.',
+          title: 'Paste this into the Server field',
+        };
+      }
+
+      if (device === 'android') {
+        return {
+          ...section,
+          description:
+            'Paste this into the server address or base URL field in DAVx5. Show QR only transfers the address to your phone.',
+          title: 'Paste this into the server address field',
+        };
+      }
+
+      if (device === 'mac') {
+        return {
+          ...section,
+          description: 'Paste this into the server field when Apple Calendar asks for your CalDAV account details.',
+          title: 'Paste this into the Server field',
+        };
+      }
+
+      return {
+        ...section,
+        description: 'Paste this into the location or server field in Thunderbird.',
+        title: 'Paste this into the server field',
+      };
+    }
+
+    if (section.id === 'manual-username') {
+      return {
+        ...section,
+        description: 'Use this exact value when your device asks for User Name or Username.',
+        title: 'Paste this into the user name field',
+      };
+    }
+
+    if (section.id === 'manual-password') {
+      return {
+        ...section,
+        description:
+          'Open Vaultwarden, find the Radicale item you imported in the previous step, and copy that password when your device asks for one.',
+        title: 'Use the Radicale password from Vaultwarden',
+      };
+    }
+
+    if (section.id === 'finish-radicale') {
+      return {
+        ...section,
+        title: 'Finish this step after your calendar shows up',
+      };
+    }
+
+    return section;
   }
 
   function getRadicaleSections(step: OnboardingStep): CurrentActionSection[] {
@@ -214,14 +281,9 @@ export default function OnboardingApp() {
     }
 
     const commonIds = ['manual-url', 'manual-username', 'manual-password', 'finish-radicale'];
-    const androidIds = ['android-qr', ...commonIds];
 
     const visibleIds =
-      radicaleDevice === 'android'
-        ? androidIds
-        : radicaleDevice === 'apple'
-          ? commonIds
-          : commonIds;
+      radicaleDevice === 'android' ? commonIds : commonIds;
 
     return step.sections.filter((section) => visibleIds.includes(section.id));
   }
@@ -234,7 +296,10 @@ export default function OnboardingApp() {
       <StepCard expanded={expanded} key={step.id} onToggle={() => toggleStep(step)} step={step}>
         <p className="suite-meta">{step.summary}</p>
         {step.id === 'connect-radicale' ? (
-          <DeviceSelector onSelect={setRadicaleDevice} selectedDevice={radicaleDevice} />
+          <>
+            <DeviceSelector onSelect={setRadicaleDevice} selectedDevice={radicaleDevice} />
+            {radicaleDevice ? <DeviceGuide device={radicaleDevice} /> : null}
+          </>
         ) : null}
         {visibleSections.length ? (
           <div className="suite-sequence">{visibleSections.map((section, index) => renderSection(section, index))}</div>
@@ -272,7 +337,27 @@ export default function OnboardingApp() {
 
       {model ? (
         <section className="mos-shell suite-grid">
-          <div className="suite-steps">{steps.map((step) => renderStep(step))}</div>
+          <div className="suite-steps">
+            {steps.map((step) => renderStep(step))}
+
+            <div className="suite-onboarding-footer">
+              <button
+                className="suite-subtle-button"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      'Leave onboarding and go to Homepage? Only do this if you already know how to finish the remaining setup manually.',
+                    )
+                  ) {
+                    window.location.assign(model.homepageUrl);
+                  }
+                }}
+                type="button"
+              >
+                Skip onboarding
+              </button>
+            </div>
+          </div>
 
           {model.requiresToken ? (
             <div className="mos-panel suite-card suite-current">

@@ -1,5 +1,3 @@
-import QRCode from 'qrcode';
-
 import type { SuiteManagerConfig } from '../../../config.ts';
 import { presentValue } from '../../../lib/secrets.ts';
 import type { CurrentAction, OnboardingStep } from '../shared/types.ts';
@@ -17,21 +15,6 @@ function buildRadicaleCollectionUrl(config: SuiteManagerConfig): string {
   return `${config.appUrls.radicale.replace(/\/$/, '')}/${encodeURIComponent(username)}/`;
 }
 
-function buildDavx5Url(config: SuiteManagerConfig): string {
-  const username = config.generatedAccounts.radicale?.username || 'admin';
-  const collectionUrl = buildRadicaleCollectionUrl(config);
-  const url = new URL(collectionUrl);
-  return `davx5://${encodeURIComponent(username)}@${url.host}${url.pathname}`;
-}
-
-async function buildDavx5QrCode(config: SuiteManagerConfig): Promise<string> {
-  return QRCode.toDataURL(buildDavx5Url(config), {
-    errorCorrectionLevel: 'M',
-    margin: 1,
-    width: 220,
-  });
-}
-
 export async function buildRadicaleSteps(
   config: SuiteManagerConfig,
   authorized: boolean,
@@ -40,25 +23,18 @@ export async function buildRadicaleSteps(
 ): Promise<OnboardingStep[]> {
   const collectionUrl = buildRadicaleCollectionUrl(config);
   const radicaleUsername = config.generatedAccounts.radicale?.username || 'admin';
-  const qrCode = await buildDavx5QrCode(config);
 
   const connectCalendar: CurrentAction = {
     id: 'connect-radicale',
     sections: [
       {
         description:
-          'If you use Android with DAVx5, scan this QR code. Some phones may open DAVx5 directly, while others will at least let you copy the setup link onto the phone more easily.',
-        id: 'android-qr',
-        qrCode: {
-          alt: 'QR code for DAVx5 calendar setup',
-          caption: 'Android + DAVx5',
-          src: qrCode,
+          'Use this server address when you add your private calendar. If typing the full address on another device is annoying, you can copy it or show it as a QR code from this field.',
+        field: {
+          ...field('Server URL', collectionUrl, authorized),
+          qrAlt: 'QR code for the Radicale server URL',
+          qrValue: collectionUrl,
         },
-        title: 'Scan on Android',
-      },
-      {
-        description: 'If your device does not support the QR helper, use these details manually and take the password from the Radicale item you just imported into Vaultwarden.',
-        field: field('Server URL', collectionUrl, authorized),
         id: 'manual-url',
         title: 'Manual setup',
       },
@@ -68,7 +44,8 @@ export async function buildRadicaleSteps(
         title: 'Use this username',
       },
       {
-        description: 'The password is stored in Vaultwarden under the Radicale item you imported in the previous step.',
+        description:
+          'The password is stored in Vaultwarden under the Radicale item you imported in the previous step.',
         id: 'manual-password',
         title: 'Use your imported Radicale password',
       },
@@ -83,7 +60,7 @@ export async function buildRadicaleSteps(
       },
     ],
     summary:
-      'Next, connect your devices to your new private calendar server. The setup steps can vary depending on which device you use, and we will guide you through the path that fits best. Your Radicale password is already in Vaultwarden from the previous step.',
+      'Next, connect one of your devices to your private calendar server. Choose the device you want to set up now, then follow the exact steps shown for that device. Your Radicale password is already in Vaultwarden from the previous step.',
     title: 'Step 3: Connect your calendar',
   };
 

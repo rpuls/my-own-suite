@@ -1,5 +1,7 @@
 export type ActionField = {
   label: string;
+  qrAlt?: string;
+  qrValue?: string;
   secret?: boolean;
   value: string;
 };
@@ -51,6 +53,7 @@ export type OnboardingModel = {
   currentAction: CurrentAction | null;
   currentStepId: string | null;
   generatedAt: string;
+  homepageUrl: string;
   observations: OnboardingObservation;
   owner: {
     email: string;

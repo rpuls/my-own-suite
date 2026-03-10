@@ -22,6 +22,13 @@ Files commonly edited for customization:
 - `apps/homepage/config/widgets.yaml`: widgets.
 - `apps/homepage/config/bookmarks.yaml`: bookmarks.
 - `apps/homepage/config/settings.yaml`: general dashboard settings.
+- `apps/homepage/config/custom.css`: visual overrides layered on top of Homepage defaults.
+
+Current defaults in this repo:
+- Homepage does not pin a fixed `theme` or `color` in `settings.yaml`, so end users keep Homepage's built-in theme and palette switchers.
+- `custom.css` gives Homepage the same MOS brand feel used elsewhere in the suite without removing Homepage's own theme controls.
+- `widgets.yaml` includes a greeting, system glance widgets, datetime, and an Open-Meteo weather widget.
+- The weather widget uses Homepage's Open-Meteo integration, which requires no API key and can use browser geolocation when Homepage is served from HTTPS or localhost.
 
 Tile template example:
 

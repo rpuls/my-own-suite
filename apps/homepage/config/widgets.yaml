@@ -1,5 +1,25 @@
 ---
-# Widgets for Railway Homepage
+# Homepage information widgets
+# Theme and color are intentionally left user-selectable in settings.yaml.
+# Open-Meteo can use browser location automatically when Homepage is served
+# from a secure context such as HTTPS or localhost.
+
+- resources:
+    label: System
+    cpu: true
+    memory: true
+    uptime: true
+
+- datetime:
+    text_size: md
+    format:
+      dateStyle: full
+      timeStyle: short
+
+- openmeteo:
+    label: Local weather
+    units: metric
+    cache: 15
 
 - search:
     provider: custom

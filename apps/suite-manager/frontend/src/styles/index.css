@@ -244,6 +244,43 @@
   font-size: 0.85rem;
 }
 
+.suite-guide-card {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 1rem;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid var(--surface-border);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.suite-guide-card h4 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.suite-guide-warning {
+  margin: 0;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.suite-guide-note {
+  margin: 0;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.suite-guide-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--muted);
+}
+
+.suite-guide-list li {
+  margin: 0.32rem 0;
+}
+
 .suite-field {
   padding: 0.8rem 0.9rem;
   border-radius: 0.9rem;
@@ -345,11 +382,40 @@
   font-size: 0.82rem;
 }
 
+.suite-field-qr {
+  margin-top: 0.85rem;
+}
+
 .suite-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   margin-top: 1.15rem;
+}
+
+.suite-onboarding-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.suite-subtle-button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0.2rem 0;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.18);
+  text-underline-offset: 0.18rem;
+  transition:
+    color 160ms ease,
+    text-decoration-color 160ms ease;
+}
+
+.suite-subtle-button:hover {
+  color: var(--text);
+  text-decoration-color: rgba(99, 226, 179, 0.4);
 }
 
 .suite-token-block {

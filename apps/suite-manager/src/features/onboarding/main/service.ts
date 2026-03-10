@@ -42,6 +42,7 @@ export class OnboardingService {
       currentAction,
       currentStepId: currentAction?.id ?? null,
       generatedAt: new Date().toISOString(),
+      homepageUrl: this.config.appUrls.homepage,
       observations: {
         importStatus: suiteCredentialsImported ? 'completed' : vaultwardenAccountReady ? 'ready' : 'blocked',
         vaultwardenAccountStatus: vaultwardenObservation.status,
