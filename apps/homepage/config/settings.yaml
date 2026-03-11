@@ -7,6 +7,6 @@ description: Private self-hosted apps with a calmer default landing page
 cardBlur: md
 columns: 2
 host: false
-headerStyle: boxedWidgets
+headerStyle: clean
 iconStyle: theme
 useEqualHeights: true

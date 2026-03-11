@@ -14,7 +14,10 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
-- Refreshed the default Homepage landing page with MOS-branded custom CSS, a denser but still restrained widget set (greeting, system glance, datetime, weather), and user-selectable Homepage theme/color controls instead of a fixed palette.
+- Refreshed the default Homepage landing page with MOS-branded custom CSS, a denser but still restrained widget set (greeting, system glance, datetime, search), and user-selectable Homepage theme/color controls instead of a fixed palette.
+- Removed the default Homepage weather widget so the dashboard no longer prompts the user for location access.
+- Simplified the Homepage top bar so the date and search widgets render without the boxed header treatment.
+- Added a `theme-mos` Homepage palette with first-run default bootstrapping via `custom.js`, and shortened the default datetime widget format to reduce top-bar width.
 - Added shared `suite-manager` onboarding env inputs (`OWNER_NAME`, `BOOTSTRAP_TOKEN`, `SUITE_MANAGER_PUBLIC_URL`, `SUITE_MANAGER_STATE_DIR`) and expanded the suite-manager runtime env surface to consume existing Vaultwarden, Seafile, and Radicale bootstrap data.
 - Changed local/VPS Vaultwarden routing so it now uses HTTPS and advertises an HTTPS public URL, which is required for the web signup flow to work correctly.
 - Updated setup and VPS docs to reflect the new onboarding-first flow and local Vaultwarden HTTPS behavior.

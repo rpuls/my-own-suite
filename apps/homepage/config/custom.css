@@ -1,35 +1,58 @@
 :root {
-  --mos-bg: #f6f2ea;
-  --mos-bg-soft: #ece7dc;
-  --mos-surface: rgba(255, 255, 255, 0.72);
-  --mos-surface-strong: rgba(255, 255, 255, 0.88);
-  --mos-border: rgba(13, 33, 56, 0.12);
-  --mos-text: #102136;
-  --mos-muted: #4f657d;
-  --mos-accent: #28bc84;
-  --mos-accent-soft: rgba(40, 188, 132, 0.16);
-  --mos-shadow: 0 18px 48px rgba(6, 21, 38, 0.12);
+  --mos-bg: rgb(var(--bg-color));
+  --mos-bg-soft: color-mix(in srgb, rgb(var(--bg-color)) 88%, rgb(var(--color-100)));
+  --mos-surface: color-mix(in srgb, rgb(var(--color-100)) 42%, transparent);
+  --mos-surface-strong: color-mix(in srgb, rgb(var(--color-100)) 58%, transparent);
+  --mos-border: color-mix(in srgb, rgb(var(--color-300)) 28%, transparent);
+  --mos-text: rgb(var(--color-800));
+  --mos-muted: color-mix(in srgb, rgb(var(--color-700)) 78%, transparent);
+  --mos-accent: rgb(var(--color-500));
+  --mos-accent-soft: color-mix(in srgb, rgb(var(--color-400)) 18%, transparent);
+  --mos-shadow: none;
 }
 
 html.dark {
-  --mos-bg: #061526;
-  --mos-bg-soft: #0b2138;
-  --mos-surface: rgba(255, 255, 255, 0.06);
-  --mos-surface-strong: rgba(255, 255, 255, 0.1);
-  --mos-border: rgba(255, 255, 255, 0.16);
-  --mos-text: #eef4ff;
-  --mos-muted: #b8c9de;
-  --mos-accent: #63e2b3;
-  --mos-accent-soft: rgba(99, 226, 179, 0.16);
-  --mos-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+  --mos-bg: rgb(var(--bg-color));
+  --mos-bg-soft: color-mix(in srgb, rgb(var(--bg-color)) 84%, rgb(var(--color-900)));
+  --mos-surface: color-mix(in srgb, rgb(var(--color-100)) 10%, transparent);
+  --mos-surface-strong: color-mix(in srgb, rgb(var(--color-100)) 14%, transparent);
+  --mos-border: color-mix(in srgb, rgb(var(--color-300)) 20%, transparent);
+  --mos-text: rgb(var(--color-200));
+  --mos-muted: color-mix(in srgb, rgb(var(--color-300)) 82%, transparent);
+  --mos-accent: rgb(var(--color-300));
+  --mos-accent-soft: color-mix(in srgb, rgb(var(--color-300)) 18%, transparent);
+}
+
+.theme-mos {
+  --color-50: 239 250 246;
+  --color-100: 214 245 233;
+  --color-200: 181 234 216;
+  --color-300: 126 220 189;
+  --color-400: 99 226 179;
+  --color-500: 40 188 132;
+  --color-600: 25 150 105;
+  --color-700: 18 118 84;
+  --color-800: 11 33 56;
+  --color-900: 6 21 38;
+  --color-logo-start: 99 226 179;
+  --color-logo-stop: 40 188 132;
+}
+
+.theme-mos .text-theme-800 {
+  color: rgb(16, 33, 54);
+}
+
+.theme-mos.dark .text-theme-800,
+.theme-mos.dark .dark\:text-theme-200:is(.dark *) {
+  color: rgb(var(--color-200));
 }
 
 body {
   font-family: "Open Sans", "Segoe UI", sans-serif;
   color: var(--mos-text);
   background:
-    radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--mos-accent) 24%, transparent), transparent 34%),
-    radial-gradient(circle at 85% 0%, rgba(86, 188, 246, 0.14), transparent 30%),
+    radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--mos-accent) 20%, transparent), transparent 34%),
+    radial-gradient(circle at 85% 0%, color-mix(in srgb, rgb(var(--color-400)) 14%, transparent), transparent 30%),
     linear-gradient(155deg, var(--mos-bg), var(--mos-bg-soft)) fixed !important;
   background-repeat: no-repeat !important;
   background-size: cover !important;
@@ -44,14 +67,6 @@ body {
     linear-gradient(120deg, color-mix(in srgb, var(--mos-accent) 8%, transparent), transparent 42%),
     linear-gradient(180deg, transparent, color-mix(in srgb, var(--mos-bg) 20%, transparent));
   opacity: 0.9;
-}
-
-#information-widgets {
-  border: 1px solid var(--mos-border) !important;
-  border-radius: 1.25rem;
-  background: var(--mos-surface);
-  backdrop-filter: blur(10px);
-  box-shadow: var(--mos-shadow);
 }
 
 .service-card,
@@ -171,10 +186,4 @@ dialog,
     background-color 180ms ease,
     border-color 180ms ease,
     box-shadow 180ms ease;
-}
-
-@media (max-width: 860px) {
-  #information-widgets {
-    border-radius: 1rem;
-  }
 }
