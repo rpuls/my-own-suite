@@ -44,7 +44,8 @@ export default defineConfig({
             'docs/apps/immich',
             'docs/apps/stirling-pdf',
             'docs/apps/radicale',
-            'docs/apps/vaultwarden'
+            'docs/apps/vaultwarden',
+            'docs/apps/authelia'
           ]
         },
         {

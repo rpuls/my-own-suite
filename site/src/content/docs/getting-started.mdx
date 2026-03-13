@@ -35,6 +35,7 @@ The main first-run values live in `deploy/vps/services/suite-manager/.env`:
 
 - `OWNER_NAME`
 - `OWNER_EMAIL`
+- `OWNER_PASSWORD`
 - `TIMEZONE`
 - `BOOTSTRAP_TOKEN`
 
@@ -64,22 +65,23 @@ npm run vps:rebuild
 
 ## 6. Finish onboarding
 
-- Suite Manager: `http://suite-manager.localhost/`
+- Authelia sign-in: `https://auth.mos.localhost/`
+- Suite Manager: `https://suite-manager.mos.localhost/`
 
-Open `Suite Manager` first and complete the onboarding flow before you start using the rest of the suite.
+Sign in through Authelia first, then open `Suite Manager` and complete the onboarding flow before you start using the rest of the suite.
 
 Homepage also includes a `Finish Setup` tile that points to the same onboarding flow.
 
 ## 7. Open the apps
 
-- Homepage: `http://homepage.localhost/`
+- Homepage: `https://homepage.mos.localhost/`
 
 From Homepage you can open each application. Direct URLs:
 
-- Seafile: `http://seafile.localhost/`
-- ONLYOFFICE: `http://onlyoffice.localhost/`
-- Immich: `http://immich.localhost/`
-- Radicale: `http://radicale.localhost/`
-- Stirling PDF: `http://stirling-pdf.localhost/`
-- Vaultwarden: `https://vaultwarden.localhost/`
-- Suite Manager: `http://suite-manager.localhost/`
+- Seafile: `http://seafile.mos.localhost/`
+- ONLYOFFICE: `http://onlyoffice.mos.localhost/`
+- Immich: `http://immich.mos.localhost/`
+- Radicale: `http://radicale.mos.localhost/`
+- Stirling PDF: `http://stirling-pdf.mos.localhost/`
+- Vaultwarden: `https://vaultwarden.mos.localhost/`
+- Suite Manager: `https://suite-manager.mos.localhost/`

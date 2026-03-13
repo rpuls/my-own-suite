@@ -1,6 +1,7 @@
 #### Environment variables
 
 - `HOMEPAGE_ALLOWED_HOSTS`: Allowed hostnames for Homepage (`hostname1,hostname2,...`).
+- `SUITE_MANAGER_URL`: Public suite-manager link shown in the `Finish Setup` tile.
 - Any `${VAR_NAME}` used in `config/services.template.yaml`:
   - Example: `${SEAFILE_URL}`, `${VAULTWARDEN_URL}`, `${ONLYOFFICE_URL}`.
   - If not set (or empty), dependent tile is excluded from final dashboard.
@@ -9,6 +10,7 @@
 
 - Homepage config is generated at container start from a template.
 - `entrypoint.sh` runs `node /app/config-generator/dist/index.js /app/config` before starting Homepage.
+- Homepage is intended to sit behind Authelia at the Caddy layer, so the dashboard itself does not implement its own login UI.
 - Source template: `config/services.template.yaml`
 - Generated output: `config/services.yaml`
 - Generator behavior:

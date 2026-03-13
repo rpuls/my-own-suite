@@ -30,8 +30,26 @@ services:
     networks:
       - mos-network
     depends_on:
+      - authelia
       - homepage
       - suite-manager
+
+  # -------------------------------------------
+  # Authelia - Shared auth gateway
+  # -------------------------------------------
+  authelia:
+    build:
+      context: ../../apps/authelia
+      dockerfile: Dockerfile
+    container_name: mos-authelia
+    restart: unless-stopped
+    env_file:
+      - .env
+      - ./services/authelia/.env
+    volumes:
+      - authelia_data:/data
+    networks:
+      - mos-network
 
   # -------------------------------------------
   # Suite Manager - Onboarding and bootstrap hub
@@ -345,6 +363,7 @@ volumes:
   caddy_config:
   homepage_images:
   suite_manager_data:
+  authelia_data:
   vaultwarden_data:
   vaultwarden_postgres_data:
   seafile_data:

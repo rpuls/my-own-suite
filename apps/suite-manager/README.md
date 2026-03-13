@@ -9,6 +9,7 @@
 - `OWNER_EMAIL`: Shared owner email shown in onboarding and reused by compatible app bootstrap flows.
 - `BOOTSTRAP_TOKEN`: Optional token used to unlock protected onboarding actions such as credential handoff artifacts.
 - `SUITE_MANAGER_PUBLIC_URL`: Public onboarding URL surfaced in the UI.
+- `HOMEPAGE_PUBLIC_URL`: Public Homepage URL used by the onboarding escape hatch and progress links.
 - `SUITE_MANAGER_STATE_DIR`: Directory used to persist onboarding progress.
 - `VAULTWARDEN_DATABASE_URL` or `DATABASE_URL`: Optional Postgres connection string used to detect when the owner Vaultwarden account has been created. In the VPS/local stack, this is sourced from the existing Vaultwarden service env.
 - `SEAFILE_ADMIN_EMAIL`, `SEAFILE_ADMIN_PASSWORD`, `RADICALE_ADMIN_USERNAME`, `RADICALE_ADMIN_PASSWORD`: Consumed from existing service env files so suite-manager can prepare the first Vaultwarden import handoff.
@@ -48,5 +49,6 @@
 #### Customizations in this project
 
 - Acts as the shared onboarding surface for stack-wide bootstrap, credential handoff, and future per-app provisioning adapters.
+- Is expected to sit behind Authelia for normal browser access, while still retaining its own protected-action boundary for secret-adjacent endpoints.
 - Treats Vaultwarden account creation as observed suite state, not a user-confirmed checklist item.
 - Keeps the current onboarding surface intentionally narrow: one guided access flow first, with later app-specific onboarding still to come.

@@ -34,7 +34,8 @@
 .main-pane:has(.app-page.app-immich) h1#_top,
 .main-pane:has(.app-page.app-stirling-pdf) h1#_top,
 .main-pane:has(.app-page.app-radicale) h1#_top,
-.main-pane:has(.app-page.app-vaultwarden) h1#_top {
+.main-pane:has(.app-page.app-vaultwarden) h1#_top,
+.main-pane:has(.app-page.app-authelia) h1#_top {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -47,7 +48,8 @@
 .main-pane:has(.app-page.app-immich) h1#_top::after,
 .main-pane:has(.app-page.app-stirling-pdf) h1#_top::after,
 .main-pane:has(.app-page.app-radicale) h1#_top::after,
-.main-pane:has(.app-page.app-vaultwarden) h1#_top::after {
+.main-pane:has(.app-page.app-vaultwarden) h1#_top::after,
+.main-pane:has(.app-page.app-authelia) h1#_top::after {
   content: '';
   width: 2.4rem;
   height: 2.4rem;
@@ -83,6 +85,10 @@
 
 .main-pane:has(.app-page.app-vaultwarden) h1#_top::after {
   background-image: url('../assets/logos/vaultwarden.png');
+}
+
+.main-pane:has(.app-page.app-authelia) h1#_top::after {
+  background-image: url('../assets/logos/authelia.png');
 }
 
 .apps-overview {

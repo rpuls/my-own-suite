@@ -71,6 +71,15 @@ updates:
     open-pull-requests-limit: 10
 
   - package-ecosystem: "docker"
+    directory: "/apps/authelia"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:04"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "docker"
     directory: "/apps/immich"
     schedule:
       interval: "weekly"

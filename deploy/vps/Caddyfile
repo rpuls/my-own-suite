@@ -2,17 +2,32 @@
 # My-Own-Suite Caddyfile
 # ===========================================
 # Subdomain routing using DOMAIN from .env
-# Local: homepage.localhost, vaultwarden.localhost
+# Local: homepage.mos.localhost, vaultwarden.mos.localhost
 # Production: homepage.yourdomain.com, vaultwarden.yourdomain.com
 # ===========================================
 
+# Shared auth guard for public suite surfaces.
+(authelia_guard) {
+	forward_auth authelia:9091 {
+		uri /api/authz/forward-auth
+		copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+	}
+}
+
+# Authelia Portal
+auth.{$DOMAIN} {
+	reverse_proxy authelia:9091
+}
+
 # Homepage Dashboard
-http://homepage.{$DOMAIN} {
+homepage.{$DOMAIN} {
+	import authelia_guard
 	reverse_proxy homepage:3000
 }
 
 # Suite Manager Onboarding
-http://suite-manager.{$DOMAIN} {
+suite-manager.{$DOMAIN} {
+	import authelia_guard
 	reverse_proxy suite-manager:3000
 }
 

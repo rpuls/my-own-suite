@@ -56,17 +56,18 @@ docker compose down
 ```
 
 ### Access
-- Homepage: http://homepage.localhost/
-- Suite Manager: http://suite-manager.localhost/
-- Seafile: http://seafile.localhost/
-- ONLYOFFICE: http://onlyoffice.localhost/
-- Immich: http://immich.localhost/
-- Radicale: http://radicale.localhost/
-- Stirling PDF: http://stirling-pdf.localhost/
-- Vaultwarden: https://vaultwarden.localhost/
+- Homepage: https://homepage.mos.localhost/
+- Suite Manager: https://suite-manager.mos.localhost/
+- Seafile: http://seafile.mos.localhost/
+- ONLYOFFICE: http://onlyoffice.mos.localhost/
+- Immich: http://immich.mos.localhost/
+- Radicale: http://radicale.mos.localhost/
+- Stirling PDF: http://stirling-pdf.mos.localhost/
+- Vaultwarden: https://vaultwarden.mos.localhost/
+- Authelia: https://auth.mos.localhost/
 
 ### Local ONLYOFFICE + Seafile note
-- `.localhost` domains resolve to loopback inside containers.
+- `*.localhost` domains resolve to loopback inside containers.
 - Set `ONLYOFFICE_INTERNAL_SEAFILE_URL=http://seafile` in `services/seafile/.env` so ONLYOFFICE backend callbacks/downloads use Docker-internal networking.
 - After pulling changes, restart the relevant services:
 ```bash
@@ -90,6 +91,9 @@ deploy/vps/
     |   `-- .env.template
     |-- homepage/
     |   |-- .env                 # Homepage settings
+    |   `-- .env.template
+    |-- authelia/
+    |   |-- .env                 # Shared auth gateway settings
     |   `-- .env.template
     |-- immich/
     |   |-- .env                 # Immich server settings
@@ -144,18 +148,22 @@ Container versioning model:
 ### Change Domain (Local -> Production)
 Edit `deploy/vps/.env`:
 ```env
-DOMAIN=localhost        # Local
+DOMAIN=mos.localhost    # Local
 DOMAIN=yourdomain.com   # Production
 ```
 
 All services automatically use the new domain:
-- Caddy routes: `homepage.{$DOMAIN}`, `suite-manager.{$DOMAIN}`, `seafile.{$DOMAIN}`, `onlyoffice.{$DOMAIN}`, `immich.{$DOMAIN}`, `radicale.{$DOMAIN}`, `stirling-pdf.{$DOMAIN}`, `vaultwarden.{$DOMAIN}`
-- Service URLs: `http://seafile.${DOMAIN}`, `http://onlyoffice.${DOMAIN}`, `http://immich.${DOMAIN}`, `http://radicale.${DOMAIN}`, `http://stirling-pdf.${DOMAIN}`, `https://vaultwarden.${DOMAIN}`
+- Caddy routes: `auth.{$DOMAIN}`, `homepage.{$DOMAIN}`, `suite-manager.{$DOMAIN}`, `seafile.{$DOMAIN}`, `onlyoffice.{$DOMAIN}`, `immich.{$DOMAIN}`, `radicale.{$DOMAIN}`, `stirling-pdf.{$DOMAIN}`, `vaultwarden.{$DOMAIN}`
+- Service URLs: `https://auth.${DOMAIN}`, `https://homepage.${DOMAIN}`, `https://suite-manager.${DOMAIN}`, `http://seafile.${DOMAIN}`, `http://onlyoffice.${DOMAIN}`, `http://immich.${DOMAIN}`, `http://radicale.${DOMAIN}`, `http://stirling-pdf.${DOMAIN}`, `https://vaultwarden.${DOMAIN}`
 
 Local Vaultwarden HTTPS note:
 - Caddy now serves Vaultwarden over HTTPS so the signup flow can run locally.
-- On `localhost`, Caddy will use a local certificate. Your browser may show an untrusted certificate warning until you trust Caddy's local CA; for temporary testing you can bypass the warning in the browser.
+- On `*.mos.localhost`, Caddy will use a local certificate. Your browser may show an untrusted certificate warning until you trust Caddy's local CA; for temporary testing you can bypass the warning in the browser.
 - Homepage links: same URLs from `services/homepage/.env`
+
+Local Authelia note:
+- Protected routes now use `https://*.mos.localhost` so a shared auth cookie can work across subdomains.
+- The default local root changed away from bare `localhost` for this reason.
 
 ## Adding a New App
 
@@ -248,7 +256,7 @@ docker compose ps
 docker compose logs <app-name> --tail 50
 
 # Test the app is accessible (should return 200, 302, or similar)
-curl -sI http://<app-name>.localhost/
+curl -sI http://<app-name>.mos.localhost/
 
 # Verify homepage shows the new tile
 docker exec mos-homepage cat /app/config/services.yaml

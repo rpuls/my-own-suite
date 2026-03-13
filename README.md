@@ -19,6 +19,7 @@
 | Calendar Sync | <img src="./site/src/assets/logos/radicale.png" alt="Radicale" width="18" /> **Radicale** | Google Calendar, iCloud, Outlook |
 | PDF Tools | <img src="./site/src/assets/logos/stirling-pdf.png" alt="Stirling PDF" width="18" /> **Stirling PDF** | Adobe Acrobat, Smallpdf |
 | Password Manager | <img src="./site/src/assets/logos/vaultwarden.png" alt="Vaultwarden" width="18" /> **Vaultwarden** | 1Password, LastPass, Bitwarden cloud |
+| Access Gateway | **Authelia** | Shared login wall for Homepage and Suite Manager |
 
 ### Who It's For
 
@@ -62,6 +63,7 @@ npm run vps:rebuild
 | Deployment stacks | `deploy/` |
 | Canonical VPS architecture + app onboarding steps | [deploy/vps/README.md](./deploy/vps/README.md) |
 | Homepage service details | [apps/homepage/README.md](./apps/homepage/README.md) |
+| Authelia service details | [apps/authelia/README.md](./apps/authelia/README.md) |
 | Seafile service details | [apps/seafile/README.md](./apps/seafile/README.md) |
 | ONLYOFFICE service details | [apps/onlyoffice/README.md](./apps/onlyoffice/README.md) |
 | Immich service details | [apps/immich/README.md](./apps/immich/README.md) |
