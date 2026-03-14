@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { withSetupPath } from '../../../lib/base-path';
 import type { OnboardingModel } from '../shared/types';
 
 type LoadState =
@@ -7,9 +8,8 @@ type LoadState =
   | { kind: 'loaded'; model: OnboardingModel }
   | { kind: 'error'; message: string };
 
-async function loadModel(token: string): Promise<OnboardingModel> {
-  const headers = token ? { 'x-bootstrap-token': token } : undefined;
-  const response = await fetch('/api/onboarding', { headers });
+async function loadModel(): Promise<OnboardingModel> {
+  const response = await fetch(withSetupPath('/api/onboarding'));
   const body = await response.json();
 
   if (!response.ok) {
@@ -21,18 +21,16 @@ async function loadModel(token: string): Promise<OnboardingModel> {
 
 export function useOnboarding() {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
-  const [token, setToken] = useState(() => window.sessionStorage.getItem('suite-manager-bootstrap-token') || '');
-  const [tokenDraft, setTokenDraft] = useState(token);
 
-  async function refreshModel(activeToken: string): Promise<void> {
-    const nextModel = await loadModel(activeToken);
+  async function refreshModel(): Promise<void> {
+    const nextModel = await loadModel();
     setState({ kind: 'loaded', model: nextModel });
   }
 
   useEffect(() => {
     let cancelled = false;
 
-    void loadModel(token)
+    void loadModel()
       .then((model) => {
         if (!cancelled) {
           setState({ kind: 'loaded', model });
@@ -50,26 +48,10 @@ export function useOnboarding() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
-
-  function unlock(): void {
-    window.sessionStorage.setItem('suite-manager-bootstrap-token', tokenDraft);
-    setToken(tokenDraft);
-  }
-
-  function lock(): void {
-    window.sessionStorage.removeItem('suite-manager-bootstrap-token');
-    setToken('');
-    setTokenDraft('');
-  }
+  }, []);
 
   return {
-    lock,
     refreshModel,
-    setTokenDraft,
     state,
-    token,
-    tokenDraft,
-    unlock,
   };
 }

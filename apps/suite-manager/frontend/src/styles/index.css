@@ -4,6 +4,85 @@
   padding: clamp(2rem, 5vw, 3.8rem) 0 3rem;
 }
 
+.suite-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top right, rgba(99, 226, 179, 0.14), transparent 22rem),
+    var(--bg);
+}
+
+.suite-shell-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem clamp(1rem, 3vw, 2rem);
+}
+
+.suite-shell-title {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.suite-shell-nav-links {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.suite-shell-link,
+.suite-menu-button {
+  border: 1px solid var(--surface-border);
+  border-radius: 0.95rem;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0.8rem 0.95rem;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.suite-shell-link:hover,
+.suite-menu-button:hover {
+  border-color: rgba(99, 226, 179, 0.45);
+  background: rgba(99, 226, 179, 0.08);
+}
+
+.suite-shell-link.is-active {
+  border-color: rgba(99, 226, 179, 0.55);
+  background: rgba(99, 226, 179, 0.14);
+}
+
+.suite-menu-button {
+  width: fit-content;
+}
+
+.suite-shell-menu {
+  position: relative;
+}
+
+.suite-menu-popover {
+  position: absolute;
+  top: calc(100% + 0.75rem);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  gap: 0.85rem;
+  min-width: 240px;
+  padding: 1rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 1rem;
+  background: rgba(6, 21, 38, 0.96);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(14px);
+}
+
+.suite-shell-main {
+  min-width: 0;
+}
+
 .suite-hero {
   padding-bottom: 1.5rem;
 }
@@ -23,6 +102,68 @@
 
 .suite-grid {
   display: block;
+}
+
+.suite-auth-shell {
+  display: flex;
+  justify-content: center;
+}
+
+.suite-auth-layout {
+  display: flex;
+  justify-content: center;
+  min-height: calc(100vh - 8rem);
+}
+
+.suite-auth-stage {
+  display: grid;
+  gap: 0.9rem;
+  align-content: center;
+  width: min(100%, 540px);
+}
+
+.suite-auth-card {
+  width: 100%;
+  max-width: 540px;
+  padding: 1.5rem;
+  border-radius: 1.4rem;
+  background: rgba(27, 38, 61, 0.88);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.24);
+}
+
+.suite-auth-card-header {
+  margin-bottom: 1.2rem;
+}
+
+.suite-auth-card-header h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.suite-auth-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.suite-auth-field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.suite-auth-field span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.suite-auth-field input {
+  width: 100%;
+  border: 1px solid var(--surface-border);
+  border-radius: 0.85rem;
+  background: rgba(6, 21, 38, 0.72);
+  color: var(--text);
+  padding: 0.8rem 0.95rem;
 }
 
 .suite-steps {
@@ -139,8 +280,7 @@
   margin: 0 auto;
 }
 
-.suite-current h2,
-.suite-token-block h3 {
+.suite-current h2 {
   margin: 0.75rem 0 0;
 }
 
@@ -148,13 +288,6 @@
 .suite-owner,
 .suite-provisioning-item p {
   color: var(--muted);
-}
-
-.suite-token-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
 }
 
 .suite-details {
@@ -418,27 +551,6 @@
   text-decoration-color: rgba(99, 226, 179, 0.4);
 }
 
-.suite-token-block {
-  margin-top: 1.35rem;
-  padding-top: 1.2rem;
-  border-top: 1px solid var(--surface-border);
-}
-
-.suite-token-form {
-  display: grid;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
-}
-
-.suite-token-form input {
-  width: 100%;
-  border: 1px solid var(--surface-border);
-  border-radius: 0.85rem;
-  background: rgba(6, 21, 38, 0.72);
-  color: var(--text);
-  padding: 0.8rem 0.95rem;
-}
-
 .suite-empty,
 .suite-error {
   margin: 0;
@@ -449,14 +561,27 @@
 }
 
 @media (max-width: 640px) {
+  .suite-auth-layout {
+    min-height: auto;
+  }
+
+  .suite-shell-header {
+    padding-top: 1rem;
+  }
+
   .suite-step-header,
-  .suite-field-header,
-  .suite-token-actions {
+  .suite-field-header {
     align-items: flex-start;
     flex-direction: column;
   }
 
   .suite-field-actions {
     flex-wrap: wrap;
+  }
+
+  .suite-menu-popover {
+    left: 0;
+    right: auto;
+    min-width: min(280px, calc(100vw - 2rem));
   }
 }

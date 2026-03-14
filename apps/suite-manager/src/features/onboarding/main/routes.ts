@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 
 import type { SuiteManagerConfig } from '../../../config.ts';
 import { buildVaultwardenImportCsv } from '../vaultwarden/import-handoff.ts';
-import { isAuthorized } from '../shared/auth.ts';
 import { OnboardingService } from './service.ts';
 
 export function createOnboardingRouter(
@@ -11,16 +10,9 @@ export function createOnboardingRouter(
 ): Hono {
   const router = new Hono();
 
-  router.get('/', (c) => {
-    const authorized = isAuthorized(c, config.bootstrapToken);
-    return onboardingService.buildModel(authorized).then((model) => c.json(model));
-  });
+  router.get('/', (c) => onboardingService.buildModel().then((model) => c.json(model)));
 
   router.post('/actions/:actionId', async (c) => {
-    if (!isAuthorized(c, config.bootstrapToken)) {
-      return c.json({ error: 'Bootstrap token required.' }, 401);
-    }
-
     const actionId = c.req.param('actionId');
     try {
       onboardingService.triggerAction(actionId);
@@ -32,10 +24,6 @@ export function createOnboardingRouter(
   });
 
   router.get('/imports/vaultwarden.csv', (c) => {
-    if (!isAuthorized(c, config.bootstrapToken)) {
-      return c.json({ error: 'Bootstrap token required.' }, 401);
-    }
-
     const csv = buildVaultwardenImportCsv(config);
 
     return new Response(csv, {

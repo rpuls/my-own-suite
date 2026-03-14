@@ -1,18 +1,16 @@
 import type { SuiteManagerConfig } from '../../../config.ts';
-import { presentValue } from '../../../lib/secrets.ts';
 import type { CurrentAction, OnboardingStep } from '../shared/types.ts';
 
-function field(label: string, value: string, authorized: boolean, secret = false) {
+function field(label: string, value: string, secret = false) {
   return {
     label,
     secret,
-    value: presentValue(value, authorized, secret),
+    value,
   };
 }
 
 export function buildVaultwardenSteps(
   config: SuiteManagerConfig,
-  authorized: boolean,
   vaultwardenAccountReady: boolean,
   suiteCredentialsImported: boolean,
 ): OnboardingStep[] {
@@ -20,7 +18,7 @@ export function buildVaultwardenSteps(
     id: 'activate-vaultwarden',
     sections: [
       {
-        field: field('Email', config.ownerEmail, authorized),
+        field: field('Email', config.ownerEmail),
         id: 'copy-email',
         title: 'Copy your email',
       },

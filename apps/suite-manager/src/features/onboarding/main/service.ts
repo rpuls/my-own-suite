@@ -24,13 +24,13 @@ export class OnboardingService {
     return this.stateStore.getStateFilePath();
   }
 
-  async buildModel(authorized: boolean): Promise<OnboardingModel> {
+  async buildModel(): Promise<OnboardingModel> {
     const state = this.stateStore.load();
     const vaultwardenObservation = await this.vaultwardenObserver.getAccountStatus();
     const vaultwardenAccountReady = vaultwardenObservation.status === 'ready';
     const suiteCredentialsImported = state.completedSteps.includes('import-generated-accounts');
     const radicaleConnected = state.completedSteps.includes('connect-radicale');
-    const steps = await buildOnboardingSteps(this.config, authorized, {
+    const steps = await buildOnboardingSteps(this.config, {
       radicaleConnected,
       suiteCredentialsImported,
       vaultwardenAccountReady,
@@ -38,11 +38,10 @@ export class OnboardingService {
     const currentAction = steps.find((step) => step.status === 'active') ?? null;
 
     return {
-      authorized,
       currentAction,
       currentStepId: currentAction?.id ?? null,
       generatedAt: new Date().toISOString(),
-      homepageUrl: this.config.appUrls.homepage,
+      homepageUrl: '/',
       observations: {
         importStatus: suiteCredentialsImported ? 'completed' : vaultwardenAccountReady ? 'ready' : 'blocked',
         vaultwardenAccountStatus: vaultwardenObservation.status,
@@ -51,7 +50,6 @@ export class OnboardingService {
         email: this.config.ownerEmail,
         name: this.config.ownerName,
       },
-      requiresToken: Boolean(this.config.bootstrapToken),
       steps,
       title: 'My Own Suite Setup',
     };

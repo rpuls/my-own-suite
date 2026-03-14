@@ -36,8 +36,8 @@ The main first-run values live in `deploy/vps/services/suite-manager/.env`:
 - `OWNER_NAME`
 - `OWNER_EMAIL`
 - `OWNER_PASSWORD`
+- `SESSION_SECRET`
 - `TIMEZONE`
-- `BOOTSTRAP_TOKEN`
 
 You can also change `DOMAIN` in `deploy/vps/.env` and adjust individual service env files in `deploy/vps/services/*.env` if needed.
 
@@ -65,23 +65,22 @@ npm run vps:rebuild
 
 ## 6. Finish onboarding
 
-- Authelia sign-in: `https://auth.mos.localhost/`
-- Suite Manager: `https://suite-manager.mos.localhost/`
+- Suite Manager: `http://suite-manager.localhost/`
 
-Sign in through Authelia first, then open `Suite Manager` and complete the onboarding flow before you start using the rest of the suite.
+Open `Suite Manager` first, sign in, and complete the onboarding flow before you start using the rest of the suite.
 
 Homepage also includes a `Finish Setup` tile that points to the same onboarding flow.
 
 ## 7. Open the apps
 
-- Homepage: `https://homepage.mos.localhost/`
+- Homepage: `http://homepage.localhost/`
 
 From Homepage you can open each application. Direct URLs:
 
-- Seafile: `http://seafile.mos.localhost/`
-- ONLYOFFICE: `http://onlyoffice.mos.localhost/`
-- Immich: `http://immich.mos.localhost/`
-- Radicale: `http://radicale.mos.localhost/`
-- Stirling PDF: `http://stirling-pdf.mos.localhost/`
-- Vaultwarden: `https://vaultwarden.mos.localhost/`
-- Suite Manager: `https://suite-manager.mos.localhost/`
+- Seafile: `http://seafile.localhost/`
+- ONLYOFFICE: `http://onlyoffice.localhost/`
+- Immich: `http://immich.localhost/`
+- Radicale: `http://radicale.localhost/`
+- Stirling PDF: `http://stirling-pdf.localhost/`
+- Vaultwarden: `https://vaultwarden.localhost/`
+- Suite Manager: `http://suite-manager.localhost/`

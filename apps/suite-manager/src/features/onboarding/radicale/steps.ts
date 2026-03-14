@@ -1,12 +1,11 @@
 import type { SuiteManagerConfig } from '../../../config.ts';
-import { presentValue } from '../../../lib/secrets.ts';
 import type { CurrentAction, OnboardingStep } from '../shared/types.ts';
 
-function field(label: string, value: string, authorized: boolean, secret = false) {
+function field(label: string, value: string, secret = false) {
   return {
     label,
     secret,
-    value: presentValue(value, authorized, secret),
+    value,
   };
 }
 
@@ -17,7 +16,6 @@ function buildRadicaleCollectionUrl(config: SuiteManagerConfig): string {
 
 export async function buildRadicaleSteps(
   config: SuiteManagerConfig,
-  authorized: boolean,
   prerequisitesReady: boolean,
   radicaleConnected: boolean,
 ): Promise<OnboardingStep[]> {
@@ -31,7 +29,7 @@ export async function buildRadicaleSteps(
         description:
           'Use this server address when you add your private calendar. If typing the full address on another device is annoying, you can copy it or show it as a QR code from this field.',
         field: {
-          ...field('Server URL', collectionUrl, authorized),
+          ...field('Server URL', collectionUrl),
           qrAlt: 'QR code for the Radicale server URL',
           qrValue: collectionUrl,
         },
@@ -39,7 +37,7 @@ export async function buildRadicaleSteps(
         title: 'Manual setup',
       },
       {
-        field: field('Username', radicaleUsername, authorized),
+        field: field('Username', radicaleUsername),
         id: 'manual-username',
         title: 'Use this username',
       },

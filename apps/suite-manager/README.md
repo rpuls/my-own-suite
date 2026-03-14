@@ -7,9 +7,13 @@
 - `SUITE_MANAGER_RUN_ONCE`: If set to `true`, performs one Homepage check and exits. Useful for smoke tests.
 - `OWNER_NAME`: Display name shown in the onboarding flow.
 - `OWNER_EMAIL`: Shared owner email shown in onboarding and reused by compatible app bootstrap flows.
-- `BOOTSTRAP_TOKEN`: Optional token used to unlock protected onboarding actions such as credential handoff artifacts.
+- `OWNER_PASSWORD`: Owner password used for Suite Manager sign-in.
+- `SESSION_SECRET`: HMAC secret used to sign the Suite Manager session cookie.
 - `SUITE_MANAGER_PUBLIC_URL`: Public onboarding URL surfaced in the UI.
 - `HOMEPAGE_PUBLIC_URL`: Public Homepage URL used by the onboarding escape hatch and progress links.
+- `SUITE_MANAGER_BASE_PATH`: Public path for the Suite Manager setup surface. Defaults to `/setup`.
+- `SUITE_MANAGER_SESSION_COOKIE_NAME`: Optional override for the session cookie name. Defaults to `mos-suite-manager-session`.
+- `SUITE_MANAGER_SESSION_MAX_AGE_SECONDS`: Optional session lifetime in seconds. Defaults to `1209600` (14 days).
 - `SUITE_MANAGER_STATE_DIR`: Directory used to persist onboarding progress.
 - `VAULTWARDEN_DATABASE_URL` or `DATABASE_URL`: Optional Postgres connection string used to detect when the owner Vaultwarden account has been created. In the VPS/local stack, this is sourced from the existing Vaultwarden service env.
 - `SEAFILE_ADMIN_EMAIL`, `SEAFILE_ADMIN_PASSWORD`, `RADICALE_ADMIN_USERNAME`, `RADICALE_ADMIN_PASSWORD`: Consumed from existing service env files so suite-manager can prepare the first Vaultwarden import handoff.
@@ -17,14 +21,16 @@
 
 #### Health and behavior
 
-- Serves a React/Vite onboarding frontend on `/`.
+- Serves the React/Vite setup frontend on `/setup/`.
+- Uses a built-in email/password login with a signed cookie session.
+- Proxies Homepage through `/` after the owner signs in.
 - Exposes a simple HTTP `200` health endpoint on `/healthz`.
-- Exposes JSON status and onboarding data on `/api/status` and `/api/onboarding`.
+- Exposes JSON setup auth/status/onboarding data on `/setup/api/auth/*`, `/setup/api/status`, and `/setup/api/onboarding`.
 - Logs a success line when Homepage returns a `2xx` response.
 - Logs a failure line when Homepage returns a non-`2xx` response or the request errors.
 - Persists onboarding step completion in `SUITE_MANAGER_STATE_DIR`.
 - Automatically advances past Vaultwarden account creation when the configured Vaultwarden database shows a user matching `OWNER_EMAIL`.
-- Serves a Vaultwarden-compatible CSV import artifact for the generated accounts currently available to suite-manager, and the frontend can copy that content directly to the clipboard for paste-based import.
+- Serves a Vaultwarden-compatible CSV import artifact for the generated accounts currently available to suite-manager, and the frontend can copy that content directly to the clipboard for paste-based import after login.
 
 #### Development structure
 
@@ -49,6 +55,6 @@
 #### Customizations in this project
 
 - Acts as the shared onboarding surface for stack-wide bootstrap, credential handoff, and future per-app provisioning adapters.
-- Is expected to sit behind Authelia for normal browser access, while still retaining its own protected-action boundary for secret-adjacent endpoints.
+- Acts as the authenticated public entrypoint for setup and Homepage access.
 - Treats Vaultwarden account creation as observed suite state, not a user-confirmed checklist item.
 - Keeps the current onboarding surface intentionally narrow: one guided access flow first, with later app-specific onboarding still to come.

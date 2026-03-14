@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { withSetupPath } from '../../../lib/base-path';
 import { StepCard } from '../shared/components/StepCard';
 import { ValueField } from '../shared/components/ValueField';
 import type { CurrentActionSection, OnboardingStep } from '../shared/types';
@@ -9,7 +10,7 @@ import { CredentialsField } from '../vaultwarden/CredentialsField';
 import { useOnboarding } from './useOnboarding';
 
 export default function OnboardingApp() {
-  const { lock, refreshModel, setTokenDraft, state, token, tokenDraft, unlock } = useOnboarding();
+  const { refreshModel, state } = useOnboarding();
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [copiedActionId, setCopiedActionId] = useState<string | null>(null);
   const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
@@ -26,13 +27,13 @@ export default function OnboardingApp() {
     }
 
     const interval = window.setInterval(() => {
-      void refreshModel(token).catch(() => undefined);
+      void refreshModel().catch(() => undefined);
     }, 5000);
 
     return () => {
       window.clearInterval(interval);
     };
-  }, [refreshModel, state, token]);
+  }, [refreshModel, state]);
 
   useEffect(() => {
     if (state.kind !== 'loaded' || !state.model.currentStepId) {
@@ -88,8 +89,7 @@ export default function OnboardingApp() {
   }
 
   async function fetchProtectedText(path: string): Promise<string> {
-    const headers = token ? { 'x-bootstrap-token': token } : undefined;
-    const response = await fetch(path, { headers });
+    const response = await fetch(withSetupPath(path));
 
     if (!response.ok) {
       const body = await response.json().catch(() => ({ error: 'Unable to load protected content.' }));
@@ -100,17 +100,12 @@ export default function OnboardingApp() {
   }
 
   async function triggerAction(actionId: string): Promise<void> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    if (token) {
-      headers['x-bootstrap-token'] = token;
-    }
-
-    const response = await fetch(`/api/onboarding/actions/${actionId}`, {
+    const response = await fetch(withSetupPath(`/api/onboarding/actions/${actionId}`), {
+      body: JSON.stringify({}),
+      headers: {
+        'Content-Type': 'application/json',
+      },
       method: 'POST',
-      headers,
     });
 
     const body = await response.json();
@@ -118,7 +113,7 @@ export default function OnboardingApp() {
       throw new Error(typeof body.error === 'string' ? body.error : 'Unable to run onboarding action.');
     }
 
-    await refreshModel(token);
+    await refreshModel();
   }
 
   async function copyImportContents(copyPath: string, actionId: string): Promise<void> {
@@ -322,7 +317,7 @@ export default function OnboardingApp() {
       {state.kind === 'loading' ? (
         <section className="mos-shell">
           <div className="mos-panel suite-card">
-            <p className="suite-empty">Loading suite state…</p>
+            <p className="suite-empty">Loading suite state...</p>
           </div>
         </section>
       ) : null}
@@ -359,32 +354,6 @@ export default function OnboardingApp() {
             </div>
           </div>
 
-          {model.requiresToken ? (
-            <div className="mos-panel suite-card suite-current">
-              <div className="suite-token-block">
-                <h3>Bootstrap token</h3>
-                <p className="suite-meta">Use this only when a current action needs access to generated credentials.</p>
-                <div className="suite-token-form">
-                  <input
-                    onChange={(event) => setTokenDraft(event.target.value)}
-                    placeholder="Bootstrap token"
-                    type="password"
-                    value={tokenDraft}
-                  />
-                  <div className="suite-token-actions">
-                    <button className="mos-btn mos-btn-primary" onClick={unlock} type="button">
-                      Unlock
-                    </button>
-                    {token ? (
-                      <button className="mos-btn mos-btn-secondary" onClick={lock} type="button">
-                        Lock
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : null}
         </section>
       ) : null}
     </main>

@@ -24,11 +24,16 @@ export type SuiteManagerConfig = {
   };
   domain: string;
   homepageUrl: string;
+  ownerPassword: string;
   ownerEmail: string;
   ownerName: string;
   port: number;
   requestTimeoutMs: number;
   runOnce: boolean;
+  sessionCookieName: string;
+  sessionMaxAgeSeconds: number;
+  sessionSecret: string;
+  setupBasePath: string;
   stateDir: string;
   urlScheme: string;
   vaultwardenDatabaseUrl: string;
@@ -38,18 +43,37 @@ function buildPublicUrl(subdomain: string, urlScheme: string, domain: string): s
   return `${urlScheme}://${subdomain}.${domain}`;
 }
 
+function normalizeBasePath(value: string | undefined, fallback: string): string {
+  const trimmed = (value || fallback).trim();
+  const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  const withoutTrailingSlash = withLeadingSlash.replace(/\/+$/, '');
+  return withoutTrailingSlash || fallback;
+}
+
+function requireEnv(name: string, fallback?: string): string {
+  const value = (process.env[name] || fallback || '').trim();
+  if (!value) {
+    throw new Error(`${name} is required for suite-manager auth.`);
+  }
+  return value;
+}
+
 export function loadConfig(): SuiteManagerConfig {
   const port = Number(process.env.PORT) || 3000;
   const checkIntervalMs = Number(process.env.SUITE_MANAGER_CHECK_INTERVAL_MS) || 5 * 60 * 1000;
   const homepageUrl = process.env.HOMEPAGE_URL || 'http://homepage:3000/';
   const requestTimeoutMs = Number(process.env.SUITE_MANAGER_REQUEST_TIMEOUT_MS) || 10_000;
   const runOnce = process.env.SUITE_MANAGER_RUN_ONCE === 'true';
-  const ownerEmail = process.env.OWNER_EMAIL || 'admin@myownsuite.local';
+  const ownerEmail = requireEnv('OWNER_EMAIL', 'admin@myownsuite.local');
   const ownerName = process.env.OWNER_NAME || 'Owner';
-  const bootstrapToken = (process.env.BOOTSTRAP_TOKEN || '').trim();
+  const ownerPassword = requireEnv('OWNER_PASSWORD');
+  const sessionSecret = requireEnv('SESSION_SECRET');
   const stateDir = process.env.SUITE_MANAGER_STATE_DIR || path.join(process.cwd(), '.suite-manager');
   const urlScheme = process.env.PUBLIC_URL_SCHEME || 'http';
   const domain = process.env.DOMAIN || 'localhost';
+  const setupBasePath = normalizeBasePath(process.env.SUITE_MANAGER_BASE_PATH, '/setup');
+  const sessionCookieName = (process.env.SUITE_MANAGER_SESSION_COOKIE_NAME || 'mos-suite-manager-session').trim();
+  const sessionMaxAgeSeconds = Number(process.env.SUITE_MANAGER_SESSION_MAX_AGE_SECONDS) || 60 * 60 * 24 * 14;
   const vaultwardenDatabaseUrl = (process.env.VAULTWARDEN_DATABASE_URL || process.env.DATABASE_URL || '').trim();
   const seafileAdminEmail = (process.env.SEAFILE_ADMIN_EMAIL || '').trim();
   const seafileAdminPassword = (process.env.SEAFILE_ADMIN_PASSWORD || '').trim();
@@ -66,7 +90,6 @@ export function loadConfig(): SuiteManagerConfig {
       stirlingPdf: process.env.STIRLING_PDF_PUBLIC_URL || buildPublicUrl('stirling-pdf', urlScheme, domain),
       vaultwarden: process.env.VAULTWARDEN_PUBLIC_URL || buildPublicUrl('vaultwarden', 'https', domain),
     },
-    bootstrapToken,
     checkIntervalMs,
     generatedAccounts: {
       radicale:
@@ -86,11 +109,16 @@ export function loadConfig(): SuiteManagerConfig {
     },
     domain,
     homepageUrl,
+    ownerPassword,
     ownerEmail,
     ownerName,
     port,
     requestTimeoutMs,
     runOnce,
+    sessionCookieName,
+    sessionMaxAgeSeconds,
+    sessionSecret,
+    setupBasePath,
     stateDir,
     urlScheme,
     vaultwardenDatabaseUrl,

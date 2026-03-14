@@ -14,6 +14,7 @@ export function createStatusRouter(
       appUrls: config.appUrls,
       checkIntervalMs: config.checkIntervalMs,
       homepageUrl: config.homepageUrl,
+      setupBasePath: config.setupBasePath,
       onboardingStatePath: onboardingService.getStateFilePath(),
       ownerEmail: config.ownerEmail,
       ownerName: config.ownerName,

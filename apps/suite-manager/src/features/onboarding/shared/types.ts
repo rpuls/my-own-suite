@@ -49,7 +49,6 @@ export type OnboardingObservation = {
 };
 
 export type OnboardingModel = {
-  authorized: boolean;
   currentAction: CurrentAction | null;
   currentStepId: string | null;
   generatedAt: string;
@@ -59,7 +58,6 @@ export type OnboardingModel = {
     email: string;
     name: string;
   };
-  requiresToken: boolean;
   steps: OnboardingStep[];
   title: string;
 };

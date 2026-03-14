@@ -5,7 +5,6 @@ import { buildVaultwardenSteps } from '../vaultwarden/steps.ts';
 
 export async function buildOnboardingSteps(
   config: SuiteManagerConfig,
-  authorized: boolean,
   state: {
     radicaleConnected: boolean;
     suiteCredentialsImported: boolean;
@@ -14,13 +13,11 @@ export async function buildOnboardingSteps(
 ): Promise<OnboardingStep[]> {
   const vaultwardenSteps = buildVaultwardenSteps(
     config,
-    authorized,
     state.vaultwardenAccountReady,
     state.suiteCredentialsImported,
   );
   const radicaleSteps = await buildRadicaleSteps(
     config,
-    authorized,
     state.vaultwardenAccountReady && state.suiteCredentialsImported,
     state.radicaleConnected,
   );

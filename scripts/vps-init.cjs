@@ -314,6 +314,38 @@ function renderEnvFile(rawContent, sharedVars, sharedSecrets, seedVars = {}) {
   };
 }
 
+function collectMissingAssignments(rawContent, sharedVars, sharedSecrets, existingVars) {
+  const lines = rawContent.split(/\r?\n/);
+  const localVars = { ...existingVars };
+  const missingAssignments = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const idx = line.indexOf('=');
+
+    if (!trimmed || trimmed.startsWith('#') || idx < 1) {
+      continue;
+    }
+
+    const key = line.slice(0, idx).trim();
+    const value = line.slice(idx + 1);
+    const rendered = Object.prototype.hasOwnProperty.call(existingVars, key)
+      ? existingVars[key]
+      : renderTemplate(value, localVars, sharedVars, sharedSecrets);
+
+    localVars[key] = rendered;
+
+    if (!Object.prototype.hasOwnProperty.call(existingVars, key)) {
+      missingAssignments.push(`${key}=${rendered}`);
+    }
+  }
+
+  return {
+    localVars,
+    missingAssignments,
+  };
+}
+
 const sourceFiles = collectEnvTemplates(vpsDir)
   .map((file) => path.relative(vpsDir, file).replace(/\\/g, '/'))
   .sort((a, b) => {
@@ -382,10 +414,10 @@ for (const sourceRelPath of sourceFiles) {
         skippedCount += 1;
         console.log(`Exists, skipped: deploy/vps/${targetRelPath}`);
       }
-    } catch (error) {
-      errorCount += 1;
-      console.error(`Failed: deploy/vps/${targetRelPath} (${error.message})`);
-    }
+      } catch (error) {
+        errorCount += 1;
+        console.error(`Failed: deploy/vps/${targetRelPath} (${error.message})`);
+      }
     continue;
   }
 

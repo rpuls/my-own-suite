@@ -57,7 +57,6 @@ const GLOBAL_FILES = {
 const APP_FILES = {};
 
 const SERVICE_FILES = {
-  authelia: 'services/authelia/.env',
   homepage: 'services/homepage/.env',
   onlyoffice: 'services/onlyoffice/.env',
   radicale: 'services/radicale/.env',
@@ -129,42 +128,16 @@ function warnIfTimezoneDiffersFromSuiteManager(fileName, key) {
 
 if (env.root) {
   requireVar('root', 'DOMAIN', { allowPlaceholder: false });
-
-  if ((env.root.DOMAIN || '').trim() === 'localhost') {
-    errors.push('DOMAIN=localhost is not supported with Authelia cookie sharing. Use a subdomain root such as mos.localhost.');
-  }
 }
 
 if (env.suiteManager) {
   requireVar('suiteManager', 'OWNER_EMAIL', { allowPlaceholder: false });
   requireVar('suiteManager', 'OWNER_PASSWORD', { allowPlaceholder: false });
+  requireVar('suiteManager', 'SESSION_SECRET', { allowPlaceholder: false });
   requireVar('suiteManager', 'TIMEZONE', { allowPlaceholder: false });
 
   if (isMissing(env.suiteManager.OWNER_NAME || '')) {
     warnings.push('services/suite-manager/.env OWNER_NAME is empty; suite-manager will fall back to "Owner".');
-  }
-
-  if (isMissing(env.suiteManager.BOOTSTRAP_TOKEN || '')) {
-    warnings.push('services/suite-manager/.env BOOTSTRAP_TOKEN is empty; onboarding secrets will not require an unlock token.');
-  }
-}
-
-if (env.authelia) {
-  requireVar('authelia', 'MOS_AUTHELIA_PUBLIC_URL', { allowPlaceholder: false });
-  requireVar('authelia', 'MOS_AUTHELIA_THEME', { allowPlaceholder: false });
-  requireVar('authelia', 'MOS_AUTHELIA_SESSION_DOMAIN', { allowPlaceholder: false });
-  requireVar('authelia', 'MOS_AUTHELIA_OWNER_EMAIL', { allowPlaceholder: false });
-  requireVar('authelia', 'MOS_AUTHELIA_OWNER_PASSWORD', { allowPlaceholder: false });
-  requireVar('authelia', 'MOS_AUTHELIA_SESSION_SECRET', { allowPlaceholder: false });
-  requireVar('authelia', 'MOS_AUTHELIA_STORAGE_ENCRYPTION_KEY', { allowPlaceholder: false });
-  requireVar('authelia', 'MOS_AUTHELIA_JWT_SECRET', { allowPlaceholder: false });
-
-  if (env.root && env.authelia.MOS_AUTHELIA_SESSION_DOMAIN !== env.root.DOMAIN) {
-    errors.push('Authelia AUTHELIA_SESSION_DOMAIN must match root DOMAIN so auth cookies work across protected subdomains.');
-  }
-
-  if (!['light', 'dark', 'grey', 'oled', 'auto'].includes(env.authelia.MOS_AUTHELIA_THEME)) {
-    errors.push('Authelia MOS_AUTHELIA_THEME must be one of: light, dark, grey, oled, auto.');
   }
 }
 
