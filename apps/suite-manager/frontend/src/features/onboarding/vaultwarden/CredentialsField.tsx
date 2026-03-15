@@ -4,6 +4,7 @@ import { ValueField } from '../shared/components/ValueField';
 
 type CredentialsFieldProps = {
   copied: boolean;
+  disabled?: boolean;
   onCopy: () => void;
   onToggleVisibility: () => void;
   revealed: boolean;
@@ -12,6 +13,7 @@ type CredentialsFieldProps = {
 
 export function CredentialsField({
   copied,
+  disabled = false,
   onCopy,
   onToggleVisibility,
   revealed,
@@ -20,7 +22,7 @@ export function CredentialsField({
   return (
     <ValueField
       actions={
-        <button className="suite-copy-button" onClick={onToggleVisibility} type="button">
+        <button className="suite-copy-button" disabled={disabled} onClick={onToggleVisibility} type="button">
           {revealed ? (
             <EyeOff aria-hidden="true" className="suite-inline-icon" />
           ) : (
@@ -30,6 +32,7 @@ export function CredentialsField({
         </button>
       }
       copied={copied}
+      disabled={disabled}
       label="Credentials"
       onCopy={onCopy}
       value={revealed ? value : '................'}

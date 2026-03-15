@@ -23,6 +23,10 @@ export async function buildRadicaleSteps(
   const radicaleUsername = config.generatedAccounts.radicale?.username || 'admin';
 
   const connectCalendar: CurrentAction = {
+    completion: {
+      mode: 'manual',
+      source: radicaleConnected ? 'manual' : 'none',
+    },
     id: 'connect-radicale',
     sections: [
       {

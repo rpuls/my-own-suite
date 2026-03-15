@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 type ValueFieldProps = {
   actions?: ReactNode;
   copied?: boolean;
+  disabled?: boolean;
   label: string;
   onCopy?: () => void;
   qrAlt?: string;
@@ -16,6 +17,7 @@ type ValueFieldProps = {
 export function ValueField({
   actions,
   copied = false,
+  disabled = false,
   label,
   onCopy,
   qrAlt,
@@ -57,6 +59,7 @@ export function ValueField({
           {qrValue ? (
             <button
               className="suite-copy-button"
+              disabled={disabled}
               onClick={() => setShowQr((current) => !current)}
               title="Show this value as a QR code so you can copy it with your camera app"
               type="button"
@@ -66,7 +69,7 @@ export function ValueField({
             </button>
           ) : null}
           {onCopy ? (
-            <button className="suite-copy-button" onClick={onCopy} type="button">
+            <button className="suite-copy-button" disabled={disabled} onClick={onCopy} type="button">
               <Copy aria-hidden="true" className="suite-inline-icon" />
               {copied ? 'Copied' : 'Copy'}
             </button>

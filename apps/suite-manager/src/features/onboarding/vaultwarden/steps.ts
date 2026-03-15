@@ -13,8 +13,24 @@ export function buildVaultwardenSteps(
   config: SuiteManagerConfig,
   vaultwardenAccountReady: boolean,
   suiteCredentialsImported: boolean,
+  completionSource: {
+    import: 'database' | 'manual' | 'none';
+    vaultwardenAccount: 'database' | 'manual' | 'none';
+  },
 ): OnboardingStep[] {
   const activateVaultwarden: CurrentAction = {
+    completion: {
+      mode: 'automatic',
+      source: completionSource.vaultwardenAccount,
+    },
+    detection: {
+      actionSectionIds: ['create-admin-user'],
+      pollIntervalMs: 1000,
+      pollWhileActive: true,
+      revealDelayMs: 1000,
+      startTriggers: ['action', 'focus'],
+      timeoutMs: 12000,
+    },
     id: 'activate-vaultwarden',
     sections: [
       {
@@ -38,6 +54,18 @@ export function buildVaultwardenSteps(
   };
 
   const importSuiteCredentials: CurrentAction = {
+    completion: {
+      mode: 'automatic',
+      source: completionSource.import,
+    },
+    detection: {
+      actionSectionIds: ['open-import-screen'],
+      pollIntervalMs: 1000,
+      pollWhileActive: true,
+      revealDelayMs: 1000,
+      startTriggers: ['action', 'focus'],
+      timeoutMs: 12000,
+    },
     id: 'import-suite-credentials',
     sections: [
       {

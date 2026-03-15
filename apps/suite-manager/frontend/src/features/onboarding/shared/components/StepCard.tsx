@@ -1,16 +1,25 @@
-import { CheckCircle2, LockKeyhole } from 'lucide-react';
+import { CheckCircle2, LoaderCircle, LockKeyhole } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import type { OnboardingStep, OnboardingStepStatus } from '../types';
 
 type StepCardProps = {
   children: ReactNode;
+  detectionState?: 'completed' | 'detecting' | null;
   expanded: boolean;
   onToggle: () => void;
   step: OnboardingStep;
 };
 
-function statusLabel(status: OnboardingStepStatus): string {
+function statusLabel(status: OnboardingStepStatus, detectionState?: 'completed' | 'detecting' | null): string {
+  if (detectionState === 'detecting') {
+    return 'Detecting';
+  }
+
+  if (detectionState === 'completed') {
+    return 'Detected';
+  }
+
   if (status === 'completed') {
     return 'Completed';
   }
@@ -22,7 +31,11 @@ function statusLabel(status: OnboardingStepStatus): string {
   return 'Current';
 }
 
-function statusIcon(status: OnboardingStepStatus) {
+function statusIcon(status: OnboardingStepStatus, detectionState?: 'completed' | 'detecting' | null) {
+  if (detectionState === 'detecting') {
+    return <LoaderCircle aria-hidden="true" className="suite-step-status-icon suite-spin" />;
+  }
+
   if (status === 'completed') {
     return <CheckCircle2 aria-hidden="true" className="suite-step-status-icon" />;
   }
@@ -34,10 +47,11 @@ function statusIcon(status: OnboardingStepStatus) {
   return null;
 }
 
-export function StepCard({ children, expanded, onToggle, step }: StepCardProps) {
+export function StepCard({ children, detectionState = null, expanded, onToggle, step }: StepCardProps) {
   const cardClassName = [
     'suite-step-card',
     `is-${step.status}`,
+    detectionState ? `is-${detectionState}` : '',
     expanded ? 'is-expanded' : 'is-collapsed',
   ].join(' ');
 
@@ -52,9 +66,9 @@ export function StepCard({ children, expanded, onToggle, step }: StepCardProps) 
         <div className="suite-step-heading">
           <h2>{step.title}</h2>
         </div>
-        <span className={`suite-step-status is-${step.status}`}>
-          {statusIcon(step.status)}
-          {statusLabel(step.status)}
+        <span className={`suite-step-status is-${detectionState || step.status}`}>
+          {statusIcon(step.status, detectionState)}
+          {statusLabel(step.status, detectionState)}
         </span>
       </button>
 

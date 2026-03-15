@@ -1,84 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { withSetupPath } from '../../../lib/base-path';
-import { StepCard } from '../shared/components/StepCard';
-import { ValueField } from '../shared/components/ValueField';
-import type { CurrentActionSection, OnboardingStep } from '../shared/types';
 import { DeviceGuide } from '../radicale/DeviceGuide';
 import { DeviceSelector, type RadicaleDevice } from '../radicale/DeviceSelector';
+import { StepCard } from '../shared/components/StepCard';
+import { ValueField } from '../shared/components/ValueField';
+import type { CurrentActionSection, OnboardingStepView } from '../shared/types';
 import { CredentialsField } from '../vaultwarden/CredentialsField';
-import { useOnboarding } from './useOnboarding';
+import { useOnboardingView } from './useOnboardingView';
 
 export default function OnboardingApp() {
-  const { refreshModel, state } = useOnboarding();
+  const { expandedStepId, isUiSettling, notifyStepAction, refreshModel, setExpandedStepId, state, view } =
+    useOnboardingView();
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [copiedActionId, setCopiedActionId] = useState<string | null>(null);
-  const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
   const [importContents, setImportContents] = useState<Record<string, string>>({});
   const [revealedActionIds, setRevealedActionIds] = useState<Record<string, boolean>>({});
   const [radicaleDevice, setRadicaleDevice] = useState<RadicaleDevice | null>(null);
-
-  const model = state.kind === 'loaded' ? state.model : null;
-  const steps = model?.steps ?? [];
-
-  useEffect(() => {
-    if (state.kind !== 'loaded' || state.model.currentStepId !== 'activate-vaultwarden') {
-      return undefined;
-    }
-
-    const interval = window.setInterval(() => {
-      void refreshModel().catch(() => undefined);
-    }, 5000);
-
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, [refreshModel, state]);
-
-  useEffect(() => {
-    if (state.kind !== 'loaded' || !state.model.currentStepId) {
-      return;
-    }
-
-    if (document.visibilityState === 'visible') {
-      const timer = window.setTimeout(() => {
-        setExpandedStepId(state.model.currentStepId);
-      }, 1000);
-
-      return () => {
-        window.clearTimeout(timer);
-      };
-    }
-
-    return;
-  }, [state]);
-
-  useEffect(() => {
-    let timer: number | null = null;
-
-    function handleVisibilityChange(): void {
-      if (document.visibilityState !== 'visible') {
-        return;
-      }
-
-      const targetStepId = state.kind === 'loaded' ? state.model.currentStepId : null;
-      if (!targetStepId) {
-        return;
-      }
-
-      timer = window.setTimeout(() => {
-        setExpandedStepId(targetStepId);
-      }, 1000);
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      if (timer !== null) {
-        window.clearTimeout(timer);
-      }
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [state]);
 
   async function copyValue(value: string): Promise<void> {
     await navigator.clipboard.writeText(value);
@@ -138,7 +76,7 @@ export default function OnboardingApp() {
     }));
   }
 
-  function toggleStep(step: OnboardingStep): void {
+  function toggleStep(step: OnboardingStepView): void {
     if (step.status === 'locked') {
       return;
     }
@@ -146,7 +84,8 @@ export default function OnboardingApp() {
     setExpandedStepId((currentExpanded) => (currentExpanded === step.id ? null : step.id));
   }
 
-  function renderSection(section: CurrentActionSection, index: number) {
+  function renderSection(step: OnboardingStepView, section: CurrentActionSection, index: number) {
+    const sectionDisabled = step.detectionState === 'detecting';
     const renderedSection =
       section.id.startsWith('manual-') || section.id === 'finish-radicale'
         ? getRadicaleSection(section, radicaleDevice)
@@ -163,6 +102,7 @@ export default function OnboardingApp() {
         {renderedSection.field ? (
           <ValueField
             copied={copiedField === renderedSection.field.value}
+            disabled={sectionDisabled}
             label={renderedSection.field.label}
             onCopy={() => void copyValue(renderedSection.field!.value)}
             qrAlt={renderedSection.field.qrAlt}
@@ -173,7 +113,22 @@ export default function OnboardingApp() {
 
         {renderedSection.action?.kind === 'link' && renderedSection.action.href ? (
           <div className="suite-actions">
-            <a className="mos-btn mos-btn-primary" href={renderedSection.action.href} rel="noreferrer" target="_blank">
+            <a
+              aria-disabled={sectionDisabled}
+              className={`mos-btn mos-btn-primary${sectionDisabled ? ' is-disabled' : ''}`}
+              href={renderedSection.action.href}
+              onClick={(event) => {
+                if (sectionDisabled) {
+                  event.preventDefault();
+                  return;
+                }
+
+                notifyStepAction(step.id, renderedSection.id);
+              }}
+              rel="noreferrer"
+              tabIndex={sectionDisabled ? -1 : undefined}
+              target="_blank"
+            >
               {renderedSection.action.label}
             </a>
           </div>
@@ -182,6 +137,7 @@ export default function OnboardingApp() {
         {renderedSection.action?.kind === 'copy' && renderedSection.action.copyPath ? (
           <CredentialsField
             copied={copiedActionId === renderedSection.id}
+            disabled={sectionDisabled}
             onCopy={() => void copyImportContents(renderedSection.action!.copyPath!, renderedSection.id)}
             onToggleVisibility={() => void toggleImportVisibility(renderedSection.action!.copyPath!, renderedSection.id)}
             revealed={Boolean(revealedActionIds[renderedSection.id])}
@@ -193,7 +149,14 @@ export default function OnboardingApp() {
           <div className="suite-actions">
             <button
               className="mos-btn mos-btn-primary"
-              onClick={() => void triggerAction(renderedSection.action!.actionId!)}
+              disabled={sectionDisabled}
+              onClick={() => {
+                if (sectionDisabled) {
+                  return;
+                }
+                notifyStepAction(step.id, renderedSection.id);
+                void triggerAction(renderedSection.action!.actionId!);
+              }}
               type="button"
             >
               {renderedSection.action.label}
@@ -270,25 +233,27 @@ export default function OnboardingApp() {
     return section;
   }
 
-  function getRadicaleSections(step: OnboardingStep): CurrentActionSection[] {
+  function getRadicaleSections(step: OnboardingStepView): CurrentActionSection[] {
     if (step.id !== 'connect-radicale' || !radicaleDevice) {
       return [];
     }
 
-    const commonIds = ['manual-url', 'manual-username', 'manual-password', 'finish-radicale'];
-
-    const visibleIds =
-      radicaleDevice === 'android' ? commonIds : commonIds;
-
+    const visibleIds = ['manual-url', 'manual-username', 'manual-password', 'finish-radicale'];
     return step.sections.filter((section) => visibleIds.includes(section.id));
   }
 
-  function renderStep(step: OnboardingStep) {
+  function renderStep(step: OnboardingStepView) {
     const expanded = step.status !== 'locked' && expandedStepId === step.id;
     const visibleSections = step.id === 'connect-radicale' ? getRadicaleSections(step) : step.sections;
 
     return (
-      <StepCard expanded={expanded} key={step.id} onToggle={() => toggleStep(step)} step={step}>
+      <StepCard
+        detectionState={step.detectionState}
+        expanded={expanded}
+        key={step.id}
+        onToggle={() => toggleStep(step)}
+        step={step}
+      >
         <p className="suite-meta">{step.summary}</p>
         {step.id === 'connect-radicale' ? (
           <>
@@ -297,7 +262,7 @@ export default function OnboardingApp() {
           </>
         ) : null}
         {visibleSections.length ? (
-          <div className="suite-sequence">{visibleSections.map((section, index) => renderSection(section, index))}</div>
+          <div className="suite-sequence">{visibleSections.map((section, index) => renderSection(step, section, index))}</div>
         ) : null}
       </StepCard>
     );
@@ -330,21 +295,28 @@ export default function OnboardingApp() {
         </section>
       ) : null}
 
-      {model ? (
+      {view ? (
         <section className="mos-shell suite-grid">
+          {view.snackbarNotice ? (
+            <div className="suite-snackbar" role="status" aria-live="polite">
+              {view.snackbarNotice.message}
+            </div>
+          ) : null}
+
           <div className="suite-steps">
-            {steps.map((step) => renderStep(step))}
+            {view.steps.map((step) => renderStep(step))}
 
             <div className="suite-onboarding-footer">
               <button
                 className="suite-subtle-button"
+                disabled={isUiSettling}
                 onClick={() => {
                   if (
                     window.confirm(
                       'Leave onboarding and go to Homepage? Only do this if you already know how to finish the remaining setup manually.',
                     )
                   ) {
-                    window.location.assign(model.homepageUrl);
+                    window.location.assign(view.homepageUrl);
                   }
                 }}
                 type="button"
@@ -353,7 +325,6 @@ export default function OnboardingApp() {
               </button>
             </div>
           </div>
-
         </section>
       ) : null}
     </main>

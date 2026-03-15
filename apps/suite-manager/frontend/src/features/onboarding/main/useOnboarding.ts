@@ -22,9 +22,10 @@ async function loadModel(): Promise<OnboardingModel> {
 export function useOnboarding() {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
 
-  async function refreshModel(): Promise<void> {
+  async function refreshModel(): Promise<OnboardingModel> {
     const nextModel = await loadModel();
     setState({ kind: 'loaded', model: nextModel });
+    return nextModel;
   }
 
   useEffect(() => {

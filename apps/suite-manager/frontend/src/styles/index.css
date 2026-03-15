@@ -189,8 +189,22 @@
   background: linear-gradient(180deg, rgba(99, 226, 179, 0.08), rgba(6, 21, 38, 0.94));
 }
 
+.suite-step-card.is-detecting {
+  border-color: rgba(99, 226, 179, 0.52);
+  box-shadow: 0 0 0 1px rgba(99, 226, 179, 0.14), 0 14px 36px rgba(0, 0, 0, 0.16);
+}
+
 .suite-step-card.is-completed {
   background: rgba(6, 21, 38, 0.88);
+}
+
+.suite-step-card.is-completed-detected,
+.suite-step-card.is-completed {
+  transition:
+    border-color 220ms ease,
+    transform 220ms ease,
+    background 220ms ease,
+    box-shadow 220ms ease;
 }
 
 .suite-step-card.is-locked {
@@ -242,11 +256,20 @@
   border-color: rgba(99, 226, 179, 0.2);
 }
 
+.suite-step-status.is-detecting {
+  border-color: rgba(99, 226, 179, 0.42);
+  color: var(--text);
+}
+
 .suite-step-status-icon {
   width: 0.95rem;
   height: 0.95rem;
   flex: 0 0 auto;
   stroke-width: 2.1;
+}
+
+.suite-spin {
+  animation: suite-spin 900ms linear infinite;
 }
 
 .suite-step-body {
@@ -532,6 +555,24 @@
   margin-top: 1rem;
 }
 
+.suite-snackbar {
+  position: fixed;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translateX(-50%);
+  z-index: 10;
+  width: fit-content;
+  max-width: min(100%, 540px);
+  margin: 0;
+  padding: 0.82rem 1rem;
+  border: 1px solid rgba(99, 226, 179, 0.4);
+  border-radius: 999px;
+  background: rgba(10, 31, 24, 0.94);
+  color: var(--text);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.22);
+  animation: suite-snackbar-in 220ms ease;
+}
+
 .suite-subtle-button {
   border: 0;
   background: transparent;
@@ -551,6 +592,14 @@
   text-decoration-color: rgba(99, 226, 179, 0.4);
 }
 
+.suite-subtle-button:disabled,
+.suite-copy-button:disabled,
+.mos-btn.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .suite-empty,
 .suite-error {
   margin: 0;
@@ -558,6 +607,28 @@
 
 .suite-error {
   color: var(--danger);
+}
+
+@keyframes suite-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes suite-snackbar-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 @media (max-width: 640px) {
@@ -583,5 +654,10 @@
     left: 0;
     right: auto;
     min-width: min(280px, calc(100vw - 2rem));
+  }
+
+  .suite-snackbar {
+    max-width: calc(100vw - 2rem);
+    padding-inline: 0.9rem;
   }
 }

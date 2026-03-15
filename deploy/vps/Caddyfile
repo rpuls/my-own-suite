@@ -2,7 +2,7 @@
 # My-Own-Suite Caddyfile
 # ===========================================
 {
-	auto_https off
+	auto_https disable_redirects
 }
 
 # Subdomain routing using DOMAIN from .env
@@ -49,6 +49,7 @@
 
 # Vaultwarden Password Manager
 https://vaultwarden.{$DOMAIN} {
+	tls internal
 	reverse_proxy vaultwarden:80
 }
 

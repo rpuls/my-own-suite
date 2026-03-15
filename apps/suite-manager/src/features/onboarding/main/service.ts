@@ -24,15 +24,65 @@ export class OnboardingService {
     return this.stateStore.getStateFilePath();
   }
 
+  private getExpectedVaultwardenImportCount(): number {
+    let count = 0;
+
+    if (this.config.generatedAccounts.seafile) {
+      count += 1;
+    }
+
+    if (this.config.generatedAccounts.radicale) {
+      count += 1;
+    }
+
+    return count;
+  }
+
   async buildModel(): Promise<OnboardingModel> {
-    const state = this.stateStore.load();
+    let state = this.stateStore.load();
     const vaultwardenObservation = await this.vaultwardenObserver.getAccountStatus();
     const vaultwardenAccountReady = vaultwardenObservation.status === 'ready';
-    const suiteCredentialsImported = state.completedSteps.includes('import-generated-accounts');
+    const expectedImportCount = this.getExpectedVaultwardenImportCount();
+    const importedByManualAction = state.completedSteps.includes('import-generated-accounts');
+    const currentCipherCount = vaultwardenObservation.cipherCount;
+    const baselineCipherCount = state.vaultwardenImportBaselineCipherCount;
+    const shouldPersistBaseline =
+      vaultwardenAccountReady &&
+      currentCipherCount !== null &&
+      baselineCipherCount === null &&
+      !importedByManualAction;
+
+    if (shouldPersistBaseline) {
+      const inferredBaseline = currentCipherCount >= expectedImportCount ? 0 : currentCipherCount;
+      state = this.stateStore.updateVaultwardenImportBaseline(inferredBaseline);
+    }
+
+    const effectiveBaselineCipherCount =
+      shouldPersistBaseline && currentCipherCount !== null
+        ? currentCipherCount >= expectedImportCount
+          ? 0
+          : currentCipherCount
+        : state.vaultwardenImportBaselineCipherCount;
+    const importedByDatabase =
+      expectedImportCount > 0 &&
+      vaultwardenAccountReady &&
+      currentCipherCount !== null &&
+      effectiveBaselineCipherCount !== null &&
+      currentCipherCount >= effectiveBaselineCipherCount + expectedImportCount;
+    const suiteCredentialsImported = importedByManualAction || importedByDatabase;
+    const suiteCredentialsImportSource = importedByDatabase ? 'database' : importedByManualAction ? 'manual' : 'none';
+    const vaultwardenAccountSource = vaultwardenAccountReady ? 'database' : 'none';
+
+    if (importedByDatabase && !importedByManualAction) {
+      state = this.stateStore.update('import-generated-accounts', true);
+    }
+
     const radicaleConnected = state.completedSteps.includes('connect-radicale');
     const steps = await buildOnboardingSteps(this.config, {
       radicaleConnected,
+      suiteCredentialsImportSource,
       suiteCredentialsImported,
+      vaultwardenAccountSource,
       vaultwardenAccountReady,
     });
     const currentAction = steps.find((step) => step.status === 'active') ?? null;
@@ -43,7 +93,10 @@ export class OnboardingService {
       generatedAt: new Date().toISOString(),
       homepageUrl: '/',
       observations: {
+        importedCredentialCount: currentCipherCount,
         importStatus: suiteCredentialsImported ? 'completed' : vaultwardenAccountReady ? 'ready' : 'blocked',
+        importStatusSource: suiteCredentialsImportSource,
+        observedImportTargetCount: expectedImportCount,
         vaultwardenAccountStatus: vaultwardenObservation.status,
       },
       owner: {

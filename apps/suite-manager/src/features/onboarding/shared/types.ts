@@ -31,10 +31,26 @@ export type CurrentActionSection = {
 };
 
 export type CurrentAction = {
+  completion: StepCompletion;
+  detection?: StepDetection;
   id: string;
   sections: CurrentActionSection[];
   summary: string;
   title: string;
+};
+
+export type StepCompletion = {
+  mode: 'automatic' | 'manual';
+  source: 'database' | 'manual' | 'none';
+};
+
+export type StepDetection = {
+  actionSectionIds?: string[];
+  pollIntervalMs: number;
+  pollWhileActive: boolean;
+  revealDelayMs: number;
+  startTriggers: Array<'action' | 'focus'>;
+  timeoutMs: number;
 };
 
 export type OnboardingStepStatus = 'active' | 'completed' | 'locked';
@@ -44,7 +60,10 @@ export type OnboardingStep = CurrentAction & {
 };
 
 export type OnboardingObservation = {
+  importedCredentialCount: number | null;
   importStatus: 'blocked' | 'completed' | 'ready';
+  importStatusSource: 'database' | 'manual' | 'none';
+  observedImportTargetCount: number;
   vaultwardenAccountStatus: 'pending' | 'ready' | 'unavailable';
 };
 
@@ -63,6 +82,7 @@ export type OnboardingModel = {
 };
 
 export type PersistedState = {
+  vaultwardenImportBaselineCipherCount: number | null;
   completedSteps: string[];
   updatedAt: string | null;
 };

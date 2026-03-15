@@ -17,6 +17,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Replaced the Suite Manager bootstrap-token gate with built-in owner email/password auth, a signed session cookie, and a `/setup/` control-plane surface that can proxy Homepage after login. Compatibility note: `BOOTSTRAP_TOKEN` has been removed from the suite-manager env contract and replaced by required `OWNER_PASSWORD` and `SESSION_SECRET` inputs; Homepage `SUITE_MANAGER_URL` now needs the `/setup/` suffix.
 - Simplified the Suite Manager Homepage contract so it now uses only `HOMEPAGE_URL` for the private Homepage upstream. Compatibility note: `HOMEPAGE_PUBLIC_URL` has been removed from the suite-manager env contract.
 - Removed Authelia from the active local/VPS stack so Suite Manager is now the single login and public control-plane entrypoint.
+- Added Vaultwarden import auto-detection for generated credentials using a persisted baseline cipher count, while keeping the manual completion button as a fallback when detection is unavailable or ambiguous.
+- Refactored the onboarding frontend around a derived state model so automatic detection, completion snackbars, and future progress UI can all follow the same step metadata instead of step-specific frontend logic.
 - Refreshed the default Homepage landing page with MOS-branded custom CSS, a denser but still restrained widget set (greeting, system glance, datetime, search), and user-selectable Homepage theme/color controls instead of a fixed palette.
 - Removed the default Homepage weather widget so the dashboard no longer prompts the user for location access.
 - Simplified the Homepage top bar so the date and search widgets render without the boxed header treatment.

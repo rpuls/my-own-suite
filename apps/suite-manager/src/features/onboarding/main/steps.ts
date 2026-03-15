@@ -7,7 +7,9 @@ export async function buildOnboardingSteps(
   config: SuiteManagerConfig,
   state: {
     radicaleConnected: boolean;
+    suiteCredentialsImportSource: 'database' | 'manual' | 'none';
     suiteCredentialsImported: boolean;
+    vaultwardenAccountSource: 'database' | 'manual' | 'none';
     vaultwardenAccountReady: boolean;
   },
 ): Promise<OnboardingStep[]> {
@@ -15,6 +17,10 @@ export async function buildOnboardingSteps(
     config,
     state.vaultwardenAccountReady,
     state.suiteCredentialsImported,
+    {
+      import: state.suiteCredentialsImportSource,
+      vaultwardenAccount: state.vaultwardenAccountSource,
+    },
   );
   const radicaleSteps = await buildRadicaleSteps(
     config,

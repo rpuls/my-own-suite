@@ -30,6 +30,7 @@ export class OnboardingStateStore {
 
     if (!fs.existsSync(this.stateFilePath)) {
       return {
+        vaultwardenImportBaselineCipherCount: null,
         completedSteps: [],
         updatedAt: null,
       };
@@ -42,11 +43,16 @@ export class OnboardingStateStore {
         : [];
 
       return {
+        vaultwardenImportBaselineCipherCount:
+          typeof parsed.vaultwardenImportBaselineCipherCount === 'number'
+            ? parsed.vaultwardenImportBaselineCipherCount
+            : null,
         completedSteps,
         updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null,
       };
     } catch {
       return {
+        vaultwardenImportBaselineCipherCount: null,
         completedSteps: [],
         updatedAt: null,
       };
@@ -64,7 +70,19 @@ export class OnboardingStateStore {
     }
 
     const nextState: PersistedState = {
+      vaultwardenImportBaselineCipherCount: state.vaultwardenImportBaselineCipherCount,
       completedSteps: Array.from(nextSteps),
+      updatedAt: new Date().toISOString(),
+    };
+
+    return this.save(nextState);
+  }
+
+  updateVaultwardenImportBaseline(cipherCount: number | null): PersistedState {
+    const state = this.load();
+    const nextState: PersistedState = {
+      vaultwardenImportBaselineCipherCount: cipherCount,
+      completedSteps: state.completedSteps,
       updatedAt: new Date().toISOString(),
     };
 
