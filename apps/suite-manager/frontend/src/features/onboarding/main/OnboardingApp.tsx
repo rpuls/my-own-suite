@@ -17,6 +17,8 @@ export default function OnboardingApp() {
   const [importContents, setImportContents] = useState<Record<string, string>>({});
   const [revealedActionIds, setRevealedActionIds] = useState<Record<string, boolean>>({});
   const [radicaleDevice, setRadicaleDevice] = useState<RadicaleDevice | null>(null);
+  const allStepsCompleted =
+    view?.progress.totalSteps ? view.progress.completedSteps === view.progress.totalSteps : false;
 
   async function copyValue(value: string): Promise<void> {
     await navigator.clipboard.writeText(value);
@@ -245,6 +247,8 @@ export default function OnboardingApp() {
   function renderStep(step: OnboardingStepView) {
     const expanded = step.status !== 'locked' && expandedStepId === step.id;
     const visibleSections = step.id === 'connect-radicale' ? getRadicaleSections(step) : step.sections;
+    const showHomepageButton =
+      allStepsCompleted && view && step.id === view.steps[view.steps.length - 1]?.id;
 
     return (
       <StepCard
@@ -263,6 +267,19 @@ export default function OnboardingApp() {
         ) : null}
         {visibleSections.length ? (
           <div className="suite-sequence">{visibleSections.map((section, index) => renderSection(step, section, index))}</div>
+        ) : null}
+        {showHomepageButton ? (
+          <div className="suite-actions suite-complete-actions">
+            <button
+              className="mos-btn mos-btn-primary"
+              onClick={() => {
+                window.location.assign(view.homepageUrl);
+              }}
+              type="button"
+            >
+              Go to Homepage
+            </button>
+          </div>
         ) : null}
       </StepCard>
     );
@@ -306,24 +323,26 @@ export default function OnboardingApp() {
           <div className="suite-steps">
             {view.steps.map((step) => renderStep(step))}
 
-            <div className="suite-onboarding-footer">
-              <button
-                className="suite-subtle-button"
-                disabled={isUiSettling}
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      'Leave onboarding and go to Homepage? Only do this if you already know how to finish the remaining setup manually.',
-                    )
-                  ) {
-                    window.location.assign(view.homepageUrl);
-                  }
-                }}
-                type="button"
-              >
-                Skip onboarding
-              </button>
-            </div>
+            {!allStepsCompleted ? (
+              <div className="suite-onboarding-footer">
+                <button
+                  className="suite-subtle-button"
+                  disabled={isUiSettling}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        'Leave onboarding and go to Homepage? Only do this if you already know how to finish the remaining setup manually.',
+                      )
+                    ) {
+                      window.location.assign(view.homepageUrl);
+                    }
+                  }}
+                  type="button"
+                >
+                  Skip onboarding
+                </button>
+              </div>
+            ) : null}
           </div>
         </section>
       ) : null}
