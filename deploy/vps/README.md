@@ -57,7 +57,7 @@ docker compose down
 
 ### Access
 - Homepage: http://homepage.localhost/
-- Suite Manager: http://suite-manager.localhost/setup/
+- Suite Manager: http://suite-manager.localhost/
 - Seafile: http://seafile.localhost/
 - ONLYOFFICE: http://onlyoffice.localhost/
 - Immich: http://immich.localhost/

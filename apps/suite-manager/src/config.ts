@@ -2,7 +2,6 @@ import path from 'node:path';
 
 export type SuiteManagerConfig = {
   appUrls: {
-    homepage: string;
     immich: string;
     radicale: string;
     seafile: string;
@@ -10,7 +9,6 @@ export type SuiteManagerConfig = {
     stirlingPdf: string;
     vaultwarden: string;
   };
-  bootstrapToken: string;
   checkIntervalMs: number;
   generatedAccounts: {
     radicale: {
@@ -82,7 +80,6 @@ export function loadConfig(): SuiteManagerConfig {
 
   return {
     appUrls: {
-      homepage: process.env.HOMEPAGE_PUBLIC_URL || buildPublicUrl('homepage', urlScheme, domain),
       immich: process.env.IMMICH_PUBLIC_URL || buildPublicUrl('immich', urlScheme, domain),
       radicale: process.env.RADICALE_PUBLIC_URL || buildPublicUrl('radicale', urlScheme, domain),
       seafile: process.env.SEAFILE_PUBLIC_URL || buildPublicUrl('seafile', urlScheme, domain),

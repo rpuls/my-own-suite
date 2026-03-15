@@ -19,26 +19,26 @@ export function createHomepageProxyRouter(config: SuiteManagerConfig): Hono {
     }
 
     const requestUrl = new URL(c.req.url);
-    const homepagePublicUrl = new URL(config.appUrls.homepage);
+    const homepageUpstreamUrl = new URL(config.homepageUrl);
     const headers = new Headers(c.req.raw.headers);
     const origin = headers.get('origin');
     const referer = headers.get('referer');
-    headers.set('host', homepagePublicUrl.host);
-    headers.set('x-forwarded-host', homepagePublicUrl.host);
-    headers.set('x-forwarded-proto', homepagePublicUrl.protocol.replace(':', ''));
+    headers.set('host', homepageUpstreamUrl.host);
+    headers.set('x-forwarded-host', homepageUpstreamUrl.host);
+    headers.set('x-forwarded-proto', homepageUpstreamUrl.protocol.replace(':', ''));
     headers.set('x-mos-original-host', requestUrl.host);
 
     if (origin) {
       const originUrl = new URL(origin);
-      originUrl.protocol = homepagePublicUrl.protocol;
-      originUrl.host = homepagePublicUrl.host;
+      originUrl.protocol = homepageUpstreamUrl.protocol;
+      originUrl.host = homepageUpstreamUrl.host;
       headers.set('origin', originUrl.toString().replace(/\/$/, ''));
     }
 
     if (referer) {
       const refererUrl = new URL(referer);
-      refererUrl.protocol = homepagePublicUrl.protocol;
-      refererUrl.host = homepagePublicUrl.host;
+      refererUrl.protocol = homepageUpstreamUrl.protocol;
+      refererUrl.host = homepageUpstreamUrl.host;
       headers.set('referer', refererUrl.toString());
     }
 

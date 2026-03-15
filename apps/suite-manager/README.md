@@ -10,7 +10,6 @@
 - `OWNER_PASSWORD`: Owner password used for Suite Manager sign-in.
 - `SESSION_SECRET`: HMAC secret used to sign the Suite Manager session cookie.
 - `SUITE_MANAGER_PUBLIC_URL`: Public onboarding URL surfaced in the UI.
-- `HOMEPAGE_PUBLIC_URL`: Public Homepage URL used by the onboarding escape hatch and progress links.
 - `SUITE_MANAGER_BASE_PATH`: Public path for the Suite Manager setup surface. Defaults to `/setup`.
 - `SUITE_MANAGER_SESSION_COOKIE_NAME`: Optional override for the session cookie name. Defaults to `mos-suite-manager-session`.
 - `SUITE_MANAGER_SESSION_MAX_AGE_SECONDS`: Optional session lifetime in seconds. Defaults to `1209600` (14 days).

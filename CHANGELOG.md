@@ -11,11 +11,12 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Added a real `suite-manager` onboarding surface for VPS/local deployments, including a Homepage `Finish Setup` entry, persistent onboarding state, a React/Vite frontend, and a lightweight Hono-based service scaffold for future suite-management features.
 - Added guided first-run access onboarding around Vaultwarden, including automatic account detection, a visible step-stack UI, and an assisted credential handoff flow for generated Seafile and Radicale accounts.
 - Added shared MOS styling reuse between the Astro site and `suite-manager`, plus lightweight SVG onboarding status icons using `lucide-react`.
-- Added an `authelia` service, docs page, Caddy integration, and env templates so Homepage and Suite Manager can sit behind a shared login gateway.
 
 ### Changed
 
 - Replaced the Suite Manager bootstrap-token gate with built-in owner email/password auth, a signed session cookie, and a `/setup/` control-plane surface that can proxy Homepage after login. Compatibility note: `BOOTSTRAP_TOKEN` has been removed from the suite-manager env contract and replaced by required `OWNER_PASSWORD` and `SESSION_SECRET` inputs; Homepage `SUITE_MANAGER_URL` now needs the `/setup/` suffix.
+- Simplified the Suite Manager Homepage contract so it now uses only `HOMEPAGE_URL` for the private Homepage upstream. Compatibility note: `HOMEPAGE_PUBLIC_URL` has been removed from the suite-manager env contract.
+- Removed Authelia from the active local/VPS stack so Suite Manager is now the single login and public control-plane entrypoint.
 - Refreshed the default Homepage landing page with MOS-branded custom CSS, a denser but still restrained widget set (greeting, system glance, datetime, search), and user-selectable Homepage theme/color controls instead of a fixed palette.
 - Removed the default Homepage weather widget so the dashboard no longer prompts the user for location access.
 - Simplified the Homepage top bar so the date and search widgets render without the boxed header treatment.
@@ -30,9 +31,6 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Simplified the onboarding escape hatch to a single warning-confirmed `Skip onboarding` button that just returns the user to Homepage instead of mutating onboarding state.
 - Fixed the Homepage `Finish Setup` tile to use an explicit `SUITE_MANAGER_URL` env var instead of a VPS-only `${DOMAIN}` placeholder, so the tile can also work correctly on Railway.
 - Updated the Homepage base image pin to the `v1.8.0` release digest to test whether newer upstream runtime behavior fixes the custom search widget regression.
-- Changed the default local root domain from `localhost` to `mos.localhost` so shared auth cookies can work across protected subdomains, and added a required `OWNER_PASSWORD` shared env input for the initial login.
-- Rebranded the Authelia browser tab title to `Login - My Own Suite` via an asset override and added the Authelia logo to the docs app page styling.
-- Added an explicit `MOS_AUTHELIA_THEME` env input so the stock Authelia portal themes can be switched without editing container code.
 
 ## [0.3.0] - 2026-03-09
 
