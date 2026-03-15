@@ -72,6 +72,7 @@ export function useOnboardingView() {
   const [detectingStepId, setDetectingStepId] = useState<string | null>(null);
   const [snackbarNotice, setSnackbarNotice] = useState<OnboardingSnackbarNotice | null>(null);
   const [presentedModel, setPresentedModel] = useState<OnboardingModel | null>(null);
+  const [armedDetectionStepId, setArmedDetectionStepId] = useState<string | null>(null);
   const presentedModelRef = useRef<OnboardingModel | null>(null);
   const sourceModelRef = useRef<OnboardingModel | null>(null);
   const previousStepsRef = useRef<Record<string, StepSnapshot>>({});
@@ -111,6 +112,7 @@ export function useOnboardingView() {
     presentedModelRef.current = nextModel;
     setPresentedModel(nextModel);
     setExpandedStepId(nextModel.currentStepId);
+    setArmedDetectionStepId((current) => (current && current !== nextModel.currentStepId ? null : current));
   }
 
   async function runDetection(stepId: string, detection: StepDetection): Promise<void> {
@@ -174,7 +176,7 @@ export function useOnboardingView() {
     }
   }
 
-  function startDetectionForStep(stepId: string, trigger: 'action' | 'focus'): void {
+  function startDetectionForStep(stepId: string): void {
     const currentModel = presentedModelRef.current;
     const currentStep = getCurrentStep(currentModel);
 
@@ -183,7 +185,7 @@ export function useOnboardingView() {
     }
 
     const detection = getDetectionConfig(currentStep);
-    if (!detection || !detection.startTriggers.includes(trigger)) {
+    if (!detection) {
       return;
     }
 
@@ -202,7 +204,7 @@ export function useOnboardingView() {
       return;
     }
 
-    startDetectionForStep(stepId, 'action');
+    setArmedDetectionStepId(stepId);
   }
 
   useEffect(() => {
@@ -272,11 +274,18 @@ export function useOnboardingView() {
       const currentStep = getCurrentStep(presentedModelRef.current);
       const detection = getDetectionConfig(currentStep);
 
-      if (!currentStep || !detection?.startTriggers.includes('focus')) {
+      if (!currentStep || !detection) {
         return;
       }
 
-      startDetectionForStep(currentStep.id, 'focus');
+      const isActionArmed = armedDetectionStepId === currentStep.id && detection.startTriggers.includes('action');
+      const isFocusTriggered = detection.startTriggers.includes('focus');
+
+      if (!isActionArmed && !isFocusTriggered) {
+        return;
+      }
+
+      startDetectionForStep(currentStep.id);
     }
 
     function handleVisibilityChange(): void {
@@ -298,7 +307,7 @@ export function useOnboardingView() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleWindowFocus);
     };
-  }, []);
+  }, [armedDetectionStepId]);
 
   const view = useMemo<OnboardingViewModel | null>(() => {
     if (!presentedModel) {
