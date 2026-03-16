@@ -46,8 +46,8 @@ Tile template example:
 #### Operational commands
 
 - If you changed `services.template.yaml` or other files under `apps/homepage/config`:
-  - Rebuild Homepage non-destructively: `docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps up -d --build homepage`
-- If you changed only env values in `deploy/vps/services/homepage/.env`:
+  - Rebuild Homepage image (from repo root): `npm run vps:rebuild`
+- If you changed only env values in `deploy/vps/apps/homepage/.env`:
   - Restarting Homepage is enough.
 
 #### Troubleshooting
