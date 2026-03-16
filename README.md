@@ -52,6 +52,40 @@ If you need a full destructive reset (removes volumes and data):
 npm run vps:rebuild
 ```
 
+## E2E Testing
+
+The repo includes real black-box Playwright tests that boot an isolated Docker stack, exercise the live browser flows, and tear the stack down again after the run.
+
+```bash
+npm run e2e:install
+```
+
+Install the Playwright test dependencies and Chromium browser once on your machine.
+
+```bash
+npm run e2e:full
+npm run e2e:full:headed
+```
+
+Run the full E2E suite. Use `e2e:full` for headless CI-style verification or `e2e:full:headed` when you want to watch the whole flow in the browser.
+
+```bash
+npm run e2e:onboarding
+npm run e2e:onboarding:headed
+npm run e2e:onboarding:debug
+```
+
+Run just the onboarding flow. Use `:headed` or `:debug` when you want to watch the browser step through account creation, credential import, and Homepage handoff.
+
+```bash
+npm run e2e:apps
+npm run e2e:apps:headed
+```
+
+Run the Homepage app verification flow. This checks live routes for Suite Manager, Vaultwarden, Seafile, Stirling PDF, Immich, and Radicale so image updates are safer to validate.
+
+For the more detailed harness notes, see [tests/e2e/README.md](./tests/e2e/README.md).
+
 ---
 
 ## Navigation
