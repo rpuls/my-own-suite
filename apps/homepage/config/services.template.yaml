@@ -58,7 +58,7 @@
 
     - Open Source Resources:
         - Suite Manager:
-            href: ${SUITE_MANAGER_URL}/setup/
+            href: ${SUITE_MANAGER_URL}
             description: Open the suite control plane and onboarding
             icon: mdi-progress-wrench
         - My Own Suite Docs:

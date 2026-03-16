@@ -6,7 +6,7 @@
 </p>
 
 > **One-click open source alternatives** to Google Drive, Google Calendar, 1Password, Microsoft 365, and more.  
-> Deploy anywhere: Railway, VPS, or homelab. Your data, your control.
+> Today the repo is centered on a VPS/local Docker Compose stack, with more deploy targets to follow.
 
 ### Solutions Included
 

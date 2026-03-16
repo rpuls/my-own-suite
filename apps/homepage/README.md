@@ -1,7 +1,7 @@
 #### Environment variables
 
 - `HOMEPAGE_ALLOWED_HOSTS`: Allowed hostnames for Homepage (`hostname1,hostname2,...`).
-- `SUITE_MANAGER_URL`: Public suite-manager base URL used for the Suite Manager resource tile.
+- `SUITE_MANAGER_URL`: Public Suite Manager setup URL used for the Suite Manager resource tile.
 - Any `${VAR_NAME}` used in `config/services.template.yaml`:
   - Example: `${SEAFILE_URL}`, `${VAULTWARDEN_URL}`, `${ONLYOFFICE_URL}`.
   - If not set (or empty), dependent tile is excluded from final dashboard.
@@ -10,7 +10,7 @@
 
 - Homepage config is generated at container start from a template.
 - `entrypoint.sh` runs `node /app/config-generator/dist/index.js /app/config` before starting Homepage.
-- Homepage is intended to sit behind Authelia at the Caddy layer, so the dashboard itself does not implement its own login UI.
+- Suite Manager is the public login and setup surface for the stack; after sign-in it proxies Homepage instead of Homepage implementing its own login UI.
 - Source template: `config/services.template.yaml`
 - Generated output: `config/services.yaml`
 - Generator behavior:
@@ -25,12 +25,13 @@ Files commonly edited for customization:
 - `apps/homepage/config/bookmarks.yaml`: bookmarks.
 - `apps/homepage/config/settings.yaml`: general dashboard settings.
 - `apps/homepage/config/custom.css`: visual overrides layered on top of Homepage defaults.
+- `apps/homepage/config/custom.js`: first-run theme bootstrapping for Homepage's client-side UI.
 
 Current defaults in this repo:
-- Homepage does not pin a fixed `theme` or `color` in `settings.yaml`, so end users keep Homepage's built-in theme and palette switchers.
-- `custom.css` gives Homepage the same MOS brand feel used elsewhere in the suite without removing Homepage's own theme controls.
-- `widgets.yaml` includes a greeting, system glance widgets, datetime, and an Open-Meteo weather widget.
-- The weather widget uses Homepage's Open-Meteo integration, which requires no API key and can use browser geolocation when Homepage is served from HTTPS or localhost.
+- `settings.yaml` keeps Homepage's built-in theme and palette switchers available, while `custom.js` nudges first-run users onto the bundled `theme-mos` palette.
+- `custom.css` gives Homepage the same MOS brand feel used elsewhere in the suite, including the lighter clean-header treatment and softer card styling.
+- `widgets.yaml` keeps the top bar intentionally simple with datetime and Startpage-powered search.
+- The Suite Manager resource opens the control-plane `/setup/` route directly so users can return to onboarding later without guessing the URL.
 
 Tile template example:
 
@@ -45,8 +46,8 @@ Tile template example:
 #### Operational commands
 
 - If you changed `services.template.yaml` or other files under `apps/homepage/config`:
-  - Rebuild Homepage image (from repo root): `npm run vps:rebuild`
-- If you changed only env values in `deploy/vps/apps/homepage/.env`:
+  - Rebuild Homepage non-destructively: `docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps up -d --build homepage`
+- If you changed only env values in `deploy/vps/services/homepage/.env`:
   - Restarting Homepage is enough.
 
 #### Troubleshooting
