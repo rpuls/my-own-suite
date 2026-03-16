@@ -32,6 +32,7 @@
     "build": "cd site && npm install --no-audit --progress=false && npm run build",
     "e2e:install": "npm --prefix tests/e2e install && npm --prefix tests/e2e run install:browsers",
     "e2e:full": "npm --prefix tests/e2e test",
+    "e2e:full:headed": "npm --prefix tests/e2e run test:headed",
     "e2e:onboarding": "npm --prefix tests/e2e run test:onboarding",
     "e2e:onboarding:headed": "npm --prefix tests/e2e run test:onboarding:headed",
     "e2e:onboarding:debug": "npm --prefix tests/e2e run test:onboarding:debug",

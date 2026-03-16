@@ -16,6 +16,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
+- Updated the main README with a short E2E testing section and added a root `e2e:full:headed` command so the new Playwright workflows are easier to discover and watch from the repo root.
 - Aligned Homepage config and project docs with the current Suite Manager-first architecture by removing stale Authelia references, fixing the Suite Manager resource URL contract, and normalizing app-page `References` sections.
 - Restored clearer user-facing docs wording by switching app pages back to `Technical reference` headings and keeping Homepage operational commands easy to type from the repo root.
 - Updated the Suite Manager CI smoke test to supply the required auth env vars and build the setup frontend before startup so staging catches control-plane regressions earlier.
