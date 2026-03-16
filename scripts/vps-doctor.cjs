@@ -169,6 +169,7 @@ if (env.radicale) {
 
 if (env.homepage) {
   requireVar('homepage', 'RADICALE_ICAL_URL', { allowPlaceholder: false });
+  requireVar('homepage', 'SUITE_MANAGER_URL', { allowPlaceholder: false });
 }
 
 if (env.vaultwarden) {
@@ -248,6 +249,13 @@ if (env.homepage && env.radicale) {
     if (!includesToken && !includesPlaceholder) {
       errors.push('RADICALE_ICAL_URL must include RADICALE_ICAL_TOKEN (or ${RADICALE_ICAL_TOKEN}) for Homepage calendar bridge.');
     }
+  }
+}
+
+if (env.homepage) {
+  const suiteManagerUrl = env.homepage.SUITE_MANAGER_URL || '';
+  if (!isMissing(suiteManagerUrl) && !/\/setup\/?$/i.test(suiteManagerUrl)) {
+    errors.push('SUITE_MANAGER_URL in deploy/vps/services/homepage/.env must point to the Suite Manager /setup route.');
   }
 }
 

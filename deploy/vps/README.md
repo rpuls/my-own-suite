@@ -57,7 +57,7 @@ docker compose down
 
 ### Access
 - Homepage: http://homepage.localhost/
-- Suite Manager: http://suite-manager.localhost/
+- Suite Manager: http://suite-manager.localhost/setup/
 - Seafile: http://seafile.localhost/
 - ONLYOFFICE: http://onlyoffice.localhost/
 - Immich: http://immich.localhost/
@@ -150,7 +150,7 @@ DOMAIN=yourdomain.com   # Production
 
 All services automatically use the new domain:
 - Caddy routes: `homepage.{$DOMAIN}`, `suite-manager.{$DOMAIN}`, `seafile.{$DOMAIN}`, `onlyoffice.{$DOMAIN}`, `immich.{$DOMAIN}`, `radicale.{$DOMAIN}`, `stirling-pdf.{$DOMAIN}`, `vaultwarden.{$DOMAIN}`
-- Service URLs: `http://homepage.${DOMAIN}`, `http://suite-manager.${DOMAIN}`, `http://seafile.${DOMAIN}`, `http://onlyoffice.${DOMAIN}`, `http://immich.${DOMAIN}`, `http://radicale.${DOMAIN}`, `http://stirling-pdf.${DOMAIN}`, `https://vaultwarden.${DOMAIN}`
+- Service URLs: `http://homepage.${DOMAIN}`, `http://suite-manager.${DOMAIN}/setup`, `http://seafile.${DOMAIN}`, `http://onlyoffice.${DOMAIN}`, `http://immich.${DOMAIN}`, `http://radicale.${DOMAIN}`, `http://stirling-pdf.${DOMAIN}`, `https://vaultwarden.${DOMAIN}`
 
 Local Vaultwarden HTTPS note:
 - Caddy now serves Vaultwarden over HTTPS so the signup flow can run locally.
