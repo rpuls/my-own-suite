@@ -86,10 +86,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build suite-manager client
+        run: npm run build
+
       - name: Run suite-manager once
         run: npm start
         env:
+          OWNER_EMAIL: admin@myownsuite.local
+          OWNER_PASSWORD: ci-test-owner-password
           PORT: 3011
+          SESSION_SECRET: ci-test-session-secret
           HOMEPAGE_URL: http://127.0.0.1:65534/
           SUITE_MANAGER_REQUEST_TIMEOUT_MS: 500
           SUITE_MANAGER_RUN_ONCE: true
