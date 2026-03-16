@@ -19,6 +19,7 @@ These rules are required for every non-trivial change (docs, config, code, infra
 3. **Maintain `CHANGELOG.md` during the work, not after.**
    - Add/update an entry under `## [Unreleased]` in the same branch as the change.
    - Keep entries concise and user-relevant.
+   - Prefer a few broad release-note bullets over a detailed work log of small implementation changes.
 4. **Release process must follow `RELEASING.md`.**
    - Do not invent ad-hoc versioning or release steps.
 5. **No direct pushes to `main` and no direct commits on `main`.**
