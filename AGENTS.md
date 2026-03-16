@@ -1,6 +1,6 @@
-# Documentation Agent Instructions
+# Repository Agent Instructions
 
-This file defines how AI agents should write and maintain documentation in this repository.
+This file defines how AI agents should work in this repository, with special rules for documentation, app onboarding, and platform validation.
 
 ## Mandatory Workflow (All Agent Tasks)
 
@@ -47,7 +47,7 @@ No duplicated content across these two sources.
 ## Single Source of Truth
 
 - Technical specs must be authored in app README files only.
-- App MDX pages must embed the matching README under a `References` section.
+- App MDX pages must embed the matching README under a `Technical reference` section.
 - If technical content appears in MDX body text, move it to README.
 - If descriptive/end-user content appears in README, move it to MDX.
 
@@ -69,7 +69,7 @@ Do not include:
 - Container/runtime internals
 - Deployment command runbooks
 - Troubleshooting runbooks for operators
-- Duplicated `References` title text
+- Duplicated `Technical reference` title text
 - Low-value filler sections (e.g. weak "Other relevant info")
 
 ### README (`apps/*/README.md`) is for maintainers/developers
@@ -96,7 +96,7 @@ Use this structure:
 
 1. Frontmatter + app logo marker div
 2. Description text (no `Application description` heading)
-3. `### References`
+3. `## Technical reference`
 4. Embedded README content via import/render
 5. `## Links`
 
@@ -115,7 +115,7 @@ import * as TechSpecs from '../../../../../apps/example/README.md';
 
 Example app helps users do X and Y in plain language.
 
-### References
+## Technical reference
 
 <div className="tech-specs">
   <TechSpecs.Content />
@@ -141,13 +141,33 @@ For each app page:
 - README contains only technical/maintenance content.
 - No duplicated sentence appears in both MDX and README unless absolutely necessary.
 - No empty sections.
-- No redundant titles like "`<App> References`" in embedded content.
+- No redundant titles like "`<App> Technical reference`" in embedded content.
 
 ## Editing Policy
 
 - Preserve existing facts; do not drop meaningful technical details.
 - Rephrase/move content rather than delete unless it is redundant filler.
 - Keep wording concise and direct.
+
+## E2E Testing Workflow
+
+The repo now includes real black-box Playwright tests that run against the Docker stack without test-only application bypasses.
+
+- Prefer end-to-end validation for onboarding and app reachability changes before adding unit-test-only coverage.
+- Keep E2E tooling isolated under `tests/e2e` unless a shared repo-level script or config is genuinely needed.
+- Do not add source-code-only test hooks, fake auth shortcuts, or alternate code paths just to make tests easier.
+- When changing onboarding, auth, Homepage routing, or app integration behavior, consider whether `npm run e2e:full` should be rerun before finalizing.
+
+Useful commands:
+
+- `npm run e2e:install` installs Playwright browser dependencies for the local harness.
+- `npm run e2e:onboarding` runs the real onboarding flow headlessly.
+- `npm run e2e:onboarding:headed` runs the onboarding flow in a visible browser.
+- `npm run e2e:onboarding:debug` runs the onboarding flow with Playwright debug mode enabled.
+- `npm run e2e:apps` runs Homepage-driven app verification.
+- `npm run e2e:apps:headed` runs app verification in a visible browser.
+- `npm run e2e:full` runs the full local E2E suite headlessly.
+- `npm run e2e:full:headed` runs the full local E2E suite in a visible browser.
 
 ## Container and Versioning Rules
 

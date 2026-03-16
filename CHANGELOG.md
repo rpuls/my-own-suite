@@ -16,6 +16,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
+- Updated `AGENTS.md` so its repo workflow guidance matches the current docs split, `Technical reference` heading convention, and real Playwright E2E commands.
+- Adjusted the final onboarding completion state so the calendar step now collapses after completion and the centered `Go to Homepage` button appears below the last step instead of inside it.
 - Hardened the Suite Manager URL contract so Homepage and VPS docs point to `/setup`, `vps:doctor` rejects bare-host Homepage links, and Suite Manager now normalizes a bare public URL back to its setup route.
 - Updated the main README with a short E2E testing section and added a root `e2e:full:headed` command so the new Playwright workflows are easier to discover and watch from the repo root.
 - Aligned Homepage config and project docs with the current Suite Manager-first architecture by removing stale Authelia references, fixing the Suite Manager resource URL contract, and normalizing app-page `References` sections.
