@@ -549,6 +549,12 @@
   margin-top: 1.15rem;
 }
 
+.suite-complete-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.55rem;
+}
+
 .suite-onboarding-footer {
   display: flex;
   justify-content: flex-end;

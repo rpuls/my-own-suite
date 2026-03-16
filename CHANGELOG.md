@@ -8,33 +8,20 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Added
 
-- Added a real `suite-manager` control-plane app with owner sign-in, persistent onboarding state, and a guided first-run setup flow.
-- Added Vaultwarden-first onboarding with automatic account detection, assisted credential import, and follow-up Radicale calendar setup guidance.
-- Added shared MOS styling reuse between the Astro site and `suite-manager`, including onboarding status icons and updated app-shell styling.
-- Added local E2E runner commands and test docs for the Docker-backed Playwright onboarding flow so it is easier to run headed during manual verification and release work.
-- Added a Homepage-driven Playwright app verification flow that brings up the real local stack and checks Suite Manager, Vaultwarden, Seafile, Stirling PDF, Immich, and Radicale through their live user-facing routes.
+- Added a real `suite-manager` control-plane with owner sign-in, persistent onboarding state, and a guided first-run setup flow.
+- Added real Docker-backed Playwright E2E coverage for the onboarding flow and Homepage-driven app verification.
 
 ### Changed
 
-- Hardened the Suite Manager URL contract so Homepage and VPS docs point to `/setup`, `vps:doctor` rejects bare-host Homepage links, and Suite Manager now normalizes a bare public URL back to its setup route.
-- Updated the main README with a short E2E testing section and added a root `e2e:full:headed` command so the new Playwright workflows are easier to discover and watch from the repo root.
-- Aligned Homepage config and project docs with the current Suite Manager-first architecture by removing stale Authelia references, fixing the Suite Manager resource URL contract, and normalizing app-page `References` sections.
-- Restored clearer user-facing docs wording by switching app pages back to `Technical reference` headings and keeping Homepage operational commands easy to type from the repo root.
-- Updated the Suite Manager CI smoke test to supply the required auth env vars and build the setup frontend before startup so staging catches control-plane regressions earlier.
-- Changed the Suite Manager VPS env template so `OWNER_PASSWORD` is auto-generated during `vps:init` instead of shipping as a failing placeholder, which keeps compose validation aligned with the first-run setup flow.
-- Added a real local Playwright E2E harness that starts a Docker-based test stack on alternate ports and drives the Suite Manager onboarding flow without source-code test hooks or readiness bypasses.
-- Expanded the local Playwright E2E harness to isolate the Immich and Stirling PDF containers too, split reusable onboarding helpers out of the first spec, and expose dedicated root commands for onboarding, Homepage app verification, and full-suite runs.
+- Reworked the suite access flow so Suite Manager is now the single login and control-plane entrypoint, with Homepage linking back into the `/setup/` experience.
+- Improved onboarding with Vaultwarden-first setup, guided Radicale calendar connection, clearer completion behavior, and a simpler escape path back to Homepage.
+- Tightened local/VPS validation and CI so generated env files, required Suite Manager auth inputs, and compose checks stay aligned with the real first-run flow.
+- Updated docs and repo guidance to match the current Suite Manager-first architecture, `Technical reference` app docs pattern, and discoverable root E2E commands.
 - Replaced the Suite Manager bootstrap-token gate with built-in owner email/password auth, a signed session cookie, and a `/setup/` control-plane surface that can proxy Homepage after login. Compatibility note: `BOOTSTRAP_TOKEN` has been removed from the suite-manager env contract and replaced by required `OWNER_PASSWORD` and `SESSION_SECRET` inputs; Homepage `SUITE_MANAGER_URL` now needs the `/setup/` suffix.
 - Simplified the Suite Manager Homepage contract so it now uses only `HOMEPAGE_URL` for the private Homepage upstream. Compatibility note: `HOMEPAGE_PUBLIC_URL` has been removed from the suite-manager env contract.
-- Removed Authelia from the active local/VPS stack so Suite Manager is now the single login and public control-plane entrypoint.
-- Improved onboarding flow behavior with Vaultwarden import auto-detection, completion snackbars, brief detecting states, and step-driven detection rules that keep the UI stable while users move between apps.
-- Added the first Radicale onboarding flow with device-specific guidance, QR helpers where useful, and a manual completion path after credential import.
 - Refreshed Homepage defaults with MOS styling, a lighter top bar, a built-in `theme-mos` palette, simpler datetime formatting, and no weather prompt.
-- Moved the Suite Manager Homepage link into the resources area and updated it to open the Suite Manager `/setup/` route.
-- Updated end-user and VPS docs to reflect the new onboarding-first access flow, including local Vaultwarden HTTPS behavior.
 - Added shared `suite-manager` onboarding env inputs (`OWNER_NAME`, `OWNER_PASSWORD`, `SESSION_SECRET`, `SUITE_MANAGER_PUBLIC_URL`, `SUITE_MANAGER_STATE_DIR`) and expanded the suite-manager runtime env surface to consume existing Vaultwarden, Seafile, and Radicale bootstrap data.
 - Changed local/VPS Vaultwarden routing so it now uses HTTPS and advertises an HTTPS public URL, which is required for the web signup flow to work correctly.
-- Simplified the onboarding escape hatch to a single warning-confirmed `Skip onboarding` button that just returns the user to Homepage instead of mutating onboarding state.
 - Updated the Homepage base image pin to the `v1.8.0` release digest to test whether newer upstream runtime behavior fixes the custom search widget regression.
 
 ## [0.3.0] - 2026-03-09
