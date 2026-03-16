@@ -1,7 +1,7 @@
 #### Environment variables
 
 - `HOMEPAGE_ALLOWED_HOSTS`: Allowed hostnames for Homepage (`hostname1,hostname2,...`).
-- `SUITE_MANAGER_URL`: Public Suite Manager setup URL used for the Suite Manager resource tile.
+- `SUITE_MANAGER_URL`: Public Suite Manager base URL used for the Suite Manager resource tile, which appends `/setup/`.
 - Any `${VAR_NAME}` used in `config/services.template.yaml`:
   - Example: `${SEAFILE_URL}`, `${VAULTWARDEN_URL}`, `${ONLYOFFICE_URL}`.
   - If not set (or empty), dependent tile is excluded from final dashboard.

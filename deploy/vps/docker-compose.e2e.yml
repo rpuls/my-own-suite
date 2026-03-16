@@ -16,7 +16,7 @@ services:
     container_name: mos-e2e-homepage
     environment:
       - HOMEPAGE_ALLOWED_HOSTS=homepage.localhost,homepage.localhost:${MOS_E2E_HTTP_PORT:-18080},suite-manager.localhost,suite-manager.localhost:${MOS_E2E_HTTP_PORT:-18080},homepage:3000,localhost,localhost:${MOS_E2E_HTTP_PORT:-18080}
-      - SUITE_MANAGER_URL=http://suite-manager.localhost:${MOS_E2E_HTTP_PORT:-18080}/setup/
+      - SUITE_MANAGER_URL=http://suite-manager.localhost:${MOS_E2E_HTTP_PORT:-18080}
       - VAULTWARDEN_URL=https://vaultwarden.localhost:${MOS_E2E_HTTPS_PORT:-18443}
       - SEAFILE_URL=http://seafile.localhost:${MOS_E2E_HTTP_PORT:-18080}
       - STIRLING_PDF_URL=http://stirling-pdf.localhost:${MOS_E2E_HTTP_PORT:-18080}
