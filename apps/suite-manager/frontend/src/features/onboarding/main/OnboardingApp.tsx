@@ -245,10 +245,10 @@ export default function OnboardingApp() {
   }
 
   function renderStep(step: OnboardingStepView) {
-    const expanded = step.status !== 'locked' && expandedStepId === step.id;
+    const isLastStep = view ? step.id === view.steps[view.steps.length - 1]?.id : false;
+    const expanded = step.status !== 'locked' && (expandedStepId === step.id || (allStepsCompleted && isLastStep));
     const visibleSections = step.id === 'connect-radicale' ? getRadicaleSections(step) : step.sections;
-    const showHomepageButton =
-      allStepsCompleted && view && step.id === view.steps[view.steps.length - 1]?.id;
+    const showHomepageButton = allStepsCompleted && isLastStep;
 
     return (
       <StepCard
