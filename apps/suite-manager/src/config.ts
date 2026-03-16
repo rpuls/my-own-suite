@@ -41,6 +41,26 @@ function buildPublicUrl(subdomain: string, urlScheme: string, domain: string): s
   return `${urlScheme}://${subdomain}.${domain}`;
 }
 
+function normalizeSetupUrl(value: string, setupBasePath: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const normalizedPath = parsed.pathname.replace(/\/+$/, '') || '/';
+
+    if (normalizedPath === '/' || normalizedPath === '') {
+      parsed.pathname = setupBasePath;
+    }
+
+    return parsed.toString().replace(/\/+$/, '');
+  } catch {
+    return trimmed.replace(/\/+$/, '');
+  }
+}
+
 function normalizeBasePath(value: string | undefined, fallback: string): string {
   const trimmed = (value || fallback).trim();
   const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
@@ -83,7 +103,10 @@ export function loadConfig(): SuiteManagerConfig {
       immich: process.env.IMMICH_PUBLIC_URL || buildPublicUrl('immich', urlScheme, domain),
       radicale: process.env.RADICALE_PUBLIC_URL || buildPublicUrl('radicale', urlScheme, domain),
       seafile: process.env.SEAFILE_PUBLIC_URL || buildPublicUrl('seafile', urlScheme, domain),
-      suiteManager: process.env.SUITE_MANAGER_PUBLIC_URL || buildPublicUrl('suite-manager', urlScheme, domain),
+      suiteManager: normalizeSetupUrl(
+        process.env.SUITE_MANAGER_PUBLIC_URL || buildPublicUrl('suite-manager', urlScheme, domain),
+        setupBasePath,
+      ),
       stirlingPdf: process.env.STIRLING_PDF_PUBLIC_URL || buildPublicUrl('stirling-pdf', urlScheme, domain),
       vaultwarden: process.env.VAULTWARDEN_PUBLIC_URL || buildPublicUrl('vaultwarden', 'https', domain),
     },
