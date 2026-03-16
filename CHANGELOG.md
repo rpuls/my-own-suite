@@ -16,6 +16,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 - Aligned Homepage config and project docs with the current Suite Manager-first architecture by removing stale Authelia references, fixing the Suite Manager resource URL contract, and normalizing app-page `References` sections.
 - Updated the Suite Manager CI smoke test to supply the required auth env vars and build the setup frontend before startup so staging catches control-plane regressions earlier.
+- Changed the Suite Manager VPS env template so `OWNER_PASSWORD` is auto-generated during `vps:init` instead of shipping as a failing placeholder, which keeps compose validation aligned with the first-run setup flow.
 - Replaced the Suite Manager bootstrap-token gate with built-in owner email/password auth, a signed session cookie, and a `/setup/` control-plane surface that can proxy Homepage after login. Compatibility note: `BOOTSTRAP_TOKEN` has been removed from the suite-manager env contract and replaced by required `OWNER_PASSWORD` and `SESSION_SECRET` inputs; Homepage `SUITE_MANAGER_URL` now needs the `/setup/` suffix.
 - Simplified the Suite Manager Homepage contract so it now uses only `HOMEPAGE_URL` for the private Homepage upstream. Compatibility note: `HOMEPAGE_PUBLIC_URL` has been removed from the suite-manager env contract.
 - Removed Authelia from the active local/VPS stack so Suite Manager is now the single login and public control-plane entrypoint.
