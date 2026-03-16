@@ -12,6 +12,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Added Vaultwarden-first onboarding with automatic account detection, assisted credential import, and follow-up Radicale calendar setup guidance.
 - Added shared MOS styling reuse between the Astro site and `suite-manager`, including onboarding status icons and updated app-shell styling.
 - Added local E2E runner commands and test docs for the Docker-backed Playwright onboarding flow so it is easier to run headed during manual verification and release work.
+- Added a Homepage-driven Playwright app verification flow that brings up the real local stack and checks Suite Manager, Vaultwarden, Seafile, Stirling PDF, Immich, and Radicale through their live user-facing routes.
 
 ### Changed
 
@@ -20,6 +21,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Updated the Suite Manager CI smoke test to supply the required auth env vars and build the setup frontend before startup so staging catches control-plane regressions earlier.
 - Changed the Suite Manager VPS env template so `OWNER_PASSWORD` is auto-generated during `vps:init` instead of shipping as a failing placeholder, which keeps compose validation aligned with the first-run setup flow.
 - Added a real local Playwright E2E harness that starts a Docker-based test stack on alternate ports and drives the Suite Manager onboarding flow without source-code test hooks or readiness bypasses.
+- Expanded the local Playwright E2E harness to isolate the Immich and Stirling PDF containers too, split reusable onboarding helpers out of the first spec, and expose dedicated root commands for onboarding, Homepage app verification, and full-suite runs.
 - Replaced the Suite Manager bootstrap-token gate with built-in owner email/password auth, a signed session cookie, and a `/setup/` control-plane surface that can proxy Homepage after login. Compatibility note: `BOOTSTRAP_TOKEN` has been removed from the suite-manager env contract and replaced by required `OWNER_PASSWORD` and `SESSION_SECRET` inputs; Homepage `SUITE_MANAGER_URL` now needs the `/setup/` suffix.
 - Simplified the Suite Manager Homepage contract so it now uses only `HOMEPAGE_URL` for the private Homepage upstream. Compatibility note: `HOMEPAGE_PUBLIC_URL` has been removed from the suite-manager env contract.
 - Removed Authelia from the active local/VPS stack so Suite Manager is now the single login and public control-plane entrypoint.

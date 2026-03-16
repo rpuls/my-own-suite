@@ -9,7 +9,7 @@ const repoRoot = path.resolve(supportDir, '..', '..', '..');
 const composeDir = path.join(repoRoot, 'deploy', 'vps');
 const composeFiles = ['docker-compose.yml', 'docker-compose.e2e.yml'];
 const projectName = 'mos-e2e';
-const profiles = ['vaultwarden', 'seafile', 'radicale'];
+const profiles = ['vaultwarden', 'seafile', 'stirling-pdf', 'radicale', 'immich'];
 const stackStatePath = path.resolve(supportDir, '..', '.stack-state.json');
 
 function dockerComposeArgs(extraArgs) {
@@ -40,13 +40,13 @@ function runDockerCompose(extraArgs) {
   });
 }
 
-async function waitFor(url, timeoutMs) {
+async function waitFor(url, timeoutMs, isReady = (status) => status >= 200 && status < 400) {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
     try {
       const response = await fetch(url, { redirect: 'manual' });
-      if (response.status >= 200 && response.status < 400) {
+      if (isReady(response.status)) {
         return;
       }
     } catch {
@@ -60,7 +60,10 @@ async function waitFor(url, timeoutMs) {
 }
 
 function readSuiteManagerEnv() {
-  const filePath = path.join(composeDir, 'services', 'suite-manager', '.env');
+  return readEnvFile(path.join(composeDir, 'services', 'suite-manager', '.env'));
+}
+
+function readEnvFile(filePath) {
   const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
   const env = {};
 
@@ -87,14 +90,23 @@ export async function startStack() {
 
   await waitFor('http://suite-manager.localhost:18080/healthz', 180000);
   await waitFor('http://suite-manager.localhost:18080/setup/', 180000);
+  await waitFor('http://seafile.localhost:18080/', 180000);
+  await waitFor('http://stirling-pdf.localhost:18080/', 180000, (status) => status === 401 || (status >= 200 && status < 400));
+  await waitFor('http://immich.localhost:18080/', 180000);
 
   const suiteManagerEnv = readSuiteManagerEnv();
+  const seafileEnv = readEnvFile(path.join(composeDir, 'services', 'seafile', '.env'));
+  const radicaleEnv = readEnvFile(path.join(composeDir, 'services', 'radicale', '.env'));
   fs.writeFileSync(
     stackStatePath,
     JSON.stringify(
       {
         ownerEmail: suiteManagerEnv.OWNER_EMAIL,
         ownerPassword: suiteManagerEnv.OWNER_PASSWORD,
+        radicaleAdminPassword: radicaleEnv.RADICALE_ADMIN_PASSWORD,
+        radicaleAdminUsername: radicaleEnv.RADICALE_ADMIN_USERNAME,
+        seafileAdminEmail: seafileEnv.SEAFILE_ADMIN_EMAIL,
+        seafileAdminPassword: seafileEnv.SEAFILE_ADMIN_PASSWORD,
       },
       null,
       2,

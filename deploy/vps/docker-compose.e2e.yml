@@ -40,3 +40,18 @@ services:
 
   seafile-memcached:
     container_name: mos-e2e-seafile-memcached
+
+  stirling-pdf:
+    container_name: mos-e2e-stirling-pdf
+
+  immich:
+    container_name: mos-e2e-immich
+
+  immich-machine-learning:
+    container_name: mos-e2e-immich-machine-learning
+
+  immich-valkey:
+    container_name: mos-e2e-immich-valkey
+
+  immich-postgres:
+    container_name: mos-e2e-immich-postgres
