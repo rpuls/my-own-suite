@@ -254,8 +254,8 @@ if (env.homepage && env.radicale) {
 
 if (env.homepage) {
   const suiteManagerUrl = env.homepage.SUITE_MANAGER_URL || '';
-  if (!isMissing(suiteManagerUrl) && !/\/setup\/?$/i.test(suiteManagerUrl)) {
-    errors.push('SUITE_MANAGER_URL in deploy/vps/services/homepage/.env must point to the Suite Manager /setup route.');
+  if (!isMissing(suiteManagerUrl) && /\/setup\/?$/i.test(suiteManagerUrl)) {
+    errors.push('SUITE_MANAGER_URL in deploy/vps/services/homepage/.env should be the bare Suite Manager host; Homepage adds /setup/ in the tile itself.');
   }
 }
 
