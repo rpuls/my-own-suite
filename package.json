@@ -30,6 +30,10 @@
   },
   "scripts": {
     "build": "cd site && npm install --no-audit --progress=false && npm run build",
+    "e2e:install": "npm --prefix tests/e2e install && npm --prefix tests/e2e run install:browsers",
+    "e2e:onboarding": "npm --prefix tests/e2e test",
+    "e2e:onboarding:headed": "npm --prefix tests/e2e run test:headed",
+    "e2e:onboarding:debug": "npm --prefix tests/e2e run test:debug",
     "vps:rebuild": "npm run vps:init && npm run vps:doctor && docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps --profile vaultwarden --profile seafile --profile onlyoffice --profile stirling-pdf --profile radicale --profile immich down --volumes --remove-orphans && docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps --profile vaultwarden --profile seafile --profile onlyoffice --profile stirling-pdf --profile radicale --profile immich up -d --build --force-recreate",
     "vps:init": "node scripts/vps-init.cjs",
     "vps:doctor": "node scripts/vps-doctor.cjs",
