@@ -1,0 +1,42 @@
+services:
+  caddy:
+    container_name: mos-e2e-caddy
+
+  suite-manager:
+    container_name: mos-e2e-suite-manager
+    environment:
+      - SUITE_MANAGER_PUBLIC_URL=http://suite-manager.localhost:${MOS_E2E_HTTP_PORT:-18080}/setup
+      - VAULTWARDEN_PUBLIC_URL=https://vaultwarden.localhost:${MOS_E2E_HTTPS_PORT:-18443}
+      - RADICALE_PUBLIC_URL=http://radicale.localhost:${MOS_E2E_HTTP_PORT:-18080}
+      - SEAFILE_PUBLIC_URL=http://seafile.localhost:${MOS_E2E_HTTP_PORT:-18080}
+      - STIRLING_PDF_PUBLIC_URL=http://stirling-pdf.localhost:${MOS_E2E_HTTP_PORT:-18080}
+      - IMMICH_PUBLIC_URL=http://immich.localhost:${MOS_E2E_HTTP_PORT:-18080}
+
+  homepage:
+    container_name: mos-e2e-homepage
+    environment:
+      - HOMEPAGE_ALLOWED_HOSTS=homepage.localhost,homepage.localhost:${MOS_E2E_HTTP_PORT:-18080},suite-manager.localhost,suite-manager.localhost:${MOS_E2E_HTTP_PORT:-18080},homepage:3000,localhost,localhost:${MOS_E2E_HTTP_PORT:-18080}
+      - SUITE_MANAGER_URL=http://suite-manager.localhost:${MOS_E2E_HTTP_PORT:-18080}/setup/
+      - VAULTWARDEN_URL=https://vaultwarden.localhost:${MOS_E2E_HTTPS_PORT:-18443}
+      - SEAFILE_URL=http://seafile.localhost:${MOS_E2E_HTTP_PORT:-18080}
+      - STIRLING_PDF_URL=http://stirling-pdf.localhost:${MOS_E2E_HTTP_PORT:-18080}
+      - RADICALE_URL=http://radicale.localhost:${MOS_E2E_HTTP_PORT:-18080}
+      - IMMICH_URL=http://immich.localhost:${MOS_E2E_HTTP_PORT:-18080}
+
+  vaultwarden:
+    container_name: mos-e2e-vaultwarden
+
+  vaultwarden-postgres:
+    container_name: mos-e2e-vaultwarden-postgres
+
+  radicale:
+    container_name: mos-e2e-radicale
+
+  seafile:
+    container_name: mos-e2e-seafile
+
+  seafile-mysql:
+    container_name: mos-e2e-seafile-mysql
+
+  seafile-memcached:
+    container_name: mos-e2e-seafile-memcached

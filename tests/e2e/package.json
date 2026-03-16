@@ -1,0 +1,17 @@
+{
+  "name": "my-own-suite-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "install:browsers": "node ./node_modules/playwright/cli.js install chromium",
+    "test": "node ./node_modules/playwright/cli.js test",
+    "test:headed": "node ./node_modules/playwright/cli.js test --headed",
+    "test:debug": "node ./node_modules/playwright/cli.js test --headed --workers=1 --timeout=240000"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  },
+  "dependencies": {
+    "my-own-suite": "file:../.."
+  }
+}
