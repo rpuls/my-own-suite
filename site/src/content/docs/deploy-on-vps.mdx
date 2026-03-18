@@ -1,0 +1,71 @@
+---
+title: Deploy on a VPS
+description: Run My Own Suite on a server you choose and control.
+slug: docs/deploy-on-vps
+---
+
+A VPS is a rented internet-connected server from a hosting provider.
+
+This option is for people who want more independence than a managed platform, while still using hosted infrastructure instead of their own hardware.
+
+## Who should choose this?
+
+Choose a VPS if:
+
+- you want more control over where the suite runs
+- you want the option to change hosting providers later
+- you are comfortable following technical setup steps
+
+## Tradeoffs
+
+Compared with Railway:
+
+- setup is more manual
+- you manage more of the server and deployment details
+- the learning curve is higher
+
+In return, you get:
+
+- more hosting flexibility
+- less platform lock-in
+- a clearer path to long-term independence
+
+## Privacy and ownership angle
+
+Using a VPS still means your data lives on hardware owned by a hosting provider, but the relationship is much closer to renting server space than signing up for a consumer software ecosystem.
+
+That matters because:
+
+- you choose the host instead of being locked into one app company
+- your suite remains your own deployed stack
+- you can change providers later if pricing or terms stop fitting you
+- your data is not being handed to a bundled consumer platform whose business depends on keeping you inside its ecosystem
+
+In other words, the infrastructure is rented, but the suite is still yours.
+
+## Current guide
+
+This is the current documented and maintained self-managed path in the repository.
+
+Use the VPS/local Docker Compose setup described in:
+
+- [deploy/vps/README.md](/docs/getting-started)
+
+## What you will need
+
+- A VPS from a provider of your choice
+- Docker and Docker Compose
+- Comfort editing environment values and running command-line setup steps
+
+## Typical flow
+
+At a high level, the VPS flow is:
+
+1. Clone the repository.
+2. Initialize the environment files.
+3. Review your suite-manager values.
+4. Run validation checks.
+5. Start the stack with Docker Compose.
+6. Open Suite Manager and finish onboarding.
+
+For the exact hands-on steps, start with the current [How to get started](/docs/getting-started) guide and the technical deployment notes in [deploy/vps/README.md](https://github.com/rpuls/my-own-suite/blob/staging/deploy/vps/README.md).
