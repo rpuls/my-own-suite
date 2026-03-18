@@ -1,89 +1,69 @@
 ---
-title: Getting Started
-description: Run My Own Suite locally with Docker Compose.
+title: How to get started
+description: Choose the setup style that fits you best.
 slug: docs/getting-started
 ---
 
-Use this to run the full stack locally on your machine.
+My Own Suite can run in different places depending on how hands-on you want to be.
 
-## Prerequisites
+You do not need to think about infrastructure first. Start by choosing the option that sounds most like you.
 
-- Docker Desktop installed and running
-- Node.js 22.x and npm 11.x
-- Git
+## Which option fits you?
 
-## 1. Clone the repo
+### Easiest
 
-```bash
-git clone https://github.com/rpuls/my-own-suite.git
-cd my-own-suite
-```
+You want the simplest setup and do not mind using a hosted platform.
 
-## 2. Initialize env files
+Recommended choice: [Deploy on Railway](/docs/deploy-on-railway)
 
-```bash
-npm run vps:init
-```
+Why people choose this:
 
-This creates missing `.env` files from `deploy/vps/**/*.env.template` without overwriting existing values.
+- Very little manual setup
+- Fastest path to a working suite
+- No IT skills required
+- Best fit for non-technical users or anyone who wants to try the project quickly
 
-## 3. Optional customization
+Tradeoff:
 
-`vps:init` auto-generates required secrets from template expressions in `*.env.template`.
+- It runs on a managed platform operated by a company, so pricing and platform rules are outside your control.
 
-The main first-run values live in `deploy/vps/services/suite-manager/.env`:
+### More independent
 
-- `OWNER_NAME`
-- `OWNER_EMAIL`
-- `OWNER_PASSWORD`
-- `SESSION_SECRET`
-- `TIMEZONE`
+You want more control over where the suite runs and you are okay following a technical setup guide.
 
-You can also change `DOMAIN` in `deploy/vps/.env` and adjust individual service env files in `deploy/vps/services/*.env` if needed.
+Recommended choice: [Deploy on a VPS](/docs/deploy-on-vps)
 
-## 4. Run environment checks
+Why people choose this:
 
-```bash
-npm run vps:doctor
-```
+- You can choose your server provider
+- You are not locked to one managed platform
+- It is a better long-term fit if you want hosting freedom
 
-This validates required variables and cross-file wiring (including the Radicale token used by Homepage).
+Tradeoff:
 
-## 5. Build and run the stack
+- Setup is more manual, and the guide assumes some comfort with Docker and server administration.
 
-```bash
-npm run vps:up
-```
+### Fully self-hosted
 
-Use this instead of `vps:rebuild` for normal startup.
+You want the suite on your own hardware and you are comfortable taking responsibility for networking, maintenance, and security.
 
-If you need a full destructive reset (removes Docker volumes/data):
+Recommended choice: [Deploy on your own hardware](/docs/deploy-on-your-own-hardware)
 
-```bash
-npm run vps:rebuild
-```
+Why people choose this:
 
-## 6. Finish onboarding
+- Maximum control over where your data and services live
+- Potentially low recurring cost if you already own suitable hardware
+- Best fit for advanced users and homelab setups
+- A strong fit if you want to stay as off-grid as possible
 
-- Suite Manager: `http://suite-manager.localhost/`
+Tradeoff:
 
-Open `Suite Manager` first, sign in, and complete the onboarding flow before you start using the rest of the suite.
+- This is the most advanced option and has the highest operational responsibility.
 
-## 7. Open the apps
+## Recommendation
 
-- Homepage: `http://homepage.localhost/`
+- Start with Railway if you want the easiest experience.
+- Choose a VPS if you want more control and hosting freedom.
+- Choose your own hardware if you already know you want full infrastructure ownership.
 
-After you finish onboarding, Homepage becomes your everyday start page. From there you can open the rest of the suite.
-
-If you ever need to return to setup later, use the `Suite Manager` link from Homepage's resources area or open it directly:
-
-- Suite Manager: `http://suite-manager.localhost/`
-
-Other direct URLs:
-
-- Seafile: `http://seafile.localhost/`
-- ONLYOFFICE: `http://onlyoffice.localhost/`
-- Immich: `http://immich.localhost/`
-- Radicale: `http://radicale.localhost/`
-- Stirling PDF: `http://stirling-pdf.localhost/`
-- Vaultwarden: `https://vaultwarden.localhost/`
+If you are mainly curious and want the smoothest first experience, Railway is the best place to begin.

@@ -33,7 +33,14 @@ export default defineConfig({
       sidebar: [
         {
           label: 'Docs',
-          items: ['docs', 'docs/getting-started']
+          items: [
+            'docs',
+            'docs/why-your-own-cloud',
+            'docs/getting-started',
+            'docs/deploy-on-railway',
+            'docs/deploy-on-vps',
+            'docs/deploy-on-your-own-hardware'
+          ]
         },
         {
           label: 'Apps',
