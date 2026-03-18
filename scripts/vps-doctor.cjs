@@ -132,7 +132,13 @@ if (env.root) {
 
 if (env.suiteManager) {
   requireVar('suiteManager', 'OWNER_EMAIL', { allowPlaceholder: false });
+  requireVar('suiteManager', 'OWNER_PASSWORD', { allowPlaceholder: false });
+  requireVar('suiteManager', 'SESSION_SECRET', { allowPlaceholder: false });
   requireVar('suiteManager', 'TIMEZONE', { allowPlaceholder: false });
+
+  if (isMissing(env.suiteManager.OWNER_NAME || '')) {
+    warnings.push('services/suite-manager/.env OWNER_NAME is empty; suite-manager will fall back to "Owner".');
+  }
 }
 
 if (env.seafile) {
@@ -163,6 +169,7 @@ if (env.radicale) {
 
 if (env.homepage) {
   requireVar('homepage', 'RADICALE_ICAL_URL', { allowPlaceholder: false });
+  requireVar('homepage', 'SUITE_MANAGER_URL', { allowPlaceholder: false });
 }
 
 if (env.vaultwarden) {
@@ -242,6 +249,13 @@ if (env.homepage && env.radicale) {
     if (!includesToken && !includesPlaceholder) {
       errors.push('RADICALE_ICAL_URL must include RADICALE_ICAL_TOKEN (or ${RADICALE_ICAL_TOKEN}) for Homepage calendar bridge.');
     }
+  }
+}
+
+if (env.homepage) {
+  const suiteManagerUrl = env.homepage.SUITE_MANAGER_URL || '';
+  if (!isMissing(suiteManagerUrl) && /\/setup\/?$/i.test(suiteManagerUrl)) {
+    errors.push('SUITE_MANAGER_URL in deploy/vps/services/homepage/.env should be the bare Suite Manager host; Homepage adds /setup/ in the tile itself.');
   }
 }
 

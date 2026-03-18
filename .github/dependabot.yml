@@ -75,7 +75,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-      time: "07:05"
+      time: "07:04"
       timezone: "Europe/Amsterdam"
     open-pull-requests-limit: 10
 

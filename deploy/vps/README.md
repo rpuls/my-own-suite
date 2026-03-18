@@ -57,15 +57,16 @@ docker compose down
 
 ### Access
 - Homepage: http://homepage.localhost/
+- Suite Manager: http://suite-manager.localhost/setup/
 - Seafile: http://seafile.localhost/
 - ONLYOFFICE: http://onlyoffice.localhost/
 - Immich: http://immich.localhost/
 - Radicale: http://radicale.localhost/
 - Stirling PDF: http://stirling-pdf.localhost/
-- Vaultwarden: http://vaultwarden.localhost/
+- Vaultwarden: https://vaultwarden.localhost/
 
 ### Local ONLYOFFICE + Seafile note
-- `.localhost` domains resolve to loopback inside containers.
+- `*.localhost` domains resolve to loopback inside containers.
 - Set `ONLYOFFICE_INTERNAL_SEAFILE_URL=http://seafile` in `services/seafile/.env` so ONLYOFFICE backend callbacks/downloads use Docker-internal networking.
 - After pulling changes, restart the relevant services:
 ```bash
@@ -85,7 +86,7 @@ deploy/vps/
 |   `-- ...
 `-- services/
     |-- suite-manager/
-    |   |-- .env                 # Shared user-facing values (email, timezone)
+    |   |-- .env                 # Shared user-facing values and onboarding state config
     |   `-- .env.template
     |-- homepage/
     |   |-- .env                 # Homepage settings
@@ -130,7 +131,7 @@ deploy/vps/
 
 Shared configuration model:
 - `deploy/vps/.env`: framework-level values such as `DOMAIN`
-- `deploy/vps/services/suite-manager/.env`: shared user-facing values reused across service env files
+- `deploy/vps/services/suite-manager/.env`: shared user-facing values, auth inputs, and onboarding controls reused across the stack
 - `deploy/vps/services/<service>/.env`: service-specific runtime settings for all deployable services
 
 Container versioning model:
@@ -148,8 +149,12 @@ DOMAIN=yourdomain.com   # Production
 ```
 
 All services automatically use the new domain:
-- Caddy routes: `homepage.{$DOMAIN}`, `seafile.{$DOMAIN}`, `onlyoffice.{$DOMAIN}`, `immich.{$DOMAIN}`, `radicale.{$DOMAIN}`, `stirling-pdf.{$DOMAIN}`, `vaultwarden.{$DOMAIN}`
-- Service URLs: `http://seafile.${DOMAIN}`, `http://onlyoffice.${DOMAIN}`, `http://immich.${DOMAIN}`, `http://radicale.${DOMAIN}`, `http://stirling-pdf.${DOMAIN}`, `http://vaultwarden.${DOMAIN}`
+- Caddy routes: `homepage.{$DOMAIN}`, `suite-manager.{$DOMAIN}`, `seafile.{$DOMAIN}`, `onlyoffice.{$DOMAIN}`, `immich.{$DOMAIN}`, `radicale.{$DOMAIN}`, `stirling-pdf.{$DOMAIN}`, `vaultwarden.{$DOMAIN}`
+- Service URLs: `http://homepage.${DOMAIN}`, `http://suite-manager.${DOMAIN}/setup`, `http://seafile.${DOMAIN}`, `http://onlyoffice.${DOMAIN}`, `http://immich.${DOMAIN}`, `http://radicale.${DOMAIN}`, `http://stirling-pdf.${DOMAIN}`, `https://vaultwarden.${DOMAIN}`
+
+Local Vaultwarden HTTPS note:
+- Caddy now serves Vaultwarden over HTTPS so the signup flow can run locally.
+- On `localhost`, Caddy will use a local certificate. Your browser may show an untrusted certificate warning until you trust Caddy's local CA; for temporary testing you can bypass the warning in the browser.
 - Homepage links: same URLs from `services/homepage/.env`
 
 ## Adding a New App
@@ -212,6 +217,8 @@ Add to `deploy/vps/services/homepage/.env`:
 ```env
 <APP_NAME>_URL=http://<app-name>.${DOMAIN}
 ```
+
+If the app requires HTTPS-aware browser flows, use `https://` instead. Vaultwarden is the current example.
 
 ### 6. Add tile to Homepage template
 Add to `apps/homepage/config/services.template.yaml`:

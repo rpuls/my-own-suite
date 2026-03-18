@@ -57,6 +57,10 @@
             icon: mdi-bookmark-outline
 
     - Open Source Resources:
+        - Suite Manager:
+            href: ${SUITE_MANAGER_URL}/setup/
+            description: Open the suite control plane and onboarding
+            icon: mdi-progress-wrench
         - My Own Suite Docs:
             href: https://myownsuite.org/docs/
             description: My Own Suite official documentation

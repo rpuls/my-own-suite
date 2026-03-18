@@ -314,6 +314,38 @@ function renderEnvFile(rawContent, sharedVars, sharedSecrets, seedVars = {}) {
   };
 }
 
+function collectMissingAssignments(rawContent, sharedVars, sharedSecrets, existingVars) {
+  const lines = rawContent.split(/\r?\n/);
+  const localVars = { ...existingVars };
+  const missingAssignments = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const idx = line.indexOf('=');
+
+    if (!trimmed || trimmed.startsWith('#') || idx < 1) {
+      continue;
+    }
+
+    const key = line.slice(0, idx).trim();
+    const value = line.slice(idx + 1);
+    const rendered = Object.prototype.hasOwnProperty.call(existingVars, key)
+      ? existingVars[key]
+      : renderTemplate(value, localVars, sharedVars, sharedSecrets);
+
+    localVars[key] = rendered;
+
+    if (!Object.prototype.hasOwnProperty.call(existingVars, key)) {
+      missingAssignments.push(`${key}=${rendered}`);
+    }
+  }
+
+  return {
+    localVars,
+    missingAssignments,
+  };
+}
+
 const sourceFiles = collectEnvTemplates(vpsDir)
   .map((file) => path.relative(vpsDir, file).replace(/\\/g, '/'))
   .sort((a, b) => {
@@ -325,6 +357,7 @@ const sourceFiles = collectEnvTemplates(vpsDir)
   });
 
 let createdCount = 0;
+let updatedCount = 0;
 let skippedCount = 0;
 let errorCount = 0;
 const sharedVars = {};
@@ -342,14 +375,49 @@ for (const sourceRelPath of sourceFiles) {
   }
 
   if (fs.existsSync(targetPath)) {
-    if (isGlobalTemplate(sourceRelPath) || isGlobalTarget(targetRelPath)) {
-      const existingVars = readEnvFile(targetPath);
-      if (existingVars) {
-        Object.assign(sharedVars, existingVars);
+    try {
+      const rawSource = fs.readFileSync(sourcePath, 'utf8');
+      const existingVars = readEnvFile(targetPath) || {};
+      const { rendered, localVars } = renderEnvFile(rawSource, sharedVars, sharedSecrets, existingVars);
+
+      if (rendered.includes('${{')) {
+        throw new Error(`Unresolved template expression in ${sourceRelPath}`);
       }
-    }
-    skippedCount += 1;
-    console.log(`Exists, skipped: deploy/vps/${targetRelPath}`);
+
+      if (isGlobalTemplate(sourceRelPath) || isGlobalTarget(targetRelPath)) {
+        Object.assign(sharedVars, localVars);
+      }
+
+      const renderedLines = rendered.split(/\r?\n/);
+      const missingLines = [];
+
+      for (const line of renderedLines) {
+        const trimmed = line.trim();
+        const idx = line.indexOf('=');
+        if (!trimmed || trimmed.startsWith('#') || idx < 1) {
+          continue;
+        }
+
+        const key = line.slice(0, idx).trim();
+        if (!Object.prototype.hasOwnProperty.call(existingVars, key)) {
+          missingLines.push(line);
+        }
+      }
+
+      if (missingLines.length > 0) {
+        const existingRaw = fs.readFileSync(targetPath, 'utf8');
+        const separator = existingRaw.endsWith('\n') || existingRaw.length === 0 ? '' : '\n';
+        fs.writeFileSync(targetPath, `${existingRaw}${separator}${missingLines.join('\n')}\n`, 'utf8');
+        updatedCount += 1;
+        console.log(`Updated: deploy/vps/${targetRelPath} (added ${missingLines.length} missing keys)`);
+      } else {
+        skippedCount += 1;
+        console.log(`Exists, skipped: deploy/vps/${targetRelPath}`);
+      }
+      } catch (error) {
+        errorCount += 1;
+        console.error(`Failed: deploy/vps/${targetRelPath} (${error.message})`);
+      }
     continue;
   }
 
@@ -376,7 +444,7 @@ for (const sourceRelPath of sourceFiles) {
   }
 }
 
-console.log(`\nDone. Created ${createdCount}, skipped ${skippedCount}, errors ${errorCount}.`);
+console.log(`\nDone. Created ${createdCount}, updated ${updatedCount}, skipped ${skippedCount}, errors ${errorCount}.`);
 
 if (errorCount > 0) {
   process.exit(1);

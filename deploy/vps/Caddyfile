@@ -1,44 +1,56 @@
 # ===========================================
 # My-Own-Suite Caddyfile
 # ===========================================
+{
+	auto_https disable_redirects
+}
+
 # Subdomain routing using DOMAIN from .env
 # Local: homepage.localhost, vaultwarden.localhost
 # Production: homepage.yourdomain.com, vaultwarden.yourdomain.com
 # ===========================================
 
-# Homepage Dashboard
-http://homepage.{$DOMAIN} {
-	reverse_proxy homepage:3000
+:80 {
+	@suite_manager host suite-manager.{$DOMAIN}
+	handle @suite_manager {
+		reverse_proxy suite-manager:3000
+	}
+
+	@homepage host homepage.{$DOMAIN}
+	handle @homepage {
+		reverse_proxy homepage:3000
+	}
+
+	@seafile host seafile.{$DOMAIN}
+	handle @seafile {
+		reverse_proxy seafile:80
+	}
+
+	@onlyoffice host onlyoffice.{$DOMAIN}
+	handle @onlyoffice {
+		reverse_proxy onlyoffice:80
+	}
+
+	@stirling_pdf host stirling-pdf.{$DOMAIN}
+	handle @stirling_pdf {
+		reverse_proxy stirling-pdf:8080
+	}
+
+	@radicale host radicale.{$DOMAIN}
+	handle @radicale {
+		reverse_proxy radicale:5232
+	}
+
+	@immich host immich.{$DOMAIN}
+	handle @immich {
+		reverse_proxy immich:2283
+	}
 }
 
 # Vaultwarden Password Manager
-http://vaultwarden.{$DOMAIN} {
+https://vaultwarden.{$DOMAIN} {
+	tls internal
 	reverse_proxy vaultwarden:80
-}
-
-# Seafile File Sync
-http://seafile.{$DOMAIN} {
-	reverse_proxy seafile:80
-}
-
-# ONLYOFFICE Document Server
-http://onlyoffice.{$DOMAIN} {
-	reverse_proxy onlyoffice:80
-}
-
-# Stirling PDF Tools
-http://stirling-pdf.{$DOMAIN} {
-	reverse_proxy stirling-pdf:8080
-}
-
-# Radicale Calendar
-http://radicale.{$DOMAIN} {
-	reverse_proxy radicale:5232
-}
-
-# Immich Photos
-http://immich.{$DOMAIN} {
-	reverse_proxy immich:2283
 }
 
 # Internal Radicale iCal bridge for Homepage backend.

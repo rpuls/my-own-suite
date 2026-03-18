@@ -21,8 +21,8 @@ services:
       - .env
       - ./services/radicale/.env
     ports:
-      - "80:80"
-      - "443:443"
+      - "${MOS_E2E_HTTP_PORT:-80}:80"
+      - "${MOS_E2E_HTTPS_PORT:-443}:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -31,6 +31,29 @@ services:
       - mos-network
     depends_on:
       - homepage
+      - suite-manager
+
+  # -------------------------------------------
+  # Suite Manager - Onboarding and bootstrap hub
+  # -------------------------------------------
+  suite-manager:
+    build:
+      context: ../../apps/suite-manager
+      dockerfile: Dockerfile
+    container_name: mos-suite-manager
+    restart: unless-stopped
+    env_file:
+      - .env
+      - ./services/suite-manager/.env
+      - ./services/vaultwarden/.env
+      - ./services/seafile/.env
+      - ./services/radicale/.env
+    environment:
+      - HOMEPAGE_URL=http://homepage:3000/
+    volumes:
+      - suite_manager_data:/data
+    networks:
+      - mos-network
 
   # -------------------------------------------
   # Homepage - Main Dashboard
@@ -65,7 +88,7 @@ services:
       - .env
       - ./services/vaultwarden/.env
     environment:
-      - DOMAIN=http://vaultwarden.${DOMAIN}
+      - DOMAIN=https://vaultwarden.${DOMAIN}
     volumes:
       - vaultwarden_data:/data
     networks:
@@ -321,6 +344,7 @@ volumes:
   caddy_data:
   caddy_config:
   homepage_images:
+  suite_manager_data:
   vaultwarden_data:
   vaultwarden_postgres_data:
   seafile_data:

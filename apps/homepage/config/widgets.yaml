@@ -1,5 +1,15 @@
 ---
-# Widgets for Railway Homepage
+# Homepage information widgets
+# Theme and color are intentionally left user-selectable in settings.yaml.
+
+- datetime:
+    text_size: md
+    format:
+      weekday: short
+      day: numeric
+      month: short
+      hour: numeric
+      minute: 2-digit
 
 - search:
     provider: custom

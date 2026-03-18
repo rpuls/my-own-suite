@@ -1,6 +1,7 @@
 #### Environment variables
 
 - `HOMEPAGE_ALLOWED_HOSTS`: Allowed hostnames for Homepage (`hostname1,hostname2,...`).
+- `SUITE_MANAGER_URL`: Public Suite Manager base URL used for the Suite Manager resource tile, which appends `/setup/`.
 - Any `${VAR_NAME}` used in `config/services.template.yaml`:
   - Example: `${SEAFILE_URL}`, `${VAULTWARDEN_URL}`, `${ONLYOFFICE_URL}`.
   - If not set (or empty), dependent tile is excluded from final dashboard.
@@ -9,6 +10,7 @@
 
 - Homepage config is generated at container start from a template.
 - `entrypoint.sh` runs `node /app/config-generator/dist/index.js /app/config` before starting Homepage.
+- Suite Manager is the public login and setup surface for the stack; after sign-in it proxies Homepage instead of Homepage implementing its own login UI.
 - Source template: `config/services.template.yaml`
 - Generated output: `config/services.yaml`
 - Generator behavior:
@@ -22,6 +24,14 @@ Files commonly edited for customization:
 - `apps/homepage/config/widgets.yaml`: widgets.
 - `apps/homepage/config/bookmarks.yaml`: bookmarks.
 - `apps/homepage/config/settings.yaml`: general dashboard settings.
+- `apps/homepage/config/custom.css`: visual overrides layered on top of Homepage defaults.
+- `apps/homepage/config/custom.js`: first-run theme bootstrapping for Homepage's client-side UI.
+
+Current defaults in this repo:
+- `settings.yaml` keeps Homepage's built-in theme and palette switchers available, while `custom.js` nudges first-run users onto the bundled `theme-mos` palette.
+- `custom.css` gives Homepage the same MOS brand feel used elsewhere in the suite, including the lighter clean-header treatment and softer card styling.
+- `widgets.yaml` keeps the top bar intentionally simple with datetime and Startpage-powered search.
+- The Suite Manager resource opens the control-plane `/setup/` route directly so users can return to onboarding later without guessing the URL.
 
 Tile template example:
 

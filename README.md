@@ -6,7 +6,7 @@
 </p>
 
 > **One-click open source alternatives** to Google Drive, Google Calendar, 1Password, Microsoft 365, and more.  
-> Deploy anywhere: Railway, VPS, or homelab. Your data, your control.
+> Today the repo is centered on a VPS/local Docker Compose stack, with more deploy targets to follow.
 
 ### Solutions Included
 
@@ -19,6 +19,7 @@
 | Calendar Sync | <img src="./site/src/assets/logos/radicale.png" alt="Radicale" width="18" /> **Radicale** | Google Calendar, iCloud, Outlook |
 | PDF Tools | <img src="./site/src/assets/logos/stirling-pdf.png" alt="Stirling PDF" width="18" /> **Stirling PDF** | Adobe Acrobat, Smallpdf |
 | Password Manager | <img src="./site/src/assets/logos/vaultwarden.png" alt="Vaultwarden" width="18" /> **Vaultwarden** | 1Password, LastPass, Bitwarden cloud |
+| Control Plane | **Suite Manager** | Guided onboarding, login, and shared entrypoint for the suite |
 
 ### Who It's For
 
@@ -51,6 +52,40 @@ If you need a full destructive reset (removes volumes and data):
 npm run vps:rebuild
 ```
 
+## E2E Testing
+
+The repo includes real black-box Playwright tests that boot an isolated Docker stack, exercise the live browser flows, and tear the stack down again after the run.
+
+```bash
+npm run e2e:install
+```
+
+Install the Playwright test dependencies and Chromium browser once on your machine.
+
+```bash
+npm run e2e:full
+npm run e2e:full:headed
+```
+
+Run the full E2E suite. Use `e2e:full` for headless CI-style verification or `e2e:full:headed` when you want to watch the whole flow in the browser.
+
+```bash
+npm run e2e:onboarding
+npm run e2e:onboarding:headed
+npm run e2e:onboarding:debug
+```
+
+Run just the onboarding flow. Use `:headed` or `:debug` when you want to watch the browser step through account creation, credential import, and Homepage handoff.
+
+```bash
+npm run e2e:apps
+npm run e2e:apps:headed
+```
+
+Run the Homepage app verification flow. This checks live routes for Suite Manager, Vaultwarden, Seafile, Stirling PDF, Immich, and Radicale so image updates are safer to validate.
+
+For the more detailed harness notes, see [tests/e2e/README.md](./tests/e2e/README.md).
+
 ---
 
 ## Navigation
@@ -62,6 +97,7 @@ npm run vps:rebuild
 | Deployment stacks | `deploy/` |
 | Canonical VPS architecture + app onboarding steps | [deploy/vps/README.md](./deploy/vps/README.md) |
 | Homepage service details | [apps/homepage/README.md](./apps/homepage/README.md) |
+| Suite Manager service details | [apps/suite-manager/README.md](./apps/suite-manager/README.md) |
 | Seafile service details | [apps/seafile/README.md](./apps/seafile/README.md) |
 | ONLYOFFICE service details | [apps/onlyoffice/README.md](./apps/onlyoffice/README.md) |
 | Immich service details | [apps/immich/README.md](./apps/immich/README.md) |
