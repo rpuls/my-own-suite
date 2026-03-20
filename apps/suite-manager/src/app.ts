@@ -49,6 +49,20 @@ export function createApp(
         root: getFrontendStaticRoot(),
       }),
     );
+    app.use(
+      `${config.setupBasePath}/brand/*`,
+      serveStatic({
+        rewriteRequestPath: (requestPath) => requestPath.replace(config.setupBasePath, ''),
+        root: getFrontendStaticRoot(),
+      }),
+    );
+    app.use(
+      `${config.setupBasePath}/site.webmanifest`,
+      serveStatic({
+        rewriteRequestPath: () => '/site.webmanifest',
+        root: getFrontendStaticRoot(),
+      }),
+    );
   }
 
   app.get(config.setupBasePath, (c) => c.redirect(`${config.setupBasePath}/`, 302));

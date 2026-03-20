@@ -29,7 +29,8 @@
     "npm": "11.x"
   },
   "scripts": {
-    "build": "cd site && npm install --no-audit --progress=false && npm run build",
+    "branding:sync": "node scripts/sync-branding.cjs",
+    "build": "npm run branding:sync && cd site && npm install --no-audit --progress=false && npm run build",
     "e2e:install": "npm --prefix tests/e2e install && npm --prefix tests/e2e run install:browsers",
     "e2e:full": "npm --prefix tests/e2e test",
     "e2e:full:headed": "npm --prefix tests/e2e run test:headed",

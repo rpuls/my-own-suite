@@ -26,7 +26,16 @@ export function LoginScreen({ error, onLogin }: LoginScreenProps) {
     <main className="suite-app">
       <section className="mos-shell suite-auth-layout">
         <div className="suite-auth-stage">
-          <span className="mos-eyebrow">My Own Suite</span>
+          <div className="suite-auth-brand">
+            <img
+              alt=""
+              className="suite-auth-mark"
+              height="56"
+              src="./brand/my-own-suite-mark.png"
+              width="56"
+            />
+            <span className="mos-eyebrow">My Own Suite</span>
+          </div>
           <h1>Please sign in</h1>
           <p className="suite-lead">Your digital independence awaits you.</p>
 

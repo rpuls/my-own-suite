@@ -1,3 +1,6 @@
+<p align="center">
+  <img src="./branding/my-own-suite-mark.png" alt="My Own Suite logo" width="96" />
+</p>
 <h1 align="center">My Own Suite</h1>
 <p align="center"><sub>Your Big Tech exit kit.</sub></p>
 <p align="center">
@@ -7,6 +10,8 @@
 
 > **One-click open source alternatives** to Google Drive, Google Calendar, 1Password, Microsoft 365, and more.  
 > Today the repo is centered on a VPS/local Docker Compose stack, with more deploy targets to follow.
+
+> Shared MOS branding lives in [`branding/`](./branding/). If you change shared brand assets or brand tokens, edit the canonical files there and run `npm run branding:sync` instead of hand-editing app-local copies.
 
 ### Solutions Included
 
@@ -19,7 +24,7 @@
 | Calendar Sync | <img src="./site/src/assets/logos/radicale.png" alt="Radicale" width="18" /> **Radicale** | Google Calendar, iCloud, Outlook |
 | PDF Tools | <img src="./site/src/assets/logos/stirling-pdf.png" alt="Stirling PDF" width="18" /> **Stirling PDF** | Adobe Acrobat, Smallpdf |
 | Password Manager | <img src="./site/src/assets/logos/vaultwarden.png" alt="Vaultwarden" width="18" /> **Vaultwarden** | 1Password, LastPass, Bitwarden cloud |
-| Control Plane | **Suite Manager** | Guided onboarding, login, and shared entrypoint for the suite |
+| Control Plane | <img src="./branding/my-own-suite-mark.png" alt="My Own Suite" width="18" /> **Suite Manager** | Guided onboarding, login, and shared entrypoint for the suite |
 
 ### Who It's For
 

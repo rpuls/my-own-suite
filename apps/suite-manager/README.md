@@ -43,7 +43,7 @@
 - `src/features/status/*`: operational status endpoints.
 - `src/lib/*`: shared helpers such as logging, HTML escaping, and secret masking.
 - `frontend/src/*`: React application code.
-- `frontend/src/styles/mos.css`: shared MOS brand stylesheet imported by both `suite-manager` and the Astro site.
+- `branding/styles/mos.css`: canonical MOS brand stylesheet source, synchronized into app-local copies by `npm run branding:sync`.
 
 #### Local development
 

@@ -1,3 +1,4 @@
+/* sync-branding:homepage:start */
 :root {
   --mos-bg: rgb(var(--bg-color));
   --mos-bg-soft: color-mix(in srgb, rgb(var(--bg-color)) 88%, rgb(var(--color-100)));
@@ -24,28 +25,29 @@ html.dark {
 }
 
 .theme-mos {
-  --color-50: 239 250 246;
-  --color-100: 214 245 233;
-  --color-200: 181 234 216;
-  --color-300: 126 220 189;
-  --color-400: 99 226 179;
-  --color-500: 40 188 132;
-  --color-600: 25 150 105;
-  --color-700: 18 118 84;
+  --color-50: 236 252 246;
+  --color-100: 218 248 237;
+  --color-200: 193 243 225;
+  --color-300: 158 237 208;
+  --color-400: 127 231 193;
+  --color-500: 99 226 179;
+  --color-600: 34 158 115;
+  --color-700: 27 125 96;
   --color-800: 11 33 56;
   --color-900: 6 21 38;
-  --color-logo-start: 99 226 179;
+  --color-logo-start: 127 231 193;
   --color-logo-stop: 40 188 132;
 }
 
 .theme-mos .text-theme-800 {
-  color: rgb(16, 33, 54);
+  color: rgb(11 33 56);
 }
 
 .theme-mos.dark .text-theme-800,
 .theme-mos.dark .dark\:text-theme-200:is(.dark *) {
-  color: rgb(var(--color-200));
+  color: rgb(238 244 255);
 }
+/* sync-branding:homepage:end */
 
 body {
   font-family: "Open Sans", "Segoe UI", sans-serif;

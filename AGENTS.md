@@ -37,6 +37,26 @@ Before making edits, agents should confirm:
 - Any needed docs split rules (MDX vs app README) are respected.
 - Local git hooks are installed (`npm run hooks:install`) so commits/pushes on `main` are blocked.
 
+## Branding Workflow
+
+Branding in this repo uses a single-source-of-truth workflow. Agents must follow it whenever touching shared visual identity.
+
+- Canonical project branding lives under `branding/`.
+- `branding/styles/mos.css` is the canonical shared MOS brand stylesheet.
+- Canonical logo and favicon assets live in `branding/` and `branding/favicons/`.
+- Do not create or maintain hand-edited duplicate brand styles inside `site/`, `apps/suite-manager/`, or other app folders when the change is meant to affect shared MOS branding.
+- App-local branding copies that exist for runtime isolation are generated artifacts or sync targets, not the source of truth.
+- When changing shared branding, run `npm run branding:sync`.
+- If a task changes shared branding inputs, verify the affected app-local outputs were refreshed before finalizing.
+- If an app needs a one-off local style that is not part of shared MOS branding, keep it narrowly scoped and do not move shared tokens out of `branding/styles/mos.css`.
+
+Current shared-branding sync targets include:
+
+- `site/src/generated/branding/mos.css`
+- `apps/suite-manager/frontend/src/styles/mos.css`
+- `apps/homepage/config/custom.css` for the synced Homepage theme block
+- public brand/favicons copied into app-local runtime folders
+
 ## Goal
 
 Use a strict split:

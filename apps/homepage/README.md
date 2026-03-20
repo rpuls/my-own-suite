@@ -25,10 +25,10 @@ Files commonly edited for customization:
 - `apps/homepage/config/bookmarks.yaml`: bookmarks.
 - `apps/homepage/config/settings.yaml`: general dashboard settings.
 - `apps/homepage/config/custom.css`: visual overrides layered on top of Homepage defaults.
-- `apps/homepage/config/custom.js`: first-run theme bootstrapping for Homepage's client-side UI.
+- `apps/homepage/config/custom.js`: client-side theme bootstrapping that keeps Homepage on the bundled `theme-mos` palette unless a different theme is explicitly active.
 
 Current defaults in this repo:
-- `settings.yaml` keeps Homepage's built-in theme and palette switchers available, while `custom.js` nudges first-run users onto the bundled `theme-mos` palette.
+- `settings.yaml` keeps Homepage's built-in theme and palette switchers available, while `custom.js` keeps fallback/default clients on the bundled `theme-mos` palette.
 - `custom.css` gives Homepage the same MOS brand feel used elsewhere in the suite, including the lighter clean-header treatment and softer card styling.
 - `widgets.yaml` keeps the top bar intentionally simple with datetime and Startpage-powered search.
 - The Suite Manager resource opens the control-plane `/setup/` route directly so users can return to onboarding later without guessing the URL.
