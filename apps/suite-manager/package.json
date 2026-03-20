@@ -20,6 +20,9 @@
     "react-dom": "^19.2.4"
   },
   "scripts": {
+    "prebuild": "node -e \"const fs=require('node:fs'); const path='../../scripts/sync-branding.cjs'; if (fs.existsSync(path)) require(path);\"",
+    "prebuild:client": "node -e \"const fs=require('node:fs'); const path='../../scripts/sync-branding.cjs'; if (fs.existsSync(path)) require(path);\"",
+    "predev:client": "node -e \"const fs=require('node:fs'); const path='../../scripts/sync-branding.cjs'; if (fs.existsSync(path)) require(path);\"",
     "build": "npm run build:client",
     "build:client": "vite build",
     "dev:client": "vite",

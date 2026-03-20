@@ -6,6 +6,18 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Changed
+
+- Added a canonical project logo asset set under `branding/` and wired the new My Own Suite mark into the root README, public site landing page/favicon assets, and Suite Manager UI/favicon assets.
+- Re-enabled the landing page hero text rotation and the "Made with" logo marquee so they animate regardless of reduced-motion system preferences.
+- Centralized shared branding under `branding/` and added a sync script so the site and Suite Manager consume generated local copies instead of maintaining drifting cross-app logo and stylesheet duplicates.
+- Updated Homepage branding so its synced MOS palette now applies reliably for browsers still sitting on the default fallback theme, instead of getting stuck on an older one-time theme bootstrap.
+- Simplified the local routing default back to plain `*.localhost` and kept the isolated Playwright E2E stack explicitly pinned to that host pattern.
+- Normalized the Seafile entrypoint script during image build so local Windows checkouts do not break the Docker/E2E stack with CRLF line endings.
+- Added a `.gitattributes` safeguard so shell scripts are checked out with LF line endings consistently across platforms.
+
+## [0.4.0] - 2026-03-18
+
 ### Added
 
 - Added a real `suite-manager` control-plane with owner sign-in, persistent onboarding state, and a guided first-run setup flow.

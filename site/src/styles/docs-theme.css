@@ -24,6 +24,12 @@
   --sl-color-bg-inline-code: hsl(205, 20%, 15%);
 }
 
+.site-title,
+.site-title:hover,
+.site-title:focus-visible {
+  color: var(--sl-color-text) !important;
+}
+
 .app-page {
   display: none;
 }

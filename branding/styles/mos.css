@@ -1,0 +1,126 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;900&display=swap');
+
+:root {
+  --bg: #061526;
+  --bg-soft: #0b2138;
+  --surface: rgba(255, 255, 255, 0.06);
+  --surface-strong: rgba(255, 255, 255, 0.1);
+  --surface-border: rgba(255, 255, 255, 0.18);
+  --text: #eef4ff;
+  --muted: #b8c9de;
+  --accent: #63e2b3;
+  --accent-strong: #28bc84;
+  --danger: #ff9d9d;
+  --shadow-soft: 0 18px 48px rgba(0, 0, 0, 0.24);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Open Sans', 'Segoe UI', sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 18% 12%, rgba(99, 226, 179, 0.2), transparent 38%),
+    radial-gradient(circle at 85% 0%, rgba(86, 188, 246, 0.16), transparent 34%),
+    linear-gradient(155deg, var(--bg), var(--bg-soft));
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.mos-shell {
+  width: min(1100px, calc(100vw - 2rem));
+  margin: 0 auto;
+}
+
+.mos-btn {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 2.8rem;
+  border-radius: 0.85rem;
+  padding: 0.6rem 1rem;
+  text-decoration: none;
+  font-weight: 700;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.mos-btn:focus-visible,
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 2px;
+}
+
+.mos-btn-primary {
+  background: linear-gradient(160deg, var(--accent), var(--accent-strong));
+  color: #062016;
+}
+
+.mos-btn-secondary {
+  color: var(--text);
+  border-color: var(--surface-border);
+  background: var(--surface);
+}
+
+.mos-panel {
+  border: 1px solid var(--surface-border);
+  border-radius: 1rem;
+  background: var(--surface);
+  backdrop-filter: blur(6px);
+  box-shadow: var(--shadow-soft);
+}
+
+.mos-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--surface-border);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mos-eyebrow {
+  display: inline-block;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mos-meta {
+  color: var(--muted);
+}

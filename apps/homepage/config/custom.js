@@ -1,6 +1,5 @@
 (function () {
   var root = document.documentElement;
-  var initKey = "mos-homepage-theme-defaulted";
   var desiredTheme = "theme-mos";
   var fallbackTheme = "theme-slate";
 
@@ -33,14 +32,6 @@
   }
 
   function start() {
-    try {
-      if (window.localStorage && window.localStorage.getItem(initKey) === "1") {
-        return;
-      }
-    } catch (error) {
-      // Ignore storage access failures and still try to apply the default theme.
-    }
-
     var observer = new MutationObserver(function () {
       applyMosThemeOnce();
     });
@@ -51,14 +42,6 @@
     window.setTimeout(function () {
       applyMosThemeOnce();
       observer.disconnect();
-
-      try {
-        if (window.localStorage) {
-          window.localStorage.setItem(initKey, "1");
-        }
-      } catch (error) {
-        // Ignore storage access failures.
-      }
     }, 3000);
   }
 

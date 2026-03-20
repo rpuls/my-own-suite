@@ -66,7 +66,7 @@ docker compose down
 - Vaultwarden: https://vaultwarden.localhost/
 
 ### Local ONLYOFFICE + Seafile note
-- `*.localhost` domains resolve to loopback inside containers.
+- `*.localhost` domains resolve to loopback locally.
 - Set `ONLYOFFICE_INTERNAL_SEAFILE_URL=http://seafile` in `services/seafile/.env` so ONLYOFFICE backend callbacks/downloads use Docker-internal networking.
 - After pulling changes, restart the relevant services:
 ```bash

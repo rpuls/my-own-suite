@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import OnboardingApp from '../onboarding/main/OnboardingApp';
+import { withSetupPath } from '../../lib/base-path';
 import { useAppRoute } from './useAppRoute';
 
 type AppShellProps = {
@@ -39,9 +40,18 @@ export function AppShell({ onLogout, ownerName }: AppShellProps) {
   return (
     <div className="suite-shell">
       <header className="suite-shell-header">
-        <div className="suite-shell-title">
-          <span className="mos-eyebrow">My Own Suite</span>
-          <strong>Suite Manager</strong>
+        <div className="suite-shell-brand">
+          <img
+            alt=""
+            className="suite-shell-mark"
+            height="40"
+            src={withSetupPath('/brand/my-own-suite-mark.png')}
+            width="40"
+          />
+          <div className="suite-shell-title">
+            <span className="mos-eyebrow">My Own Suite</span>
+            <strong>Suite Manager</strong>
+          </div>
         </div>
 
         <div className="suite-shell-menu">
