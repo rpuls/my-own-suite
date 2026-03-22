@@ -1,0 +1,273 @@
+---
+import { Image } from 'astro:assets'
+import type { AppScreenshot } from '../../data/app-screenshots'
+
+interface Props {
+  appName: string
+  items: AppScreenshot[]
+  showLead?: boolean
+  showSecondary?: boolean
+}
+
+const { appName, items, showLead = true, showSecondary = true } = Astro.props
+
+const visibleItems = items.filter((item) => !item.hiddenFromGrid)
+const leadItem = visibleItems.find((item) => item.lead) ?? visibleItems[0]
+const secondaryItems = visibleItems.filter((item) => item.id !== leadItem?.id)
+
+const groupCounts = new Map<string, number>()
+for (const item of items) {
+  const key = item.group ?? item.id
+  groupCounts.set(key, (groupCounts.get(key) ?? 0) + 1)
+}
+---
+
+<section class='app-screenshots' aria-label={`${appName} screenshots`}>
+  {
+    showLead && leadItem && (
+      <div class='app-screenshot-lead'>
+        <a
+          class='app-screenshot-card app-screenshot-card-lead'
+          href={leadItem.src.src}
+          data-screenshot-open={leadItem.id}
+          aria-haspopup='dialog'
+        >
+          <figure class='app-screenshot-figure'>
+            <div class='app-screenshot-media app-screenshot-media-lead'>
+              <Image
+                src={leadItem.src}
+                alt={leadItem.alt}
+                widths={[960, 1400, 1800]}
+                sizes='(min-width: 72rem) 60rem, 100vw'
+                loading='eager'
+                decoding='async'
+              />
+              <div class='app-screenshot-overlay'>
+                <span class='app-screenshot-title'>{leadItem.title}</span>
+                <span class='app-screenshot-description'>{leadItem.caption}</span>
+              </div>
+              {
+                (groupCounts.get(leadItem.group ?? leadItem.id) ?? 1) > 1 && (
+                  <span class='app-screenshot-chip'>
+                    +{(groupCounts.get(leadItem.group ?? leadItem.id) ?? 1) - 1} more
+                  </span>
+                )
+              }
+            </div>
+          </figure>
+        </a>
+      </div>
+    )
+  }
+
+  {
+    showSecondary && secondaryItems.length > 0 && (
+      <ul class='app-screenshot-grid' role='list'>
+        {secondaryItems.map((item) => (
+          <li class='app-screenshot-item'>
+            <a class='app-screenshot-card' href={item.src.src} data-screenshot-open={item.id} aria-haspopup='dialog'>
+              <figure class='app-screenshot-figure'>
+                <div class='app-screenshot-media'>
+                  <Image
+                    src={item.src}
+                    alt={item.alt}
+                    widths={[720, 960, 1400]}
+                    sizes='(min-width: 72rem) 29rem, 100vw'
+                    loading='lazy'
+                    decoding='async'
+                  />
+                  <div class='app-screenshot-overlay'>
+                    <span class='app-screenshot-title'>{item.title}</span>
+                    <span class='app-screenshot-description'>{item.caption}</span>
+                  </div>
+                  {
+                    (groupCounts.get(item.group ?? item.id) ?? 1) > 1 && (
+                      <span class='app-screenshot-chip'>
+                        +{(groupCounts.get(item.group ?? item.id) ?? 1) - 1} more
+                      </span>
+                    )
+                  }
+                </div>
+              </figure>
+            </a>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  {items.map((item, index) => (
+    <template
+      data-screenshot-template
+      data-screenshot-id={item.id}
+      data-screenshot-group={item.group ?? item.id}
+      data-screenshot-group-order={String(index)}
+      data-screenshot-title={item.title}
+      data-screenshot-caption={item.caption}
+      data-screenshot-alt={item.alt}
+      data-screenshot-src={item.src.src}
+      data-screenshot-width={String(item.src.width)}
+      data-screenshot-height={String(item.src.height)}
+      data-screenshot-label={`${appName}: ${item.title}`}
+    ></template>
+  ))}
+</section>
+
+<script is:inline>
+  if (!window.__mosScreenshotGalleryInit) {
+    window.__mosScreenshotGalleryInit = true
+
+    const overlay = document.createElement('div')
+    overlay.className = 'app-screenshot-lightbox'
+    overlay.setAttribute('aria-hidden', 'true')
+    overlay.dataset.lightboxState = 'closed'
+    overlay.innerHTML = `
+      <button class="app-screenshot-nav app-screenshot-nav-prev" data-screenshot-prev type="button" aria-label="Previous screenshot" hidden>
+        <span aria-hidden="true">&#8249;</span>
+      </button>
+      <button class="app-screenshot-nav app-screenshot-nav-next" data-screenshot-next type="button" aria-label="Next screenshot" hidden>
+        <span aria-hidden="true">&#8250;</span>
+      </button>
+      <button class="app-screenshot-dialog-close" data-screenshot-close type="button" aria-label="Close screenshot">
+        <span aria-hidden="true">&times;</span>
+      </button>
+      <div class="app-screenshot-lightbox-backdrop" data-screenshot-close></div>
+      <div class="app-screenshot-dialog-inner">
+        <figure class="app-screenshot-dialog-figure" role="dialog" aria-modal="true">
+          <img alt="" loading="eager" decoding="async" />
+          <figcaption>
+            <span class="app-screenshot-title"></span>
+            <span class="app-screenshot-description"></span>
+          </figcaption>
+        </figure>
+      </div>
+    `
+    document.body.appendChild(overlay)
+
+    const overlayFigure = overlay.querySelector('.app-screenshot-dialog-figure')
+    const overlayImage = overlay.querySelector('img')
+    const overlayTitle = overlay.querySelector('.app-screenshot-title')
+    const overlayDescription = overlay.querySelector('.app-screenshot-description')
+    const overlayClose = overlay.querySelector('[data-screenshot-close]')
+    const overlayPrev = overlay.querySelector('[data-screenshot-prev]')
+    const overlayNext = overlay.querySelector('[data-screenshot-next]')
+
+    let activeGroup = []
+    let activeIndex = 0
+
+    const getTemplates = () => Array.from(document.querySelectorAll('[data-screenshot-template]'))
+
+    const renderOverlay = () => {
+      const current = activeGroup[activeIndex]
+      if (!current || !overlayFigure || !overlayImage || !overlayTitle || !overlayDescription) {
+        return
+      }
+
+      const data = current.dataset
+      overlayFigure.setAttribute('aria-label', data.screenshotLabel ?? '')
+      overlayImage.setAttribute('src', data.screenshotSrc ?? '')
+      overlayImage.setAttribute('alt', data.screenshotAlt ?? '')
+      overlayImage.setAttribute('width', data.screenshotWidth ?? '')
+      overlayImage.setAttribute('height', data.screenshotHeight ?? '')
+      overlayTitle.textContent = data.screenshotTitle ?? ''
+      overlayDescription.textContent = data.screenshotCaption ?? ''
+
+      const showNav = activeGroup.length > 1
+      if (overlayPrev instanceof HTMLElement) {
+        overlayPrev.hidden = !showNav
+      }
+      if (overlayNext instanceof HTMLElement) {
+        overlayNext.hidden = !showNav
+      }
+    }
+
+    const closeOverlay = () => {
+      overlay.dataset.lightboxState = 'closed'
+      overlay.setAttribute('aria-hidden', 'true')
+      document.documentElement.classList.remove('has-screenshot-lightbox')
+    }
+
+    const openOverlay = (screenshotId) => {
+      const templates = getTemplates()
+      const current = templates.find((template) => template.dataset.screenshotId === screenshotId)
+      if (!(current instanceof HTMLTemplateElement)) {
+        return
+      }
+
+      const groupKey = current.dataset.screenshotGroup ?? current.dataset.screenshotId
+      activeGroup = templates
+        .filter((template) => (template.dataset.screenshotGroup ?? template.dataset.screenshotId) === groupKey)
+        .sort((a, b) => Number(a.dataset.screenshotGroupOrder ?? '0') - Number(b.dataset.screenshotGroupOrder ?? '0'))
+      activeIndex = Math.max(
+        0,
+        activeGroup.findIndex((template) => template.dataset.screenshotId === screenshotId)
+      )
+
+      overlay.dataset.lightboxState = 'open'
+      overlay.setAttribute('aria-hidden', 'false')
+      document.documentElement.classList.add('has-screenshot-lightbox')
+      renderOverlay()
+      if (overlayClose instanceof HTMLElement) {
+        overlayClose.focus()
+      }
+    }
+
+    const moveOverlay = (direction) => {
+      if (activeGroup.length < 2) {
+        return
+      }
+
+      activeIndex = (activeIndex + direction + activeGroup.length) % activeGroup.length
+      renderOverlay()
+    }
+
+    document.addEventListener('click', (event) => {
+      const target = event.target
+      if (!(target instanceof Element)) {
+        return
+      }
+
+      const openTrigger = target.closest('[data-screenshot-open]')
+      if (openTrigger instanceof HTMLAnchorElement) {
+        event.preventDefault()
+        const screenshotId = openTrigger.dataset.screenshotOpen
+        if (screenshotId) {
+          openOverlay(screenshotId)
+        }
+        return
+      }
+
+      if (target.closest('[data-screenshot-close]') && overlay.contains(target)) {
+        closeOverlay()
+        return
+      }
+
+      if (target.closest('[data-screenshot-prev]') && overlay.contains(target)) {
+        moveOverlay(-1)
+        return
+      }
+
+      if (target.closest('[data-screenshot-next]') && overlay.contains(target)) {
+        moveOverlay(1)
+      }
+    })
+
+    document.addEventListener('keydown', (event) => {
+      if (overlay.dataset.lightboxState !== 'open') {
+        return
+      }
+
+      if (event.key === 'Escape') {
+        closeOverlay()
+      }
+
+      if (event.key === 'ArrowLeft') {
+        moveOverlay(-1)
+      }
+
+      if (event.key === 'ArrowRight') {
+        moveOverlay(1)
+      }
+    })
+  }
+</script>

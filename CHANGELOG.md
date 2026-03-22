@@ -8,6 +8,9 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
+- Added a screenshot gallery component with two examples.
+- Added a reusable docs screenshot gallery with click-to-zoom support, moved Seafile and ONLYOFFICE app screenshots into stable site-owned asset folders, and placed curated interface highlights into both app pages.
+- Reworked the Seafile app page around a clearer end-user `What / Why / How / Technical reference` flow so it better explains the product story, the ONLYOFFICE integration, and how suite users get their credentials.
 - Added a canonical project logo asset set under `branding/` and wired the new My Own Suite mark into the root README, public site landing page/favicon assets, and Suite Manager UI/favicon assets.
 - Re-enabled the landing page hero text rotation and the "Made with" logo marquee so they animate regardless of reduced-motion system preferences.
 - Centralized shared branding under `branding/` and added a sync script so the site and Suite Manager consume generated local copies instead of maintaining drifting cross-app logo and stylesheet duplicates.

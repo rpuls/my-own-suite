@@ -1,28 +1,57 @@
 ---
 title: ONLYOFFICE
-description: Browser-based office suite for docs, sheets, and slides.
+description: Browser-based office suite for documents, spreadsheets, presentations, PDFs, and collaboration.
 slug: docs/apps/onlyoffice
 ---
 
 import * as TechSpecs from '../../../../../apps/onlyoffice/README.md';
+import AppScreenshotGallery from '../../../components/docs/AppScreenshotGallery.astro';
+import { onlyofficeScreenshots } from '../../../data/app-screenshots';
 
 <div className="app-page app-onlyoffice" aria-hidden="true"></div>
 
-ONLYOFFICE is the "Google Docs" part of My Own Suite: a modern, browser-based office suite with real-time collaboration - while keeping your files in your own stack.
+ONLYOFFICE is the office suite inside My Own Suite. It lets you open documents, spreadsheets, and presentations right in the browser, work together in real time, and keep your files inside your own setup instead of pushing them into a third-party workspace.
 
-In My Own Suite, ONLYOFFICE is integrated with Seafile, so you can open and save documents directly from your private file library.
+In My Own Suite, ONLYOFFICE is connected to Seafile, so your files stay in your private cloud drive and open directly in the browser when you want to work on them.
 
-## Why people love ONLYOFFICE
+<AppScreenshotGallery appName="ONLYOFFICE" items={onlyofficeScreenshots} showSecondary={false} />
 
-- Modern, familiar editing experience in the browser (docs, sheets, slides).
-- Real-time collaboration: co-edit with others, add comments, and review changes.
-- Great compatibility with Microsoft Office file formats (Word/Excel/PowerPoint).
+## What it is
+
+ONLYOFFICE is where browser-based work happens in the suite.
+
+It gives you online editors for documents, spreadsheets, and presentations, so you can open files straight from Seafile and keep working without downloading them first. It also supports collaboration features such as co-editing, comments, and track changes, which makes it much easier to work with other people without passing files back and forth.
+
+- write and format documents in the browser
+- build spreadsheets and work with formulas, tables, and structured data
+- create presentations without leaving your cloud workspace
+- collaborate in real time with comments and track changes
+- keep working with common Microsoft Office file formats
+
+That is the real value here: your files stay in your own stack, but the editing experience still feels like a modern online office suite.
 
 ## What you can do
 
-- Write and format documents, build spreadsheets, and create presentations.
-- Co-edit in real time or review with tracked changes.
-- Keep everything in your own stack: your files live in Seafile, not on a third-party drive.
+- Open files from Seafile and edit them directly in the browser.
+- Work together on documents, spreadsheets, and presentations without sending new copies around.
+- Comment, review, and track changes when you need feedback or approval before something is final.
+- Keep your office files in the same private setup as the rest of your suite instead of splitting storage and editing across different services.
+
+## Why it was picked for this stack
+
+- It gives the suite real-time collaboration that feels solid and dependable, with co-editing, comments, and track changes built into the editing flow.
+- It works well with the file types most people already use every day, especially Microsoft Word, Excel, and PowerPoint formats.
+- It covers the core features most people actually expect from an online office suite: documents, spreadsheets, presentations, review tools, and browser-based editing.
+- If you want AI features, ONLYOFFICE has an official AI plugin that can connect to supported AI providers by adding your own API key.
+
+ONLYOFFICE helps turn the suite from a place where files are stored into a place where work actually gets done.
+
+## How to start using it
+
+- Set up My Own Suite using one of the documented deployment guides, then complete onboarding so your apps and passwords are ready to use.
+- Open Seafile from Homepage and browse to a document, spreadsheet, or presentation you want to work on.
+- Open the file in the browser and let the Seafile + ONLYOFFICE integration handle the editing experience.
+- If you are working with other people, share the file from Seafile and collaborate from there instead of sending versions back and forth by email.
 
 ## Technical reference
 

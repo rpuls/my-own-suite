@@ -152,6 +152,252 @@
   margin-top: 0.25rem;
 }
 
+.app-screenshots {
+  margin: 1.25rem 0 1.9rem;
+}
+
+.app-screenshot-lead {
+  margin-bottom: 1rem;
+}
+
+.app-screenshot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.app-screenshot-item {
+  margin: 0;
+}
+
+.app-screenshot-card {
+  display: block;
+  height: 100%;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--sl-color-accent) 18%, var(--sl-color-hairline));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--sl-color-accent-low) 22%, transparent), transparent 40%),
+    var(--sl-color-bg);
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--sl-color-black) 14%, transparent);
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease;
+}
+
+.app-screenshot-card:hover,
+.app-screenshot-card:focus-visible {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--sl-color-accent) 40%, var(--sl-color-hairline));
+  box-shadow: 0 18px 38px color-mix(in srgb, var(--sl-color-black) 20%, transparent);
+}
+
+.app-screenshot-card:hover .app-screenshot-overlay,
+.app-screenshot-card:focus-visible .app-screenshot-overlay {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.app-screenshot-figure,
+.app-screenshot-dialog-figure {
+  margin: 0;
+}
+
+.app-screenshot-media {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--sl-color-bg-nav) 90%, black 10%);
+}
+
+.app-screenshot-media-lead {
+  aspect-ratio: 16 / 9;
+}
+
+.app-screenshot-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+}
+
+.app-screenshot-overlay {
+  position: absolute;
+  inset: auto 0 0;
+  display: grid;
+  gap: 0.28rem;
+  padding: 1.2rem 1rem 0.95rem;
+  background:
+    linear-gradient(180deg, transparent, color-mix(in srgb, var(--sl-color-accent-low) 24%, transparent) 34%, color-mix(in srgb, hsl(205, 24%, 9%) 84%, transparent)),
+    linear-gradient(180deg, transparent, color-mix(in srgb, var(--sl-color-black) 68%, transparent));
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+  border-top: 1px solid color-mix(in srgb, var(--sl-color-accent-high) 14%, transparent);
+}
+
+.app-screenshot-chip {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  z-index: 1;
+  padding: 0.38rem 0.62rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--sl-color-white);
+  background: color-mix(in srgb, var(--sl-color-black) 62%, var(--sl-color-bg));
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--sl-color-black) 22%, transparent);
+}
+
+.app-screenshot-title {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--sl-color-white);
+}
+
+.app-screenshot-description {
+  color: color-mix(in srgb, var(--sl-color-white) 82%, var(--sl-color-gray-3));
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.app-screenshot-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+}
+
+.app-screenshot-lightbox[data-lightbox-state='open'] {
+  display: block;
+}
+
+.app-screenshot-lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--sl-color-black) 62%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.app-screenshot-dialog-inner {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  overflow: auto;
+}
+
+.app-screenshot-dialog-close {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--sl-color-white);
+  background: color-mix(in srgb, var(--sl-color-black) 46%, var(--sl-color-bg));
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+  z-index: 2;
+}
+
+.app-screenshot-dialog-close span,
+.app-screenshot-nav span {
+  display: block;
+  line-height: 1;
+  transform: translateY(-0.06em);
+}
+
+.app-screenshot-nav {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3rem;
+  height: 3rem;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  font: inherit;
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--sl-color-white);
+  background: color-mix(in srgb, var(--sl-color-black) 46%, var(--sl-color-bg));
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+  z-index: 2;
+}
+
+.app-screenshot-nav[hidden] {
+  display: none;
+}
+
+.app-screenshot-nav-prev {
+  left: 1rem;
+}
+
+.app-screenshot-nav-next {
+  right: 1rem;
+}
+
+.app-screenshot-dialog-close:hover,
+.app-screenshot-dialog-close:focus-visible,
+.app-screenshot-nav:hover,
+.app-screenshot-nav:focus-visible {
+  background: color-mix(in srgb, var(--sl-color-black) 58%, var(--sl-color-bg));
+}
+
+.app-screenshot-dialog-figure img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: calc(100vh - 8rem);
+  object-fit: contain;
+  background: color-mix(in srgb, var(--sl-color-bg-nav) 90%, black 10%);
+}
+
+.app-screenshot-dialog-figure {
+  width: min(100%, 96rem);
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--sl-color-accent) 24%, var(--sl-color-hairline));
+  background: color-mix(in srgb, var(--sl-color-bg) 92%, black 8%);
+  box-shadow: 0 26px 60px color-mix(in srgb, var(--sl-color-black) 36%, transparent);
+}
+
+.app-screenshot-dialog-figure figcaption {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.95rem 1rem 1.05rem;
+}
+
+.has-screenshot-lightbox,
+.has-screenshot-lightbox body {
+  overflow: hidden;
+}
+
 .tech-specs :where(h1, h2, h3, h4, h5, h6) {
   line-height: 1.3;
   margin-top: 1rem;
@@ -278,6 +524,37 @@ pre.mermaid svg .edgeLabel text {
 }
 
 @media (max-width: 860px) {
+  .app-screenshot-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .app-screenshot-dialog-inner {
+    padding: 1rem;
+  }
+
+  .app-screenshot-dialog-close {
+    top: 0.75rem;
+    right: 0.75rem;
+  }
+
+  .app-screenshot-dialog-figure {
+    border-radius: 18px;
+  }
+
+  .app-screenshot-nav {
+    width: 2.6rem;
+    height: 2.6rem;
+    font-size: 1.7rem;
+  }
+
+  .app-screenshot-nav-prev {
+    left: 0.75rem;
+  }
+
+  .app-screenshot-nav-next {
+    right: 0.75rem;
+  }
+
   .apps-overview thead {
     display: none;
   }
