@@ -4,11 +4,16 @@ description: The easiest way to get My Own Suite running.
 slug: docs/deploy-on-railway
 ---
 
+import AppScreenshotGallery from '../../components/docs/AppScreenshotGallery.astro';
+import { railwayOpenSuiteScreenshots, railwayOverviewScreenshots } from '../../data/app-screenshots';
+
 Railway is the easiest way to get My Own Suite running today.
 
 This option is best for people who want the fastest path to a working setup without managing their own server first.
 
 Railway is simply one place where your private My Own Suite cloud can run.
+
+<AppScreenshotGallery appName="Railway deployment" items={railwayOverviewScreenshots} showSecondary={false} />
 
 ## Before you start
 
@@ -62,6 +67,8 @@ After the deployment finishes:
 4. Sign in with the owner email and owner password you just set.
 
 From there, you will enter the normal My Own Suite onboarding flow.
+
+<AppScreenshotGallery appName="Railway public URL" items={railwayOpenSuiteScreenshots} showLead={false} />
 
 ## What happens next
 

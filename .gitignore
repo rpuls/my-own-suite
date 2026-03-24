@@ -2,6 +2,10 @@
 .env
 vps/.env
 
+# temporary files
+.tmp/
+.local-tools/
+
 # VPS persistent data
 vps/apps/vaultwarden/data/*
 !vps/apps/vaultwarden/data/.gitkeep

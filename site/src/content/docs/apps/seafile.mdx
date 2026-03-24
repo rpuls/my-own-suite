@@ -6,13 +6,13 @@ slug: docs/apps/seafile
 
 import * as TechSpecs from '../../../../../apps/seafile/README.md';
 import AppScreenshotGallery from '../../../components/docs/AppScreenshotGallery.astro';
-import { seafileScreenshots } from '../../../data/app-screenshots';
+import { seafileHighlightsScreenshots, seafileOverviewScreenshots } from '../../../data/app-screenshots';
 
 <div className="app-page app-seafile" aria-hidden="true"></div>
 
 Seafile is your new cloud drive inside My Own Suite. It focuses on one thing and does it really well: private file storage, sync, and sharing. Your files stay in one place, stay available across devices, and stay easy to share when you need to work with other people. If you are coming from Google Drive, Dropbox, OneDrive, or iCloud Drive, this is the familiar kind of experience, just under your control instead.
 
-<AppScreenshotGallery appName="Seafile" items={seafileScreenshots} showSecondary={false} />
+<AppScreenshotGallery appName="Seafile workspace" items={seafileOverviewScreenshots} showSecondary={false} />
 
 ## What it is
 
@@ -37,6 +37,8 @@ Seafile was picked because it is focused, polished, and built for exactly the ki
 - It is proven. Seafile has been around since 2012, is widely used, and has had years to mature into a dependable product rather than a promising experiment.
 
 That is why it fits this stack so well. It gives you a private cloud drive that feels current, works across platforms, connects cleanly to browser-based editing, and comes with a long track record behind it.
+
+<AppScreenshotGallery appName="Seafile highlights" items={seafileHighlightsScreenshots} showLead={false} />
 
 ## How to start using it
 

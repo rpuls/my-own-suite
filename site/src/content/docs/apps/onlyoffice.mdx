@@ -6,7 +6,7 @@ slug: docs/apps/onlyoffice
 
 import * as TechSpecs from '../../../../../apps/onlyoffice/README.md';
 import AppScreenshotGallery from '../../../components/docs/AppScreenshotGallery.astro';
-import { onlyofficeScreenshots } from '../../../data/app-screenshots';
+import { onlyofficeHighlightsScreenshots, onlyofficeOverviewScreenshots } from '../../../data/app-screenshots';
 
 <div className="app-page app-onlyoffice" aria-hidden="true"></div>
 
@@ -14,7 +14,7 @@ ONLYOFFICE is the office suite inside My Own Suite. It lets you open documents, 
 
 In My Own Suite, ONLYOFFICE is connected to Seafile, so your files stay in your private cloud drive and open directly in the browser when you want to work on them.
 
-<AppScreenshotGallery appName="ONLYOFFICE" items={onlyofficeScreenshots} showSecondary={false} />
+<AppScreenshotGallery appName="ONLYOFFICE documents" items={onlyofficeOverviewScreenshots} showSecondary={false} />
 
 ## What it is
 
@@ -36,6 +36,8 @@ That is the real value here: your files stay in your own stack, but the editing 
 - Work together on documents, spreadsheets, and presentations without sending new copies around.
 - Comment, review, and track changes when you need feedback or approval before something is final.
 - Keep your office files in the same private setup as the rest of your suite instead of splitting storage and editing across different services.
+
+<AppScreenshotGallery appName="ONLYOFFICE highlights" items={onlyofficeHighlightsScreenshots} showLead={false} />
 
 ## Why it was picked for this stack
 

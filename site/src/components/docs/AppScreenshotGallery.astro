@@ -13,7 +13,7 @@ const { appName, items, showLead = true, showSecondary = true } = Astro.props
 
 const visibleItems = items.filter((item) => !item.hiddenFromGrid)
 const leadItem = visibleItems.find((item) => item.lead) ?? visibleItems[0]
-const secondaryItems = visibleItems.filter((item) => item.id !== leadItem?.id)
+const secondaryItems = showLead ? visibleItems.filter((item) => item.id !== leadItem?.id) : visibleItems
 
 const groupCounts = new Map<string, number>()
 for (const item of items) {
@@ -42,10 +42,6 @@ for (const item of items) {
                 loading='eager'
                 decoding='async'
               />
-              <div class='app-screenshot-overlay'>
-                <span class='app-screenshot-title'>{leadItem.title}</span>
-                <span class='app-screenshot-description'>{leadItem.caption}</span>
-              </div>
               {
                 (groupCounts.get(leadItem.group ?? leadItem.id) ?? 1) > 1 && (
                   <span class='app-screenshot-chip'>
@@ -53,6 +49,10 @@ for (const item of items) {
                   </span>
                 )
               }
+              <div class='app-screenshot-overlay'>
+                <span class='app-screenshot-title'>{leadItem.title}</span>
+                <span class='app-screenshot-description'>{leadItem.caption}</span>
+              </div>
             </div>
           </figure>
         </a>
@@ -76,10 +76,6 @@ for (const item of items) {
                     loading='lazy'
                     decoding='async'
                   />
-                  <div class='app-screenshot-overlay'>
-                    <span class='app-screenshot-title'>{item.title}</span>
-                    <span class='app-screenshot-description'>{item.caption}</span>
-                  </div>
                   {
                     (groupCounts.get(item.group ?? item.id) ?? 1) > 1 && (
                       <span class='app-screenshot-chip'>
@@ -87,6 +83,10 @@ for (const item of items) {
                       </span>
                     )
                   }
+                  <div class='app-screenshot-overlay'>
+                    <span class='app-screenshot-title'>{item.title}</span>
+                    <span class='app-screenshot-description'>{item.caption}</span>
+                  </div>
                 </div>
               </figure>
             </a>
@@ -249,6 +249,18 @@ for (const item of items) {
 
       if (target.closest('[data-screenshot-next]') && overlay.contains(target)) {
         moveOverlay(1)
+        return
+      }
+
+      if (
+        overlay.dataset.lightboxState === 'open' &&
+        overlay.contains(target) &&
+        target.closest('.app-screenshot-dialog-inner') &&
+        !target.closest('.app-screenshot-dialog-figure') &&
+        !target.closest('.app-screenshot-nav') &&
+        !target.closest('.app-screenshot-dialog-close')
+      ) {
+        closeOverlay()
       }
     })
 

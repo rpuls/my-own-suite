@@ -9,6 +9,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ### Changed
 
 - Added a screenshot gallery component with two examples.
+- Replaced the placeholder ONLYOFFICE and Seafile screenshots with curated galleries of real UI captures, added SEO-friendly screenshot filenames and descriptions, and added Railway deployment screenshots to the deploy guide.
 - Added a reusable docs screenshot gallery with click-to-zoom support, moved Seafile and ONLYOFFICE app screenshots into stable site-owned asset folders, and placed curated interface highlights into both app pages.
 - Reworked the Seafile app page around a clearer end-user `What / Why / How / Technical reference` flow so it better explains the product story, the ONLYOFFICE integration, and how suite users get their credentials.
 - Added a canonical project logo asset set under `branding/` and wired the new My Own Suite mark into the root README, public site landing page/favicon assets, and Suite Manager UI/favicon assets.
