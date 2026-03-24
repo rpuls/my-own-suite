@@ -30,6 +30,8 @@ Manual compose commands (advanced):
 # Navigate to deploy/vps
 cd deploy/vps
 
+# The default Compose project name is "mos"
+
 # Start core services (homepage + caddy)
 docker compose up -d
 
@@ -54,6 +56,8 @@ docker compose --profile vaultwarden up -d
 # Stop all services
 docker compose down
 ```
+
+Generated Docker resources such as the default network and named volumes now use the `mos` project prefix instead of `vps`.
 
 ### Access
 - Homepage: http://homepage.localhost/

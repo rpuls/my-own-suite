@@ -7,6 +7,8 @@
 # - services/<service>/.env: Service-specific settings
 # ===========================================
 
+name: mos
+
 services:
   # -------------------------------------------
   # Caddy - Reverse Proxy (entry point)

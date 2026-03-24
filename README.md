@@ -67,27 +67,34 @@ npm run e2e:install
 
 Install the Playwright test dependencies and Chromium browser once on your machine.
 
+Command overview:
+
+- `npm run e2e:onboarding` verifies the first-run onboarding flow itself.
+- `npm run e2e:apps` verifies the suite after onboarding, focusing on Homepage-driven app access and app reachability.
+- `npm run e2e:full` runs both in one E2E stack lifecycle: onboarding first, then app verification.
+- `npm run e2e:onboarding:manual` completes onboarding and then leaves the browser open on Homepage for manual testing.
+
 ```bash
 npm run e2e:full
 npm run e2e:full:headed
 ```
 
-Run the full E2E suite. Use `e2e:full` for headless CI-style verification or `e2e:full:headed` when you want to watch the whole flow in the browser.
+Run the full E2E suite. This starts the isolated test stack once, runs the onboarding spec, then runs the app verification spec against that same stack. Use `e2e:full` for headless CI-style verification or `e2e:full:headed` when you want to watch the whole flow in the browser.
 
 ```bash
 npm run e2e:onboarding
 npm run e2e:onboarding:headed
-npm run e2e:onboarding:debug
+npm run e2e:onboarding:manual
 ```
 
-Run just the onboarding flow. Use `:headed` or `:debug` when you want to watch the browser step through account creation, credential import, and Homepage handoff.
+Run just the onboarding flow. Use `:headed` when you want to watch the browser step through account creation, credential import, and Homepage handoff. Use `:manual` when you want the flow to finish and then leave the browser open on Homepage for hands-on testing.
 
 ```bash
 npm run e2e:apps
 npm run e2e:apps:headed
 ```
 
-Run the Homepage app verification flow. This checks live routes for Suite Manager, Vaultwarden, Seafile, Stirling PDF, Immich, and Radicale so image updates are safer to validate.
+Run the post-onboarding app verification flow. This focuses on Homepage-driven app checks for Suite Manager, Vaultwarden, Seafile, Stirling PDF, Immich, and Radicale. When needed, the helper will first bring the suite into a usable post-onboarding state before asserting the app surfaces.
 
 For the more detailed harness notes, see [tests/e2e/README.md](./tests/e2e/README.md).
 

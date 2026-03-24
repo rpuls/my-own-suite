@@ -184,7 +184,7 @@ Useful commands:
 - `npm run e2e:install` installs Playwright browser dependencies for the local harness.
 - `npm run e2e:onboarding` runs the real onboarding flow headlessly.
 - `npm run e2e:onboarding:headed` runs the onboarding flow in a visible browser.
-- `npm run e2e:onboarding:debug` runs the onboarding flow with Playwright debug mode enabled.
+- `npm run e2e:onboarding:manual` runs the onboarding flow and then pauses on Homepage so the browser stays open for manual testing.
 - `npm run e2e:apps` runs Homepage-driven app verification.
 - `npm run e2e:apps:headed` runs app verification in a visible browser.
 - `npm run e2e:full` runs the full local E2E suite headlessly.

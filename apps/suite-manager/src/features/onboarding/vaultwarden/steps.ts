@@ -85,10 +85,10 @@ export function buildVaultwardenSteps(
         action: {
           copyPath: '/api/onboarding/imports/vaultwarden.csv',
           kind: 'copy',
-          label: 'Copy your credentials',
+          label: 'Copy your suite credentials',
         },
         id: 'copy-import',
-        title: 'Copy your credentials',
+        title: 'Copy your suite credentials',
       },
       {
         action: {
@@ -101,7 +101,7 @@ export function buildVaultwardenSteps(
       },
     ],
     summary:
-      'Great. You are now inside your new password manager. We have already created accounts for you in the other My Own Suite apps. Now let’s import those credentials into Vaultwarden.',
+      'Great. You are now inside your new password manager. Now let’s import the credentials for Suite Manager and the rest of your My Own Suite apps into Vaultwarden.',
     title: 'Step 2: Securely Import Your Suite Credentials',
   };
 

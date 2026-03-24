@@ -8,6 +8,13 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
+- Renamed the user-facing Vaultwarden import entry for the control plane to `My Own Suite | Suite Manager` so it reads more clearly as the suite front door without changing the internal service name.
+- Clarified the E2E documentation so `onboarding`, `apps`, `full`, and `manual` now explain their exact scope and stack lifecycle more clearly.
+- Removed the redundant onboarding `:debug` E2E script so the command set stays smaller and clearer now that `:headed` and `:manual` cover the useful interactive flows.
+- Added an `e2e:onboarding:manual` flow that completes onboarding and then pauses Playwright on Homepage so the browser stays open for manual suite testing.
+- Refactored the Vaultwarden onboarding import flow to derive its expected credential count from the same explicit import-entry list used to build the CSV, removing a hidden magic-number path in Suite Manager.
+- Set the default Docker Compose project name to `mos` so the normal stack matches the `mos-*` container naming already used across the repo. Compatibility note: generated Compose resources such as the default network and named volumes now use the `mos_` prefix instead of `vps_`.
+- The Vaultwarden onboarding import now includes the freshly created Suite Manager owner credentials too, cutting one more manual copy step out of first-run setup.
 - Added a screenshot gallery component with two examples.
 - Replaced the placeholder ONLYOFFICE and Seafile screenshots with curated galleries of real UI captures, added SEO-friendly screenshot filenames and descriptions, and added Railway deployment screenshots to the deploy guide.
 - Added a reusable docs screenshot gallery with click-to-zoom support, moved Seafile and ONLYOFFICE app screenshots into stable site-owned asset folders, and placed curated interface highlights into both app pages.

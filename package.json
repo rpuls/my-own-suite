@@ -36,7 +36,7 @@
     "e2e:full:headed": "npm --prefix tests/e2e run test:headed",
     "e2e:onboarding": "npm --prefix tests/e2e run test:onboarding",
     "e2e:onboarding:headed": "npm --prefix tests/e2e run test:onboarding:headed",
-    "e2e:onboarding:debug": "npm --prefix tests/e2e run test:onboarding:debug",
+    "e2e:onboarding:manual": "powershell -Command \"$env:MOS_E2E_PAUSE_AFTER_ONBOARDING='1'; cmd /c npm --prefix tests/e2e run test:onboarding:manual\"",
     "e2e:apps": "npm --prefix tests/e2e run test:apps",
     "e2e:apps:headed": "npm --prefix tests/e2e run test:apps:headed",
     "vps:rebuild": "npm run vps:init && npm run vps:doctor && docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps --profile vaultwarden --profile seafile --profile onlyoffice --profile stirling-pdf --profile radicale --profile immich down --volumes --remove-orphans && docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps --profile vaultwarden --profile seafile --profile onlyoffice --profile stirling-pdf --profile radicale --profile immich up -d --build --force-recreate",

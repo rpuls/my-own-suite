@@ -12,9 +12,16 @@ Run these from the repo root:
 - Run the full E2E suite headless: `npm run e2e:full`
 - Run the onboarding happy path headless: `npm run e2e:onboarding`
 - Run the onboarding happy path headed: `npm run e2e:onboarding:headed`
-- Run the onboarding happy path headed with a single worker and extra timeout for visual debugging: `npm run e2e:onboarding:debug`
+- Run the onboarding flow, land on Homepage, and keep the browser open for manual testing: `npm run e2e:onboarding:manual`
 - Run the Homepage app verification flow headless: `npm run e2e:apps`
 - Run the Homepage app verification flow headed: `npm run e2e:apps:headed`
+
+How to think about them:
+
+- `e2e:onboarding` tests the first-run setup flow itself.
+- `e2e:apps` tests the suite after onboarding, focusing on app access and live app surfaces.
+- `e2e:full` runs both in order during one isolated E2E stack lifecycle.
+- `e2e:onboarding:manual` is the manual-handoff flow: it finishes onboarding and then pauses on Homepage so you can keep using the browser.
 
 ## What It Verifies
 
@@ -40,6 +47,7 @@ The Homepage app verification test currently verifies that the same stack can:
 ## Notes
 
 - The E2E stack uses `deploy/vps/docker-compose.yml` plus `deploy/vps/docker-compose.e2e.yml`.
+- `e2e:full` starts that stack once, runs onboarding first, then runs the app verification spec against the same test environment.
 - Caddy is mapped to alternate ports during the test run so the harness does not collide with a normal local stack.
 - Generated credentials are read from `deploy/vps/services/suite-manager/.env` after the stack starts.
 - The app verification flow also reads the generated Seafile and Radicale credentials from their service env files after the stack starts.

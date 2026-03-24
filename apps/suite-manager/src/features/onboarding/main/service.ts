@@ -3,6 +3,7 @@ import type { PersistedState } from '../shared/types.ts';
 import { OnboardingStateStore } from '../shared/state-store.ts';
 import type { OnboardingModel } from '../shared/types.ts';
 import { buildOnboardingSteps } from './steps.ts';
+import { getVaultwardenImportEntries } from '../vaultwarden/import-handoff.ts';
 import { VaultwardenObserver } from '../vaultwarden/observer.ts';
 
 export class OnboardingService {
@@ -25,17 +26,7 @@ export class OnboardingService {
   }
 
   private getExpectedVaultwardenImportCount(): number {
-    let count = 0;
-
-    if (this.config.generatedAccounts.seafile) {
-      count += 1;
-    }
-
-    if (this.config.generatedAccounts.radicale) {
-      count += 1;
-    }
-
-    return count;
+    return getVaultwardenImportEntries(this.config).length;
   }
 
   async buildModel(): Promise<OnboardingModel> {
