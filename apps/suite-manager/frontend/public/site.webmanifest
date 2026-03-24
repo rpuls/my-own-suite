@@ -1,0 +1,20 @@
+{
+  "name": "Suite Manager",
+  "short_name": "Suite Manager",
+  "description": "The My Own Suite control plane for sign-in, onboarding, and setup.",
+  "theme_color": "#061526",
+  "background_color": "#061526",
+  "display": "standalone",
+  "icons": [
+    {
+      "src": "./brand/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./brand/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

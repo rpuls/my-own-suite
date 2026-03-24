@@ -1,4 +1,4 @@
-@import '../../../apps/suite-manager/frontend/src/styles/mos.css';
+@import '../generated/branding/mos.css';
 
 .container {
   width: min(800px, 92vw);
@@ -11,6 +11,14 @@
 
 .hero {
   text-align: center;
+}
+
+.hero-mark {
+  display: block;
+  width: clamp(5.5rem, 18vw, 9rem);
+  height: auto;
+  margin: 0 auto 1.1rem;
+  filter: drop-shadow(0 16px 30px rgba(0, 0, 0, 0.24));
 }
 
 h1 {
@@ -317,22 +325,6 @@ summary:focus-visible {
   .footer-links-corner {
     right: 0.75rem;
     bottom: 0.75rem;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .slideshow-line {
-    transition: none;
-  }
-
-  .logo-track {
-    animation: none;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
-  .logo-marquee {
-    mask-image: none;
   }
 }
 

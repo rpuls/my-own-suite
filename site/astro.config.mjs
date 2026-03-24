@@ -29,6 +29,11 @@ export default defineConfig({
     starlight({
       title: 'My Own Suite',
       description: 'Your Big Tech exit kit.',
+      favicon: '/favicon.ico',
+      logo: {
+        src: './src/assets/brand/my-own-suite-mark.png',
+        alt: 'My Own Suite logo'
+      },
       customCss: ['./src/styles/docs-theme.css'],
       sidebar: [
         {

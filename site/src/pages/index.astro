@@ -1,8 +1,9 @@
 ---
-import { GITHUB_REPO_URL, WAITLIST_MAILTO } from '../lib/links'
+import { WAITLIST_MAILTO } from '../lib/links'
 import '../styles/site.css'
 
 const logoModules = import.meta.glob('../assets/logos/*.{png,jpg,jpeg,svg,webp,avif}', { eager: true })
+
 const normalizeLogoName = (name: string) => {
   return name
     .replace(/[-_]/g, ' ')
@@ -47,14 +48,29 @@ const appLogos = Object.entries(logoModules)
     <meta charset='utf-8' />
     <meta name='viewport' content='width=device-width, initial-scale=1' />
     <title>My Own Suite</title>
+    <meta name='theme-color' content='#061526' />
     <meta
       name='description'
-      content='Your Big Tech exit kit: open‑source, self‑hosted tools that let individuals, families, and freelancers replace Google, Apple, and Microsoft services with a private cloud they own.'
+      content='Your Big Tech exit kit: open-source, self-hosted tools that help individuals, families, and freelancers replace Google, Apple, and Microsoft services with a private cloud they own.'
     />
+    <link rel='icon' href='/favicon.ico' sizes='any' />
+    <link rel='icon' type='image/png' sizes='32x32' href='/favicon-32x32.png' />
+    <link rel='icon' type='image/png' sizes='16x16' href='/favicon-16x16.png' />
+    <link rel='apple-touch-icon' sizes='180x180' href='/apple-touch-icon.png' />
+    <link rel='manifest' href='/site.webmanifest' />
   </head>
   <body>
     <main class='landing'>
       <section class='hero container'>
+        <img
+          class='hero-mark'
+          src='/brand/my-own-suite-mark.png'
+          alt=''
+          width='144'
+          height='144'
+          decoding='async'
+          fetchpriority='high'
+        />
         <h1>My Own Suite</h1>
         <p class='tagline'>Your Big Tech exit kit.</p>
         <p class='slideshow' aria-live='polite'>
@@ -83,9 +99,9 @@ const appLogos = Object.entries(logoModules)
         <details class='accordion-item'>
           <summary>What is My Own Suite?</summary>
           <ul>
-            <li>A Swiss army knife of self‑hosted digital tools.</li>
+            <li>A Swiss army knife of self-hosted digital tools.</li>
             <li>Your digital life, in a cloud that you own and control.</li>
-            <li>Open‑source replacements for your everyday apps — without Big Tech in the middle.</li>
+            <li>Open-source replacements for your everyday apps without Big Tech in the middle.</li>
             <li>Easy setup, no IT degree needed.</li>
             <li>Modular design: run only what you need.</li>
           </ul>
@@ -94,11 +110,11 @@ const appLogos = Object.entries(logoModules)
         <details class='accordion-item'>
           <summary>Who is My Own Suite for?</summary>
           <ul>
-            <li>People who want to leave Google, Apple, and Microsoft — without losing convenience.</li>
+            <li>People who want to leave Google, Apple, and Microsoft without losing convenience.</li>
             <li>Freelancers and creators who refuse to have their work used to train AI models.</li>
-            <li>Individuals tired of trading privacy for “free” cloud services.</li>
+            <li>Individuals tired of trading privacy for "free" cloud services.</li>
             <li>Families who want their photos and private moments to stay private.</li>
-            <li>Curious minds who like open‑source, privacy, and a touch of rebellion.</li>
+            <li>Curious minds who like open-source, privacy, and a touch of rebellion.</li>
           </ul>
         </details>
       </section>
@@ -158,7 +174,7 @@ const appLogos = Object.entries(logoModules)
 
       const lineEl = document.querySelector('[data-slideshow-line]')
 
-      if (lineEl && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (lineEl) {
         let index = 0
 
         setInterval(() => {
@@ -195,4 +211,3 @@ const appLogos = Object.entries(logoModules)
     </script>
   </body>
 </html>
-

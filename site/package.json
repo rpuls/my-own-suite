@@ -31,6 +31,8 @@
     "npm": "11.x"
   },
   "scripts": {
+    "predev": "node ../scripts/sync-branding.cjs",
+    "prebuild": "node ../scripts/sync-branding.cjs",
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview"

@@ -19,6 +19,19 @@
   padding: 1.25rem clamp(1rem, 3vw, 2rem);
 }
 
+.suite-shell-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.suite-shell-mark {
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.2));
+}
+
 .suite-shell-title {
   display: grid;
   gap: 0.15rem;
@@ -120,6 +133,18 @@
   gap: 0.9rem;
   align-content: center;
   width: min(100%, 540px);
+}
+
+.suite-auth-brand {
+  display: inline-grid;
+  justify-items: center;
+  gap: 0.6rem;
+}
+
+.suite-auth-mark {
+  width: 3.5rem;
+  height: 3.5rem;
+  filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.2));
 }
 
 .suite-auth-card {
@@ -644,6 +669,10 @@
 
   .suite-shell-header {
     padding-top: 1rem;
+  }
+
+  .suite-shell-brand {
+    gap: 0.7rem;
   }
 
   .suite-step-header,

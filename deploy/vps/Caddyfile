@@ -45,6 +45,8 @@
 	handle @immich {
 		reverse_proxy immich:2283
 	}
+
+	respond 404
 }
 
 # Vaultwarden Password Manager

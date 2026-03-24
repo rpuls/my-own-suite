@@ -1,21 +1,52 @@
 ---
 title: Seafile
-description: Private cloud storage and file sync.
+description: A modern private cloud drive for file sync, sharing, and browser-based work.
 slug: docs/apps/seafile
 ---
 
 import * as TechSpecs from '../../../../../apps/seafile/README.md';
+import AppScreenshotGallery from '../../../components/docs/AppScreenshotGallery.astro';
+import { seafileHighlightsScreenshots, seafileOverviewScreenshots } from '../../../data/app-screenshots';
 
 <div className="app-page app-seafile" aria-hidden="true"></div>
 
-Seafile is the storage layer in My Own Suite. It keeps files under your control while still providing modern sync and sharing capabilities.
+Seafile is your new cloud drive inside My Own Suite. It focuses on one thing and does it really well: private file storage, sync, and sharing. Your files stay in one place, stay available across devices, and stay easy to share when you need to work with other people. If you are coming from Google Drive, Dropbox, OneDrive, or iCloud Drive, this is the familiar kind of experience, just under your control instead.
 
-Core capabilities:
-- Store files in your own private cloud.
-- Sync files between desktop and mobile devices.
-- Share files and folders with selected people.
+<AppScreenshotGallery appName="Seafile workspace" items={seafileOverviewScreenshots} showSecondary={false} />
 
-Seafile can work standalone, and it can also be connected with ONLYOFFICE for in-browser document editing.
+## What it is
+
+Seafile is the place where your files live.
+
+It gives you a private cloud drive where you can keep documents, photos, spreadsheets, PDFs, and everyday work files without scattering them across devices. Open them from the browser, keep them in sync on your computer, access them from your phone, and share them with the people who actually need access.
+
+- one place for your files in your own private cloud
+- sync across desktop and mobile when you want files everywhere
+- open documents, spreadsheets, and presentations directly in the browser and collaborate on them without downloading first
+- file and folder sharing without giving away your entire drive
+
+Seafile is not just where files are stored. It is where they stay organized, where they are shared from, and where the suite hands them off to ONLYOFFICE for editing in the browser.
+
+## Why it was picked for this stack
+
+Seafile was picked because it is focused, polished, and built for exactly the kind of workflow this stack is trying to create.
+
+- The team behind it is focused on one job: making a great open source solution for private file sync, sharing, and backup-style day-to-day storage. No unnecessary filler. No trying to be ten products at once.
+- It has the kind of modern, solid experience people expect from a cloud drive today. It works across web, desktop, and mobile, and it feels familiar from the start.
+- It integrates naturally with ONLYOFFICE, which is a huge part of the value here. Files live in Seafile, then open directly in the browser when you want to edit documents, spreadsheets, or presentations.
+- It is proven. Seafile has been around since 2012, is widely used, and has had years to mature into a dependable product rather than a promising experiment.
+
+That is why it fits this stack so well. It gives you a private cloud drive that feels current, works across platforms, connects cleanly to browser-based editing, and comes with a long track record behind it.
+
+<AppScreenshotGallery appName="Seafile highlights" items={seafileHighlightsScreenshots} showLead={false} />
+
+## How to start using it
+
+- Start by setting up My Own Suite using one of the documented deployment guides, such as [Getting started](/docs/getting-started), [Deploy on Railway](/docs/deploy-on-railway), or [Deploy on a VPS](/docs/deploy-on-vps).
+- Complete onboarding so your apps, passwords, and browser extension are ready to use.
+- Open Seafile from Homepage. If you installed the Vaultwarden browser extension, your login should autofill for you.
+- If you did not install the browser extension, open Vaultwarden and copy the Seafile credentials from there instead.
+- If you skipped onboarding, use the email from your My Own Suite setup and find the Seafile password in your deployment environment variables.
 
 ## Technical reference
 
@@ -26,6 +57,7 @@ Seafile can work standalone, and it can also be connected with ONLYOFFICE for in
 ## Links
 
 - [Seafile website](https://www.seafile.com/)
+- [Seafile user manual](https://help.seafile.com/)
 
 
 

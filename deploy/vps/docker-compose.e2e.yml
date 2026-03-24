@@ -1,6 +1,8 @@
 services:
   caddy:
     container_name: mos-e2e-caddy
+    environment:
+      - DOMAIN=localhost
 
   suite-manager:
     container_name: mos-e2e-suite-manager
@@ -25,6 +27,8 @@ services:
 
   vaultwarden:
     container_name: mos-e2e-vaultwarden
+    environment:
+      - DOMAIN=https://vaultwarden.localhost:${MOS_E2E_HTTPS_PORT:-18443}
 
   vaultwarden-postgres:
     container_name: mos-e2e-vaultwarden-postgres
@@ -34,6 +38,8 @@ services:
 
   seafile:
     container_name: mos-e2e-seafile
+    environment:
+      - SEAFILE_SERVER_HOSTNAME=seafile.localhost:${MOS_E2E_HTTP_PORT:-18080}
 
   seafile-mysql:
     container_name: mos-e2e-seafile-mysql

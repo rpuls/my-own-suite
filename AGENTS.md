@@ -20,6 +20,8 @@ These rules are required for every non-trivial change (docs, config, code, infra
    - Add/update an entry under `## [Unreleased]` in the same branch as the change.
    - Keep entries concise and user-relevant.
    - Prefer a few broad release-note bullets over a detailed work log of small implementation changes.
+   - Avoid logging low-level refactors or internal cleanups on their own unless they change user-visible behavior, operations, or compatibility.
+   - When in doubt, compress multiple related tweaks into one broader bullet instead of listing them separately.
 4. **Release process must follow `RELEASING.md`.**
    - Do not invent ad-hoc versioning or release steps.
 5. **No direct pushes to `main` and no direct commits on `main`.**
@@ -36,6 +38,26 @@ Before making edits, agents should confirm:
 - `CHANGELOG.md` contains or will contain an `Unreleased` entry for the change.
 - Any needed docs split rules (MDX vs app README) are respected.
 - Local git hooks are installed (`npm run hooks:install`) so commits/pushes on `main` are blocked.
+
+## Branding Workflow
+
+Branding in this repo uses a single-source-of-truth workflow. Agents must follow it whenever touching shared visual identity.
+
+- Canonical project branding lives under `branding/`.
+- `branding/styles/mos.css` is the canonical shared MOS brand stylesheet.
+- Canonical logo and favicon assets live in `branding/` and `branding/favicons/`.
+- Do not create or maintain hand-edited duplicate brand styles inside `site/`, `apps/suite-manager/`, or other app folders when the change is meant to affect shared MOS branding.
+- App-local branding copies that exist for runtime isolation are generated artifacts or sync targets, not the source of truth.
+- When changing shared branding, run `npm run branding:sync`.
+- If a task changes shared branding inputs, verify the affected app-local outputs were refreshed before finalizing.
+- If an app needs a one-off local style that is not part of shared MOS branding, keep it narrowly scoped and do not move shared tokens out of `branding/styles/mos.css`.
+
+Current shared-branding sync targets include:
+
+- `site/src/generated/branding/mos.css`
+- `apps/suite-manager/frontend/src/styles/mos.css`
+- `apps/homepage/config/custom.css` for the synced Homepage theme block
+- public brand/favicons copied into app-local runtime folders
 
 ## Goal
 
@@ -164,7 +186,7 @@ Useful commands:
 - `npm run e2e:install` installs Playwright browser dependencies for the local harness.
 - `npm run e2e:onboarding` runs the real onboarding flow headlessly.
 - `npm run e2e:onboarding:headed` runs the onboarding flow in a visible browser.
-- `npm run e2e:onboarding:debug` runs the onboarding flow with Playwright debug mode enabled.
+- `npm run e2e:onboarding:manual` runs the onboarding flow and then pauses on Homepage so the browser stays open for manual testing.
 - `npm run e2e:apps` runs Homepage-driven app verification.
 - `npm run e2e:apps:headed` runs app verification in a visible browser.
 - `npm run e2e:full` runs the full local E2E suite headlessly.

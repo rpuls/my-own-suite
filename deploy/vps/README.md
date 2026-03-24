@@ -30,6 +30,8 @@ Manual compose commands (advanced):
 # Navigate to deploy/vps
 cd deploy/vps
 
+# The default Compose project name is "mos"
+
 # Start core services (homepage + caddy)
 docker compose up -d
 
@@ -55,6 +57,8 @@ docker compose --profile vaultwarden up -d
 docker compose down
 ```
 
+Generated Docker resources such as the default network and named volumes now use the `mos` project prefix instead of `vps`.
+
 ### Access
 - Homepage: http://homepage.localhost/
 - Suite Manager: http://suite-manager.localhost/setup/
@@ -66,7 +70,7 @@ docker compose down
 - Vaultwarden: https://vaultwarden.localhost/
 
 ### Local ONLYOFFICE + Seafile note
-- `*.localhost` domains resolve to loopback inside containers.
+- `*.localhost` domains resolve to loopback locally.
 - Set `ONLYOFFICE_INTERNAL_SEAFILE_URL=http://seafile` in `services/seafile/.env` so ONLYOFFICE backend callbacks/downloads use Docker-internal networking.
 - After pulling changes, restart the relevant services:
 ```bash

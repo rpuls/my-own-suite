@@ -5,6 +5,7 @@ import { readStackState } from './stack.js';
 const owner = readStackState();
 
 export const vaultwardenMasterPassword = 'MOS-E2E-Master-Password-2026!';
+const pauseAfterOnboarding = process.env.MOS_E2E_PAUSE_AFTER_ONBOARDING === '1';
 
 export async function completeOnboarding(context, page) {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
@@ -90,10 +91,20 @@ export async function completeOnboarding(context, page) {
       .filter({ has: page.getByRole('heading', { name: 'Step 2: Securely Import Your Suite Credentials' }) });
 
     await expect(importStep.getByRole('heading', { name: 'Step 2: Securely Import Your Suite Credentials' })).toBeVisible();
-    await expect(importStep).toContainText('Copy your credentials');
+    await expect(importStep).toContainText('Copy your suite credentials');
 
     await importStep.getByRole('button', { name: 'Copy' }).click();
-    const csvImport = await page.evaluate(() => navigator.clipboard.readText());
+    let csvImport = '';
+    await expect
+      .poll(async () => {
+        csvImport = await page.evaluate(() => navigator.clipboard.readText());
+        return csvImport;
+      }, {
+        timeout: 5000,
+      })
+      .toContain('"My Own Suite | Suite Manager"');
+    expect(csvImport).toContain(owner.ownerEmail);
+    expect(csvImport).toContain(owner.ownerPassword);
 
     if (!vaultwardenPage) {
       vaultwardenPage = await context.newPage();
@@ -135,6 +146,10 @@ export async function completeOnboarding(context, page) {
   await page.getByRole('button', { name: 'Go to Homepage' }).click();
 
   await expectHomepage(page);
+
+  if (pauseAfterOnboarding) {
+    await page.pause();
+  }
 
   return {
     owner,
