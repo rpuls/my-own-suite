@@ -20,6 +20,8 @@ These rules are required for every non-trivial change (docs, config, code, infra
    - Add/update an entry under `## [Unreleased]` in the same branch as the change.
    - Keep entries concise and user-relevant.
    - Prefer a few broad release-note bullets over a detailed work log of small implementation changes.
+   - Avoid logging low-level refactors or internal cleanups on their own unless they change user-visible behavior, operations, or compatibility.
+   - When in doubt, compress multiple related tweaks into one broader bullet instead of listing them separately.
 4. **Release process must follow `RELEASING.md`.**
    - Do not invent ad-hoc versioning or release steps.
 5. **No direct pushes to `main` and no direct commits on `main`.**

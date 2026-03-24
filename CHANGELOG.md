@@ -6,26 +6,15 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-24
+
 ### Changed
 
-- Renamed the user-facing Vaultwarden import entry for the control plane to `My Own Suite | Suite Manager` so it reads more clearly as the suite front door without changing the internal service name.
-- Clarified the E2E documentation so `onboarding`, `apps`, `full`, and `manual` now explain their exact scope and stack lifecycle more clearly.
-- Removed the redundant onboarding `:debug` E2E script so the command set stays smaller and clearer now that `:headed` and `:manual` cover the useful interactive flows.
-- Added an `e2e:onboarding:manual` flow that completes onboarding and then pauses Playwright on Homepage so the browser stays open for manual suite testing.
-- Refactored the Vaultwarden onboarding import flow to derive its expected credential count from the same explicit import-entry list used to build the CSV, removing a hidden magic-number path in Suite Manager.
-- Set the default Docker Compose project name to `mos` so the normal stack matches the `mos-*` container naming already used across the repo. Compatibility note: generated Compose resources such as the default network and named volumes now use the `mos_` prefix instead of `vps_`.
-- The Vaultwarden onboarding import now includes the freshly created Suite Manager owner credentials too, cutting one more manual copy step out of first-run setup.
-- Added a screenshot gallery component with two examples.
-- Replaced the placeholder ONLYOFFICE and Seafile screenshots with curated galleries of real UI captures, added SEO-friendly screenshot filenames and descriptions, and added Railway deployment screenshots to the deploy guide.
-- Added a reusable docs screenshot gallery with click-to-zoom support, moved Seafile and ONLYOFFICE app screenshots into stable site-owned asset folders, and placed curated interface highlights into both app pages.
-- Reworked the Seafile app page around a clearer end-user `What / Why / How / Technical reference` flow so it better explains the product story, the ONLYOFFICE integration, and how suite users get their credentials.
-- Added a canonical project logo asset set under `branding/` and wired the new My Own Suite mark into the root README, public site landing page/favicon assets, and Suite Manager UI/favicon assets.
-- Re-enabled the landing page hero text rotation and the "Made with" logo marquee so they animate regardless of reduced-motion system preferences.
-- Centralized shared branding under `branding/` and added a sync script so the site and Suite Manager consume generated local copies instead of maintaining drifting cross-app logo and stylesheet duplicates.
-- Updated Homepage branding so its synced MOS palette now applies reliably for browsers still sitting on the default fallback theme, instead of getting stuck on an older one-time theme bootstrap.
-- Simplified the local routing default back to plain `*.localhost` and kept the isolated Playwright E2E stack explicitly pinned to that host pattern.
-- Normalized the Seafile entrypoint script during image build so local Windows checkouts do not break the Docker/E2E stack with CRLF line endings.
-- Added a `.gitattributes` safeguard so shell scripts are checked out with LF line endings consistently across platforms.
+- Refreshed the public site and app pages with stronger MOS branding, real product screenshot galleries, and clearer end-user documentation around deployment and core apps.
+- Improved the first-run Suite Manager flow by importing the control-plane credentials into Vaultwarden, clarifying the user-facing control-plane naming, and smoothing the credential handoff experience.
+- Streamlined local validation and manual testing with clearer E2E command docs, a new onboarding-manual flow that pauses on Homepage, and a smaller interactive command set.
+- Changed the default Docker Compose project name for the normal stack to `mos`. Compatibility note: generated Compose resources such as the default network and named volumes now use the `mos_` prefix instead of `vps_`.
+- Hardened local cross-platform behavior with simpler `*.localhost` routing and Windows-friendly line-ending safeguards for scripts and container entrypoints.
 
 ## [0.4.0] - 2026-03-18
 
