@@ -64,9 +64,9 @@ export function StepCard({ children, detectionState = null, expanded, onToggle, 
         type="button"
       >
         <div className="suite-step-heading">
-          <h2>{step.title}</h2>
+          <h2 className="mos-card-title">{step.title}</h2>
         </div>
-        <span className={`suite-step-status is-${detectionState || step.status}`}>
+        <span className={`suite-step-status mos-pill is-${detectionState || step.status}`}>
           {statusIcon(step.status, detectionState)}
           {statusLabel(step.status, detectionState)}
         </span>

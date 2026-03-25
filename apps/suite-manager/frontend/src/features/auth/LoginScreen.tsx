@@ -36,12 +36,12 @@ export function LoginScreen({ error, onLogin }: LoginScreenProps) {
             />
             <span className="mos-eyebrow">My Own Suite</span>
           </div>
-          <h1>Please sign in</h1>
-          <p className="suite-lead">Your digital independence awaits you.</p>
+          <h1 className="mos-page-title">Please sign in</h1>
+          <p className="suite-lead mos-body-lg">Your digital independence awaits you.</p>
 
           <div className="mos-panel suite-card suite-auth-card">
             <div className="suite-auth-card-header">
-              <h2>Sign in</h2>
+              <h2 className="mos-card-title">Sign in</h2>
             </div>
 
             <form className="suite-auth-form" onSubmit={(event) => void handleSubmit(event)}>

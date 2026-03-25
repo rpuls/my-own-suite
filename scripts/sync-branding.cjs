@@ -93,11 +93,11 @@ function syncFavicons(destinationDir) {
 
 function syncHomepageTheme(sourcePath, destinationPath) {
   const source = fs.readFileSync(sourcePath, 'utf8');
-  const accent = hexToRgb(extractBrandHex(source, '--accent'));
-  const accentStrong = hexToRgb(extractBrandHex(source, '--accent-strong'));
-  const bg = hexToRgb(extractBrandHex(source, '--bg'));
-  const bgSoft = hexToRgb(extractBrandHex(source, '--bg-soft'));
-  const text = hexToRgb(extractBrandHex(source, '--text'));
+  const accent = hexToRgb(extractBrandHex(source, '--mos-color-accent'));
+  const accentStrong = hexToRgb(extractBrandHex(source, '--mos-color-accent-strong'));
+  const bg = hexToRgb(extractBrandHex(source, '--mos-color-bg'));
+  const bgSoft = hexToRgb(extractBrandHex(source, '--mos-color-bg-soft'));
+  const text = hexToRgb(extractBrandHex(source, '--mos-color-text'));
   const white = { r: 255, g: 255, b: 255 };
 
   const palette = {
