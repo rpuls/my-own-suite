@@ -53,7 +53,7 @@ export function ValueField({
   return (
     <div className="suite-field">
       <div className="suite-field-header">
-        <span className="suite-field-label">{label}</span>
+        <span className="suite-field-label mos-label">{label}</span>
         <div className="suite-field-actions">
           {actions}
           {qrValue ? (
@@ -80,7 +80,7 @@ export function ValueField({
       {showQr && qrSrc ? (
         <div className="suite-qr-card suite-field-qr">
           <img alt={qrAlt || `${label} QR code`} className="suite-qr-image" src={qrSrc} />
-          <span className="suite-qr-caption">Scan to get this value onto another device.</span>
+          <span className="suite-qr-caption mos-meta">Scan to get this value onto another device.</span>
         </div>
       ) : null}
     </div>

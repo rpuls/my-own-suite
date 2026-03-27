@@ -1,0 +1,57 @@
+---
+interface LogoItem {
+  src: string
+  alt: string
+}
+
+interface Props {
+  appLogos: LogoItem[]
+}
+
+const { appLogos } = Astro.props
+---
+
+<section class='made-with-section section' aria-labelledby='made-with-title'>
+  <div class='shell'>
+    <div class='made-with-panel mos-panel'>
+      <div class='made-with-copy'>
+        <span class='mos-eyebrow'>Open source matters</span>
+        <h2 class='mos-section-title' id='made-with-title'>Built on great open-source work</h2>
+        <p class='mos-body'>
+          My Own Suite stands on top of some of the best open-source tools available today. Huge credit to the teams
+          and communities behind them. This would not exist without their work.
+        </p>
+      </div>
+
+      <div class='made-with-attribution' aria-label='Attribution'>
+        <p class='made-with-label'>Built with</p>
+        <div class='logo-marquee' aria-label='Included apps'>
+          <div class='logo-track'>
+            {appLogos.map((logo) => (
+              <img class='app-logo' src={logo.src} alt={logo.alt} loading='lazy' decoding='async' />
+            ))}
+            {appLogos.map((logo) => (
+              <img class='app-logo' src={logo.src} alt={logo.alt} aria-hidden='true' loading='lazy' decoding='async' />
+            ))}
+          </div>
+        </div>
+        <p class='made-with-label'>Bundled by</p>
+        <a
+          class='made-by'
+          href='https://funkyton.com/'
+          target='_blank'
+          rel='noreferrer'
+          aria-label='Bundled by Funkyton'
+        >
+          <img
+            class='site-logo'
+            src='https://res-5.cloudinary.com/hczpmiapo/image/upload/q_auto/v1/ghost-blog-images/funkyton-logo.png'
+            alt='Funkyton'
+            loading='lazy'
+            decoding='async'
+          />
+        </a>
+      </div>
+    </div>
+  </div>
+</section>

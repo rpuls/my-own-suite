@@ -17,6 +17,10 @@ Current sync targets include:
 - `apps/homepage/config/custom.css` for the generated Homepage theme block
 - app-local `public/brand/*` and favicon files used at runtime
 
+Internal styling guidance lives in:
+
+- `DESIGN-SYSTEM.md`
+
 Then run:
 
 ```bash

@@ -95,11 +95,13 @@ export default function OnboardingApp() {
 
     return (
       <section className="suite-sequence-step" key={renderedSection.id}>
-        <h3>
+        <h3 className="mos-card-title">
           {index + 1}. {renderedSection.title}
         </h3>
 
-        {renderedSection.description ? <p className="suite-section-description">{renderedSection.description}</p> : null}
+        {renderedSection.description ? (
+          <p className="suite-section-description mos-meta">{renderedSection.description}</p>
+        ) : null}
 
         {renderedSection.field ? (
           <ValueField
@@ -256,7 +258,7 @@ export default function OnboardingApp() {
         onToggle={() => toggleStep(step)}
         step={step}
       >
-        <p className="suite-meta">{step.summary}</p>
+        <p className="suite-meta mos-meta">{step.summary}</p>
         {step.id === 'connect-radicale' ? (
           <>
             <DeviceSelector onSelect={setRadicaleDevice} selectedDevice={radicaleDevice} />
@@ -274,8 +276,8 @@ export default function OnboardingApp() {
     <main className="suite-app">
       <section className="mos-shell suite-hero">
         <span className="mos-eyebrow">My Own Suite</span>
-        <h1>Finish setup</h1>
-        <p className="suite-lead">
+        <h1 className="mos-page-title">Finish setup</h1>
+        <p className="suite-lead mos-body-lg">
           One step at a time. The onboarding flow should tell the user what matters right now, not dump the whole stack at
           once.
         </p>

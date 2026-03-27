@@ -30,8 +30,8 @@ export function AppShell({ onLogout, ownerName }: AppShellProps) {
     return (
       <section className="mos-shell">
         <div className="mos-panel suite-card">
-          <h2>Page not found</h2>
-          <p className="suite-meta">This route is not wired yet. Go back to the onboarding flow from the menu.</p>
+          <h2 className="mos-card-title">Page not found</h2>
+          <p className="suite-meta mos-meta">This route is not wired yet. Go back to the onboarding flow from the menu.</p>
         </div>
       </section>
     );
@@ -50,7 +50,7 @@ export function AppShell({ onLogout, ownerName }: AppShellProps) {
           />
           <div className="suite-shell-title">
             <span className="mos-eyebrow">My Own Suite</span>
-            <strong>Suite Manager</strong>
+            <strong className="mos-card-title">Suite Manager</strong>
           </div>
         </div>
 
@@ -67,7 +67,7 @@ export function AppShell({ onLogout, ownerName }: AppShellProps) {
 
           {menuOpen ? (
             <div className="suite-menu-popover">
-              <p className="suite-meta">Signed in as {ownerName}</p>
+              <p className="suite-meta mos-meta">Signed in as {ownerName}</p>
 
               <nav className="suite-shell-nav-links">
                 <button
