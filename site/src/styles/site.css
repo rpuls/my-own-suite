@@ -339,6 +339,29 @@ body {
   margin-top: 1.5rem;
 }
 
+.audience-list-wrap {
+  max-width: 52rem;
+}
+
+.audience-list {
+  margin: 0;
+  padding-left: 1.35rem;
+  display: grid;
+  gap: 1.05rem;
+  color: var(--mos-color-text);
+}
+
+.audience-list li {
+  font-size: clamp(1.05rem, 1rem + 0.25vw, 1.18rem);
+  line-height: 1.7;
+  font-weight: 700;
+  color: var(--mos-color-text-strong);
+}
+
+.audience-list li::marker {
+  color: var(--mos-color-accent);
+}
+
 .private-cloud-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
@@ -802,6 +825,24 @@ body {
   width: auto;
   height: clamp(2.2rem, 5vw, 3rem);
   display: block;
+}
+
+.soft-transition-section {
+  padding-top: 1.5rem;
+}
+
+.soft-transition-copy {
+  max-width: 38rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.soft-transition-copy h2 {
+  font-size: clamp(1.4rem, 1.2rem + 0.8vw, 1.9rem);
+}
+
+.soft-transition-copy p {
+  color: var(--mos-color-text-muted);
 }
 
 .final-cta {

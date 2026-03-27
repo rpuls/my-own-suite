@@ -121,7 +121,7 @@ const modules = [
 const steps = [
   {
     title: 'Choose your deploy style',
-    body: 'Start on Railway for the easiest path, use a VPS for more hosting freedom, or run it on your own hardware.',
+    body: 'Start with the easiest path, use a VPS for more hosting freedom, or run it on your own hardware.',
     href: '/docs/getting-started',
     label: 'Explore deploy options'
   },
@@ -139,20 +139,6 @@ const steps = [
   }
 ]
 
-const principles = [
-  {
-    title: 'Not a closed platform',
-    body: 'My Own Suite bundles open tools together. It does not try to trap your data inside one vendor-owned ecosystem.'
-  },
-  {
-    title: 'Portable by design',
-    body: 'Railway can be the easy start, but the long-term story is choice: different hosts, a VPS, or your own hardware.'
-  },
-  {
-    title: 'Technical, but approachable',
-    body: 'The stack is real and modular under the hood, while the public docs and onboarding aim to keep the learning curve humane.'
-  }
-]
 ---
 
 <html lang='en'>
@@ -199,22 +185,18 @@ const principles = [
           <div class='hero-copy'>
             <h1>Take back control of your digital life.</h1>
             <p class='hero-lead mos-body-lg'>
-              My Own Suite gives you your own versions of the apps you use every day, like files, photos, documents,
-              calendars, and passwords, without relying on Big Tech.
+              Run your own private versions of the apps you use every day, like Google Drive, iCloud, and more,
+              without giving up convenience.
             </p>
             <p class='hero-support mos-body'>
-              Today, your data lives inside services you don't control. The rules can change, privacy is uncertain,
-              and your information is often treated as a product. You shouldn't have to trade ownership for
-              convenience.
+              Today, most people rely on services from Google, Apple, and Microsoft because they are simple, useful,
+              and free. Over time, the deal changes. The rules shift, and your data becomes part of a system you do
+              not control.
             </p>
             <p class='hero-support mos-body'>
-              My Own Suite brings these tools together into one simple setup that you can run on your own terms, so
-              everything stays yours without feeling complicated or pieced together.
+              My Own Suite gives you your own versions of these tools, running in a setup you control. You keep the
+              convenience, but your files, photos, and data stay yours.
             </p>
-
-            <div class='hero-actions'>
-              <a class='mos-btn mos-btn-primary' href='/docs/getting-started'>Read the docs</a>
-            </div>
           </div>
 
           <div class='hero-visual' aria-hidden='true'>
@@ -258,8 +240,9 @@ const principles = [
         <div class='shell section-heading suite-tools-copy'>
           <h2 class='mos-section-title'>Built on proven tools, not reinvented ones</h2>
           <p class='mos-body'>
-            My Own Suite is built by bringing together some of the best open-source tools available today. Each one is
-            widely used, actively maintained, and chosen because it is the best in its category.
+            My Own Suite is not a new all-in-one platform built from scratch. It brings together proven open-source
+            tools that are already widely used and trusted, and turns them into one cohesive setup you can actually
+            run and use.
           </p>
         </div>
 
@@ -279,10 +262,28 @@ const principles = [
         </div>
       </section>
 
+      <section class='section audience-section'>
+        <div class='shell section-heading'>
+          <h2 class='mos-section-title'>Who is My Own Suite for?</h2>
+          <p class='mos-body'>If any of this sounds familiar, you will probably feel at home with My Own Suite:</p>
+        </div>
+
+        <div class='shell audience-list-wrap'>
+          <ul class='audience-list'>
+            <li>People who want to leave Google, Apple, and Microsoft without losing convenience.</li>
+            <li>Freelancers and creators who refuse to have their work used to train AI models.</li>
+            <li>Individuals tired of trading privacy for "free" cloud services.</li>
+            <li>Families who want their photos and private moments to stay private.</li>
+            <li>People who have seen ads get a little too accurate, and it doesn't feel right.</li>
+            <li>People tired of ecosystems that are easy to enter, but hard to leave.</li>
+          </ul>
+        </div>
+      </section>
+
       <section class='section private-cloud-section'>
         <div class='shell private-cloud-grid'>
           <div class='private-cloud-copy'>
-            <h2 class='mos-section-title'>Install once. Use it everywhere.</h2>
+            <h2 class='mos-section-title'>Setup once. Use it everywhere.</h2>
             <p class='mos-body'>
               With My Own Suite, you don't set up apps on every device. You deploy it once, and your apps run in your
               own private cloud.
@@ -290,10 +291,6 @@ const principles = [
             <p class='mos-body'>
               That means your files, photos, documents, and tools are always available through your browser - on your
               laptop, phone, or tablet - just like the services you already use today.
-            </p>
-            <p class='mos-body'>
-              And when you need it, you can still use native apps and sync clients for deeper integration, just like
-              you would with services like Google Drive or iCloud.
             </p>
             <ul class='private-cloud-points'>
               <li>Open your suite from any browser, on any device</li>
@@ -521,7 +518,7 @@ const principles = [
         <div class='shell step-grid'>
           {steps.map((step, index) => (
             <article class='step-card mos-panel'>
-              <div class='step-number'>0{index + 1}</div>
+              <div class='step-number'>{index + 1}</div>
               <h3 class='mos-card-title'>{step.title}</h3>
               <p class='mos-body'>{step.body}</p>
               <a class='text-link mos-link' href={step.href}>{step.label}</a>
@@ -530,46 +527,16 @@ const principles = [
         </div>
       </section>
 
-      <section class='section philosophy-section'>
-        <div class='shell philosophy-panel mos-panel'>
-          <div class='philosophy-copy'>
-            <span class='mos-eyebrow'>Why it feels different</span>
-            <h2 class='mos-section-title'>Built around open apps, portability, and user control.</h2>
-            <p class='mos-body'>
-              The goal is not to mimic a closed SaaS platform with a different logo. The goal is to give you a
-              stronger ownership boundary while still feeling like a real product you can actually use.
-            </p>
-          </div>
-
-          <div class='principles-grid'>
-            {principles.map((principle) => (
-              <article class='principle-card'>
-                <h3 class='mos-card-title'>{principle.title}</h3>
-                <p class='mos-body'>{principle.body}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
       <MadeWithCarousel appLogos={appLogos} />
 
-      <section class='section final-cta-section'>
-        <div class='shell final-cta mos-panel'>
-          <span class='mos-eyebrow'>Start here</span>
-          <h2 class='mos-section-title'>Read the docs, pick a deploy path, and build the suite around your own rules.</h2>
-          <p class='mos-body'>
-            The homepage is the overview. The docs are where the real setup guidance, deploy options, and app details
-            live.
-          </p>
-          <div class='final-actions'>
-            <a class='mos-btn mos-btn-primary' href='/docs/getting-started'>Open getting started</a>
-            <a class='mos-btn mos-btn-secondary' href={GITHUB_REPO_URL} target='_blank' rel='noreferrer'>
-              Browse the repository
-            </a>
-          </div>
+      <section class='section soft-transition-section'>
+        <div class='shell soft-transition-copy'>
+          <h2 class='mos-section-title'>Still unsure? That’s completely fine.</h2>
+          <p class='mos-body'>Take a look at the docs to see how everything works in practice.</p>
+          <a class='text-link mos-link' href='/docs'>Open the docs</a>
         </div>
       </section>
+
     </main>
   </body>
 </html>
