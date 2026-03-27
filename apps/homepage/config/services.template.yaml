@@ -13,29 +13,29 @@
     - My Files:
         - Seafile:
             href: ${SEAFILE_URL}
-            description: Self-hosted file sync and share
+            description: Your private cloud drive with built-in editors for documents, spreadsheets, and presentations
             icon: /images/seafile.png
         - Immich:
             href: ${IMMICH_URL}
-            description: Self-hosted photo and video backup
+            description: A beautiful private photo app with smart search, sharing, and automatic backup
             icon: /images/immich.png
 
     - My Tools:
         - Stirling PDF:
             href: ${STIRLING_PDF_URL}
-            description: Self-hosted PDF tools suite
+            description: Handle everyday PDF jobs without uploading personal documents elsewhere
             icon: /images/stirling-pdf.png
 
     - My Security:
         - Vaultwarden:
             href: ${VAULTWARDEN_URL}
-            description: Self-hosted password manager
+            description: Keep your passwords and autofill in a vault you control
             icon: /images/vaultwarden.png
 
     - Management:
         - Suite Manager:
             href: ${SUITE_MANAGER_URL}/setup/
-            description: Open the suite control plane and onboarding
+            description: Set up the suite, manage access, and return to onboarding when needed
             icon: /images/my-own-suite-mark.png
 
 
@@ -43,7 +43,7 @@
     - Calendar:
         - Radicale:
             href: ${RADICALE_URL}
-            description: Self-hosted calendar sync server
+            description: Keep your calendar in sync across devices without giving it to Big Tech
             icon: /images/radicale.png
             widget:
               type: calendar
@@ -64,7 +64,7 @@
     - Open Source Resources:
         - My Own Suite Docs:
             href: https://myownsuite.org/docs/
-            description: My Own Suite official documentation
+            description: Guides and walkthroughs for getting the suite running and using it
         - Funkyton:
             href: https://www.funkyton.com
             description: Open source resources and tools
