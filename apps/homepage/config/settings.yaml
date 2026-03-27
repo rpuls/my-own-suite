@@ -10,3 +10,4 @@ host: false
 headerStyle: clean
 iconStyle: theme
 useEqualHeights: true
+disableUpdateCheck: true

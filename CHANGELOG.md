@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Changed
+
+- Hardened the default stack against third-party outbound requests by removing Google Fonts and remote Homepage icons, disabling Homepage update checks and search suggestions, turning off Stirling PDF analytics by default, and disabling Vaultwarden favicon downloads.
+- Restored Homepage app branding with locally served logos, moved Suite Manager into a dedicated Management section, restored the Funkyton logo from local assets, and vendored Open Sans into shared branding so MOS surfaces keep the same type without calling Google.
+
 ## [0.6.0] - 2026-03-27
 
 ### Changed
