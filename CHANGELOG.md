@@ -8,8 +8,9 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
-- Hardened the default stack against third-party outbound requests by removing Google Fonts and remote Homepage icons, disabling Homepage update checks and search suggestions, turning off Stirling PDF analytics by default, and disabling Vaultwarden favicon downloads.
-- Restored Homepage app branding with locally served logos, moved Suite Manager into a dedicated Management section, restored the Funkyton logo from local assets, and vendored Open Sans into shared branding so MOS surfaces keep the same type without calling Google.
+- Fixed a Suite Manager onboarding regression so the Vaultwarden credential-import step now advances correctly after manual confirmation, and expanded the E2E coverage to catch the same live-session UI sync bug in the future.
+- Hardened the default stack against unnecessary third-party calls by removing Google-hosted fonts and remote Homepage icons, disabling Vaultwarden relay-based mobile push, and turning off Stirling PDF analytics by default.
+- Refined the public homepage and default Homepage experience with stronger MOS branding, clearer app descriptions, better link defaults, a dedicated Management section for Suite Manager, and a tighter trust story around the bundled apps.
 
 ## [0.6.0] - 2026-03-27
 

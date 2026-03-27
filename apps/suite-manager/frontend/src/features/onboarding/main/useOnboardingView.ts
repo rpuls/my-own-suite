@@ -66,6 +66,30 @@ function getDetectionConfig(step: OnboardingStep | null): StepDetection | null {
   return step.detection ?? null;
 }
 
+function shouldDeferAutomaticStepCommit(
+  currentModel: OnboardingModel | null,
+  nextModel: OnboardingModel,
+  armedDetectionStepId: string | null,
+  detectingStepId: string | null,
+): boolean {
+  const currentStep = getCurrentStep(currentModel);
+  const detection = getDetectionConfig(currentStep);
+
+  if (!currentStep || !detection) {
+    return false;
+  }
+
+  if (detectingStepId === currentStep.id) {
+    return true;
+  }
+
+  if (armedDetectionStepId !== currentStep.id) {
+    return false;
+  }
+
+  return modelSignature(nextModel) !== modelSignature(currentModel ?? nextModel);
+}
+
 export function useOnboardingView() {
   const { refreshModel, state } = useOnboarding();
   const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
@@ -230,19 +254,16 @@ export function useOnboardingView() {
       return;
     }
 
-    const currentStep = getCurrentStep(presentedModelRef.current);
-    if (getDetectionConfig(currentStep)) {
-      return;
-    }
-
-    if (detectingStepId) {
+    if (
+      shouldDeferAutomaticStepCommit(presentedModelRef.current, state.model, armedDetectionStepId, detectingStepId)
+    ) {
       return;
     }
 
     if (modelSignature(state.model) !== modelSignature(presentedModelRef.current)) {
       commitPresentedModel(state.model);
     }
-  }, [detectingStepId, state]);
+  }, [armedDetectionStepId, detectingStepId, state]);
 
   useEffect(() => {
     const currentStep = getCurrentStep(presentedModel);
