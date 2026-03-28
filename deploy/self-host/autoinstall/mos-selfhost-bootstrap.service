@@ -1,0 +1,13 @@
+[Unit]
+Description=My Own Suite first-boot bootstrap
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/mos-selfhost.env
+ExecStart=/usr/local/bin/mos-selfhost-firstboot.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

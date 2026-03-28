@@ -42,3 +42,8 @@ apps/suite-manager/frontend/dist/
 tests/e2e/node_modules/
 tests/e2e/playwright-report/
 tests/e2e/test-results/
+
+# Self-host generated artifacts
+deploy/self-host/autoinstall/generated/
+deploy/self-host/autoinstall/*.vhdx
+deploy/self-host/autoinstall/*.avhdx

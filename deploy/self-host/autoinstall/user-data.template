@@ -1,0 +1,50 @@
+#cloud-config
+autoinstall:
+  version: 1
+  identity:
+    hostname: __HOSTNAME__
+    realname: __REALNAME__
+    username: __USERNAME__
+    password: __PLACEHOLDER_PASSWORD_HASH__
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  timezone: __TIMEZONE__
+  ssh:
+    install-server: true
+    allow-pw: true
+  packages:
+    - qemu-guest-agent
+  storage:
+    layout:
+      name: direct
+  user-data:
+    package_update: true
+    package_upgrade: true
+    write_files:
+      - path: /etc/mos-selfhost.env
+        permissions: "0644"
+        content: |
+          REPO_DIR=__REPO_DIR__
+          MOS_REPO_URL=__MOS_REPO_URL__
+          MOS_REPO_REF=__MOS_REPO_REF__
+          MOS_HOSTNAME=__HOSTNAME__
+          MOS_STACK_DOMAIN=__STACK_DOMAIN__
+          MOS_PUBLIC_DOMAIN=__PUBLIC_DOMAIN__
+          INSTALL_DOCKER=1
+          INSTALL_NODE=1
+          CLONE_REPO_IF_MISSING=1
+          AUTO_START_STACK=0
+      - path: /usr/local/bin/mos-selfhost-firstboot.sh
+        permissions: "0755"
+        content: |
+__FIRSTBOOT_SCRIPT__
+      - path: /etc/systemd/system/mos-selfhost-bootstrap.service
+        permissions: "0644"
+        content: |
+__SYSTEMD_SERVICE__
+    runcmd:
+      - printf '%s:%s\n' '__USERNAME__' '__LOGIN_PASSWORD__' | chpasswd
+      - systemctl daemon-reload
+      - systemctl enable mos-selfhost-bootstrap.service
+      - systemctl start mos-selfhost-bootstrap.service
