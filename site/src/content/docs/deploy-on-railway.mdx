@@ -5,7 +5,7 @@ slug: docs/deploy-on-railway
 ---
 
 import AppScreenshotGallery from '../../components/docs/AppScreenshotGallery.astro';
-import { railwayOpenSuiteScreenshots, railwayOverviewScreenshots } from '../../data/app-screenshots';
+import { railwayEstimatedUsageScreenshots, railwayOpenSuiteScreenshots, railwayOverviewScreenshots, railwayRequiredInputsScreenshots } from '../../data/app-screenshots';
 
 Railway is the easiest way to get My Own Suite running today.
 
@@ -38,13 +38,15 @@ Tips:
 - Use a strong `OWNER_PASSWORD`.
 - Keep these details somewhere safe, because you will use them right after deployment.
 
+<AppScreenshotGallery appName="Railway required inputs" items={railwayRequiredInputsScreenshots} showSecondary={false} />
+
 ## Start the deploy
 
 Click the button below to start the Railway setup.
 
 The rest of this page walks through each step, so if anything feels unfamiliar you can keep reading and follow along as you go.
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/OREb9B?referralCode=-Yg50p&utm_medium=integration&utm_source=template&utm_campaign=generic)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/my-own-suite?referralCode=-Yg50p)
 
 ## Deploy
 
@@ -69,6 +71,26 @@ After the deployment finishes:
 From there, you will enter the normal My Own Suite onboarding flow.
 
 <AppScreenshotGallery appName="Railway public URL" items={railwayOpenSuiteScreenshots} showLead={false} />
+
+## What about resource use and cost?
+
+Running a full private cloud suite does cost something, because several services are running together instead of one single app.
+
+The good news is that the Railway template starts with simple default per-service limits of up to `8 vCPU` and `8 GB RAM`, and those limits are more generous than most of the included services actually need.
+
+That means many people can safely lower the limits on lighter services to keep monthly cost down.
+
+What to keep in mind:
+
+- `ONLYOFFICE`, `Immich`, and `Immich Machine Learning` benefit from having real resource headroom.
+- Many of the other services can run comfortably with much lower limits.
+- Railway also offers a serverless sleep model, so if you want to cut cost further, some services can sleep when they are not being used.
+
+The screenshot below shows one real example estimate of around `$36` per month, but that is not a fixed requirement for every deployment.
+
+<AppScreenshotGallery appName="Railway estimated usage" items={railwayEstimatedUsageScreenshots} showSecondary={false} />
+
+Proper My Own Suite resource tuning guidance for Railway is coming in a future update.
 
 ## What happens next
 

@@ -17,7 +17,9 @@ import onlyofficeSpreadsheetPassword from '../assets/screenshots/onlyoffice/only
 import onlyofficeSpreadsheetFunction from '../assets/screenshots/onlyoffice/onlyoffice-private-cloud-spreadsheet-editor-insert-function-formula-productivity.png'
 import onlyofficeSpreadsheetCollaboration from '../assets/screenshots/onlyoffice/onlyoffice-open-source-self-hosted-office-suite-spreadsheet-real-time-collaboration-editor.png'
 import onlyofficeSpreadsheetHistory from '../assets/screenshots/onlyoffice/onlyoffice-private-cloud-spreadsheet-editor-version-history-audit-recovery.png'
+import railwayEstimatedUsage from '../assets/screenshots/railway/railway-my-own-suite-estimated-monthly-usage-cost-cpu-memory-volume-overview.png'
 import railwayPublicUrl from '../assets/screenshots/railway/railway-my-own-suite-public-url-open-deployment-domain-hosted-private-cloud.png'
+import railwayRequiredOwnerInputs from '../assets/screenshots/railway/railway-my-own-suite-required-owner-name-email-password-before-deploy.png'
 import railwayServiceOverview from '../assets/screenshots/railway/railway-my-own-suite-hosted-private-cloud-template-service-map-overview.png'
 import seafilePermissions from '../assets/screenshots/seafile/seafile-secure-private-cloud-file-access-permissions-sharing-controls-self-hosted.png'
 import seafileBulkCopy from '../assets/screenshots/seafile/seafile-private-cloud-bulk-copy-file-management-productivity-workflow.png'
@@ -360,16 +362,32 @@ export const railwayDeployScreenshots: AppScreenshot[] = [
     lead: true
   },
   {
+    id: 'railway-required-owner-inputs',
+    src: railwayRequiredOwnerInputs,
+    alt: 'Railway deploy form showing the required My Own Suite owner inputs for name, email, and password before the deployment can start.',
+    title: 'Required Owner Inputs Before Deploy',
+    caption: 'Before you can launch the template, Railway asks for the suite owner name, owner email, and owner password so the first-run My Own Suite login is ready immediately after deployment.'
+  },
+  {
     id: 'railway-public-url',
     src: railwayPublicUrl,
     alt: 'Railway deployment details page highlighting where to open the public URL for a My Own Suite deployment.',
     title: 'Find Your Public URL',
     caption: 'After deployment finishes, Railway shows the generated public URL for the MOS service here so you can open the suite and begin onboarding.'
+  },
+  {
+    id: 'railway-estimated-usage',
+    src: railwayEstimatedUsage,
+    alt: 'Railway estimated monthly usage screen showing example CPU, memory, network, and volume costs for a My Own Suite deployment.',
+    title: 'Example Usage And Cost Projection',
+    caption: 'This is an example of what a live My Own Suite deployment can look like in Railway billing and usage views, but resource limits can be tuned downward for many services to reduce cost.'
   }
 ]
 
 export const railwayOverviewScreenshots = pickGalleryBundles(railwayDeployScreenshots, ['railway-service-overview'])
+export const railwayRequiredInputsScreenshots = pickGalleryBundles(railwayDeployScreenshots, ['railway-required-owner-inputs'])
 export const railwayOpenSuiteScreenshots = pickGalleryBundles(railwayDeployScreenshots, ['railway-public-url'])
+export const railwayEstimatedUsageScreenshots = pickGalleryBundles(railwayDeployScreenshots, ['railway-estimated-usage'])
 
 export const homepageOverviewScreenshots = pickGalleryBundles(homepageScreenshots, ['homepage-dashboard'])
 
