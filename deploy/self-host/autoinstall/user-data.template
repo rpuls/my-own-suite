@@ -14,6 +14,7 @@ autoinstall:
     install-server: true
     allow-pw: true
   packages:
+    - git
     - qemu-guest-agent
   storage:
     layout:

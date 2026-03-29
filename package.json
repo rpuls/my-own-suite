@@ -22,7 +22,6 @@
     "onlyoffice"
   ],
   "license": "MIT",
-  "private": true,
   "packageManager": "npm@11.2.0",
   "engines": {
     "node": "22.x",
