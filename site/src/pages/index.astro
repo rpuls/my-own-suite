@@ -3,6 +3,7 @@ import MadeWithCarousel from '../components/landing/MadeWithCarousel.astro'
 import { GITHUB_REPO_URL, WAITLIST_MAILTO } from '../lib/links'
 import '../styles/site.css'
 import homepageLogo from '../assets/logos/homepage.png'
+import homepageDashboardScreenshot from '../assets/screenshots/homepage/my-own-suite-homepage-dashboard-private-cloud-launchpad.png'
 import immichLogo from '../assets/logos/immich.png'
 import onlyofficeLogo from '../assets/logos/ONLYOFFICE.png'
 import radicaleLogo from '../assets/logos/radicale.png'
@@ -58,7 +59,7 @@ const modules = [
     href: '/docs/apps/seafile',
     logo: seafileLogo.src,
     logoAlt: 'Seafile logo',
-    body: 'Private cloud storage, sync, sharing, and libraries across your devices.'
+    body: 'Trusted file sync and storage used by teams that need their cloud to stay dependable.'
   },
   {
     title: 'Documents and spreadsheets',
@@ -66,7 +67,7 @@ const modules = [
     href: '/docs/apps/onlyoffice',
     logo: onlyofficeLogo.src,
     logoAlt: 'ONLYOFFICE logo',
-    body: 'Browser-based editing for docs, sheets, presentations, and team-friendly workflows.'
+    body: 'Enterprise-ready office tools used by businesses and governments around the world.'
   },
   {
     title: 'Photos and memories',
@@ -74,7 +75,7 @@ const modules = [
     href: '/docs/apps/immich',
     logo: immichLogo.src,
     logoAlt: 'Immich logo',
-    body: 'Self-hosted photo backup and a private library for everyday image and video life.'
+    body: 'A modern photo platform backed by one of the fastest-growing self-hosted communities.'
   },
   {
     title: 'Passwords',
@@ -173,7 +174,7 @@ const steps = [
             <a href='/docs'>Docs</a>
             <a href={GITHUB_REPO_URL} target='_blank' rel='noreferrer'>GitHub</a>
             <a class='mos-btn mos-btn-secondary header-cta secondary' href={WAITLIST_MAILTO} target='_blank' rel='noreferrer'>
-              Waitlist
+              Newsletter
             </a>
             <a class='mos-btn mos-btn-primary header-cta' href='/docs/getting-started'>Get started</a>
           </nav>
@@ -240,9 +241,9 @@ const steps = [
         <div class='shell section-heading suite-tools-copy'>
           <h2 class='mos-section-title'>Built on proven tools, not reinvented ones</h2>
           <p class='mos-body'>
-            My Own Suite is not a new all-in-one platform built from scratch. It brings together proven open-source
-            tools that are already widely used and trusted, and turns them into one cohesive setup you can actually
-            run and use.
+            My Own Suite brings together established open-source apps like Seafile, ONLYOFFICE, and Immich. These
+            are trusted by millions of users, as well as companies and even governments, and are combined into one
+            cohesive setup you can actually run and use.
           </p>
         </div>
 
@@ -367,6 +368,38 @@ const steps = [
               </g>
             </svg>
           </div>
+        </div>
+      </section>
+
+      <section class='section dashboard-preview-section'>
+        <div class='shell dashboard-preview-grid'>
+          <div class='dashboard-preview-copy'>
+            <h2 class='mos-section-title'>One dashboard that makes the suite feel usable right away.</h2>
+            <p class='mos-body'>
+              Homepage is the everyday launchpad for My Own Suite. Instead of juggling bookmarks, ports, and app URLs,
+              you land in one calm place that reflects the stack you actually have running.
+            </p>
+            <p class='mos-body'>
+              The result feels much closer to a real product than a loose bundle of containers, which matters if the
+              goal is helping normal people leave Big Tech without walking into a hobbyist maze.
+            </p>
+            <a class='text-link mos-link' href='/docs/apps/homepage'>See the Homepage module</a>
+          </div>
+
+          <a
+            class='dashboard-preview-frame mos-panel'
+            href='/docs/apps/homepage'
+            aria-label='Open the Homepage documentation'
+          >
+            <img
+              src={homepageDashboardScreenshot.src}
+              alt='My Own Suite Homepage dashboard with app categories, widgets, and management links.'
+              width={homepageDashboardScreenshot.width}
+              height={homepageDashboardScreenshot.height}
+              loading='lazy'
+              decoding='async'
+            />
+          </a>
         </div>
       </section>
 

@@ -1,17 +1,17 @@
 ---
 # Bookmarks for Railway Homepage
 
-- Developer:
-    - Github:
+- Releases:
+    - Source Code:
         - abbr: GH
-          href: https://github.com/
+          href: https://github.com/rpuls/my-own-suite
 
 - Social:
-    - Reddit:
-        - abbr: RE
-          href: https://reddit.com/
+    - Community:
+        - abbr: DC
+          href: https://discord.gg/K72wyWRt
 
-- Entertainment:
-    - YouTube:
-        - abbr: YT
-          href: https://youtube.com/
+- Docs:
+    - Documentation:
+        - abbr: DOC
+          href: https://myownsuite.org/docs/

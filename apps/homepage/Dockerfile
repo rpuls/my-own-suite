@@ -29,6 +29,7 @@ COPY --from=builder /build/package.json /app/config-generator/
 
 # Copy static config files (bookmarks, widgets, etc.)
 COPY config/ /app/config/
+COPY icons/ /app/icon-seed/
 
 # Copy simplified entrypoint
 COPY entrypoint.sh /entrypoint.sh

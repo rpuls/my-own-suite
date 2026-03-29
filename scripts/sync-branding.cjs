@@ -5,6 +5,7 @@ const repoRoot = path.resolve(__dirname, '..');
 const canonicalDir = path.join(repoRoot, 'branding');
 const canonicalMarkPath = path.join(canonicalDir, 'my-own-suite-mark.png');
 const canonicalFaviconsDir = path.join(canonicalDir, 'favicons');
+const canonicalFontsDir = path.join(canonicalDir, 'fonts');
 const canonicalStylesPath = path.join(canonicalDir, 'styles', 'mos.css');
 const homepageCustomCssPath = path.join(repoRoot, 'apps', 'homepage', 'config', 'custom.css');
 
@@ -86,6 +87,20 @@ function syncFavicons(destinationDir) {
 
     copyFile(
       path.join(canonicalFaviconsDir, entry.name),
+      path.join(destinationDir, entry.name),
+    );
+  }
+}
+
+function syncFonts(destinationDir) {
+  ensureDir(destinationDir);
+  for (const entry of fs.readdirSync(canonicalFontsDir, { withFileTypes: true })) {
+    if (!entry.isFile()) {
+      continue;
+    }
+
+    copyFile(
+      path.join(canonicalFontsDir, entry.name),
       path.join(destinationDir, entry.name),
     );
   }
@@ -176,6 +191,7 @@ html.dark {
 function main() {
   assertExists(canonicalMarkPath);
   assertExists(canonicalFaviconsDir);
+  assertExists(canonicalFontsDir);
   assertExists(canonicalStylesPath);
   assertExists(homepageCustomCssPath);
 
@@ -186,6 +202,8 @@ function main() {
   syncFavicons(destinations.sitePublicBrand);
   syncFavicons(destinations.sitePublicRoot);
   syncFavicons(destinations.suitePublicBrand);
+  syncFonts(path.join(destinations.sitePublicBrand, 'fonts'));
+  syncFonts(path.join(destinations.suitePublicBrand, 'fonts'));
 
   writeGeneratedCss(canonicalStylesPath, destinations.siteGeneratedCss);
   writeGeneratedCss(canonicalStylesPath, destinations.suiteStylesCss);

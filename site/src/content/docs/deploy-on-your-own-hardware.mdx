@@ -27,17 +27,65 @@ Compared with Railway or a VPS:
 Potential benefits:
 
 - very high ownership
+- no digital footprint, you stay fully off grid
 - low recurring hosting cost if you already own the hardware
 - a strong fit for homelab and privacy-focused setups
 
 ## Current status
 
-My Own Suite is not yet documented with a separate beginner-friendly hardware guide.
+The self-hosting track is now being shaped around a dedicated `Ubuntu Server 24.04 LTS` flow for small always-on machines such as mini PCs, home servers, and repurposed office hardware.
 
-Today, the practical route is to use the VPS-oriented Docker Compose setup as your base and adapt it to your home or private hardware environment.
+Today, the maintained stack still lives in the Docker Compose deployment, but the self-host direction is becoming clearer:
 
-## Recommendation
+- one canonical local suite domain pattern: `appname.mos.home`
+- one canonical public domain pattern: `appname.mos.<your-domain>`
+- one shared host-based routing model across local, VPS, and self-hosted installs
+- a dedicated Ubuntu bootstrap track for making first setup less hands-on
 
-If you are new to the project, start with [Deploy on Railway](/docs/deploy-on-railway) or [Deploy on a VPS](/docs/deploy-on-vps) first.
+## What this means in practice
 
-Then move to your own hardware once you are comfortable with how the suite works and what it needs operationally.
+The current local stack already proves the routing model with `*.localhost`.
+
+For self-hosting on your own hardware, the aim is to keep that same app-per-host pattern instead of introducing a separate URL system just for homelabs.
+
+That means the intended local addresses look like this:
+
+- `suite-manager.mos.home`
+- `homepage.mos.home`
+- `seafile.mos.home`
+- `immich.mos.home`
+
+And if you later expose the suite through a public domain, the same pattern continues:
+
+- `suite-manager.mos.example.com`
+- `homepage.mos.example.com`
+- `seafile.mos.example.com`
+- `immich.mos.example.com`
+
+## Important limitation
+
+The self-host machine can automate a lot, including Ubuntu setup steps, Docker installation, and the suite bootstrap itself.
+
+What it cannot universally automate is wildcard DNS for the rest of your home network, because that depends on infrastructure outside the suite box itself.
+
+In other words:
+
+- the suite box can make itself easy to install
+- your router, AdGuard Home, or another DNS layer still decides how the rest of your devices resolve `*.mos.home`
+
+That is why the self-host path is being built around:
+
+- a low-friction baseline with a normal machine hostname on the LAN
+- an enhanced mode where one wildcard DNS rule makes the full `appname.mos.home` pattern work across your devices
+
+## Recommendation today
+
+If you are new to the project and mainly want to try the suite quickly, start with [Deploy on Railway](/docs/deploy-on-railway).
+
+If you want the current self-managed route that the self-host flow is building on top of, use [Deploy on a VPS](/docs/deploy-on-vps).
+
+If you already know you want the suite on your own hardware, the best fit is now:
+
+- `Ubuntu Server 24.04 LTS`
+- the current Docker Compose stack as the runtime base
+- a local DNS setup that can eventually point `*.mos.home` at the suite machine

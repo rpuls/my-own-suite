@@ -13,32 +13,38 @@
     - My Files:
         - Seafile:
             href: ${SEAFILE_URL}
-            description: Self-hosted file sync and share
-            icon: https://cdn.simpleicons.org/seafile
+            description: Your private cloud drive with built-in editors for documents, spreadsheets, and presentations
+            icon: /images/seafile.png
         - Immich:
             href: ${IMMICH_URL}
-            description: Self-hosted photo and video backup
-            icon: immich.png
+            description: A beautiful private photo app with smart search, sharing, and automatic backup
+            icon: /images/immich.png
 
     - My Tools:
         - Stirling PDF:
             href: ${STIRLING_PDF_URL}
-            description: Self-hosted PDF tools suite
-            icon: stirling-pdf.png
+            description: Handle everyday PDF jobs without uploading personal documents elsewhere
+            icon: /images/stirling-pdf.png
 
     - My Security:
         - Vaultwarden:
             href: ${VAULTWARDEN_URL}
-            description: Self-hosted password manager
-            icon: vaultwarden.png
+            description: Keep your passwords and autofill in a vault you control
+            icon: /images/vaultwarden.png
+
+    - Management:
+        - Suite Manager:
+            href: ${SUITE_MANAGER_URL}/setup/
+            description: Set up the suite, manage access, and return to onboarding when needed
+            icon: /images/my-own-suite-mark.png
 
 
 - My Shortcuts:
     - Calendar:
         - Radicale:
             href: ${RADICALE_URL}
-            description: Self-hosted calendar sync server
-            icon: mdi-calendar-month
+            description: Keep your calendar in sync across devices without giving it to Big Tech
+            icon: /images/radicale.png
             widget:
               type: calendar
               view: monthly
@@ -54,18 +60,12 @@
         - Example Bookmark:
             href: https://example.com
             description: Replace with your own quick link
-            icon: mdi-bookmark-outline
 
     - Open Source Resources:
-        - Suite Manager:
-            href: ${SUITE_MANAGER_URL}/setup/
-            description: Open the suite control plane and onboarding
-            icon: mdi-progress-wrench
         - My Own Suite Docs:
             href: https://myownsuite.org/docs/
-            description: My Own Suite official documentation
-            icon: mdi-book-open-page-variant
+            description: Guides and walkthroughs for getting the suite running and using it
         - Funkyton:
             href: https://www.funkyton.com
             description: Open source resources and tools
-            icon: https://res.cloudinary.com/hczpmiapo/image/upload/v1771353952/Static%20assets/Logos/funkyton-F-icon_gtpfml.png
+            icon: /images/funkyton-F-icon.png

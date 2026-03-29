@@ -124,6 +124,18 @@ export async function completeOnboarding(context, page) {
     await page.bringToFront();
 
     await importStep.getByRole('button', { name: 'I have imported my credentials' }).click();
+    await expect
+      .poll(
+        async () => {
+          return readStepState(page);
+        },
+        {
+          timeout: 5000,
+        },
+      )
+      .toMatchObject({
+        stepThreeCurrent: true,
+      });
     stepState = await waitForCurrentStep(
       page,
       {
