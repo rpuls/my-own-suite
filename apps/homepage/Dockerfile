@@ -20,7 +20,7 @@ RUN npm run build
 # ============================================
 # Stage 2: Runtime Image
 # ============================================
-FROM ghcr.io/gethomepage/homepage@sha256:7dc099d5c6ec7fc945d858218565925b01ff8a60bcbfda990fc680a8b5cd0b6e
+FROM ghcr.io/gethomepage/homepage@sha256:9627769818fbfb14147d3e633e57cef9c27c0c5f07585f5a1d6c3d3425b3b33c
 
 # Copy built config generator (only production dependencies needed at runtime)
 COPY --from=builder /build/dist /app/config-generator/dist
