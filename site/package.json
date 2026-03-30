@@ -38,13 +38,13 @@
     "preview": "astro preview"
   },
   "dependencies": {
-    "astro": "^5.2.0",
-    "@astrojs/starlight": "^0.32.0",
-    "astro-mermaid": "^1.0.4",
-    "mermaid": "^11.4.1"
+    "astro": "^6.1.1",
+    "@astrojs/starlight": "^0.38.2",
+    "astro-mermaid": "^2.0.1",
+    "mermaid": "^11.13.0"
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.2"
   }
 }
 
