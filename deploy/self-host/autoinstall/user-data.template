@@ -29,12 +29,13 @@ autoinstall:
           MOS_REPO_URL=__MOS_REPO_URL__
           MOS_REPO_REF=__MOS_REPO_REF__
           MOS_HOSTNAME=__HOSTNAME__
+          MOS_PRIMARY_USER=__USERNAME__
           MOS_STACK_DOMAIN=__STACK_DOMAIN__
           MOS_PUBLIC_DOMAIN=__PUBLIC_DOMAIN__
           INSTALL_DOCKER=1
           INSTALL_NODE=1
           CLONE_REPO_IF_MISSING=1
-          AUTO_START_STACK=0
+          AUTO_START_STACK=1
       - path: /usr/local/bin/mos-selfhost-firstboot.sh
         permissions: "0755"
         content: |
