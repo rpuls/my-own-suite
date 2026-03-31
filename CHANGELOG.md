@@ -6,6 +6,12 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Changed
+
+- Expanded the self-host first-boot path so the unattended install flow now carries the primary user into the bootstrap environment and automatically starts the stack after the fresh-machine setup finishes.
+- Clarified the Homepage app docs so the built-in search bar now explains its Startpage integration in plain language, including a short privacy-focused note and official reference links.
+- Strengthened the public docs positioning around private-cloud ownership by rewriting the `Why your own cloud?` page in clearer, more convincing product language.
+
 ## [0.8.0] - 2026-04-10
 
 Milestone release: My Own Suite now has a validated self-host installation path on real home-server hardware over LAN, including the new single-USB installer tooling that helped bring the first end-to-end machine install together.
@@ -40,10 +46,6 @@ Milestone release: My Own Suite now has a validated self-host installation path 
 ### Fixed
 
 - Fixed a Suite Manager onboarding regression so the Vaultwarden credential-import step now advances correctly after manual confirmation, and expanded the E2E coverage to catch the same live-session UI sync bug in the future.
-<<<<<<< HEAD
->>>>>>> 8f3add2c6f29fe652379ef448bef722d02558c49
-=======
->>>>>>> 2fbdf79c339fa47f19ca6b7dc06696e8641ef2b3
 
 ## [0.6.0] - 2026-03-27
 
