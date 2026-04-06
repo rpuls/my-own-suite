@@ -8,13 +8,32 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
-- Fixed a Suite Manager onboarding regression so the Vaultwarden credential-import step now advances correctly after manual confirmation, and expanded the E2E coverage to catch the same live-session UI sync bug in the future.
+- Refactored Suite Manager onboarding around a dependency-based flow with grouped progress, keeping Vaultwarden credential setup first while unlocking separate Calendar, Files & Office, and Photos tracks afterward so users can continue with the part of the suite they care about most.
+
+## [0.7.1] - 2026-03-29
+
+### Changed
+
+- Expanded the Railway deployment guide with clearer official-template support material, including the canonical public deploy URL, annotated setup screenshots for the required owner inputs, and a calmer plain-language explanation of resource usage and cost expectations.
+
+## [0.7.0] - 2026-03-29
+
+### Added
+
+- Started the dedicated self-host track with an Ubuntu 24.04 bootstrap path, a canonical `appname.mos.home` and `appname.mos.<your-domain>` domain model, Cloudflare wildcard tunnel scaffolding, and an early unattended-install flow for testing the appliance-style setup on fresh machines.
+
+### Changed
+
 - Hardened the default stack against unnecessary third-party calls by removing Google-hosted fonts and remote Homepage icons, disabling Vaultwarden relay-based mobile push, and turning off Stirling PDF analytics by default.
 - Refined the public homepage and default Homepage experience with stronger MOS branding, clearer app descriptions, better link defaults, a dedicated Management section for Suite Manager, and a tighter trust story around the bundled apps.
 - Started the dedicated self-host track with an Ubuntu 24.04 bootstrap script, a canonical `appname.mos.home` and `appname.mos.<your-domain>` domain model, a Cloudflare wildcard tunnel config generator, and an unattended-install flow that now covers more of the first-boot domain setup, Docker access, and stack startup work on fresh machines.
 - Fixed the first self-host autoinstall bootstrap attempt so the first-boot service can clone the repo before trying to run the MOS bootstrap script on a fresh machine.
 - Clarified the Homepage app docs so the built-in search bar now explains its Startpage integration in plain language, including a short privacy-focused note and official reference links.
 - Strengthened the public docs positioning around private-cloud ownership by rewriting the `Why your own cloud?` page in clearer, more convincing product language.
+
+### Fixed
+
+- Fixed a Suite Manager onboarding regression so the Vaultwarden credential-import step now advances correctly after manual confirmation, and expanded the E2E coverage to catch the same live-session UI sync bug in the future.
 
 ## [0.6.0] - 2026-03-27
 

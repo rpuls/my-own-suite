@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 import { withSetupPath } from '../../../lib/base-path';
 import { DeviceGuide } from '../radicale/DeviceGuide';
 import { DeviceSelector, type RadicaleDevice } from '../radicale/DeviceSelector';
 import { StepCard } from '../shared/components/StepCard';
 import { ValueField } from '../shared/components/ValueField';
-import type { CurrentActionSection, OnboardingStepView } from '../shared/types';
+import type { CurrentActionSection, OnboardingStepGroupId, OnboardingStepView } from '../shared/types';
 import { CredentialsField } from '../vaultwarden/CredentialsField';
 import { useOnboardingView } from './useOnboardingView';
 
@@ -17,8 +18,27 @@ export default function OnboardingApp() {
   const [importContents, setImportContents] = useState<Record<string, string>>({});
   const [revealedActionIds, setRevealedActionIds] = useState<Record<string, boolean>>({});
   const [radicaleDevice, setRadicaleDevice] = useState<RadicaleDevice | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<Record<OnboardingStepGroupId, boolean>>({
+    applications: false,
+    credentials: false,
+  });
+  const credentialsSection = view?.progress.sections.find((section) => section.id === 'credentials') ?? null;
+  const suiteReadyNow = Boolean(
+    credentialsSection && credentialsSection.totalSteps > 0 && credentialsSection.completedSteps === credentialsSection.totalSteps,
+  );
   const allStepsCompleted =
     view?.progress.totalSteps ? view.progress.completedSteps === view.progress.totalSteps : false;
+
+  useEffect(() => {
+    if (!suiteReadyNow) {
+      return;
+    }
+
+    setCollapsedSections((current) => ({
+      ...current,
+      credentials: true,
+    }));
+  }, [suiteReadyNow]);
 
   async function copyValue(value: string): Promise<void> {
     await navigator.clipboard.writeText(value);
@@ -84,6 +104,13 @@ export default function OnboardingApp() {
     }
 
     setExpandedStepId((currentExpanded) => (currentExpanded === step.id ? null : step.id));
+  }
+
+  function toggleSection(sectionId: OnboardingStepGroupId): void {
+    setCollapsedSections((current) => ({
+      ...current,
+      [sectionId]: !current[sectionId],
+    }));
   }
 
   function renderSection(step: OnboardingStepView, section: CurrentActionSection, index: number) {
@@ -272,16 +299,87 @@ export default function OnboardingApp() {
     );
   }
 
+  function renderProgressSummary() {
+    if (!view) {
+      return null;
+    }
+
+    return (
+      <section className="mos-shell">
+        <div className="mos-panel suite-card suite-progress-card">
+          <div className="suite-progress-copy">
+            <span className="mos-eyebrow">Progress</span>
+            <h2 className="mos-card-title">
+              {view.progress.completedSteps} of {view.progress.totalSteps} setup tracks finished
+            </h2>
+            <p className="suite-meta mos-meta">
+              Get the secure essentials in place, then keep going only where it helps you feel at home faster.
+            </p>
+          </div>
+
+          <div className="suite-progress-meter" aria-hidden="true">
+            <div className="suite-progress-meter-fill" style={{ width: `${view.progress.percentComplete}%` }} />
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  function renderGroup(groupId: OnboardingStepGroupId) {
+    if (!view) {
+      return null;
+    }
+
+    const group = view.groups.find((entry) => entry.id === groupId);
+    if (!group) {
+      return null;
+    }
+
+    const steps = view.steps.filter((step) => step.groupId === groupId);
+    const isCollapsed = collapsedSections[groupId];
+    const groupBlocked = steps.length > 0 && steps.every((step) => step.status === 'locked');
+    const groupCompleted = steps.length > 0 && steps.every((step) => step.status === 'completed');
+
+    return (
+      <section
+        className={`suite-step-group${isCollapsed ? ' is-collapsed' : ''}${groupBlocked ? ' is-blocked' : ''}${groupCompleted ? ' is-completed' : ''}`}
+        key={group.id}
+      >
+        <button className="suite-step-group-header" onClick={() => toggleSection(group.id)} type="button">
+          <div className="suite-step-group-copy">
+            <span className="mos-eyebrow">{group.title}</span>
+            <h2 className="mos-card-title">
+              {group.id === 'credentials'
+                ? 'Safety first!'
+                : 'Bring your digital life with you'}
+            </h2>
+            <p className="suite-meta mos-meta">
+              {group.id === 'credentials'
+                ? "Let's get your suite credentials in order before moving on."
+                : 'Your suite is ready to use now. These tracks are here if you want to bring files, photos, or calendar into place from the start.'}
+            </p>
+          </div>
+          <span className={`suite-step-group-chevron${isCollapsed ? ' is-collapsed' : ''}`} aria-hidden="true">
+            <ChevronDown size={18} />
+          </span>
+        </button>
+
+        {!isCollapsed ? <div className="suite-step-group-body">{steps.map((step) => renderStep(step))}</div> : null}
+      </section>
+    );
+  }
+
   return (
     <main className="suite-app">
       <section className="mos-shell suite-hero">
         <span className="mos-eyebrow">My Own Suite</span>
         <h1 className="mos-page-title">Finish setup</h1>
         <p className="suite-lead mos-body-lg">
-          One step at a time. The onboarding flow should tell the user what matters right now, not dump the whole stack at
-          once.
+          Get the secure basics out of the way first, then begin with the part of your suite that feels most useful today.
         </p>
       </section>
+
+      {renderProgressSummary()}
 
       {state.kind === 'loading' ? (
         <section className="mos-shell">
@@ -308,9 +406,9 @@ export default function OnboardingApp() {
           ) : null}
 
           <div className="suite-steps">
-            {view.steps.map((step) => renderStep(step))}
+            {view.groups.map((group) => renderGroup(group.id))}
 
-            {allStepsCompleted ? (
+            {suiteReadyNow ? (
               <div className="suite-complete-actions">
                 <button
                   className="mos-btn mos-btn-primary"
@@ -324,7 +422,7 @@ export default function OnboardingApp() {
               </div>
             ) : null}
 
-            {!allStepsCompleted ? (
+            {!suiteReadyNow ? (
               <div className="suite-onboarding-footer">
                 <button
                   className="suite-subtle-button"

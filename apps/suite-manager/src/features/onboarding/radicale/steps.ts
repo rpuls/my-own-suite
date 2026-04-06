@@ -1,5 +1,5 @@
 import type { SuiteManagerConfig } from '../../../config.ts';
-import type { CurrentAction, OnboardingStep } from '../shared/types.ts';
+import type { CurrentAction } from '../shared/types.ts';
 
 function field(label: string, value: string, secret = false) {
   return {
@@ -16,9 +16,8 @@ function buildRadicaleCollectionUrl(config: SuiteManagerConfig): string {
 
 export async function buildRadicaleSteps(
   config: SuiteManagerConfig,
-  prerequisitesReady: boolean,
   radicaleConnected: boolean,
-): Promise<OnboardingStep[]> {
+): Promise<CurrentAction[]> {
   const collectionUrl = buildRadicaleCollectionUrl(config);
   const radicaleUsername = config.generatedAccounts.radicale?.username || 'admin';
 
@@ -27,6 +26,8 @@ export async function buildRadicaleSteps(
       mode: 'manual',
       source: radicaleConnected ? 'manual' : 'none',
     },
+    dependsOn: ['import-suite-credentials'],
+    groupId: 'applications',
     id: 'connect-radicale',
     sections: [
       {
@@ -63,13 +64,10 @@ export async function buildRadicaleSteps(
     ],
     summary:
       'Next, connect one of your devices to your private calendar server. Choose the device you want to set up now, then follow the exact steps shown for that device. Your Radicale password is already in Vaultwarden from the previous step.',
-    title: 'Step 3: Connect your calendar',
+    title: 'Calendar',
   };
 
   return [
-    {
-      ...connectCalendar,
-      status: !prerequisitesReady ? 'locked' : radicaleConnected ? 'completed' : 'active',
-    },
+    connectCalendar,
   ];
 }

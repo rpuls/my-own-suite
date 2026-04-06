@@ -25,10 +25,10 @@ function statusLabel(status: OnboardingStepStatus, detectionState?: 'completed' 
   }
 
   if (status === 'locked') {
-    return 'Waiting';
+    return 'Locked';
   }
 
-  return 'Current';
+  return 'Ready';
 }
 
 function statusIcon(status: OnboardingStepStatus, detectionState?: 'completed' | 'detecting' | null) {

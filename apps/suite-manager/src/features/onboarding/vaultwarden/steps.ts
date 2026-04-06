@@ -1,5 +1,5 @@
 import type { SuiteManagerConfig } from '../../../config.ts';
-import type { CurrentAction, OnboardingStep } from '../shared/types.ts';
+import type { CurrentAction } from '../shared/types.ts';
 
 function field(label: string, value: string, secret = false) {
   return {
@@ -17,7 +17,7 @@ export function buildVaultwardenSteps(
     import: 'database' | 'manual' | 'none';
     vaultwardenAccount: 'database' | 'manual' | 'none';
   },
-): OnboardingStep[] {
+): CurrentAction[] {
   const activateVaultwarden: CurrentAction = {
     completion: {
       mode: 'automatic',
@@ -31,6 +31,8 @@ export function buildVaultwardenSteps(
       startTriggers: ['action'],
       timeoutMs: 12000,
     },
+    dependsOn: [],
+    groupId: 'credentials',
     id: 'activate-vaultwarden',
     sections: [
       {
@@ -50,7 +52,7 @@ export function buildVaultwardenSteps(
     ],
     summary:
       'Vaultwarden will be your new password manager. Create your user there first so you can receive and store the credentials for the rest of My Own Suite. We will automatically continue as soon as the suite detects your account.',
-    title: 'Step 1: Activate Vaultwarden',
+    title: 'Activate Vaultwarden',
   };
 
   const importSuiteCredentials: CurrentAction = {
@@ -66,6 +68,8 @@ export function buildVaultwardenSteps(
       startTriggers: ['action'],
       timeoutMs: 12000,
     },
+    dependsOn: ['activate-vaultwarden'],
+    groupId: 'credentials',
     id: 'import-suite-credentials',
     sections: [
       {
@@ -101,18 +105,12 @@ export function buildVaultwardenSteps(
       },
     ],
     summary:
-      'Great. You are now inside your new password manager. Now let’s import the credentials for Suite Manager and the rest of your My Own Suite apps into Vaultwarden.',
-    title: 'Step 2: Securely Import Your Suite Credentials',
+      "Great. You are now inside your new password manager. Now let's import the credentials for Suite Manager and the rest of your My Own Suite apps into Vaultwarden.",
+    title: 'Import your suite credentials',
   };
 
   return [
-    {
-      ...activateVaultwarden,
-      status: vaultwardenAccountReady ? 'completed' : 'active',
-    },
-    {
-      ...importSuiteCredentials,
-      status: !vaultwardenAccountReady ? 'locked' : suiteCredentialsImported ? 'completed' : 'active',
-    },
+    activateVaultwarden,
+    importSuiteCredentials,
   ];
 }

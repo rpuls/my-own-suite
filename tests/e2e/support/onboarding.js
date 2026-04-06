@@ -28,9 +28,8 @@ export async function completeOnboarding(context, page) {
     };
   }
 
-  await expect(page.getByRole('heading', { name: 'Finish setup' })).toBeVisible();
   let stepState = await readStepState(page);
-  if (stepState.stepThreeCompleted || (await isVisible(page.getByRole('button', { name: 'Go to Homepage' })))) {
+  if (stepState.suiteReady || (await isOnboardingAlreadySatisfied(page, stepState))) {
     await page.goto('/');
     await expectHomepage(page);
     return {
@@ -40,10 +39,12 @@ export async function completeOnboarding(context, page) {
     };
   }
 
+  await expect(page.getByRole('heading', { name: 'Finish setup' })).toBeVisible();
+
   let vaultwardenPage = null;
 
-  if (!stepState.stepOneCompleted) {
-    await page.getByRole('button', { name: /Step 1: Activate Vaultwarden/i }).click();
+  if (!stepState.vaultwardenActivated) {
+    await page.getByRole('button', { name: /Activate Vaultwarden/i }).click();
     const signupUrl = await page.getByRole('link', { name: 'Go to Vaultwarden signup' }).getAttribute('href');
     vaultwardenPage = await context.newPage();
     await vaultwardenPage.goto(signupUrl);
@@ -78,19 +79,24 @@ export async function completeOnboarding(context, page) {
     stepState = await waitForCurrentStep(
       page,
       {
-        stepOneCompleted: true,
-        stepTwoCurrent: true,
+        vaultwardenActivated: true,
       },
       30000,
     );
   }
 
-  if (!stepState.stepTwoCompleted) {
+  if (!stepState.credentialsImported) {
     const importStep = page
       .locator('article')
-      .filter({ has: page.getByRole('heading', { name: 'Step 2: Securely Import Your Suite Credentials' }) });
+      .filter({ has: page.getByRole('heading', { name: 'Import your suite credentials' }) });
+    const importStepHeader = importStep.getByRole('button', { name: /Import your suite credentials/i });
 
-    await expect(importStep.getByRole('heading', { name: 'Step 2: Securely Import Your Suite Credentials' })).toBeVisible();
+    await expect(importStep.getByRole('heading', { name: 'Import your suite credentials' })).toBeVisible();
+    await expect(importStepHeader).toBeEnabled({ timeout: 30000 });
+    const importStepClassName = (await importStep.getAttribute('class')) || '';
+    if (/\bis-collapsed\b/.test(importStepClassName)) {
+      await importStepHeader.click();
+    }
     await expect(importStep).toContainText('Copy your suite credentials');
 
     await importStep.getByRole('button', { name: 'Copy' }).click();
@@ -127,31 +133,14 @@ export async function completeOnboarding(context, page) {
     await expect
       .poll(
         async () => {
-          return readStepState(page);
+          return isVisible(page.getByRole('button', { name: 'Go to Homepage' }));
         },
         {
-          timeout: 5000,
+          timeout: 30000,
         },
       )
-      .toMatchObject({
-        stepThreeCurrent: true,
-      });
-    stepState = await waitForCurrentStep(
-      page,
-      {
-        stepThreeCurrent: true,
-      },
-      30000,
-    );
-  }
-
-  if (!stepState.stepThreeCompleted) {
-    const calendarStep = page
-      .locator('article')
-      .filter({ has: page.getByRole('heading', { name: 'Step 3: Connect your calendar' }) });
-
-    await calendarStep.getByRole('button', { name: 'Windows' }).click();
-    await calendarStep.getByRole('button', { name: 'My calendar is connected' }).click();
+      .toBe(true);
+    stepState = await readStepState(page);
   }
 
   await expect(page.getByRole('button', { name: 'Go to Homepage' })).toBeVisible();
@@ -209,25 +198,38 @@ async function dismissVaultwardenExtensionPrompt(page) {
 }
 
 async function readStepState(page) {
-  const stepOne = page
+  const homepageButton = page.getByRole('button', { name: 'Go to Homepage' });
+  const vaultwardenStep = page
     .locator('article')
-    .filter({ has: page.getByRole('heading', { name: 'Step 1: Activate Vaultwarden' }) });
-  const stepTwo = page
+    .filter({ has: page.getByRole('heading', { name: 'Activate Vaultwarden' }) });
+  const importStep = page
     .locator('article')
-    .filter({ has: page.getByRole('heading', { name: 'Step 2: Securely Import Your Suite Credentials' }) });
-  const stepThree = page
+    .filter({ has: page.getByRole('heading', { name: 'Import your suite credentials' }) });
+  const calendarStep = page
     .locator('article')
-    .filter({ has: page.getByRole('heading', { name: 'Step 3: Connect your calendar' }) });
-  const stepOneText = await stepOne.innerText();
-  const stepTwoText = await stepTwo.innerText();
-  const stepThreeText = await stepThree.innerText();
+    .filter({ has: page.getByRole('heading', { name: 'Calendar' }) });
+  const filesStep = page
+    .locator('article')
+    .filter({ has: page.getByRole('heading', { name: 'Files & Office' }) });
+  const photosStep = page
+    .locator('article')
+    .filter({ has: page.getByRole('heading', { name: 'Photos' }) });
+  const suiteReady = await isVisible(homepageButton);
+  const vaultwardenText = await readLocatorText(vaultwardenStep);
+  const importText = await readLocatorText(importStep);
+  const calendarText = await readLocatorText(calendarStep);
+  const filesText = await readLocatorText(filesStep);
+  const photosText = await readLocatorText(photosStep);
 
   return {
-    stepOneCompleted: /completed/i.test(stepOneText),
-    stepTwoCompleted: /completed/i.test(stepTwoText),
-    stepTwoCurrent: /current/i.test(stepTwoText),
-    stepThreeCompleted: /completed/i.test(stepThreeText),
-    stepThreeCurrent: /current/i.test(stepThreeText),
+    applicationsReady:
+      /ready/i.test(calendarText) &&
+      /ready/i.test(filesText) &&
+      /ready/i.test(photosText),
+    credentialsImported: suiteReady || /completed/i.test(importText),
+    credentialsReady: suiteReady || /ready/i.test(importText),
+    suiteReady,
+    vaultwardenActivated: suiteReady || /ready/i.test(importText) || /completed/i.test(vaultwardenText),
   };
 }
 
@@ -245,4 +247,29 @@ async function waitForCurrentStep(page, expected, timeout) {
     .toMatchObject(expected);
 
   return readStepState(page);
+}
+
+async function readLocatorText(locator) {
+  if ((await locator.count()) === 0) {
+    return '';
+  }
+
+  return locator.innerText().catch(() => '');
+}
+
+async function isOnboardingAlreadySatisfied(page, stepState) {
+  if (stepState.suiteReady) {
+    return true;
+  }
+
+  if (await isVisible(page.getByRole('button', { name: 'Go to Homepage' }))) {
+    return true;
+  }
+
+  const readyBanner = page.getByText('Your suite is ready to use now.', { exact: false });
+  if (await isVisible(readyBanner)) {
+    return true;
+  }
+
+  return false;
 }
