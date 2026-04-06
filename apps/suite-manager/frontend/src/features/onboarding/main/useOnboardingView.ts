@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   OnboardingModel,
   OnboardingSnackbarNotice,
+  OnboardingStepGroup,
   OnboardingStep,
   OnboardingStepView,
   OnboardingViewModel,
@@ -15,7 +16,7 @@ type StepSnapshot = {
   status: OnboardingStep['status'];
 };
 
-function buildProgress(steps: OnboardingStep[]) {
+function buildProgress(groups: OnboardingStepGroup[], steps: OnboardingStep[]) {
   const totalSteps = steps.length;
   const completedSteps = steps.filter((step) => step.status === 'completed').length;
   const currentStepIndex = steps.findIndex((step) => step.status === 'active');
@@ -24,6 +25,15 @@ function buildProgress(steps: OnboardingStep[]) {
     completedSteps,
     currentStepIndex: currentStepIndex >= 0 ? currentStepIndex : null,
     percentComplete: totalSteps ? Math.round((completedSteps / totalSteps) * 100) : 0,
+    sections: groups.map((group) => {
+      const groupSteps = steps.filter((step) => step.groupId === group.id);
+      return {
+        completedSteps: groupSteps.filter((step) => step.status === 'completed').length,
+        id: group.id,
+        title: group.title,
+        totalSteps: groupSteps.length,
+      };
+    }),
     totalSteps,
   };
 }
@@ -101,10 +111,12 @@ export function useOnboardingView() {
   const sourceModelRef = useRef<OnboardingModel | null>(null);
   const previousStepsRef = useRef<Record<string, StepSnapshot>>({});
   const snackbarTimerRef = useRef<number | null>(null);
+  const expandedTransitionTimerRef = useRef<number | null>(null);
   const detectionRunIdRef = useRef(0);
 
   function commitPresentedModel(nextModel: OnboardingModel): void {
     const previousSteps = previousStepsRef.current;
+    const nextActiveSteps = nextModel.steps.filter((step) => step.status === 'active');
 
     for (const step of nextModel.steps) {
       const previousStep = previousSteps[step.id];
@@ -135,7 +147,39 @@ export function useOnboardingView() {
     previousStepsRef.current = buildStepSnapshots(nextModel.steps);
     presentedModelRef.current = nextModel;
     setPresentedModel(nextModel);
-    setExpandedStepId(nextModel.currentStepId);
+    setExpandedStepId((currentExpanded) => {
+      const expandedStepBecameCompleted =
+        Boolean(currentExpanded) &&
+        nextModel.steps.some((step) => {
+          const previousStep = previousSteps[step.id];
+          return (
+            step.id === currentExpanded &&
+            previousStep?.status === 'active' &&
+            step.status === 'completed' &&
+            step.completion.mode === 'automatic' &&
+            step.completion.source !== 'none'
+          );
+        });
+
+      if (expandedStepBecameCompleted) {
+        if (expandedTransitionTimerRef.current !== null) {
+          window.clearTimeout(expandedTransitionTimerRef.current);
+        }
+
+        expandedTransitionTimerRef.current = window.setTimeout(() => {
+          setExpandedStepId(nextActiveSteps.length === 1 ? nextActiveSteps[0].id : null);
+          expandedTransitionTimerRef.current = null;
+        }, 850);
+
+        return currentExpanded;
+      }
+
+      if (currentExpanded && nextModel.steps.some((step) => step.id === currentExpanded && step.status !== 'locked')) {
+        return currentExpanded;
+      }
+
+      return nextModel.currentStepId;
+    });
     setArmedDetectionStepId((current) => (current && current !== nextModel.currentStepId ? null : current));
   }
 
@@ -158,6 +202,11 @@ export function useOnboardingView() {
 
         if (presented && source && modelSignature(source) !== modelSignature(presented)) {
           const waitMs = Math.max(0, revealReadyAt - Date.now());
+
+          if (document.visibilityState !== 'visible') {
+            setDetectingStepId((current) => (current === stepId ? null : current));
+            return;
+          }
 
           await new Promise<void>((resolve) => {
             window.setTimeout(resolve, waitMs);
@@ -235,6 +284,10 @@ export function useOnboardingView() {
     return () => {
       if (snackbarTimerRef.current !== null) {
         window.clearTimeout(snackbarTimerRef.current);
+      }
+
+      if (expandedTransitionTimerRef.current !== null) {
+        window.clearTimeout(expandedTransitionTimerRef.current);
       }
     };
   }, []);
@@ -352,10 +405,11 @@ export function useOnboardingView() {
 
     return {
       currentStepId: presentedModel.currentStepId,
+      groups: presentedModel.groups,
       homepageUrl: presentedModel.homepageUrl,
       observations: presentedModel.observations,
       owner: presentedModel.owner,
-      progress: buildProgress(presentedModel.steps),
+      progress: buildProgress(presentedModel.groups, presentedModel.steps),
       snackbarNotice,
       steps: stepViews,
       title: presentedModel.title,

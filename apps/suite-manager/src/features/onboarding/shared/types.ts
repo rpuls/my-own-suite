@@ -33,6 +33,8 @@ export type CurrentActionSection = {
 export type CurrentAction = {
   completion: StepCompletion;
   detection?: StepDetection;
+  dependsOn: string[];
+  groupId: OnboardingStepGroupId;
   id: string;
   sections: CurrentActionSection[];
   summary: string;
@@ -55,6 +57,14 @@ export type StepDetection = {
 
 export type OnboardingStepStatus = 'active' | 'completed' | 'locked';
 
+export type OnboardingStepGroupId = 'applications' | 'credentials';
+
+export type OnboardingStepGroup = {
+  description: string;
+  id: OnboardingStepGroupId;
+  title: string;
+};
+
 export type OnboardingStep = CurrentAction & {
   status: OnboardingStepStatus;
 };
@@ -71,6 +81,7 @@ export type OnboardingModel = {
   currentAction: CurrentAction | null;
   currentStepId: string | null;
   generatedAt: string;
+  groups: OnboardingStepGroup[];
   homepageUrl: string;
   observations: OnboardingObservation;
   owner: {
