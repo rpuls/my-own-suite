@@ -4,7 +4,7 @@
 # ============================================
 # Stage 1: Build TypeScript Config Generator
 # ============================================
-FROM node@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8 AS builder
+FROM node@sha256:bcc74cb249480aa783f629ca82645dc3fe3edb1c3f0919fa4d046363163b876a AS builder
 
 WORKDIR /build
 
