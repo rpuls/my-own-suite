@@ -69,8 +69,12 @@ export class OnboardingService {
     }
 
     const radicaleConnected = state.completedSteps.includes('connect-radicale');
-    const steps = await buildOnboardingSteps(this.config, {
+    const seafileReady = state.completedSteps.includes('open-seafile');
+    const immichReady = state.completedSteps.includes('open-immich');
+    const { groups, steps } = await buildOnboardingSteps(this.config, {
+      immichReady,
       radicaleConnected,
+      seafileReady,
       suiteCredentialsImportSource,
       suiteCredentialsImported,
       vaultwardenAccountSource,
@@ -82,6 +86,7 @@ export class OnboardingService {
       currentAction,
       currentStepId: currentAction?.id ?? null,
       generatedAt: new Date().toISOString(),
+      groups,
       homepageUrl: '/',
       observations: {
         importedCredentialCount: currentCipherCount,
@@ -106,6 +111,14 @@ export class OnboardingService {
 
     if (actionId === 'connect-radicale') {
       return this.stateStore.update('connect-radicale', true);
+    }
+
+    if (actionId === 'open-seafile') {
+      return this.stateStore.update('open-seafile', true);
+    }
+
+    if (actionId === 'open-immich') {
+      return this.stateStore.update('open-immich', true);
     }
 
     throw new Error(`Unknown action: ${actionId}`);

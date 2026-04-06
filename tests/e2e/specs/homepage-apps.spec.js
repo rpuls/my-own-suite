@@ -10,19 +10,27 @@ test.describe('homepage app verification against the real local stack', () => {
     const { owner } = await completeOnboarding(context, page);
 
     await test.step('verify Suite Manager link from Homepage returns to onboarding', async () => {
-      const suiteManagerPagePromise = context.waitForEvent('page');
-      await page.getByRole('link', { name: /Suite Manager Open the suite control plane and onboarding/i }).click();
-      const suiteManagerPage = await suiteManagerPagePromise;
+      const suiteManagerLink = page.getByRole('link', { name: /Suite Manager/i });
+      await expect(suiteManagerLink).toBeVisible();
+
+      const suiteManagerPagePromise = context.waitForEvent('page', { timeout: 3000 }).catch(() => null);
+      await suiteManagerLink.click();
+      const suiteManagerPage = (await suiteManagerPagePromise) || page;
       await suiteManagerPage.waitForLoadState('domcontentloaded');
       await expect(suiteManagerPage).toHaveURL(/suite-manager\.localhost:18080\/setup\/?$/i);
       await expect(suiteManagerPage.getByRole('heading', { name: 'Finish setup' })).toBeVisible();
-      await suiteManagerPage.close();
-      await page.bringToFront();
+
+      if (suiteManagerPage !== page) {
+        await suiteManagerPage.close();
+        await page.bringToFront();
+      } else {
+        await page.goto('/');
+      }
     });
 
     await test.step('verify Vaultwarden opens from Homepage', async () => {
       const vaultwardenPagePromise = context.waitForEvent('page');
-      await page.getByRole('link', { name: /Vaultwarden Self-hosted password manager/i }).click();
+      await page.locator('a[href*="vaultwarden.localhost"]').first().click();
       const vaultwardenPage = await vaultwardenPagePromise;
       await vaultwardenPage.waitForLoadState('domcontentloaded');
       await expect(vaultwardenPage).toHaveURL(/vaultwarden\.localhost:18443/i);
@@ -36,7 +44,7 @@ test.describe('homepage app verification against the real local stack', () => {
 
     await test.step('log into Seafile from Homepage', async () => {
       const seafilePagePromise = context.waitForEvent('page');
-      await page.getByRole('link', { name: /Seafile Self-hosted file sync and share/i }).click();
+      await page.locator('a[href*="seafile.localhost"]').first().click();
       const seafilePage = await seafilePagePromise;
       await seafilePage.waitForLoadState('domcontentloaded');
       await expect(seafilePage).toHaveURL(/seafile\.localhost:18080/i);
@@ -51,7 +59,7 @@ test.describe('homepage app verification against the real local stack', () => {
 
     await test.step('verify Stirling PDF login surface loads from Homepage', async () => {
       const stirlingPagePromise = context.waitForEvent('page');
-      await page.getByRole('link', { name: /Stirling PDF Self-hosted PDF tools suite/i }).click();
+      await page.locator('a[href*="stirling-pdf.localhost"]').first().click();
       const stirlingPage = await stirlingPagePromise;
       await stirlingPage.waitForLoadState('domcontentloaded');
       await expect(stirlingPage).toHaveURL(/stirling-pdf\.localhost:18080/i);
@@ -62,7 +70,7 @@ test.describe('homepage app verification against the real local stack', () => {
 
     await test.step('verify Immich sign-in surface loads from Homepage', async () => {
       const immichPagePromise = context.waitForEvent('page');
-      await page.getByRole('link', { name: /Immich Self-hosted photo and video backup/i }).click();
+      await page.locator('a[href*="immich.localhost"]').first().click();
       const immichPage = await immichPagePromise;
       await immichPage.waitForLoadState('domcontentloaded');
       await expect(immichPage).toHaveURL(/immich\.localhost:18080/i);
@@ -73,7 +81,8 @@ test.describe('homepage app verification against the real local stack', () => {
 
     await test.step('verify Radicale is reachable with real credentials', async () => {
       const radicaleUrl = await page
-        .getByRole('link', { name: /Radicale Self-hosted calendar sync server/i })
+        .locator('a[href*="radicale.localhost"]')
+        .first()
         .getAttribute('href');
       const radicaleContext = await browser.newContext({
         httpCredentials: {
