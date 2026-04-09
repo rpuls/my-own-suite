@@ -48,23 +48,19 @@ That is the real value here: your files stay in your own stack, but the editing 
 
 ONLYOFFICE helps turn the suite from a place where files are stored into a place where work actually gets done.
 
-## Want the deeper reasoning?
-
-If you want the full story behind why ONLYOFFICE was chosen for this workflow, read [Goodbye Google Drive: My self-hosted Drive and Docs replacement](https://funkyton.com/goodbye-google-drive-my-self-hosted-drive-and-docs-replacement/).
-
-That article explains what I tested, why most self-hosted storage setups still fall short once browser-based editing matters, and why Seafile + ONLYOFFICE was the first combination that felt complete enough for daily use.
+> If you want the full story behind why ONLYOFFICE was chosen for this workflow, read [Goodbye Google Drive: My self-hosted Drive and Docs replacement](https://funkyton.com/goodbye-google-drive-my-self-hosted-drive-and-docs-replacement/).
+>
+> That article breaks it down even further: what I tested, why most self-hosted storage setups still fall short once browser-based editing matters, and why Seafile + ONLYOFFICE was the first combination that felt complete enough for daily use.
 
 ## Want a quick demo first?
 
-If you want to try ONLYOFFICE in its intended Seafile workflow without deploying the full suite, use the standalone Railway template for the Seafile + ONLYOFFICE stack.
+If you want to test the browser-based editing workflow in isolation before committing to the full suite, you can use the standalone Seafile + ONLYOFFICE Railway template.
+
+ONLYOFFICE is not a file-storage system on its own, so it needs something underneath it to store and serve the documents you work on. That is why the demo is bundled with Seafile instead of running as a standalone editor by itself.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/seafile-onlyoffice?referralCode=-Yg50p&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
-- That template is the quickest way to experience the browser-based editing flow in context, with file storage, sharing, and document editing already wired together.
-- Set up My Own Suite using one of the documented deployment guides, then complete onboarding so your apps and passwords are ready to use.
-- Open Seafile from Homepage and browse to a document, spreadsheet, or presentation you want to work on.
-- Open the file in the browser and let the Seafile + ONLYOFFICE integration handle the editing experience.
-- If you are working with other people, share the file from Seafile and collaborate from there instead of sending versions back and forth by email.
+That gives you a fast way to try this part of My Own Suite on its own. If you want the full setup, use the main [Getting started](/docs/getting-started) and deployment guides instead.
 
 ## Technical reference
 

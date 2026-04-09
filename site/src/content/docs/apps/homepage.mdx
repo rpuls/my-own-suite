@@ -4,6 +4,8 @@ description: Your launchpad for the suite.
 slug: docs/apps/homepage
 ---
 
+import AppScreenshotGallery from '../../../components/docs/AppScreenshotGallery.astro';
+import { homepageOverviewScreenshots } from '../../../data/app-screenshots';
 import * as TechSpecs from '../../../../../apps/homepage/README.md';
 
 <div className="app-page app-homepage" aria-hidden="true"></div>
@@ -18,15 +20,11 @@ The built-in search bar uses Startpage, a privacy-focused search engine. It is i
 
 Startpage is designed to avoid storing personal search history or building user profiles, while still returning relevant results. In practice, that means the search box on your dashboard stays useful without becoming another place that tracks what you look up.
 
-<AppScreenshotGallery appName="Homepage dashboard" items={homepageOverviewScreenshots} showSecondary={false} />
-
-The built-in search bar uses Startpage, a privacy-first search engine chosen here as a stronger fit for people who care about keeping everyday searches out of the profiling economy. Startpage positions itself around not saving or selling search history, serving unprofiled results, and operating from the Netherlands under European privacy law. In plain terms, that means the search box on your dashboard is meant to stay useful without turning your homepage into another place that profiles what you look up.
-
 The dashboard is generated from your current stack configuration:
 
-- If an app is active and has a valid URL, its tile appears  
-- If an app URL is missing or the app is disabled, that tile is excluded  
-- After rebuilding or restarting Homepage, visible tiles align with your actual stack  
+- If an app is active and has a valid URL, its tile appears
+- If an app URL is missing or the app is disabled, that tile is excluded
+- After rebuilding or restarting Homepage, visible tiles align with your actual stack
 
 Homepage is optional. If you prefer, you can bookmark individual apps and access them directly. The goal is simply to give you a convenient place to bring everything together.
 

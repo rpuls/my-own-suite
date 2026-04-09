@@ -391,6 +391,8 @@ export const railwayEstimatedUsageScreenshots = pickGalleryBundles(railwayDeploy
 
 export const homepageOverviewScreenshots = pickGalleryBundles(homepageScreenshots, ['homepage-dashboard'])
 
+export const homepageOverviewScreenshots = pickGalleryBundles(homepageScreenshots, ['homepage-dashboard'])
+
 export const seafileOverviewScreenshots = pickGalleryBundles(seafileScreenshots, ['seafile-grid'])
 export const seafileHighlightsScreenshots = pickGalleryBundles(seafileScreenshots, ['seafile-share-menu', 'seafile-history'])
 
