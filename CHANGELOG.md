@@ -6,17 +6,19 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-04-10
+
+Milestone release: My Own Suite now has a validated self-host installation path on real home-server hardware over LAN, including the new single-USB installer tooling that helped bring the first end-to-end machine install together.
+
 ### Changed
 
-- Restored the rounded MOS screenshot-gallery corners in the docs by loading the shared branding tokens into the docs theme and enforcing the radius on the gallery media layers.
-- Ignored the large local self-host ISO artifact folders so downloaded Ubuntu install media and generated installer ISOs do not get picked up in future commits.
-- Fixed a Suite Manager onboarding regression so the Vaultwarden credential-import step now advances correctly after manual confirmation, and expanded the E2E coverage to catch the same live-session UI sync bug in the future.
+- Validated the new self-host track on a real home server over LAN, building on the Ubuntu 24.04 bootstrap flow, canonical `appname.mos.home` and `appname.mos.<your-domain>` domain model, Cloudflare wildcard tunnel generator, and improved first-boot bootstrap behavior.
+- Added an early single-USB installer builder that remasters an Ubuntu Server ISO with the MOS autoinstall seed, writes a dedicated `Install My Own Suite (ERASES DISK)` boot entry, and outputs a ready-to-flash installer image.
+- Ignored local self-host ISO input and output artifact folders so downloaded Ubuntu media and generated installer images do not leak into future commits.
+- Refined the public homepage, docs, and default Homepage experience with stronger MOS branding, restored screenshot-gallery polish, clearer app descriptions, better link defaults, a dedicated Management section for Suite Manager, and sharper private-cloud messaging.
 - Hardened the default stack against unnecessary third-party calls by removing Google-hosted fonts and remote Homepage icons, disabling Vaultwarden relay-based mobile push, and turning off Stirling PDF analytics by default.
-- Refined the public homepage and default Homepage experience with stronger MOS branding, clearer app descriptions, better link defaults, a dedicated Management section for Suite Manager, and a tighter trust story around the bundled apps.
-- Started the dedicated self-host track with an Ubuntu 24.04 bootstrap script, a canonical `appname.mos.home` and `appname.mos.<your-domain>` domain model, a Cloudflare wildcard tunnel config generator, and an unattended-install flow that now covers more of the first-boot domain setup, Docker access, and stack startup work on fresh machines.
-- Fixed the first self-host autoinstall bootstrap attempt so the first-boot service can clone the repo before trying to run the MOS bootstrap script on a fresh machine.
-- Clarified the Homepage app docs so the built-in search bar now explains its Startpage integration in plain language, including a short privacy-focused note and official reference links.
-- Strengthened the public docs positioning around private-cloud ownership by rewriting the `Why your own cloud?` page in clearer, more convincing product language.
+- Fixed the Suite Manager Vaultwarden credential-import onboarding flow, expanded E2E coverage around that live-session sync path, and corrected a runtime string-syntax bug that blocked `suite-manager` smoke startup.
+- Clarified Homepage search documentation with a plain-language Startpage explanation and official reference links.
 
 ## [0.6.0] - 2026-03-27
 

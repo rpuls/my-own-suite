@@ -49,3 +49,6 @@ deploy/self-host/autoinstall/ubuntu-iso/
 deploy/self-host/output/
 deploy/self-host/autoinstall/*.vhdx
 deploy/self-host/autoinstall/*.avhdx
+deploy/self-host/autoinstall/ubuntu-iso/*
+!deploy/self-host/autoinstall/ubuntu-iso/.gitkeep
+deploy/self-host/output/
