@@ -1,5 +1,6 @@
 import type { ImageMetadata } from 'astro'
 
+import homepageDashboard from '../assets/screenshots/homepage/my-own-suite-homepage-dashboard-private-cloud-launchpad.png'
 import onlyofficeDocumentAi from '../assets/screenshots/onlyoffice/onlyoffice-private-cloud-document-editor-ai-writing-spell-check-productivity.png'
 import onlyofficeDocumentComments from '../assets/screenshots/onlyoffice/onlyoffice-private-cloud-document-editor-comments-review-workflow-collaboration.png'
 import onlyofficeDocumentFormatting from '../assets/screenshots/onlyoffice/onlyoffice-private-cloud-document-editor-formatting-toolbar-word-processing.png'
@@ -60,9 +61,22 @@ function pickGalleryBundles(items: AppScreenshot[], previewIds: string[]): AppSc
 const onlyofficeDocumentGroup = 'onlyoffice-document-workflow'
 const onlyofficeSpreadsheetGroup = 'onlyoffice-spreadsheet-workflow'
 const onlyofficePresentationGroup = 'onlyoffice-presentation-workflow'
+const homepageDashboardGroup = 'homepage-dashboard-overview'
 const seafileLibraryGroup = 'seafile-library-workflow'
 const seafileSharingGroup = 'seafile-sharing-workflow'
 const seafileHistoryGroup = 'seafile-history-workflow'
+
+export const homepageScreenshots: AppScreenshot[] = [
+  {
+    id: 'homepage-dashboard',
+    src: homepageDashboard,
+    alt: 'My Own Suite Homepage dashboard showing the polished launchpad with app categories, calendar widget, shortcuts, and management links.',
+    title: 'Suite Dashboard Launchpad',
+    caption: 'Homepage gives the suite a single polished start screen where the active apps, widgets, and management links are gathered into one everyday launchpad.',
+    group: homepageDashboardGroup,
+    lead: true
+  }
+]
 
 export const seafileScreenshots: AppScreenshot[] = [
   {
@@ -356,6 +370,8 @@ export const railwayDeployScreenshots: AppScreenshot[] = [
 
 export const railwayOverviewScreenshots = pickGalleryBundles(railwayDeployScreenshots, ['railway-service-overview'])
 export const railwayOpenSuiteScreenshots = pickGalleryBundles(railwayDeployScreenshots, ['railway-public-url'])
+
+export const homepageOverviewScreenshots = pickGalleryBundles(homepageScreenshots, ['homepage-dashboard'])
 
 export const seafileOverviewScreenshots = pickGalleryBundles(seafileScreenshots, ['seafile-grid'])
 export const seafileHighlightsScreenshots = pickGalleryBundles(seafileScreenshots, ['seafile-share-menu', 'seafile-history'])

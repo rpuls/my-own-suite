@@ -1,4 +1,14 @@
 :root {
+  --mos-radius-sm: 0.75rem;
+  --mos-radius-md: 1rem;
+  --mos-radius-lg: 1.25rem;
+  --mos-radius-xl: 1.5rem;
+  --mos-radius-pill: 999px;
+  --mos-text-body: 1rem;
+  --mos-text-small: 0.94rem;
+  --mos-text-card-title: 1.05rem;
+  --mos-text-label: 0.78rem;
+  --mos-letter-spacing-label: 0.06em;
   --sl-color-accent-low: hsl(158, 34%, 20%);
   --sl-color-accent: hsl(158, 64%, 52%);
   --sl-color-accent-high: hsl(158, 76%, 80%);
@@ -209,9 +219,14 @@
   margin: 0;
 }
 
+.app-screenshot-figure {
+  border-radius: inherit;
+}
+
 .app-screenshot-media {
   position: relative;
-  overflow: clip;
+  border-radius: inherit;
+  overflow: hidden;
   background: color-mix(in srgb, var(--sl-color-bg-nav) 90%, black 10%);
 }
 
@@ -223,6 +238,7 @@
   width: 100%;
   height: auto;
   display: block;
+  border-radius: inherit;
 }
 
 .app-screenshot-overlay {

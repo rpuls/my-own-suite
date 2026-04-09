@@ -3,6 +3,7 @@ import MadeWithCarousel from '../components/landing/MadeWithCarousel.astro'
 import { GITHUB_REPO_URL, WAITLIST_MAILTO } from '../lib/links'
 import '../styles/site.css'
 import homepageLogo from '../assets/logos/homepage.png'
+import homepageDashboardScreenshot from '../assets/screenshots/homepage/my-own-suite-homepage-dashboard-private-cloud-launchpad.png'
 import immichLogo from '../assets/logos/immich.png'
 import onlyofficeLogo from '../assets/logos/ONLYOFFICE.png'
 import radicaleLogo from '../assets/logos/radicale.png'
@@ -173,7 +174,7 @@ const steps = [
             <a href='/docs'>Docs</a>
             <a href={GITHUB_REPO_URL} target='_blank' rel='noreferrer'>GitHub</a>
             <a class='mos-btn mos-btn-secondary header-cta secondary' href={WAITLIST_MAILTO} target='_blank' rel='noreferrer'>
-              Waitlist
+              Newsletter
             </a>
             <a class='mos-btn mos-btn-primary header-cta' href='/docs/getting-started'>Get started</a>
           </nav>
@@ -370,11 +371,43 @@ const steps = [
         </div>
       </section>
 
+      <section class='section dashboard-preview-section'>
+        <div class='shell dashboard-preview-grid'>
+          <div class='dashboard-preview-copy'>
+            <h2 class='mos-section-title'>One dashboard that makes the suite feel usable right away.</h2>
+            <p class='mos-body'>
+              Homepage is the everyday launchpad for My Own Suite. Instead of juggling bookmarks, ports, and app URLs,
+              you land in one calm place that reflects the stack you actually have running.
+            </p>
+            <p class='mos-body'>
+              The result feels much closer to a real product than a loose bundle of containers, which matters if the
+              goal is helping normal people leave Big Tech without walking into a hobbyist maze.
+            </p>
+            <a class='text-link mos-link' href='/docs/apps/homepage'>See the Homepage module</a>
+          </div>
+
+          <a
+            class='dashboard-preview-frame mos-panel'
+            href='/docs/apps/homepage'
+            aria-label='Open the Homepage documentation'
+          >
+            <img
+              src={homepageDashboardScreenshot.src}
+              alt='My Own Suite Homepage dashboard with app categories, widgets, and management links.'
+              width={homepageDashboardScreenshot.width}
+              height={homepageDashboardScreenshot.height}
+              loading='lazy'
+              decoding='async'
+            />
+          </a>
+        </div>
+      </section>
+
       <section class='section getting-started-section'>
         <div class='shell section-heading'>
           <h2 class='mos-section-title'>How do I get started?</h2>
           <p class='mos-body'>
-            Because My Own Suite is built around control and independence, there isn’t just one way to use it. You can
+            Because My Own Suite is built around control and independence, there isn't just one way to use it. You can
             start simple or go deeper over time, depending on what feels right for you.
           </p>
         </div>
@@ -531,7 +564,7 @@ const steps = [
 
       <section class='section soft-transition-section'>
         <div class='shell soft-transition-copy'>
-          <h2 class='mos-section-title'>Still unsure? That’s completely fine.</h2>
+          <h2 class='mos-section-title'>Still unsure? That's completely fine.</h2>
           <p class='mos-body'>Take a look at the docs to see how everything works in practice.</p>
           <a class='text-link mos-link' href='/docs'>Open the docs</a>
         </div>

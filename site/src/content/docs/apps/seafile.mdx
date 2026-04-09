@@ -27,6 +27,17 @@ It gives you a private cloud drive where you can keep documents, photos, spreads
 
 Seafile is not just where files are stored. It is where they stay organized, where they are shared from, and where the suite hands them off to ONLYOFFICE for editing in the browser.
 
+## What makes it a good fit here
+
+Seafile works well in this stack because it stays focused on the file side of the experience.
+
+- it gives you a private cloud drive that feels current and easy to understand
+- it works across web, desktop, and mobile, so your files are not locked to one device
+- it handles sharing and day-to-day organization cleanly instead of turning the drive into a bloated all-in-one workspace
+- it connects naturally to ONLYOFFICE, which is what makes browser-based editing feel like part of one workflow instead of a bolted-on extra
+
+<AppScreenshotGallery appName="Seafile highlights" items={seafileHighlightsScreenshots} showLead={false} />
+
 ## Why it was picked for this stack
 
 Seafile was picked because it is focused, polished, and built for exactly the kind of workflow this stack is trying to create.
@@ -38,26 +49,17 @@ Seafile was picked because it is focused, polished, and built for exactly the ki
 
 That is why it fits this stack so well. It gives you a private cloud drive that feels current, works across platforms, connects cleanly to browser-based editing, and comes with a long track record behind it.
 
-## Want the deeper reasoning?
+> If you want the full story behind why Seafile made the cut for this stack, read [Goodbye Google Drive: My self-hosted Drive and Docs replacement](https://funkyton.com/goodbye-google-drive-my-self-hosted-drive-and-docs-replacement/).
+>
+> That article breaks it down even further: what I tested before this, where those setups fell short for this exact workflow, and why Seafile + ONLYOFFICE is the first combination I am actually switching to instead of just evaluating.
 
-If you want the full story behind why Seafile made the cut for this stack, read [Goodbye Google Drive: My self-hosted Drive and Docs replacement](https://funkyton.com/goodbye-google-drive-my-self-hosted-drive-and-docs-replacement/).
+## Want a quick demo first?
 
-That article walks through the other tools I tested, where they fell short for this exact workflow, and why Seafile + ONLYOFFICE is the first setup I am actually switching to instead of just evaluating.
-
-<AppScreenshotGallery appName="Seafile highlights" items={seafileHighlightsScreenshots} showLead={false} />
-
-## How to start using it
-
-- If you want to try Seafile + ONLYOFFICE as a smaller standalone stack first, you can deploy the dedicated Railway template instead of the full suite.
+If you want to test the file-sync + browser-editing workflow in isolation before committing to the full suite, you can use the standalone Seafile + ONLYOFFICE Railway template.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/seafile-onlyoffice?referralCode=-Yg50p&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
-- That standalone template is a fast way to try the private file cloud and browser-based editing workflow before committing to the full My Own Suite setup.
-- Start by setting up My Own Suite using one of the documented deployment guides, such as [Getting started](/docs/getting-started), [Deploy on Railway](/docs/deploy-on-railway), or [Deploy on a VPS](/docs/deploy-on-vps).
-- Complete onboarding so your apps, passwords, and browser extension are ready to use.
-- Open Seafile from Homepage. If you installed the Vaultwarden browser extension, your login should autofill for you.
-- If you did not install the browser extension, open Vaultwarden and copy the Seafile credentials from there instead.
-- If you skipped onboarding, use the email from your My Own Suite setup and find the Seafile password in your deployment environment variables.
+That gives you a fast way to try this part of My Own Suite on its own. If you want the full setup, use the main [Getting started](/docs/getting-started) and deployment guides instead.
 
 ## Technical reference
 

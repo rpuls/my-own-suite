@@ -45,5 +45,7 @@ tests/e2e/test-results/
 
 # Self-host generated artifacts
 deploy/self-host/autoinstall/generated/
+deploy/self-host/autoinstall/ubuntu-iso/
+deploy/self-host/output/
 deploy/self-host/autoinstall/*.vhdx
 deploy/self-host/autoinstall/*.avhdx

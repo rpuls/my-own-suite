@@ -101,7 +101,7 @@ export function buildVaultwardenSteps(
       },
     ],
     summary:
-      'Great. You are now inside your new password manager. Now let’s import the credentials for Suite Manager and the rest of your My Own Suite apps into Vaultwarden.',
+      'Great. You are now inside your new password manager. Now let's import the credentials for Suite Manager and the rest of your My Own Suite apps into Vaultwarden.',
     title: 'Step 2: Securely Import Your Suite Credentials',
   };
 
