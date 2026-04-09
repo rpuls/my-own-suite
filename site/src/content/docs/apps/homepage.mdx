@@ -4,6 +4,8 @@ description: Your launchpad for the suite.
 slug: docs/apps/homepage
 ---
 
+import AppScreenshotGallery from '../../../components/docs/AppScreenshotGallery.astro';
+import { homepageOverviewScreenshots } from '../../../data/app-screenshots';
 import * as TechSpecs from '../../../../../apps/homepage/README.md';
 
 <div className="app-page app-homepage" aria-hidden="true"></div>
@@ -11,6 +13,10 @@ import * as TechSpecs from '../../../../../apps/homepage/README.md';
 Homepage is your start screen for My Own Suite. Think of it as your suite desktop: one place to open each app without remembering multiple URLs.
 
 You usually arrive here after signing in and finishing first-run setup in Suite Manager. Once onboarding is done, Homepage becomes the easiest way to move around your suite day to day.
+
+<AppScreenshotGallery appName="Homepage dashboard" items={homepageOverviewScreenshots} showSecondary={false} />
+
+The built-in search bar uses Startpage, a privacy-first search engine chosen here as a stronger fit for people who care about keeping everyday searches out of the profiling economy. Startpage positions itself around not saving or selling search history, serving unprofiled results, and operating from the Netherlands under European privacy law. In plain terms, that means the search box on your dashboard is meant to stay useful without turning your homepage into another place that profiles what you look up.
 
 The dashboard is generated from your current stack configuration:
 - If an app is active and has a valid URL, its tile appears.
