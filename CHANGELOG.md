@@ -20,6 +20,27 @@ Milestone release: My Own Suite now has a validated self-host installation path 
 - Fixed the Suite Manager Vaultwarden credential-import onboarding flow, expanded E2E coverage around that live-session sync path, and corrected a runtime string-syntax bug that blocked `suite-manager` smoke startup.
 - Clarified Homepage search documentation with a plain-language Startpage explanation and official reference links.
 
+## [0.7.1] - 2026-03-29
+
+### Changed
+
+- Expanded the Railway deployment guide with clearer official-template support material, including the canonical public deploy URL, annotated setup screenshots for the required owner inputs, and a calmer plain-language explanation of resource usage and cost expectations.
+
+## [0.7.0] - 2026-03-29
+
+### Added
+
+- Started the dedicated self-host track with an Ubuntu 24.04 bootstrap path, a canonical `appname.mos.home` and `appname.mos.<your-domain>` domain model, Cloudflare wildcard tunnel scaffolding, and an early unattended-install flow for testing the appliance-style setup on fresh machines.
+
+### Changed
+
+- Hardened the default stack against unnecessary third-party calls by removing Google-hosted fonts and remote Homepage icons, disabling Vaultwarden relay-based mobile push, and turning off Stirling PDF analytics by default.
+- Refined the public homepage, root README, deployment/docs screenshot coverage, and default Homepage experience with stronger MOS branding, clearer app descriptions, better link defaults, a dedicated Management section for Suite Manager, and a tighter trust story around the bundled apps.
+
+### Fixed
+
+- Fixed a Suite Manager onboarding regression so the Vaultwarden credential-import step now advances correctly after manual confirmation, and expanded the E2E coverage to catch the same live-session UI sync bug in the future.
+
 ## [0.6.0] - 2026-03-27
 
 ### Changed

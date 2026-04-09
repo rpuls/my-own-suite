@@ -8,12 +8,21 @@
   <a href="https://myownsuite.org/docs"><img alt="Docs" src="https://img.shields.io/badge/Docs-Read_Now-22c55e?style=for-the-badge"></a>
 </p>
 
-> **One-click open source alternatives** to Google Drive, Google Calendar, 1Password, Microsoft 365, and more.  
-> Today the repo is centered on a VPS/local Docker Compose stack, with more deploy targets to follow.
+My Own Suite packages proven self-hosted apps into one setup with a guided first-run flow, a shared dashboard, and deployment paths that let people start simple and move toward more independence over time.
 
-> Shared MOS branding lives in [`branding/`](./branding/). If you change shared brand assets or brand tokens, edit the canonical files there and run `npm run branding:sync` instead of hand-editing app-local copies.
+Today the repository is centered on a documented Docker Compose stack, a maintained VPS/local path, and a Railway template path for the easiest hosted start.
 
-### Solutions Included
+![My Own Suite Homepage dashboard](./site/src/assets/screenshots/homepage/my-own-suite-homepage-dashboard-private-cloud-launchpad.png)
+
+## What You Get
+
+- A private cloud you control instead of a consumer SaaS ecosystem that controls you
+- A guided Suite Manager onboarding flow instead of a pile of disconnected containers
+- A Homepage dashboard that makes the suite feel like one product
+- Curated open-source apps for files, office work, photos, passwords, calendars, and PDFs
+- Multiple deployment paths so you can start with convenience and move toward more ownership later
+
+## Included Modules
 
 | Solution | App | Alternative to |
 | --- | --- | --- |
@@ -26,14 +35,32 @@
 | Password Manager | <img src="./site/src/assets/logos/vaultwarden.png" alt="Vaultwarden" width="18" /> **Vaultwarden** | 1Password, LastPass, Bitwarden cloud |
 | Control Plane | <img src="./branding/my-own-suite-mark.png" alt="My Own Suite" width="18" /> **Suite Manager** | Guided onboarding, login, and shared entrypoint for the suite |
 
-### Who It's For
+## Why It Exists
 
-- Individuals, families, freelancers exiting Big Tech SaaS
-- Users who want one-click privacy without sysadmin complexity
-- Privacy enthusiasts ready for VPS or homelab upgrades
-- Developers seeking production-ready self-hosted stacks
+Most people stay inside Google, Apple, and Microsoft because those tools are convenient, connected, and available everywhere. My Own Suite is built for people who want that same kind of everyday usefulness without handing over the app layer, the ecosystem, and the long-term ownership boundary.
+
+This project is for:
+
+- individuals and families who want a more private cloud setup
+- freelancers and creators who do not want their work folded into platform lock-in
+- people who want open-source alternatives without assembling the whole stack by hand
+- technical users who want a cleaner starting point for a self-hosted personal cloud
+
+## Choose A Deploy Path
+
+The public docs are organized around three ways to get started:
+
+- [Deploy on Railway](https://myownsuite.org/docs/deploy-on-railway): the easiest hosted starting point
+- [Deploy on a VPS](https://myownsuite.org/docs/deploy-on-vps): the current maintained self-managed path in this repo
+- [Deploy on your own hardware](https://myownsuite.org/docs/deploy-on-your-own-hardware): the most independent path, still earlier in maturity
+
+![My Own Suite Railway service overview](./site/src/assets/screenshots/railway/railway-my-own-suite-hosted-private-cloud-template-service-map-overview.png)
+
+If you are new to the project and want the smoothest first experience, start with [How to get started](https://myownsuite.org/docs/getting-started).
 
 ## Quick Start (Local VPS Stack)
+
+If you want to run the current repo-managed Docker Compose stack locally or on a VPS:
 
 ```bash
 git clone https://github.com/rpuls/my-own-suite.git
@@ -56,6 +83,21 @@ If you need a full destructive reset (removes volumes and data):
 ```bash
 npm run vps:rebuild
 ```
+
+After startup, open `http://suite-manager.localhost/setup/` and continue through the guided onboarding flow.
+
+For the exact operational details, use [deploy/vps/README.md](./deploy/vps/README.md) as the canonical technical guide for the VPS/local stack.
+
+## Validation
+
+The repo includes black-box Playwright coverage that boots the real stack, walks the live onboarding flow, and verifies app reachability through Homepage.
+
+Common commands:
+
+- `npm run e2e:install`
+- `npm run e2e:onboarding`
+- `npm run e2e:apps`
+- `npm run e2e:full`
 
 ## E2E Testing
 
@@ -98,16 +140,16 @@ Run the post-onboarding app verification flow. This focuses on Homepage-driven a
 
 For the more detailed harness notes, see [tests/e2e/README.md](./tests/e2e/README.md).
 
----
-
-## Navigation
+## Documentation Map
 
 | Need | Go here |
 | --- | --- |
-| Project website + public docs | `site/` |
-| App code + app-level READMEs | `apps/` |
-| Deployment stacks | `deploy/` |
+| Product story + public docs | [myownsuite.org](https://myownsuite.org/) |
+| Getting started guide | [Docs home](https://myownsuite.org/docs) |
+| Deployment overview | [site/src/content/docs/getting-started.mdx](./site/src/content/docs/getting-started.mdx) |
 | Canonical VPS architecture + app onboarding steps | [deploy/vps/README.md](./deploy/vps/README.md) |
+| App code + app-level technical READMEs | `apps/` |
+| Deployment stacks | `deploy/` |
 | Homepage service details | [apps/homepage/README.md](./apps/homepage/README.md) |
 | Suite Manager service details | [apps/suite-manager/README.md](./apps/suite-manager/README.md) |
 | Seafile service details | [apps/seafile/README.md](./apps/seafile/README.md) |
@@ -116,8 +158,6 @@ For the more detailed harness notes, see [tests/e2e/README.md](./tests/e2e/READM
 | Radicale service details | [apps/radicale/README.md](./apps/radicale/README.md) |
 | Stirling PDF service details | [apps/stirling-pdf/README.md](./apps/stirling-pdf/README.md) |
 | Vaultwarden service details | [apps/vaultwarden/README.md](./apps/vaultwarden/README.md) |
-
----
 
 ## Contributor Note
 
