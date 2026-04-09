@@ -49,17 +49,24 @@ Seafile was picked because it is focused, polished, and built for exactly the ki
 
 That is why it fits this stack so well. It gives you a private cloud drive that feels current, works across platforms, connects cleanly to browser-based editing, and comes with a long track record behind it.
 
-> If you want the full story behind why Seafile made the cut for this stack, read [Goodbye Google Drive: My self-hosted Drive and Docs replacement](https://funkyton.com/goodbye-google-drive-my-self-hosted-drive-and-docs-replacement/).
->
-> That article breaks it down even further: what I tested before this, where those setups fell short for this exact workflow, and why Seafile + ONLYOFFICE is the first combination I am actually switching to instead of just evaluating.
+## Want the deeper reasoning?
+
+If you want the full story behind why Seafile made the cut for this stack, read [Goodbye Google Drive: My self-hosted Drive and Docs replacement](https://funkyton.com/goodbye-google-drive-my-self-hosted-drive-and-docs-replacement/).
+
+That article walks through the other tools I tested, where they fell short for this exact workflow, and why Seafile + ONLYOFFICE is the first setup I am actually switching to instead of just evaluating.
 
 ## Want a quick demo first?
 
-If you want to test the file-sync + browser-editing workflow in isolation before committing to the full suite, you can use the standalone Seafile + ONLYOFFICE Railway template.
+If you want to try Seafile + ONLYOFFICE as a smaller standalone stack first, you can deploy the dedicated Railway template instead of the full suite.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/seafile-onlyoffice?referralCode=-Yg50p&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
-That gives you a fast way to try this part of My Own Suite on its own. If you want the full setup, use the main [Getting started](/docs/getting-started) and deployment guides instead.
+- That standalone template is a fast way to try the private file cloud and browser-based editing workflow before committing to the full My Own Suite setup.
+- Start by setting up My Own Suite using one of the documented deployment guides, such as [Getting started](/docs/getting-started), [Deploy on Railway](/docs/deploy-on-railway), or [Deploy on a VPS](/docs/deploy-on-vps).
+- Complete onboarding so your apps, passwords, and browser extension are ready to use.
+- Open Seafile from Homepage. If you installed the Vaultwarden browser extension, your login should autofill for you.
+- If you did not install the browser extension, open Vaultwarden and copy the Seafile credentials from there instead.
+- If you skipped onboarding, use the email from your My Own Suite setup and find the Seafile password in your deployment environment variables.
 
 ## Technical reference
 
@@ -71,7 +78,3 @@ That gives you a fast way to try this part of My Own Suite on its own. If you wa
 
 - [Seafile website](https://www.seafile.com/)
 - [Seafile user manual](https://help.seafile.com/)
-
-
-
-
