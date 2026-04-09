@@ -4,8 +4,6 @@ description: Your launchpad for the suite.
 slug: docs/apps/homepage
 ---
 
-import AppScreenshotGallery from '../../../components/docs/AppScreenshotGallery.astro';
-import { homepageOverviewScreenshots } from '../../../data/app-screenshots';
 import * as TechSpecs from '../../../../../apps/homepage/README.md';
 
 <div className="app-page app-homepage" aria-hidden="true"></div>
@@ -19,8 +17,6 @@ After signing in and completing setup in Suite Manager, Homepage becomes the nat
 The built-in search bar uses Startpage, a privacy-focused search engine. It is included as a better default for people who want useful search without turning every query into tracked behavior.
 
 Startpage is designed to avoid storing personal search history or building user profiles, while still returning relevant results. In practice, that means the search box on your dashboard stays useful without becoming another place that tracks what you look up.
-
-<AppScreenshotGallery appName="Homepage dashboard" items={homepageOverviewScreenshots} showSecondary={false} />
 
 <AppScreenshotGallery appName="Homepage dashboard" items={homepageOverviewScreenshots} showSecondary={false} />
 
