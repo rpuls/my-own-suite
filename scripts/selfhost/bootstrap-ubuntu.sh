@@ -28,6 +28,7 @@ REPO_DIR="${REPO_DIR:-$(pwd)}"
 MOS_REPO_URL="${MOS_REPO_URL:-https://github.com/rpuls/my-own-suite.git}"
 MOS_REPO_REF="${MOS_REPO_REF:-staging}"
 MOS_HOSTNAME="${MOS_HOSTNAME:-mos}"
+MOS_PRIMARY_USER="${MOS_PRIMARY_USER:-mos}"
 MOS_STACK_DOMAIN="${MOS_STACK_DOMAIN:-mos.home}"
 MOS_PUBLIC_DOMAIN="${MOS_PUBLIC_DOMAIN:-}"
 INSTALL_DOCKER="${INSTALL_DOCKER:-1}"
@@ -60,6 +61,46 @@ configure_hostname() {
 
   log "Setting machine hostname to ${target_hostname}"
   hostnamectl set-hostname "${target_hostname}"
+}
+
+set_env_value() {
+  local file_path="$1"
+  local key="$2"
+  local value="$3"
+
+  mkdir -p "$(dirname "${file_path}")"
+  touch "${file_path}"
+
+  if grep -q "^${key}=" "${file_path}"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "${file_path}"
+  else
+    printf '%s=%s\n' "${key}" "${value}" >> "${file_path}"
+  fi
+}
+
+configure_stack_domain() {
+  if [[ ! -f "${REPO_DIR}/package.json" ]]; then
+    return
+  fi
+
+  log "Configuring self-host stack domain"
+  set_env_value "${REPO_DIR}/deploy/vps/.env" "DOMAIN" "${MOS_STACK_DOMAIN}"
+}
+
+ensure_docker_access_for_user() {
+  local username="$1"
+
+  if [[ -z "${username}" ]]; then
+    return
+  fi
+
+  if ! id -u "${username}" >/dev/null 2>&1; then
+    log "Skipping docker group update because user ${username} does not exist yet"
+    return
+  fi
+
+  log "Granting docker access to ${username}"
+  usermod -aG docker "${username}"
 }
 
 install_base_packages() {
@@ -134,6 +175,12 @@ bootstrap_stack() {
   (
     cd "${REPO_DIR}"
     npm run vps:init
+  )
+
+  configure_stack_domain
+
+  (
+    cd "${REPO_DIR}"
     npm run vps:doctor
   )
 
@@ -170,6 +217,8 @@ install_base_packages
 if [[ "${INSTALL_DOCKER}" == "1" ]]; then
   install_docker
 fi
+
+ensure_docker_access_for_user "${MOS_PRIMARY_USER}"
 
 if [[ "${INSTALL_NODE}" == "1" ]]; then
   install_node

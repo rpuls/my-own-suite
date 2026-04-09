@@ -10,16 +10,25 @@ import * as TechSpecs from '../../../../../apps/homepage/README.md';
 
 <div className="app-page app-homepage" aria-hidden="true"></div>
 
-Homepage is your start screen for My Own Suite. Think of it as your suite desktop: one place to open each app without remembering multiple URLs.
+Homepage is your start screen for My Own Suite. It brings your apps together in one place, so you can quickly jump between them and keep your setup feeling cohesive.
 
-You usually arrive here after signing in and finishing first-run setup in Suite Manager. Once onboarding is done, Homepage becomes the easiest way to move around your suite day to day.
+After signing in and completing setup in Suite Manager, Homepage becomes the natural entry point for your day-to-day use.
+
+<AppScreenshotGallery appName="Homepage dashboard" items={homepageOverviewScreenshots} showSecondary={false} />
+
+The built-in search bar uses Startpage, a privacy-focused search engine. It is included as a better default for people who want useful search without turning every query into tracked behavior.
+
+Startpage is designed to avoid storing personal search history or building user profiles, while still returning relevant results. In practice, that means the search box on your dashboard stays useful without becoming another place that tracks what you look up.
 
 <AppScreenshotGallery appName="Homepage dashboard" items={homepageOverviewScreenshots} showSecondary={false} />
 
 The dashboard is generated from your current stack configuration:
-- If an app is active and has a valid URL, its tile appears.
-- If an app URL is missing or the app is disabled, that tile is excluded.
-- After rebuilding/restarting Homepage, visible tiles align with your actual stack.
+
+- If an app is active and has a valid URL, its tile appears  
+- If an app URL is missing or the app is disabled, that tile is excluded  
+- After rebuilding or restarting Homepage, visible tiles align with your actual stack  
+
+Homepage is optional. If you prefer, you can bookmark individual apps and access them directly. The goal is simply to give you a convenient place to bring everything together.
 
 ## Technical reference
 
@@ -30,6 +39,3 @@ The dashboard is generated from your current stack configuration:
 ## Links
 
 - [Homepage website](https://gethomepage.dev/)
-
-
-
