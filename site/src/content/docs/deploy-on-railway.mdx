@@ -38,6 +38,18 @@ Tips:
 - Use a strong `OWNER_PASSWORD`.
 - Keep these details somewhere safe, because you will use them right after deployment.
 
+## Optional advanced email setup
+
+Railway users who already understand SMTP can optionally fill in the SMTP values on the `MOS` service to unlock email-backed features in compatible apps such as Seafile and Vaultwarden.
+
+This is fully optional. My Own Suite does not require SMTP just to run.
+
+In practice, this is only useful for people who already have access to a working mail provider and know how to match host, port, security mode, username, password, and sender settings correctly.
+
+The full technical setup belongs in the dedicated SMTP guide:
+
+- [Optional email with SMTP](/docs/optional-email-with-smtp)
+
 <AppScreenshotGallery appName="Railway required inputs" items={railwayRequiredInputsScreenshots} showSecondary={false} />
 
 ## Start the deploy
