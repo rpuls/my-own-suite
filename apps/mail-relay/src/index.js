@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import nodemailer from 'nodemailer';
 import { SMTPServer } from 'smtp-server';
 import PostalMime from 'postal-mime';
 
@@ -33,6 +34,14 @@ function requireEnv(name) {
 
 function optionalEnv(name, fallback = '') {
   return (process.env[name] || fallback).trim();
+}
+
+function requireOneOf(name, allowedValues, fallback = '') {
+  const value = optionalEnv(name, fallback).toLowerCase();
+  if (!allowedValues.includes(value)) {
+    throw new Error(`${name} must be one of: ${allowedValues.join(', ')}.`);
+  }
+  return value;
 }
 
 function secureEquals(left, right) {
@@ -98,10 +107,15 @@ const config = {
   hostname: optionalEnv('RELAY_HOSTNAME', 'mos-mail-relay'),
   username: requireEnv('RELAY_USERNAME'),
   password: requireEnv('RELAY_PASSWORD'),
-  resendApiKey: requireEnv('RESEND_API_KEY'),
-  resendAudience: optionalEnv('RESEND_API_AUDIENCE', 'https://api.resend.com/emails'),
-  fromAddress: requireEnv('RESEND_FROM'),
-  fromName: optionalEnv('RESEND_FROM_NAME', ''),
+  fromAddress: requireEnv('RELAY_FROM_ADDRESS'),
+  fromName: optionalEnv('RELAY_FROM_NAME', ''),
+  upstreamHost: requireEnv('UPSTREAM_SMTP_HOST'),
+  upstreamPort: parseNumber('UPSTREAM_SMTP_PORT', 587),
+  upstreamSecurity: requireOneOf('UPSTREAM_SMTP_SECURITY', ['starttls', 'force_tls', 'off'], 'starttls'),
+  upstreamUsername: optionalEnv('UPSTREAM_SMTP_USERNAME', ''),
+  upstreamPassword: optionalEnv('UPSTREAM_SMTP_PASSWORD', ''),
+  upstreamRequireAuth: parseBoolean(process.env.UPSTREAM_SMTP_REQUIRE_AUTH, false),
+  upstreamConnectionTimeoutMs: parseNumber('UPSTREAM_SMTP_CONNECTION_TIMEOUT_MS', 15_000),
   maxRecipientsPerMessage: parseNumber('RELAY_MAX_RECIPIENTS_PER_MESSAGE', 10),
   maxMessageBytes: parseNumber('RELAY_MAX_MESSAGE_BYTES', 256 * 1024),
   rateLimitWindowMs: parseNumber('RELAY_RATE_LIMIT_WINDOW_MS', 60_000),
@@ -109,6 +123,28 @@ const config = {
   allowInsecureAuth: parseBoolean(process.env.RELAY_ALLOW_INSECURE_AUTH, true),
   allowAttachments: parseBoolean(process.env.RELAY_ALLOW_ATTACHMENTS, false),
 };
+
+if (config.upstreamRequireAuth && (!config.upstreamUsername || !config.upstreamPassword)) {
+  throw new Error('UPSTREAM_SMTP_USERNAME and UPSTREAM_SMTP_PASSWORD are required when UPSTREAM_SMTP_REQUIRE_AUTH=true.');
+}
+
+const upstreamTransport = nodemailer.createTransport({
+  host: config.upstreamHost,
+  port: config.upstreamPort,
+  secure: config.upstreamSecurity === 'force_tls',
+  ignoreTLS: config.upstreamSecurity === 'off',
+  requireTLS: config.upstreamSecurity === 'starttls',
+  connectionTimeout: config.upstreamConnectionTimeoutMs,
+  greetingTimeout: config.upstreamConnectionTimeoutMs,
+  socketTimeout: config.upstreamConnectionTimeoutMs,
+  auth:
+    config.upstreamUsername && config.upstreamPassword
+      ? {
+          user: config.upstreamUsername,
+          pass: config.upstreamPassword,
+        }
+      : undefined,
+});
 
 const rateLimitState = new Map();
 
@@ -142,7 +178,7 @@ async function readStream(stream) {
   return Buffer.concat(chunks);
 }
 
-async function sendWithResend({ envelope, parsed }) {
+async function sendUpstream({ envelope, parsed }) {
   const recipients = envelope.rcptTo.map((entry) => entry.address).filter(Boolean);
   if (recipients.length === 0) {
     throw new Error('Message must include at least one recipient.');
@@ -182,24 +218,16 @@ async function sendWithResend({ envelope, parsed }) {
   }
 
   if (replyTo.length > 0) {
-    payload.reply_to = replyTo;
+    payload.replyTo = replyTo.join(', ');
   }
 
-  const response = await fetch(config.resendAudience, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.resendApiKey}`,
-      'Content-Type': 'application/json',
+  return upstreamTransport.sendMail({
+    ...payload,
+    envelope: {
+      from: config.fromAddress,
+      to: [...recipients, ...cc, ...bcc],
     },
-    body: JSON.stringify(payload),
   });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Resend API request failed (${response.status}): ${body}`);
-  }
-
-  return response.json();
 }
 
 const server = new SMTPServer({
@@ -235,14 +263,11 @@ const server = new SMTPServer({
       const rawMessage = await readStream(stream);
       const parser = new PostalMime();
       const parsed = await parser.parse(rawMessage);
-      const resendResponse = await sendWithResend({
-        envelope: session.envelope,
-        parsed,
-      });
+      const upstreamResponse = await sendUpstream({ envelope: session.envelope, parsed });
 
       const recipients = session.envelope.rcptTo.map((entry) => entry.address).join(', ');
       console.log(
-        `[relay] accepted message user=${username} recipients=${recipients} subject=${JSON.stringify(parsed.subject || '(no subject)')} resend_id=${resendResponse?.id || 'n/a'}`,
+        `[relay] accepted message user=${username} recipients=${recipients} subject=${JSON.stringify(parsed.subject || '(no subject)')} upstream_id=${upstreamResponse?.messageId || 'n/a'}`,
       );
     })()
       .then(() => callback(null, 'Message accepted for delivery'))
@@ -259,6 +284,6 @@ server.on('error', (error) => {
 
 server.listen(config.port, config.bindHost, () => {
   console.log(
-    `[relay] listening on ${config.bindHost}:${config.port} as ${config.hostname}; sender rewrite => ${formatAddress(config.fromAddress, config.fromName)}`,
+    `[relay] listening on ${config.bindHost}:${config.port} as ${config.hostname}; sender rewrite => ${formatAddress(config.fromAddress, config.fromName)}; upstream => ${config.upstreamHost}:${config.upstreamPort} (${config.upstreamSecurity})`,
   );
 });

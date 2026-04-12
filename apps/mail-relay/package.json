@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Small SMTP submission relay that forwards transactional mail through the Resend API.",
+  "description": "Small SMTP submission relay that forwards transactional mail to a configurable upstream SMTP server.",
   "packageManager": "npm@11.2.0",
   "engines": {
     "node": "22.x",
@@ -14,6 +14,7 @@
     "check": "node --check src/index.js"
   },
   "dependencies": {
+    "nodemailer": "^8.0.5",
     "postal-mime": "^2.4.4",
     "smtp-server": "^3.14.0"
   }
