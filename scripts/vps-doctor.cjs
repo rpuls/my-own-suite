@@ -49,6 +49,10 @@ function isPlaceholder(value) {
   return /^(CHANGE_ME|REPLACE_ME)/.test(value) || value.includes('${{');
 }
 
+function isTruthy(value) {
+  return ['1', 'true', 'yes', 'on'].includes((value || '').trim().toLowerCase());
+}
+
 const GLOBAL_FILES = {
   root: '.env',
   suiteManager: 'services/suite-manager/.env',
@@ -138,6 +142,25 @@ if (env.suiteManager) {
 
   if (isMissing(env.suiteManager.OWNER_NAME || '')) {
     warnings.push('services/suite-manager/.env OWNER_NAME is empty; suite-manager will fall back to "Owner".');
+  }
+
+  const smtpEnabled = isTruthy(env.suiteManager.SMTP_ENABLED || '');
+  const smtpSecurity = (env.suiteManager.SMTP_SECURITY || '').trim().toLowerCase();
+  const smtpUsername = env.suiteManager.SMTP_USERNAME || '';
+  const smtpPassword = env.suiteManager.SMTP_PASSWORD || '';
+
+  if (smtpEnabled) {
+    requireVar('suiteManager', 'SMTP_HOST', { allowPlaceholder: false });
+    requireVar('suiteManager', 'SMTP_PORT', { allowPlaceholder: false });
+    requireVar('suiteManager', 'SMTP_FROM', { allowPlaceholder: false });
+
+    if (!['starttls', 'force_tls', 'off'].includes(smtpSecurity)) {
+      errors.push('SMTP_SECURITY in deploy/vps/services/suite-manager/.env must be one of: starttls, force_tls, off.');
+    }
+
+    if ((isMissing(smtpUsername) && !isMissing(smtpPassword)) || (!isMissing(smtpUsername) && isMissing(smtpPassword))) {
+      errors.push('SMTP_USERNAME and SMTP_PASSWORD in deploy/vps/services/suite-manager/.env must either both be set or both be blank.');
+    }
   }
 }
 

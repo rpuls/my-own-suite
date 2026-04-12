@@ -9,6 +9,8 @@
 - `OWNER_EMAIL`: Shared owner email shown in onboarding and reused by compatible app bootstrap flows.
 - `OWNER_PASSWORD`: Owner password used for Suite Manager sign-in.
 - `SESSION_SECRET`: HMAC secret used to sign the Suite Manager session cookie.
+- `SMTP_ENABLED`: Optional shared toggle for stack-wide SMTP-backed app features.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_FROM_NAME`: Optional shared SMTP settings reused by compatible services such as Seafile and Vaultwarden in the VPS/local stack.
 - `SUITE_MANAGER_PUBLIC_URL`: Public onboarding URL surfaced in the UI.
 - `SUITE_MANAGER_BASE_PATH`: Public path for the Suite Manager setup surface. Defaults to `/setup`.
 - `SUITE_MANAGER_SESSION_COOKIE_NAME`: Optional override for the session cookie name. Defaults to `mos-suite-manager-session`.
@@ -65,5 +67,6 @@
 
 - Acts as the shared onboarding surface for stack-wide bootstrap, credential handoff, and future per-app provisioning adapters.
 - Acts as the authenticated public entrypoint for setup and Homepage access.
+- Acts as the shared source of truth for optional SMTP settings reused by compatible services in the VPS/local stack.
 - Treats Vaultwarden account creation as observed suite state, not a user-confirmed checklist item.
 - Keeps the current onboarding surface intentionally narrow: one guided access flow first, with later app-specific onboarding still to come.
