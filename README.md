@@ -158,6 +158,7 @@ For the more detailed harness notes, see [tests/e2e/README.md](./tests/e2e/READM
 | Radicale service details | [apps/radicale/README.md](./apps/radicale/README.md) |
 | Stirling PDF service details | [apps/stirling-pdf/README.md](./apps/stirling-pdf/README.md) |
 | Vaultwarden service details | [apps/vaultwarden/README.md](./apps/vaultwarden/README.md) |
+| Standalone SMTP relay utility | [apps/mail-relay/README.md](./apps/mail-relay/README.md) |
 
 ## Contributor Note
 
