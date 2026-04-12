@@ -10,6 +10,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 - Refactored Suite Manager onboarding around a dependency-based flow with grouped progress, keeping Vaultwarden credential setup first while unlocking separate Calendar, Files & Office, and Photos tracks afterward so users can continue with the part of the suite they care about most.
 - Added an optional shared SMTP configuration block to the VPS/local stack so compatible apps can reuse one mail setup instead of forcing per-app email credentials; Seafile and Vaultwarden now consume that shared config for email-capable flows such as share links, resets, and invites.
+- Added a new standalone `mail-relay` service under `apps/` as a transparent SMTP-to-Resend bridge for low-volume transactional mail on platforms where apps support SMTP but direct outbound SMTP is restricted.
 
 ## [0.7.1] - 2026-03-29
 
