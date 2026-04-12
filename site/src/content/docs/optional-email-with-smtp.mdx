@@ -1,0 +1,136 @@
+---
+title: Optional Email With SMTP
+description: Advanced optional SMTP setup for My Own Suite deployments.
+slug: docs/optional-email-with-smtp
+---
+
+SMTP is an advanced optional feature in My Own Suite.
+
+You do not need it just to run the suite.
+
+If you already understand what an SMTP server is and have access to one, you can configure one shared SMTP connection and let compatible apps reuse it.
+
+## What it can add
+
+With SMTP configured, compatible apps can unlock email-backed features such as:
+
+- Seafile password reset emails
+- Seafile share-link and notification emails
+- Vaultwarden verification emails
+- Vaultwarden welcome emails
+- Vaultwarden master password hint emails and other account notifications
+
+## Who this is for
+
+This page is for advanced users.
+
+You should only use this if you already know how to obtain and verify:
+
+- SMTP host
+- SMTP port
+- SMTP security mode
+- SMTP username
+- SMTP password or API key
+- sender email address
+
+If that list already feels unfamiliar, it is completely fine to skip SMTP and keep using the suite without it.
+
+## Shared config model
+
+My Own Suite uses one shared SMTP configuration in the `My Own Suite` / `MOS` / `suite-manager` service, depending on your deployment method.
+
+Compatible apps then reuse those same values instead of each app needing its own separate mail setup.
+
+The shared variables are:
+
+```env
+SMTP_ENABLED=false
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURITY=starttls
+SMTP_USERNAME=smtp-user
+SMTP_PASSWORD=change-me
+SMTP_FROM=noreply@example.com
+SMTP_FROM_NAME=My Own Suite
+```
+
+## Recommended defaults
+
+For a normal authenticated SMTP provider:
+
+- `SMTP_PORT=587`
+- `SMTP_SECURITY=starttls`
+
+Use `force_tls` when your provider requires implicit TLS on port `465`.
+
+Use `off` only when you deliberately need plain SMTP on a trusted network.
+
+## Where to configure it
+
+### Railway
+
+Open the `My Own Suite` / `MOS` service in the Railway template deploy flow.
+
+The owner name, owner email, and owner password are the only required values for normal users.
+
+If you want SMTP, click `Configure` and expand the collapsed environment variables on that same service. Railway does not provide a useful sort order for these variables, so the SMTP fields may be scattered among the other inputs.
+
+This is optional and mainly intended for advanced users who already know what values they need.
+
+### VPS or local Docker Compose
+
+Set the shared SMTP values in:
+
+```text
+deploy/vps/services/suite-manager/.env
+```
+
+Then run:
+
+```bash
+npm run vps:doctor
+```
+
+The doctor checks only require the SMTP fields when `SMTP_ENABLED=true`.
+
+### Self-host on your own hardware
+
+The current self-host path still builds on the same Docker Compose stack as the VPS/local setup, so the same shared SMTP configuration applies there too.
+
+## How it works
+
+- The shared SMTP variables live in the suite-manager-level configuration.
+- Seafile and Vaultwarden can reuse those values automatically.
+- The suite still works normally when SMTP is disabled.
+
+Current SMTP-capable apps in this repo:
+
+- Seafile
+- Vaultwarden
+
+## Troubleshooting
+
+Misconfigured SMTP can make some app actions feel slow or appear to hang.
+
+That happens because some apps send the email during the request itself instead of through a background queue.
+
+If that happens, verify:
+
+- host
+- port
+- security mode
+- username
+- password
+- sender address
+
+Then check the relevant app logs:
+
+- Seafile logs for password reset or share-link send attempts
+- Vaultwarden logs for verification, welcome, hint, or other account email attempts
+
+## App-specific notes
+
+For app-specific behavior, see:
+
+- [Seafile technical reference](/docs/apps/seafile)
+- [Vaultwarden technical reference](/docs/apps/vaultwarden)

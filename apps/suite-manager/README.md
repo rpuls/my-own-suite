@@ -60,3 +60,10 @@
 - Acts as the shared source of truth for optional SMTP settings reused by compatible services in the VPS/local stack.
 - Treats Vaultwarden account creation as observed suite state, not a user-confirmed checklist item.
 - Keeps the current onboarding surface intentionally narrow: one guided access flow first, with later app-specific onboarding still to come.
+
+#### Optional SMTP usage
+
+- Suite Manager itself is not the mail sender. It is the shared place where the stack-level SMTP settings live.
+- These SMTP settings are meant for advanced operators who already understand SMTP and have access to a working mail provider.
+- Compatible services can opt into those shared values, while the suite still works normally when SMTP is left disabled.
+- The canonical setup and troubleshooting guide lives in the dedicated advanced SMTP doc: [Optional email with SMTP](/docs/optional-email-with-smtp).

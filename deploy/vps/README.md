@@ -144,6 +144,20 @@ Optional shared SMTP model:
 - Compatible apps can reuse that shared config without maintaining separate SMTP credentials per service.
 - Current shared SMTP consumers in this repo: Seafile and Vaultwarden.
 
+### Optional SMTP setup
+
+SMTP is an advanced optional feature.
+
+The shared SMTP values still live in `deploy/vps/services/suite-manager/.env`, but the canonical guidance now lives in the dedicated advanced SMTP doc:
+
+- [Optional email with SMTP](/docs/optional-email-with-smtp)
+
+Operational summary:
+- Leave `SMTP_ENABLED=false` if you do not need email-backed app features.
+- Compatible apps currently include Seafile and Vaultwarden.
+- `npm run vps:doctor` validates the SMTP fields only when SMTP is enabled.
+- Misconfigured SMTP can make app actions feel slow because some apps send mail during the request itself.
+
 Container versioning model:
 - `docker-compose.yml` should use `build` (not direct `image`) for repo-managed services.
 - Base images are pinned in app Dockerfiles under `apps/<app>/`.

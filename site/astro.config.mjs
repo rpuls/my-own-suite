@@ -44,7 +44,8 @@ export default defineConfig({
             'docs/getting-started',
             'docs/deploy-on-railway',
             'docs/deploy-on-vps',
-            'docs/deploy-on-your-own-hardware'
+            'docs/deploy-on-your-own-hardware',
+            'docs/optional-email-with-smtp'
           ]
         },
         {

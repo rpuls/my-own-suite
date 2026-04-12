@@ -57,6 +57,16 @@ Use the VPS/local Docker Compose setup described in:
 - Docker and Docker Compose
 - Comfort editing environment values and running command-line setup steps
 
+## Optional advanced email setup
+
+If you already understand what an SMTP server is and have one available, the VPS stack can optionally reuse one shared SMTP configuration for compatible apps such as Seafile and Vaultwarden.
+
+This is not required for the suite itself to work. It is simply an advanced extra for features like password reset emails, verification emails, and some share-link notifications.
+
+The full technical setup belongs in the dedicated SMTP guide:
+
+- [Optional email with SMTP](/docs/optional-email-with-smtp)
+
 ## Typical flow
 
 At a high level, the VPS flow is:
