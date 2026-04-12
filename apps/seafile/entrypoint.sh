@@ -103,6 +103,65 @@ patch_seahub_onlyoffice_settings() {
   fi
 }
 
+patch_seahub_smtp_settings() {
+  if [ ! -f "$SEAHUB_SETTINGS_FILE" ]; then
+    return 0
+  fi
+
+  to_python_bool() {
+    case "$(echo "$1" | tr '[:upper:]' '[:lower:]')" in
+      1|true|yes|on) echo "True" ;;
+      *) echo "False" ;;
+    esac
+  }
+
+  smtp_enabled="${SMTP_ENABLED:-false}"
+  smtp_host="${SMTP_HOST:-}"
+  smtp_username="${SMTP_USERNAME:-}"
+  smtp_password="${SMTP_PASSWORD:-}"
+  smtp_from="${SMTP_FROM:-}"
+  smtp_port="${SMTP_PORT:-25}"
+  smtp_security="$(echo "${SMTP_SECURITY:-starttls}" | tr '[:upper:]' '[:lower:]')"
+
+  if [ -z "$smtp_from" ] && [ -n "$smtp_username" ]; then
+    smtp_from="$smtp_username"
+  fi
+
+  if [ "$(to_python_bool "$smtp_enabled")" = "True" ] && [ -n "$smtp_host" ] && [ -n "$smtp_from" ]; then
+    case "$smtp_security" in
+      force_tls|ssl)
+        email_use_tls="False"
+        email_use_ssl="True"
+        ;;
+      none|off)
+        email_use_tls="False"
+        email_use_ssl="False"
+        ;;
+      *)
+        email_use_tls="True"
+        email_use_ssl="False"
+        ;;
+    esac
+  else
+    smtp_host=""
+    smtp_username=""
+    smtp_password=""
+    smtp_from=""
+    smtp_port="25"
+    email_use_tls="False"
+    email_use_ssl="False"
+  fi
+
+  upsert_setting "$SEAHUB_SETTINGS_FILE" "EMAIL_HOST" "EMAIL_HOST = '${smtp_host}'"
+  upsert_setting "$SEAHUB_SETTINGS_FILE" "EMAIL_HOST_USER" "EMAIL_HOST_USER = '${smtp_username}'"
+  upsert_setting "$SEAHUB_SETTINGS_FILE" "EMAIL_HOST_PASSWORD" "EMAIL_HOST_PASSWORD = '${smtp_password}'"
+  upsert_setting "$SEAHUB_SETTINGS_FILE" "EMAIL_PORT" "EMAIL_PORT = ${smtp_port}"
+  upsert_setting "$SEAHUB_SETTINGS_FILE" "EMAIL_USE_TLS" "EMAIL_USE_TLS = ${email_use_tls}"
+  upsert_setting "$SEAHUB_SETTINGS_FILE" "EMAIL_USE_SSL" "EMAIL_USE_SSL = ${email_use_ssl}"
+  upsert_setting "$SEAHUB_SETTINGS_FILE" "DEFAULT_FROM_EMAIL" "DEFAULT_FROM_EMAIL = '${smtp_from}'"
+  upsert_setting "$SEAHUB_SETTINGS_FILE" "SERVER_EMAIL" "SERVER_EMAIL = '${smtp_from}'"
+}
+
 patch_seahub_onlyoffice_runtime() {
   onlyoffice_utils_file="/opt/seafile/seafile-server-latest/seahub/seahub/onlyoffice/utils.py"
   onlyoffice_views_file="/opt/seafile/seafile-server-latest/seahub/seahub/onlyoffice/views.py"
@@ -193,6 +252,7 @@ sed -i "s|'MYSQL_USER_HOST': '%.%.%.%'|'MYSQL_USER_HOST': '${DB_USER_HOST}'|g" /
 # Apply proxy/CSRF settings for existing installs.
 patch_seahub_proxy_settings
 patch_seahub_onlyoffice_settings
+patch_seahub_smtp_settings
 patch_seahub_onlyoffice_runtime
 
 # First boot creates seahub_settings.py later. Wait briefly and patch once.
@@ -205,6 +265,7 @@ patch_seahub_onlyoffice_runtime
     if [ -f "$SEAHUB_SETTINGS_FILE" ]; then
       patch_seahub_proxy_settings
       patch_seahub_onlyoffice_settings
+      patch_seahub_smtp_settings
     fi
 
     if [ -f "$SEAHUB_SETTINGS_FILE" ] && [ -f "$onlyoffice_utils_file" ] && grep -q "_get_onlyoffice_internal_seafile_url" "$onlyoffice_utils_file"; then

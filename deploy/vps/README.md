@@ -135,8 +135,14 @@ deploy/vps/
 
 Shared configuration model:
 - `deploy/vps/.env`: framework-level values such as `DOMAIN`
-- `deploy/vps/services/suite-manager/.env`: shared user-facing values, auth inputs, and onboarding controls reused across the stack
+- `deploy/vps/services/suite-manager/.env`: shared user-facing values, auth inputs, onboarding controls, and optional shared SMTP settings reused across the stack
 - `deploy/vps/services/<service>/.env`: service-specific runtime settings for all deployable services
+
+Optional shared SMTP model:
+- Configure SMTP once in `deploy/vps/services/suite-manager/.env`.
+- Leave `SMTP_ENABLED=false` if you do not want mail features yet.
+- Compatible apps can reuse that shared config without maintaining separate SMTP credentials per service.
+- Current shared SMTP consumers in this repo: Seafile and Vaultwarden.
 
 Container versioning model:
 - `docker-compose.yml` should use `build` (not direct `image`) for repo-managed services.
