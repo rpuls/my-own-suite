@@ -40,6 +40,14 @@ Integrations:
 - Works with ONLYOFFICE for in-browser document editing.
 - Can reuse the shared stack SMTP settings for password resets and share-link email delivery.
 
+#### Optional SMTP behavior
+
+- SMTP is fully optional and is intended for operators who already have access to an SMTP server.
+- When `SMTP_ENABLED=true`, the shared SMTP values from `deploy/vps/services/suite-manager/.env` are written into `seahub_settings.py` at container start.
+- Typical SMTP-backed Seafile features include password reset mail, share-link delivery, and other notification-style emails.
+- The canonical setup and troubleshooting guide lives in the dedicated advanced SMTP doc: [Optional email with SMTP](/docs/optional-email-with-smtp).
+- If mail-related actions appear to hang, Seafile may be waiting on the SMTP server during the live request path.
+
 #### Customizations in this project
 
 - Entry-point patches `seahub_settings.py` with proxy, ONLYOFFICE, and optional SMTP settings.

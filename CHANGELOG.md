@@ -19,7 +19,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Added a repo-level `npm run release:check` guardrail plus CI coverage so `VERSION`, `releases/stable.json`, and `apps/suite-manager/release.json` stay aligned before releases.
 - Started the manual self-host/VPS updater foundation with `npm run update:check`, `npm run update:status`, and explicit `npm run update:apply -- --target <version> --yes` commands, plus a local updater state file and preflight safety checks.
 - Refactored Suite Manager onboarding around a dependency-based flow with grouped progress, keeping Vaultwarden credential setup first while unlocking separate Calendar, Files & Office, and Photos tracks afterward so users can continue with the part of the suite they care about most.
-- Added an optional shared SMTP configuration block to the VPS/local stack so compatible apps can reuse one mail setup instead of forcing per-app email credentials; Seafile and Vaultwarden now consume that shared config for email-capable flows such as share links, resets, and invites.
+- Added an optional shared SMTP configuration block to the VPS/local stack so compatible apps can reuse one mail setup instead of forcing per-app email credentials; Seafile and Vaultwarden now consume that shared config for email-capable flows such as share links, verification mail, hints, and similar account notifications.
+- Clarified the technical docs around the optional shared SMTP setup, including where advanced users should configure it, which apps benefit from it, and how the Railway, VPS, and self-host guides should point to the deeper operational notes without overloading the normal user flow.
 ## [0.8.0] - 2026-04-10
 
 Milestone release: My Own Suite now has a validated self-host installation path on real home-server hardware over LAN, including the new single-USB installer tooling that helped bring the first end-to-end machine install together.

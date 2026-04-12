@@ -89,3 +89,13 @@ If you already know you want the suite on your own hardware, the best fit is now
 - `Ubuntu Server 24.04 LTS`
 - the current Docker Compose stack as the runtime base
 - a local DNS setup that can eventually point `*.mos.home` at the suite machine
+
+## Optional advanced email setup
+
+The current self-host direction still builds on the same Docker Compose stack used for the VPS/local path, so advanced users can also reuse the optional shared SMTP setup for compatible apps such as Seafile and Vaultwarden.
+
+This is fully optional and only makes sense if you already understand what an SMTP server is and have access to one.
+
+For the actual technical setup, use the dedicated SMTP guide:
+
+- [Optional email with SMTP](/docs/optional-email-with-smtp)
