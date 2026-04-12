@@ -15,6 +15,14 @@
 - `ONLYOFFICE_FORCE_SAVE`: Enables/disables ONLYOFFICE force-save behavior.
 - `ONLYOFFICE_INTERNAL_SEAFILE_URL`: Internal Seafile URL for ONLYOFFICE server-to-server traffic.
 - `ONLYOFFICE_JWT_SECRET`: JWT secret for ONLYOFFICE integration when JWT is enabled.
+- Shared SMTP inputs from `deploy/vps/services/suite-manager/.env` when enabled:
+  - `SMTP_ENABLED`
+  - `SMTP_HOST`
+  - `SMTP_PORT`
+  - `SMTP_SECURITY` (`starttls`, `force_tls`, or `off`)
+  - `SMTP_USERNAME`
+  - `SMTP_PASSWORD`
+  - `SMTP_FROM`
 
 #### Volumes and persistence
 
@@ -30,10 +38,11 @@ Requirements:
 
 Integrations:
 - Works with ONLYOFFICE for in-browser document editing.
+- Can reuse the shared stack SMTP settings for password resets and share-link email delivery.
 
 #### Customizations in this project
 
-- Entry-point patches `seahub_settings.py` with proxy and ONLYOFFICE settings.
+- Entry-point patches `seahub_settings.py` with proxy, ONLYOFFICE, and optional SMTP settings.
 - Adds runtime patching for ONLYOFFICE internal callback/download URL handling.
 - Patch targets are version-sensitive and should be revalidated after Seafile image upgrades.
 

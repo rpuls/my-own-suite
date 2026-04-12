@@ -5,6 +5,14 @@
 - `ADMIN_TOKEN`: Token for admin panel access.
 - `WEBSOCKET_ENABLED`: Enables websocket notifications.
 - `ROCKET_PORT` / `PORT`: Runtime port binding (platform-dependent).
+- Shared SMTP inputs from `deploy/vps/services/suite-manager/.env` when enabled:
+  - `SMTP_HOST`
+  - `SMTP_FROM`
+  - `SMTP_FROM_NAME`
+  - `SMTP_USERNAME`
+  - `SMTP_PASSWORD`
+  - `SMTP_PORT`
+  - `SMTP_SECURITY` (`starttls`, `force_tls`, or `off`)
 
 #### Service: `vaultwarden-postgres`
 
@@ -22,6 +30,5 @@ Healthcheck:
 #### Required service wiring
 
 - `vaultwarden` -> `vaultwarden-postgres`: set `DATABASE_URL` to `postgresql://<user>:<pass>@vaultwarden-postgres:5432/<db>`
-
-
+- `vaultwarden` -> `suite-manager`: optional shared SMTP settings can be sourced from the shared suite env file for password-reset, verification, and invite-capable flows.
 
