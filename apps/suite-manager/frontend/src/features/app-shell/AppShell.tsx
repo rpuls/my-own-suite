@@ -1,8 +1,10 @@
 import { useState } from 'react';
 
 import OnboardingApp from '../onboarding/main/OnboardingApp';
+import UpdatesApp from '../updates/UpdatesApp';
 import { withSetupPath } from '../../lib/base-path';
-import { useAppRoute } from './useAppRoute';
+import { useAppRoute, type NavigableAppRoute } from './useAppRoute';
+import { useUpdates } from '../updates/useUpdates';
 
 type AppShellProps = {
   onLogout: () => Promise<void>;
@@ -12,8 +14,9 @@ type AppShellProps = {
 export function AppShell({ onLogout, ownerName }: AppShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { navigate, route } = useAppRoute();
+  const { state: updatesState } = useUpdates();
 
-  function openRoute(path: '/' | '/onboarding'): void {
+  function openRoute(path: NavigableAppRoute): void {
     setMenuOpen(false);
     if (path === '/') {
       window.location.assign('/');
@@ -25,6 +28,10 @@ export function AppShell({ onLogout, ownerName }: AppShellProps) {
   function renderRoute() {
     if (route === 'onboarding') {
       return <OnboardingApp />;
+    }
+
+    if (route === 'updates') {
+      return <UpdatesApp />;
     }
 
     return (
@@ -84,6 +91,17 @@ export function AppShell({ onLogout, ownerName }: AppShellProps) {
                   type="button"
                 >
                   Onboarding
+                </button>
+
+                <button
+                  className={`suite-shell-link ${route === 'updates' ? 'is-active' : ''}`}
+                  onClick={() => openRoute('/updates')}
+                  type="button"
+                >
+                  Updates
+                  {updatesState.kind === 'loaded' && updatesState.status.updateAvailable ? (
+                    <span className="suite-nav-badge">New</span>
+                  ) : null}
                 </button>
               </nav>
 

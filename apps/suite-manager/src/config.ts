@@ -33,6 +33,12 @@ export type SuiteManagerConfig = {
   sessionSecret: string;
   setupBasePath: string;
   stateDir: string;
+  updates: {
+    enabled: boolean;
+    githubRepo: string;
+    latestVersionOverride: string;
+    mode: 'managed' | 'notify-only';
+  };
   urlScheme: string;
   vaultwardenDatabaseUrl: string;
 };
@@ -93,6 +99,13 @@ export function loadConfig(): SuiteManagerConfig {
   const sessionCookieName = (process.env.SUITE_MANAGER_SESSION_COOKIE_NAME || 'mos-suite-manager-session').trim();
   const sessionMaxAgeSeconds = Number(process.env.SUITE_MANAGER_SESSION_MAX_AGE_SECONDS) || 60 * 60 * 24 * 14;
   const vaultwardenDatabaseUrl = (process.env.VAULTWARDEN_DATABASE_URL || process.env.DATABASE_URL || '').trim();
+  const updatesEnabled = (process.env.SUITE_MANAGER_UPDATES_ENABLED || 'true').trim().toLowerCase() !== 'false';
+  const updatesGithubRepo = (process.env.SUITE_MANAGER_GITHUB_REPO || 'rpuls/my-own-suite').trim();
+  const updatesLatestVersionOverride = (process.env.SUITE_MANAGER_UPDATES_LATEST_VERSION_OVERRIDE || '').trim();
+  const updatesMode =
+    (process.env.SUITE_MANAGER_UPDATES_MODE || 'notify-only').trim().toLowerCase() === 'managed'
+      ? 'managed'
+      : 'notify-only';
   const seafileAdminEmail = (process.env.SEAFILE_ADMIN_EMAIL || '').trim();
   const seafileAdminPassword = (process.env.SEAFILE_ADMIN_PASSWORD || '').trim();
   const radicaleAdminUsername = (process.env.RADICALE_ADMIN_USERNAME || '').trim();
@@ -140,6 +153,12 @@ export function loadConfig(): SuiteManagerConfig {
     sessionSecret,
     setupBasePath,
     stateDir,
+    updates: {
+      enabled: updatesEnabled,
+      githubRepo: updatesGithubRepo,
+      latestVersionOverride: updatesLatestVersionOverride,
+      mode: updatesMode,
+    },
     urlScheme,
     vaultwardenDatabaseUrl,
   };

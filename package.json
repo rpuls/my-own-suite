@@ -42,6 +42,7 @@
     "vps:init": "node scripts/vps-init.cjs",
     "vps:doctor": "node scripts/vps-doctor.cjs",
     "vps:up": "npm run vps:init && npm run vps:doctor && docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps --profile vaultwarden --profile seafile --profile onlyoffice --profile stirling-pdf --profile radicale --profile immich up -d --build",
+    "release:check": "node scripts/release-check.cjs",
     "selfhost:autoinstall": "node scripts/selfhost-write-autoinstall.cjs",
     "selfhost:cloudflared": "node scripts/selfhost-write-cloudflared.cjs",
     "hooks:install": "git config core.hooksPath .githooks"

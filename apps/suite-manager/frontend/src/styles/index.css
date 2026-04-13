@@ -57,6 +57,13 @@
     transform 160ms ease;
 }
 
+.suite-shell-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .suite-shell-link:hover,
 .suite-menu-button:hover {
   border-color: rgba(99, 226, 179, 0.45);
@@ -66,6 +73,20 @@
 .suite-shell-link.is-active {
   border-color: rgba(99, 226, 179, 0.55);
   background: rgba(99, 226, 179, 0.14);
+}
+
+.suite-nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--mos-radius-pill);
+  background: rgba(99, 226, 179, 0.18);
+  color: var(--text);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .suite-menu-button {
@@ -213,6 +234,78 @@
   background: rgba(6, 21, 38, 0.9);
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.32);
   backdrop-filter: blur(16px);
+}
+
+.suite-updates-card {
+  display: grid;
+  gap: 1.1rem;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.suite-updates-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.suite-updates-grid {
+  display: grid;
+  gap: 0.95rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.suite-updates-panel {
+  display: grid;
+  gap: 0.55rem;
+  padding: 1rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--mos-radius-md);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.suite-updates-panel-wide {
+  grid-column: 1 / -1;
+}
+
+.suite-updates-version {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1;
+}
+
+.suite-updates-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.suite-updates-facts {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0;
+}
+
+.suite-updates-facts div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.suite-updates-facts dt {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+  letter-spacing: var(--mos-letter-spacing-label);
+  text-transform: uppercase;
+}
+
+.suite-updates-facts dd {
+  margin: 0;
+}
+
+.suite-warning {
+  margin: 0;
+  color: #f5d98f;
 }
 
 .suite-progress-copy h2 {
@@ -834,6 +927,16 @@
     left: 0;
     right: auto;
     min-width: min(280px, calc(100vw - 2rem));
+  }
+
+  .suite-updates-header,
+  .suite-updates-status-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .suite-updates-grid {
+    grid-template-columns: 1fr;
   }
 
   .suite-snackbar {
