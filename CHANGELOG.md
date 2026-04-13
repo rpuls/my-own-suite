@@ -13,6 +13,10 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Ignored the large local self-host ISO artifact folders so downloaded Ubuntu install media and generated installer ISOs do not get picked up in future commits.
 - Clarified the Homepage app docs so the built-in search bar now explains its Startpage integration in plain language, including a short privacy-focused note and official reference links.
 - Strengthened the public docs positioning around private-cloud ownership by rewriting the `Why your own cloud?` page in clearer, more convincing product language.
+- Started the update-management foundation in Suite Manager with an `Updates` screen, a protected `/setup/api/updates` endpoint, bundled release metadata, and safe installed-versus-latest version comparison without giving the control plane host-level update powers yet.
+- Made the Suite Manager updates foundation more deployment-aware by adding a platform-agnostic `SUITE_MANAGER_UPDATES_MODE`, improving local version-file discovery, and bundling release/version metadata into the Suite Manager image so hosted installs can accurately show notify-only update state.
+- Added a test-only `SUITE_MANAGER_UPDATES_LATEST_VERSION_OVERRIDE` so the Updates screen can safely simulate "update available" states without changing the real release channel metadata.
+- Added a repo-level `npm run release:check` guardrail plus CI coverage so `VERSION`, `releases/stable.json`, and `apps/suite-manager/release.json` stay aligned before releases.
 
 ## [0.8.0] - 2026-04-10
 

@@ -53,10 +53,11 @@ Each release includes:
 - A git tag: `vX.Y.Z`
 - A GitHub Release using the same tag
 - An updated `CHANGELOG.md`
+- An updated root `VERSION` file containing `X.Y.Z`
+- An updated root `releases/stable.json` manifest containing the stable channel metadata
+- An updated `apps/suite-manager/release.json` file so containerized Suite Manager installs can still report their installed suite version without access to the repo root
 
-Optional but recommended:
-
-- `VERSION` file containing `X.Y.Z`
+These files must agree with each other and with the release tag.
 
 ## Safety Guardrails (Recommended)
 
@@ -91,20 +92,44 @@ Version bump guidance:
    - `release/vX.Y.Z`
 3. Update `CHANGELOG.md`:
    - Sections: `Added`, `Changed`, `Fixed`, `Breaking` (if any).
-4. Validate locally (at minimum):
+4. Update release metadata files so they all match the intended version:
+   - `VERSION`
+   - `releases/stable.json`
+   - `apps/suite-manager/release.json`
+5. Validate locally (at minimum):
+   - `npm run release:check`
    - docs build
    - compose config validation
    - shell script lint parity with CI expectations
-5. Merge release branch into `main`.
-6. Merge or fast-forward `main` back into `staging` if needed to keep branches aligned after release-only edits.
-7. Create and push tag:
+   - `apps/suite-manager` build so the bundled release metadata is present in the control-plane image
+6. Merge release branch into `main`.
+7. Merge or fast-forward `main` back into `staging` if needed to keep branches aligned after release-only edits.
+8. Create and push tag:
    - `git tag vX.Y.Z`
    - `git push origin vX.Y.Z`
-8. Publish GitHub Release from tag `vX.Y.Z` with:
+9. Publish GitHub Release from tag `vX.Y.Z` with:
    - summary
    - upgrade steps
    - breaking changes (if any)
    - rollback notes (if relevant)
+
+## Release Prep Details
+
+When editing the versioned metadata files:
+
+- `VERSION` should contain only `X.Y.Z`
+- `releases/stable.json` should describe the newest stable release users should compare against
+- `apps/suite-manager/release.json` should mirror the same suite release version so packaged Suite Manager installs can report the installed version even when the repo root is not present inside the container
+
+Recommended release prep order:
+
+1. Pick `X.Y.Z` using the SemVer rules above.
+2. Update `CHANGELOG.md` for that release.
+3. Update `VERSION`.
+4. Update `releases/stable.json`.
+5. Update `apps/suite-manager/release.json`.
+6. Build and sanity-check Suite Manager so the bundled metadata path is exercised before tagging.
+7. Run `npm run release:check` from the repo root and fix any metadata drift before tagging.
 
 ## Hotfix Workflow
 
@@ -121,6 +146,10 @@ Use for urgent production-impacting issues.
 
 - [ ] Version selected using SemVer rules
 - [ ] Changelog updated
+- [ ] `VERSION` updated
+- [ ] `releases/stable.json` updated
+- [ ] `apps/suite-manager/release.json` updated
+- [ ] `npm run release:check` passed
 - [ ] CI passing on release branch
 - [ ] Upgrade notes written
 - [ ] Breaking changes documented (if any)

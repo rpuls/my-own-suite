@@ -26,6 +26,11 @@ These rules are required for every non-trivial change (docs, config, code, infra
    - When in doubt, compress multiple related tweaks into one broader bullet instead of listing them separately.
 4. **Release process must follow `RELEASING.md`.**
    - Do not invent ad-hoc versioning or release steps.
+   - Keep all release metadata files aligned when preparing a release:
+     - root `VERSION`
+     - root `releases/stable.json`
+     - `apps/suite-manager/release.json`
+   - Run `npm run release:check` whenever a task changes release metadata or prepares a release branch.
 5. **No direct pushes to `main` and no direct commits on `main`.**
    - Use PR workflow only.
 6. **When a change affects compatibility contracts, call it out explicitly in changelog.**
@@ -40,6 +45,7 @@ Before making edits, agents should confirm:
 - `CHANGELOG.md` contains or will contain an `Unreleased` entry for the change.
 - Any needed docs split rules (MDX vs app README) are respected.
 - Local git hooks are installed (`npm run hooks:install`) so commits/pushes on `main` are blocked.
+- If the work is release-related, confirm `VERSION`, `releases/stable.json`, and `apps/suite-manager/release.json` will stay in sync with the intended tag.
 
 ## Branding Workflow
 
