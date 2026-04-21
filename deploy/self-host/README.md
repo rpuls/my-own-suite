@@ -40,17 +40,28 @@ The repo now also has an early single-USB installer builder:
 npm run selfhost:build-installer-iso
 ```
 
-Before running it, drop exactly one Ubuntu Server ISO into:
+If `deploy/self-host/autoinstall/ubuntu-iso/` is empty, the builder now downloads the official supported Ubuntu Server ISO automatically and verifies it against Ubuntu's published `SHA256SUMS`.
 
-- `deploy/self-host/autoinstall/ubuntu-iso/`
+If you prefer, you can still place exactly one Ubuntu Server ISO there yourself before running the builder.
+
+Then copy:
+
+- `deploy/self-host/autoinstall/installer-config/selfhost-installer.env.template`
+
+to:
+
+- `deploy/self-host/autoinstall/installer-config/selfhost-installer.env`
+
+and fill in the owner and Linux passwords you want the installer to use.
 
 What it does:
 
 1. Generates fresh `user-data` and `meta-data`
-2. Builds a small Docker-based ISO remaster environment with `xorriso`
-3. Injects the MOS autoinstall seed into the Ubuntu ISO under `/autoinstall/`
-4. Patches Ubuntu GRUB config to keep the normal Ubuntu boot path as the default and add a separate explicit `Install My Own Suite (ERASES DISK)` entry
-5. Writes a single output ISO under `deploy/self-host/output/`
+2. Carries a simple local installer config with the chosen owner and Linux credentials into the build
+3. Builds a small Docker-based ISO remaster environment with `xorriso`
+4. Injects the MOS autoinstall seed into the Ubuntu ISO under `/autoinstall/`
+5. Patches Ubuntu GRUB config to keep the normal Ubuntu boot path as the default and add a separate explicit `Install My Own Suite (ERASES DISK)` entry
+6. Writes a single output ISO under `deploy/self-host/output/`
 
 This is the intended direction for the HP mini PC flow because it removes the separate `CIDATA` disk from the final installation experience.
 

@@ -37,6 +37,10 @@ autoinstall:
           INSTALL_NODE=1
           CLONE_REPO_IF_MISSING=1
           AUTO_START_STACK=1
+      - path: /etc/mos-selfhost-installer.env
+        permissions: "0600"
+        content: |
+__INSTALLER_ENV__
       - path: /usr/local/bin/mos-selfhost-firstboot.sh
         permissions: "0755"
         content: |

@@ -31,6 +31,9 @@ mkdir -p "${AUTOINSTALL_ROOT}"
 
 cp /seed/user-data "${AUTOINSTALL_ROOT}/user-data"
 cp /seed/meta-data "${AUTOINSTALL_ROOT}/meta-data"
+if [[ -f /seed/selfhost-installer.env ]]; then
+  cp /seed/selfhost-installer.env "${AUTOINSTALL_ROOT}/selfhost-installer.env"
+fi
 
 patch_grub_file() {
   local iso_path="$1"
@@ -51,9 +54,15 @@ import sys
 path = pathlib.Path(sys.argv[1])
 text = path.read_text(encoding="utf-8")
 
-text = text.replace("set timeout=30", "set timeout=8")
-text = text.replace("set timeout=10", "set timeout=8")
+text = text.replace("set timeout=30", "set timeout=-1")
+text = text.replace("set timeout=10", "set timeout=-1")
+text = text.replace("set timeout=8", "set timeout=-1")
 text = text.replace("set timeout_style=hidden", "set timeout_style=menu")
+
+if "set default=" in text:
+    text = re.sub(r"^set default=.*$", "set default=1", text, flags=re.MULTILINE)
+else:
+    text = "set default=1\n" + text
 
 if "Install My Own Suite (ERASES DISK)" not in text:
     menu_pattern = re.compile(
@@ -93,6 +102,10 @@ xorriso_args=(
   -map "${AUTOINSTALL_ROOT}/user-data" /autoinstall/user-data
   -map "${AUTOINSTALL_ROOT}/meta-data" /autoinstall/meta-data
 )
+
+if [[ -f "${AUTOINSTALL_ROOT}/selfhost-installer.env" ]]; then
+  xorriso_args+=(-map "${AUTOINSTALL_ROOT}/selfhost-installer.env" /autoinstall/selfhost-installer.env)
+fi
 
 for iso_path in /boot/grub/grub.cfg /boot/grub/loopback.cfg /EFI/boot/grub.cfg; do
   file_name="$(echo "${iso_path}" | sed 's#^/##' | tr '/' '_')"

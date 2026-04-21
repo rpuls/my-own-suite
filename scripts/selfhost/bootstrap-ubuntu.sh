@@ -31,6 +31,9 @@ MOS_HOSTNAME="${MOS_HOSTNAME:-mos}"
 MOS_PRIMARY_USER="${MOS_PRIMARY_USER:-mos}"
 MOS_STACK_DOMAIN="${MOS_STACK_DOMAIN:-mos.home}"
 MOS_PUBLIC_DOMAIN="${MOS_PUBLIC_DOMAIN:-}"
+MOS_OWNER_NAME="${MOS_OWNER_NAME:-}"
+MOS_OWNER_EMAIL="${MOS_OWNER_EMAIL:-}"
+MOS_OWNER_PASSWORD="${MOS_OWNER_PASSWORD:-}"
 INSTALL_DOCKER="${INSTALL_DOCKER:-1}"
 INSTALL_NODE="${INSTALL_NODE:-1}"
 CLONE_REPO_IF_MISSING="${CLONE_REPO_IF_MISSING:-0}"
@@ -85,6 +88,26 @@ configure_stack_domain() {
 
   log "Configuring self-host stack domain"
   set_env_value "${REPO_DIR}/deploy/vps/.env" "DOMAIN" "${MOS_STACK_DOMAIN}"
+}
+
+configure_owner_bootstrap() {
+  local suiteManagerEnv="${REPO_DIR}/deploy/vps/services/suite-manager/.env"
+
+  if [[ ! -f "${REPO_DIR}/package.json" ]]; then
+    return
+  fi
+
+  if [[ -n "${MOS_OWNER_NAME}" ]]; then
+    set_env_value "${suiteManagerEnv}" "OWNER_NAME" "${MOS_OWNER_NAME}"
+  fi
+
+  if [[ -n "${MOS_OWNER_EMAIL}" ]]; then
+    set_env_value "${suiteManagerEnv}" "OWNER_EMAIL" "${MOS_OWNER_EMAIL}"
+  fi
+
+  if [[ -n "${MOS_OWNER_PASSWORD}" ]]; then
+    set_env_value "${suiteManagerEnv}" "OWNER_PASSWORD" "${MOS_OWNER_PASSWORD}"
+  fi
 }
 
 ensure_docker_access_for_user() {
@@ -178,6 +201,7 @@ bootstrap_stack() {
   )
 
   configure_stack_domain
+  configure_owner_bootstrap
 
   (
     cd "${REPO_DIR}"

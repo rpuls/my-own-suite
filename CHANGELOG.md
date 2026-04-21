@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Changed
+
+- Improved the self-host installer handoff so a simple local installer config can carry the chosen Linux and Suite Manager owner credentials into the USB build, feed first-boot bootstrap automatically, avoid leaving users hunting through generated env files after installation, help fetch the supported official Ubuntu Server ISO automatically when the local ISO folder is empty, and keep the USB installer menu human-confirmed instead of auto-starting after a timeout.
+
 ## [0.9.0] - 2026-04-17
 
 ### Changed

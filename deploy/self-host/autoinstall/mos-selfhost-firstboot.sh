@@ -11,6 +11,10 @@ fi
 
 source /etc/mos-selfhost.env
 
+if [[ -f /etc/mos-selfhost-installer.env ]]; then
+  source /etc/mos-selfhost-installer.env
+fi
+
 export REPO_DIR
 export MOS_REPO_URL
 export MOS_REPO_REF
@@ -21,6 +25,9 @@ export INSTALL_DOCKER
 export INSTALL_NODE
 export CLONE_REPO_IF_MISSING
 export AUTO_START_STACK
+export MOS_OWNER_NAME="${INSTALL_OWNER_NAME:-}"
+export MOS_OWNER_EMAIL="${INSTALL_OWNER_EMAIL:-}"
+export MOS_OWNER_PASSWORD="${INSTALL_OWNER_PASSWORD:-}"
 
 if [[ ! -f "${REPO_DIR}/scripts/selfhost/bootstrap-ubuntu.sh" ]]; then
   mkdir -p "$(dirname "${REPO_DIR}")"
@@ -36,6 +43,8 @@ if [[ ! -f "${REPO_DIR}/scripts/selfhost/bootstrap-ubuntu.sh" ]]; then
 fi
 
 bash "${REPO_DIR}/scripts/selfhost/bootstrap-ubuntu.sh"
+
+rm -f /etc/mos-selfhost-installer.env
 
 touch "${STAMP_FILE}"
 systemctl disable mos-selfhost-bootstrap.service
