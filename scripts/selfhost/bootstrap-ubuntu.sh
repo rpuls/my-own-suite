@@ -209,6 +209,7 @@ print_summary() {
   echo "1. Point local wildcard DNS for *.${MOS_STACK_DOMAIN} to this machine if you want pretty app subdomains on the LAN."
   echo "2. Configure a wildcard public hostname for *.mos.<your-domain> if you want remote access."
   echo "3. Run 'npm run vps:up' from ${REPO_DIR} to build and start the suite."
+  echo "4. Later, when you want to update manually, use 'npm run update:check' and 'npm run update:apply -- --target latest --yes' from ${REPO_DIR}."
 }
 
 log "Starting Ubuntu self-host bootstrap"

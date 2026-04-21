@@ -5,6 +5,7 @@ vps/.env
 # temporary files
 .tmp/
 .local-tools/
+.mos-updater/
 
 # VPS persistent data
 vps/apps/vaultwarden/data/*

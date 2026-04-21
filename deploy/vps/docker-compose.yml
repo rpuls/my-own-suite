@@ -88,6 +88,7 @@ services:
       - vaultwarden
     env_file:
       - .env
+      - ./services/suite-manager/.env
       - ./services/vaultwarden/.env
     environment:
       - DOMAIN=https://vaultwarden.${DOMAIN}
@@ -167,6 +168,7 @@ services:
       - seafile
     env_file:
       - .env
+      - ./services/suite-manager/.env
       - ./services/seafile/.env
     environment:
       - SEAFILE_SERVER_HOSTNAME=seafile.${DOMAIN}

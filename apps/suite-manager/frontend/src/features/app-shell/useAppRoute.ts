@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 
 import { getSetupBasePath, withSetupPath } from '../../lib/base-path';
 
-export type AppRoute = 'homepage' | 'not-found' | 'onboarding';
+export type AppRoute = 'homepage' | 'not-found' | 'onboarding' | 'updates';
+export type NavigableAppRoute = '/' | '/onboarding' | '/updates';
 
 function getRouteFromPathname(pathname: string): AppRoute {
   const basePath = getSetupBasePath();
@@ -18,6 +19,10 @@ function getRouteFromPathname(pathname: string): AppRoute {
 
   if (relativePath === '/' || relativePath === '/onboarding') {
     return 'onboarding';
+  }
+
+  if (relativePath === '/updates') {
+    return 'updates';
   }
 
   return 'not-found';
@@ -37,7 +42,7 @@ export function useAppRoute() {
     };
   }, []);
 
-  function navigate(path: '/' | '/onboarding'): void {
+  function navigate(path: NavigableAppRoute): void {
     const nextUrl = path === '/' ? '/' : withSetupPath(path);
     window.history.pushState({}, '', nextUrl);
     setRoute(getRouteFromPathname(window.location.pathname));

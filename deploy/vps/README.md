@@ -24,6 +24,24 @@ Need a full destructive reset (removes volumes and data)?
 npm run vps:rebuild
 ```
 
+Manual suite update workflow:
+
+```bash
+# Check whether a newer suite release is available
+npm run update:check
+
+# Inspect the last updater state written on this machine
+npm run update:status
+
+# Apply a specific release only when you are ready
+npm run update:apply -- --target 0.7.2 --yes
+
+# Or apply the latest stable release resolved by the updater
+npm run update:apply -- --target latest --yes
+```
+
+The updater is intentionally manual. It never runs automatically in the background.
+
 Manual compose commands (advanced):
 
 ```bash
@@ -138,6 +156,39 @@ Shared configuration model:
 - `deploy/vps/services/suite-manager/.env`: shared user-facing values, auth inputs, and onboarding controls reused across the stack
 - `deploy/vps/services/<service>/.env`: service-specific runtime settings for all deployable services
 
+Optional shared SMTP model:
+- Configure SMTP once in `deploy/vps/services/suite-manager/.env`.
+- Leave `SMTP_ENABLED=false` if you do not want mail features yet.
+- Compatible apps can reuse that shared config without maintaining separate SMTP credentials per service.
+- Current shared SMTP consumers in this repo: Seafile and Vaultwarden.
+
+### Optional SMTP setup
+
+SMTP is an advanced optional feature.
+
+The shared SMTP values still live in `deploy/vps/services/suite-manager/.env`, but the canonical guidance now lives in the dedicated advanced SMTP doc:
+
+- [Optional email with SMTP](/docs/optional-email-with-smtp)
+
+Operational summary:
+- Leave `SMTP_ENABLED=false` if you do not need email-backed app features.
+- Compatible apps currently include Seafile and Vaultwarden.
+- `npm run vps:doctor` validates the SMTP fields only when SMTP is enabled.
+- Misconfigured SMTP can make app actions feel slow because some apps send mail during the request itself.
+
+### Manual updates
+
+The first updater foundation is host-side and user-triggered only.
+
+- `npm run update:check` compares the installed suite version with the latest stable release metadata.
+- `npm run update:status` shows the last updater state recorded in `.mos-updater/state.json`.
+- `npm run update:apply -- --target <version> --yes` fetches the matching git tag, validates release metadata, runs `vps:init`, `vps:doctor`, Compose validation, and then applies the stack update with `vps:up`.
+- `npm run update:apply -- --target latest --yes` resolves the latest stable release first and then follows the same path.
+
+Safety notes:
+- The updater refuses to apply if the git working tree is not clean.
+- The updater does not run automatically; every apply must be started by the user.
+- The updater state file is local-only and is ignored by git.
 Container versioning model:
 - `docker-compose.yml` should use `build` (not direct `image`) for repo-managed services.
 - Base images are pinned in app Dockerfiles under `apps/<app>/`.

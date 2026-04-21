@@ -9,11 +9,17 @@
 - `OWNER_EMAIL`: Shared owner email shown in onboarding and reused by compatible app bootstrap flows.
 - `OWNER_PASSWORD`: Owner password used for Suite Manager sign-in.
 - `SESSION_SECRET`: HMAC secret used to sign the Suite Manager session cookie.
+- `SMTP_ENABLED`: Optional shared toggle for stack-wide SMTP-backed app features.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_FROM_NAME`: Optional shared SMTP settings reused by compatible services such as Seafile and Vaultwarden in the VPS/local stack.
 - `SUITE_MANAGER_PUBLIC_URL`: Public onboarding URL surfaced in the UI.
 - `SUITE_MANAGER_BASE_PATH`: Public path for the Suite Manager setup surface. Defaults to `/setup`.
 - `SUITE_MANAGER_SESSION_COOKIE_NAME`: Optional override for the session cookie name. Defaults to `mos-suite-manager-session`.
 - `SUITE_MANAGER_SESSION_MAX_AGE_SECONDS`: Optional session lifetime in seconds. Defaults to `1209600` (14 days).
 - `SUITE_MANAGER_STATE_DIR`: Directory used to persist onboarding progress.
+- `SUITE_MANAGER_UPDATES_ENABLED`: Optional toggle for live GitHub release checks. Defaults to `true`.
+- `SUITE_MANAGER_GITHUB_REPO`: Repository used for release checks. Defaults to `rpuls/my-own-suite`.
+- `SUITE_MANAGER_UPDATES_MODE`: Update-management posture for this installation. Use `notify-only` for Railway-like platforms or any deployment where Suite Manager should only notify about newer releases; reserve `managed` for future host-side updater integrations. Defaults to `notify-only`.
+- `SUITE_MANAGER_UPDATES_LATEST_VERSION_OVERRIDE`: Optional test-only override for simulating the latest available version in the Updates screen without changing real release metadata.
 - `VAULTWARDEN_DATABASE_URL` or `DATABASE_URL`: Optional Postgres connection string used to detect when the owner Vaultwarden account has been created. In the VPS/local stack, this is sourced from the existing Vaultwarden service env.
 - `SEAFILE_ADMIN_EMAIL`, `SEAFILE_ADMIN_PASSWORD`, `RADICALE_ADMIN_USERNAME`, `RADICALE_ADMIN_PASSWORD`: Consumed from existing service env files so suite-manager can prepare the first Vaultwarden import handoff.
 - `DOMAIN` / `PUBLIC_URL_SCHEME`: Optional fallback inputs for deriving public app URLs when explicit `*_PUBLIC_URL` values are not set.
@@ -25,11 +31,14 @@
 - Proxies Homepage through `/` after the owner signs in.
 - Exposes a simple HTTP `200` health endpoint on `/healthz`.
 - Exposes JSON setup auth/status/onboarding data on `/setup/api/auth/*`, `/setup/api/status`, and `/setup/api/onboarding`.
+- Exposes JSON update state on `/setup/api/updates`, including installed version, latest release metadata, and whether an update is available.
+- Supports platform-agnostic notify-only update behavior so hosted deployments can show update availability without implying that Suite Manager can perform the installation itself.
 - Logs a success line when Homepage returns a `2xx` response.
 - Logs a failure line when Homepage returns a non-`2xx` response or the request errors.
 - Persists onboarding step completion in `SUITE_MANAGER_STATE_DIR`.
 - Automatically advances past Vaultwarden account creation when the configured Vaultwarden database shows a user matching `OWNER_EMAIL`.
 - Serves a Vaultwarden-compatible CSV import artifact for the generated accounts currently available to suite-manager, and the frontend can copy that content directly to the clipboard for paste-based import after login.
+- Falls back to the bundled `releases/stable.json` manifest when a live GitHub release lookup is unavailable.
 
 #### Development structure
 
@@ -41,8 +50,10 @@
 - `src/features/onboarding/*`: onboarding state, domain model, auth, and API routes.
 - `src/features/health/*`: health monitoring and health endpoints.
 - `src/features/status/*`: operational status endpoints.
+- `src/features/updates/*`: installed-version detection and release-check endpoints for the Updates screen.
 - `src/lib/*`: shared helpers such as logging, HTML escaping, and secret masking.
 - `frontend/src/*`: React application code.
+- `release.json`: bundled suite release metadata copied into the Suite Manager runtime image so installed-version reporting still works when the repo root is not present in the container.
 - `branding/styles/mos.css`: canonical MOS brand stylesheet source, synchronized into app-local copies by `npm run branding:sync`.
 
 #### Local development
@@ -50,10 +61,19 @@
 - Backend only: `npm start`
 - Frontend dev server: `npm run dev:client`
 - Frontend production build: `npm run build:client`
+- Release metadata sanity check from repo root: `npm run release:check`
 
 #### Customizations in this project
 
 - Acts as the shared onboarding surface for stack-wide bootstrap, credential handoff, and future per-app provisioning adapters.
 - Acts as the authenticated public entrypoint for setup and Homepage access.
+- Acts as the shared source of truth for optional SMTP settings reused by compatible services in the VPS/local stack.
 - Treats Vaultwarden account creation as observed suite state, not a user-confirmed checklist item.
 - Keeps the current onboarding surface intentionally narrow: one guided access flow first, with later app-specific onboarding still to come.
+
+#### Optional SMTP usage
+
+- Suite Manager itself is not the mail sender. It is the shared place where the stack-level SMTP settings live.
+- These SMTP settings are meant for advanced operators who already understand SMTP and have access to a working mail provider.
+- Compatible services can opt into those shared values, while the suite still works normally when SMTP is left disabled.
+- The canonical setup and troubleshooting guide lives in the dedicated advanced SMTP doc: [Optional email with SMTP](/docs/optional-email-with-smtp).

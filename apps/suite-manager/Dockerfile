@@ -7,6 +7,7 @@ RUN npm install -g npm@11.2.0 && npm ci
 
 COPY src ./src
 COPY frontend ./frontend
+COPY release.json ./release.json
 COPY tsconfig.json ./tsconfig.json
 COPY vite.config.ts ./vite.config.ts
 
@@ -20,6 +21,7 @@ COPY package*.json ./
 RUN npm install -g npm@11.2.0 && npm ci --omit=dev
 
 COPY src ./src
+COPY release.json ./release.json
 COPY --from=builder /app/frontend/dist ./frontend/dist
 
 EXPOSE 3000

@@ -1,0 +1,159 @@
+import { RefreshCcw } from 'lucide-react';
+
+import { useUpdates } from './useUpdates';
+
+function formatDate(value: string | null): string {
+  if (!value) {
+    return 'Not available';
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleString();
+}
+
+function labelForSource(value: 'github-release' | 'local-manifest' | 'override' | 'unavailable'): string {
+  if (value === 'github-release') {
+    return 'Live GitHub release';
+  }
+
+  if (value === 'local-manifest') {
+    return 'Bundled release manifest';
+  }
+
+  if (value === 'override') {
+    return 'Test override';
+  }
+
+  return 'Unavailable';
+}
+
+function installedVersionHelpText(source: string | null): string {
+  if (!source) {
+    return 'The local installed-version metadata was not found in this installation.';
+  }
+
+  if (source.endsWith('release.json')) {
+    return 'Read from bundled Suite Manager release metadata packaged with this installation.';
+  }
+
+  if (source.endsWith('VERSION')) {
+    return 'Read from the local suite VERSION file on this installation.';
+  }
+
+  return `Read from ${source}.`;
+}
+
+export default function UpdatesApp() {
+  const { refresh, state } = useUpdates();
+
+  return (
+    <main className="suite-app">
+      <section className="mos-shell suite-hero">
+        <span className="mos-eyebrow">My Own Suite</span>
+        <h1 className="mos-page-title">Updates</h1>
+        <p className="suite-lead mos-body-lg">
+          This is the safe first layer of update management: visibility into what is installed here and what release track says is newer.
+        </p>
+      </section>
+
+      <section className="mos-shell">
+        <div className="mos-panel suite-card suite-updates-card">
+          <div className="suite-updates-header">
+            <div>
+              <h2 className="mos-card-title">Suite core</h2>
+              <p className="suite-meta mos-meta">Version detection works here now. Install actions are not implemented yet.</p>
+            </div>
+
+            <button className="suite-copy-button" onClick={() => void refresh()} type="button">
+              <RefreshCcw aria-hidden="true" className="suite-inline-icon" />
+              Check again
+            </button>
+          </div>
+
+          {state.kind === 'loading' ? <p className="suite-empty">Loading update state...</p> : null}
+
+          {state.kind === 'error' ? <p className="suite-error">{state.message}</p> : null}
+
+          {state.kind === 'loaded' ? (
+            <div className="suite-updates-grid">
+              <article className="suite-updates-panel">
+                <span className="mos-eyebrow">Installed</span>
+                <strong className="suite-updates-version">{state.status.installedVersion || 'Unknown'}</strong>
+                <p className="suite-meta mos-meta">{installedVersionHelpText(state.status.installedVersionSource)}</p>
+              </article>
+
+              <article className="suite-updates-panel">
+                <span className="mos-eyebrow">Latest available</span>
+                <strong className="suite-updates-version">{state.status.latestRelease.version || 'Unknown'}</strong>
+                <p className="suite-meta mos-meta">
+                  Source: {labelForSource(state.status.latestRelease.source)}
+                </p>
+              </article>
+
+              <article className="suite-updates-panel suite-updates-panel-wide">
+                <div className="suite-updates-status-row">
+                  <span
+                    className={`mos-pill ${state.status.updateAvailable ? 'is-active' : 'is-completed'}`}
+                  >
+                    {state.status.updateAvailable ? 'Update available' : 'Up to date'}
+                  </span>
+
+                  <span className="suite-meta mos-meta">Checked {formatDate(state.status.checkedAt)}</span>
+                </div>
+
+                <p className="suite-meta mos-meta">
+                  {state.status.mode === 'notify-only'
+                    ? 'This installation is configured for notify-only updates. Install new versions through your hosting platform or deployment workflow.'
+                    : 'This installation is configured for managed updates, but no in-app install action exists yet. Host-side update execution still needs to be implemented.'}
+                </p>
+
+                <dl className="suite-updates-facts">
+                  <div>
+                    <dt>Release channel</dt>
+                    <dd>{state.status.latestRelease.channel || 'Unknown'}</dd>
+                  </div>
+                  <div>
+                    <dt>Update mode</dt>
+                    <dd>{state.status.mode}</dd>
+                  </div>
+                  <div>
+                    <dt>Published</dt>
+                    <dd>{formatDate(state.status.latestRelease.publishedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Release notes</dt>
+                    <dd>
+                      {state.status.latestRelease.notesUrl ? (
+                        <a href={state.status.latestRelease.notesUrl} rel="noreferrer" target="_blank">
+                          Open release notes
+                        </a>
+                      ) : (
+                        'Not available'
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+
+                {state.status.error ? (
+                  <p className="suite-warning">
+                    Live release lookup failed, so Suite Manager fell back to bundled metadata. {state.status.error}
+                  </p>
+                ) : null}
+
+                {state.status.latestRelease.source === 'override' ? (
+                  <p className="suite-warning">
+                    Test override is active. This screen is intentionally simulating a different latest available version.
+                  </p>
+                ) : null}
+              </article>
+            </div>
+          ) : null}
+        </div>
+      </section>
+    </main>
+  );
+}

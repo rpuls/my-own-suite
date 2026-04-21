@@ -9,6 +9,7 @@ Canonical user-facing documentation for the self-host flow lives here:
 Current scripts:
 
 - [scripts/selfhost/bootstrap-ubuntu.sh](../../scripts/selfhost/bootstrap-ubuntu.sh)
+- [scripts/mos-updater.cjs](../../scripts/mos-updater.cjs)
 - [scripts/selfhost-write-autoinstall.cjs](../../scripts/selfhost-write-autoinstall.cjs)
 - [scripts/selfhost-write-cloudflared.cjs](../../scripts/selfhost-write-cloudflared.cjs)
 - [scripts/selfhost-new-seed-disk.ps1](../../scripts/selfhost-new-seed-disk.ps1)
@@ -52,3 +53,13 @@ What it does:
 5. Writes a single output ISO under `deploy/self-host/output/`
 
 This is the intended direction for the HP mini PC flow because it removes the separate `CIDATA` disk from the final installation experience.
+
+## Manual update foundation
+
+The current updater foundation is explicit and user-triggered only.
+
+- `npm run update:check` inspects the installed suite version and latest stable release metadata.
+- `npm run update:status` shows the last updater state saved on that machine.
+- `npm run update:apply -- --target latest --yes` is the first manual apply path for self-host/VPS installs.
+
+The updater does not run automatically in the background.

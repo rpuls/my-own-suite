@@ -121,6 +121,21 @@ jobs:
       - name: Validate compose config
         run: docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps config -q
 
+  release-metadata:
+    name: Release Metadata Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate release metadata
+        run: node scripts/release-check.cjs
+
   shellcheck:
     name: Shell Scripts Lint
     runs-on: ubuntu-latest
