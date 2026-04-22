@@ -27,6 +27,8 @@ fi
 REPO_DIR="${REPO_DIR:-$(pwd)}"
 MOS_REPO_URL="${MOS_REPO_URL:-https://github.com/rpuls/my-own-suite.git}"
 MOS_REPO_REF="${MOS_REPO_REF:-staging}"
+MOS_UPDATE_TRACK="${MOS_UPDATE_TRACK:-branch}"
+MOS_UPDATE_REF="${MOS_UPDATE_REF:-${MOS_REPO_REF}}"
 MOS_HOSTNAME="${MOS_HOSTNAME:-mos}"
 MOS_PRIMARY_USER="${MOS_PRIMARY_USER:-mos}"
 MOS_STACK_DOMAIN="${MOS_STACK_DOMAIN:-mos.home}"
@@ -90,6 +92,21 @@ configure_stack_domain() {
   set_env_value "${REPO_DIR}/deploy/vps/.env" "DOMAIN" "${MOS_STACK_DOMAIN}"
 }
 
+write_updater_config() {
+  if [[ ! -f "${REPO_DIR}/package.json" ]]; then
+    return
+  fi
+
+  log "Writing updater track config"
+  mkdir -p "${REPO_DIR}/.mos-updater"
+  cat > "${REPO_DIR}/.mos-updater/config.json" <<EOF
+{
+  "track": "${MOS_UPDATE_TRACK}",
+  "ref": "${MOS_UPDATE_REF}"
+}
+EOF
+}
+
 configure_owner_bootstrap() {
   local suiteManagerEnv="${REPO_DIR}/deploy/vps/services/suite-manager/.env"
 
@@ -108,6 +125,20 @@ configure_owner_bootstrap() {
   if [[ -n "${MOS_OWNER_PASSWORD}" ]]; then
     set_env_value "${suiteManagerEnv}" "OWNER_PASSWORD" "${MOS_OWNER_PASSWORD}"
   fi
+
+  set_env_value "${suiteManagerEnv}" "SUITE_MANAGER_UPDATES_MODE" "managed"
+}
+
+install_update_agent() {
+  local installerScript="${REPO_DIR}/update/selfhost/install-update-agent.sh"
+
+  if [[ ! -f "${installerScript}" ]]; then
+    log "Skipping update-agent install because ${installerScript} was not found"
+    return
+  fi
+
+  log "Installing self-host update agent"
+  bash "${installerScript}" "${REPO_DIR}"
 }
 
 ensure_docker_access_for_user() {
@@ -202,6 +233,8 @@ bootstrap_stack() {
 
   configure_stack_domain
   configure_owner_bootstrap
+  write_updater_config
+  install_update_agent
 
   (
     cd "${REPO_DIR}"
@@ -233,7 +266,9 @@ print_summary() {
   echo "1. Point local wildcard DNS for *.${MOS_STACK_DOMAIN} to this machine if you want pretty app subdomains on the LAN."
   echo "2. Configure a wildcard public hostname for *.mos.<your-domain> if you want remote access."
   echo "3. Run 'npm run vps:up' from ${REPO_DIR} to build and start the suite."
-  echo "4. Later, when you want to update manually, use 'npm run update:check' and 'npm run update:apply -- --target latest --yes' from ${REPO_DIR}."
+  echo "4. This machine is configured for the '${MOS_UPDATE_TRACK}' update track on '${MOS_UPDATE_REF}'."
+  echo "5. The MOS update agent is installed as a local systemd service on the machine."
+  echo "6. Later, when you want to update manually, use 'npm run update:check' and 'npm run update:apply -- --yes' from ${REPO_DIR}."
 }
 
 log "Starting Ubuntu self-host bootstrap"

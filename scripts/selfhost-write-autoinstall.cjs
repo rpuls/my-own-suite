@@ -108,6 +108,8 @@ const publicDomain = readArg('public-domain', installerConfig?.PUBLIC_DOMAIN || 
 const repoDir = readArg('repo-dir', installerConfig?.REPO_DIR || '/opt/my-own-suite');
 const repoUrl = readArg('repo-url', installerConfig?.REPO_URL || 'https://github.com/rpuls/my-own-suite.git');
 const repoRef = readArg('repo-ref', installerConfig?.REPO_REF || 'staging');
+const updateTrack = readArg('update-track', installerConfig?.UPDATE_TRACK || 'branch');
+const updateRef = readArg('update-ref', installerConfig?.UPDATE_REF || repoRef);
 const instanceId = readArg('instance-id', `mos-${hostname}`);
 const configuredLinuxPassword = installerConfig?.LINUX_PASSWORD || '';
 const loginPassword =
@@ -164,6 +166,8 @@ const userData = replaceAll(userDataTemplate, {
   '__REPO_DIR__': repoDir,
   '__MOS_REPO_URL__': repoUrl,
   '__MOS_REPO_REF__': repoRef,
+  '__MOS_UPDATE_TRACK__': updateTrack,
+  '__MOS_UPDATE_REF__': updateRef,
   '__STACK_DOMAIN__': stackDomain,
   '__PUBLIC_DOMAIN__': publicDomain,
   '__INSTALLER_ENV__': indentBlock(installerValues ? buildInstallerEnvContent(installerValues) : '', 10),

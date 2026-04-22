@@ -9,6 +9,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ### Changed
 
 - Improved the self-host installer handoff so a simple local installer config can carry the chosen Linux and Suite Manager owner credentials into the USB build, feed first-boot bootstrap automatically, avoid leaving users hunting through generated env files after installation, help fetch the supported official Ubuntu Server ISO automatically when the local ISO folder is empty, and keep the USB installer menu human-confirmed instead of auto-starting after a timeout.
+- Started the managed self-host updater MVP track with an isolated `update/selfhost` workspace, a phased plan for a host-owned update agent, an experimental self-host update-track foundation so USB-installed test machines can follow either published releases or a configured branch without giving the Suite Manager container direct host control, and a first bootstrap-installed `mos-update-agent` systemd service that exposes a local Unix-socket update API on self-host machines. Compatibility note: the self-host installer config and bootstrap flow now recognize `UPDATE_TRACK` and `UPDATE_REF` for experimental managed-update track selection, and self-host bootstrap now forces `SUITE_MANAGER_UPDATES_MODE=managed`.
 
 ## [0.9.0] - 2026-04-17
 

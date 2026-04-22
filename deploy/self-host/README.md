@@ -14,6 +14,7 @@ Current scripts:
 - [scripts/selfhost-write-cloudflared.cjs](../../scripts/selfhost-write-cloudflared.cjs)
 - [scripts/selfhost-new-seed-disk.ps1](../../scripts/selfhost-new-seed-disk.ps1)
 - [scripts/selfhost-build-installer-iso.cjs](../../scripts/selfhost-build-installer-iso.cjs)
+- [update/selfhost/install-update-agent.sh](../../update/selfhost/install-update-agent.sh)
 
 Keep the actual self-host guidance in the site docs so the public documentation stays the single source of truth.
 
@@ -54,6 +55,13 @@ to:
 
 and fill in the owner and Linux passwords you want the installer to use.
 
+Optional installer track settings:
+
+- `REPO_REF` controls which branch or ref is checked out on first boot.
+- `UPDATE_TRACK=branch` tells self-host test installs to follow a branch head for updates.
+- `UPDATE_TRACK=stable` is the intended long-term production model for release-following installs.
+- `UPDATE_REF` identifies the tracked branch when `UPDATE_TRACK=branch`.
+
 What it does:
 
 1. Generates fresh `user-data` and `meta-data`
@@ -69,8 +77,23 @@ This is the intended direction for the HP mini PC flow because it removes the se
 
 The current updater foundation is explicit and user-triggered only.
 
-- `npm run update:check` inspects the installed suite version and latest stable release metadata.
+- `npm run update:check` inspects the installed suite state and compares it against either the latest stable release metadata or the configured branch head, depending on the active update track.
 - `npm run update:status` shows the last updater state saved on that machine.
 - `npm run update:apply -- --target latest --yes` is the first manual apply path for self-host/VPS installs.
+
+The updater now also has an experimental branch-following path for self-host development machines:
+
+- `MOS_UPDATE_TRACK=stable` follows published release metadata.
+- `MOS_UPDATE_TRACK=branch` follows the configured branch head instead.
+- Self-host bootstrap writes the selected track into `.mos-updater/config.json` inside the repo checkout so later updater actions can use the same mode.
+
+The self-host bootstrap now also installs a host-local MOS update agent service:
+
+- systemd service name: `mos-update-agent.service`
+- local Unix socket: `/run/mos-update-agent/agent.sock`
+- state directory: `/var/lib/mos-update-agent`
+- bearer token file: `/etc/mos-update-agent/auth.token`
+
+This service is the intended bridge between future managed-update UI actions and the host-owned update execution path.
 
 The updater does not run automatically in the background.

@@ -29,6 +29,8 @@ autoinstall:
           REPO_DIR=__REPO_DIR__
           MOS_REPO_URL=__MOS_REPO_URL__
           MOS_REPO_REF=__MOS_REPO_REF__
+          MOS_UPDATE_TRACK=__MOS_UPDATE_TRACK__
+          MOS_UPDATE_REF=__MOS_UPDATE_REF__
           MOS_HOSTNAME=__HOSTNAME__
           MOS_PRIMARY_USER=__USERNAME__
           MOS_STACK_DOMAIN=__STACK_DOMAIN__
