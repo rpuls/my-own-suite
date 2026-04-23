@@ -23,9 +23,14 @@ function indentBlock(content, spaces) {
   const indent = ' '.repeat(spaces);
   return content
     .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
     .split('\n')
     .map((line) => `${indent}${line}`)
     .join('\n');
+}
+
+function normalizeLf(content) {
+  return String(content).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
 function replaceAll(template, replacements) {
@@ -151,10 +156,14 @@ if (installerValues && !installerValues.ownerPassword) {
   process.exit(1);
 }
 
-const userDataTemplate = fs.readFileSync(path.join(templateDir, 'user-data.template'), 'utf8');
-const metaDataTemplate = fs.readFileSync(path.join(templateDir, 'meta-data.template'), 'utf8');
-const firstBootScript = fs.readFileSync(path.join(templateDir, 'mos-selfhost-firstboot.sh'), 'utf8').trimEnd();
-const systemdService = fs.readFileSync(path.join(templateDir, 'mos-selfhost-bootstrap.service'), 'utf8').trimEnd();
+const userDataTemplate = normalizeLf(fs.readFileSync(path.join(templateDir, 'user-data.template'), 'utf8'));
+const metaDataTemplate = normalizeLf(fs.readFileSync(path.join(templateDir, 'meta-data.template'), 'utf8'));
+const firstBootScript = normalizeLf(
+  fs.readFileSync(path.join(templateDir, 'mos-selfhost-firstboot.sh'), 'utf8'),
+).trimEnd();
+const systemdService = normalizeLf(
+  fs.readFileSync(path.join(templateDir, 'mos-selfhost-bootstrap.service'), 'utf8'),
+).trimEnd();
 
 const userData = replaceAll(userDataTemplate, {
   '__HOSTNAME__': hostname,
@@ -181,8 +190,8 @@ const metaData = replaceAll(metaDataTemplate, {
 });
 
 fs.mkdirSync(outputDir, { recursive: true });
-fs.writeFileSync(path.join(outputDir, 'user-data'), userData, 'utf8');
-fs.writeFileSync(path.join(outputDir, 'meta-data'), metaData, 'utf8');
+fs.writeFileSync(path.join(outputDir, 'user-data'), normalizeLf(userData), 'utf8');
+fs.writeFileSync(path.join(outputDir, 'meta-data'), normalizeLf(metaData), 'utf8');
 
 if (!quiet) {
   console.log(`Wrote ${path.join(outputDir, 'user-data')}`);
