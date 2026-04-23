@@ -257,6 +257,11 @@
   justify-content: flex-end;
 }
 
+.suite-updates-inline-action {
+  margin-top: 0.25rem;
+  width: fit-content;
+}
+
 .suite-updates-grid {
   display: grid;
   gap: 0.95rem;

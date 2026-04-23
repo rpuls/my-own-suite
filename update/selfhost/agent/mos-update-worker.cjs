@@ -53,6 +53,7 @@ function updateJob(patch) {
 
 function completeCurrentJob(job) {
   writeJson(currentJobPath, {
+    error: typeof job.error === 'string' ? job.error : null,
     id: job.id,
     stage: job.stage,
     status: job.status,

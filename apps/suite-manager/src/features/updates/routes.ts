@@ -11,13 +11,15 @@ export function createUpdatesRouter(updatesService: UpdatesService): Hono {
   });
 
   router.post('/updates/apply', async (c) => {
-    const status = await updatesService.getStatus();
-    if (status.mode !== 'managed' || !status.serviceAvailable) {
-      return c.json({ error: 'Managed update service is unavailable.' }, 409);
+    try {
+      const result = await updatesService.startManagedUpdate();
+      return c.json(result, 202);
+    } catch (caughtError) {
+      return c.json(
+        { error: caughtError instanceof Error ? caughtError.message : 'Unable to start update.' },
+        409,
+      );
     }
-
-    const result = await updatesService.startManagedUpdate();
-    return c.json(result, 202);
   });
 
   return router;

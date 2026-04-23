@@ -49,6 +49,13 @@ function installedVersionHelpText(source: string | null): string {
 
 export default function UpdatesApp() {
   const { applyUpdate, isApplying, refresh, state } = useUpdates();
+  const canApplyUpdate =
+    state.kind === 'loaded' &&
+    state.status.mode === 'managed' &&
+    state.status.serviceAvailable &&
+    state.status.updateAvailable &&
+    !isApplying &&
+    !Boolean(state.status.currentJob && state.status.currentJob.status === 'running');
 
   return (
     <main className="suite-app">
@@ -66,22 +73,11 @@ export default function UpdatesApp() {
             <div>
               <h2 className="mos-card-title">Suite core</h2>
               <p className="suite-meta mos-meta">
-                Managed self-host installs can now surface their active track and start host-owned update jobs from here.
+                Managed self-host installs can now surface their active track and start host-owned update jobs when a newer version or commit is actually available.
               </p>
             </div>
 
             <div className="suite-updates-actions">
-              {state.kind === 'loaded' && state.status.mode === 'managed' && state.status.serviceAvailable ? (
-                <button
-                  className="suite-copy-button"
-                  disabled={isApplying || Boolean(state.status.currentJob && state.status.currentJob.status === 'running')}
-                  onClick={() => void applyUpdate()}
-                  type="button"
-                >
-                  {isApplying ? 'Starting...' : 'Update now'}
-                </button>
-              ) : null}
-
               <button className="suite-copy-button" onClick={() => void refresh()} type="button">
                 <RefreshCcw aria-hidden="true" className="suite-inline-icon" />
                 Check again
@@ -107,6 +103,14 @@ export default function UpdatesApp() {
                 <p className="suite-meta mos-meta">
                   Source: {labelForSource(state.status.latestRelease.source)}
                 </p>
+                {state.status.track.label ? (
+                  <p className="suite-meta mos-meta">Track: {state.status.track.label}</p>
+                ) : null}
+                {canApplyUpdate ? (
+                  <button className="suite-copy-button suite-updates-inline-action" onClick={() => void applyUpdate()} type="button">
+                    {isApplying ? 'Starting...' : 'Update now'}
+                  </button>
+                ) : null}
               </article>
 
               <article className="suite-updates-panel suite-updates-panel-wide">
@@ -129,10 +133,6 @@ export default function UpdatesApp() {
                 </p>
 
                 <dl className="suite-updates-facts">
-                  <div>
-                    <dt>Subscribed track</dt>
-                    <dd>{state.status.track.label || 'Unknown'}</dd>
-                  </div>
                   <div>
                     <dt>Release channel</dt>
                     <dd>{state.status.latestRelease.channel || 'Unknown'}</dd>
@@ -170,6 +170,9 @@ export default function UpdatesApp() {
                       {state.status.currentJob.status || 'unknown'} in stage {state.status.currentJob.stage || 'unknown'}.
                       Last update {state.status.currentJob.updatedAt ? ` ${formatDate(state.status.currentJob.updatedAt)}` : ''}
                     </p>
+                    {state.status.currentJob.error ? (
+                      <p className="suite-warning">{state.status.currentJob.error}</p>
+                    ) : null}
                   </div>
                 ) : null}
 

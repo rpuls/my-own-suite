@@ -1,5 +1,6 @@
 export type UpdatesStatus = {
   currentJob: {
+    error: string | null;
     id: string;
     stage: string | null;
     status: string | null;

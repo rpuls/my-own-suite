@@ -23,6 +23,7 @@ type InstalledVersion = {
 
 export type UpdateStatus = {
   currentJob: {
+    error: string | null;
     id: string;
     stage: string | null;
     status: string | null;
@@ -313,6 +314,19 @@ export class UpdatesService {
   }
 
   async startManagedUpdate(): Promise<{ job: Record<string, unknown> }> {
+    const status = await this.getStatus();
+    if (status.mode !== 'managed' || !status.serviceAvailable) {
+      throw new Error('Managed update service is unavailable.');
+    }
+
+    if (status.currentJob?.status === 'running' || status.currentJob?.status === 'queued') {
+      throw new Error('An update job is already running.');
+    }
+
+    if (!status.updateAvailable) {
+      throw new Error('This machine is already up to date on its current track.');
+    }
+
     return startAgentUpdate(this.config, {
       initiator: this.config.ownerEmail,
       target: 'latest',

@@ -164,6 +164,7 @@ function summarizeJob(job) {
   }
 
   return {
+    error: typeof job.error === 'string' ? job.error : null,
     id: job.id,
     stage: job.stage || null,
     status: job.status || null,
