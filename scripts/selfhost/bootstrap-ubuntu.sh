@@ -104,6 +104,8 @@ write_updater_config() {
   "track": "${MOS_UPDATE_TRACK}",
   "ref": "${MOS_UPDATE_REF}"
 }
+EOF
+}
 
 configure_suite_manager_managed_update_env() {
   local suiteManagerEnv="${REPO_DIR}/deploy/vps/services/suite-manager/.env"
@@ -127,8 +129,6 @@ services:
     volumes:
       - /run/mos-update-agent:/run/mos-update-agent
       - /etc/mos-update-agent/auth.token:/etc/mos-update-agent/auth.token:ro
-EOF
-}
 EOF
 }
 
