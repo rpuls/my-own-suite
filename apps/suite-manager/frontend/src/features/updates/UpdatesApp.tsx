@@ -48,7 +48,7 @@ function installedVersionHelpText(source: string | null): string {
 }
 
 export default function UpdatesApp() {
-  const { refresh, state } = useUpdates();
+  const { applyUpdate, isApplying, refresh, state } = useUpdates();
 
   return (
     <main className="suite-app">
@@ -65,13 +65,28 @@ export default function UpdatesApp() {
           <div className="suite-updates-header">
             <div>
               <h2 className="mos-card-title">Suite core</h2>
-              <p className="suite-meta mos-meta">Version detection works here now. Install actions are not implemented yet.</p>
+              <p className="suite-meta mos-meta">
+                Managed self-host installs can now surface their active track and start host-owned update jobs from here.
+              </p>
             </div>
 
-            <button className="suite-copy-button" onClick={() => void refresh()} type="button">
-              <RefreshCcw aria-hidden="true" className="suite-inline-icon" />
-              Check again
-            </button>
+            <div className="suite-updates-actions">
+              {state.kind === 'loaded' && state.status.mode === 'managed' && state.status.serviceAvailable ? (
+                <button
+                  className="suite-copy-button"
+                  disabled={isApplying || Boolean(state.status.currentJob && state.status.currentJob.status === 'running')}
+                  onClick={() => void applyUpdate()}
+                  type="button"
+                >
+                  {isApplying ? 'Starting...' : 'Update now'}
+                </button>
+              ) : null}
+
+              <button className="suite-copy-button" onClick={() => void refresh()} type="button">
+                <RefreshCcw aria-hidden="true" className="suite-inline-icon" />
+                Check again
+              </button>
+            </div>
           </div>
 
           {state.kind === 'loading' ? <p className="suite-empty">Loading update state...</p> : null}
@@ -108,10 +123,16 @@ export default function UpdatesApp() {
                 <p className="suite-meta mos-meta">
                   {state.status.mode === 'notify-only'
                     ? 'This installation is configured for notify-only updates. Install new versions through your hosting platform or deployment workflow.'
-                    : 'This installation is configured for managed updates, but no in-app install action exists yet. Host-side update execution still needs to be implemented.'}
+                    : state.status.serviceAvailable
+                      ? 'This installation is configured for managed updates and can ask the host-owned updater service to apply the next available update.'
+                      : 'This installation is configured for managed updates, but the local host updater service is currently unavailable.'}
                 </p>
 
                 <dl className="suite-updates-facts">
+                  <div>
+                    <dt>Subscribed track</dt>
+                    <dd>{state.status.track.label || 'Unknown'}</dd>
+                  </div>
                   <div>
                     <dt>Release channel</dt>
                     <dd>{state.status.latestRelease.channel || 'Unknown'}</dd>
@@ -119,6 +140,10 @@ export default function UpdatesApp() {
                   <div>
                     <dt>Update mode</dt>
                     <dd>{state.status.mode}</dd>
+                  </div>
+                  <div>
+                    <dt>Updater service</dt>
+                    <dd>{state.status.serviceAvailable ? 'Available' : 'Unavailable'}</dd>
                   </div>
                   <div>
                     <dt>Published</dt>
@@ -137,6 +162,16 @@ export default function UpdatesApp() {
                     </dd>
                   </div>
                 </dl>
+
+                {state.status.currentJob ? (
+                  <div className="suite-updates-job">
+                    <strong>Current job</strong>
+                    <p className="suite-meta mos-meta">
+                      {state.status.currentJob.status || 'unknown'} in stage {state.status.currentJob.stage || 'unknown'}.
+                      Last update {state.status.currentJob.updatedAt ? ` ${formatDate(state.status.currentJob.updatedAt)}` : ''}
+                    </p>
+                  </div>
+                ) : null}
 
                 {state.status.error ? (
                   <p className="suite-warning">

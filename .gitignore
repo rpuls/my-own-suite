@@ -56,3 +56,4 @@ deploy/self-host/autoinstall/installer-config/*
 !deploy/self-host/autoinstall/installer-config/.gitkeep
 !deploy/self-host/autoinstall/installer-config/selfhost-installer.env.template
 deploy/self-host/output/
+deploy/vps/docker-compose.selfhost.yml

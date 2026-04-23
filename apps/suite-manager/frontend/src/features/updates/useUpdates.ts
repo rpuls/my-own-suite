@@ -23,11 +23,28 @@ async function loadStatus(): Promise<UpdatesStatus> {
 
 export function useUpdates() {
   const [state, setState] = useState<UpdatesState>({ kind: 'loading' });
+  const [isApplying, setIsApplying] = useState(false);
 
   async function refresh(): Promise<UpdatesStatus> {
     const nextStatus = await loadStatus();
     setState({ kind: 'loaded', status: nextStatus });
     return nextStatus;
+  }
+
+  async function applyUpdate(): Promise<void> {
+    setIsApplying(true);
+    try {
+      const response = await fetch(withSetupPath('/api/updates/apply'), {
+        method: 'POST',
+      });
+      const body = (await response.json().catch(() => ({ error: 'Unable to start update.' }))) as { error?: string };
+      if (!response.ok) {
+        throw new Error(typeof body.error === 'string' ? body.error : 'Unable to start update.');
+      }
+      await refresh();
+    } finally {
+      setIsApplying(false);
+    }
   }
 
   useEffect(() => {
@@ -53,7 +70,23 @@ export function useUpdates() {
     };
   }, []);
 
+  useEffect(() => {
+    if (state.kind !== 'loaded' || !state.status.currentJob || state.status.currentJob.status !== 'running') {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void refresh().catch(() => undefined);
+    }, 5000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [state]);
+
   return {
+    applyUpdate,
+    isApplying,
     refresh,
     state,
   };

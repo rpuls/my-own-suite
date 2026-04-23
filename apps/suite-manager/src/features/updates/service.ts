@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import axios from 'axios';
 
 import type { SuiteManagerConfig } from '../../config.ts';
+import { readAgentStatus, startAgentUpdate } from './agent.ts';
 
 type ReleaseSource = 'github-release' | 'local-manifest' | 'override' | 'unavailable';
 
@@ -21,6 +22,13 @@ type InstalledVersion = {
 };
 
 export type UpdateStatus = {
+  currentJob: {
+    id: string;
+    stage: string | null;
+    status: string | null;
+    target: string | null;
+    updatedAt: string | null;
+  } | null;
   checkedAt: string;
   error: string | null;
   installedVersion: string | null;
@@ -33,6 +41,14 @@ export type UpdateStatus = {
     version: string | null;
   };
   mode: 'managed' | 'notify-only';
+  serviceAvailable: boolean;
+  track: {
+    currentBranch: string | null;
+    currentCommit: string | null;
+    label: string | null;
+    ref: string | null;
+    type: 'stable' | 'branch' | null;
+  };
   updateAvailable: boolean;
 };
 
@@ -241,6 +257,69 @@ export class UpdatesService {
   }
 
   async getStatus(): Promise<UpdateStatus> {
+    if (this.config.updates.mode === 'managed' && this.config.updates.agentSocketPath && this.config.updates.agentTokenFile) {
+      try {
+        const agent = await readAgentStatus(this.config);
+        const updaterStatus = agent.updaterStatus as Record<string, any>;
+        const track = updaterStatus.track || null;
+
+        return {
+          checkedAt: typeof updaterStatus.checkedAt === 'string' ? updaterStatus.checkedAt : new Date().toISOString(),
+          currentJob: agent.currentJob,
+          error: typeof updaterStatus.error === 'string' ? updaterStatus.error : null,
+          installedVersion: typeof updaterStatus.installedVersion === 'string' ? updaterStatus.installedVersion : null,
+          installedVersionSource: typeof updaterStatus.installedVersionSource === 'string' ? updaterStatus.installedVersionSource : null,
+          latestRelease: {
+            channel: typeof updaterStatus.latestRelease?.channel === 'string' ? updaterStatus.latestRelease.channel : null,
+            notesUrl: typeof updaterStatus.latestRelease?.notesUrl === 'string' ? updaterStatus.latestRelease.notesUrl : null,
+            publishedAt:
+              typeof updaterStatus.latestRelease?.publishedAt === 'string' ? updaterStatus.latestRelease.publishedAt : null,
+            source:
+              updaterStatus.latestRelease?.source === 'github-release' ||
+              updaterStatus.latestRelease?.source === 'local-manifest' ||
+              updaterStatus.latestRelease?.source === 'override'
+                ? updaterStatus.latestRelease.source
+                : 'unavailable',
+            version: typeof updaterStatus.latestRelease?.version === 'string' ? updaterStatus.latestRelease.version : null,
+          },
+          mode: this.config.updates.mode,
+          serviceAvailable: true,
+          track: {
+            currentBranch: typeof track?.currentBranch === 'string' ? track.currentBranch : null,
+            currentCommit: typeof track?.currentCommit === 'string' ? track.currentCommit : null,
+            label: typeof track?.label === 'string' ? track.label : null,
+            ref: typeof track?.ref === 'string' ? track.ref : null,
+            type: track?.type === 'branch' || track?.type === 'stable' ? track.type : null,
+          },
+          updateAvailable: updaterStatus.updateAvailable === true,
+        };
+      } catch (caughtError) {
+        const fallback = await this.getFallbackStatus();
+        return {
+          ...fallback,
+          currentJob: null,
+          error: caughtError instanceof Error ? caughtError.message : 'Managed update agent is unavailable.',
+          serviceAvailable: false,
+        };
+      }
+    }
+
+    const fallback = await this.getFallbackStatus();
+    return {
+      ...fallback,
+      currentJob: null,
+      serviceAvailable: false,
+    };
+  }
+
+  async startManagedUpdate(): Promise<{ job: Record<string, unknown> }> {
+    return startAgentUpdate(this.config, {
+      initiator: this.config.ownerEmail,
+      target: 'latest',
+    });
+  }
+
+  private async getFallbackStatus(): Promise<Omit<UpdateStatus, 'currentJob' | 'serviceAvailable'>> {
     const checkedAt = new Date().toISOString();
     const installed = readInstalledVersion();
     const localManifest = readLocalReleaseManifest();
@@ -287,6 +366,13 @@ export class UpdatesService {
       installedVersionSource: installed.source,
       latestRelease,
       mode: this.config.updates.mode,
+      track: {
+        currentBranch: null,
+        currentCommit: null,
+        label: this.config.updates.mode === 'managed' ? 'Managed install' : 'Stable releases',
+        ref: null,
+        type: null,
+      },
       updateAvailable: compareVersions(installed.version, latestRelease.version) < 0,
     };
   }

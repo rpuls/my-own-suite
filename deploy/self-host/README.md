@@ -86,6 +86,7 @@ The updater now also has an experimental branch-following path for self-host dev
 - `MOS_UPDATE_TRACK=stable` follows published release metadata.
 - `MOS_UPDATE_TRACK=branch` follows the configured branch head instead.
 - Self-host bootstrap writes the selected track into `.mos-updater/config.json` inside the repo checkout so later updater actions can use the same mode.
+- Self-host bootstrap also writes `deploy/vps/docker-compose.selfhost.yml` so Suite Manager can reach the host updater service on future starts and updates.
 
 The self-host bootstrap now also installs a host-local MOS update agent service:
 
@@ -93,6 +94,7 @@ The self-host bootstrap now also installs a host-local MOS update agent service:
 - local Unix socket: `/run/mos-update-agent/agent.sock`
 - state directory: `/var/lib/mos-update-agent`
 - bearer token file: `/etc/mos-update-agent/auth.token`
+- local helper command: `mos-update`
 
 This service is the intended bridge between future managed-update UI actions and the host-owned update execution path.
 

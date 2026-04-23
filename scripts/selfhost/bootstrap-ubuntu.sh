@@ -104,6 +104,31 @@ write_updater_config() {
   "track": "${MOS_UPDATE_TRACK}",
   "ref": "${MOS_UPDATE_REF}"
 }
+
+configure_suite_manager_managed_update_env() {
+  local suiteManagerEnv="${REPO_DIR}/deploy/vps/services/suite-manager/.env"
+
+  if [[ ! -f "${suiteManagerEnv}" ]]; then
+    return
+  fi
+
+  set_env_value "${suiteManagerEnv}" "SUITE_MANAGER_UPDATES_MODE" "managed"
+  set_env_value "${suiteManagerEnv}" "SUITE_MANAGER_UPDATES_AGENT_SOCKET_PATH" "/run/mos-update-agent/agent.sock"
+  set_env_value "${suiteManagerEnv}" "SUITE_MANAGER_UPDATES_AGENT_TOKEN_FILE" "/etc/mos-update-agent/auth.token"
+}
+
+write_selfhost_compose_override() {
+  local overridePath="${REPO_DIR}/deploy/vps/docker-compose.selfhost.yml"
+
+  log "Writing self-host Compose override"
+  cat > "${overridePath}" <<'EOF'
+services:
+  suite-manager:
+    volumes:
+      - /run/mos-update-agent:/run/mos-update-agent
+      - /etc/mos-update-agent/auth.token:/etc/mos-update-agent/auth.token:ro
+EOF
+}
 EOF
 }
 
@@ -126,7 +151,6 @@ configure_owner_bootstrap() {
     set_env_value "${suiteManagerEnv}" "OWNER_PASSWORD" "${MOS_OWNER_PASSWORD}"
   fi
 
-  set_env_value "${suiteManagerEnv}" "SUITE_MANAGER_UPDATES_MODE" "managed"
 }
 
 install_update_agent() {
@@ -233,7 +257,9 @@ bootstrap_stack() {
 
   configure_stack_domain
   configure_owner_bootstrap
+  configure_suite_manager_managed_update_env
   write_updater_config
+  write_selfhost_compose_override
   install_update_agent
 
   (
@@ -268,7 +294,8 @@ print_summary() {
   echo "3. Run 'npm run vps:up' from ${REPO_DIR} to build and start the suite."
   echo "4. This machine is configured for the '${MOS_UPDATE_TRACK}' update track on '${MOS_UPDATE_REF}'."
   echo "5. The MOS update agent is installed as a local systemd service on the machine."
-  echo "6. Later, when you want to update manually, use 'npm run update:check' and 'npm run update:apply -- --yes' from ${REPO_DIR}."
+  echo "6. Quick agent checks are available through the local 'mos-update' command."
+  echo "7. Later, when you want to update manually from the repo itself, use 'npm run update:check' and 'npm run update:apply -- --yes' from ${REPO_DIR}."
 }
 
 log "Starting Ubuntu self-host bootstrap"

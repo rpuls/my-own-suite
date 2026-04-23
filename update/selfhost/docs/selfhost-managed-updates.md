@@ -14,6 +14,14 @@ After the self-host bootstrap runs, these should exist:
 
 ## Basic health check
 
+Fastest path:
+
+```bash
+sudo mos-update health
+```
+
+Equivalent low-level form:
+
 ```bash
 sudo systemctl status mos-update-agent.service --no-pager
 curl --unix-socket /run/mos-update-agent/agent.sock http://localhost/healthz
@@ -26,6 +34,14 @@ Expected response:
 ```
 
 ## Authenticated status check
+
+Fastest path:
+
+```bash
+sudo mos-update status
+```
+
+Equivalent low-level form:
 
 ```bash
 TOKEN="$(sudo cat /etc/mos-update-agent/auth.token)"
@@ -42,6 +58,14 @@ Check for:
 
 ## Start an update job
 
+Fastest path:
+
+```bash
+sudo mos-update start --target latest
+```
+
+Equivalent low-level form:
+
 ```bash
 TOKEN="$(sudo cat /etc/mos-update-agent/auth.token)"
 curl --unix-socket /run/mos-update-agent/agent.sock \
@@ -57,6 +81,14 @@ Expected response:
 - job payload with an `id`
 
 ## Poll the job
+
+Fastest path:
+
+```bash
+sudo mos-update job --id <job-id>
+```
+
+Equivalent low-level form:
 
 ```bash
 JOB_ID="<job-id>"

@@ -250,6 +250,13 @@
   gap: 1rem;
 }
 
+.suite-updates-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: flex-end;
+}
+
 .suite-updates-grid {
   display: grid;
   gap: 0.95rem;
@@ -306,6 +313,19 @@
 .suite-warning {
   margin: 0;
   color: #f5d98f;
+}
+
+.suite-updates-job {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--mos-radius-md);
+  background: rgba(255, 255, 255, 0.03);
+}
+.suite-updates-job p,
+.suite-updates-job strong {
+  margin: 0;
 }
 .suite-progress-copy h2 {
   margin: 0.25rem 0 0;

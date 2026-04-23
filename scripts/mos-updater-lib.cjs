@@ -76,6 +76,11 @@ function runNpmScript(repoRoot, scriptName, extraArgs = []) {
   runCommand(repoRoot, npmCommand, ['run', scriptName, ...extraArgs], { stdio: 'inherit' });
 }
 
+function runNodeScript(repoRoot, scriptPath, extraArgs = []) {
+  const nodeCommand = process.execPath;
+  runCommand(repoRoot, nodeCommand, [scriptPath, ...extraArgs], { stdio: 'inherit' });
+}
+
 function safeRunCommand(repoRoot, command, args, options = {}) {
   try {
     return {
@@ -523,12 +528,7 @@ async function runApply(context, flags) {
     runNpmScript(paths.repoRoot, 'vps:doctor');
 
     log('Validating Docker Compose config');
-    runCommand(
-      paths.repoRoot,
-      'docker',
-      ['compose', '-f', 'deploy/vps/docker-compose.yml', '--project-directory', 'deploy/vps', 'config', '-q'],
-      { stdio: 'inherit' },
-    );
+    runNodeScript(paths.repoRoot, 'scripts/mos-compose.cjs', ['config', '-q']);
 
     log('Applying stack update');
     runNpmScript(paths.repoRoot, 'vps:up');

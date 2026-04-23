@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+REPO_DIR="__REPO_DIR__"
+
+exec node "${REPO_DIR}/update/selfhost/agent/mos-update-client.cjs" "$@"
