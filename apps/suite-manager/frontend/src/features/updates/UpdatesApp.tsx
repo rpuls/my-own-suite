@@ -78,7 +78,7 @@ export default function UpdatesApp() {
             </div>
 
             <div className="suite-updates-actions">
-              <button className="suite-copy-button" onClick={() => void refresh()} type="button">
+              <button className="suite-copy-button suite-updates-refresh" onClick={() => void refresh()} type="button">
                 <RefreshCcw aria-hidden="true" className="suite-inline-icon" />
                 Check again
               </button>

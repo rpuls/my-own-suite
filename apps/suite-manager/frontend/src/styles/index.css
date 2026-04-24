@@ -262,6 +262,11 @@
   width: fit-content;
 }
 
+.suite-updates-refresh {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .suite-updates-grid {
   display: grid;
   gap: 0.95rem;
