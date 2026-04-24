@@ -24,6 +24,9 @@ async function loadStatus(): Promise<UpdatesStatus> {
 export function useUpdates() {
   const [state, setState] = useState<UpdatesState>({ kind: 'loading' });
   const [isApplying, setIsApplying] = useState(false);
+  const isJobRunning =
+    state.kind === 'loaded' &&
+    Boolean(state.status.currentJob && (state.status.currentJob.status === 'running' || state.status.currentJob.status === 'queued'));
 
   async function refresh(): Promise<UpdatesStatus> {
     const nextStatus = await loadStatus();
@@ -71,7 +74,7 @@ export function useUpdates() {
   }, []);
 
   useEffect(() => {
-    if (state.kind !== 'loaded' || !state.status.currentJob || state.status.currentJob.status !== 'running') {
+    if (!isJobRunning) {
       return;
     }
 
@@ -82,10 +85,11 @@ export function useUpdates() {
     return () => {
       window.clearInterval(timer);
     };
-  }, [state]);
+  }, [isJobRunning]);
 
   return {
     applyUpdate,
+    isJobRunning,
     isApplying,
     refresh,
     state,

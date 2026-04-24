@@ -48,14 +48,14 @@ function installedVersionHelpText(source: string | null): string {
 }
 
 export default function UpdatesApp() {
-  const { applyUpdate, isApplying, refresh, state } = useUpdates();
+  const { applyUpdate, isApplying, isJobRunning, refresh, state } = useUpdates();
   const canApplyUpdate =
     state.kind === 'loaded' &&
     state.status.mode === 'managed' &&
     state.status.serviceAvailable &&
     state.status.updateAvailable &&
     !isApplying &&
-    !Boolean(state.status.currentJob && state.status.currentJob.status === 'running');
+    !isJobRunning;
 
   return (
     <main className="suite-app">
@@ -78,12 +78,29 @@ export default function UpdatesApp() {
             </div>
 
             <div className="suite-updates-actions">
-              <button className="suite-copy-button suite-updates-refresh" onClick={() => void refresh()} type="button">
+              <button
+                className="suite-copy-button suite-updates-refresh"
+                disabled={isApplying || isJobRunning}
+                onClick={() => void refresh()}
+                type="button"
+              >
                 <RefreshCcw aria-hidden="true" className="suite-inline-icon" />
                 Check again
               </button>
             </div>
           </div>
+
+          {isJobRunning ? (
+            <div className="suite-updates-live-banner" aria-live="polite">
+              <span className="suite-updates-spinner" aria-hidden="true"></span>
+              <div>
+                <strong>Update in progress</strong>
+                <p className="suite-meta mos-meta">
+                  My Own Suite is asking the host updater to apply changes. The page may go offline briefly while services restart.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           {state.kind === 'loading' ? <p className="suite-empty">Loading update state...</p> : null}
 
@@ -107,7 +124,12 @@ export default function UpdatesApp() {
                   <p className="suite-meta mos-meta">Track: {state.status.track.label}</p>
                 ) : null}
                 {canApplyUpdate ? (
-                  <button className="suite-copy-button suite-updates-inline-action" onClick={() => void applyUpdate()} type="button">
+                  <button
+                    className="suite-copy-button suite-updates-inline-action"
+                    disabled={isApplying || isJobRunning}
+                    onClick={() => void applyUpdate()}
+                    type="button"
+                  >
                     {isApplying ? 'Starting...' : 'Update now'}
                   </button>
                 ) : null}
@@ -118,7 +140,7 @@ export default function UpdatesApp() {
                   <span
                     className={`mos-pill ${state.status.updateAvailable ? 'is-active' : 'is-completed'}`}
                   >
-                    {state.status.updateAvailable ? 'Update available' : 'Up to date'}
+                    {isJobRunning ? 'Updating now' : state.status.updateAvailable ? 'Update available' : 'Up to date'}
                   </span>
 
                   <span className="suite-meta mos-meta">Checked {formatDate(state.status.checkedAt)}</span>
