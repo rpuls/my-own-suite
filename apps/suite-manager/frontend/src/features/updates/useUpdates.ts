@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { withSetupPath } from '../../lib/base-path';
 import type { UpdatesStatus } from './types';
@@ -24,6 +24,7 @@ async function loadStatus(): Promise<UpdatesStatus> {
 export function useUpdates() {
   const [state, setState] = useState<UpdatesState>({ kind: 'loading' });
   const [isApplying, setIsApplying] = useState(false);
+  const previousJobStatusRef = useRef<string | null>(null);
   const isJobRunning =
     state.kind === 'loaded' &&
     Boolean(state.status.currentJob && (state.status.currentJob.status === 'running' || state.status.currentJob.status === 'queued'));
@@ -86,6 +87,27 @@ export function useUpdates() {
       window.clearInterval(timer);
     };
   }, [isJobRunning]);
+
+  useEffect(() => {
+    if (state.kind !== 'loaded') {
+      return;
+    }
+
+    const currentStatus = state.status.currentJob?.status || null;
+    const previousStatus = previousJobStatusRef.current;
+
+    if (
+      previousStatus &&
+      (previousStatus === 'queued' || previousStatus === 'running') &&
+      currentStatus === 'succeeded'
+    ) {
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 1200);
+    }
+
+    previousJobStatusRef.current = currentStatus;
+  }, [state]);
 
   return {
     applyUpdate,
