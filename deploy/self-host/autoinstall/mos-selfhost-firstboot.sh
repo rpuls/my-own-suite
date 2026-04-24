@@ -13,14 +13,20 @@ source /etc/mos-selfhost.env
 
 if [[ -f /etc/mos-selfhost-installer.env ]]; then
   source /etc/mos-selfhost-installer.env
+  echo "Loaded MOS installer owner payload for ${INSTALL_OWNER_EMAIL:-missing owner email}"
+else
+  echo "MOS installer owner payload was not found; Suite Manager will use bootstrap defaults"
 fi
 
 export REPO_DIR
 export MOS_REPO_URL
 export MOS_REPO_REF
+export MOS_UPDATE_TRACK="${UPDATE_TRACK:-${MOS_UPDATE_TRACK:-branch}}"
+export MOS_UPDATE_REF="${UPDATE_REF:-${MOS_UPDATE_REF:-${MOS_REPO_REF}}}"
 export MOS_HOSTNAME
 export MOS_STACK_DOMAIN
 export MOS_PUBLIC_DOMAIN
+export MOS_PRIMARY_USER="${PRIMARY_USER:-${MOS_PRIMARY_USER:-mos}}"
 export INSTALL_DOCKER
 export INSTALL_NODE
 export CLONE_REPO_IF_MISSING

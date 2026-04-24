@@ -72,15 +72,29 @@ set_env_value() {
   local file_path="$1"
   local key="$2"
   local value="$3"
+  local tmp_file
 
   mkdir -p "$(dirname "${file_path}")"
   touch "${file_path}"
+  tmp_file="$(mktemp)"
 
-  if grep -q "^${key}=" "${file_path}"; then
-    sed -i "s|^${key}=.*|${key}=${value}|" "${file_path}"
-  else
-    printf '%s=%s\n' "${key}" "${value}" >> "${file_path}"
-  fi
+  awk -v key="${key}" -v value="${value}" '
+    BEGIN { found = 0 }
+    index($0, key "=") == 1 {
+      print key "=" value
+      found = 1
+      next
+    }
+    { print }
+    END {
+      if (!found) {
+        print key "=" value
+      }
+    }
+  ' "${file_path}" > "${tmp_file}"
+
+  cat "${tmp_file}" > "${file_path}"
+  rm -f "${tmp_file}"
 }
 
 configure_stack_domain() {
@@ -139,6 +153,13 @@ configure_owner_bootstrap() {
     return
   fi
 
+  if [[ -z "${MOS_OWNER_NAME}" && -z "${MOS_OWNER_EMAIL}" && -z "${MOS_OWNER_PASSWORD}" ]]; then
+    log "No installer owner payload received; keeping Suite Manager owner defaults"
+    return
+  fi
+
+  log "Applying installer owner details to Suite Manager env"
+
   if [[ -n "${MOS_OWNER_NAME}" ]]; then
     set_env_value "${suiteManagerEnv}" "OWNER_NAME" "${MOS_OWNER_NAME}"
   fi
@@ -151,6 +172,7 @@ configure_owner_bootstrap() {
     set_env_value "${suiteManagerEnv}" "OWNER_PASSWORD" "${MOS_OWNER_PASSWORD}"
   fi
 
+  log "Suite Manager owner configured as ${MOS_OWNER_NAME:-existing name} <${MOS_OWNER_EMAIL:-existing email}>"
 }
 
 install_update_agent() {
