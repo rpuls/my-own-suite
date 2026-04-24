@@ -14,7 +14,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Fixed
 
-- Hardened the self-host first-boot handoff so USB installer owner details are logged, exported, and written into Suite Manager's env file reliably instead of falling back to default onboarding identity values.
+- Hardened the self-host first-boot handoff so USB installer owner details are logged, exported, and loaded through a self-host Suite Manager env override instead of falling back to default onboarding identity values.
 
 ## [0.9.0] - 2026-04-17
 

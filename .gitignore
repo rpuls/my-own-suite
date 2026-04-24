@@ -1,5 +1,6 @@
 # Environment files
 .env
+.env.selfhost
 vps/.env
 
 # temporary files
