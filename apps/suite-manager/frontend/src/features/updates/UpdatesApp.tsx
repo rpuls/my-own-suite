@@ -62,9 +62,6 @@ export default function UpdatesApp() {
       <section className="mos-shell suite-hero">
         <span className="mos-eyebrow">My Own Suite</span>
         <h1 className="mos-page-title">Updates</h1>
-        <p className="suite-lead mos-body-lg">
-          This is the safe first layer of update management: visibility into what is installed here and what release track says is newer.
-        </p>
       </section>
 
       <section className="mos-shell">
