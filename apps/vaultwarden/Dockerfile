@@ -2,7 +2,7 @@
 # Uses official Vaultwarden server image with PostgreSQL support
 # For VPS deployments, the official image is used directly in docker-compose
 
-FROM vaultwarden/server@sha256:1ca2e2098ba9ab9e46004f4ee61a3be6080ffee3ed41018a95c4b0fb6454a54b
+FROM vaultwarden/server@sha256:c4f6056fe0c288a052a223cecd263a90d1dda1a0177bb5b054a363a6c7b211d9
 
 # Platform deployments (Railway, Dokploy) provide PORT environment variable
 # Vaultwarden/Rocket will automatically use PORT if set
