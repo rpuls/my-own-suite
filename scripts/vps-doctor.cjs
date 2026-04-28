@@ -165,9 +165,20 @@ if (env.suiteManager) {
 }
 
 if (env.seafile) {
-  requireVar('seafile', 'DB_ROOT_PASSWD', { allowPlaceholder: false });
-  requireVar('seafile', 'SEAFILE_ADMIN_EMAIL', { allowPlaceholder: false });
-  requireVar('seafile', 'SEAFILE_ADMIN_PASSWORD', { allowPlaceholder: false });
+  requireVar('seafile', 'SEAFILE_MYSQL_DB_HOST', { allowPlaceholder: false });
+  requireVar('seafile', 'SEAFILE_MYSQL_DB_PORT', { allowPlaceholder: false });
+  requireVar('seafile', 'SEAFILE_MYSQL_DB_USER', { allowPlaceholder: false });
+  requireVar('seafile', 'SEAFILE_MYSQL_DB_PASSWORD', { allowPlaceholder: false });
+  requireVar('seafile', 'SEAFILE_MYSQL_DB_CCNET_DB_NAME', { allowPlaceholder: false });
+  requireVar('seafile', 'SEAFILE_MYSQL_DB_SEAFILE_DB_NAME', { allowPlaceholder: false });
+  requireVar('seafile', 'SEAFILE_MYSQL_DB_SEAHUB_DB_NAME', { allowPlaceholder: false });
+  requireVar('seafile', 'INIT_SEAFILE_MYSQL_ROOT_PASSWORD', { allowPlaceholder: false });
+  requireVar('seafile', 'INIT_SEAFILE_ADMIN_EMAIL', { allowPlaceholder: false });
+  requireVar('seafile', 'INIT_SEAFILE_ADMIN_PASSWORD', { allowPlaceholder: false });
+  requireVar('seafile', 'JWT_PRIVATE_KEY', { allowPlaceholder: false });
+  requireVar('seafile', 'CACHE_PROVIDER', { allowPlaceholder: false });
+  requireVar('seafile', 'MEMCACHED_HOST', { allowPlaceholder: false });
+  requireVar('seafile', 'MEMCACHED_PORT', { allowPlaceholder: false });
 }
 
 if (env.seafileMysql) {
@@ -176,10 +187,12 @@ if (env.seafileMysql) {
 
 if (env.seafile && env.seafileMysql) {
   const mysqlRootPassword = env.seafileMysql.MYSQL_ROOT_PASSWORD || '';
-  const dbRootPassword = env.seafile.DB_ROOT_PASSWD || '';
+  const seafileInitRootPassword = env.seafile.INIT_SEAFILE_MYSQL_ROOT_PASSWORD || '';
 
-  if (!isMissing(mysqlRootPassword) && mysqlRootPassword !== dbRootPassword) {
-    errors.push('Seafile MYSQL_ROOT_PASSWORD and DB_ROOT_PASSWD must match for first-run bootstrap.');
+  if (!isMissing(mysqlRootPassword) && mysqlRootPassword !== seafileInitRootPassword) {
+    errors.push(
+      'Seafile MYSQL_ROOT_PASSWORD and INIT_SEAFILE_MYSQL_ROOT_PASSWORD must match for first-run bootstrap.',
+    );
   }
 }
 
@@ -285,8 +298,8 @@ if (env.homepage) {
 if (env.suiteManager && env.seafile) {
   const sharedEmail = env.suiteManager.OWNER_EMAIL || '';
 
-  if (!isMissing(sharedEmail) && env.seafile.SEAFILE_ADMIN_EMAIL !== sharedEmail) {
-    warnings.push('Seafile SEAFILE_ADMIN_EMAIL differs from suite-manager OWNER_EMAIL.');
+  if (!isMissing(sharedEmail) && env.seafile.INIT_SEAFILE_ADMIN_EMAIL !== sharedEmail) {
+    warnings.push('Seafile INIT_SEAFILE_ADMIN_EMAIL differs from suite-manager OWNER_EMAIL.');
   }
 }
 

@@ -174,7 +174,6 @@ services:
       - ./services/seafile/.env
     environment:
       - SEAFILE_SERVER_HOSTNAME=seafile.${DOMAIN}
-      - MEMCACHED_SERVER=${MEMCACHED_SERVER:-memcached:11211}
       - ONLYOFFICE_INTERNAL_SEAFILE_URL=${ONLYOFFICE_INTERNAL_SEAFILE_URL:-http://seafile}
     volumes:
       - seafile_data:/shared

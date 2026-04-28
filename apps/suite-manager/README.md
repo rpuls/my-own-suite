@@ -21,7 +21,7 @@
 - `SUITE_MANAGER_UPDATES_MODE`: Update-management posture for this installation. Use `notify-only` for Railway-like platforms or any deployment where Suite Manager should only notify about newer releases; reserve `managed` for future host-side updater integrations. Defaults to `notify-only`.
 - `SUITE_MANAGER_UPDATES_LATEST_VERSION_OVERRIDE`: Optional test-only override for simulating the latest available version in the Updates screen without changing real release metadata.
 - `VAULTWARDEN_DATABASE_URL` or `DATABASE_URL`: Optional Postgres connection string used to detect when the owner Vaultwarden account has been created. In the VPS/local stack, this is sourced from the existing Vaultwarden service env.
-- `SEAFILE_ADMIN_EMAIL`, `SEAFILE_ADMIN_PASSWORD`, `RADICALE_ADMIN_USERNAME`, `RADICALE_ADMIN_PASSWORD`: Consumed from existing service env files so suite-manager can prepare the first Vaultwarden import handoff.
+- `INIT_SEAFILE_ADMIN_EMAIL`, `INIT_SEAFILE_ADMIN_PASSWORD`, `RADICALE_ADMIN_USERNAME`, `RADICALE_ADMIN_PASSWORD`: Consumed from existing service env files so suite-manager can prepare the first Vaultwarden import handoff.
 - `DOMAIN` / `PUBLIC_URL_SCHEME`: Optional fallback inputs for deriving public app URLs when explicit `*_PUBLIC_URL` values are not set.
 
 #### Health and behavior

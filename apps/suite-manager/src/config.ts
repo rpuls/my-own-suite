@@ -110,8 +110,8 @@ export function loadConfig(): SuiteManagerConfig {
     (process.env.SUITE_MANAGER_UPDATES_MODE || 'notify-only').trim().toLowerCase() === 'managed'
       ? 'managed'
       : 'notify-only';
-  const seafileAdminEmail = (process.env.SEAFILE_ADMIN_EMAIL || '').trim();
-  const seafileAdminPassword = (process.env.SEAFILE_ADMIN_PASSWORD || '').trim();
+  const seafileAdminEmail = (process.env.INIT_SEAFILE_ADMIN_EMAIL || '').trim();
+  const seafileAdminPassword = (process.env.INIT_SEAFILE_ADMIN_PASSWORD || '').trim();
   const radicaleAdminUsername = (process.env.RADICALE_ADMIN_USERNAME || '').trim();
   const radicaleAdminPassword = (process.env.RADICALE_ADMIN_PASSWORD || '').trim();
 
