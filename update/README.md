@@ -1,13 +1,20 @@
 # Managed Update Work
 
-This folder is the isolated workspace for future managed-update infrastructure.
+This folder is the implementation workspace for managed-update infrastructure.
 
 Current focus:
 
 - `selfhost/`: host-managed update flow for USB-installed self-host deployments
 
-Goals for this workspace:
+Keep here:
 
-- keep updater-specific design and implementation separate from the app codebase
-- allow staged experimentation before the feature is wired deeply into Suite Manager
-- make it easier to track MVP scope, later roadmap items, and deployment-specific differences
+- updater agent code
+- updater worker code
+- systemd templates
+- low-level updater smoke-test notes
+
+Do not keep long-term roadmap or architecture decisions here. Use:
+
+- [docs/roadmap.md](../docs/roadmap.md)
+- [docs/decisions.md](../docs/decisions.md)
+- GitHub Issues for task-level work
