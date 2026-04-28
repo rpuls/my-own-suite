@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import http from 'node:http';
+import https from 'node:https';
 import path from 'node:path';
 import process from 'node:process';
 import { execFileSync } from 'node:child_process';
@@ -42,11 +44,12 @@ function runDockerCompose(extraArgs) {
 
 async function waitFor(url, timeoutMs, isReady = (status) => status >= 200 && status < 400) {
   const startedAt = Date.now();
+  const request = readinessRequest(url);
 
   while (Date.now() - startedAt < timeoutMs) {
     try {
-      const response = await fetch(url, { redirect: 'manual' });
-      if (isReady(response.status)) {
+      const status = await requestStatus(request);
+      if (isReady(status)) {
         return;
       }
     } catch {
@@ -57,6 +60,48 @@ async function waitFor(url, timeoutMs, isReady = (status) => status >= 200 && st
   }
 
   throw new Error(`Timed out waiting for ${url}`);
+}
+
+function requestStatus(request) {
+  const parsed = new URL(request.url);
+  const client = parsed.protocol === 'https:' ? https : http;
+
+  return new Promise((resolve, reject) => {
+    const req = client.request(
+      parsed,
+      {
+        headers: request.headers,
+        timeout: 5000,
+      },
+      (res) => {
+        res.resume();
+        res.on('end', () => resolve(res.statusCode ?? 0));
+      },
+    );
+
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy(new Error(`Timed out requesting ${request.url}`));
+    });
+    req.end();
+  });
+}
+
+function readinessRequest(url) {
+  const parsed = new URL(url);
+
+  if (!parsed.hostname.endsWith('.localhost')) {
+    return { url, headers: undefined };
+  }
+
+  const originalHost = parsed.host;
+  parsed.hostname = '127.0.0.1';
+  return {
+    url: parsed.toString(),
+    headers: {
+      Host: originalHost,
+    },
+  };
 }
 
 function readSuiteManagerEnv() {

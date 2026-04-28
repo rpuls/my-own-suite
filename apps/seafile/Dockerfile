@@ -1,4 +1,4 @@
-FROM seafileltd/seafile-mc@sha256:1239b087aa4bdf1b60a3802e80855f230736ac5d5fa3325a40b15d4c598f422c
+FROM seafileltd/seafile-mc@sha256:f1e19cc1cdd52ed8ec883de114acaa1e932941515dd6571fce0c0ff02248c4cf
 
 # Railway compatibility wrapper:
 # - Maps Railway MySQL variable names to Seafile's expected env names.

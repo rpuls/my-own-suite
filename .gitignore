@@ -38,6 +38,7 @@ logs/
 
 # Node dependencies
 node_modules/
+.npm-cache/
 
 # Frontend build output
 apps/suite-manager/frontend/dist/

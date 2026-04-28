@@ -13,7 +13,7 @@
     "test:apps:headed": "node ./node_modules/playwright/cli.js test specs/homepage-apps.spec.js --headed"
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.2"
+    "@playwright/test": "^1.59.1"
   },
   "dependencies": {
     "my-own-suite": "file:../.."

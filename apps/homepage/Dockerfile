@@ -4,7 +4,7 @@
 # ============================================
 # Stage 1: Build TypeScript Config Generator
 # ============================================
-FROM node@sha256:09e2b3d9726018aecf269bd35325f46bf75046a643a66d28360ec71132750ec8 AS builder
+FROM node@sha256:c69f4e0640e5b065f2694579793e4309f1e0e49868b0f2fea29c44d9c0dc2caf AS builder
 
 WORKDIR /build
 
@@ -20,7 +20,7 @@ RUN npm run build
 # ============================================
 # Stage 2: Runtime Image
 # ============================================
-FROM ghcr.io/gethomepage/homepage@sha256:7dc099d5c6ec7fc945d858218565925b01ff8a60bcbfda990fc680a8b5cd0b6e
+FROM ghcr.io/gethomepage/homepage@sha256:cc84f2f5eb3c7734353701ccbaa24ed02dacb0d119114e50e4251e2005f3990a
 
 # Copy built config generator (only production dependencies needed at runtime)
 COPY --from=builder /build/dist /app/config-generator/dist

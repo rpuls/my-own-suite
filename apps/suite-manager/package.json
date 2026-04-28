@@ -10,14 +10,14 @@
     "npm": "11.x"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.11",
-    "axios": "^1.8.4",
-    "hono": "^4.12.5",
-    "lucide-react": "^0.542.0",
-    "pg": "^8.16.3",
+    "@hono/node-server": "^2.0.0",
+    "axios": "^1.15.2",
+    "hono": "^4.12.15",
+    "lucide-react": "^1.12.0",
+    "pg": "^8.20.0",
     "qrcode": "^1.5.4",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
   },
   "scripts": {
     "prebuild": "node -e \"const fs=require('node:fs'); const path='../../scripts/sync-branding.cjs'; if (fs.existsSync(path)) require(path);\"",
@@ -32,8 +32,8 @@
   "devDependencies": {
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.4",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "@vitejs/plugin-react": "^6.0.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10"
   }
 }
