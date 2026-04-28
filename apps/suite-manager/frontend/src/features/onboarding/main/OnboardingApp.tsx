@@ -375,7 +375,8 @@ export default function OnboardingApp() {
         <span className="mos-eyebrow">My Own Suite</span>
         <h1 className="mos-page-title">Finish setup</h1>
         <p className="suite-lead mos-body-lg">
-          Get the secure basics out of the way first, then begin with the part of your suite that feels most useful today.
+          Welcome to your suite onboarding. We will guide you through the recommended setup steps, and you can always come back
+          later from Suite Manager if you need a break.
         </p>
       </section>
 
