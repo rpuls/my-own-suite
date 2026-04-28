@@ -6,6 +6,7 @@
 - `WEBSOCKET_ENABLED`: Enables websocket notifications.
 - `ROCKET_PORT` / `PORT`: Runtime port binding (platform-dependent).
 - Shared SMTP inputs from `deploy/vps/services/suite-manager/.env` when enabled:
+  - `SMTP_ENABLED`
   - `SMTP_HOST`
   - `SMTP_FROM`
   - `SMTP_FROM_NAME`
@@ -35,6 +36,7 @@ Healthcheck:
 #### Optional SMTP behavior
 
 - SMTP is fully optional and is intended for operators who already have access to an SMTP server.
+- When `SMTP_ENABLED` is explicitly false, the MOS startup wrapper removes shared SMTP variables before Vaultwarden validates its mail configuration.
 - When the shared SMTP values are present, Vaultwarden can use them for verification mail, welcome mail, master password hint mail, and similar account emails.
 - The canonical setup and troubleshooting guide lives in the dedicated advanced SMTP doc: [Optional email with SMTP](/docs/optional-email-with-smtp).
 - Some email-triggering actions may feel slow if the configured SMTP server is unreachable, because Vaultwarden sends those emails as part of the request flow.
