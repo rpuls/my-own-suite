@@ -9,13 +9,14 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ### Changed
 
 - Added lightweight project tracking docs, documentation ownership rules, and a Codex-ready GitHub issue template so roadmap items, architecture decisions, and implementation tasks have clear sources of truth.
-- Improved the self-host installer handoff so a simple local installer config can carry the chosen Linux and Suite Manager owner credentials into the USB build, feed first-boot bootstrap automatically, avoid leaving users hunting through generated env files after installation, help fetch the supported official Ubuntu Server ISO automatically when the local ISO folder is empty, and keep the USB installer menu human-confirmed instead of auto-starting after a timeout.
+- Improved the self-host installer handoff so a simple local installer config can carry the chosen stack domain, Linux credentials, and Suite Manager owner credentials into a single first-boot manifest, feed bootstrap automatically, avoid leaving users hunting through generated env files after installation, help fetch the supported official Ubuntu Server ISO automatically when the local ISO folder is empty, and keep the USB installer menu human-confirmed instead of auto-starting after a timeout.
 - Started the managed self-host updater MVP track with an isolated `update/selfhost` workspace, a phased plan for a host-owned update agent, an experimental self-host update-track foundation so USB-installed test machines can follow either published releases or a configured branch without giving the Suite Manager container direct host control, and a first bootstrap-installed `mos-update-agent` systemd service that exposes a local Unix-socket update API on self-host machines. Compatibility note: the self-host installer config and bootstrap flow now recognize `UPDATE_TRACK` and `UPDATE_REF` for experimental managed-update track selection, and self-host bootstrap now forces `SUITE_MANAGER_UPDATES_MODE=managed`.
 - Extended the managed self-host updater MVP so self-host bootstrap now generates a Compose override that mounts the host update agent into Suite Manager, the backend can proxy managed update actions to that agent, and the Updates UI can show the subscribed track plus a first in-app `Update now` action for managed self-host installs.
 
 ### Fixed
 
 - Hardened the self-host first-boot handoff so USB installer owner details are logged, exported, and loaded through a self-host Suite Manager env override instead of falling back to default onboarding identity values.
+- Fixed self-host first-boot domain propagation so USB-installed Homepage tiles use the configured `*.mos.home` stack domain instead of stale `*.localhost` URLs.
 
 ## [0.9.0] - 2026-04-17
 

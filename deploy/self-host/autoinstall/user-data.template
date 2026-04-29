@@ -24,7 +24,7 @@ autoinstall:
     package_upgrade: true
     write_files:
       - path: /etc/mos-selfhost.env
-        permissions: "0644"
+        permissions: "0600"
         content: |
           REPO_DIR=__REPO_DIR__
           MOS_REPO_URL=__MOS_REPO_URL__
@@ -35,14 +35,11 @@ autoinstall:
           MOS_PRIMARY_USER=__USERNAME__
           MOS_STACK_DOMAIN=__STACK_DOMAIN__
           MOS_PUBLIC_DOMAIN=__PUBLIC_DOMAIN__
+__INSTALLER_ENV__
           INSTALL_DOCKER=1
           INSTALL_NODE=1
           CLONE_REPO_IF_MISSING=1
           AUTO_START_STACK=1
-      - path: /etc/mos-selfhost-installer.env
-        permissions: "0600"
-        content: |
-__INSTALLER_ENV__
       - path: /usr/local/bin/mos-selfhost-firstboot.sh
         permissions: "0755"
         content: |

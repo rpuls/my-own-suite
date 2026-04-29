@@ -53,7 +53,7 @@ to:
 
 - `deploy/self-host/autoinstall/installer-config/selfhost-installer.env`
 
-and fill in the owner and Linux passwords you want the installer to use.
+and fill in the stack domain, owner, and Linux passwords you want the installer to use.
 
 Optional installer track settings:
 
@@ -65,11 +65,13 @@ Optional installer track settings:
 What it does:
 
 1. Generates fresh `user-data` and `meta-data`
-2. Carries a simple local installer config with the chosen owner and Linux credentials into the build
+2. Converts the local installer config into one first-boot manifest at `/etc/mos-selfhost.env`
 3. Builds a small Docker-based ISO remaster environment with `xorriso`
 4. Injects the MOS autoinstall seed into the Ubuntu ISO under `/autoinstall/`
 5. Patches Ubuntu GRUB config to keep the normal Ubuntu boot path as the default and add a separate explicit `Install My Own Suite (ERASES DISK)` entry
 6. Writes a single output ISO under `deploy/self-host/output/`
+
+The installed first-boot launcher is intentionally thin: it loads `/etc/mos-selfhost.env`, clones the configured repo/ref, and delegates stack setup to the repo-owned bootstrap script. That keeps app env generation centralized in `vps:init`.
 
 This is the intended direction for the HP mini PC flow because it removes the separate `CIDATA` disk from the final installation experience.
 

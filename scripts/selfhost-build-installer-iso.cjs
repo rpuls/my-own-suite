@@ -352,8 +352,6 @@ async function main() {
 
   assertFile(path.join(seedDir, 'user-data'), 'Generated user-data');
   assertFile(path.join(seedDir, 'meta-data'), 'Generated meta-data');
-  fs.copyFileSync(installerConfig, path.join(seedDir, 'selfhost-installer.env'));
-  assertFile(path.join(seedDir, 'selfhost-installer.env'), 'Generated installer config payload');
 
   run('docker', ['build', '-t', builderTag, 'deploy/self-host/iso-builder'], {
     stdio: 'inherit',
