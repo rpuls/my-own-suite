@@ -81,6 +81,10 @@ function runNodeScript(repoRoot, scriptPath, extraArgs = []) {
   runCommand(repoRoot, nodeCommand, [scriptPath, ...extraArgs], { stdio: 'inherit' });
 }
 
+function runCompose(repoRoot, args) {
+  runNodeScript(repoRoot, 'scripts/mos-compose.cjs', args);
+}
+
 function safeRunCommand(repoRoot, command, args, options = {}) {
   try {
     return {
@@ -384,6 +388,24 @@ function buildPaths(repoRoot) {
   };
 }
 
+const STACK_PROFILES = ['vaultwarden', 'seafile', 'onlyoffice', 'stirling-pdf', 'radicale', 'immich'];
+
+function buildProfileArgs() {
+  return STACK_PROFILES.flatMap((profile) => ['--profile', profile]);
+}
+
+function buildStackImages(repoRoot) {
+  const profileArgs = buildProfileArgs();
+
+  runCompose(repoRoot, [...profileArgs, 'build', '--pull']);
+}
+
+function recreateStackContainers(repoRoot) {
+  const profileArgs = buildProfileArgs();
+
+  runCompose(repoRoot, [...profileArgs, 'up', '-d', '--force-recreate']);
+}
+
 async function collectStatus(context) {
   const { fail, paths } = context;
   ensureUpdaterPrerequisites(paths, fail);
@@ -528,10 +550,13 @@ async function runApply(context, flags) {
     runNpmScript(paths.repoRoot, 'vps:doctor');
 
     log('Validating Docker Compose config');
-    runNodeScript(paths.repoRoot, 'scripts/mos-compose.cjs', ['config', '-q']);
+    runCompose(paths.repoRoot, ['config', '-q']);
 
-    log('Applying stack update');
-    runNpmScript(paths.repoRoot, 'vps:up');
+    log('Building stack images');
+    buildStackImages(paths.repoRoot);
+
+    log('Recreating stack containers');
+    recreateStackContainers(paths.repoRoot);
 
     writeUpdaterState(paths.updaterStatePath, {
       completedAt: new Date().toISOString(),

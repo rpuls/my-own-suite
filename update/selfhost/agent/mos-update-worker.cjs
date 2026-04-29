@@ -32,7 +32,8 @@ function mapStage(message) {
   if (message.includes('release metadata')) return 'validating-release';
   if (message.includes('Rendering and validating VPS env files')) return 'rendering-env';
   if (message.includes('Validating Docker Compose config')) return 'validating-compose';
-  if (message.includes('Applying stack update')) return 'applying-compose';
+  if (message.includes('Building stack images')) return 'building-images';
+  if (message.includes('Recreating stack containers')) return 'applying-compose';
   if (message.includes('Fetching git tags') || message.includes('Fetching latest commit')) return 'fetching-git';
   if (message.includes('Checking out')) return 'switching-target';
   if (message.includes('Update applied successfully')) return 'succeeded';
