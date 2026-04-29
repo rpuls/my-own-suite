@@ -16,6 +16,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Strengthened managed self-host update application so updates explicitly rebuild all profiled stack images with fresh base pulls and recreate containers from those images without removing persistent volumes.
 - Added a staging update marker for validating the managed self-host image rebuild flow end to end.
 - Added visible managed-update job diagnostics so self-host update runs show their updater implementation marker, git revision changes, and Compose phases directly in Suite Manager.
+- Added a second staging update marker for collecting managed-update diagnostic output from a live self-host run.
 
 ### Fixed
 
