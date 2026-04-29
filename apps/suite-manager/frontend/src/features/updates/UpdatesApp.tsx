@@ -192,6 +192,16 @@ export default function UpdatesApp() {
                     {state.status.currentJob.error ? (
                       <p className="suite-warning">{state.status.currentJob.error}</p>
                     ) : null}
+                    {state.status.currentJob.logs && state.status.currentJob.logs.length > 0 ? (
+                      <ol className="suite-updates-job-log">
+                        {state.status.currentJob.logs.slice(-8).map((entry, index) => (
+                          <li key={`${entry.at || 'log'}-${index}`}>
+                            <span>{entry.at ? formatDate(entry.at) : 'Update job'}</span>
+                            <code>{entry.message || 'No message'}</code>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : null}
                   </div>
                 ) : null}
 

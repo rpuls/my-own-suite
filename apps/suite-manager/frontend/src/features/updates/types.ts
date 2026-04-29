@@ -2,6 +2,7 @@ export type UpdatesStatus = {
   currentJob: {
     error: string | null;
     id: string;
+    logs?: Array<{ at?: string; message?: string }>;
     stage: string | null;
     status: string | null;
     target: string | null;

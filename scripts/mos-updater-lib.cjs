@@ -85,6 +85,10 @@ function runCompose(repoRoot, args) {
   runNodeScript(repoRoot, 'scripts/mos-compose.cjs', args);
 }
 
+function formatCommand(command, args) {
+  return [command, ...args].join(' ');
+}
+
 function safeRunCommand(repoRoot, command, args, options = {}) {
   try {
     return {
@@ -388,6 +392,11 @@ function buildPaths(repoRoot) {
   };
 }
 
+function readShortCommit(repoRoot) {
+  const result = safeRunCommand(repoRoot, 'git', ['rev-parse', '--short', 'HEAD']);
+  return result.ok && result.value ? result.value : 'unknown';
+}
+
 const STACK_PROFILES = ['vaultwarden', 'seafile', 'onlyoffice', 'stirling-pdf', 'radicale', 'immich'];
 
 function buildProfileArgs() {
@@ -505,6 +514,9 @@ async function runApply(context, flags) {
   ensureUpdaterPrerequisites(paths, fail);
   ensureCleanWorkingTree(paths.repoRoot, fail);
 
+  log(`Updater implementation: explicit-compose-build-v1`);
+  log(`Repository before update: ${readShortCommit(paths.repoRoot)}`);
+
   const status = await collectStatus(context);
 
   if (!flags.yes) {
@@ -533,6 +545,7 @@ async function runApply(context, flags) {
       }
 
       updateTrackedBranch(paths.repoRoot, status.track.ref, log);
+      log(`Repository after checkout: ${readShortCommit(paths.repoRoot)}`);
     } else {
       if (status.installedVersion && compareVersions(status.installedVersion, stableTargetVersion) >= 0) {
         fail(`Installed version ${status.installedVersion} is not behind target ${stableTargetVersion}.`);
@@ -540,6 +553,7 @@ async function runApply(context, flags) {
 
       const tagName = fetchGitMetadata(paths.repoRoot, stableTargetVersion, log, fail);
       checkoutTag(paths.repoRoot, tagName, log);
+      log(`Repository after checkout: ${readShortCommit(paths.repoRoot)}`);
     }
 
     log('Running release metadata validation');
@@ -550,12 +564,15 @@ async function runApply(context, flags) {
     runNpmScript(paths.repoRoot, 'vps:doctor');
 
     log('Validating Docker Compose config');
+    log(formatCommand('node scripts/mos-compose.cjs', ['config', '-q']));
     runCompose(paths.repoRoot, ['config', '-q']);
 
     log('Building stack images');
+    log(formatCommand('node scripts/mos-compose.cjs', [...buildProfileArgs(), 'build', '--pull']));
     buildStackImages(paths.repoRoot);
 
     log('Recreating stack containers');
+    log(formatCommand('node scripts/mos-compose.cjs', [...buildProfileArgs(), 'up', '-d', '--force-recreate']));
     recreateStackContainers(paths.repoRoot);
 
     writeUpdaterState(paths.updaterStatePath, {

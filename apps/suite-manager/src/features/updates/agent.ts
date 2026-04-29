@@ -5,6 +5,7 @@ import type { SuiteManagerConfig } from '../../config.ts';
 
 type AgentJobSummary = {
   id: string;
+  logs?: Array<{ at?: string; message?: string }>;
   stage: string | null;
   status: string | null;
   target: string | null;

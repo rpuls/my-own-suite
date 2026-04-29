@@ -56,6 +56,7 @@ function completeCurrentJob(job) {
   writeJson(currentJobPath, {
     error: typeof job.error === 'string' ? job.error : null,
     id: job.id,
+    logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [],
     stage: job.stage,
     status: job.status,
     target: job.target,

@@ -15,6 +15,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Extended the managed self-host updater MVP so self-host bootstrap now generates a Compose override that mounts the host update agent into Suite Manager, the backend can proxy managed update actions to that agent, and the Updates UI can show the subscribed track plus a first in-app `Update now` action for managed self-host installs.
 - Strengthened managed self-host update application so updates explicitly rebuild all profiled stack images with fresh base pulls and recreate containers from those images without removing persistent volumes.
 - Added a staging update marker for validating the managed self-host image rebuild flow end to end.
+- Added visible managed-update job diagnostics so self-host update runs show their updater implementation marker, git revision changes, and Compose phases directly in Suite Manager.
 
 ### Fixed
 

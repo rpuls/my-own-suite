@@ -363,6 +363,31 @@
 .suite-updates-job strong {
   margin: 0;
 }
+
+.suite-updates-job-log {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suite-updates-job-log li {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.suite-updates-job-log span {
+  color: var(--text-muted);
+  font-size: var(--mos-text-meta);
+}
+
+.suite-updates-job-log code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+}
 .suite-progress-copy h2 {
   margin: 0.25rem 0 0;
   font-size: calc(var(--mos-text-card-title) + 0.1rem);
