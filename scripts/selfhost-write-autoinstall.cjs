@@ -78,10 +78,9 @@ function shellQuote(value) {
 
 function buildInstallerEnvContent(installerValues) {
   return [
-    `INSTALL_OWNER_NAME=${shellQuote(installerValues.ownerName)}`,
-    `INSTALL_OWNER_EMAIL=${shellQuote(installerValues.ownerEmail)}`,
-    `INSTALL_OWNER_PASSWORD=${shellQuote(installerValues.ownerPassword)}`,
-    `INSTALL_LINUX_PASSWORD=${shellQuote(installerValues.linuxPassword)}`,
+    `MOS_OWNER_NAME=${shellQuote(installerValues.ownerName)}`,
+    `MOS_OWNER_EMAIL=${shellQuote(installerValues.ownerEmail)}`,
+    `MOS_OWNER_PASSWORD=${shellQuote(installerValues.ownerPassword)}`,
   ].join('\n');
 }
 
@@ -142,7 +141,6 @@ const installerValues = installerConfigExists
       ownerName: installerConfig.OWNER_NAME || 'Suite Owner',
       ownerEmail: installerConfig.OWNER_EMAIL || '',
       ownerPassword: installerConfig.OWNER_PASSWORD || '',
-      linuxPassword: loginPassword,
     }
   : null;
 

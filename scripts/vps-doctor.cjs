@@ -86,6 +86,9 @@ const TIMEZONE_CHECKS = [
 
 const env = {};
 const missingFiles = [];
+const isSelfhostInstall =
+  fs.existsSync(path.join(vpsDir, 'docker-compose.selfhost.yml')) ||
+  fs.existsSync(path.join(vpsDir, 'services', 'suite-manager', '.env.selfhost'));
 
 for (const [name, relPath] of Object.entries(files)) {
   const absolutePath = path.join(vpsDir, relPath);
@@ -127,6 +130,14 @@ function warnIfTimezoneDiffersFromSuiteManager(fileName, key) {
 
   if (!isMissing(sharedTimezone) && serviceTimezone !== sharedTimezone) {
     warnings.push(`${files[fileName]} ${key} differs from suite-manager TIMEZONE.`);
+  }
+}
+
+function getHostname(value) {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return '';
   }
 }
 
@@ -292,6 +303,48 @@ if (env.homepage) {
   const suiteManagerUrl = env.homepage.SUITE_MANAGER_URL || '';
   if (!isMissing(suiteManagerUrl) && /\/setup\/?$/i.test(suiteManagerUrl)) {
     errors.push('SUITE_MANAGER_URL in deploy/vps/services/homepage/.env should be the bare Suite Manager host; Homepage adds /setup/ in the tile itself.');
+  }
+}
+
+if (isSelfhostInstall && env.root) {
+  const domain = env.root.DOMAIN || '';
+
+  if (domain === 'localhost') {
+    errors.push('Self-host installs must set deploy/vps/.env DOMAIN to the configured stack domain, not localhost.');
+  }
+
+  if (env.suiteManager) {
+    const suiteManagerPublicUrl = env.suiteManager.SUITE_MANAGER_PUBLIC_URL || '';
+    const expectedSuiteManagerHost = `suite-manager.${domain}`;
+    if (!isMissing(suiteManagerPublicUrl) && getHostname(suiteManagerPublicUrl) !== expectedSuiteManagerHost) {
+      errors.push(`SUITE_MANAGER_PUBLIC_URL should use ${expectedSuiteManagerHost} for this self-host domain.`);
+    }
+  }
+
+  if (env.homepage) {
+    const allowedHosts = env.homepage.HOMEPAGE_ALLOWED_HOSTS || '';
+    for (const host of [`homepage.${domain}`, `suite-manager.${domain}`]) {
+      if (!allowedHosts.split(',').map((value) => value.trim()).includes(host)) {
+        errors.push(`HOMEPAGE_ALLOWED_HOSTS should include ${host} for this self-host domain.`);
+      }
+    }
+
+    const homepageUrls = {
+      SUITE_MANAGER_URL: 'suite-manager',
+      VAULTWARDEN_URL: 'vaultwarden',
+      SEAFILE_URL: 'seafile',
+      STIRLING_PDF_URL: 'stirling-pdf',
+      RADICALE_URL: 'radicale',
+      IMMICH_URL: 'immich',
+    };
+
+    for (const [key, service] of Object.entries(homepageUrls)) {
+      const value = env.homepage[key] || '';
+      const expectedHost = `${service}.${domain}`;
+      if (!isMissing(value) && getHostname(value) !== expectedHost) {
+        errors.push(`${key} should use ${expectedHost} for this self-host domain.`);
+      }
+    }
   }
 }
 
