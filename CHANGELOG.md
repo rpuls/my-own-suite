@@ -14,6 +14,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Started the managed self-host updater MVP track with an isolated `update/selfhost` workspace, a phased plan for a host-owned update agent, an experimental self-host update-track foundation so USB-installed test machines can follow either published releases or a configured branch without giving the Suite Manager container direct host control, and a first bootstrap-installed `mos-update-agent` systemd service that exposes a local Unix-socket update API on self-host machines. Compatibility note: the self-host installer config and bootstrap flow now recognize `UPDATE_TRACK` and `UPDATE_REF` for experimental managed-update track selection, and self-host bootstrap now forces `SUITE_MANAGER_UPDATES_MODE=managed`.
 - Extended the managed self-host updater MVP so self-host bootstrap now generates a Compose override that mounts the host update agent into Suite Manager, the backend can proxy managed update actions to that agent, and the Updates UI can show the subscribed track plus a first in-app `Update now` action for managed self-host installs.
 - Strengthened managed self-host update application so updates explicitly rebuild all profiled stack images with fresh base pulls and recreate containers from those images without removing persistent volumes.
+- Added a staging update marker for validating the managed self-host image rebuild flow end to end.
 
 ### Fixed
 
