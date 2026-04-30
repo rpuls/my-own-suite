@@ -23,7 +23,7 @@ Environment variables:
 - `POSTGRES_DB`
 
 Volumes:
-- Required: `/var/lib/postgresql/data`
+- Required: `/var/lib/postgresql` for PostgreSQL 18 and later.
 
 Healthcheck:
 - `pg_isready --dbname=$POSTGRES_DB --username=$POSTGRES_USER`

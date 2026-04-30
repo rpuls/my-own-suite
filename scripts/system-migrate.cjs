@@ -6,9 +6,7 @@ const path = require('node:path');
 const repoRoot = process.cwd();
 const vpsDir = path.join(repoRoot, 'deploy', 'vps');
 
-const migrations = [
-  require('./system-migrations/seafile-13-env.cjs'),
-];
+const migrations = [];
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {

@@ -24,7 +24,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Fixed Vaultwarden startup with the shared SMTP block disabled so refreshed images no longer fail on inactive mail settings.
 - Hardened the self-host first-boot handoff so USB installer owner details are logged, exported, and loaded through a self-host Suite Manager env override instead of falling back to default onboarding identity values.
 - Fixed self-host first-boot domain propagation so USB-installed Homepage tiles use the configured `*.mos.home` stack domain instead of stale `*.localhost` URLs.
-- Added a Seafile 13 system migration for own-infra installs so renamed dependency-refresh env keys inherit the old root/admin/cache values instead of generating mismatched secrets that fail `vps:doctor`.
+- Updated Vaultwarden Postgres to use the PostgreSQL 18 parent volume mount path for clean own-infra installs.
 
 ## [0.9.0] - 2026-04-17
 
