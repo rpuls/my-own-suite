@@ -2,6 +2,15 @@ import { defineConfig } from 'astro/config'
 import starlight from '@astrojs/starlight'
 import mermaid from 'astro-mermaid'
 
+const umamiAnalyticsScript = {
+  tag: 'script',
+  attrs: {
+    defer: true,
+    src: 'https://umami-my.up.railway.app/script.js',
+    'data-website-id': '0fe6ba10-ae90-46d2-ae05-f488a8716fe2'
+  }
+}
+
 export default defineConfig({
   site: 'https://myownsuite.org',
   output: 'static',
@@ -34,6 +43,7 @@ export default defineConfig({
         src: './src/assets/brand/my-own-suite-mark.png',
         alt: 'My Own Suite logo'
       },
+      head: [umamiAnalyticsScript],
       customCss: ['./src/styles/docs-theme.css'],
       sidebar: [
         {
