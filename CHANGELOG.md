@@ -8,17 +8,15 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
-- Refreshed npm dependencies and pinned app container image digests for the staging validation track, including the Seafile 13 image update and its native database, admin, and cache bootstrap settings, plus major docs and Suite Manager toolchain updates that still pass local builds.
+- Refreshed npm dependencies and pinned app container image digests across the suite, including Seafile 13 support, updated Seafile native database/admin/cache bootstrap settings, and current public docs and Suite Manager toolchain updates.
 - Added lightweight project tracking docs, documentation ownership rules, and a Codex-ready GitHub issue template so roadmap items, architecture decisions, and implementation tasks have clear sources of truth.
 - Improved the self-host installer handoff so a simple local installer config can carry the chosen stack domain, Linux credentials, and Suite Manager owner credentials into a single first-boot manifest, feed bootstrap automatically, avoid leaving users hunting through generated env files after installation, help fetch the supported official Ubuntu Server ISO automatically when the local ISO folder is empty, and keep the USB installer menu human-confirmed instead of auto-starting after a timeout.
-- Started the managed self-host updater MVP track with an isolated `update/selfhost` workspace, a phased plan for a host-owned update agent, an experimental self-host update-track foundation so USB-installed test machines can follow either published releases or a configured branch without giving the Suite Manager container direct host control, and a first bootstrap-installed `mos-update-agent` systemd service that exposes a local Unix-socket update API on self-host machines. Compatibility note: the self-host installer config and bootstrap flow now recognize `UPDATE_TRACK` and `UPDATE_REF` for experimental managed-update track selection, and self-host bootstrap now forces `SUITE_MANAGER_UPDATES_MODE=managed`.
-- Extended the managed self-host updater MVP so self-host bootstrap now generates a Compose override that mounts the host update agent into Suite Manager, the backend can proxy managed update actions to that agent, and the Updates UI can show the subscribed track plus a first in-app `Update now` action for managed self-host installs.
+- Added the managed self-host updater MVP: USB/self-host installs now bootstrap a host-owned `mos-update-agent`, mount its Unix socket into Suite Manager through a generated Compose override, let the backend proxy managed update actions, and show subscribed update-track details, job diagnostics, and a first in-app `Update now` action in the Updates UI. Compatibility note: the self-host installer config and bootstrap flow now recognize `UPDATE_TRACK` and `UPDATE_REF` for experimental managed-update track selection, and self-host bootstrap now forces `SUITE_MANAGER_UPDATES_MODE=managed`.
 - Added an explicit own-infra system migration phase for repo-managed VPS/self-host updates, keeping `.env.template` files as the latest app contract while moving historical compatibility fixes into named migrations.
 - Strengthened managed self-host update application so updates explicitly rebuild all profiled stack images with fresh base pulls and recreate containers from those images without removing persistent volumes.
-- Added a staging update marker for validating the managed self-host image rebuild flow end to end.
-- Added visible managed-update job diagnostics so self-host update runs show their updater implementation marker, git revision changes, and Compose phases directly in Suite Manager.
-- Added a second staging update marker for collecting managed-update diagnostic output from a live self-host run.
 - Added Umami analytics to the public landing and docs site without touching authenticated Suite Manager or bundled self-host app pages.
+- Polished the public landing page mobile layout so the header, hero diagram, screenshots, and deploy-path cards stay readable on narrow phone screens.
+- Documented and guarded the Seafile MySQL 8.x pin so Dependabot does not offer MySQL 9 updates before Seafile compatibility has been validated.
 
 ### Fixed
 

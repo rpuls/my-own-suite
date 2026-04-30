@@ -40,6 +40,7 @@
 
 Requirements:
 - Use MySQL `8.x` (recommended `mysql:8.0`).
+- Do not update the Seafile MySQL service to MySQL `9.x` unless a newer supported Seafile image has been explicitly validated with it. The current Seafile stack still depends on `mysql_native_password`, and MySQL 9 rejects the `default-authentication-plugin=mysql_native_password` startup option.
 - Provide a reachable Memcached server (`host:port`).
 - Mount persistent storage at `/shared` for Seafile data and config.
 

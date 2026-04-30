@@ -44,6 +44,10 @@ export async function completeOnboarding(context, page) {
   let vaultwardenPage = null;
 
   if (!stepState.vaultwardenActivated) {
+    stepState = await waitForActivationStepOrSuiteReady(page, 30000);
+  }
+
+  if (!stepState.vaultwardenActivated && !stepState.suiteReady) {
     await page.getByRole('button', { name: /Activate Vaultwarden/i }).click();
     const signupUrl = await page.getByRole('link', { name: 'Go to Vaultwarden signup' }).getAttribute('href');
     vaultwardenPage = await context.newPage();
@@ -245,6 +249,24 @@ async function waitForCurrentStep(page, expected, timeout) {
       },
     )
     .toMatchObject(expected);
+
+  return readStepState(page);
+}
+
+async function waitForActivationStepOrSuiteReady(page, timeout) {
+  await expect
+    .poll(
+      async () => {
+        const nextState = await readStepState(page);
+        const activateButtonVisible = await isVisible(page.getByRole('button', { name: /Activate Vaultwarden/i }));
+
+        return nextState.suiteReady || nextState.vaultwardenActivated || activateButtonVisible;
+      },
+      {
+        timeout,
+      },
+    )
+    .toBe(true);
 
   return readStepState(page);
 }
