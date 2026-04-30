@@ -39,6 +39,8 @@
     "e2e:apps": "npm --prefix tests/e2e run test:apps",
     "e2e:apps:headed": "npm --prefix tests/e2e run test:apps:headed",
     "vps:rebuild": "npm run vps:init && npm run vps:doctor && node scripts/mos-compose.cjs --profile vaultwarden --profile seafile --profile onlyoffice --profile stirling-pdf --profile radicale --profile immich down --volumes --remove-orphans && node scripts/mos-compose.cjs --profile vaultwarden --profile seafile --profile onlyoffice --profile stirling-pdf --profile radicale --profile immich up -d --build --force-recreate",
+    "system:migrate": "node scripts/system-migrate.cjs",
+    "prevps:init": "npm run system:migrate",
     "vps:init": "node scripts/vps-init.cjs",
     "vps:doctor": "node scripts/vps-doctor.cjs",
     "vps:up": "npm run vps:init && npm run vps:doctor && node scripts/mos-compose.cjs --profile vaultwarden --profile seafile --profile onlyoffice --profile stirling-pdf --profile radicale --profile immich up -d --build",

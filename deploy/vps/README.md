@@ -182,7 +182,7 @@ The first updater foundation is host-side and user-triggered only.
 
 - `npm run update:check` compares the installed suite version with the latest stable release metadata.
 - `npm run update:status` shows the last updater state recorded in `.mos-updater/state.json`.
-- `npm run update:apply -- --target <version> --yes` fetches the matching git tag, validates release metadata, runs `vps:init`, `vps:doctor`, Compose validation, and then applies the stack update with `vps:up`.
+- `npm run update:apply -- --target <version> --yes` fetches the matching git tag, validates release metadata, applies own-infra system migrations, runs `vps:init`, `vps:doctor`, Compose validation, and then applies the stack update with `vps:up`.
 - `npm run update:apply -- --target latest --yes` resolves the latest stable release first and then follows the same path.
 
 Safety notes:

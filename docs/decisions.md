@@ -40,6 +40,20 @@ Consequences:
 - Test machines can subscribe to `staging`.
 - The Updates UI should clearly show the active track.
 
+## 2026-04-30: System State Changes Have Two Update Tracks
+
+Decision: Runtime `.env.template` files describe the latest supported app contract. Managed-platform deployments keep their environment variables and infrastructure state user-owned and should fail clearly when required variables no longer match the current contract. Repo-managed VPS/self-host installs use an explicit `system:migrate` phase before `vps:init` so known historical state changes can be repaired without asking the user to SSH into generated files.
+
+Reason: Railway-like platforms already provide an env-var UI and the project cannot safely mutate platform resources. Own-infra installs have no friendly platform UI, so the repo must own small, named migrations for compatibility breaks while keeping `vps-init` focused on rendering the current templates.
+
+Consequences:
+
+- New app env requirements belong in the relevant `.env.template` and technical README first.
+- Historical compatibility fixes for own-infra installs belong in `scripts/system-migrations/`, not inline in `scripts/vps-init.cjs`.
+- Migrations must be idempotent and preserve existing secrets instead of generating replacements for already-provisioned services.
+- System migrations may repair env files, generated service config, local state files, directory layout, or other repo-owned own-infra state.
+- Managed-platform compatibility problems should point users at the current template/README rather than silently rewriting platform variables.
+
 ## 2026-04-28: GitHub Issues Hold Task State
 
 Decision: GitHub Issues are the source of truth for task-level work. Repo docs hold durable roadmap, decisions, and workflow context.

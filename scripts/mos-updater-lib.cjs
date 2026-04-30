@@ -559,6 +559,9 @@ async function runApply(context, flags) {
     log('Running release metadata validation');
     runNpmScript(paths.repoRoot, 'release:check');
 
+    log('Applying own-infra system migrations');
+    runNpmScript(paths.repoRoot, 'system:migrate');
+
     log('Rendering and validating VPS env files');
     runNpmScript(paths.repoRoot, 'vps:init');
     runNpmScript(paths.repoRoot, 'vps:doctor');

@@ -30,6 +30,7 @@ function writeJson(filePath, value) {
 
 function mapStage(message) {
   if (message.includes('release metadata')) return 'validating-release';
+  if (message.includes('own-infra system migrations')) return 'migrating-system';
   if (message.includes('Rendering and validating VPS env files')) return 'rendering-env';
   if (message.includes('Validating Docker Compose config')) return 'validating-compose';
   if (message.includes('Building stack images')) return 'building-images';
