@@ -10,13 +10,16 @@ function splitHostPort(value) {
 
 function migrate(context) {
   const seafileEnvPath = path.join(context.vpsDir, 'services', 'seafile', '.env');
+  const seafileMysqlEnvPath = path.join(context.vpsDir, 'services', 'seafile-mysql', '.env');
   const current = context.readEnvFile(seafileEnvPath);
 
   if (!current) {
     return { changed: false, details: ['deploy/vps/services/seafile/.env not found'] };
   }
 
+  const mysqlCurrent = context.readEnvFile(seafileMysqlEnvPath) || {};
   const updates = {};
+  const mysqlRootPassword = mysqlCurrent.MYSQL_ROOT_PASSWORD || '';
   const mappings = {
     DB_HOST: 'SEAFILE_MYSQL_DB_HOST',
     DB_PORT: 'SEAFILE_MYSQL_DB_PORT',
@@ -29,6 +32,14 @@ function migrate(context) {
     if (current[legacyKey] && !current[nextKey]) {
       updates[nextKey] = current[legacyKey];
     }
+  }
+
+  if (
+    mysqlRootPassword &&
+    current.INIT_SEAFILE_MYSQL_ROOT_PASSWORD &&
+    current.INIT_SEAFILE_MYSQL_ROOT_PASSWORD !== mysqlRootPassword
+  ) {
+    updates.INIT_SEAFILE_MYSQL_ROOT_PASSWORD = mysqlRootPassword;
   }
 
   if (current.MEMCACHED_SERVER && !current.MEMCACHED_HOST) {
