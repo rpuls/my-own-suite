@@ -18,6 +18,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Added a staging update marker for validating the managed self-host image rebuild flow end to end.
 - Added visible managed-update job diagnostics so self-host update runs show their updater implementation marker, git revision changes, and Compose phases directly in Suite Manager.
 - Added a second staging update marker for collecting managed-update diagnostic output from a live self-host run.
+- Added Umami analytics to the public landing and docs site without touching authenticated Suite Manager or bundled self-host app pages.
 
 ### Fixed
 
