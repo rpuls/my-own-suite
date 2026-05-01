@@ -24,6 +24,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Fixed Vaultwarden startup with the shared SMTP block disabled so refreshed images no longer fail on inactive mail settings.
 - Hardened the self-host first-boot handoff so USB installer owner details are logged, exported, and loaded through a self-host Suite Manager env override instead of falling back to default onboarding identity values.
 - Fixed self-host first-boot domain propagation so USB-installed Homepage tiles use the configured `*.mos.home` stack domain instead of stale `*.localhost` URLs.
+- Fixed Railway-style ONLYOFFICE startup with newer Document Server images by preparing the admin panel supervisor log directories before upstream services start.
 - Updated Vaultwarden Postgres to use the PostgreSQL 18 parent volume mount path for clean own-infra installs.
 - Hardened the headed E2E onboarding flow so it waits for Suite Manager login and signed-in surfaces before checking onboarding state.
 

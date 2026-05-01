@@ -52,6 +52,14 @@ sync_secure_link_secret() {
   done
 }
 
+prepare_supervisor_log_dirs() {
+  # ONLYOFFICE 9.1 adds an admin panel supervisor program. Some platform
+  # starts can see the upstream placeholder path before it is normalized.
+  mkdir -p \
+    /var/log/onlyoffice/documentserver/adminpanel \
+    /var/log/COMPANY_NAME/documentserver/adminpanel
+}
+
 # Railway and similar platforms may present values with wrapping quotes.
 normalize_env_var "PORT"
 normalize_env_var "TZ"
@@ -67,5 +75,6 @@ if [ -n "${PORT:-}" ]; then
 fi
 
 sync_secure_link_secret
+prepare_supervisor_log_dirs
 
 exec /app/ds/run-document-server.sh
