@@ -11,9 +11,10 @@
 - `INIT_SEAFILE_ADMIN_EMAIL`: Initial Seafile admin email.
 - `INIT_SEAFILE_ADMIN_PASSWORD`: Initial Seafile admin password.
 - `JWT_PRIVATE_KEY`: Required Seafile server JWT signing key.
-- `CACHE_PROVIDER`: Cache backend (`memcached` in this stack).
-- `MEMCACHED_HOST`: Memcached host.
-- `MEMCACHED_PORT`: Memcached port.
+- `CACHE_PROVIDER`: Cache backend (`redis` in this stack).
+- `REDIS_HOST`: Valkey/Redis-compatible cache host.
+- `REDIS_PORT`: Valkey/Redis-compatible cache port.
+- `REDIS_PASSWORD`: Valkey/Redis-compatible cache password, when auth is enabled.
 - `SEAFILE_SERVER_HOSTNAME`: Public Seafile hostname (no protocol).
 - `SEAFILE_SERVER_PROTOCOL`: Public scheme (`http` or `https`).
 - `TIME_ZONE`: Container timezone.
@@ -41,7 +42,7 @@
 Requirements:
 - Use MySQL `8.x` (recommended `mysql:8.0`).
 - Do not update the Seafile MySQL service to MySQL `9.x` unless a newer supported Seafile image has been explicitly validated with it. The current Seafile stack still depends on `mysql_native_password`, and MySQL 9 rejects the `default-authentication-plugin=mysql_native_password` startup option.
-- Provide a reachable Memcached server (`host:port`).
+- Provide a reachable Valkey/Redis-compatible cache server (`host:port`).
 - Mount persistent storage at `/shared` for Seafile data and config.
 
 Integrations:

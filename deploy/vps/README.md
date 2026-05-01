@@ -131,8 +131,8 @@ deploy/vps/
     |-- seafile-mysql/
     |   |-- .env                 # Seafile MySQL settings
     |   `-- .env.template
-    |-- seafile-memcached/
-    |   |-- .env                 # Seafile Memcached settings
+    |-- seafile-valkey/
+    |   |-- .env                 # Seafile Valkey settings
     |   `-- .env.template
     |-- onlyoffice/
     |   |-- .env                 # ONLYOFFICE settings

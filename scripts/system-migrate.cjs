@@ -6,7 +6,7 @@ const path = require('node:path');
 const repoRoot = process.cwd();
 const vpsDir = path.join(repoRoot, 'deploy', 'vps');
 
-const migrations = [];
+const migrations = require('./migrations/index.cjs');
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -60,6 +60,56 @@ function appendEnvValues(filePath, values) {
   fs.writeFileSync(filePath, `${existing}${separator}${lines.join('\n')}\n`, 'utf8');
 }
 
+function setEnvValues(filePath, values) {
+  const existing = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : '';
+  const lines = existing.length > 0 ? existing.split(/\r?\n/) : [];
+  const pendingKeys = new Set(Object.keys(values));
+  const changedKeys = new Set();
+  const renderedLines = lines.map((line) => {
+    const trimmed = line.trim();
+    const index = line.indexOf('=');
+
+    if (!trimmed || trimmed.startsWith('#') || index < 1) {
+      return line;
+    }
+
+    const key = line.slice(0, index).trim();
+
+    if (!Object.prototype.hasOwnProperty.call(values, key)) {
+      return line;
+    }
+
+    pendingKeys.delete(key);
+
+    const replacement = `${key}=${values[key]}`;
+    if (line !== replacement) {
+      changedKeys.add(key);
+    }
+
+    return replacement;
+  });
+
+  if (pendingKeys.size > 0) {
+    if (renderedLines.length > 0 && renderedLines[renderedLines.length - 1] !== '') {
+      renderedLines.push('');
+    }
+
+    renderedLines.push('# Migrated by npm run system:migrate. Keep these values aligned with the current .env.template.');
+
+    for (const key of pendingKeys) {
+      renderedLines.push(`${key}=${values[key]}`);
+      changedKeys.add(key);
+    }
+  }
+
+  if (changedKeys.size > 0) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, `${renderedLines.join('\n').replace(/\n*$/u, '')}\n`, 'utf8');
+  }
+
+  return Array.from(changedKeys);
+}
+
 function ensureDirectory(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -92,6 +142,7 @@ function main() {
       readEnvFile,
       readTextFile,
       repoRoot,
+      setEnvValues,
       vpsDir,
       writeTextFile,
     });

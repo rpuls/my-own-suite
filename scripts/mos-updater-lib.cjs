@@ -412,7 +412,7 @@ function buildStackImages(repoRoot) {
 function recreateStackContainers(repoRoot) {
   const profileArgs = buildProfileArgs();
 
-  runCompose(repoRoot, [...profileArgs, 'up', '-d', '--force-recreate']);
+  runCompose(repoRoot, [...profileArgs, 'up', '-d', '--force-recreate', '--remove-orphans']);
 }
 
 async function collectStatus(context) {
@@ -575,7 +575,13 @@ async function runApply(context, flags) {
     buildStackImages(paths.repoRoot);
 
     log('Recreating stack containers');
-    log(formatCommand('node scripts/mos-compose.cjs', [...buildProfileArgs(), 'up', '-d', '--force-recreate']));
+    log(formatCommand('node scripts/mos-compose.cjs', [
+      ...buildProfileArgs(),
+      'up',
+      '-d',
+      '--force-recreate',
+      '--remove-orphans',
+    ]));
     recreateStackContainers(paths.repoRoot);
 
     writeUpdaterState(paths.updaterStatePath, {

@@ -143,20 +143,20 @@ services:
     networks:
       - mos-network
 
-  seafile-memcached:
+  seafile-valkey:
     build:
       context: ../../apps/seafile
-      dockerfile: Dockerfile.memcached
-    container_name: mos-seafile-memcached
+      dockerfile: Dockerfile.valkey
+    container_name: mos-seafile-valkey
     restart: unless-stopped
     profiles:
       - seafile
     env_file:
-      - ./services/seafile-memcached/.env
+      - ./services/seafile-valkey/.env
     networks:
       mos-network:
         aliases:
-          - memcached
+          - valkey
 
   seafile:
     build:
@@ -179,7 +179,7 @@ services:
       - mos-network
     depends_on:
       - seafile-mysql
-      - seafile-memcached
+      - seafile-valkey
 
   # -------------------------------------------
   # ONLYOFFICE - Document Editing Suite

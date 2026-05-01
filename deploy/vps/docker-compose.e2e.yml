@@ -44,8 +44,8 @@ services:
   seafile-mysql:
     container_name: mos-e2e-seafile-mysql
 
-  seafile-memcached:
-    container_name: mos-e2e-seafile-memcached
+  seafile-valkey:
+    container_name: mos-e2e-seafile-valkey
 
   stirling-pdf:
     container_name: mos-e2e-stirling-pdf

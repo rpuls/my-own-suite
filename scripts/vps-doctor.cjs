@@ -67,7 +67,7 @@ const SERVICE_FILES = {
   stirlingPdf: 'services/stirling-pdf/.env',
   seafile: 'services/seafile/.env',
   seafileMysql: 'services/seafile-mysql/.env',
-  seafileMemcached: 'services/seafile-memcached/.env',
+  seafileValkey: 'services/seafile-valkey/.env',
   immich: 'services/immich/.env',
   immichMachineLearning: 'services/immich-machine-learning/.env',
   immichPostgres: 'services/immich-postgres/.env',
@@ -188,8 +188,12 @@ if (env.seafile) {
   requireVar('seafile', 'INIT_SEAFILE_ADMIN_PASSWORD', { allowPlaceholder: false });
   requireVar('seafile', 'JWT_PRIVATE_KEY', { allowPlaceholder: false });
   requireVar('seafile', 'CACHE_PROVIDER', { allowPlaceholder: false });
-  requireVar('seafile', 'MEMCACHED_HOST', { allowPlaceholder: false });
-  requireVar('seafile', 'MEMCACHED_PORT', { allowPlaceholder: false });
+  requireVar('seafile', 'REDIS_HOST', { allowPlaceholder: false });
+  requireVar('seafile', 'REDIS_PORT', { allowPlaceholder: false });
+
+  if ((env.seafile.CACHE_PROVIDER || '').trim().toLowerCase() !== 'redis') {
+    errors.push('Seafile CACHE_PROVIDER must be redis for the Valkey-backed local stack.');
+  }
 }
 
 if (env.seafileMysql) {
