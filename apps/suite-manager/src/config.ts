@@ -34,6 +34,8 @@ export type SuiteManagerConfig = {
   setupBasePath: string;
   stateDir: string;
   updates: {
+    agentSocketPath: string;
+    agentTokenFile: string;
     enabled: boolean;
     githubRepo: string;
     latestVersionOverride: string;
@@ -102,12 +104,14 @@ export function loadConfig(): SuiteManagerConfig {
   const updatesEnabled = (process.env.SUITE_MANAGER_UPDATES_ENABLED || 'true').trim().toLowerCase() !== 'false';
   const updatesGithubRepo = (process.env.SUITE_MANAGER_GITHUB_REPO || 'rpuls/my-own-suite').trim();
   const updatesLatestVersionOverride = (process.env.SUITE_MANAGER_UPDATES_LATEST_VERSION_OVERRIDE || '').trim();
+  const updatesAgentSocketPath = (process.env.SUITE_MANAGER_UPDATES_AGENT_SOCKET_PATH || '').trim();
+  const updatesAgentTokenFile = (process.env.SUITE_MANAGER_UPDATES_AGENT_TOKEN_FILE || '').trim();
   const updatesMode =
     (process.env.SUITE_MANAGER_UPDATES_MODE || 'notify-only').trim().toLowerCase() === 'managed'
       ? 'managed'
       : 'notify-only';
-  const seafileAdminEmail = (process.env.SEAFILE_ADMIN_EMAIL || '').trim();
-  const seafileAdminPassword = (process.env.SEAFILE_ADMIN_PASSWORD || '').trim();
+  const seafileAdminEmail = (process.env.INIT_SEAFILE_ADMIN_EMAIL || '').trim();
+  const seafileAdminPassword = (process.env.INIT_SEAFILE_ADMIN_PASSWORD || '').trim();
   const radicaleAdminUsername = (process.env.RADICALE_ADMIN_USERNAME || '').trim();
   const radicaleAdminPassword = (process.env.RADICALE_ADMIN_PASSWORD || '').trim();
 
@@ -154,6 +158,8 @@ export function loadConfig(): SuiteManagerConfig {
     setupBasePath,
     stateDir,
     updates: {
+      agentSocketPath: updatesAgentSocketPath,
+      agentTokenFile: updatesAgentTokenFile,
       enabled: updatesEnabled,
       githubRepo: updatesGithubRepo,
       latestVersionOverride: updatesLatestVersionOverride,

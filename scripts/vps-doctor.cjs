@@ -67,7 +67,7 @@ const SERVICE_FILES = {
   stirlingPdf: 'services/stirling-pdf/.env',
   seafile: 'services/seafile/.env',
   seafileMysql: 'services/seafile-mysql/.env',
-  seafileMemcached: 'services/seafile-memcached/.env',
+  seafileValkey: 'services/seafile-valkey/.env',
   immich: 'services/immich/.env',
   immichMachineLearning: 'services/immich-machine-learning/.env',
   immichPostgres: 'services/immich-postgres/.env',
@@ -86,6 +86,9 @@ const TIMEZONE_CHECKS = [
 
 const env = {};
 const missingFiles = [];
+const isSelfhostInstall =
+  fs.existsSync(path.join(vpsDir, 'docker-compose.selfhost.yml')) ||
+  fs.existsSync(path.join(vpsDir, 'services', 'suite-manager', '.env.selfhost'));
 
 for (const [name, relPath] of Object.entries(files)) {
   const absolutePath = path.join(vpsDir, relPath);
@@ -130,6 +133,14 @@ function warnIfTimezoneDiffersFromSuiteManager(fileName, key) {
   }
 }
 
+function getHostname(value) {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return '';
+  }
+}
+
 if (env.root) {
   requireVar('root', 'DOMAIN', { allowPlaceholder: false });
 }
@@ -165,9 +176,24 @@ if (env.suiteManager) {
 }
 
 if (env.seafile) {
-  requireVar('seafile', 'DB_ROOT_PASSWD', { allowPlaceholder: false });
-  requireVar('seafile', 'SEAFILE_ADMIN_EMAIL', { allowPlaceholder: false });
-  requireVar('seafile', 'SEAFILE_ADMIN_PASSWORD', { allowPlaceholder: false });
+  requireVar('seafile', 'SEAFILE_MYSQL_DB_HOST', { allowPlaceholder: false });
+  requireVar('seafile', 'SEAFILE_MYSQL_DB_PORT', { allowPlaceholder: false });
+  requireVar('seafile', 'SEAFILE_MYSQL_DB_USER', { allowPlaceholder: false });
+  requireVar('seafile', 'SEAFILE_MYSQL_DB_PASSWORD', { allowPlaceholder: false });
+  requireVar('seafile', 'SEAFILE_MYSQL_DB_CCNET_DB_NAME', { allowPlaceholder: false });
+  requireVar('seafile', 'SEAFILE_MYSQL_DB_SEAFILE_DB_NAME', { allowPlaceholder: false });
+  requireVar('seafile', 'SEAFILE_MYSQL_DB_SEAHUB_DB_NAME', { allowPlaceholder: false });
+  requireVar('seafile', 'INIT_SEAFILE_MYSQL_ROOT_PASSWORD', { allowPlaceholder: false });
+  requireVar('seafile', 'INIT_SEAFILE_ADMIN_EMAIL', { allowPlaceholder: false });
+  requireVar('seafile', 'INIT_SEAFILE_ADMIN_PASSWORD', { allowPlaceholder: false });
+  requireVar('seafile', 'JWT_PRIVATE_KEY', { allowPlaceholder: false });
+  requireVar('seafile', 'CACHE_PROVIDER', { allowPlaceholder: false });
+  requireVar('seafile', 'REDIS_HOST', { allowPlaceholder: false });
+  requireVar('seafile', 'REDIS_PORT', { allowPlaceholder: false });
+
+  if ((env.seafile.CACHE_PROVIDER || '').trim().toLowerCase() !== 'redis') {
+    errors.push('Seafile CACHE_PROVIDER must be redis for the Valkey-backed local stack.');
+  }
 }
 
 if (env.seafileMysql) {
@@ -176,10 +202,12 @@ if (env.seafileMysql) {
 
 if (env.seafile && env.seafileMysql) {
   const mysqlRootPassword = env.seafileMysql.MYSQL_ROOT_PASSWORD || '';
-  const dbRootPassword = env.seafile.DB_ROOT_PASSWD || '';
+  const seafileInitRootPassword = env.seafile.INIT_SEAFILE_MYSQL_ROOT_PASSWORD || '';
 
-  if (!isMissing(mysqlRootPassword) && mysqlRootPassword !== dbRootPassword) {
-    errors.push('Seafile MYSQL_ROOT_PASSWORD and DB_ROOT_PASSWD must match for first-run bootstrap.');
+  if (!isMissing(mysqlRootPassword) && mysqlRootPassword !== seafileInitRootPassword) {
+    errors.push(
+      'Seafile MYSQL_ROOT_PASSWORD and INIT_SEAFILE_MYSQL_ROOT_PASSWORD must match for first-run bootstrap.',
+    );
   }
 }
 
@@ -282,11 +310,53 @@ if (env.homepage) {
   }
 }
 
+if (isSelfhostInstall && env.root) {
+  const domain = env.root.DOMAIN || '';
+
+  if (domain === 'localhost') {
+    errors.push('Self-host installs must set deploy/vps/.env DOMAIN to the configured stack domain, not localhost.');
+  }
+
+  if (env.suiteManager) {
+    const suiteManagerPublicUrl = env.suiteManager.SUITE_MANAGER_PUBLIC_URL || '';
+    const expectedSuiteManagerHost = `suite-manager.${domain}`;
+    if (!isMissing(suiteManagerPublicUrl) && getHostname(suiteManagerPublicUrl) !== expectedSuiteManagerHost) {
+      errors.push(`SUITE_MANAGER_PUBLIC_URL should use ${expectedSuiteManagerHost} for this self-host domain.`);
+    }
+  }
+
+  if (env.homepage) {
+    const allowedHosts = env.homepage.HOMEPAGE_ALLOWED_HOSTS || '';
+    for (const host of [`homepage.${domain}`, `suite-manager.${domain}`]) {
+      if (!allowedHosts.split(',').map((value) => value.trim()).includes(host)) {
+        errors.push(`HOMEPAGE_ALLOWED_HOSTS should include ${host} for this self-host domain.`);
+      }
+    }
+
+    const homepageUrls = {
+      SUITE_MANAGER_URL: 'suite-manager',
+      VAULTWARDEN_URL: 'vaultwarden',
+      SEAFILE_URL: 'seafile',
+      STIRLING_PDF_URL: 'stirling-pdf',
+      RADICALE_URL: 'radicale',
+      IMMICH_URL: 'immich',
+    };
+
+    for (const [key, service] of Object.entries(homepageUrls)) {
+      const value = env.homepage[key] || '';
+      const expectedHost = `${service}.${domain}`;
+      if (!isMissing(value) && getHostname(value) !== expectedHost) {
+        errors.push(`${key} should use ${expectedHost} for this self-host domain.`);
+      }
+    }
+  }
+}
+
 if (env.suiteManager && env.seafile) {
   const sharedEmail = env.suiteManager.OWNER_EMAIL || '';
 
-  if (!isMissing(sharedEmail) && env.seafile.SEAFILE_ADMIN_EMAIL !== sharedEmail) {
-    warnings.push('Seafile SEAFILE_ADMIN_EMAIL differs from suite-manager OWNER_EMAIL.');
+  if (!isMissing(sharedEmail) && env.seafile.INIT_SEAFILE_ADMIN_EMAIL !== sharedEmail) {
+    warnings.push('Seafile INIT_SEAFILE_ADMIN_EMAIL differs from suite-manager OWNER_EMAIL.');
   }
 }
 

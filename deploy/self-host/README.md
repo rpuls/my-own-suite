@@ -14,6 +14,7 @@ Current scripts:
 - [scripts/selfhost-write-cloudflared.cjs](../../scripts/selfhost-write-cloudflared.cjs)
 - [scripts/selfhost-new-seed-disk.ps1](../../scripts/selfhost-new-seed-disk.ps1)
 - [scripts/selfhost-build-installer-iso.cjs](../../scripts/selfhost-build-installer-iso.cjs)
+- [update/selfhost/install-update-agent.sh](../../update/selfhost/install-update-agent.sh)
 
 Keep the actual self-host guidance in the site docs so the public documentation stays the single source of truth.
 
@@ -40,17 +41,37 @@ The repo now also has an early single-USB installer builder:
 npm run selfhost:build-installer-iso
 ```
 
-Before running it, drop exactly one Ubuntu Server ISO into:
+If `deploy/self-host/autoinstall/ubuntu-iso/` is empty, the builder now downloads the official supported Ubuntu Server ISO automatically and verifies it against Ubuntu's published `SHA256SUMS`.
 
-- `deploy/self-host/autoinstall/ubuntu-iso/`
+If you prefer, you can still place exactly one Ubuntu Server ISO there yourself before running the builder.
+
+Then copy:
+
+- `deploy/self-host/autoinstall/installer-config/selfhost-installer.env.template`
+
+to:
+
+- `deploy/self-host/autoinstall/installer-config/selfhost-installer.env`
+
+and fill in the stack domain, owner, and Linux passwords you want the installer to use.
+
+Optional installer track settings:
+
+- `REPO_REF` controls which branch or ref is checked out on first boot.
+- `UPDATE_TRACK=branch` tells self-host test installs to follow a branch head for updates.
+- `UPDATE_TRACK=stable` is the intended long-term production model for release-following installs.
+- `UPDATE_REF` identifies the tracked branch when `UPDATE_TRACK=branch`.
 
 What it does:
 
 1. Generates fresh `user-data` and `meta-data`
-2. Builds a small Docker-based ISO remaster environment with `xorriso`
-3. Injects the MOS autoinstall seed into the Ubuntu ISO under `/autoinstall/`
-4. Patches Ubuntu GRUB config to keep the normal Ubuntu boot path as the default and add a separate explicit `Install My Own Suite (ERASES DISK)` entry
-5. Writes a single output ISO under `deploy/self-host/output/`
+2. Converts the local installer config into one first-boot manifest at `/etc/mos-selfhost.env`
+3. Builds a small Docker-based ISO remaster environment with `xorriso`
+4. Injects the MOS autoinstall seed into the Ubuntu ISO under `/autoinstall/`
+5. Patches Ubuntu GRUB config to keep the normal Ubuntu boot path as the default and add a separate explicit `Install My Own Suite (ERASES DISK)` entry
+6. Writes a single output ISO under `deploy/self-host/output/`
+
+The installed first-boot launcher is intentionally thin: it loads `/etc/mos-selfhost.env`, clones the configured repo/ref, and delegates stack setup to the repo-owned bootstrap script. That keeps app env generation centralized in `vps:init`.
 
 This is the intended direction for the HP mini PC flow because it removes the separate `CIDATA` disk from the final installation experience.
 
@@ -58,8 +79,25 @@ This is the intended direction for the HP mini PC flow because it removes the se
 
 The current updater foundation is explicit and user-triggered only.
 
-- `npm run update:check` inspects the installed suite version and latest stable release metadata.
+- `npm run update:check` inspects the installed suite state and compares it against either the latest stable release metadata or the configured branch head, depending on the active update track.
 - `npm run update:status` shows the last updater state saved on that machine.
 - `npm run update:apply -- --target latest --yes` is the first manual apply path for self-host/VPS installs.
+
+The updater now also has an experimental branch-following path for self-host development machines:
+
+- `MOS_UPDATE_TRACK=stable` follows published release metadata.
+- `MOS_UPDATE_TRACK=branch` follows the configured branch head instead.
+- Self-host bootstrap writes the selected track into `.mos-updater/config.json` inside the repo checkout so later updater actions can use the same mode.
+- Self-host bootstrap also writes `deploy/vps/docker-compose.selfhost.yml` so Suite Manager can reach the host updater service on future starts and updates.
+
+The self-host bootstrap now also installs a host-local MOS update agent service:
+
+- systemd service name: `mos-update-agent.service`
+- local Unix socket: `/run/mos-update-agent/agent.sock`
+- state directory: `/var/lib/mos-update-agent`
+- bearer token file: `/etc/mos-update-agent/auth.token`
+- local helper command: `mos-update`
+
+This service is the intended bridge between future managed-update UI actions and the host-owned update execution path.
 
 The updater does not run automatically in the background.

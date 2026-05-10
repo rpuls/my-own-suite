@@ -47,6 +47,37 @@ Before making edits, agents should confirm:
 - Local git hooks are installed (`npm run hooks:install`) so commits/pushes on `main` are blocked.
 - If the work is release-related, confirm `VERSION`, `releases/stable.json`, and `apps/suite-manager/release.json` will stay in sync with the intended tag.
 
+## Documentation Ownership Workflow
+
+Documentation must have a single source of truth. Before adding or moving Markdown files, check [docs/README.md](./docs/README.md) and update the existing owner instead of creating a competing document.
+
+Use these locations:
+
+- Root `README.md`: repository landing page and documentation map.
+- Root `CHANGELOG.md`: release notes only.
+- Root `RELEASING.md`: official release workflow only.
+- Root `AGENTS.md`: agent workflow and repository rules only.
+- `docs/README.md`: documentation ownership map.
+- `docs/roadmap.md`: durable roadmap themes and non-task future work.
+- `docs/decisions.md`: durable architecture decisions and their consequences.
+- `docs/codex-notes.md`: durable Codex/project working context.
+- `.github/ISSUE_TEMPLATE/codex-task.yml`: task template source of truth.
+- `site/src/content/docs/`: public/end-user documentation.
+- `apps/<app>/README.md`: app-level technical reference.
+- `deploy/<target>/README.md`: deployment runbooks and operator guidance.
+- `update/selfhost/docs/`: low-level updater smoke tests and host checks.
+
+Maintenance rules:
+
+- Do not create new roadmap, TODO, decision, or planning Markdown files unless no current owner fits.
+- Use GitHub Issues for task state; do not maintain long-lived task lists in repo docs.
+- If a task changes long-term direction, update `docs/roadmap.md`.
+- If a task changes architecture, deployment contracts, security boundaries, or ownership model, update `docs/decisions.md`.
+- If a task changes how Codex or contributors should work, update `AGENTS.md` or `docs/codex-notes.md`, depending on whether it is a hard rule or contextual note.
+- If a temporary feature plan is useful during a branch, remove it or replace it with a pointer before merging.
+- Keep runbooks close to the thing they operate unless they become broad project policy.
+- Do not move `README.md`, `CHANGELOG.md`, `RELEASING.md`, or `AGENTS.md` into `docs/`; these are intentionally root-level convention files.
+
 ## Branding Workflow
 
 Branding in this repo uses a single-source-of-truth workflow. Agents must follow it whenever touching shared visual identity.

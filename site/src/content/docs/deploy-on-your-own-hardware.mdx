@@ -90,6 +90,34 @@ If you already know you want the suite on your own hardware, the best fit is now
 - the current Docker Compose stack as the runtime base
 - a local DNS setup that can eventually point `*.mos.home` at the suite machine
 
+## Installer setup
+
+The current self-host installer flow is built around one simple config file that you fill in before creating the USB installer.
+
+It asks for the small set of values you are most likely to need right after installation:
+
+- owner name
+- owner email
+- owner password
+- Linux password
+
+That matters because it avoids the frustrating situation where the machine finishes installing, but you then have to connect a screen and keyboard just to dig through generated files and discover what password the installer chose for you.
+
+In practice, the flow is:
+
+1. Fill in the installer config file with your chosen details.
+2. Build the self-host installer from that config.
+3. Boot the target machine from the USB.
+4. After installation, sign in with the credentials you chose yourself.
+
+The installer uses that config to seed both the Linux login and the initial Suite Manager owner account.
+
+The USB installer is meant to be bootable, not boot-forcing. The My Own Suite install option is preselected in the boot menu, but the installer should still wait for explicit human confirmation instead of silently starting after a timeout.
+
+On Windows, the ISO builder currently uses Docker to assemble the final installer image. That means Docker Desktop needs to be running before you build the installer.
+
+The temporary plaintext handoff file is only meant to get those values through installation and first boot. After that, it should be removed so the machine is not left with an extra plain-text password file lying around.
+
 ## Optional advanced email setup
 
 The current self-host direction still builds on the same Docker Compose stack used for the VPS/local path, so advanced users can also reuse the optional shared SMTP setup for compatible apps such as Seafile and Vaultwarden.

@@ -171,11 +171,8 @@ patch_seahub_onlyoffice_runtime() {
 
   # Idempotent runtime patch: let ONLYOFFICE use an internal Seafile base URL
   # for server-to-server download/callback flows when configured.
-  if grep -q "_get_onlyoffice_internal_seafile_url" "$onlyoffice_utils_file"; then
-    return 0
-  fi
-
-  sed -i "/logger = logging.getLogger('onlyoffice')/a\\
+  if ! grep -q "_get_onlyoffice_internal_seafile_url" "$onlyoffice_utils_file"; then
+    sed -i "/logger = logging.getLogger('onlyoffice')/a\\
 \\
 import seahub.settings as seahub_settings\\
 \\
@@ -184,7 +181,7 @@ def _get_onlyoffice_internal_seafile_url():\\
     return base_url.rstrip('/')\\
 " "$onlyoffice_utils_file"
 
-  sed -i "/doc_url = gen_file_get_url(dl_token, file_name)/a\\
+    sed -i "/doc_url = gen_file_get_url(dl_token, file_name)/a\\
 \\
     internal_seafile_url = _get_onlyoffice_internal_seafile_url()\\
     if internal_seafile_url:\\
@@ -194,12 +191,16 @@ def _get_onlyoffice_internal_seafile_url():\\
             doc_url = internal_fileserver_root + doc_url[len(fileserver_root):]\\
 " "$onlyoffice_utils_file"
 
-  sed -i "s/base_url = get_site_scheme_and_netloc()/base_url = internal_seafile_url if internal_seafile_url else get_site_scheme_and_netloc()/g" "$onlyoffice_utils_file"
+    sed -i "s/base_url = get_site_scheme_and_netloc()/base_url = internal_seafile_url if internal_seafile_url else get_site_scheme_and_netloc()/g" "$onlyoffice_utils_file"
+  fi
 
   # If callback URL uses internal Seafile host, some ONLYOFFICE builds may send
   # status.url back on the same host. Rewrite such cache URLs to ONLYOFFICE host.
   if [ -f "$onlyoffice_views_file" ] && ! grep -q "_rewrite_onlyoffice_file_url_for_internal_callback" "$onlyoffice_views_file"; then
-    sed -i "s/from seahub.onlyoffice.settings import VERIFY_ONLYOFFICE_CERTIFICATE, ONLYOFFICE_JWT_SECRET/from seahub.onlyoffice.settings import VERIFY_ONLYOFFICE_CERTIFICATE, ONLYOFFICE_JWT_SECRET, ONLYOFFICE_APIJS_URL/g" "$onlyoffice_views_file"
+    if ! grep -q "ONLYOFFICE_APIJS_URL" "$onlyoffice_views_file"; then
+      sed -i "s/from seahub.onlyoffice.settings import VERIFY_ONLYOFFICE_CERTIFICATE, ONLYOFFICE_JWT_SECRET/from seahub.onlyoffice.settings import VERIFY_ONLYOFFICE_CERTIFICATE, ONLYOFFICE_JWT_SECRET, ONLYOFFICE_APIJS_URL/g" "$onlyoffice_views_file"
+      sed -i "s/ONLYOFFICE_JWT_SECRET, ONLYOFFICE_FILE_EXTENSION/ONLYOFFICE_JWT_SECRET, ONLYOFFICE_APIJS_URL, ONLYOFFICE_FILE_EXTENSION/g" "$onlyoffice_views_file"
+    fi
 
     sed -i "/logger = logging.getLogger('onlyoffice')/a\\
 \\
@@ -233,21 +234,6 @@ def _rewrite_onlyoffice_file_url_for_internal_callback(url):\\
     sed -i "s/        if parsed_url.scheme and parsed_url.netloc == service_url.netloc and parsed_url.path.startswith('\/cache\/files\/'):/        if parsed_url.path.startswith('\/cache\/files\/') and parsed_url.netloc != api_js_url.netloc:/g" "$onlyoffice_views_file"
   fi
 }
-
-# Patch bootstrap default for first initialization.
-if [ -n "${MEMCACHED_SERVER:-}" ]; then
-  sed -i "s|LOCATION': 'memcached:11211'|LOCATION': '${MEMCACHED_SERVER}'|g" /scripts/bootstrap.py
-
-  # Patch already-initialized instances too.
-  if [ -f "$SEAHUB_SETTINGS_FILE" ]; then
-    sed -i "s|LOCATION': 'memcached:11211'|LOCATION': '${MEMCACHED_SERVER}'|g" "$SEAHUB_SETTINGS_FILE"
-  fi
-fi
-
-# Private networking may connect from IPv6 addresses. Upstream bootstrap sets
-# MYSQL_USER_HOST to %.%.%.% (IPv4 style), which can fail on IPv6.
-DB_USER_HOST="${DB_USER_HOST:-%}"
-sed -i "s|'MYSQL_USER_HOST': '%.%.%.%'|'MYSQL_USER_HOST': '${DB_USER_HOST}'|g" /scripts/bootstrap.py || true
 
 # Apply proxy/CSRF settings for existing installs.
 patch_seahub_proxy_settings

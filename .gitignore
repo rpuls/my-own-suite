@@ -1,5 +1,6 @@
 # Environment files
 .env
+.env.selfhost
 vps/.env
 
 # temporary files
@@ -37,6 +38,7 @@ logs/
 
 # Node dependencies
 node_modules/
+.npm-cache/
 
 # Frontend build output
 apps/suite-manager/frontend/dist/
@@ -52,4 +54,8 @@ deploy/self-host/autoinstall/*.vhdx
 deploy/self-host/autoinstall/*.avhdx
 deploy/self-host/autoinstall/ubuntu-iso/*
 !deploy/self-host/autoinstall/ubuntu-iso/.gitkeep
+deploy/self-host/autoinstall/installer-config/*
+!deploy/self-host/autoinstall/installer-config/.gitkeep
+!deploy/self-host/autoinstall/installer-config/selfhost-installer.env.template
 deploy/self-host/output/
+deploy/vps/docker-compose.selfhost.yml

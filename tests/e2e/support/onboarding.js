@@ -13,14 +13,16 @@ export async function completeOnboarding(context, page) {
   });
 
   await page.goto('/setup/');
+  let surface = await waitForSuiteManagerSurface(page);
 
-  if (await page.getByLabel('Email').isVisible()) {
+  if (surface === 'login') {
     await page.getByLabel('Email').fill(owner.ownerEmail);
     await page.getByLabel('Password').fill(owner.ownerPassword);
     await page.getByRole('button', { name: 'Sign in' }).click();
+    surface = await waitForSignedInSuiteManagerSurface(page);
   }
 
-  if (await isHomepageVisible(page)) {
+  if (surface === 'homepage') {
     return {
       owner,
       vaultwardenMasterPassword,
@@ -44,6 +46,10 @@ export async function completeOnboarding(context, page) {
   let vaultwardenPage = null;
 
   if (!stepState.vaultwardenActivated) {
+    stepState = await waitForActivationStepOrSuiteReady(page, 30000);
+  }
+
+  if (!stepState.vaultwardenActivated && !stepState.suiteReady) {
     await page.getByRole('button', { name: /Activate Vaultwarden/i }).click();
     const signupUrl = await page.getByRole('link', { name: 'Go to Vaultwarden signup' }).getAttribute('href');
     vaultwardenPage = await context.newPage();
@@ -173,6 +179,58 @@ async function isVisible(locator) {
   return locator.isVisible().catch(() => false);
 }
 
+async function waitForSuiteManagerSurface(page) {
+  let surface = 'loading';
+
+  await expect
+    .poll(
+      async () => {
+        surface = await detectSuiteManagerSurface(page);
+        return surface;
+      },
+      {
+        timeout: 30000,
+      },
+    )
+    .not.toBe('loading');
+
+  return surface;
+}
+
+async function waitForSignedInSuiteManagerSurface(page) {
+  let surface = 'loading';
+
+  await expect
+    .poll(
+      async () => {
+        surface = await detectSuiteManagerSurface(page);
+        return surface;
+      },
+      {
+        timeout: 30000,
+      },
+    )
+    .toMatch(/homepage|onboarding/);
+
+  return surface;
+}
+
+async function detectSuiteManagerSurface(page) {
+  if (await isHomepageVisible(page)) {
+    return 'homepage';
+  }
+
+  if (await isVisible(page.getByRole('heading', { name: 'Finish setup' }))) {
+    return 'onboarding';
+  }
+
+  if (await isVisible(page.getByLabel('Email'))) {
+    return 'login';
+  }
+
+  return 'loading';
+}
+
 async function ensureVaultwardenSession(page) {
   await page.goto('https://vaultwarden.localhost:18443/#/login');
   await page.waitForLoadState('domcontentloaded');
@@ -245,6 +303,24 @@ async function waitForCurrentStep(page, expected, timeout) {
       },
     )
     .toMatchObject(expected);
+
+  return readStepState(page);
+}
+
+async function waitForActivationStepOrSuiteReady(page, timeout) {
+  await expect
+    .poll(
+      async () => {
+        const nextState = await readStepState(page);
+        const activateButtonVisible = await isVisible(page.getByRole('button', { name: /Activate Vaultwarden/i }));
+
+        return nextState.suiteReady || nextState.vaultwardenActivated || activateButtonVisible;
+      },
+      {
+        timeout,
+      },
+    )
+    .toBe(true);
 
   return readStepState(page);
 }
