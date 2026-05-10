@@ -9,7 +9,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ### Changed
 
 - Refreshed npm dependencies and pinned app container image digests across the suite, including Seafile 13 support, updated Seafile native database/admin/cache bootstrap settings, and current public docs and Suite Manager toolchain updates.
-- Pinned the Cloudflare Pages Node.js build version so the Astro docs site builds with a supported Node 22 runtime.
+- Pinned the Cloudflare Pages Node.js build version in repo-managed Pages config so the Astro docs site builds with a supported Node 22 runtime.
 - Swapped Seafile's local cache service from Memcached to Valkey using Seafile's Redis-compatible cache settings, including a system migration for existing own-infra installs. Compatibility note: the local/VPS service is now `seafile-valkey`, and Seafile cache env uses `CACHE_PROVIDER=redis` with `REDIS_*` variables instead of `MEMCACHED_*`.
 - Added lightweight project tracking docs, documentation ownership rules, and a Codex-ready GitHub issue template so roadmap items, architecture decisions, and implementation tasks have clear sources of truth.
 - Improved the self-host installer handoff so a simple local installer config can carry the chosen stack domain, Linux credentials, and Suite Manager owner credentials into a single first-boot manifest, feed bootstrap automatically, avoid leaving users hunting through generated env files after installation, help fetch the supported official Ubuntu Server ISO automatically when the local ISO folder is empty, and keep the USB installer menu human-confirmed instead of auto-starting after a timeout.

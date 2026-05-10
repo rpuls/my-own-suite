@@ -1,0 +1,5 @@
+name = "my-own-suite"
+pages_build_output_dir = "site/dist"
+
+[vars]
+NODE_VERSION = "22.16.0"
