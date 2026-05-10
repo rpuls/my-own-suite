@@ -1,4 +1,4 @@
-FROM stirlingtools/stirling-pdf@sha256:4d9abedcd57a9aa4d36ffb8fc9a4801aea2d295bf6ad349e23dd4b45661a5e42
+FROM stirlingtools/stirling-pdf@sha256:950c596db26e0764f642def2fd4f9ee904ff2ac16d83fe621ff731b771d9b385
 
 # Platform compatibility wrapper:
 # - Keeps a stable /apps/stirling-pdf build target for Railway-style deployments.
