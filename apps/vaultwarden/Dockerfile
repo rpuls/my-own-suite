@@ -2,7 +2,7 @@
 # Uses official Vaultwarden server image with PostgreSQL support
 # For VPS deployments, the official image is used directly in docker-compose
 
-FROM vaultwarden/server@sha256:c4f6056fe0c288a052a223cecd263a90d1dda1a0177bb5b054a363a6c7b211d9
+FROM vaultwarden/server@sha256:d626d04934cd1192ad8ced1adb975099fca78cec33ab467d2d3c923cde7f3b0c
 
 COPY --chmod=755 entrypoint.sh /mos-vaultwarden-entrypoint.sh
 
