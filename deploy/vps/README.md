@@ -155,6 +155,7 @@ Shared configuration model:
 - `deploy/vps/.env`: framework-level values such as `DOMAIN`
 - `deploy/vps/services/suite-manager/.env`: shared user-facing values, auth inputs, and onboarding controls reused across the stack
 - `deploy/vps/services/<service>/.env`: service-specific runtime settings for all deployable services
+- Homepage runtime config: the `homepage_config` Docker volume mounted at `/app/config` in the Homepage container. It is seeded from repo defaults on first boot and is the editable source for dashboard YAML/CSS/JS after install.
 
 Optional shared SMTP model:
 - Configure SMTP once in `deploy/vps/services/suite-manager/.env`.
@@ -276,7 +277,7 @@ Add to `deploy/vps/services/homepage/.env`:
 If the app requires HTTPS-aware browser flows, use `https://` instead. Vaultwarden is the current example.
 
 ### 6. Add tile to Homepage template
-Add to `apps/homepage/config/services.template.yaml`:
+For an existing install, add the tile to the runtime template at `/app/config/services.template.yaml` inside the Homepage container or its persistent `homepage_config` volume:
 ```yaml
 - Category Name:
     - <App Name>:
@@ -285,8 +286,15 @@ Add to `apps/homepage/config/services.template.yaml`:
         icon: app-icon.png
 ```
 
-### 7. Rebuild the Homepage container
-The homepage copies `services.template.yaml` at build time. After modifying it:
+For a repo default that should seed future installs, add the same tile to `apps/homepage/config/services.template.yaml`.
+
+### 7. Restart or rebuild Homepage
+Runtime config changes only need a restart so `services.yaml` is regenerated from `services.template.yaml`:
+```bash
+docker compose restart homepage
+```
+
+Repo default changes require rebuilding the Homepage image:
 ```bash
 docker compose up -d --build homepage
 ```

@@ -70,6 +70,7 @@ services:
       - .env
       - ./services/homepage/.env
     volumes:
+      - homepage_config:/app/config
       - homepage_images:/app/public/images
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
@@ -346,6 +347,7 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  homepage_config:
   homepage_images:
   suite_manager_data:
   vaultwarden_data:
