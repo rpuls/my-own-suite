@@ -36,6 +36,7 @@ Runtime files commonly edited for customization:
 - `/app/config/kubernetes.yaml`: Kubernetes integration settings expected by Homepage.
 
 Do not edit `/app/config/services.yaml` directly. It is generated from the runtime `services.template.yaml` at startup and may be replaced whenever Homepage restarts.
+When Suite Manager has the Homepage config volume mounted, its authenticated Customize screen edits the same runtime files and regenerates `services.yaml` after saving `services.template.yaml`.
 
 Current defaults in this repo:
 - `settings.yaml` keeps Homepage's built-in theme and palette switchers available, while `custom.js` keeps fallback/default clients on the bundled `theme-mos` palette.

@@ -21,6 +21,8 @@ export type SuiteManagerConfig = {
     } | null;
   };
   domain: string;
+  homepageConfigDir: string;
+  homepageDefaultConfigDir: string;
   homepageUrl: string;
   ownerPassword: string;
   ownerEmail: string;
@@ -88,6 +90,8 @@ export function loadConfig(): SuiteManagerConfig {
   const port = Number(process.env.PORT) || 3000;
   const checkIntervalMs = Number(process.env.SUITE_MANAGER_CHECK_INTERVAL_MS) || 5 * 60 * 1000;
   const homepageUrl = process.env.HOMEPAGE_URL || 'http://homepage:3000/';
+  const homepageConfigDir = (process.env.SUITE_MANAGER_HOMEPAGE_CONFIG_DIR || '').trim();
+  const homepageDefaultConfigDir = (process.env.SUITE_MANAGER_HOMEPAGE_DEFAULT_CONFIG_DIR || '').trim();
   const requestTimeoutMs = Number(process.env.SUITE_MANAGER_REQUEST_TIMEOUT_MS) || 10_000;
   const runOnce = process.env.SUITE_MANAGER_RUN_ONCE === 'true';
   const ownerEmail = requireEnv('OWNER_EMAIL', 'admin@myownsuite.local');
@@ -145,6 +149,8 @@ export function loadConfig(): SuiteManagerConfig {
           : null,
     },
     domain,
+    homepageConfigDir,
+    homepageDefaultConfigDir,
     homepageUrl,
     ownerPassword,
     ownerEmail,

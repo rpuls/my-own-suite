@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import HomepageConfigApp from '../homepage-config/HomepageConfigApp';
 import OnboardingApp from '../onboarding/main/OnboardingApp';
 import UpdatesApp from '../updates/UpdatesApp';
 import { withSetupPath } from '../../lib/base-path';
@@ -32,6 +33,10 @@ export function AppShell({ onLogout, ownerName }: AppShellProps) {
 
     if (route === 'updates') {
       return <UpdatesApp />;
+    }
+
+    if (route === 'homepage-config') {
+      return <HomepageConfigApp />;
     }
 
     return (
@@ -91,6 +96,14 @@ export function AppShell({ onLogout, ownerName }: AppShellProps) {
                   type="button"
                 >
                   Onboarding
+                </button>
+
+                <button
+                  className={`suite-shell-link ${route === 'homepage-config' ? 'is-active' : ''}`}
+                  onClick={() => openRoute('/customize')}
+                  type="button"
+                >
+                  Customize
                 </button>
 
                 <button

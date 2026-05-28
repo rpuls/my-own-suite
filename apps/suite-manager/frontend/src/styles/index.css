@@ -243,6 +243,96 @@
   margin: 0 auto;
 }
 
+.suite-homepage-config-card {
+  display: grid;
+  gap: 1rem;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.suite-homepage-config-header,
+.suite-homepage-config-footer,
+.suite-homepage-config-error {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.suite-homepage-config-header h2,
+.suite-homepage-config-header p {
+  margin: 0;
+}
+
+.suite-homepage-config-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  justify-content: flex-end;
+}
+
+.suite-homepage-config-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.suite-homepage-config-file-list {
+  display: grid;
+  align-content: start;
+  gap: 0.5rem;
+}
+
+.suite-homepage-config-file {
+  display: grid;
+  gap: 0.12rem;
+  width: 100%;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.suite-homepage-config-file:hover,
+.suite-homepage-config-file.is-active {
+  border-color: rgba(99, 226, 179, 0.42);
+  background: rgba(99, 226, 179, 0.1);
+}
+
+.suite-homepage-config-file small {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+  text-transform: uppercase;
+}
+
+.suite-homepage-config-editor {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.suite-homepage-config-editor textarea {
+  width: 100%;
+  min-height: min(64vh, 720px);
+  resize: vertical;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: rgba(6, 21, 38, 0.82);
+  color: var(--text);
+  font-family: 'Courier New', monospace;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  padding: 0.9rem;
+  tab-size: 2;
+}
+
 .suite-updates-live-banner {
   display: flex;
   align-items: flex-start;
@@ -1010,9 +1100,16 @@
   }
 
   .suite-updates-header,
+  .suite-homepage-config-header,
+  .suite-homepage-config-footer,
+  .suite-homepage-config-error,
   .suite-updates-status-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .suite-homepage-config-layout {
+    grid-template-columns: 1fr;
   }
 
   .suite-updates-grid {

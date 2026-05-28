@@ -17,7 +17,8 @@
     "pg": "^8.20.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "yaml": "^2.8.3"
   },
   "scripts": {
     "prebuild": "node -e \"const fs=require('node:fs'); const path='../../scripts/sync-branding.cjs'; if (fs.existsSync(path)) require(path);\"",

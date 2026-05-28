@@ -47,13 +47,18 @@ services:
     env_file:
       - .env
       - ./services/suite-manager/.env
+      - ./services/homepage/.env
       - ./services/vaultwarden/.env
       - ./services/seafile/.env
       - ./services/radicale/.env
     environment:
       - HOMEPAGE_URL=http://homepage:3000/
+      - SUITE_MANAGER_HOMEPAGE_CONFIG_DIR=/homepage-config
+      - SUITE_MANAGER_HOMEPAGE_DEFAULT_CONFIG_DIR=/homepage-default-config
     volumes:
       - suite_manager_data:/data
+      - homepage_config:/homepage-config
+      - ../../apps/homepage/config:/homepage-default-config:ro
     networks:
       - mos-network
 

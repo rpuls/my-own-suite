@@ -96,5 +96,26 @@ test.describe('homepage app verification against the real local stack', () => {
       await expect(radicalePage.locator('body')).toContainText(/Radicale|Directory listings are not supported|Calendar/i);
       await radicaleContext.close();
     });
+
+    await test.step('customize Homepage from Suite Manager runtime config', async () => {
+      await page.goto('/setup/customize');
+      await expect(page.getByRole('heading', { name: 'Customize' })).toBeVisible();
+
+      const editor = page.locator('textarea');
+      await expect(editor).toBeVisible();
+      const originalTemplate = await editor.inputValue();
+      await editor.fill(`${originalTemplate}
+
+- E2E Custom:
+    - Runtime Link:
+        href: https://example.org/
+        description: Added from Suite Manager
+`);
+      await page.getByRole('button', { name: /^Save$/ }).click();
+      await expect(page.getByText('Saved')).toBeVisible();
+
+      await page.goto('/');
+      await expect(page.locator('a[href="https://example.org/"]').first()).toBeVisible();
+    });
   });
 });

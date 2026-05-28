@@ -2,6 +2,8 @@
 
 - `PORT`: HTTP port for the suite-manager status endpoint. Defaults to `3000`.
 - `HOMEPAGE_URL`: Homepage URL to probe. Defaults to `http://homepage:3000/`.
+- `SUITE_MANAGER_HOMEPAGE_CONFIG_DIR`: Optional path to the mounted Homepage runtime config directory. Enables the authenticated Homepage customization API and editor.
+- `SUITE_MANAGER_HOMEPAGE_DEFAULT_CONFIG_DIR`: Optional path to read-only Homepage default config files. Enables reset-to-default for individual Homepage config files.
 - `SUITE_MANAGER_CHECK_INTERVAL_MS`: Homepage probe interval in milliseconds. Defaults to `300000`.
 - `SUITE_MANAGER_REQUEST_TIMEOUT_MS`: Timeout per Homepage request in milliseconds. Defaults to `10000`.
 - `SUITE_MANAGER_RUN_ONCE`: If set to `true`, performs one Homepage check and exits. Useful for smoke tests.
@@ -31,6 +33,7 @@
 - Proxies Homepage through `/` after the owner signs in.
 - Exposes a simple HTTP `200` health endpoint on `/healthz`.
 - Exposes JSON setup auth/status/onboarding data on `/setup/api/auth/*`, `/setup/api/status`, and `/setup/api/onboarding`.
+- Exposes allow-listed Homepage runtime config editing on `/setup/api/homepage-config/*` when the Homepage config volume is mounted.
 - Exposes JSON update state on `/setup/api/updates`, including installed version, latest release metadata, and whether an update is available.
 - Supports platform-agnostic notify-only update behavior so hosted deployments can show update availability without implying that Suite Manager can perform the installation itself.
 - Logs a success line when Homepage returns a `2xx` response.
@@ -49,6 +52,7 @@
 - `src/config.ts`: environment parsing and public URL derivation.
 - `src/features/onboarding/*`: onboarding state, domain model, auth, and API routes.
 - `src/features/health/*`: health monitoring and health endpoints.
+- `src/features/homepage-config/*`: allow-listed Homepage runtime config read/write/reset endpoints and service-template regeneration.
 - `src/features/status/*`: operational status endpoints.
 - `src/features/updates/*`: installed-version detection and release-check endpoints for the Updates screen.
 - `src/lib/*`: shared helpers such as logging, HTML escaping, and secret masking.
@@ -67,6 +71,7 @@
 
 - Acts as the shared onboarding surface for stack-wide bootstrap, credential handoff, and future per-app provisioning adapters.
 - Acts as the authenticated public entrypoint for setup and Homepage access.
+- Provides a YAML-first editor for the mounted Homepage runtime config files without making generated `services.yaml` user-editable.
 - Acts as the shared source of truth for optional SMTP settings reused by compatible services in the VPS/local stack.
 - Treats Vaultwarden account creation as observed suite state, not a user-confirmed checklist item.
 - Keeps the current onboarding surface intentionally narrow: one guided access flow first, with later app-specific onboarding still to come.
