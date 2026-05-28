@@ -7,28 +7,47 @@ For documentation ownership rules, see [docs/README.md](./README.md).
 ## Current Focus
 
 - Stabilize the USB self-host installation path so a fresh machine can install My Own Suite with minimal terminal work.
+- Make Homepage customization safe for real installs by moving user-edited config out of the source checkout and into a persistent runtime config layer managed through Suite Manager.
+- Define the offline backup and restore contract before managed updates become the normal path for systems holding important app data.
 - Promote managed self-host updates from MVP to dependable staging workflow.
 - Keep Railway-style deployments on notify-only updates, where the hosting platform remains responsible for applying changes.
 
 ## Near-Term
 
+- Replace source-template Homepage customization with a persistent runtime config directory seeded from MOS defaults, so production installs can be updated without dirtying the git checkout.
+- Add a Suite Manager Homepage config editor for approved YAML/CSS config files, with syntax-aware editing, validation, last-known-good rollback, and links to the matching Homepage docs rather than a MOS-owned visual tile schema.
+- Evaluate maintained React editor components for the Suite Manager stack before implementation, with a bias toward proven YAML-capable editors such as Monaco or CodeMirror wrappers.
+- Add a host-owned backup agent, following the managed-update agent pattern, so Suite Manager can offer no-SSH backup actions without giving the container broad host control.
+- Add an offline suite backup plan that captures the MOS version/commit, update track, enabled profiles, env files, runtime customization files, and persistent Docker volumes as one restoreable state bundle.
+- Add Suite Manager backup UI for detected external USB storage first, including device/free-space display, downtime warnings, start-backup action, progress/status recovery after Suite Manager restarts, and a conservative no-auto-format safety posture.
+- Add a restore path that installs or checks out the backup's recorded MOS version before restoring app data, then allows normal forward updates only after the restored stack boots.
 - Use a staging-tracked self-host install as the normal hardware test path:
   - `REPO_REF=staging`
   - `UPDATE_TRACK=branch`
   - `UPDATE_REF=staging`
 - Make the self-host update agent refresh its own host-side files during updates, including systemd unit changes and updater script changes.
-- Add safer update preflight checks before applying updates, including disk space, clean working tree, Docker availability, and service availability.
+- Add safer update preflight checks before applying updates, including backup availability, disk space, clean working tree, Docker availability, and service availability.
 - Improve update progress visibility in Suite Manager with useful status messages and logs.
 - Confirm the `staging` branch update track works as the normal hardware test path after one fresh USB install.
 
 ## Later
 
-- Add backup and restore planning before updates that touch persistent app data.
+- Add app-aware warm backups after the offline whole-suite backup/restore path is proven.
+- Add pre-update restore points once the backup format has been validated on real self-host hardware.
 - Add rollback strategy for failed updates.
 - Add cancel/resume behavior or clear recovery guidance for interrupted updates.
 - Add branch/track switching in the Updates UI for explicit feature testing.
 - Explore VPS managed-update compatibility after the self-host path is stable.
 - Add GitHub Project views for Backlog, Ready, In progress, Review, and Done once issue volume grows.
+
+## Backup Architecture Direction
+
+- Backups should be host-owned, not container-owned. Suite Manager should call a local backup agent over a narrow host bridge, similar to the self-host update agent.
+- The primary user experience is offline external-drive backup: plug in a USB drive, open Suite Manager, choose the detected drive, acknowledge downtime, and start a cold whole-suite backup.
+- The first backup mode should stop the MOS stack, write a manifest and data bundle to the selected destination, verify the result, restart the stack, and leave persistent job status that Suite Manager can show after services return.
+- External drive detection should be conservative: inspect host block devices and mounted filesystems, show likely removable USB storage with size/free-space/writeability, and avoid formatting or writing to system disks in the first version.
+- Local/internal disk destinations can be supported as a secondary destination type, but offline removable media is the trust-building default for cyberattack and accidental-update anxiety.
+- Restore should be version-paired: read the backup manifest, install or check out the recorded MOS version/commit first, restore env/runtime config/volumes, boot the stack, and only then permit forward updates.
 
 ## Done Recently
 
