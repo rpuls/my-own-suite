@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 
-import HomepageConfigApp from '../homepage-config/HomepageConfigApp';
 import OnboardingApp from '../onboarding/main/OnboardingApp';
 import UpdatesApp from '../updates/UpdatesApp';
 import { withSetupPath } from '../../lib/base-path';
 import { useAppRoute, type NavigableAppRoute } from './useAppRoute';
 import { useUpdates } from '../updates/useUpdates';
+
+const HomepageConfigApp = lazy(() => import('../homepage-config/HomepageConfigApp'));
 
 type AppShellProps = {
   onLogout: () => Promise<void>;
@@ -36,7 +37,11 @@ export function AppShell({ onLogout, ownerName }: AppShellProps) {
     }
 
     if (route === 'homepage-config') {
-      return <HomepageConfigApp />;
+      return (
+        <Suspense fallback={<p className="suite-empty">Loading Customize...</p>}>
+          <HomepageConfigApp />
+        </Suspense>
+      );
     }
 
     return (

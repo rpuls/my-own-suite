@@ -101,10 +101,16 @@ test.describe('homepage app verification against the real local stack', () => {
       await page.goto('/setup/customize');
       await expect(page.getByRole('heading', { name: 'Customize' })).toBeVisible();
 
-      const editor = page.locator('textarea');
+      const editor = page.getByLabel('Homepage config editor');
       await expect(editor).toBeVisible();
-      const originalTemplate = await editor.inputValue();
-      await editor.fill(`${originalTemplate}
+      const originalTemplate = await page.evaluate(async () => {
+        const response = await fetch('/setup/api/homepage-config/files/services.template.yaml');
+        const body = await response.json();
+        return body.content;
+      });
+      await editor.click();
+      await page.keyboard.press('Control+A');
+      await page.keyboard.insertText(`${originalTemplate}
 
 - E2E Custom:
     - Runtime Link:

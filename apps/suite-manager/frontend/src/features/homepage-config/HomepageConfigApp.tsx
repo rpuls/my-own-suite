@@ -2,6 +2,7 @@ import { RefreshCcw, RotateCcw, Save } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { withSetupPath } from '../../lib/base-path';
+import CodeEditor from './CodeEditor';
 import type {
   HomepageConfigFile,
   HomepageConfigFileResponse,
@@ -229,21 +230,22 @@ export default function HomepageConfigApp() {
                   ))}
                 </nav>
 
-                <label className="suite-homepage-config-editor">
+                <div className="suite-homepage-config-editor">
                   <span className="suite-field-label">{state.file.language}</span>
-                  <textarea
-                    spellCheck={false}
+                  <CodeEditor
+                    ariaLabel="Homepage config editor"
+                    language={state.file.language}
                     value={state.content}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setState({
                         ...state,
-                        content: event.currentTarget.value,
+                        content: value,
                         dirty: true,
                         savedAt: null,
                       })
                     }
                   />
-                </label>
+                </div>
               </div>
 
               <div className="suite-homepage-config-footer">

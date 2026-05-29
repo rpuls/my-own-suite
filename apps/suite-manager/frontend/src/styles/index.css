@@ -318,18 +318,13 @@
   min-width: 0;
 }
 
-.suite-homepage-config-editor textarea {
+.suite-code-editor {
+  min-width: 0;
+}
+
+.suite-code-editor .cm-editor {
   width: 100%;
   min-height: min(64vh, 720px);
-  resize: vertical;
-  border: 1px solid var(--surface-border);
-  border-radius: var(--mos-radius-sm);
-  background: rgba(6, 21, 38, 0.82);
-  color: var(--text);
-  font-family: 'Courier New', monospace;
-  font-size: 0.88rem;
-  line-height: 1.5;
-  padding: 0.9rem;
   tab-size: 2;
 }
 
