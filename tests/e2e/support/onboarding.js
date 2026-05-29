@@ -168,11 +168,15 @@ export async function completeOnboarding(context, page) {
 async function expectHomepage(page) {
   await expect(page).toHaveURL('http://suite-manager.localhost:18080/');
   await expect(page.locator('body')).toContainText('My Own Suite');
-  await expect(page.getByRole('link', { name: /Suite Manager/i })).toBeVisible();
+  await expect(homepageSuiteManagerLink(page)).toBeVisible();
 }
 
 async function isHomepageVisible(page) {
-  return page.getByRole('link', { name: /Suite Manager/i }).isVisible().catch(() => false);
+  return homepageSuiteManagerLink(page).isVisible().catch(() => false);
+}
+
+export function homepageSuiteManagerLink(page) {
+  return page.locator('a[href*="suite-manager.localhost:18080/setup/"]').first();
 }
 
 async function isVisible(locator) {
