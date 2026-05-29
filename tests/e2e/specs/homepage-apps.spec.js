@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
-import { completeOnboarding } from '../support/onboarding.js';
-import { readStackState } from '../support/stack.js';
+import { completeOnboarding, homepageSuiteManagerLink } from '../support/onboarding.js';
+import { readStackState, restartService } from '../support/stack.js';
 
 const stackState = readStackState();
 
@@ -10,7 +10,7 @@ test.describe('homepage app verification against the real local stack', () => {
     const { owner } = await completeOnboarding(context, page);
 
     await test.step('verify Suite Manager link from Homepage returns to onboarding', async () => {
-      const suiteManagerLink = page.getByRole('link', { name: /Suite Manager/i });
+      const suiteManagerLink = homepageSuiteManagerLink(page);
       await expect(suiteManagerLink).toBeVisible();
 
       const suiteManagerPagePromise = context.waitForEvent('page', { timeout: 3000 }).catch(() => null);
@@ -95,6 +95,44 @@ test.describe('homepage app verification against the real local stack', () => {
       await expect(radicalePage).toHaveURL(/radicale\.localhost:18080/i);
       await expect(radicalePage.locator('body')).toContainText(/Radicale|Directory listings are not supported|Calendar/i);
       await radicaleContext.close();
+    });
+
+    await test.step('customize Homepage from Suite Manager runtime config', async () => {
+      await page.goto('/setup/customize');
+      await expect(page.getByRole('heading', { name: 'Customize' })).toBeVisible();
+
+      const editor = page.getByLabel('Homepage config editor');
+      await expect(editor).toBeVisible();
+      const originalTemplate = await page.evaluate(async () => {
+        const response = await fetch('/setup/api/homepage-config/files/services.template.yaml');
+        const body = await response.json();
+        return body.content;
+      });
+      await editor.click();
+      await page.keyboard.press('Control+A');
+      await page.keyboard.insertText(`${originalTemplate}
+
+- E2E Custom:
+    - Runtime Link:
+        href: https://example.org/
+        description: Added from Suite Manager
+`);
+      await page.getByRole('button', { name: /^Save$/ }).click();
+      await expect(page.getByText('Saved')).toBeVisible();
+
+      restartService('homepage');
+      await expect
+        .poll(
+          async () => {
+            await page.goto('/');
+            return page.locator('a[href="https://example.org/"]').first().isVisible().catch(() => false);
+          },
+          { timeout: 30000 },
+        )
+        .toBe(true);
+
+      await page.goto('/');
+      await expect(page.locator('a[href="https://example.org/"]').first()).toBeVisible();
     });
   });
 });

@@ -155,6 +155,7 @@ Shared configuration model:
 - `deploy/vps/.env`: framework-level values such as `DOMAIN`
 - `deploy/vps/services/suite-manager/.env`: shared user-facing values, auth inputs, and onboarding controls reused across the stack
 - `deploy/vps/services/<service>/.env`: service-specific runtime settings for all deployable services
+- Homepage runtime config: Suite Manager stores editable dashboard YAML/CSS/JS under its persistent data volume, seeded from bundled defaults on first use. Homepage fetches those files from Suite Manager during startup, writes them into its local `/app/config`, then regenerates `services.yaml`.
 
 Optional shared SMTP model:
 - Configure SMTP once in `deploy/vps/services/suite-manager/.env`.
@@ -276,7 +277,7 @@ Add to `deploy/vps/services/homepage/.env`:
 If the app requires HTTPS-aware browser flows, use `https://` instead. Vaultwarden is the current example.
 
 ### 6. Add tile to Homepage template
-Add to `apps/homepage/config/services.template.yaml`:
+For an existing install, use Suite Manager's Customize screen to edit the runtime service template:
 ```yaml
 - Category Name:
     - <App Name>:
@@ -285,10 +286,17 @@ Add to `apps/homepage/config/services.template.yaml`:
         icon: app-icon.png
 ```
 
-### 7. Rebuild the Homepage container
-The homepage copies `services.template.yaml` at build time. After modifying it:
+For a repo default that should seed future installs, add the same tile to `apps/homepage/config/services.template.yaml` and Suite Manager's bundled defaults in `apps/suite-manager/homepage-default-config/services.template.yaml`.
+
+### 7. Restart or rebuild Homepage
+Runtime config changes only need a Homepage restart so it fetches the latest Suite Manager-owned config and regenerates `services.yaml` from `services.template.yaml`:
 ```bash
-docker compose up -d --build homepage
+docker compose restart homepage
+```
+
+Repo default changes require rebuilding the Homepage and Suite Manager images:
+```bash
+docker compose up -d --build homepage suite-manager
 ```
 
 ### 8. Test the deployment locally

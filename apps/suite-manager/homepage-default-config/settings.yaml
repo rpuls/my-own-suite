@@ -1,0 +1,13 @@
+---
+title: My-Own-Suite
+logo: false
+icon: mdi:cube-outline
+header: true
+description: Private self-hosted apps with a calmer default landing page
+cardBlur: md
+columns: 2
+host: false
+headerStyle: clean
+iconStyle: theme
+useEqualHeights: true
+disableUpdateCheck: true

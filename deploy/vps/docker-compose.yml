@@ -47,6 +47,7 @@ services:
     env_file:
       - .env
       - ./services/suite-manager/.env
+      - ./services/homepage/.env
       - ./services/vaultwarden/.env
       - ./services/seafile/.env
       - ./services/radicale/.env
@@ -74,6 +75,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - mos-network
+    depends_on:
+      - suite-manager
 
   # -------------------------------------------
   # Vaultwarden - Password Manager

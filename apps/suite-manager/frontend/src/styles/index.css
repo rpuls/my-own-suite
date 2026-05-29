@@ -243,6 +243,103 @@
   margin: 0 auto;
 }
 
+.mos-shell.suite-homepage-config-shell {
+  width: min(1680px, calc(100vw - 3rem));
+}
+
+.suite-card.suite-homepage-config-card {
+  display: grid;
+  gap: 1rem;
+  max-width: none;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.suite-homepage-config-header,
+.suite-homepage-config-footer,
+.suite-homepage-config-error {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.suite-homepage-config-header h2,
+.suite-homepage-config-header p {
+  margin: 0;
+}
+
+.suite-homepage-config-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  justify-content: flex-end;
+}
+
+.suite-homepage-config-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.suite-homepage-config-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.suite-homepage-config-file-list {
+  display: grid;
+  align-content: start;
+  gap: 0.5rem;
+}
+
+.suite-homepage-config-file {
+  display: grid;
+  gap: 0.12rem;
+  width: 100%;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.suite-homepage-config-file:hover,
+.suite-homepage-config-file.is-active {
+  border-color: rgba(99, 226, 179, 0.42);
+  background: rgba(99, 226, 179, 0.1);
+}
+
+.suite-homepage-config-file small {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+  text-transform: uppercase;
+}
+
+.suite-homepage-config-editor {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.suite-code-editor {
+  min-width: 0;
+}
+
+.suite-code-editor .cm-editor {
+  width: 100%;
+  min-height: min(70vh, 820px);
+  tab-size: 2;
+}
+
 .suite-updates-live-banner {
   display: flex;
   align-items: flex-start;
@@ -846,6 +943,16 @@
   border-color: rgba(99, 226, 179, 0.4);
 }
 
+.suite-danger-button {
+  border-color: rgba(255, 157, 157, 0.32);
+  color: var(--danger);
+}
+
+.suite-danger-button:hover {
+  background: rgba(255, 157, 157, 0.09);
+  border-color: rgba(255, 157, 157, 0.58);
+}
+
 .suite-copy-button:active {
   transform: scale(0.96);
 }
@@ -1010,9 +1117,16 @@
   }
 
   .suite-updates-header,
+  .suite-homepage-config-header,
+  .suite-homepage-config-footer,
+  .suite-homepage-config-error,
   .suite-updates-status-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .suite-homepage-config-layout {
+    grid-template-columns: 1fr;
   }
 
   .suite-updates-grid {
