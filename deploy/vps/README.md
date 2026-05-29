@@ -155,7 +155,7 @@ Shared configuration model:
 - `deploy/vps/.env`: framework-level values such as `DOMAIN`
 - `deploy/vps/services/suite-manager/.env`: shared user-facing values, auth inputs, and onboarding controls reused across the stack
 - `deploy/vps/services/<service>/.env`: service-specific runtime settings for all deployable services
-- Homepage runtime config: the `homepage_config` Docker volume mounted at `/app/config` in the Homepage container and `/homepage-config` in Suite Manager. It is seeded from repo defaults on first boot and is the editable source for dashboard YAML/CSS/JS after install.
+- Homepage runtime config: Suite Manager stores editable dashboard YAML/CSS/JS under its persistent data volume, seeded from bundled defaults on first use. Homepage fetches those files from Suite Manager during startup, writes them into its local `/app/config`, then regenerates `services.yaml`.
 
 Optional shared SMTP model:
 - Configure SMTP once in `deploy/vps/services/suite-manager/.env`.
@@ -277,7 +277,7 @@ Add to `deploy/vps/services/homepage/.env`:
 If the app requires HTTPS-aware browser flows, use `https://` instead. Vaultwarden is the current example.
 
 ### 6. Add tile to Homepage template
-For an existing install, use Suite Manager's Customize screen or edit the runtime template at `/app/config/services.template.yaml` inside the Homepage container or its persistent `homepage_config` volume:
+For an existing install, use Suite Manager's Customize screen to edit the runtime service template:
 ```yaml
 - Category Name:
     - <App Name>:
@@ -286,17 +286,17 @@ For an existing install, use Suite Manager's Customize screen or edit the runtim
         icon: app-icon.png
 ```
 
-For a repo default that should seed future installs, add the same tile to `apps/homepage/config/services.template.yaml`.
+For a repo default that should seed future installs, add the same tile to `apps/homepage/config/services.template.yaml` and Suite Manager's bundled defaults in `apps/suite-manager/homepage-default-config/services.template.yaml`.
 
 ### 7. Restart or rebuild Homepage
-Runtime config changes only need a restart so `services.yaml` is regenerated from `services.template.yaml`:
+Runtime config changes only need a Homepage restart so it fetches the latest Suite Manager-owned config and regenerates `services.yaml` from `services.template.yaml`:
 ```bash
 docker compose restart homepage
 ```
 
-Repo default changes require rebuilding the Homepage image:
+Repo default changes require rebuilding the Homepage and Suite Manager images:
 ```bash
-docker compose up -d --build homepage
+docker compose up -d --build homepage suite-manager
 ```
 
 ### 8. Test the deployment locally

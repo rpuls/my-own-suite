@@ -21,6 +21,16 @@ const DEFAULT_CONFIG_DIR = '/app/config';
  */
 const TEMPLATE_FILE = 'services.template.yaml';
 const OUTPUT_FILE = 'services.yaml';
+const CONFIG_FILES = new Set([
+    'bookmarks.yaml',
+    'widgets.yaml',
+    'settings.yaml',
+    'custom.css',
+    'custom.js',
+    'docker.yaml',
+    'kubernetes.yaml',
+    'services.template.yaml'
+]);
 
 /**
  * Regex to match ${VAR_NAME} placeholders
@@ -149,6 +159,55 @@ function processTemplate(template: unknown[], env: Record<string, string | undef
     return result;
 }
 
+type ConfigExportFile = {
+    name: string;
+    content: string;
+};
+
+function isConfigExportFile(value: unknown): value is ConfigExportFile {
+    if (!isObjectRecord(value)) {
+        return false;
+    }
+
+    return typeof value.name === 'string' && typeof value.content === 'string' && CONFIG_FILES.has(value.name);
+}
+
+async function fetchRuntimeConfig(configUrl: string, configDir: string): Promise<void> {
+    const token = process.env.HOMEPAGE_CONFIG_SYNC_TOKEN || '';
+    if (!token) {
+        throw new Error('HOMEPAGE_CONFIG_SYNC_TOKEN is required to fetch runtime config.');
+    }
+
+    const response = await fetch(configUrl, {
+        headers: {
+            authorization: `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Config fetch failed with HTTP ${response.status}.`);
+    }
+
+    const body = await response.json() as { files?: unknown };
+    if (!Array.isArray(body.files)) {
+        throw new Error('Config fetch response did not include a files array.');
+    }
+
+    fs.mkdirSync(configDir, { recursive: true });
+
+    let written = 0;
+    for (const file of body.files) {
+        if (!isConfigExportFile(file)) {
+            continue;
+        }
+
+        fs.writeFileSync(path.join(configDir, file.name), file.content);
+        written += 1;
+    }
+
+    console.log(`Fetched ${written} runtime config file(s) from Suite Manager.`);
+}
+
 /**
  * Count services in template (for logging)
  */
@@ -221,7 +280,17 @@ function countOutputServices(output: unknown[]): number {
 /**
  * Main function
  */
-function main(): void {
+async function main(): Promise<void> {
+    if (process.argv[2] === '--fetch-config') {
+        const configUrl = process.argv[3];
+        const configDir = process.argv[4] || DEFAULT_CONFIG_DIR;
+        if (!configUrl) {
+            throw new Error('Usage: node dist/index.js --fetch-config <url> [config-dir]');
+        }
+        await fetchRuntimeConfig(configUrl, configDir);
+        return;
+    }
+
     // Determine config directory
     const configDir = process.argv[2] || DEFAULT_CONFIG_DIR;
     const env: Record<string, string | undefined> = process.env;
@@ -273,4 +342,7 @@ function main(): void {
 }
 
 // Run main function
-main();
+main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : 'Template processing failed.');
+    process.exit(1);
+});

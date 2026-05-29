@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { completeOnboarding } from '../support/onboarding.js';
-import { readStackState } from '../support/stack.js';
+import { readStackState, restartService } from '../support/stack.js';
 
 const stackState = readStackState();
 
@@ -113,6 +113,8 @@ test.describe('homepage app verification against the real local stack', () => {
 `);
       await page.getByRole('button', { name: /^Save$/ }).click();
       await expect(page.getByText('Saved')).toBeVisible();
+
+      restartService('homepage');
 
       await page.goto('/');
       await expect(page.locator('a[href="https://example.org/"]').first()).toBeVisible();

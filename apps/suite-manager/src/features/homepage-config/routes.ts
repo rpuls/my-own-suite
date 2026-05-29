@@ -1,6 +1,13 @@
 import { Hono } from 'hono';
 
+import type { SuiteManagerConfig } from '../../config.ts';
 import { HomepageConfigService } from './service.ts';
+
+function hasSyncToken(config: SuiteManagerConfig, authorizationHeader: string | undefined): boolean {
+  return Boolean(
+    config.homepageConfigSyncToken && authorizationHeader === `Bearer ${config.homepageConfigSyncToken}`,
+  );
+}
 
 export function createHomepageConfigRouter(homepageConfigService: HomepageConfigService): Hono {
   const router = new Hono();
@@ -44,6 +51,30 @@ export function createHomepageConfigRouter(homepageConfigService: HomepageConfig
       return c.json(
         { error: caughtError instanceof Error ? caughtError.message : 'Unable to reset Homepage config.' },
         400,
+      );
+    }
+  });
+
+  return router;
+}
+
+export function createHomepageConfigExportRouter(
+  config: SuiteManagerConfig,
+  homepageConfigService: HomepageConfigService,
+): Hono {
+  const router = new Hono();
+
+  router.get('/homepage-config/export', async (c) => {
+    if (!hasSyncToken(config, c.req.header('authorization'))) {
+      return c.json({ error: 'Unauthorized.' }, 401);
+    }
+
+    try {
+      return c.json(await homepageConfigService.exportFiles());
+    } catch (caughtError) {
+      return c.json(
+        { error: caughtError instanceof Error ? caughtError.message : 'Unable to export Homepage config.' },
+        500,
       );
     }
   });

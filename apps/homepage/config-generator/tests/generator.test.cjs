@@ -126,3 +126,41 @@ test('keeps recursive nested Homepage groups when children resolve', () => {
     },
   ]);
 });
+
+test('fetches allow-listed runtime config files before generation', async () => {
+  const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'homepage-config-fetch-'));
+  const configUrl = `data:application/json,${encodeURIComponent(
+    JSON.stringify({
+        files: [
+          {
+            name: 'services.template.yaml',
+            content: `
+- Remote:
+    - Link:
+        href: https://example.org
+        description: Fetched
+`,
+          },
+          {
+            name: '../ignored.yaml',
+            content: 'bad: true',
+          },
+        ],
+      }),
+  )}`;
+
+  try {
+    execFileSync(process.execPath, [generatorPath, '--fetch-config', configUrl, configDir], {
+      env: {
+        ...process.env,
+        HOMEPAGE_CONFIG_SYNC_TOKEN: 'test-token',
+      },
+      stdio: 'pipe',
+    });
+
+    assert.match(fs.readFileSync(path.join(configDir, 'services.template.yaml'), 'utf8'), /Fetched/);
+    assert.equal(fs.existsSync(path.join(configDir, '..', 'ignored.yaml')), false);
+  } finally {
+    fs.rmSync(configDir, { recursive: true, force: true });
+  }
+});

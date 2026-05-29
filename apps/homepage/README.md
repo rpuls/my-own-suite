@@ -1,7 +1,11 @@
 #### Environment variables
 
 - `HOMEPAGE_ALLOWED_HOSTS`: Allowed hostnames for Homepage (`hostname1,hostname2,...`).
-- `HOMEPAGE_RESET_TO_DEFAULT`: Optional reset switch. Set to `1` or `true` for one startup to copy repo default config over the runtime config, then unset it again.
+- `HOMEPAGE_CONFIG_SYNC_URL`: Suite Manager config export URL fetched during startup before `services.yaml` is generated.
+- `HOMEPAGE_CONFIG_SYNC_TOKEN`: Shared private token sent as a bearer token when fetching Suite Manager-owned config.
+- `HOMEPAGE_CONFIG_SYNC_ATTEMPTS`: Optional fetch retry count. Defaults to `12`.
+- `HOMEPAGE_CONFIG_SYNC_RETRY_SECONDS`: Optional delay between fetch retries. Defaults to `2`.
+- `HOMEPAGE_RESET_TO_DEFAULT`: Optional local fallback reset switch. Set to `1` or `true` for one startup to copy bundled defaults into Homepage's ephemeral local config before the Suite Manager fetch runs.
 - `SUITE_MANAGER_URL`: Public Suite Manager base URL used for the Suite Manager resource tile, which appends `/setup/`.
 - Any `${VAR_NAME}` used in the runtime `services.template.yaml`:
   - Example: `${SEAFILE_URL}`, `${VAULTWARDEN_URL}`, `${ONLYOFFICE_URL}`.
@@ -11,8 +15,8 @@
 
 - Homepage keeps repo defaults and runtime edits separate.
 - Repo defaults are copied into the image at `/app/default-config` and are seed material only.
-- Runtime editable config lives at `/app/config`, which is mounted as persistent storage in the VPS/local Compose stack.
-- On first boot, `entrypoint.sh` copies missing default files into `/app/config` without overwriting existing user edits.
+- Runtime editable config is owned by Suite Manager and fetched into `/app/config` during Homepage startup.
+- If Suite Manager config cannot be fetched, `entrypoint.sh` falls back to bundled defaults in `/app/default-config`.
 - On each startup, `entrypoint.sh` runs `node /app/config-generator/dist/index.js /app/config` before starting Homepage.
 - Suite Manager is the public login and setup surface for the stack; after sign-in it proxies Homepage instead of Homepage implementing its own login UI.
 - Default services template: `/app/default-config/services.template.yaml`
@@ -26,17 +30,17 @@
 - Result: tiles appear only when their required env values exist.
 
 Runtime files commonly edited for customization:
-- `/app/config/services.template.yaml`: categories, tile order, names, descriptions, and icons.
-- `/app/config/widgets.yaml`: widgets.
-- `/app/config/bookmarks.yaml`: bookmarks.
-- `/app/config/settings.yaml`: general dashboard settings.
-- `/app/config/custom.css`: visual overrides layered on top of Homepage defaults.
-- `/app/config/custom.js`: client-side theme bootstrapping that keeps Homepage on the bundled `theme-mos` palette unless a different theme is explicitly active.
-- `/app/config/docker.yaml`: Docker integration settings expected by Homepage.
-- `/app/config/kubernetes.yaml`: Kubernetes integration settings expected by Homepage.
+- `services.template.yaml`: categories, tile order, names, descriptions, and icons.
+- `widgets.yaml`: widgets.
+- `bookmarks.yaml`: bookmarks.
+- `settings.yaml`: general dashboard settings.
+- `custom.css`: visual overrides layered on top of Homepage defaults.
+- `custom.js`: client-side theme bootstrapping that keeps Homepage on the bundled `theme-mos` palette unless a different theme is explicitly active.
+- `docker.yaml`: Docker integration settings expected by Homepage.
+- `kubernetes.yaml`: Kubernetes integration settings expected by Homepage.
 
 Do not edit `/app/config/services.yaml` directly. It is generated from the runtime `services.template.yaml` at startup and may be replaced whenever Homepage restarts.
-When Suite Manager has the Homepage config volume mounted, its authenticated Customize screen edits the same runtime files and regenerates `services.yaml` after saving `services.template.yaml`.
+Suite Manager's authenticated Customize screen edits the persisted source files. Homepage fetches those files during startup and regenerates `services.yaml` before the stock Homepage server starts.
 
 Current defaults in this repo:
 - `settings.yaml` keeps Homepage's built-in theme and palette switchers available, while `custom.js` keeps fallback/default clients on the bundled `theme-mos` palette.
@@ -56,12 +60,12 @@ Tile template example:
 
 #### Operational commands
 
-- If you changed runtime files in `/app/config` or env values in `deploy/vps/services/homepage/.env`:
-  - Restarting Homepage is enough.
+- If you changed config in Suite Manager or env values in `deploy/vps/services/homepage/.env`:
+  - Restarting Homepage is enough for the fetched config and generated `services.yaml` to refresh.
 - If you changed repo defaults under `apps/homepage/config`:
   - Rebuild Homepage image (from repo root): `npm run vps:rebuild`
-- To reset runtime config to the repo defaults:
-  - Start Homepage once with `HOMEPAGE_RESET_TO_DEFAULT=1`, then remove that variable before the next restart.
+- To reset persisted runtime config to the bundled defaults:
+  - Use Suite Manager's Customize screen reset action for the file you want to restore, then restart Homepage.
 
 #### Troubleshooting
 

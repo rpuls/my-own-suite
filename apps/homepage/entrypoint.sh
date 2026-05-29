@@ -51,7 +51,27 @@ if [ -d /app/icon-seed ]; then
   done
 fi
 
-# Run the TypeScript config generator
+# Fetch Suite Manager-owned runtime config before generating services.yaml.
+if [ -n "${HOMEPAGE_CONFIG_SYNC_URL:-}" ] && [ -n "${HOMEPAGE_CONFIG_SYNC_TOKEN:-}" ]; then
+  echo "Fetching Homepage runtime config from Suite Manager..."
+  fetch_attempt=1
+  while [ "$fetch_attempt" -le "${HOMEPAGE_CONFIG_SYNC_ATTEMPTS:-12}" ]; do
+    if node /app/config-generator/dist/index.js --fetch-config "$HOMEPAGE_CONFIG_SYNC_URL" "$RUNTIME_CONFIG_DIR"; then
+      echo "Fetched Homepage runtime config."
+      break
+    fi
+
+    if [ "$fetch_attempt" -eq "${HOMEPAGE_CONFIG_SYNC_ATTEMPTS:-12}" ]; then
+      echo "Warning: Unable to fetch Homepage runtime config; using local defaults."
+      break
+    fi
+
+    fetch_attempt=$((fetch_attempt + 1))
+    sleep "${HOMEPAGE_CONFIG_SYNC_RETRY_SECONDS:-2}"
+  done
+fi
+
+# Run the TypeScript config generator after any runtime config fetch.
 cd /app/config-generator || exit 1
 node dist/index.js "$RUNTIME_CONFIG_DIR"
 

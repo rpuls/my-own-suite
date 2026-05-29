@@ -168,6 +168,10 @@ export function stopStack() {
   }
 }
 
+export function restartService(serviceName) {
+  runDockerCompose(['restart', serviceName]);
+}
+
 export function readStackState() {
   return JSON.parse(fs.readFileSync(stackStatePath, 'utf8'));
 }
