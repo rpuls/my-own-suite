@@ -127,8 +127,9 @@ export async function completeOnboarding(context, page) {
     await vaultwardenPage.goto(importUrl);
     await vaultwardenPage.waitForLoadState('domcontentloaded');
     await dismissVaultwardenExtensionPrompt(vaultwardenPage);
-    await expect(vaultwardenPage.getByRole('combobox')).toHaveCount(3, { timeout: 30000 });
-    await vaultwardenPage.getByRole('combobox').nth(2).click();
+    const fileFormatSelect = vaultwardenPage.getByRole('combobox', { name: /file format/i });
+    await expect(fileFormatSelect).toBeVisible({ timeout: 30000 });
+    await fileFormatSelect.click();
     await vaultwardenPage.locator('.ng-option').getByText('Bitwarden (csv)', { exact: true }).click();
     await vaultwardenPage.locator('textarea').first().fill(csvImport);
     await vaultwardenPage.getByRole('button', { name: /import/i }).click();
@@ -247,14 +248,20 @@ async function ensureVaultwardenSession(page) {
 }
 
 async function dismissVaultwardenExtensionPrompt(page) {
-  if (!/setup-extension/i.test(page.url())) {
+  const skipToWebApp = page.getByRole('button', { name: /skip to web app/i });
+  const addItLater = page.getByRole('button', { name: /add it later/i });
+
+  if (await skipToWebApp.isVisible().catch(() => false)) {
+    await skipToWebApp.click();
     return;
   }
 
-  const addItLater = page.getByRole('button', { name: /add it later/i });
   if (await addItLater.isVisible().catch(() => false)) {
     await addItLater.click();
-  } else {
+    return;
+  }
+
+  if (/setup-extension/i.test(page.url())) {
     await page.goto('https://vaultwarden.localhost:18443/#/vault');
   }
 }
