@@ -276,6 +276,13 @@
   justify-content: flex-end;
 }
 
+.suite-homepage-config-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
 .suite-homepage-config-layout {
   display: grid;
   gap: 1rem;
@@ -934,6 +941,16 @@
 .suite-copy-button:hover {
   background: rgba(99, 226, 179, 0.12);
   border-color: rgba(99, 226, 179, 0.4);
+}
+
+.suite-danger-button {
+  border-color: rgba(255, 157, 157, 0.32);
+  color: var(--danger);
+}
+
+.suite-danger-button:hover {
+  background: rgba(255, 157, 157, 0.09);
+  border-color: rgba(255, 157, 157, 0.58);
 }
 
 .suite-copy-button:active {

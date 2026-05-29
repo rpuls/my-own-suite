@@ -129,6 +129,13 @@ export default function HomepageConfigApp() {
       return;
     }
 
+    const confirmed = window.confirm(
+      `Reset ${state.file.name} to the bundled default?\n\nThis will overwrite the current saved Homepage config file.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
     setIsResetting(true);
     try {
       const response = await fetch(
@@ -201,15 +208,6 @@ export default function HomepageConfigApp() {
                   </button>
                   <button
                     className="suite-copy-button"
-                    disabled={isSaving || isResetting}
-                    onClick={() => void reset()}
-                    type="button"
-                  >
-                    <RotateCcw aria-hidden="true" className="suite-inline-icon" />
-                    Reset
-                  </button>
-                  <button
-                    className="suite-copy-button"
                     disabled={!state.dirty || isSaving || isResetting}
                     onClick={() => void save()}
                     type="button"
@@ -255,10 +253,21 @@ export default function HomepageConfigApp() {
               </div>
 
               <div className="suite-homepage-config-footer">
-                <span className={`mos-pill ${state.dirty ? 'is-active' : 'is-completed'}`}>
-                  {state.dirty ? 'Unsaved' : 'Saved'}
-                </span>
-                {state.savedAt ? <span className="suite-meta mos-meta">Updated {state.savedAt}</span> : null}
+                <div className="suite-homepage-config-status">
+                  <span className={`mos-pill ${state.dirty ? 'is-active' : 'is-completed'}`}>
+                    {state.dirty ? 'Unsaved' : 'Saved'}
+                  </span>
+                  {state.savedAt ? <span className="suite-meta mos-meta">Updated {state.savedAt}</span> : null}
+                </div>
+                <button
+                  className="suite-copy-button suite-danger-button"
+                  disabled={isSaving || isResetting}
+                  onClick={() => void reset()}
+                  type="button"
+                >
+                  <RotateCcw aria-hidden="true" className="suite-inline-icon" />
+                  {isResetting ? 'Resetting...' : 'Reset to default'}
+                </button>
               </div>
               {state.errorMessage ? <p className="suite-error">{state.errorMessage}</p> : null}
             </>
