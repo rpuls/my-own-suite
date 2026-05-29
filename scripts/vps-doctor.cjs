@@ -221,6 +221,8 @@ if (env.radicale) {
 if (env.homepage) {
   requireVar('homepage', 'RADICALE_ICAL_URL', { allowPlaceholder: false });
   requireVar('homepage', 'SUITE_MANAGER_URL', { allowPlaceholder: false });
+  requireVar('homepage', 'HOMEPAGE_CONFIG_SYNC_TOKEN', { allowPlaceholder: false });
+  requireVar('homepage', 'HOMEPAGE_CONFIG_SYNC_URL', { allowPlaceholder: false });
 }
 
 if (env.vaultwarden) {

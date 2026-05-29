@@ -6,6 +6,11 @@ import { AuthService } from './features/auth/service.ts';
 import { createAuthRouter } from './features/auth/routes.ts';
 import { requireApiSession } from './features/auth/middleware.ts';
 import { createHealthRouter } from './features/health/routes.ts';
+import {
+  createHomepageConfigExportRouter,
+  createHomepageConfigRouter,
+} from './features/homepage-config/routes.ts';
+import { HomepageConfigService } from './features/homepage-config/service.ts';
 import { createHomepageProxyRouter } from './features/homepage/proxy.ts';
 import { createOnboardingRouter } from './features/onboarding/main/routes.ts';
 import { OnboardingService } from './features/onboarding/main/service.ts';
@@ -24,16 +29,19 @@ export function createApp(
 ): Hono {
   const app = new Hono();
   const authService = new AuthService(config);
+  const homepageConfigService = new HomepageConfigService(config);
   const updatesService = new UpdatesService(config);
   const setupApiPath = `${config.setupBasePath}/api`;
   const frontendReady = hasBuiltFrontend();
 
   app.route('/', createHealthRouter(config));
   app.route(`${setupApiPath}/auth`, createAuthRouter(config, authService));
+  app.route(setupApiPath, createHomepageConfigExportRouter(config, homepageConfigService));
 
   const protectedSetupApi = new Hono();
   protectedSetupApi.use('*', requireApiSession(config));
   protectedSetupApi.route('/onboarding', createOnboardingRouter(config, onboardingService));
+  protectedSetupApi.route('/', createHomepageConfigRouter(homepageConfigService));
   protectedSetupApi.route('/', createUpdatesRouter(updatesService));
   protectedSetupApi.route('/', createStatusRouter(config, onboardingService));
   app.route(setupApiPath, protectedSetupApi);

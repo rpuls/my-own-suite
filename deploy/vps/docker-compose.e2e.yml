@@ -13,6 +13,12 @@ services:
       - SEAFILE_PUBLIC_URL=http://seafile.localhost:${MOS_E2E_HTTP_PORT:-18080}
       - STIRLING_PDF_PUBLIC_URL=http://stirling-pdf.localhost:${MOS_E2E_HTTP_PORT:-18080}
       - IMMICH_PUBLIC_URL=http://immich.localhost:${MOS_E2E_HTTP_PORT:-18080}
+      - SUITE_MANAGER_URL=http://suite-manager.localhost:${MOS_E2E_HTTP_PORT:-18080}
+      - VAULTWARDEN_URL=https://vaultwarden.localhost:${MOS_E2E_HTTPS_PORT:-18443}
+      - SEAFILE_URL=http://seafile.localhost:${MOS_E2E_HTTP_PORT:-18080}
+      - STIRLING_PDF_URL=http://stirling-pdf.localhost:${MOS_E2E_HTTP_PORT:-18080}
+      - RADICALE_URL=http://radicale.localhost:${MOS_E2E_HTTP_PORT:-18080}
+      - IMMICH_URL=http://immich.localhost:${MOS_E2E_HTTP_PORT:-18080}
 
   homepage:
     container_name: mos-e2e-homepage

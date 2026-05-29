@@ -17,6 +17,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Added an explicit own-infra system migration phase for repo-managed VPS/self-host updates, keeping `.env.template` files as the latest app contract while moving historical compatibility fixes into named migrations.
 - Strengthened managed self-host update application so updates explicitly rebuild all profiled stack images with fresh base pulls, recreate containers from those images, and remove obsolete Compose service containers without removing persistent volumes.
 - Reprioritized the roadmap around real-install trust blockers: runtime Homepage YAML/CSS editing outside the source checkout and offline whole-suite backup/restore before managed updates become the default path for important app data.
+- Moved Homepage customization to Suite Manager-owned runtime config seeded from bundled defaults and added a syntax-aware Customize screen for allow-listed YAML/CSS/JS edits with YAML save validation, so installed suites can change dashboard files without dirtying the production source checkout while preserving generated service-tile pruning. Compatibility note: Homepage now fetches config from Suite Manager at startup using `HOMEPAGE_CONFIG_SYNC_TOKEN`, while `services.yaml` remains generated from `services.template.yaml`.
 - Added Umami analytics to the public landing and docs site without touching authenticated Suite Manager or bundled self-host app pages.
 - Polished the public landing page mobile layout so the header, hero diagram, screenshots, and deploy-path cards stay readable on narrow phone screens.
 - Documented and guarded the Seafile MySQL 8.x pin so Dependabot does not offer MySQL 9 updates before Seafile compatibility has been validated.
@@ -24,6 +25,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ### Fixed
 
 - Fixed Vaultwarden startup with the shared SMTP block disabled so refreshed images no longer fail on inactive mail settings.
+- Fixed Suite Manager startup when Homepage runtime config uses the default state-directory-backed path.
 - Hardened the self-host first-boot handoff so USB installer owner details are logged, exported, and loaded through a self-host Suite Manager env override instead of falling back to default onboarding identity values.
 - Fixed self-host first-boot domain propagation so USB-installed Homepage tiles use the configured `*.mos.home` stack domain instead of stale `*.localhost` URLs.
 - Fixed Railway-style ONLYOFFICE startup with newer Document Server images by preparing the admin panel supervisor log directories before upstream services start.
