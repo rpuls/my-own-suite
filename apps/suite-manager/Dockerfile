@@ -22,6 +22,7 @@ RUN npm install -g npm@11.2.0 && npm ci --omit=dev
 
 COPY src ./src
 COPY release.json ./release.json
+COPY homepage-default-config ./homepage-default-config
 COPY --from=builder /app/frontend/dist ./frontend/dist
 
 EXPOSE 3000

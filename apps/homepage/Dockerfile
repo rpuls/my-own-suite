@@ -27,13 +27,16 @@ COPY --from=builder /build/dist /app/config-generator/dist
 COPY --from=builder /build/node_modules/yaml /app/config-generator/node_modules/yaml
 COPY --from=builder /build/package.json /app/config-generator/
 
-# Copy static config files (bookmarks, widgets, etc.)
-COPY config/ /app/config/
+# Copy static config files as immutable seed material. Runtime config lives in
+# the writable /app/config volume and is seeded by entrypoint.sh.
+COPY config/ /app/default-config/
 COPY icons/ /app/icon-seed/
 
 # Copy simplified entrypoint
 COPY entrypoint.sh /entrypoint.sh
-RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
+RUN mkdir -p /app/config \
+    && sed -i 's/\r$//' /entrypoint.sh \
+    && chmod +x /entrypoint.sh
 
 # Expose the default port
 EXPOSE 3000

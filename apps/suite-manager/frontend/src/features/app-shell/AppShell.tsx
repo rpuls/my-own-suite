@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 
 import OnboardingApp from '../onboarding/main/OnboardingApp';
 import UpdatesApp from '../updates/UpdatesApp';
 import { withSetupPath } from '../../lib/base-path';
 import { useAppRoute, type NavigableAppRoute } from './useAppRoute';
 import { useUpdates } from '../updates/useUpdates';
+
+const HomepageConfigApp = lazy(() => import('../homepage-config/HomepageConfigApp'));
 
 type AppShellProps = {
   onLogout: () => Promise<void>;
@@ -32,6 +34,14 @@ export function AppShell({ onLogout, ownerName }: AppShellProps) {
 
     if (route === 'updates') {
       return <UpdatesApp />;
+    }
+
+    if (route === 'homepage-config') {
+      return (
+        <Suspense fallback={<p className="suite-empty">Loading Customize...</p>}>
+          <HomepageConfigApp />
+        </Suspense>
+      );
     }
 
     return (
@@ -91,6 +101,14 @@ export function AppShell({ onLogout, ownerName }: AppShellProps) {
                   type="button"
                 >
                   Onboarding
+                </button>
+
+                <button
+                  className={`suite-shell-link ${route === 'homepage-config' ? 'is-active' : ''}`}
+                  onClick={() => openRoute('/customize')}
+                  type="button"
+                >
+                  Customize
                 </button>
 
                 <button

@@ -4,6 +4,20 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-05-29: Homepage Config Is Suite Manager-Owned
+
+Decision: Homepage remains YAML-first, but persisted dashboard customization is owned by Suite Manager. Homepage fetches an allow-listed config export from Suite Manager during container startup, writes it into its local config directory, then runs the existing `services.template.yaml` to `services.yaml` generator before starting the stock Homepage server.
+
+Reason: Railway does not support sharing one persistent volume between services, and build-time fetching cannot rely on private service networking or persist generated files into runtime state. Startup sync keeps Homepage close to stock, avoids dirty source checkouts, and lets Suite Manager own the editor, storage, reset, and export API.
+
+Consequences:
+
+- Suite Manager stores editable Homepage YAML/CSS/JS under its own persistent state directory.
+- Homepage does not require a persistent config volume for customization.
+- `services.yaml` remains generated output and is not user-editable.
+- Runtime config changes apply after Homepage restarts and fetches the latest Suite Manager export.
+- The Homepage-to-Suite-Manager export uses a shared private bearer token.
+
 ## 2026-04-28: Self-Host Updates Are Host-Managed
 
 Decision: The Suite Manager container must not update the host directly. USB self-host installs use a host-owned `mos-update-agent` systemd service, and Suite Manager talks to it through a controlled local API.
