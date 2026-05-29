@@ -115,6 +115,15 @@ test.describe('homepage app verification against the real local stack', () => {
       await expect(page.getByText('Saved')).toBeVisible();
 
       restartService('homepage');
+      await expect
+        .poll(
+          async () => {
+            await page.goto('/');
+            return page.locator('a[href="https://example.org/"]').first().isVisible().catch(() => false);
+          },
+          { timeout: 30000 },
+        )
+        .toBe(true);
 
       await page.goto('/');
       await expect(page.locator('a[href="https://example.org/"]').first()).toBeVisible();

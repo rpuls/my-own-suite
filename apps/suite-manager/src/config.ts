@@ -91,6 +91,7 @@ export function loadConfig(): SuiteManagerConfig {
   const port = Number(process.env.PORT) || 3000;
   const checkIntervalMs = Number(process.env.SUITE_MANAGER_CHECK_INTERVAL_MS) || 5 * 60 * 1000;
   const homepageUrl = process.env.HOMEPAGE_URL || 'http://homepage:3000/';
+  const stateDir = process.env.SUITE_MANAGER_STATE_DIR || path.join(process.cwd(), '.suite-manager');
   const homepageConfigDir = (
     process.env.SUITE_MANAGER_HOMEPAGE_CONFIG_DIR || path.join(stateDir, 'homepage-config')
   ).trim();
@@ -104,7 +105,6 @@ export function loadConfig(): SuiteManagerConfig {
   const ownerName = process.env.OWNER_NAME || 'Owner';
   const ownerPassword = requireEnv('OWNER_PASSWORD');
   const sessionSecret = requireEnv('SESSION_SECRET');
-  const stateDir = process.env.SUITE_MANAGER_STATE_DIR || path.join(process.cwd(), '.suite-manager');
   const urlScheme = process.env.PUBLIC_URL_SCHEME || 'http';
   const domain = process.env.DOMAIN || 'localhost';
   const setupBasePath = normalizeBasePath(process.env.SUITE_MANAGER_BASE_PATH, '/setup');

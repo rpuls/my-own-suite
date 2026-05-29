@@ -161,6 +161,10 @@ export async function startStack() {
 }
 
 export function stopStack() {
+  if (process.env.MOS_E2E_KEEP_STACK === '1' || process.env.MOS_E2E_KEEP_STACK === 'true') {
+    return;
+  }
+
   runDockerCompose(['down', '--volumes', '--remove-orphans']);
 
   if (fs.existsSync(stackStatePath)) {
