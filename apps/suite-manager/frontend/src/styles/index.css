@@ -243,15 +243,16 @@
   margin: 0 auto;
 }
 
-.suite-homepage-config-shell {
+.mos-shell.suite-homepage-config-shell {
   width: min(1680px, calc(100vw - 3rem));
 }
 
-.suite-homepage-config-card {
+.suite-card.suite-homepage-config-card {
   display: grid;
   gap: 1rem;
   max-width: none;
   margin: 0 auto;
+  width: 100%;
 }
 
 .suite-homepage-config-header,

@@ -56,7 +56,11 @@ const mosEditorTheme = EditorView.theme(
       borderLeftColor: 'var(--danger)',
     },
     '.cm-lintRange-error': {
-      backgroundImage: 'linear-gradient(135deg, transparent 66%, var(--danger) 66%)',
+      backgroundImage: 'none !important',
+      textDecorationColor: '#ff8c8c',
+      textDecorationLine: 'underline',
+      textDecorationStyle: 'wavy',
+      textDecorationThickness: '1px',
     },
     '.cm-tooltip': {
       backgroundColor: 'var(--mos-color-surface-elevated)',
