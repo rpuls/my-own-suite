@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { parseDocument } from 'yaml';
+
 import type { SuiteManagerConfig } from '../../config.ts';
 
 export type HomepageConfigFile = {
@@ -47,6 +49,18 @@ function resolveWithin(baseDir: string, name: string): string {
   return resolvedPath;
 }
 
+function validateConfigContent(file: HomepageConfigFile, content: string): void {
+  if (file.language !== 'yaml') {
+    return;
+  }
+
+  const document = parseDocument(content, { prettyErrors: true });
+  const firstError = document.errors[0];
+  if (firstError) {
+    throw new Error(`Invalid YAML in ${file.name}: ${firstError.message}`);
+  }
+}
+
 export class HomepageConfigService {
   private readonly config: SuiteManagerConfig;
 
@@ -68,6 +82,7 @@ export class HomepageConfigService {
   async writeFile(name: string, content: string): Promise<{ content: string; file: HomepageConfigFile }> {
     await this.seedMissingFiles();
     const file = getFile(name);
+    validateConfigContent(file, content);
     await fs.writeFile(resolveWithin(this.config.homepageConfigDir, file.name), content, 'utf8');
     return { content, file };
   }

@@ -14,6 +14,7 @@ type EditorState =
   | {
       content: string;
       dirty: boolean;
+      errorMessage: string | null;
       file: HomepageConfigFile;
       files: HomepageConfigFile[];
       kind: 'loaded';
@@ -70,6 +71,7 @@ export default function HomepageConfigApp() {
       setState({
         content: file.content,
         dirty: false,
+        errorMessage: null,
         file: file.file,
         files,
         kind: 'loaded',
@@ -107,13 +109,15 @@ export default function HomepageConfigApp() {
         ...state,
         content: body.content,
         dirty: false,
+        errorMessage: null,
         file: body.file,
         savedAt: new Date().toLocaleTimeString(),
       });
     } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unable to save Homepage config.';
       setState({
-        kind: 'error',
-        message: error instanceof Error ? error.message : 'Unable to save Homepage config.',
+        ...state,
+        errorMessage: message,
       });
     } finally {
       setIsSaving(false);
@@ -138,6 +142,7 @@ export default function HomepageConfigApp() {
         ...state,
         content: body.content,
         dirty: false,
+        errorMessage: null,
         file: body.file,
         savedAt: new Date().toLocaleTimeString(),
       });
@@ -162,7 +167,7 @@ export default function HomepageConfigApp() {
         <h1 className="mos-page-title">Customize</h1>
       </section>
 
-      <section className="mos-shell">
+      <section className="mos-shell suite-homepage-config-shell">
         <div className="mos-panel suite-card suite-homepage-config-card">
           {state.kind === 'loading' ? <p className="suite-empty">Loading Homepage config...</p> : null}
 
@@ -241,6 +246,7 @@ export default function HomepageConfigApp() {
                         ...state,
                         content: value,
                         dirty: true,
+                        errorMessage: null,
                         savedAt: null,
                       })
                     }
@@ -254,6 +260,7 @@ export default function HomepageConfigApp() {
                 </span>
                 {state.savedAt ? <span className="suite-meta mos-meta">Updated {state.savedAt}</span> : null}
               </div>
+              {state.errorMessage ? <p className="suite-error">{state.errorMessage}</p> : null}
             </>
           ) : null}
         </div>

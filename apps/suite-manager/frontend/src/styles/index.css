@@ -243,10 +243,14 @@
   margin: 0 auto;
 }
 
+.suite-homepage-config-shell {
+  width: min(1680px, calc(100vw - 3rem));
+}
+
 .suite-homepage-config-card {
   display: grid;
   gap: 1rem;
-  max-width: 1080px;
+  max-width: none;
   margin: 0 auto;
 }
 
@@ -274,7 +278,7 @@
 .suite-homepage-config-layout {
   display: grid;
   gap: 1rem;
-  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
   align-items: stretch;
 }
 
@@ -324,7 +328,7 @@
 
 .suite-code-editor .cm-editor {
   width: 100%;
-  min-height: min(64vh, 720px);
+  min-height: min(70vh, 820px);
   tab-size: 2;
 }
 
