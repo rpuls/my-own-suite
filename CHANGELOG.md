@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-05-29
+
 ### Changed
 
 - Refreshed npm dependencies and pinned app container image digests across the suite, including Seafile 13 support, updated Seafile native database/admin/cache bootstrap settings, and current public docs and Suite Manager toolchain updates.
