@@ -7,16 +7,12 @@ For documentation ownership rules, see [docs/README.md](./README.md).
 ## Current Focus
 
 - Stabilize the USB self-host installation path so a fresh machine can install My Own Suite with minimal terminal work.
-- Make Homepage customization safe for real installs by moving user-edited config out of the source checkout and into a persistent runtime config layer managed through Suite Manager.
 - Define the offline backup and restore contract before managed updates become the normal path for systems holding important app data.
 - Promote managed self-host updates from MVP to dependable staging workflow.
 - Keep Railway-style deployments on notify-only updates, where the hosting platform remains responsible for applying changes.
 
 ## Near-Term
 
-- Replace source-template Homepage customization with a persistent runtime config directory seeded from MOS defaults, so production installs can be updated without dirtying the git checkout.
-- Add a Suite Manager Homepage config editor for approved YAML/CSS config files, with syntax-aware editing, validation, last-known-good rollback, and links to the matching Homepage docs rather than a MOS-owned visual tile schema.
-- Evaluate maintained React editor components for the Suite Manager stack before implementation, with a bias toward proven YAML-capable editors such as Monaco or CodeMirror wrappers.
 - Add a host-owned backup agent, following the managed-update agent pattern, so Suite Manager can offer no-SSH backup actions without giving the container broad host control.
 - Add an offline suite backup plan that captures the MOS version/commit, update track, enabled profiles, env files, runtime customization files, and persistent Docker volumes as one restoreable state bundle.
 - Add Suite Manager backup UI for detected external USB storage first, including device/free-space display, downtime warnings, start-backup action, progress/status recovery after Suite Manager restarts, and a conservative no-auto-format safety posture.
@@ -37,6 +33,7 @@ For documentation ownership rules, see [docs/README.md](./README.md).
 - Add rollback strategy for failed updates.
 - Add cancel/resume behavior or clear recovery guidance for interrupted updates.
 - Add branch/track switching in the Updates UI for explicit feature testing.
+- Add a host/server agent capability for narrow operational actions such as restarting Homepage after config saves, plus monitoring/status reporting. Railway-style installs should remain manual-restart with clear Suite Manager guidance because the platform owns service restarts.
 - Explore VPS managed-update compatibility after the self-host path is stable.
 - Add GitHub Project views for Backlog, Ready, In progress, Review, and Done once issue volume grows.
 
@@ -51,6 +48,7 @@ For documentation ownership rules, see [docs/README.md](./README.md).
 
 ## Done Recently
 
+- Delivered Suite Manager-owned Homepage runtime customization: persistent config lives under Suite Manager state, Homepage fetches it at startup, and the Customize screen provides CodeMirror-powered YAML/CSS/JS editing with YAML validation while preserving generated `services.yaml` behavior.
 - Built a managed self-host updater MVP using a host-owned update agent and Suite Manager UI integration.
 - Added branch-track update detection so staging and feature branches can be tested without publishing releases.
 - Added a self-host Compose override so Suite Manager can talk to the local update agent without giving the container broad host control.
