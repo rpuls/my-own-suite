@@ -127,8 +127,9 @@ export async function completeOnboarding(context, page) {
     await vaultwardenPage.goto(importUrl);
     await vaultwardenPage.waitForLoadState('domcontentloaded');
     await dismissVaultwardenExtensionPrompt(vaultwardenPage);
-    await expect(vaultwardenPage.getByRole('combobox')).toHaveCount(3, { timeout: 30000 });
-    await vaultwardenPage.getByRole('combobox').nth(2).click();
+    const fileFormatSelect = vaultwardenPage.getByRole('combobox', { name: /file format/i });
+    await expect(fileFormatSelect).toBeVisible({ timeout: 30000 });
+    await fileFormatSelect.click();
     await vaultwardenPage.locator('.ng-option').getByText('Bitwarden (csv)', { exact: true }).click();
     await vaultwardenPage.locator('textarea').first().fill(csvImport);
     await vaultwardenPage.getByRole('button', { name: /import/i }).click();
@@ -168,11 +169,15 @@ export async function completeOnboarding(context, page) {
 async function expectHomepage(page) {
   await expect(page).toHaveURL('http://suite-manager.localhost:18080/');
   await expect(page.locator('body')).toContainText('My Own Suite');
-  await expect(page.getByRole('link', { name: /Suite Manager/i })).toBeVisible();
+  await expect(homepageSuiteManagerLink(page)).toBeVisible();
 }
 
 async function isHomepageVisible(page) {
-  return page.getByRole('link', { name: /Suite Manager/i }).isVisible().catch(() => false);
+  return homepageSuiteManagerLink(page).isVisible().catch(() => false);
+}
+
+export function homepageSuiteManagerLink(page) {
+  return page.locator('a[href*="suite-manager.localhost:18080/setup/"]').first();
 }
 
 async function isVisible(locator) {
@@ -243,14 +248,20 @@ async function ensureVaultwardenSession(page) {
 }
 
 async function dismissVaultwardenExtensionPrompt(page) {
-  if (!/setup-extension/i.test(page.url())) {
+  const skipToWebApp = page.getByRole('button', { name: /skip to web app/i });
+  const addItLater = page.getByRole('button', { name: /add it later/i });
+
+  if (await skipToWebApp.isVisible().catch(() => false)) {
+    await skipToWebApp.click();
     return;
   }
 
-  const addItLater = page.getByRole('button', { name: /add it later/i });
   if (await addItLater.isVisible().catch(() => false)) {
     await addItLater.click();
-  } else {
+    return;
+  }
+
+  if (/setup-extension/i.test(page.url())) {
     await page.goto('https://vaultwarden.localhost:18443/#/vault');
   }
 }

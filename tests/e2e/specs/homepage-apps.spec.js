@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { completeOnboarding } from '../support/onboarding.js';
+import { completeOnboarding, homepageSuiteManagerLink } from '../support/onboarding.js';
 import { readStackState, restartService } from '../support/stack.js';
 
 const stackState = readStackState();
@@ -10,7 +10,7 @@ test.describe('homepage app verification against the real local stack', () => {
     const { owner } = await completeOnboarding(context, page);
 
     await test.step('verify Suite Manager link from Homepage returns to onboarding', async () => {
-      const suiteManagerLink = page.getByRole('link', { name: /Suite Manager/i });
+      const suiteManagerLink = homepageSuiteManagerLink(page);
       await expect(suiteManagerLink).toBeVisible();
 
       const suiteManagerPagePromise = context.waitForEvent('page', { timeout: 3000 }).catch(() => null);
