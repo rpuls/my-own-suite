@@ -11,6 +11,7 @@ This folder holds durable project memory: roadmap, architectural decisions, and 
 | VPS/local Docker operations | `deploy/vps/README.md` |
 | USB/self-host installer operations | `deploy/self-host/README.md` |
 | Self-host host-agent implementation | `agents/selfhost/` |
+| Self-host backup agent notes | `agents/selfhost/backup/docs/` |
 | Updater smoke tests and low-level host checks | `agents/selfhost/update/docs/` |
 | Durable roadmap and future work themes | `docs/roadmap.md` |
 | Durable architecture decisions | `docs/decisions.md` |

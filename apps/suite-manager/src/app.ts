@@ -5,6 +5,8 @@ import type { SuiteManagerConfig } from './config.ts';
 import { AuthService } from './features/auth/service.ts';
 import { createAuthRouter } from './features/auth/routes.ts';
 import { requireApiSession } from './features/auth/middleware.ts';
+import { createBackupsRouter } from './features/backups/routes.ts';
+import { BackupsService } from './features/backups/service.ts';
 import { createHealthRouter } from './features/health/routes.ts';
 import {
   createHomepageConfigExportRouter,
@@ -30,6 +32,7 @@ export function createApp(
 ): Hono {
   const app = new Hono();
   const authService = new AuthService(config);
+  const backupsService = new BackupsService(config);
   const homepageConfigService = new HomepageConfigService(config);
   const serviceAgentService = new ServiceAgentService(config);
   const updatesService = new UpdatesService(config);
@@ -43,6 +46,7 @@ export function createApp(
   const protectedSetupApi = new Hono();
   protectedSetupApi.use('*', requireApiSession(config));
   protectedSetupApi.route('/onboarding', createOnboardingRouter(config, onboardingService));
+  protectedSetupApi.route('/', createBackupsRouter(backupsService));
   protectedSetupApi.route('/', createHomepageConfigRouter(homepageConfigService, serviceAgentService));
   protectedSetupApi.route('/', createUpdatesRouter(updatesService));
   protectedSetupApi.route('/', createStatusRouter(config, onboardingService));

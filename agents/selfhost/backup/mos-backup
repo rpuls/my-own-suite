@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+TOKEN_FILE="${MOS_BACKUP_AGENT_TOKEN_FILE:-/etc/mos-backup-agent/auth.token}"
+SOCKET_PATH="${MOS_BACKUP_AGENT_SOCKET_PATH:-/run/mos-backup-agent/agent.sock}"
+TOKEN="$(cat "${TOKEN_FILE}")"
+
+case "${1:-status}" in
+  status)
+    curl --silent --show-error --unix-socket "${SOCKET_PATH}" -H "Authorization: Bearer ${TOKEN}" http://localhost/v1/status
+    ;;
+  start)
+    DESTINATION_ID="${2:-}"
+    if [[ -z "${DESTINATION_ID}" ]]; then
+      echo "Usage: mos-backup start /media/<drive>"
+      exit 1
+    fi
+    curl --silent --show-error --unix-socket "${SOCKET_PATH}" \
+      -H "Authorization: Bearer ${TOKEN}" \
+      -H "Content-Type: application/json" \
+      --data "{\"destinationId\":\"${DESTINATION_ID}\",\"initiator\":\"cli\"}" \
+      http://localhost/v1/jobs
+    ;;
+  *)
+    echo "Usage: mos-backup [status|start <destination>]"
+    exit 1
+    ;;
+esac

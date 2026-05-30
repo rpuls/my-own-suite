@@ -43,6 +43,18 @@ Consequences:
 - Agent APIs must stay narrow, local-only, and token-protected because they perform host-level actions.
 - Fresh bootstrap and managed updates should share the same host-agent reconciliation path.
 
+## 2026-05-30: Offline Backups Are Host-Owned
+
+Decision: Offline suite backups use a host-owned `mos-backup-agent`. Suite Manager talks to it over a token-protected local Unix socket, and the container only receives the socket and token file mounts.
+
+Reason: Whole-suite snapshots need host visibility into mounted external drives and, later, Docker volumes and stack lifecycle. That control should stay in a narrow host agent instead of broadening Suite Manager container privileges.
+
+Consequences:
+
+- Suite Manager enables backup actions only when the backup agent is reachable and advertises the needed capability.
+- External backup destinations are detected by the host agent, initially under `/media`, `/mnt`, and `/run/media`.
+- Restore remains version-paired and conservative until the backup bundle format is validated on real self-host hardware.
+
 ## 2026-04-28: Update Agent API Is Local-Only
 
 Decision: The first managed self-host updater uses a Unix socket plus shared bearer token. It must not expose an HTTP port on the LAN or internet.

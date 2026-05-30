@@ -7,6 +7,7 @@ import { useAppRoute, type NavigableAppRoute } from './useAppRoute';
 import { useUpdates } from '../updates/useUpdates';
 
 const HomepageConfigApp = lazy(() => import('../homepage-config/HomepageConfigApp'));
+const BackupsApp = lazy(() => import('../backups/BackupsApp'));
 
 type AppShellProps = {
   onLogout: () => Promise<void>;
@@ -34,6 +35,14 @@ export function AppShell({ onLogout, ownerName }: AppShellProps) {
 
     if (route === 'updates') {
       return <UpdatesApp />;
+    }
+
+    if (route === 'backups') {
+      return (
+        <Suspense fallback={<p className="suite-empty">Loading Backup...</p>}>
+          <BackupsApp />
+        </Suspense>
+      );
     }
 
     if (route === 'homepage-config') {
@@ -120,6 +129,14 @@ export function AppShell({ onLogout, ownerName }: AppShellProps) {
                   {updatesState.kind === 'loaded' && updatesState.status.updateAvailable ? (
                     <span className="suite-nav-badge">New</span>
                   ) : null}
+                </button>
+
+                <button
+                  className={`suite-shell-link ${route === 'backups' ? 'is-active' : ''}`}
+                  onClick={() => openRoute('/backups')}
+                  type="button"
+                >
+                  Backup
                 </button>
               </nav>
 

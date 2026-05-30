@@ -24,6 +24,8 @@
 - `SUITE_MANAGER_UPDATES_AGENT_SOCKET_PATH`: Optional Unix socket path for the self-host update agent. When reachable and capability-compatible, Suite Manager can request host-owned update jobs.
 - `SUITE_MANAGER_UPDATES_AGENT_TOKEN_FILE`: Optional bearer token file for the self-host update agent.
 - `SUITE_MANAGER_UPDATES_LATEST_VERSION_OVERRIDE`: Optional test-only override for simulating the latest available version in the Updates screen without changing real release metadata.
+- `SUITE_MANAGER_BACKUP_AGENT_SOCKET_PATH`: Optional Unix socket path for the self-host backup agent. When reachable, Suite Manager can list mounted backup destinations and start host-owned backup jobs.
+- `SUITE_MANAGER_BACKUP_AGENT_TOKEN_FILE`: Optional bearer token file for the self-host backup agent.
 - `SUITE_MANAGER_SERVICE_AGENT_SOCKET_PATH`: Optional Unix socket path for the self-host service agent. When reachable, Suite Manager can request narrow host-owned service actions such as restarting Homepage after config saves.
 - `SUITE_MANAGER_SERVICE_AGENT_TOKEN_FILE`: Optional bearer token file for the self-host service agent.
 - `VAULTWARDEN_DATABASE_URL` or `DATABASE_URL`: Optional Postgres connection string used to detect when the owner Vaultwarden account has been created. In the VPS/local stack, this is sourced from the existing Vaultwarden service env.
@@ -42,6 +44,7 @@
 - Exposes a token-protected config export on `/setup/api/homepage-config/export` for Homepage startup sync.
 - Exposes JSON update state on `/setup/api/updates`, including installed version, latest release metadata, whether an update is available, and whether the update agent exposes managed apply capability.
 - Supports capability-driven update behavior so hosted deployments can show notify/manual-update guidance, while self-host installs only show managed update actions when the local update agent is reachable and advertises `updates.apply`.
+- Exposes JSON backup state on `/setup/api/backups`, including detected external destinations, current/last backup jobs, and whether the backup agent exposes managed backup capability.
 - Logs a success line when Homepage returns a `2xx` response.
 - Logs a failure line when Homepage returns a non-`2xx` response or the request errors.
 - Persists onboarding step completion in `SUITE_MANAGER_STATE_DIR`.
@@ -61,6 +64,7 @@
 - `src/features/homepage-config/*`: allow-listed Homepage runtime config read/write/reset endpoints and startup export for Homepage.
 - `src/features/status/*`: operational status endpoints.
 - `src/features/updates/*`: installed-version detection and release-check endpoints for the Updates screen.
+- `src/features/backups/*`: backup-agent status and job-start endpoints for the Backup screen.
 - `src/lib/*`: shared helpers such as logging, HTML escaping, and secret masking.
 - `frontend/src/*`: React application code.
 - `release.json`: bundled suite release metadata copied into the Suite Manager runtime image so installed-version reporting still works when the repo root is not present in the container.

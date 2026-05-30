@@ -9,6 +9,10 @@ export type SuiteManagerConfig = {
     stirlingPdf: string;
     vaultwarden: string;
   };
+  backupAgent: {
+    socketPath: string;
+    tokenFile: string;
+  };
   checkIntervalMs: number;
   generatedAccounts: {
     radicale: {
@@ -119,6 +123,8 @@ export function loadConfig(): SuiteManagerConfig {
   const updatesLatestVersionOverride = (process.env.SUITE_MANAGER_UPDATES_LATEST_VERSION_OVERRIDE || '').trim();
   const updatesAgentSocketPath = (process.env.SUITE_MANAGER_UPDATES_AGENT_SOCKET_PATH || '').trim();
   const updatesAgentTokenFile = (process.env.SUITE_MANAGER_UPDATES_AGENT_TOKEN_FILE || '').trim();
+  const backupAgentSocketPath = (process.env.SUITE_MANAGER_BACKUP_AGENT_SOCKET_PATH || '').trim();
+  const backupAgentTokenFile = (process.env.SUITE_MANAGER_BACKUP_AGENT_TOKEN_FILE || '').trim();
   const serviceAgentSocketPath = (process.env.SUITE_MANAGER_SERVICE_AGENT_SOCKET_PATH || '').trim();
   const serviceAgentTokenFile = (process.env.SUITE_MANAGER_SERVICE_AGENT_TOKEN_FILE || '').trim();
   const seafileAdminEmail = (process.env.INIT_SEAFILE_ADMIN_EMAIL || '').trim();
@@ -137,6 +143,10 @@ export function loadConfig(): SuiteManagerConfig {
       ),
       stirlingPdf: process.env.STIRLING_PDF_PUBLIC_URL || buildPublicUrl('stirling-pdf', urlScheme, domain),
       vaultwarden: process.env.VAULTWARDEN_PUBLIC_URL || buildPublicUrl('vaultwarden', 'https', domain),
+    },
+    backupAgent: {
+      socketPath: backupAgentSocketPath,
+      tokenFile: backupAgentTokenFile,
     },
     checkIntervalMs,
     generatedAccounts: {
