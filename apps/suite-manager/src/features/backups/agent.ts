@@ -24,7 +24,22 @@ export type BackupAgentDestination = {
   writable: boolean;
 };
 
+export type BackupAgentBundle = {
+  activeProfiles: string[];
+  createdAt: string | null;
+  destinationId: string;
+  destinationLabel: string;
+  id: string;
+  path: string;
+  schemaVersion: number | null;
+  sourceCommit: string | null;
+  sourceVersion: string | null;
+  totalVolumeArchiveBytes: number;
+  volumeCount: number;
+};
+
 export type BackupAgentStatusPayload = {
+  backups?: BackupAgentBundle[];
   capabilities?: Record<string, { capabilities?: string[] } | string[]>;
   currentJob: BackupAgentJobSummary | null;
   destinations?: BackupAgentDestination[];

@@ -8,6 +8,7 @@ Current capabilities:
 
 - `destinations.list`: reports mounted destinations under `/media`, `/mnt`, and `/run/media`.
 - `backups.create`: starts a persistent backup job for a selected mounted destination.
+- `backups.list`: reports completed backup bundles found on currently mounted destinations.
 - `restores.plan`: advertises the restore contract as planned, without performing restore yet.
 
 Current backup jobs stop the MOS Docker Compose stack, archive detected MOS Docker volumes from their host mountpoints, record suite metadata, repo-managed runtime configuration, archive checksums, and the rendered Compose configuration, then start the same detected profiles again.

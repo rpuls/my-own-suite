@@ -17,7 +17,7 @@ const currentJobPath = path.join(stateDir, 'current-job.json');
 const destinationRoots = ['/media', '/mnt', '/run/media'];
 const capabilities = {
   backups: {
-    capabilities: ['create'],
+    capabilities: ['create', 'list'],
   },
   destinations: {
     capabilities: ['list'],
@@ -148,6 +148,75 @@ function summarizeJob(job) {
     status: job.status || null,
     updatedAt: job.updatedAt || null,
   };
+}
+
+function summarizeBackupBundle(bundlePath) {
+  const manifestPath = path.join(bundlePath, 'manifest.json');
+  if (!fs.existsSync(manifestPath)) {
+    return null;
+  }
+
+  try {
+    const manifest = readJson(manifestPath);
+    const volumes = Array.isArray(manifest.contents?.volumes) ? manifest.contents.volumes : [];
+    const totalVolumeArchiveBytes = volumes.reduce((total, volume) => {
+      const bytes = Number(volume.archiveBytes);
+      return Number.isFinite(bytes) ? total + bytes : total;
+    }, 0);
+
+    return {
+      activeProfiles: Array.isArray(manifest.source?.activeProfiles) ? manifest.source.activeProfiles : [],
+      createdAt: typeof manifest.backup?.createdAt === 'string' ? manifest.backup.createdAt : null,
+      id: typeof manifest.backup?.id === 'string' ? manifest.backup.id : path.basename(bundlePath),
+      path: bundlePath,
+      schemaVersion: Number(manifest.backup?.schemaVersion) || null,
+      sourceCommit: typeof manifest.source?.commit === 'string' ? manifest.source.commit : null,
+      sourceVersion: typeof manifest.source?.version === 'string' ? manifest.source.version : null,
+      totalVolumeArchiveBytes,
+      volumeCount: volumes.length,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function listBackupBundles(destinations) {
+  const bundles = [];
+
+  for (const destination of destinations) {
+    const backupsRoot = path.join(destination.mountPath, 'MOS-backups');
+    if (!fs.existsSync(backupsRoot)) {
+      continue;
+    }
+
+    let entries = [];
+    try {
+      entries = fs.readdirSync(backupsRoot, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      const bundle = summarizeBackupBundle(path.join(backupsRoot, entry.name));
+      if (bundle) {
+        bundles.push({
+          ...bundle,
+          destinationId: destination.id,
+          destinationLabel: destination.label,
+        });
+      }
+    }
+  }
+
+  return bundles.sort((left, right) => {
+    const leftTime = new Date(left.createdAt || 0).getTime();
+    const rightTime = new Date(right.createdAt || 0).getTime();
+    return rightTime - leftTime;
+  });
 }
 
 function normalizeDestination(candidate) {
@@ -329,10 +398,12 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && url.pathname === '/v1/status') {
+    const destinations = await listDestinations();
     json(response, 200, {
+      backups: listBackupBundles(destinations),
       capabilities,
       currentJob: summarizeJob(readCurrentJob()),
-      destinations: await listDestinations(),
+      destinations,
       lastJob: summarizeJob(readLatestJob()),
       repoDir,
       service: 'mos-backup-agent',

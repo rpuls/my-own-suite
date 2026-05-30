@@ -2,7 +2,7 @@ import { ExternalLink, HardDrive, RefreshCcw } from 'lucide-react';
 import { useState } from 'react';
 
 import { useBackups } from './useBackups';
-import type { BackupDestination, BackupJobSummary } from './types';
+import type { BackupBundle, BackupDestination, BackupJobSummary } from './types';
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -152,6 +152,46 @@ function ManagedInfrastructureGuidance({ error, onRefresh }: { error: string | n
   );
 }
 
+function BackupBundleList({ backups }: { backups: BackupBundle[] }) {
+  if (backups.length === 0) {
+    return (
+      <p className="suite-meta mos-meta">
+        Completed backup bundles on mounted drives will appear here after the next scan.
+      </p>
+    );
+  }
+
+  return (
+    <div className="suite-backup-bundles">
+      {backups.slice(0, 6).map((backup) => (
+        <article className="suite-backup-bundle" key={`${backup.destinationId}-${backup.path}`}>
+          <div>
+            <strong>{backup.sourceVersion ? `MOS ${backup.sourceVersion}` : 'MOS backup'}</strong>
+            <p className="suite-meta mos-meta">
+              {backup.createdAt ? formatDate(backup.createdAt) : 'Unknown date'} on {backup.destinationLabel || backup.destinationId}
+            </p>
+          </div>
+          <dl className="suite-backup-bundle-facts">
+            <div>
+              <dt>Volumes</dt>
+              <dd>{backup.volumeCount}</dd>
+            </div>
+            <div>
+              <dt>Archive size</dt>
+              <dd>{formatBytes(backup.totalVolumeArchiveBytes)}</dd>
+            </div>
+            <div>
+              <dt>Profiles</dt>
+              <dd>{backup.activeProfiles.length > 0 ? backup.activeProfiles.join(', ') : 'Core'}</dd>
+            </div>
+          </dl>
+          <p className="suite-meta mos-meta suite-backup-bundle-path">{backup.path}</p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 export default function BackupsApp() {
   const { isJobRunning, isStarting, refresh, startBackup, state } = useBackups();
   const [selectedDestinationId, setSelectedDestinationId] = useState<string>('');
@@ -282,6 +322,23 @@ export default function BackupsApp() {
 
                 <JobPanel job={loaded.currentJob} title="Current job" />
                 {!jobIsRunning(loaded.currentJob) ? <JobPanel job={loaded.lastJob} title="Last job" /> : null}
+              </article>
+
+              <article className="suite-updates-panel suite-updates-panel-wide">
+                <div className="suite-updates-status-row">
+                  <div>
+                    <span className="mos-eyebrow">Restore candidates</span>
+                    <h2 className="mos-card-title">Backups on mounted drives</h2>
+                  </div>
+                  <span className="mos-pill">{loaded.backups.length} found</span>
+                </div>
+
+                <p className="suite-meta mos-meta">
+                  Restore is still manual and version-paired. These detected bundles are listed now so a future restore
+                  action can start from a known manifest instead of a hand-entered path.
+                </p>
+
+                <BackupBundleList backups={loaded.backups} />
               </article>
             </div>
           ) : null}

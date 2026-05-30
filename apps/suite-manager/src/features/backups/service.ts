@@ -1,8 +1,15 @@
 import type { SuiteManagerConfig } from '../../config.ts';
-import { readBackupAgentStatus, startAgentBackup, type BackupAgentDestination, type BackupAgentJobSummary } from './agent.ts';
+import {
+  readBackupAgentStatus,
+  startAgentBackup,
+  type BackupAgentBundle,
+  type BackupAgentDestination,
+  type BackupAgentJobSummary,
+} from './agent.ts';
 
 export type BackupsStatus = {
   checkedAt: string;
+  backups: BackupAgentBundle[];
   currentJob: BackupAgentJobSummary | null;
   destinations: BackupAgentDestination[];
   error: string | null;
@@ -41,6 +48,7 @@ export class BackupsService {
     if (!this.config.backupAgent.socketPath || !this.config.backupAgent.tokenFile) {
       return {
         checkedAt: new Date().toISOString(),
+        backups: [],
         currentJob: null,
         destinations: [],
         error: null,
@@ -55,6 +63,7 @@ export class BackupsService {
       const agent = await readBackupAgentStatus(this.config);
       return {
         checkedAt: new Date().toISOString(),
+        backups: Array.isArray(agent.backups) ? agent.backups : [],
         currentJob: agent.currentJob,
         destinations: Array.isArray(agent.destinations) ? agent.destinations : [],
         error: null,
@@ -66,6 +75,7 @@ export class BackupsService {
     } catch (caughtError) {
       return {
         checkedAt: new Date().toISOString(),
+        backups: [],
         currentJob: null,
         destinations: [],
         error: caughtError instanceof Error ? caughtError.message : 'Backup agent is unavailable.',

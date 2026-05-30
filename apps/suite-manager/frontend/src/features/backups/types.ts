@@ -19,7 +19,22 @@ export type BackupDestination = {
   writable: boolean;
 };
 
+export type BackupBundle = {
+  activeProfiles: string[];
+  createdAt: string | null;
+  destinationId: string;
+  destinationLabel: string;
+  id: string;
+  path: string;
+  schemaVersion: number | null;
+  sourceCommit: string | null;
+  sourceVersion: string | null;
+  totalVolumeArchiveBytes: number;
+  volumeCount: number;
+};
+
 export type BackupsStatus = {
+  backups: BackupBundle[];
   checkedAt: string;
   currentJob: BackupJobSummary | null;
   destinations: BackupDestination[];

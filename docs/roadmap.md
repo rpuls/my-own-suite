@@ -49,7 +49,7 @@ For documentation ownership rules, see [docs/README.md](./README.md).
 ## Done Recently
 
 - Delivered Suite Manager-owned Homepage runtime customization: persistent config lives under Suite Manager state, Homepage fetches it at startup, and the Customize screen provides CodeMirror-powered YAML/CSS/JS editing with YAML validation while preserving generated `services.yaml` behavior.
-- Began the offline backup epic with a host-owned backup agent, Suite Manager Backup page, external destination detection, cold Docker-volume archiving, and persistent backup job state.
+- Began the offline backup epic with a host-owned backup agent, Suite Manager Backup page, external destination detection, cold Docker-volume archiving, mounted backup-bundle listing, and persistent backup job state.
 - Built a managed self-host updater MVP using a host-owned update agent and Suite Manager UI integration.
 - Added branch-track update detection so staging and feature branches can be tested without publishing releases.
 - Added a self-host Compose override so Suite Manager can talk to the local update agent without giving the container broad host control.

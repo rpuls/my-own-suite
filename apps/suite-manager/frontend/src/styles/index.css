@@ -514,6 +514,53 @@
   line-height: 1.45;
 }
 
+.suite-backup-bundles {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.suite-backup-bundle {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--mos-radius-md);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.suite-backup-bundle strong,
+.suite-backup-bundle p {
+  margin: 0;
+}
+
+.suite-backup-bundle-facts {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.suite-backup-bundle-facts div {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.suite-backup-bundle-facts dt {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+  letter-spacing: var(--mos-letter-spacing-label);
+  text-transform: uppercase;
+}
+
+.suite-backup-bundle-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.suite-backup-bundle-path {
+  overflow-wrap: anywhere;
+}
+
 .suite-backup-destination {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1316,6 +1363,10 @@
 
   .suite-backup-resource {
     min-height: auto;
+  }
+
+  .suite-backup-bundle-facts {
+    grid-template-columns: 1fr;
   }
 
   .suite-backup-destination {
