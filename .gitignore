@@ -11,6 +11,8 @@ vps/.env
 playwright-mcp
 .test-results-current/
 test-results-current
+test-results-current-full
+
 
 # VPS persistent data
 vps/apps/vaultwarden/data/*
