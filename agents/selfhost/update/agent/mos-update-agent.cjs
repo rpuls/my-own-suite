@@ -150,6 +150,7 @@ function spawnWorker(job) {
     env: {
       ...process.env,
       MOS_UPDATE_AGENT_REPO_DIR: repoDir,
+      MOS_UPDATE_AGENT_JOB_ID: job.id,
       MOS_UPDATE_AGENT_STATE_DIR: stateDir,
       MOS_UPDATE_AGENT_TOKEN_FILE: tokenFile,
     },
