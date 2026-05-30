@@ -250,27 +250,6 @@ export default function HomepageConfigApp() {
                   <h2 className="mos-card-title">{state.file.name}</h2>
                   <p className="suite-meta mos-meta">{state.file.description}</p>
                 </div>
-
-                <div className="suite-homepage-config-actions">
-                  <button
-                    className="suite-copy-button"
-                    disabled={isSaving || isResetting}
-                    onClick={() => void refresh(state.file.name)}
-                    type="button"
-                  >
-                    <RefreshCcw aria-hidden="true" className="suite-inline-icon" />
-                    Reload
-                  </button>
-                  <button
-                    className="suite-copy-button"
-                    disabled={!state.dirty || isSaving || isResetting}
-                    onClick={() => void save()}
-                    type="button"
-                  >
-                    <Save aria-hidden="true" className="suite-inline-icon" />
-                    {isSaving ? 'Saving...' : 'Save'}
-                  </button>
-                </div>
               </div>
 
               <div className="suite-homepage-config-layout">
@@ -289,7 +268,36 @@ export default function HomepageConfigApp() {
                 </nav>
 
                 <div className="suite-homepage-config-editor">
-                  <span className="suite-field-label">{state.file.language}</span>
+                  <div className="suite-homepage-config-editorbar">
+                    <span className="suite-field-label">{state.file.language}</span>
+                    <div className="suite-homepage-config-savebar">
+                      <div className="suite-homepage-config-restart">
+                        {state.restartCapabilities.homepageRestartAvailable ? (
+                          <label className="suite-checkbox-row">
+                            <input
+                              checked={autoRestartHomepage}
+                              disabled={isSaving || isResetting}
+                              onChange={(event) => setAutoRestartHomepage(event.currentTarget.checked)}
+                              type="checkbox"
+                            />
+                            <span>Auto restart Homepage on save</span>
+                          </label>
+                        ) : (
+                          <p className="suite-warning">Please restart Homepage after saving for changes to take effect.</p>
+                        )}
+                        {state.restartMessage ? <p className="suite-meta mos-meta">{state.restartMessage}</p> : null}
+                      </div>
+                      <button
+                        className="suite-copy-button"
+                        disabled={!state.dirty || isSaving || isResetting}
+                        onClick={() => void save()}
+                        type="button"
+                      >
+                        <Save aria-hidden="true" className="suite-inline-icon" />
+                        {isSaving ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
                   <CodeEditor
                     ariaLabel="Homepage config editor"
                     language={state.file.language}
@@ -309,37 +317,27 @@ export default function HomepageConfigApp() {
               </div>
 
               <div className="suite-homepage-config-footer">
-                <div className="suite-homepage-config-status">
-                  <span className={`mos-pill ${state.dirty ? 'is-active' : 'is-completed'}`}>
-                    {state.dirty ? 'Unsaved' : 'Saved'}
-                  </span>
-                  {state.savedAt ? <span className="suite-meta mos-meta">Updated {state.savedAt}</span> : null}
+                {state.savedAt ? <span className="suite-meta mos-meta">Updated {state.savedAt}</span> : <span></span>}
+                <div className="suite-homepage-config-actions">
+                  <button
+                    className="suite-copy-button"
+                    disabled={isSaving || isResetting}
+                    onClick={() => void refresh(state.file.name)}
+                    type="button"
+                  >
+                    <RefreshCcw aria-hidden="true" className="suite-inline-icon" />
+                    Reload
+                  </button>
+                  <button
+                    className="suite-copy-button suite-danger-button"
+                    disabled={isSaving || isResetting}
+                    onClick={() => void reset()}
+                    type="button"
+                  >
+                    <RotateCcw aria-hidden="true" className="suite-inline-icon" />
+                    {isResetting ? 'Resetting...' : 'Reset to default'}
+                  </button>
                 </div>
-                <div className="suite-homepage-config-restart">
-                  {state.restartCapabilities.homepageRestartAvailable ? (
-                    <label className="suite-checkbox-row">
-                      <input
-                        checked={autoRestartHomepage}
-                        disabled={isSaving || isResetting}
-                        onChange={(event) => setAutoRestartHomepage(event.currentTarget.checked)}
-                        type="checkbox"
-                      />
-                      <span>Auto restart Homepage on save</span>
-                    </label>
-                  ) : (
-                    <p className="suite-warning">Please restart Homepage after saving for changes to take effect.</p>
-                  )}
-                  {state.restartMessage ? <p className="suite-meta mos-meta">{state.restartMessage}</p> : null}
-                </div>
-                <button
-                  className="suite-copy-button suite-danger-button"
-                  disabled={isSaving || isResetting}
-                  onClick={() => void reset()}
-                  type="button"
-                >
-                  <RotateCcw aria-hidden="true" className="suite-inline-icon" />
-                  {isResetting ? 'Resetting...' : 'Reset to default'}
-                </button>
               </div>
               {state.errorMessage ? <p className="suite-error">{state.errorMessage}</p> : null}
             </>
