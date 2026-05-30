@@ -11,6 +11,6 @@ Current capabilities:
 - `backups.list`: reports completed backup bundles found on currently mounted destinations.
 - `restores.plan`: advertises the restore contract as planned, without performing restore yet.
 
-Current backup jobs stop the MOS Docker Compose stack, archive detected MOS Docker volumes from their host mountpoints, record suite metadata, repo-managed runtime configuration, archive checksums, and the rendered Compose configuration, then start the same detected profiles again.
+Current backup jobs estimate detected Docker volume size before downtime, stop the MOS Docker Compose stack, archive detected MOS Docker volumes from their host mountpoints, record suite metadata, repo-managed runtime configuration, archive checksums, and the rendered Compose configuration, then start the same detected profiles again.
 
 Automated restore is still deferred until backup bundles have been validated on real self-host hardware.

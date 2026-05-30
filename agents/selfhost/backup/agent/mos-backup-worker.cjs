@@ -214,6 +214,66 @@ function archiveVolume(volume, outputDir) {
   };
 }
 
+function directorySizeBytes(dirPath) {
+  const output = optionalCommand('du', ['-sb', dirPath], { timeout: 300_000 });
+  if (!output) {
+    return null;
+  }
+
+  const bytes = Number(output.split(/\s+/)[0]);
+  return Number.isFinite(bytes) ? bytes : null;
+}
+
+function availableBytes(dirPath) {
+  try {
+    const stat = fs.statfsSync(dirPath);
+    return stat.bavail * stat.bsize;
+  } catch {
+    return null;
+  }
+}
+
+function assertDestinationHasSpace(destinationId, volumes) {
+  const available = availableBytes(destinationId);
+  if (available === null) {
+    log('Skipping free-space preflight because destination free space could not be read.');
+    return {
+      availableBytes: null,
+      requiredBytes: null,
+    };
+  }
+
+  let measuredAllVolumes = true;
+  const requiredBytes = volumes.reduce((total, volume) => {
+    const bytes = directorySizeBytes(volume.mountpoint);
+    if (bytes === null) {
+      measuredAllVolumes = false;
+      return total;
+    }
+    return total + bytes;
+  }, 0);
+
+  if (!measuredAllVolumes) {
+    log('Skipping strict free-space preflight because one or more volume sizes could not be measured.');
+    return {
+      availableBytes: available,
+      requiredBytes: null,
+    };
+  }
+
+  const reserveBytes = 512 * 1024 * 1024;
+  if (available < requiredBytes + reserveBytes) {
+    throw new Error(
+      `Selected destination has ${available} bytes free, but the detected Docker volumes use about ${requiredBytes} bytes before compression.`,
+    );
+  }
+
+  return {
+    availableBytes: available,
+    requiredBytes,
+  };
+}
+
 function sha256File(filePath) {
   const output = command('sha256sum', [filePath], { timeout: 300_000 });
   return output.split(/\s+/)[0] || null;
@@ -266,6 +326,10 @@ function buildManifest(job, outputDir, snapshot) {
       version: fs.existsSync(versionPath) ? fs.readFileSync(versionPath, 'utf8').trim() : null,
       release: fs.existsSync(stablePath) ? JSON.parse(fs.readFileSync(stablePath, 'utf8')) : null,
     },
+    preflight: {
+      destinationAvailableBytes: snapshot.preflight.availableBytes,
+      estimatedVolumeBytes: snapshot.preflight.requiredBytes,
+    },
     contents: {
       configArchive: path.relative(outputDir, path.join(outputDir, 'mos-config.tar.gz')),
       configArchiveBytes: snapshot.configArchive.bytes,
@@ -307,6 +371,7 @@ function main() {
     const runningServices = getRunningServices();
     const activeProfiles = getActiveProfiles(runningServices);
     const volumes = listDockerVolumes().map(inspectVolume);
+    const preflight = assertDestinationHasSpace(started.destinationId, volumes);
 
     stage('Copying runtime configuration');
     const configRoot = path.join(outputDir, 'config');
@@ -350,6 +415,7 @@ function main() {
     const manifest = buildManifest(started, outputDir, {
       activeProfiles,
       configArchive,
+      preflight,
       runningServices,
       volumes: archivedVolumes,
     });
