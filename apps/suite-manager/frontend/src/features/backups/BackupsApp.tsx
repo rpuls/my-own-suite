@@ -46,6 +46,7 @@ function JobPanel({ job, title }: { job: BackupJobSummary | null; title: string 
         {job.updatedAt ? ` Last update ${formatDate(job.updatedAt)}.` : ''}
       </p>
       {job.outputPath ? <p className="suite-meta mos-meta">Output: {job.outputPath}</p> : null}
+      {job.rescuePath ? <p className="suite-meta mos-meta">Pre-restore rescue: {job.rescuePath}</p> : null}
       {job.error ? <p className="suite-warning">{job.error}</p> : null}
       {job.logs && job.logs.length > 0 ? (
         <ol className="suite-updates-job-log">

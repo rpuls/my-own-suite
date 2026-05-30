@@ -6,6 +6,7 @@ export type BackupJobSummary = {
   kind: string | null;
   logs?: Array<{ at?: string; message?: string }>;
   outputPath: string | null;
+  rescuePath: string | null;
   stage: string | null;
   status: string | null;
   updatedAt: string | null;

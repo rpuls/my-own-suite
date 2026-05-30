@@ -146,6 +146,7 @@ function summarizeJob(job) {
     kind: job.kind || null,
     logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [],
     outputPath: job.outputPath || null,
+    rescuePath: job.rescuePath || null,
     stage: job.stage || null,
     status: job.status || null,
     updatedAt: job.updatedAt || null,

@@ -304,6 +304,7 @@ function writeRestoreNotes(outputDir) {
       'Contents:',
       '',
       '- `manifest.json`: backup metadata, source version/commit, active profiles, and archive checksums.',
+      '- `MANIFEST.sha256`: checksum for `manifest.json`.',
       '- `mos-config.tar.gz`: repo-managed runtime configuration archive.',
       '- `config/`: readable copy of runtime configuration included in the archive.',
       '- `compose/docker-compose.config.yml`: rendered Docker Compose configuration from backup time.',
@@ -329,6 +330,8 @@ function readBackupManifest(bundlePath) {
     throw new Error('Backup manifest was not found.');
   }
 
+  verifyManifestChecksum(bundlePath);
+
   const manifest = readJson(manifestPath);
   if (manifest.backup?.kind !== 'mos-offline-snapshot') {
     throw new Error('Backup manifest is not a MOS offline snapshot.');
@@ -339,6 +342,19 @@ function readBackupManifest(bundlePath) {
   }
 
   return manifest;
+}
+
+function verifyManifestChecksum(bundlePath) {
+  const checksumPath = path.join(bundlePath, 'MANIFEST.sha256');
+  if (!fs.existsSync(checksumPath)) {
+    return;
+  }
+
+  const expected = fs.readFileSync(checksumPath, 'utf8').trim().split(/\s+/)[0];
+  const actual = sha256File(path.join(bundlePath, 'manifest.json'));
+  if (expected && actual !== expected) {
+    throw new Error('Backup manifest checksum mismatch.');
+  }
 }
 
 function restoreConfigArchive(bundlePath) {
@@ -375,6 +391,24 @@ function verifyArchiveChecksum(archivePath, expectedSha256) {
   if (actual !== expectedSha256) {
     throw new Error(`Archive checksum mismatch for ${archivePath}.`);
   }
+}
+
+function verifyTarArchive(archivePath) {
+  command('tar', ['-tzf', archivePath], { timeout: 300_000 });
+}
+
+function createPreRestoreRescue(jobId) {
+  const rescueRoot = path.join(path.dirname(path.dirname(jobFile)), 'pre-restore-rescue', jobId);
+  const configRoot = path.join(rescueRoot, 'config');
+  fs.mkdirSync(configRoot, { recursive: true });
+
+  copyIfExists(path.join(repoDir, 'deploy', 'vps', '.env'), path.join(configRoot, 'deploy-vps.env'));
+  copyIfExists(path.join(repoDir, 'deploy', 'vps', 'services'), path.join(configRoot, 'services'));
+  copyIfExists(path.join(repoDir, 'deploy', 'vps', 'docker-compose.selfhost.yml'), path.join(configRoot, 'docker-compose.selfhost.yml'));
+
+  const archivePath = path.join(rescueRoot, 'runtime-config-before-restore.tar.gz');
+  command('tar', ['-czf', archivePath, '-C', configRoot, '.'], { timeout: 300_000 });
+  return rescueRoot;
 }
 
 function restoreVolume(volumeEntry, bundlePath) {
@@ -445,6 +479,12 @@ function buildManifest(job, outputDir, snapshot) {
       requiresVersionPairing: true,
     },
   };
+}
+
+function writeBackupManifest(outputDir, manifest) {
+  const manifestPath = path.join(outputDir, 'manifest.json');
+  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  writeTextFile(path.join(outputDir, 'MANIFEST.sha256'), `${sha256File(manifestPath)}  manifest.json`);
 }
 
 function main() {
@@ -519,7 +559,7 @@ function main() {
       runningServices,
       volumes: archivedVolumes,
     });
-    fs.writeFileSync(path.join(outputDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    writeBackupManifest(outputDir, manifest);
     writeRestoreNotes(outputDir);
 
     updateJob((job) => {
@@ -549,11 +589,19 @@ function restoreBackup(started) {
   stage('Verifying backup archives');
   const configArchive = path.join(bundlePath, 'mos-config.tar.gz');
   verifyArchiveChecksum(configArchive, manifest.contents?.configArchiveSha256);
+  verifyTarArchive(configArchive);
   for (const volume of volumes) {
     const archivePath = path.join(bundlePath, volume.archive || '');
     assertInside(archivePath, bundlePath);
     verifyArchiveChecksum(archivePath, volume.archiveSha256);
+    verifyTarArchive(archivePath);
   }
+
+  stage('Saving current runtime config rescue copy');
+  const rescuePath = createPreRestoreRescue(started.id);
+  updateJob((job) => {
+    job.rescuePath = rescuePath;
+  });
 
   stage('Stopping current MOS stack');
   compose([...profileArgs(allProfiles), 'down'], { timeout: 900_000 });
