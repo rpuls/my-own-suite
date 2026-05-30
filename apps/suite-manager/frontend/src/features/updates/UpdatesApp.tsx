@@ -51,8 +51,7 @@ export default function UpdatesApp() {
   const { applyUpdate, isApplying, isJobRunning, refresh, state } = useUpdates();
   const canApplyUpdate =
     state.kind === 'loaded' &&
-    state.status.mode === 'managed' &&
-    state.status.serviceAvailable &&
+    state.status.managedApplyAvailable &&
     state.status.updateAvailable &&
     !isApplying &&
     !isJobRunning;
@@ -70,7 +69,7 @@ export default function UpdatesApp() {
             <div>
               <h2 className="mos-card-title">Suite core</h2>
               <p className="suite-meta mos-meta">
-                Managed self-host installs can now surface their active track and start host-owned update jobs when a newer version or commit is actually available.
+                Suite Manager checks the local updater capability before showing host-owned update actions.
               </p>
             </div>
 
@@ -144,11 +143,11 @@ export default function UpdatesApp() {
                 </div>
 
                 <p className="suite-meta mos-meta">
-                  {state.status.mode === 'notify-only'
-                    ? 'This installation is configured for notify-only updates. Install new versions through your hosting platform or deployment workflow.'
+                  {state.status.managedApplyAvailable
+                    ? 'The local updater service is reachable and exposes the apply capability, so Suite Manager can start a host-owned update job when an update is available.'
                     : state.status.serviceAvailable
-                      ? 'This installation is configured for managed updates and can ask the host-owned updater service to apply the next available update.'
-                      : 'This installation is configured for managed updates, but the local host updater service is currently unavailable.'}
+                      ? 'The local updater service is reachable, but it does not expose the apply capability. Install new versions through the host update workflow.'
+                      : 'No local updater capability is reachable. Install new versions through your hosting platform or deployment workflow.'}
                 </p>
 
                 <dl className="suite-updates-facts">
@@ -157,12 +156,12 @@ export default function UpdatesApp() {
                     <dd>{state.status.latestRelease.channel || 'Unknown'}</dd>
                   </div>
                   <div>
-                    <dt>Update mode</dt>
-                    <dd>{state.status.mode}</dd>
-                  </div>
-                  <div>
                     <dt>Updater service</dt>
                     <dd>{state.status.serviceAvailable ? 'Available' : 'Unavailable'}</dd>
+                  </div>
+                  <div>
+                    <dt>Managed apply</dt>
+                    <dd>{state.status.managedApplyAvailable ? 'Available' : 'Unavailable'}</dd>
                   </div>
                   <div>
                     <dt>Published</dt>

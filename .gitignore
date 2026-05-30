@@ -7,6 +7,10 @@ vps/.env
 .tmp/
 .local-tools/
 .mos-updater/
+.playwright-mcp/
+playwright-mcp
+.test-results-current/
+test-results-current
 
 # VPS persistent data
 vps/apps/vaultwarden/data/*

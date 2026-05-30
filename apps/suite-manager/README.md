@@ -21,7 +21,8 @@
 - `SUITE_MANAGER_STATE_DIR`: Directory used to persist onboarding progress.
 - `SUITE_MANAGER_UPDATES_ENABLED`: Optional toggle for live GitHub release checks. Defaults to `true`.
 - `SUITE_MANAGER_GITHUB_REPO`: Repository used for release checks. Defaults to `rpuls/my-own-suite`.
-- `SUITE_MANAGER_UPDATES_MODE`: Update-management posture for this installation. Use `notify-only` for Railway-like platforms or any deployment where Suite Manager should only notify about newer releases; reserve `managed` for future host-side updater integrations. Defaults to `notify-only`.
+- `SUITE_MANAGER_UPDATES_AGENT_SOCKET_PATH`: Optional Unix socket path for the self-host update agent. When reachable and capability-compatible, Suite Manager can request host-owned update jobs.
+- `SUITE_MANAGER_UPDATES_AGENT_TOKEN_FILE`: Optional bearer token file for the self-host update agent.
 - `SUITE_MANAGER_UPDATES_LATEST_VERSION_OVERRIDE`: Optional test-only override for simulating the latest available version in the Updates screen without changing real release metadata.
 - `SUITE_MANAGER_SERVICE_AGENT_SOCKET_PATH`: Optional Unix socket path for the self-host service agent. When reachable, Suite Manager can request narrow host-owned service actions such as restarting Homepage after config saves.
 - `SUITE_MANAGER_SERVICE_AGENT_TOKEN_FILE`: Optional bearer token file for the self-host service agent.
@@ -39,8 +40,8 @@
 - Exposes allow-listed Homepage runtime config editing on `/setup/api/homepage-config/*`.
 - Detects whether the host service agent can restart Homepage and only enables automatic Homepage restart after config saves when that capability is reachable.
 - Exposes a token-protected config export on `/setup/api/homepage-config/export` for Homepage startup sync.
-- Exposes JSON update state on `/setup/api/updates`, including installed version, latest release metadata, and whether an update is available.
-- Supports platform-agnostic notify-only update behavior so hosted deployments can show update availability without implying that Suite Manager can perform the installation itself.
+- Exposes JSON update state on `/setup/api/updates`, including installed version, latest release metadata, whether an update is available, and whether the update agent exposes managed apply capability.
+- Supports capability-driven update behavior so hosted deployments can show notify/manual-update guidance, while self-host installs only show managed update actions when the local update agent is reachable and advertises `updates.apply`.
 - Logs a success line when Homepage returns a `2xx` response.
 - Logs a failure line when Homepage returns a non-`2xx` response or the request errors.
 - Persists onboarding step completion in `SUITE_MANAGER_STATE_DIR`.

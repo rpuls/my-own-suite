@@ -15,6 +15,11 @@ const tokenFile = process.env.MOS_UPDATE_AGENT_TOKEN_FILE || '/etc/mos-update-ag
 
 const jobsDir = path.join(stateDir, 'jobs');
 const currentJobPath = path.join(stateDir, 'current-job.json');
+const capabilities = {
+  updates: {
+    capabilities: ['apply'],
+  },
+};
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -192,6 +197,7 @@ async function handleStatus(response) {
   }));
 
   json(response, 200, {
+    capabilities,
     currentJob: summarizeJob(readCurrentJob()),
     lastJob: summarizeJob(readLatestJob()),
     repoDir,

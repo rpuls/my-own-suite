@@ -7,7 +7,7 @@ type ValueFieldProps = {
   copied?: boolean;
   disabled?: boolean;
   label: string;
-  onCopy?: () => void;
+  onCopy?: () => Promise<void> | void;
   qrAlt?: string;
   qrValue?: string;
   value: string;
@@ -27,6 +27,8 @@ export function ValueField({
 }: ValueFieldProps) {
   const [showQr, setShowQr] = useState(false);
   const [qrSrc, setQrSrc] = useState<string | null>(null);
+  const [localCopied, setLocalCopied] = useState(false);
+  const isCopied = copied || localCopied;
 
   useEffect(() => {
     if (!showQr || !qrValue) {
@@ -50,6 +52,18 @@ export function ValueField({
     };
   }, [qrValue, showQr]);
 
+  async function handleCopy(): Promise<void> {
+    if (!onCopy) {
+      return;
+    }
+
+    await onCopy();
+    setLocalCopied(true);
+    window.setTimeout(() => {
+      setLocalCopied(false);
+    }, 1400);
+  }
+
   return (
     <div className="suite-field">
       <div className="suite-field-header">
@@ -69,9 +83,9 @@ export function ValueField({
             </button>
           ) : null}
           {onCopy ? (
-            <button className="suite-copy-button" disabled={disabled} onClick={onCopy} type="button">
+            <button className="suite-copy-button" disabled={disabled} onClick={() => void handleCopy()} type="button">
               <Copy aria-hidden="true" className="suite-inline-icon" />
-              {copied ? 'Copied' : 'Copy'}
+              {isCopied ? 'Copied' : 'Copy'}
             </button>
           ) : null}
         </div>

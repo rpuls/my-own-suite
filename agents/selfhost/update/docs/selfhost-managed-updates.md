@@ -53,6 +53,7 @@ curl --unix-socket /run/mos-update-agent/agent.sock \
 Check for:
 
 - `service: "mos-update-agent"`
+- `capabilities.updates.capabilities` includes `apply`
 - `updaterStatus.track`
 - `currentJob` or `lastJob`
 
@@ -114,5 +115,5 @@ Check for transitions such as:
 ## Current limitations
 
 - This MVP agent is host-side only.
-- Suite Manager UI wiring is still a separate step.
+- Suite Manager only shows managed update actions when this agent is reachable and advertises the `updates.apply` capability.
 - Rollback and backups are not implemented yet.

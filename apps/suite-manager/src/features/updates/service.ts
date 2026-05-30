@@ -42,7 +42,7 @@ export type UpdateStatus = {
     source: ReleaseSource;
     version: string | null;
   };
-  mode: 'managed' | 'notify-only';
+  managedApplyAvailable: boolean;
   serviceAvailable: boolean;
   track: {
     currentBranch: string | null;
@@ -131,6 +131,20 @@ function compareVersions(left: string | null, right: string | null): number {
   }
 
   return 0;
+}
+
+function hasAgentCapability(
+  capabilities: Record<string, { capabilities?: string[] } | string[]> | undefined,
+  resourceName: string,
+  capabilityName: string,
+): boolean {
+  const resourceCapabilities = capabilities?.[resourceName];
+
+  if (Array.isArray(resourceCapabilities)) {
+    return resourceCapabilities.includes(capabilityName);
+  }
+
+  return resourceCapabilities?.capabilities?.includes(capabilityName) === true;
 }
 
 function readReleaseManifestFromPath(filePath: string): ReleaseManifest | null {
@@ -259,11 +273,12 @@ export class UpdatesService {
   }
 
   async getStatus(): Promise<UpdateStatus> {
-    if (this.config.updates.mode === 'managed' && this.config.updates.agentSocketPath && this.config.updates.agentTokenFile) {
+    if (this.config.updates.agentSocketPath && this.config.updates.agentTokenFile) {
       try {
         const agent = await readAgentStatus(this.config);
         const updaterStatus = agent.updaterStatus as Record<string, any>;
         const track = updaterStatus.track || null;
+        const managedApplyAvailable = hasAgentCapability(agent.capabilities, 'updates', 'apply');
 
         return {
           checkedAt: typeof updaterStatus.checkedAt === 'string' ? updaterStatus.checkedAt : new Date().toISOString(),
@@ -284,7 +299,7 @@ export class UpdatesService {
                 : 'unavailable',
             version: typeof updaterStatus.latestRelease?.version === 'string' ? updaterStatus.latestRelease.version : null,
           },
-          mode: this.config.updates.mode,
+          managedApplyAvailable,
           serviceAvailable: true,
           track: {
             currentBranch: typeof track?.currentBranch === 'string' ? track.currentBranch : null,
@@ -301,6 +316,7 @@ export class UpdatesService {
           ...fallback,
           currentJob: null,
           error: caughtError instanceof Error ? caughtError.message : 'Managed update agent is unavailable.',
+          managedApplyAvailable: false,
           serviceAvailable: false,
         };
       }
@@ -310,14 +326,15 @@ export class UpdatesService {
     return {
       ...fallback,
       currentJob: null,
+      managedApplyAvailable: false,
       serviceAvailable: false,
     };
   }
 
   async startManagedUpdate(): Promise<{ job: Record<string, unknown> }> {
     const status = await this.getStatus();
-    if (status.mode !== 'managed' || !status.serviceAvailable) {
-      throw new Error('Managed update service is unavailable.');
+    if (!status.managedApplyAvailable) {
+      throw new Error('Managed update apply capability is unavailable.');
     }
 
     if (status.currentJob?.status === 'running' || status.currentJob?.status === 'queued') {
@@ -380,11 +397,11 @@ export class UpdatesService {
       installedVersion: installed.version,
       installedVersionSource: installed.source,
       latestRelease,
-      mode: this.config.updates.mode,
+      managedApplyAvailable: false,
       track: {
         currentBranch: null,
         currentCommit: null,
-        label: this.config.updates.mode === 'managed' ? 'Managed install' : 'Stable releases',
+        label: 'Stable releases',
         ref: null,
         type: null,
       },

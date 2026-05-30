@@ -46,7 +46,6 @@ export type SuiteManagerConfig = {
     enabled: boolean;
     githubRepo: string;
     latestVersionOverride: string;
-    mode: 'managed' | 'notify-only';
   };
   urlScheme: string;
   vaultwardenDatabaseUrl: string;
@@ -122,10 +121,6 @@ export function loadConfig(): SuiteManagerConfig {
   const updatesAgentTokenFile = (process.env.SUITE_MANAGER_UPDATES_AGENT_TOKEN_FILE || '').trim();
   const serviceAgentSocketPath = (process.env.SUITE_MANAGER_SERVICE_AGENT_SOCKET_PATH || '').trim();
   const serviceAgentTokenFile = (process.env.SUITE_MANAGER_SERVICE_AGENT_TOKEN_FILE || '').trim();
-  const updatesMode =
-    (process.env.SUITE_MANAGER_UPDATES_MODE || 'notify-only').trim().toLowerCase() === 'managed'
-      ? 'managed'
-      : 'notify-only';
   const seafileAdminEmail = (process.env.INIT_SEAFILE_ADMIN_EMAIL || '').trim();
   const seafileAdminPassword = (process.env.INIT_SEAFILE_ADMIN_PASSWORD || '').trim();
   const radicaleAdminUsername = (process.env.RADICALE_ADMIN_USERNAME || '').trim();
@@ -186,7 +181,6 @@ export function loadConfig(): SuiteManagerConfig {
       enabled: updatesEnabled,
       githubRepo: updatesGithubRepo,
       latestVersionOverride: updatesLatestVersionOverride,
-      mode: updatesMode,
     },
     urlScheme,
     vaultwardenDatabaseUrl,

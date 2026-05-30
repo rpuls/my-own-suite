@@ -117,8 +117,25 @@ test.describe('homepage app verification against the real local stack', () => {
         href: https://example.org/
         description: Added from Suite Manager
 `);
-      await page.getByRole('button', { name: /^Save$/ }).click();
-      await expect(page.getByText('Saved')).toBeVisible();
+      const saveResponsePromise = page.waitForResponse(
+        (response) =>
+          response.url().includes('/setup/api/homepage-config/files/services.template.yaml') &&
+          response.request().method() === 'PUT' &&
+          response.ok(),
+      );
+      const saveButton = page.getByRole('button', { name: /^Save$/ });
+      await saveButton.click();
+      await saveResponsePromise;
+      await expect(page.getByText(/Updated \d/i)).toBeVisible();
+      await expect(saveButton).toBeDisabled();
+
+      const savedTemplate = await page.evaluate(async () => {
+        const response = await fetch('/setup/api/homepage-config/files/services.template.yaml');
+        const body = await response.json();
+        return body.content;
+      });
+      expect(savedTemplate).toContain('Runtime Link');
+      expect(savedTemplate).toContain('https://example.org/');
 
       restartService('homepage');
       await expect
@@ -133,6 +150,7 @@ test.describe('homepage app verification against the real local stack', () => {
 
       await page.goto('/');
       await expect(page.locator('a[href="https://example.org/"]').first()).toBeVisible();
+      await expect(page.locator('body')).toContainText('Added from Suite Manager');
     });
   });
 });

@@ -9,6 +9,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ### Changed
 
 - Added a unified `agents/selfhost/` home for host agents and a repo-owned self-host service-agent path for narrow host service actions, starting with capability-detected Homepage restarts after Suite Manager saves runtime Homepage config. Compatibility note: self-host reconciliation now manages `mos-update-agent`, `mos-service-agent`, their `/run` sockets and `/etc` token files, and the Suite Manager agent env/socket mounts for existing and fresh USB/self-host installs; `update/selfhost/*` remains as compatibility wrappers.
+- Made the Updates screen capability-driven: Suite Manager now shows managed update actions only when the local update agent is reachable and advertises `updates.apply`, while hosted or agent-less installs stay in notify/manual-update guidance. Compatibility note: `SUITE_MANAGER_UPDATES_MODE` has been removed from active Suite Manager config and generated env templates.
+
+### Fixed
+
+- Hardened the local E2E onboarding flow against Vaultwarden DOM changes and fixed Suite Manager onboarding copy buttons so successful clipboard actions reliably show copied feedback.
 
 ## [0.10.0] - 2026-05-29
 
