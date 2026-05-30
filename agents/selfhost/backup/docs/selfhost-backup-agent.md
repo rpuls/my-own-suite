@@ -10,4 +10,6 @@ Current capabilities:
 - `backups.create`: starts a persistent backup job for a selected mounted destination.
 - `restores.plan`: advertises the restore contract as planned, without performing restore yet.
 
-The first backup-agent slice captures suite metadata and repo-managed runtime configuration. Docker volume archiving and automated restore are intentionally deferred until the cold offline bundle format has been validated on real self-host hardware.
+Current backup jobs stop the MOS Docker Compose stack, archive detected MOS Docker volumes from their host mountpoints, record suite metadata, repo-managed runtime configuration, archive checksums, and the rendered Compose configuration, then start the same detected profiles again.
+
+Automated restore is still deferred until backup bundles have been validated on real self-host hardware.

@@ -218,8 +218,8 @@ export default function BackupsApp() {
                 ) : null}
 
                 <p className="suite-warning">
-                  This first backup-agent slice records suite metadata and repo-managed runtime configuration. Full Docker
-                  volume archiving and automated restore are next in the epic.
+                  The stack will be stopped while Docker volumes are archived, then started again with the same detected
+                  profiles. Suite Manager may be unavailable during the backup.
                 </p>
               </div>
 
