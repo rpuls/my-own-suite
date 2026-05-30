@@ -23,6 +23,8 @@
 - `SUITE_MANAGER_GITHUB_REPO`: Repository used for release checks. Defaults to `rpuls/my-own-suite`.
 - `SUITE_MANAGER_UPDATES_MODE`: Update-management posture for this installation. Use `notify-only` for Railway-like platforms or any deployment where Suite Manager should only notify about newer releases; reserve `managed` for future host-side updater integrations. Defaults to `notify-only`.
 - `SUITE_MANAGER_UPDATES_LATEST_VERSION_OVERRIDE`: Optional test-only override for simulating the latest available version in the Updates screen without changing real release metadata.
+- `SUITE_MANAGER_SERVICE_AGENT_SOCKET_PATH`: Optional Unix socket path for the self-host service agent. When reachable, Suite Manager can request narrow host-owned service actions such as restarting Homepage after config saves.
+- `SUITE_MANAGER_SERVICE_AGENT_TOKEN_FILE`: Optional bearer token file for the self-host service agent.
 - `VAULTWARDEN_DATABASE_URL` or `DATABASE_URL`: Optional Postgres connection string used to detect when the owner Vaultwarden account has been created. In the VPS/local stack, this is sourced from the existing Vaultwarden service env.
 - `INIT_SEAFILE_ADMIN_EMAIL`, `INIT_SEAFILE_ADMIN_PASSWORD`, `RADICALE_ADMIN_USERNAME`, `RADICALE_ADMIN_PASSWORD`: Consumed from existing service env files so suite-manager can prepare the first Vaultwarden import handoff.
 - `DOMAIN` / `PUBLIC_URL_SCHEME`: Optional fallback inputs for deriving public app URLs when explicit `*_PUBLIC_URL` values are not set.
@@ -35,6 +37,7 @@
 - Exposes a simple HTTP `200` health endpoint on `/healthz`.
 - Exposes JSON setup auth/status/onboarding data on `/setup/api/auth/*`, `/setup/api/status`, and `/setup/api/onboarding`.
 - Exposes allow-listed Homepage runtime config editing on `/setup/api/homepage-config/*`.
+- Detects whether the host service agent can restart Homepage and only enables automatic Homepage restart after config saves when that capability is reachable.
 - Exposes a token-protected config export on `/setup/api/homepage-config/export` for Homepage startup sync.
 - Exposes JSON update state on `/setup/api/updates`, including installed version, latest release metadata, and whether an update is available.
 - Supports platform-agnostic notify-only update behavior so hosted deployments can show update availability without implying that Suite Manager can perform the installation itself.

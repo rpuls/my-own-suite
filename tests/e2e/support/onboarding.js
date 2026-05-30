@@ -251,12 +251,12 @@ async function dismissVaultwardenExtensionPrompt(page) {
   const skipToWebApp = page.getByRole('button', { name: /skip to web app/i });
   const addItLater = page.getByRole('button', { name: /add it later/i });
 
-  if (await skipToWebApp.isVisible().catch(() => false)) {
+  if (await waitForVisible(skipToWebApp, 5000)) {
     await skipToWebApp.click();
     return;
   }
 
-  if (await addItLater.isVisible().catch(() => false)) {
+  if (await waitForVisible(addItLater, 1000)) {
     await addItLater.click();
     return;
   }
@@ -264,6 +264,11 @@ async function dismissVaultwardenExtensionPrompt(page) {
   if (/setup-extension/i.test(page.url())) {
     await page.goto('https://vaultwarden.localhost:18443/#/vault');
   }
+}
+
+async function waitForVisible(locator, timeout) {
+  await locator.waitFor({ state: 'visible', timeout }).catch(() => null);
+  return locator.isVisible().catch(() => false);
 }
 
 async function readStepState(page) {

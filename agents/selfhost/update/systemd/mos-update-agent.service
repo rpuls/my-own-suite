@@ -1,5 +1,5 @@
 [Unit]
-Description=My Own Suite self-host update agent compatibility unit
+Description=My Own Suite self-host update agent
 After=network-online.target docker.service
 Wants=network-online.target
 

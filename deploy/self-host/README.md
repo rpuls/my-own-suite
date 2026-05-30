@@ -14,7 +14,8 @@ Current scripts:
 - [scripts/selfhost-write-cloudflared.cjs](../../scripts/selfhost-write-cloudflared.cjs)
 - [scripts/selfhost-new-seed-disk.ps1](../../scripts/selfhost-new-seed-disk.ps1)
 - [scripts/selfhost-build-installer-iso.cjs](../../scripts/selfhost-build-installer-iso.cjs)
-- [update/selfhost/install-update-agent.sh](../../update/selfhost/install-update-agent.sh)
+- [agents/selfhost/reconcile-host-agents.sh](../../agents/selfhost/reconcile-host-agents.sh)
+- [agents/selfhost/update/install.sh](../../agents/selfhost/update/install.sh)
 
 Keep the actual self-host guidance in the site docs so the public documentation stays the single source of truth.
 
@@ -75,6 +76,8 @@ The installed first-boot launcher is intentionally thin: it loads `/etc/mos-self
 
 This is the intended direction for the HP mini PC flow because it removes the separate `CIDATA` disk from the final installation experience.
 
+Host-side services are also repo-owned after first boot. The USB installer should install the operating system, install baseline tools such as Docker and Node.js, clone the repo, transfer secrets/settings, and hand off. The repo then reconciles agents through `agents/selfhost/reconcile-host-agents.sh`, which is called by fresh bootstrap and by `system:migrate` during managed updates so existing machines can gain new host capabilities without reflashing the installer.
+
 ## Manual update foundation
 
 The current updater foundation is explicit and user-triggered only.
@@ -101,3 +104,12 @@ The self-host bootstrap now also installs a host-local MOS update agent service:
 This service is the intended bridge between future managed-update UI actions and the host-owned update execution path.
 
 The updater does not run automatically in the background.
+
+Self-host machines also install a host-local MOS service agent through repo-owned host-agent reconciliation:
+
+- systemd service name: `mos-service-agent.service`
+- local Unix socket: `/run/mos-service-agent/agent.sock`
+- bearer token file: `/etc/mos-service-agent/auth.token`
+- local helper command: `mos-service`
+
+This service is the bridge for narrow host-owned service actions such as restarting Homepage after Suite Manager saves runtime config. It should grow by exposing explicit capabilities, not by giving Suite Manager arbitrary host command access.

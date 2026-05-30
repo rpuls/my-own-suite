@@ -1,0 +1,14 @@
+[Unit]
+Description=My Own Suite self-host service agent
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/mos-service-agent.env
+ExecStart=/usr/bin/env node __REPO_DIR__/agents/selfhost/service/agent/mos-service-agent.cjs
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

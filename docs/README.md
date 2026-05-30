@@ -10,7 +10,8 @@ This folder holds durable project memory: roadmap, architectural decisions, and 
 | App technical reference | `apps/<app>/README.md` |
 | VPS/local Docker operations | `deploy/vps/README.md` |
 | USB/self-host installer operations | `deploy/self-host/README.md` |
-| Updater smoke tests and low-level host checks | `update/selfhost/docs/` |
+| Self-host host-agent implementation | `agents/selfhost/` |
+| Updater smoke tests and low-level host checks | `agents/selfhost/update/docs/` |
 | Durable roadmap and future work themes | `docs/roadmap.md` |
 | Durable architecture decisions | `docs/decisions.md` |
 | Codex/project workflow notes | `docs/codex-notes.md` |

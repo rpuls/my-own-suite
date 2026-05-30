@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 
 import type { SuiteManagerConfig } from '../../config.ts';
+import type { ServiceAgentService } from '../service-agent/service.ts';
 import { HomepageConfigService } from './service.ts';
 
 function hasSyncToken(config: SuiteManagerConfig, authorizationHeader: string | undefined): boolean {
@@ -9,10 +10,15 @@ function hasSyncToken(config: SuiteManagerConfig, authorizationHeader: string | 
   );
 }
 
-export function createHomepageConfigRouter(homepageConfigService: HomepageConfigService): Hono {
+export function createHomepageConfigRouter(
+  homepageConfigService: HomepageConfigService,
+  serviceAgentService: ServiceAgentService,
+): Hono {
   const router = new Hono();
 
   router.get('/homepage-config', (c) => c.json({ files: homepageConfigService.listFiles() }));
+
+  router.get('/homepage-config/capabilities', async (c) => c.json(await serviceAgentService.getCapabilities()));
 
   router.get('/homepage-config/files/:name', async (c) => {
     try {
@@ -51,6 +57,17 @@ export function createHomepageConfigRouter(homepageConfigService: HomepageConfig
       return c.json(
         { error: caughtError instanceof Error ? caughtError.message : 'Unable to reset Homepage config.' },
         400,
+      );
+    }
+  });
+
+  router.post('/homepage-config/restart-homepage', async (c) => {
+    try {
+      return c.json(await serviceAgentService.restartHomepage(), 202);
+    } catch (caughtError) {
+      return c.json(
+        { error: caughtError instanceof Error ? caughtError.message : 'Unable to restart Homepage.' },
+        409,
       );
     }
   });

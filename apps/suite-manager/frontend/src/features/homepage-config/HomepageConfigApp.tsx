@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { withSetupPath } from '../../lib/base-path';
 import CodeEditor from './CodeEditor';
 import type {
+  HomepageConfigCapabilitiesResponse,
   HomepageConfigFile,
   HomepageConfigFileResponse,
   HomepageConfigListResponse,
+  HomepageRestartResponse,
 } from './types';
 
 type EditorState =
@@ -18,6 +20,8 @@ type EditorState =
       file: HomepageConfigFile;
       files: HomepageConfigFile[];
       kind: 'loaded';
+      restartCapabilities: HomepageConfigCapabilitiesResponse;
+      restartMessage: string | null;
       savedAt: string | null;
     }
   | { kind: 'error'; message: string };
@@ -41,6 +45,45 @@ async function loadFiles(): Promise<HomepageConfigFile[]> {
   return body.files;
 }
 
+async function loadCapabilities(): Promise<HomepageConfigCapabilitiesResponse> {
+  const response = await fetch(withSetupPath('/api/homepage-config/capabilities'));
+  return readJson<HomepageConfigCapabilitiesResponse>(response, 'Unable to load Homepage restart capability.');
+}
+
+async function restartHomepage(): Promise<HomepageRestartResponse> {
+  const response = await fetch(withSetupPath('/api/homepage-config/restart-homepage'), {
+    method: 'POST',
+  });
+  return readJson<HomepageRestartResponse>(response, 'Unable to restart Homepage.');
+}
+
+async function tryAutoRestartHomepage(shouldRestart: boolean): Promise<{
+  errorMessage: string | null;
+  restartMessage: string | null;
+}> {
+  if (!shouldRestart) {
+    return {
+      errorMessage: null,
+      restartMessage: null,
+    };
+  }
+
+  try {
+    await restartHomepage();
+    return {
+      errorMessage: null,
+      restartMessage: 'Homepage restart requested.',
+    };
+  } catch (error: unknown) {
+    return {
+      errorMessage: `Saved, but Homepage restart failed: ${
+        error instanceof Error ? error.message : 'Unable to restart Homepage.'
+      }`,
+      restartMessage: null,
+    };
+  }
+}
+
 function labelForFile(name: string): string {
   return name.replace('.template', '').replace(/\.(yaml|css|js)$/u, '');
 }
@@ -50,6 +93,7 @@ export default function HomepageConfigApp() {
   const [state, setState] = useState<EditorState>({ kind: 'loading' });
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [autoRestartHomepage, setAutoRestartHomepage] = useState(true);
 
   const selectedFile = useMemo(() => {
     if (state.kind !== 'loaded') {
@@ -62,6 +106,7 @@ export default function HomepageConfigApp() {
     setState({ kind: 'loading' });
     try {
       const files = await loadFiles();
+      const restartCapabilities = await loadCapabilities();
       const fileName = files.some((file) => file.name === nextFileName) ? nextFileName : files[0]?.name;
       if (!fileName) {
         throw new Error('No Homepage config files are available.');
@@ -75,6 +120,8 @@ export default function HomepageConfigApp() {
         file: file.file,
         files,
         kind: 'loaded',
+        restartCapabilities,
+        restartMessage: null,
         savedAt: null,
       });
     } catch (error: unknown) {
@@ -105,12 +152,16 @@ export default function HomepageConfigApp() {
         method: 'PUT',
       });
       const body = await readJson<HomepageConfigFileResponse>(response, 'Unable to save Homepage config.');
+      const restart = await tryAutoRestartHomepage(
+        state.restartCapabilities.homepageRestartAvailable && autoRestartHomepage,
+      );
       setState({
         ...state,
         content: body.content,
         dirty: false,
-        errorMessage: null,
+        errorMessage: restart.errorMessage,
         file: body.file,
+        restartMessage: restart.restartMessage,
         savedAt: new Date().toLocaleTimeString(),
       });
     } catch (error: unknown) {
@@ -145,12 +196,16 @@ export default function HomepageConfigApp() {
         },
       );
       const body = await readJson<HomepageConfigFileResponse>(response, 'Unable to reset Homepage config.');
+      const restart = await tryAutoRestartHomepage(
+        state.restartCapabilities.homepageRestartAvailable && autoRestartHomepage,
+      );
       setState({
         ...state,
         content: body.content,
         dirty: false,
-        errorMessage: null,
+        errorMessage: restart.errorMessage,
         file: body.file,
+        restartMessage: restart.restartMessage,
         savedAt: new Date().toLocaleTimeString(),
       });
     } catch (error: unknown) {
@@ -245,6 +300,7 @@ export default function HomepageConfigApp() {
                         content: value,
                         dirty: true,
                         errorMessage: null,
+                        restartMessage: null,
                         savedAt: null,
                       })
                     }
@@ -258,6 +314,22 @@ export default function HomepageConfigApp() {
                     {state.dirty ? 'Unsaved' : 'Saved'}
                   </span>
                   {state.savedAt ? <span className="suite-meta mos-meta">Updated {state.savedAt}</span> : null}
+                </div>
+                <div className="suite-homepage-config-restart">
+                  {state.restartCapabilities.homepageRestartAvailable ? (
+                    <label className="suite-checkbox-row">
+                      <input
+                        checked={autoRestartHomepage}
+                        disabled={isSaving || isResetting}
+                        onChange={(event) => setAutoRestartHomepage(event.currentTarget.checked)}
+                        type="checkbox"
+                      />
+                      <span>Auto restart Homepage on save</span>
+                    </label>
+                  ) : (
+                    <p className="suite-warning">Please restart Homepage after saving for changes to take effect.</p>
+                  )}
+                  {state.restartMessage ? <p className="suite-meta mos-meta">{state.restartMessage}</p> : null}
                 </div>
                 <button
                   className="suite-copy-button suite-danger-button"

@@ -65,7 +65,7 @@ Use these locations:
 - `site/src/content/docs/`: public/end-user documentation.
 - `apps/<app>/README.md`: app-level technical reference.
 - `deploy/<target>/README.md`: deployment runbooks and operator guidance.
-- `update/selfhost/docs/`: low-level updater smoke tests and host checks.
+- `agents/selfhost/update/docs/`: low-level updater smoke tests and host checks.
 
 Maintenance rules:
 

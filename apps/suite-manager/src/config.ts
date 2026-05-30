@@ -35,6 +35,10 @@ export type SuiteManagerConfig = {
   sessionMaxAgeSeconds: number;
   sessionSecret: string;
   setupBasePath: string;
+  serviceAgent: {
+    socketPath: string;
+    tokenFile: string;
+  };
   stateDir: string;
   updates: {
     agentSocketPath: string;
@@ -116,6 +120,8 @@ export function loadConfig(): SuiteManagerConfig {
   const updatesLatestVersionOverride = (process.env.SUITE_MANAGER_UPDATES_LATEST_VERSION_OVERRIDE || '').trim();
   const updatesAgentSocketPath = (process.env.SUITE_MANAGER_UPDATES_AGENT_SOCKET_PATH || '').trim();
   const updatesAgentTokenFile = (process.env.SUITE_MANAGER_UPDATES_AGENT_TOKEN_FILE || '').trim();
+  const serviceAgentSocketPath = (process.env.SUITE_MANAGER_SERVICE_AGENT_SOCKET_PATH || '').trim();
+  const serviceAgentTokenFile = (process.env.SUITE_MANAGER_SERVICE_AGENT_TOKEN_FILE || '').trim();
   const updatesMode =
     (process.env.SUITE_MANAGER_UPDATES_MODE || 'notify-only').trim().toLowerCase() === 'managed'
       ? 'managed'
@@ -169,6 +175,10 @@ export function loadConfig(): SuiteManagerConfig {
     sessionMaxAgeSeconds,
     sessionSecret,
     setupBasePath,
+    serviceAgent: {
+      socketPath: serviceAgentSocketPath,
+      tokenFile: serviceAgentTokenFile,
+    },
     stateDir,
     updates: {
       agentSocketPath: updatesAgentSocketPath,

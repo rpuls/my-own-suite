@@ -30,6 +30,19 @@ Consequences:
 - Self-host deployments can use `managed` mode when the host agent is installed and reachable.
 - Host-side updater changes need an explicit self-refresh path so future systemd/agent improvements do not require reflashing.
 
+## 2026-05-30: Self-Host Host Agents Are Repo-Reconciled
+
+Decision: USB self-host installs should keep first-boot responsibilities small and let the repo reconcile host-side agents after checkout. Host agents live under `agents/selfhost/`, and `system:migrate` may install or refresh them on machines marked as self-host.
+
+Reason: New service, backup, restore, and monitoring capabilities should not require reflashing the USB installer. The installer should install the OS, baseline tools, repo checkout, and initial settings; the repo should own ongoing app and agent setup.
+
+Consequences:
+
+- Existing self-host machines can gain new host agents through managed updates or a root-run repo migration path.
+- Suite Manager should prefer capability detection from reachable agents over broad platform-mode flags.
+- Agent APIs must stay narrow, local-only, and token-protected because they perform host-level actions.
+- Fresh bootstrap and managed updates should share the same host-agent reconciliation path.
+
 ## 2026-04-28: Update Agent API Is Local-Only
 
 Decision: The first managed self-host updater uses a Unix socket plus shared bearer token. It must not expose an HTTP port on the LAN or internet.

@@ -20,6 +20,7 @@ import {
   renderFrontendHtml,
 } from './features/setup/frontend.ts';
 import { createStatusRouter } from './features/status/routes.ts';
+import { ServiceAgentService } from './features/service-agent/service.ts';
 import { createUpdatesRouter } from './features/updates/routes.ts';
 import { UpdatesService } from './features/updates/service.ts';
 
@@ -30,6 +31,7 @@ export function createApp(
   const app = new Hono();
   const authService = new AuthService(config);
   const homepageConfigService = new HomepageConfigService(config);
+  const serviceAgentService = new ServiceAgentService(config);
   const updatesService = new UpdatesService(config);
   const setupApiPath = `${config.setupBasePath}/api`;
   const frontendReady = hasBuiltFrontend();
@@ -41,7 +43,7 @@ export function createApp(
   const protectedSetupApi = new Hono();
   protectedSetupApi.use('*', requireApiSession(config));
   protectedSetupApi.route('/onboarding', createOnboardingRouter(config, onboardingService));
-  protectedSetupApi.route('/', createHomepageConfigRouter(homepageConfigService));
+  protectedSetupApi.route('/', createHomepageConfigRouter(homepageConfigService, serviceAgentService));
   protectedSetupApi.route('/', createUpdatesRouter(updatesService));
   protectedSetupApi.route('/', createStatusRouter(config, onboardingService));
   app.route(setupApiPath, protectedSetupApi);
