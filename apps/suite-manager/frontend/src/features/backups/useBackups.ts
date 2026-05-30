@@ -24,6 +24,7 @@ async function loadStatus(): Promise<BackupsStatus> {
 export function useBackups() {
   const [state, setState] = useState<BackupsState>({ kind: 'loading' });
   const [isStarting, setIsStarting] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
   const isJobRunning =
     state.kind === 'loaded' &&
     Boolean(state.status.currentJob && (state.status.currentJob.status === 'running' || state.status.currentJob.status === 'queued'));
@@ -51,6 +52,26 @@ export function useBackups() {
       await refresh();
     } finally {
       setIsStarting(false);
+    }
+  }
+
+  async function startRestore(backupPath: string, confirmation: string): Promise<void> {
+    setIsRestoring(true);
+    try {
+      const response = await fetch(withSetupPath('/api/backups/restore'), {
+        body: JSON.stringify({ backupPath, confirmation }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+      });
+      const body = (await response.json().catch(() => ({ error: 'Unable to start restore.' }))) as { error?: string };
+      if (!response.ok) {
+        throw new Error(typeof body.error === 'string' ? body.error : 'Unable to start restore.');
+      }
+      await refresh();
+    } finally {
+      setIsRestoring(false);
     }
   }
 
@@ -93,9 +114,11 @@ export function useBackups() {
 
   return {
     isJobRunning,
+    isRestoring,
     isStarting,
     refresh,
     startBackup,
+    startRestore,
     state,
   };
 }

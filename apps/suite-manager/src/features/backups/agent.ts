@@ -4,9 +4,11 @@ import http from 'node:http';
 import type { SuiteManagerConfig } from '../../config.ts';
 
 export type BackupAgentJobSummary = {
+  backupPath: string | null;
   destinationId: string | null;
   error: string | null;
   id: string;
+  kind: string | null;
   logs?: Array<{ at?: string; message?: string }>;
   outputPath: string | null;
   stage: string | null;
@@ -139,4 +141,11 @@ export async function startAgentBackup(
   payload: { destinationId: string; initiator: string },
 ): Promise<{ job: Record<string, unknown> }> {
   return requestAgent<{ job: Record<string, unknown> }>(config, 'POST', '/v1/jobs', payload);
+}
+
+export async function startAgentRestore(
+  config: SuiteManagerConfig,
+  payload: { backupPath: string; confirmation: string; initiator: string },
+): Promise<{ job: Record<string, unknown> }> {
+  return requestAgent<{ job: Record<string, unknown> }>(config, 'POST', '/v1/restores', payload);
 }

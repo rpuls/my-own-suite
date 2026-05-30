@@ -23,7 +23,7 @@ const capabilities = {
     capabilities: ['list'],
   },
   restores: {
-    capabilities: ['plan'],
+    capabilities: ['plan', 'apply'],
   },
 };
 
@@ -142,6 +142,8 @@ function summarizeJob(job) {
     destinationId: job.destinationId || null,
     error: typeof job.error === 'string' ? job.error : null,
     id: job.id,
+    backupPath: job.backupPath || null,
+    kind: job.kind || null,
     logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [],
     outputPath: job.outputPath || null,
     stage: job.stage || null,
@@ -322,6 +324,53 @@ function createJob(payload) {
   return job;
 }
 
+function normalizeBackupPath(candidate) {
+  const resolved = normalizeDestination(path.dirname(path.dirname(String(candidate || ''))))
+    ? path.resolve(String(candidate || ''))
+    : null;
+
+  if (!resolved) {
+    return null;
+  }
+
+  const manifestPath = path.join(resolved, 'manifest.json');
+  if (!fs.existsSync(manifestPath)) {
+    return null;
+  }
+
+  return resolved;
+}
+
+function createRestoreJob(payload) {
+  const backupPath = normalizeBackupPath(payload.backupPath);
+  if (!backupPath) {
+    throw new Error('Choose a detected backup bundle from a mounted destination.');
+  }
+
+  if (payload.confirmation !== 'RESTORE') {
+    throw new Error('Restore confirmation is required.');
+  }
+
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const job = {
+    id,
+    backupPath,
+    kind: 'restore',
+    stage: 'queued',
+    status: 'queued',
+    createdAt: now,
+    updatedAt: now,
+    initiator: payload.initiator || 'unknown',
+    logs: [],
+    outputPath: backupPath,
+  };
+
+  writeJson(jobFilePath(id), job);
+  writeJson(currentJobPath, job);
+  return job;
+}
+
 function spawnWorker(job) {
   const workerPath = path.join(repoDir, 'agents', 'selfhost', 'backup', 'agent', 'mos-backup-worker.cjs');
   const args = [workerPath, '--job-id', job.id, '--job-file', jobFilePath(job.id)];
@@ -364,6 +413,34 @@ async function handleCreateJob(request, response) {
     json(response, 202, { job });
   } catch (error) {
     json(response, 400, { error: error instanceof Error ? error.message : 'Unable to start backup.' });
+  }
+}
+
+async function handleCreateRestoreJob(request, response) {
+  const existing = readCurrentJob();
+  if (isActiveJob(existing)) {
+    json(response, 409, {
+      currentJob: summarizeJob(existing),
+      error: 'A backup or restore job is already running.',
+    });
+    return;
+  }
+
+  let payload = {};
+  try {
+    const rawBody = await readBody(request);
+    payload = rawBody.trim() ? JSON.parse(rawBody) : {};
+  } catch {
+    json(response, 400, { error: 'Invalid JSON request body.' });
+    return;
+  }
+
+  try {
+    const job = createRestoreJob(payload);
+    spawnWorker(job);
+    json(response, 202, { job });
+  } catch (error) {
+    json(response, 400, { error: error instanceof Error ? error.message : 'Unable to start restore.' });
   }
 }
 
@@ -414,6 +491,11 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === 'POST' && url.pathname === '/v1/jobs') {
     await handleCreateJob(request, response);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/v1/restores') {
+    await handleCreateRestoreJob(request, response);
     return;
   }
 

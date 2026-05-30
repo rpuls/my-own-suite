@@ -1,7 +1,9 @@
 export type BackupJobSummary = {
+  backupPath: string | null;
   destinationId: string | null;
   error: string | null;
   id: string;
+  kind: string | null;
   logs?: Array<{ at?: string; message?: string }>;
   outputPath: string | null;
   stage: string | null;
@@ -41,6 +43,7 @@ export type BackupsStatus = {
   error: string | null;
   lastJob: BackupJobSummary | null;
   restorePlanAvailable: boolean;
+  restoreApplyAvailable: boolean;
   serviceAvailable: boolean;
   startBackupAvailable: boolean;
 };

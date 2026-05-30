@@ -561,6 +561,36 @@
   overflow-wrap: anywhere;
 }
 
+.suite-backup-restore-button {
+  width: fit-content;
+}
+
+.suite-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.suite-restore-modal {
+  display: grid;
+  gap: 1rem;
+  width: min(100%, 560px);
+  padding: 1.2rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--mos-radius-md);
+  background: var(--mos-color-surface-elevated);
+  box-shadow: var(--mos-shadow-strong);
+}
+
+.suite-restore-modal h2,
+.suite-restore-modal p {
+  margin: 0;
+}
+
 .suite-backup-destination {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

@@ -42,7 +42,7 @@ function JobPanel({ job, title }: { job: BackupJobSummary | null; title: string 
     <div className="suite-updates-job">
       <strong>{title}</strong>
       <p className="suite-meta mos-meta">
-        {job.status || 'unknown'} in stage {job.stage || 'unknown'}.
+        {job.kind || 'job'} {job.status || 'unknown'} in stage {job.stage || 'unknown'}.
         {job.updatedAt ? ` Last update ${formatDate(job.updatedAt)}.` : ''}
       </p>
       {job.outputPath ? <p className="suite-meta mos-meta">Output: {job.outputPath}</p> : null}
@@ -152,7 +152,17 @@ function ManagedInfrastructureGuidance({ error, onRefresh }: { error: string | n
   );
 }
 
-function BackupBundleList({ backups }: { backups: BackupBundle[] }) {
+function BackupBundleList({
+  backups,
+  canRestore,
+  isRestoring,
+  onRestore,
+}: {
+  backups: BackupBundle[];
+  canRestore: boolean;
+  isRestoring: boolean;
+  onRestore: (backup: BackupBundle) => void;
+}) {
   if (backups.length === 0) {
     return (
       <p className="suite-meta mos-meta">
@@ -186,6 +196,14 @@ function BackupBundleList({ backups }: { backups: BackupBundle[] }) {
             </div>
           </dl>
           <p className="suite-meta mos-meta suite-backup-bundle-path">{backup.path}</p>
+          <button
+            className="suite-copy-button suite-backup-restore-button"
+            disabled={!canRestore || isRestoring}
+            onClick={() => onRestore(backup)}
+            type="button"
+          >
+            Restore
+          </button>
         </article>
       ))}
     </div>
@@ -193,8 +211,11 @@ function BackupBundleList({ backups }: { backups: BackupBundle[] }) {
 }
 
 export default function BackupsApp() {
-  const { isJobRunning, isStarting, refresh, startBackup, state } = useBackups();
+  const { isJobRunning, isRestoring, isStarting, refresh, startBackup, startRestore, state } = useBackups();
   const [selectedDestinationId, setSelectedDestinationId] = useState<string>('');
+  const [restoreConfirmation, setRestoreConfirmation] = useState('');
+  const [selectedRestore, setSelectedRestore] = useState<BackupBundle | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const loaded = state.kind === 'loaded' ? state.status : null;
   const selectedDestination = loaded?.destinations.find((destination) => destination.id === selectedDestinationId);
@@ -202,6 +223,31 @@ export default function BackupsApp() {
     Boolean(loaded?.serviceAvailable && loaded.startBackupAvailable && selectedDestination?.writable) &&
     !isStarting &&
     !isJobRunning;
+  const canRestore = Boolean(loaded?.restoreApplyAvailable) && !isRestoring && !isJobRunning;
+
+  async function handleStartBackup(): Promise<void> {
+    setActionError(null);
+    try {
+      await startBackup(selectedDestinationId);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to start backup.');
+    }
+  }
+
+  async function handleStartRestore(): Promise<void> {
+    if (!selectedRestore) {
+      return;
+    }
+
+    setActionError(null);
+    try {
+      await startRestore(selectedRestore.path, restoreConfirmation);
+      setSelectedRestore(null);
+      setRestoreConfirmation('');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to start restore.');
+    }
+  }
 
   return (
     <main className="suite-app">
@@ -217,6 +263,7 @@ export default function BackupsApp() {
         <div className="mos-panel suite-card suite-updates-card suite-backups-card">
           {state.kind === 'loading' ? <p className="suite-empty">Loading backup state...</p> : null}
           {state.kind === 'error' ? <p className="suite-error">{state.message}</p> : null}
+          {actionError ? <p className="suite-error">{actionError}</p> : null}
 
           {loaded && !loaded.serviceAvailable ? (
             <ManagedInfrastructureGuidance error={loaded.error} onRefresh={() => void refresh()} />
@@ -313,7 +360,7 @@ export default function BackupsApp() {
                   <button
                     className="suite-copy-button"
                     disabled={!canStart}
-                    onClick={() => void startBackup(selectedDestinationId)}
+                    onClick={() => void handleStartBackup()}
                     type="button"
                   >
                     {isStarting ? 'Starting...' : 'Start backup'}
@@ -334,16 +381,75 @@ export default function BackupsApp() {
                 </div>
 
                 <p className="suite-meta mos-meta">
-                  Restore is still manual and version-paired. These detected bundles are listed now so a future restore
-                  action can start from a known manifest instead of a hand-entered path.
+                  Restore stops the current stack, replaces MOS Docker volumes and runtime config from the selected bundle,
+                  then starts the recorded profiles. Use this only on a fresh or intentionally disposable install.
                 </p>
 
-                <BackupBundleList backups={loaded.backups} />
+                <BackupBundleList
+                  backups={loaded.backups}
+                  canRestore={canRestore}
+                  isRestoring={isRestoring}
+                  onRestore={(backup) => {
+                    setActionError(null);
+                    setSelectedRestore(backup);
+                    setRestoreConfirmation('');
+                  }}
+                />
               </article>
             </div>
           ) : null}
         </div>
       </section>
+
+      {selectedRestore ? (
+        <div className="suite-modal-backdrop" role="presentation">
+          <section aria-modal="true" className="suite-restore-modal mos-panel" role="dialog">
+            <h2 className="mos-card-title">Restore this backup?</h2>
+            <p className="suite-warning">
+              This will stop My Own Suite, remove current MOS Docker volumes, restore data from the selected backup, and
+              restart the recorded profiles.
+            </p>
+            <dl className="suite-backup-bundle-facts">
+              <div>
+                <dt>Backup</dt>
+                <dd>{selectedRestore.sourceVersion ? `MOS ${selectedRestore.sourceVersion}` : selectedRestore.id}</dd>
+              </div>
+              <div>
+                <dt>Created</dt>
+                <dd>{formatDate(selectedRestore.createdAt)}</dd>
+              </div>
+              <div>
+                <dt>Volumes</dt>
+                <dd>{selectedRestore.volumeCount}</dd>
+              </div>
+            </dl>
+            <label className="suite-auth-field">
+              <span>Type RESTORE to continue</span>
+              <input
+                autoFocus
+                onChange={(event) => setRestoreConfirmation(event.target.value)}
+                value={restoreConfirmation}
+              />
+            </label>
+            <div className="suite-actions">
+              <button className="suite-copy-button suite-danger-button" disabled={restoreConfirmation !== 'RESTORE' || isRestoring} onClick={() => void handleStartRestore()} type="button">
+                {isRestoring ? 'Starting...' : 'Start restore'}
+              </button>
+              <button
+                className="suite-copy-button"
+                disabled={isRestoring}
+                onClick={() => {
+                  setSelectedRestore(null);
+                  setRestoreConfirmation('');
+                }}
+                type="button"
+              >
+                Cancel
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

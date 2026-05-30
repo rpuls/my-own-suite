@@ -23,5 +23,18 @@ export function createBackupsRouter(backupsService: BackupsService): Hono {
     }
   });
 
+  router.post('/backups/restore', async (c) => {
+    try {
+      const body = (await c.req.json().catch(() => ({}))) as { backupPath?: string; confirmation?: string };
+      const result = await backupsService.startRestore((body.backupPath || '').trim(), (body.confirmation || '').trim());
+      return c.json(result, 202);
+    } catch (caughtError) {
+      return c.json(
+        { error: caughtError instanceof Error ? caughtError.message : 'Unable to start restore.' },
+        409,
+      );
+    }
+  });
+
   return router;
 }

@@ -2,6 +2,7 @@ import type { SuiteManagerConfig } from '../../config.ts';
 import {
   readBackupAgentStatus,
   startAgentBackup,
+  startAgentRestore,
   type BackupAgentBundle,
   type BackupAgentDestination,
   type BackupAgentJobSummary,
@@ -15,6 +16,7 @@ export type BackupsStatus = {
   error: string | null;
   lastJob: BackupAgentJobSummary | null;
   restorePlanAvailable: boolean;
+  restoreApplyAvailable: boolean;
   serviceAvailable: boolean;
   startBackupAvailable: boolean;
 };
@@ -54,6 +56,7 @@ export class BackupsService {
         error: null,
         lastJob: null,
         restorePlanAvailable: false,
+        restoreApplyAvailable: false,
         serviceAvailable: false,
         startBackupAvailable: false,
       };
@@ -69,6 +72,7 @@ export class BackupsService {
         error: null,
         lastJob: agent.lastJob,
         restorePlanAvailable: hasAgentCapability(agent.capabilities, 'restores', 'plan'),
+        restoreApplyAvailable: hasAgentCapability(agent.capabilities, 'restores', 'apply'),
         serviceAvailable: true,
         startBackupAvailable: hasAgentCapability(agent.capabilities, 'backups', 'create'),
       };
@@ -81,6 +85,7 @@ export class BackupsService {
         error: caughtError instanceof Error ? caughtError.message : 'Backup agent is unavailable.',
         lastJob: null,
         restorePlanAvailable: false,
+        restoreApplyAvailable: false,
         serviceAvailable: false,
         startBackupAvailable: false,
       };
@@ -108,6 +113,32 @@ export class BackupsService {
 
     return startAgentBackup(this.config, {
       destinationId,
+      initiator: this.config.ownerEmail,
+    });
+  }
+
+  async startRestore(backupPath: string, confirmation: string): Promise<{ job: Record<string, unknown> }> {
+    const status = await this.getStatus();
+    if (!status.restoreApplyAvailable) {
+      throw new Error('Managed restore capability is unavailable.');
+    }
+
+    if (isRunning(status.currentJob)) {
+      throw new Error('A backup or restore job is already running.');
+    }
+
+    const backup = status.backups.find((candidate) => candidate.path === backupPath);
+    if (!backup) {
+      throw new Error('Selected backup bundle is no longer available.');
+    }
+
+    if (confirmation !== 'RESTORE') {
+      throw new Error('Type RESTORE to confirm this destructive restore.');
+    }
+
+    return startAgentRestore(this.config, {
+      backupPath,
+      confirmation,
       initiator: this.config.ownerEmail,
     });
   }

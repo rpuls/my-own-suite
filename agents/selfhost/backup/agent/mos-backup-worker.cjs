@@ -41,6 +41,7 @@ const serviceProfiles = {
   vaultwarden: 'vaultwarden',
   'vaultwarden-postgres': 'vaultwarden',
 };
+const allProfiles = ['vaultwarden', 'seafile', 'onlyoffice', 'stirling-pdf', 'radicale', 'immich'];
 
 if (!jobFile) {
   process.stderr.write('Missing --job-file.\n');
@@ -134,6 +135,14 @@ function compose(args, options = {}) {
 
 function profileArgs(profiles) {
   return profiles.flatMap((profile) => ['--profile', profile]);
+}
+
+function normalizeProfiles(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(new Set(value.filter((profile) => allProfiles.includes(profile)))).sort();
 }
 
 function getRunningServices() {
@@ -302,9 +311,95 @@ function writeRestoreNotes(outputDir) {
       '',
       'Restore is intentionally version-paired. Check out or install the MOS version/commit recorded in `manifest.json` before restoring these files and volumes.',
       '',
-      'Automated restore support is still being implemented. Until then, keep this whole folder intact and do not edit the archives.',
+      'Suite Manager can start a host-owned restore job from this bundle when the backup agent is available. Keep this whole folder intact and do not edit the archives.',
     ].join('\n'),
   );
+}
+
+function assertInside(childPath, parentPath) {
+  const relative = path.relative(path.resolve(parentPath), path.resolve(childPath));
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(`Refusing to restore path outside ${parentPath}.`);
+  }
+}
+
+function readBackupManifest(bundlePath) {
+  const manifestPath = path.join(bundlePath, 'manifest.json');
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error('Backup manifest was not found.');
+  }
+
+  const manifest = readJson(manifestPath);
+  if (manifest.backup?.kind !== 'mos-offline-snapshot') {
+    throw new Error('Backup manifest is not a MOS offline snapshot.');
+  }
+
+  if (Number(manifest.backup?.schemaVersion) !== 1) {
+    throw new Error('Backup manifest schema version is not supported.');
+  }
+
+  return manifest;
+}
+
+function restoreConfigArchive(bundlePath) {
+  const archivePath = path.join(bundlePath, 'mos-config.tar.gz');
+  if (!fs.existsSync(archivePath)) {
+    throw new Error('Configuration archive was not found in the backup bundle.');
+  }
+
+  const restoreRoot = path.join(repoDir, 'deploy', 'vps');
+  const tempRoot = fs.mkdtempSync(path.join(path.dirname(jobFile), 'restore-config-'));
+  command('tar', ['-xzf', archivePath, '-C', tempRoot], { timeout: 300_000 });
+
+  const envSource = path.join(tempRoot, 'deploy-vps.env');
+  if (fs.existsSync(envSource)) {
+    fs.copyFileSync(envSource, path.join(restoreRoot, '.env'));
+  }
+
+  copyIfExists(path.join(tempRoot, 'services'), path.join(restoreRoot, 'services'));
+
+  const selfhostOverride = path.join(tempRoot, 'docker-compose.selfhost.yml');
+  if (fs.existsSync(selfhostOverride)) {
+    fs.copyFileSync(selfhostOverride, path.join(restoreRoot, 'docker-compose.selfhost.yml'));
+  }
+
+  fs.rmSync(tempRoot, { force: true, recursive: true });
+}
+
+function verifyArchiveChecksum(archivePath, expectedSha256) {
+  if (!expectedSha256) {
+    return;
+  }
+
+  const actual = sha256File(archivePath);
+  if (actual !== expectedSha256) {
+    throw new Error(`Archive checksum mismatch for ${archivePath}.`);
+  }
+}
+
+function restoreVolume(volumeEntry, bundlePath) {
+  if (!volumeEntry?.name || !volumeEntry?.archive) {
+    throw new Error('Backup manifest contains an invalid volume entry.');
+  }
+
+  if (!String(volumeEntry.name).startsWith('mos_')) {
+    throw new Error(`Refusing to restore non-MOS Docker volume ${volumeEntry.name}.`);
+  }
+
+  const archivePath = path.join(bundlePath, volumeEntry.archive);
+  assertInside(archivePath, bundlePath);
+  if (!fs.existsSync(archivePath)) {
+    throw new Error(`Volume archive was not found: ${volumeEntry.archive}`);
+  }
+
+  verifyArchiveChecksum(archivePath, volumeEntry.archiveSha256);
+
+  if (optionalCommand('docker', ['volume', 'inspect', volumeEntry.name])) {
+    command('docker', ['volume', 'rm', volumeEntry.name], { timeout: 300_000 });
+  }
+  command('docker', ['volume', 'create', volumeEntry.name], { timeout: 300_000 });
+  const restoredVolume = inspectVolume(volumeEntry.name);
+  command('tar', ['-xzf', archivePath, '-C', restoredVolume.mountpoint], { timeout: 1_800_000 });
 }
 
 function buildManifest(job, outputDir, snapshot) {
@@ -359,6 +454,11 @@ function main() {
   });
 
   try {
+    if (started.kind === 'restore') {
+      restoreBackup(started);
+      return;
+    }
+
     stage('Preparing backup directory');
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const outputDir = path.join(started.destinationId, 'MOS-backups', `mos-backup-${stamp}-${started.id.slice(0, 8)}`);
@@ -433,6 +533,53 @@ function main() {
       job.status = 'failed';
     });
   }
+}
+
+function restoreBackup(started) {
+  stage('Reading backup manifest');
+  const bundlePath = path.resolve(started.backupPath || '');
+  const manifest = readBackupManifest(bundlePath);
+  const volumes = Array.isArray(manifest.contents?.volumes) ? manifest.contents.volumes : [];
+  const activeProfiles = normalizeProfiles(manifest.source?.activeProfiles);
+
+  updateJob((job) => {
+    job.outputPath = bundlePath;
+  });
+
+  stage('Verifying backup archives');
+  const configArchive = path.join(bundlePath, 'mos-config.tar.gz');
+  verifyArchiveChecksum(configArchive, manifest.contents?.configArchiveSha256);
+  for (const volume of volumes) {
+    const archivePath = path.join(bundlePath, volume.archive || '');
+    assertInside(archivePath, bundlePath);
+    verifyArchiveChecksum(archivePath, volume.archiveSha256);
+  }
+
+  stage('Stopping current MOS stack');
+  compose([...profileArgs(allProfiles), 'down'], { timeout: 900_000 });
+
+  try {
+    stage('Restoring runtime configuration');
+    restoreConfigArchive(bundlePath);
+
+    stage('Restoring Docker volumes');
+    for (const volume of volumes) {
+      log(`Restoring volume ${volume.name}`);
+      restoreVolume(volume, bundlePath);
+    }
+  } catch (error) {
+    stage('Starting MOS stack after failed restore');
+    compose([...profileArgs(activeProfiles), 'up', '-d'], { timeout: 900_000 });
+    throw error;
+  }
+
+  stage('Starting restored MOS stack');
+  compose([...profileArgs(activeProfiles), 'up', '-d'], { timeout: 900_000 });
+
+  updateJob((job) => {
+    job.stage = 'completed';
+    job.status = 'succeeded';
+  });
 }
 
 main();
