@@ -19,9 +19,12 @@ export type BackupAgentJobSummary = {
 
 export type BackupAgentDestination = {
   availableBytes: number | null;
+  devicePath?: string | null;
+  fileSystem?: string | null;
   id: string;
   label: string;
-  mountPath: string;
+  mountPath: string | null;
+  mountState?: 'mounted' | 'unmounted' | 'unsupported-mount';
   sizeBytes: number | null;
   transport: string | null;
   writable: boolean;

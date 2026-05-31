@@ -73,22 +73,40 @@ function DestinationButton({
   isSelected: boolean;
   onSelect: (id: string) => void;
 }) {
+  const mountState = destination.mountState || 'mounted';
+  const statusText =
+    mountState === 'mounted'
+      ? destination.writable
+        ? 'ready'
+        : 'read only'
+      : mountState === 'unsupported-mount'
+        ? 'mounted outside backup paths'
+        : 'not mounted';
+
   return (
     <button
       className={`suite-backup-destination${isSelected ? ' is-selected' : ''}`}
-      disabled={disabled || !destination.writable}
+      disabled={disabled || !destination.writable || mountState !== 'mounted'}
       onClick={() => onSelect(destination.id)}
       type="button"
     >
       <HardDrive aria-hidden="true" className="suite-backup-drive-icon" />
       <span className="suite-backup-destination-copy">
-        <strong>{destination.label || destination.mountPath}</strong>
-        <span>{destination.mountPath}</span>
+        <strong>{destination.label || destination.mountPath || destination.devicePath || 'External drive'}</strong>
+        <span>{destination.mountPath || destination.devicePath || 'No device path reported'}</span>
+        {mountState !== 'mounted' ? (
+          <span className="suite-warning">
+            {mountState === 'unsupported-mount'
+              ? 'Mount this drive under /media, /mnt, or /run/media to use it for MOS backups.'
+              : 'The drive is connected but not mounted. Mount it first, then scan again.'}
+          </span>
+        ) : null}
       </span>
       <span className="suite-backup-destination-meta">
-        {formatBytes(destination.availableBytes)} free
+        {mountState === 'mounted' ? `${formatBytes(destination.availableBytes)} free` : statusText}
         {destination.transport ? ` - ${destination.transport}` : ''}
-        {!destination.writable ? ' - read only' : ''}
+        {destination.fileSystem ? ` - ${destination.fileSystem}` : ''}
+        {mountState === 'mounted' && !destination.writable ? ' - read only' : ''}
       </span>
     </button>
   );
@@ -353,7 +371,8 @@ export default function BackupsApp() {
 
                 {loaded.destinations.length === 0 ? (
                   <p className="suite-meta mos-meta">
-                    Mount an external drive under /media, /mnt, or /run/media, then scan again.
+                    Plug in an external drive. If it is already plugged in, make sure Linux sees it as a removable or USB
+                    block device, then mount it under /media, /mnt, or /run/media.
                   </p>
                 ) : null}
 
