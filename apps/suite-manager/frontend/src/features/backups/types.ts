@@ -23,6 +23,7 @@ export type BackupDestination = {
   mountPath: string | null;
   mountState?: 'mounted' | 'unmounted' | 'unsupported-mount';
   sizeBytes: number | null;
+  storageKind?: 'external' | 'local' | 'network' | null;
   transport: string | null;
   writable: boolean;
 };

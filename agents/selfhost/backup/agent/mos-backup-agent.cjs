@@ -287,6 +287,14 @@ function transportLabel(device) {
   return null;
 }
 
+function storageKindForDevice(device) {
+  if (device.tran === 'usb' || isLikelyExternalDevice(device)) {
+    return 'external';
+  }
+
+  return 'local';
+}
+
 function sanitizeMountName(value) {
   const safe = String(value || '')
     .trim()
@@ -310,10 +318,25 @@ function isSystemMountpoint(mountpoint) {
   );
 }
 
-function mountBlockReason(device) {
+function destinationIsRelevant(destination) {
+  return destination.mountState === 'mounted' || destination.canMount === true;
+}
+
+function isLikelySystemPartition(device) {
   const fileSystem = String(device.fstype || '').toLowerCase();
   const label = String(device.label || '').trim().toLowerCase();
   const sizeBytes = Number(device.size) || 0;
+  const points = Array.isArray(device.mountpoints) ? device.mountpoints.filter(Boolean) : [];
+
+  return (
+    label === 'efi' ||
+    (fileSystem === 'vfat' && sizeBytes > 0 && sizeBytes < 1024 * 1024 * 1024) ||
+    points.some(isSystemMountpoint)
+  );
+}
+
+function mountBlockReason(device) {
+  const fileSystem = String(device.fstype || '').toLowerCase();
 
   if (device.type !== 'part') {
     return 'Choose a data partition, not the whole device.';
@@ -331,13 +354,8 @@ function mountBlockReason(device) {
     return `The ${fileSystem} filesystem is not mounted automatically yet.`;
   }
 
-  if (label === 'efi' || (fileSystem === 'vfat' && sizeBytes > 0 && sizeBytes < 1024 * 1024 * 1024)) {
+  if (isLikelySystemPartition(device)) {
     return 'This looks like a small EFI/system partition, not a backup drive.';
-  }
-
-  const points = Array.isArray(device.mountpoints) ? device.mountpoints.filter(Boolean) : [];
-  if (points.some(isSystemMountpoint)) {
-    return 'This partition is already used by the running system.';
   }
 
   return null;
@@ -374,7 +392,7 @@ async function listDestinations() {
   const candidates = new Map();
 
   function visit(device, inheritedExternal = false) {
-    if (hiddenBlockDeviceTypes.has(String(device.type || '').toLowerCase())) {
+    if (hiddenBlockDeviceTypes.has(String(device.type || '').toLowerCase()) || isLikelySystemPartition(device)) {
       return;
     }
 
@@ -396,6 +414,7 @@ async function listDestinations() {
           label,
           mountPath: normalized,
           mountState: 'mounted',
+          storageKind: storageKindForDevice(device),
           transport: transportLabel(device),
           sizeBytes: Number(device.size) || null,
         });
@@ -413,6 +432,7 @@ async function listDestinations() {
         mountBlockedReason: blockedReason,
         mountPath: points.find(Boolean) || null,
         mountState: points.some(Boolean) ? 'unsupported-mount' : 'unmounted',
+        storageKind: storageKindForDevice(device),
         transport: transportLabel(device),
         sizeBytes: Number(device.size) || null,
       });
@@ -439,6 +459,7 @@ async function listDestinations() {
         label: path.basename(normalized) || mount.source || 'Mounted storage',
         mountPath: normalized,
         mountState: 'mounted',
+        storageKind: networkFileSystems.has(String(fileSystem || '').toLowerCase()) ? 'network' : 'local',
         transport: networkFileSystems.has(String(fileSystem || '').toLowerCase()) ? 'network' : 'mounted',
         sizeBytes: Number(mount.size) || null,
       });
@@ -453,7 +474,7 @@ async function listDestinations() {
     visitMount(mount);
   }
 
-  return Array.from(candidates.values()).map((destination) => {
+  return Array.from(candidates.values()).filter(destinationIsRelevant).map((destination) => {
     let availableBytes = null;
     if (destination.mountState === 'mounted' && destination.mountPath) {
       try {
