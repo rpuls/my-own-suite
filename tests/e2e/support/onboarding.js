@@ -239,16 +239,9 @@ async function ensureVaultwardenSession(page) {
 }
 
 async function importVaultwardenCsv(page, importUrl, csvImport) {
+  await ensureVaultwardenSession(page);
   await page.goto(importUrl);
   await page.waitForLoadState('domcontentloaded');
-  await signInToVaultwardenIfNeeded(page);
-
-  if (!/#\/tools\/import/i.test(page.url())) {
-    await page.goto(importUrl);
-    await page.waitForLoadState('domcontentloaded');
-  }
-
-  await expect(page.getByRole('heading', { name: 'Import' })).toBeVisible({ timeout: 30000 });
 
   const fileFormatField = page.locator('bit-form-field').filter({ hasText: /File format\s*\(required\)/i }).first();
   await dismissVaultwardenExtensionPrompt(page, fileFormatField);

@@ -8,6 +8,7 @@ SUITE_MANAGER_SELFHOST_ENV="${VPS_DIR}/services/suite-manager/.env.selfhost"
 SELFHOST_COMPOSE_OVERRIDE="${VPS_DIR}/docker-compose.selfhost.yml"
 UPDATE_AGENT_INSTALLER="${REPO_DIR}/agents/selfhost/update/install.sh"
 SERVICE_AGENT_INSTALLER="${REPO_DIR}/agents/selfhost/service/install.sh"
+BACKUP_AGENT_INSTALLER="${REPO_DIR}/agents/selfhost/backup/install.sh"
 
 log() {
   printf '[mos-host-agents] %s\n' "$1"
@@ -61,6 +62,13 @@ else
   log "Skipping service-agent install because ${SERVICE_AGENT_INSTALLER} was not found."
 fi
 
+if [[ -f "${BACKUP_AGENT_INSTALLER}" ]]; then
+  log "Installing or refreshing self-host backup agent."
+  bash "${BACKUP_AGENT_INSTALLER}" "${REPO_DIR}"
+else
+  log "Skipping backup-agent install because ${BACKUP_AGENT_INSTALLER} was not found."
+fi
+
 log "Writing Suite Manager self-host agent environment."
 mkdir -p "$(dirname "${SUITE_MANAGER_SELFHOST_ENV}")"
 cat > "${SUITE_MANAGER_SELFHOST_ENV}" <<'EOF'
@@ -70,6 +78,8 @@ SUITE_MANAGER_UPDATES_AGENT_SOCKET_PATH=/run/mos-update-agent/agent.sock
 SUITE_MANAGER_UPDATES_AGENT_TOKEN_FILE=/etc/mos-update-agent/auth.token
 SUITE_MANAGER_SERVICE_AGENT_SOCKET_PATH=/run/mos-service-agent/agent.sock
 SUITE_MANAGER_SERVICE_AGENT_TOKEN_FILE=/etc/mos-service-agent/auth.token
+SUITE_MANAGER_BACKUP_AGENT_SOCKET_PATH=/run/mos-backup-agent/agent.sock
+SUITE_MANAGER_BACKUP_AGENT_TOKEN_FILE=/etc/mos-backup-agent/auth.token
 EOF
 chmod 0600 "${SUITE_MANAGER_SELFHOST_ENV}"
 
@@ -90,6 +100,8 @@ services:
       - /etc/mos-update-agent/auth.token:/etc/mos-update-agent/auth.token:ro
       - /run/mos-service-agent:/run/mos-service-agent
       - /etc/mos-service-agent/auth.token:/etc/mos-service-agent/auth.token:ro
+      - /run/mos-backup-agent:/run/mos-backup-agent
+      - /etc/mos-backup-agent/auth.token:/etc/mos-backup-agent/auth.token:ro
 EOF
 
 log "Host-agent reconciliation complete."
