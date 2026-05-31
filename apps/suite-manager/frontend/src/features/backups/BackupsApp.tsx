@@ -96,6 +96,18 @@ function DestinationButton({
     : destination.sizeBytes
       ? formatBytes(destination.sizeBytes)
       : statusText;
+  const storageKindLabel =
+    destination.storageKind === 'network'
+      ? 'Network storage'
+      : destination.storageKind === 'local'
+        ? 'Local storage'
+        : 'External drive';
+  const destinationName = destination.label || destination.mountPath || destination.devicePath || 'Backup storage';
+  const subtitle = isMounted
+    ? `Mounted at ${destination.mountPath || 'backup path'}`
+    : destination.canMount
+      ? 'Ready to mount for backups'
+      : destination.devicePath || 'Storage device';
 
   function handleDestinationClick(): void {
     if (canSelect) {
@@ -118,8 +130,8 @@ function DestinationButton({
     >
       <HardDrive aria-hidden="true" className="suite-backup-drive-icon" />
       <span className="suite-backup-destination-copy">
-        <strong>{destination.label || destination.mountPath || destination.devicePath || 'External drive'}</strong>
-        <span>{destination.mountPath || destination.devicePath || 'No device path reported'}</span>
+        <strong>{storageKindLabel}: {destinationName}</strong>
+        <span>{subtitle}</span>
         {!isMounted ? (
           <span className="suite-warning">
             {destination.mountBlockedReason ||
@@ -132,7 +144,6 @@ function DestinationButton({
       <span className="suite-backup-destination-meta">
         {capacityText}
         {!isMounted && destination.sizeBytes ? ` - ${statusText}` : ''}
-        {destination.transport ? ` - ${destination.transport}` : ''}
         {destination.fileSystem ? ` - ${destination.fileSystem}` : ''}
         {isMounted && !destination.writable ? ' - read only' : ''}
       </span>
