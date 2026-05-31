@@ -14,9 +14,12 @@ export type BackupJobSummary = {
 
 export type BackupDestination = {
   availableBytes: number | null;
+  devicePath?: string | null;
+  fileSystem?: string | null;
   id: string;
   label: string;
-  mountPath: string;
+  mountPath: string | null;
+  mountState?: 'mounted' | 'unmounted' | 'unsupported-mount';
   sizeBytes: number | null;
   transport: string | null;
   writable: boolean;

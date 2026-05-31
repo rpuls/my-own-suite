@@ -187,6 +187,10 @@ function listBackupBundles(destinations) {
   const bundles = [];
 
   for (const destination of destinations) {
+    if (!destination.mountPath) {
+      continue;
+    }
+
     const backupsRoot = path.join(destination.mountPath, 'MOS-backups');
     if (!fs.existsSync(backupsRoot)) {
       continue;
@@ -222,6 +226,26 @@ function listBackupBundles(destinations) {
   });
 }
 
+function normalizeMountpoint(candidate) {
+  const value = String(candidate || '').trim();
+  if (!value) {
+    return null;
+  }
+
+  return normalizeDestination(value);
+}
+
+function isLikelyExternalDevice(device, inheritedExternal = false) {
+  return (
+    inheritedExternal ||
+    device.tran === 'usb' ||
+    device.rm === true ||
+    device.rm === 1 ||
+    device.rm === '1' ||
+    device.rm === 'true'
+  );
+}
+
 function normalizeDestination(candidate) {
   const resolved = path.resolve(String(candidate || ''));
   const allowed = destinationRoots.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`));
@@ -243,26 +267,53 @@ function normalizeDestination(candidate) {
 }
 
 async function listDestinations() {
-  const lsblk = await execJson('lsblk', ['--json', '--bytes', '--output', 'NAME,LABEL,MODEL,TRAN,SIZE,MOUNTPOINTS']);
-  const mountpoints = [];
+  const lsblk = await execJson('lsblk', [
+    '--json',
+    '--bytes',
+    '--output',
+    'NAME,PATH,LABEL,MODEL,TRAN,RM,TYPE,FSTYPE,SIZE,MOUNTPOINTS',
+  ]);
+  const candidates = [];
 
-  function visit(device) {
+  function visit(device, inheritedExternal = false) {
+    const external = isLikelyExternalDevice(device, inheritedExternal);
     const points = Array.isArray(device.mountpoints) ? device.mountpoints : [];
+    const label = device.label || device.model || device.name || device.path || 'External drive';
+    const devicePath = device.path || (device.name ? `/dev/${device.name}` : null);
+    let hasSupportedMount = false;
+
     for (const mountpoint of points) {
-      const normalized = normalizeDestination(mountpoint);
+      const normalized = normalizeMountpoint(mountpoint);
       if (normalized) {
-        mountpoints.push({
+        hasSupportedMount = true;
+        candidates.push({
+          devicePath,
+          fileSystem: device.fstype || null,
           id: normalized,
-          label: device.label || device.model || path.basename(normalized),
+          label,
           mountPath: normalized,
+          mountState: 'mounted',
           transport: device.tran || null,
           sizeBytes: Number(device.size) || null,
         });
       }
     }
 
+    if (external && !hasSupportedMount && device.type !== 'disk') {
+      candidates.push({
+        devicePath,
+        fileSystem: device.fstype || null,
+        id: devicePath || label,
+        label,
+        mountPath: points.find(Boolean) || null,
+        mountState: points.some(Boolean) ? 'unsupported-mount' : 'unmounted',
+        transport: device.tran || null,
+        sizeBytes: Number(device.size) || null,
+      });
+    }
+
     for (const child of device.children || []) {
-      visit(child);
+      visit(child, external);
     }
   }
 
@@ -271,21 +322,23 @@ async function listDestinations() {
   }
 
   const unique = new Map();
-  for (const destination of mountpoints) {
-    unique.set(destination.mountPath, destination);
+  for (const destination of candidates) {
+    unique.set(destination.id, destination);
   }
 
   return Array.from(unique.values()).map((destination) => {
     let availableBytes = null;
-    try {
-      const stat = fs.statfsSync(destination.mountPath);
-      availableBytes = stat.bavail * stat.bsize;
-    } catch {}
+    if (destination.mountState === 'mounted' && destination.mountPath) {
+      try {
+        const stat = fs.statfsSync(destination.mountPath);
+        availableBytes = stat.bavail * stat.bsize;
+      } catch {}
+    }
 
     return {
       ...destination,
       availableBytes,
-      writable: isWritable(destination.mountPath),
+      writable: destination.mountState === 'mounted' && destination.mountPath ? isWritable(destination.mountPath) : false,
     };
   });
 }
