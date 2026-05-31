@@ -33,30 +33,61 @@ function jobIsRunning(job: BackupJobSummary | null): boolean {
   return Boolean(job && (job.status === 'running' || job.status === 'queued'));
 }
 
+function jobActionLabel(job: BackupJobSummary): string {
+  return job.kind === 'restore' ? 'Restore' : 'Backup';
+}
+
+function jobStatusLabel(job: BackupJobSummary): string {
+  const action = jobActionLabel(job);
+
+  if (job.status === 'succeeded') {
+    return `${action} completed`;
+  }
+
+  if (job.status === 'failed') {
+    return `${action} failed`;
+  }
+
+  if (job.status === 'running' || job.status === 'queued') {
+    return `${action} in progress`;
+  }
+
+  return `${action} status unknown`;
+}
+
 function JobPanel({ job, title }: { job: BackupJobSummary | null; title: string }) {
   if (!job) {
     return null;
   }
 
+  const isRunning = jobIsRunning(job);
+
   return (
     <div className="suite-updates-job">
       <strong>{title}</strong>
       <p className="suite-meta mos-meta">
-        {job.kind || 'job'} {job.status || 'unknown'} in stage {job.stage || 'unknown'}.
-        {job.updatedAt ? ` Last update ${formatDate(job.updatedAt)}.` : ''}
+        {jobStatusLabel(job)}
+        {job.updatedAt ? ` on ${formatDate(job.updatedAt)}.` : '.'}
       </p>
-      {job.outputPath ? <p className="suite-meta mos-meta">Output: {job.outputPath}</p> : null}
-      {job.rescuePath ? <p className="suite-meta mos-meta">Pre-restore rescue: {job.rescuePath}</p> : null}
+      {job.outputPath ? (
+        <p className="suite-meta mos-meta">
+          {job.kind === 'restore' ? 'Restored from' : 'Saved to'} {job.outputPath}
+        </p>
+      ) : null}
       {job.error ? <p className="suite-warning">{job.error}</p> : null}
       {job.logs && job.logs.length > 0 ? (
-        <ol className="suite-updates-job-log">
-          {job.logs.slice(-8).map((entry, index) => (
-            <li key={`${entry.at || 'log'}-${index}`}>
-              <span>{entry.at ? formatDate(entry.at) : 'Backup job'}</span>
-              <code>{entry.message || 'No message'}</code>
-            </li>
-          ))}
-        </ol>
+        <details className="suite-job-details" open={isRunning || job.status === 'failed'}>
+          <summary>{isRunning ? 'Show progress details' : 'Show technical details'}</summary>
+          {job.rescuePath ? <p className="suite-meta mos-meta">Pre-restore rescue: {job.rescuePath}</p> : null}
+          <ol className="suite-updates-job-log">
+            {job.logs.slice(-8).map((entry, index) => (
+              <li key={`${entry.at || 'log'}-${index}`}>
+                <span>{entry.at ? formatDate(entry.at) : 'Backup job'}</span>
+                <code>{entry.message || 'No message'}</code>
+              </li>
+            ))}
+          </ol>
+        </details>
       ) : null}
     </div>
   );
@@ -290,6 +321,8 @@ export default function BackupsApp() {
 
   const loaded = state.kind === 'loaded' ? state.status : null;
   const selectedDestination = loaded?.destinations.find((destination) => destination.id === selectedDestinationId);
+  const runningJob = loaded && jobIsRunning(loaded.currentJob) ? loaded.currentJob : null;
+  const latestCompletedJob = loaded && !runningJob ? loaded.lastJob || loaded.currentJob : null;
   const canStart =
     Boolean(loaded?.serviceAvailable && loaded.startBackupAvailable && selectedDestination?.writable) &&
     !isStarting &&
@@ -454,8 +487,8 @@ export default function BackupsApp() {
                   </button>
                 </div>
 
-                <JobPanel job={loaded.currentJob} title="Current job" />
-                {!jobIsRunning(loaded.currentJob) ? <JobPanel job={loaded.lastJob} title="Last job" /> : null}
+                <JobPanel job={runningJob} title="Backup activity" />
+                <JobPanel job={latestCompletedJob} title="Latest backup activity" />
               </article>
 
               <article className="suite-updates-panel suite-updates-panel-wide">

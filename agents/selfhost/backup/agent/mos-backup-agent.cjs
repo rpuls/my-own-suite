@@ -322,6 +322,19 @@ function destinationIsRelevant(destination) {
   return destination.mountState === 'mounted' || destination.canMount === true;
 }
 
+function mountSourceIsAvailable(source) {
+  const value = String(source || '').trim();
+  if (!value || !value.startsWith('/dev/')) {
+    return true;
+  }
+
+  return fs.existsSync(value);
+}
+
+function blockMountKey(devicePath, mountPath) {
+  return `${devicePath || ''}\0${mountPath || ''}`;
+}
+
 function isLikelySystemPartition(device) {
   const fileSystem = String(device.fstype || '').toLowerCase();
   const label = String(device.label || '').trim().toLowerCase();
@@ -390,6 +403,7 @@ async function listDestinations() {
   ]);
   const findmnt = await execJson('findmnt', ['--json', '--bytes', '--output', 'TARGET,SOURCE,FSTYPE,SIZE,AVAIL,OPTIONS']);
   const candidates = new Map();
+  const activeBlockMounts = new Set();
 
   function visit(device, inheritedExternal = false) {
     if (hiddenBlockDeviceTypes.has(String(device.type || '').toLowerCase()) || isLikelySystemPartition(device)) {
@@ -406,6 +420,7 @@ async function listDestinations() {
       const normalized = normalizeMountpoint(mountpoint);
       if (normalized) {
         hasSupportedMount = true;
+        activeBlockMounts.add(blockMountKey(devicePath, normalized));
         addUniqueDestination(candidates, {
           canMount: false,
           devicePath,
@@ -448,7 +463,15 @@ async function listDestinations() {
   }
 
   function visitMount(mount) {
+    const source = String(mount.source || '').trim();
     const normalized = normalizeMountpoint(mount.target);
+    if (
+      !mountSourceIsAvailable(source) ||
+      (source.startsWith('/dev/') && normalized && !activeBlockMounts.has(blockMountKey(source, normalized)))
+    ) {
+      return;
+    }
+
     if (normalized && !candidates.has(normalized)) {
       const fileSystem = mount.fstype || null;
       addUniqueDestination(candidates, {
@@ -474,7 +497,20 @@ async function listDestinations() {
     visitMount(mount);
   }
 
-  return Array.from(candidates.values()).filter(destinationIsRelevant).map((destination) => {
+  const destinations = Array.from(candidates.values()).filter(destinationIsRelevant);
+  const mountedDevicePaths = new Set(
+    destinations
+      .filter((destination) => destination.mountState === 'mounted' && destination.devicePath)
+      .map((destination) => destination.devicePath),
+  );
+
+  return destinations.filter((destination) => {
+    if (destination.mountState === 'mounted') {
+      return true;
+    }
+
+    return !destination.devicePath || !mountedDevicePaths.has(destination.devicePath);
+  }).map((destination) => {
     let availableBytes = null;
     if (destination.mountState === 'mounted' && destination.mountPath) {
       try {
