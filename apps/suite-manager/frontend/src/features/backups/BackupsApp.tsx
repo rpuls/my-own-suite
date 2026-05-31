@@ -65,17 +65,26 @@ function JobPanel({ job, title }: { job: BackupJobSummary | null; title: string 
 function DestinationButton({
   destination,
   disabled,
+  isMounting,
   isSelected,
+  mountAvailable,
+  onMount,
   onSelect,
 }: {
   destination: BackupDestination;
   disabled: boolean;
+  isMounting: boolean;
   isSelected: boolean;
+  mountAvailable: boolean;
+  onMount: (id: string) => void;
   onSelect: (id: string) => void;
 }) {
   const mountState = destination.mountState || 'mounted';
+  const isMounted = mountState === 'mounted';
+  const canSelect = isMounted && destination.writable && !disabled;
+  const canMount = !isMounted && Boolean(destination.canMount) && mountAvailable && !disabled && !isMounting;
   const statusText =
-    mountState === 'mounted'
+    isMounted
       ? destination.writable
         ? 'ready'
         : 'read only'
@@ -83,32 +92,58 @@ function DestinationButton({
         ? 'mounted outside backup paths'
         : 'not mounted';
 
+  function handleDestinationClick(): void {
+    if (canSelect) {
+      onSelect(destination.id);
+    }
+  }
+
   return (
-    <button
-      className={`suite-backup-destination${isSelected ? ' is-selected' : ''}`}
-      disabled={disabled || !destination.writable || mountState !== 'mounted'}
-      onClick={() => onSelect(destination.id)}
-      type="button"
+    <div
+      className={`suite-backup-destination${isSelected ? ' is-selected' : ''}${!canSelect ? ' is-disabled' : ''}`}
+      onClick={handleDestinationClick}
+      role={canSelect ? 'button' : undefined}
+      tabIndex={canSelect ? 0 : undefined}
+      onKeyDown={(event) => {
+        if (canSelect && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          onSelect(destination.id);
+        }
+      }}
     >
       <HardDrive aria-hidden="true" className="suite-backup-drive-icon" />
       <span className="suite-backup-destination-copy">
         <strong>{destination.label || destination.mountPath || destination.devicePath || 'External drive'}</strong>
         <span>{destination.mountPath || destination.devicePath || 'No device path reported'}</span>
-        {mountState !== 'mounted' ? (
+        {!isMounted ? (
           <span className="suite-warning">
-            {mountState === 'unsupported-mount'
+            {destination.mountBlockedReason ||
+            (mountState === 'unsupported-mount'
               ? 'Mount this drive under /media, /mnt, or /run/media to use it for MOS backups.'
-              : 'The drive is connected but not mounted. Mount it first, then scan again.'}
+              : 'The drive is connected but not mounted. Mount it first, then scan again.')}
           </span>
         ) : null}
       </span>
       <span className="suite-backup-destination-meta">
-        {mountState === 'mounted' ? `${formatBytes(destination.availableBytes)} free` : statusText}
+        {isMounted ? `${formatBytes(destination.availableBytes)} free` : statusText}
         {destination.transport ? ` - ${destination.transport}` : ''}
         {destination.fileSystem ? ` - ${destination.fileSystem}` : ''}
-        {mountState === 'mounted' && !destination.writable ? ' - read only' : ''}
+        {isMounted && !destination.writable ? ' - read only' : ''}
       </span>
-    </button>
+      {!isMounted && destination.canMount ? (
+        <button
+          className="suite-copy-button suite-backup-mount-button"
+          disabled={!canMount}
+          onClick={(event) => {
+            event.stopPropagation();
+            onMount(destination.id);
+          }}
+          type="button"
+        >
+          {isMounting ? 'Mounting...' : 'Mount'}
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -230,7 +265,7 @@ function BackupBundleList({
 }
 
 export default function BackupsApp() {
-  const { isJobRunning, isRestoring, isStarting, refresh, startBackup, startRestore, state } = useBackups();
+  const { isJobRunning, isMounting, isRestoring, isStarting, mountDestination, refresh, startBackup, startRestore, state } = useBackups();
   const [selectedDestinationId, setSelectedDestinationId] = useState<string>('');
   const [restoreConfirmation, setRestoreConfirmation] = useState('');
   const [selectedRestore, setSelectedRestore] = useState<BackupBundle | null>(null);
@@ -250,6 +285,18 @@ export default function BackupsApp() {
       await startBackup(selectedDestinationId);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Unable to start backup.');
+    }
+  }
+
+  async function handleMountDestination(destinationId: string): Promise<void> {
+    setActionError(null);
+    try {
+      const destination = await mountDestination(destinationId);
+      if (destination?.id) {
+        setSelectedDestinationId(destination.id);
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to mount drive.');
     }
   }
 
@@ -362,8 +409,11 @@ export default function BackupsApp() {
                     <DestinationButton
                       destination={destination}
                       disabled={isStarting || isJobRunning}
+                      isMounting={isMounting}
                       isSelected={destination.id === selectedDestinationId}
+                      mountAvailable={loaded.mountDestinationAvailable}
                       key={destination.id}
+                      onMount={(destinationId) => void handleMountDestination(destinationId)}
                       onSelect={setSelectedDestinationId}
                     />
                   ))}

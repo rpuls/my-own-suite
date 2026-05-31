@@ -19,10 +19,12 @@ export type BackupAgentJobSummary = {
 
 export type BackupAgentDestination = {
   availableBytes: number | null;
+  canMount?: boolean;
   devicePath?: string | null;
   fileSystem?: string | null;
   id: string;
   label: string;
+  mountBlockedReason?: string | null;
   mountPath: string | null;
   mountState?: 'mounted' | 'unmounted' | 'unsupported-mount';
   sizeBytes: number | null;
@@ -145,6 +147,13 @@ export async function startAgentBackup(
   payload: { destinationId: string; initiator: string },
 ): Promise<{ job: Record<string, unknown> }> {
   return requestAgent<{ job: Record<string, unknown> }>(config, 'POST', '/v1/jobs', payload);
+}
+
+export async function mountAgentDestination(
+  config: SuiteManagerConfig,
+  payload: { destinationId: string },
+): Promise<{ destination: BackupAgentDestination }> {
+  return requestAgent<{ destination: BackupAgentDestination }>(config, 'POST', '/v1/destinations/mount', payload);
 }
 
 export async function startAgentRestore(

@@ -15,12 +15,14 @@ const tokenFile = process.env.MOS_BACKUP_AGENT_TOKEN_FILE || '/etc/mos-backup-ag
 const jobsDir = path.join(stateDir, 'jobs');
 const currentJobPath = path.join(stateDir, 'current-job.json');
 const destinationRoots = ['/media', '/mnt', '/run/media'];
+const managedMountRoot = '/media/mos-backup';
+const mountableFileSystems = new Set(['exfat', 'ext2', 'ext3', 'ext4', 'ntfs', 'ntfs3', 'vfat', 'xfs', 'btrfs']);
 const capabilities = {
   backups: {
     capabilities: ['create', 'list'],
   },
   destinations: {
-    capabilities: ['list'],
+    capabilities: ['list', 'mount'],
   },
   restores: {
     capabilities: ['plan', 'apply'],
@@ -83,6 +85,19 @@ function execJson(command, args) {
       } catch {
         resolve(null);
       }
+    });
+  });
+}
+
+function execText(command, args) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { timeout: 30_000 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(String(stderr || error.message || `${command} failed`).trim()));
+        return;
+      }
+
+      resolve(String(stdout || '').trim());
     });
   });
 }
@@ -246,6 +261,48 @@ function isLikelyExternalDevice(device, inheritedExternal = false) {
   );
 }
 
+function sanitizeMountName(value) {
+  const safe = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return safe || 'drive';
+}
+
+function mountBlockReason(device, external) {
+  const fileSystem = String(device.fstype || '').toLowerCase();
+  const label = String(device.label || '').trim().toLowerCase();
+  const sizeBytes = Number(device.size) || 0;
+
+  if (!external) {
+    return 'Only removable or USB drives can be mounted from Suite Manager.';
+  }
+
+  if (device.type !== 'part') {
+    return 'Choose a data partition, not the whole device.';
+  }
+
+  if (!device.path) {
+    return 'The device path was not reported by Linux.';
+  }
+
+  if (!fileSystem) {
+    return 'The partition has no detected filesystem.';
+  }
+
+  if (!mountableFileSystems.has(fileSystem)) {
+    return `The ${fileSystem} filesystem is not mounted automatically yet.`;
+  }
+
+  if (label === 'efi' || (fileSystem === 'vfat' && sizeBytes > 0 && sizeBytes < 1024 * 1024 * 1024)) {
+    return 'This looks like a small EFI/system partition, not a backup drive.';
+  }
+
+  return null;
+}
+
 function normalizeDestination(candidate) {
   const resolved = path.resolve(String(candidate || ''));
   const allowed = destinationRoots.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`));
@@ -287,6 +344,7 @@ async function listDestinations() {
       if (normalized) {
         hasSupportedMount = true;
         candidates.push({
+          canMount: false,
           devicePath,
           fileSystem: device.fstype || null,
           id: normalized,
@@ -300,11 +358,14 @@ async function listDestinations() {
     }
 
     if (external && !hasSupportedMount && device.type !== 'disk') {
+      const blockedReason = mountBlockReason(device, external);
       candidates.push({
+        canMount: !blockedReason && !points.some(Boolean),
         devicePath,
         fileSystem: device.fstype || null,
         id: devicePath || label,
         label,
+        mountBlockedReason: blockedReason,
         mountPath: points.find(Boolean) || null,
         mountState: points.some(Boolean) ? 'unsupported-mount' : 'unmounted',
         transport: device.tran || null,
@@ -341,6 +402,41 @@ async function listDestinations() {
       writable: destination.mountState === 'mounted' && destination.mountPath ? isWritable(destination.mountPath) : false,
     };
   });
+}
+
+async function mountDestination(payload) {
+  const destinationId = String(payload.destinationId || '').trim();
+  const destinations = await listDestinations();
+  const destination = destinations.find((candidate) => candidate.id === destinationId);
+
+  if (!destination) {
+    throw new Error('Selected drive is no longer available. Scan again and retry.');
+  }
+
+  if (destination.mountState === 'mounted' && destination.mountPath) {
+    return destination;
+  }
+
+  if (!destination.canMount || !destination.devicePath) {
+    throw new Error(destination.mountBlockedReason || 'Selected drive cannot be mounted automatically.');
+  }
+
+  const mountName = sanitizeMountName(`${destination.label || 'drive'}-${path.basename(destination.devicePath)}`);
+  const mountPath = path.join(managedMountRoot, mountName);
+  ensureDir(mountPath);
+
+  await execText('mount', [destination.devicePath, mountPath]);
+
+  const refreshed = await listDestinations();
+  const mounted = refreshed.find(
+    (candidate) => candidate.devicePath === destination.devicePath && candidate.mountState === 'mounted',
+  );
+
+  if (!mounted) {
+    throw new Error('The drive was mounted, but Suite Manager could not verify the mounted destination.');
+  }
+
+  return mounted;
 }
 
 function isWritable(dirPath) {
@@ -470,6 +566,24 @@ async function handleCreateJob(request, response) {
   }
 }
 
+async function handleMountDestination(request, response) {
+  let payload = {};
+  try {
+    const rawBody = await readBody(request);
+    payload = rawBody.trim() ? JSON.parse(rawBody) : {};
+  } catch {
+    json(response, 400, { error: 'Invalid JSON request body.' });
+    return;
+  }
+
+  try {
+    const destination = await mountDestination(payload);
+    json(response, 200, { destination });
+  } catch (error) {
+    json(response, 400, { error: error instanceof Error ? error.message : 'Unable to mount drive.' });
+  }
+}
+
 async function handleCreateRestoreJob(request, response) {
   const existing = readCurrentJob();
   if (isActiveJob(existing)) {
@@ -545,6 +659,11 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === 'POST' && url.pathname === '/v1/jobs') {
     await handleCreateJob(request, response);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/v1/destinations/mount') {
+    await handleMountDestination(request, response);
     return;
   }
 

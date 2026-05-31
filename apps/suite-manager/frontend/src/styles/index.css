@@ -593,7 +593,7 @@
 
 .suite-backup-destination {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0.8rem;
   width: 100%;
@@ -615,9 +615,18 @@
   background: rgba(99, 226, 179, 0.1);
 }
 
-.suite-backup-destination:disabled {
-  cursor: not-allowed;
+.suite-backup-destination.is-disabled {
+  cursor: default;
   opacity: 0.58;
+}
+
+.suite-backup-destination.is-disabled:hover {
+  border-color: var(--surface-border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.suite-backup-destination.is-disabled:has(.suite-backup-mount-button:not(:disabled)) {
+  opacity: 1;
 }
 
 .suite-backup-drive-icon {
@@ -646,6 +655,10 @@
 
 .suite-backup-destination-meta {
   text-align: right;
+}
+
+.suite-backup-mount-button {
+  white-space: nowrap;
 }
 
 .suite-updates-version {
@@ -1406,6 +1419,11 @@
   .suite-backup-destination-meta {
     grid-column: 2;
     text-align: left;
+  }
+
+  .suite-backup-mount-button {
+    grid-column: 2;
+    width: max-content;
   }
 
   .suite-snackbar {

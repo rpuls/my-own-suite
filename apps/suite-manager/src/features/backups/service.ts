@@ -1,5 +1,6 @@
 import type { SuiteManagerConfig } from '../../config.ts';
 import {
+  mountAgentDestination,
   readBackupAgentStatus,
   startAgentBackup,
   startAgentRestore,
@@ -18,6 +19,7 @@ export type BackupsStatus = {
   restorePlanAvailable: boolean;
   restoreApplyAvailable: boolean;
   serviceAvailable: boolean;
+  mountDestinationAvailable: boolean;
   startBackupAvailable: boolean;
 };
 
@@ -58,6 +60,7 @@ export class BackupsService {
         restorePlanAvailable: false,
         restoreApplyAvailable: false,
         serviceAvailable: false,
+        mountDestinationAvailable: false,
         startBackupAvailable: false,
       };
     }
@@ -74,6 +77,7 @@ export class BackupsService {
         restorePlanAvailable: hasAgentCapability(agent.capabilities, 'restores', 'plan'),
         restoreApplyAvailable: hasAgentCapability(agent.capabilities, 'restores', 'apply'),
         serviceAvailable: true,
+        mountDestinationAvailable: hasAgentCapability(agent.capabilities, 'destinations', 'mount'),
         startBackupAvailable: hasAgentCapability(agent.capabilities, 'backups', 'create'),
       };
     } catch (caughtError) {
@@ -87,6 +91,7 @@ export class BackupsService {
         restorePlanAvailable: false,
         restoreApplyAvailable: false,
         serviceAvailable: false,
+        mountDestinationAvailable: false,
         startBackupAvailable: false,
       };
     }
@@ -115,6 +120,28 @@ export class BackupsService {
       destinationId,
       initiator: this.config.ownerEmail,
     });
+  }
+
+  async mountDestination(destinationId: string): Promise<{ destination: BackupAgentDestination }> {
+    const status = await this.getStatus();
+    if (!status.mountDestinationAvailable) {
+      throw new Error('Managed drive mounting is unavailable.');
+    }
+
+    if (isRunning(status.currentJob)) {
+      throw new Error('A backup or restore job is already running.');
+    }
+
+    const destination = status.destinations.find((candidate) => candidate.id === destinationId);
+    if (!destination) {
+      throw new Error('Selected drive is no longer available.');
+    }
+
+    if (!destination.canMount) {
+      throw new Error(destination.mountBlockedReason || 'Selected drive cannot be mounted automatically.');
+    }
+
+    return mountAgentDestination(this.config, { destinationId });
   }
 
   async startRestore(backupPath: string, confirmation: string): Promise<{ job: Record<string, unknown> }> {
