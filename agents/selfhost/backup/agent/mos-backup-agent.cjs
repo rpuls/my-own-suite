@@ -18,6 +18,7 @@ const destinationRoots = ['/media', '/mnt', '/run/media'];
 const managedMountRoot = '/media/mos-backup';
 const mountableFileSystems = new Set(['exfat', 'ext2', 'ext3', 'ext4', 'ntfs', 'ntfs3', 'vfat', 'xfs', 'btrfs']);
 const networkFileSystems = new Set(['9p', 'cifs', 'fuse.sshfs', 'nfs', 'nfs4', 'smb3']);
+const hiddenBlockDeviceTypes = new Set(['loop', 'rom']);
 const capabilities = {
   backups: {
     capabilities: ['create', 'list'],
@@ -373,6 +374,10 @@ async function listDestinations() {
   const candidates = new Map();
 
   function visit(device, inheritedExternal = false) {
+    if (hiddenBlockDeviceTypes.has(String(device.type || '').toLowerCase())) {
+      return;
+    }
+
     const external = isLikelyExternalDevice(device, inheritedExternal);
     const points = Array.isArray(device.mountpoints) ? device.mountpoints : [];
     const label = device.label || device.model || device.name || device.path || 'External drive';
