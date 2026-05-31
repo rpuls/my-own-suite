@@ -713,6 +713,21 @@
   margin: 0;
 }
 
+.suite-job-details {
+  margin-top: 0.25rem;
+}
+
+.suite-job-details summary {
+  width: max-content;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--mos-text-small);
+}
+
+.suite-job-details summary:hover {
+  color: var(--text-primary);
+}
+
 .suite-updates-job-log {
   display: grid;
   gap: 0.35rem;

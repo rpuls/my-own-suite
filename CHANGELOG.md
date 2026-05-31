@@ -13,6 +13,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Improved backup destination handling so connected removable/USB block devices appear in Suite Manager even before they are mounted, and supported unmounted data partitions can be mounted into `/media/mos-backup` before starting a backup.
 - Broadened backup destination discovery to include supported local data partitions and mounted network/shared storage under the backup paths, with capacity shown before mounting where Linux reports it.
 - Limited Suite Manager backup destination discovery to usable backup storage, hiding optical, loop, EFI, active system partitions, and other non-actionable block devices while labeling remaining entries as external, local, or network storage.
+- Refined Suite Manager backup status so disconnected or stale block-device mounts disappear after a rescan, duplicate mounted/unmounted entries are collapsed, and completed backup jobs show a compact activity summary with technical logs tucked behind details.
 - Made the Updates screen capability-driven: Suite Manager now shows managed update actions only when the local update agent is reachable and advertises `updates.apply`, while hosted or agent-less installs stay in notify/manual-update guidance. Compatibility note: `SUITE_MANAGER_UPDATES_MODE` has been removed from active Suite Manager config and generated env templates.
 
 ### Fixed
