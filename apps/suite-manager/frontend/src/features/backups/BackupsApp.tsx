@@ -91,6 +91,11 @@ function DestinationButton({
       : mountState === 'unsupported-mount'
         ? 'mounted outside backup paths'
         : 'not mounted';
+  const capacityText = isMounted
+    ? `${formatBytes(destination.availableBytes)} free`
+    : destination.sizeBytes
+      ? formatBytes(destination.sizeBytes)
+      : statusText;
 
   function handleDestinationClick(): void {
     if (canSelect) {
@@ -125,7 +130,8 @@ function DestinationButton({
         ) : null}
       </span>
       <span className="suite-backup-destination-meta">
-        {isMounted ? `${formatBytes(destination.availableBytes)} free` : statusText}
+        {capacityText}
+        {!isMounted && destination.sizeBytes ? ` - ${statusText}` : ''}
         {destination.transport ? ` - ${destination.transport}` : ''}
         {destination.fileSystem ? ` - ${destination.fileSystem}` : ''}
         {isMounted && !destination.writable ? ' - read only' : ''}
@@ -340,9 +346,9 @@ export default function BackupsApp() {
               <div className="suite-updates-panel-wide suite-backup-selfhost-header">
                 <div className="suite-updates-header">
                   <div>
-                    <h2 className="mos-card-title">External backup</h2>
+                    <h2 className="mos-card-title">Backup destination</h2>
                     <p className="suite-meta mos-meta">
-                      Plug in a drive, choose the detected mount, then start a host-owned backup job.
+                      Connect or mount storage, choose a writable destination, then start a host-owned backup job.
                     </p>
                   </div>
 

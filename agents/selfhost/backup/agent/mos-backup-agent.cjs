@@ -17,6 +17,8 @@ const currentJobPath = path.join(stateDir, 'current-job.json');
 const destinationRoots = ['/media', '/mnt', '/run/media'];
 const managedMountRoot = '/media/mos-backup';
 const mountableFileSystems = new Set(['exfat', 'ext2', 'ext3', 'ext4', 'ntfs', 'ntfs3', 'vfat', 'xfs', 'btrfs']);
+const networkFileSystems = new Set(['9p', 'cifs', 'fuse.sshfs', 'nfs', 'nfs4', 'smb3']);
+const hiddenBlockDeviceTypes = new Set(['loop', 'rom']);
 const capabilities = {
   backups: {
     capabilities: ['create', 'list'],
@@ -87,6 +89,14 @@ function execJson(command, args) {
       }
     });
   });
+}
+
+function addUniqueDestination(candidates, destination) {
+  if (!destination.id) {
+    return;
+  }
+
+  candidates.set(destination.id, destination);
 }
 
 function execText(command, args) {
@@ -261,6 +271,22 @@ function isLikelyExternalDevice(device, inheritedExternal = false) {
   );
 }
 
+function transportLabel(device) {
+  if (device.tran) {
+    return device.tran;
+  }
+
+  if (isLikelyExternalDevice(device)) {
+    return 'removable';
+  }
+
+  if (device.type === 'part' || device.type === 'disk') {
+    return 'local';
+  }
+
+  return null;
+}
+
 function sanitizeMountName(value) {
   const safe = String(value || '')
     .trim()
@@ -271,14 +297,23 @@ function sanitizeMountName(value) {
   return safe || 'drive';
 }
 
-function mountBlockReason(device, external) {
+function isSystemMountpoint(mountpoint) {
+  const resolved = path.resolve(String(mountpoint || ''));
+  return (
+    resolved === '/' ||
+    resolved === '/boot' ||
+    resolved === '/boot/efi' ||
+    resolved === '/var' ||
+    resolved === '/var/lib' ||
+    resolved === '/var/lib/docker' ||
+    resolved.startsWith('/var/lib/docker/')
+  );
+}
+
+function mountBlockReason(device) {
   const fileSystem = String(device.fstype || '').toLowerCase();
   const label = String(device.label || '').trim().toLowerCase();
   const sizeBytes = Number(device.size) || 0;
-
-  if (!external) {
-    return 'Only removable or USB drives can be mounted from Suite Manager.';
-  }
 
   if (device.type !== 'part') {
     return 'Choose a data partition, not the whole device.';
@@ -298,6 +333,11 @@ function mountBlockReason(device, external) {
 
   if (label === 'efi' || (fileSystem === 'vfat' && sizeBytes > 0 && sizeBytes < 1024 * 1024 * 1024)) {
     return 'This looks like a small EFI/system partition, not a backup drive.';
+  }
+
+  const points = Array.isArray(device.mountpoints) ? device.mountpoints.filter(Boolean) : [];
+  if (points.some(isSystemMountpoint)) {
+    return 'This partition is already used by the running system.';
   }
 
   return null;
@@ -330,9 +370,14 @@ async function listDestinations() {
     '--output',
     'NAME,PATH,LABEL,MODEL,TRAN,RM,TYPE,FSTYPE,SIZE,MOUNTPOINTS',
   ]);
-  const candidates = [];
+  const findmnt = await execJson('findmnt', ['--json', '--bytes', '--output', 'TARGET,SOURCE,FSTYPE,SIZE,AVAIL,OPTIONS']);
+  const candidates = new Map();
 
   function visit(device, inheritedExternal = false) {
+    if (hiddenBlockDeviceTypes.has(String(device.type || '').toLowerCase())) {
+      return;
+    }
+
     const external = isLikelyExternalDevice(device, inheritedExternal);
     const points = Array.isArray(device.mountpoints) ? device.mountpoints : [];
     const label = device.label || device.model || device.name || device.path || 'External drive';
@@ -343,7 +388,7 @@ async function listDestinations() {
       const normalized = normalizeMountpoint(mountpoint);
       if (normalized) {
         hasSupportedMount = true;
-        candidates.push({
+        addUniqueDestination(candidates, {
           canMount: false,
           devicePath,
           fileSystem: device.fstype || null,
@@ -351,15 +396,15 @@ async function listDestinations() {
           label,
           mountPath: normalized,
           mountState: 'mounted',
-          transport: device.tran || null,
+          transport: transportLabel(device),
           sizeBytes: Number(device.size) || null,
         });
       }
     }
 
-    if (external && !hasSupportedMount && device.type !== 'disk') {
-      const blockedReason = mountBlockReason(device, external);
-      candidates.push({
+    if (!hasSupportedMount && device.type !== 'disk') {
+      const blockedReason = mountBlockReason(device);
+      addUniqueDestination(candidates, {
         canMount: !blockedReason && !points.some(Boolean),
         devicePath,
         fileSystem: device.fstype || null,
@@ -368,7 +413,7 @@ async function listDestinations() {
         mountBlockedReason: blockedReason,
         mountPath: points.find(Boolean) || null,
         mountState: points.some(Boolean) ? 'unsupported-mount' : 'unmounted',
-        transport: device.tran || null,
+        transport: transportLabel(device),
         sizeBytes: Number(device.size) || null,
       });
     }
@@ -382,12 +427,33 @@ async function listDestinations() {
     visit(device);
   }
 
-  const unique = new Map();
-  for (const destination of candidates) {
-    unique.set(destination.id, destination);
+  function visitMount(mount) {
+    const normalized = normalizeMountpoint(mount.target);
+    if (normalized && !candidates.has(normalized)) {
+      const fileSystem = mount.fstype || null;
+      addUniqueDestination(candidates, {
+        canMount: false,
+        devicePath: mount.source || null,
+        fileSystem,
+        id: normalized,
+        label: path.basename(normalized) || mount.source || 'Mounted storage',
+        mountPath: normalized,
+        mountState: 'mounted',
+        transport: networkFileSystems.has(String(fileSystem || '').toLowerCase()) ? 'network' : 'mounted',
+        sizeBytes: Number(mount.size) || null,
+      });
+    }
+
+    for (const child of mount.children || []) {
+      visitMount(child);
+    }
   }
 
-  return Array.from(unique.values()).map((destination) => {
+  for (const mount of findmnt?.filesystems || []) {
+    visitMount(mount);
+  }
+
+  return Array.from(candidates.values()).map((destination) => {
     let availableBytes = null;
     if (destination.mountState === 'mounted' && destination.mountPath) {
       try {
