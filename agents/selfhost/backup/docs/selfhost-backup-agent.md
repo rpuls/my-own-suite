@@ -6,8 +6,8 @@ The agent listens on `/run/mos-backup-agent/agent.sock`, authenticates with `/et
 
 Current capabilities:
 
-- `destinations.list`: reports supported mounted destinations under `/media`, `/mnt`, and `/run/media`, plus connected removable/USB block devices that still need mounting.
-- `destinations.mount`: mounts a supported removable/USB data partition into `/media/mos-backup`.
+- `destinations.list`: reports supported mounted destinations under `/media`, `/mnt`, and `/run/media`, mounted network/shared storage under those paths, and connected block devices that still need mounting.
+- `destinations.mount`: mounts a supported data partition into `/media/mos-backup`.
 - `backups.create`: starts a persistent backup job for a selected mounted destination.
 - `backups.list`: reports completed backup bundles found on currently mounted destinations.
 - `restores.plan`: advertises the restore contract.
