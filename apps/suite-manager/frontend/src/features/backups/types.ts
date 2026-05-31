@@ -14,10 +14,12 @@ export type BackupJobSummary = {
 
 export type BackupDestination = {
   availableBytes: number | null;
+  canMount?: boolean;
   devicePath?: string | null;
   fileSystem?: string | null;
   id: string;
   label: string;
+  mountBlockedReason?: string | null;
   mountPath: string | null;
   mountState?: 'mounted' | 'unmounted' | 'unsupported-mount';
   sizeBytes: number | null;
@@ -49,5 +51,6 @@ export type BackupsStatus = {
   restorePlanAvailable: boolean;
   restoreApplyAvailable: boolean;
   serviceAvailable: boolean;
+  mountDestinationAvailable: boolean;
   startBackupAvailable: boolean;
 };

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { withSetupPath } from '../../lib/base-path';
-import type { BackupsStatus } from './types';
+import type { BackupDestination, BackupsStatus } from './types';
 
 type BackupsState =
   | { kind: 'loading' }
@@ -24,6 +24,7 @@ async function loadStatus(): Promise<BackupsStatus> {
 export function useBackups() {
   const [state, setState] = useState<BackupsState>({ kind: 'loading' });
   const [isStarting, setIsStarting] = useState(false);
+  const [isMounting, setIsMounting] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const isJobRunning =
     state.kind === 'loaded' &&
@@ -52,6 +53,30 @@ export function useBackups() {
       await refresh();
     } finally {
       setIsStarting(false);
+    }
+  }
+
+  async function mountDestination(destinationId: string): Promise<BackupDestination | null> {
+    setIsMounting(true);
+    try {
+      const response = await fetch(withSetupPath('/api/backups/mount'), {
+        body: JSON.stringify({ destinationId }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+      });
+      const body = (await response.json().catch(() => ({ error: 'Unable to mount drive.' }))) as {
+        destination?: BackupDestination;
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(typeof body.error === 'string' ? body.error : 'Unable to mount drive.');
+      }
+      await refresh();
+      return body.destination || null;
+    } finally {
+      setIsMounting(false);
     }
   }
 
@@ -114,8 +139,10 @@ export function useBackups() {
 
   return {
     isJobRunning,
+    isMounting,
     isRestoring,
     isStarting,
+    mountDestination,
     refresh,
     startBackup,
     startRestore,
