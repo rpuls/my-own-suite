@@ -80,7 +80,7 @@ export async function completeOnboarding(context, page) {
     if (!/setup-extension/i.test(vaultwardenPage.url())) {
       await vaultwardenPage.goto('https://vaultwarden.localhost:18443/#/setup-extension');
     }
-    await dismissVaultwardenExtensionPrompt(vaultwardenPage);
+    await dismissVaultwardenExtensionPrompt(vaultwardenPage, null, 'https://vaultwarden.localhost:18443/#/vault');
     await page.bringToFront();
     stepState = await waitForCurrentStep(
       page,
@@ -234,7 +234,7 @@ async function ensureVaultwardenSession(page) {
   await page.goto('https://vaultwarden.localhost:18443/#/vault');
   await page.waitForLoadState('domcontentloaded');
   await signInToVaultwardenIfNeeded(page);
-  await dismissVaultwardenExtensionPrompt(page);
+  await dismissVaultwardenExtensionPrompt(page, null, 'https://vaultwarden.localhost:18443/#/vault');
   await expect(page).toHaveURL(/vaultwarden\.localhost:18443\/#\/vault/i, { timeout: 30000 });
 }
 
@@ -244,7 +244,7 @@ async function importVaultwardenCsv(page, importUrl, csvImport) {
   await page.waitForLoadState('domcontentloaded');
 
   const fileFormatField = page.locator('bit-form-field').filter({ hasText: /File format\s*\(required\)/i }).first();
-  await dismissVaultwardenExtensionPrompt(page, fileFormatField);
+  await dismissVaultwardenExtensionPrompt(page, fileFormatField, importUrl);
   await expect(fileFormatField).toBeVisible({ timeout: 30000 });
 
   const fileFormatSelect = page.locator('bit-select[formcontrolname="format"] input[role="combobox"]');
@@ -276,7 +276,7 @@ async function signInToVaultwardenIfNeeded(page) {
   await page.waitForLoadState('domcontentloaded').catch(() => null);
 }
 
-async function dismissVaultwardenExtensionPrompt(page, unblockLocator = null) {
+async function dismissVaultwardenExtensionPrompt(page, unblockLocator = null, fallbackUrl = null) {
   const skipToWebApp = page.getByRole('button', { name: /skip to web app/i });
   const addItLater = page.getByRole('button', { name: /add it later/i });
   const startedAt = Date.now();
@@ -284,12 +284,12 @@ async function dismissVaultwardenExtensionPrompt(page, unblockLocator = null) {
   while (Date.now() - startedAt < 10000) {
     if (await isVisible(skipToWebApp)) {
       await skipToWebApp.click();
-      return;
+      break;
     }
 
     if (await isVisible(addItLater)) {
       await addItLater.click();
-      return;
+      break;
     }
 
     if (unblockLocator && (await isVisible(unblockLocator))) {
@@ -299,8 +299,9 @@ async function dismissVaultwardenExtensionPrompt(page, unblockLocator = null) {
     await page.waitForTimeout(250);
   }
 
-  if (/setup-extension/i.test(page.url())) {
-    await page.goto('https://vaultwarden.localhost:18443/#/vault');
+  if (fallbackUrl && /setup-extension/i.test(page.url())) {
+    await page.goto(fallbackUrl);
+    await page.waitForLoadState('domcontentloaded').catch(() => null);
   }
 }
 
