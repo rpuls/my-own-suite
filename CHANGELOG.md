@@ -22,6 +22,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Fixed
 
+- Allowed managed updates to recover when the only dirty working-tree file is the generated external-proxy Caddy snippet, which can happen on installs that applied `mos.proxy` routes before the snippet became ignored.
 - Hardened the local E2E onboarding flow against Vaultwarden DOM changes and fixed Suite Manager onboarding copy buttons so successful clipboard actions reliably show copied feedback.
 
 ## [0.10.0] - 2026-05-29
