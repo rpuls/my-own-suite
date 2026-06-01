@@ -58,7 +58,6 @@ Use these locations:
 - Root `RELEASING.md`: official release workflow only.
 - Root `AGENTS.md`: agent workflow and repository rules only.
 - `docs/README.md`: documentation ownership map.
-- `docs/roadmap.md`: durable roadmap themes and non-task future work.
 - `docs/decisions.md`: durable architecture decisions and their consequences.
 - `docs/codex-notes.md`: durable Codex/project working context.
 - `.github/ISSUE_TEMPLATE/codex-task.yml`: task template source of truth.
@@ -69,9 +68,9 @@ Use these locations:
 
 Maintenance rules:
 
-- Do not create new roadmap, TODO, decision, or planning Markdown files unless no current owner fits.
-- Use GitHub Issues for task state; do not maintain long-lived task lists in repo docs.
-- If a task changes long-term direction, update `docs/roadmap.md`.
+- Do not create new long-lived roadmap, TODO, decision, or planning Markdown files unless no current owner fits.
+- Use GitHub Issues for task state and roadmap-like planning; do not maintain long-lived task lists in repo docs.
+- If a task changes long-term direction, capture actionable follow-up in GitHub Issues and update `docs/decisions.md` only when the direction changes architecture, deployment contracts, security boundaries, or ownership model.
 - If a task changes architecture, deployment contracts, security boundaries, or ownership model, update `docs/decisions.md`.
 - If a task changes how Codex or contributors should work, update `AGENTS.md` or `docs/codex-notes.md`, depending on whether it is a hard rule or contextual note.
 - If a temporary feature plan is useful during a branch, remove it or replace it with a pointer before merging.
@@ -120,7 +119,7 @@ No duplicated content across these two sources.
 Include:
 - Short, plain-language app description immediately under title/logo.
 - Core capabilities (what users can do).
-- Optional roadmap/status notes if relevant.
+- Optional status notes if relevant.
 - Links section (official website/repository/docs).
 - Optional screenshots and explanatory narrative.
 
