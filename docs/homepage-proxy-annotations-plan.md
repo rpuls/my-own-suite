@@ -226,7 +226,7 @@ This keeps the product boundary clear:
 - [ ] Phase 3: External Services UI
   - [ ] Add Suite Manager add/edit/remove flows for MOS-managed external services.
   - [ ] Preserve user-authored Homepage YAML while writing the safe subset of service tile metadata.
-  - [ ] Restart Homepage after saves when the host service-agent capability is available.
+  - [x] Restart Homepage after saves when the host service-agent capability is available.
 - [ ] Phase 4: App catalog integration
   - [ ] Connect curated MOS app install flows to dashboard tile and proxy metadata.
   - [ ] Preserve the distinction between integrated apps and external metadata-only services.
