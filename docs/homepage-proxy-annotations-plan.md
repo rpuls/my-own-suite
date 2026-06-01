@@ -219,7 +219,7 @@ This keeps the product boundary clear:
   - [x] Update technical docs and changelog for the preview-only contract.
 - [ ] Phase 2: Safe generated Caddy snippet
   - [x] Add a generated snippet path and base Caddyfile import strategy.
-  - [ ] Add self-host service-agent capability for safe Caddy write/reload or restart.
+  - [x] Add self-host service-agent capability for safe Caddy write/reload or restart.
   - [ ] Add validation/smoke coverage for generated external proxy config.
 - [ ] Phase 3: External Services UI
   - [ ] Add Suite Manager add/edit/remove flows for MOS-managed external services.

@@ -17,6 +17,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Made the Updates screen capability-driven: Suite Manager now shows managed update actions only when the local update agent is reachable and advertises `updates.apply`, while hosted or agent-less installs stay in notify/manual-update guidance. Compatibility note: `SUITE_MANAGER_UPDATES_MODE` has been removed from active Suite Manager config and generated env templates.
 - Retired the repo roadmap document in favor of GitHub Issues for roadmap-like task state, tightened the durable decision/agent docs around Homepage-driven proxy annotations, host-agent boundaries, and temporary branch planning, and added preview-only Suite Manager validation and current-editor Customize UI preview for external-service `mos.proxy` Caddy annotations in Homepage tiles.
 - Staged the generated external-proxy Caddy snippet path for future `mos.proxy` apply support while leaving the file empty and static routes unchanged. Compatibility note: the VPS/local Caddy service now imports `deploy/vps/generated/caddy/external-proxies.caddy` through a read-only mount at `/etc/caddy/generated/external-proxies.caddy`.
+- Added self-host service-agent support for applying generated external proxy routes after validation and Caddy reload, exposed through Suite Manager when the `external-proxies.apply` Caddy capability is available. Compatibility note: `mos-service-agent` now receives `MOS_SERVICE_AGENT_REPO_DIR` so it can write only the repo-owned generated Caddy snippet path.
 
 ### Fixed
 

@@ -7,9 +7,13 @@ const { execFile } = require('node:child_process');
 
 const socketPath = process.env.MOS_SERVICE_AGENT_SOCKET_PATH || '/run/mos-service-agent/agent.sock';
 const tokenFile = process.env.MOS_SERVICE_AGENT_TOKEN_FILE || '/etc/mos-service-agent/auth.token';
+const repoDir = process.env.MOS_SERVICE_AGENT_REPO_DIR || '';
+const caddyExternalProxiesPath = repoDir
+  ? path.join(repoDir, 'deploy', 'vps', 'generated', 'caddy', 'external-proxies.caddy')
+  : '';
 
 const SERVICES = {
-  caddy: { container: 'mos-caddy', capabilities: ['restart'] },
+  caddy: { container: 'mos-caddy', capabilities: ['restart', 'external-proxies.apply'] },
   homepage: { container: 'mos-homepage', capabilities: ['restart'] },
   immich: { container: 'mos-immich', capabilities: ['restart'] },
   'immich-machine-learning': { container: 'mos-immich-machine-learning', capabilities: ['restart'] },
@@ -43,6 +47,38 @@ function json(response, statusCode, body) {
   response.end(`${JSON.stringify(body, null, 2)}\n`);
 }
 
+function readJsonBody(request, maxBytes = 128 * 1024) {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    let tooLarge = false;
+
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      if (tooLarge) {
+        return;
+      }
+
+      raw += chunk;
+      if (raw.length > maxBytes) {
+        tooLarge = true;
+      }
+    });
+    request.on('end', () => {
+      if (tooLarge) {
+        reject(new Error('Request body is too large.'));
+        return;
+      }
+
+      try {
+        resolve(raw.trim() ? JSON.parse(raw) : {});
+      } catch {
+        reject(new Error('Request body must be valid JSON.'));
+      }
+    });
+    request.on('error', reject);
+  });
+}
+
 function authenticate(request) {
   const token = loadToken();
   if (!token) {
@@ -66,13 +102,20 @@ function cleanupSocket() {
 
 function listCapabilities() {
   return Object.fromEntries(
-    Object.entries(SERVICES).map(([service, spec]) => [
-      service,
-      {
-        capabilities: spec.capabilities,
-        container: spec.container,
-      },
-    ]),
+    Object.entries(SERVICES).map(([service, spec]) => {
+      const capabilities =
+        service === 'caddy' && !caddyExternalProxiesPath
+          ? spec.capabilities.filter((capability) => capability !== 'external-proxies.apply')
+          : spec.capabilities;
+
+      return [
+        service,
+        {
+          capabilities,
+          container: spec.container,
+        },
+      ];
+    }),
   );
 }
 
@@ -87,6 +130,34 @@ function restartContainer(container) {
       resolve((stdout || '').trim());
     });
   });
+}
+
+function execDocker(args, timeout = 60_000) {
+  return new Promise((resolve, reject) => {
+    execFile('docker', args, { timeout }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error((stderr || stdout || error.message || 'Docker command failed.').trim()));
+        return;
+      }
+
+      resolve((stdout || stderr || '').trim());
+    });
+  });
+}
+
+function writeFileAtomic(filePath, content) {
+  ensureDir(path.dirname(filePath));
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tempPath, content, { encoding: 'utf8', mode: 0o644 });
+  fs.renameSync(tempPath, filePath);
+}
+
+async function validateCaddy() {
+  return execDocker(['exec', 'mos-caddy', 'caddy', 'validate', '--config', '/etc/caddy/Caddyfile']);
+}
+
+async function reloadCaddy() {
+  return execDocker(['exec', 'mos-caddy', 'caddy', 'reload', '--config', '/etc/caddy/Caddyfile']);
 }
 
 async function handleRestart(response, serviceName) {
@@ -109,6 +180,58 @@ async function handleRestart(response, serviceName) {
     json(response, 500, {
       error: error instanceof Error ? error.message : 'Unable to restart service.',
       service: serviceName,
+    });
+  }
+}
+
+async function handleApplyCaddyExternalProxies(request, response) {
+  if (!caddyExternalProxiesPath) {
+    json(response, 409, { error: 'Caddy external proxy path is not configured.' });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    json(response, 400, { error: error instanceof Error ? error.message : 'Invalid request body.' });
+    return;
+  }
+
+  if (!body || typeof body.caddyfile !== 'string') {
+    json(response, 400, { error: 'Generated Caddyfile content is required.' });
+    return;
+  }
+
+  const nextContent = body.caddyfile.trim()
+    ? body.caddyfile
+    : '# No generated external proxy routes.\n';
+  const previousContent = fs.existsSync(caddyExternalProxiesPath)
+    ? fs.readFileSync(caddyExternalProxiesPath, 'utf8')
+    : null;
+
+  try {
+    writeFileAtomic(caddyExternalProxiesPath, nextContent);
+    await validateCaddy();
+    await reloadCaddy();
+    json(response, 202, {
+      action: 'external-proxies.apply',
+      ok: true,
+      path: caddyExternalProxiesPath,
+      service: 'caddy',
+    });
+  } catch (error) {
+    try {
+      if (previousContent === null) {
+        fs.rmSync(caddyExternalProxiesPath, { force: true });
+      } else {
+        writeFileAtomic(caddyExternalProxiesPath, previousContent);
+      }
+    } catch {}
+
+    json(response, 500, {
+      error: error instanceof Error ? error.message : 'Unable to apply generated Caddy proxy config.',
+      service: 'caddy',
     });
   }
 }
@@ -141,6 +264,11 @@ const server = http.createServer(async (request, response) => {
   const restartMatch = url.pathname.match(/^\/v1\/services\/([^/]+)\/restart$/);
   if (request.method === 'POST' && restartMatch) {
     await handleRestart(response, decodeURIComponent(restartMatch[1]));
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/v1/caddy/external-proxies/apply') {
+    await handleApplyCaddyExternalProxies(request, response);
     return;
   }
 

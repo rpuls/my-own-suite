@@ -15,6 +15,7 @@ export type HomepageConfigFileResponse = {
 };
 
 export type HomepageConfigCapabilitiesResponse = {
+  caddyExternalProxyApplyAvailable: boolean;
   error: string | null;
   homepageRestartAvailable: boolean;
   serviceAvailable: boolean;
@@ -22,6 +23,11 @@ export type HomepageConfigCapabilitiesResponse = {
 
 export type HomepageRestartResponse = {
   restarted: boolean;
+};
+
+export type HomepageCaddyApplyResponse = {
+  applied: boolean;
+  preview: HomepageCaddyProxyPreviewResponse;
 };
 
 export type HomepageCaddyProxyPreviewError = {

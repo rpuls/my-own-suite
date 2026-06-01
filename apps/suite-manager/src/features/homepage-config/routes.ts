@@ -47,6 +47,23 @@ export function createHomepageConfigRouter(
     }
   });
 
+  router.post('/homepage-config/caddy-preview/apply', async (c) => {
+    try {
+      const preview = await homepageConfigService.getCaddyProxyPreview();
+      if (!preview.valid) {
+        return c.json({ error: 'Cannot apply invalid Caddy proxy config.', preview }, 400);
+      }
+
+      const result = await serviceAgentService.applyCaddyExternalProxies(preview.caddyfile);
+      return c.json({ ...result, preview }, 202);
+    } catch (caughtError) {
+      return c.json(
+        { error: caughtError instanceof Error ? caughtError.message : 'Unable to apply Caddy proxy config.' },
+        409,
+      );
+    }
+  });
+
   router.get('/homepage-config/files/:name', async (c) => {
     try {
       const result = await homepageConfigService.readFile(c.req.param('name'));
