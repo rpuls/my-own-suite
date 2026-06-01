@@ -16,6 +16,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Refined Suite Manager backup status so disconnected or stale block-device mounts disappear after a rescan, duplicate mounted/unmounted entries are collapsed, and completed backup jobs show a compact activity summary with technical logs tucked behind details.
 - Made the Updates screen capability-driven: Suite Manager now shows managed update actions only when the local update agent is reachable and advertises `updates.apply`, while hosted or agent-less installs stay in notify/manual-update guidance. Compatibility note: `SUITE_MANAGER_UPDATES_MODE` has been removed from active Suite Manager config and generated env templates.
 - Retired the repo roadmap document in favor of GitHub Issues for roadmap-like task state, tightened the durable decision/agent docs around Homepage-driven proxy annotations, host-agent boundaries, and temporary branch planning, and added preview-only Suite Manager validation and current-editor Customize UI preview for external-service `mos.proxy` Caddy annotations in Homepage tiles.
+- Staged the generated external-proxy Caddy snippet path for future `mos.proxy` apply support while leaving the file empty and static routes unchanged. Compatibility note: the VPS/local Caddy service now imports `deploy/vps/generated/caddy/external-proxies.caddy` through a read-only mount at `/etc/caddy/generated/external-proxies.caddy`.
 
 ### Fixed
 

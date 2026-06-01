@@ -218,7 +218,7 @@ This keeps the product boundary clear:
   - [x] Add focused parser/generator tests for nested groups, valid routes, invalid URLs, duplicate hosts, TLS skip generation, and ignored tiles.
   - [x] Update technical docs and changelog for the preview-only contract.
 - [ ] Phase 2: Safe generated Caddy snippet
-  - [ ] Add a generated snippet path and base Caddyfile import strategy.
+  - [x] Add a generated snippet path and base Caddyfile import strategy.
   - [ ] Add self-host service-agent capability for safe Caddy write/reload or restart.
   - [ ] Add validation/smoke coverage for generated external proxy config.
 - [ ] Phase 3: External Services UI

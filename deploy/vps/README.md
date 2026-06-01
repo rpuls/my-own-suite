@@ -104,6 +104,9 @@ deploy/vps/
 |-- .env.template
 |-- docker-compose.yml
 |-- Caddyfile
+|-- generated/
+|   `-- caddy/
+|       `-- external-proxies.caddy # Imported placeholder for future generated external proxy routes
 |-- apps/
 |   `-- ...
 `-- services/
@@ -156,6 +159,7 @@ Shared configuration model:
 - `deploy/vps/services/suite-manager/.env`: shared user-facing values, auth inputs, and onboarding controls reused across the stack
 - `deploy/vps/services/<service>/.env`: service-specific runtime settings for all deployable services
 - Homepage runtime config: Suite Manager stores editable dashboard YAML/CSS/JS under its persistent data volume, seeded from bundled defaults on first use. Homepage fetches those files from Suite Manager during startup, writes them into its local `/app/config`, then regenerates `services.yaml`.
+- External proxy route staging: Caddy imports `deploy/vps/generated/caddy/external-proxies.caddy` through a read-only mount at `/etc/caddy/generated/external-proxies.caddy`. The file is currently a placeholder for previewed `mos.proxy` routes; Suite Manager does not write it or reload Caddy yet.
 
 Optional shared SMTP model:
 - Configure SMTP once in `deploy/vps/services/suite-manager/.env`.
