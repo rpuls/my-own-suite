@@ -28,7 +28,8 @@
     "npm": "11.x"
   },
   "scripts": {
-    "test": "npm run vps:doctor && npm run e2e:full",
+    "test": "npm run test:unit && npm run vps:doctor && npm run e2e:full",
+    "test:unit": "npm --prefix apps/suite-manager test",
     "branding:sync": "node scripts/sync-branding.cjs",
     "build": "npm run branding:sync && cd site && npm install --no-audit --progress=false && npm run build",
     "e2e:install": "npm --prefix tests/e2e install && npm --prefix tests/e2e run install:browsers",

@@ -207,6 +207,29 @@ This keeps the product boundary clear:
 
 ## 8. Phased Implementation
 
+## Progress Checklist
+
+- [x] Phase 1: Parser and Caddy preview
+  - [x] Add a Suite Manager backend parser for `mos.proxy` annotations in `services.template.yaml`.
+  - [x] Validate proxy-enabled tiles before generating any Caddy output.
+  - [x] Generate deterministic preview-only Caddy text without writing, reloading, or restarting Caddy.
+  - [x] Expose a protected Suite Manager preview endpoint.
+  - [x] Add focused parser/generator tests for nested groups, valid routes, invalid URLs, duplicate hosts, TLS skip generation, and ignored tiles.
+  - [x] Update technical docs and changelog for the preview-only contract.
+- [ ] Phase 2: Safe generated Caddy snippet
+  - [ ] Add a generated snippet path and base Caddyfile import strategy.
+  - [ ] Add self-host service-agent capability for safe Caddy write/reload or restart.
+  - [ ] Add validation/smoke coverage for generated external proxy config.
+- [ ] Phase 3: External Services UI
+  - [ ] Add Suite Manager add/edit/remove flows for MOS-managed external services.
+  - [ ] Preserve user-authored Homepage YAML while writing the safe subset of service tile metadata.
+  - [ ] Restart Homepage after saves when the host service-agent capability is available.
+- [ ] Phase 4: App catalog integration
+  - [ ] Connect curated MOS app install flows to dashboard tile and proxy metadata.
+  - [ ] Preserve the distinction between integrated apps and external metadata-only services.
+- [ ] Phase 5: Advanced capabilities
+  - [ ] Evaluate health checks, access policy, DNS automation, DNS-01 certificates, and split-DNS docs after the core model is stable.
+
 ### Phase 1: Parser And Preview
 
 Add a backend parser and preview path.

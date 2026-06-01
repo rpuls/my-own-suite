@@ -4,6 +4,10 @@ import path from 'node:path';
 import { parseDocument } from 'yaml';
 
 import type { SuiteManagerConfig } from '../../config.ts';
+import {
+  createCaddyProxyPreviewFromServicesTemplate,
+  type CaddyProxyPreview,
+} from './caddy-preview.ts';
 
 export type HomepageConfigFile = {
   description: string;
@@ -105,6 +109,11 @@ export class HomepageConfigService {
     }
 
     return { files };
+  }
+
+  async getCaddyProxyPreview(): Promise<CaddyProxyPreview> {
+    const { content } = await this.readFile('services.template.yaml');
+    return createCaddyProxyPreviewFromServicesTemplate(content);
   }
 
   private async seedMissingFiles(): Promise<void> {

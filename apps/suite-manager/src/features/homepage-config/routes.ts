@@ -20,6 +20,17 @@ export function createHomepageConfigRouter(
 
   router.get('/homepage-config/capabilities', async (c) => c.json(await serviceAgentService.getCapabilities()));
 
+  router.get('/homepage-config/caddy-preview', async (c) => {
+    try {
+      return c.json(await homepageConfigService.getCaddyProxyPreview());
+    } catch (caughtError) {
+      return c.json(
+        { error: caughtError instanceof Error ? caughtError.message : 'Unable to preview Caddy proxy config.' },
+        400,
+      );
+    }
+  });
+
   router.get('/homepage-config/files/:name', async (c) => {
     try {
       const result = await homepageConfigService.readFile(c.req.param('name'));

@@ -58,6 +58,27 @@ Tile template example:
         icon: mdi-folder-sync
 ```
 
+Optional MOS proxy annotation example:
+
+```yaml
+- My External Services:
+    - Home Assistant:
+        href: https://homeassistant.home.example.com
+        description: Smart home control
+        icon: home-assistant
+        mos:
+          kind: external
+          proxy:
+            enabled: true
+            upstream: http://192.168.30.4:8123
+            tls:
+              insecureSkipVerify: false
+```
+
+For preview-only external proxy support, `href` is the dashboard URL and the generated Caddy host is inferred from its hostname. `mos.proxy.upstream` is the internal absolute `http` or `https` URL Caddy would reverse proxy to. `mos.proxy.tls.insecureSkipVerify` is optional and only affects HTTPS upstreams. Raw Caddy directives/snippets are not accepted in annotations.
+
+Suite Manager exposes the parsed preview on `/setup/api/homepage-config/caddy-preview`. This endpoint validates and previews generated Caddy text only; it does not write Caddy config, reload Caddy, restart Caddy, or change Homepage output.
+
 #### Operational commands
 
 - If you changed config in Suite Manager or env values in `deploy/vps/services/homepage/.env`:

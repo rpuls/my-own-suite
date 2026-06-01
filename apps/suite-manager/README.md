@@ -40,6 +40,7 @@
 - Exposes a simple HTTP `200` health endpoint on `/healthz`.
 - Exposes JSON setup auth/status/onboarding data on `/setup/api/auth/*`, `/setup/api/status`, and `/setup/api/onboarding`.
 - Exposes allow-listed Homepage runtime config editing on `/setup/api/homepage-config/*`.
+- Exposes a preview-only generated Caddy config view on `/setup/api/homepage-config/caddy-preview` for Homepage service tiles with `mos.proxy.enabled: true`.
 - Detects whether the host service agent can restart Homepage and only enables automatic Homepage restart after config saves when that capability is reachable.
 - Exposes a token-protected config export on `/setup/api/homepage-config/export` for Homepage startup sync.
 - Exposes JSON update state on `/setup/api/updates`, including installed version, latest release metadata, whether an update is available, and whether the update agent exposes managed apply capability.
@@ -62,6 +63,7 @@
 - `src/features/onboarding/*`: onboarding state, domain model, auth, and API routes.
 - `src/features/health/*`: health monitoring and health endpoints.
 - `src/features/homepage-config/*`: allow-listed Homepage runtime config read/write/reset endpoints and startup export for Homepage.
+- `src/features/homepage-config/caddy-preview.ts`: preview-only parser and Caddyfile generator for external-service `mos.proxy` annotations in `services.template.yaml`.
 - `src/features/status/*`: operational status endpoints.
 - `src/features/updates/*`: installed-version detection and release-check endpoints for the Updates screen.
 - `src/features/backups/*`: backup-agent status and job-start endpoints for the Backup screen.
@@ -82,6 +84,7 @@
 - Acts as the shared onboarding surface for stack-wide bootstrap, credential handoff, and future per-app provisioning adapters.
 - Acts as the authenticated public entrypoint for setup and Homepage access.
 - Provides a YAML-first editor for Suite Manager-owned Homepage runtime config files without making generated `services.yaml` user-editable.
+- Reads optional `mos.proxy` metadata from Homepage service tiles to validate and preview external-service Caddy routes without writing or reloading Caddy.
 - Acts as the shared source of truth for optional SMTP settings reused by compatible services in the VPS/local stack.
 - Treats Vaultwarden account creation as observed suite state, not a user-confirmed checklist item.
 - Keeps the current onboarding surface intentionally narrow: one guided access flow first, with later app-specific onboarding still to come.
