@@ -1,10 +1,11 @@
-import { RefreshCcw, RotateCcw, Save } from 'lucide-react';
+import { FileCode2, RefreshCcw, RotateCcw, Save } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { withSetupPath } from '../../lib/base-path';
 import CodeEditor from './CodeEditor';
 import type {
   HomepageConfigCapabilitiesResponse,
+  HomepageCaddyProxyPreviewResponse,
   HomepageConfigFile,
   HomepageConfigFileResponse,
   HomepageConfigListResponse,
@@ -24,6 +25,12 @@ type EditorState =
       restartMessage: string | null;
       savedAt: string | null;
     }
+  | { kind: 'error'; message: string };
+
+type PreviewState =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'loaded'; preview: HomepageCaddyProxyPreviewResponse }
   | { kind: 'error'; message: string };
 
 async function readJson<T extends object>(response: Response, fallback: string): Promise<T> {
@@ -48,6 +55,11 @@ async function loadFiles(): Promise<HomepageConfigFile[]> {
 async function loadCapabilities(): Promise<HomepageConfigCapabilitiesResponse> {
   const response = await fetch(withSetupPath('/api/homepage-config/capabilities'));
   return readJson<HomepageConfigCapabilitiesResponse>(response, 'Unable to load Homepage restart capability.');
+}
+
+async function loadCaddyProxyPreview(): Promise<HomepageCaddyProxyPreviewResponse> {
+  const response = await fetch(withSetupPath('/api/homepage-config/caddy-preview'));
+  return readJson<HomepageCaddyProxyPreviewResponse>(response, 'Unable to preview Caddy proxy config.');
 }
 
 async function restartHomepage(): Promise<HomepageRestartResponse> {
@@ -94,6 +106,7 @@ export default function HomepageConfigApp() {
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [autoRestartHomepage, setAutoRestartHomepage] = useState(true);
+  const [previewState, setPreviewState] = useState<PreviewState>({ kind: 'idle' });
 
   const selectedFile = useMemo(() => {
     if (state.kind !== 'loaded') {
@@ -104,6 +117,7 @@ export default function HomepageConfigApp() {
 
   async function refresh(nextFileName = selectedFileName): Promise<void> {
     setState({ kind: 'loading' });
+    setPreviewState({ kind: 'idle' });
     try {
       const files = await loadFiles();
       const restartCapabilities = await loadCapabilities();
@@ -134,7 +148,21 @@ export default function HomepageConfigApp() {
 
   async function selectFile(name: string): Promise<void> {
     setSelectedFileName(name);
+    setPreviewState({ kind: 'idle' });
     await refresh(name);
+  }
+
+  async function previewCaddyProxyConfig(): Promise<void> {
+    setPreviewState({ kind: 'loading' });
+    try {
+      const preview = await loadCaddyProxyPreview();
+      setPreviewState({ kind: 'loaded', preview });
+    } catch (error: unknown) {
+      setPreviewState({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Unable to preview Caddy proxy config.',
+      });
+    }
   }
 
   async function save(): Promise<void> {
@@ -222,6 +250,8 @@ export default function HomepageConfigApp() {
     void refresh();
   }, []);
 
+  const showCaddyPreviewAction = selectedFile?.name === 'services.template.yaml';
+
   return (
     <main className="suite-app">
       <section className="mos-shell suite-hero">
@@ -296,6 +326,17 @@ export default function HomepageConfigApp() {
                         <Save aria-hidden="true" className="suite-inline-icon" />
                         {isSaving ? 'Saving...' : 'Save'}
                       </button>
+                      {showCaddyPreviewAction ? (
+                        <button
+                          className="suite-copy-button"
+                          disabled={isSaving || isResetting || previewState.kind === 'loading'}
+                          onClick={() => void previewCaddyProxyConfig()}
+                          type="button"
+                        >
+                          <FileCode2 aria-hidden="true" className="suite-inline-icon" />
+                          {previewState.kind === 'loading' ? 'Previewing...' : 'Preview Caddy'}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                   <CodeEditor
@@ -313,6 +354,54 @@ export default function HomepageConfigApp() {
                       })
                     }
                   />
+                  {showCaddyPreviewAction && previewState.kind !== 'idle' ? (
+                    <div className="suite-homepage-caddy-preview">
+                      {state.dirty ? (
+                        <p className="suite-warning">Save this file to preview the latest edits.</p>
+                      ) : null}
+                      {previewState.kind === 'loading' ? (
+                        <p className="suite-meta mos-meta">Loading Caddy preview...</p>
+                      ) : null}
+                      {previewState.kind === 'error' ? <p className="suite-error">{previewState.message}</p> : null}
+                      {previewState.kind === 'loaded' ? (
+                        <>
+                          <div className="suite-homepage-caddy-preview-header">
+                            <div>
+                              <h3 className="mos-card-title">Caddy preview</h3>
+                              <p className="suite-meta mos-meta">
+                                {previewState.preview.valid
+                                  ? `${previewState.preview.routes.length} route${
+                                      previewState.preview.routes.length === 1 ? '' : 's'
+                                    } ready`
+                                  : `${previewState.preview.errors.length} validation issue${
+                                      previewState.preview.errors.length === 1 ? '' : 's'
+                                    }`}
+                              </p>
+                            </div>
+                          </div>
+
+                          {previewState.preview.valid ? (
+                            previewState.preview.caddyfile ? (
+                              <pre className="suite-homepage-caddy-preview-code">
+                                <code>{previewState.preview.caddyfile}</code>
+                              </pre>
+                            ) : (
+                              <p className="suite-meta mos-meta">No enabled MOS proxy annotations found.</p>
+                            )
+                          ) : (
+                            <ul className="suite-homepage-caddy-preview-errors">
+                              {previewState.preview.errors.map((error) => (
+                                <li key={`${error.path}:${error.message}`}>
+                                  <strong>{error.path}</strong>
+                                  <span>{error.message}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </div>
 

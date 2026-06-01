@@ -85,6 +85,7 @@
 - Acts as the authenticated public entrypoint for setup and Homepage access.
 - Provides a YAML-first editor for Suite Manager-owned Homepage runtime config files without making generated `services.yaml` user-editable.
 - Reads optional `mos.proxy` metadata from Homepage service tiles to validate and preview external-service Caddy routes without writing or reloading Caddy.
+- Shows the preview in the existing Homepage Customize screen for `services.template.yaml`.
 - Acts as the shared source of truth for optional SMTP settings reused by compatible services in the VPS/local stack.
 - Treats Vaultwarden account creation as observed suite state, not a user-confirmed checklist item.
 - Keeps the current onboarding surface intentionally narrow: one guided access flow first, with later app-specific onboarding still to come.
