@@ -289,7 +289,10 @@ export default function HomepageConfigApp() {
     void refresh();
   }, []);
 
-  const showCaddyPreviewAction = selectedFile?.name === 'services.template.yaml';
+  const showCaddyPreviewAction =
+    selectedFile?.name === 'services.template.yaml' &&
+    state.kind === 'loaded' &&
+    state.restartCapabilities.caddyExternalProxyApplyAvailable;
 
   return (
     <main className="suite-app">
@@ -414,13 +417,6 @@ export default function HomepageConfigApp() {
                         </p>
                       </div>
                       {caddyApplyMessage ? <p className="suite-meta mos-meta">{caddyApplyMessage}</p> : null}
-                      {previewState.kind === 'loaded' &&
-                      previewState.preview.valid &&
-                      !state.restartCapabilities.caddyExternalProxyApplyAvailable ? (
-                        <p className="suite-meta mos-meta">
-                          Applying routes requires the self-host service agent.
-                        </p>
-                      ) : null}
                       {previewState.kind === 'loading' ? (
                         <p className="suite-meta mos-meta">Loading Caddy preview...</p>
                       ) : null}
