@@ -143,3 +143,17 @@ test('rejects raw Caddy fields inside proxy annotations', () => {
   assert.equal(preview.caddyfile, '');
   assert.match(preview.errors[0]?.message || '', /Raw Caddy fields/);
 });
+
+test('reports malformed services template YAML', () => {
+  const preview = createCaddyProxyPreviewFromServicesTemplate(`
+- Broken:
+    - Tile:
+      href: https://bad.example.com
+        mos:
+`);
+
+  assert.equal(preview.valid, false);
+  assert.equal(preview.caddyfile, '');
+  assert.equal(preview.routes.length, 0);
+  assert.match(preview.errors[0]?.message || '', /Invalid YAML/);
+});

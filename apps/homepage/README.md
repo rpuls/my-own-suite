@@ -77,7 +77,7 @@ Optional MOS proxy annotation example:
 
 For preview-only external proxy support, `href` is the dashboard URL and the generated Caddy host is inferred from its hostname. `mos.proxy.upstream` is the internal absolute `http` or `https` URL Caddy would reverse proxy to. `mos.proxy.tls.insecureSkipVerify` is optional and only affects HTTPS upstreams. Raw Caddy directives/snippets are not accepted in annotations.
 
-Suite Manager exposes the parsed preview on `/setup/api/homepage-config/caddy-preview`. This endpoint validates and previews generated Caddy text only; it does not write Caddy config, reload Caddy, restart Caddy, or change Homepage output.
+Suite Manager exposes the parsed preview on `/setup/api/homepage-config/caddy-preview`. `GET` previews the saved `services.template.yaml`, and `POST` with `{ "content": "..." }` previews supplied editor content. These endpoints validate and preview generated Caddy text only; they do not write Caddy config, reload Caddy, restart Caddy, or change Homepage output.
 
 #### Operational commands
 

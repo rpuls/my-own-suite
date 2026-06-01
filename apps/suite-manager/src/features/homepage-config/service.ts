@@ -116,6 +116,10 @@ export class HomepageConfigService {
     return createCaddyProxyPreviewFromServicesTemplate(content);
   }
 
+  previewCaddyProxyContent(content: string): CaddyProxyPreview {
+    return createCaddyProxyPreviewFromServicesTemplate(content);
+  }
+
   private async seedMissingFiles(): Promise<void> {
     await fs.mkdir(this.config.homepageConfigDir, { recursive: true });
 

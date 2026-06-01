@@ -57,8 +57,14 @@ async function loadCapabilities(): Promise<HomepageConfigCapabilitiesResponse> {
   return readJson<HomepageConfigCapabilitiesResponse>(response, 'Unable to load Homepage restart capability.');
 }
 
-async function loadCaddyProxyPreview(): Promise<HomepageCaddyProxyPreviewResponse> {
-  const response = await fetch(withSetupPath('/api/homepage-config/caddy-preview'));
+async function loadCaddyProxyPreview(content: string): Promise<HomepageCaddyProxyPreviewResponse> {
+  const response = await fetch(withSetupPath('/api/homepage-config/caddy-preview'), {
+    body: JSON.stringify({ content }),
+    headers: {
+      'content-type': 'application/json',
+    },
+    method: 'POST',
+  });
   return readJson<HomepageCaddyProxyPreviewResponse>(response, 'Unable to preview Caddy proxy config.');
 }
 
@@ -153,9 +159,13 @@ export default function HomepageConfigApp() {
   }
 
   async function previewCaddyProxyConfig(): Promise<void> {
+    if (state.kind !== 'loaded') {
+      return;
+    }
+
     setPreviewState({ kind: 'loading' });
     try {
-      const preview = await loadCaddyProxyPreview();
+      const preview = await loadCaddyProxyPreview(state.content);
       setPreviewState({ kind: 'loaded', preview });
     } catch (error: unknown) {
       setPreviewState({
@@ -343,7 +353,8 @@ export default function HomepageConfigApp() {
                     ariaLabel="Homepage config editor"
                     language={state.file.language}
                     value={state.content}
-                    onChange={(value) =>
+                    onChange={(value) => {
+                      setPreviewState({ kind: 'idle' });
                       setState({
                         ...state,
                         content: value,
@@ -351,14 +362,11 @@ export default function HomepageConfigApp() {
                         errorMessage: null,
                         restartMessage: null,
                         savedAt: null,
-                      })
-                    }
+                      });
+                    }}
                   />
                   {showCaddyPreviewAction && previewState.kind !== 'idle' ? (
                     <div className="suite-homepage-caddy-preview">
-                      {state.dirty ? (
-                        <p className="suite-warning">Save this file to preview the latest edits.</p>
-                      ) : null}
                       {previewState.kind === 'loading' ? (
                         <p className="suite-meta mos-meta">Loading Caddy preview...</p>
                       ) : null}

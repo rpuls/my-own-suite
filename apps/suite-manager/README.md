@@ -40,7 +40,7 @@
 - Exposes a simple HTTP `200` health endpoint on `/healthz`.
 - Exposes JSON setup auth/status/onboarding data on `/setup/api/auth/*`, `/setup/api/status`, and `/setup/api/onboarding`.
 - Exposes allow-listed Homepage runtime config editing on `/setup/api/homepage-config/*`.
-- Exposes a preview-only generated Caddy config view on `/setup/api/homepage-config/caddy-preview` for Homepage service tiles with `mos.proxy.enabled: true`.
+- Exposes preview-only generated Caddy config views on `/setup/api/homepage-config/caddy-preview` for Homepage service tiles with `mos.proxy.enabled: true`, including saved-config `GET` preview and supplied-content `POST` preview.
 - Detects whether the host service agent can restart Homepage and only enables automatic Homepage restart after config saves when that capability is reachable.
 - Exposes a token-protected config export on `/setup/api/homepage-config/export` for Homepage startup sync.
 - Exposes JSON update state on `/setup/api/updates`, including installed version, latest release metadata, whether an update is available, and whether the update agent exposes managed apply capability.
@@ -85,7 +85,7 @@
 - Acts as the authenticated public entrypoint for setup and Homepage access.
 - Provides a YAML-first editor for Suite Manager-owned Homepage runtime config files without making generated `services.yaml` user-editable.
 - Reads optional `mos.proxy` metadata from Homepage service tiles to validate and preview external-service Caddy routes without writing or reloading Caddy.
-- Shows the preview in the existing Homepage Customize screen for `services.template.yaml`.
+- Shows a current-editor preview in the existing Homepage Customize screen for `services.template.yaml`.
 - Acts as the shared source of truth for optional SMTP settings reused by compatible services in the VPS/local stack.
 - Treats Vaultwarden account creation as observed suite state, not a user-confirmed checklist item.
 - Keeps the current onboarding surface intentionally narrow: one guided access flow first, with later app-specific onboarding still to come.

@@ -31,6 +31,22 @@ export function createHomepageConfigRouter(
     }
   });
 
+  router.post('/homepage-config/caddy-preview', async (c) => {
+    try {
+      const body = (await c.req.json().catch(() => null)) as { content?: unknown } | null;
+      if (!body || typeof body.content !== 'string') {
+        return c.json({ error: 'Config content is required.' }, 400);
+      }
+
+      return c.json(homepageConfigService.previewCaddyProxyContent(body.content));
+    } catch (caughtError) {
+      return c.json(
+        { error: caughtError instanceof Error ? caughtError.message : 'Unable to preview Caddy proxy config.' },
+        400,
+      );
+    }
+  });
+
   router.get('/homepage-config/files/:name', async (c) => {
     try {
       const result = await homepageConfigService.readFile(c.req.param('name'));
