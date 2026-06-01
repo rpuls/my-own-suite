@@ -214,7 +214,7 @@ This keeps the product boundary clear:
   - [x] Validate proxy-enabled tiles before generating any Caddy output.
   - [x] Generate deterministic preview-only Caddy text without writing, reloading, or restarting Caddy.
   - [x] Expose a protected Suite Manager preview endpoint.
-  - [x] Surface current-editor preview in the existing Suite Manager Homepage Customize screen.
+  - [x] Surface current-editor preview in the existing Suite Manager Homepage Customize screen as a secondary advanced action below the editor.
   - [x] Add focused parser/generator tests for nested groups, valid routes, invalid URLs, duplicate hosts, TLS skip generation, and ignored tiles.
   - [x] Update technical docs and changelog for the preview-only contract.
 - [ ] Phase 2: Safe generated Caddy snippet

@@ -336,17 +336,6 @@ export default function HomepageConfigApp() {
                         <Save aria-hidden="true" className="suite-inline-icon" />
                         {isSaving ? 'Saving...' : 'Save'}
                       </button>
-                      {showCaddyPreviewAction ? (
-                        <button
-                          className="suite-copy-button"
-                          disabled={isSaving || isResetting || previewState.kind === 'loading'}
-                          onClick={() => void previewCaddyProxyConfig()}
-                          type="button"
-                        >
-                          <FileCode2 aria-hidden="true" className="suite-inline-icon" />
-                          {previewState.kind === 'loading' ? 'Previewing...' : 'Preview Caddy'}
-                        </button>
-                      ) : null}
                     </div>
                   </div>
                   <CodeEditor
@@ -365,8 +354,22 @@ export default function HomepageConfigApp() {
                       });
                     }}
                   />
-                  {showCaddyPreviewAction && previewState.kind !== 'idle' ? (
+                  {showCaddyPreviewAction ? (
                     <div className="suite-homepage-caddy-preview">
+                      <div className="suite-homepage-caddy-preview-actions">
+                        <button
+                          className="suite-copy-button"
+                          disabled={isSaving || isResetting || previewState.kind === 'loading'}
+                          onClick={() => void previewCaddyProxyConfig()}
+                          type="button"
+                        >
+                          <FileCode2 aria-hidden="true" className="suite-inline-icon" />
+                          {previewState.kind === 'loading' ? 'Previewing...' : 'Preview Caddy'}
+                        </button>
+                        <p className="suite-meta mos-meta">
+                          Advanced preview only. Save this file and restart Homepage to update dashboard tiles.
+                        </p>
+                      </div>
                       {previewState.kind === 'loading' ? (
                         <p className="suite-meta mos-meta">Loading Caddy preview...</p>
                       ) : null}

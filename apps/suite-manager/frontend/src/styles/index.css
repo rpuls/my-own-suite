@@ -390,6 +390,17 @@
   border-top: 1px solid var(--surface-border);
 }
 
+.suite-homepage-caddy-preview-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.suite-homepage-caddy-preview-actions p {
+  margin: 0;
+}
+
 .suite-homepage-caddy-preview-header {
   display: flex;
   align-items: flex-start;
