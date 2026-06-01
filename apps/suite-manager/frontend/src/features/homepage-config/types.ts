@@ -15,6 +15,7 @@ export type HomepageConfigFileResponse = {
 };
 
 export type HomepageConfigCapabilitiesResponse = {
+  caddyExternalProxyApplyAvailable: boolean;
   error: string | null;
   homepageRestartAvailable: boolean;
   serviceAvailable: boolean;
@@ -22,4 +23,31 @@ export type HomepageConfigCapabilitiesResponse = {
 
 export type HomepageRestartResponse = {
   restarted: boolean;
+};
+
+export type HomepageCaddyApplyResponse = {
+  applied: boolean;
+  preview: HomepageCaddyProxyPreviewResponse;
+};
+
+export type HomepageCaddyProxyPreviewError = {
+  message: string;
+  path: string;
+};
+
+export type HomepageCaddyProxyPreviewRoute = {
+  host: string;
+  href: string;
+  path: string;
+  siteAddress: string;
+  title: string;
+  upstream: string;
+  upstreamTlsInsecureSkipVerify: boolean;
+};
+
+export type HomepageCaddyProxyPreviewResponse = {
+  caddyfile: string;
+  errors: HomepageCaddyProxyPreviewError[];
+  routes: HomepageCaddyProxyPreviewRoute[];
+  valid: boolean;
 };

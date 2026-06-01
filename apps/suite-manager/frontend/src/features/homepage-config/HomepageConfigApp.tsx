@@ -1,10 +1,12 @@
-import { RefreshCcw, RotateCcw, Save } from 'lucide-react';
+import { FileCode2, RefreshCcw, Rocket, RotateCcw, Save } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { withSetupPath } from '../../lib/base-path';
 import CodeEditor from './CodeEditor';
 import type {
   HomepageConfigCapabilitiesResponse,
+  HomepageCaddyApplyResponse,
+  HomepageCaddyProxyPreviewResponse,
   HomepageConfigFile,
   HomepageConfigFileResponse,
   HomepageConfigListResponse,
@@ -24,6 +26,12 @@ type EditorState =
       restartMessage: string | null;
       savedAt: string | null;
     }
+  | { kind: 'error'; message: string };
+
+type PreviewState =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'loaded'; preview: HomepageCaddyProxyPreviewResponse }
   | { kind: 'error'; message: string };
 
 async function readJson<T extends object>(response: Response, fallback: string): Promise<T> {
@@ -48,6 +56,24 @@ async function loadFiles(): Promise<HomepageConfigFile[]> {
 async function loadCapabilities(): Promise<HomepageConfigCapabilitiesResponse> {
   const response = await fetch(withSetupPath('/api/homepage-config/capabilities'));
   return readJson<HomepageConfigCapabilitiesResponse>(response, 'Unable to load Homepage restart capability.');
+}
+
+async function loadCaddyProxyPreview(content: string): Promise<HomepageCaddyProxyPreviewResponse> {
+  const response = await fetch(withSetupPath('/api/homepage-config/caddy-preview'), {
+    body: JSON.stringify({ content }),
+    headers: {
+      'content-type': 'application/json',
+    },
+    method: 'POST',
+  });
+  return readJson<HomepageCaddyProxyPreviewResponse>(response, 'Unable to preview Caddy proxy config.');
+}
+
+async function applyCaddyProxyPreview(): Promise<HomepageCaddyApplyResponse> {
+  const response = await fetch(withSetupPath('/api/homepage-config/caddy-preview/apply'), {
+    method: 'POST',
+  });
+  return readJson<HomepageCaddyApplyResponse>(response, 'Unable to apply Caddy proxy config.');
 }
 
 async function restartHomepage(): Promise<HomepageRestartResponse> {
@@ -84,6 +110,42 @@ async function tryAutoRestartHomepage(shouldRestart: boolean): Promise<{
   }
 }
 
+async function tryAutoApplyCaddyProxyRoutes(shouldApply: boolean): Promise<{
+  applyMessage: string | null;
+  errorMessage: string | null;
+  preview: HomepageCaddyProxyPreviewResponse | null;
+}> {
+  if (!shouldApply) {
+    return {
+      applyMessage: null,
+      errorMessage: null,
+      preview: null,
+    };
+  }
+
+  try {
+    const result = await applyCaddyProxyPreview();
+    return {
+      applyMessage: 'Caddy external proxy routes applied.',
+      errorMessage: null,
+      preview: result.preview,
+    };
+  } catch (error: unknown) {
+    return {
+      applyMessage: null,
+      errorMessage: `Saved, but Caddy route apply failed: ${
+        error instanceof Error ? error.message : 'Unable to apply Caddy proxy config.'
+      }`,
+      preview: null,
+    };
+  }
+}
+
+function combineErrorMessages(...messages: Array<string | null>): string | null {
+  const visibleMessages = messages.filter((message): message is string => Boolean(message));
+  return visibleMessages.length > 0 ? visibleMessages.join(' ') : null;
+}
+
 function labelForFile(name: string): string {
   return name.replace('.template', '').replace(/\.(yaml|css|js)$/u, '');
 }
@@ -93,7 +155,10 @@ export default function HomepageConfigApp() {
   const [state, setState] = useState<EditorState>({ kind: 'loading' });
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [isApplyingCaddy, setIsApplyingCaddy] = useState(false);
   const [autoRestartHomepage, setAutoRestartHomepage] = useState(true);
+  const [previewState, setPreviewState] = useState<PreviewState>({ kind: 'idle' });
+  const [caddyApplyMessage, setCaddyApplyMessage] = useState<string | null>(null);
 
   const selectedFile = useMemo(() => {
     if (state.kind !== 'loaded') {
@@ -104,6 +169,7 @@ export default function HomepageConfigApp() {
 
   async function refresh(nextFileName = selectedFileName): Promise<void> {
     setState({ kind: 'loading' });
+    setPreviewState({ kind: 'idle' });
     try {
       const files = await loadFiles();
       const restartCapabilities = await loadCapabilities();
@@ -134,7 +200,44 @@ export default function HomepageConfigApp() {
 
   async function selectFile(name: string): Promise<void> {
     setSelectedFileName(name);
+    setPreviewState({ kind: 'idle' });
     await refresh(name);
+  }
+
+  async function previewCaddyProxyConfig(): Promise<void> {
+    if (state.kind !== 'loaded') {
+      return;
+    }
+
+    setPreviewState({ kind: 'loading' });
+    setCaddyApplyMessage(null);
+    try {
+      const preview = await loadCaddyProxyPreview(state.content);
+      setPreviewState({ kind: 'loaded', preview });
+    } catch (error: unknown) {
+      setPreviewState({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Unable to preview Caddy proxy config.',
+      });
+    }
+  }
+
+  async function applyCaddyProxyConfig(): Promise<void> {
+    if (state.kind !== 'loaded') {
+      return;
+    }
+
+    setIsApplyingCaddy(true);
+    setCaddyApplyMessage(null);
+    try {
+      const result = await applyCaddyProxyPreview();
+      setPreviewState({ kind: 'loaded', preview: result.preview });
+      setCaddyApplyMessage('Caddy external proxy routes applied.');
+    } catch (error: unknown) {
+      setCaddyApplyMessage(error instanceof Error ? error.message : 'Unable to apply Caddy proxy config.');
+    } finally {
+      setIsApplyingCaddy(false);
+    }
   }
 
   async function save(): Promise<void> {
@@ -143,6 +246,7 @@ export default function HomepageConfigApp() {
     }
 
     setIsSaving(true);
+    setCaddyApplyMessage(null);
     try {
       const response = await fetch(withSetupPath(`/api/homepage-config/files/${encodeURIComponent(state.file.name)}`), {
         body: JSON.stringify({ content: state.content }),
@@ -155,11 +259,19 @@ export default function HomepageConfigApp() {
       const restart = await tryAutoRestartHomepage(
         state.restartCapabilities.homepageRestartAvailable && autoRestartHomepage,
       );
+      const caddyApply = await tryAutoApplyCaddyProxyRoutes(
+        state.file.name === 'services.template.yaml' &&
+          state.restartCapabilities.caddyExternalProxyApplyAvailable,
+      );
+      if (caddyApply.preview) {
+        setPreviewState({ kind: 'loaded', preview: caddyApply.preview });
+      }
+      setCaddyApplyMessage(caddyApply.applyMessage);
       setState({
         ...state,
         content: body.content,
         dirty: false,
-        errorMessage: restart.errorMessage,
+        errorMessage: combineErrorMessages(restart.errorMessage, caddyApply.errorMessage),
         file: body.file,
         restartMessage: restart.restartMessage,
         savedAt: new Date().toLocaleTimeString(),
@@ -188,6 +300,7 @@ export default function HomepageConfigApp() {
     }
 
     setIsResetting(true);
+    setCaddyApplyMessage(null);
     try {
       const response = await fetch(
         withSetupPath(`/api/homepage-config/files/${encodeURIComponent(state.file.name)}/reset`),
@@ -199,11 +312,19 @@ export default function HomepageConfigApp() {
       const restart = await tryAutoRestartHomepage(
         state.restartCapabilities.homepageRestartAvailable && autoRestartHomepage,
       );
+      const caddyApply = await tryAutoApplyCaddyProxyRoutes(
+        state.file.name === 'services.template.yaml' &&
+          state.restartCapabilities.caddyExternalProxyApplyAvailable,
+      );
+      if (caddyApply.preview) {
+        setPreviewState({ kind: 'loaded', preview: caddyApply.preview });
+      }
+      setCaddyApplyMessage(caddyApply.applyMessage);
       setState({
         ...state,
         content: body.content,
         dirty: false,
-        errorMessage: restart.errorMessage,
+        errorMessage: combineErrorMessages(restart.errorMessage, caddyApply.errorMessage),
         file: body.file,
         restartMessage: restart.restartMessage,
         savedAt: new Date().toLocaleTimeString(),
@@ -221,6 +342,11 @@ export default function HomepageConfigApp() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  const showCaddyPreviewAction =
+    selectedFile?.name === 'services.template.yaml' &&
+    state.kind === 'loaded' &&
+    state.restartCapabilities.caddyExternalProxyApplyAvailable;
 
   return (
     <main className="suite-app">
@@ -302,7 +428,9 @@ export default function HomepageConfigApp() {
                     ariaLabel="Homepage config editor"
                     language={state.file.language}
                     value={state.content}
-                    onChange={(value) =>
+                    onChange={(value) => {
+                      setPreviewState({ kind: 'idle' });
+                      setCaddyApplyMessage(null);
                       setState({
                         ...state,
                         content: value,
@@ -310,9 +438,82 @@ export default function HomepageConfigApp() {
                         errorMessage: null,
                         restartMessage: null,
                         savedAt: null,
-                      })
-                    }
+                      });
+                    }}
                   />
+                  {showCaddyPreviewAction ? (
+                    <div className="suite-homepage-caddy-preview">
+                      <div className="suite-homepage-caddy-preview-actions">
+                        <button
+                          className="suite-copy-button"
+                          disabled={isSaving || isResetting || previewState.kind === 'loading'}
+                          onClick={() => void previewCaddyProxyConfig()}
+                          type="button"
+                        >
+                          <FileCode2 aria-hidden="true" className="suite-inline-icon" />
+                          {previewState.kind === 'loading' ? 'Previewing...' : 'Preview Caddy'}
+                        </button>
+                        {state.restartCapabilities.caddyExternalProxyApplyAvailable &&
+                        previewState.kind === 'loaded' &&
+                        previewState.preview.valid ? (
+                          <button
+                            className="suite-copy-button"
+                            disabled={state.dirty || isSaving || isResetting || isApplyingCaddy}
+                            onClick={() => void applyCaddyProxyConfig()}
+                            type="button"
+                          >
+                            <Rocket aria-hidden="true" className="suite-inline-icon" />
+                            {isApplyingCaddy ? 'Applying...' : 'Apply Caddy routes'}
+                          </button>
+                        ) : null}
+                        <p className="suite-meta mos-meta">
+                          Advanced routing preview. Save this file and restart Homepage to update dashboard tiles.
+                        </p>
+                      </div>
+                      {caddyApplyMessage ? <p className="suite-meta mos-meta">{caddyApplyMessage}</p> : null}
+                      {previewState.kind === 'loading' ? (
+                        <p className="suite-meta mos-meta">Loading Caddy preview...</p>
+                      ) : null}
+                      {previewState.kind === 'error' ? <p className="suite-error">{previewState.message}</p> : null}
+                      {previewState.kind === 'loaded' ? (
+                        <>
+                          <div className="suite-homepage-caddy-preview-header">
+                            <div>
+                              <h3 className="mos-card-title">Caddy preview</h3>
+                              <p className="suite-meta mos-meta">
+                                {previewState.preview.valid
+                                  ? `${previewState.preview.routes.length} route${
+                                      previewState.preview.routes.length === 1 ? '' : 's'
+                                    } ready`
+                                  : `${previewState.preview.errors.length} validation issue${
+                                      previewState.preview.errors.length === 1 ? '' : 's'
+                                    }`}
+                              </p>
+                            </div>
+                          </div>
+
+                          {previewState.preview.valid ? (
+                            previewState.preview.caddyfile ? (
+                              <pre className="suite-homepage-caddy-preview-code">
+                                <code>{previewState.preview.caddyfile}</code>
+                              </pre>
+                            ) : (
+                              <p className="suite-meta mos-meta">No enabled MOS proxy annotations found.</p>
+                            )
+                          ) : (
+                            <ul className="suite-homepage-caddy-preview-errors">
+                              {previewState.preview.errors.map((error) => (
+                                <li key={`${error.path}:${error.message}`}>
+                                  <strong>{error.path}</strong>
+                                  <span>{error.message}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </div>
 

@@ -15,6 +15,8 @@ For mandatory agent rules, see [AGENTS.md](../AGENTS.md). For documentation owne
 - `staging` is the practical hardware-testing branch.
 - GitHub Issues are preferred for task state because Codex, PRs, review, and status all meet there.
 - Repo docs should hold context that should still matter after an issue is closed.
+- There is no long-lived repo roadmap document; use GitHub Issues for roadmap-like planning, backlog, and active task state.
+- Temporary branch plans are allowed when useful for multi-session work, but they should be deleted or replaced with durable decisions/docs before merge.
 
 ## Useful Gotchas
 

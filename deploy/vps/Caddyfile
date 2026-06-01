@@ -5,6 +5,8 @@
 	auto_https disable_redirects
 }
 
+import /etc/caddy/generated/*.caddy
+
 # Subdomain routing using DOMAIN from .env
 # Local: homepage.localhost, vaultwarden.localhost
 # Production: homepage.yourdomain.com, vaultwarden.yourdomain.com
