@@ -39,6 +39,7 @@ export type HomepageCaddyProxyPreviewRoute = {
   host: string;
   href: string;
   path: string;
+  siteAddress: string;
   title: string;
   upstream: string;
   upstreamTlsInsecureSkipVerify: boolean;

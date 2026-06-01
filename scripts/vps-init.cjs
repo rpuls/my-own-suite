@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 
 const rootDir = process.cwd();
 const vpsDir = path.join(rootDir, 'deploy', 'vps');
+const caddyExternalProxiesPath = path.join(vpsDir, 'generated', 'caddy', 'external-proxies.caddy');
 const URL_SAFE_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_';
 const TEMPLATE_EXTENSIONS = ['.env.template'];
 const GLOBAL_TEMPLATE_FILES = new Set([
@@ -448,4 +449,20 @@ console.log(`\nDone. Created ${createdCount}, updated ${updatedCount}, skipped $
 
 if (errorCount > 0) {
   process.exit(1);
+}
+
+if (!fs.existsSync(caddyExternalProxiesPath)) {
+  fs.mkdirSync(path.dirname(caddyExternalProxiesPath), { recursive: true });
+  fs.writeFileSync(
+    caddyExternalProxiesPath,
+    [
+      '# Generated external proxy routes for Homepage `mos.proxy` annotations.',
+      '#',
+      '# This file is managed by MOS tooling and intentionally ignored by git.',
+      '# Run `npm run caddy:external-proxies:apply` to refresh it from saved Homepage config.',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  console.log('Created: deploy/vps/generated/caddy/external-proxies.caddy');
 }

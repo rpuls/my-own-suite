@@ -46,6 +46,7 @@
     "vps:init": "node scripts/vps-init.cjs",
     "vps:doctor": "node scripts/vps-doctor.cjs",
     "vps:up": "npm run vps:init && npm run vps:doctor && node scripts/mos-compose.cjs --profile vaultwarden --profile seafile --profile onlyoffice --profile stirling-pdf --profile radicale --profile immich up -d --build",
+    "caddy:external-proxies:apply": "node scripts/caddy-external-proxies-apply.cjs",
     "update:check": "node scripts/mos-updater.cjs check",
     "update:status": "node scripts/mos-updater.cjs status",
     "update:apply": "node scripts/mos-updater.cjs apply",

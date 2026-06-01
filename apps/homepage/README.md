@@ -75,14 +75,16 @@ Optional MOS proxy annotation example:
               insecureSkipVerify: false
 ```
 
-For preview-only external proxy support, `href` is the dashboard URL and the generated Caddy host is inferred from its hostname. `mos.proxy.upstream` is the internal absolute `http` or `https` URL Caddy would reverse proxy to. `mos.proxy.tls.insecureSkipVerify` is optional and only affects HTTPS upstreams. Raw Caddy directives/snippets are not accepted in annotations.
+For external proxy support, `href` is the dashboard URL and the generated Caddy host is inferred from its hostname. `mos.proxy.upstream` is the internal absolute `http` or `https` URL Caddy reverse proxies to. `mos.proxy.tls.insecureSkipVerify` is optional and only affects HTTPS upstreams. Raw Caddy directives/snippets are not accepted in annotations.
 
-Suite Manager exposes the parsed preview on `/setup/api/homepage-config/caddy-preview`. `GET` previews the saved `services.template.yaml`, and `POST` with `{ "content": "..." }` previews supplied editor content. Preview requests do not write Caddy config, reload Caddy, restart Caddy, or change Homepage output. Applying generated routes requires the host service agent and uses the saved `services.template.yaml`, not unsaved editor content.
+Suite Manager exposes the parsed preview on `/setup/api/homepage-config/caddy-preview`. `GET` previews the saved `services.template.yaml`, and `POST` with `{ "content": "..." }` previews supplied editor content. Preview requests do not write Caddy config, reload Caddy, restart Caddy, or change Homepage output. Applying generated routes requires the host service agent and uses the saved `services.template.yaml`, not unsaved editor content. When that capability is available, saving or resetting `services.template.yaml` in Suite Manager automatically applies the generated Caddy routes after the file write succeeds.
 
 #### Operational commands
 
 - If you changed config in Suite Manager or env values in `deploy/vps/services/homepage/.env`:
   - Restarting Homepage is enough for the fetched config and generated `services.yaml` to refresh.
+- If you changed `mos.proxy` annotations without the self-host service agent available:
+  - Run `npm run caddy:external-proxies:apply` from the repo root to apply the saved external proxy routes, validate Caddy, and reload Caddy.
 - If you changed repo defaults under `apps/homepage/config`:
   - Rebuild Homepage image (from repo root): `npm run vps:rebuild`
 - To reset persisted runtime config to the bundled defaults:

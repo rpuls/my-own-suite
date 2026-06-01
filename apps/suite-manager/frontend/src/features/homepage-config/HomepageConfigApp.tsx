@@ -110,6 +110,42 @@ async function tryAutoRestartHomepage(shouldRestart: boolean): Promise<{
   }
 }
 
+async function tryAutoApplyCaddyProxyRoutes(shouldApply: boolean): Promise<{
+  applyMessage: string | null;
+  errorMessage: string | null;
+  preview: HomepageCaddyProxyPreviewResponse | null;
+}> {
+  if (!shouldApply) {
+    return {
+      applyMessage: null,
+      errorMessage: null,
+      preview: null,
+    };
+  }
+
+  try {
+    const result = await applyCaddyProxyPreview();
+    return {
+      applyMessage: 'Caddy external proxy routes applied.',
+      errorMessage: null,
+      preview: result.preview,
+    };
+  } catch (error: unknown) {
+    return {
+      applyMessage: null,
+      errorMessage: `Saved, but Caddy route apply failed: ${
+        error instanceof Error ? error.message : 'Unable to apply Caddy proxy config.'
+      }`,
+      preview: null,
+    };
+  }
+}
+
+function combineErrorMessages(...messages: Array<string | null>): string | null {
+  const visibleMessages = messages.filter((message): message is string => Boolean(message));
+  return visibleMessages.length > 0 ? visibleMessages.join(' ') : null;
+}
+
 function labelForFile(name: string): string {
   return name.replace('.template', '').replace(/\.(yaml|css|js)$/u, '');
 }
@@ -210,6 +246,7 @@ export default function HomepageConfigApp() {
     }
 
     setIsSaving(true);
+    setCaddyApplyMessage(null);
     try {
       const response = await fetch(withSetupPath(`/api/homepage-config/files/${encodeURIComponent(state.file.name)}`), {
         body: JSON.stringify({ content: state.content }),
@@ -222,11 +259,19 @@ export default function HomepageConfigApp() {
       const restart = await tryAutoRestartHomepage(
         state.restartCapabilities.homepageRestartAvailable && autoRestartHomepage,
       );
+      const caddyApply = await tryAutoApplyCaddyProxyRoutes(
+        state.file.name === 'services.template.yaml' &&
+          state.restartCapabilities.caddyExternalProxyApplyAvailable,
+      );
+      if (caddyApply.preview) {
+        setPreviewState({ kind: 'loaded', preview: caddyApply.preview });
+      }
+      setCaddyApplyMessage(caddyApply.applyMessage);
       setState({
         ...state,
         content: body.content,
         dirty: false,
-        errorMessage: restart.errorMessage,
+        errorMessage: combineErrorMessages(restart.errorMessage, caddyApply.errorMessage),
         file: body.file,
         restartMessage: restart.restartMessage,
         savedAt: new Date().toLocaleTimeString(),
@@ -255,6 +300,7 @@ export default function HomepageConfigApp() {
     }
 
     setIsResetting(true);
+    setCaddyApplyMessage(null);
     try {
       const response = await fetch(
         withSetupPath(`/api/homepage-config/files/${encodeURIComponent(state.file.name)}/reset`),
@@ -266,11 +312,19 @@ export default function HomepageConfigApp() {
       const restart = await tryAutoRestartHomepage(
         state.restartCapabilities.homepageRestartAvailable && autoRestartHomepage,
       );
+      const caddyApply = await tryAutoApplyCaddyProxyRoutes(
+        state.file.name === 'services.template.yaml' &&
+          state.restartCapabilities.caddyExternalProxyApplyAvailable,
+      );
+      if (caddyApply.preview) {
+        setPreviewState({ kind: 'loaded', preview: caddyApply.preview });
+      }
+      setCaddyApplyMessage(caddyApply.applyMessage);
       setState({
         ...state,
         content: body.content,
         dirty: false,
-        errorMessage: restart.errorMessage,
+        errorMessage: combineErrorMessages(restart.errorMessage, caddyApply.errorMessage),
         file: body.file,
         restartMessage: restart.restartMessage,
         savedAt: new Date().toLocaleTimeString(),

@@ -24,6 +24,7 @@ test('generates preview routes for nested external proxy annotations', () => {
       host: 'homeassistant.home.example.com',
       href: 'https://homeassistant.home.example.com/',
       path: 'My Shortcuts > Home Lab > Home Assistant',
+      siteAddress: 'homeassistant.home.example.com',
       title: 'Home Assistant',
       upstream: 'http://192.168.30.4:8123',
       upstreamTlsInsecureSkipVerify: false,
@@ -32,6 +33,25 @@ test('generates preview routes for nested external proxy annotations', () => {
   assert.equal(
     preview.caddyfile,
     'homeassistant.home.example.com {\n\treverse_proxy http://192.168.30.4:8123\n}\n',
+  );
+});
+
+test('generates explicit HTTP site addresses for HTTP dashboard URLs', () => {
+  const preview = createCaddyProxyPreviewFromServicesTemplate(`
+- Appliances:
+    - TrueNAS:
+        href: http://truenas.mos.home
+        mos:
+          proxy:
+            enabled: true
+            upstream: http://192.168.30.3:81
+`);
+
+  assert.equal(preview.valid, true);
+  assert.equal(preview.routes[0]?.siteAddress, 'http://truenas.mos.home');
+  assert.equal(
+    preview.caddyfile,
+    'http://truenas.mos.home {\n\treverse_proxy http://192.168.30.3:81\n}\n',
   );
 });
 

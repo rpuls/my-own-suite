@@ -9,6 +9,7 @@ export type CaddyProxyPreviewRoute = {
   host: string;
   href: string;
   path: string;
+  siteAddress: string;
   title: string;
   upstream: string;
   upstreamTlsInsecureSkipVerify: boolean;
@@ -114,10 +115,10 @@ function buildCaddyfile(routes: CaddyProxyPreviewRoute[]): string {
   return `${routes
     .map((route) => {
       if (route.upstreamTlsInsecureSkipVerify) {
-        return `${route.host} {\n\treverse_proxy ${route.upstream} {\n\t\ttransport http {\n\t\t\ttls_insecure_skip_verify\n\t\t}\n\t}\n}`;
+        return `${route.siteAddress} {\n\treverse_proxy ${route.upstream} {\n\t\ttransport http {\n\t\t\ttls_insecure_skip_verify\n\t\t}\n\t}\n}`;
       }
 
-      return `${route.host} {\n\treverse_proxy ${route.upstream}\n}`;
+      return `${route.siteAddress} {\n\treverse_proxy ${route.upstream}\n}`;
     })
     .join('\n\n')}\n`;
 }
@@ -183,6 +184,7 @@ export function createCaddyProxyPreviewFromServicesTemplate(content: string): Ca
     }
 
     const host = hrefUrl.hostname.toLowerCase();
+    const siteAddress = hrefUrl.protocol === 'http:' ? `http://${host}` : host;
     const existingPath = seenHosts.get(host);
     if (existingPath) {
       errors.push({ message: `Duplicate proxy hostname also used by ${existingPath}.`, path });
@@ -194,6 +196,7 @@ export function createCaddyProxyPreviewFromServicesTemplate(content: string): Ca
       host,
       href: hrefUrl.toString(),
       path,
+      siteAddress,
       title: tile.title,
       upstream: normalizeUpstream(upstreamUrl),
       upstreamTlsInsecureSkipVerify: skipVerify && upstreamUrl.protocol === 'https:',

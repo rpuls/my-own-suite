@@ -220,6 +220,8 @@ This keeps the product boundary clear:
 - [ ] Phase 2: Safe generated Caddy snippet
   - [x] Add a generated snippet path and base Caddyfile import strategy.
   - [x] Add self-host service-agent capability for safe Caddy write/reload or restart.
+  - [x] Add a local/VPS operator command for applying saved generated proxy routes.
+  - [x] Auto-apply saved `services.template.yaml` proxy routes from Suite Manager save/reset when the self-host service-agent Caddy capability is available.
   - [ ] Add validation/smoke coverage for generated external proxy config.
 - [ ] Phase 3: External Services UI
   - [ ] Add Suite Manager add/edit/remove flows for MOS-managed external services.
@@ -262,6 +264,7 @@ Required work:
 - Add a generated snippet path.
 - Add a Caddy import strategy.
 - Add self-host service-agent capability for writing/reloading or restarting Caddy safely.
+- Auto-apply saved `services.template.yaml` proxy routes from Suite Manager when the safe self-host Caddy capability is available.
 - Keep built-in routes static.
 - Add `vps:doctor` validation for generated external proxy config.
 - Add E2E or integration smoke coverage where feasible.
