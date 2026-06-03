@@ -11,7 +11,7 @@ npm run vps:init
 # 2) Optional: customize values in deploy/vps/**/*.env
 #    (required secrets are auto-generated during vps:init)
 
-# 3) Validate required values and cross-file wiring
+# 3) Validate required values, cross-file wiring, and generated external proxy snippets
 npm run vps:doctor
 
 # 4) Build and start the full stack (non-destructive)
@@ -165,7 +165,7 @@ Shared configuration model:
 - `deploy/vps/services/suite-manager/.env`: shared user-facing values, auth inputs, and onboarding controls reused across the stack
 - `deploy/vps/services/<service>/.env`: service-specific runtime settings for all deployable services
 - Homepage runtime config: Suite Manager stores editable dashboard YAML/CSS/JS under its persistent data volume, seeded from bundled defaults on first use. Homepage fetches those files from Suite Manager during startup, writes them into its local `/app/config`, then regenerates `services.yaml`.
-- External proxy routes: Caddy imports generated snippets from `deploy/vps/generated/caddy/*.caddy` through a read-only mount at `/etc/caddy/generated`. `vps:init` seeds `external-proxies.caddy` when missing. Suite Manager can preview routes from Homepage `mos.proxy` annotations, and self-host installs with the service agent can apply the saved generated snippet after validation and Caddy reload.
+- External proxy routes: Caddy imports generated snippets from `deploy/vps/generated/caddy/*.caddy` through a read-only mount at `/etc/caddy/generated`. `vps:init` seeds `external-proxies.caddy` when missing. Suite Manager can preview routes from Homepage `mos.proxy` annotations, and self-host installs with the service agent can apply the saved generated snippet after validation and Caddy reload. `vps:doctor` also rejects malformed generated external proxy snippets before stack startup.
 - Local/VPS operators can apply saved external proxy routes with `npm run caddy:external-proxies:apply`. The command reads the saved Suite Manager-owned `services.template.yaml` from the running `mos-suite-manager` container, writes `deploy/vps/generated/caddy/external-proxies.caddy`, validates the mounted Caddy config in `mos-caddy`, and reloads Caddy.
 
 Optional shared SMTP model:

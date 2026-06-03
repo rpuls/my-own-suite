@@ -124,6 +124,26 @@ test('reports invalid href and upstream URLs without generating config', () => {
   );
 });
 
+test('rejects upstream URLs with paths before generating Caddy config', () => {
+  const preview = createCaddyProxyPreviewFromServicesTemplate(`
+- Broken:
+    - Path Upstream:
+        href: https://path-upstream.home.example.com
+        mos:
+          proxy:
+            enabled: true
+            upstream: http://192.168.1.10:8080/app
+`);
+
+  assert.equal(preview.valid, false);
+  assert.equal(preview.caddyfile, '');
+  assert.equal(preview.routes.length, 0);
+  assert.deepEqual(
+    preview.errors.map((error) => error.message),
+    ['`mos.proxy.upstream` must not include a path, query string, or fragment.'],
+  );
+});
+
 test('rejects duplicate proxy hostnames', () => {
   const preview = createCaddyProxyPreviewFromServicesTemplate(`
 - Group:

@@ -217,12 +217,12 @@ This keeps the product boundary clear:
   - [x] Surface current-editor preview in the existing Suite Manager Homepage Customize screen as a secondary advanced action below the editor, only when the Caddy apply capability is available.
   - [x] Add focused parser/generator tests for nested groups, valid routes, invalid URLs, duplicate hosts, TLS skip generation, and ignored tiles.
   - [x] Update technical docs and changelog for the preview-only contract.
-- [ ] Phase 2: Safe generated Caddy snippet
+- [x] Phase 2: Safe generated Caddy snippet
   - [x] Add a generated snippet path and base Caddyfile import strategy.
   - [x] Add self-host service-agent capability for safe Caddy write/reload or restart.
   - [x] Add a local/VPS operator command for applying saved generated proxy routes.
   - [x] Auto-apply saved `services.template.yaml` proxy routes from Suite Manager save/reset when the self-host service-agent Caddy capability is available.
-  - [ ] Add validation/smoke coverage for generated external proxy config.
+  - [x] Add validation/smoke coverage for generated external proxy config.
 - [ ] Phase 3: External Services UI
   - [ ] Add Suite Manager add/edit/remove flows for MOS-managed external services.
   - [ ] Preserve user-authored Homepage YAML while writing the safe subset of service tile metadata.

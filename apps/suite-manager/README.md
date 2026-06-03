@@ -85,7 +85,7 @@
 - Acts as the shared onboarding surface for stack-wide bootstrap, credential handoff, and future per-app provisioning adapters.
 - Acts as the authenticated public entrypoint for setup and Homepage access.
 - Provides a YAML-first editor for Suite Manager-owned Homepage runtime config files without making generated `services.yaml` user-editable.
-- Reads optional `mos.proxy` metadata from Homepage service tiles to validate and preview external-service Caddy routes without writing or reloading Caddy.
+- Reads optional `mos.proxy` metadata from Homepage service tiles to validate and preview external-service Caddy routes without writing or reloading Caddy. Upstream values must be origin-only `http` or `https` URLs so generated snippets stay compatible with Caddy validation.
 - Shows a current-editor preview in the existing Homepage Customize screen for `services.template.yaml`.
 - Applies saved external proxy routes only through the host service agent; Suite Manager does not write Caddy files directly. When that capability is available, saving or resetting `services.template.yaml` automatically applies the generated Caddy routes after the file write succeeds.
 - Acts as the shared source of truth for optional SMTP settings reused by compatible services in the VPS/local stack.

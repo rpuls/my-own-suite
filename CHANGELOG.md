@@ -19,6 +19,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Staged the generated external-proxy Caddy snippet path for future `mos.proxy` apply support while leaving static routes unchanged. Compatibility note: the VPS/local Caddy service now imports `deploy/vps/generated/caddy/*.caddy` through a read-only mount at `/etc/caddy/generated`, and `vps:init` seeds the ignored `external-proxies.caddy` file when missing.
 - Added self-host service-agent support for applying generated external proxy routes after validation and Caddy reload, exposed through Suite Manager when the `external-proxies.apply` Caddy capability is available. Saving or resetting `services.template.yaml` now auto-applies saved proxy routes when that capability is reachable. Compatibility note: `mos-service-agent` now receives `MOS_SERVICE_AGENT_REPO_DIR` so it can write only the repo-owned generated Caddy snippet path.
 - Added `npm run caddy:external-proxies:apply` so local/VPS operators can apply saved Homepage `mos.proxy` routes to the generated Caddy snippet, validate the mounted Caddy config, and reload Caddy without needing the self-host service agent.
+- Added `vps:doctor` validation and focused smoke tests for generated external Caddy proxy snippets, including malformed snippets, duplicate generated hosts, and upstream URLs that would break Caddy validation.
 
 ### Fixed
 

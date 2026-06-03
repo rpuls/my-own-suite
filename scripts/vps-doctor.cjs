@@ -2,9 +2,11 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { validateGeneratedExternalProxySnippetFile } = require('./caddy-external-proxies-validate.cjs');
 
 const rootDir = process.cwd();
 const vpsDir = path.join(rootDir, 'deploy', 'vps');
+const caddyExternalProxiesPath = path.join(vpsDir, 'generated', 'caddy', 'external-proxies.caddy');
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -364,6 +366,15 @@ if (env.suiteManager && env.seafile) {
 
 for (const [fileName, timezoneKey] of TIMEZONE_CHECKS) {
   warnIfTimezoneDiffersFromSuiteManager(fileName, timezoneKey);
+}
+
+const externalProxySnippet = validateGeneratedExternalProxySnippetFile(caddyExternalProxiesPath);
+if (!externalProxySnippet.valid) {
+  for (const error of externalProxySnippet.errors) {
+    errors.push(
+      `Generated external Caddy proxy snippet is invalid at deploy/vps/generated/caddy/external-proxies.caddy:${error.line}: ${error.message}`,
+    );
+  }
 }
 
 if (warnings.length > 0) {
