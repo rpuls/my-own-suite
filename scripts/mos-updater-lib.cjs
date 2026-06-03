@@ -4,6 +4,9 @@ const https = require('node:https');
 const { execFileSync } = require('node:child_process');
 
 const defaultRepo = 'rpuls/my-own-suite';
+const updateSafeGeneratedPaths = new Set([
+  'deploy/vps/generated/caddy/external-proxies.caddy',
+]);
 
 function normalizeVersion(value) {
   return String(value || '').trim().replace(/^v/i, '');
@@ -297,11 +300,52 @@ function refreshRemoteBranch(repoRoot, ref) {
   };
 }
 
-function ensureCleanWorkingTree(repoRoot, fail) {
+function parsePorcelainPath(line) {
+  const rawPath = line.slice(3).trim();
+  const pathWithoutRenameSource = rawPath.includes(' -> ') ? rawPath.split(' -> ').pop() : rawPath;
+  return pathWithoutRenameSource.replace(/^"|"$/g, '').replaceAll('\\', '/');
+}
+
+function formatDirtyPaths(porcelain) {
+  return porcelain
+    .trim()
+    .split(/\r?\n/u)
+    .filter(Boolean)
+    .map(parsePorcelainPath)
+    .join(', ');
+}
+
+function ensureCleanWorkingTree(repoRoot, fail, log = () => {}) {
   const porcelain = runCommand(repoRoot, 'git', ['status', '--porcelain']);
-  if (porcelain.trim()) {
-    fail('Working tree is not clean. Commit or stash changes before applying an update.');
+  if (!porcelain.trim()) {
+    return;
   }
+
+  const dirtyPaths = porcelain
+    .trim()
+    .split(/\r?\n/u)
+    .filter(Boolean)
+    .map(parsePorcelainPath);
+  const canRestoreGeneratedFiles =
+    dirtyPaths.length > 0 && dirtyPaths.every((dirtyPath) => updateSafeGeneratedPaths.has(dirtyPath));
+
+  if (canRestoreGeneratedFiles) {
+    log(`Restoring generated files before update: ${dirtyPaths.join(', ')}`);
+    runCommand(repoRoot, 'git', ['restore', '--staged', '--worktree', '--', ...dirtyPaths]);
+
+    const nextPorcelain = runCommand(repoRoot, 'git', ['status', '--porcelain']);
+    if (!nextPorcelain.trim()) {
+      return;
+    }
+
+    fail(
+      `Working tree is not clean after restoring generated files. Commit or stash changes before applying an update. Dirty paths: ${formatDirtyPaths(nextPorcelain)}`,
+    );
+  }
+
+  fail(
+    `Working tree is not clean. Commit or stash changes before applying an update. Dirty paths: ${formatDirtyPaths(porcelain)}`,
+  );
 }
 
 function ensureUpdaterPrerequisites(paths, fail) {
@@ -512,7 +556,7 @@ async function collectStatus(context) {
 async function runApply(context, flags) {
   const { fail, log, paths } = context;
   ensureUpdaterPrerequisites(paths, fail);
-  ensureCleanWorkingTree(paths.repoRoot, fail);
+  ensureCleanWorkingTree(paths.repoRoot, fail, log);
 
   log(`Updater implementation: explicit-compose-build-v1`);
   log(`Repository before update: ${readShortCommit(paths.repoRoot)}`);
