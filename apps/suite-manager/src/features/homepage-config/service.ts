@@ -7,6 +7,7 @@ import type { SuiteManagerConfig } from '../../config.ts';
 import {
   createCaddyProxyPreviewFromServicesTemplate,
   type CaddyProxyPreview,
+  type CaddyProxyPreviewError,
 } from './caddy-preview.ts';
 
 export type HomepageConfigFile = {
@@ -18,6 +19,12 @@ export type HomepageConfigFile = {
 
 export type HomepageConfigExportFile = HomepageConfigFile & {
   content: string;
+};
+
+export type HomepageConfigValidation = {
+  caddyPreview: CaddyProxyPreview | null;
+  errors: CaddyProxyPreviewError[];
+  valid: boolean;
 };
 
 const EDITABLE_FILES: HomepageConfigFile[] = [
@@ -53,15 +60,25 @@ function resolveWithin(baseDir: string, name: string): string {
   return resolvedPath;
 }
 
-function validateConfigContent(file: HomepageConfigFile, content: string): void {
+function collectConfigValidationErrors(file: HomepageConfigFile, content: string): CaddyProxyPreviewError[] {
   if (file.language !== 'yaml') {
-    return;
+    return [];
   }
 
   const document = parseDocument(content, { prettyErrors: true });
   const firstError = document.errors[0];
   if (firstError) {
-    throw new Error(`Invalid YAML in ${file.name}: ${firstError.message}`);
+    return [{ message: `Invalid YAML: ${firstError.message}`, path: file.name }];
+  }
+
+  return [];
+}
+
+function validateConfigContent(file: HomepageConfigFile, content: string): void {
+  const errors = collectConfigValidationErrors(file, content);
+  const firstError = errors[0];
+  if (firstError) {
+    throw new Error(`${firstError.path}: ${firstError.message}`);
   }
 }
 
@@ -87,6 +104,13 @@ export class HomepageConfigService {
     await this.seedMissingFiles();
     const file = getFile(name);
     validateConfigContent(file, content);
+    if (file.name === 'services.template.yaml') {
+      const validation = this.validateFileContent(file.name, content);
+      if (!validation.valid) {
+        const firstError = validation.errors[0];
+        throw new Error(firstError ? `${firstError.path}: ${firstError.message}` : 'Homepage config validation failed.');
+      }
+    }
     await fs.writeFile(resolveWithin(this.config.homepageConfigDir, file.name), content, 'utf8');
     return { content, file };
   }
@@ -118,6 +142,34 @@ export class HomepageConfigService {
 
   previewCaddyProxyContent(content: string): CaddyProxyPreview {
     return createCaddyProxyPreviewFromServicesTemplate(content);
+  }
+
+  validateFileContent(name: string, content: string): HomepageConfigValidation {
+    const file = getFile(name);
+    const errors = collectConfigValidationErrors(file, content);
+
+    if (errors.length > 0) {
+      return {
+        caddyPreview: null,
+        errors,
+        valid: false,
+      };
+    }
+
+    if (file.name === 'services.template.yaml') {
+      const caddyPreview = createCaddyProxyPreviewFromServicesTemplate(content);
+      return {
+        caddyPreview,
+        errors: caddyPreview.errors,
+        valid: caddyPreview.valid,
+      };
+    }
+
+    return {
+      caddyPreview: null,
+      errors: [],
+      valid: true,
+    };
   }
 
   private async seedMissingFiles(): Promise<void> {

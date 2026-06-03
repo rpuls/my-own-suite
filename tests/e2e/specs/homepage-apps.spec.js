@@ -117,6 +117,17 @@ test.describe('homepage app verification against the real local stack', () => {
         href: https://example.org/
         description: Added from Suite Manager
 `);
+      const validateResponsePromise = page.waitForResponse(
+        (response) =>
+          response.url().includes('/setup/api/homepage-config/files/services.template.yaml/validate') &&
+          response.request().method() === 'POST' &&
+          response.ok(),
+      );
+      const validateButton = page.getByRole('button', { name: /^Validate$/ });
+      await validateButton.click();
+      await validateResponsePromise;
+      await expect(page.getByText('Ready to save')).toBeVisible();
+
       const saveResponsePromise = page.waitForResponse(
         (response) =>
           response.url().includes('/setup/api/homepage-config/files/services.template.yaml') &&

@@ -235,7 +235,24 @@ async function ensureVaultwardenSession(page) {
   await page.waitForLoadState('domcontentloaded');
   await signInToVaultwardenIfNeeded(page);
   await dismissVaultwardenExtensionPrompt(page, null, 'https://vaultwarden.localhost:18443/#/vault');
-  await expect(page).toHaveURL(/vaultwarden\.localhost:18443\/#\/vault/i, { timeout: 30000 });
+  await expect
+    .poll(
+      async () => {
+        if (/#\/login/i.test(page.url())) {
+          await signInToVaultwardenIfNeeded(page);
+        }
+
+        if (/#\/setup-extension/i.test(page.url())) {
+          await dismissVaultwardenExtensionPrompt(page, null, 'https://vaultwarden.localhost:18443/#/vault');
+        }
+
+        return page.url();
+      },
+      {
+        timeout: 30000,
+      },
+    )
+    .toMatch(/vaultwarden\.localhost:18443\/#\/vault/i);
 }
 
 async function importVaultwardenCsv(page, importUrl, csvImport) {
@@ -277,23 +294,35 @@ async function signInToVaultwardenIfNeeded(page) {
 }
 
 async function dismissVaultwardenExtensionPrompt(page, unblockLocator = null, fallbackUrl = null) {
-  const skipToWebApp = page.getByRole('button', { name: /skip to web app/i });
-  const addItLater = page.getByRole('button', { name: /add it later/i });
+  const dismissControlNames = /skip(?: to web app| for now)?|add it later|maybe later|not now|continue to web app|go to web app/i;
+  const dismissControls = [
+    page.getByRole('button', { name: dismissControlNames }).first(),
+    page.getByRole('link', { name: dismissControlNames }).first(),
+    page.locator('button, a, [role="button"], [role="link"]').filter({ hasText: dismissControlNames }).first(),
+  ];
   const startedAt = Date.now();
 
-  while (Date.now() - startedAt < 10000) {
-    if (await isVisible(skipToWebApp)) {
-      await skipToWebApp.click();
-      break;
-    }
-
-    if (await isVisible(addItLater)) {
-      await addItLater.click();
-      break;
-    }
-
+  while (Date.now() - startedAt < 30000) {
     if (unblockLocator && (await isVisible(unblockLocator))) {
       return;
+    }
+
+    if (fallbackUrl && page.url().toLowerCase() === fallbackUrl.toLowerCase()) {
+      return;
+    }
+
+    for (const dismissControl of dismissControls) {
+      if (await isVisible(dismissControl)) {
+        await dismissControl.click({ timeout: 1000 }).catch(() => null);
+        await page.waitForLoadState('domcontentloaded').catch(() => null);
+        await page.waitForTimeout(250);
+        break;
+      }
+    }
+
+    if (fallbackUrl && /setup-extension/i.test(page.url())) {
+      await page.goto(fallbackUrl);
+      await page.waitForLoadState('domcontentloaded').catch(() => null);
     }
 
     await page.waitForTimeout(250);

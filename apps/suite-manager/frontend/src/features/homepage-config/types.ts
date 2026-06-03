@@ -51,3 +51,9 @@ export type HomepageCaddyProxyPreviewResponse = {
   routes: HomepageCaddyProxyPreviewRoute[];
   valid: boolean;
 };
+
+export type HomepageConfigValidationResponse = {
+  caddyPreview: HomepageCaddyProxyPreviewResponse | null;
+  errors: HomepageCaddyProxyPreviewError[];
+  valid: boolean;
+};
