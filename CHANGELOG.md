@@ -15,16 +15,17 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Limited Suite Manager backup destination discovery to usable backup storage, hiding optical, loop, EFI, active system partitions, and other non-actionable block devices while labeling remaining entries as external, local, or network storage.
 - Refined Suite Manager backup status so disconnected or stale block-device mounts disappear after a rescan, duplicate mounted/unmounted entries are collapsed, and completed backup jobs show a compact activity summary with technical logs tucked behind details.
 - Made the Updates screen capability-driven: Suite Manager now shows managed update actions only when the local update agent is reachable and advertises `updates.apply`, while hosted or agent-less installs stay in notify/manual-update guidance. Compatibility note: `SUITE_MANAGER_UPDATES_MODE` has been removed from active Suite Manager config and generated env templates.
-- Retired the repo roadmap document in favor of GitHub Issues for roadmap-like task state, tightened the durable decision/agent docs around Homepage-driven proxy annotations, host-agent boundaries, and temporary branch planning, and added Suite Manager validation plus capability-gated Customize UI preview for external-service `mos.proxy` Caddy annotations in Homepage tiles.
+- Retired the repo roadmap document in favor of GitHub Issues for roadmap-like task state, tightened the durable decision/agent docs around Homepage-driven proxy annotations, host-agent boundaries, temporary branch planning, and user-run E2E validation, and added Suite Manager validation plus capability-gated Customize UI preview for external-service `mos.proxy` Caddy annotations in Homepage tiles.
 - Staged the generated external-proxy Caddy snippet path for future `mos.proxy` apply support while leaving static routes unchanged. Compatibility note: the VPS/local Caddy service now imports `deploy/vps/generated/caddy/*.caddy` through a read-only mount at `/etc/caddy/generated`, and `vps:init` seeds the ignored `external-proxies.caddy` file when missing.
 - Added self-host service-agent support for applying generated external proxy routes after validation and Caddy reload, exposed through Suite Manager when the `external-proxies.apply` Caddy capability is available. Saving or resetting `services.template.yaml` now auto-applies saved proxy routes when that capability is reachable. Compatibility note: `mos-service-agent` now receives `MOS_SERVICE_AGENT_REPO_DIR` so it can write only the repo-owned generated Caddy snippet path.
 - Added `npm run caddy:external-proxies:apply` so local/VPS operators can apply saved Homepage `mos.proxy` routes to the generated Caddy snippet, validate the mounted Caddy config, and reload Caddy without needing the self-host service agent.
 - Added `vps:doctor` validation and focused smoke tests for generated external Caddy proxy snippets, including malformed snippets, duplicate generated hosts, and upstream URLs that would break Caddy validation.
+- Simplified the Homepage Customize save flow so edited files must be validated before saving, external-service routing details stay behind a discreet advanced dialog, and the Homepage restart option only appears once changes are ready to save.
 
 ### Fixed
 
 - Allowed managed updates to recover when the only dirty working-tree file is the generated external-proxy Caddy snippet, which can happen on installs that applied `mos.proxy` routes before the snippet became ignored.
-- Hardened the local E2E onboarding flow against Vaultwarden DOM changes and fixed Suite Manager onboarding copy buttons so successful clipboard actions reliably show copied feedback.
+- Hardened the local E2E onboarding flow against Vaultwarden DOM and extension-setup route changes, and fixed Suite Manager onboarding copy buttons so successful clipboard actions reliably show copied feedback.
 
 ## [0.10.0] - 2026-05-29
 

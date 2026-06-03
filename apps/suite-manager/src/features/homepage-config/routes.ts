@@ -64,6 +64,22 @@ export function createHomepageConfigRouter(
     }
   });
 
+  router.post('/homepage-config/files/:name/validate', async (c) => {
+    try {
+      const body = (await c.req.json().catch(() => null)) as { content?: unknown } | null;
+      if (!body || typeof body.content !== 'string') {
+        return c.json({ error: 'Config content is required.' }, 400);
+      }
+
+      return c.json(homepageConfigService.validateFileContent(c.req.param('name'), body.content));
+    } catch (caughtError) {
+      return c.json(
+        { error: caughtError instanceof Error ? caughtError.message : 'Unable to validate Homepage config.' },
+        400,
+      );
+    }
+  });
+
   router.get('/homepage-config/files/:name', async (c) => {
     try {
       const result = await homepageConfigService.readFile(c.req.param('name'));

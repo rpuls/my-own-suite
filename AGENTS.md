@@ -214,6 +214,7 @@ For each app page:
 
 The repo now includes real black-box Playwright tests that run against the Docker stack without test-only application bypasses.
 
+- Do not run E2E tests automatically as an agent. Ask the user to run the relevant E2E command and paste only the relevant failure output, because full Playwright/Docker logs are noisy and quickly pollute the context window.
 - Prefer end-to-end validation for onboarding and app reachability changes before adding unit-test-only coverage.
 - Keep E2E tooling isolated under `tests/e2e` unless a shared repo-level script or config is genuinely needed.
 - Do not add source-code-only test hooks, fake auth shortcuts, or alternate code paths just to make tests easier.
