@@ -57,3 +57,28 @@ export type HomepageConfigValidationResponse = {
   errors: HomepageCaddyProxyPreviewError[];
   valid: boolean;
 };
+
+export type HomepageExternalService = {
+  description: string;
+  group: string;
+  href: string;
+  icon: string;
+  id: string;
+  proxyEnabled: boolean;
+  title: string;
+  upstream: string;
+  upstreamTlsInsecureSkipVerify: boolean;
+};
+
+export type HomepageExternalServicesResponse = {
+  defaultDomain: string;
+  defaultUrlScheme: string;
+  groups: string[];
+  services: HomepageExternalService[];
+};
+
+export type HomepageExternalServicesSaveResponse = HomepageExternalServicesResponse & {
+  externalLinksUpdated: boolean;
+  homepageRestarted: boolean;
+  warning: string | null;
+};

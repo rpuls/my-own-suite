@@ -223,15 +223,12 @@ This keeps the product boundary clear:
   - [x] Add a local/VPS operator command for applying saved generated proxy routes.
   - [x] Auto-apply saved `services.template.yaml` proxy routes from Suite Manager save/reset when the self-host service-agent Caddy capability is available.
   - [x] Add validation/smoke coverage for generated external proxy config.
-- [ ] Phase 3: External Services UI
-  - [ ] Add Suite Manager add/edit/remove flows for MOS-managed external services.
-  - [ ] Preserve user-authored Homepage YAML while writing the safe subset of service tile metadata.
+- [x] Phase 3: External Services UI (add item wizard setup helper)
+  - [x] Add a Suite Manager Customize helper for adding MOS-managed links and LAN apps.
+  - [x] Preserve user-authored Homepage YAML while writing the safe subset of service tile metadata.
   - [x] Restart Homepage after saves when the host service-agent capability is available.
-- [ ] Phase 4: App catalog integration
-  - [ ] Connect curated MOS app install flows to dashboard tile and proxy metadata.
-  - [ ] Preserve the distinction between integrated apps and external metadata-only services.
-- [ ] Phase 5: Advanced capabilities
-  - [ ] Evaluate health checks, access policy, DNS automation, DNS-01 certificates, and split-DNS docs after the core model is stable.
+- [ ] Phase 4: Advanced capabilities
+  - [ ] https SSL DNS-01 certificate auto generation
 
 ### Phase 1: Parser And Preview
 
@@ -275,34 +272,21 @@ Add a user-facing Suite Manager flow.
 
 Required work:
 
-- Add an External Services page in Suite Manager.
+- Add an External Services helper in the Suite Manager Customize flow.
 - Implement add/edit/remove for MOS-managed external service tiles.
 - Write to `services.template.yaml` while preserving existing user-authored Homepage YAML.
 - Keep advanced layout in the YAML editor.
 - Restart Homepage after save using existing service-agent capability when available.
 - Surface clear guidance when restart capability is unavailable.
 
-### Phase 4: App Catalog Integration
-
-Connect the same model to curated MOS apps.
-
-Required work:
-
-- Add curated app catalog metadata.
-- Let integrated app install flows write dashboard tiles and eventually proxy metadata.
-- Preserve the distinction between integrated and external apps:
-  - Integrated app: MOS owns install, lifecycle, config, proxy, and dashboard entry.
-  - External app: MOS owns dashboard/proxy metadata only.
-- Do not remove existing hardcoded app behavior until migration is safe.
-
-### Phase 5: Advanced Capabilities
+### Phase 4: Advanced Capabilities
 
 Add optional power features after the core model is stable.
 
 Potential work:
 
-- Health checks.
-- Auth/access policy.
+- setup everything needed for local SSL, requires real domain
+- Local privacy first, use DNS/Domain only for certificate issuance, without ever pointing a DNS record to the users local server
 - DNS provider automation.
 - DNS-01 certificate strategy.
 - Custom Caddy image with DNS provider modules.

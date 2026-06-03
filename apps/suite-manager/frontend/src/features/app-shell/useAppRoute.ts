@@ -2,7 +2,13 @@ import { useEffect, useState } from 'react';
 
 import { getSetupBasePath, withSetupPath } from '../../lib/base-path';
 
-export type AppRoute = 'backups' | 'homepage' | 'homepage-config' | 'not-found' | 'onboarding' | 'updates';
+export type AppRoute =
+  | 'backups'
+  | 'homepage'
+  | 'homepage-config'
+  | 'not-found'
+  | 'onboarding'
+  | 'updates';
 export type NavigableAppRoute = '/' | '/backups' | '/customize' | '/onboarding' | '/updates';
 
 function getRouteFromPathname(pathname: string): AppRoute {
