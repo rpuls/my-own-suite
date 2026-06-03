@@ -56,6 +56,10 @@ function parseHttpUrl(value: unknown): URL | null {
   }
 }
 
+function isOriginOnlyUrl(url: URL): boolean {
+  return url.pathname === '/' && !url.search && !url.hash;
+}
+
 function hasEnabledProxy(tile: Record<string, unknown>): boolean {
   const mos = tile.mos;
   if (!isRecord(mos)) {
@@ -171,6 +175,13 @@ export function createCaddyProxyPreviewFromServicesTemplate(content: string): Ca
     if (!upstreamUrl) {
       errors.push({
         message: '`mos.proxy.upstream` must be an absolute http or https URL with a non-wildcard hostname.',
+        path,
+      });
+    }
+
+    if (upstreamUrl && !isOriginOnlyUrl(upstreamUrl)) {
+      errors.push({
+        message: '`mos.proxy.upstream` must not include a path, query string, or fragment.',
         path,
       });
     }
