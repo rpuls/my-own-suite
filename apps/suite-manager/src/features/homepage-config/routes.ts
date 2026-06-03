@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 
 import type { SuiteManagerConfig } from '../../config.ts';
 import type { ServiceAgentService } from '../service-agent/service.ts';
-import { HomepageConfigService } from './service.ts';
+import { HomepageConfigService, type HomepageExternalServicesResult } from './service.ts';
 
 function hasSyncToken(config: SuiteManagerConfig, authorizationHeader: string | undefined): boolean {
   return Boolean(
@@ -19,6 +19,109 @@ export function createHomepageConfigRouter(
   router.get('/homepage-config', (c) => c.json({ files: homepageConfigService.listFiles() }));
 
   router.get('/homepage-config/capabilities', async (c) => c.json(await serviceAgentService.getCapabilities()));
+
+  async function refreshExternalServices(
+    servicesResult: HomepageExternalServicesResult,
+  ): Promise<
+    HomepageExternalServicesResult & {
+      externalLinksUpdated: boolean;
+      homepageRestarted: boolean;
+      warning: string | null;
+    }
+  > {
+    const capabilities = await serviceAgentService.getCapabilities();
+    const warnings: string[] = [];
+    let externalLinksUpdated = false;
+    let homepageRestarted = false;
+
+    if (capabilities.caddyExternalProxyApplyAvailable) {
+      try {
+        const preview = await homepageConfigService.getCaddyProxyPreview();
+        if (preview.valid) {
+          await serviceAgentService.applyCaddyExternalProxies(preview.caddyfile);
+          externalLinksUpdated = true;
+        }
+      } catch (caughtError) {
+        warnings.push(
+          caughtError instanceof Error
+            ? `External service links could not be updated: ${caughtError.message}`
+            : 'External service links could not be updated.',
+        );
+      }
+    }
+
+    if (capabilities.homepageRestartAvailable) {
+      try {
+        await serviceAgentService.restartHomepage();
+        homepageRestarted = true;
+      } catch (caughtError) {
+        warnings.push(
+          caughtError instanceof Error
+            ? `Homepage could not be restarted: ${caughtError.message}`
+            : 'Homepage could not be restarted.',
+        );
+      }
+    }
+
+    return {
+      ...servicesResult,
+      externalLinksUpdated,
+      homepageRestarted,
+      warning: warnings.length > 0 ? warnings.join(' ') : null,
+    };
+  }
+
+  router.get('/homepage-config/external-services', async (c) => {
+    try {
+      return c.json(await homepageConfigService.listExternalServices());
+    } catch (caughtError) {
+      return c.json(
+        { error: caughtError instanceof Error ? caughtError.message : 'Unable to load external services.' },
+        400,
+      );
+    }
+  });
+
+  router.post('/homepage-config/external-services', async (c) => {
+    try {
+      const body = (await c.req.json().catch(() => null)) || {};
+      return c.json(await refreshExternalServices(await homepageConfigService.addExternalService(body)), 201);
+    } catch (caughtError) {
+      return c.json(
+        { error: caughtError instanceof Error ? caughtError.message : 'Unable to add external service.' },
+        400,
+      );
+    }
+  });
+
+  router.put('/homepage-config/external-services/:id', async (c) => {
+    try {
+      const body = (await c.req.json().catch(() => null)) || {};
+      return c.json(
+        await refreshExternalServices(
+          await homepageConfigService.updateExternalService(c.req.param('id'), body),
+        ),
+      );
+    } catch (caughtError) {
+      return c.json(
+        { error: caughtError instanceof Error ? caughtError.message : 'Unable to update external service.' },
+        400,
+      );
+    }
+  });
+
+  router.delete('/homepage-config/external-services/:id', async (c) => {
+    try {
+      return c.json(
+        await refreshExternalServices(await homepageConfigService.removeExternalService(c.req.param('id'))),
+      );
+    } catch (caughtError) {
+      return c.json(
+        { error: caughtError instanceof Error ? caughtError.message : 'Unable to remove external service.' },
+        400,
+      );
+    }
+  });
 
   router.get('/homepage-config/caddy-preview', async (c) => {
     try {

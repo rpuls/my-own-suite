@@ -97,6 +97,17 @@ Current shared-branding sync targets include:
 - `apps/homepage/config/custom.css` for the synced Homepage theme block
 - public brand/favicons copied into app-local runtime folders
 
+## Suite Manager UI Component Workflow
+
+Suite Manager UI must stay cohesive and predictable. Agents must treat shared UI primitives as part of the design framework, not as optional convenience helpers.
+
+- Reuse existing shared components before creating new local controls. Current shared primitives live in `apps/suite-manager/frontend/src/components/` and include dialog frames, notices/alerts, text inputs, text areas, and selects.
+- Do not create one-off or near-duplicate dialogs, dropdowns, alert banners, text inputs, expand/collapse controls, or choice cards with slightly different styling or behavior.
+- If a new interaction pattern is needed, first extend the shared component API or add a new shared primitive, then migrate the feature to use it.
+- Keep component behavior consistent across Suite Manager: labels, helper text, disabled states, focus states, icon placement, spacing, responsive layout, and error/success/info styling should come from the shared component layer and shared CSS.
+- Feature-specific components may compose shared primitives, but should not redefine their core look, spacing, or behavior locally.
+- When touching forms or dialogs, check nearby Suite Manager screens for existing component patterns and update the shared primitive if the pattern should improve everywhere.
+
 ## Goal
 
 Use a strict split:

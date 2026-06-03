@@ -38,7 +38,7 @@
     "dev:client": "vite",
     "dev": "node --watch --experimental-strip-types src/index.ts",
     "start": "node --experimental-strip-types src/index.ts",
-    "test": "node --experimental-strip-types --test src/features/homepage-config/caddy-preview.test.ts"
+    "test": "node --experimental-strip-types --test src/features/homepage-config/*.test.ts"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",

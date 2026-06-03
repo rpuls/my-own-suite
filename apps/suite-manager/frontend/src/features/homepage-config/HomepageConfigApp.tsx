@@ -1,7 +1,9 @@
-import { AlertTriangle, CheckCircle2, Clipboard, RefreshCcw, RotateCcw, Save, SearchCheck, X } from 'lucide-react';
+import { Clipboard, Plus, RefreshCcw, RotateCcw, Save, SearchCheck } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
+import { Dialog, Notice } from '../../components/ui';
 import { withSetupPath } from '../../lib/base-path';
+import AddHomepageItemDialog from './AddHomepageItemDialog';
 import CodeEditor from './CodeEditor';
 import type {
   HomepageCaddyApplyResponse,
@@ -231,6 +233,8 @@ export default function HomepageConfigApp() {
   const [savedPreview, setSavedPreview] = useState<HomepageCaddyProxyPreviewResponse | null>(null);
   const [advancedDetailsOpen, setAdvancedDetailsOpen] = useState(false);
   const [advancedDetailsCopied, setAdvancedDetailsCopied] = useState(false);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addMessage, setAddMessage] = useState<string | null>(null);
 
   const selectedFile = useMemo(() => {
     if (state.kind !== 'loaded') {
@@ -248,6 +252,7 @@ export default function HomepageConfigApp() {
     setState({ kind: 'loading' });
     setValidationState({ kind: 'idle' });
     setExternalLinksMessage(null);
+    setAddMessage(null);
     setSavedPreview(null);
     try {
       const files = await loadFiles();
@@ -281,6 +286,7 @@ export default function HomepageConfigApp() {
     setSelectedFileName(name);
     setValidationState({ kind: 'idle' });
     setExternalLinksMessage(null);
+    setAddMessage(null);
     setSavedPreview(null);
     await refresh(name);
   }
@@ -292,6 +298,7 @@ export default function HomepageConfigApp() {
 
     setValidationState({ kind: 'loading' });
     setExternalLinksMessage(null);
+    setAddMessage(null);
     setSavedPreview(null);
     try {
       const result = await validateConfigFile(state.file.name, state.content);
@@ -311,6 +318,7 @@ export default function HomepageConfigApp() {
 
     setIsSaving(true);
     setExternalLinksMessage(null);
+    setAddMessage(null);
     try {
       const response = await fetch(withSetupPath(`/api/homepage-config/files/${encodeURIComponent(state.file.name)}`), {
         body: JSON.stringify({ content: state.content }),
@@ -364,6 +372,7 @@ export default function HomepageConfigApp() {
 
     setIsResetting(true);
     setExternalLinksMessage(null);
+    setAddMessage(null);
     setSavedPreview(null);
     try {
       const response = await fetch(
@@ -408,6 +417,25 @@ export default function HomepageConfigApp() {
     window.setTimeout(() => setAdvancedDetailsCopied(false), 1600);
   }
 
+  async function handleAddSaved(message: string | null): Promise<void> {
+    setAddDialogOpen(false);
+    setAddMessage(message);
+    await refresh('services.template.yaml');
+    setAddMessage(message);
+    setValidationState({ kind: 'dirty' });
+    setState((current) =>
+      current.kind === 'loaded'
+        ? {
+            ...current,
+            dirty: true,
+            errorMessage: null,
+            restartMessage: null,
+            savedAt: null,
+          }
+        : current,
+    );
+  }
+
   useEffect(() => {
     void refresh();
   }, []);
@@ -440,6 +468,12 @@ export default function HomepageConfigApp() {
                   <h2 className="mos-card-title">{state.file.name}</h2>
                   <p className="suite-meta mos-meta">{state.file.description}</p>
                 </div>
+                {state.file.name === 'services.template.yaml' ? (
+                  <button className="suite-copy-button suite-primary-action" onClick={() => setAddDialogOpen(true)} type="button">
+                    <Plus aria-hidden="true" className="suite-inline-icon" />
+                    Add to Homepage
+                  </button>
+                ) : null}
               </div>
 
               <div className="suite-homepage-config-layout">
@@ -459,10 +493,7 @@ export default function HomepageConfigApp() {
 
                 <div className="suite-homepage-config-editor">
                   {validationState.kind === 'valid' ? (
-                    <div className="suite-homepage-validation-banner is-valid">
-                      <CheckCircle2 aria-hidden="true" className="suite-validation-icon" />
-                      <div className="suite-homepage-validation-copy">
-                        <strong>Ready to save</strong>
+                    <Notice title="Ready to save" variant="success">
                         <p>{validationSummary(validationState.result)}</p>
                         {state.restartCapabilities.homepageRestartAvailable ? (
                           <label className="suite-checkbox-row">
@@ -486,15 +517,11 @@ export default function HomepageConfigApp() {
                             Advanced details
                           </button>
                         ) : null}
-                      </div>
-                    </div>
+                    </Notice>
                   ) : null}
 
                   {validationState.kind === 'invalid' ? (
-                    <div className="suite-homepage-validation-banner is-invalid">
-                      <AlertTriangle aria-hidden="true" className="suite-validation-icon" />
-                      <div className="suite-homepage-validation-copy">
-                        <strong>Fix these before saving</strong>
+                    <Notice title="Fix these before saving" variant="warning">
                         <ul className="suite-homepage-validation-errors">
                           {validationState.result.errors.map((error: HomepageCaddyProxyPreviewError) => (
                             <li key={`${error.path}:${error.message}`}>
@@ -512,25 +539,17 @@ export default function HomepageConfigApp() {
                             Advanced details
                           </button>
                         ) : null}
-                      </div>
-                    </div>
+                    </Notice>
                   ) : null}
 
                   {validationState.kind === 'error' ? (
-                    <div className="suite-homepage-validation-banner is-invalid">
-                      <AlertTriangle aria-hidden="true" className="suite-validation-icon" />
-                      <div className="suite-homepage-validation-copy">
-                        <strong>Validation failed</strong>
+                    <Notice title="Validation failed" variant="error">
                         <p>{validationState.message}</p>
-                      </div>
-                    </div>
+                    </Notice>
                   ) : null}
 
                   {externalLinksMessage || state.restartMessage ? (
-                    <div className="suite-homepage-validation-banner is-valid">
-                      <CheckCircle2 aria-hidden="true" className="suite-validation-icon" />
-                      <div className="suite-homepage-validation-copy">
-                        <strong>Saved</strong>
+                    <Notice title="Saved" variant="success">
                         {state.restartMessage ? <p>{state.restartMessage}</p> : null}
                         {externalLinksMessage ? <p>{externalLinksMessage}</p> : null}
                         {currentPreview ? (
@@ -542,8 +561,13 @@ export default function HomepageConfigApp() {
                             Advanced details
                           </button>
                         ) : null}
-                      </div>
-                    </div>
+                    </Notice>
+                  ) : null}
+
+                  {addMessage ? (
+                    <Notice title="Added" variant="success">
+                        <p>{addMessage}</p>
+                    </Notice>
                   ) : null}
 
                   <div className="suite-homepage-config-editorbar">
@@ -576,6 +600,7 @@ export default function HomepageConfigApp() {
                     onChange={(value: string) => {
                       setValidationState({ kind: 'dirty' });
                       setExternalLinksMessage(null);
+                      setAddMessage(null);
                       setSavedPreview(null);
                       setState({
                         ...state,
@@ -620,23 +645,7 @@ export default function HomepageConfigApp() {
       </section>
 
       {advancedDetailsOpen ? (
-        <div className="suite-modal-backdrop" role="presentation">
-          <section aria-modal="true" className="suite-advanced-modal mos-panel" role="dialog">
-            <div className="suite-advanced-modal-header">
-              <div>
-                <h2>Advanced details</h2>
-                <p className="suite-meta mos-meta">For troubleshooting or support.</p>
-              </div>
-              <button
-                aria-label="Close advanced details"
-                className="suite-copy-button"
-                onClick={() => setAdvancedDetailsOpen(false)}
-                type="button"
-              >
-                <X aria-hidden="true" className="suite-inline-icon" />
-              </button>
-            </div>
-
+        <Dialog description="For troubleshooting or support." onClose={() => setAdvancedDetailsOpen(false)} title="Advanced details">
             <button className="suite-copy-button suite-advanced-copy" onClick={() => void copyAdvancedDetails()} type="button">
               <Clipboard aria-hidden="true" className="suite-inline-icon" />
               {advancedDetailsCopied ? 'Copied' : 'Copy details'}
@@ -682,8 +691,11 @@ export default function HomepageConfigApp() {
             ) : (
               <p className="suite-meta mos-meta">No advanced routing details are available for this file.</p>
             )}
-          </section>
-        </div>
+        </Dialog>
+      ) : null}
+
+      {addDialogOpen ? (
+        <AddHomepageItemDialog onClose={() => setAddDialogOpen(false)} onSaved={(message) => void handleAddSaved(message)} />
       ) : null}
     </main>
   );
