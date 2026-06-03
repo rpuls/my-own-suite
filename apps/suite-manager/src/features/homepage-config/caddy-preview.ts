@@ -22,6 +22,11 @@ export type CaddyProxyPreview = {
   valid: boolean;
 };
 
+export type CaddyProxyPreviewOptions = {
+  domain?: string;
+  urlScheme?: string;
+};
+
 type TileCandidate = {
   path: string[];
   title: string;
@@ -111,6 +116,40 @@ function normalizeUpstream(url: URL): string {
   return url.toString();
 }
 
+function getStackSubdomain(value: Record<string, unknown>): string {
+  const mos = value.mos;
+  if (!isRecord(mos)) {
+    return '';
+  }
+
+  const publicConfig = mos.public;
+  if (!isRecord(publicConfig) || publicConfig.mode !== 'app-subdomain') {
+    return '';
+  }
+
+  const subdomain = publicConfig.subdomain;
+  if (typeof subdomain !== 'string' || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(subdomain)) {
+    return '';
+  }
+
+  return subdomain;
+}
+
+function resolvePublicUrl(
+  tile: Record<string, unknown>,
+  hrefUrl: URL | null,
+  options: CaddyProxyPreviewOptions,
+): URL | null {
+  const subdomain = getStackSubdomain(tile);
+  const domain = options.domain?.trim().toLowerCase() || '';
+  const scheme = options.urlScheme === 'https' ? 'https' : options.urlScheme === 'http' ? 'http' : '';
+  if (subdomain && domain && scheme) {
+    return new URL(`${scheme}://${subdomain}.${domain}`);
+  }
+
+  return hrefUrl;
+}
+
 function buildCaddyfile(routes: CaddyProxyPreviewRoute[]): string {
   if (routes.length === 0) {
     return '';
@@ -141,7 +180,10 @@ function hasRawCaddyField(value: unknown): boolean {
   );
 }
 
-export function createCaddyProxyPreviewFromServicesTemplate(content: string): CaddyProxyPreview {
+export function createCaddyProxyPreviewFromServicesTemplate(
+  content: string,
+  options: CaddyProxyPreviewOptions = {},
+): CaddyProxyPreview {
   const document = parseDocument(content, { prettyErrors: true });
   const firstYamlError = document.errors[0];
   if (firstYamlError) {
@@ -164,6 +206,7 @@ export function createCaddyProxyPreviewFromServicesTemplate(content: string): Ca
     const mos = tile.value.mos;
     const proxy = isRecord(mos) && isRecord(mos.proxy) ? mos.proxy : {};
     const hrefUrl = parseHttpUrl(tile.value.href);
+    const publicUrl = resolvePublicUrl(tile.value, hrefUrl, options);
     const upstreamUrl = parseHttpUrl(proxy.upstream);
     const tls = isRecord(proxy.tls) ? proxy.tls : {};
     const skipVerify = tls.insecureSkipVerify === true;
@@ -190,12 +233,12 @@ export function createCaddyProxyPreviewFromServicesTemplate(content: string): Ca
       errors.push({ message: 'Raw Caddy fields are not supported in `mos.proxy` annotations.', path });
     }
 
-    if (!hrefUrl || !upstreamUrl) {
+    if (!publicUrl || !upstreamUrl) {
       continue;
     }
 
-    const host = hrefUrl.hostname.toLowerCase();
-    const siteAddress = hrefUrl.protocol === 'http:' ? `http://${host}` : host;
+    const host = publicUrl.hostname.toLowerCase();
+    const siteAddress = publicUrl.protocol === 'http:' ? `http://${host}` : host;
     const existingPath = seenHosts.get(host);
     if (existingPath) {
       errors.push({ message: `Duplicate proxy hostname also used by ${existingPath}.`, path });
@@ -205,7 +248,7 @@ export function createCaddyProxyPreviewFromServicesTemplate(content: string): Ca
     seenHosts.set(host, path);
     routes.push({
       host,
-      href: hrefUrl.toString(),
+      href: publicUrl.toString(),
       path,
       siteAddress,
       title: tile.title,

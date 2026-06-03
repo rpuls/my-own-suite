@@ -21,6 +21,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+      - ./services/caddy/.env
       - ./services/radicale/.env
     ports:
       - "${MOS_E2E_HTTP_PORT:-80}:80"

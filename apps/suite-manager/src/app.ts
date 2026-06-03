@@ -16,6 +16,7 @@ import { HomepageConfigService } from './features/homepage-config/service.ts';
 import { createHomepageProxyRouter } from './features/homepage/proxy.ts';
 import { createOnboardingRouter } from './features/onboarding/main/routes.ts';
 import { OnboardingService } from './features/onboarding/main/service.ts';
+import { createSettingsRouter } from './features/settings/routes.ts';
 import {
   getFrontendStaticRoot,
   hasBuiltFrontend,
@@ -48,6 +49,7 @@ export function createApp(
   protectedSetupApi.route('/onboarding', createOnboardingRouter(config, onboardingService));
   protectedSetupApi.route('/', createBackupsRouter(backupsService));
   protectedSetupApi.route('/', createHomepageConfigRouter(homepageConfigService, serviceAgentService));
+  protectedSetupApi.route('/', createSettingsRouter(config, serviceAgentService));
   protectedSetupApi.route('/', createUpdatesRouter(updatesService));
   protectedSetupApi.route('/', createStatusRouter(config, onboardingService));
   app.route(setupApiPath, protectedSetupApi);

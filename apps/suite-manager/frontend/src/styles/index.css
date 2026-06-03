@@ -1001,6 +1001,35 @@
   background: rgba(255, 255, 255, 0.03);
 }
 
+.suite-settings-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.suite-settings-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.suite-settings-fact,
+.suite-settings-panel {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--mos-radius-md);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.suite-settings-fact strong,
+.suite-settings-panel h3,
+.suite-settings-panel p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .suite-backup-destination {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
@@ -1856,6 +1885,10 @@
   }
 
   .suite-advanced-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .suite-settings-grid {
     grid-template-columns: 1fr;
   }
 

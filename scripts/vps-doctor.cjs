@@ -63,6 +63,7 @@ const GLOBAL_FILES = {
 const APP_FILES = {};
 
 const SERVICE_FILES = {
+  caddy: 'services/caddy/.env',
   homepage: 'services/homepage/.env',
   onlyoffice: 'services/onlyoffice/.env',
   radicale: 'services/radicale/.env',
@@ -145,6 +146,37 @@ function getHostname(value) {
 
 if (env.root) {
   requireVar('root', 'DOMAIN', { allowPlaceholder: false });
+
+  const publicUrlScheme = (env.root.PUBLIC_URL_SCHEME || '').trim().toLowerCase();
+  const tlsMode = (env.root.MOS_TLS_MODE || 'off').trim().toLowerCase();
+
+  if (!['http', 'https'].includes(publicUrlScheme)) {
+    errors.push('PUBLIC_URL_SCHEME in deploy/vps/.env must be one of: http, https.');
+  }
+
+  if (!['off', 'cloudflare-dns01'].includes(tlsMode)) {
+    errors.push('MOS_TLS_MODE in deploy/vps/.env must be one of: off, cloudflare-dns01.');
+  }
+
+  if (publicUrlScheme === 'https' && tlsMode !== 'cloudflare-dns01') {
+    errors.push('PUBLIC_URL_SCHEME=https requires MOS_TLS_MODE=cloudflare-dns01.');
+  }
+
+  if (tlsMode === 'cloudflare-dns01' && publicUrlScheme !== 'https') {
+    errors.push('MOS_TLS_MODE=cloudflare-dns01 requires PUBLIC_URL_SCHEME=https.');
+  }
+
+  if (tlsMode === 'cloudflare-dns01' && ['localhost', 'mos.home'].includes((env.root.DOMAIN || '').trim())) {
+    errors.push('MOS_TLS_MODE=cloudflare-dns01 requires a real domain, not localhost or mos.home.');
+  }
+}
+
+if (env.root && env.caddy) {
+  const tlsMode = (env.root.MOS_TLS_MODE || 'off').trim().toLowerCase();
+  if (tlsMode === 'cloudflare-dns01') {
+    requireVar('caddy', 'CADDY_ACME_EMAIL', { allowPlaceholder: false });
+    requireVar('caddy', 'CLOUDFLARE_API_TOKEN', { allowPlaceholder: false });
+  }
 }
 
 if (env.suiteManager) {

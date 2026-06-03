@@ -6,6 +6,7 @@ const { spawnSync } = require('node:child_process');
 
 const repoRoot = process.cwd();
 const snippetPath = path.join(repoRoot, 'deploy', 'vps', 'generated', 'caddy', 'external-proxies.caddy');
+const rootEnvPath = path.join(repoRoot, 'deploy', 'vps', '.env');
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -33,6 +34,25 @@ function writeFileAtomic(filePath, content) {
   fs.renameSync(tempPath, filePath);
 }
 
+function readEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return {};
+  }
+
+  const values = {};
+  for (const line of fs.readFileSync(filePath, 'utf8').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    const idx = line.indexOf('=');
+    if (!trimmed || trimmed.startsWith('#') || idx < 1) {
+      continue;
+    }
+
+    values[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+  }
+
+  return values;
+}
+
 function createPreview() {
   const content = run('docker', [
     'exec',
@@ -45,15 +65,27 @@ function createPreview() {
     import { createCaddyProxyPreviewFromServicesTemplate } from './apps/suite-manager/src/features/homepage-config/caddy-preview.ts';
 
     const content = fs.readFileSync(0, 'utf8');
-    process.stdout.write(JSON.stringify(createCaddyProxyPreviewFromServicesTemplate(content)));
+    const options = {
+      domain: process.env.DOMAIN,
+      urlScheme: process.env.PUBLIC_URL_SCHEME,
+    };
+    process.stdout.write(JSON.stringify(createCaddyProxyPreviewFromServicesTemplate(content, options)));
   `;
+  const rootEnv = readEnvFile(rootEnvPath);
 
   const raw = runNode([
     '--experimental-strip-types',
     '--input-type=module',
     '-e',
     code,
-  ], { input: content });
+  ], {
+    env: {
+      ...process.env,
+      DOMAIN: rootEnv.DOMAIN || process.env.DOMAIN || '',
+      PUBLIC_URL_SCHEME: rootEnv.PUBLIC_URL_SCHEME || process.env.PUBLIC_URL_SCHEME || '',
+    },
+    input: content,
+  });
 
   return JSON.parse(raw);
 }

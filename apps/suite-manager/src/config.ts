@@ -52,6 +52,7 @@ export type SuiteManagerConfig = {
     latestVersionOverride: string;
   };
   urlScheme: string;
+  tlsMode: string;
   vaultwardenDatabaseUrl: string;
 };
 
@@ -118,6 +119,7 @@ export function loadConfig(): SuiteManagerConfig {
   const sessionCookieName = (process.env.SUITE_MANAGER_SESSION_COOKIE_NAME || 'mos-suite-manager-session').trim();
   const sessionMaxAgeSeconds = Number(process.env.SUITE_MANAGER_SESSION_MAX_AGE_SECONDS) || 60 * 60 * 24 * 14;
   const vaultwardenDatabaseUrl = (process.env.VAULTWARDEN_DATABASE_URL || process.env.DATABASE_URL || '').trim();
+  const tlsMode = (process.env.MOS_TLS_MODE || 'off').trim();
   const updatesEnabled = (process.env.SUITE_MANAGER_UPDATES_ENABLED || 'true').trim().toLowerCase() !== 'false';
   const updatesGithubRepo = (process.env.SUITE_MANAGER_GITHUB_REPO || 'rpuls/my-own-suite').trim();
   const updatesLatestVersionOverride = (process.env.SUITE_MANAGER_UPDATES_LATEST_VERSION_OVERRIDE || '').trim();
@@ -185,6 +187,7 @@ export function loadConfig(): SuiteManagerConfig {
       tokenFile: serviceAgentTokenFile,
     },
     stateDir,
+    tlsMode,
     updates: {
       agentSocketPath: updatesAgentSocketPath,
       agentTokenFile: updatesAgentTokenFile,
