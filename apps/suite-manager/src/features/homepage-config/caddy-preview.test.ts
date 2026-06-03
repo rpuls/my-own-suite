@@ -55,6 +55,33 @@ test('generates explicit HTTP site addresses for HTTP dashboard URLs', () => {
   );
 });
 
+test('uses app-subdomain metadata for managed public route protocol and domain', () => {
+  const preview = createCaddyProxyPreviewFromServicesTemplate(
+    `
+- Appliances:
+    - Home Assistant:
+        href: http://homeassistant.mos.home
+        mos:
+          public:
+            mode: app-subdomain
+            subdomain: homeassistant
+          proxy:
+            enabled: true
+            upstream: http://192.168.30.4:8123
+`,
+    { domain: 'home.example.com', urlScheme: 'https' },
+  );
+
+  assert.equal(preview.valid, true);
+  assert.equal(preview.routes[0]?.host, 'homeassistant.home.example.com');
+  assert.equal(preview.routes[0]?.href, 'https://homeassistant.home.example.com/');
+  assert.equal(preview.routes[0]?.siteAddress, 'homeassistant.home.example.com');
+  assert.equal(
+    preview.caddyfile,
+    'homeassistant.home.example.com {\n\treverse_proxy http://192.168.30.4:8123\n}\n',
+  );
+});
+
 test('generates TLS skip transport only for HTTPS upstreams', () => {
   const preview = createCaddyProxyPreviewFromServicesTemplate(`
 - Appliances:

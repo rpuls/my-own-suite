@@ -7,7 +7,9 @@ import test from 'node:test';
 import type { SuiteManagerConfig } from '../../config.ts';
 import { HomepageConfigService } from './service.ts';
 
-async function createService(): Promise<{ configDir: string; service: HomepageConfigService }> {
+async function createService(
+  overrides: Partial<Pick<SuiteManagerConfig, 'domain' | 'urlScheme'>> = {},
+): Promise<{ configDir: string; service: HomepageConfigService }> {
   const configDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-homepage-config-'));
   const appRoot = path.resolve(import.meta.dirname, '../../..');
   const config: SuiteManagerConfig = {
@@ -24,7 +26,7 @@ async function createService(): Promise<{ configDir: string; service: HomepageCo
       tokenFile: '',
     },
     checkIntervalMs: 1000,
-    domain: 'localhost',
+    domain: overrides.domain || 'localhost',
     generatedAccounts: {
       radicale: null,
       seafile: null,
@@ -48,6 +50,7 @@ async function createService(): Promise<{ configDir: string; service: HomepageCo
     sessionSecret: '',
     setupBasePath: '/setup',
     stateDir: configDir,
+    tlsMode: 'off',
     updates: {
       agentSocketPath: '',
       agentTokenFile: '',
@@ -55,7 +58,7 @@ async function createService(): Promise<{ configDir: string; service: HomepageCo
       githubRepo: '',
       latestVersionOverride: '',
     },
-    urlScheme: 'http',
+    urlScheme: overrides.urlScheme || 'http',
     vaultwardenDatabaseUrl: '',
   };
 
@@ -95,6 +98,67 @@ test('adds a managed external service without dropping existing Homepage tiles',
   const preview = await service.getCaddyProxyPreview();
   assert.equal(preview.valid, true);
   assert.equal(preview.routes[0]?.host, 'homeassistant.home.example.com');
+});
+
+test('records app-subdomain intent for managed LAN services under the configured domain', async (t) => {
+  const { configDir, service } = await createService({ domain: 'home.example.com', urlScheme: 'https' });
+  t.after(() => fs.rm(configDir, { force: true, recursive: true }));
+
+  await service.addExternalService({
+    group: 'My External Services',
+    href: 'https://homeassistant.home.example.com',
+    proxyEnabled: true,
+    title: 'Home Assistant',
+    upstream: 'http://192.168.30.4:8123',
+  });
+
+  const { content } = await service.readFile('services.template.yaml');
+  assert.match(content, /public:\s+mode: app-subdomain\s+subdomain: homeassistant/);
+});
+
+test('uses configured stack protocol and domain for managed external proxy preview', async (t) => {
+  const { configDir, service } = await createService({ domain: 'home.example.com', urlScheme: 'https' });
+  t.after(() => fs.rm(configDir, { force: true, recursive: true }));
+
+  await service.addExternalService({
+    group: 'My External Services',
+    href: 'https://homeassistant.home.example.com',
+    proxyEnabled: true,
+    title: 'Home Assistant',
+    upstream: 'http://192.168.30.4:8123',
+  });
+
+  const preview = await service.previewCaddyProxyContent(`
+- My External Services:
+    - Home Assistant:
+        href: http://homeassistant.mos.home
+        mos:
+          public:
+            mode: app-subdomain
+            subdomain: homeassistant
+          proxy:
+            enabled: true
+            upstream: http://192.168.30.4:8123
+`);
+
+  assert.equal(preview.valid, true);
+  assert.equal(preview.routes[0]?.href, 'https://homeassistant.home.example.com/');
+  assert.equal(preview.routes[0]?.siteAddress, 'homeassistant.home.example.com');
+});
+
+test('does not add app-subdomain intent to explicit external links', async (t) => {
+  const { configDir, service } = await createService({ domain: 'home.example.com', urlScheme: 'https' });
+  t.after(() => fs.rm(configDir, { force: true, recursive: true }));
+
+  await service.addExternalService({
+    group: 'My External Services',
+    href: 'https://example.com',
+    proxyEnabled: false,
+    title: 'Example',
+  });
+
+  const { content } = await service.readFile('services.template.yaml');
+  assert.doesNotMatch(content, /public:/);
 });
 
 test('updates and removes only the selected managed external service', async (t) => {

@@ -8,6 +8,7 @@ import { useUpdates } from '../updates/useUpdates';
 
 const HomepageConfigApp = lazy(() => import('../homepage-config/HomepageConfigApp'));
 const BackupsApp = lazy(() => import('../backups/BackupsApp'));
+const SettingsApp = lazy(() => import('../settings/SettingsApp'));
 
 type AppShellProps = {
   onLogout: () => Promise<void>;
@@ -49,6 +50,14 @@ export function AppShell({ onLogout, ownerName }: AppShellProps) {
       return (
         <Suspense fallback={<p className="suite-empty">Loading Customize...</p>}>
           <HomepageConfigApp />
+        </Suspense>
+      );
+    }
+
+    if (route === 'settings') {
+      return (
+        <Suspense fallback={<p className="suite-empty">Loading Settings...</p>}>
+          <SettingsApp />
         </Suspense>
       );
     }
@@ -137,6 +146,14 @@ export function AppShell({ onLogout, ownerName }: AppShellProps) {
                   type="button"
                 >
                   Backup
+                </button>
+
+                <button
+                  className={`suite-shell-link ${route === 'settings' ? 'is-active' : ''}`}
+                  onClick={() => openRoute('/settings')}
+                  type="button"
+                >
+                  Settings
                 </button>
               </nav>
 

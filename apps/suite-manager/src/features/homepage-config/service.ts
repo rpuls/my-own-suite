@@ -182,6 +182,31 @@ function normalizeExternalServiceInput(input: HomepageExternalServiceInput): Omi
   };
 }
 
+function getStackSubdomainFromHref(href: string, domain: string): string {
+  const normalizedDomain = domain.trim().toLowerCase();
+  if (!normalizedDomain) {
+    return '';
+  }
+
+  try {
+    const url = new URL(href);
+    const hostname = url.hostname.toLowerCase();
+    const suffix = `.${normalizedDomain}`;
+    if (!hostname.endsWith(suffix)) {
+      return '';
+    }
+
+    const subdomain = hostname.slice(0, -suffix.length);
+    if (!subdomain || subdomain.includes('.') || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(subdomain)) {
+      return '';
+    }
+
+    return subdomain;
+  } catch {
+    return '';
+  }
+}
+
 function collectGroupNames(root: YAMLSeq): string[] {
   return Array.from(new Set(collectLeafGroups(root).map((group) => group.name))).sort((left, right) =>
     left.localeCompare(right),
@@ -315,7 +340,8 @@ function serviceFromLocation(location: ServiceTileLocation): HomepageExternalSer
   };
 }
 
-function createServiceTile(document: Document, service: HomepageExternalService): YAMLMap {
+function createServiceTile(document: Document, service: HomepageExternalService, stackDomain: string): YAMLMap {
+  const stackSubdomain = service.proxyEnabled ? getStackSubdomainFromHref(service.href, stackDomain) : '';
   const tile: Record<string, unknown> = {
     href: service.href,
   };
@@ -337,6 +363,13 @@ function createServiceTile(document: Document, service: HomepageExternalService)
     },
   };
 
+  if (stackSubdomain) {
+    (tile.mos as Record<string, unknown>).public = {
+      mode: 'app-subdomain',
+      subdomain: stackSubdomain,
+    };
+  }
+
   if (service.proxyEnabled) {
     const proxy = (tile.mos as { proxy: Record<string, unknown> }).proxy;
     proxy.upstream = service.upstream;
@@ -348,8 +381,13 @@ function createServiceTile(document: Document, service: HomepageExternalService)
   return document.createNode({ [service.title]: tile }) as YAMLMap;
 }
 
-function applyServiceTile(document: Document, location: ServiceTileLocation, service: HomepageExternalService): void {
-  const nextTileNode = createServiceTile(document, service);
+function applyServiceTile(
+  document: Document,
+  location: ServiceTileLocation,
+  service: HomepageExternalService,
+  stackDomain: string,
+): void {
+  const nextTileNode = createServiceTile(document, service, stackDomain);
   const index = location.parentSeq.items.indexOf(location.tileNode);
   if (index === -1) {
     throw new Error('Unable to update service.');
@@ -429,7 +467,10 @@ export class HomepageConfigService {
 
   async getCaddyProxyPreview(): Promise<CaddyProxyPreview> {
     const { content } = await this.readFile('services.template.yaml');
-    return createCaddyProxyPreviewFromServicesTemplate(content);
+    return createCaddyProxyPreviewFromServicesTemplate(content, {
+      domain: this.config.domain,
+      urlScheme: this.config.urlScheme,
+    });
   }
 
   async listExternalServices(): Promise<HomepageExternalServicesResult> {
@@ -459,7 +500,7 @@ export class HomepageConfigService {
 
     await this.updateServicesTemplate((document) => {
       const group = ensureDestinationGroup(document, nextService.group);
-      group.add(createServiceTile(document, nextService));
+      group.add(createServiceTile(document, nextService, this.config.domain));
     });
 
     return this.listExternalServices();
@@ -481,7 +522,7 @@ export class HomepageConfigService {
       }
 
       if (location.group === nextService.group) {
-        applyServiceTile(document, location, nextService);
+        applyServiceTile(document, location, nextService, this.config.domain);
         return;
       }
 
@@ -490,7 +531,9 @@ export class HomepageConfigService {
         throw new Error('Unable to move service.');
       }
       location.parentSeq.items.splice(index, 1);
-      ensureDestinationGroup(document, nextService.group).add(createServiceTile(document, nextService));
+      ensureDestinationGroup(document, nextService.group).add(
+        createServiceTile(document, nextService, this.config.domain),
+      );
     });
 
     return this.listExternalServices();
@@ -515,7 +558,10 @@ export class HomepageConfigService {
   }
 
   previewCaddyProxyContent(content: string): CaddyProxyPreview {
-    return createCaddyProxyPreviewFromServicesTemplate(content);
+    return createCaddyProxyPreviewFromServicesTemplate(content, {
+      domain: this.config.domain,
+      urlScheme: this.config.urlScheme,
+    });
   }
 
   validateFileContent(name: string, content: string): HomepageConfigValidation {
@@ -531,7 +577,10 @@ export class HomepageConfigService {
     }
 
     if (file.name === 'services.template.yaml') {
-      const caddyPreview = createCaddyProxyPreviewFromServicesTemplate(content);
+      const caddyPreview = createCaddyProxyPreviewFromServicesTemplate(content, {
+        domain: this.config.domain,
+        urlScheme: this.config.urlScheme,
+      });
       return {
         caddyPreview,
         errors: caddyPreview.errors,

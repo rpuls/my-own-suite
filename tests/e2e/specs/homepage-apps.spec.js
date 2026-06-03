@@ -74,7 +74,21 @@ test.describe('homepage app verification against the real local stack', () => {
       const immichPage = await immichPagePromise;
       await immichPage.waitForLoadState('domcontentloaded');
       await expect(immichPage).toHaveURL(/immich\.localhost:18080/i);
-      await expect(immichPage.locator('body')).toContainText(/Immich|Email|Password|Sign in/i);
+      await expect(immichPage).toHaveTitle(/Immich/i);
+      await expect
+        .poll(
+          () =>
+            immichPage.evaluate(async () => {
+              const response = await fetch('/api/server/ping');
+              if (!response.ok) {
+                return false;
+              }
+
+              return /pong/i.test(await response.text());
+            }),
+          { timeout: 15000 },
+        )
+        .toBe(true);
       await immichPage.close();
       await page.bringToFront();
     });
