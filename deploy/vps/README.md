@@ -247,6 +247,8 @@ Required properties:
 - No public inbound access is required.
 - Public A/AAAA records for apps are not required. Caddy uses Cloudflare only to create temporary `_acme-challenge` TXT records for ACME DNS-01.
 
+On self-host installs with the local service agent available, Suite Manager Settings can apply these values for you. Enter the MOS base domain, ACME contact email, and a scoped Cloudflare token; Suite Manager asks the agent to update the env files, run `vps:init`/`vps:doctor`, recreate Caddy/Homepage, and restart Suite Manager. The manual path below is the fallback when the agent is unavailable.
+
 Configure `deploy/vps/.env`:
 
 ```env
@@ -270,7 +272,7 @@ npm run vps:doctor
 docker compose up -d --build caddy suite-manager homepage
 ```
 
-Caddy owns certificate issuance and renewal. The self-host service agent remains scoped to service lifecycle actions such as restarts; it is not responsible for DNS records or certificate renewal.
+Caddy owns certificate issuance and renewal. The self-host service agent can apply the initial repo-owned env/config change, but it is not responsible for DNS records or certificate renewal.
 
 Local Vaultwarden HTTPS note:
 - Caddy now serves Vaultwarden over HTTPS so the signup flow can run locally.

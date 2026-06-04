@@ -1,10 +1,16 @@
 import type { SuiteManagerConfig } from '../../config.ts';
-import { applyAgentCaddyExternalProxies, readServiceAgentStatus, restartAgentService } from './agent.ts';
+import {
+  applyAgentCaddyExternalProxies,
+  applyAgentLocalHttps,
+  readServiceAgentStatus,
+  restartAgentService,
+} from './agent.ts';
 
 export type ServiceCapabilityStatus = {
   caddyExternalProxyApplyAvailable: boolean;
   error: string | null;
   homepageRestartAvailable: boolean;
+  localHttpsApplyAvailable: boolean;
   serviceAvailable: boolean;
 };
 
@@ -21,6 +27,7 @@ export class ServiceAgentService {
         caddyExternalProxyApplyAvailable: false,
         error: null,
         homepageRestartAvailable: false,
+        localHttpsApplyAvailable: false,
         serviceAvailable: false,
       };
     }
@@ -29,11 +36,13 @@ export class ServiceAgentService {
       const status = await readServiceAgentStatus(this.config);
       const homepageCapabilities = status.capabilities?.homepage?.capabilities || [];
       const caddyCapabilities = status.capabilities?.caddy?.capabilities || [];
+      const settingsCapabilities = status.capabilities?.settings?.capabilities || [];
 
       return {
         caddyExternalProxyApplyAvailable: caddyCapabilities.includes('external-proxies.apply'),
         error: null,
         homepageRestartAvailable: homepageCapabilities.includes('restart'),
+        localHttpsApplyAvailable: settingsCapabilities.includes('local-https.apply'),
         serviceAvailable: true,
       };
     } catch (caughtError) {
@@ -41,6 +50,7 @@ export class ServiceAgentService {
         caddyExternalProxyApplyAvailable: false,
         error: caughtError instanceof Error ? caughtError.message : 'Service agent is unavailable.',
         homepageRestartAvailable: false,
+        localHttpsApplyAvailable: false,
         serviceAvailable: false,
       };
     }
@@ -64,5 +74,19 @@ export class ServiceAgentService {
 
     await applyAgentCaddyExternalProxies(this.config, caddyfile);
     return { applied: true };
+  }
+
+  async applyLocalHttps(input: {
+    acmeEmail: string;
+    cloudflareApiToken: string;
+    domain: string;
+  }): Promise<{ applied: boolean; domain?: string; restartScheduled?: boolean }> {
+    const capabilities = await this.getCapabilities();
+    if (!capabilities.localHttpsApplyAvailable) {
+      throw new Error('Local HTTPS apply service is unavailable.');
+    }
+
+    const result = await applyAgentLocalHttps(this.config, input);
+    return { applied: true, domain: result.domain, restartScheduled: result.restartScheduled };
   }
 }

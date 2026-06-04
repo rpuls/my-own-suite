@@ -1030,6 +1030,38 @@
   overflow-wrap: anywhere;
 }
 
+.suite-settings-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.suite-local-https-panel {
+  gap: 1rem;
+}
+
+.suite-local-https-form {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.suite-local-https-checklist {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.suite-local-https-checklist div {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .suite-backup-destination {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
@@ -1889,6 +1921,14 @@
   }
 
   .suite-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .suite-settings-panel-header {
+    align-items: flex-start;
+  }
+
+  .suite-local-https-form {
     grid-template-columns: 1fr;
   }
 

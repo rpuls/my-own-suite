@@ -30,6 +30,9 @@ const SERVICES = {
   'vaultwarden-postgres': { container: 'mos-vaultwarden-postgres', capabilities: ['restart'] },
 };
 
+const LOCAL_HTTPS_ENV_PATH = repoDir ? path.join(repoDir, 'deploy', 'vps', '.env') : '';
+const CADDY_ENV_PATH = repoDir ? path.join(repoDir, 'deploy', 'vps', 'services', 'caddy', '.env') : '';
+
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -101,7 +104,7 @@ function cleanupSocket() {
 }
 
 function listCapabilities() {
-  return Object.fromEntries(
+  const capabilities = Object.fromEntries(
     Object.entries(SERVICES).map(([service, spec]) => {
       const capabilities =
         service === 'caddy' && !caddyExternalProxiesPath
@@ -117,6 +120,13 @@ function listCapabilities() {
       ];
     }),
   );
+
+  capabilities.settings = {
+    capabilities: repoDir ? ['local-https.apply'] : [],
+    container: '',
+  };
+
+  return capabilities;
 }
 
 function restartContainer(container) {
@@ -145,11 +155,81 @@ function execDocker(args, timeout = 60_000) {
   });
 }
 
+function execRepo(command, args, timeout = 120_000) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { cwd: repoDir, timeout }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error((stderr || stdout || error.message || `${command} failed.`).trim()));
+        return;
+      }
+
+      resolve((stdout || stderr || '').trim());
+    });
+  });
+}
+
 function writeFileAtomic(filePath, content) {
   ensureDir(path.dirname(filePath));
   const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
   fs.writeFileSync(tempPath, content, { encoding: 'utf8', mode: 0o644 });
   fs.renameSync(tempPath, filePath);
+}
+
+function writeEnvValue(filePath, key, value) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Missing env file: ${filePath}`);
+  }
+
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const lines = raw.split(/\r?\n/);
+  let found = false;
+  const nextLines = lines.map((line) => {
+    const trimmed = line.trim();
+    const idx = line.indexOf('=');
+    if (!trimmed || trimmed.startsWith('#') || idx < 1) {
+      return line;
+    }
+
+    const currentKey = line.slice(0, idx).trim();
+    if (currentKey !== key) {
+      return line;
+    }
+
+    found = true;
+    return `${key}=${value}`;
+  });
+
+  if (!found) {
+    if (nextLines.length > 0 && nextLines[nextLines.length - 1] !== '') {
+      nextLines.push(`${key}=${value}`);
+    } else {
+      nextLines[nextLines.length - 1] = `${key}=${value}`;
+    }
+  }
+
+  writeFileAtomic(filePath, `${nextLines.join('\n').replace(/\n+$/u, '')}\n`);
+}
+
+function isRealAcmeDomain(domain) {
+  const normalized = domain.trim().toLowerCase();
+  return Boolean(
+    normalized &&
+      normalized !== 'localhost' &&
+      normalized !== 'mos.home' &&
+      !normalized.endsWith('.localhost') &&
+      !normalized.endsWith('.home') &&
+      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u.test(normalized),
+  );
+}
+
+function isEmailLike(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value.trim());
+}
+
+function scheduleSuiteManagerRestart() {
+  setTimeout(() => {
+    execFile('docker', ['restart', 'mos-suite-manager'], { timeout: 60_000 }, () => {});
+  }, 1500);
 }
 
 async function validateCaddy() {
@@ -236,6 +316,90 @@ async function handleApplyCaddyExternalProxies(request, response) {
   }
 }
 
+async function handleApplyLocalHttps(request, response) {
+  if (!repoDir || !LOCAL_HTTPS_ENV_PATH || !CADDY_ENV_PATH) {
+    json(response, 409, { error: 'Local HTTPS apply path is not configured.' });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonBody(request, 16 * 1024);
+  } catch (error) {
+    json(response, 400, { error: error instanceof Error ? error.message : 'Invalid request body.' });
+    return;
+  }
+
+  const domain = typeof body.domain === 'string' ? body.domain.trim().toLowerCase() : '';
+  const acmeEmail = typeof body.acmeEmail === 'string' ? body.acmeEmail.trim() : '';
+  const cloudflareApiToken = typeof body.cloudflareApiToken === 'string' ? body.cloudflareApiToken.trim() : '';
+
+  if (!isRealAcmeDomain(domain)) {
+    json(response, 400, { error: 'Enter a real Cloudflare-managed domain, such as mos.example.com.' });
+    return;
+  }
+
+  if (!isEmailLike(acmeEmail)) {
+    json(response, 400, { error: 'Enter a valid ACME contact email address.' });
+    return;
+  }
+
+  if (!cloudflareApiToken) {
+    json(response, 400, { error: 'Cloudflare API token is required.' });
+    return;
+  }
+
+  if (!fs.existsSync(CADDY_ENV_PATH)) {
+    try {
+      await execRepo('node', ['scripts/vps-init.cjs'], 180_000);
+    } catch (error) {
+      json(response, 500, {
+        error: error instanceof Error ? error.message : 'Unable to create missing Caddy env file.',
+        service: 'settings',
+      });
+      return;
+    }
+  }
+
+  const previousRootEnv = fs.existsSync(LOCAL_HTTPS_ENV_PATH) ? fs.readFileSync(LOCAL_HTTPS_ENV_PATH, 'utf8') : null;
+  const previousCaddyEnv = fs.existsSync(CADDY_ENV_PATH) ? fs.readFileSync(CADDY_ENV_PATH, 'utf8') : null;
+
+  try {
+    writeEnvValue(LOCAL_HTTPS_ENV_PATH, 'DOMAIN', domain);
+    writeEnvValue(LOCAL_HTTPS_ENV_PATH, 'PUBLIC_URL_SCHEME', 'https');
+    writeEnvValue(LOCAL_HTTPS_ENV_PATH, 'MOS_TLS_MODE', 'cloudflare-dns01');
+    writeEnvValue(CADDY_ENV_PATH, 'CADDY_ACME_EMAIL', acmeEmail);
+    writeEnvValue(CADDY_ENV_PATH, 'CLOUDFLARE_API_TOKEN', cloudflareApiToken);
+
+    await execRepo('node', ['scripts/vps-init.cjs'], 180_000);
+    await execRepo('npm', ['run', 'vps:doctor'], 120_000);
+    await execRepo('node', ['scripts/mos-compose.cjs', 'up', '-d', '--build', 'caddy', 'homepage'], 600_000);
+
+    scheduleSuiteManagerRestart();
+
+    json(response, 202, {
+      action: 'local-https.apply',
+      domain,
+      ok: true,
+      restartScheduled: true,
+    });
+  } catch (error) {
+    try {
+      if (previousRootEnv !== null) {
+        writeFileAtomic(LOCAL_HTTPS_ENV_PATH, previousRootEnv);
+      }
+      if (previousCaddyEnv !== null) {
+        writeFileAtomic(CADDY_ENV_PATH, previousCaddyEnv);
+      }
+    } catch {}
+
+    json(response, 500, {
+      error: error instanceof Error ? error.message : 'Unable to apply local HTTPS settings.',
+      service: 'settings',
+    });
+  }
+}
+
 ensureDir(path.dirname(socketPath));
 cleanupSocket();
 
@@ -269,6 +433,11 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === 'POST' && url.pathname === '/v1/caddy/external-proxies/apply') {
     await handleApplyCaddyExternalProxies(request, response);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/v1/settings/local-https/apply') {
+    await handleApplyLocalHttps(request, response);
     return;
   }
 

@@ -11,7 +11,9 @@ function isRealAcmeDomain(domain: string): boolean {
       normalized !== 'mos.home' &&
       !normalized.endsWith('.localhost') &&
       !normalized.endsWith('.home') &&
-      normalized.includes('.'),
+      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u.test(
+        normalized,
+      ),
   );
 }
 
@@ -30,11 +32,48 @@ export function createSettingsRouter(config: SuiteManagerConfig, serviceAgentSer
       },
       domain: config.domain,
       localHttpsReady,
+      localHttpsApplyAvailable: serviceCapabilities.localHttpsApplyAvailable,
       realDomain,
       selfHostFeaturesAvailable: serviceCapabilities.serviceAvailable,
       tlsMode: config.tlsMode,
       urlScheme: config.urlScheme,
     });
+  });
+
+  router.post('/settings/local-https/apply', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Request body must be valid JSON.' }, 400);
+    }
+
+    const input = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+    const domain = typeof input.domain === 'string' ? input.domain.trim().toLowerCase() : '';
+    const acmeEmail = typeof input.acmeEmail === 'string' ? input.acmeEmail.trim() : '';
+    const cloudflareApiToken =
+      typeof input.cloudflareApiToken === 'string' ? input.cloudflareApiToken.trim() : '';
+
+    if (!isRealAcmeDomain(domain)) {
+      return c.json({ error: 'Enter a real Cloudflare-managed domain, such as mos.example.com.' }, 400);
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(acmeEmail)) {
+      return c.json({ error: 'Enter a valid ACME contact email address.' }, 400);
+    }
+
+    if (!cloudflareApiToken) {
+      return c.json({ error: 'Cloudflare API token is required.' }, 400);
+    }
+
+    try {
+      return c.json(await serviceAgentService.applyLocalHttps({ acmeEmail, cloudflareApiToken, domain }), 202);
+    } catch (caughtError) {
+      return c.json(
+        { error: caughtError instanceof Error ? caughtError.message : 'Unable to apply local HTTPS settings.' },
+        500,
+      );
+    }
   });
 
   return router;
