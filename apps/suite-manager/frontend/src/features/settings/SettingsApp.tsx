@@ -1,7 +1,7 @@
-import { CheckCircle2, Globe2, LockKeyhole, RefreshCcw } from 'lucide-react';
+import { CheckCircle2, Globe2, KeyRound, LockKeyhole, RefreshCcw, Rocket, ServerCog } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { Notice } from '../../components/ui';
+import { Notice, TextField } from '../../components/ui';
 import { withSetupPath } from '../../lib/base-path';
 
 type LocalHttpsStatus = {
@@ -11,6 +11,7 @@ type LocalHttpsStatus = {
   };
   domain: string;
   localHttpsReady: boolean;
+  localHttpsApplyAvailable: boolean;
   realDomain: boolean;
   selfHostFeaturesAvailable: boolean;
   tlsMode: string;
@@ -35,8 +36,34 @@ async function loadLocalHttpsStatus(): Promise<LocalHttpsStatus> {
   return readJson<LocalHttpsStatus>(response, 'Unable to load local HTTPS settings.');
 }
 
+async function applyLocalHttps(input: {
+  acmeEmail: string;
+  cloudflareApiToken: string;
+  domain: string;
+}): Promise<{ applied: boolean; restartScheduled?: boolean }> {
+  const response = await fetch(withSetupPath('/api/settings/local-https/apply'), {
+    body: JSON.stringify(input),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  });
+  return readJson<{ applied: boolean; restartScheduled?: boolean }>(response, 'Unable to apply local HTTPS settings.');
+}
+
+function suggestedDomain(domain: string): string {
+  if (!domain || domain === 'localhost' || domain === 'mos.home' || domain.endsWith('.home')) {
+    return 'mos.example.com';
+  }
+  return domain;
+}
+
 export default function SettingsApp() {
   const [state, setState] = useState<StatusState>({ kind: 'loading' });
+  const [domain, setDomain] = useState('');
+  const [acmeEmail, setAcmeEmail] = useState('');
+  const [cloudflareApiToken, setCloudflareApiToken] = useState('');
+  const [applyState, setApplyState] = useState<
+    { kind: 'idle' } | { kind: 'applying' } | { kind: 'success'; message: string } | { kind: 'error'; message: string }
+  >({ kind: 'idle' });
   const browserUsesHttps =
     typeof window !== 'undefined' && window.location.protocol.toLowerCase() === 'https:';
 
@@ -55,6 +82,30 @@ export default function SettingsApp() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  useEffect(() => {
+    if (state.kind === 'loaded' && !domain) {
+      setDomain(suggestedDomain(state.status.domain));
+    }
+  }, [domain, state]);
+
+  async function handleApply(): Promise<void> {
+    setApplyState({ kind: 'applying' });
+    try {
+      await applyLocalHttps({ acmeEmail, cloudflareApiToken, domain });
+      setCloudflareApiToken('');
+      setApplyState({
+        kind: 'success',
+        message:
+          'Local HTTPS settings were applied. Suite Manager is restarting; refresh this page in about 20 seconds.',
+      });
+    } catch (error: unknown) {
+      setApplyState({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Unable to apply local HTTPS settings.',
+      });
+    }
+  }
 
   return (
     <main className="suite-app">
@@ -131,12 +182,8 @@ export default function SettingsApp() {
                       <p>Caddy is configured for Cloudflare DNS-01 certificates with HTTPS MOS URLs.</p>
                     </Notice>
                   ) : (
-                    <Notice title="Manual setup required" variant="warning">
-                      <p>
-                        This stack is not in local HTTPS mode yet. Configure the env values below, run the normal
-                        VPS/self-host init flow, and restart the stack. A future config/domain agent can turn this into
-                        an Apply button.
-                      </p>
+                    <Notice title="Local HTTPS is not enabled yet" variant="warning">
+                      <p>Connect a Cloudflare-managed domain and Suite Manager can update the local stack for you.</p>
                     </Notice>
                   )}
 
@@ -158,21 +205,93 @@ export default function SettingsApp() {
                     </div>
                   </div>
 
-                  <div className="suite-settings-panel">
-                    <h3 className="mos-card-title">Required env values</h3>
-                    <pre className="suite-homepage-caddy-preview-code">
-                      <code>{`DOMAIN=home.example.com
-PUBLIC_URL_SCHEME=https
-MOS_TLS_MODE=cloudflare-dns01
+                  {!state.status.localHttpsReady ? (
+                    <div className="suite-settings-panel suite-local-https-panel">
+                      <div className="suite-settings-panel-header">
+                        <div>
+                          <h3 className="mos-card-title">Apply local HTTPS</h3>
+                          <p className="suite-meta mos-meta">
+                            Use a subdomain you own in Cloudflare. Public app DNS records are not required.
+                          </p>
+                        </div>
+                        <ServerCog aria-hidden="true" className="suite-choice-icon" />
+                      </div>
 
-# deploy/vps/services/caddy/.env
-CADDY_ACME_EMAIL=you@example.com
-CLOUDFLARE_API_TOKEN=<scoped Cloudflare DNS token>`}</code>
-                    </pre>
-                  </div>
+                      {state.status.localHttpsApplyAvailable ? (
+                        <>
+                          <div className="suite-local-https-form">
+                            <TextField
+                              helperText="Example: mos.diemernet.uk. Apps will use homepage.mos.diemernet.uk and suite-manager.mos.diemernet.uk."
+                              label="MOS base domain"
+                              onChange={(event) => setDomain(event.target.value)}
+                              placeholder="mos.example.com"
+                              value={domain}
+                            />
+                            <TextField
+                              helperText="Used by Let's Encrypt for certificate account notices."
+                              label="ACME contact email"
+                              onChange={(event) => setAcmeEmail(event.target.value)}
+                              placeholder="you@example.com"
+                              type="email"
+                              value={acmeEmail}
+                            />
+                            <TextField
+                              autoComplete="off"
+                              helperText="Cloudflare token scoped to Zone Read and DNS Edit for the parent zone."
+                              label="Cloudflare API token"
+                              onChange={(event) => setCloudflareApiToken(event.target.value)}
+                              placeholder="Paste token once"
+                              type="password"
+                              value={cloudflareApiToken}
+                            />
+                          </div>
+
+                          <div className="suite-local-https-checklist">
+                            <div>
+                              <KeyRound aria-hidden="true" className="suite-inline-icon" />
+                              <span>Cloudflare token permissions: Zone Read and DNS Edit for the zone.</span>
+                            </div>
+                            <div>
+                              <Globe2 aria-hidden="true" className="suite-inline-icon" />
+                              <span>Local DNS wildcard should point *.{domain || 'mos.example.com'} to this machine.</span>
+                            </div>
+                          </div>
+
+                          {applyState.kind === 'success' ? (
+                            <Notice title="Applied" variant="success">
+                              <p>{applyState.message}</p>
+                            </Notice>
+                          ) : null}
+
+                          {applyState.kind === 'error' ? (
+                            <Notice title="Could not apply settings" variant="error">
+                              <p>{applyState.message}</p>
+                            </Notice>
+                          ) : null}
+
+                          <button
+                            className="suite-copy-button suite-primary-action"
+                            disabled={applyState.kind === 'applying'}
+                            onClick={() => void handleApply()}
+                            type="button"
+                          >
+                            <Rocket aria-hidden="true" className="suite-inline-icon" />
+                            {applyState.kind === 'applying' ? 'Applying...' : 'Apply local HTTPS'}
+                          </button>
+                        </>
+                      ) : (
+                        <Notice title="Apply action unavailable" variant="info">
+                          <p>
+                            The local service agent is not advertising the HTTPS apply capability yet. Update/reconcile
+                            the self-host agent, then return here.
+                          </p>
+                        </Notice>
+                      )}
+                    </div>
+                  ) : null}
 
                   <div className="suite-settings-panel">
-                    <h3 className="mos-card-title">After DNS-01 is enabled</h3>
+                    <h3 className="mos-card-title">Local DNS</h3>
                     <p className="suite-meta mos-meta">Homepage: {state.status.currentUrls.homepage}</p>
                     <p className="suite-meta mos-meta">Suite Manager: {state.status.currentUrls.suiteManager}</p>
                     <p className="suite-meta mos-meta">

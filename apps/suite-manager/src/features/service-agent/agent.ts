@@ -114,3 +114,15 @@ export async function applyAgentCaddyExternalProxies(
     { caddyfile },
   );
 }
+
+export async function applyAgentLocalHttps(
+  config: SuiteManagerConfig,
+  input: { acmeEmail: string; cloudflareApiToken: string; domain: string },
+): Promise<{ domain?: string; ok?: boolean; restartScheduled?: boolean }> {
+  return requestAgent<{ domain?: string; ok?: boolean; restartScheduled?: boolean }>(
+    config,
+    'POST',
+    '/v1/settings/local-https/apply',
+    input,
+  );
+}
