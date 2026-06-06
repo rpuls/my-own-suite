@@ -123,16 +123,33 @@ function getStackSubdomain(value: Record<string, unknown>): string {
   }
 
   const publicConfig = mos.public;
-  if (!isRecord(publicConfig) || publicConfig.mode !== 'app-subdomain') {
+  if (isRecord(publicConfig) && publicConfig.mode === 'app-subdomain') {
+    const subdomain = publicConfig.subdomain;
+    if (typeof subdomain === 'string' && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(subdomain)) {
+      return subdomain;
+    }
+  }
+
+  if (mos.kind !== 'external' || mos.managed !== true || !hasEnabledProxy(value)) {
     return '';
   }
 
-  const subdomain = publicConfig.subdomain;
-  if (typeof subdomain !== 'string' || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(subdomain)) {
+  const hrefUrl = parseHttpUrl(value.href);
+  if (!hrefUrl) {
     return '';
   }
 
-  return subdomain;
+  const hostname = hrefUrl.hostname.toLowerCase();
+  const legacySuffixes = ['.mos.home', '.localhost'];
+  const suffix = legacySuffixes.find((candidate) => hostname.endsWith(candidate));
+  if (!suffix) {
+    return '';
+  }
+
+  const subdomain = hostname.slice(0, -suffix.length);
+  return subdomain && !subdomain.includes('.') && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(subdomain)
+    ? subdomain
+    : '';
 }
 
 function resolvePublicUrl(

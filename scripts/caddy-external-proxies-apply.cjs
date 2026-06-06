@@ -23,10 +23,6 @@ function run(command, args, options = {}) {
   return result.stdout || '';
 }
 
-function runNode(args, options = {}) {
-  return run(process.execPath, args, options);
-}
-
 function writeFileAtomic(filePath, content) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
@@ -62,7 +58,7 @@ function createPreview() {
   ]);
   const code = `
     import fs from 'node:fs';
-    import { createCaddyProxyPreviewFromServicesTemplate } from './apps/suite-manager/src/features/homepage-config/caddy-preview.ts';
+    import { createCaddyProxyPreviewFromServicesTemplate } from '/app/src/features/homepage-config/caddy-preview.ts';
 
     const content = fs.readFileSync(0, 'utf8');
     const options = {
@@ -73,17 +69,20 @@ function createPreview() {
   `;
   const rootEnv = readEnvFile(rootEnvPath);
 
-  const raw = runNode([
+  const raw = run('docker', [
+    'exec',
+    '-i',
+    '-e',
+    `DOMAIN=${rootEnv.DOMAIN || process.env.DOMAIN || ''}`,
+    '-e',
+    `PUBLIC_URL_SCHEME=${rootEnv.PUBLIC_URL_SCHEME || process.env.PUBLIC_URL_SCHEME || ''}`,
+    'mos-suite-manager',
+    'node',
     '--experimental-strip-types',
     '--input-type=module',
     '-e',
     code,
   ], {
-    env: {
-      ...process.env,
-      DOMAIN: rootEnv.DOMAIN || process.env.DOMAIN || '',
-      PUBLIC_URL_SCHEME: rootEnv.PUBLIC_URL_SCHEME || process.env.PUBLIC_URL_SCHEME || '',
-    },
     input: content,
   });
 

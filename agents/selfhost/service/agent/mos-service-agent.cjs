@@ -226,9 +226,15 @@ function isEmailLike(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value.trim());
 }
 
-function scheduleSuiteManagerRestart() {
+function scheduleLocalHttpsReconfigure() {
   setTimeout(() => {
-    execFile('docker', ['restart', 'mos-suite-manager'], { timeout: 60_000 }, () => {});
+    execRepo(
+      'node',
+      ['scripts/mos-compose.cjs', 'up', '-d', '--build', 'caddy', 'homepage', 'suite-manager'],
+      600_000,
+    )
+      .then(() => execRepo('npm', ['run', 'caddy:external-proxies:apply'], 120_000))
+      .catch(() => {});
   }, 1500);
 }
 
@@ -373,9 +379,8 @@ async function handleApplyLocalHttps(request, response) {
 
     await execRepo('node', ['scripts/vps-init.cjs'], 180_000);
     await execRepo('npm', ['run', 'vps:doctor'], 120_000);
-    await execRepo('node', ['scripts/mos-compose.cjs', 'up', '-d', '--build', 'caddy', 'homepage'], 600_000);
 
-    scheduleSuiteManagerRestart();
+    scheduleLocalHttpsReconfigure();
 
     json(response, 202, {
       action: 'local-https.apply',

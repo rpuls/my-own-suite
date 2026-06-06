@@ -82,6 +82,31 @@ test('uses app-subdomain metadata for managed public route protocol and domain',
   );
 });
 
+test('infers current stack host for older managed LAN app proxy routes', () => {
+  const preview = createCaddyProxyPreviewFromServicesTemplate(
+    `
+- Appliances:
+    - TrueNAS:
+        href: http://truenas.mos.home
+        mos:
+          kind: external
+          managed: true
+          proxy:
+            enabled: true
+            upstream: http://192.168.30.3
+`,
+    { domain: 'mos.diemernet.uk', urlScheme: 'https' },
+  );
+
+  assert.equal(preview.valid, true);
+  assert.equal(preview.routes[0]?.host, 'truenas.mos.diemernet.uk');
+  assert.equal(preview.routes[0]?.href, 'https://truenas.mos.diemernet.uk/');
+  assert.equal(
+    preview.caddyfile,
+    'truenas.mos.diemernet.uk {\n\treverse_proxy http://192.168.30.3\n}\n',
+  );
+});
+
 test('generates TLS skip transport only for HTTPS upstreams', () => {
   const preview = createCaddyProxyPreviewFromServicesTemplate(`
 - Appliances:

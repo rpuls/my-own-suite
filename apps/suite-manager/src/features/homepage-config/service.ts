@@ -309,6 +309,12 @@ function getProxyMap(tile: YAMLMap): YAMLMap | null {
   return isMap(proxy) ? proxy : null;
 }
 
+function getPublicMap(tile: YAMLMap): YAMLMap | null {
+  const mos = getMosMap(tile);
+  const publicConfig = mos ? getMapValue(mos, 'public') : null;
+  return isMap(publicConfig) ? publicConfig : null;
+}
+
 function getServiceId(tile: YAMLMap): string {
   const mos = getMosMap(tile);
   return mos ? getMapString(mos, 'id') : '';
@@ -317,6 +323,42 @@ function getServiceId(tile: YAMLMap): string {
 function isManagedExternalService(tile: YAMLMap): boolean {
   const mos = getMosMap(tile);
   return Boolean(mos && getMapString(mos, 'kind') === 'external' && getMapBoolean(mos, 'managed'));
+}
+
+function getManagedPublicSubdomain(tile: YAMLMap): string {
+  const publicConfig = getPublicMap(tile);
+  if (!publicConfig || getMapString(publicConfig, 'mode') !== 'app-subdomain') {
+    return '';
+  }
+
+  const subdomain = getMapString(publicConfig, 'subdomain');
+  return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(subdomain) ? subdomain : '';
+}
+
+function inferLegacyManagedStackSubdomain(href: string): string {
+  try {
+    const url = new URL(href);
+    const hostname = url.hostname.toLowerCase();
+    const legacySuffixes = ['.mos.home', '.localhost'];
+    const suffix = legacySuffixes.find((candidate) => hostname.endsWith(candidate));
+    if (!suffix) {
+      return '';
+    }
+
+    const subdomain = hostname.slice(0, -suffix.length);
+    if (!subdomain || subdomain.includes('.') || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(subdomain)) {
+      return '';
+    }
+
+    return subdomain;
+  } catch {
+    return '';
+  }
+}
+
+function stackHref(subdomain: string, domain: string, urlScheme: string): string {
+  const scheme = urlScheme === 'https' ? 'https' : 'http';
+  return `${scheme}://${subdomain}.${domain}`;
 }
 
 function serviceFromLocation(location: ServiceTileLocation): HomepageExternalService | null {
@@ -379,6 +421,57 @@ function createServiceTile(document: Document, service: HomepageExternalService,
   }
 
   return document.createNode({ [service.title]: tile }) as YAMLMap;
+}
+
+function normalizeManagedExternalServicePublicUrls(
+  document: Document,
+  stackDomain: string,
+  urlScheme: string,
+): boolean {
+  const normalizedDomain = stackDomain.trim().toLowerCase();
+  if (!normalizedDomain) {
+    return false;
+  }
+
+  let changed = false;
+  const root = ensureServicesRoot(document);
+
+  for (const location of collectServiceTileLocations(root)) {
+    if (!isManagedExternalService(location.tile)) {
+      continue;
+    }
+
+    const proxy = getProxyMap(location.tile);
+    if (!proxy || !getMapBoolean(proxy, 'enabled')) {
+      continue;
+    }
+
+    const existingSubdomain = getManagedPublicSubdomain(location.tile);
+    const inferredSubdomain = existingSubdomain || inferLegacyManagedStackSubdomain(getMapString(location.tile, 'href'));
+    if (!inferredSubdomain) {
+      continue;
+    }
+
+    if (!existingSubdomain) {
+      const mos = getMosMap(location.tile);
+      mos?.set(
+        'public',
+        document.createNode({
+          mode: 'app-subdomain',
+          subdomain: inferredSubdomain,
+        }),
+      );
+      changed = true;
+    }
+
+    const nextHref = stackHref(inferredSubdomain, normalizedDomain, urlScheme);
+    if (getMapString(location.tile, 'href') !== nextHref) {
+      location.tile.set('href', nextHref);
+      changed = true;
+    }
+  }
+
+  return changed;
 }
 
 function applyServiceTile(
@@ -606,6 +699,32 @@ export class HomepageConfigService {
         const defaultContent = await fs.readFile(resolveWithin(this.config.homepageDefaultConfigDir, file.name), 'utf8');
         await fs.writeFile(targetPath, defaultContent, 'utf8');
       }
+    }
+
+    await this.normalizeServicesTemplatePublicUrls();
+  }
+
+  private async normalizeServicesTemplatePublicUrls(): Promise<void> {
+    const targetPath = resolveWithin(this.config.homepageConfigDir, 'services.template.yaml');
+    const content = await fs.readFile(targetPath, 'utf8');
+    const document = parseServicesDocument(content);
+    const changed = normalizeManagedExternalServicePublicUrls(
+      document,
+      this.config.domain,
+      this.config.urlScheme,
+    );
+
+    if (changed) {
+      const nextContent = document.toString();
+      const validation = this.validateFileContent('services.template.yaml', nextContent);
+      if (!validation.valid) {
+        const firstError = validation.errors[0];
+        throw new Error(
+          firstError ? `${firstError.path}: ${firstError.message}` : 'External service validation failed.',
+        );
+      }
+
+      await fs.writeFile(targetPath, nextContent, 'utf8');
     }
   }
 
