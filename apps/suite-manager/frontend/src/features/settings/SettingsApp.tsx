@@ -61,6 +61,8 @@ export default function SettingsApp() {
   const [domain, setDomain] = useState('');
   const [acmeEmail, setAcmeEmail] = useState('');
   const [cloudflareApiToken, setCloudflareApiToken] = useState('');
+  const [localHttpsFormOpen, setLocalHttpsFormOpen] = useState(false);
+  const [reconfigureConfirmed, setReconfigureConfirmed] = useState(false);
   const [applyState, setApplyState] = useState<
     { kind: 'idle' } | { kind: 'applying' } | { kind: 'success'; message: string } | { kind: 'error'; message: string }
   >({ kind: 'idle' });
@@ -89,6 +91,12 @@ export default function SettingsApp() {
     }
   }, [domain, state]);
 
+  useEffect(() => {
+    if (state.kind === 'loaded' && state.status.selfHostFeaturesAvailable && !state.status.localHttpsReady) {
+      setLocalHttpsFormOpen(true);
+    }
+  }, [state]);
+
   async function handleApply(): Promise<void> {
     setApplyState({ kind: 'applying' });
     try {
@@ -105,6 +113,17 @@ export default function SettingsApp() {
         message: error instanceof Error ? error.message : 'Unable to apply local HTTPS settings.',
       });
     }
+  }
+
+  function openLocalHttpsForm(): void {
+    if (state.kind === 'loaded') {
+      setDomain(suggestedDomain(state.status.domain));
+    }
+    setAcmeEmail('');
+    setCloudflareApiToken('');
+    setApplyState({ kind: 'idle' });
+    setReconfigureConfirmed(false);
+    setLocalHttpsFormOpen(true);
   }
 
   return (
@@ -205,13 +224,45 @@ export default function SettingsApp() {
                     </div>
                   </div>
 
-                  {!state.status.localHttpsReady ? (
+                  {state.status.localHttpsReady && !localHttpsFormOpen ? (
                     <div className="suite-settings-panel suite-local-https-panel">
                       <div className="suite-settings-panel-header">
                         <div>
-                          <h3 className="mos-card-title">Apply local HTTPS</h3>
+                          <h3 className="mos-card-title">Reconfigure local HTTPS</h3>
                           <p className="suite-meta mos-meta">
-                            Use a subdomain you own in Cloudflare. Public app DNS records are not required.
+                            Change the MOS base domain or reapply a Cloudflare token without editing env files over SSH.
+                          </p>
+                        </div>
+                        <ServerCog aria-hidden="true" className="suite-choice-icon" />
+                      </div>
+
+                      {state.status.localHttpsApplyAvailable ? (
+                        <button className="suite-copy-button suite-primary-action" onClick={openLocalHttpsForm} type="button">
+                          <Rocket aria-hidden="true" className="suite-inline-icon" />
+                          Change local HTTPS settings
+                        </button>
+                      ) : (
+                        <Notice title="Apply action unavailable" variant="info">
+                          <p>
+                            The local service agent is not advertising the HTTPS apply capability yet. Update/reconcile
+                            the self-host agent, then return here.
+                          </p>
+                        </Notice>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {localHttpsFormOpen ? (
+                    <div className="suite-settings-panel suite-local-https-panel">
+                      <div className="suite-settings-panel-header">
+                        <div>
+                          <h3 className="mos-card-title">
+                            {state.status.localHttpsReady ? 'Change local HTTPS settings' : 'Apply local HTTPS'}
+                          </h3>
+                          <p className="suite-meta mos-meta">
+                            {state.status.localHttpsReady
+                              ? 'This reapplies the local Caddy HTTPS setup and can move MOS to a different base domain.'
+                              : 'Use a subdomain you own in Cloudflare. Public app DNS records are not required.'}
                           </p>
                         </div>
                         <ServerCog aria-hidden="true" className="suite-choice-icon" />
@@ -255,7 +306,35 @@ export default function SettingsApp() {
                               <Globe2 aria-hidden="true" className="suite-inline-icon" />
                               <span>Local DNS wildcard should point *.{domain || 'mos.example.com'} to this machine.</span>
                             </div>
+                            <div>
+                              <LockKeyhole aria-hidden="true" className="suite-inline-icon" />
+                              <span>
+                                After apply, Homepage will use https://homepage.{domain || 'mos.example.com'} and Suite Manager
+                                will use https://suite-manager.{domain || 'mos.example.com'}/setup.
+                              </span>
+                            </div>
                           </div>
+
+                          {state.status.localHttpsReady ? (
+                            <Notice title="Before you apply" variant="info">
+                              <p>
+                                MOS-managed app-subdomain links can follow the new base domain. Explicit Homepage links
+                                you typed yourself stay unchanged.
+                              </p>
+                            </Notice>
+                          ) : null}
+
+                          {state.status.localHttpsReady ? (
+                            <label className="suite-checkbox-row">
+                              <input
+                                checked={reconfigureConfirmed}
+                                disabled={applyState.kind === 'applying'}
+                                onChange={(event) => setReconfigureConfirmed(event.currentTarget.checked)}
+                                type="checkbox"
+                              />
+                              <span>I have local DNS ready for this base domain and understand Suite Manager will move URLs.</span>
+                            </label>
+                          ) : null}
 
                           {applyState.kind === 'success' ? (
                             <Notice title="Applied" variant="success">
@@ -271,12 +350,19 @@ export default function SettingsApp() {
 
                           <button
                             className="suite-copy-button suite-primary-action"
-                            disabled={applyState.kind === 'applying'}
+                            disabled={
+                              applyState.kind === 'applying' ||
+                              (state.status.localHttpsReady && !reconfigureConfirmed)
+                            }
                             onClick={() => void handleApply()}
                             type="button"
                           >
                             <Rocket aria-hidden="true" className="suite-inline-icon" />
-                            {applyState.kind === 'applying' ? 'Applying...' : 'Apply local HTTPS'}
+                            {applyState.kind === 'applying'
+                              ? 'Applying...'
+                              : state.status.localHttpsReady
+                                ? 'Apply changes'
+                                : 'Apply local HTTPS'}
                           </button>
                         </>
                       ) : (
