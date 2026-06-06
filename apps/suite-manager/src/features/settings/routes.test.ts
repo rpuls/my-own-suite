@@ -146,3 +146,35 @@ test('passes valid local HTTPS apply payload to service agent', async () => {
     domain: 'mos.example.com',
   });
 });
+
+test('allows reapplying local HTTPS when it is already configured', async () => {
+  let received: { acmeEmail: string; cloudflareApiToken: string; domain: string } | null = null;
+  const router = createSettingsRouter(
+    createConfig({ domain: 'home.example.com', tlsMode: 'cloudflare-dns01', urlScheme: 'https' }),
+    createServiceAgent({
+      applyLocalHttps: async (input) => {
+        received = input;
+        return { applied: true, restartScheduled: true };
+      },
+    }),
+  );
+
+  const response = await router.request('/settings/local-https/apply', {
+    body: JSON.stringify({
+      acmeEmail: 'owner@example.com',
+      cloudflareApiToken: 'secret-token',
+      domain: 'mos.example.com',
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 202);
+  assert.equal(body.applied, true);
+  assert.deepEqual(received, {
+    acmeEmail: 'owner@example.com',
+    cloudflareApiToken: 'secret-token',
+    domain: 'mos.example.com',
+  });
+});
