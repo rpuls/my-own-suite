@@ -221,7 +221,7 @@ export default function SettingsApp() {
                         <>
                           <div className="suite-local-https-form">
                             <TextField
-                              helperText="Example: mos.diemernet.uk. Apps will use homepage.mos.diemernet.uk and suite-manager.mos.diemernet.uk."
+                              helperText="Example: mos.example.com. Apps will use homepage.mos.example.com and suite-manager.mos.example.com."
                               label="MOS base domain"
                               onChange={(event) => setDomain(event.target.value)}
                               placeholder="mos.example.com"

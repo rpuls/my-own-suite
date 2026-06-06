@@ -147,7 +147,7 @@ test('uses configured stack protocol and domain for managed external proxy previ
 });
 
 test('normalizes older managed LAN app links to the current stack domain', async (t) => {
-  const { configDir, service } = await createService({ domain: 'mos.diemernet.uk', urlScheme: 'https' });
+  const { configDir, service } = await createService({ domain: 'mos.example.com', urlScheme: 'https' });
   t.after(() => fs.rm(configDir, { force: true, recursive: true }));
 
   await service.writeFile(
@@ -168,18 +168,18 @@ test('normalizes older managed LAN app links to the current stack domain', async
   );
 
   const listed = await service.listExternalServices();
-  assert.equal(listed.services[0]?.href, 'https://truenas.mos.diemernet.uk');
+  assert.equal(listed.services[0]?.href, 'https://truenas.mos.example.com');
 
   const { content } = await service.readFile('services.template.yaml');
-  assert.match(content, /href: https:\/\/truenas\.mos\.diemernet\.uk/);
+  assert.match(content, /href: https:\/\/truenas\.mos\.example\.com/);
   assert.match(content, /public:\s+mode: app-subdomain\s+subdomain: truenas/);
 
   const preview = await service.getCaddyProxyPreview();
   assert.equal(preview.valid, true);
-  assert.equal(preview.routes[0]?.host, 'truenas.mos.diemernet.uk');
+  assert.equal(preview.routes[0]?.host, 'truenas.mos.example.com');
   assert.equal(
     preview.caddyfile,
-    'truenas.mos.diemernet.uk {\n\treverse_proxy http://192.168.30.3\n}\n',
+    'truenas.mos.example.com {\n\treverse_proxy http://192.168.30.3\n}\n',
   );
 });
 

@@ -23,3 +23,6 @@ For mandatory agent rules, see [AGENTS.md](../AGENTS.md). For documentation owne
 - The USB installer path and the host updater path are related but not identical: installer/bootstrap changes may still require a reflash until the updater can self-refresh host-side files.
 - Railway-like deployments should stay notify-only; the platform applies updates.
 - Self-host managed updates must keep the host-control boundary explicit.
+- For Homepage external service tiles, `href` is the public/browser URL and `mos.proxy.upstream` is the private target. Do not remove the protocol from `href`; hand-authored links should use full URLs such as `https://truenas.mos.example.com`.
+- The default self-host domain remains `mos.home`. Real domains such as `mos.example.com` are optional user-provided config for local HTTPS. Broken external links during testing were caused by manually hardcoded old or wrong-domain hrefs, not by DNS-01 or built-in MOS route generation.
+- MOS should not rewrite arbitrary user-authored Homepage `href` strings when `DOMAIN` changes. Safe regeneration belongs to MOS-managed tiles with `mos.public.mode: app-subdomain`, or to an explicit user-confirmed conversion.

@@ -64,12 +64,14 @@ Current repo facts relevant to this work:
 - `services.yaml` is generated output and must not be manually edited.
 - The current Homepage config generator replaces `${ENV_VAR}` placeholders and prunes tiles with unresolved placeholders.
 - Caddy uses static `deploy/vps/Caddyfile` as the entrypoint plus generated snippets under `deploy/vps/generated/caddy/` for built-in routes, global TLS options, and external proxy routes.
-- The self-host service agent exposes service lifecycle capabilities such as restarting `homepage` and `caddy`, and currently also has the existing generated external-proxy snippet apply path from Phase 2.
-- The service-agent boundary should not be expanded for domain, certificate, DNS provider, email, or broad host configuration duties. Future host config writes should belong to a separate, purpose-built config/domain agent if app startup scripts and service restarts are not enough.
+- The self-host service agent exposes narrow local host capabilities such as restarting services, applying generated external-proxy snippets, and applying the current local HTTPS env/config/recreate flow.
+- The service-agent boundary should not become a general shell, DNS, certificate, or host configuration interface. If the domain/TLS apply surface grows beyond the current repo-owned env/config/recreate flow, split it into a separate purpose-built config/domain agent.
 - Built-in MOS routes and default domain behavior must keep working throughout this feature.
 - Suite Manager now includes a Customize helper for adding Homepage items. The LAN app path writes MOS-managed external service tiles with `mos.id`, `mos.kind: external`, and `mos.managed: true`.
 - The LAN app helper currently derives the friendly URL from Suite Manager's `DOMAIN` and `PUBLIC_URL_SCHEME` config values at add time.
-- The local HTTPS foundation now includes `MOS_TLS_MODE`, a Cloudflare-capable Caddy image, generated built-in-route/global-options snippets, and a Suite Manager Settings status page.
+- The local HTTPS foundation now includes `MOS_TLS_MODE`, a Cloudflare-capable Caddy image, generated built-in-route/global-options snippets, and a Suite Manager Settings page with a self-host apply flow.
+- Real self-host validation confirmed that built-in MOS apps can run behind local-only split DNS with Cloudflare DNS-01 certificates and no public app A/AAAA records.
+- Existing manually authored Homepage `href` values are concrete user-owned URLs. If a user hardcodes `*.mos.home`, MOS should not blindly rewrite those strings during domain/protocol changes.
 
 Current important compatibility surfaces:
 
@@ -79,13 +81,15 @@ Current important compatibility surfaces:
 - Existing static Caddy routes for built-in apps.
 - Existing Homepage runtime config customization through Suite Manager.
 - Existing MOS-managed external service metadata written by the Add to Homepage helper.
+- Persisted Suite Manager-owned Homepage config in the Suite Manager data volume.
+- Manually authored external-service `href` values, including old `*.mos.home` links, because those may be deliberate user choices.
 
 Important agent boundary:
 
-- Service agent: service lifecycle and observability only, such as restart/status/resource reporting.
+- Service agent: narrow local host actions exposed through named capabilities, such as restart/status, generated Caddy proxy apply, and the current local HTTPS apply flow.
 - App/container startup scripts: perform app-local prep after restart when possible.
 - Caddy: ACME issuance and renewal, including DNS-01 challenge automation.
-- Future config/domain agent: optional narrow host writer for approved domain/TLS/env changes if Suite Manager needs to apply those settings from the UI.
+- Future config/domain agent: optional split-out host writer if local HTTPS/domain management grows beyond the current narrow repo-owned env/config/recreate flow.
 - Suite Manager: UI, validation, preview, and intent capture.
 
 ## 4. Proposed Annotation Shape
@@ -150,6 +154,7 @@ Rules for the derived URL model:
 - `mos.public.mode: app-subdomain` tells Suite Manager that `href` may be regenerated as `<PUBLIC_URL_SCHEME>://<mos.public.subdomain>.<DOMAIN>`.
 - `mos.public.subdomain` is the stable MOS-managed app host label, such as `homeassistant` in `homeassistant.home.example.com`.
 - Explicit links and user-authored tiles without `mos.public.mode: app-subdomain` are not rewritten by domain/TLS changes.
+- Manually hardcoded `href` values such as `https://truenas.mos.home` must be edited by the user or by a clearly scoped "convert this tile to MOS-managed app-subdomain" action. They are not part of the automatic domain/protocol regeneration contract.
 - Upstream URLs stay explicit and must never be rewritten from the public protocol setting.
 - Manual URLs such as `http://192.168.1.1` remain valid for generic links or non-proxied tiles, which covers protected VLAN/router/admin interfaces that should bypass MOS-owned Caddy routing.
 
@@ -300,8 +305,13 @@ This keeps the product boundary clear:
   - [x] Add Cloudflare-capable Caddy build.
   - [x] Generate built-in Caddy routes and global Caddy TLS options from shared mode settings.
   - [x] Add Suite Manager Settings status page for local HTTPS readiness.
-  - [ ] Add a separate config/domain agent or equivalent safe host apply path for UI-driven domain/TLS changes.
-  - [ ] Add final polished Local HTTPS setup/apply flow.
+  - [x] Add an equivalent safe host apply path for UI-driven domain/TLS changes through the self-host service agent.
+  - [x] Validate local-only split DNS plus Cloudflare DNS-01 on a real self-host machine.
+  - [x] Confirm MOS built-in apps work at HTTPS subdomains after switching from `mos.home` to a real domain.
+  - [x] Confirm external Caddy proxy routes work when Homepage `href` uses the chosen stack domain.
+  - [ ] Add a polished first-run Local HTTPS setup flow that avoids SSH/env editing for clean installs.
+  - [ ] Add clearer UX for explicit/user-authored external links versus MOS-managed app-subdomain links.
+  - [ ] Add an explicit "convert existing external link to MOS-managed app-subdomain" action if real users need it.
 
 ### Phase 1: Parser And Preview
 
@@ -360,7 +370,7 @@ Required work:
 
 - Add a Suite Manager Settings page or section, hidden on managed/Railway-style installs where self-host capabilities are unavailable.
 - Add a Local HTTPS setup flow for self-host users with a real domain and Cloudflare DNS.
-- Keep the service agent scoped to service restart/status. If UI-driven host config writes are required, introduce a separate narrow config/domain agent instead of expanding the service agent.
+- Keep host writes narrow and capability-gated. The current implementation uses the self-host service agent for a bounded local HTTPS apply action; introduce a separate config/domain agent only if this grows beyond repo-owned env/config/recreate duties.
 - Prefer app/container startup scripts plus service-agent restarts for app-local preparation where possible.
 - Add a custom Caddy build with the Cloudflare DNS provider module.
 - Add `MOS_TLS_MODE` or equivalent as the single TLS mode flag, paired with existing `DOMAIN` and `PUBLIC_URL_SCHEME`.
@@ -370,6 +380,8 @@ Required work:
 - Update the Add to Homepage LAN app model so MOS-managed URLs can be regenerated from `PUBLIC_URL_SCHEME`, `DOMAIN`, and a stored subdomain, while explicit URLs remain untouched.
 - Provide a clear confirmation summary before changing the stack domain/protocol, focused on the resulting built-in app URLs and managed LAN app URLs.
 - Document split-DNS requirements for OPNsense/Unbound/AdGuard Home/router/Tailscale style setups without making those tools part of MOS management.
+- Make the difference between public `href` and private `mos.proxy.upstream` unmistakable in the UI.
+- Make clear that manual `href` values must be full URLs, including `https://`, and are not automatically rewritten from `PUBLIC_URL_SCHEME`.
 
 Cloudflare-first setup constraints:
 
@@ -383,10 +395,35 @@ Suggested implementation slices:
 1. Settings route and self-host-only capability gating.
 2. Domain/TLS status API that reports current `DOMAIN`, `PUBLIC_URL_SCHEME`, TLS mode, and whether local HTTPS setup can be offered.
 3. Cloudflare-enabled Caddy image and Caddyfile TLS-mode refactor.
-4. Host config application design: startup-script/restart first; separate config/domain agent only if persistent host env/secrets must be written from Suite Manager.
+4. Host config application design: narrow service-agent apply path for current repo-owned env/config/recreate duties; separate config/domain agent only if the scope expands.
 5. Managed external service URL intent: add `mos.public.mode` and `mos.public.subdomain` for LAN-app tiles.
 6. Local HTTPS setup UI with Cloudflare token guidance and final URL confirmation.
 7. Docs, `vps:doctor` validation, and focused smoke tests.
+
+### Real Install Status As Of 2026-06-06
+
+Validated on a self-host test machine using a user-provided real domain:
+
+- `DOMAIN=mos.example.com`
+- `PUBLIC_URL_SCHEME=https`
+- `MOS_TLS_MODE=cloudflare-dns01`
+- OPNsense/Unbound wildcard override points `*.mos.example.com` to the MOS machine.
+- Cloudflare DNS-01 issued certificates for built-in MOS app hosts without public app A/AAAA records.
+- Built-in MOS apps were reachable over HTTPS, including Homepage, Suite Manager, Vaultwarden, Seafile, Immich, and Stirling PDF.
+- External Caddy proxy links worked after the saved Homepage `href` values were corrected to the same stack domain, such as `https://truenas.mos.example.com`.
+
+Important finding:
+
+- The observed broken external links were caused by manually hardcoded `href` values using the wrong domain, such as `*.home.example.com` or old `*.mos.home`, not by Caddy DNS-01 or built-in MOS app routing.
+- This is expected behavior for explicit/user-authored Homepage links. MOS should not rewrite arbitrary user-authored `href` strings just because the stack domain changed.
+- For clean installs, the main product requirement is that the Suite Manager add-LAN-app flow writes the correct `href`, `mos.public`, and `mos.proxy` metadata the first time.
+
+Recommended next work:
+
+- Re-test from a clean current install instead of adding more historical migrations for the single development server.
+- Use Suite Manager's add-LAN-app flow to create new external services after the stack domain is already set to the user's real domain.
+- Verify that the generated Homepage `href`, generated Caddy snippet, and browser DNS all agree on the same host.
+- Improve the UI copy around `href` versus `upstream`, and around local DNS wildcard requirements.
 
 ## 9. Risks And Non-Goals
 
@@ -405,6 +442,7 @@ Guardrails:
 - Do not remove existing static built-in Caddy routes until generated routing has proven itself.
 - Do not rewrite arbitrary `http` strings in Homepage YAML when switching protocol/domain.
 - Do not store Cloudflare credentials in Homepage YAML.
+- Do not silently mutate explicit/user-authored external `href` values unless the tile is marked as MOS-managed app-subdomain metadata or the user confirms a conversion.
 
 Known risks:
 
@@ -413,7 +451,7 @@ Known risks:
 - Internal appliances often use self-signed certificates, redirects, websockets, or hostname-sensitive behavior.
 - DNS-01 support will require deliberate Caddy image/plugin work because the current Caddy image is stock and pinned.
 - Switching global protocol/domain can make the Suite Manager front door move; the UI should clearly summarize final URLs before applying.
-- Existing MOS-managed LAN app tiles created before `mos.public` metadata may need a one-time safe inference path from their `href` host and current `DOMAIN`.
+- Existing MOS-managed LAN app tiles created before `mos.public` metadata may need a one-time safe inference path from their `href` host and current `DOMAIN`, but manually authored explicit links remain user-owned.
 - Hosted platforms may not allow the same generated Caddy apply path as self-host/own-infra installs.
 
 ## 10. GitHub Issue Breakdown

@@ -95,15 +95,15 @@ test('infers current stack host for older managed LAN app proxy routes', () => {
             enabled: true
             upstream: http://192.168.30.3
 `,
-    { domain: 'mos.diemernet.uk', urlScheme: 'https' },
+    { domain: 'mos.example.com', urlScheme: 'https' },
   );
 
   assert.equal(preview.valid, true);
-  assert.equal(preview.routes[0]?.host, 'truenas.mos.diemernet.uk');
-  assert.equal(preview.routes[0]?.href, 'https://truenas.mos.diemernet.uk/');
+  assert.equal(preview.routes[0]?.host, 'truenas.mos.example.com');
+  assert.equal(preview.routes[0]?.href, 'https://truenas.mos.example.com/');
   assert.equal(
     preview.caddyfile,
-    'truenas.mos.diemernet.uk {\n\treverse_proxy http://192.168.30.3\n}\n',
+    'truenas.mos.example.com {\n\treverse_proxy http://192.168.30.3\n}\n',
   );
 });
 
