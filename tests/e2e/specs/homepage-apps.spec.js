@@ -74,7 +74,21 @@ test.describe('homepage app verification against the real local stack', () => {
       const immichPage = await immichPagePromise;
       await immichPage.waitForLoadState('domcontentloaded');
       await expect(immichPage).toHaveURL(/immich\.localhost:18080/i);
-      await expect(immichPage.locator('body')).toContainText(/Immich|Email|Password|Sign in/i);
+      await expect(immichPage).toHaveTitle(/Immich/i);
+      await expect
+        .poll(
+          () =>
+            immichPage.evaluate(async () => {
+              const response = await fetch('/api/server/ping');
+              if (!response.ok) {
+                return false;
+              }
+
+              return /pong/i.test(await response.text());
+            }),
+          { timeout: 15000 },
+        )
+        .toBe(true);
       await immichPage.close();
       await page.bringToFront();
     });
@@ -117,8 +131,36 @@ test.describe('homepage app verification against the real local stack', () => {
         href: https://example.org/
         description: Added from Suite Manager
 `);
-      await page.getByRole('button', { name: /^Save$/ }).click();
-      await expect(page.getByText('Saved')).toBeVisible();
+      const validateResponsePromise = page.waitForResponse(
+        (response) =>
+          response.url().includes('/setup/api/homepage-config/files/services.template.yaml/validate') &&
+          response.request().method() === 'POST' &&
+          response.ok(),
+      );
+      const validateButton = page.getByRole('button', { name: /^Validate$/ });
+      await validateButton.click();
+      await validateResponsePromise;
+      await expect(page.getByText('Ready to save')).toBeVisible();
+
+      const saveResponsePromise = page.waitForResponse(
+        (response) =>
+          response.url().includes('/setup/api/homepage-config/files/services.template.yaml') &&
+          response.request().method() === 'PUT' &&
+          response.ok(),
+      );
+      const saveButton = page.getByRole('button', { name: /^Save$/ });
+      await saveButton.click();
+      await saveResponsePromise;
+      await expect(page.getByText(/Updated \d/i)).toBeVisible();
+      await expect(saveButton).toBeDisabled();
+
+      const savedTemplate = await page.evaluate(async () => {
+        const response = await fetch('/setup/api/homepage-config/files/services.template.yaml');
+        const body = await response.json();
+        return body.content;
+      });
+      expect(savedTemplate).toContain('Runtime Link');
+      expect(savedTemplate).toContain('https://example.org/');
 
       restartService('homepage');
       await expect
@@ -133,6 +175,7 @@ test.describe('homepage app verification against the real local stack', () => {
 
       await page.goto('/');
       await expect(page.locator('a[href="https://example.org/"]').first()).toBeVisible();
+      await expect(page.locator('body')).toContainText('Added from Suite Manager');
     });
   });
 });

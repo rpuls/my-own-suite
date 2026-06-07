@@ -1,0 +1,75 @@
+---
+title: Suite Manager
+description: The control room for My Own Suite.
+slug: docs/suite-manager
+---
+
+Suite Manager is where you set up, adjust, and maintain My Own Suite.
+
+Homepage is the dashboard you use day to day. Suite Manager is the place you go when you want to change how the suite behaves.
+
+You use Suite Manager to:
+
+- finish first-time setup
+- customize what appears on Homepage
+- check for updates
+- manage backups when your install supports them
+- change self-host settings such as local HTTPS
+
+The goal is to keep normal tasks friendly. You should not need to understand Docker, YAML, reverse proxies, or certificate systems just to use the suite.
+
+When a screen includes **Advanced details**, it is mainly there for support and troubleshooting. If someone is helping you, they may ask you to open that panel and copy what it shows. Otherwise, you can usually ignore it.
+
+## The main areas
+
+### Onboarding
+
+Onboarding is the first guided flow after deployment. It helps you sign in, confirm the suite is reachable, and move through the first useful setup steps.
+
+The exact steps may grow over time, but the idea stays the same: Suite Manager should help you get to a working suite without making you hunt through service logs or configuration files.
+
+### Customize
+
+Customize is where you change Homepage.
+
+Most people should use the **Add to Homepage** helper. It can add normal websites and apps already running on your home network.
+
+Advanced users can still use the YAML editor when they want exact control over Homepage layout and fields.
+
+Read more in [Customize your Homepage](/docs/suite-manager/homepage-customize).
+
+### Settings
+
+Settings is where Suite Manager shows suite-level options.
+
+For self-host installs, this includes optional local HTTPS setup with a real domain. The default self-host address model still works without it.
+
+Read more in [Use a real domain at home](/docs/suite-manager/local-https).
+
+### Backup
+
+Backup helps keep the suite recoverable.
+
+On self-host installs with the backup helper available, Suite Manager can show usable backup storage, start a backup, and show completed backup bundles.
+
+On hosted platforms, Suite Manager points you toward the platform backup tools instead.
+
+Read more in [Back up your suite](/docs/suite-manager/backups).
+
+### Updates
+
+Updates shows the installed version, whether a newer version is available, and what kind of update action your install supports.
+
+Self-host installs can offer managed update actions when the local update helper is available. Hosted or manual installs may show guidance instead.
+
+Read more in [Update My Own Suite](/docs/suite-manager/updates).
+
+## Homepage and Suite Manager
+
+Homepage and Suite Manager are meant to work together:
+
+- Homepage is the friendly front door for opening apps.
+- Suite Manager is the place for setup, maintenance, and careful changes.
+
+That split matters. Homepage should stay simple and pleasant. Suite Manager can expose more serious actions, but it should still explain them in plain language.
+

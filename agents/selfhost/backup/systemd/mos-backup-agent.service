@@ -1,0 +1,14 @@
+[Unit]
+Description=My Own Suite backup agent
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/mos-backup-agent.env
+ExecStart=/usr/bin/env node __REPO_DIR__/agents/selfhost/backup/agent/mos-backup-agent.cjs
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -9,6 +9,10 @@ export type SuiteManagerConfig = {
     stirlingPdf: string;
     vaultwarden: string;
   };
+  backupAgent: {
+    socketPath: string;
+    tokenFile: string;
+  };
   checkIntervalMs: number;
   generatedAccounts: {
     radicale: {
@@ -35,6 +39,10 @@ export type SuiteManagerConfig = {
   sessionMaxAgeSeconds: number;
   sessionSecret: string;
   setupBasePath: string;
+  serviceAgent: {
+    socketPath: string;
+    tokenFile: string;
+  };
   stateDir: string;
   updates: {
     agentSocketPath: string;
@@ -42,9 +50,9 @@ export type SuiteManagerConfig = {
     enabled: boolean;
     githubRepo: string;
     latestVersionOverride: string;
-    mode: 'managed' | 'notify-only';
   };
   urlScheme: string;
+  tlsMode: string;
   vaultwardenDatabaseUrl: string;
 };
 
@@ -111,15 +119,16 @@ export function loadConfig(): SuiteManagerConfig {
   const sessionCookieName = (process.env.SUITE_MANAGER_SESSION_COOKIE_NAME || 'mos-suite-manager-session').trim();
   const sessionMaxAgeSeconds = Number(process.env.SUITE_MANAGER_SESSION_MAX_AGE_SECONDS) || 60 * 60 * 24 * 14;
   const vaultwardenDatabaseUrl = (process.env.VAULTWARDEN_DATABASE_URL || process.env.DATABASE_URL || '').trim();
+  const tlsMode = (process.env.MOS_TLS_MODE || 'off').trim();
   const updatesEnabled = (process.env.SUITE_MANAGER_UPDATES_ENABLED || 'true').trim().toLowerCase() !== 'false';
   const updatesGithubRepo = (process.env.SUITE_MANAGER_GITHUB_REPO || 'rpuls/my-own-suite').trim();
   const updatesLatestVersionOverride = (process.env.SUITE_MANAGER_UPDATES_LATEST_VERSION_OVERRIDE || '').trim();
   const updatesAgentSocketPath = (process.env.SUITE_MANAGER_UPDATES_AGENT_SOCKET_PATH || '').trim();
   const updatesAgentTokenFile = (process.env.SUITE_MANAGER_UPDATES_AGENT_TOKEN_FILE || '').trim();
-  const updatesMode =
-    (process.env.SUITE_MANAGER_UPDATES_MODE || 'notify-only').trim().toLowerCase() === 'managed'
-      ? 'managed'
-      : 'notify-only';
+  const backupAgentSocketPath = (process.env.SUITE_MANAGER_BACKUP_AGENT_SOCKET_PATH || '').trim();
+  const backupAgentTokenFile = (process.env.SUITE_MANAGER_BACKUP_AGENT_TOKEN_FILE || '').trim();
+  const serviceAgentSocketPath = (process.env.SUITE_MANAGER_SERVICE_AGENT_SOCKET_PATH || '').trim();
+  const serviceAgentTokenFile = (process.env.SUITE_MANAGER_SERVICE_AGENT_TOKEN_FILE || '').trim();
   const seafileAdminEmail = (process.env.INIT_SEAFILE_ADMIN_EMAIL || '').trim();
   const seafileAdminPassword = (process.env.INIT_SEAFILE_ADMIN_PASSWORD || '').trim();
   const radicaleAdminUsername = (process.env.RADICALE_ADMIN_USERNAME || '').trim();
@@ -136,6 +145,10 @@ export function loadConfig(): SuiteManagerConfig {
       ),
       stirlingPdf: process.env.STIRLING_PDF_PUBLIC_URL || buildPublicUrl('stirling-pdf', urlScheme, domain),
       vaultwarden: process.env.VAULTWARDEN_PUBLIC_URL || buildPublicUrl('vaultwarden', 'https', domain),
+    },
+    backupAgent: {
+      socketPath: backupAgentSocketPath,
+      tokenFile: backupAgentTokenFile,
     },
     checkIntervalMs,
     generatedAccounts: {
@@ -169,14 +182,18 @@ export function loadConfig(): SuiteManagerConfig {
     sessionMaxAgeSeconds,
     sessionSecret,
     setupBasePath,
+    serviceAgent: {
+      socketPath: serviceAgentSocketPath,
+      tokenFile: serviceAgentTokenFile,
+    },
     stateDir,
+    tlsMode,
     updates: {
       agentSocketPath: updatesAgentSocketPath,
       agentTokenFile: updatesAgentTokenFile,
       enabled: updatesEnabled,
       githubRepo: updatesGithubRepo,
       latestVersionOverride: updatesLatestVersionOverride,
-      mode: updatesMode,
     },
     urlScheme,
     vaultwardenDatabaseUrl,

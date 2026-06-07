@@ -59,6 +59,16 @@ export default defineConfig({
           ]
         },
         {
+          label: 'Using Suite Manager',
+          items: [
+            'docs/suite-manager',
+            'docs/suite-manager/homepage-customize',
+            'docs/suite-manager/local-https',
+            'docs/suite-manager/backups',
+            'docs/suite-manager/updates'
+          ]
+        },
+        {
           label: 'Apps',
           items: [
             'docs/apps/homepage',

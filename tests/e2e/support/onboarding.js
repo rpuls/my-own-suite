@@ -80,7 +80,7 @@ export async function completeOnboarding(context, page) {
     if (!/setup-extension/i.test(vaultwardenPage.url())) {
       await vaultwardenPage.goto('https://vaultwarden.localhost:18443/#/setup-extension');
     }
-    await dismissVaultwardenExtensionPrompt(vaultwardenPage);
+    await dismissVaultwardenExtensionPrompt(vaultwardenPage, null, 'https://vaultwarden.localhost:18443/#/vault');
     await page.bringToFront();
     stepState = await waitForCurrentStep(
       page,
@@ -105,7 +105,9 @@ export async function completeOnboarding(context, page) {
     }
     await expect(importStep).toContainText('Copy your suite credentials');
 
-    await importStep.getByRole('button', { name: 'Copy' }).click();
+    const copyCredentialsButton = importStep.locator('.suite-copy-button').filter({ hasText: /^Cop(?:y|ied)$/ });
+    await copyCredentialsButton.click();
+    await expect(copyCredentialsButton).toContainText('Copied');
     let csvImport = '';
     await expect
       .poll(async () => {
@@ -124,15 +126,7 @@ export async function completeOnboarding(context, page) {
     }
 
     const importUrl = await importStep.getByRole('link', { name: 'Go to import page' }).getAttribute('href');
-    await vaultwardenPage.goto(importUrl);
-    await vaultwardenPage.waitForLoadState('domcontentloaded');
-    await dismissVaultwardenExtensionPrompt(vaultwardenPage);
-    const fileFormatSelect = vaultwardenPage.getByRole('combobox', { name: /file format/i });
-    await expect(fileFormatSelect).toBeVisible({ timeout: 30000 });
-    await fileFormatSelect.click();
-    await vaultwardenPage.locator('.ng-option').getByText('Bitwarden (csv)', { exact: true }).click();
-    await vaultwardenPage.locator('textarea').first().fill(csvImport);
-    await vaultwardenPage.getByRole('button', { name: /import/i }).click();
+    await importVaultwardenCsv(vaultwardenPage, importUrl, csvImport);
 
     await page.bringToFront();
 
@@ -237,33 +231,112 @@ async function detectSuiteManagerSurface(page) {
 }
 
 async function ensureVaultwardenSession(page) {
-  await page.goto('https://vaultwarden.localhost:18443/#/login');
+  await page.goto('https://vaultwarden.localhost:18443/#/vault');
   await page.waitForLoadState('domcontentloaded');
-  await page.getByRole('textbox').nth(0).fill(owner.ownerEmail);
+  await signInToVaultwardenIfNeeded(page);
+  await dismissVaultwardenExtensionPrompt(page, null, 'https://vaultwarden.localhost:18443/#/vault');
+  await expect
+    .poll(
+      async () => {
+        if (/#\/login/i.test(page.url())) {
+          await signInToVaultwardenIfNeeded(page);
+        }
+
+        if (/#\/setup-extension/i.test(page.url())) {
+          await dismissVaultwardenExtensionPrompt(page, null, 'https://vaultwarden.localhost:18443/#/vault');
+        }
+
+        return page.url();
+      },
+      {
+        timeout: 30000,
+      },
+    )
+    .toMatch(/vaultwarden\.localhost:18443\/#\/vault/i);
+}
+
+async function importVaultwardenCsv(page, importUrl, csvImport) {
+  await ensureVaultwardenSession(page);
+  await page.goto(importUrl);
+  await page.waitForLoadState('domcontentloaded');
+
+  const fileFormatField = page.locator('bit-form-field').filter({ hasText: /File format\s*\(required\)/i }).first();
+  await dismissVaultwardenExtensionPrompt(page, fileFormatField, importUrl);
+  await expect(fileFormatField).toBeVisible({ timeout: 30000 });
+
+  const fileFormatSelect = page.locator('bit-select[formcontrolname="format"] input[role="combobox"]');
+  await expect(fileFormatSelect).toBeVisible({ timeout: 30000 });
+  await fileFormatSelect.click();
+  await page.getByRole('option', { name: 'Bitwarden (csv)', exact: true }).click();
+
+  const importContentsField = page.locator('bit-form-field').filter({ hasText: /copy\/paste the import file contents/i }).first();
+  await expect(importContentsField).toBeVisible();
+  await importContentsField.locator('textarea').fill(csvImport);
+  await page.getByRole('button', { name: /^import$/i }).click();
+}
+
+async function signInToVaultwardenIfNeeded(page) {
+  if (!/#\/login/i.test(page.url())) {
+    return;
+  }
+
+  const emailInput = page.getByRole('textbox').first();
+
+  if (!(await isVisible(emailInput))) {
+    return;
+  }
+
+  await emailInput.fill(owner.ownerEmail);
   await page.getByRole('button', { name: /log ind|log in|continue|forts.t/i }).last().click();
   await page.locator('input[type="password"]').first().fill(vaultwardenMasterPassword);
   await page.getByRole('button', { name: /log ind|log in|continue|forts.t/i }).last().click();
-  await dismissVaultwardenExtensionPrompt(page);
-  await expect(page).toHaveURL(/vaultwarden\.localhost:18443\/#\/vault/i, { timeout: 30000 });
+  await page.waitForLoadState('domcontentloaded').catch(() => null);
 }
 
-async function dismissVaultwardenExtensionPrompt(page) {
-  const skipToWebApp = page.getByRole('button', { name: /skip to web app/i });
-  const addItLater = page.getByRole('button', { name: /add it later/i });
+async function dismissVaultwardenExtensionPrompt(page, unblockLocator = null, fallbackUrl = null) {
+  const dismissControlNames = /skip(?: to web app| for now)?|add it later|maybe later|not now|continue to web app|go to web app/i;
+  const dismissControls = [
+    page.getByRole('button', { name: dismissControlNames }).first(),
+    page.getByRole('link', { name: dismissControlNames }).first(),
+    page.locator('button, a, [role="button"], [role="link"]').filter({ hasText: dismissControlNames }).first(),
+  ];
+  const startedAt = Date.now();
 
-  if (await skipToWebApp.isVisible().catch(() => false)) {
-    await skipToWebApp.click();
-    return;
+  while (Date.now() - startedAt < 30000) {
+    if (unblockLocator && (await isVisible(unblockLocator))) {
+      return;
+    }
+
+    if (fallbackUrl && page.url().toLowerCase() === fallbackUrl.toLowerCase()) {
+      return;
+    }
+
+    for (const dismissControl of dismissControls) {
+      if (await isVisible(dismissControl)) {
+        await dismissControl.click({ timeout: 1000 }).catch(() => null);
+        await page.waitForLoadState('domcontentloaded').catch(() => null);
+        await page.waitForTimeout(250);
+        break;
+      }
+    }
+
+    if (fallbackUrl && /setup-extension/i.test(page.url())) {
+      await page.goto(fallbackUrl);
+      await page.waitForLoadState('domcontentloaded').catch(() => null);
+    }
+
+    await page.waitForTimeout(250);
   }
 
-  if (await addItLater.isVisible().catch(() => false)) {
-    await addItLater.click();
-    return;
+  if (fallbackUrl && /setup-extension/i.test(page.url())) {
+    await page.goto(fallbackUrl);
+    await page.waitForLoadState('domcontentloaded').catch(() => null);
   }
+}
 
-  if (/setup-extension/i.test(page.url())) {
-    await page.goto('https://vaultwarden.localhost:18443/#/vault');
-  }
+async function waitForVisible(locator, timeout) {
+  await locator.waitFor({ state: 'visible', timeout }).catch(() => null);
+  return locator.isVisible().catch(() => false);
 }
 
 async function readStepState(page) {

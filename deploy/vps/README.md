@@ -11,11 +11,17 @@ npm run vps:init
 # 2) Optional: customize values in deploy/vps/**/*.env
 #    (required secrets are auto-generated during vps:init)
 
-# 3) Validate required values and cross-file wiring
+# 3) Validate required values, cross-file wiring, and generated external proxy snippets
 npm run vps:doctor
 
 # 4) Build and start the full stack (non-destructive)
 npm run vps:up
+```
+
+Apply saved external proxy routes from Homepage `mos.proxy` annotations to the imported Caddy snippet:
+
+```bash
+npm run caddy:external-proxies:apply
 ```
 
 Need a full destructive reset (removes volumes and data)?
@@ -100,15 +106,23 @@ docker compose up -d --build seafile onlyoffice caddy
 ### Architecture
 ```
 deploy/vps/
-|-- .env                         # DOMAIN variable (shared)
+|-- .env                         # DOMAIN, PUBLIC_URL_SCHEME, MOS_TLS_MODE
 |-- .env.template
 |-- docker-compose.yml
 |-- Caddyfile
+|-- generated/
+|   `-- caddy/
+|       |-- built-in-routes.caddy   # Generated built-in MOS routes, ignored by git
+|       |-- external-proxies.caddy  # Generated external proxy routes, ignored by git
+|       `-- global-options.caddy    # Generated Caddy global options, ignored by git
 |-- apps/
 |   `-- ...
 `-- services/
     |-- suite-manager/
     |   |-- .env                 # Shared user-facing values and onboarding state config
+    |   `-- .env.template
+    |-- caddy/
+    |   |-- .env                 # Caddy ACME/DNS provider settings
     |   `-- .env.template
     |-- homepage/
     |   |-- .env                 # Homepage settings
@@ -152,10 +166,15 @@ deploy/vps/
 ```
 
 Shared configuration model:
-- `deploy/vps/.env`: framework-level values such as `DOMAIN`
+- `deploy/vps/.env`: framework-level values such as `DOMAIN`, `PUBLIC_URL_SCHEME`, and `MOS_TLS_MODE`
+- `deploy/vps/services/caddy/.env`: Caddy-specific ACME/DNS provider settings such as `CADDY_ACME_EMAIL` and `CLOUDFLARE_API_TOKEN`
 - `deploy/vps/services/suite-manager/.env`: shared user-facing values, auth inputs, and onboarding controls reused across the stack
 - `deploy/vps/services/<service>/.env`: service-specific runtime settings for all deployable services
 - Homepage runtime config: Suite Manager stores editable dashboard YAML/CSS/JS under its persistent data volume, seeded from bundled defaults on first use. Homepage fetches those files from Suite Manager during startup, writes them into its local `/app/config`, then regenerates `services.yaml`.
+- Caddy generated routes: Caddy imports repo-generated snippets through a read-only mount at `/etc/caddy/generated`. `vps:init` writes built-in MOS routes and global Caddy options from `DOMAIN`, `PUBLIC_URL_SCHEME`, and `MOS_TLS_MODE`, and seeds `external-proxies.caddy` when missing.
+- Derived stack URLs: `vps:init` refreshes known generated URL values in service env files from `DOMAIN` and `PUBLIC_URL_SCHEME`, including Homepage dashboard app URLs and Suite Manager's public setup URL.
+- External proxy routes: Suite Manager can preview routes from Homepage `mos.proxy` annotations, and self-host installs with the service agent can apply the saved generated snippet after validation and Caddy reload. Managed LAN-app tiles with `mos.public.mode: app-subdomain` resolve their generated Caddy host as `<PUBLIC_URL_SCHEME>://<mos.public.subdomain>.<DOMAIN>`; older Suite Manager-managed LAN-app tiles that still point at `*.mos.home` are upgraded to that metadata when Homepage config is read/exported. Explicit user-authored links without that metadata keep their own URL/protocol. `vps:doctor` also rejects malformed generated external proxy snippets before stack startup.
+- Local/VPS operators can apply saved external proxy routes with `npm run caddy:external-proxies:apply`. The command reads the saved Suite Manager-owned `services.template.yaml` from the running `mos-suite-manager` container, writes `deploy/vps/generated/caddy/external-proxies.caddy`, validates the mounted Caddy config in `mos-caddy`, and reloads Caddy.
 
 Optional shared SMTP model:
 - Configure SMTP once in `deploy/vps/services/suite-manager/.env`.
@@ -202,11 +221,58 @@ Edit `deploy/vps/.env`:
 ```env
 DOMAIN=localhost        # Local
 DOMAIN=yourdomain.com   # Production
+PUBLIC_URL_SCHEME=http  # Generated MOS dashboard links use this protocol
+MOS_TLS_MODE=off        # off or cloudflare-dns01
 ```
 
 All services automatically use the new domain:
 - Caddy routes: `homepage.{$DOMAIN}`, `suite-manager.{$DOMAIN}`, `seafile.{$DOMAIN}`, `onlyoffice.{$DOMAIN}`, `immich.{$DOMAIN}`, `radicale.{$DOMAIN}`, `stirling-pdf.{$DOMAIN}`, `vaultwarden.{$DOMAIN}`
-- Service URLs: `http://homepage.${DOMAIN}`, `http://suite-manager.${DOMAIN}/setup`, `http://seafile.${DOMAIN}`, `http://onlyoffice.${DOMAIN}`, `http://immich.${DOMAIN}`, `http://radicale.${DOMAIN}`, `http://stirling-pdf.${DOMAIN}`, `https://vaultwarden.${DOMAIN}`
+- Service URLs: `${PUBLIC_URL_SCHEME}://homepage.${DOMAIN}`, `${PUBLIC_URL_SCHEME}://suite-manager.${DOMAIN}/setup`, `${PUBLIC_URL_SCHEME}://seafile.${DOMAIN}`, `${PUBLIC_URL_SCHEME}://onlyoffice.${DOMAIN}`, `${PUBLIC_URL_SCHEME}://immich.${DOMAIN}`, `${PUBLIC_URL_SCHEME}://radicale.${DOMAIN}`, `${PUBLIC_URL_SCHEME}://stirling-pdf.${DOMAIN}`, `https://vaultwarden.${DOMAIN}`
+
+After changing these values, run:
+
+```bash
+npm run vps:init
+npm run vps:doctor
+docker compose up -d --build caddy suite-manager homepage
+```
+
+### Local HTTPS with Cloudflare DNS-01
+
+Local HTTPS mode is for self-host/LAN installs where you own a real domain but do not want to expose the suite publicly.
+
+Required properties:
+- A real domain managed in Cloudflare, such as `home.example.com` or `example.com`.
+- Local DNS for `*.your-domain` pointing to the MOS machine.
+- No public inbound access is required.
+- Public A/AAAA records for apps are not required. Caddy uses Cloudflare only to create temporary `_acme-challenge` TXT records for ACME DNS-01.
+
+On self-host installs with the local service agent available, Suite Manager Settings can apply these values for you. Enter the MOS base domain, ACME contact email, and a scoped Cloudflare token; Suite Manager asks the agent to update the env files, run `vps:init`/`vps:doctor`, recreate Caddy/Homepage, and restart Suite Manager. The manual path below is the fallback when the agent is unavailable.
+
+Configure `deploy/vps/.env`:
+
+```env
+DOMAIN=home.example.com
+PUBLIC_URL_SCHEME=https
+MOS_TLS_MODE=cloudflare-dns01
+```
+
+Configure `deploy/vps/services/caddy/.env`:
+
+```env
+CADDY_ACME_EMAIL=you@example.com
+CLOUDFLARE_API_TOKEN=<scoped Cloudflare DNS token>
+```
+
+Then run:
+
+```bash
+npm run vps:init
+npm run vps:doctor
+docker compose up -d --build caddy suite-manager homepage
+```
+
+Caddy owns certificate issuance and renewal. The self-host service agent can apply the initial repo-owned env/config change, but it is not responsible for DNS records or certificate renewal.
 
 Local Vaultwarden HTTPS note:
 - Caddy now serves Vaultwarden over HTTPS so the signup flow can run locally.

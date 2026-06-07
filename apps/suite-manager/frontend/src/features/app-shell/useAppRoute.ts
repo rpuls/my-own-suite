@@ -2,8 +2,15 @@ import { useEffect, useState } from 'react';
 
 import { getSetupBasePath, withSetupPath } from '../../lib/base-path';
 
-export type AppRoute = 'homepage' | 'homepage-config' | 'not-found' | 'onboarding' | 'updates';
-export type NavigableAppRoute = '/' | '/customize' | '/onboarding' | '/updates';
+export type AppRoute =
+  | 'backups'
+  | 'homepage'
+  | 'homepage-config'
+  | 'not-found'
+  | 'onboarding'
+  | 'settings'
+  | 'updates';
+export type NavigableAppRoute = '/' | '/backups' | '/customize' | '/onboarding' | '/settings' | '/updates';
 
 function getRouteFromPathname(pathname: string): AppRoute {
   const basePath = getSetupBasePath();
@@ -23,6 +30,14 @@ function getRouteFromPathname(pathname: string): AppRoute {
 
   if (relativePath === '/updates') {
     return 'updates';
+  }
+
+  if (relativePath === '/backups') {
+    return 'backups';
+  }
+
+  if (relativePath === '/settings') {
+    return 'settings';
   }
 
   if (relativePath === '/customize') {

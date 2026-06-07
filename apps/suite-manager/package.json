@@ -37,7 +37,8 @@
     "build:client": "vite build",
     "dev:client": "vite",
     "dev": "node --watch --experimental-strip-types src/index.ts",
-    "start": "node --experimental-strip-types src/index.ts"
+    "start": "node --experimental-strip-types src/index.ts",
+    "test": "node --experimental-strip-types --test src/features/homepage-config/*.test.ts src/features/settings/*.test.ts"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",

@@ -6,6 +6,9 @@ const crypto = require('node:crypto');
 
 const rootDir = process.cwd();
 const vpsDir = path.join(rootDir, 'deploy', 'vps');
+const caddyBuiltInRoutesPath = path.join(vpsDir, 'generated', 'caddy', 'built-in-routes.caddy');
+const caddyExternalProxiesPath = path.join(vpsDir, 'generated', 'caddy', 'external-proxies.caddy');
+const caddyGlobalOptionsPath = path.join(vpsDir, 'generated', 'caddy', 'global-options.caddy');
 const URL_SAFE_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_';
 const TEMPLATE_EXTENSIONS = ['.env.template'];
 const GLOBAL_TEMPLATE_FILES = new Set([
@@ -140,6 +143,51 @@ function readEnvFile(filePath) {
   return map;
 }
 
+function writeEnvValue(filePath, key, value) {
+  if (!fs.existsSync(filePath)) {
+    return false;
+  }
+
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const lines = raw.split(/\r?\n/);
+  let changed = false;
+  let found = false;
+  const nextLines = lines.map((line) => {
+    const trimmed = line.trim();
+    const idx = line.indexOf('=');
+    if (!trimmed || trimmed.startsWith('#') || idx < 1) {
+      return line;
+    }
+
+    const currentKey = line.slice(0, idx).trim();
+    if (currentKey !== key) {
+      return line;
+    }
+
+    found = true;
+    const nextLine = `${key}=${value}`;
+    if (line !== nextLine) {
+      changed = true;
+    }
+    return nextLine;
+  });
+
+  if (!found) {
+    if (nextLines.length > 0 && nextLines[nextLines.length - 1] !== '') {
+      nextLines.push(`${key}=${value}`);
+    } else {
+      nextLines[nextLines.length - 1] = `${key}=${value}`;
+    }
+    changed = true;
+  }
+
+  if (changed) {
+    fs.writeFileSync(filePath, `${nextLines.join('\n').replace(/\n+$/u, '')}\n`, 'utf8');
+  }
+
+  return changed;
+}
+
 function getTemplateTargetPath(sourceRelPath) {
   return sourceRelPath.replace(/\.env\.template$/, '.env');
 }
@@ -220,7 +268,7 @@ function evalUrl(rawArgs, sharedVars) {
   }
 
   const service = args[0];
-  const protocol = args[1] || 'http';
+  const protocol = args[1] || sharedVars.PUBLIC_URL_SCHEME || 'http';
   const domain = sharedVars.DOMAIN;
 
   if (!domain) {
@@ -228,6 +276,107 @@ function evalUrl(rawArgs, sharedVars) {
   }
 
   return `${protocol}://${service}.${domain}`;
+}
+
+function caddyServiceRoutesForMode(domain, tlsMode) {
+  const publicServices = [
+    ['suite-manager', 'suite-manager:3000'],
+    ['homepage', 'homepage:3000'],
+    ['seafile', 'seafile:80'],
+    ['onlyoffice', 'onlyoffice:80'],
+    ['stirling-pdf', 'stirling-pdf:8080'],
+    ['radicale', 'radicale:5232'],
+    ['immich', 'immich:2283'],
+  ];
+
+  if (tlsMode === 'cloudflare-dns01') {
+    return [
+      '# Generated MOS built-in HTTPS routes.',
+      '# This file is managed by vps:init from DOMAIN, PUBLIC_URL_SCHEME, and MOS_TLS_MODE.',
+      '',
+      ...publicServices.flatMap(([service, upstream]) => [
+        `${service}.${domain} {`,
+        `\treverse_proxy ${upstream}`,
+        '}',
+        '',
+      ]),
+      `vaultwarden.${domain} {`,
+      '\treverse_proxy vaultwarden:80',
+      '}',
+      '',
+    ].join('\n');
+  }
+
+  const matcherBlocks = publicServices.flatMap(([service, upstream]) => [
+    `\t@${service.replace(/-/g, '_')} host ${service}.${domain}`,
+    `\thandle @${service.replace(/-/g, '_')} {`,
+    `\t\treverse_proxy ${upstream}`,
+    '\t}',
+    '',
+  ]);
+
+  return [
+    '# Generated MOS built-in HTTP routes.',
+    '# This file is managed by vps:init from DOMAIN, PUBLIC_URL_SCHEME, and MOS_TLS_MODE.',
+    '',
+    ':80 {',
+    ...matcherBlocks,
+    '\trespond 404',
+    '}',
+    '',
+    '# Vaultwarden keeps HTTPS in HTTP mode because browser integrations require a secure origin.',
+    `https://vaultwarden.${domain} {`,
+    '\ttls internal',
+    '\treverse_proxy vaultwarden:80',
+    '}',
+    '',
+  ].join('\n');
+}
+
+function caddyGlobalOptionsForMode(tlsMode) {
+  if (tlsMode !== 'cloudflare-dns01') {
+    return [
+      '# Generated MOS Caddy global options.',
+      '# No global TLS automation options are needed while MOS_TLS_MODE=off.',
+      '',
+    ].join('\n');
+  }
+
+  return [
+    '# Generated MOS Caddy global options for Cloudflare DNS-01.',
+    'email {env.CADDY_ACME_EMAIL}',
+    'acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}',
+    '',
+  ].join('\n');
+}
+
+function refreshDerivedStackUrls(sharedVars) {
+  const domain = sharedVars.DOMAIN || 'localhost';
+  const protocol = sharedVars.PUBLIC_URL_SCHEME || 'http';
+  const changedFiles = new Set();
+
+  const updates = [
+    ['services/suite-manager/.env', 'SUITE_MANAGER_PUBLIC_URL', `${protocol}://suite-manager.${domain}/setup`],
+    ['services/homepage/.env', 'HOMEPAGE_ALLOWED_HOSTS', `homepage.${domain},suite-manager.${domain},homepage:3000,localhost`],
+    ['services/homepage/.env', 'SUITE_MANAGER_URL', `${protocol}://suite-manager.${domain}`],
+    ['services/homepage/.env', 'VAULTWARDEN_URL', `https://vaultwarden.${domain}`],
+    ['services/homepage/.env', 'SEAFILE_URL', `${protocol}://seafile.${domain}`],
+    ['services/homepage/.env', 'STIRLING_PDF_URL', `${protocol}://stirling-pdf.${domain}`],
+    ['services/homepage/.env', 'RADICALE_URL', `${protocol}://radicale.${domain}`],
+    ['services/homepage/.env', 'IMMICH_URL', `${protocol}://immich.${domain}`],
+    ['services/seafile/.env', 'ONLYOFFICE_APIJS_URL', `${protocol}://onlyoffice.${domain}/web-apps/apps/api/documents/api.js`],
+    ['services/stirling-pdf/.env', 'SERVER_HOST', `${protocol}://stirling-pdf.${domain}`],
+  ];
+
+  for (const [relPath, key, value] of updates) {
+    if (writeEnvValue(path.join(vpsDir, relPath), key, value)) {
+      changedFiles.add(relPath);
+    }
+  }
+
+  for (const relPath of Array.from(changedFiles).sort()) {
+    console.log(`Updated: deploy/vps/${relPath} (refreshed derived stack URLs)`);
+  }
 }
 
 function evalHost(rawArgs, sharedVars) {
@@ -449,3 +598,29 @@ console.log(`\nDone. Created ${createdCount}, updated ${updatedCount}, skipped $
 if (errorCount > 0) {
   process.exit(1);
 }
+
+if (!fs.existsSync(caddyExternalProxiesPath)) {
+  fs.mkdirSync(path.dirname(caddyExternalProxiesPath), { recursive: true });
+  fs.writeFileSync(
+    caddyExternalProxiesPath,
+    [
+      '# Generated external proxy routes for Homepage `mos.proxy` annotations.',
+      '#',
+      '# This file is managed by MOS tooling and intentionally ignored by git.',
+      '# Run `npm run caddy:external-proxies:apply` to refresh it from saved Homepage config.',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+  console.log('Created: deploy/vps/generated/caddy/external-proxies.caddy');
+}
+
+refreshDerivedStackUrls(sharedVars);
+
+const configuredDomain = sharedVars.DOMAIN || 'localhost';
+const configuredTlsMode = sharedVars.MOS_TLS_MODE || 'off';
+fs.mkdirSync(path.dirname(caddyBuiltInRoutesPath), { recursive: true });
+fs.writeFileSync(caddyGlobalOptionsPath, caddyGlobalOptionsForMode(configuredTlsMode), 'utf8');
+fs.writeFileSync(caddyBuiltInRoutesPath, caddyServiceRoutesForMode(configuredDomain, configuredTlsMode), 'utf8');
+console.log('Updated: deploy/vps/generated/caddy/global-options.caddy');
+console.log('Updated: deploy/vps/generated/caddy/built-in-routes.caddy');

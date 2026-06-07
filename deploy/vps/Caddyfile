@@ -2,58 +2,11 @@
 # My-Own-Suite Caddyfile
 # ===========================================
 {
-	auto_https disable_redirects
+	import /etc/caddy/generated/global-options.caddy
 }
 
-# Subdomain routing using DOMAIN from .env
-# Local: homepage.localhost, vaultwarden.localhost
-# Production: homepage.yourdomain.com, vaultwarden.yourdomain.com
-# ===========================================
-
-:80 {
-	@suite_manager host suite-manager.{$DOMAIN}
-	handle @suite_manager {
-		reverse_proxy suite-manager:3000
-	}
-
-	@homepage host homepage.{$DOMAIN}
-	handle @homepage {
-		reverse_proxy homepage:3000
-	}
-
-	@seafile host seafile.{$DOMAIN}
-	handle @seafile {
-		reverse_proxy seafile:80
-	}
-
-	@onlyoffice host onlyoffice.{$DOMAIN}
-	handle @onlyoffice {
-		reverse_proxy onlyoffice:80
-	}
-
-	@stirling_pdf host stirling-pdf.{$DOMAIN}
-	handle @stirling_pdf {
-		reverse_proxy stirling-pdf:8080
-	}
-
-	@radicale host radicale.{$DOMAIN}
-	handle @radicale {
-		reverse_proxy radicale:5232
-	}
-
-	@immich host immich.{$DOMAIN}
-	handle @immich {
-		reverse_proxy immich:2283
-	}
-
-	respond 404
-}
-
-# Vaultwarden Password Manager
-https://vaultwarden.{$DOMAIN} {
-	tls internal
-	reverse_proxy vaultwarden:80
-}
+import /etc/caddy/generated/built-in-routes.caddy
+import /etc/caddy/generated/external-proxies.caddy
 
 # Internal Radicale iCal bridge for Homepage backend.
 # This endpoint is for private network use only (homepage -> caddy),

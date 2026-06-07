@@ -13,3 +13,72 @@ export type HomepageConfigFileResponse = {
   content: string;
   file: HomepageConfigFile;
 };
+
+export type HomepageConfigCapabilitiesResponse = {
+  caddyExternalProxyApplyAvailable: boolean;
+  error: string | null;
+  homepageRestartAvailable: boolean;
+  serviceAvailable: boolean;
+};
+
+export type HomepageRestartResponse = {
+  restarted: boolean;
+};
+
+export type HomepageCaddyApplyResponse = {
+  applied: boolean;
+  preview: HomepageCaddyProxyPreviewResponse;
+};
+
+export type HomepageCaddyProxyPreviewError = {
+  message: string;
+  path: string;
+};
+
+export type HomepageCaddyProxyPreviewRoute = {
+  host: string;
+  href: string;
+  path: string;
+  siteAddress: string;
+  title: string;
+  upstream: string;
+  upstreamTlsInsecureSkipVerify: boolean;
+};
+
+export type HomepageCaddyProxyPreviewResponse = {
+  caddyfile: string;
+  errors: HomepageCaddyProxyPreviewError[];
+  routes: HomepageCaddyProxyPreviewRoute[];
+  valid: boolean;
+};
+
+export type HomepageConfigValidationResponse = {
+  caddyPreview: HomepageCaddyProxyPreviewResponse | null;
+  errors: HomepageCaddyProxyPreviewError[];
+  valid: boolean;
+};
+
+export type HomepageExternalService = {
+  description: string;
+  group: string;
+  href: string;
+  icon: string;
+  id: string;
+  proxyEnabled: boolean;
+  title: string;
+  upstream: string;
+  upstreamTlsInsecureSkipVerify: boolean;
+};
+
+export type HomepageExternalServicesResponse = {
+  defaultDomain: string;
+  defaultUrlScheme: string;
+  groups: string[];
+  services: HomepageExternalService[];
+};
+
+export type HomepageExternalServicesSaveResponse = HomepageExternalServicesResponse & {
+  externalLinksUpdated: boolean;
+  homepageRestarted: boolean;
+  warning: string | null;
+};

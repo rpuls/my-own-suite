@@ -1,19 +1,12 @@
-# Managed Update Work
+# Managed Update Compatibility
 
-This folder is the implementation workspace for managed-update infrastructure.
+The canonical self-host update-agent implementation now lives under:
 
-Current focus:
+- [agents/selfhost/update/](../agents/selfhost/update/)
 
-- `selfhost/`: host-managed update flow for USB-installed self-host deployments
+This folder remains only for compatibility with older scripts, docs, and installed systems that still reference `update/selfhost/*`.
 
-Keep here:
-
-- updater agent code
-- updater worker code
-- systemd templates
-- low-level updater smoke-test notes
-
-Do not keep long-term roadmap or architecture decisions here. Use:
+Do not add new update-agent implementation files here. Use:
 
 - [docs/roadmap.md](../docs/roadmap.md)
 - [docs/decisions.md](../docs/decisions.md)

@@ -148,7 +148,6 @@ For the more detailed harness notes, see [tests/e2e/README.md](./tests/e2e/READM
 | Getting started guide | [Docs home](https://myownsuite.org/docs) |
 | Deployment overview | [site/src/content/docs/getting-started.mdx](./site/src/content/docs/getting-started.mdx) |
 | Project documentation ownership | [docs/README.md](./docs/README.md) |
-| Roadmap and future work themes | [docs/roadmap.md](./docs/roadmap.md) |
 | Architecture decision log | [docs/decisions.md](./docs/decisions.md) |
 | Canonical VPS architecture + app onboarding steps | [deploy/vps/README.md](./deploy/vps/README.md) |
 | App code + app-level technical READMEs | `apps/` |

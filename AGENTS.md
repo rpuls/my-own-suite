@@ -58,20 +58,19 @@ Use these locations:
 - Root `RELEASING.md`: official release workflow only.
 - Root `AGENTS.md`: agent workflow and repository rules only.
 - `docs/README.md`: documentation ownership map.
-- `docs/roadmap.md`: durable roadmap themes and non-task future work.
 - `docs/decisions.md`: durable architecture decisions and their consequences.
 - `docs/codex-notes.md`: durable Codex/project working context.
 - `.github/ISSUE_TEMPLATE/codex-task.yml`: task template source of truth.
 - `site/src/content/docs/`: public/end-user documentation.
 - `apps/<app>/README.md`: app-level technical reference.
 - `deploy/<target>/README.md`: deployment runbooks and operator guidance.
-- `update/selfhost/docs/`: low-level updater smoke tests and host checks.
+- `agents/selfhost/update/docs/`: low-level updater smoke tests and host checks.
 
 Maintenance rules:
 
-- Do not create new roadmap, TODO, decision, or planning Markdown files unless no current owner fits.
-- Use GitHub Issues for task state; do not maintain long-lived task lists in repo docs.
-- If a task changes long-term direction, update `docs/roadmap.md`.
+- Do not create new long-lived roadmap, TODO, decision, or planning Markdown files unless no current owner fits.
+- Use GitHub Issues for task state and roadmap-like planning; do not maintain long-lived task lists in repo docs.
+- If a task changes long-term direction, capture actionable follow-up in GitHub Issues and update `docs/decisions.md` only when the direction changes architecture, deployment contracts, security boundaries, or ownership model.
 - If a task changes architecture, deployment contracts, security boundaries, or ownership model, update `docs/decisions.md`.
 - If a task changes how Codex or contributors should work, update `AGENTS.md` or `docs/codex-notes.md`, depending on whether it is a hard rule or contextual note.
 - If a temporary feature plan is useful during a branch, remove it or replace it with a pointer before merging.
@@ -98,6 +97,17 @@ Current shared-branding sync targets include:
 - `apps/homepage/config/custom.css` for the synced Homepage theme block
 - public brand/favicons copied into app-local runtime folders
 
+## Suite Manager UI Component Workflow
+
+Suite Manager UI must stay cohesive and predictable. Agents must treat shared UI primitives as part of the design framework, not as optional convenience helpers.
+
+- Reuse existing shared components before creating new local controls. Current shared primitives live in `apps/suite-manager/frontend/src/components/` and include dialog frames, notices/alerts, text inputs, text areas, and selects.
+- Do not create one-off or near-duplicate dialogs, dropdowns, alert banners, text inputs, expand/collapse controls, or choice cards with slightly different styling or behavior.
+- If a new interaction pattern is needed, first extend the shared component API or add a new shared primitive, then migrate the feature to use it.
+- Keep component behavior consistent across Suite Manager: labels, helper text, disabled states, focus states, icon placement, spacing, responsive layout, and error/success/info styling should come from the shared component layer and shared CSS.
+- Feature-specific components may compose shared primitives, but should not redefine their core look, spacing, or behavior locally.
+- When touching forms or dialogs, check nearby Suite Manager screens for existing component patterns and update the shared primitive if the pattern should improve everywhere.
+
 ## Goal
 
 Use a strict split:
@@ -120,7 +130,7 @@ No duplicated content across these two sources.
 Include:
 - Short, plain-language app description immediately under title/logo.
 - Core capabilities (what users can do).
-- Optional roadmap/status notes if relevant.
+- Optional status notes if relevant.
 - Links section (official website/repository/docs).
 - Optional screenshots and explanatory narrative.
 
@@ -215,6 +225,7 @@ For each app page:
 
 The repo now includes real black-box Playwright tests that run against the Docker stack without test-only application bypasses.
 
+- Do not run E2E tests automatically as an agent. Ask the user to run the relevant E2E command and paste only the relevant failure output, because full Playwright/Docker logs are noisy and quickly pollute the context window.
 - Prefer end-to-end validation for onboarding and app reachability changes before adding unit-test-only coverage.
 - Keep E2E tooling isolated under `tests/e2e` unless a shared repo-level script or config is genuinely needed.
 - Do not add source-code-only test hooks, fake auth shortcuts, or alternate code paths just to make tests easier.

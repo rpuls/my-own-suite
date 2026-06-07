@@ -13,6 +13,7 @@ type AgentJobSummary = {
 };
 
 type AgentStatusPayload = {
+  capabilities?: Record<string, { capabilities?: string[] } | string[]>;
   currentJob: AgentJobSummary | null;
   lastJob: AgentJobSummary | null;
   repoDir: string;

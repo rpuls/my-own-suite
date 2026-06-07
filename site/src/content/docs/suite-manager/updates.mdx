@@ -1,0 +1,70 @@
+---
+title: Update My Own Suite
+description: Understand update status, tracks, and managed updates.
+slug: docs/suite-manager/updates
+---
+
+Suite Manager includes an **Updates** screen so you can see what version of My Own Suite is installed and whether a newer version is available.
+
+The available actions depend on how your suite is deployed.
+
+## What the Updates screen shows
+
+The Updates screen can show:
+
+- the installed MOS version
+- the latest known release
+- whether an update is available
+- the active update track when your install reports one
+- current or recent update job activity
+- whether Suite Manager can start a managed update
+
+This gives you a place to check update status without guessing from files or logs.
+
+## Managed self-host updates
+
+On self-host installs, Suite Manager may be able to start a managed update through a local update helper.
+
+That helper runs on the host machine and performs the actual update work.
+
+Suite Manager does not directly take over the host. It asks the helper for a narrow update action, then shows status and logs from the job.
+
+This keeps powerful host operations outside the web container while still making updates friendlier.
+
+## Hosted or manual installs
+
+On Railway, VPS, or other managed/manual installs, Suite Manager may not show an Update button.
+
+That is normal.
+
+In those environments, the hosting platform or the operator is responsible for applying changes. Suite Manager can still show version information and guidance when available.
+
+## Stable and staging tracks
+
+Normal installs should follow stable releases.
+
+The `staging` track is useful for testing upcoming changes on hardware before a release. It is not the calmest choice for a household install you depend on every day.
+
+If you are testing MOS development work, `staging` can be helpful.
+
+If you mainly want reliability, stable releases are the better default.
+
+## Before updating
+
+Before a meaningful update:
+
+- read the release notes if available
+- make sure backups are in a good state
+- avoid updating in the middle of something important
+- give the stack time to rebuild and restart
+
+Updates can touch several services at once, so it is normal for the suite to be briefly unavailable while containers restart.
+
+## If an update fails
+
+If an update fails, start with the Updates screen.
+
+It may show the current job, the last known status, and recent log messages.
+
+For self-host installs, those details are meant to help you or someone supporting you understand where the update stopped.
+

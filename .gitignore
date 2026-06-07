@@ -7,6 +7,12 @@ vps/.env
 .tmp/
 .local-tools/
 .mos-updater/
+.playwright-mcp/
+playwright-mcp
+.test-results-current/
+test-results-current
+test-results-current-full
+
 
 # VPS persistent data
 vps/apps/vaultwarden/data/*
@@ -59,3 +65,5 @@ deploy/self-host/autoinstall/installer-config/*
 !deploy/self-host/autoinstall/installer-config/selfhost-installer.env.template
 deploy/self-host/output/
 deploy/vps/docker-compose.selfhost.yml
+deploy/vps/generated/caddy/*.caddy
+!deploy/vps/generated/caddy/.gitkeep

@@ -19,7 +19,7 @@ export type UpdatesStatus = {
     source: 'github-release' | 'local-manifest' | 'override' | 'unavailable';
     version: string | null;
   };
-  mode: 'managed' | 'notify-only';
+  managedApplyAvailable: boolean;
   serviceAvailable: boolean;
   track: {
     currentBranch: string | null;
