@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-06-07
+
 ### Changed
 
 - Added a unified `agents/selfhost/` home for host agents and a repo-owned self-host service-agent path for narrow host service actions, starting with capability-detected Homepage restarts after Suite Manager saves runtime Homepage config. Compatibility note: self-host reconciliation now manages `mos-update-agent`, `mos-service-agent`, their `/run` sockets and `/etc` token files, and the Suite Manager agent env/socket mounts for existing and fresh USB/self-host installs; `update/selfhost/*` remains as compatibility wrappers.
