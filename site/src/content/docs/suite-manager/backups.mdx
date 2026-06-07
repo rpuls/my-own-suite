@@ -1,0 +1,75 @@
+---
+title: Back up your suite
+description: Keep your My Own Suite install recoverable.
+slug: docs/suite-manager/backups
+---
+
+Backups are what let you recover when hardware fails, an update goes wrong, or you make a mistake you cannot easily undo.
+
+Suite Manager includes a **Backup** screen so supported installs can manage backups from the same place they manage the rest of the suite.
+
+## What the Backup screen does
+
+When backup support is available, Suite Manager can:
+
+- show available backup destinations
+- help mount supported local storage
+- start a backup job
+- show current and recent backup activity
+- list completed backup bundles found on connected storage
+- start a restore from a detected backup bundle
+
+The exact options depend on where My Own Suite is running.
+
+## Self-host installs
+
+On self-host installs, backups are handled by a local backup helper on the host machine.
+
+That matters because full-suite backups need host-level access to Docker volumes and connected storage. The Suite Manager web app should not get broad host control by itself.
+
+Suite Manager asks the local helper to do specific backup or restore jobs, then shows progress in the UI.
+
+## Backup destinations
+
+The Backup screen looks for usable backup storage.
+
+For self-host setups, this often means a USB drive, removable disk, local data partition, or mounted network storage.
+
+The screen tries to hide non-useful system devices so you can focus on destinations that make sense for backups.
+
+Before starting a backup, choose a writable destination with enough free space.
+
+## What a backup is for
+
+A MOS backup is meant to preserve the suite state so you can recover later.
+
+It is not meant to replace every app's own export feature. For especially important data, you may still want app-level exports too.
+
+Good habits:
+
+- keep at least one backup away from the machine running the suite
+- test that your backup storage can be read later
+- do not edit backup bundle contents by hand
+- make a fresh backup before risky updates or experiments
+
+## Hosted and managed platforms
+
+If Suite Manager cannot reach a local backup helper, it will show guidance instead of a managed backup button.
+
+For hosted platforms, use the platform's backup tools for databases, volumes, and restore points.
+
+This is expected. Hosted platforms own parts of the infrastructure that a local MOS backup helper cannot see.
+
+## Restores need care
+
+Restoring a suite is more serious than creating a backup.
+
+Before restoring, make sure:
+
+- you selected the intended backup
+- you understand it can replace current suite state
+- the backup was created by a compatible MOS version
+- you have saved anything important from the current install
+
+Suite Manager asks for confirmation before starting a restore because recovery actions should be deliberate.
+

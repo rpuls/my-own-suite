@@ -1,0 +1,116 @@
+---
+title: Customize your Homepage
+description: Add websites and home network apps to your dashboard.
+slug: docs/suite-manager/homepage-customize
+---
+
+Homepage is your daily dashboard. Suite Manager gives you a safer way to add common things to it without editing YAML by hand.
+
+Open **Suite Manager → Customize** when you want to change what appears on Homepage.
+
+## Add to Homepage
+
+Use **Add to Homepage** for the normal path.
+
+The helper starts by asking what you want to add:
+
+- **Website or shortcut** for a normal web link
+- **App on my home network** for something already running at home, such as Home Assistant, Pi-hole, TrueNAS, or a router admin page
+- **App from MOS catalog** for future MOS-managed app installs
+
+After you choose a type, the helper only asks for the details that type needs.
+
+## Websites and shortcuts
+
+Choose **Website or shortcut** when you want a simple tile that opens a web address.
+
+Examples:
+
+- a project website
+- a documentation page
+- a service you access somewhere else
+
+The important field is the website address. Enter it as a full link, such as:
+
+```text
+https://example.com
+```
+
+These links are yours. Suite Manager does not rewrite them when your MOS domain changes.
+
+## Apps on your home network
+
+Choose **App on my home network** when an app is already running somewhere at home and you want it to appear in Homepage.
+
+Examples:
+
+- Home Assistant on another machine
+- Pi-hole
+- TrueNAS
+- a router or switch admin page
+- another service in your homelab
+
+The helper asks for:
+
+- **Name**: what the tile should be called
+- **App address**: the address you already use at home
+- **App URL**: the friendly MOS URL Suite Manager will create for the tile
+- optional icon, description, and placement
+
+For example, if Home Assistant is reachable at:
+
+```text
+http://192.168.1.20:8123
+```
+
+Suite Manager can create a friendly app URL such as:
+
+```text
+http://home-assistant.mos.home
+```
+
+If you later use a real domain with local HTTPS, the same kind of tile can use a URL such as:
+
+```text
+https://home-assistant.mos.example.com
+```
+
+The **App URL** is what your browser opens from Homepage. The **App address** is where MOS can reach the app on your home network.
+
+Most people can keep the suggested App URL. Use **Edit URL subdomain** only if you want the visible app URL to use a different name.
+
+## Managed app URLs and manual links
+
+Suite Manager treats these two kinds of links differently:
+
+- Home network apps added through the helper are MOS-managed app URLs.
+- Websites and manually edited Homepage links are explicit links you own.
+
+That matters when your MOS domain changes.
+
+MOS-managed app URLs can follow the suite domain. Manually typed links stay unchanged because they may be deliberate.
+
+For example, if you typed a link to:
+
+```text
+https://router.example.com
+```
+
+Suite Manager should not silently change it just because your MOS base domain changes.
+
+## The YAML editor
+
+The YAML editor is still available for advanced Homepage customization.
+
+Use it when you want exact control over layout, order, widgets, or Homepage-specific fields that the helper does not expose.
+
+You do not need it for normal add-a-link or add-a-home-app tasks.
+
+## Validate and Advanced details
+
+The **Validate** button checks the current Homepage config. You can use it any time.
+
+If validation finds something wrong, Suite Manager tries to describe the problem in plain language.
+
+The **Advanced details** button is mainly for troubleshooting. It shows lower-level routing details that can help someone support you, but it is not something you need to understand for normal use.
+
