@@ -244,7 +244,7 @@ export default function HomepageConfigApp() {
   }, [selectedFileName, state]);
 
   const canSave = state.kind === 'loaded' && state.dirty && validationState.kind === 'valid' && !isSaving && !isResetting;
-  const canValidate = state.kind === 'loaded' && state.dirty && validationState.kind !== 'loading' && !isSaving && !isResetting;
+  const canValidate = state.kind === 'loaded' && validationState.kind !== 'loading' && !isSaving && !isResetting;
   const currentPreview = validationPreview(validationState) || savedPreview;
   const currentValidationErrors = validationErrors(validationState);
 
@@ -422,18 +422,6 @@ export default function HomepageConfigApp() {
     setAddMessage(message);
     await refresh('services.template.yaml');
     setAddMessage(message);
-    setValidationState({ kind: 'dirty' });
-    setState((current) =>
-      current.kind === 'loaded'
-        ? {
-            ...current,
-            dirty: true,
-            errorMessage: null,
-            restartMessage: null,
-            savedAt: null,
-          }
-        : current,
-    );
   }
 
   useEffect(() => {

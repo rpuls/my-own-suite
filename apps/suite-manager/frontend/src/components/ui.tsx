@@ -6,6 +6,7 @@ type DialogProps = {
   children: ReactNode;
   description?: string;
   footer?: ReactNode;
+  hideHeaderText?: boolean;
   onClose: () => void;
   title: string;
 };
@@ -32,15 +33,54 @@ type SelectFieldProps = SelectHTMLAttributes<HTMLSelectElement> & {
   label: string;
 };
 
-export function Dialog({ children, description, footer, onClose, title }: DialogProps) {
+type StepperProps = {
+  canNavigateToStep?: (stepIndex: number) => boolean;
+  currentStepIndex: number;
+  onStepClick?: (stepIndex: number) => void;
+  steps: string[];
+};
+
+export function Stepper({ canNavigateToStep, currentStepIndex, onStepClick, steps }: StepperProps) {
+  return (
+    <div className="suite-stepper" aria-label="Progress">
+      {steps.map((step, index) => {
+        const label = `${index + 1}. ${step}`;
+        const isCurrent = index === currentStepIndex;
+        const canNavigate = Boolean(onStepClick && canNavigateToStep?.(index));
+
+        return canNavigate ? (
+          <button
+            aria-current={isCurrent ? 'step' : undefined}
+            className={isCurrent ? 'is-active' : ''}
+            key={step}
+            onClick={() => onStepClick(index)}
+            type="button"
+          >
+            {label}
+          </button>
+        ) : (
+          <span aria-current={isCurrent ? 'step' : undefined} className={isCurrent ? 'is-active' : ''} key={step}>
+            {label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+export function Dialog({ children, description, footer, hideHeaderText = false, onClose, title }: DialogProps) {
   return (
     <div className="suite-modal-backdrop" role="presentation">
       <section aria-modal="true" className="suite-dialog mos-panel" role="dialog">
-        <div className="suite-dialog-header">
-          <div>
-            <h2>{title}</h2>
-            {description ? <p className="suite-meta mos-meta">{description}</p> : null}
-          </div>
+        <div className={`suite-dialog-header ${hideHeaderText ? 'is-compact' : ''}`}>
+          {hideHeaderText ? (
+            <h2 className="suite-sr-only">{title}</h2>
+          ) : (
+            <div>
+              <h2>{title}</h2>
+              {description ? <p className="suite-meta mos-meta">{description}</p> : null}
+            </div>
+          )}
           <button aria-label={`Close ${title}`} className="suite-icon-button" onClick={onClose} type="button">
             <X aria-hidden="true" className="suite-inline-icon" />
           </button>
