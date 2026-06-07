@@ -1,0 +1,104 @@
+---
+title: Use a real domain at home
+description: Optional local HTTPS for self-host installs.
+slug: docs/suite-manager/local-https
+---
+
+Self-host installs can work on a local domain such as:
+
+```text
+mos.home
+```
+
+That is the normal default for a local self-host setup.
+
+Local HTTPS is optional. It lets you use a real domain you own for your local MOS URLs without exposing your suite to the public internet.
+
+## Why use local HTTPS?
+
+You might want local HTTPS if:
+
+- you prefer real browser-trusted certificates
+- you want app URLs such as `https://homepage.mos.example.com`
+- you want a setup that feels closer to a normal web service while staying local
+
+You do not need local HTTPS just to use My Own Suite at home.
+
+## What you need
+
+The first supported path uses Cloudflare DNS.
+
+You need:
+
+- a real domain you control
+- DNS for that domain managed in Cloudflare
+- a scoped Cloudflare API token
+- local DNS on your home network that can point your MOS app names to the MOS machine
+
+For examples and docs, use generic domains such as:
+
+```text
+mos.example.com
+```
+
+Your real domain is private configuration. It should not be committed to repo files, docs, tests, or examples.
+
+## Public DNS records are not required for local apps
+
+Local HTTPS uses DNS challenges to prove you control the domain.
+
+That means Caddy can ask Let's Encrypt for certificates by creating temporary DNS records in Cloudflare.
+
+It does **not** mean your home apps need public `A` or `AAAA` records pointing to your home network.
+
+In a private LAN setup, your app names can stay local:
+
+```text
+homepage.mos.example.com
+suite-manager.mos.example.com
+home-assistant.mos.example.com
+```
+
+Those names can resolve only inside your home network if that is what you want.
+
+## Local DNS still matters
+
+Cloudflare helps prove domain ownership for certificates.
+
+Your home network still needs to know where the app names should go.
+
+In practice, you need a local DNS rule that points the wildcard domain at the MOS machine, for example:
+
+```text
+*.mos.example.com -> your MOS machine
+```
+
+This local DNS rule might live in your router, AdGuard Home, Pi-hole, Unbound, OPNsense, Tailscale DNS, or another tool you already use.
+
+MOS does not try to manage all of those systems for you.
+
+## What Suite Manager changes
+
+When you apply local HTTPS from Suite Manager, it updates the local MOS stack settings so built-in apps use HTTPS URLs for the chosen base domain.
+
+For example:
+
+```text
+https://homepage.mos.example.com
+https://suite-manager.mos.example.com/setup
+```
+
+Caddy owns certificate issuance and renewal.
+
+Suite Manager does not renew certificates itself. It only helps apply the stack settings and shows whether local HTTPS is configured.
+
+## Changing the domain later
+
+Suite Manager lets self-host installs reconfigure local HTTPS.
+
+Before changing the base domain, make sure local DNS is ready for the new wildcard.
+
+MOS-managed app URLs can follow the new base domain. Explicit links you typed yourself stay unchanged.
+
+That protects manual links from being changed unexpectedly.
+
