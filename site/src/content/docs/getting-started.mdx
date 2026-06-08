@@ -6,13 +6,13 @@ slug: docs/getting-started
 
 My Own Suite can run in different places depending on how hands-on you want to be.
 
-You do not need to think about infrastructure first. Start by choosing the option that sounds most like you.
+You do not need to think about every infrastructure detail first. Start by choosing between two main paths.
 
 ## Which option fits you?
 
-### Easiest
+### Platform
 
-You want the simplest setup and do not mind using a hosted platform.
+You want the simplest setup and do not mind using a hosted platform that manages most infrastructure details for you.
 
 Recommended choice: [Deploy on Railway](/docs/deploy-on-railway)
 
@@ -26,45 +26,52 @@ Why people choose this:
 Tradeoff:
 
 - It runs on a managed platform operated by a company, so pricing and platform rules are outside your control.
+- Platform deployments may not expose every self-host maintenance feature because updates, backups, and infrastructure controls usually belong to the hosting platform.
 
-### More independent
+### Self-hosted
 
-You want more control over where the suite runs and you are okay following a technical setup guide.
+You want My Own Suite to run on infrastructure you control, with your installed suite managing routing, updates, backups, restore, and customization as one self-hosted system.
 
-Recommended choice: [Deploy on a VPS](/docs/deploy-on-vps)
+Recommended choices:
+
+- [Self-host on a cloud server](/docs/deploy-on-vps)
+- [Self-host on your own hardware](/docs/deploy-on-your-own-hardware)
 
 Why people choose this:
 
 - You can choose your server provider
-- You are not locked to one managed platform
-- It is a better long-term fit if you want hosting freedom
-
-Tradeoff:
-
-- Setup is more manual, and the guide assumes some comfort with Docker and server administration.
-
-### Fully self-hosted
-
-You want the suite on your own hardware and you are comfortable taking responsibility for networking, maintenance, and security.
-
-Recommended choice: [Deploy on your own hardware](/docs/deploy-on-your-own-hardware)
-
-Why people choose this:
-
-- Maximum control over where your data and services live
+- You can run the same self-hosted setup on a cloud machine or your own box
+- You get the path where in-suite update, backup, restore, HTTPS, and customization work matters most
 - Potentially low recurring cost if you already own suitable hardware
-- Best fit for advanced users and homelab setups
-- A strong fit if you want to stay as off-grid as possible
+- A strong fit if you want hosting freedom or full local ownership
 
 Tradeoff:
 
-- This is the most advanced option and has the highest operational responsibility.
-- The self-host path is now being shaped around `Ubuntu Server 24.04 LTS` and a dedicated local-network domain model, but it still builds on the current Docker Compose stack underneath.
+- The supported self-hosted setup targets `Ubuntu Server 24.04 LTS`, not arbitrary Linux distributions.
+- Cloud-server setup still needs a server provider and DNS.
+- Own-hardware setup still needs local networking decisions, especially DNS.
+
+## Access style
+
+The biggest practical difference between the two self-hosted installers is where the suite naturally lives.
+
+Cloud-server self-hosting is the easiest fit when you want secure browser access from anywhere. The server already lives on the internet, and some providers may even give you a temporary HTTPS address while you connect your own domain.
+
+Own-hardware self-hosting starts from a more private posture. The suite can live quietly on your home or office network, and you decide if or when to add remote access later. That makes it the strongest fit when local control matters most, while still leaving a path to outside access when you are ready.
+
+## Self-hosted installers
+
+The self-hosted path has two installer front doors, but they are meant to land on the same experience after setup:
+
+- Cloud server: create an Ubuntu 24.04 machine from a supported provider, pass it MOS first-boot configuration, point DNS at it, and open Suite Manager.
+- Own hardware: build the MOS USB installer, boot the machine, let first boot prepare the same self-hosted setup, then open Suite Manager.
+
+The goal is not to maintain separate VPS and homelab systems. The goal is one self-hosted MOS standard with different ways to get it onto a machine.
 
 ## Recommendation
 
-- Start with Railway if you want the easiest experience.
-- Choose a VPS if you want more control and hosting freedom.
-- Choose your own hardware if you already know you want full infrastructure ownership.
+- Start with Railway if you want the easiest experience or a quick trial.
+- Choose self-hosted on a cloud server if you want independence without owning hardware.
+- Choose self-hosted on your own hardware if you want the strongest local ownership.
 
 If you are mainly curious and want the smoothest first experience, Railway is the best place to begin.

@@ -122,7 +122,7 @@ const modules = [
 const steps = [
   {
     title: 'Choose your deploy style',
-    body: 'Start with the easiest path, use a VPS for more hosting freedom, or run it on your own hardware.',
+    body: 'Start on a platform for the easiest launch, or install My Own Suite on a cloud server or your own hardware.',
     href: '/docs/getting-started',
     label: 'Explore deploy options'
   },
@@ -150,7 +150,7 @@ const steps = [
     <meta name='theme-color' content='#061526' />
     <meta
       name='description'
-      content='My Own Suite is a modular self-hosted Big Tech exit kit: a curated bundle of open-source apps you control, with docs and deploy paths for Railway, VPS, and your own hardware.'
+      content='My Own Suite is a modular self-hosted Big Tech exit kit: a curated bundle of open-source apps you control, with a platform path for quick trials and self-hosted installers for cloud servers or your own hardware.'
     />
     <link rel='icon' href='/favicon.ico' sizes='any' />
     <link rel='icon' type='image/png' sizes='32x32' href='/favicon-32x32.png' />
@@ -412,8 +412,9 @@ const steps = [
         <div class='shell section-heading'>
           <h2 class='mos-section-title'>How do I get started?</h2>
           <p class='mos-body'>
-            Because My Own Suite is built around control and independence, there isn't just one way to use it. You can
-            start simple or go deeper over time, depending on what feels right for you.
+            My Own Suite now has two main setup stories: use a platform when you want the quickest hosted launch, or use
+            the self-hosted path when you want your own installed suite to manage routing, updates, backups, and local
+            infrastructure.
           </p>
         </div>
 
@@ -423,9 +424,9 @@ const steps = [
               <div class='getting-started-main'>
                 <h3 class='mos-card-title'>Start in minutes</h3>
                 <p class='mos-body'>
-                  Run the suite using a ready-made deploy template with almost no setup. This is the easiest way to get
-                  started and see how everything works. You trade some control for simplicity, but still get strong
-                  privacy and a low-maintenance setup.
+                  Run the suite using a ready-made platform template with almost no setup. This is the easiest way to
+                  see how everything works. You trade some infrastructure control for simplicity, and platform-owned
+                  updates and backups stay with the host.
                 </p>
                 <a class='text-link mos-link' href='/docs/deploy-on-railway'>Start with Railway</a>
               </div>
@@ -464,13 +465,13 @@ const steps = [
           <article class='getting-started-card getting-started-secondary mos-panel'>
             <div class='getting-started-content getting-started-columns'>
               <div class='getting-started-main'>
-                <h3 class='mos-card-title'>Choose your own server</h3>
+                <h3 class='mos-card-title'>Cloud server installer</h3>
                 <p class='mos-body'>
-                  Run the suite on your own server with a hosting provider you choose. This gives you more control and
-                  flexibility, and a clearer path to long-term independence. It takes more time to set up, and you'll
-                  need some technical comfort and occasional maintenance.
+                  Run My Own Suite on an Ubuntu cloud server from a provider you choose. This is the hosted
+                  self-hosting path: rented infrastructure, but routing, updates, backups, restore, HTTPS, and
+                  customization live inside your own installed suite.
                 </p>
-                <a class='text-link mos-link' href='/docs/deploy-on-vps'>Learn about VPS</a>
+                <a class='text-link mos-link' href='/docs/deploy-on-vps'>Self-host on a cloud server</a>
               </div>
 
               <div class='getting-started-metrics'>
@@ -483,16 +484,16 @@ const steps = [
                 <div class='metric'>
                   <div class='metric-head'>
                     <span>Privacy &amp; Control</span>
-                    <small>85%</small>
+                    <small>95%</small>
                   </div>
                   <div class='continuous-meter' aria-hidden='true'>
-                    <span style='width: 85%'></span>
+                    <span style='width: 95%'></span>
                   </div>
                 </div>
                 <div class='metric'>
                   <div class='metric-head'>
                     <span>Difficulty &amp; Responsibility</span>
-                    <small>Slightly difficult</small>
+                    <small>Moderate to advanced</small>
                   </div>
                   <div class='balance-meter' aria-hidden='true'>
                     <span class='balance-marker' style='left: 42%'></span>
@@ -507,11 +508,11 @@ const steps = [
           <article class='getting-started-card getting-started-tertiary mos-panel'>
             <div class='getting-started-content getting-started-columns'>
               <div class='getting-started-main'>
-                <h3 class='mos-card-title'>Run it yourself</h3>
+                <h3 class='mos-card-title'>Own-hardware installer</h3>
                 <p class='mos-body'>
-                  Run everything on your own hardware for full control and maximum privacy. Nothing depends on external
-                  platforms, you are fully off the grid. This requires solid technical knowledge, especially around
-                  networking and security, and you are responsible for keeping everything running safely.
+                  Install the same self-hosted My Own Suite setup on hardware you own with the USB installer. This is
+                  the most independent path, with local-network DNS decisions and full responsibility for the physical
+                  machine.
                 </p>
                 <a class='text-link mos-link' href='/docs/deploy-on-your-own-hardware'>Explore self-hosting</a>
               </div>

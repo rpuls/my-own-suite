@@ -8,9 +8,9 @@
   <a href="https://myownsuite.org/docs"><img alt="Docs" src="https://img.shields.io/badge/Docs-Read_Now-22c55e?style=for-the-badge"></a>
 </p>
 
-My Own Suite packages proven self-hosted apps into one setup with a guided first-run flow, a shared dashboard, and deployment paths that let people start simple and move toward more independence over time.
+My Own Suite packages proven self-hosted apps into one setup with a guided first-run flow, a shared dashboard, and setup paths that let people start simple and move toward more independence over time.
 
-Today the repository is centered on a documented Docker Compose stack, a maintained VPS/local path, and a Railway template path for the easiest hosted start.
+Today the repository is converging around two deployment stories: a Platform path, currently Railway, for the easiest hosted start, and a Self-hosted path for one Ubuntu 24.04 setup that can run on a cloud server or your own hardware.
 
 ![My Own Suite Homepage dashboard](./site/src/assets/screenshots/homepage/my-own-suite-homepage-dashboard-private-cloud-launchpad.png)
 
@@ -20,7 +20,7 @@ Today the repository is centered on a documented Docker Compose stack, a maintai
 - A guided Suite Manager onboarding flow instead of a pile of disconnected containers
 - A Homepage dashboard that makes the suite feel like one product
 - Curated open-source apps for files, office work, photos, passwords, calendars, and PDFs
-- Multiple deployment paths so you can start with convenience and move toward more ownership later
+- Platform and self-hosted setup paths so you can start with convenience and move toward more ownership later
 
 ## Included Modules
 
@@ -48,19 +48,19 @@ This project is for:
 
 ## Choose A Deploy Path
 
-The public docs are organized around three ways to get started:
+The public docs are organized around two top-level ways to get started:
 
-- [Deploy on Railway](https://myownsuite.org/docs/deploy-on-railway): the easiest hosted starting point
-- [Deploy on a VPS](https://myownsuite.org/docs/deploy-on-vps): the current maintained self-managed path in this repo
-- [Deploy on your own hardware](https://myownsuite.org/docs/deploy-on-your-own-hardware): the most independent path, still earlier in maturity
+- [Deploy on Railway](https://myownsuite.org/docs/deploy-on-railway): the first Platform path and easiest hosted starting point
+- [Self-host on a cloud server](https://myownsuite.org/docs/deploy-on-vps): the cloud-machine installer direction for the self-hosted setup
+- [Deploy on your own hardware](https://myownsuite.org/docs/deploy-on-your-own-hardware): the USB/own-hardware installer direction for the same self-hosted setup
 
 ![My Own Suite Railway service overview](./site/src/assets/screenshots/railway/railway-my-own-suite-hosted-private-cloud-template-service-map-overview.png)
 
 If you are new to the project and want the smoothest first experience, start with [How to get started](https://myownsuite.org/docs/getting-started).
 
-## Quick Start (Local VPS Stack)
+## Quick Start (Local Development Stack)
 
-If you want to run the current repo-managed Docker Compose stack locally or on a VPS:
+If you want to run the current repo-managed Docker Compose stack locally for development:
 
 ```bash
 git clone https://github.com/rpuls/my-own-suite.git
@@ -86,7 +86,7 @@ npm run vps:rebuild
 
 After startup, open `http://suite-manager.localhost/setup/` and continue through the guided onboarding flow.
 
-For the exact operational details, use [deploy/vps/README.md](./deploy/vps/README.md) as the canonical technical guide for the VPS/local stack.
+For the exact operational details, use [deploy/vps/README.md](./deploy/vps/README.md) as the current technical guide for the local/development Compose substrate.
 
 ## Validation
 
@@ -149,7 +149,7 @@ For the more detailed harness notes, see [tests/e2e/README.md](./tests/e2e/READM
 | Deployment overview | [site/src/content/docs/getting-started.mdx](./site/src/content/docs/getting-started.mdx) |
 | Project documentation ownership | [docs/README.md](./docs/README.md) |
 | Architecture decision log | [docs/decisions.md](./docs/decisions.md) |
-| Canonical VPS architecture + app onboarding steps | [deploy/vps/README.md](./deploy/vps/README.md) |
+| Local/development Compose architecture + app onboarding steps | [deploy/vps/README.md](./deploy/vps/README.md) |
 | App code + app-level technical READMEs | `apps/` |
 | Deployment stacks | `deploy/` |
 | Homepage service details | [apps/homepage/README.md](./apps/homepage/README.md) |
@@ -163,6 +163,6 @@ For the more detailed harness notes, see [tests/e2e/README.md](./tests/e2e/READM
 
 ## Contributor Note
 
-For app integration work (especially "add a new app"), treat [deploy/vps/README.md](./deploy/vps/README.md) as the canonical step-by-step architecture guide.
+For app integration work (especially "add a new app"), treat [deploy/vps/README.md](./deploy/vps/README.md) as the current step-by-step Compose architecture guide.
 
 For day-to-day prototyping, use `staging` as the integration branch and reserve `main` for stable release-ready batches.

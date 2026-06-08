@@ -1,4 +1,8 @@
-# My-Own-Suite - VPS Deployment
+# My-Own-Suite - Local Development Compose Stack
+
+This folder currently holds the shared Docker Compose substrate used for local development and MOS own-infra self-hosting work.
+
+The public product direction is no longer to maintain a separate VPS deployment universe. Cloud-server installs should become a self-hosted installer front door that lands on the same Ubuntu 24.04 MOS runtime as the USB/own-hardware path. Until the file layout is renamed safely, `deploy/vps` remains the technical home for the Compose stack and app-onboarding mechanics.
 
 ## Build and Run Locally
 

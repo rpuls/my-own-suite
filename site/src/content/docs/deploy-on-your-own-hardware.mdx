@@ -1,6 +1,6 @@
 ---
 title: Deploy on your own hardware
-description: Run My Own Suite on a machine you own.
+description: Install My Own Suite on a machine you own.
 slug: docs/deploy-on-your-own-hardware
 ---
 
@@ -9,6 +9,8 @@ import * as SelfHostGuide from '../../../../deploy/self-host/README.md';
 This option is for people who want to run My Own Suite on their own hardware at home or in a private location they control.
 
 It offers the most ownership and the strongest off-grid option, but it also asks the most from you.
+
+The own-hardware installer should land on the same self-hosted My Own Suite setup as a cloud-server install. The difference is how the machine is prepared: USB installer for hardware you touch, first-boot setup text for rented cloud machines.
 
 ## Who should choose this?
 
@@ -20,29 +22,39 @@ Choose this if:
 
 ## Tradeoffs
 
-Compared with Railway or a VPS:
+Compared with Railway or cloud-server self-hosting:
 
 - setup is more advanced
-- safe internet exposure requires more care
+- remote access is an intentional setup step instead of the default
 - uptime and recovery are fully your responsibility
 
 Potential benefits:
 
 - very high ownership
-- no digital footprint, you stay fully off grid
+- a quiet local-first setup when you want the suite to stay inside your own network
+- the only path that can stay fully off-grid with no public footprint
 - low recurring hosting cost if you already own the hardware
 - a strong fit for homelab and privacy-focused setups
 
 ## Current status
 
-The self-hosting track is now being shaped around a dedicated `Ubuntu Server 24.04 LTS` flow for small always-on machines such as mini PCs, home servers, and repurposed office hardware.
+The self-hosting track is shaped around a dedicated `Ubuntu Server 24.04 LTS` flow for small always-on machines such as mini PCs, home servers, and repurposed office hardware.
 
-Today, the maintained stack still lives in the Docker Compose deployment, but the self-host direction is becoming clearer:
+The maintained setup is the same self-hosted system used by cloud-server self-hosting:
 
 - one canonical local suite domain pattern: `appname.mos.home`
 - one canonical public domain pattern: `appname.mos.<your-domain>`
-- one shared host-based routing model across local, VPS, and self-hosted installs
+- one shared host-based routing model across cloud machines and own hardware
+- local host agents for updates, backups, restore, and narrow service actions
 - a dedicated Ubuntu bootstrap track for making first setup less hands-on
+
+## Access style
+
+Own-hardware self-hosting starts from the most private shape: the suite can live on your local network first, with no public address at all if that is what you want.
+
+That is useful when you want the machine, storage, and day-to-day access pattern to stay close to you. You can still add remote access later, but it becomes a deliberate choice instead of something assumed from day one.
+
+For many people, that is the appeal: start with a calm local private cloud, then decide how much outside access you actually want.
 
 ## What this means in practice
 
@@ -84,12 +96,12 @@ That is why the self-host path is being built around:
 
 If you are new to the project and mainly want to try the suite quickly, start with [Deploy on Railway](/docs/deploy-on-railway).
 
-If you want the current self-managed route that the self-host flow is building on top of, use [Deploy on a VPS](/docs/deploy-on-vps).
+If you want the same self-hosted runtime without owning hardware, use [Self-host on a cloud server](/docs/deploy-on-vps).
 
 If you already know you want the suite on your own hardware, the best fit is now:
 
 - `Ubuntu Server 24.04 LTS`
-- the current Docker Compose stack as the runtime base
+- the self-hosted My Own Suite setup as the base
 - a local DNS setup that can eventually point `*.mos.home` at the suite machine
 
 ## Technical guide

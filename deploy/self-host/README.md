@@ -36,7 +36,7 @@ The temporary plaintext handoff file is only meant to get those values through i
 
 ## Optional advanced email setup
 
-The current self-host direction still builds on the same Docker Compose stack used for the VPS/local path, so advanced operators can reuse the optional shared SMTP setup for compatible apps such as Seafile and Vaultwarden.
+The current self-host direction still builds on the shared own-infra Compose substrate, so advanced operators can reuse the optional shared SMTP setup for compatible apps such as Seafile and Vaultwarden.
 
 Use the dedicated SMTP guide for the actual setup:
 
@@ -47,7 +47,6 @@ Current scripts:
 - [scripts/selfhost/bootstrap-ubuntu.sh](../../scripts/selfhost/bootstrap-ubuntu.sh)
 - [scripts/mos-updater.cjs](../../scripts/mos-updater.cjs)
 - [scripts/selfhost-write-autoinstall.cjs](../../scripts/selfhost-write-autoinstall.cjs)
-- [scripts/selfhost-write-cloudflared.cjs](../../scripts/selfhost-write-cloudflared.cjs)
 - [scripts/selfhost-new-seed-disk.ps1](../../scripts/selfhost-new-seed-disk.ps1)
 - [scripts/selfhost-build-installer-iso.cjs](../../scripts/selfhost-build-installer-iso.cjs)
 - [agents/selfhost/reconcile-host-agents.sh](../../agents/selfhost/reconcile-host-agents.sh)

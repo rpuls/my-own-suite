@@ -8,7 +8,7 @@ This folder holds durable project memory: architectural decisions, documentation
 | --- | --- |
 | Product and end-user documentation | `site/src/content/docs/` |
 | App technical reference | `apps/<app>/README.md` |
-| VPS/local Docker operations | `deploy/vps/README.md` |
+| Local/development Compose operations | `deploy/vps/README.md` |
 | USB/self-host installer operations | `deploy/self-host/README.md` |
 | Self-host host-agent implementation | `agents/selfhost/` |
 | Self-host backup agent notes | `agents/selfhost/backup/docs/` |
