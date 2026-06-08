@@ -8,7 +8,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
-- Improved the Suite Manager Updates screen with UI track switching between stable releases and staging, separate stable-release and branch-commit targets, changelog-based change summaries, and technical update logs tucked behind advanced details, while splitting Backup and Restore into clearer top-level workflow cards. Compatibility note: `mos-update-agent` now advertises `updates.configure-track`, writes the selected track to `.mos-updater/config.json` through its local-only API, and managed updates now schedule a post-update host-agent refresh so new host-side capabilities are applied with the rest of the update.
+- Improved the Suite Manager Updates screen with UI track switching between stable releases and staging, separate stable-release and branch-commit targets, changelog-based change summaries, and technical update logs tucked behind advanced details, while splitting Backup and Restore into clearer top-level workflow cards. Compatibility note: `mos-update-agent` now advertises `updates.configure-track`, writes the selected track to `.mos-updater/config.json` through its local-only API, and managed updates now refresh host agents during system migration so new host-side code is applied with the rest of the update.
 - Added a development-only simulated self-host agent stack for local UI review, enabled with `npm run vps:up -- --simulateSelfHost` or `npm run vps:rebuild -- --simulateSelfHost`, so Suite Manager can preview update, service, and backup-agent capability states without real host agents.
 
 ## [0.11.0] - 2026-06-07

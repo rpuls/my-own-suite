@@ -92,10 +92,6 @@ function runNodeScript(repoRoot, scriptPath, extraArgs = []) {
   runCommand(repoRoot, nodeCommand, [scriptPath, ...extraArgs], { stdio: 'inherit' });
 }
 
-function isLinuxRoot() {
-  return process.platform === 'linux' && typeof process.getuid === 'function' && process.getuid() === 0;
-}
-
 function runCompose(repoRoot, args) {
   runNodeScript(repoRoot, 'scripts/mos-compose.cjs', args);
 }
@@ -569,39 +565,6 @@ function recreateStackContainers(repoRoot) {
   runCompose(repoRoot, [...profileArgs, 'up', '-d', '--force-recreate', '--remove-orphans']);
 }
 
-function scheduleHostAgentRefresh(repoRoot, log = () => {}) {
-  const reconcileScript = path.join(repoRoot, 'agents', 'selfhost', 'reconcile-host-agents.sh');
-  const unitSuffix = `${Date.now()}-${process.pid}`;
-
-  if (!isLinuxRoot()) {
-    log('Skipping post-update host-agent refresh because Linux root privileges are required.');
-    return false;
-  }
-
-  if (!fs.existsSync(reconcileScript)) {
-    log(`Skipping post-update host-agent refresh because ${reconcileScript} was not found.`);
-    return false;
-  }
-
-  const systemdRun = safeRunCommand(repoRoot, 'systemd-run', [
-    `--unit=mos-host-agents-post-update-${unitSuffix}`,
-    '--description=Refresh My Own Suite host agents after managed update',
-    '--collect',
-    '--on-active=10s',
-    '/bin/bash',
-    reconcileScript,
-    repoRoot,
-  ]);
-
-  if (systemdRun.ok) {
-    log('Scheduled host-agent refresh to finish applying host-side update code.');
-    return true;
-  }
-
-  log(`Unable to schedule host-agent refresh: ${systemdRun.error}`);
-  return false;
-}
-
 async function collectStatus(context) {
   const { fail, paths } = context;
   ensureUpdaterPrerequisites(paths, fail);
@@ -804,6 +767,5 @@ module.exports = {
   parseVersion,
   readJson,
   runApply,
-  scheduleHostAgentRefresh,
   writeUpdateTrack,
 };
