@@ -3,7 +3,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { buildPaths, collectStatus, runApply } = require('../../../../scripts/mos-updater-lib.cjs');
+const {
+  buildPaths,
+  collectStatus,
+  runApply,
+  scheduleHostAgentRefresh,
+} = require('../../../../scripts/mos-updater-lib.cjs');
 
 function readArg(name) {
   const index = process.argv.indexOf(name);
@@ -35,6 +40,7 @@ function mapStage(message) {
   if (message.includes('Validating Docker Compose config')) return 'validating-compose';
   if (message.includes('Building stack images')) return 'building-images';
   if (message.includes('Recreating stack containers')) return 'applying-compose';
+  if (message.includes('host-agent refresh')) return 'succeeded';
   if (message.includes('Fetching git tags') || message.includes('Fetching latest commit')) return 'fetching-git';
   if (message.includes('Checking out')) return 'switching-target';
   if (message.includes('Update applied successfully')) return 'succeeded';
@@ -110,6 +116,7 @@ async function main() {
       updaterStatus: await collectStatus(context),
     });
     completeCurrentJob(finalJob);
+    scheduleHostAgentRefresh(repoDir, context.log);
   } catch (error) {
     const failedJob = updateJob({
       completedAt: new Date().toISOString(),
