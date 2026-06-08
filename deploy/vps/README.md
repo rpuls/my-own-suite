@@ -30,6 +30,15 @@ Need a full destructive reset (removes volumes and data)?
 npm run vps:rebuild
 ```
 
+Preview self-host-only Suite Manager UI locally with simulated update, service, and backup agents:
+
+```bash
+npm run vps:up -- --simulateSelfHost
+npm run vps:rebuild -- --simulateSelfHost
+```
+
+This is development-only. It mounts fake Unix sockets and token files into Suite Manager so self-host capability UI can be reviewed without installing real host agents.
+
 Manual suite update workflow:
 
 ```bash

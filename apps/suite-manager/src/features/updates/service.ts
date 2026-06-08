@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import axios from 'axios';
 
 import type { SuiteManagerConfig } from '../../config.ts';
-import { readAgentStatus, startAgentUpdate } from './agent.ts';
+import { configureAgentTrack, readAgentStatus, startAgentUpdate } from './agent.ts';
 
 type ReleaseSource = 'github-release' | 'local-manifest' | 'override' | 'unavailable';
 
@@ -22,6 +22,11 @@ type InstalledVersion = {
 };
 
 export type UpdateStatus = {
+  changeSummary: {
+    items: string[];
+    source: string | null;
+    title: string;
+  };
   currentJob: {
     error: string | null;
     id: string;
@@ -42,6 +47,7 @@ export type UpdateStatus = {
     source: ReleaseSource;
     version: string | null;
   };
+  latestRevision: string | null;
   managedApplyAvailable: boolean;
   serviceAvailable: boolean;
   track: {
@@ -51,6 +57,7 @@ export type UpdateStatus = {
     ref: string | null;
     type: 'stable' | 'branch' | null;
   };
+  trackConfigurationAvailable: boolean;
   updateAvailable: boolean;
 };
 
@@ -279,8 +286,19 @@ export class UpdatesService {
         const updaterStatus = agent.updaterStatus as Record<string, any>;
         const track = updaterStatus.track || null;
         const managedApplyAvailable = hasAgentCapability(agent.capabilities, 'updates', 'apply');
+        const trackConfigurationAvailable = hasAgentCapability(agent.capabilities, 'updates', 'configure-track');
 
         return {
+          changeSummary: {
+            items: Array.isArray(updaterStatus.changeSummary?.items)
+              ? updaterStatus.changeSummary.items.filter((item: unknown) => typeof item === 'string').slice(0, 6)
+              : [],
+            source: typeof updaterStatus.changeSummary?.source === 'string' ? updaterStatus.changeSummary.source : null,
+            title:
+              typeof updaterStatus.changeSummary?.title === 'string'
+                ? updaterStatus.changeSummary.title
+                : 'Changes in this update',
+          },
           checkedAt: typeof updaterStatus.checkedAt === 'string' ? updaterStatus.checkedAt : new Date().toISOString(),
           currentJob: agent.currentJob,
           error: typeof updaterStatus.error === 'string' ? updaterStatus.error : null,
@@ -299,6 +317,7 @@ export class UpdatesService {
                 : 'unavailable',
             version: typeof updaterStatus.latestRelease?.version === 'string' ? updaterStatus.latestRelease.version : null,
           },
+          latestRevision: typeof updaterStatus.latestRevision === 'string' ? updaterStatus.latestRevision : null,
           managedApplyAvailable,
           serviceAvailable: true,
           track: {
@@ -308,6 +327,7 @@ export class UpdatesService {
             ref: typeof track?.ref === 'string' ? track.ref : null,
             type: track?.type === 'branch' || track?.type === 'stable' ? track.type : null,
           },
+          trackConfigurationAvailable,
           updateAvailable: updaterStatus.updateAvailable === true,
         };
       } catch (caughtError) {
@@ -318,6 +338,7 @@ export class UpdatesService {
           error: caughtError instanceof Error ? caughtError.message : 'Managed update agent is unavailable.',
           managedApplyAvailable: false,
           serviceAvailable: false,
+          trackConfigurationAvailable: false,
         };
       }
     }
@@ -328,6 +349,7 @@ export class UpdatesService {
       currentJob: null,
       managedApplyAvailable: false,
       serviceAvailable: false,
+      trackConfigurationAvailable: false,
     };
   }
 
@@ -349,6 +371,24 @@ export class UpdatesService {
       initiator: this.config.ownerEmail,
       target: 'latest',
     });
+  }
+
+  async configureTrack(trackId: 'stable' | 'staging'): Promise<UpdateStatus> {
+    const status = await this.getStatus();
+    if (!status.trackConfigurationAvailable) {
+      throw new Error('Update track switching is unavailable on this install.');
+    }
+
+    if (status.currentJob?.status === 'running' || status.currentJob?.status === 'queued') {
+      throw new Error('Wait for the current update job to finish before switching tracks.');
+    }
+
+    await configureAgentTrack(
+      this.config,
+      trackId === 'staging' ? { ref: 'staging', track: 'branch' } : { ref: 'main', track: 'stable' },
+    );
+
+    return this.getStatus();
   }
 
   private async getFallbackStatus(): Promise<Omit<UpdateStatus, 'currentJob' | 'serviceAvailable'>> {
@@ -392,11 +432,17 @@ export class UpdatesService {
     }
 
     return {
+      changeSummary: {
+        items: [],
+        source: null,
+        title: 'Release changes',
+      },
       checkedAt,
       error,
       installedVersion: installed.version,
       installedVersionSource: installed.source,
       latestRelease,
+      latestRevision: null,
       managedApplyAvailable: false,
       track: {
         currentBranch: null,
@@ -405,6 +451,7 @@ export class UpdatesService {
         ref: null,
         type: null,
       },
+      trackConfigurationAvailable: false,
       updateAvailable: compareVersions(installed.version, latestRelease.version) < 0,
     };
   }

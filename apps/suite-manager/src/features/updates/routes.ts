@@ -22,5 +22,22 @@ export function createUpdatesRouter(updatesService: UpdatesService): Hono {
     }
   });
 
+  router.post('/updates/track', async (c) => {
+    try {
+      const body = (await c.req.json().catch(() => ({}))) as { track?: string };
+      if (body.track !== 'stable' && body.track !== 'staging') {
+        return c.json({ error: 'Update track must be stable or staging.' }, 400);
+      }
+
+      const status = await updatesService.configureTrack(body.track);
+      return c.json(status);
+    } catch (caughtError) {
+      return c.json(
+        { error: caughtError instanceof Error ? caughtError.message : 'Unable to switch update track.' },
+        409,
+      );
+    }
+  });
+
   return router;
 }

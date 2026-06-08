@@ -24,6 +24,7 @@ async function loadStatus(): Promise<UpdatesStatus> {
 export function useUpdates() {
   const [state, setState] = useState<UpdatesState>({ kind: 'loading' });
   const [isApplying, setIsApplying] = useState(false);
+  const [isConfiguringTrack, setIsConfiguringTrack] = useState(false);
   const previousJobStatusRef = useRef<string | null>(null);
   const isJobRunning =
     state.kind === 'loaded' &&
@@ -48,6 +49,28 @@ export function useUpdates() {
       await refresh();
     } finally {
       setIsApplying(false);
+    }
+  }
+
+  async function configureTrack(track: 'stable' | 'staging'): Promise<void> {
+    setIsConfiguringTrack(true);
+    try {
+      const response = await fetch(withSetupPath('/api/updates/track'), {
+        body: JSON.stringify({ track }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+      });
+      const body = (await response.json().catch(() => ({ error: 'Unable to switch update track.' }))) as
+        | UpdatesStatus
+        | { error?: string };
+      if (!response.ok) {
+        throw new Error('error' in body && typeof body.error === 'string' ? body.error : 'Unable to switch update track.');
+      }
+      setState({ kind: 'loaded', status: body as UpdatesStatus });
+    } finally {
+      setIsConfiguringTrack(false);
     }
   }
 
@@ -111,8 +134,10 @@ export function useUpdates() {
 
   return {
     applyUpdate,
+    configureTrack,
     isJobRunning,
     isApplying,
+    isConfiguringTrack,
     refresh,
     state,
   };

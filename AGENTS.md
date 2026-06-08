@@ -106,6 +106,8 @@ Suite Manager UI must stay cohesive and predictable. Agents must treat shared UI
 - If a new interaction pattern is needed, first extend the shared component API or add a new shared primitive, then migrate the feature to use it.
 - Keep component behavior consistent across Suite Manager: labels, helper text, disabled states, focus states, icon placement, spacing, responsive layout, and error/success/info styling should come from the shared component layer and shared CSS.
 - Feature-specific components may compose shared primitives, but should not redefine their core look, spacing, or behavior locally.
+- Avoid unnecessary card nesting in Suite Manager. Keep a readable outer page surface, then use dividers, grouped rows, or a small number of clear panels instead of stacking cards inside cards inside cards.
+- Use **Advanced details** for low-level technical information that is useful for support or debugging but intimidating for normal users. Preserve the details, but keep raw logs, generated config, command output, IDs, paths, and similar diagnostics behind a collapsed disclosure or dialog while the primary UI explains the user-facing state in plain language.
 - When touching forms or dialogs, check nearby Suite Manager screens for existing component patterns and update the shared primitive if the pattern should improve everywhere.
 
 ## Goal

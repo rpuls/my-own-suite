@@ -122,6 +122,15 @@ updates:
     open-pull-requests-limit: 10
 
   - package-ecosystem: "docker"
+    directory: "/apps/selfhost-agent-simulator"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:37"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "docker"
     directory: "/apps/vaultwarden"
     schedule:
       interval: "weekly"

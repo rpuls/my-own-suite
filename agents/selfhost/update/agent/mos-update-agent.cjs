@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 
-const { buildPaths, collectStatus } = require('../../../../scripts/mos-updater-lib.cjs');
+const { buildPaths, collectStatus, writeUpdateTrack } = require('../../../../scripts/mos-updater-lib.cjs');
 
 const repoDir = process.env.MOS_UPDATE_AGENT_REPO_DIR || process.cwd();
 const socketPath = process.env.MOS_UPDATE_AGENT_SOCKET_PATH || '/run/mos-update-agent/agent.sock';
@@ -17,7 +17,7 @@ const jobsDir = path.join(stateDir, 'jobs');
 const currentJobPath = path.join(stateDir, 'current-job.json');
 const capabilities = {
   updates: {
-    capabilities: ['apply'],
+    capabilities: ['apply', 'configure-track'],
   },
 };
 
@@ -233,6 +233,46 @@ async function handleCreateJob(request, response) {
   });
 }
 
+async function handleConfigureTrack(request, response) {
+  const existing = readCurrentJob();
+  if (isActiveJob(existing)) {
+    json(response, 409, {
+      currentJob: summarizeJob(existing),
+      error: 'Wait for the current update job to finish before switching tracks.',
+    });
+    return;
+  }
+
+  let payload = {};
+  try {
+    const rawBody = await readBody(request);
+    payload = rawBody.trim() ? JSON.parse(rawBody) : {};
+  } catch {
+    json(response, 400, { error: 'Invalid JSON request body.' });
+    return;
+  }
+
+  try {
+    const track = writeUpdateTrack(repoDir, payload);
+    const updaterStatus = await collectStatus({
+      fail(message) {
+        throw new Error(message);
+      },
+      log() {},
+      paths: buildPaths(repoDir),
+    });
+
+    json(response, 200, {
+      track,
+      updaterStatus,
+    });
+  } catch (error) {
+    json(response, 400, {
+      error: error instanceof Error ? error.message : 'Unable to switch update track.',
+    });
+  }
+}
+
 function handleReadJob(response, jobId) {
   const filePath = jobFilePath(jobId);
   if (!fs.existsSync(filePath)) {
@@ -284,6 +324,11 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === 'POST' && url.pathname === '/v1/jobs') {
     await handleCreateJob(request, response);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/v1/track') {
+    await handleConfigureTrack(request, response);
     return;
   }
 

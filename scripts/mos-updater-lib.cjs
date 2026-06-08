@@ -43,6 +43,14 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+function readText(filePath) {
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
 function resolveCommand(command, args) {
   if (process.platform !== 'win32') {
     return {
@@ -222,6 +230,41 @@ function readUpdaterConfig(repoRoot) {
   }
 }
 
+function normalizeUpdateRef(track, ref) {
+  const trimmed = String(ref || '').trim();
+  if (track === 'stable') {
+    return 'main';
+  }
+
+  return trimmed || 'staging';
+}
+
+function writeUpdateTrack(repoRoot, nextTrack) {
+  const track = normalizeTrack(nextTrack?.track);
+  if (!track) {
+    throw new Error('Update track must be stable or branch.');
+  }
+
+  const ref = normalizeUpdateRef(track, nextTrack?.ref);
+  if (track === 'branch' && !/^[A-Za-z0-9._/-]+$/u.test(ref)) {
+    throw new Error('Branch ref contains unsupported characters.');
+  }
+
+  const configPath = path.join(repoRoot, '.mos-updater', 'config.json');
+  writeJson(configPath, {
+    ref,
+    track,
+    updatedAt: new Date().toISOString(),
+  });
+
+  return {
+    label: buildTrackLabel(track, ref),
+    ref,
+    source: configPath,
+    type: track,
+  };
+}
+
 function normalizeTrack(value) {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'branch') {
@@ -298,6 +341,69 @@ function refreshRemoteBranch(repoRoot, ref) {
     error: fetchResult.ok ? null : fetchResult.error,
     latestCommit: readLocalRemoteBranchHead(repoRoot, ref),
   };
+}
+
+function extractChangelogSection(changelog, headingName) {
+  const lines = changelog.split(/\r?\n/u);
+  const headingPattern = new RegExp(`^## \\[${headingName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`, 'i');
+  const startIndex = lines.findIndex((line) => headingPattern.test(line.trim()));
+  if (startIndex < 0) {
+    return [];
+  }
+
+  const items = [];
+  for (let index = startIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (line.startsWith('## ')) {
+      break;
+    }
+
+    if (line.startsWith('- ')) {
+      items.push(line.slice(2).trim());
+    }
+  }
+
+  return items.slice(0, 6);
+}
+
+function buildChangeSummary(repoRoot, track, latestRelease) {
+  const changelog = readText(path.join(repoRoot, 'CHANGELOG.md'));
+  if (!changelog) {
+    return {
+      items: [],
+      source: null,
+      title: track === 'branch' ? 'Upcoming changes' : 'Release changes',
+    };
+  }
+
+  if (track === 'branch') {
+    return {
+      items: extractChangelogSection(changelog, 'Unreleased'),
+      source: 'CHANGELOG.md [Unreleased]',
+      title: 'Upcoming changes on staging',
+    };
+  }
+
+  const version = latestRelease?.version || '';
+  return {
+    items: version ? extractChangelogSection(changelog, version) : [],
+    source: version ? `CHANGELOG.md [${version}]` : null,
+    title: version ? `Changes in ${version}` : 'Release changes',
+  };
+}
+
+async function readLatestStableRelease(githubRepo, localRelease) {
+  try {
+    return {
+      error: null,
+      release: await fetchLatestGitHubRelease(githubRepo),
+    };
+  } catch (caughtError) {
+    return {
+      error: caughtError instanceof Error ? caughtError.message : String(caughtError),
+      release: localRelease,
+    };
+  }
 }
 
 function parsePorcelainPath(line) {
@@ -472,16 +578,16 @@ async function collectStatus(context) {
     const cachedRemoteCommit = readLocalRemoteBranchHead(paths.repoRoot, resolvedTrack.ref);
     const refreshed = refreshRemoteBranch(paths.repoRoot, resolvedTrack.ref);
     const latestCommit = refreshed.latestCommit || cachedRemoteCommit;
+    const stable = await readLatestStableRelease(githubRepo, localRelease);
+    const errors = [refreshed.error, stable.error ? `Stable release lookup: ${stable.error}` : null].filter(Boolean);
 
     const status = {
       checkedAt: new Date().toISOString(),
-      error:
-        refreshed.error && latestCommit
-          ? `Unable to refresh origin/${resolvedTrack.ref}; using cached remote ref. ${refreshed.error}`
-          : refreshed.error,
+      changeSummary: buildChangeSummary(paths.repoRoot, 'branch', stable.release),
+      error: errors.length > 0 ? errors.join(' ') : null,
       githubRepo,
       installedVersion,
-      latestRelease: localRelease,
+      latestRelease: stable.release,
       latestRevision: latestCommit,
       stateFile: paths.updaterStatePath,
       track: {
@@ -502,7 +608,7 @@ async function collectStatus(context) {
       lastCheck: status.checkedAt,
       lastCheckError: status.error,
       lastKnownInstalledVersion: installedVersion,
-      lastKnownLatestVersion: localRelease?.version || null,
+      lastKnownLatestVersion: stable.release?.version || null,
       lastKnownLatestRevision: latestCommit,
       track: status.track,
       updateAvailable: status.updateAvailable,
@@ -522,6 +628,7 @@ async function collectStatus(context) {
 
   const status = {
     checkedAt: new Date().toISOString(),
+    changeSummary: buildChangeSummary(paths.repoRoot, 'stable', latestRelease),
     error,
     githubRepo,
     installedVersion,
@@ -660,4 +767,5 @@ module.exports = {
   parseVersion,
   readJson,
   runApply,
+  writeUpdateTrack,
 };

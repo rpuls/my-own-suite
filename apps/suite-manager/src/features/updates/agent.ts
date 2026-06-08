@@ -4,6 +4,7 @@ import http from 'node:http';
 import type { SuiteManagerConfig } from '../../config.ts';
 
 type AgentJobSummary = {
+  error: string | null;
   id: string;
   logs?: Array<{ at?: string; message?: string }>;
   stage: string | null;
@@ -20,6 +21,11 @@ type AgentStatusPayload = {
   service: string;
   socketPath: string;
   updaterStatus: Record<string, unknown>;
+};
+
+type AgentTrackPayload = {
+  ref: 'main' | 'staging';
+  track: 'stable' | 'branch';
 };
 
 function loadToken(config: SuiteManagerConfig): string {
@@ -112,4 +118,16 @@ export async function startAgentUpdate(
   payload: { initiator: string; target: string },
 ): Promise<{ job: Record<string, unknown> }> {
   return requestAgent<{ job: Record<string, unknown> }>(config, 'POST', '/v1/jobs', payload);
+}
+
+export async function configureAgentTrack(
+  config: SuiteManagerConfig,
+  payload: AgentTrackPayload,
+): Promise<{ track: Record<string, unknown>; updaterStatus: Record<string, unknown> }> {
+  return requestAgent<{ track: Record<string, unknown>; updaterStatus: Record<string, unknown> }>(
+    config,
+    'POST',
+    '/v1/track',
+    payload,
+  );
 }

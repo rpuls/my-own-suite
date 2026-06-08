@@ -45,8 +45,8 @@
 - Exposes a protected apply action on `/setup/api/homepage-config/caddy-preview/apply` when the host service agent advertises `external-proxies.apply` for Caddy.
 - Detects whether the host service agent can restart Homepage and apply generated external proxy routes, only enabling those automatic save/reset behaviors when the matching capabilities are reachable.
 - Exposes a token-protected config export on `/setup/api/homepage-config/export` for Homepage startup sync.
-- Exposes JSON update state on `/setup/api/updates`, including installed version, latest release metadata, whether an update is available, and whether the update agent exposes managed apply capability.
-- Supports capability-driven update behavior so hosted deployments can show notify/manual-update guidance, while self-host installs only show managed update actions when the local update agent is reachable and advertises `updates.apply`.
+- Exposes JSON update state on `/setup/api/updates`, including installed version, latest stable release metadata, branch revision target metadata, changelog summaries, whether an update is available, and update-agent capabilities.
+- Supports capability-driven update behavior so hosted deployments can show notify/manual-update guidance, while self-host installs only show managed update and track-switching actions when the local update agent is reachable and advertises `updates.apply` or `updates.configure-track`.
 - Exposes JSON backup state on `/setup/api/backups`, including detected external destinations, current/last backup jobs, and whether the backup agent exposes managed backup capability.
 - Exposes JSON local HTTPS state on `/setup/api/settings/local-https`, including current domain, public URL scheme, TLS mode, and self-host capability status.
 - Logs a success line when Homepage returns a `2xx` response.
@@ -82,6 +82,15 @@
 - Frontend dev server: `npm run dev:client`
 - Frontend production build: `npm run build:client`
 - Release metadata sanity check from repo root: `npm run release:check`
+
+#### Simulated self-host agents
+
+For local UI review, the repo includes a development-only Compose override that simulates the self-host update, service, and backup agents over Unix sockets:
+
+- `npm run vps:up -- --simulateSelfHost`
+- `npm run vps:rebuild -- --simulateSelfHost`
+
+This exercises Suite Manager's real socket/token capability paths without installing host-owned systemd agents. Do not use the simulated override for production deployments.
 
 #### Customizations in this project
 

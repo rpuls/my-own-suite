@@ -1,4 +1,9 @@
 export type UpdatesStatus = {
+  changeSummary: {
+    items: string[];
+    source: string | null;
+    title: string;
+  };
   currentJob: {
     error: string | null;
     id: string;
@@ -19,6 +24,7 @@ export type UpdatesStatus = {
     source: 'github-release' | 'local-manifest' | 'override' | 'unavailable';
     version: string | null;
   };
+  latestRevision: string | null;
   managedApplyAvailable: boolean;
   serviceAvailable: boolean;
   track: {
@@ -28,5 +34,6 @@ export type UpdatesStatus = {
     ref: string | null;
     type: 'stable' | 'branch' | null;
   };
+  trackConfigurationAvailable: boolean;
   updateAvailable: boolean;
 };
