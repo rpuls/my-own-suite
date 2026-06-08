@@ -13,10 +13,12 @@ The available actions depend on how your suite is deployed.
 The Updates screen can show:
 
 - the installed MOS version
-- the latest known release
+- the latest stable release
+- the update target for the active track
 - whether an update is available
 - the active update track when your install reports one
-- current or recent update job activity
+- a short change summary when the local changelog includes one
+- current or recent update job activity, with technical details kept secondary
 - whether Suite Manager can start a managed update
 
 This gives you a place to check update status without guessing from files or logs.
@@ -48,6 +50,8 @@ The `staging` track is useful for testing upcoming changes on hardware before a 
 If you are testing MOS development work, `staging` can be helpful.
 
 If you mainly want reliability, stable releases are the better default.
+
+On supported self-host installs, the Updates screen can switch between stable releases from main and the staging branch. Stable targets the latest published GitHub release. Staging targets the latest commit Suite Manager can see on the staging branch.
 
 ## Before updating
 

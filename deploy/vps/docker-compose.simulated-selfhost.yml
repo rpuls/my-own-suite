@@ -1,0 +1,44 @@
+# Development-only override for previewing self-host Suite Manager UI.
+# Include with: npm run vps:up -- --simulateSelfHost
+services:
+  selfhost-agent-simulator:
+    build:
+      context: ../../apps/selfhost-agent-simulator
+      dockerfile: Dockerfile
+    container_name: mos-selfhost-agent-simulator
+    restart: unless-stopped
+    volumes:
+      - simulated_update_run:/run/mos-update-agent
+      - simulated_update_etc:/etc/mos-update-agent
+      - simulated_service_run:/run/mos-service-agent
+      - simulated_service_etc:/etc/mos-service-agent
+      - simulated_backup_run:/run/mos-backup-agent
+      - simulated_backup_etc:/etc/mos-backup-agent
+    networks:
+      - mos-network
+
+  suite-manager:
+    environment:
+      - SUITE_MANAGER_UPDATES_AGENT_SOCKET_PATH=/run/mos-update-agent/agent.sock
+      - SUITE_MANAGER_UPDATES_AGENT_TOKEN_FILE=/etc/mos-update-agent/auth.token
+      - SUITE_MANAGER_SERVICE_AGENT_SOCKET_PATH=/run/mos-service-agent/agent.sock
+      - SUITE_MANAGER_SERVICE_AGENT_TOKEN_FILE=/etc/mos-service-agent/auth.token
+      - SUITE_MANAGER_BACKUP_AGENT_SOCKET_PATH=/run/mos-backup-agent/agent.sock
+      - SUITE_MANAGER_BACKUP_AGENT_TOKEN_FILE=/etc/mos-backup-agent/auth.token
+    volumes:
+      - simulated_update_run:/run/mos-update-agent
+      - simulated_update_etc:/etc/mos-update-agent:ro
+      - simulated_service_run:/run/mos-service-agent
+      - simulated_service_etc:/etc/mos-service-agent:ro
+      - simulated_backup_run:/run/mos-backup-agent
+      - simulated_backup_etc:/etc/mos-backup-agent:ro
+    depends_on:
+      - selfhost-agent-simulator
+
+volumes:
+  simulated_update_run:
+  simulated_update_etc:
+  simulated_service_run:
+  simulated_service_etc:
+  simulated_backup_run:
+  simulated_backup_etc:

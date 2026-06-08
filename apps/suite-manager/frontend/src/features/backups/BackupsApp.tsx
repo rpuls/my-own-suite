@@ -55,6 +55,30 @@ function jobStatusLabel(job: BackupJobSummary): string {
   return `${action} status unknown`;
 }
 
+function restoreStatusLabel(restoreApplyAvailable: boolean, restorePlanAvailable: boolean): string {
+  if (restoreApplyAvailable) {
+    return 'Available';
+  }
+
+  if (restorePlanAvailable) {
+    return 'Preview';
+  }
+
+  return 'Unavailable';
+}
+
+function restoreStatusText(restoreApplyAvailable: boolean, restorePlanAvailable: boolean): string {
+  if (restoreApplyAvailable) {
+    return 'Suite Manager can start a host-owned restore from a detected backup bundle.';
+  }
+
+  if (restorePlanAvailable) {
+    return 'Suite Manager can inspect restore candidates, but starting a restore is not enabled yet.';
+  }
+
+  return 'Install or refresh the self-host backup agent to enable managed restore actions.';
+}
+
 function JobPanel({ job, title }: { job: BackupJobSummary | null; title: string }) {
   if (!job) {
     return null;
@@ -76,8 +100,8 @@ function JobPanel({ job, title }: { job: BackupJobSummary | null; title: string 
       ) : null}
       {job.error ? <p className="suite-warning">{job.error}</p> : null}
       {job.logs && job.logs.length > 0 ? (
-        <details className="suite-job-details" open={isRunning || job.status === 'failed'}>
-          <summary>{isRunning ? 'Show progress details' : 'Show technical details'}</summary>
+        <details className="suite-job-details">
+          <summary>Advanced details</summary>
           {job.rescuePath ? <p className="suite-meta mos-meta">Pre-restore rescue: {job.rescuePath}</p> : null}
           <ol className="suite-updates-job-log">
             {job.logs.slice(-8).map((entry, index) => (
@@ -376,147 +400,157 @@ export default function BackupsApp() {
       </section>
 
       <section className="mos-shell">
-        <div className="mos-panel suite-card suite-updates-card suite-backups-card">
+        <div className="suite-backups-stack">
           {state.kind === 'loading' ? <p className="suite-empty">Loading backup state...</p> : null}
           {state.kind === 'error' ? <p className="suite-error">{state.message}</p> : null}
           {actionError ? <p className="suite-error">{actionError}</p> : null}
 
           {loaded && !loaded.serviceAvailable ? (
-            <ManagedInfrastructureGuidance error={loaded.error} onRefresh={() => void refresh()} />
+            <div className="mos-panel suite-card suite-updates-card suite-backups-card">
+              <ManagedInfrastructureGuidance error={loaded.error} onRefresh={() => void refresh()} />
+            </div>
           ) : null}
 
           {loaded && loaded.serviceAvailable ? (
-            <div className="suite-updates-grid">
-              <div className="suite-updates-panel-wide suite-backup-selfhost-header">
-                <div className="suite-updates-header">
-                  <div>
-                    <h2 className="mos-card-title">Backup destination</h2>
-                    <p className="suite-meta mos-meta">
-                      Connect or mount storage, choose a writable destination, then start a host-owned backup job.
+            <>
+              <section className="mos-panel suite-card suite-updates-card suite-backups-card">
+                <div className="suite-backup-selfhost-stack">
+                  <div className="suite-backup-selfhost-header">
+                    <div className="suite-updates-header">
+                      <div>
+                        <h2 className="mos-card-title">Backup</h2>
+                        <p className="suite-meta mos-meta">
+                          Connect or mount storage, choose a writable destination, then start a host-owned backup job.
+                        </p>
+                      </div>
+
+                      <button
+                        className="suite-copy-button suite-updates-refresh"
+                        disabled={isStarting || isJobRunning}
+                        onClick={() => void refresh()}
+                        type="button"
+                      >
+                        <RefreshCcw aria-hidden="true" className="suite-inline-icon" />
+                        Scan again
+                      </button>
+                    </div>
+
+                    {jobIsRunning(loaded.currentJob) ? (
+                      <div className="suite-updates-live-banner" aria-live="polite">
+                        <span className="suite-updates-spinner" aria-hidden="true"></span>
+                        <div>
+                          <strong>Backup in progress</strong>
+                          <p className="suite-meta mos-meta">
+                            The host backup agent is writing persistent job state, so progress can recover after Suite Manager
+                            restarts.
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <p className="suite-warning">
+                      The stack will be stopped while Docker volumes are archived, then started again with the same detected
+                      profiles. Suite Manager may be unavailable during the backup.
                     </p>
                   </div>
 
-                  <button
-                    className="suite-copy-button suite-updates-refresh"
-                    disabled={isStarting || isJobRunning}
-                    onClick={() => void refresh()}
-                    type="button"
-                  >
-                    <RefreshCcw aria-hidden="true" className="suite-inline-icon" />
-                    Scan again
-                  </button>
-                </div>
+                  <div className="suite-backup-capability-note">
+                    <span className="mos-eyebrow">Backup agent</span>
+                    <strong>{loaded.serviceAvailable ? 'Available' : 'Unavailable'}</strong>
+                    <p className="suite-meta mos-meta">
+                      {loaded.startBackupAvailable
+                        ? 'Suite Manager can start host-owned backup jobs.'
+                        : 'Install or refresh the self-host backup agent to enable managed backups.'}
+                    </p>
+                  </div>
 
-                {jobIsRunning(loaded.currentJob) ? (
-                  <div className="suite-updates-live-banner" aria-live="polite">
-                    <span className="suite-updates-spinner" aria-hidden="true"></span>
-                    <div>
-                      <strong>Backup in progress</strong>
-                      <p className="suite-meta mos-meta">
-                        The host backup agent is writing persistent job state, so progress can recover after Suite Manager
-                        restarts.
-                      </p>
+                  <section className="suite-backup-section">
+                    <div className="suite-updates-status-row">
+                      <div>
+                        <span className="mos-eyebrow">Select drive</span>
+                        <h2 className="mos-card-title">Backup destination</h2>
+                      </div>
+                      <span className={`mos-pill ${loaded.destinations.length > 0 ? 'is-active' : ''}`}>
+                        {loaded.destinations.length > 0 ? `${loaded.destinations.length} destination(s)` : 'No drive found'}
+                      </span>
+                      <span className="suite-meta mos-meta">Checked {formatDate(loaded.checkedAt)}</span>
                     </div>
+
+                    {loaded.error ? <p className="suite-warning">{loaded.error}</p> : null}
+
+                    <div className="suite-backup-destinations">
+                      {loaded.destinations.map((destination) => (
+                        <DestinationButton
+                          destination={destination}
+                          disabled={isStarting || isJobRunning}
+                          isMounting={isMounting}
+                          isSelected={destination.id === selectedDestinationId}
+                          mountAvailable={loaded.mountDestinationAvailable}
+                          key={destination.id}
+                          onMount={(destinationId) => void handleMountDestination(destinationId)}
+                          onSelect={setSelectedDestinationId}
+                        />
+                      ))}
+                    </div>
+
+                    {loaded.destinations.length === 0 ? (
+                      <p className="suite-meta mos-meta">
+                        Plug in an external drive. If it is already plugged in, make sure Linux sees it as a removable or USB
+                        block device, then mount it under /media, /mnt, or /run/media.
+                      </p>
+                    ) : null}
+
+                    <div className="suite-actions">
+                      <button
+                        className="suite-copy-button"
+                        disabled={!canStart}
+                        onClick={() => void handleStartBackup()}
+                        type="button"
+                      >
+                        {isStarting ? 'Starting...' : 'Start backup'}
+                      </button>
+                    </div>
+
+                    <JobPanel job={runningJob} title="Backup activity" />
+                    <JobPanel job={latestCompletedJob} title="Latest backup activity" />
+                  </section>
+                </div>
+              </section>
+
+              <section className="mos-panel suite-card suite-updates-card suite-backups-card">
+                <div className="suite-backup-selfhost-stack">
+                  <div className="suite-updates-status-row">
+                    <div>
+                      <span className="mos-eyebrow">Restore</span>
+                      <h2 className="mos-card-title">Restore from backup</h2>
+                    </div>
+                    <span className="mos-pill">{loaded.backups.length} found</span>
                   </div>
-                ) : null}
 
-                <p className="suite-warning">
-                  The stack will be stopped while Docker volumes are archived, then started again with the same detected
-                  profiles. Suite Manager may be unavailable during the backup.
-                </p>
-              </div>
+                  <div className="suite-backup-capability-note">
+                    <span className="mos-eyebrow">Restore status</span>
+                    <strong>{restoreStatusLabel(loaded.restoreApplyAvailable, loaded.restorePlanAvailable)}</strong>
+                    <p className="suite-meta mos-meta">{restoreStatusText(loaded.restoreApplyAvailable, loaded.restorePlanAvailable)}</p>
+                  </div>
 
-              <article className="suite-updates-panel">
-                <span className="mos-eyebrow">Backup agent</span>
-                <strong className="suite-updates-version">{loaded.serviceAvailable ? 'Available' : 'Unavailable'}</strong>
-                <p className="suite-meta mos-meta">
-                  {loaded.startBackupAvailable
-                    ? 'Suite Manager can start host-owned backup jobs.'
-                    : 'Install or refresh the self-host backup agent to enable managed backups.'}
-                </p>
-              </article>
-
-              <article className="suite-updates-panel">
-                <span className="mos-eyebrow">Restore</span>
-                <strong className="suite-updates-version">{loaded.restorePlanAvailable ? 'Planned' : 'Unavailable'}</strong>
-                <p className="suite-meta mos-meta">
-                  Restore remains version-paired and conservative until the cold backup format is validated.
-                </p>
-              </article>
-
-              <article className="suite-updates-panel suite-updates-panel-wide">
-                <div className="suite-updates-status-row">
-                  <span className={`mos-pill ${loaded.destinations.length > 0 ? 'is-active' : ''}`}>
-                    {loaded.destinations.length > 0 ? `${loaded.destinations.length} destination(s)` : 'No drive found'}
-                  </span>
-                  <span className="suite-meta mos-meta">Checked {formatDate(loaded.checkedAt)}</span>
-                </div>
-
-                {loaded.error ? <p className="suite-warning">{loaded.error}</p> : null}
-
-                <div className="suite-backup-destinations">
-                  {loaded.destinations.map((destination) => (
-                    <DestinationButton
-                      destination={destination}
-                      disabled={isStarting || isJobRunning}
-                      isMounting={isMounting}
-                      isSelected={destination.id === selectedDestinationId}
-                      mountAvailable={loaded.mountDestinationAvailable}
-                      key={destination.id}
-                      onMount={(destinationId) => void handleMountDestination(destinationId)}
-                      onSelect={setSelectedDestinationId}
-                    />
-                  ))}
-                </div>
-
-                {loaded.destinations.length === 0 ? (
                   <p className="suite-meta mos-meta">
-                    Plug in an external drive. If it is already plugged in, make sure Linux sees it as a removable or USB
-                    block device, then mount it under /media, /mnt, or /run/media.
+                    Restore stops the current stack, replaces MOS Docker volumes and runtime config from the selected bundle,
+                    then starts the recorded profiles. Use this only on a fresh or intentionally disposable install.
                   </p>
-                ) : null}
 
-                <div className="suite-actions">
-                  <button
-                    className="suite-copy-button"
-                    disabled={!canStart}
-                    onClick={() => void handleStartBackup()}
-                    type="button"
-                  >
-                    {isStarting ? 'Starting...' : 'Start backup'}
-                  </button>
+                  <BackupBundleList
+                    backups={loaded.backups}
+                    canRestore={canRestore}
+                    isRestoring={isRestoring}
+                    onRestore={(backup) => {
+                      setActionError(null);
+                      setSelectedRestore(backup);
+                      setRestoreConfirmation('');
+                    }}
+                  />
                 </div>
-
-                <JobPanel job={runningJob} title="Backup activity" />
-                <JobPanel job={latestCompletedJob} title="Latest backup activity" />
-              </article>
-
-              <article className="suite-updates-panel suite-updates-panel-wide">
-                <div className="suite-updates-status-row">
-                  <div>
-                    <span className="mos-eyebrow">Restore candidates</span>
-                    <h2 className="mos-card-title">Backups on mounted drives</h2>
-                  </div>
-                  <span className="mos-pill">{loaded.backups.length} found</span>
-                </div>
-
-                <p className="suite-meta mos-meta">
-                  Restore stops the current stack, replaces MOS Docker volumes and runtime config from the selected bundle,
-                  then starts the recorded profiles. Use this only on a fresh or intentionally disposable install.
-                </p>
-
-                <BackupBundleList
-                  backups={loaded.backups}
-                  canRestore={canRestore}
-                  isRestoring={isRestoring}
-                  onRestore={(backup) => {
-                    setActionError(null);
-                    setSelectedRestore(backup);
-                    setRestoreConfirmation('');
-                  }}
-                />
-              </article>
-            </div>
+              </section>
+            </>
           ) : null}
         </div>
       </section>

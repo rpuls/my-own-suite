@@ -1,6 +1,9 @@
 import { RefreshCcw } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
+import { SelectField } from '../../components/ui';
 import { useUpdates } from './useUpdates';
+import type { UpdatesStatus } from './types';
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -47,14 +50,125 @@ function installedVersionHelpText(source: string | null): string {
   return `Read from ${source}.`;
 }
 
+function shortCommit(value: string | null): string {
+  return value ? value.slice(0, 7) : 'Unknown';
+}
+
+function currentTrackOption(status: UpdatesStatus): 'stable' | 'staging' {
+  return status.track.type === 'branch' && status.track.ref === 'staging' ? 'staging' : 'stable';
+}
+
+function updateTargetTitle(status: UpdatesStatus): string {
+  return status.track.type === 'branch' ? `Latest ${status.track.ref || 'branch'} commit` : 'Latest stable release';
+}
+
+function updateTargetValue(status: UpdatesStatus): string {
+  return status.track.type === 'branch'
+    ? shortCommit(status.latestRevision)
+    : status.latestRelease.version || 'Unknown';
+}
+
+function capabilityText(status: UpdatesStatus): string {
+  if (status.managedApplyAvailable) {
+    return 'Suite Manager can start a host-owned update job for this install.';
+  }
+
+  if (status.serviceAvailable) {
+    return 'The local updater is reachable, but it cannot start managed updates yet.';
+  }
+
+  return 'No local updater is reachable. Use your hosting platform or deployment workflow to update.';
+}
+
+function jobStatusText(job: NonNullable<UpdatesStatus['currentJob']>): string {
+  if (job.status === 'succeeded') {
+    return 'The last update finished successfully.';
+  }
+
+  if (job.status === 'failed') {
+    return 'The last update failed before it could finish.';
+  }
+
+  if (job.status === 'running' || job.status === 'queued') {
+    return 'An update is running now. The suite may restart while it applies changes.';
+  }
+
+  return 'Suite Manager received update activity from the host updater.';
+}
+
+function UpdateActivity({ job }: { job: UpdatesStatus['currentJob'] }) {
+  if (!job) {
+    return null;
+  }
+
+  const logs = job.logs || [];
+
+  return (
+    <div className="suite-updates-job">
+      <strong>Update activity</strong>
+      <p className="suite-meta mos-meta">
+        {jobStatusText(job)}
+        {job.updatedAt ? ` Last updated ${formatDate(job.updatedAt)}.` : ''}
+      </p>
+      {job.error ? <p className="suite-warning">{job.error}</p> : null}
+      {logs.length > 0 ? (
+        <details className="suite-job-details">
+          <summary>Advanced details</summary>
+          <ol className="suite-updates-job-log">
+            {logs.slice(-8).map((entry, index) => (
+              <li key={`${entry.at || 'log'}-${index}`}>
+                <span>{entry.at ? formatDate(entry.at) : 'Update job'}</span>
+                <code>{entry.message || 'No message'}</code>
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
 export default function UpdatesApp() {
-  const { applyUpdate, isApplying, isJobRunning, refresh, state } = useUpdates();
+  const { applyUpdate, configureTrack, isApplying, isConfiguringTrack, isJobRunning, refresh, state } = useUpdates();
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedTrack, setSelectedTrack] = useState<'stable' | 'staging'>('stable');
   const canApplyUpdate =
     state.kind === 'loaded' &&
     state.status.managedApplyAvailable &&
     state.status.updateAvailable &&
     !isApplying &&
     !isJobRunning;
+  const canSwitchTrack =
+    state.kind === 'loaded' &&
+    state.status.trackConfigurationAvailable &&
+    selectedTrack !== currentTrackOption(state.status) &&
+    !isApplying &&
+    !isConfiguringTrack &&
+    !isJobRunning;
+
+  useEffect(() => {
+    if (state.kind === 'loaded') {
+      setSelectedTrack(currentTrackOption(state.status));
+    }
+  }, [state]);
+
+  async function handleApplyUpdate(): Promise<void> {
+    setActionError(null);
+    try {
+      await applyUpdate();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to start update.');
+    }
+  }
+
+  async function handleConfigureTrack(): Promise<void> {
+    setActionError(null);
+    try {
+      await configureTrack(selectedTrack);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to switch update track.');
+    }
+  }
 
   return (
     <main className="suite-app">
@@ -101,59 +215,113 @@ export default function UpdatesApp() {
           {state.kind === 'loading' ? <p className="suite-empty">Loading update state...</p> : null}
 
           {state.kind === 'error' ? <p className="suite-error">{state.message}</p> : null}
+          {actionError ? <p className="suite-error">{actionError}</p> : null}
 
           {state.kind === 'loaded' ? (
-            <div className="suite-updates-grid">
-              <article className="suite-updates-panel">
-                <span className="mos-eyebrow">Installed</span>
-                <strong className="suite-updates-version">{state.status.installedVersion || 'Unknown'}</strong>
-                <p className="suite-meta mos-meta">{installedVersionHelpText(state.status.installedVersionSource)}</p>
-              </article>
+            <>
+              {state.status.trackConfigurationAvailable ? (
+                <section className="suite-updates-track-panel">
+                  <div className="suite-updates-track-copy">
+                    <span className="mos-eyebrow">Update track</span>
+                    <strong>{state.status.track.label || 'Stable releases'}</strong>
+                    <p className="suite-meta mos-meta">
+                      Stable follows published releases from main. Staging follows the latest commit on the staging branch for early testing.
+                    </p>
+                  </div>
 
-              <article className="suite-updates-panel">
-                <span className="mos-eyebrow">Latest available</span>
-                <strong className="suite-updates-version">{state.status.latestRelease.version || 'Unknown'}</strong>
-                <p className="suite-meta mos-meta">
-                  Source: {labelForSource(state.status.latestRelease.source)}
-                </p>
-                {state.status.track.label ? (
-                  <p className="suite-meta mos-meta">Track: {state.status.track.label}</p>
-                ) : null}
-                {canApplyUpdate ? (
-                  <button
-                    className="suite-copy-button suite-updates-inline-action"
-                    disabled={isApplying || isJobRunning}
-                    onClick={() => void applyUpdate()}
-                    type="button"
-                  >
-                    {isApplying ? 'Starting...' : 'Update now'}
-                  </button>
-                ) : null}
-              </article>
+                  <div className="suite-updates-track-controls">
+                    <SelectField
+                      disabled={isApplying || isConfiguringTrack || isJobRunning}
+                      helperText="Changes what Update now will apply."
+                      label="Track"
+                      onChange={(event) => setSelectedTrack(event.target.value === 'staging' ? 'staging' : 'stable')}
+                      value={selectedTrack}
+                    >
+                      <option value="stable">Stable (main)</option>
+                      <option value="staging">Staging branch</option>
+                    </SelectField>
+                    <button
+                      className="suite-copy-button suite-updates-track-action"
+                      disabled={!canSwitchTrack}
+                      onClick={() => void handleConfigureTrack()}
+                      type="button"
+                    >
+                      {isConfiguringTrack ? 'Switching...' : 'Switch track'}
+                    </button>
+                  </div>
+                </section>
+              ) : (
+                <section className="suite-updates-guidance">
+                  <span className="mos-eyebrow">Updates</span>
+                  <strong>Update through your hosting provider</strong>
+                  <p className="suite-meta mos-meta">
+                    In-app updates are only available on self-host installs with the local update agent. Managed platforms usually update from their own dashboard or deploy workflow.
+                  </p>
+                </section>
+              )}
 
-              <article className="suite-updates-panel suite-updates-panel-wide">
+              <div className="suite-updates-overview-grid">
+                <article className="suite-updates-panel">
+                  <span className="mos-eyebrow">Installed</span>
+                  <strong className="suite-updates-version">{state.status.installedVersion || 'Unknown'}</strong>
+                  <p className="suite-meta mos-meta">{installedVersionHelpText(state.status.installedVersionSource)}</p>
+                </article>
+
+                <article className="suite-updates-panel">
+                  <span className="mos-eyebrow">Latest stable release</span>
+                  <strong className="suite-updates-version">{state.status.latestRelease.version || 'Unknown'}</strong>
+                  <p className="suite-meta mos-meta">Source: {labelForSource(state.status.latestRelease.source)}</p>
+                  {state.status.latestRelease.notesUrl ? (
+                    <a className="suite-meta mos-meta" href={state.status.latestRelease.notesUrl} rel="noreferrer" target="_blank">
+                      Open release notes
+                    </a>
+                  ) : null}
+                  {canApplyUpdate ? (
+                    <button
+                      className="suite-copy-button suite-updates-inline-action"
+                      disabled={isApplying || isJobRunning}
+                      onClick={() => void handleApplyUpdate()}
+                      type="button"
+                    >
+                      {isApplying ? 'Starting...' : 'Update now'}
+                    </button>
+                  ) : null}
+                </article>
+              </div>
+
+              <article className="suite-updates-panel suite-updates-panel-wide suite-updates-change-panel">
                 <div className="suite-updates-status-row">
-                  <span
-                    className={`mos-pill ${state.status.updateAvailable ? 'is-active' : 'is-completed'}`}
-                  >
-                    {isJobRunning ? 'Updating now' : state.status.updateAvailable ? 'Update available' : 'Up to date'}
-                  </span>
+                  <span className="mos-eyebrow">Update details</span>
 
                   <span className="suite-meta mos-meta">Checked {formatDate(state.status.checkedAt)}</span>
                 </div>
 
-                <p className="suite-meta mos-meta">
-                  {state.status.managedApplyAvailable
-                    ? 'The local updater service is reachable and exposes the apply capability, so Suite Manager can start a host-owned update job when an update is available.'
-                    : state.status.serviceAvailable
-                      ? 'The local updater service is reachable, but it does not expose the apply capability. Install new versions through the host update workflow.'
-                      : 'No local updater capability is reachable. Install new versions through your hosting platform or deployment workflow.'}
-                </p>
+                <div className="suite-updates-change-summary">
+                  <div>
+                    <span className="mos-eyebrow">Changes</span>
+                    <h3>{state.status.changeSummary.title}</h3>
+                    {state.status.changeSummary.source ? (
+                      <p className="suite-meta mos-meta">From {state.status.changeSummary.source}</p>
+                    ) : null}
+                  </div>
+
+                  {state.status.changeSummary.items.length > 0 ? (
+                    <ul>
+                      {state.status.changeSummary.items.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="suite-meta mos-meta">
+                      No local changelog summary is available for this target. Open the release notes for the full detail.
+                    </p>
+                  )}
+                </div>
 
                 <dl className="suite-updates-facts">
                   <div>
-                    <dt>Release channel</dt>
-                    <dd>{state.status.latestRelease.channel || 'Unknown'}</dd>
+                    <dt>Active track</dt>
+                    <dd>{state.status.track.label || 'Unknown'}</dd>
                   </div>
                   <div>
                     <dt>Updater service</dt>
@@ -164,45 +332,16 @@ export default function UpdatesApp() {
                     <dd>{state.status.managedApplyAvailable ? 'Available' : 'Unavailable'}</dd>
                   </div>
                   <div>
-                    <dt>Published</dt>
-                    <dd>{formatDate(state.status.latestRelease.publishedAt)}</dd>
+                    <dt>Update target</dt>
+                    <dd>{updateTargetValue(state.status)}</dd>
                   </div>
                   <div>
-                    <dt>Release notes</dt>
-                    <dd>
-                      {state.status.latestRelease.notesUrl ? (
-                        <a href={state.status.latestRelease.notesUrl} rel="noreferrer" target="_blank">
-                          Open release notes
-                        </a>
-                      ) : (
-                        'Not available'
-                      )}
-                    </dd>
+                    <dt>Target type</dt>
+                    <dd>{updateTargetTitle(state.status)}</dd>
                   </div>
                 </dl>
 
-                {state.status.currentJob ? (
-                  <div className="suite-updates-job">
-                    <strong>Current job</strong>
-                    <p className="suite-meta mos-meta">
-                      {state.status.currentJob.status || 'unknown'} in stage {state.status.currentJob.stage || 'unknown'}.
-                      Last update {state.status.currentJob.updatedAt ? ` ${formatDate(state.status.currentJob.updatedAt)}` : ''}
-                    </p>
-                    {state.status.currentJob.error ? (
-                      <p className="suite-warning">{state.status.currentJob.error}</p>
-                    ) : null}
-                    {state.status.currentJob.logs && state.status.currentJob.logs.length > 0 ? (
-                      <ol className="suite-updates-job-log">
-                        {state.status.currentJob.logs.slice(-8).map((entry, index) => (
-                          <li key={`${entry.at || 'log'}-${index}`}>
-                            <span>{entry.at ? formatDate(entry.at) : 'Update job'}</span>
-                            <code>{entry.message || 'No message'}</code>
-                          </li>
-                        ))}
-                      </ol>
-                    ) : null}
-                  </div>
-                ) : null}
+                <UpdateActivity job={state.status.currentJob} />
 
                 {state.status.error ? (
                   <p className="suite-warning">
@@ -216,7 +355,7 @@ export default function UpdatesApp() {
                   </p>
                 ) : null}
               </article>
-            </div>
+            </>
           ) : null}
         </div>
       </section>

@@ -54,8 +54,26 @@ Check for:
 
 - `service: "mos-update-agent"`
 - `capabilities.updates.capabilities` includes `apply`
+- `capabilities.updates.capabilities` includes `configure-track` when the agent can update `.mos-updater/config.json`
 - `updaterStatus.track`
 - `currentJob` or `lastJob`
+
+## Switch update track
+
+Fastest path from Suite Manager is the Updates screen track selector.
+
+Equivalent low-level form:
+
+```bash
+TOKEN="$(sudo cat /etc/mos-update-agent/auth.token)"
+curl --unix-socket /run/mos-update-agent/agent.sock \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"track":"branch","ref":"staging"}' \
+  http://localhost/v1/track
+```
+
+Use `{"track":"stable","ref":"main"}` to return to stable releases.
 
 ## Start an update job
 
