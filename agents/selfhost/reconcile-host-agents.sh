@@ -20,12 +20,6 @@ is_selfhost_checkout() {
     [[ -f /etc/mos-selfhost.env ]]
 }
 
-is_update_job_running() {
-  [[ -n "${MOS_UPDATE_AGENT_JOB_ID:-}" ]] ||
-    pgrep -f "agents/selfhost/update/agent/mos-update-worker.cjs" >/dev/null 2>&1 ||
-    pgrep -f "update/selfhost/agent/mos-update-worker.cjs" >/dev/null 2>&1
-}
-
 if [[ "$(uname -s)" != "Linux" ]]; then
   log "Skipping host-agent reconciliation outside Linux."
   exit 0
@@ -46,9 +40,7 @@ if [[ ! -f "${REPO_DIR}/package.json" ]]; then
   exit 0
 fi
 
-if is_update_job_running; then
-  log "Skipping update-agent refresh because a managed update job is running."
-elif [[ -f "${UPDATE_AGENT_INSTALLER}" ]]; then
+if [[ -f "${UPDATE_AGENT_INSTALLER}" ]]; then
   log "Installing or refreshing self-host update agent."
   bash "${UPDATE_AGENT_INSTALLER}" "${REPO_DIR}"
 else

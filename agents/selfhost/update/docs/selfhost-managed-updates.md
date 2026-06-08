@@ -12,7 +12,7 @@ After the self-host bootstrap runs, these should exist:
 - token file: `/etc/mos-update-agent/auth.token`
 - updater config in repo: `<repo>/.mos-updater/config.json`
 
-During a managed update, Suite Manager applies the repo update first and then schedules a short delayed host-agent reconciliation through systemd. This lets the active updater worker finish writing its final job state before `mos-update-agent.service` is restarted onto the newly checked-out code.
+During a managed update, Suite Manager applies the repo update and refreshes host agents during system migration. The update agent systemd unit uses `KillMode=process`, so restarting `mos-update-agent.service` replaces the agent daemon without killing the active updater worker.
 
 ## Basic health check
 

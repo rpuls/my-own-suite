@@ -80,30 +80,6 @@ function capabilityText(status: UpdatesStatus): string {
   return 'No local updater is reachable. Use your hosting platform or deployment workflow to update.';
 }
 
-function trackUnavailableTitle(status: UpdatesStatus): string {
-  if (status.managedApplyAvailable) {
-    return 'Track switching needs a refreshed updater';
-  }
-
-  if (status.serviceAvailable) {
-    return 'Track switching is unavailable';
-  }
-
-  return 'Update through your hosting provider';
-}
-
-function trackUnavailableText(status: UpdatesStatus): string {
-  if (status.managedApplyAvailable) {
-    return 'This self-host install can run updates, but the local update agent has not picked up the newer track-switching capability yet.';
-  }
-
-  if (status.serviceAvailable) {
-    return 'The local updater is reachable, but it does not currently expose track switching.';
-  }
-
-  return 'In-app updates are only available on self-host installs with the local update agent. Managed platforms usually update from their own dashboard or deploy workflow.';
-}
-
 function jobStatusText(job: NonNullable<UpdatesStatus['currentJob']>): string {
   if (job.status === 'succeeded') {
     return 'The last update finished successfully.';
@@ -274,13 +250,15 @@ export default function UpdatesApp() {
                     </button>
                   </div>
                 </section>
-              ) : (
+              ) : !state.status.serviceAvailable ? (
                 <section className="suite-updates-guidance">
                   <span className="mos-eyebrow">Updates</span>
-                  <strong>{trackUnavailableTitle(state.status)}</strong>
-                  <p className="suite-meta mos-meta">{trackUnavailableText(state.status)}</p>
+                  <strong>Update through your hosting provider</strong>
+                  <p className="suite-meta mos-meta">
+                    In-app updates are only available on self-host installs with the local update agent. Managed platforms usually update from their own dashboard or deploy workflow.
+                  </p>
                 </section>
-              )}
+              ) : null}
 
               <div className="suite-updates-overview-grid">
                 <article className="suite-updates-panel">
