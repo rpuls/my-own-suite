@@ -112,7 +112,7 @@ The installed first-boot launcher is intentionally thin: it loads `/etc/mos-self
 
 This is the intended direction for the HP mini PC flow because it removes the separate `CIDATA` disk from the final installation experience.
 
-Host-side services are also repo-owned after first boot. The USB installer should install the operating system, install baseline tools such as Docker and Node.js, clone the repo, transfer secrets/settings, and hand off. The repo then reconciles agents through `agents/selfhost/reconcile-host-agents.sh`, which is called by fresh bootstrap and by `system:migrate` during managed updates so existing machines can gain new host capabilities without reflashing the installer.
+Host-side services are also repo-owned after first boot. The USB installer should install the operating system, install baseline tools such as Docker and Node.js, clone the repo, transfer secrets/settings, and hand off. The repo then reconciles agents through `agents/selfhost/reconcile-host-agents.sh`, which is called by fresh bootstrap and by `system:migrate` during managed updates so existing machines can gain new host capabilities without reflashing the installer. Managed updates also schedule one final host-agent reconciliation after the update job completes, so the update agent itself can be restarted onto the newly checked-out code without interrupting the active updater worker.
 
 ## Manual update foundation
 
