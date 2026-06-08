@@ -109,14 +109,18 @@ async function main() {
 
     await runApply(context, flags);
 
+    const finalUpdaterStatus = await collectStatus(context);
+    if (!scheduleHostAgentRefresh(repoDir, context.log)) {
+      throw new Error('Unable to schedule post-update host-agent refresh.');
+    }
+
     const finalJob = updateJob({
       completedAt: new Date().toISOString(),
       stage: 'succeeded',
       status: 'succeeded',
-      updaterStatus: await collectStatus(context),
+      updaterStatus: finalUpdaterStatus,
     });
     completeCurrentJob(finalJob);
-    scheduleHostAgentRefresh(repoDir, context.log);
   } catch (error) {
     const failedJob = updateJob({
       completedAt: new Date().toISOString(),
