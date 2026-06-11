@@ -99,13 +99,13 @@ export class ServiceAgentService {
   async applyAppCatalogComposeSelection(input: {
     composeYaml: string;
     selectionJson: string;
-  }): Promise<{ applied: boolean }> {
+  }): Promise<{ applied: boolean; output?: string; services?: string[] }> {
     const capabilities = await this.getCapabilities();
     if (!capabilities.appCatalogComposeSelectionApplyAvailable) {
       throw new Error('App catalog Compose selection apply service is unavailable.');
     }
 
-    await applyAgentAppCatalogComposeSelection(this.config, input);
-    return { applied: true };
+    const result = await applyAgentAppCatalogComposeSelection(this.config, input);
+    return { applied: true, output: result.output, services: result.services };
   }
 }

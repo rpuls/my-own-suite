@@ -244,19 +244,29 @@ test('catalog install API applies generated Compose selection through service ag
   t.after(() => fs.rm(stateDir, { force: true, recursive: true }));
   const config = createConfig(stateDir);
   let received: { composeYaml: string; selectionJson: string } | null = null;
+  let homepageTile: { hrefEnv: string; id: string; name: string } | null = null;
+  let restartedHomepage = false;
   const router = createAppCatalogRouter(config, {
     applyAppCatalogComposeSelection: async (input: { composeYaml: string; selectionJson: string }) => {
       received = input;
-      return { applied: true };
+      return { applied: true, output: 'Started mos-stirling-pdf', services: ['stirling-pdf'] };
     },
     getCapabilities: async () => ({
       appCatalogComposeSelectionApplyAvailable: true,
       caddyExternalProxyApplyAvailable: false,
       error: null,
-      homepageRestartAvailable: false,
+      homepageRestartAvailable: true,
       localHttpsApplyAvailable: false,
       serviceAvailable: true,
     }),
+    restartHomepage: async () => {
+      restartedHomepage = true;
+      return { restarted: true };
+    },
+  } as never, {
+    upsertCatalogAppTile: async (input: { hrefEnv: string; id: string; name: string }) => {
+      homepageTile = input;
+    },
   } as never);
 
   const response = await router.request('/app-catalog/apps/stirling-pdf/install', {
@@ -268,8 +278,15 @@ test('catalog install API applies generated Compose selection through service ag
   assert.deepEqual(body.composeSelection.hostApply, {
     applied: true,
     message: null,
+    output: 'Started mos-stirling-pdf',
   });
+  const stirlingResponse = body.apps.find((catalogApp: { id: string }) => catalogApp.id === 'stirling-pdf');
+  assert.equal(stirlingResponse.installed.status, 'installed');
   assert.ok(received);
   assert.match(received.selectionJson, /"profiles": \[/);
   assert.match(received.composeYaml, /selectedProfiles:/);
+  assert.equal(homepageTile?.hrefEnv, 'STIRLING_PDF_URL');
+  assert.equal(homepageTile?.id, 'stirling-pdf');
+  assert.equal(homepageTile?.name, 'Stirling PDF');
+  assert.equal(restartedHomepage, true);
 });

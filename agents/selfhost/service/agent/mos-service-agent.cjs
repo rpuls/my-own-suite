@@ -179,6 +179,46 @@ function execRepo(command, args, timeout = 120_000) {
   });
 }
 
+function parseCatalogSelection(selectionJson) {
+  const parsed = JSON.parse(selectionJson);
+  if (!parsed || !Array.isArray(parsed.profiles) || !Array.isArray(parsed.apps)) {
+    throw new Error('selectionJson must include profiles and apps arrays.');
+  }
+
+  const profiles = parsed.profiles.filter((profile) => typeof profile === 'string' && profile.trim());
+  const services = parsed.apps.flatMap((app) => {
+    if (!app || typeof app !== 'object' || !Array.isArray(app.services)) {
+      return [];
+    }
+    return app.services.filter((service) => typeof service === 'string' && service.trim());
+  });
+
+  return {
+    profiles: Array.from(new Set(profiles)).sort(),
+    services: Array.from(new Set(services)).sort(),
+  };
+}
+
+async function applySelectedCatalogServices(selection) {
+  if (selection.services.length === 0) {
+    return 'No selected app services to apply.';
+  }
+
+  const profileArgs = selection.profiles.flatMap((profile) => ['--profile', profile]);
+  return execRepo(
+    'node',
+    [
+      'scripts/mos-compose.cjs',
+      ...profileArgs,
+      'up',
+      '-d',
+      '--build',
+      ...selection.services,
+    ],
+    900_000,
+  );
+}
+
 function writeFileAtomic(filePath, content) {
   ensureDir(path.dirname(filePath));
   const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
@@ -435,24 +475,29 @@ async function handleApplyAppCatalogComposeSelection(request, response) {
     return;
   }
 
+  let selection;
   try {
-    JSON.parse(body.selectionJson);
+    selection = parseCatalogSelection(body.selectionJson);
   } catch {
-    json(response, 400, { error: 'selectionJson must be valid JSON.' });
+    json(response, 400, { error: 'selectionJson must be valid app catalog selection JSON.' });
     return;
   }
 
   try {
     writeFileAtomic(appCatalogSelectionJsonPath, body.selectionJson.endsWith('\n') ? body.selectionJson : `${body.selectionJson}\n`);
     writeFileAtomic(appCatalogComposeYamlPath, body.composeYaml.endsWith('\n') ? body.composeYaml : `${body.composeYaml}\n`);
+    const output = await applySelectedCatalogServices(selection);
     json(response, 202, {
       action: 'compose-selection.apply',
       ok: true,
+      output,
       paths: {
         composeYaml: appCatalogComposeYamlPath,
         selectionJson: appCatalogSelectionJsonPath,
       },
+      profiles: selection.profiles,
       service: 'app-catalog',
+      services: selection.services,
     });
   } catch (error) {
     json(response, 500, {

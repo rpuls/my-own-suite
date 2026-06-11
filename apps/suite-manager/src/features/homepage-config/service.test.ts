@@ -230,3 +230,32 @@ test('updates and removes only the selected managed external service', async (t)
   assert.match(content, /Example Bookmark/);
   assert.doesNotMatch(content, /TrueNAS/);
 });
+
+test('upserts a managed catalog app tile without duplicating it', async (t) => {
+  const { configDir, service } = await createService();
+  t.after(() => fs.rm(configDir, { force: true, recursive: true }));
+
+  await service.upsertCatalogAppTile({
+    description: 'Handle everyday PDF jobs without uploading personal documents elsewhere',
+    group: 'My Tools',
+    hrefEnv: 'STIRLING_PDF_URL',
+    icon: '/images/stirling-pdf.png',
+    id: 'stirling-pdf',
+    name: 'Stirling PDF',
+  });
+  await service.upsertCatalogAppTile({
+    description: 'Handle everyday PDF jobs without uploading personal documents elsewhere',
+    group: 'My Tools',
+    hrefEnv: 'STIRLING_PDF_URL',
+    icon: '/images/stirling-pdf.png',
+    id: 'stirling-pdf',
+    name: 'Stirling PDF',
+  });
+
+  const { content } = await service.readFile('services.template.yaml');
+  const matches = content.match(/Stirling PDF/g) || [];
+  assert.equal(matches.length, 1);
+  assert.match(content, /href: \$\{STIRLING_PDF_URL\}/);
+  assert.match(content, /kind: catalog-app/);
+  assert.match(content, /id: stirling-pdf/);
+});

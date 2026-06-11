@@ -48,7 +48,7 @@ export function createApp(
   const protectedSetupApi = new Hono();
   protectedSetupApi.use('*', requireApiSession(config));
   protectedSetupApi.route('/onboarding', createOnboardingRouter(config, onboardingService));
-  protectedSetupApi.route('/', createAppCatalogRouter(config, serviceAgentService));
+  protectedSetupApi.route('/', createAppCatalogRouter(config, serviceAgentService, homepageConfigService));
   protectedSetupApi.route('/', createBackupsRouter(backupsService));
   protectedSetupApi.route('/', createHomepageConfigRouter(homepageConfigService, serviceAgentService));
   protectedSetupApi.route('/', createSettingsRouter(config, serviceAgentService));

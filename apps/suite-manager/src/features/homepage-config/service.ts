@@ -58,6 +58,15 @@ export type HomepageExternalServicesResult = {
   services: HomepageExternalService[];
 };
 
+export type HomepageCatalogTileInput = {
+  description: string;
+  group: string;
+  hrefEnv: string;
+  icon?: string;
+  id: string;
+  name: string;
+};
+
 const EDITABLE_FILES: HomepageConfigFile[] = [
   {
     description: 'Service groups and tiles. Homepage regenerates services.yaml from this file at startup.',
@@ -494,6 +503,42 @@ function findServiceLocation(document: Document, id: string): ServiceTileLocatio
   return collectServiceTileLocations(root).find((location) => getServiceId(location.tile) === id) || null;
 }
 
+function findCatalogTileLocation(document: Document, id: string, name: string): ServiceTileLocation | null {
+  const root = ensureServicesRoot(document);
+  return (
+    collectServiceTileLocations(root).find((location) => {
+      const mos = getMosMap(location.tile);
+      return (
+        getServiceId(location.tile) === id ||
+        (mos && getMapString(mos, 'kind') === 'catalog-app' && getMapString(mos, 'id') === id) ||
+        stringifyKey(location.pair.key) === name
+      );
+    }) || null
+  );
+}
+
+function createCatalogServiceTile(document: Document, input: HomepageCatalogTileInput): YAMLMap {
+  const tile: Record<string, unknown> = {
+    href: `\${${input.hrefEnv}}`,
+  };
+
+  if (input.description) {
+    tile.description = input.description;
+  }
+
+  if (input.icon) {
+    tile.icon = input.icon;
+  }
+
+  tile.mos = {
+    id: input.id,
+    kind: 'catalog-app',
+    managed: true,
+  };
+
+  return document.createNode({ [input.name]: tile }) as YAMLMap;
+}
+
 function parseServicesDocument(content: string): Document {
   const document = parseDocument(content, { prettyErrors: true });
   const firstError = document.errors[0];
@@ -648,6 +693,23 @@ export class HomepageConfigService {
     });
 
     return this.listExternalServices();
+  }
+
+  async upsertCatalogAppTile(input: HomepageCatalogTileInput): Promise<void> {
+    await this.updateServicesTemplate((document) => {
+      const nextTileNode = createCatalogServiceTile(document, input);
+      const location = findCatalogTileLocation(document, input.id, input.name);
+      if (location) {
+        const index = location.parentSeq.items.indexOf(location.tileNode);
+        if (index === -1) {
+          throw new Error('Unable to update catalog app tile.');
+        }
+        location.parentSeq.items[index] = nextTileNode;
+        return;
+      }
+
+      ensureDestinationGroup(document, input.group).add(nextTileNode);
+    });
   }
 
   previewCaddyProxyContent(content: string): CaddyProxyPreview {

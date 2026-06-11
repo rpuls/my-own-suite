@@ -26,6 +26,7 @@ function requestAgent<T>(
   method: 'GET' | 'POST',
   path: string,
   body?: Record<string, unknown>,
+  timeoutMs = config.requestTimeoutMs,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const token = loadToken(config);
@@ -47,7 +48,7 @@ function requestAgent<T>(
         method,
         path,
         socketPath: config.serviceAgent.socketPath,
-        timeout: config.requestTimeoutMs,
+        timeout: timeoutMs,
       },
       (response) => {
         let raw = '';
@@ -130,11 +131,12 @@ export async function applyAgentLocalHttps(
 export async function applyAgentAppCatalogComposeSelection(
   config: SuiteManagerConfig,
   input: { composeYaml: string; selectionJson: string },
-): Promise<{ ok?: boolean; service?: string }> {
-  return requestAgent<{ ok?: boolean; service?: string }>(
+): Promise<{ ok?: boolean; output?: string; service?: string; services?: string[] }> {
+  return requestAgent<{ ok?: boolean; output?: string; service?: string; services?: string[] }>(
     config,
     'POST',
     '/v1/app-catalog/compose-selection/apply',
     input,
+    900_000,
   );
 }

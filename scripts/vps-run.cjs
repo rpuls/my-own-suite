@@ -10,13 +10,23 @@ const repoRoot = process.cwd();
 const defaultCatalogSelectionPath = path.join(repoRoot, 'deploy', 'vps', 'generated', 'app-catalog', 'compose-selection.json');
 const catalogSelectionPath = process.env.MOS_APP_CATALOG_SELECTION_PATH || defaultCatalogSelectionPath;
 const forceAllProfiles = args.includes('--allProfiles') || args.includes('--all-profiles');
+const controlPlaneOnly =
+  args.includes('--controlPlaneOnly') ||
+  args.includes('--control-plane-only') ||
+  process.env.MOS_CONTROL_PLANE_ONLY === '1';
 const simulateSelfHost =
   args.includes('--simulateSelfHost') ||
   args.includes('--simulate-selfhost') ||
   process.env.npm_config_simulateselfhost === 'true' ||
   process.env.npm_config_simulate_selfhost === 'true';
 const passthroughArgs = args.filter(
-  (arg) => arg !== '--simulateSelfHost' && arg !== '--simulate-selfhost' && arg !== '--allProfiles' && arg !== '--all-profiles',
+  (arg) =>
+    arg !== '--simulateSelfHost' &&
+    arg !== '--simulate-selfhost' &&
+    arg !== '--allProfiles' &&
+    arg !== '--all-profiles' &&
+    arg !== '--controlPlaneOnly' &&
+    arg !== '--control-plane-only',
 );
 
 function run(command, commandArgs, options = {}) {
@@ -42,6 +52,10 @@ function run(command, commandArgs, options = {}) {
 const defaultProfiles = ['vaultwarden', 'seafile', 'onlyoffice', 'stirling-pdf', 'radicale', 'immich'];
 
 function readSelectedProfiles() {
+  if (controlPlaneOnly) {
+    return [];
+  }
+
   if (forceAllProfiles || !fs.existsSync(catalogSelectionPath)) {
     return defaultProfiles;
   }
@@ -69,7 +83,9 @@ function profileArgs(profiles) {
 const selectedProfiles = readSelectedProfiles();
 const profiles = profileArgs(selectedProfiles);
 
-if (forceAllProfiles) {
+if (controlPlaneOnly) {
+  console.log('Using control-plane-only profile set.');
+} else if (forceAllProfiles) {
   console.log(`Using all app profiles: ${defaultProfiles.join(', ')}`);
 } else if (fs.existsSync(catalogSelectionPath)) {
   console.log(
@@ -105,6 +121,6 @@ if (action === 'rebuild') {
 } else if (action === 'up') {
   run('node', ['scripts/mos-compose.cjs', ...profiles, ...passthroughArgs, 'up', '-d', '--build']);
 } else {
-  console.error('Usage: node scripts/vps-run.cjs <up|rebuild> [--simulateSelfHost] [--allProfiles]');
+  console.error('Usage: node scripts/vps-run.cjs <up|rebuild> [--simulateSelfHost] [--allProfiles] [--controlPlaneOnly]');
   process.exit(1);
 }

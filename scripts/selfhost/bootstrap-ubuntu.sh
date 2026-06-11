@@ -47,6 +47,7 @@ INSTALL_DOCKER="${INSTALL_DOCKER:-1}"
 INSTALL_NODE="${INSTALL_NODE:-1}"
 CLONE_REPO_IF_MISSING="${CLONE_REPO_IF_MISSING:-0}"
 AUTO_START_STACK="${AUTO_START_STACK:-0}"
+MOS_CONTROL_PLANE_ONLY="${MOS_CONTROL_PLANE_ONLY:-1}"
 
 log() {
   printf '\n[%s] %s\n' "mos-selfhost" "$1"
@@ -269,13 +270,25 @@ bootstrap_stack() {
     npm run vps:doctor
   )
 
-  log "Bootstrap complete. Start the suite with: npm run vps:up"
+  if [[ "${MOS_CONTROL_PLANE_ONLY}" == "1" ]]; then
+    log "Bootstrap complete. Start the control plane with: npm run vps:up -- --control-plane-only"
+  else
+    log "Bootstrap complete. Start the suite with: npm run vps:up"
+  fi
 
   if [[ "${AUTO_START_STACK}" == "1" ]]; then
-    log "Starting suite stack"
+    if [[ "${MOS_CONTROL_PLANE_ONLY}" == "1" ]]; then
+      log "Starting control-plane stack"
+    else
+      log "Starting suite stack"
+    fi
     (
       cd "${REPO_DIR}"
-      npm run vps:up
+      if [[ "${MOS_CONTROL_PLANE_ONLY}" == "1" ]]; then
+        npm run vps:up -- --control-plane-only
+      else
+        npm run vps:up
+      fi
     )
   fi
 }
@@ -293,7 +306,11 @@ print_summary() {
   echo "Next steps:"
   echo "1. Point local wildcard DNS for *.${MOS_STACK_DOMAIN} to this machine if you want pretty app subdomains on the LAN."
   echo "2. Configure a wildcard public hostname for *.mos.<your-domain> if you want remote access."
-  echo "3. Run 'npm run vps:up' from ${REPO_DIR} to build and start the suite."
+  if [[ "${MOS_CONTROL_PLANE_ONLY}" == "1" ]]; then
+    echo "3. Run 'npm run vps:up -- --control-plane-only' from ${REPO_DIR} to build and start the control plane."
+  else
+    echo "3. Run 'npm run vps:up' from ${REPO_DIR} to build and start the suite."
+  fi
   echo "4. This machine is configured for the '${MOS_UPDATE_TRACK}' update track on '${MOS_UPDATE_REF}'."
   echo "5. The MOS update agent is installed as a local systemd service on the machine."
   echo "6. Quick agent checks are available through the local 'mos-update' command."

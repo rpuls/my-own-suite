@@ -6,6 +6,7 @@ import { buildInstallPlan, InstalledCatalogStateStore } from './state-store.ts';
 import type { CatalogAppManifest, CatalogInstallPlan, InstalledCatalogState } from './types.ts';
 import { loadCatalogManifests } from './manifest.ts';
 import type { ServiceAgentService } from '../service-agent/service.ts';
+import type { HomepageConfigService } from '../homepage-config/service.ts';
 
 type CatalogAppResponse = {
   category: string;
@@ -101,7 +102,11 @@ function createInstallPlan(app: CatalogAppManifest): CatalogInstallPlan {
   return buildInstallPlan(app);
 }
 
-export function createAppCatalogRouter(config: SuiteManagerConfig, serviceAgentService?: ServiceAgentService): Hono {
+export function createAppCatalogRouter(
+  config: SuiteManagerConfig,
+  serviceAgentService?: ServiceAgentService,
+  homepageConfigService?: HomepageConfigService,
+): Hono {
   const router = new Hono();
   const stateStore = new InstalledCatalogStateStore(config.stateDir);
 
@@ -123,26 +128,56 @@ export function createAppCatalogRouter(config: SuiteManagerConfig, serviceAgentS
 
     try {
       const plan = createInstallPlan(app);
-      const installedState = stateStore.markPendingApply(app, plan);
-      const composeSelection = writeComposeSelection(config.stateDir, installedState);
+      let installedState = stateStore.markPendingApply(app, plan);
+      let composeSelection = writeComposeSelection(config.stateDir, installedState);
       let hostApply:
         | {
             applied: boolean;
             message: string | null;
+            output?: string;
           }
         | null = null;
 
       if (serviceAgentService) {
         const capabilities = await serviceAgentService.getCapabilities();
         if (capabilities.appCatalogComposeSelectionApplyAvailable) {
-          await serviceAgentService.applyAppCatalogComposeSelection({
-            composeYaml: composeSelection.composeYaml,
-            selectionJson: composeSelection.selectionJson,
-          });
-          hostApply = {
-            applied: true,
-            message: null,
-          };
+          try {
+            const result = await serviceAgentService.applyAppCatalogComposeSelection({
+              composeYaml: composeSelection.composeYaml,
+              selectionJson: composeSelection.selectionJson,
+            });
+            if (homepageConfigService && app.homepage) {
+              await homepageConfigService.upsertCatalogAppTile({
+                ...app.homepage,
+                id: app.id,
+              });
+              if (capabilities.homepageRestartAvailable) {
+                await serviceAgentService.restartHomepage();
+              }
+            }
+            installedState = stateStore.updateApplyResult(app.id, {
+              message: 'App services applied through the self-host service agent.',
+              status: 'succeeded',
+            });
+            composeSelection = writeComposeSelection(config.stateDir, installedState);
+            hostApply = {
+              applied: true,
+              message: null,
+              output: result.output,
+            };
+          } catch (error: unknown) {
+            const message =
+              error instanceof Error ? error.message : 'App catalog Compose apply failed.';
+            installedState = stateStore.updateApplyResult(app.id, {
+              message,
+              status: 'failed',
+            });
+            composeSelection = writeComposeSelection(config.stateDir, installedState);
+            hostApply = {
+              applied: false,
+              message,
+            };
+          }
         } else if (capabilities.serviceAvailable) {
           hostApply = {
             applied: false,

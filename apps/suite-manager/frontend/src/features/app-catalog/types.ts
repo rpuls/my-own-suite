@@ -53,6 +53,7 @@ export type AppCatalogInstallResponse = AppCatalogResponse & {
     hostApply: {
       applied: boolean;
       message: string | null;
+      output?: string;
     } | null;
     profiles: string[];
   };
