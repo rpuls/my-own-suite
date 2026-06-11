@@ -232,6 +232,109 @@ Fresh installs can use the new lean default once the catalog MVP is reliable.
 - How should app backup inclusion be represented before all apps have rich catalog metadata?
 - Should cloud installs default to public domain guidance, while own-hardware defaults to local-only?
 
+## Current Inventory Snapshot
+
+This snapshot maps the current preloaded suite into the surfaces a catalog manifest will need to own. It is intentionally compact; the app READMEs remain the source of truth for technical details.
+
+### Control Plane
+
+| Component | Compose services | Env templates | Volumes | Routes and Homepage | First-run behavior |
+| --- | --- | --- | --- | --- | --- |
+| Caddy | `caddy` | `.env`, `services/caddy/.env.template`, `services/radicale/.env.template` | `caddy_data`, `caddy_config` | Imports generated built-in routes and external proxy routes; also hosts the internal Radicale iCal bridge. | Must be present for all routed installs. |
+| Homepage | `homepage` | `.env`, `services/homepage/.env.template` | `homepage_images`; Docker socket read-only | Dashboard source is `services.template.yaml`; runtime config is fetched from Suite Manager and generated to `services.yaml`. | Must be present for dashboard and user-facing layout. |
+| Suite Manager | `suite-manager` | `.env`, `services/suite-manager/.env.template`, app env files for current onboarding helpers | `suite_manager_data` | Homepage tile points to `${SUITE_MANAGER_URL}/setup/`; app serves setup/customize/updates/backups/settings under `/setup`. | Currently requires `OWNER_EMAIL`, `OWNER_PASSWORD`, and `SESSION_SECRET` before process start. |
+| Host agents | `mos-update-agent`, `mos-service-agent`, `mos-backup-agent` systemd services outside Compose | Reconciled by `agents/selfhost/reconcile-host-agents.sh`; Compose self-host override mounts sockets/tokens into Suite Manager. | Agent state under `/var/lib` and sockets under `/run`. | Service agent can apply generated external Caddy routes and local HTTPS settings; update agent applies managed updates; backup agent snapshots/restores stack state. | Required capabilities are detected by Suite Manager rather than assumed. |
+
+### Current Bundled Apps
+
+| App | Compose services/profile | Env templates | Volumes | Routes and Homepage tile | Current onboarding/setup | Provisioning classification |
+| --- | --- | --- | --- | --- | --- | --- |
+| Vaultwarden | `vaultwarden`, `vaultwarden-postgres`; profile `vaultwarden` | `services/vaultwarden/.env.template`, `services/vaultwarden-postgres/.env.template`, shared SMTP inputs from Suite Manager env | `vaultwarden_data`, `vaultwarden_postgres_data` | Built-in Caddy route `vaultwarden.${DOMAIN}` uses HTTPS even in HTTP mode; Homepage tile uses `${VAULTWARDEN_URL}`. | Suite Manager asks the user to open Vaultwarden signup with `OWNER_EMAIL`, detects account creation through the Vaultwarden database, then guides import of generated suite credentials. | Assisted. Service/env can be generated automatically, but owner account creation is app-native and currently tied to onboarding. Good MVP candidate only if this helper is extracted carefully. |
+| Seafile | `seafile`, `seafile-mysql`, `seafile-valkey`; profile `seafile` | `services/seafile/.env.template`, `services/seafile-mysql/.env.template`, `services/seafile-valkey/.env.template`, shared SMTP inputs | `seafile_data`, `seafile_mysql_data` | Built-in route `seafile.${DOMAIN}`; Homepage tile uses `${SEAFILE_URL}`. ONLYOFFICE integration uses `${ONLYOFFICE_APIJS_URL}`. | Env seeds `INIT_SEAFILE_ADMIN_EMAIL` from `OWNER_EMAIL` and generates `INIT_SEAFILE_ADMIN_PASSWORD`; Suite Manager currently tells the user to sign in with imported Vaultwarden credentials. | Automatic-plus-assisted. Service/env/bootstrap admin can be generated, but it depends on MOS owner identity and credential handoff. |
+| ONLYOFFICE | `onlyoffice`; profile `onlyoffice` | `services/onlyoffice/.env.template` | `onlyoffice_data` | Built-in route `onlyoffice.${DOMAIN}`; no default Homepage tile. | No Suite Manager onboarding step; primarily installed as Seafile document-editing integration. | Automatic dependency app. Should usually be installed as part of Seafile or offered as an advanced dependency. |
+| Stirling PDF | `stirling-pdf`; profile `stirling-pdf` | `services/stirling-pdf/.env.template` | `stirling_pdf_training_data`, `stirling_pdf_extra_configs`, `stirling_pdf_custom_files`, `stirling_pdf_logs`, `stirling_pdf_pipeline` | Built-in route `stirling-pdf.${DOMAIN}`; Homepage tile uses `${STIRLING_PDF_URL}`. | No current Suite Manager onboarding step. | Automatic. Low-risk MVP candidate because it has no owner credential dependency and a simple health endpoint. |
+| Radicale | `radicale`; profile `radicale` | `services/radicale/.env.template`, `services/homepage/.env.template`, Caddy consumes Radicale env for the internal iCal bridge | `radicale_data` | Built-in route `radicale.${DOMAIN}`; Homepage Calendar tile uses `${RADICALE_URL}` and backend-only `${RADICALE_ICAL_URL}` via Caddy bridge. | Env generates admin username/password and iCal bridge token; Suite Manager guides manual device connection after Vaultwarden credential import. | Assisted. Service/env can be generated automatically, but user value depends on a device setup helper and credential handoff. |
+| Immich | `immich`, `immich-machine-learning`, `immich-postgres`, `immich-valkey`; profile `immich` | `services/immich/.env.template`, `services/immich-machine-learning/.env.template`, `services/immich-postgres/.env.template`, `services/immich-valkey/.env.template` | `immich_upload`, `immich_model_cache`, `immich_db` | Built-in route `immich.${DOMAIN}`; Homepage tile uses `${IMMICH_URL}`. | Suite Manager only opens Immich and tells the user to finish the app-native first-run wizard if prompted. | Manual/assisted. Install can be automated, but first user setup remains app-native and resource-heavy. |
+
+### Cross-Cutting Runtime Surfaces
+
+- `deploy/vps/docker-compose.yml` already uses profiles for app services, but `scripts/vps-run.cjs` currently starts every app profile by default.
+- `scripts/vps-init.cjs` renders every service env template and always generates Caddy built-in routes for all current app hosts.
+- `scripts/vps-doctor.cjs` validates all current app env files regardless of whether their profiles are selected.
+- Homepage tiles are currently pruned by missing env placeholders, but `services/homepage/.env.template` generates URLs for every bundled app.
+- Caddy built-in route generation is currently static for every bundled app route, with external user-managed routes handled separately through Homepage `mos.proxy` annotations.
+- The backup agent snapshots detected MOS Docker volumes and records the rendered Compose configuration plus the profiles it restarts. Catalog state should become part of the backed-up Suite Manager state before selective installs become the default.
+
+## First Manifest Proposal
+
+The catalog manifest should be data-first and small enough to review alongside each app. A practical first shape:
+
+```yaml
+id: stirling-pdf
+name: Stirling PDF
+category: tools
+summary: Handle everyday PDF jobs without uploading personal documents elsewhere.
+docs:
+  app: /docs/apps/stirling-pdf
+compose:
+  profile: stirling-pdf
+  services:
+    - stirling-pdf
+  envTemplates:
+    - deploy/vps/services/stirling-pdf/.env.template
+  volumes:
+    - stirling_pdf_training_data
+    - stirling_pdf_extra_configs
+    - stirling_pdf_custom_files
+    - stirling_pdf_logs
+    - stirling_pdf_pipeline
+routes:
+  - host: stirling-pdf
+    upstream: stirling-pdf:8080
+homepage:
+  group: My Tools
+  name: Stirling PDF
+  hrefEnv: STIRLING_PDF_URL
+  description: Handle everyday PDF jobs without uploading personal documents elsewhere
+  icon: /images/stirling-pdf.png
+provisioning:
+  mode: automatic
+  setupHelper: none
+backup:
+  includeVolumes:
+    - stirling_pdf_extra_configs
+    - stirling_pdf_custom_files
+    - stirling_pdf_pipeline
+```
+
+Initial manifest fields:
+
+- `id`, `name`, `category`, `summary`, `docs`, and optional `icon`.
+- `compose.profile`, `compose.services`, `compose.envTemplates`, and `compose.volumes`.
+- `routes` with app subdomain and internal upstream for generated built-in Caddy routes.
+- `homepage` tile defaults, including group, name, description, icon, and generated URL env.
+- `env` metadata for required owner-supplied values, generated secrets, shared values, and derived values.
+- `provisioning.mode`: `automatic`, `assisted`, `manual`, or `unsupported-alpha`.
+- Optional `provisioning.setupHelper` that points to a Suite Manager helper only when needed.
+- `backup.includeVolumes` and later `restore.notes` so backup behavior is explicit.
+- Optional `dependencies` for apps like Seafile requiring ONLYOFFICE as an install option or recommended companion.
+
+Installed-app state should live in Suite Manager persistent state first, with generated env/Compose/Caddy/Homepage files treated as outputs. The state should record installed app id, manifest version, install status, selected options, generated secret references, installed service names, installed volumes, route hosts, Homepage tile identity, and last apply result. A generated file can mirror selected profiles for host tools, but the Suite Manager state should be the reconciliation source.
+
+For the first generated Compose path, prefer an ignored own-infra selection file over mutating the developer Compose file. The least invasive alpha option is to generate a selected-profile file or command input consumed by `scripts/vps-run.cjs` and the host agents, then later graduate to a Compose override or assembled file when service-level additions/removals need more than profiles.
+
+## Proposed First Implementation Slice
+
+Start with a no-service-install catalog foundation:
+
+1. Add repo-owned catalog manifest files for current apps under `apps/suite-manager/catalog`, beginning with `stirling-pdf` plus control-plane metadata.
+2. Add a Suite Manager backend loader that validates manifest ids, profiles, service names, env template paths, route hosts, Homepage tile defaults, and provisioning modes.
+3. Add installed-app state storage in Suite Manager state with no UI mutation yet.
+4. Teach `vps:doctor` or a new focused unit test to validate the catalog manifests against current Compose/env/Homepage contracts.
+5. Keep `vps:up` behavior unchanged until the manifest loader and selected-app state are covered.
+
+Recommended first install MVP after that foundation: Stirling PDF. It has one app service, no owner credential dependency, a simple route and Homepage tile, and no existing onboarding helper to untangle.
+
 ## Validation Gates
 
 Before calling this alpha-ready:

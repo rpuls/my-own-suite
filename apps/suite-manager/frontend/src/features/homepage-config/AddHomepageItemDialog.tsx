@@ -2,6 +2,8 @@ import { ArrowLeft, Box, Check, Globe2, Home, Pencil, Save, X } from 'lucide-rea
 import { useEffect, useMemo, useState } from 'react';
 
 import { Dialog, Notice, SelectField, Stepper, TextAreaField, TextField } from '../../components/ui';
+import { AppCatalogPicker } from '../app-catalog/AppCatalogPicker';
+import type { CatalogApp } from '../app-catalog/types';
 import { withSetupPath } from '../../lib/base-path';
 import type {
   HomepageExternalServicesResponse,
@@ -47,8 +49,7 @@ const HOMEPAGE_ICON_DOCS_URL = 'https://gethomepage.dev/configs/services/#icons'
 
 const CHOICES: ChoiceOption[] = [
   {
-    description: 'Install and manage a curated app from My Own Suite. This flow is not available yet.',
-    disabled: true,
+    description: 'Install and manage a curated app from My Own Suite.',
     icon: Box,
     id: 'catalog',
     title: 'App from MOS catalog',
@@ -220,6 +221,7 @@ export default function AddHomepageItemDialog({ onClose, onSaved }: AddHomepageI
   const [defaultUrlScheme, setDefaultUrlScheme] = useState('http');
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [catalogMessage, setCatalogMessage] = useState<string | null>(null);
 
   const placementGroups = useMemo(
     () => Array.from(new Set(groups.length > 0 ? groups : ['My External Services'])).filter(Boolean),
@@ -230,7 +232,7 @@ export default function AddHomepageItemDialog({ onClose, onSaved }: AddHomepageI
   const canSave = choice === 'link' || choice === 'network';
   const selectedChoice = choice ? CHOICES.find((option) => option.id === choice) : null;
   const SelectedChoiceIcon = selectedChoice?.icon;
-  const step = choice === 'link' || choice === 'network' ? 2 : 1;
+  const step = choice ? 2 : 1;
 
   function choose(nextChoice: AddChoice): void {
     const option = CHOICES.find((candidate) => candidate.id === nextChoice);
@@ -241,6 +243,7 @@ export default function AddHomepageItemDialog({ onClose, onSaved }: AddHomepageI
 
     setChoice(nextChoice);
     setErrorMessage(null);
+    setCatalogMessage(null);
     setCustomSubdomain(false);
     setEditingSubdomain(false);
     setForm((current) => ({
@@ -276,6 +279,11 @@ export default function AddHomepageItemDialog({ onClose, onSaved }: AddHomepageI
   function goBack(): void {
     setChoice(null);
     setErrorMessage(null);
+    setCatalogMessage(null);
+  }
+
+  function handleCatalogInstallUnavailable(app: CatalogApp): void {
+    setCatalogMessage(`${app.name} is in the catalog, but app installation is not wired yet.`);
   }
 
   useEffect(() => {
@@ -363,9 +371,14 @@ export default function AddHomepageItemDialog({ onClose, onSaved }: AddHomepageI
       ) : null}
 
       {choice === 'catalog' ? (
-        <Notice title="Coming soon" variant="info">
-          <p>The catalog flow will install and manage MOS apps later. For now, add a home network app or a website.</p>
-        </Notice>
+        <>
+          {catalogMessage ? (
+            <Notice title="Install not available yet" variant="info">
+              <p>{catalogMessage}</p>
+            </Notice>
+          ) : null}
+          <AppCatalogPicker onInstallUnavailable={handleCatalogInstallUnavailable} />
+        </>
       ) : null}
 
       {selectedChoice && SelectedChoiceIcon && step === 2 ? (

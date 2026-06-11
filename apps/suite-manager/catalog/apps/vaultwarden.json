@@ -1,0 +1,39 @@
+{
+  "id": "vaultwarden",
+  "name": "Vaultwarden",
+  "category": "security",
+  "summary": "Keep your passwords and autofill in a vault you control.",
+  "docs": {
+    "app": "/docs/apps/vaultwarden"
+  },
+  "compose": {
+    "profile": "vaultwarden",
+    "services": ["vaultwarden", "vaultwarden-postgres"],
+    "envTemplates": [
+      "deploy/vps/services/vaultwarden/.env.template",
+      "deploy/vps/services/vaultwarden-postgres/.env.template"
+    ],
+    "volumes": ["vaultwarden_data", "vaultwarden_postgres_data"]
+  },
+  "routes": [
+    {
+      "host": "vaultwarden",
+      "upstream": "vaultwarden:80",
+      "httpsInHttpMode": true
+    }
+  ],
+  "homepage": {
+    "group": "My Security",
+    "name": "Vaultwarden",
+    "hrefEnv": "VAULTWARDEN_URL",
+    "description": "Keep your passwords and autofill in a vault you control",
+    "icon": "/images/vaultwarden.png"
+  },
+  "provisioning": {
+    "mode": "assisted",
+    "setupHelper": "vaultwarden-owner-signup"
+  },
+  "backup": {
+    "includeVolumes": ["vaultwarden_data", "vaultwarden_postgres_data"]
+  }
+}

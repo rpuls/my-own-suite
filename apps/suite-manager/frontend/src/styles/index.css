@@ -507,6 +507,109 @@
   line-height: 1.45;
 }
 
+.suite-app-catalog-picker {
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.suite-app-catalog-list {
+  display: grid;
+  gap: 0.65rem;
+  max-height: min(54vh, 560px);
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.suite-app-catalog-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.suite-app-catalog-item:last-child {
+  border-bottom: 0;
+}
+
+.suite-app-catalog-item-main {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.suite-app-catalog-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.suite-app-catalog-title-row h3,
+.suite-app-catalog-item-main p {
+  margin: 0;
+}
+
+.suite-app-catalog-title-row h3 {
+  min-width: 0;
+  font-size: var(--mos-text-card-title);
+  line-height: 1.2;
+}
+
+.suite-app-catalog-item-main p {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+  line-height: 1.45;
+}
+
+.suite-app-catalog-status,
+.suite-app-catalog-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.suite-app-catalog-status {
+  flex: 0 0 auto;
+  padding: 0.22rem 0.48rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--mos-radius-pill);
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+  font-weight: 700;
+}
+
+.suite-app-catalog-status.is-installed {
+  border-color: rgba(99, 226, 179, 0.42);
+  color: var(--mos-color-accent);
+}
+
+.suite-app-catalog-meta {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+}
+
+.suite-app-catalog-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.35rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: var(--mos-radius-pill);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.suite-app-catalog-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 .suite-stepper {
   display: flex;
   flex-wrap: wrap;
@@ -2126,6 +2229,19 @@
   .suite-choice-grid,
   .suite-add-mode-grid {
     grid-template-columns: 1fr;
+  }
+
+  .suite-app-catalog-item {
+    grid-template-columns: 1fr;
+  }
+
+  .suite-app-catalog-title-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .suite-app-catalog-actions {
+    justify-content: flex-start;
   }
 
   .suite-updates-grid {

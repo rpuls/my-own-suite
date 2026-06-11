@@ -1,0 +1,35 @@
+{
+  "id": "radicale",
+  "name": "Radicale",
+  "category": "calendar",
+  "summary": "Private CalDAV and CardDAV sync for calendars and contacts.",
+  "docs": {
+    "app": "/docs/apps/radicale"
+  },
+  "compose": {
+    "profile": "radicale",
+    "services": ["radicale"],
+    "envTemplates": ["deploy/vps/services/radicale/.env.template"],
+    "volumes": ["radicale_data"]
+  },
+  "routes": [
+    {
+      "host": "radicale",
+      "upstream": "radicale:5232"
+    }
+  ],
+  "homepage": {
+    "group": "Calendar",
+    "name": "Radicale",
+    "hrefEnv": "RADICALE_URL",
+    "description": "Keep your calendar in sync across devices without giving it to Big Tech",
+    "icon": "/images/radicale.png"
+  },
+  "provisioning": {
+    "mode": "assisted",
+    "setupHelper": "radicale-device-setup"
+  },
+  "backup": {
+    "includeVolumes": ["radicale_data"]
+  }
+}

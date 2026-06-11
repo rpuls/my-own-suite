@@ -1,0 +1,41 @@
+{
+  "id": "control-plane",
+  "name": "My Own Suite control plane",
+  "components": [
+    {
+      "id": "caddy",
+      "name": "Caddy",
+      "composeServices": ["caddy"],
+      "envTemplates": [
+        "deploy/vps/.env.template",
+        "deploy/vps/services/caddy/.env.template"
+      ],
+      "volumes": ["caddy_data", "caddy_config"]
+    },
+    {
+      "id": "homepage",
+      "name": "Homepage",
+      "composeServices": ["homepage"],
+      "envTemplates": [
+        "deploy/vps/.env.template",
+        "deploy/vps/services/homepage/.env.template"
+      ],
+      "volumes": ["homepage_images"]
+    },
+    {
+      "id": "suite-manager",
+      "name": "Suite Manager",
+      "composeServices": ["suite-manager"],
+      "envTemplates": [
+        "deploy/vps/.env.template",
+        "deploy/vps/services/suite-manager/.env.template"
+      ],
+      "volumes": ["suite_manager_data"]
+    }
+  ],
+  "hostAgents": [
+    "mos-update-agent",
+    "mos-service-agent",
+    "mos-backup-agent"
+  ]
+}

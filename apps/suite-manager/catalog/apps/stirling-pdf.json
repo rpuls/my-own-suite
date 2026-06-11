@@ -1,0 +1,45 @@
+{
+  "id": "stirling-pdf",
+  "name": "Stirling PDF",
+  "category": "tools",
+  "summary": "Handle everyday PDF jobs without uploading personal documents elsewhere.",
+  "docs": {
+    "app": "/docs/apps/stirling-pdf"
+  },
+  "compose": {
+    "profile": "stirling-pdf",
+    "services": ["stirling-pdf"],
+    "envTemplates": ["deploy/vps/services/stirling-pdf/.env.template"],
+    "volumes": [
+      "stirling_pdf_training_data",
+      "stirling_pdf_extra_configs",
+      "stirling_pdf_custom_files",
+      "stirling_pdf_logs",
+      "stirling_pdf_pipeline"
+    ]
+  },
+  "routes": [
+    {
+      "host": "stirling-pdf",
+      "upstream": "stirling-pdf:8080"
+    }
+  ],
+  "homepage": {
+    "group": "My Tools",
+    "name": "Stirling PDF",
+    "hrefEnv": "STIRLING_PDF_URL",
+    "description": "Handle everyday PDF jobs without uploading personal documents elsewhere",
+    "icon": "/images/stirling-pdf.png"
+  },
+  "provisioning": {
+    "mode": "automatic",
+    "setupHelper": null
+  },
+  "backup": {
+    "includeVolumes": [
+      "stirling_pdf_extra_configs",
+      "stirling_pdf_custom_files",
+      "stirling_pdf_pipeline"
+    ]
+  }
+}

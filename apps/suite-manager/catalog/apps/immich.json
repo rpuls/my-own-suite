@@ -1,0 +1,45 @@
+{
+  "id": "immich",
+  "name": "Immich",
+  "category": "photos",
+  "summary": "A private photo library with browser access and mobile backup.",
+  "docs": {
+    "app": "/docs/apps/immich"
+  },
+  "compose": {
+    "profile": "immich",
+    "services": [
+      "immich",
+      "immich-machine-learning",
+      "immich-postgres",
+      "immich-valkey"
+    ],
+    "envTemplates": [
+      "deploy/vps/services/immich/.env.template",
+      "deploy/vps/services/immich-machine-learning/.env.template",
+      "deploy/vps/services/immich-postgres/.env.template",
+      "deploy/vps/services/immich-valkey/.env.template"
+    ],
+    "volumes": ["immich_upload", "immich_model_cache", "immich_db"]
+  },
+  "routes": [
+    {
+      "host": "immich",
+      "upstream": "immich:2283"
+    }
+  ],
+  "homepage": {
+    "group": "My Files",
+    "name": "Immich",
+    "hrefEnv": "IMMICH_URL",
+    "description": "A beautiful private photo app with smart search, sharing, and automatic backup",
+    "icon": "/images/immich.png"
+  },
+  "provisioning": {
+    "mode": "manual",
+    "setupHelper": "immich-first-run"
+  },
+  "backup": {
+    "includeVolumes": ["immich_upload", "immich_model_cache", "immich_db"]
+  }
+}

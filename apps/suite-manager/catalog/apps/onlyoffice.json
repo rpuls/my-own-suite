@@ -1,0 +1,29 @@
+{
+  "id": "onlyoffice",
+  "name": "ONLYOFFICE",
+  "category": "files",
+  "summary": "Browser-based document editing for apps that integrate with it.",
+  "docs": {
+    "app": "/docs/apps/onlyoffice"
+  },
+  "compose": {
+    "profile": "onlyoffice",
+    "services": ["onlyoffice"],
+    "envTemplates": ["deploy/vps/services/onlyoffice/.env.template"],
+    "volumes": ["onlyoffice_data"]
+  },
+  "routes": [
+    {
+      "host": "onlyoffice",
+      "upstream": "onlyoffice:80"
+    }
+  ],
+  "homepage": null,
+  "provisioning": {
+    "mode": "automatic",
+    "setupHelper": null
+  },
+  "backup": {
+    "includeVolumes": ["onlyoffice_data"]
+  }
+}

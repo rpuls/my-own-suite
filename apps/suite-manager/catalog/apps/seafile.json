@@ -1,0 +1,45 @@
+{
+  "id": "seafile",
+  "name": "Seafile",
+  "category": "files",
+  "summary": "Your private cloud drive with built-in document editing.",
+  "docs": {
+    "app": "/docs/apps/seafile"
+  },
+  "compose": {
+    "profile": "seafile",
+    "services": ["seafile", "seafile-mysql", "seafile-valkey"],
+    "envTemplates": [
+      "deploy/vps/services/seafile/.env.template",
+      "deploy/vps/services/seafile-mysql/.env.template",
+      "deploy/vps/services/seafile-valkey/.env.template"
+    ],
+    "volumes": ["seafile_data", "seafile_mysql_data"]
+  },
+  "routes": [
+    {
+      "host": "seafile",
+      "upstream": "seafile:80"
+    }
+  ],
+  "homepage": {
+    "group": "My Files",
+    "name": "Seafile",
+    "hrefEnv": "SEAFILE_URL",
+    "description": "Your private cloud drive with built-in editors for documents, spreadsheets, and presentations",
+    "icon": "/images/seafile.png"
+  },
+  "provisioning": {
+    "mode": "assisted",
+    "setupHelper": "seafile-admin-bootstrap"
+  },
+  "dependencies": [
+    {
+      "id": "onlyoffice",
+      "kind": "recommended"
+    }
+  ],
+  "backup": {
+    "includeVolumes": ["seafile_data", "seafile_mysql_data"]
+  }
+}
