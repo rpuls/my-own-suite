@@ -22,6 +22,51 @@ npm run vps:doctor
 npm run vps:up
 ```
 
+For the app-catalog alpha path, start only the control plane:
+
+```bash
+npm run vps:up -- --control-plane-only
+```
+
+That starts Suite Manager, Homepage, Caddy, and the required host-agent wiring without preloading every bundled app. Catalog app installs can then add selected app Compose profiles and services through Suite Manager.
+
+### Alpha cloud-server smoke test
+
+This is the first meaningful real-world test path for the control-plane-first app catalog work. It currently validates the fresh Ubuntu 24.04 install path, host agents, Suite Manager app catalog API/UI, selected Compose apply, Stirling PDF startup, Homepage tile upsert, and Homepage restart. It does not yet validate a redesigned first-run onboarding flow or catalog installs for every bundled app.
+
+Before using a feature branch, push it to the configured repo or merge it to `staging`; the cloud installer fetches scripts and code from GitHub.
+
+On a fresh Ubuntu Server 24.04 LTS VPS, run the cloud installer as root. Use `staging` after the work is merged, or set `MOS_REPO_REF=feat/app-catalog-provisioning` while testing this branch:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rpuls/my-own-suite/staging/scripts/selfhost/install-cloud.sh | sudo bash
+```
+
+For feature-branch testing before merge:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rpuls/my-own-suite/feat/app-catalog-provisioning/scripts/selfhost/install-cloud.sh | sudo MOS_REPO_REF=feat/app-catalog-provisioning bash
+```
+
+The cloud installer defaults to `MOS_CONTROL_PLANE_ONLY=1`, so auto-start should bring up only the control plane. After install:
+
+```bash
+cd /opt/my-own-suite
+npm run vps:doctor
+node scripts/mos-compose.cjs ps
+```
+
+Expected first-check shape:
+- `mos-suite-manager`, `mos-homepage`, `mos-caddy`, and host-agent-related services are running.
+- Bundled app containers such as `mos-stirling-pdf`, `mos-seafile`, and `mos-immich` are not running yet.
+- Suite Manager is reachable at `http://suite-manager.<configured-domain>/setup/` unless HTTPS has been configured.
+
+Then open Suite Manager, authenticate with the owner credentials supplied during install, go to Customize, use the Add to Homepage catalog flow, and install Stirling PDF. The expected result is:
+- the service agent writes `deploy/vps/generated/app-catalog/compose-selection.json` and `docker-compose.catalog.yml`;
+- `mos-stirling-pdf` is built and started without recreating Suite Manager;
+- Homepage receives a Stirling PDF tile using `${STIRLING_PDF_URL}`;
+- the catalog response marks Stirling PDF installed only after the host apply succeeds.
+
 Apply saved external proxy routes from Homepage `mos.proxy` annotations to the imported Caddy snippet:
 
 ```bash
