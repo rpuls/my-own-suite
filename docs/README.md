@@ -15,6 +15,7 @@ This folder holds durable project memory: architectural decisions, documentation
 | Updater smoke tests and low-level host checks | `agents/selfhost/update/docs/` |
 | Durable architecture decisions | `docs/decisions.md` |
 | Codex/project workflow notes | `docs/codex-notes.md` |
+| Temporary branch development plans explicitly requested for an active epic | `docs/<topic>-plan.md`, removed or converted to GitHub Issues before merge |
 | GitHub task shape | `.github/ISSUE_TEMPLATE/codex-task.yml` |
 | Release workflow | `RELEASING.md` |
 | Release notes | `CHANGELOG.md` |
