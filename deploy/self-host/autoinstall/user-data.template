@@ -31,10 +31,11 @@ autoinstall:
           MOS_REPO_REF=__MOS_REPO_REF__
           MOS_UPDATE_TRACK=__MOS_UPDATE_TRACK__
           MOS_UPDATE_REF=__MOS_UPDATE_REF__
-          MOS_HOSTNAME=__HOSTNAME__
-          MOS_PRIMARY_USER=__USERNAME__
+          MOS_HOSTNAME=__HOSTNAME_ENV__
+          MOS_PRIMARY_USER=__USERNAME_ENV__
           MOS_STACK_DOMAIN=__STACK_DOMAIN__
           MOS_PUBLIC_DOMAIN=__PUBLIC_DOMAIN__
+          MOS_INSTALLER_KIND=__INSTALLER_KIND__
 __INSTALLER_ENV__
           INSTALL_DOCKER=1
           INSTALL_NODE=1
@@ -44,12 +45,16 @@ __INSTALLER_ENV__
         permissions: "0755"
         content: |
 __FIRSTBOOT_SCRIPT__
+      - path: /usr/local/bin/mos-selfhost-install-from-env.sh
+        permissions: "0755"
+        content: |
+__INSTALL_CORE_SCRIPT__
       - path: /etc/systemd/system/mos-selfhost-bootstrap.service
         permissions: "0644"
         content: |
 __SYSTEMD_SERVICE__
     runcmd:
-      - printf '%s:%s\n' '__USERNAME__' '__LOGIN_PASSWORD__' | chpasswd
+      - printf '%s:%s\n' __USERNAME_SHELL__ __LOGIN_PASSWORD_SHELL__ | chpasswd
       - systemctl daemon-reload
       - systemctl enable mos-selfhost-bootstrap.service
       - systemctl start mos-selfhost-bootstrap.service

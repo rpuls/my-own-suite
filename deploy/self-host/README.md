@@ -111,7 +111,69 @@ The installed first-boot launcher is intentionally thin: it loads `/etc/mos-self
 
 This is the intended direction for the HP mini PC flow because it removes the separate `CIDATA` disk from the final installation experience.
 
-Host-side services are also repo-owned after first boot. The USB installer should install the operating system, install baseline tools such as Docker and Node.js, clone the repo, transfer secrets/settings, and hand off. The repo then reconciles agents through `agents/selfhost/reconcile-host-agents.sh`, which is called by fresh bootstrap and by `system:migrate` during managed updates so existing machines can gain new host capabilities without reflashing the installer. The update agent systemd unit uses `KillMode=process` so refreshing `mos-update-agent.service` during an update replaces the agent daemon without killing the active updater worker.
+## Cloud server first-boot generator
+
+The cloud-server self-host path has two installer front doors. Both use the same first-boot handoff as the USB installer.
+
+### Provider startup text
+
+Use this when the cloud provider lets you paste user-data, cloud-init, or startup text while creating the server:
+
+```powershell
+npm run selfhost:cloud-init
+```
+
+By default, this reads:
+
+- `deploy/self-host/autoinstall/installer-config/selfhost-installer.env`
+
+and writes:
+
+- `deploy/self-host/cloud-init/generated/user-data`
+
+That generated `user-data` file is the text to paste into a supported cloud provider's server setup form when creating an Ubuntu Server 24.04 machine.
+
+The generator also accepts:
+
+- `--installer-config <path>` to point at a different installer config.
+- `--output-dir <path>` to write the generated `user-data` elsewhere.
+- `--ssh-authorized-key <key>` to include an SSH public key for the created Linux user.
+
+The generated first-boot flow writes `/etc/mos-selfhost.env`, installs the same `mos-selfhost-bootstrap.service`, clones the configured repo/ref, and delegates ongoing setup to `scripts/selfhost/bootstrap-ubuntu.sh`.
+
+For now, the generated provider startup text still needs the owner email and password in the installer config because some bundled app setup is still seeded during first boot. The intended alpha direction is to move owner creation into Suite Manager first-run setup and move app-specific provisioning into app catalog install flows, so future USB and cloud installers can avoid carrying owner credentials.
+
+### SSH bootstrap
+
+Use this when you already have a fresh Ubuntu Server 24.04 cloud machine and want the shortest manual path:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rpuls/my-own-suite/staging/scripts/selfhost/install-cloud.sh | sudo bash
+```
+
+The script prompts for the suite domain and owner account, writes `/etc/mos-selfhost.env`, clones the configured repo/ref into `/opt/my-own-suite`, and delegates ongoing setup to `scripts/selfhost/bootstrap-ubuntu.sh`.
+
+The owner prompts are temporary for the same reason as the provider startup text path: current app bootstrap still reuses owner details. Once Suite Manager owns first-run owner creation and app catalog provisioning, this cloud bootstrap should stop asking for owner credentials before install.
+
+Every prompt can also be prefilled with environment variables for a more automated install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rpuls/my-own-suite/staging/scripts/selfhost/install-cloud.sh | \
+  sudo env MOS_STACK_DOMAIN=mos.example.com \
+    MOS_OWNER_EMAIL=you@example.com \
+    MOS_OWNER_PASSWORD='change-me' \
+    bash
+```
+
+All self-host installer front doors should converge on the same shared installer core:
+
+- USB autoinstall prepares the operating system, writes `/etc/mos-selfhost.env`, installs `mos-selfhost-install-from-env.sh`, and starts it through `mos-selfhost-bootstrap.service`.
+- Cloud provider startup text writes the same `/etc/mos-selfhost.env`, installs the same `mos-selfhost-install-from-env.sh`, and starts it through the same service.
+- SSH bootstrap prompts for the missing values, writes the same `/etc/mos-selfhost.env`, downloads `mos-selfhost-install-from-env.sh`, and runs it directly.
+
+The shared installer core owns repo checkout, first-boot idempotency, and the handoff to `scripts/selfhost/bootstrap-ubuntu.sh`. The deeper Ubuntu bootstrap then installs Docker and Node.js, renders the stack env, reconciles host agents, validates the stack, and starts it when requested.
+
+Host-side services are also repo-owned after first boot. The repo reconciles agents through `agents/selfhost/reconcile-host-agents.sh`, which is called by fresh bootstrap and by `system:migrate` during managed updates so existing machines can gain new host capabilities without reflashing the installer. The update agent systemd unit uses `KillMode=process` so refreshing `mos-update-agent.service` during an update replaces the agent daemon without killing the active updater worker.
 
 ## Manual update foundation
 

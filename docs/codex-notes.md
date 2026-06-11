@@ -39,16 +39,20 @@ Goal: collapse the current VPS/local and USB self-host split into one MOS own-in
 
 - [ ] Keep Ubuntu Server 24.04 LTS as the only supported own-infra OS target.
 - [ ] Define one own-infra marker/config file for installed machines, separate from installer-specific details.
-- [ ] Ensure USB and cloud-machine installs both write the same first-boot handoff values.
+- [x] Ensure USB and cloud-machine installs both write the same first-boot handoff values.
+- [x] Route USB, cloud-init, and SSH cloud installs through one shared self-host installer core after `/etc/mos-selfhost.env` exists.
 - [ ] Ensure both installers produce the same `docker-compose.selfhost.yml`, `.env.selfhost`, host agents, update track config, and generated Caddy env/snippets.
 - [ ] Preserve capability-gated Suite Manager behavior instead of adding deployment-mode conditionals.
 - [ ] Keep manual `npm run vps:*` commands as developer/operator tooling, not the main user promise.
+- [ ] Remove installer-time owner credential collection after Suite Manager first-run owner creation and app catalog provisioning exist.
 
 ### Cloud Installer
 
-- [ ] Add a provider-agnostic cloud-init/user-data generator using the same core fields as `selfhost-installer.env.template`.
-- [ ] Make the generated cloud-init install baseline packages, write `/etc/mos-selfhost.env`, clone the repo/ref, and run `scripts/selfhost/bootstrap-ubuntu.sh`.
+- [x] Add a provider-agnostic cloud-init/user-data generator using the same core fields as `selfhost-installer.env.template`.
+- [x] Make the generated cloud-init install baseline packages, write `/etc/mos-selfhost.env`, clone the repo/ref, and run `scripts/selfhost/bootstrap-ubuntu.sh`.
+- [x] Add a cloud SSH bootstrap script for the "fresh Ubuntu server, one command, prompts, wait" path.
 - [ ] Support owner name, owner email, owner password, Linux user/password or SSH key, hostname, timezone, stack domain, repo URL/ref, and update track/ref.
+- [ ] Replace owner prompts/env requirements with browser-based Suite Manager owner setup once the app catalog alpha work moves app-specific provisioning out of first boot.
 - [ ] Decide whether cloud installs default to `MOS_TLS_MODE=off` plus normal public HTTP/HTTPS provider docs, or first-class Caddy public TLS through standard HTTP-01/Cloudflare DNS-01.
 - [ ] Document the unavoidable user steps: choose Ubuntu 24.04, paste user-data, create server, point wildcard DNS, open Suite Manager.
 - [ ] Test on at least one real VPS/cloud provider before advertising the path as supported.

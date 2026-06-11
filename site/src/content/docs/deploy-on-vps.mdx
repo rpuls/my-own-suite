@@ -67,8 +67,21 @@ In other words, the machine is rented, but the suite experience is yours.
 
 This page is being reshaped into the cloud-server installer for the self-hosted My Own Suite setup.
 
-Until the cloud-init installer is added, the technical fallback is still the existing local/development Compose guide:
+An early first-boot generator now exists in the repository. It creates the provider setup text for a standard Ubuntu 24.04 cloud server.
 
+There is also an early SSH bootstrap path for fresh Ubuntu servers. The goal for that path is close to:
+
+1. Create the server.
+2. Sign in.
+3. Run one command.
+4. Follow the prompts.
+5. Wait for Suite Manager to come online.
+
+Both cloud install styles hand off to the same self-host installer used by the USB path after the machine is ready. That keeps cloud-server and own-hardware installs as close as possible: the beginning is different, but the actual MOS installation should be the same.
+
+Technical details live in:
+
+- [deploy/self-host/README.md](https://github.com/rpuls/my-own-suite/blob/staging/deploy/self-host/README.md)
 - [deploy/vps/README.md](https://github.com/rpuls/my-own-suite/blob/staging/deploy/vps/README.md)
 
 ## What you will need
@@ -101,7 +114,7 @@ The target cloud-server flow is:
 5. Wait for first boot to install Docker, clone MOS, prepare the stack, install host agents, and start Suite Manager.
 6. Open Suite Manager and finish onboarding.
 
-This flow is not fully implemented yet. The next implementation step is a generator that creates the first-boot installer text for standard Ubuntu cloud servers.
+This flow is still early and needs real-provider testing before it should be advertised as a polished path.
 
 ## Provider listings
 
