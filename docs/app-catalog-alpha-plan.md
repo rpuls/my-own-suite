@@ -330,8 +330,9 @@ Start with a no-service-install catalog foundation:
 1. Add repo-owned catalog manifest files for current apps under `apps/suite-manager/catalog`, beginning with `stirling-pdf` plus control-plane metadata.
 2. Add a Suite Manager backend loader that validates manifest ids, profiles, service names, env template paths, route hosts, Homepage tile defaults, and provisioning modes.
 3. Add installed-app state storage in Suite Manager state with no UI mutation yet.
-4. Teach `vps:doctor` or a new focused unit test to validate the catalog manifests against current Compose/env/Homepage contracts.
-5. Keep `vps:up` behavior unchanged until the manifest loader and selected-app state are covered.
+4. Generate selected Compose profile outputs from installed-app state without running Docker yet.
+5. Teach `vps:doctor` or a new focused unit test to validate the catalog manifests against current Compose/env/Homepage contracts.
+6. Keep `vps:up` behavior unchanged until the manifest loader and selected-app state are covered.
 
 Recommended first install MVP after that foundation: Stirling PDF. It has one app service, no owner credential dependency, a simple route and Homepage tile, and no existing onboarding helper to untangle.
 

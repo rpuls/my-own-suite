@@ -49,6 +49,9 @@ export type AppCatalogResponse = {
 };
 
 export type AppCatalogInstallResponse = AppCatalogResponse & {
+  composeSelection: {
+    profiles: string[];
+  };
   plan: {
     appId: string;
     composeProfile: string;

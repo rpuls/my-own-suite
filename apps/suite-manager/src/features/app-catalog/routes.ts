@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 
 import type { SuiteManagerConfig } from '../../config.ts';
+import { writeComposeSelection } from './compose-selection.ts';
 import { buildInstallPlan, InstalledCatalogStateStore } from './state-store.ts';
 import type { CatalogAppManifest, CatalogInstallPlan, InstalledCatalogState } from './types.ts';
 import { loadCatalogManifests } from './manifest.ts';
@@ -122,10 +123,14 @@ export function createAppCatalogRouter(config: SuiteManagerConfig): Hono {
     try {
       const plan = createInstallPlan(app);
       const installedState = stateStore.markPendingApply(app, plan);
+      const composeSelection = writeComposeSelection(config.stateDir, installedState);
 
       return c.json(
         {
           ...catalogResponse(catalog, installedState),
+          composeSelection: {
+            profiles: composeSelection.selection.profiles,
+          },
           plan,
         },
         202,

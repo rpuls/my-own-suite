@@ -193,6 +193,7 @@ test('catalog install API records an idempotent Stirling PDF install plan', asyn
   assert.equal(firstResponse.status, 202);
   assert.equal(secondResponse.status, 202);
   assert.equal(firstBody.plan.composeProfile, 'stirling-pdf');
+  assert.deepEqual(firstBody.composeSelection.profiles, ['stirling-pdf']);
   assert.deepEqual(firstBody.plan.composeServices, ['stirling-pdf']);
 
   const firstStirling = firstBody.apps.find((catalogApp: { id: string }) => catalogApp.id === 'stirling-pdf');
@@ -201,6 +202,13 @@ test('catalog install API records an idempotent Stirling PDF install plan', asyn
   assert.equal(secondStirling.installed.status, 'pending-apply');
   assert.equal(secondBody.installed.apps.length, 1);
   assert.equal(secondStirling.installed.installedAt, firstStirling.installed.installedAt);
+
+  const selection = JSON.parse(
+    await fs.readFile(path.join(stateDir, 'app-catalog', 'compose-selection.json'), 'utf8'),
+  ) as { profiles: string[] };
+  const yaml = await fs.readFile(path.join(stateDir, 'app-catalog', 'docker-compose.catalog.yml'), 'utf8');
+  assert.deepEqual(selection.profiles, ['stirling-pdf']);
+  assert.match(yaml, /selectedProfiles:/);
 });
 
 test('catalog install API rejects unknown and not-yet-enabled apps clearly', async (t) => {
