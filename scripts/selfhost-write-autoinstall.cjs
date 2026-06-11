@@ -76,6 +76,56 @@ function shellQuote(value) {
   return `'${String(value).replace(/'/g, `'\"'\"'`)}'`;
 }
 
+function assertNoNewlines(label, value) {
+  if (/[\r\n]/.test(String(value))) {
+    console.error(`${label} cannot contain newlines.`);
+    process.exit(1);
+  }
+}
+
+function assertHostname(label, value) {
+  assertNoNewlines(label, value);
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$/.test(String(value))) {
+    console.error(`${label} must be a single hostname label using only letters, numbers, and hyphens.`);
+    process.exit(1);
+  }
+}
+
+function assertLinuxUser(label, value) {
+  assertNoNewlines(label, value);
+  if (!/^[a-z_][a-z0-9_-]*[$]?$/.test(String(value))) {
+    console.error(`${label} must be a valid Linux username.`);
+    process.exit(1);
+  }
+}
+
+function assertDomain(label, value) {
+  assertNoNewlines(label, value);
+  if (
+    !value ||
+    String(value).includes('..') ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$/.test(String(value))
+  ) {
+    console.error(`${label} must be a domain-like value using letters, numbers, hyphens, and dots.`);
+    process.exit(1);
+  }
+}
+
+function assertAbsolutePath(label, value) {
+  assertNoNewlines(label, value);
+  if (!String(value).startsWith('/')) {
+    console.error(`${label} must be an absolute path.`);
+    process.exit(1);
+  }
+}
+
+function assertUpdateTrack(value) {
+  if (!['stable', 'branch'].includes(value)) {
+    console.error('UPDATE_TRACK must be either stable or branch.');
+    process.exit(1);
+  }
+}
+
 function buildInstallerEnvContent(installerValues) {
   return [
     `MOS_OWNER_NAME=${shellQuote(installerValues.ownerName)}`,
@@ -136,6 +186,12 @@ if (!placeholderPasswordHash.startsWith('$')) {
   process.exit(1);
 }
 
+assertHostname('HOSTNAME', hostname);
+assertLinuxUser('USERNAME', username);
+assertDomain('STACK_DOMAIN', stackDomain);
+assertAbsolutePath('REPO_DIR', repoDir);
+assertUpdateTrack(updateTrack);
+
 const installerValues = installerConfigExists
   ? {
       ownerName: installerConfig.OWNER_NAME || 'Suite Owner',
@@ -159,26 +215,35 @@ const metaDataTemplate = normalizeLf(fs.readFileSync(path.join(templateDir, 'met
 const firstBootScript = normalizeLf(
   fs.readFileSync(path.join(templateDir, 'mos-selfhost-firstboot.sh'), 'utf8'),
 ).trimEnd();
+const installCoreScript = normalizeLf(
+  fs.readFileSync(path.join(repoRoot, 'scripts', 'selfhost', 'install-from-env.sh'), 'utf8'),
+).trimEnd();
 const systemdService = normalizeLf(
   fs.readFileSync(path.join(templateDir, 'mos-selfhost-bootstrap.service'), 'utf8'),
 ).trimEnd();
 
 const userData = replaceAll(userDataTemplate, {
   '__HOSTNAME__': hostname,
+  '__HOSTNAME_ENV__': shellQuote(hostname),
   '__REALNAME__': realname,
   '__USERNAME__': username,
+  '__USERNAME_ENV__': shellQuote(username),
+  '__USERNAME_SHELL__': shellQuote(username),
   '__PLACEHOLDER_PASSWORD_HASH__': placeholderPasswordHash,
   '__LOGIN_PASSWORD__': loginPassword,
+  '__LOGIN_PASSWORD_SHELL__': shellQuote(loginPassword),
   '__TIMEZONE__': timezone,
-  '__REPO_DIR__': repoDir,
-  '__MOS_REPO_URL__': repoUrl,
-  '__MOS_REPO_REF__': repoRef,
-  '__MOS_UPDATE_TRACK__': updateTrack,
-  '__MOS_UPDATE_REF__': updateRef,
-  '__STACK_DOMAIN__': stackDomain,
-  '__PUBLIC_DOMAIN__': publicDomain,
+  '__REPO_DIR__': shellQuote(repoDir),
+  '__MOS_REPO_URL__': shellQuote(repoUrl),
+  '__MOS_REPO_REF__': shellQuote(repoRef),
+  '__MOS_UPDATE_TRACK__': shellQuote(updateTrack),
+  '__MOS_UPDATE_REF__': shellQuote(updateRef),
+  '__STACK_DOMAIN__': shellQuote(stackDomain),
+  '__PUBLIC_DOMAIN__': shellQuote(publicDomain),
+  '__INSTALLER_KIND__': shellQuote('usb'),
   '__INSTALLER_ENV__': indentBlock(installerValues ? buildInstallerEnvContent(installerValues) : '', 10),
   '__FIRSTBOOT_SCRIPT__': indentBlock(firstBootScript, 10),
+  '__INSTALL_CORE_SCRIPT__': indentBlock(installCoreScript, 10),
   '__SYSTEMD_SERVICE__': indentBlock(systemdService, 10),
 });
 

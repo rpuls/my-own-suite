@@ -1,28 +1,32 @@
 ---
-title: Deploy on a VPS
-description: Run My Own Suite on a server you choose and control.
+title: Self-host on a cloud server
+description: Run My Own Suite on a rented Ubuntu cloud machine.
 slug: docs/deploy-on-vps
 ---
 
-A VPS is a rented internet-connected server from a hosting provider.
+A cloud server is a rented machine from a hosting provider.
 
-This option is for people who want more independence than a managed platform, while still using hosted infrastructure instead of their own hardware.
+This option is for people who want the self-hosted My Own Suite experience without buying or maintaining physical hardware.
+
+The goal is simple: whether you install on a cloud server or on a box at home, My Own Suite should feel like the same product after setup. The cloud path will use a guided first-boot installer for a standard Ubuntu 24.04 server, then Suite Manager becomes the place where you finish setup and manage the suite.
 
 ## Who should choose this?
 
-Choose a VPS if:
+Choose cloud-server self-hosting if:
 
 - you want more control over where the suite runs
 - you want the option to change hosting providers later
-- you are comfortable following technical setup steps
+- you want a server online without keeping hardware at home
+- you are willing to follow a setup guide for choosing a provider and connecting your domain
 
 ## Tradeoffs
 
 Compared with Railway:
 
-- setup is more manual
-- you manage more of the server and deployment details
-- the learning curve is higher
+- setup has more moving parts
+- you own more of the server lifecycle
+- the guide asks you to make a few infrastructure choices that Railway would normally hide
+- updates, backups, restore, HTTPS, and customization can be managed inside your own installed suite instead of depending on a platform dashboard
 
 In return, you get:
 
@@ -30,36 +34,68 @@ In return, you get:
 - less platform lock-in
 - a clearer path to long-term independence
 
+Compared with own hardware:
+
+- the server is still rented infrastructure
+- the provider owns the physical machine and keeps it online
+- public access is usually more straightforward
+- uptime and bandwidth are usually easier than a home connection
+
+## Access style
+
+Cloud-server self-hosting is the smoothest self-hosted option when you want to open your suite from anywhere.
+
+The server already lives online, so connecting a domain and getting secure browser access is usually more direct than exposing a machine from a home network. Some providers may also give you a temporary HTTPS address, which can be useful while you are testing or before you connect your own domain.
+
+This makes the cloud path a good fit when availability matters: you want the suite to feel like a normal private cloud, but you still want the apps and configuration to belong to your own installed setup.
+
 ## Privacy and ownership angle
 
-Using a VPS still means your data lives on hardware owned by a hosting provider, but the relationship is much closer to renting server space than signing up for a consumer software ecosystem.
+Using a cloud server still means your data lives on hardware owned by a hosting provider, but the relationship is much closer to renting a blank machine than signing up for a consumer software ecosystem.
 
 That matters because:
 
 - you choose the host instead of being locked into one app company
-- your suite remains your own deployed stack
+- your suite is installed and run for you, not for the provider
 - you can change providers later if pricing or terms stop fitting you
-- your data is not being handed to a bundled consumer platform whose business depends on keeping you inside its ecosystem
+- the server provider is not the app company, dashboard, photo app, drive, calendar, or password manager
+- the provider generally sees a rented server, not a built-in product account where it controls the app layer and tracks how you use each app
 
-In other words, the infrastructure is rented, but the suite is still yours.
+In other words, the machine is rented, but the suite experience is yours.
 
 ## Current guide
 
-This is the current documented and maintained self-managed path in the repository.
+This page is being reshaped into the cloud-server installer for the self-hosted My Own Suite setup.
 
-Use the VPS/local Docker Compose setup described in:
+An early first-boot generator now exists in the repository. It creates the provider setup text for a standard Ubuntu 24.04 cloud server.
 
-- [deploy/vps/README.md](/docs/getting-started)
+There is also an early SSH bootstrap path for fresh Ubuntu servers. The goal for that path is close to:
+
+1. Create the server.
+2. Sign in.
+3. Run one command.
+4. Follow the prompts.
+5. Wait for Suite Manager to come online.
+
+Both cloud install styles hand off to the same self-host installer used by the USB path after the machine is ready. That keeps cloud-server and own-hardware installs as close as possible: the beginning is different, but the actual MOS installation should be the same.
+
+Technical details live in:
+
+- [deploy/self-host/README.md](https://github.com/rpuls/my-own-suite/blob/staging/deploy/self-host/README.md)
+- [deploy/vps/README.md](https://github.com/rpuls/my-own-suite/blob/staging/deploy/vps/README.md)
 
 ## What you will need
 
-- A VPS from a provider of your choice
-- Docker and Docker Compose
-- Comfort editing environment values and running command-line setup steps
+- A cloud server provider that supports `Ubuntu Server 24.04 LTS`
+- A setup field where you can paste the MOS first-boot installer text
+- A domain you control
+- Access to your domain settings so the guide can point MOS addresses at the server
+
+The intended provider requirement is intentionally generic. MOS should not need source-code changes per provider.
 
 ## Optional advanced email setup
 
-If you already understand what an SMTP server is and have one available, the VPS stack can optionally reuse one shared SMTP configuration for compatible apps such as Seafile and Vaultwarden.
+If you already understand what an SMTP server is and have one available, the self-hosted stack can optionally reuse one shared SMTP configuration for compatible apps such as Seafile and Vaultwarden.
 
 This is not required for the suite itself to work. It is simply an advanced extra for features like password reset emails, verification emails, and some share-link notifications.
 
@@ -67,15 +103,21 @@ The full technical setup belongs in the dedicated SMTP guide:
 
 - [Optional email with SMTP](/docs/optional-email-with-smtp)
 
-## Typical flow
+## Intended flow
 
-At a high level, the VPS flow is:
+The target cloud-server flow is:
 
-1. Clone the repository.
-2. Initialize the environment files.
-3. Review your suite-manager values.
-4. Run validation checks.
-5. Start the stack with Docker Compose.
+1. Choose a supported provider from the MOS cloud-server list.
+2. Create an `Ubuntu Server 24.04 LTS` machine.
+3. Paste the MOS first-boot installer text into the provider's server setup form.
+4. Point the suite domain at the server by following the DNS step in the guide.
+5. Wait for first boot to install Docker, clone MOS, prepare the stack, install host agents, and start Suite Manager.
 6. Open Suite Manager and finish onboarding.
 
-For the exact hands-on steps, start with the current [How to get started](/docs/getting-started) guide and the technical deployment notes in [deploy/vps/README.md](https://github.com/rpuls/my-own-suite/blob/staging/deploy/vps/README.md).
+This flow is still early and needs real-provider testing before it should be advertised as a polished path.
+
+## Provider listings
+
+This page can eventually list supported or recommended cloud-server providers.
+
+The rule for that list should be simple: a provider is a good fit if it can create a normal Ubuntu 24.04 server and accept startup/user-data text without MOS needing custom source changes for that provider.

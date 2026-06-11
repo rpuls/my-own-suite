@@ -54,6 +54,7 @@ tests/e2e/test-results/
 
 # Self-host generated artifacts
 deploy/self-host/autoinstall/generated/
+deploy/self-host/cloud-init/generated/
 deploy/self-host/autoinstall/ubuntu-iso/
 deploy/self-host/output/
 deploy/self-host/autoinstall/*.vhdx
