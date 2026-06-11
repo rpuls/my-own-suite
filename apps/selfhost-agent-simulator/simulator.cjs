@@ -275,6 +275,7 @@ function handleService(_request, response, url) {
       capabilities: {
         caddy: { capabilities: ['restart', 'external-proxies.apply'], container: 'mos-caddy' },
         homepage: { capabilities: ['restart'], container: 'mos-homepage' },
+        'app-catalog': { capabilities: ['compose-selection.apply'] },
         settings: { capabilities: ['local-https.apply'] },
       },
       service: agents.service.service,

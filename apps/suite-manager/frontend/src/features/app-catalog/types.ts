@@ -50,6 +50,10 @@ export type AppCatalogResponse = {
 
 export type AppCatalogInstallResponse = AppCatalogResponse & {
   composeSelection: {
+    hostApply: {
+      applied: boolean;
+      message: string | null;
+    } | null;
     profiles: string[];
   };
   plan: {

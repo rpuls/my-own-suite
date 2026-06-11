@@ -6,6 +6,7 @@ const fs = require('node:fs');
 
 const repoRoot = process.cwd();
 const baseComposeFile = path.join(repoRoot, 'deploy', 'vps', 'docker-compose.yml');
+const catalogComposeFile = path.join(repoRoot, 'deploy', 'vps', 'generated', 'app-catalog', 'docker-compose.catalog.yml');
 const selfhostComposeFile = path.join(repoRoot, 'deploy', 'vps', 'docker-compose.selfhost.yml');
 const simulatedSelfhostComposeFile = path.join(repoRoot, 'deploy', 'vps', 'docker-compose.simulated-selfhost.yml');
 const projectDirectory = path.join(repoRoot, 'deploy', 'vps');
@@ -20,6 +21,10 @@ const composeArgs = args.filter((arg) => arg !== '--simulateSelfHost' && arg !==
 
 if (fs.existsSync(selfhostComposeFile)) {
   files.push('-f', selfhostComposeFile);
+}
+
+if (fs.existsSync(catalogComposeFile)) {
+  files.push('-f', catalogComposeFile);
 }
 
 if (simulateSelfHost) {

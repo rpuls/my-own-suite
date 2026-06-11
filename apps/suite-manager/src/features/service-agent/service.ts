@@ -1,5 +1,6 @@
 import type { SuiteManagerConfig } from '../../config.ts';
 import {
+  applyAgentAppCatalogComposeSelection,
   applyAgentCaddyExternalProxies,
   applyAgentLocalHttps,
   readServiceAgentStatus,
@@ -9,6 +10,7 @@ import {
 export type ServiceCapabilityStatus = {
   caddyExternalProxyApplyAvailable: boolean;
   error: string | null;
+  appCatalogComposeSelectionApplyAvailable: boolean;
   homepageRestartAvailable: boolean;
   localHttpsApplyAvailable: boolean;
   serviceAvailable: boolean;
@@ -24,6 +26,7 @@ export class ServiceAgentService {
   async getCapabilities(): Promise<ServiceCapabilityStatus> {
     if (!this.config.serviceAgent.socketPath || !this.config.serviceAgent.tokenFile) {
       return {
+        appCatalogComposeSelectionApplyAvailable: false,
         caddyExternalProxyApplyAvailable: false,
         error: null,
         homepageRestartAvailable: false,
@@ -37,8 +40,10 @@ export class ServiceAgentService {
       const homepageCapabilities = status.capabilities?.homepage?.capabilities || [];
       const caddyCapabilities = status.capabilities?.caddy?.capabilities || [];
       const settingsCapabilities = status.capabilities?.settings?.capabilities || [];
+      const appCatalogCapabilities = status.capabilities?.['app-catalog']?.capabilities || [];
 
       return {
+        appCatalogComposeSelectionApplyAvailable: appCatalogCapabilities.includes('compose-selection.apply'),
         caddyExternalProxyApplyAvailable: caddyCapabilities.includes('external-proxies.apply'),
         error: null,
         homepageRestartAvailable: homepageCapabilities.includes('restart'),
@@ -47,6 +52,7 @@ export class ServiceAgentService {
       };
     } catch (caughtError) {
       return {
+        appCatalogComposeSelectionApplyAvailable: false,
         caddyExternalProxyApplyAvailable: false,
         error: caughtError instanceof Error ? caughtError.message : 'Service agent is unavailable.',
         homepageRestartAvailable: false,
@@ -88,5 +94,18 @@ export class ServiceAgentService {
 
     const result = await applyAgentLocalHttps(this.config, input);
     return { applied: true, domain: result.domain, restartScheduled: result.restartScheduled };
+  }
+
+  async applyAppCatalogComposeSelection(input: {
+    composeYaml: string;
+    selectionJson: string;
+  }): Promise<{ applied: boolean }> {
+    const capabilities = await this.getCapabilities();
+    if (!capabilities.appCatalogComposeSelectionApplyAvailable) {
+      throw new Error('App catalog Compose selection apply service is unavailable.');
+    }
+
+    await applyAgentAppCatalogComposeSelection(this.config, input);
+    return { applied: true };
   }
 }

@@ -5,6 +5,7 @@ import { writeComposeSelection } from './compose-selection.ts';
 import { buildInstallPlan, InstalledCatalogStateStore } from './state-store.ts';
 import type { CatalogAppManifest, CatalogInstallPlan, InstalledCatalogState } from './types.ts';
 import { loadCatalogManifests } from './manifest.ts';
+import type { ServiceAgentService } from '../service-agent/service.ts';
 
 type CatalogAppResponse = {
   category: string;
@@ -100,7 +101,7 @@ function createInstallPlan(app: CatalogAppManifest): CatalogInstallPlan {
   return buildInstallPlan(app);
 }
 
-export function createAppCatalogRouter(config: SuiteManagerConfig): Hono {
+export function createAppCatalogRouter(config: SuiteManagerConfig, serviceAgentService?: ServiceAgentService): Hono {
   const router = new Hono();
   const stateStore = new InstalledCatalogStateStore(config.stateDir);
 
@@ -124,11 +125,37 @@ export function createAppCatalogRouter(config: SuiteManagerConfig): Hono {
       const plan = createInstallPlan(app);
       const installedState = stateStore.markPendingApply(app, plan);
       const composeSelection = writeComposeSelection(config.stateDir, installedState);
+      let hostApply:
+        | {
+            applied: boolean;
+            message: string | null;
+          }
+        | null = null;
+
+      if (serviceAgentService) {
+        const capabilities = await serviceAgentService.getCapabilities();
+        if (capabilities.appCatalogComposeSelectionApplyAvailable) {
+          await serviceAgentService.applyAppCatalogComposeSelection({
+            composeYaml: composeSelection.composeYaml,
+            selectionJson: composeSelection.selectionJson,
+          });
+          hostApply = {
+            applied: true,
+            message: null,
+          };
+        } else if (capabilities.serviceAvailable) {
+          hostApply = {
+            applied: false,
+            message: 'Service agent is available but cannot apply app catalog Compose selection yet.',
+          };
+        }
+      }
 
       return c.json(
         {
           ...catalogResponse(catalog, installedState),
           composeSelection: {
+            hostApply,
             profiles: composeSelection.selection.profiles,
           },
           plan,

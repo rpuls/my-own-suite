@@ -63,6 +63,7 @@ function createServiceAgent(overrides: {
   capabilities?: Partial<ServiceCapabilityStatus>;
 } = {}) {
   const capabilities: ServiceCapabilityStatus = {
+    appCatalogComposeSelectionApplyAvailable: false,
     caddyExternalProxyApplyAvailable: false,
     error: null,
     homepageRestartAvailable: false,

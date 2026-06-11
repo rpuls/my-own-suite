@@ -21,6 +21,8 @@ sudo mos-service restart --service homepage
 
 The Caddy capability `external-proxies.apply` lets Suite Manager ask the agent to write the generated external proxy snippet at `deploy/vps/generated/caddy/external-proxies.caddy`, validate the mounted Caddy config in `mos-caddy`, and reload Caddy. If validation or reload fails, the agent restores the previous snippet content.
 
+The app catalog capability `compose-selection.apply` lets Suite Manager ask the agent to write the generated app-catalog Compose selection files under `deploy/vps/generated/app-catalog/`. This only stages repo-owned generated inputs for Compose tooling; it does not start, stop, or recreate containers by itself.
+
 The Settings capability `local-https.apply` lets Suite Manager apply the local HTTPS/DNS-01 flow without an SSH editing session. The agent only writes the known `DOMAIN`, `PUBLIC_URL_SCHEME`, `MOS_TLS_MODE`, `CADDY_ACME_EMAIL`, and `CLOUDFLARE_API_TOKEN` env keys, refreshes the repo-generated VPS config, runs `npm run vps:doctor`, recreates Caddy/Homepage/Suite Manager, and reapplies generated external proxy routes so the app reloads the new public URL settings.
 
 The service agent is intentionally local-only. It exposes a Unix socket plus bearer token, and only supports explicit MOS service actions. Future monitoring, warning, and metrics analyzers should extend this agent through named capabilities rather than giving Suite Manager broad host command access.

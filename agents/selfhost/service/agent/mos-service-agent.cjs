@@ -11,6 +11,13 @@ const repoDir = process.env.MOS_SERVICE_AGENT_REPO_DIR || '';
 const caddyExternalProxiesPath = repoDir
   ? path.join(repoDir, 'deploy', 'vps', 'generated', 'caddy', 'external-proxies.caddy')
   : '';
+const appCatalogGeneratedDir = repoDir ? path.join(repoDir, 'deploy', 'vps', 'generated', 'app-catalog') : '';
+const appCatalogSelectionJsonPath = appCatalogGeneratedDir
+  ? path.join(appCatalogGeneratedDir, 'compose-selection.json')
+  : '';
+const appCatalogComposeYamlPath = appCatalogGeneratedDir
+  ? path.join(appCatalogGeneratedDir, 'docker-compose.catalog.yml')
+  : '';
 
 const SERVICES = {
   caddy: { container: 'mos-caddy', capabilities: ['restart', 'external-proxies.apply'] },
@@ -123,6 +130,10 @@ function listCapabilities() {
 
   capabilities.settings = {
     capabilities: repoDir ? ['local-https.apply'] : [],
+    container: '',
+  };
+  capabilities['app-catalog'] = {
+    capabilities: repoDir ? ['compose-selection.apply'] : [],
     container: '',
   };
 
@@ -405,6 +416,52 @@ async function handleApplyLocalHttps(request, response) {
   }
 }
 
+async function handleApplyAppCatalogComposeSelection(request, response) {
+  if (!repoDir || !appCatalogSelectionJsonPath || !appCatalogComposeYamlPath) {
+    json(response, 409, { error: 'App catalog generated Compose path is not configured.' });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonBody(request, 256 * 1024);
+  } catch (error) {
+    json(response, 400, { error: error instanceof Error ? error.message : 'Invalid request body.' });
+    return;
+  }
+
+  if (!body || typeof body.selectionJson !== 'string' || typeof body.composeYaml !== 'string') {
+    json(response, 400, { error: 'selectionJson and composeYaml are required.' });
+    return;
+  }
+
+  try {
+    JSON.parse(body.selectionJson);
+  } catch {
+    json(response, 400, { error: 'selectionJson must be valid JSON.' });
+    return;
+  }
+
+  try {
+    writeFileAtomic(appCatalogSelectionJsonPath, body.selectionJson.endsWith('\n') ? body.selectionJson : `${body.selectionJson}\n`);
+    writeFileAtomic(appCatalogComposeYamlPath, body.composeYaml.endsWith('\n') ? body.composeYaml : `${body.composeYaml}\n`);
+    json(response, 202, {
+      action: 'compose-selection.apply',
+      ok: true,
+      paths: {
+        composeYaml: appCatalogComposeYamlPath,
+        selectionJson: appCatalogSelectionJsonPath,
+      },
+      service: 'app-catalog',
+    });
+  } catch (error) {
+    json(response, 500, {
+      error: error instanceof Error ? error.message : 'Unable to apply app catalog Compose selection.',
+      service: 'app-catalog',
+    });
+  }
+}
+
 ensureDir(path.dirname(socketPath));
 cleanupSocket();
 
@@ -443,6 +500,11 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === 'POST' && url.pathname === '/v1/settings/local-https/apply') {
     await handleApplyLocalHttps(request, response);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/v1/app-catalog/compose-selection/apply') {
+    await handleApplyAppCatalogComposeSelection(request, response);
     return;
   }
 

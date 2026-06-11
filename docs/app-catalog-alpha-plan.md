@@ -261,6 +261,7 @@ This snapshot maps the current preloaded suite into the surfaces a catalog manif
 - `deploy/vps/docker-compose.yml` already uses profiles for app services, but `scripts/vps-run.cjs` currently starts every app profile by default.
 - `scripts/vps-init.cjs` renders every service env template and always generates Caddy built-in routes for all current app hosts.
 - `scripts/vps-doctor.cjs` validates all current app env files regardless of whether their profiles are selected.
+- `scripts/vps-run.cjs` now has a generated app-catalog selection point: when `deploy/vps/generated/app-catalog/compose-selection.json` exists, selected profiles come from that file; otherwise the existing all-app profile behavior remains.
 - Homepage tiles are currently pruned by missing env placeholders, but `services/homepage/.env.template` generates URLs for every bundled app.
 - Caddy built-in route generation is currently static for every bundled app route, with external user-managed routes handled separately through Homepage `mos.proxy` annotations.
 - The backup agent snapshots detected MOS Docker volumes and records the rendered Compose configuration plus the profiles it restarts. Catalog state should become part of the backed-up Suite Manager state before selective installs become the default.

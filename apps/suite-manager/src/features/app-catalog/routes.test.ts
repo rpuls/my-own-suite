@@ -8,6 +8,7 @@ import { createApp } from '../../app.ts';
 import type { SuiteManagerConfig } from '../../config.ts';
 import { createSessionValue } from '../auth/session.ts';
 import { loadCatalogManifests } from './manifest.ts';
+import { createAppCatalogRouter } from './routes.ts';
 import { InstalledCatalogStateStore } from './state-store.ts';
 
 function createConfig(stateDir: string): SuiteManagerConfig {
@@ -236,4 +237,39 @@ test('catalog install API rejects unknown and not-yet-enabled apps clearly', asy
   const seafileBody = await seafileResponse.json();
   assert.equal(seafileResponse.status, 409);
   assert.match(seafileBody.error, /not enabled/);
+});
+
+test('catalog install API applies generated Compose selection through service agent when available', async (t) => {
+  const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-app-catalog-route-'));
+  t.after(() => fs.rm(stateDir, { force: true, recursive: true }));
+  const config = createConfig(stateDir);
+  let received: { composeYaml: string; selectionJson: string } | null = null;
+  const router = createAppCatalogRouter(config, {
+    applyAppCatalogComposeSelection: async (input: { composeYaml: string; selectionJson: string }) => {
+      received = input;
+      return { applied: true };
+    },
+    getCapabilities: async () => ({
+      appCatalogComposeSelectionApplyAvailable: true,
+      caddyExternalProxyApplyAvailable: false,
+      error: null,
+      homepageRestartAvailable: false,
+      localHttpsApplyAvailable: false,
+      serviceAvailable: true,
+    }),
+  } as never);
+
+  const response = await router.request('/app-catalog/apps/stirling-pdf/install', {
+    method: 'POST',
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 202);
+  assert.deepEqual(body.composeSelection.hostApply, {
+    applied: true,
+    message: null,
+  });
+  assert.ok(received);
+  assert.match(received.selectionJson, /"profiles": \[/);
+  assert.match(received.composeYaml, /selectedProfiles:/);
 });

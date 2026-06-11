@@ -126,3 +126,15 @@ export async function applyAgentLocalHttps(
     input,
   );
 }
+
+export async function applyAgentAppCatalogComposeSelection(
+  config: SuiteManagerConfig,
+  input: { composeYaml: string; selectionJson: string },
+): Promise<{ ok?: boolean; service?: string }> {
+  return requestAgent<{ ok?: boolean; service?: string }>(
+    config,
+    'POST',
+    '/v1/app-catalog/compose-selection/apply',
+    input,
+  );
+}

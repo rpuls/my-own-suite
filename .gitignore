@@ -68,3 +68,5 @@ deploy/self-host/output/
 deploy/vps/docker-compose.selfhost.yml
 deploy/vps/generated/caddy/*.caddy
 !deploy/vps/generated/caddy/.gitkeep
+deploy/vps/generated/app-catalog/*
+!deploy/vps/generated/app-catalog/.gitkeep
