@@ -86,7 +86,7 @@ test('adds a managed external service without dropping existing Homepage tiles',
   assert.equal(result.services[0]?.proxyEnabled, true);
 
   const { content } = await service.readFile('services.template.yaml');
-  assert.match(content, /Seafile/);
+  assert.match(content, /Suite Manager/);
   assert.match(content, /My External Services/);
   assert.match(content, /kind: external/);
   assert.match(content, /managed: true/);
