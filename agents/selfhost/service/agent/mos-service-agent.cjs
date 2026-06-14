@@ -219,6 +219,12 @@ async function applySelectedCatalogServices(selection) {
   );
 }
 
+async function refreshBuiltInCaddyRoutes() {
+  await execRepo('node', ['scripts/vps-init.cjs'], 180_000);
+  await validateCaddy();
+  await reloadCaddy();
+}
+
 function writeFileAtomic(filePath, content) {
   ensureDir(path.dirname(filePath));
   const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
@@ -487,12 +493,18 @@ async function handleApplyAppCatalogComposeSelection(request, response) {
     writeFileAtomic(appCatalogSelectionJsonPath, body.selectionJson.endsWith('\n') ? body.selectionJson : `${body.selectionJson}\n`);
     writeFileAtomic(appCatalogComposeYamlPath, body.composeYaml.endsWith('\n') ? body.composeYaml : `${body.composeYaml}\n`);
     const applyServices = body.applyServices !== false;
+    await refreshBuiltInCaddyRoutes();
     const output = applyServices
       ? await applySelectedCatalogServices(selection)
       : 'Generated app catalog Compose selection files updated without running Docker Compose.';
+    if (applyServices) {
+      await validateCaddy();
+      await reloadCaddy();
+    }
     json(response, 202, {
       action: 'compose-selection.apply',
       appliedServices: applyServices,
+      caddyReloaded: true,
       ok: true,
       output,
       paths: {
