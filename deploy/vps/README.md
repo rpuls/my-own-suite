@@ -98,6 +98,14 @@ Useful optional settings:
 - `MOS_SMOKE_DOMAIN=example.com` uses a real base domain instead of sslip.io.
 - `MOS_SMOKE_REPLACE=1 npm run smoke:do:up` destroys the current local-state smoke Droplet before creating a replacement.
 
+Fast-reset the existing smoke Droplet without waiting for DigitalOcean provisioning:
+
+```bash
+npm run smoke:do:reset
+```
+
+The reset command uses `.mos-smoke/digitalocean.json`, verifies the Droplet is still a tagged `mos-smoke-*` resource, keeps the Droplet and public IP, removes MOS Docker containers and Docker volumes, removes the remote repo checkout, clears the self-host bootstrap stamp, reruns the same cloud installer for the configured repo ref, and finishes with `vps:doctor`, Compose status, and `docker ps`. It is destructive to app data on the smoke Droplet but avoids the slow create/wait-for-network part of `smoke:do:up`.
+
 Destroy the smoke Droplet when finished:
 
 ```bash
