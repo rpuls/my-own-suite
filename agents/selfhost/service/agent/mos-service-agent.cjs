@@ -486,9 +486,13 @@ async function handleApplyAppCatalogComposeSelection(request, response) {
   try {
     writeFileAtomic(appCatalogSelectionJsonPath, body.selectionJson.endsWith('\n') ? body.selectionJson : `${body.selectionJson}\n`);
     writeFileAtomic(appCatalogComposeYamlPath, body.composeYaml.endsWith('\n') ? body.composeYaml : `${body.composeYaml}\n`);
-    const output = await applySelectedCatalogServices(selection);
+    const applyServices = body.applyServices !== false;
+    const output = applyServices
+      ? await applySelectedCatalogServices(selection)
+      : 'Generated app catalog Compose selection files updated without running Docker Compose.';
     json(response, 202, {
       action: 'compose-selection.apply',
+      appliedServices: applyServices,
       ok: true,
       output,
       paths: {

@@ -143,6 +143,7 @@ export function createAppCatalogRouter(
         if (capabilities.appCatalogComposeSelectionApplyAvailable) {
           try {
             const result = await serviceAgentService.applyAppCatalogComposeSelection({
+              applyServices: true,
               composeYaml: composeSelection.composeYaml,
               selectionJson: composeSelection.selectionJson,
             });
@@ -160,9 +161,22 @@ export function createAppCatalogRouter(
               status: 'succeeded',
             });
             composeSelection = writeComposeSelection(config.stateDir, installedState);
+            let finalSyncMessage: string | null = null;
+            try {
+              await serviceAgentService.applyAppCatalogComposeSelection({
+                applyServices: false,
+                composeYaml: composeSelection.composeYaml,
+                selectionJson: composeSelection.selectionJson,
+              });
+            } catch (syncError: unknown) {
+              finalSyncMessage =
+                syncError instanceof Error
+                  ? syncError.message
+                  : 'Unable to sync final app catalog Compose selection.';
+            }
             hostApply = {
               applied: true,
-              message: null,
+              message: finalSyncMessage,
               output: result.output,
             };
           } catch (error: unknown) {

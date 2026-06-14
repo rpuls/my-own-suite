@@ -20,7 +20,11 @@ test('builds selected Compose profiles from pending catalog app state', async ()
           appId: stirlingPdf.id,
           installedAt: '2026-06-11T12:00:00.000Z',
           installPlan: buildInstallPlan(stirlingPdf),
-          lastApply: null,
+          lastApply: {
+            message: 'Install plan recorded; runtime apply is pending.',
+            status: 'pending',
+            updatedAt: '2026-06-11T12:00:00.000Z',
+          },
           manifestVersion: 1,
           routeHosts: ['stirling-pdf'],
           serviceNames: ['stirling-pdf'],
@@ -38,6 +42,11 @@ test('builds selected Compose profiles from pending catalog app state', async ()
   assert.deepEqual(selection.apps, [
     {
       id: 'stirling-pdf',
+      lastApply: {
+        message: 'Install plan recorded; runtime apply is pending.',
+        status: 'pending',
+        updatedAt: '2026-06-11T12:00:00.000Z',
+      },
       services: ['stirling-pdf'],
       status: 'pending-apply',
     },

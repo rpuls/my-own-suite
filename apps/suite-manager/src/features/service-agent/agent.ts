@@ -130,7 +130,7 @@ export async function applyAgentLocalHttps(
 
 export async function applyAgentAppCatalogComposeSelection(
   config: SuiteManagerConfig,
-  input: { composeYaml: string; selectionJson: string },
+  input: { applyServices?: boolean; composeYaml: string; selectionJson: string },
 ): Promise<{ ok?: boolean; output?: string; service?: string; services?: string[] }> {
   return requestAgent<{ ok?: boolean; output?: string; service?: string; services?: string[] }>(
     config,

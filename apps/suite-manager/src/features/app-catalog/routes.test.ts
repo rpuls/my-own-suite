@@ -243,12 +243,16 @@ test('catalog install API applies generated Compose selection through service ag
   const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-app-catalog-route-'));
   t.after(() => fs.rm(stateDir, { force: true, recursive: true }));
   const config = createConfig(stateDir);
-  let received: { composeYaml: string; selectionJson: string } | null = null;
+  const received: Array<{ applyServices?: boolean; composeYaml: string; selectionJson: string }> = [];
   let homepageTile: { hrefEnv: string; id: string; name: string } | null = null;
   let restartedHomepage = false;
   const router = createAppCatalogRouter(config, {
-    applyAppCatalogComposeSelection: async (input: { composeYaml: string; selectionJson: string }) => {
-      received = input;
+    applyAppCatalogComposeSelection: async (input: {
+      applyServices?: boolean;
+      composeYaml: string;
+      selectionJson: string;
+    }) => {
+      received.push(input);
       return { applied: true, output: 'Started mos-stirling-pdf', services: ['stirling-pdf'] };
     },
     getCapabilities: async () => ({
@@ -282,11 +286,29 @@ test('catalog install API applies generated Compose selection through service ag
   });
   const stirlingResponse = body.apps.find((catalogApp: { id: string }) => catalogApp.id === 'stirling-pdf');
   assert.equal(stirlingResponse.installed.status, 'installed');
-  assert.ok(received);
-  assert.match(received.selectionJson, /"profiles": \[/);
-  assert.match(received.composeYaml, /selectedProfiles:/);
+  assert.equal(stirlingResponse.installed.lastApply.status, 'succeeded');
+  assert.equal(received.length, 2);
+  assert.equal(received[0]?.applyServices, true);
+  assert.equal(received[1]?.applyServices, false);
+  const firstSelection = JSON.parse(received[0]?.selectionJson || '{}') as {
+    apps: Array<{ lastApply: { status: string }; status: string }>;
+  };
+  const finalSelection = JSON.parse(received[1]?.selectionJson || '{}') as {
+    apps: Array<{ lastApply: { status: string }; status: string }>;
+  };
+  assert.equal(firstSelection.apps[0]?.status, 'pending-apply');
+  assert.equal(firstSelection.apps[0]?.lastApply.status, 'pending');
+  assert.equal(finalSelection.apps[0]?.status, 'installed');
+  assert.equal(finalSelection.apps[0]?.lastApply.status, 'succeeded');
+  assert.match(received[1]?.composeYaml || '', /selectedProfiles:/);
   assert.equal(homepageTile?.hrefEnv, 'STIRLING_PDF_URL');
   assert.equal(homepageTile?.id, 'stirling-pdf');
   assert.equal(homepageTile?.name, 'Stirling PDF');
   assert.equal(restartedHomepage, true);
+
+  const selection = JSON.parse(
+    await fs.readFile(path.join(stateDir, 'app-catalog', 'compose-selection.json'), 'utf8'),
+  ) as { apps: Array<{ lastApply: { status: string }; status: string }> };
+  assert.equal(selection.apps[0]?.status, 'installed');
+  assert.equal(selection.apps[0]?.lastApply.status, 'succeeded');
 });

@@ -52,7 +52,7 @@ export class InstalledCatalogStateStore {
       installedAt: existingApp?.installedAt || now.toISOString(),
       installPlan: plan,
       lastApply: {
-        message: 'Install plan recorded. Runtime Compose apply is not wired yet.',
+        message: 'Install plan recorded; runtime apply is pending.',
         status: 'pending',
         updatedAt: now.toISOString(),
       },

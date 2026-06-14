@@ -97,6 +97,7 @@ export class ServiceAgentService {
   }
 
   async applyAppCatalogComposeSelection(input: {
+    applyServices?: boolean;
     composeYaml: string;
     selectionJson: string;
   }): Promise<{ applied: boolean; output?: string; services?: string[] }> {

@@ -8,6 +8,11 @@ import type { InstalledCatalogState } from './types.ts';
 export type ComposeSelectionOutput = {
   apps: Array<{
     id: string;
+    lastApply: {
+      message: string | null;
+      status: 'pending' | 'succeeded' | 'failed';
+      updatedAt: string;
+    } | null;
     services: string[];
     status: string;
   }>;
@@ -35,6 +40,7 @@ export function buildComposeSelection(state: InstalledCatalogState, generatedAt 
     apps: selectedApps
       .map((app) => ({
         id: app.appId,
+        lastApply: app.lastApply,
         services: app.serviceNames,
         status: app.status,
       }))
