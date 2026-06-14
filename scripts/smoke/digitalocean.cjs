@@ -18,10 +18,11 @@ const command = process.argv[2];
 loadLocalEnvFile();
 
 function usage() {
-  console.log(`Usage: node scripts/smoke/digitalocean.cjs <up|destroy>
+  console.log(`Usage: node scripts/smoke/digitalocean.cjs <up|reset|destroy>
 
 Commands:
   up       Create a tagged DigitalOcean smoke Droplet and install MOS.
+  reset    Reuse the current smoke Droplet, wipe MOS runtime state, and reinstall MOS.
   destroy  Destroy the current tagged smoke Droplet from local state.
 `);
 }
@@ -127,6 +128,17 @@ function requireOwnerConfig() {
   }
 
   return { email, password, name };
+}
+
+function smokeConfigFromEnv(state = {}) {
+  return {
+    region: env('MOS_SMOKE_REGION', state.region || 'fra1'),
+    size: env('MOS_SMOKE_SIZE', state.size || 's-4vcpu-8gb'),
+    image: env('MOS_SMOKE_IMAGE', state.image || 'ubuntu-24-04-x64'),
+    repoRef: env('MOS_SMOKE_REPO_REF', state.repoRef || 'staging'),
+    repoUrl: env('MOS_SMOKE_REPO_URL', state.repoUrl || 'https://github.com/rpuls/my-own-suite.git'),
+    owner: requireOwnerConfig(),
+  };
 }
 
 function getToken() {
@@ -356,6 +368,33 @@ sudo -E bash /tmp/mos-install-cloud.sh
 `;
 }
 
+function resetScript(config) {
+  return `set -euo pipefail
+repo_dir=${shQuote(env('MOS_SMOKE_REMOTE_REPO_DIR', '/opt/my-own-suite'))}
+stamp_file=${shQuote(env('MOS_SMOKE_REMOTE_STAMP_FILE', '/var/lib/mos-selfhost/bootstrap.done'))}
+echo "[mos-smoke:do] Stopping MOS host agents"
+sudo systemctl stop mos-update-agent mos-service-agent mos-backup-agent 2>/dev/null || true
+echo "[mos-smoke:do] Removing MOS Docker containers"
+if command -v docker >/dev/null 2>&1; then
+  containers="$(sudo docker ps -aq --filter label=com.docker.compose.project=mos)"
+  if [ -n "$containers" ]; then
+    sudo docker rm -f $containers
+  fi
+  volumes="$(sudo docker volume ls -q --filter label=com.docker.compose.project=mos)"
+  if [ -n "$volumes" ]; then
+    sudo docker volume rm $volumes
+  fi
+  networks="$(sudo docker network ls -q --filter label=com.docker.compose.project=mos)"
+  if [ -n "$networks" ]; then
+    sudo docker network rm $networks 2>/dev/null || true
+  fi
+fi
+echo "[mos-smoke:do] Removing MOS repo checkout and bootstrap stamp"
+sudo rm -rf "$repo_dir" "$stamp_file"
+${installScript(config)}
+`;
+}
+
 async function createDroplet(token, config) {
   await ensureTag(token);
 
@@ -418,6 +457,9 @@ Logs:
 
 Destroy when finished:
   npm run smoke:do:destroy
+
+Fast reset this Droplet:
+  npm run smoke:do:reset
 `);
 }
 
@@ -437,14 +479,7 @@ async function up() {
     await destroyExistingFromState(token, existingState, 'MOS_SMOKE_REPLACE=1');
   }
 
-  const config = {
-    region: env('MOS_SMOKE_REGION', 'fra1'),
-    size: env('MOS_SMOKE_SIZE', 's-4vcpu-8gb'),
-    image: env('MOS_SMOKE_IMAGE', 'ubuntu-24-04-x64'),
-    repoRef: env('MOS_SMOKE_REPO_REF', 'staging'),
-    repoUrl: env('MOS_SMOKE_REPO_URL', 'https://github.com/rpuls/my-own-suite.git'),
-    owner: requireOwnerConfig(),
-  };
+  const config = smokeConfigFromEnv();
 
   console.log(`[mos-smoke:do] Creating ${config.image} Droplet in ${config.region} (${config.size}) from ${config.repoRef}...`);
   const created = await createDroplet(token, config);
@@ -485,6 +520,56 @@ async function up() {
   printSummary(state);
 }
 
+async function reset() {
+  ensureDirs();
+  const token = getToken();
+  const state = readState();
+
+  if (!state) {
+    fail('No local DigitalOcean smoke state found. Run npm run smoke:do:up first.');
+  }
+
+  const droplet = await getDroplet(token, state.dropletId);
+  if (!droplet) {
+    removeState();
+    fail(`Droplet ${state.dropletId} no longer exists. Local state was removed.`);
+  }
+
+  if (!isSmokeDroplet(droplet)) {
+    fail(`Refusing to reset Droplet ${droplet.id} because it is not named ${namePrefix}* and tagged ${smokeTag}.`);
+  }
+
+  const ip = dropletPublicIpv4(droplet) || state.ip;
+  if (!ip) {
+    fail(`Droplet ${droplet.id} does not have a public IPv4 address.`);
+  }
+
+  const domain = env('MOS_SMOKE_DOMAIN', state.domain || `${ip}.sslip.io`);
+  const config = smokeConfigFromEnv(state);
+  const nextState = {
+    ...state,
+    dropletName: droplet.name,
+    ip,
+    domain,
+    repoUrl: config.repoUrl,
+    repoRef: config.repoRef,
+    resetAt: new Date().toISOString(),
+  };
+  writeState(nextState);
+
+  console.log(`[mos-smoke:do] Resetting ${droplet.name} (${droplet.id}) at ${ip} from ${config.repoRef}...`);
+  console.log('[mos-smoke:do] This removes MOS containers, MOS Docker volumes, and the remote repo checkout, but keeps the Droplet and IP.');
+  await waitForSsh(ip);
+  await runSsh(ip, 'mos-reset-install', 'sudo bash -s', { input: resetScript({ ...config, domain }) });
+  await runSsh(
+    ip,
+    'readiness',
+    'cd /opt/my-own-suite && npm run vps:doctor && node scripts/mos-compose.cjs ps && docker ps',
+  );
+
+  printSummary(nextState);
+}
+
 async function destroy() {
   const token = getToken();
   const state = readState();
@@ -519,6 +604,11 @@ async function destroy() {
 async function main() {
   if (command === 'up') {
     await up();
+    return;
+  }
+
+  if (command === 'reset') {
+    await reset();
     return;
   }
 
