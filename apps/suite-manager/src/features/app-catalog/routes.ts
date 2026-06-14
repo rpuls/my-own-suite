@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
 
 import type { SuiteManagerConfig } from '../../config.ts';
-import { writeComposeSelection } from './compose-selection.ts';
+import { writeComposeSelection, type WrittenComposeSelection } from './compose-selection.ts';
 import { buildInstallPlan, InstalledCatalogStateStore } from './state-store.ts';
 import type { CatalogAppManifest, CatalogInstallPlan, InstalledCatalogState } from './types.ts';
 import { loadCatalogManifests } from './manifest.ts';
 import type { ServiceAgentService } from '../service-agent/service.ts';
+import type { ServiceCapabilityStatus } from '../service-agent/service.ts';
 import type { HomepageConfigService } from '../homepage-config/service.ts';
 
 type CatalogAppResponse = {
@@ -81,6 +82,63 @@ function catalogResponse(catalog: Awaited<ReturnType<typeof loadCatalogManifests
   };
 }
 
+type CatalogOutputReconcileResult = {
+  composeSelection: WrittenComposeSelection;
+  hostSync:
+    | {
+        message: string | null;
+        synced: boolean;
+      }
+    | null;
+};
+
+async function reconcileCatalogOutputs(
+  config: SuiteManagerConfig,
+  installedState: InstalledCatalogState,
+  serviceAgentService?: ServiceAgentService,
+  knownCapabilities?: ServiceCapabilityStatus,
+): Promise<CatalogOutputReconcileResult> {
+  const composeSelection = writeComposeSelection(config.stateDir, installedState);
+  let hostSync: CatalogOutputReconcileResult['hostSync'] = null;
+
+  if (!serviceAgentService) {
+    return { composeSelection, hostSync };
+  }
+
+  const capabilities = knownCapabilities || (await serviceAgentService.getCapabilities());
+  if (!capabilities.appCatalogComposeSelectionApplyAvailable) {
+    if (capabilities.serviceAvailable) {
+      hostSync = {
+        message: 'Service agent is available but cannot sync app catalog Compose selection yet.',
+        synced: false,
+      };
+    }
+    return { composeSelection, hostSync };
+  }
+
+  try {
+    await serviceAgentService.applyAppCatalogComposeSelection({
+      applyServices: false,
+      composeYaml: composeSelection.composeYaml,
+      selectionJson: composeSelection.selectionJson,
+    });
+    hostSync = {
+      message: null,
+      synced: true,
+    };
+  } catch (error: unknown) {
+    hostSync = {
+      message:
+        error instanceof Error
+          ? error.message
+          : 'Unable to sync app catalog Compose selection.',
+      synced: false,
+    };
+  }
+
+  return { composeSelection, hostSync };
+}
+
 class CatalogInstallError extends Error {
   readonly status: 400 | 404 | 409;
 
@@ -113,8 +171,15 @@ export function createAppCatalogRouter(
   router.get('/app-catalog', async (c) => {
     const catalog = await loadCatalogManifests();
     const installedState = stateStore.load();
+    const reconciled = await reconcileCatalogOutputs(config, installedState, serviceAgentService);
 
-    return c.json(catalogResponse(catalog, installedState));
+    return c.json({
+      ...catalogResponse(catalog, installedState),
+      composeSelection: {
+        hostSync: reconciled.hostSync,
+        profiles: reconciled.composeSelection.selection.profiles,
+      },
+    });
   });
 
   router.post('/app-catalog/apps/:id/install', async (c) => {
@@ -160,23 +225,11 @@ export function createAppCatalogRouter(
               message: 'App services applied through the self-host service agent.',
               status: 'succeeded',
             });
-            composeSelection = writeComposeSelection(config.stateDir, installedState);
-            let finalSyncMessage: string | null = null;
-            try {
-              await serviceAgentService.applyAppCatalogComposeSelection({
-                applyServices: false,
-                composeYaml: composeSelection.composeYaml,
-                selectionJson: composeSelection.selectionJson,
-              });
-            } catch (syncError: unknown) {
-              finalSyncMessage =
-                syncError instanceof Error
-                  ? syncError.message
-                  : 'Unable to sync final app catalog Compose selection.';
-            }
+            const reconciled = await reconcileCatalogOutputs(config, installedState, serviceAgentService, capabilities);
+            composeSelection = reconciled.composeSelection;
             hostApply = {
               applied: true,
-              message: finalSyncMessage,
+              message: reconciled.hostSync?.message || null,
               output: result.output,
             };
           } catch (error: unknown) {

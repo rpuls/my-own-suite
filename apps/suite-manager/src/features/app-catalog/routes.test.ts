@@ -155,6 +155,85 @@ test('catalog API returns app manifests and installed state', async (t) => {
     },
   ]);
   assert.equal(seafileResponse.installed.status, 'not-installed');
+
+  const selection = JSON.parse(
+    await fs.readFile(path.join(stateDir, 'app-catalog', 'compose-selection.json'), 'utf8'),
+  ) as { apps: Array<{ id: string; status: string }>; profiles: string[] };
+  assert.deepEqual(selection.profiles, ['stirling-pdf']);
+  assert.deepEqual(selection.apps, [
+    {
+      id: 'stirling-pdf',
+      lastApply: {
+        message: 'Install plan recorded; runtime apply is pending.',
+        status: 'pending',
+        updatedAt: '2026-06-11T12:00:00.000Z',
+      },
+      services: ['stirling-pdf'],
+      status: 'pending-apply',
+    },
+  ]);
+});
+
+test('catalog API syncs generated Compose selection from installed state through service agent when available', async (t) => {
+  const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-app-catalog-route-'));
+  t.after(() => fs.rm(stateDir, { force: true, recursive: true }));
+  const config = createConfig(stateDir);
+  const catalog = await loadCatalogManifests();
+  const stirlingPdf = catalog.apps.find((app) => app.id === 'stirling-pdf');
+  assert.ok(stirlingPdf);
+  const store = new InstalledCatalogStateStore(stateDir);
+  store.markPendingApply(stirlingPdf, {
+    appId: stirlingPdf.id,
+    backupVolumes: stirlingPdf.backup.includeVolumes,
+    composeProfile: stirlingPdf.compose.profile,
+    composeServices: stirlingPdf.compose.services,
+    envTemplates: stirlingPdf.compose.envTemplates,
+    homepage: stirlingPdf.homepage,
+    routeHosts: stirlingPdf.routes.map((route) => route.host),
+    routes: stirlingPdf.routes,
+    volumes: stirlingPdf.compose.volumes,
+  });
+  store.updateApplyResult('stirling-pdf', {
+    message: 'App services applied through the self-host service agent.',
+    status: 'succeeded',
+  });
+
+  const received: Array<{ applyServices?: boolean; selectionJson: string }> = [];
+  const router = createAppCatalogRouter(config, {
+    applyAppCatalogComposeSelection: async (input: {
+      applyServices?: boolean;
+      composeYaml: string;
+      selectionJson: string;
+    }) => {
+      received.push(input);
+      return { applied: true };
+    },
+    getCapabilities: async () => ({
+      appCatalogComposeSelectionApplyAvailable: true,
+      caddyExternalProxyApplyAvailable: false,
+      error: null,
+      homepageRestartAvailable: false,
+      localHttpsApplyAvailable: false,
+      serviceAvailable: true,
+    }),
+  } as never);
+
+  const response = await router.request('/app-catalog');
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.composeSelection.hostSync, {
+    message: null,
+    synced: true,
+  });
+  assert.deepEqual(body.composeSelection.profiles, ['stirling-pdf']);
+  assert.equal(received.length, 1);
+  assert.equal(received[0]?.applyServices, false);
+  const selection = JSON.parse(received[0]?.selectionJson || '{}') as {
+    apps: Array<{ lastApply: { status: string }; status: string }>;
+  };
+  assert.equal(selection.apps[0]?.status, 'installed');
+  assert.equal(selection.apps[0]?.lastApply.status, 'succeeded');
 });
 
 test('catalog install API requires an authenticated setup session', async (t) => {
