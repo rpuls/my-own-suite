@@ -51,12 +51,21 @@ A DigitalOcean smoke test on this branch passed the control-plane-first path: fr
 
 During that test, the Suite Manager image was fixed to include `catalog/` in commit `b6eefdf` (`Include-catalog-in-suite-manager-image`).
 
+Completed since that smoke test:
+
+- Successful host apply now marks the app `installed` with `lastApply.status: succeeded`, regenerates Compose selection from Suite Manager state, and syncs the final projection back to the host agent without rerunning Compose.
+- Catalog reads reconcile generated Compose selection from `installed-apps.json`, so local and host-owned generated selection files can be restored from Suite Manager state.
+- Seeded Homepage defaults are now control-plane-first. Catalog app tiles are added only by catalog install flows.
+- `vps:up` now defaults to control-plane-only when no catalog selection exists. `--allProfiles` remains as an explicit full-stack development override.
+- `vps:init` now generates built-in Caddy app routes from installed catalog selection. Suite Manager and Homepage routes are always generated; optional app routes appear only for installed or pending-apply catalog apps.
+
 Current follow-ups:
 
-- Keep generated Compose selection consistent with Suite Manager installed-app state after a successful host apply; the host-owned `deploy/vps/generated/app-catalog/compose-selection.json` should show `installed`/`succeeded`, not stale `pending-apply`.
-- Keep the new model clean: `installed-apps.json` is the source of truth, while Compose selection, Homepage tiles, Caddy generated config, env files, and app setup state are projections.
-- Fresh control-plane-first installs should not show default Homepage tiles for apps that have not been installed.
+- Move app-specific env rendering, setup helpers, and route extras fully into catalog-owned app packages. Radicale's internal iCal bridge belongs to the Radicale package, not the default Caddy/control-plane route set.
 - Old onboarding still assumes bundled apps exist and should be redesigned later, outside this slice.
+- The first owner/setup flow still needs to stop treating installer-time owner credentials as the long-term model.
+- Uninstall/disable semantics remain undefined for alpha.
+- Backup inclusion still needs to follow installed catalog state.
 - Legacy all-app development installs are manually patched during this epic rather than driving migration code into the catalog implementation.
 
 ## Target Architecture
@@ -103,6 +112,13 @@ The app catalog should not mutate arbitrary user-authored Compose snippets in th
 ### Caddy Management
 
 Suite Manager already manages generated Caddy snippets for Homepage-managed routes. The catalog should reuse that path.
+
+Current split:
+
+- Control-plane routes are always generated for Suite Manager and Homepage.
+- Built-in optional app routes are generated from installed catalog selection and app manifest `routes`.
+- User/external proxy routes continue to come from Homepage YAML `mos.proxy` annotations.
+- Generated Caddy files remain runtime projections, not source of truth.
 
 When installing an app, Suite Manager should:
 
@@ -234,9 +250,7 @@ Fresh installs can use the new lean default once the catalog MVP is reliable.
 
 ## Open Questions
 
-- Should catalog state live in Suite Manager's existing persistent state, generated YAML, or both?
-- Should generated Compose be an override file, a full assembled file, or profile-based selection?
-- Which current app is the best first MVP install?
+- Should generated Compose remain profile-based for the next alpha step, or graduate to an override/assembled file when app packages need service-level additions beyond profiles?
 - What is the minimum uninstall story for alpha: disable route, stop service, remove generated config, preserve volumes?
 - How should app backup inclusion be represented before all apps have rich catalog metadata?
 - Should cloud installs default to public domain guidance, while own-hardware defaults to local-only?
@@ -249,7 +263,7 @@ This snapshot maps the current preloaded suite into the surfaces a catalog manif
 
 | Component | Compose services | Env templates | Volumes | Routes and Homepage | First-run behavior |
 | --- | --- | --- | --- | --- | --- |
-| Caddy | `caddy` | `.env`, `services/caddy/.env.template`, `services/radicale/.env.template` | `caddy_data`, `caddy_config` | Imports generated built-in routes and external proxy routes; also hosts the internal Radicale iCal bridge. | Must be present for all routed installs. |
+| Caddy | `caddy` | `.env`, `services/caddy/.env.template` | `caddy_data`, `caddy_config` | Imports generated built-in routes and external proxy routes. Suite Manager/Homepage routes are always generated; optional app routes come from installed catalog selection. | Must be present for all routed installs. |
 | Homepage | `homepage` | `.env`, `services/homepage/.env.template` | `homepage_images`; Docker socket read-only | Dashboard source is `services.template.yaml`; runtime config is fetched from Suite Manager and generated to `services.yaml`. | Must be present for dashboard and user-facing layout. |
 | Suite Manager | `suite-manager` | `.env`, `services/suite-manager/.env.template`, app env files for current onboarding helpers | `suite_manager_data` | Homepage tile points to `${SUITE_MANAGER_URL}/setup/`; app serves setup/customize/updates/backups/settings under `/setup`. | Currently requires `OWNER_EMAIL`, `OWNER_PASSWORD`, and `SESSION_SECRET` before process start. |
 | Host agents | `mos-update-agent`, `mos-service-agent`, `mos-backup-agent` systemd services outside Compose | Reconciled by `agents/selfhost/reconcile-host-agents.sh`; Compose self-host override mounts sockets/tokens into Suite Manager. | Agent state under `/var/lib` and sockets under `/run`. | Service agent can apply generated external Caddy routes and local HTTPS settings; update agent applies managed updates; backup agent snapshots/restores stack state. | Required capabilities are detected by Suite Manager rather than assumed. |
@@ -267,12 +281,12 @@ This snapshot maps the current preloaded suite into the surfaces a catalog manif
 
 ### Cross-Cutting Runtime Surfaces
 
-- `deploy/vps/docker-compose.yml` already uses profiles for app services, but `scripts/vps-run.cjs` currently starts every app profile by default.
-- `scripts/vps-init.cjs` renders every service env template and always generates Caddy built-in routes for all current app hosts.
+- `deploy/vps/docker-compose.yml` uses profiles for optional app services.
+- `scripts/vps-run.cjs` starts only the control plane by default when no catalog selection exists, consumes selected profiles from `deploy/vps/generated/app-catalog/compose-selection.json` when present, and keeps `--allProfiles` as an explicit development override.
+- `scripts/vps-init.cjs` renders every service env template for now, but built-in Caddy app routes are derived from installed catalog selection instead of a static all-app list.
 - `scripts/vps-doctor.cjs` validates all current app env files regardless of whether their profiles are selected.
-- `scripts/vps-run.cjs` now has a generated app-catalog selection point: when `deploy/vps/generated/app-catalog/compose-selection.json` exists, selected profiles come from that file; otherwise the existing all-app profile behavior remains.
 - Homepage defaults should be control-plane-first. Catalog app tiles should be added by install flows, not seeded as bundled defaults.
-- Caddy built-in route generation is currently static for every bundled app route, with external user-managed routes handled separately through Homepage `mos.proxy` annotations.
+- Caddy built-in route generation is split: control-plane routes are always generated, optional app routes come from installed catalog state, and external user-managed routes come from Homepage `mos.proxy` annotations.
 - The backup agent snapshots detected MOS Docker volumes and records the rendered Compose configuration plus the profiles it restarts. Catalog state should become part of the backed-up Suite Manager state before selective installs become the default.
 
 ## First Manifest Proposal
@@ -333,16 +347,27 @@ Installed-app state should live in Suite Manager persistent state first, with ge
 
 For the first generated Compose path, prefer an ignored own-infra selection file over mutating the developer Compose file. The least invasive alpha option is to generate a selected-profile file or command input consumed by `scripts/vps-run.cjs` and the host agents, then later graduate to a Compose override or assembled file when service-level additions/removals need more than profiles.
 
-## Current Implementation Slice
+## Current Implementation State
 
-The next slice after the successful DigitalOcean smoke test should:
+Implemented after the successful DigitalOcean smoke test:
 
-1. Keep `installed-apps.json` as the Suite Manager-owned source of truth.
-2. After a successful host-agent apply, mark the app `installed` with `lastApply.status: succeeded`, regenerate Compose selection from that final state, and send the final selection back to the service agent so host-generated state matches Suite Manager state.
-3. Make seeded Homepage defaults control-plane-first by removing bundled app tiles from default templates. Catalog app tiles should appear only after catalog install adds them.
-4. Avoid legacy all-app migration code. Pre-catalog development state is manually patched outside this branch.
+1. `installed-apps.json` is the Suite Manager-owned source of truth for optional catalog app lifecycle.
+2. Compose selection JSON/YAML is regenerated from installed state after installs and on catalog reads.
+3. The self-host service agent applies selected app services on install and can sync final generated selection without running Compose again.
+4. Seeded Homepage defaults are control-plane-first. Catalog app tiles appear only after catalog install adds them.
+5. Built-in Caddy routes are control-plane-first. Suite Manager/Homepage routes are always present; optional app routes come from installed catalog selection and manifest route metadata.
+6. Legacy all-app migration code is intentionally absent. Pre-catalog development state is manually patched outside this branch.
 
 Stirling PDF remains the first install MVP because it has one app service, no owner credential dependency, a simple route and Homepage tile, and no existing onboarding helper to untangle.
+
+## Recommended Next Slice
+
+Move app-specific runtime details that still leak through global templates into catalog-owned app package behavior, starting with Radicale:
+
+- Treat Radicale's public route, internal iCal bridge route, Homepage calendar widget, `RADICALE_ICAL_URL`, and related Caddy env usage as Radicale package outputs.
+- Keep default Caddy, Homepage, and env behavior focused on Suite Manager, Homepage, and Caddy only.
+- Add focused validation that uninstalled Radicale does not generate public or internal bridge routes, and installed Radicale does.
+- Keep onboarding redesign separate unless a small helper extraction is required for the package to be honest.
 
 ## Validation Gates
 
@@ -361,8 +386,4 @@ Before calling this alpha-ready:
 
 ## First Next Step
 
-Start with an inventory PR or branch slice:
-
-- Map current default apps to services, env files, volumes, routes, Homepage tiles, onboarding steps, backup needs, and provisioning mode.
-- Draft the catalog manifest shape from that inventory.
-- Choose the first app for the catalog MVP.
+The original inventory and first MVP path are complete enough for continuation. The next chat session should start from **Recommended Next Slice** above, or choose the onboarding split if product testing shows that is now the bigger blocker.
