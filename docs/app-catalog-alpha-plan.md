@@ -43,6 +43,21 @@ This keeps the default install lean and makes the suite feel owned by the user i
 - Do not require every app to support perfect automated user provisioning before it can exist in the catalog.
 - Do not redesign Homepage as a proprietary dashboard system. Homepage YAML remains the user-facing layout source.
 - Do not remove Railway in this epic. Platform installs remain secondary and can keep using their own simple path until migrated deliberately.
+- Do not add source-level migration tooling for the single legacy development server that predates the app catalog. This epic should leave clean catalog-first source code; old dev state can be patched manually when needed.
+
+## Current Alpha Status
+
+A DigitalOcean smoke test on this branch passed the control-plane-first path: fresh cloud install, Suite Manager login, catalog dialog load, Stirling PDF install, host-agent Compose apply, Homepage restart, and Stirling PDF route reachability.
+
+During that test, the Suite Manager image was fixed to include `catalog/` in commit `b6eefdf` (`Include-catalog-in-suite-manager-image`).
+
+Current follow-ups:
+
+- Keep generated Compose selection consistent with Suite Manager installed-app state after a successful host apply; the host-owned `deploy/vps/generated/app-catalog/compose-selection.json` should show `installed`/`succeeded`, not stale `pending-apply`.
+- Keep the new model clean: `installed-apps.json` is the source of truth, while Compose selection, Homepage tiles, Caddy generated config, env files, and app setup state are projections.
+- Fresh control-plane-first installs should not show default Homepage tiles for apps that have not been installed.
+- Old onboarding still assumes bundled apps exist and should be redesigned later, outside this slice.
+- Legacy all-app development installs are manually patched during this epic rather than driving migration code into the catalog implementation.
 
 ## Target Architecture
 
@@ -211,15 +226,9 @@ Exit criteria:
 
 ## Migration Strategy
 
-Existing installs may already have all current apps running. They should not be forcibly reduced.
+For this alpha branch, prioritize the clean target architecture over compatibility scaffolding for pre-catalog development installs.
 
-Migration should:
-
-- Detect existing services and mark them as installed catalog apps where possible.
-- Preserve existing Homepage tiles and Caddy routes.
-- Preserve existing env files, secrets, and volumes.
-- Avoid uninstalling anything automatically.
-- Give Suite Manager a reconciliation screen if catalog state and actual Compose state disagree.
+Fresh installs use Suite Manager installed-app state as the source of truth, and generated runtime files are derived from that state. The single known legacy development server can be manually patched if needed. Do not add Docker/container detection, Homepage-default inference, or migration framework code just to preserve old all-app state.
 
 Fresh installs can use the new lean default once the catalog MVP is reliable.
 
@@ -262,7 +271,7 @@ This snapshot maps the current preloaded suite into the surfaces a catalog manif
 - `scripts/vps-init.cjs` renders every service env template and always generates Caddy built-in routes for all current app hosts.
 - `scripts/vps-doctor.cjs` validates all current app env files regardless of whether their profiles are selected.
 - `scripts/vps-run.cjs` now has a generated app-catalog selection point: when `deploy/vps/generated/app-catalog/compose-selection.json` exists, selected profiles come from that file; otherwise the existing all-app profile behavior remains.
-- Homepage tiles are currently pruned by missing env placeholders, but `services/homepage/.env.template` generates URLs for every bundled app.
+- Homepage defaults should be control-plane-first. Catalog app tiles should be added by install flows, not seeded as bundled defaults.
 - Caddy built-in route generation is currently static for every bundled app route, with external user-managed routes handled separately through Homepage `mos.proxy` annotations.
 - The backup agent snapshots detected MOS Docker volumes and records the rendered Compose configuration plus the profiles it restarts. Catalog state should become part of the backed-up Suite Manager state before selective installs become the default.
 
@@ -324,18 +333,16 @@ Installed-app state should live in Suite Manager persistent state first, with ge
 
 For the first generated Compose path, prefer an ignored own-infra selection file over mutating the developer Compose file. The least invasive alpha option is to generate a selected-profile file or command input consumed by `scripts/vps-run.cjs` and the host agents, then later graduate to a Compose override or assembled file when service-level additions/removals need more than profiles.
 
-## Proposed First Implementation Slice
+## Current Implementation Slice
 
-Start with a no-service-install catalog foundation:
+The next slice after the successful DigitalOcean smoke test should:
 
-1. Add repo-owned catalog manifest files for current apps under `apps/suite-manager/catalog`, beginning with `stirling-pdf` plus control-plane metadata.
-2. Add a Suite Manager backend loader that validates manifest ids, profiles, service names, env template paths, route hosts, Homepage tile defaults, and provisioning modes.
-3. Add installed-app state storage in Suite Manager state with no UI mutation yet.
-4. Generate selected Compose profile outputs from installed-app state without running Docker yet.
-5. Teach `vps:doctor` or a new focused unit test to validate the catalog manifests against current Compose/env/Homepage contracts.
-6. Keep `vps:up` behavior unchanged until the manifest loader and selected-app state are covered.
+1. Keep `installed-apps.json` as the Suite Manager-owned source of truth.
+2. After a successful host-agent apply, mark the app `installed` with `lastApply.status: succeeded`, regenerate Compose selection from that final state, and send the final selection back to the service agent so host-generated state matches Suite Manager state.
+3. Make seeded Homepage defaults control-plane-first by removing bundled app tiles from default templates. Catalog app tiles should appear only after catalog install adds them.
+4. Avoid legacy all-app migration code. Pre-catalog development state is manually patched outside this branch.
 
-Recommended first install MVP after that foundation: Stirling PDF. It has one app service, no owner credential dependency, a simple route and Homepage tile, and no existing onboarding helper to untangle.
+Stirling PDF remains the first install MVP because it has one app service, no owner credential dependency, a simple route and Homepage tile, and no existing onboarding helper to untangle.
 
 ## Validation Gates
 
