@@ -64,19 +64,33 @@ The updater is intentionally manual. It never runs automatically in the backgrou
 DigitalOcean smoke-test workflow:
 
 ```bash
-# Required: token, SSH key, and current temporary owner seed credentials
-export DIGITALOCEAN_ACCESS_TOKEN=...
-export MOS_SMOKE_SSH_KEY_ID=...
-export MOS_SMOKE_OWNER_EMAIL=you@example.com
-export MOS_SMOKE_OWNER_PASSWORD=...
+# Create a local ignored env file for token, SSH key, and temporary owner seed credentials.
+mkdir -p .mos-smoke
+$EDITOR .mos-smoke/digitalocean.env
+```
 
-# Optional: defaults shown
-export MOS_SMOKE_REGION=fra1
-export MOS_SMOKE_SIZE=s-4vcpu-8gb
-export MOS_SMOKE_IMAGE=ubuntu-24-04-x64
-export MOS_SMOKE_REPO_REF=staging
-export MOS_SMOKE_REPO_URL=https://github.com/rpuls/my-own-suite.git
+Required values:
 
+```env
+DIGITALOCEAN_ACCESS_TOKEN=...
+MOS_SMOKE_SSH_KEY_ID=...
+MOS_SMOKE_OWNER_EMAIL=you@example.com
+MOS_SMOKE_OWNER_PASSWORD=...
+```
+
+Optional defaults:
+
+```env
+MOS_SMOKE_REGION=fra1
+MOS_SMOKE_SIZE=s-4vcpu-8gb
+MOS_SMOKE_IMAGE=ubuntu-24-04-x64
+MOS_SMOKE_REPO_REF=staging
+MOS_SMOKE_REPO_URL=https://github.com/rpuls/my-own-suite.git
+```
+
+Then run:
+
+```bash
 npm run smoke:do:up
 ```
 
@@ -89,7 +103,7 @@ node scripts/mos-compose.cjs ps
 docker ps
 ```
 
-It leaves the Droplet running for manual testing, Playwright testing, and inspection. Local state and logs are written under `.mos-smoke/`. If `MOS_SMOKE_DOMAIN` is not set, the harness uses `<public-ip>.sslip.io` as the MOS base domain, which gives app URLs such as `http://suite-manager.<public-ip>.sslip.io/setup/`.
+It leaves the Droplet running for manual testing, Playwright testing, and inspection. Local state, logs, and optional local configuration live under `.mos-smoke/`. The harness auto-loads `.mos-smoke/digitalocean.env` and lets explicitly exported shell variables override that file. If `MOS_SMOKE_DOMAIN` is not set, the harness uses `<public-ip>.sslip.io` as the MOS base domain, which gives app URLs such as `http://suite-manager.<public-ip>.sslip.io/setup/`.
 
 Useful optional settings:
 - `MOS_SMOKE_REPO_REF=feat/app-catalog-provisioning` tests a feature branch after it has been pushed.
