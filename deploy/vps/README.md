@@ -61,6 +61,51 @@ npm run update:apply -- --target latest --yes
 
 The updater is intentionally manual. It never runs automatically in the background.
 
+DigitalOcean smoke-test workflow:
+
+```bash
+# Required: token, SSH key, and current temporary owner seed credentials
+export DIGITALOCEAN_ACCESS_TOKEN=...
+export MOS_SMOKE_SSH_KEY_ID=...
+export MOS_SMOKE_OWNER_EMAIL=you@example.com
+export MOS_SMOKE_OWNER_PASSWORD=...
+
+# Optional: defaults shown
+export MOS_SMOKE_REGION=fra1
+export MOS_SMOKE_SIZE=s-4vcpu-8gb
+export MOS_SMOKE_IMAGE=ubuntu-24-04-x64
+export MOS_SMOKE_REPO_REF=staging
+export MOS_SMOKE_REPO_URL=https://github.com/rpuls/my-own-suite.git
+
+npm run smoke:do:up
+```
+
+The harness creates a fresh Ubuntu 24.04 DigitalOcean Droplet tagged `mos-smoke`, waits for SSH and cloud-init, runs the existing cloud self-host installer over SSH, then runs:
+
+```bash
+cd /opt/my-own-suite
+npm run vps:doctor
+node scripts/mos-compose.cjs ps
+docker ps
+```
+
+It leaves the Droplet running for manual testing, Playwright testing, and inspection. Local state and logs are written under `.mos-smoke/`. If `MOS_SMOKE_DOMAIN` is not set, the harness uses `<public-ip>.sslip.io` as the MOS base domain, which gives app URLs such as `http://suite-manager.<public-ip>.sslip.io/setup/`.
+
+Useful optional settings:
+- `MOS_SMOKE_REPO_REF=feat/app-catalog-provisioning` tests a feature branch after it has been pushed.
+- `MOS_SMOKE_SSH_KEY_FINGERPRINT` or `MOS_SMOKE_SSH_KEY_NAME` can be used instead of `MOS_SMOKE_SSH_KEY_ID`.
+- `MOS_SMOKE_SSH_PRIVATE_KEY=/path/to/key` passes an explicit private key to local `ssh`; otherwise local SSH config/default keys are used.
+- `MOS_SMOKE_DOMAIN=example.com` uses a real base domain instead of sslip.io.
+- `MOS_SMOKE_REPLACE=1 npm run smoke:do:up` destroys the current local-state smoke Droplet before creating a replacement.
+
+Destroy the smoke Droplet when finished:
+
+```bash
+npm run smoke:do:destroy
+```
+
+The destroy command refuses to delete unrelated Droplets. It only destroys Droplets whose name starts with `mos-smoke-` and whose tags include `mos-smoke`. When local state is missing, it can fall back to tagged cleanup; if multiple tagged smoke Droplets exist, set `MOS_SMOKE_DESTROY_ALL_TAGGED=1` to remove all of them.
+
 Manual compose commands (advanced):
 
 ```bash

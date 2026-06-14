@@ -51,6 +51,8 @@
     "update:status": "node scripts/mos-updater.cjs status",
     "update:apply": "node scripts/mos-updater.cjs apply",
     "release:check": "node scripts/release-check.cjs",
+    "smoke:do:up": "node scripts/smoke/digitalocean.cjs up",
+    "smoke:do:destroy": "node scripts/smoke/digitalocean.cjs destroy",
     "selfhost:autoinstall": "node scripts/selfhost-write-autoinstall.cjs",
     "selfhost:cloud-init": "node scripts/selfhost-write-cloudinit.cjs",
     "selfhost:build-installer-iso": "node scripts/selfhost-build-installer-iso.cjs",
