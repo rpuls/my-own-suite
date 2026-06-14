@@ -8,11 +8,14 @@ const repoRoot = path.resolve(__dirname, '..', '..');
 const smokeDir = path.join(repoRoot, '.mos-smoke');
 const logDir = path.join(smokeDir, 'logs');
 const statePath = path.join(smokeDir, 'digitalocean.json');
+const localEnvPath = path.join(smokeDir, 'digitalocean.env');
 const smokeTag = 'mos-smoke';
 const namePrefix = 'mos-smoke-';
 const apiBaseUrl = 'https://api.digitalocean.com/v2';
 
 const command = process.argv[2];
+
+loadLocalEnvFile();
 
 function usage() {
   console.log(`Usage: node scripts/smoke/digitalocean.cjs <up|reset|destroy>
@@ -27,6 +30,44 @@ Commands:
 function fail(message) {
   console.error(`[mos-smoke:do] ERROR: ${message}`);
   process.exit(1);
+}
+
+function parseEnvValue(value) {
+  const trimmed = value.trim();
+  const quote = trimmed[0];
+
+  if ((quote === '"' || quote === "'") && trimmed.endsWith(quote)) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
+}
+
+function loadLocalEnvFile() {
+  if (!fs.existsSync(localEnvPath)) {
+    return;
+  }
+
+  const lines = fs.readFileSync(localEnvPath, 'utf8').split(/\r?\n/);
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    const separatorIndex = line.indexOf('=');
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = parseEnvValue(line.slice(separatorIndex + 1));
+    if (!key || process.env[key] !== undefined) {
+      continue;
+    }
+
+    process.env[key] = value;
+  }
 }
 
 function env(name, fallback = '') {
