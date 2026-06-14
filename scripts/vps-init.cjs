@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { caddyServiceRoutesForMode, catalogRouteSpecs } = require('./app-catalog-runtime.cjs');
 
 const rootDir = process.cwd();
 const vpsDir = path.join(rootDir, 'deploy', 'vps');
@@ -276,61 +277,6 @@ function evalUrl(rawArgs, sharedVars) {
   }
 
   return `${protocol}://${service}.${domain}`;
-}
-
-function caddyServiceRoutesForMode(domain, tlsMode) {
-  const publicServices = [
-    ['suite-manager', 'suite-manager:3000'],
-    ['homepage', 'homepage:3000'],
-    ['seafile', 'seafile:80'],
-    ['onlyoffice', 'onlyoffice:80'],
-    ['stirling-pdf', 'stirling-pdf:8080'],
-    ['radicale', 'radicale:5232'],
-    ['immich', 'immich:2283'],
-  ];
-
-  if (tlsMode === 'cloudflare-dns01') {
-    return [
-      '# Generated MOS built-in HTTPS routes.',
-      '# This file is managed by vps:init from DOMAIN, PUBLIC_URL_SCHEME, and MOS_TLS_MODE.',
-      '',
-      ...publicServices.flatMap(([service, upstream]) => [
-        `${service}.${domain} {`,
-        `\treverse_proxy ${upstream}`,
-        '}',
-        '',
-      ]),
-      `vaultwarden.${domain} {`,
-      '\treverse_proxy vaultwarden:80',
-      '}',
-      '',
-    ].join('\n');
-  }
-
-  const matcherBlocks = publicServices.flatMap(([service, upstream]) => [
-    `\t@${service.replace(/-/g, '_')} host ${service}.${domain}`,
-    `\thandle @${service.replace(/-/g, '_')} {`,
-    `\t\treverse_proxy ${upstream}`,
-    '\t}',
-    '',
-  ]);
-
-  return [
-    '# Generated MOS built-in HTTP routes.',
-    '# This file is managed by vps:init from DOMAIN, PUBLIC_URL_SCHEME, and MOS_TLS_MODE.',
-    '',
-    ':80 {',
-    ...matcherBlocks,
-    '\trespond 404',
-    '}',
-    '',
-    '# Vaultwarden keeps HTTPS in HTTP mode because browser integrations require a secure origin.',
-    `https://vaultwarden.${domain} {`,
-    '\ttls internal',
-    '\treverse_proxy vaultwarden:80',
-    '}',
-    '',
-  ].join('\n');
 }
 
 function caddyGlobalOptionsForMode(tlsMode) {
@@ -619,8 +565,13 @@ refreshDerivedStackUrls(sharedVars);
 
 const configuredDomain = sharedVars.DOMAIN || 'localhost';
 const configuredTlsMode = sharedVars.MOS_TLS_MODE || 'off';
+const configuredCatalogRoutes = catalogRouteSpecs(rootDir);
 fs.mkdirSync(path.dirname(caddyBuiltInRoutesPath), { recursive: true });
 fs.writeFileSync(caddyGlobalOptionsPath, caddyGlobalOptionsForMode(configuredTlsMode), 'utf8');
-fs.writeFileSync(caddyBuiltInRoutesPath, caddyServiceRoutesForMode(configuredDomain, configuredTlsMode), 'utf8');
+fs.writeFileSync(
+  caddyBuiltInRoutesPath,
+  caddyServiceRoutesForMode(configuredDomain, configuredTlsMode, configuredCatalogRoutes),
+  'utf8',
+);
 console.log('Updated: deploy/vps/generated/caddy/global-options.caddy');
 console.log('Updated: deploy/vps/generated/caddy/built-in-routes.caddy');

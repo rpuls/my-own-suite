@@ -18,17 +18,25 @@ npm run vps:init
 # 3) Validate required values, cross-file wiring, and generated external proxy snippets
 npm run vps:doctor
 
-# 4) Build and start the full stack (non-destructive)
+# 4) Build and start the control plane (non-destructive)
 npm run vps:up
 ```
 
-For the app-catalog alpha path, start only the control plane:
+By default, `vps:up` starts Suite Manager, Homepage, and Caddy. Catalog app installs add selected app profiles through Suite Manager.
+
+For an explicit control-plane-only run:
 
 ```bash
 npm run vps:up -- --control-plane-only
 ```
 
-That starts Suite Manager, Homepage, Caddy, and the required host-agent wiring without preloading every bundled app. Catalog app installs can then add selected app Compose profiles and services through Suite Manager.
+That starts Suite Manager, Homepage, Caddy, and the required host-agent wiring without preloading any bundled apps.
+
+For legacy full-stack development runs while the app catalog alpha is in progress:
+
+```bash
+npm run vps:up -- --allProfiles
+```
 
 ### Alpha cloud-server smoke test
 
@@ -342,9 +350,11 @@ PUBLIC_URL_SCHEME=http  # Generated MOS dashboard links use this protocol
 MOS_TLS_MODE=off        # off or cloudflare-dns01
 ```
 
-All services automatically use the new domain:
-- Caddy routes: `homepage.{$DOMAIN}`, `suite-manager.{$DOMAIN}`, `seafile.{$DOMAIN}`, `onlyoffice.{$DOMAIN}`, `immich.{$DOMAIN}`, `radicale.{$DOMAIN}`, `stirling-pdf.{$DOMAIN}`, `vaultwarden.{$DOMAIN}`
-- Service URLs: `${PUBLIC_URL_SCHEME}://homepage.${DOMAIN}`, `${PUBLIC_URL_SCHEME}://suite-manager.${DOMAIN}/setup`, `${PUBLIC_URL_SCHEME}://seafile.${DOMAIN}`, `${PUBLIC_URL_SCHEME}://onlyoffice.${DOMAIN}`, `${PUBLIC_URL_SCHEME}://immich.${DOMAIN}`, `${PUBLIC_URL_SCHEME}://radicale.${DOMAIN}`, `${PUBLIC_URL_SCHEME}://stirling-pdf.${DOMAIN}`, `https://vaultwarden.${DOMAIN}`
+Control-plane services automatically use the new domain:
+- Caddy routes: `homepage.{$DOMAIN}`, `suite-manager.{$DOMAIN}`
+- Service URLs: `${PUBLIC_URL_SCHEME}://homepage.${DOMAIN}`, `${PUBLIC_URL_SCHEME}://suite-manager.${DOMAIN}/setup`
+
+Installed catalog apps add their own generated Caddy routes and Homepage URLs from catalog state. Uninstalled apps do not receive built-in MOS routes.
 
 After changing these values, run:
 

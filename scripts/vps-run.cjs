@@ -56,8 +56,12 @@ function readSelectedProfiles() {
     return [];
   }
 
-  if (forceAllProfiles || !fs.existsSync(catalogSelectionPath)) {
+  if (forceAllProfiles) {
     return defaultProfiles;
+  }
+
+  if (!fs.existsSync(catalogSelectionPath)) {
+    return [];
   }
 
   try {
@@ -94,7 +98,7 @@ if (controlPlaneOnly) {
       : 'Using app catalog selection with no optional app profiles.',
   );
 } else {
-  console.log(`No app catalog selection found; using existing all-app profile set: ${defaultProfiles.join(', ')}`);
+  console.log('No app catalog selection found; using control-plane-only profile set.');
 }
 
 run('npm', ['run', 'vps:init']);
