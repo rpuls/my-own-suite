@@ -61,8 +61,8 @@ Completed since that smoke test:
 
 Current follow-ups:
 
-- Move app-specific env rendering, setup helpers, and route extras fully into catalog-owned app packages. Radicale's internal iCal bridge belongs to the Radicale package, not the default Caddy/control-plane route set.
-- Old onboarding still assumes bundled apps exist and should be redesigned later, outside this slice.
+- Move app-specific env rendering, setup helpers, Homepage contributions, and route extras fully into catalog-owned app packages. Radicale's internal iCal bridge, calendar widget YAML, and assisted setup helper belong to the Radicale package, not the default Caddy/Homepage/control-plane route set.
+- Old onboarding still assumes bundled apps exist and should be redesigned later. For the next Radicale slice, only extract the Radicale-specific helper enough that general onboarding no longer depends on Radicale being installed.
 - The first owner/setup flow still needs to stop treating installer-time owner credentials as the long-term model.
 - Uninstall/disable semantics remain undefined for alpha.
 - Backup inclusion still needs to follow installed catalog state.
@@ -276,7 +276,7 @@ This snapshot maps the current preloaded suite into the surfaces a catalog manif
 | Seafile | `seafile`, `seafile-mysql`, `seafile-valkey`; profile `seafile` | `services/seafile/.env.template`, `services/seafile-mysql/.env.template`, `services/seafile-valkey/.env.template`, shared SMTP inputs | `seafile_data`, `seafile_mysql_data` | Built-in route `seafile.${DOMAIN}`; Homepage tile uses `${SEAFILE_URL}`. ONLYOFFICE integration uses `${ONLYOFFICE_APIJS_URL}`. | Env seeds `INIT_SEAFILE_ADMIN_EMAIL` from `OWNER_EMAIL` and generates `INIT_SEAFILE_ADMIN_PASSWORD`; Suite Manager currently tells the user to sign in with imported Vaultwarden credentials. | Automatic-plus-assisted. Service/env/bootstrap admin can be generated, but it depends on MOS owner identity and credential handoff. |
 | ONLYOFFICE | `onlyoffice`; profile `onlyoffice` | `services/onlyoffice/.env.template` | `onlyoffice_data` | Built-in route `onlyoffice.${DOMAIN}`; no default Homepage tile. | No Suite Manager onboarding step; primarily installed as Seafile document-editing integration. | Automatic dependency app. Should usually be installed as part of Seafile or offered as an advanced dependency. |
 | Stirling PDF | `stirling-pdf`; profile `stirling-pdf` | `services/stirling-pdf/.env.template` | `stirling_pdf_training_data`, `stirling_pdf_extra_configs`, `stirling_pdf_custom_files`, `stirling_pdf_logs`, `stirling_pdf_pipeline` | Built-in route `stirling-pdf.${DOMAIN}`; Homepage tile uses `${STIRLING_PDF_URL}`. | No current Suite Manager onboarding step. | Automatic. Low-risk MVP candidate because it has no owner credential dependency and a simple health endpoint. |
-| Radicale | `radicale`; profile `radicale` | `services/radicale/.env.template`, `services/homepage/.env.template`, Caddy consumes Radicale env for the internal iCal bridge | `radicale_data` | Built-in route `radicale.${DOMAIN}`; Homepage Calendar tile uses `${RADICALE_URL}` and backend-only `${RADICALE_ICAL_URL}` via Caddy bridge. | Env generates admin username/password and iCal bridge token; Suite Manager guides manual device connection after Vaultwarden credential import. | Assisted. Service/env can be generated automatically, but user value depends on a device setup helper and credential handoff. |
+| Radicale | `radicale`; profile `radicale` | `services/radicale/.env.template`, `services/homepage/.env.template`, Caddy consumes Radicale env for the internal iCal bridge | `radicale_data` | Built-in route `radicale.${DOMAIN}`; Homepage Calendar tile uses `${RADICALE_URL}` and backend-only `${RADICALE_ICAL_URL}` via Caddy bridge. Unlike simple app tiles, Radicale also needs Homepage widget/layout YAML so the calendar experience is useful immediately after install. | Env generates admin username/password and iCal bridge token; Suite Manager currently guides manual device connection as part of the general onboarding flow after Vaultwarden credential import. That helper should move into a Radicale-owned post-install/setup flow shown after Radicale install or from the installed app details screen. | Assisted. Service/env can be generated automatically, but user value depends on a device setup helper, generated calendar credentials, the iCal bridge, and Homepage widget contribution. |
 | Immich | `immich`, `immich-machine-learning`, `immich-postgres`, `immich-valkey`; profile `immich` | `services/immich/.env.template`, `services/immich-machine-learning/.env.template`, `services/immich-postgres/.env.template`, `services/immich-valkey/.env.template` | `immich_upload`, `immich_model_cache`, `immich_db` | Built-in route `immich.${DOMAIN}`; Homepage tile uses `${IMMICH_URL}`. | Suite Manager only opens Immich and tells the user to finish the app-native first-run wizard if prompted. | Manual/assisted. Install can be automated, but first user setup remains app-native and resource-heavy. |
 
 ### Cross-Cutting Runtime Surfaces
@@ -362,12 +362,31 @@ Stirling PDF remains the first install MVP because it has one app service, no ow
 
 ## Recommended Next Slice
 
-Move app-specific runtime details that still leak through global templates into catalog-owned app package behavior, starting with Radicale:
+Move app-specific runtime details that still leak through global templates into catalog-owned app package behavior, starting with Radicale.
 
-- Treat Radicale's public route, internal iCal bridge route, Homepage calendar widget, `RADICALE_ICAL_URL`, and related Caddy env usage as Radicale package outputs.
+Radicale package ownership should include:
+
+- Public Radicale route generation.
+- Internal Caddy iCal bridge route generation.
+- `RADICALE_ICAL_URL` and related env/url generation needed by the bridge and Homepage calendar widget.
+- The Homepage calendar tile/widget/layout YAML contribution. Radicale is not just a simple name/url/description tile; its useful default Homepage state includes calendar widget configuration that should be applied only when Radicale is installed.
+- The Radicale assisted setup helper currently embedded in general onboarding. General onboarding should stop assuming Radicale exists. The Radicale helper should be reachable after successful catalog install and later from the installed app details/setup action.
+
+Implementation boundaries:
+
 - Keep default Caddy, Homepage, and env behavior focused on Suite Manager, Homepage, and Caddy only.
-- Add focused validation that uninstalled Radicale does not generate public or internal bridge routes, and installed Radicale does.
-- Keep onboarding redesign separate unless a small helper extraction is required for the package to be honest.
+- Do not redesign all onboarding in this slice. Extract only the Radicale-specific setup flow needed to remove Radicale from suite-level onboarding.
+- Do not introduce legacy all-app migration logic.
+- Preserve Homepage YAML as the user-facing layout source. Catalog install may apply a managed Radicale YAML contribution, but should avoid replacing unrelated user customization.
+- Keep simple catalog app tile behavior intact for apps like Stirling PDF.
+
+Validation targets:
+
+- A fresh control-plane-only install does not seed Radicale Homepage tiles/widgets.
+- Uninstalled Radicale does not generate the public Radicale route or internal iCal bridge route.
+- Installing Radicale generates the route(s), env/url projection, Homepage calendar contribution, and app-specific setup helper entry point.
+- Re-running Radicale install/apply is idempotent and does not duplicate Homepage YAML.
+- Existing Stirling PDF install behavior still works.
 
 ## Validation Gates
 
