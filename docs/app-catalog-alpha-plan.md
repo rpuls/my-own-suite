@@ -2,6 +2,63 @@
 
 This is a temporary development plan for the alpha epic that moves MOS from a preloaded suite install to a control-plane-first install with user-selected apps. Before this branch merges, convert active work into GitHub Issues and either remove this file or replace it with pointers to the issues and the durable decision in `docs/decisions.md`.
 
+## Session Progress Tracker
+
+Use this section as the first stop when resuming the epic in a new chat session. Keep it current when a slice lands, especially when a completed slice leaves old code or assumptions that must be removed later.
+
+### Last Verified Manual State
+
+- [x] DigitalOcean control-plane-first smoke passed: fresh cloud install, Suite Manager login, catalog dialog load, Stirling PDF install, host-agent Compose apply, Homepage restart, and Stirling PDF route reachability.
+- [x] A follow-up DigitalOcean test after the Caddy reload fix passed: installing Stirling PDF added the Homepage tile, catalog UI showed installed, and the app launched from Homepage.
+- [x] DigitalOcean smoke harness has a faster existing-Droplet reset path through `npm run smoke:do:reset`. Agents must not run `smoke:do:up` or `smoke:do:reset` automatically.
+
+### Completed
+
+- [x] Defined the clean alpha direction: fresh installs are control-plane-first, legacy all-app dev state is manually patched, and generated runtime files are projections rather than source of truth.
+- [x] Added catalog manifests and validation for the current app inventory and control-plane components.
+- [x] Added Suite Manager-owned installed app state in `installed-apps.json`.
+- [x] Added authenticated app catalog API and reusable catalog picker in the Customize flow.
+- [x] Implemented the first install MVP with Stirling PDF.
+- [x] Fixed successful host apply consistency: app state ends as `installed` with `lastApply.status: succeeded`, and the final generated Compose selection is synced back to the service agent.
+- [x] Reconciled generated Compose selection from Suite Manager installed state on catalog reads.
+- [x] Made seeded Homepage defaults control-plane-first in both Suite Manager and Homepage bundled config.
+- [x] Made `vps:up` default to control-plane-only when no catalog selection exists, with `--allProfiles` kept as an explicit development override.
+- [x] Generated optional app Caddy routes from installed catalog selection and app manifest route metadata.
+- [x] Updated the self-host service agent so catalog apply refreshes and reloads Caddy routes.
+
+### Current Next Slice
+
+- [ ] Make Radicale a real catalog-owned app package instead of a default-suite assumption.
+- [ ] Remove Radicale from general onboarding assumptions without redesigning all onboarding.
+- [ ] Move Radicale's special Homepage calendar tile/widget/layout YAML into package-owned install behavior.
+- [ ] Move Radicale's public route, internal iCal bridge route, `RADICALE_ICAL_URL`, and related env/url projection behind installed catalog state.
+- [ ] Add focused tests proving Radicale is absent from fresh control-plane defaults and present only after install.
+
+### Cleanup Debt Created By Completed Slices
+
+These are known old-system leftovers that should be cleaned as the catalog model absorbs each app:
+
+- [ ] `deploy/vps/Caddyfile` still contains the static internal Radicale iCal bridge. Move this into Radicale package route generation so uninstalled Radicale has no bridge route.
+- [ ] `scripts/vps-init.cjs` still writes app URL env values globally, including `RADICALE_URL`. Keep what is needed for current placeholders, but move app-specific derived env/url generation into catalog package handling as apps are converted.
+- [ ] `scripts/vps-doctor.cjs` still validates all current app env files and Radicale/Homepage bridge wiring regardless of installed catalog state. Make validation selection-aware.
+- [ ] Suite Manager general onboarding still imports Vaultwarden, Radicale, Seafile, and Immich steps. Extract app helpers into app install/setup flows, starting with Radicale.
+- [ ] `apps/suite-manager/src/config.ts` still exposes app-specific onboarding config such as Radicale credentials as part of general Suite Manager config. Move app-specific config access behind app package/helper boundaries.
+- [ ] `scripts/mos-updater-lib.cjs` still uses the historical all-profile list for update apply. Decide how managed updates should derive selected app profiles from installed catalog state.
+- [ ] Backup inclusion still follows detected Docker state/rendered Compose rather than installed catalog state and manifest backup metadata.
+- [ ] Installer and Suite Manager still require owner env values for now. The future owner/setup flow should create the owner account in the browser instead of collecting credentials before install.
+
+### Deferred Or Out Of Scope For The Current Slice
+
+- [ ] Do not add Docker/container detection or migration tooling for pre-catalog all-app installs.
+- [ ] Do not redesign all onboarding while extracting Radicale. Only remove Radicale-specific assumptions from suite-level onboarding.
+- [ ] Do not implement uninstall/disable semantics until the installed app state and package projection model are stable.
+- [ ] Do not change Railway/platform deployment strategy in this epic unless a narrow compatibility fix is required.
+- [ ] Do not replace Homepage YAML with a proprietary dashboard registry. Homepage YAML remains the user-facing layout source.
+
+### Suggested Next Session Prompt
+
+Continue the app catalog alpha epic on `feat/app-catalog-provisioning`. Start from `docs/app-catalog-alpha-plan.md`, especially **Session Progress Tracker** and **Recommended Next Slice**. Implement the Radicale catalog package slice: remove Radicale from default/onboarding assumptions, move its Homepage calendar YAML contribution and iCal bridge route/env projection behind installed catalog state, keep Stirling PDF install working, update focused tests, and keep the changelog folded into the existing app-catalog alpha entry.
+
 ## Goal
 
 Install the MOS control plane first, then let the owner choose apps from Suite Manager.
@@ -405,4 +462,4 @@ Before calling this alpha-ready:
 
 ## First Next Step
 
-The original inventory and first MVP path are complete enough for continuation. The next chat session should start from **Recommended Next Slice** above, or choose the onboarding split if product testing shows that is now the bigger blocker.
+The original inventory and first MVP path are complete enough for continuation. The next chat session should start from **Session Progress Tracker**, then use **Recommended Next Slice** for the Radicale package work.
