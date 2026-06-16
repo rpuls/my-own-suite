@@ -123,6 +123,7 @@ export function buildInstallPlan(app: CatalogAppManifest): CatalogInstallPlan {
     composeProfile: app.compose.profile,
     composeServices: app.compose.services,
     envTemplates: app.compose.envTemplates,
+    envProjections: app.env.projections,
     homepage: app.homepage,
     homepageContributions: app.homepageContributions,
     routeHosts: app.routes.map((route) => route.host),

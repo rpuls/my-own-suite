@@ -186,16 +186,19 @@ function parseCatalogSelection(selectionJson) {
   }
 
   const profiles = parsed.profiles.filter((profile) => typeof profile === 'string' && profile.trim());
-  const services = parsed.apps.flatMap((app) => {
+  const appServices = parsed.apps.flatMap((app) => {
     if (!app || typeof app !== 'object' || !Array.isArray(app.services)) {
       return [];
     }
     return app.services.filter((service) => typeof service === 'string' && service.trim());
   });
+  const projectedServices = Array.isArray(parsed.services)
+    ? parsed.services.filter((service) => typeof service === 'string' && service.trim())
+    : [];
 
   return {
     profiles: Array.from(new Set(profiles)).sort(),
-    services: Array.from(new Set(services)).sort(),
+    services: Array.from(new Set([...appServices, ...projectedServices])).sort(),
   };
 }
 

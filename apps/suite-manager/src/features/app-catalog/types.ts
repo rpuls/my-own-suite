@@ -150,6 +150,7 @@ export type CatalogInstallPlan = {
   composeProfile: string;
   composeServices: string[];
   envTemplates: string[];
+  envProjections: CatalogEnvProjection[];
   homepage: CatalogHomepageTile;
   homepageContributions: CatalogHomepageContributions;
   routeHosts: string[];
