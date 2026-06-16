@@ -2,6 +2,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { readCatalogSelection } = require('./app-catalog-runtime.cjs');
+const { getCatalogDir, loadCatalogApps } = require('./app-catalog-packages.cjs');
 const { validateGeneratedExternalProxySnippetFile } = require('./caddy-external-proxies-validate.cjs');
 
 const rootDir = process.cwd();
@@ -66,8 +68,6 @@ const SERVICE_FILES = {
   caddy: 'services/caddy/.env',
   homepage: 'services/homepage/.env',
   onlyoffice: 'services/onlyoffice/.env',
-  radicale: 'services/radicale/.env',
-  stirlingPdf: 'services/stirling-pdf/.env',
   seafile: 'services/seafile/.env',
   seafileMysql: 'services/seafile-mysql/.env',
   seafileValkey: 'services/seafile-valkey/.env',
@@ -78,13 +78,28 @@ const SERVICE_FILES = {
   vaultwarden: 'services/vaultwarden/.env',
   vaultwardenPostgres: 'services/vaultwarden-postgres/.env',
 };
+const selectedCatalogAppIds = new Set(readCatalogSelection(rootDir).apps
+  .filter((app) => app && (app.status === 'installed' || app.status === 'pending-apply'))
+  .map((app) => app.id)
+  .filter((id) => typeof id === 'string'));
+const selectedCatalogApps = loadCatalogApps(getCatalogDir(rootDir))
+  .filter((app) => selectedCatalogAppIds.has(app.id));
+const catalogDoctorApps = selectedCatalogApps.filter((app) => app.doctor);
+const catalogDoctorEnvNames = new Map();
+for (const app of catalogDoctorApps) {
+  const fileName = `catalog:${app.id}`;
+  catalogDoctorEnvNames.set(app.doctor.serviceEnv, fileName);
+  SERVICE_FILES[fileName] = app.doctor.serviceEnv;
+}
 const files = { ...GLOBAL_FILES, ...APP_FILES, ...SERVICE_FILES };
 const TIMEZONE_CHECKS = [
   ['seafile', 'TIME_ZONE'],
   ['immich', 'TZ'],
   ['immichMachineLearning', 'TZ'],
   ['onlyoffice', 'TZ'],
-  ['stirlingPdf', 'TZ'],
+  ...catalogDoctorApps.flatMap((app) =>
+    app.doctor.requiredEnv.includes('TZ') ? [[`catalog:${app.id}`, 'TZ']] : [],
+  ),
 ];
 
 const env = {};
@@ -245,15 +260,7 @@ if (env.seafile && env.seafileMysql) {
   }
 }
 
-if (env.radicale) {
-  requireVar('radicale', 'RADICALE_ADMIN_USERNAME', { allowPlaceholder: false });
-  requireVar('radicale', 'RADICALE_ADMIN_PASSWORD', { allowPlaceholder: false });
-  requireVar('radicale', 'RADICALE_BASIC_AUTH_B64', { allowPlaceholder: false });
-  requireVar('radicale', 'RADICALE_ICAL_TOKEN', { allowPlaceholder: false });
-}
-
 if (env.homepage) {
-  requireVar('homepage', 'RADICALE_ICAL_URL', { allowPlaceholder: false });
   requireVar('homepage', 'SUITE_MANAGER_URL', { allowPlaceholder: false });
   requireVar('homepage', 'HOMEPAGE_CONFIG_SYNC_TOKEN', { allowPlaceholder: false });
   requireVar('homepage', 'HOMEPAGE_CONFIG_SYNC_URL', { allowPlaceholder: false });
@@ -326,19 +333,6 @@ if (env.onlyoffice) {
   }
 }
 
-if (env.homepage && env.radicale) {
-  const homepageUrl = env.homepage.RADICALE_ICAL_URL || '';
-  const radicaleToken = env.radicale.RADICALE_ICAL_TOKEN || '';
-
-  if (!isMissing(homepageUrl) && !isMissing(radicaleToken)) {
-    const includesToken = homepageUrl.includes(radicaleToken);
-    const includesPlaceholder = homepageUrl.includes('${RADICALE_ICAL_TOKEN}');
-    if (!includesToken && !includesPlaceholder) {
-      errors.push('RADICALE_ICAL_URL must include RADICALE_ICAL_TOKEN (or ${RADICALE_ICAL_TOKEN}) for Homepage calendar bridge.');
-    }
-  }
-}
-
 if (env.homepage) {
   const suiteManagerUrl = env.homepage.SUITE_MANAGER_URL || '';
   if (!isMissing(suiteManagerUrl) && /\/setup\/?$/i.test(suiteManagerUrl)) {
@@ -373,16 +367,46 @@ if (isSelfhostInstall && env.root) {
       SUITE_MANAGER_URL: 'suite-manager',
       VAULTWARDEN_URL: 'vaultwarden',
       SEAFILE_URL: 'seafile',
-      STIRLING_PDF_URL: 'stirling-pdf',
-      RADICALE_URL: 'radicale',
       IMMICH_URL: 'immich',
     };
+    for (const app of catalogDoctorApps) {
+      for (const homepageUrl of app.doctor.homepageUrls) {
+        homepageUrls[homepageUrl.key] = homepageUrl.host;
+      }
+    }
 
     for (const [key, service] of Object.entries(homepageUrls)) {
       const value = env.homepage[key] || '';
       const expectedHost = `${service}.${domain}`;
       if (!isMissing(value) && getHostname(value) !== expectedHost) {
         errors.push(`${key} should use ${expectedHost} for this self-host domain.`);
+      }
+    }
+  }
+}
+
+for (const app of catalogDoctorApps) {
+  const doctor = app.doctor;
+  const fileName = `catalog:${app.id}`;
+  for (const key of doctor.requiredEnv) {
+    requireVar(fileName, key, { allowPlaceholder: false });
+  }
+
+  for (const check of doctor.checks) {
+    if (check.type === 'envIncludesEnv') {
+      const sourceFileName = catalogDoctorEnvNames.get(check.sourceServiceEnv) || Object.entries(files)
+        .find(([, relPath]) => relPath === check.sourceServiceEnv)?.[0];
+      const targetFileName = catalogDoctorEnvNames.get(check.targetServiceEnv) || Object.entries(files)
+        .find(([, relPath]) => relPath === check.targetServiceEnv)?.[0];
+      const sourceValue = sourceFileName ? env[sourceFileName]?.[check.sourceKey] || '' : '';
+      const targetValue = targetFileName ? env[targetFileName]?.[check.targetKey] || '' : '';
+
+      if (!isMissing(sourceValue) && !isMissing(targetValue)) {
+        const includesTarget = sourceValue.includes(targetValue);
+        const includesTemplate = check.allowTemplate ? sourceValue.includes(check.allowTemplate) : false;
+        if (!includesTarget && !includesTemplate) {
+          errors.push(check.message);
+        }
       }
     }
   }

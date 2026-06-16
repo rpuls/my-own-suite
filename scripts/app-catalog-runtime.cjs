@@ -1,30 +1,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { getCatalogDir, getSelectedCatalogAppIds, loadCatalogApps } = require('./app-catalog-packages.cjs');
 
 const CONTROL_PLANE_ROUTES = [
   { host: 'suite-manager', upstream: 'suite-manager:3000' },
   { host: 'homepage', upstream: 'homepage:3000' },
 ];
 
-function getCatalogDir(repoRoot) {
-  return path.join(repoRoot, 'apps', 'suite-manager', 'catalog');
-}
-
 function getCatalogSelectionPath(repoRoot) {
   return path.join(repoRoot, 'deploy', 'vps', 'generated', 'app-catalog', 'compose-selection.json');
-}
-
-function loadCatalogApps(repoRoot) {
-  const appsDir = path.join(getCatalogDir(repoRoot), 'apps');
-  if (!fs.existsSync(appsDir)) {
-    return [];
-  }
-
-  return fs
-    .readdirSync(appsDir)
-    .filter((fileName) => fileName.endsWith('.json'))
-    .sort()
-    .map((fileName) => JSON.parse(fs.readFileSync(path.join(appsDir, fileName), 'utf8')));
 }
 
 function readCatalogSelection(repoRoot) {
@@ -45,22 +29,17 @@ function readCatalogSelection(repoRoot) {
   };
 }
 
-function selectedCatalogAppIds(selection) {
-  return new Set(
-    selection.apps
-      .filter((app) => app && (app.status === 'installed' || app.status === 'pending-apply'))
-      .map((app) => app.id)
-      .filter((id) => typeof id === 'string' && id.trim()),
-  );
+function selectedCatalogApps(repoRoot) {
+  const appIds = getSelectedCatalogAppIds(readCatalogSelection(repoRoot));
+  return loadCatalogApps(getCatalogDir(repoRoot))
+    .filter((app) => appIds.has(app.id))
 }
 
 function catalogRouteSpecs(repoRoot) {
-  const appIds = selectedCatalogAppIds(readCatalogSelection(repoRoot));
-  return loadCatalogApps(repoRoot)
-    .filter((app) => appIds.has(app.id))
+  return selectedCatalogApps(repoRoot)
     .flatMap((app) =>
-      Array.isArray(app.routes)
-        ? app.routes.map((route) => ({
+      Array.isArray(app.routes.public)
+        ? app.routes.public.map((route) => ({
             host: route.host,
             httpsInHttpMode: route.httpsInHttpMode === true,
             upstream: route.upstream,
@@ -68,6 +47,29 @@ function catalogRouteSpecs(repoRoot) {
         : [],
     )
     .filter((route) => route.host && route.upstream);
+}
+
+function catalogInternalRouteSnippets(repoRoot) {
+  return selectedCatalogApps(repoRoot).flatMap((app) =>
+    app.routes.internal.map((route) => {
+      const assetPath = path.join(app.package.dir, route.asset);
+      return {
+        appId: app.id,
+        content: fs.readFileSync(assetPath, 'utf8'),
+        id: route.id,
+        path: assetPath,
+      };
+    }),
+  );
+}
+
+function catalogEnvProjections(repoRoot) {
+  return selectedCatalogApps(repoRoot).flatMap((app) =>
+    app.env.projections.map((projection) => ({
+      ...projection,
+      appId: app.id,
+    })),
+  );
 }
 
 function caddySiteBlock(siteAddress, upstream, extraLines = []) {
@@ -120,6 +122,8 @@ function caddyServiceRoutesForMode(domain, tlsMode, appRoutes = []) {
 module.exports = {
   CONTROL_PLANE_ROUTES,
   caddyServiceRoutesForMode,
+  catalogEnvProjections,
+  catalogInternalRouteSnippets,
   catalogRouteSpecs,
   readCatalogSelection,
 };

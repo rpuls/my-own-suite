@@ -2,8 +2,9 @@ import { CheckCircle2, Clock3, Download, ExternalLink, Wrench } from 'lucide-rea
 import { useState } from 'react';
 
 import { Notice } from '../../components/ui';
-import { installCatalogApp, useAppCatalog } from './useAppCatalog';
-import type { CatalogApp, CatalogProvisioningMode } from './types';
+import { CatalogSetupHelperPanel } from './setup-helper-registry';
+import { installCatalogApp, loadCatalogSetupHelper, useAppCatalog } from './useAppCatalog';
+import type { CatalogApp, CatalogProvisioningMode, CatalogSetupHelperResponse } from './types';
 
 type AppCatalogPickerProps = {
   mode?: 'embedded' | 'standalone';
@@ -60,9 +61,12 @@ export function AppCatalogPicker({ mode = 'embedded', onInstallUnavailable }: Ap
   const [installingAppId, setInstallingAppId] = useState<string | null>(null);
   const [installMessage, setInstallMessage] = useState<string | null>(null);
   const [installError, setInstallError] = useState<string | null>(null);
+  const [helper, setHelper] = useState<CatalogSetupHelperResponse | null>(null);
+  const [helperError, setHelperError] = useState<string | null>(null);
+  const [helperLoadingAppId, setHelperLoadingAppId] = useState<string | null>(null);
 
   async function install(app: CatalogApp): Promise<void> {
-    if (app.id !== 'stirling-pdf') {
+    if (app.provisioning.mode === 'manual' || app.provisioning.mode === 'unsupported-alpha') {
       onInstallUnavailable?.(app);
       return;
     }
@@ -73,11 +77,23 @@ export function AppCatalogPicker({ mode = 'embedded', onInstallUnavailable }: Ap
     try {
       const response = await installCatalogApp(app.id);
       setCatalog(response);
-      setInstallMessage(`${app.name} install plan is ready. Runtime apply is coming next.`);
+      setInstallMessage(`${app.name} install is ready.`);
     } catch (error: unknown) {
       setInstallError(error instanceof Error ? error.message : 'Unable to install this app.');
     } finally {
       setInstallingAppId(null);
+    }
+  }
+
+  async function openSetupHelper(app: CatalogApp): Promise<void> {
+    setHelperLoadingAppId(app.id);
+    setHelperError(null);
+    try {
+      setHelper(await loadCatalogSetupHelper(app.id));
+    } catch (error: unknown) {
+      setHelperError(error instanceof Error ? error.message : 'Unable to load this setup helper.');
+    } finally {
+      setHelperLoadingAppId(null);
     }
   }
 
@@ -105,6 +121,16 @@ export function AppCatalogPicker({ mode = 'embedded', onInstallUnavailable }: Ap
       {installError ? (
         <Notice title="Install failed" variant="error">
           <p>{installError}</p>
+        </Notice>
+      ) : null}
+      {helperError ? (
+        <Notice title="Setup helper unavailable" variant="error">
+          <p>{helperError}</p>
+        </Notice>
+      ) : null}
+      {helper ? (
+        <Notice title={helper.title} variant="info">
+          <CatalogSetupHelperPanel helper={helper} />
         </Notice>
       ) : null}
       <div className="suite-app-catalog-list">
@@ -149,6 +175,19 @@ export function AppCatalogPicker({ mode = 'embedded', onInstallUnavailable }: Ap
                       ? 'Ready'
                       : 'Install'}
               </button>
+              {app.installed.status === 'installed' && app.provisioning.setupHelper ? (
+                <button
+                  className="suite-copy-button"
+                  disabled={helperLoadingAppId === app.id}
+                  onClick={() => void openSetupHelper(app)}
+                  type="button"
+                >
+                  <Wrench aria-hidden="true" className="suite-inline-icon" />
+                  {helperLoadingAppId === app.id
+                    ? 'Opening...'
+                    : app.provisioning.postInstallActionLabel || 'Setup'}
+                </button>
+              ) : null}
             </div>
           </article>
         ))}

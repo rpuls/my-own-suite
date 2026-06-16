@@ -259,3 +259,39 @@ test('upserts a managed catalog app tile without duplicating it', async (t) => {
   assert.match(content, /kind: catalog-app/);
   assert.match(content, /id: stirling-pdf/);
 });
+
+test('upserts managed catalog app YAML contributions without duplicating widget tiles', async (t) => {
+  const { configDir, service } = await createService();
+  t.after(() => fs.rm(configDir, { force: true, recursive: true }));
+  const contribution = `
+- Calendar:
+    - Radicale:
+        href: \${RADICALE_URL}
+        description: Calendar sync
+        widget:
+          type: calendar
+          integrations:
+            - type: ical
+              url: \${RADICALE_ICAL_URL}
+        mos:
+          id: radicale
+          kind: catalog-app
+          managed: true
+`;
+
+  await service.upsertCatalogAppContributions({
+    id: 'radicale',
+    servicesYaml: [contribution],
+  });
+  await service.upsertCatalogAppContributions({
+    id: 'radicale',
+    servicesYaml: [contribution],
+  });
+
+  const { content } = await service.readFile('services.template.yaml');
+  const matches = content.match(/Radicale/g) || [];
+  assert.equal(matches.length, 1);
+  assert.match(content, /widget:\s+type: calendar/);
+  assert.match(content, /url: \$\{RADICALE_ICAL_URL\}/);
+  assert.match(content, /id: radicale/);
+});

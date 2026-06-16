@@ -25,24 +25,29 @@ Use this section as the first stop when resuming the epic in a new chat session.
 - [x] Made `vps:up` default to control-plane-only when no catalog selection exists, with `--allProfiles` kept as an explicit development override.
 - [x] Generated optional app Caddy routes from installed catalog selection and app manifest route metadata.
 - [x] Updated the self-host service agent so catalog apply refreshes and reloads Caddy routes.
+- [x] Introduced catalog app package directories for converted apps, with Stirling PDF and Radicale moved under `apps/suite-manager/catalog/apps/<app-id>/manifest.json`.
+- [x] Added package-owned projection support for selected app env writes, internal Caddy snippets, richer Homepage YAML contributions, and setup-helper entry points.
+- [x] Moved Radicale's internal iCal bridge and Homepage calendar contribution into the Radicale catalog package, and removed Radicale from default suite-level onboarding.
+- [x] Moved Radicale's setup-helper UI and password handoff under the Radicale package, and added a guardrail test that fails if converted app behavior leaks back into suite-level onboarding, static Caddy routes, or global Homepage env defaults.
+- [x] Made converted app installability, setup-helper modules, and VPS doctor checks manifest-driven so Stirling PDF and Radicale no longer need app-name branches in the install route, setup-helper registries, or converted-app doctor validation.
 
 ### Current Next Slice
 
-- [ ] Make Radicale a real catalog-owned app package instead of a default-suite assumption.
-- [ ] Remove Radicale from general onboarding assumptions without redesigning all onboarding.
-- [ ] Move Radicale's special Homepage calendar tile/widget/layout YAML into package-owned install behavior.
-- [ ] Move Radicale's public route, internal iCal bridge route, `RADICALE_ICAL_URL`, and related env/url projection behind installed catalog state.
-- [ ] Add focused tests proving Radicale is absent from fresh control-plane defaults and present only after install.
+- [ ] Convert the next app package using the package-directory contract before migrating more hardcoded app behavior.
+- [ ] Continue reducing old global env/url projections for unconverted apps as each app moves into a package.
+- [ ] Add broader app lifecycle tests once uninstall/disable semantics are defined.
 
 ### Cleanup Debt Created By Completed Slices
 
 These are known old-system leftovers that should be cleaned as the catalog model absorbs each app:
 
-- [ ] `deploy/vps/Caddyfile` still contains the static internal Radicale iCal bridge. Move this into Radicale package route generation so uninstalled Radicale has no bridge route.
-- [ ] `scripts/vps-init.cjs` still writes app URL env values globally, including `RADICALE_URL`. Keep what is needed for current placeholders, but move app-specific derived env/url generation into catalog package handling as apps are converted.
-- [ ] `scripts/vps-doctor.cjs` still validates all current app env files and Radicale/Homepage bridge wiring regardless of installed catalog state. Make validation selection-aware.
-- [ ] Suite Manager general onboarding still imports Vaultwarden, Radicale, Seafile, and Immich steps. Extract app helpers into app install/setup flows, starting with Radicale.
+- [x] `deploy/vps/Caddyfile` no longer contains the static internal Radicale iCal bridge; selected package snippets are generated into the internal app routes projection.
+- [ ] `scripts/vps-init.cjs` still writes app URL env values globally for unconverted apps. Keep what is needed for current placeholders, but move app-specific derived env/url generation into catalog package handling as apps are converted.
+- [x] `scripts/vps-doctor.cjs` reads converted app doctor contracts from installed package manifests for Stirling PDF and Radicale.
+- [ ] `scripts/vps-doctor.cjs` still validates unconverted current app env files regardless of installed catalog state. Continue moving validation into package `doctor` contracts as apps are converted.
+- [ ] Suite Manager general onboarding still imports Vaultwarden, Seafile, and Immich steps. Extract app helpers into app install/setup flows as those apps are converted.
 - [ ] `apps/suite-manager/src/config.ts` still exposes app-specific onboarding config such as Radicale credentials as part of general Suite Manager config. Move app-specific config access behind app package/helper boundaries.
+- [x] Generic app-catalog setup-helper registries now load package-declared backend modules and frontend panels for converted apps instead of branching on Radicale.
 - [ ] `scripts/mos-updater-lib.cjs` still uses the historical all-profile list for update apply. Decide how managed updates should derive selected app profiles from installed catalog state.
 - [ ] Backup inclusion still follows detected Docker state/rendered Compose rather than installed catalog state and manifest backup metadata.
 - [ ] Installer and Suite Manager still require owner env values for now. The future owner/setup flow should create the owner account in the browser instead of collecting credentials before install.
@@ -57,7 +62,7 @@ These are known old-system leftovers that should be cleaned as the catalog model
 
 ### Suggested Next Session Prompt
 
-Continue the app catalog alpha epic on `feat/app-catalog-provisioning`. Start from `docs/app-catalog-alpha-plan.md`, especially **Session Progress Tracker** and **Recommended Next Slice**. Implement the Radicale catalog package slice: remove Radicale from default/onboarding assumptions, move its Homepage calendar YAML contribution and iCal bridge route/env projection behind installed catalog state, keep Stirling PDF install working, update focused tests, and keep the changelog folded into the existing app-catalog alpha entry.
+Continue the app catalog alpha epic on `feat/app-catalog-provisioning`. Start from `docs/app-catalog-alpha-plan.md`, especially **Session Progress Tracker** and **Current Next Slice**. Use the package-directory contract established by Stirling PDF and Radicale before migrating more hardcoded apps: converted apps declare `lifecycle.installable`, env projections, routes, Homepage contributions, `doctor` checks, and setup-helper backend/frontend modules in their package. Do not add new app-name branches to install routes, setup-helper registries, Caddy/Homepage defaults, or `vps-doctor`. Keep the changelog folded into the existing app-catalog alpha entry.
 
 ## Goal
 
@@ -138,7 +143,7 @@ The default MOS runtime includes only the components required to manage the suit
 
 ### App Catalog
 
-Each catalog app should have a repo-owned manifest that describes:
+Each catalog app should have a repo-owned package under `apps/suite-manager/catalog/apps/<app-id>/` with a `manifest.json` that describes:
 
 - Display name, description, icon, category, and app docs link.
 - Docker Compose service fragments or a reference to service templates.
@@ -146,11 +151,15 @@ Each catalog app should have a repo-owned manifest that describes:
 - Persistent volumes.
 - Caddy route needs.
 - Homepage tile defaults.
+- Package-owned Homepage YAML contributions when a simple tile is not enough.
+- Package-owned doctor checks for installed-app env validation.
 - Install, uninstall, restart, and status behavior.
-- Optional provisioning helpers.
+- Optional provisioning helpers with package-owned backend and frontend modules.
 - Backup and restore inclusion rules.
 
-The manifest should be data-first. App-specific code is allowed only when the app truly needs a special setup helper.
+The manifest should be data-first. App-specific code is allowed only when the app truly needs a special setup helper or validation extension, and that code should live under the app package with a manifest reference. Generic Suite Manager files should load package-declared extension points instead of branching on app IDs.
+
+Converted apps may keep Dockerfiles, service env templates, app READMEs, and public docs in their existing compatibility locations, but the catalog package must be the place that declares which of those assets belong to the app lifecycle.
 
 ### Compose Management
 
@@ -341,7 +350,7 @@ This snapshot maps the current preloaded suite into the surfaces a catalog manif
 - `deploy/vps/docker-compose.yml` uses profiles for optional app services.
 - `scripts/vps-run.cjs` starts only the control plane by default when no catalog selection exists, consumes selected profiles from `deploy/vps/generated/app-catalog/compose-selection.json` when present, and keeps `--allProfiles` as an explicit development override.
 - `scripts/vps-init.cjs` renders every service env template for now, but built-in Caddy app routes are derived from installed catalog selection instead of a static all-app list.
-- `scripts/vps-doctor.cjs` validates all current app env files regardless of whether their profiles are selected.
+- `scripts/vps-doctor.cjs` validates converted app env files from installed package `doctor` contracts, while unconverted current apps still use the older global validation path.
 - Homepage defaults should be control-plane-first. Catalog app tiles should be added by install flows, not seeded as bundled defaults.
 - Caddy built-in route generation is split: control-plane routes are always generated, optional app routes come from installed catalog state, and external user-managed routes come from Homepage `mos.proxy` annotations.
 - The backup agent snapshots detected MOS Docker volumes and records the rendered Compose configuration plus the profiles it restarts. Catalog state should become part of the backed-up Suite Manager state before selective installs become the default.
@@ -349,6 +358,8 @@ This snapshot maps the current preloaded suite into the surfaces a catalog manif
 ## First Manifest Proposal
 
 The catalog manifest should be data-first and small enough to review alongside each app. A practical first shape:
+
+`apps/suite-manager/catalog/apps/stirling-pdf/manifest.json` shape:
 
 ```yaml
 id: stirling-pdf
@@ -369,18 +380,40 @@ compose:
     - stirling_pdf_custom_files
     - stirling_pdf_logs
     - stirling_pdf_pipeline
+lifecycle:
+  installable: true
+env:
+  projections:
+    - serviceEnv: services/homepage/.env
+      key: STIRLING_PDF_URL
+      value: ${PUBLIC_URL_SCHEME}://stirling-pdf.${DOMAIN}
 routes:
-  - host: stirling-pdf
-    upstream: stirling-pdf:8080
+  public:
+    - host: stirling-pdf
+      upstream: stirling-pdf:8080
+  internal: []
 homepage:
-  group: My Tools
-  name: Stirling PDF
-  hrefEnv: STIRLING_PDF_URL
-  description: Handle everyday PDF jobs without uploading personal documents elsewhere
-  icon: /images/stirling-pdf.png
+  tile:
+    group: My Tools
+    name: Stirling PDF
+    hrefEnv: STIRLING_PDF_URL
+    description: Handle everyday PDF jobs without uploading personal documents elsewhere
+    icon: /images/stirling-pdf.png
+  contributions:
+    services: []
+    widgets: []
 provisioning:
   mode: automatic
-  setupHelper: none
+  setupHelper: null
+  postInstallActionLabel: null
+doctor:
+  serviceEnv: services/stirling-pdf/.env
+  requiredEnv:
+    - TZ
+  homepageUrls:
+    - key: STIRLING_PDF_URL
+      host: stirling-pdf
+  checks: []
 backup:
   includeVolumes:
     - stirling_pdf_extra_configs
@@ -388,15 +421,20 @@ backup:
     - stirling_pdf_pipeline
 ```
 
-Initial manifest fields:
+Initial package manifest fields:
 
 - `id`, `name`, `category`, `summary`, `docs`, and optional `icon`.
 - `compose.profile`, `compose.services`, `compose.envTemplates`, and `compose.volumes`.
-- `routes` with app subdomain and internal upstream for generated built-in Caddy routes.
-- `homepage` tile defaults, including group, name, description, icon, and generated URL env.
+- `lifecycle.installable` for alpha install enablement; do not add install allowlists in routes.
+- `env.projections` for selected app URL/env writes into service env files.
+- `routes.public` with app subdomain and internal upstream for generated built-in Caddy routes.
+- `routes.internal` for package-owned generated Caddy snippets such as Radicale's iCal bridge.
+- `homepage.tile` defaults, including group, name, description, icon, and generated URL env.
+- `homepage.contributions` for package-owned Homepage YAML fragments when a simple tile is not enough.
 - `env` metadata for required owner-supplied values, generated secrets, shared values, and derived values.
 - `provisioning.mode`: `automatic`, `assisted`, `manual`, or `unsupported-alpha`.
-- Optional `provisioning.setupHelper` that points to a Suite Manager helper only when needed.
+- Optional `provisioning.setupHelper` object with `id`, package-relative `backend`, and package-relative `frontend` when an app needs assisted setup.
+- Optional `doctor` contract for installed-app env files, required values, self-host Homepage URL checks, and narrow cross-env checks.
 - `backup.includeVolumes` and later `restore.notes` so backup behavior is explicit.
 - Optional `dependencies` for apps like Seafile requiring ONLYOFFICE as an install option or recommended companion.
 

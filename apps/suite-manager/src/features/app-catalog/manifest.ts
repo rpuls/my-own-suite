@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import YAML from 'yaml';
@@ -7,15 +8,56 @@ import type {
   CatalogAppManifest,
   CatalogControlPlaneManifest,
   CatalogManifestSet,
-  CatalogProvisioningMode,
 } from './types.ts';
 
-const provisionModes = new Set<CatalogProvisioningMode>([
-  'automatic',
-  'assisted',
-  'manual',
-  'unsupported-alpha',
-]);
+const require = createRequire(import.meta.url);
+const { loadCatalogApps } = require('./package-loader.cjs') as {
+  loadCatalogApps: (catalogDir: string) => Array<{
+    backup: {
+      includeVolumes: string[];
+      restoreNotes?: string;
+    };
+    category: string;
+    compose: {
+      envTemplates: string[];
+      profile: string;
+      services: string[];
+      volumes: string[];
+    };
+    dependencies?: Array<{ id: string; kind: 'required' | 'recommended' }>;
+    doctor: CatalogAppManifest['doctor'];
+    docs: {
+      app: string;
+    };
+    env: {
+      projections: Array<{ key: string; serviceEnv: string; value: string }>;
+    };
+    homepage: {
+      contributions: {
+        services: string[];
+        widgets: string[];
+      };
+      tile: CatalogAppManifest['homepage'];
+    } | null;
+    id: string;
+    lifecycle: CatalogAppManifest['lifecycle'];
+    name: string;
+    package: {
+      dir: string;
+      source: string;
+    };
+    provisioning: {
+      mode: CatalogAppManifest['provisioning']['mode'];
+      postInstallActionLabel: string | null;
+      setupHelper: CatalogAppManifest['provisioning']['setupHelper'];
+    };
+    routes: {
+      internal: Array<{ asset: string; id: string }>;
+      public: CatalogAppManifest['routes'];
+    };
+    summary: string;
+  }>;
+};
 
 export function getDefaultCatalogDir(): string {
   return path.resolve(import.meta.dirname, '../../..', 'catalog');
@@ -44,98 +86,27 @@ async function readJsonFile<T>(filePath: string): Promise<T> {
   return JSON.parse(raw) as T;
 }
 
-function validateAppShape(raw: unknown, source: string): CatalogAppManifest {
-  if (!isObject(raw)) {
-    throw new Error(`${source} must contain a JSON object.`);
-  }
-
-  const compose = raw.compose;
-  const docs = raw.docs;
-  const provisioning = raw.provisioning;
-  const backup = raw.backup;
-
-  if (!isObject(compose)) {
-    throw new Error(`${source} compose must be an object.`);
-  }
-  if (!isObject(docs)) {
-    throw new Error(`${source} docs must be an object.`);
-  }
-  if (!isObject(provisioning)) {
-    throw new Error(`${source} provisioning must be an object.`);
-  }
-  if (!isObject(backup)) {
-    throw new Error(`${source} backup must be an object.`);
-  }
-
-  const mode = requireString(provisioning.mode, `${source} provisioning.mode`);
-  if (!provisionModes.has(mode as CatalogProvisioningMode)) {
-    throw new Error(`${source} provisioning.mode is not supported: ${mode}`);
-  }
-
-  const homepage = raw.homepage;
-  if (homepage !== null && !isObject(homepage)) {
-    throw new Error(`${source} homepage must be an object or null.`);
-  }
-
+function normalizePackageApp(app: ReturnType<typeof loadCatalogApps>[number]): CatalogAppManifest {
   return {
-    backup: {
-      includeVolumes: requireStringArray(backup.includeVolumes, `${source} backup.includeVolumes`),
+    backup: app.backup,
+    category: app.category,
+    compose: app.compose,
+    dependencies: app.dependencies,
+    doctor: app.doctor,
+    docs: app.docs,
+    env: app.env,
+    homepage: app.homepage?.tile ?? null,
+    homepageContributions: app.homepage?.contributions ?? { services: [], widgets: [] },
+    id: app.id,
+    lifecycle: app.lifecycle,
+    name: app.name,
+    package: app.package,
+    provisioning: app.provisioning,
+    routeContributions: {
+      internal: app.routes.internal,
     },
-    category: requireString(raw.category, `${source} category`),
-    compose: {
-      envTemplates: requireStringArray(compose.envTemplates, `${source} compose.envTemplates`),
-      profile: requireString(compose.profile, `${source} compose.profile`),
-      services: requireStringArray(compose.services, `${source} compose.services`),
-      volumes: requireStringArray(compose.volumes, `${source} compose.volumes`),
-    },
-    dependencies: Array.isArray(raw.dependencies)
-      ? raw.dependencies.map((dependency, index) => {
-          if (!isObject(dependency)) {
-            throw new Error(`${source} dependencies[${index}] must be an object.`);
-          }
-          const kind = requireString(dependency.kind, `${source} dependencies[${index}].kind`);
-          if (kind !== 'required' && kind !== 'recommended') {
-            throw new Error(`${source} dependencies[${index}].kind must be required or recommended.`);
-          }
-          return {
-            id: requireString(dependency.id, `${source} dependencies[${index}].id`),
-            kind,
-          };
-        })
-      : undefined,
-    docs: {
-      app: requireString(docs.app, `${source} docs.app`),
-    },
-    homepage:
-      homepage === null
-        ? null
-        : {
-            description: requireString(homepage.description, `${source} homepage.description`),
-            group: requireString(homepage.group, `${source} homepage.group`),
-            hrefEnv: requireString(homepage.hrefEnv, `${source} homepage.hrefEnv`),
-            icon: typeof homepage.icon === 'string' ? homepage.icon : undefined,
-            name: requireString(homepage.name, `${source} homepage.name`),
-          },
-    id: requireString(raw.id, `${source} id`),
-    name: requireString(raw.name, `${source} name`),
-    provisioning: {
-      mode: mode as CatalogProvisioningMode,
-      setupHelper:
-        provisioning.setupHelper === null ? null : requireString(provisioning.setupHelper, `${source} setupHelper`),
-    },
-    routes: Array.isArray(raw.routes)
-      ? raw.routes.map((route, index) => {
-          if (!isObject(route)) {
-            throw new Error(`${source} routes[${index}] must be an object.`);
-          }
-          return {
-            host: requireString(route.host, `${source} routes[${index}].host`),
-            httpsInHttpMode: route.httpsInHttpMode === true ? true : undefined,
-            upstream: requireString(route.upstream, `${source} routes[${index}].upstream`),
-          };
-        })
-      : [],
-    summary: requireString(raw.summary, `${source} summary`),
+    routes: app.routes.public,
+    summary: app.summary,
   };
 }
 
@@ -173,41 +144,16 @@ function validateControlPlaneShape(raw: unknown, source: string): CatalogControl
 }
 
 export async function loadCatalogManifests(catalogDir = getDefaultCatalogDir()): Promise<CatalogManifestSet> {
-  const appsDir = path.join(catalogDir, 'apps');
-  const entries = await fs.readdir(appsDir, { withFileTypes: true });
-  const appFiles = entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
-    .map((entry) => entry.name)
-    .sort();
-
-  const apps = await Promise.all(
-    appFiles.map(async (fileName) => {
-      const source = `catalog/apps/${fileName}`;
-      const raw = await readJsonFile<unknown>(path.join(appsDir, fileName));
-      return validateAppShape(raw, source);
-    }),
-  );
+  const apps = loadCatalogApps(catalogDir).map(normalizePackageApp);
   const controlPlane = validateControlPlaneShape(
     await readJsonFile<unknown>(path.join(catalogDir, 'control-plane.json')),
     'catalog/control-plane.json',
   );
 
-  validateUniqueIds(apps);
-
   return {
     apps,
     controlPlane,
   };
-}
-
-function validateUniqueIds(apps: CatalogAppManifest[]): void {
-  const seen = new Set<string>();
-  for (const app of apps) {
-    if (seen.has(app.id)) {
-      throw new Error(`Duplicate catalog app id: ${app.id}`);
-    }
-    seen.add(app.id);
-  }
 }
 
 export async function validateCatalogAgainstRepo(
@@ -260,6 +206,53 @@ export async function validateCatalogAgainstRepo(
       }
     }
 
+    for (const projection of app.env.projections) {
+      try {
+        await fs.access(path.join(repoRoot, 'deploy/vps', projection.serviceEnv));
+      } catch {
+        const templatePath = path.join(repoRoot, 'deploy/vps', projection.serviceEnv.replace(/\.env$/, '.env.template'));
+        try {
+          await fs.access(templatePath);
+        } catch {
+          errors.push(`${app.id}: env projection target ${projection.serviceEnv} does not exist.`);
+        }
+      }
+    }
+
+    for (const asset of [...app.homepageContributions.services, ...app.homepageContributions.widgets]) {
+      try {
+        await fs.access(path.join(app.package.dir, asset));
+      } catch {
+        errors.push(`${app.id}: package asset ${asset} does not exist.`);
+      }
+    }
+
+    for (const asset of [app.provisioning.setupHelper?.backend, app.provisioning.setupHelper?.frontend]) {
+      if (!asset) {
+        continue;
+      }
+      try {
+        await fs.access(path.join(app.package.dir, asset));
+      } catch {
+        errors.push(`${app.id}: setup helper asset ${asset} does not exist.`);
+      }
+    }
+
+    if (app.lifecycle.installable && app.provisioning.mode === 'assisted') {
+      if (!app.provisioning.setupHelper?.backend || !app.provisioning.setupHelper?.frontend) {
+        errors.push(`${app.id}: assisted installable apps must declare setup helper backend and frontend assets.`);
+      }
+    }
+
+    if (app.doctor) {
+      const doctorEnvTemplate = path.join(repoRoot, 'deploy/vps', app.doctor.serviceEnv.replace(/\.env$/, '.env.template'));
+      try {
+        await fs.access(doctorEnvTemplate);
+      } catch {
+        errors.push(`${app.id}: doctor service env ${app.doctor.serviceEnv} does not have a matching template.`);
+      }
+    }
+
     for (const route of app.routes) {
       if (!route.upstream.includes(':')) {
         errors.push(`${app.id}: route ${route.host} upstream should include service and port.`);
@@ -267,6 +260,14 @@ export async function validateCatalogAgainstRepo(
       const upstreamService = route.upstream.split(':')[0] || '';
       if (!app.compose.services.includes(upstreamService)) {
         errors.push(`${app.id}: route ${route.host} upstream service ${upstreamService} is not part of the app.`);
+      }
+    }
+
+    for (const route of app.routeContributions.internal) {
+      try {
+        await fs.access(path.join(app.package.dir, route.asset));
+      } catch {
+        errors.push(`${app.id}: internal route asset ${route.asset} does not exist.`);
       }
     }
 

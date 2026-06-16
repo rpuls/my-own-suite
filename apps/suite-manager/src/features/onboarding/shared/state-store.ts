@@ -6,10 +6,8 @@ import type { PersistedState } from './types.ts';
 export const knownSteps = new Set([
   'activate-vaultwarden',
   'import-generated-accounts',
-  'connect-radicale',
   'open-seafile',
   'open-immich',
-  'open-stirling-pdf',
 ]);
 
 export class OnboardingStateStore {

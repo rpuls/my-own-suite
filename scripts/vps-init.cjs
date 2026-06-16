@@ -3,13 +3,19 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { caddyServiceRoutesForMode, catalogRouteSpecs } = require('./app-catalog-runtime.cjs');
+const {
+  caddyServiceRoutesForMode,
+  catalogEnvProjections,
+  catalogInternalRouteSnippets,
+  catalogRouteSpecs,
+} = require('./app-catalog-runtime.cjs');
 
 const rootDir = process.cwd();
 const vpsDir = path.join(rootDir, 'deploy', 'vps');
 const caddyBuiltInRoutesPath = path.join(vpsDir, 'generated', 'caddy', 'built-in-routes.caddy');
 const caddyExternalProxiesPath = path.join(vpsDir, 'generated', 'caddy', 'external-proxies.caddy');
 const caddyGlobalOptionsPath = path.join(vpsDir, 'generated', 'caddy', 'global-options.caddy');
+const caddyInternalAppRoutesPath = path.join(vpsDir, 'generated', 'caddy', 'internal-app-routes.caddy');
 const URL_SAFE_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_';
 const TEMPLATE_EXTENSIONS = ['.env.template'];
 const GLOBAL_TEMPLATE_FILES = new Set([
@@ -307,12 +313,17 @@ function refreshDerivedStackUrls(sharedVars) {
     ['services/homepage/.env', 'SUITE_MANAGER_URL', `${protocol}://suite-manager.${domain}`],
     ['services/homepage/.env', 'VAULTWARDEN_URL', `https://vaultwarden.${domain}`],
     ['services/homepage/.env', 'SEAFILE_URL', `${protocol}://seafile.${domain}`],
-    ['services/homepage/.env', 'STIRLING_PDF_URL', `${protocol}://stirling-pdf.${domain}`],
-    ['services/homepage/.env', 'RADICALE_URL', `${protocol}://radicale.${domain}`],
     ['services/homepage/.env', 'IMMICH_URL', `${protocol}://immich.${domain}`],
     ['services/seafile/.env', 'ONLYOFFICE_APIJS_URL', `${protocol}://onlyoffice.${domain}/web-apps/apps/api/documents/api.js`],
-    ['services/stirling-pdf/.env', 'SERVER_HOST', `${protocol}://stirling-pdf.${domain}`],
   ];
+
+  for (const projection of catalogEnvProjections(rootDir)) {
+    updates.push([
+      projection.serviceEnv,
+      projection.key,
+      renderProjectionValue(projection.value, buildProjectionVars(sharedVars)),
+    ]);
+  }
 
   for (const [relPath, key, value] of updates) {
     if (writeEnvValue(path.join(vpsDir, relPath), key, value)) {
@@ -323,6 +334,49 @@ function refreshDerivedStackUrls(sharedVars) {
   for (const relPath of Array.from(changedFiles).sort()) {
     console.log(`Updated: deploy/vps/${relPath} (refreshed derived stack URLs)`);
   }
+}
+
+function buildProjectionVars(sharedVars) {
+  const vars = { ...sharedVars };
+  for (const targetRelPath of sourceFiles.map(getTemplateTargetPath)) {
+    const parsed = readEnvFile(path.join(vpsDir, targetRelPath));
+    if (parsed) {
+      Object.assign(vars, parsed);
+    }
+  }
+  return vars;
+}
+
+function renderProjectionValue(value, vars) {
+  return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (full, key) => {
+    if (Object.prototype.hasOwnProperty.call(vars, key)) {
+      return vars[key];
+    }
+    return full;
+  });
+}
+
+function writeInternalAppRoutes(repoRoot) {
+  const snippets = catalogInternalRouteSnippets(repoRoot);
+  const content = snippets.length
+    ? [
+        '# Generated MOS internal app routes.',
+        '# This file is managed by vps:init from installed catalog app package snippets.',
+        '',
+        ...snippets.flatMap((snippet) => [
+          `# ${snippet.appId}/${snippet.id} from ${path.relative(rootDir, snippet.path).replace(/\\/g, '/')}`,
+          snippet.content.trim(),
+          '',
+        ]),
+      ].join('\n')
+    : [
+        '# Generated MOS internal app routes.',
+        '# No installed catalog apps currently provide internal Caddy routes.',
+        '',
+      ].join('\n');
+
+  fs.mkdirSync(path.dirname(caddyInternalAppRoutesPath), { recursive: true });
+  fs.writeFileSync(caddyInternalAppRoutesPath, content, 'utf8');
 }
 
 function evalHost(rawArgs, sharedVars) {
@@ -573,5 +627,7 @@ fs.writeFileSync(
   caddyServiceRoutesForMode(configuredDomain, configuredTlsMode, configuredCatalogRoutes),
   'utf8',
 );
+writeInternalAppRoutes(rootDir);
 console.log('Updated: deploy/vps/generated/caddy/global-options.caddy');
 console.log('Updated: deploy/vps/generated/caddy/built-in-routes.caddy');
+console.log('Updated: deploy/vps/generated/caddy/internal-app-routes.caddy');

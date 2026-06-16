@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 
 import { withSetupPath } from '../../../lib/base-path';
-import { DeviceGuide } from '../radicale/DeviceGuide';
-import { DeviceSelector, type RadicaleDevice } from '../radicale/DeviceSelector';
 import { StepCard } from '../shared/components/StepCard';
 import { ValueField } from '../shared/components/ValueField';
 import type { CurrentActionSection, OnboardingStepGroupId, OnboardingStepView } from '../shared/types';
@@ -17,7 +15,6 @@ export default function OnboardingApp() {
   const [copiedActionId, setCopiedActionId] = useState<string | null>(null);
   const [importContents, setImportContents] = useState<Record<string, string>>({});
   const [revealedActionIds, setRevealedActionIds] = useState<Record<string, boolean>>({});
-  const [radicaleDevice, setRadicaleDevice] = useState<RadicaleDevice | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<OnboardingStepGroupId, boolean>>({
     applications: false,
     credentials: false,
@@ -115,10 +112,7 @@ export default function OnboardingApp() {
 
   function renderSection(step: OnboardingStepView, section: CurrentActionSection, index: number) {
     const sectionDisabled = step.detectionState === 'detecting';
-    const renderedSection =
-      section.id.startsWith('manual-') || section.id === 'finish-radicale'
-        ? getRadicaleSection(section, radicaleDevice)
-        : section;
+    const renderedSection = section;
 
     return (
       <section className="suite-sequence-step" key={renderedSection.id}>
@@ -198,84 +192,9 @@ export default function OnboardingApp() {
     );
   }
 
-  function getRadicaleSection(section: CurrentActionSection, device: RadicaleDevice | null): CurrentActionSection {
-    if (!device) {
-      return section;
-    }
-
-    if (section.id === 'manual-url' && section.field) {
-      if (device === 'ios') {
-        return {
-          ...section,
-          description:
-            'Paste this into the Server field on the Add CalDAV Account screen. Show QR only helps move the address to your iPhone.',
-          title: 'Paste this into the Server field',
-        };
-      }
-
-      if (device === 'android') {
-        return {
-          ...section,
-          description:
-            'Paste this into the server address or base URL field in DAVx5. Show QR only transfers the address to your phone.',
-          title: 'Paste this into the server address field',
-        };
-      }
-
-      if (device === 'mac') {
-        return {
-          ...section,
-          description: 'Paste this into the server field when Apple Calendar asks for your CalDAV account details.',
-          title: 'Paste this into the Server field',
-        };
-      }
-
-      return {
-        ...section,
-        description: 'Paste this into the location or server field in Thunderbird.',
-        title: 'Paste this into the server field',
-      };
-    }
-
-    if (section.id === 'manual-username') {
-      return {
-        ...section,
-        description: 'Use this exact value when your device asks for User Name or Username.',
-        title: 'Paste this into the user name field',
-      };
-    }
-
-    if (section.id === 'manual-password') {
-      return {
-        ...section,
-        description:
-          'Open Vaultwarden, find the Radicale item you imported in the previous step, and copy that password when your device asks for one.',
-        title: 'Use the Radicale password from Vaultwarden',
-      };
-    }
-
-    if (section.id === 'finish-radicale') {
-      return {
-        ...section,
-        title: 'Finish this step after your calendar shows up',
-      };
-    }
-
-    return section;
-  }
-
-  function getRadicaleSections(step: OnboardingStepView): CurrentActionSection[] {
-    if (step.id !== 'connect-radicale' || !radicaleDevice) {
-      return [];
-    }
-
-    const visibleIds = ['manual-url', 'manual-username', 'manual-password', 'finish-radicale'];
-    return step.sections.filter((section) => visibleIds.includes(section.id));
-  }
-
   function renderStep(step: OnboardingStepView) {
     const expanded = step.status !== 'locked' && expandedStepId === step.id;
-    const visibleSections = step.id === 'connect-radicale' ? getRadicaleSections(step) : step.sections;
+    const visibleSections = step.sections;
 
     return (
       <StepCard
@@ -286,12 +205,6 @@ export default function OnboardingApp() {
         step={step}
       >
         <p className="suite-meta mos-meta">{step.summary}</p>
-        {step.id === 'connect-radicale' ? (
-          <>
-            <DeviceSelector onSelect={setRadicaleDevice} selectedDevice={radicaleDevice} />
-            {radicaleDevice ? <DeviceGuide device={radicaleDevice} /> : null}
-          </>
-        ) : null}
         {visibleSections.length ? (
           <div className="suite-sequence">{visibleSections.map((section, index) => renderSection(step, section, index))}</div>
         ) : null}

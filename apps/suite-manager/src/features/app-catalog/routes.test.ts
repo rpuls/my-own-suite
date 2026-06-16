@@ -189,7 +189,9 @@ test('catalog API syncs generated Compose selection from installed state through
     composeServices: stirlingPdf.compose.services,
     envTemplates: stirlingPdf.compose.envTemplates,
     homepage: stirlingPdf.homepage,
+    homepageContributions: stirlingPdf.homepageContributions,
     routeHosts: stirlingPdf.routes.map((route) => route.host),
+    routeInternalAssets: stirlingPdf.routeContributions.internal,
     routes: stirlingPdf.routes,
     volumes: stirlingPdf.compose.volumes,
   });

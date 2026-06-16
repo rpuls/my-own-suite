@@ -124,7 +124,9 @@ export function buildInstallPlan(app: CatalogAppManifest): CatalogInstallPlan {
     composeServices: app.compose.services,
     envTemplates: app.compose.envTemplates,
     homepage: app.homepage,
+    homepageContributions: app.homepageContributions,
     routeHosts: app.routes.map((route) => route.host),
+    routeInternalAssets: app.routeContributions.internal,
     routes: app.routes,
     volumes: app.compose.volumes,
   };

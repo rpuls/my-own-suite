@@ -1,0 +1,16 @@
+- Calendar:
+    - Radicale:
+        href: ${RADICALE_URL}
+        description: Keep your calendar in sync across devices without giving it to Big Tech
+        icon: /images/radicale.png
+        widget:
+          type: calendar
+          firstDayInWeek: monday
+          integrations:
+            - type: ical
+              url: ${RADICALE_ICAL_URL}
+              name: Radicale
+        mos:
+          id: radicale
+          kind: catalog-app
+          managed: true

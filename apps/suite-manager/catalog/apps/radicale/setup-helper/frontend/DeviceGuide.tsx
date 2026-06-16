@@ -18,7 +18,7 @@ export function DeviceGuide({ device }: DeviceGuideProps) {
           <li>Tap <strong>Add Other Account</strong>, then <strong>Add CalDAV Account</strong>.</li>
           <li>Paste the <strong>Server URL</strong> below into the <strong>Server</strong> field.</li>
           <li>Paste the <strong>Username</strong> below into the <strong>User Name</strong> field.</li>
-          <li>Open Vaultwarden, find the <strong>Radicale</strong> item, and paste its password.</li>
+          <li>Copy the <strong>Password</strong> below and paste it when your device asks for one.</li>
           <li>Tap <strong>Next</strong> or <strong>Save</strong>, then open the Calendar app to confirm the account appears there.</li>
         </ol>
         <p className="suite-guide-note">
@@ -40,7 +40,7 @@ export function DeviceGuide({ device }: DeviceGuideProps) {
           <li>Add a new CalDAV account and choose the option that lets you enter a server address and user name.</li>
           <li>Paste the <strong>Server URL</strong> below into the server or base URL field.</li>
           <li>Paste the <strong>Username</strong> below into the user name field.</li>
-          <li>Open Vaultwarden, find the <strong>Radicale</strong> item, and paste its password.</li>
+          <li>Copy the <strong>Password</strong> below and paste it when DAVx5 asks for one.</li>
           <li>If your phone is not nearby, <strong>Show QR</strong> only helps move the server address onto it. It does not add the calendar automatically.</li>
           <li>Finish the DAVx5 setup and make sure your calendar is enabled after DAVx5 finds it.</li>
           <li>After that, open your normal calendar app, or install <strong>Etar</strong> if you want a simple open-source calendar app.</li>
@@ -63,7 +63,7 @@ export function DeviceGuide({ device }: DeviceGuideProps) {
           <li>When asked how to sign in, choose the option that lets you enter the account details manually.</li>
           <li>Paste the <strong>Server URL</strong> below into the server field.</li>
           <li>Paste the <strong>Username</strong> below into the user name field.</li>
-          <li>Open Vaultwarden, find the <strong>Radicale</strong> item, and paste its password.</li>
+          <li>Copy the <strong>Password</strong> below and paste it when Apple Calendar asks for one.</li>
           <li>Finish setup and confirm the calendar appears in Apple Calendar.</li>
         </ol>
       </div>
@@ -82,7 +82,7 @@ export function DeviceGuide({ device }: DeviceGuideProps) {
         <li>Choose <strong>On the Network</strong>, then <strong>CalDAV</strong> if Thunderbird asks.</li>
         <li>Paste the <strong>Server URL</strong> below into the location or server field.</li>
         <li>Paste the <strong>Username</strong> below when Thunderbird asks for it.</li>
-        <li>When prompted for a password, open Vaultwarden, find the <strong>Radicale</strong> item, and paste its password.</li>
+        <li>When prompted for a password, copy the <strong>Password</strong> below and paste it into Thunderbird.</li>
         <li>Choose your calendar when Thunderbird lists it, then finish setup.</li>
       </ol>
     </div>

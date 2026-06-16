@@ -1,0 +1,97 @@
+{
+  "id": "radicale",
+  "name": "Radicale",
+  "category": "calendar",
+  "summary": "Private CalDAV and CardDAV sync for calendars and contacts.",
+  "docs": {
+    "app": "/docs/apps/radicale"
+  },
+  "compose": {
+    "profile": "radicale",
+    "services": ["radicale"],
+    "envTemplates": ["deploy/vps/services/radicale/.env.template"],
+    "volumes": ["radicale_data"]
+  },
+  "lifecycle": {
+    "installable": true
+  },
+  "env": {
+    "projections": [
+      {
+        "serviceEnv": "services/homepage/.env",
+        "key": "RADICALE_URL",
+        "value": "${PUBLIC_URL_SCHEME}://radicale.${DOMAIN}"
+      },
+      {
+        "serviceEnv": "services/homepage/.env",
+        "key": "RADICALE_ICAL_URL",
+        "value": "http://caddy/internal/radicale-ical/${RADICALE_ICAL_TOKEN}"
+      }
+    ]
+  },
+  "routes": {
+    "public": [
+      {
+        "host": "radicale",
+        "upstream": "radicale:5232"
+      }
+    ],
+    "internal": [
+      {
+        "id": "radicale-ical-bridge",
+        "asset": "caddy.internal.caddy"
+      }
+    ]
+  },
+  "homepage": {
+    "tile": {
+      "group": "Calendar",
+      "name": "Radicale",
+      "hrefEnv": "RADICALE_URL",
+      "description": "Keep your calendar in sync across devices without giving it to Big Tech",
+      "icon": "/images/radicale.png"
+    },
+    "contributions": {
+      "services": ["homepage.services.yaml"],
+      "widgets": []
+    }
+  },
+  "provisioning": {
+    "mode": "assisted",
+    "setupHelper": {
+      "id": "radicale-device-setup",
+      "backend": "setup-helper/backend.ts",
+      "frontend": "setup-helper/frontend/SetupHelperPanel.tsx"
+    },
+    "postInstallActionLabel": "Open calendar setup"
+  },
+  "doctor": {
+    "serviceEnv": "services/radicale/.env",
+    "requiredEnv": [
+      "RADICALE_ADMIN_USERNAME",
+      "RADICALE_ADMIN_PASSWORD",
+      "RADICALE_BASIC_AUTH_B64",
+      "RADICALE_ICAL_TOKEN"
+    ],
+    "homepageUrls": [
+      {
+        "key": "RADICALE_URL",
+        "host": "radicale"
+      }
+    ],
+    "checks": [
+      {
+        "type": "envIncludesEnv",
+        "sourceServiceEnv": "services/homepage/.env",
+        "sourceKey": "RADICALE_ICAL_URL",
+        "targetServiceEnv": "services/radicale/.env",
+        "targetKey": "RADICALE_ICAL_TOKEN",
+        "allowTemplate": "${RADICALE_ICAL_TOKEN}",
+        "message": "RADICALE_ICAL_URL must include RADICALE_ICAL_TOKEN (or ${RADICALE_ICAL_TOKEN}) for Homepage calendar bridge."
+      }
+    ]
+  },
+  "backup": {
+    "includeVolumes": ["radicale_data"]
+  }
+}

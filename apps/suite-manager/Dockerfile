@@ -6,6 +6,7 @@ COPY package*.json ./
 RUN npm install -g npm@11.2.0 && npm ci
 
 COPY src ./src
+COPY catalog ./catalog
 COPY frontend ./frontend
 COPY release.json ./release.json
 COPY tsconfig.json ./tsconfig.json

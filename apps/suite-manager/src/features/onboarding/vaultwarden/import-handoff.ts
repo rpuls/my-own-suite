@@ -52,16 +52,6 @@ export function getVaultwardenImportEntries(config: SuiteManagerConfig): Vaultwa
       });
   }
 
-  if (config.generatedAccounts.radicale) {
-    entries.push({
-        name: 'Radicale',
-        notes: 'Use this for your CalDAV/CardDAV clients.',
-        password: config.generatedAccounts.radicale.password,
-        uri: config.appUrls.radicale,
-        username: config.generatedAccounts.radicale.username,
-      });
-  }
-
   return entries;
 }
 

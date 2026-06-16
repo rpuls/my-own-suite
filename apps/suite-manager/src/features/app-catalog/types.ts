@@ -6,6 +6,11 @@ export type CatalogRoute = {
   upstream: string;
 };
 
+export type CatalogInternalRoute = {
+  asset: string;
+  id: string;
+};
+
 export type CatalogHomepageTile = {
   description: string;
   group: string;
@@ -14,14 +19,52 @@ export type CatalogHomepageTile = {
   name: string;
 } | null;
 
+export type CatalogHomepageContributions = {
+  services: string[];
+  widgets: string[];
+};
+
+export type CatalogEnvProjection = {
+  key: string;
+  serviceEnv: string;
+  value: string;
+};
+
+export type CatalogDoctorCheck = {
+  allowTemplate?: string;
+  message: string;
+  sourceKey: string;
+  sourceServiceEnv: string;
+  targetKey: string;
+  targetServiceEnv: string;
+  type: 'envIncludesEnv';
+};
+
+export type CatalogDoctor = {
+  checks: CatalogDoctorCheck[];
+  homepageUrls: Array<{
+    host: string;
+    key: string;
+  }>;
+  requiredEnv: string[];
+  serviceEnv: string;
+} | null;
+
 export type CatalogDependency = {
   id: string;
   kind: 'required' | 'recommended';
 };
 
+export type CatalogSetupHelper = {
+  backend: string | null;
+  frontend: string | null;
+  id: string;
+} | null;
+
 export type CatalogAppManifest = {
   backup: {
     includeVolumes: string[];
+    restoreNotes?: string;
   };
   category: string;
   compose: {
@@ -31,15 +74,31 @@ export type CatalogAppManifest = {
     volumes: string[];
   };
   dependencies?: CatalogDependency[];
+  doctor: CatalogDoctor;
   docs: {
     app: string;
   };
+  env: {
+    projections: CatalogEnvProjection[];
+  };
   homepage: CatalogHomepageTile;
+  homepageContributions: CatalogHomepageContributions;
   id: string;
+  lifecycle: {
+    installable: boolean;
+  };
   name: string;
+  package: {
+    dir: string;
+    source: string;
+  };
   provisioning: {
     mode: CatalogProvisioningMode;
-    setupHelper: string | null;
+    postInstallActionLabel: string | null;
+    setupHelper: CatalogSetupHelper;
+  };
+  routeContributions: {
+    internal: CatalogInternalRoute[];
   };
   routes: CatalogRoute[];
   summary: string;
@@ -92,7 +151,9 @@ export type CatalogInstallPlan = {
   composeServices: string[];
   envTemplates: string[];
   homepage: CatalogHomepageTile;
+  homepageContributions: CatalogHomepageContributions;
   routeHosts: string[];
+  routeInternalAssets: CatalogInternalRoute[];
   routes: CatalogRoute[];
   volumes: string[];
 };

@@ -21,6 +21,9 @@ export type CatalogApp = {
     name: string;
   } | null;
   id: string;
+  lifecycle: {
+    installable: boolean;
+  };
   installed: {
     installedAt: string | null;
     lastApply: {
@@ -33,7 +36,12 @@ export type CatalogApp = {
   name: string;
   provisioning: {
     mode: CatalogProvisioningMode;
-    setupHelper: string | null;
+    postInstallActionLabel: string | null;
+    setupHelper: {
+      backend: string | null;
+      frontend: string | null;
+      id: string;
+    } | null;
   };
   routes: Array<{
     host: string;
@@ -62,4 +70,14 @@ export type AppCatalogInstallResponse = AppCatalogResponse & {
     composeProfile: string;
     composeServices: string[];
   };
+};
+
+export type CatalogSetupHelperResponse = {
+  fields: {
+    password?: string;
+    serverUrl: string;
+    username: string;
+  };
+  id: string;
+  title: string;
 };

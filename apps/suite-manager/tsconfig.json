@@ -12,6 +12,8 @@
   },
   "include": [
     "src/**/*.ts",
+    "catalog/**/*.ts",
+    "catalog/**/*.tsx",
     "frontend/src/**/*.ts",
     "frontend/src/**/*.tsx",
     "vite.config.ts"

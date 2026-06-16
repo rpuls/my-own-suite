@@ -1,10 +1,13 @@
 import { Hono } from 'hono';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
 import type { SuiteManagerConfig } from '../../config.ts';
 import { writeComposeSelection, type WrittenComposeSelection } from './compose-selection.ts';
 import { buildInstallPlan, InstalledCatalogStateStore } from './state-store.ts';
 import type { CatalogAppManifest, CatalogInstallPlan, InstalledCatalogState } from './types.ts';
 import { loadCatalogManifests } from './manifest.ts';
+import { getCatalogSetupHelper } from './setup-helper-registry.ts';
 import type { ServiceAgentService } from '../service-agent/service.ts';
 import type { ServiceCapabilityStatus } from '../service-agent/service.ts';
 import type { HomepageConfigService } from '../homepage-config/service.ts';
@@ -33,6 +36,7 @@ type CatalogAppResponse = {
     } | null;
     status: 'not-installed' | 'pending-apply' | 'installing' | 'installed' | 'failed' | 'disabled';
   };
+  lifecycle: CatalogAppManifest['lifecycle'];
   name: string;
   provisioning: CatalogAppManifest['provisioning'];
   routes: CatalogAppManifest['routes'];
@@ -66,6 +70,7 @@ function toAppResponse(
           lastApply: null,
           status: 'not-installed',
         },
+    lifecycle: app.lifecycle,
     name: app.name,
     provisioning: app.provisioning,
     routes: app.routes,
@@ -149,15 +154,21 @@ class CatalogInstallError extends Error {
 }
 
 function createInstallPlan(app: CatalogAppManifest): CatalogInstallPlan {
-  if (app.id !== 'stirling-pdf') {
+  if (!app.lifecycle.installable) {
     throw new CatalogInstallError(409, `${app.name} install is not enabled in this alpha slice yet.`);
   }
 
-  if (app.provisioning.mode !== 'automatic') {
+  if (app.provisioning.mode === 'manual' || app.provisioning.mode === 'unsupported-alpha') {
     throw new CatalogInstallError(400, `${app.name} requires a setup helper before it can be installed.`);
   }
 
   return buildInstallPlan(app);
+}
+
+async function readHomepageServiceContributions(app: CatalogAppManifest): Promise<string[]> {
+  return Promise.all(
+    app.homepageContributions.services.map((asset) => fs.readFile(path.join(app.package.dir, asset), 'utf8')),
+  );
 }
 
 export function createAppCatalogRouter(
@@ -180,6 +191,23 @@ export function createAppCatalogRouter(
         profiles: reconciled.composeSelection.selection.profiles,
       },
     });
+  });
+
+  router.get('/app-catalog/apps/:id/setup-helper', async (c) => {
+    const catalog = await loadCatalogManifests();
+    const appId = c.req.param('id');
+    const app = catalog.apps.find((candidate) => candidate.id === appId);
+
+    if (!app) {
+      return c.json({ error: `Catalog app not found: ${appId}` }, 404);
+    }
+
+    const helper = await getCatalogSetupHelper(app, config);
+    if (!helper) {
+      return c.json({ error: `${app.name} does not expose a setup helper.` }, 404);
+    }
+
+    return c.json(helper);
   });
 
   router.post('/app-catalog/apps/:id/install', async (c) => {
@@ -212,7 +240,15 @@ export function createAppCatalogRouter(
               composeYaml: composeSelection.composeYaml,
               selectionJson: composeSelection.selectionJson,
             });
-            if (homepageConfigService && app.homepage) {
+            if (homepageConfigService && app.homepageContributions.services.length > 0) {
+              await homepageConfigService.upsertCatalogAppContributions({
+                id: app.id,
+                servicesYaml: await readHomepageServiceContributions(app),
+              });
+              if (capabilities.homepageRestartAvailable) {
+                await serviceAgentService.restartHomepage();
+              }
+            } else if (homepageConfigService && app.homepage) {
               await homepageConfigService.upsertCatalogAppTile({
                 ...app.homepage,
                 id: app.id,

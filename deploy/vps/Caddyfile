@@ -6,18 +6,5 @@
 }
 
 import /etc/caddy/generated/built-in-routes.caddy
+import /etc/caddy/generated/internal-app-routes.caddy
 import /etc/caddy/generated/external-proxies.caddy
-
-# Internal Radicale iCal bridge for Homepage backend.
-# This endpoint is for private network use only (homepage -> caddy),
-# and keeps Radicale credentials out of Homepage widget URLs.
-http://caddy {
-	handle /internal/radicale-ical/{$RADICALE_ICAL_TOKEN} {
-		rewrite * /{$RADICALE_ADMIN_USERNAME}/default-calendar/?export
-		reverse_proxy radicale:5232 {
-			header_up Authorization "Basic {$RADICALE_BASIC_AUTH_B64}"
-		}
-	}
-
-	respond 404
-}

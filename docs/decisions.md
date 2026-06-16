@@ -16,7 +16,9 @@ Consequences:
 - Suite Manager becomes the friendly control plane for Homepage YAML, generated Caddy config, selected app services, app env files, and app-specific setup flows.
 - Existing onboarding logic should be split into suite-level owner setup and app-specific install/setup helpers.
 - Fresh installs can become lean by default, while existing installs should be migrated conservatively and never have apps removed automatically.
-- The catalog needs a repo-owned manifest/contract for app metadata, Compose participation, routes, Homepage defaults, volumes, provisioning mode, backup behavior, and lifecycle actions.
+- The catalog needs a repo-owned package contract for app metadata, Compose participation, env projections, public and internal Caddy routes, Homepage contributions, volumes, provisioning mode, backup behavior, lifecycle actions, doctor checks, and package-owned setup helper modules.
+- Converted catalog apps should live under `apps/suite-manager/catalog/apps/<app-id>/manifest.json` with optional package-owned assets such as Caddy snippets, Homepage YAML fragments, setup-helper backend/frontend modules, and validation metadata. Dockerfiles, app READMEs, public docs, and service env templates stay in their existing compatibility locations until a later migration is explicitly chosen.
+- Converted apps must not add new app-name branches to Suite Manager onboarding, app-catalog install routes, setup-helper registries, global Caddy templates, global Homepage defaults, or `vps-doctor`; use manifest fields and package extension points instead.
 - The detailed temporary implementation plan lives in [docs/app-catalog-alpha-plan.md](./app-catalog-alpha-plan.md) while the epic is active and should be converted to GitHub Issues before merge or release.
 
 ## 2026-06-08: Own-Infra Is One Self-Hosted Runtime

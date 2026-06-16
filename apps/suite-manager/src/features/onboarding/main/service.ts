@@ -68,12 +68,10 @@ export class OnboardingService {
       state = this.stateStore.update('import-generated-accounts', true);
     }
 
-    const radicaleConnected = state.completedSteps.includes('connect-radicale');
     const seafileReady = state.completedSteps.includes('open-seafile');
     const immichReady = state.completedSteps.includes('open-immich');
     const { groups, steps } = await buildOnboardingSteps(this.config, {
       immichReady,
-      radicaleConnected,
       seafileReady,
       suiteCredentialsImportSource,
       suiteCredentialsImported,
@@ -107,10 +105,6 @@ export class OnboardingService {
   triggerAction(actionId: string): PersistedState {
     if (actionId === 'import-suite-credentials') {
       return this.stateStore.update('import-generated-accounts', true);
-    }
-
-    if (actionId === 'connect-radicale') {
-      return this.stateStore.update('connect-radicale', true);
     }
 
     if (actionId === 'open-seafile') {

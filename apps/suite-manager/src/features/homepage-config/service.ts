@@ -67,6 +67,11 @@ export type HomepageCatalogTileInput = {
   name: string;
 };
 
+export type HomepageCatalogContributionInput = {
+  id: string;
+  servicesYaml: string[];
+};
+
 const EDITABLE_FILES: HomepageConfigFile[] = [
   {
     description: 'Service groups and tiles. Homepage regenerates services.yaml from this file at startup.',
@@ -539,6 +544,12 @@ function createCatalogServiceTile(document: Document, input: HomepageCatalogTile
   return document.createNode({ [input.name]: tile }) as YAMLMap;
 }
 
+function cloneServiceTileNode(document: Document, location: ServiceTileLocation): YAMLMap {
+  const title = stringifyKey(location.pair.key);
+  const tile = location.tile.toJSON();
+  return document.createNode({ [title]: tile }) as YAMLMap;
+}
+
 function parseServicesDocument(content: string): Document {
   const document = parseDocument(content, { prettyErrors: true });
   const firstError = document.errors[0];
@@ -709,6 +720,31 @@ export class HomepageConfigService {
       }
 
       ensureDestinationGroup(document, input.group).add(nextTileNode);
+    });
+  }
+
+  async upsertCatalogAppContributions(input: HomepageCatalogContributionInput): Promise<void> {
+    await this.updateServicesTemplate((document) => {
+      for (const servicesYaml of input.servicesYaml) {
+        const contributionDocument = parseServicesDocument(servicesYaml);
+        const contributionRoot = ensureServicesRoot(contributionDocument);
+        for (const contribution of collectServiceTileLocations(contributionRoot)) {
+          const serviceId = getServiceId(contribution.tile) || input.id;
+          const title = stringifyKey(contribution.pair.key);
+          const nextTileNode = cloneServiceTileNode(document, contribution);
+          const location = findCatalogTileLocation(document, serviceId, title);
+          if (location) {
+            const index = location.parentSeq.items.indexOf(location.tileNode);
+            if (index === -1) {
+              throw new Error('Unable to update catalog app contribution.');
+            }
+            location.parentSeq.items[index] = nextTileNode;
+            continue;
+          }
+
+          ensureDestinationGroup(document, contribution.group).add(nextTileNode);
+        }
+      }
     });
   }
 

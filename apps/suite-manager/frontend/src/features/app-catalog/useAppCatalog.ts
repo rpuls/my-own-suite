@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { withSetupPath } from '../../lib/base-path';
-import type { AppCatalogInstallResponse, AppCatalogResponse } from './types';
+import type { AppCatalogInstallResponse, AppCatalogResponse, CatalogSetupHelperResponse } from './types';
 
 type AppCatalogState =
   | { kind: 'loading' }
@@ -21,6 +21,11 @@ export async function installCatalogApp(appId: string): Promise<AppCatalogInstal
     method: 'POST',
   });
   return readJson<AppCatalogInstallResponse>(response, 'Unable to install this app.');
+}
+
+export async function loadCatalogSetupHelper(appId: string): Promise<CatalogSetupHelperResponse> {
+  const response = await fetch(withSetupPath(`/api/app-catalog/apps/${encodeURIComponent(appId)}/setup-helper`));
+  return readJson<CatalogSetupHelperResponse>(response, 'Unable to load this setup helper.');
 }
 
 export function useAppCatalog(): {

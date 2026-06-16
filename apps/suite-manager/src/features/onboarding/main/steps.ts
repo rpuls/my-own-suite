@@ -1,7 +1,6 @@
 import type { SuiteManagerConfig } from '../../../config.ts';
 import type { CurrentAction, OnboardingStep, OnboardingStepGroup } from '../shared/types.ts';
 import { buildImmichSteps } from '../immich/steps.ts';
-import { buildRadicaleSteps } from '../radicale/steps.ts';
 import { buildSeafileSteps } from '../seafile/steps.ts';
 import { buildVaultwardenSteps } from '../vaultwarden/steps.ts';
 
@@ -40,7 +39,6 @@ export async function buildOnboardingSteps(
   config: SuiteManagerConfig,
   state: {
     immichReady: boolean;
-    radicaleConnected: boolean;
     seafileReady: boolean;
     suiteCredentialsImportSource: 'database' | 'manual' | 'none';
     suiteCredentialsImported: boolean;
@@ -58,7 +56,6 @@ export async function buildOnboardingSteps(
         vaultwardenAccount: state.vaultwardenAccountSource,
       },
     ),
-    ...(await buildRadicaleSteps(config, state.radicaleConnected)),
     ...buildSeafileSteps(config, state.seafileReady),
     ...buildImmichSteps(config, state.immichReady),
   ];
