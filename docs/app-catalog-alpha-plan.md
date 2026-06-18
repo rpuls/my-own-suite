@@ -30,7 +30,7 @@ Use this section as the first stop when resuming the epic in a new chat session.
 - [x] Moved Radicale's internal iCal bridge and Homepage calendar contribution into the Radicale catalog package, and removed Radicale from default suite-level onboarding.
 - [x] Moved Radicale's setup-helper UI and password handoff under the Radicale package, and added a guardrail test that fails if converted app behavior leaks back into suite-level onboarding, static Caddy routes, or global Homepage env defaults.
 - [x] Made converted app installability, setup-helper modules, and VPS doctor checks manifest-driven so Stirling PDF and Radicale no longer need app-name branches in the install route, setup-helper registries, or converted-app doctor validation.
-- [x] Fixed catalog app Homepage projection apply so services whose env files receive package projections, such as Homepage, are included in the generated service apply list and are recreated with the new environment.
+- [x] Fixed catalog app Homepage projection apply so services whose env files receive package projections, such as Homepage, are included in a generated refresh-only service list and are recreated with `--no-deps` so Suite Manager is not restarted before it can record install success.
 
 ### Current Next Slice
 
@@ -63,7 +63,7 @@ These are known old-system leftovers that should be cleaned as the catalog model
 
 ### Suggested Next Session Prompt
 
-Continue the app catalog alpha epic on `feat/app-catalog-provisioning`. Start from `docs/app-catalog-alpha-plan.md`, especially **Session Progress Tracker** and **Current Next Slice**. Use the package-directory contract established by Stirling PDF and Radicale before migrating more hardcoded apps: converted apps declare `lifecycle.installable`, env projections, routes, Homepage contributions, `doctor` checks, and setup-helper backend/frontend modules in their package. Env projection target services must be included in generated apply services so containers are recreated with new env values. Do not add new app-name branches to install routes, setup-helper registries, Caddy/Homepage defaults, or `vps-doctor`. Keep the changelog folded into the existing app-catalog alpha entry.
+Continue the app catalog alpha epic on `feat/app-catalog-provisioning`. Start from `docs/app-catalog-alpha-plan.md`, especially **Session Progress Tracker** and **Current Next Slice**. Use the package-directory contract established by Stirling PDF and Radicale before migrating more hardcoded apps: converted apps declare `lifecycle.installable`, env projections, routes, Homepage contributions, `doctor` checks, and setup-helper backend/frontend modules in their package. Env projection target services must be included in generated refresh services and recreated with `--no-deps` so containers get new env values without restarting Suite Manager mid-request. Do not add new app-name branches to install routes, setup-helper registries, Caddy/Homepage defaults, or `vps-doctor`. Keep the changelog folded into the existing app-catalog alpha entry.
 
 ## Goal
 
@@ -428,7 +428,7 @@ Initial package manifest fields:
 - `compose.profile`, `compose.services`, `compose.envTemplates`, and `compose.volumes`.
 - `lifecycle.installable` for alpha install enablement; do not add install allowlists in routes.
 - `env.projections` for selected app URL/env writes into service env files.
-- Env projection targets are part of the generated apply service list, so containers such as Homepage are recreated when package install changes their env files.
+- Env projection targets are part of the generated refresh service list, so containers such as Homepage are recreated with `--no-deps` when package install changes their env files.
 - `routes.public` with app subdomain and internal upstream for generated built-in Caddy routes.
 - `routes.internal` for package-owned generated Caddy snippets such as Radicale's iCal bridge.
 - `homepage.tile` defaults, including group, name, description, icon, and generated URL env.

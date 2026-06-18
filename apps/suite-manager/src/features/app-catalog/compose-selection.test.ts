@@ -39,7 +39,8 @@ test('builds selected Compose profiles from pending catalog app state', async ()
   );
 
   assert.deepEqual(selection.profiles, ['stirling-pdf']);
-  assert.deepEqual(selection.services, ['homepage', 'stirling-pdf']);
+  assert.deepEqual(selection.refreshServices, ['homepage']);
+  assert.deepEqual(selection.services, ['stirling-pdf']);
   assert.deepEqual(selection.apps, [
     {
       id: 'stirling-pdf',
@@ -69,12 +70,18 @@ test('writes generated Compose selection JSON and YAML under Suite Manager state
   );
   const written = writeComposeSelection(stateDir, state, new Date('2026-06-11T12:01:00.000Z'));
 
-  const json = JSON.parse(await fs.readFile(written.jsonPath, 'utf8')) as { profiles: string[]; services: string[] };
+  const json = JSON.parse(await fs.readFile(written.jsonPath, 'utf8')) as {
+    profiles: string[];
+    refreshServices: string[];
+    services: string[];
+  };
   const yaml = await fs.readFile(written.yamlPath, 'utf8');
 
   assert.deepEqual(json.profiles, ['stirling-pdf']);
-  assert.deepEqual(json.services, ['homepage', 'stirling-pdf']);
+  assert.deepEqual(json.refreshServices, ['homepage']);
+  assert.deepEqual(json.services, ['stirling-pdf']);
   assert.match(yaml, /selectedProfiles:/);
+  assert.match(yaml, /refreshServices:/);
   assert.match(yaml, /selectedServices:/);
   assert.match(yaml, /stirling-pdf/);
 });

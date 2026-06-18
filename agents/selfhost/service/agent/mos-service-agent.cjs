@@ -195,31 +195,52 @@ function parseCatalogSelection(selectionJson) {
   const projectedServices = Array.isArray(parsed.services)
     ? parsed.services.filter((service) => typeof service === 'string' && service.trim())
     : [];
+  const refreshServices = Array.isArray(parsed.refreshServices)
+    ? parsed.refreshServices.filter((service) => typeof service === 'string' && service.trim())
+    : [];
 
   return {
     profiles: Array.from(new Set(profiles)).sort(),
+    refreshServices: Array.from(new Set(refreshServices)).sort(),
     services: Array.from(new Set([...appServices, ...projectedServices])).sort(),
   };
 }
 
 async function applySelectedCatalogServices(selection) {
-  if (selection.services.length === 0) {
-    return 'No selected app services to apply.';
+  const outputs = [];
+
+  if (selection.services.length > 0) {
+    const profileArgs = selection.profiles.flatMap((profile) => ['--profile', profile]);
+    outputs.push(await execRepo(
+      'node',
+      [
+        'scripts/mos-compose.cjs',
+        ...profileArgs,
+        'up',
+        '-d',
+        '--build',
+        ...selection.services,
+      ],
+      900_000,
+    ));
   }
 
-  const profileArgs = selection.profiles.flatMap((profile) => ['--profile', profile]);
-  return execRepo(
-    'node',
-    [
-      'scripts/mos-compose.cjs',
-      ...profileArgs,
-      'up',
-      '-d',
-      '--build',
-      ...selection.services,
-    ],
-    900_000,
-  );
+  if (selection.refreshServices.length > 0) {
+    outputs.push(await execRepo(
+      'node',
+      [
+        'scripts/mos-compose.cjs',
+        'up',
+        '-d',
+        '--build',
+        '--no-deps',
+        ...selection.refreshServices,
+      ],
+      900_000,
+    ));
+  }
+
+  return outputs.filter(Boolean).join('\n\n') || 'No selected app services to apply.';
 }
 
 async function refreshBuiltInCaddyRoutes() {
@@ -515,6 +536,7 @@ async function handleApplyAppCatalogComposeSelection(request, response) {
         selectionJson: appCatalogSelectionJsonPath,
       },
       profiles: selection.profiles,
+      refreshServices: selection.refreshServices,
       service: 'app-catalog',
       services: selection.services,
     });
