@@ -4,6 +4,19 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-06-18: V2 Restarts From A Suite Manager-First Lab
+
+Decision: The V2 app platform work restarts from a clean branch based on `staging`, with early implementation isolated under `experiments/app-platform-v2/`. The first milestone is not app catalog expansion; it is a reliable control-plane install and Suite Manager browser-based owner creation flow. The previous app catalog prototype branch remains reference material for lessons and selective future extraction, not a branch to merge wholesale.
+
+Reason: The prototype proved important concepts, but it also mixed old preloaded-suite assumptions with new launch-platform behavior across many files. Starting with a narrow Suite Manager-first lab lets MOS design the new platform around first-run ownership, testability, and clean package boundaries before optional app lifecycle code biases the foundation.
+
+Consequences:
+
+- Installer and DigitalOcean validation work should prove that owner credentials can move from installer input to browser setup.
+- Optional app package work waits until the Suite Manager install and first-run owner flow are trustworthy.
+- Existing Suite Manager UI primitives should be reused for the owner setup experience.
+- The V2 lab may keep temporary planning docs while active, but durable architecture belongs here and task state should move to GitHub Issues before merge.
+
 ## 2026-06-11: Alpha Moves Toward Control-Plane-First App Catalog Installs
 
 Decision: Fresh MOS own-infra installs should move toward installing only the control plane by default: Suite Manager, Homepage, Caddy, and required host agents. The owner should create the MOS account in Suite Manager on first browser visit, then choose apps from a Suite Manager-managed catalog. App installation should update the repo-owned Compose generation, Homepage YAML, Caddy generated config, env files, and app-specific setup helpers as needed.

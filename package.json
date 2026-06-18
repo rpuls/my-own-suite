@@ -29,6 +29,7 @@
   },
   "scripts": {
     "test": "npm run test:unit && npm run vps:doctor && npm run e2e:full",
+    "v2:lab:test": "node --test experiments/app-platform-v2/platform-contract.test.cjs",
     "test:unit": "npm --prefix apps/suite-manager test && node --test scripts/caddy-external-proxies-validate.test.cjs",
     "branding:sync": "node scripts/sync-branding.cjs",
     "build": "npm run branding:sync && cd site && npm install --no-audit --progress=false && npm run build",
