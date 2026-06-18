@@ -1,0 +1,13 @@
+{
+  "name": "my-own-suite-version-2",
+  "private": true,
+  "description": "Clean-slate MOS V2 launch platform workspace.",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test test/*.test.cjs"
+  },
+  "engines": {
+    "node": "22.x",
+    "npm": "11.x"
+  }
+}

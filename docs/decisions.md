@@ -6,7 +6,7 @@ For documentation ownership rules, see [docs/README.md](./README.md).
 
 ## 2026-06-18: V2 Restarts From A Suite Manager-First Lab
 
-Decision: The V2 app platform work restarts from a clean branch based on `staging`, with early implementation isolated under `experiments/app-platform-v2/`. The first milestone is not app catalog expansion; it is a reliable control-plane install and Suite Manager browser-based owner creation flow. The previous app catalog prototype branch remains reference material for lessons and selective future extraction, not a branch to merge wholesale.
+Decision: The V2 app platform work restarts from a clean branch based on `staging`, with new implementation isolated under a root-level `version-2/` workspace. The first milestone is not app catalog expansion; it is a reliable control-plane install and Suite Manager browser-based owner creation flow. The existing repo code and the previous app catalog prototype branch remain reference material for lessons and selective future extraction, not code to run through or merge wholesale.
 
 Reason: The prototype proved important concepts, but it also mixed old preloaded-suite assumptions with new launch-platform behavior across many files. Starting with a narrow Suite Manager-first lab lets MOS design the new platform around first-run ownership, testability, and clean package boundaries before optional app lifecycle code biases the foundation.
 
@@ -15,7 +15,8 @@ Consequences:
 - Installer and DigitalOcean validation work should prove that owner credentials can move from installer input to browser setup.
 - Optional app package work waits until the Suite Manager install and first-run owner flow are trustworthy.
 - Existing Suite Manager UI primitives should be reused for the owner setup experience.
-- The V2 lab may keep temporary planning docs while active, but durable architecture belongs here and task state should move to GitHub Issues before merge.
+- `version-2/` is the home for new platform code until V2 is proven; existing `apps/`, `scripts/`, `deploy/`, and `agents/` code should be treated as old-system reference material unless explicitly copied or rebuilt into V2.
+- The V2 workspace may keep temporary planning docs while active, but durable architecture belongs here and task state should move to GitHub Issues before merge.
 
 ## 2026-06-11: Alpha Moves Toward Control-Plane-First App Catalog Installs
 

@@ -5,9 +5,9 @@ const {
   createInitialPlatformContract,
   plannedValidationCommands,
   validateInitialPlatformContract,
-} = require('./src/platform-contract.cjs');
+} = require('../src/platform-contract.cjs');
 
-test('initial V2 contract is Suite Manager-first and app-free', () => {
+test('initial V2 contract is clean-slate, Suite Manager-first, and app-free', () => {
   const contract = createInitialPlatformContract();
 
   assert.equal(contract.version, 1);
@@ -16,6 +16,8 @@ test('initial V2 contract is Suite Manager-first and app-free', () => {
   assert.deepEqual(contract.optionalApps, []);
   assert.equal(contract.installer.requiresOwnerCredentials, false);
   assert.equal(contract.ownerSetup.location, 'suite-manager-browser');
+  assert.equal(contract.oldSystemPolicy.existingRepoIsReferenceOnly, true);
+  assert.equal(contract.oldSystemPolicy.runtimeImportsFromOldSuiteManager, false);
   assert.deepEqual(validateInitialPlatformContract(contract), []);
 });
 
@@ -28,27 +30,31 @@ test('contract rejects preloaded app assumptions', () => {
   ]);
 });
 
-test('validation starts with cheap lab checks and leaves smoke/E2E user-run', () => {
+test('contract rejects runtime dependence on the old Suite Manager', () => {
+  const contract = createInitialPlatformContract();
+  contract.oldSystemPolicy.runtimeImportsFromOldSuiteManager = true;
+
+  assert.deepEqual(validateInitialPlatformContract(contract), [
+    'V2 must not import the old Suite Manager at runtime.',
+  ]);
+});
+
+test('validation is scoped to V2 and leaves smoke/E2E user-run', () => {
   assert.deepEqual(plannedValidationCommands(), [
     {
-      command: 'npm run v2:lab:test',
+      command: 'npm --prefix version-2 test',
       owner: 'agent',
-      purpose: 'Validate the isolated V2 lab contract.',
-    },
-    {
-      command: 'npm --prefix apps/suite-manager test',
-      owner: 'agent',
-      purpose: 'Validate Suite Manager backend and frontend-adjacent unit coverage after implementation changes.',
+      purpose: 'Validate the clean-slate V2 workspace contract.',
     },
     {
       command: 'npm run smoke:do:up',
       owner: 'user',
-      purpose: 'Run paid DigitalOcean fresh-install validation from the V2 branch.',
+      purpose: 'Run paid DigitalOcean fresh-install validation once V2 has an install path.',
     },
     {
       command: 'npm run e2e:onboarding',
       owner: 'user',
-      purpose: 'Run noisy browser validation once the first-run owner flow is implemented.',
+      purpose: 'Run noisy browser validation once the V2 first-run owner flow is implemented.',
     },
   ]);
 });

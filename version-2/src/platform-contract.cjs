@@ -9,6 +9,11 @@ function createInitialPlatformContract() {
       requiresOwnerCredentials: false,
       sharedRuntime: 'ubuntu-24.04-own-infra',
     },
+    oldSystemPolicy: {
+      copyOnlyDeliberatePieces: true,
+      existingRepoIsReferenceOnly: true,
+      runtimeImportsFromOldSuiteManager: false,
+    },
     optionalApps: [],
     ownerSetup: {
       createsSession: true,
@@ -17,13 +22,13 @@ function createInitialPlatformContract() {
       storesPasswordHash: true,
     },
     testing: {
-      digitalOceanHarness: 'reuse-existing',
+      digitalOceanHarness: 'adapt-existing-reference',
       e2e: 'owner-creation-flow-before-merge',
       smokeCommandsAreUserRun: true,
     },
     ui: {
-      designFramework: 'suite-manager-shared-components',
-      primitiveSource: 'apps/suite-manager/frontend/src/components/ui.tsx',
+      designFramework: 'rebuild-v2-from-suite-manager-reference',
+      referencePrimitiveSource: 'apps/suite-manager/frontend/src/components/ui.tsx',
     },
     version: 1,
   };
@@ -42,6 +47,14 @@ function validateInitialPlatformContract(contract) {
 
   if (contract.ownerSetup?.location !== 'suite-manager-browser') {
     errors.push('Owner creation must happen in the Suite Manager browser flow.');
+  }
+
+  if (contract.oldSystemPolicy?.existingRepoIsReferenceOnly !== true) {
+    errors.push('Existing repo code must be treated as reference material for V2.');
+  }
+
+  if (contract.oldSystemPolicy?.runtimeImportsFromOldSuiteManager !== false) {
+    errors.push('V2 must not import the old Suite Manager at runtime.');
   }
 
   if (Array.isArray(contract.optionalApps) && contract.optionalApps.length > 0) {
@@ -64,24 +77,19 @@ function validateInitialPlatformContract(contract) {
 function plannedValidationCommands() {
   return [
     {
-      command: 'npm run v2:lab:test',
+      command: 'npm --prefix version-2 test',
       owner: 'agent',
-      purpose: 'Validate the isolated V2 lab contract.',
-    },
-    {
-      command: 'npm --prefix apps/suite-manager test',
-      owner: 'agent',
-      purpose: 'Validate Suite Manager backend and frontend-adjacent unit coverage after implementation changes.',
+      purpose: 'Validate the clean-slate V2 workspace contract.',
     },
     {
       command: 'npm run smoke:do:up',
       owner: 'user',
-      purpose: 'Run paid DigitalOcean fresh-install validation from the V2 branch.',
+      purpose: 'Run paid DigitalOcean fresh-install validation once V2 has an install path.',
     },
     {
       command: 'npm run e2e:onboarding',
       owner: 'user',
-      purpose: 'Run noisy browser validation once the first-run owner flow is implemented.',
+      purpose: 'Run noisy browser validation once the V2 first-run owner flow is implemented.',
     },
   ];
 }

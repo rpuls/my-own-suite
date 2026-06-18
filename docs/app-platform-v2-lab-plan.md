@@ -4,17 +4,17 @@ This is a temporary branch plan for the clean V2 lab. Before this branch merges,
 
 ## Goal
 
-Prove the next MOS architecture from a clean starting point: install the control plane first, create the MOS owner in Suite Manager on first browser visit, then add optional apps later through package-owned flows.
+Prove the next MOS architecture from a clean starting point in `version-2/`: install the control plane first, create the MOS owner in Suite Manager on first browser visit, then add optional apps later through package-owned flows.
 
 This branch starts with Suite Manager only. Do not migrate optional app catalog behavior until the install, testing, and first-run owner flow are trustworthy.
 
 ## Starting Rules
 
 - Base work on `staging`.
-- Treat `feat/app-catalog-provisioning` as prototype reference material, not a merge source.
+- Treat the existing repo implementation and `feat/app-catalog-provisioning` as reference material, not the V2 runtime.
 - Do not copy the whole prototype branch into the repo.
-- Keep V2 lab code isolated under `experiments/app-platform-v2/` until a slice is proven.
-- Reuse the existing Suite Manager design framework and shared components when UI work begins.
+- Keep new V2 code isolated under `version-2/` until a slice is proven.
+- Reuse the existing Suite Manager design framework and shared components by deliberately copying or rebuilding the needed primitives into `version-2/`, not by importing from the old app at runtime.
 - Reuse the DigitalOcean smoke harness for real install validation, but do not run paid smoke commands automatically.
 - Do not add optional apps during the first milestone.
 
@@ -32,10 +32,10 @@ The first testable slice is:
 
 ## Current Lab Scaffold
 
-- `experiments/app-platform-v2/README.md` explains the isolated lab.
-- `experiments/app-platform-v2/src/platform-contract.cjs` captures the first contract in executable form.
-- `experiments/app-platform-v2/platform-contract.test.cjs` validates the contract.
-- `npm run v2:lab:test` runs the V2 lab tests without touching the existing stack.
+- `version-2/README.md` explains the clean-slate workspace.
+- `version-2/src/platform-contract.cjs` captures the first contract in executable form.
+- `version-2/test/platform-contract.test.cjs` validates the contract.
+- `npm --prefix version-2 test` runs the V2 tests without touching the existing stack.
 
 ## Existing Code To Reuse Later
 
@@ -55,7 +55,7 @@ The first testable slice is:
 
 ## Validation Gates
 
-- Unit-level lab contract passes with `npm run v2:lab:test`.
+- Unit-level lab contract passes with `npm --prefix version-2 test`.
 - Existing Suite Manager tests still pass after implementation changes.
 - Installer scripts can render without owner credentials.
 - DigitalOcean smoke can run against the branch with a browser-created owner account.
