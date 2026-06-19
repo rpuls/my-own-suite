@@ -9,7 +9,7 @@ const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const smokeDir = path.join(repoRoot, '.mos-smoke');
 const logDir = path.join(smokeDir, 'logs');
 const statePath = path.join(smokeDir, 'v2-digitalocean.json');
-const localEnvPath = path.join(smokeDir, 'digitalocean.env');
+const localEnvPath = path.join(smokeDir, 'v2-digitalocean.env');
 const smokeTag = 'mos-v2-smoke';
 const namePrefix = 'mos-v2-smoke-';
 const apiBaseUrl = 'https://api.digitalocean.com/v2';
@@ -35,9 +35,9 @@ Environment:
   MOS_V2_SMOKE_DOMAIN             Optional explicit domain.
   MOS_V2_SMOKE_WAIT               Set to 0 to skip HTTP readiness polling.
   MOS_V2_SMOKE_REPLACE            Set to 1 to replace existing state on up.
-  MOS_SMOKE_SSH_KEY_ID            Optional SSH key id.
-  MOS_SMOKE_SSH_KEY_FINGERPRINT   Optional SSH key fingerprint.
-  MOS_SMOKE_SSH_KEY_NAME          Optional SSH key name to resolve.
+  MOS_V2_SMOKE_SSH_KEY_ID         Optional SSH key id.
+  MOS_V2_SMOKE_SSH_KEY_FINGERPRINT Optional SSH key fingerprint.
+  MOS_V2_SMOKE_SSH_KEY_NAME       Optional SSH key name to resolve.
 `);
 }
 
@@ -168,17 +168,17 @@ async function ensureTag(token) {
 }
 
 async function resolveOptionalSshKeys(token) {
-  const byId = env('MOS_SMOKE_SSH_KEY_ID');
+  const byId = env('MOS_V2_SMOKE_SSH_KEY_ID');
   if (byId) {
     return [Number.isNaN(Number(byId)) ? byId : Number(byId)];
   }
 
-  const byFingerprint = env('MOS_SMOKE_SSH_KEY_FINGERPRINT');
+  const byFingerprint = env('MOS_V2_SMOKE_SSH_KEY_FINGERPRINT');
   if (byFingerprint) {
     return [byFingerprint];
   }
 
-  const byName = env('MOS_SMOKE_SSH_KEY_NAME');
+  const byName = env('MOS_V2_SMOKE_SSH_KEY_NAME');
   if (!byName) {
     return [];
   }

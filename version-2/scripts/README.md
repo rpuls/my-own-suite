@@ -41,7 +41,7 @@ npm --prefix version-2 run smoke:do:render
 
 `smoke:do:up` creates paid DigitalOcean resources, waits for Suite Manager readiness, and prints the first-run Suite Manager URL. `smoke:do:render` is the free dry-run that prints the cloud-init payload without creating resources.
 
-The smoke harness reads `.mos-smoke/digitalocean.env` like the V1 harness. Required for `up`, `reset`, and `destroy`:
+The smoke harness reads the ignored local file `.mos-smoke/v2-digitalocean.env`. Required for `up`, `reset`, and `destroy`:
 
 - `DIGITALOCEAN_ACCESS_TOKEN`
 
@@ -52,6 +52,6 @@ Optional:
 - `MOS_V2_SMOKE_REGION`
 - `MOS_V2_SMOKE_SIZE`
 - `MOS_V2_SMOKE_DOMAIN`
-- `MOS_SMOKE_SSH_KEY_ID`, `MOS_SMOKE_SSH_KEY_FINGERPRINT`, or `MOS_SMOKE_SSH_KEY_NAME`
+- `MOS_V2_SMOKE_SSH_KEY_ID`, `MOS_V2_SMOKE_SSH_KEY_FINGERPRINT`, or `MOS_V2_SMOKE_SSH_KEY_NAME`
 
 The smoke install uses cloud-init, so SSH keys are optional for the install itself but useful for debugging.
