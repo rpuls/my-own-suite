@@ -4,6 +4,8 @@ This folder is the clean-slate home for the MOS V2 launch platform.
 
 Everything outside `version-2/` is the existing system. It is useful reference material, but V2 should not run through it by default. When old code contains a good idea, copy or rebuild the specific idea into this folder deliberately.
 
+The active roadmap and session checklist lives in `docs/app-platform-v2-lab-plan.md`.
+
 ## First Slice
 
 Build and validate the control plane before optional apps:

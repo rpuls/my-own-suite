@@ -1,70 +1,360 @@
-# App Platform V2 Lab Plan
+# App Platform V2 Roadmap
 
-This is a temporary branch plan for the clean V2 lab. Before this branch merges, convert active work into GitHub Issues and keep only durable decisions in `docs/decisions.md`.
+This is the temporary working roadmap for the clean V2 launch-platform branch. Before this branch merges, convert active work into GitHub Issues and keep only durable decisions in `docs/decisions.md`.
 
-## Goal
+## Session Progress Tracker
 
-Prove the next MOS architecture from a clean starting point in `version-2/`: install the control plane first, create the MOS owner in Suite Manager on first browser visit, then add optional apps later through package-owned flows.
+Use this section as the first stop when resuming the branch in a new chat session.
 
-This branch starts with Suite Manager only. Do not migrate optional app catalog behavior until the install, testing, and first-run owner flow are trustworthy.
+### Current Branch State
 
-## Starting Rules
+- [x] Created `feat/app-platform-v2-lab` from `staging`.
+- [x] Preserved the previous app-catalog prototype branch as reference material.
+- [x] Created root-level `version-2/` as the clean-slate V2 workspace.
+- [x] Added a self-contained V2 package with `npm --prefix version-2 test`.
+- [x] Added an executable platform contract that rejects preloaded apps and runtime imports from the old Suite Manager.
+- [ ] Build the V2 Suite Manager owner setup flow.
 
-- Base work on `staging`.
-- Treat the existing repo implementation and `feat/app-catalog-provisioning` as reference material, not the V2 runtime.
-- Do not copy the whole prototype branch into the repo.
-- Keep new V2 code isolated under `version-2/` until a slice is proven.
-- Reuse the existing Suite Manager design framework and shared components by deliberately copying or rebuilding the needed primitives into `version-2/`, not by importing from the old app at runtime.
-- Reuse the DigitalOcean smoke harness for real install validation, but do not run paid smoke commands automatically.
-- Do not add optional apps during the first milestone.
+### Current Next Slice
 
-## Product Slice 1
+Build the first real V2 vertical slice inside `version-2/`:
 
-The first testable slice is:
+1. Minimal V2 web app shell.
+2. Persistent first-run setup state.
+3. Browser-based owner creation form.
+4. Owner password hashing and session creation.
+5. Tests for first-run status, owner creation, duplicate-owner protection, and login/session behavior.
 
-1. Cloud or USB installer boots the MOS control plane.
-2. Installer does not require owner email or owner password.
-3. Suite Manager first visit shows a first-run owner creation screen.
-4. Owner submits name, email, and password in the browser.
-5. Suite Manager persists owner identity and password hash in its state.
-6. Suite Manager signs the owner in and lands on the control-plane dashboard.
-7. A fresh DigitalOcean smoke install can validate readiness and owner creation without SSH-only manual repair.
+### Latest Verified Command
 
-## Current Lab Scaffold
+```powershell
+cmd /c npm --prefix version-2 test
+```
 
-- `version-2/README.md` explains the clean-slate workspace.
-- `version-2/src/platform-contract.cjs` captures the first contract in executable form.
-- `version-2/test/platform-contract.test.cjs` validates the contract.
-- `npm --prefix version-2 test` runs the V2 tests without touching the existing stack.
+Expected result: V2 contract tests pass.
 
-## Existing Code To Reuse Later
+### Suggested Next Session Prompt
 
-- Suite Manager shared primitives in `apps/suite-manager/frontend/src/components/ui.tsx`.
-- Suite Manager auth/session patterns in `apps/suite-manager/src/features/auth` and `apps/suite-manager/frontend/src/features/auth`.
-- Host-agent capability detection patterns in `apps/suite-manager/src/features/service-agent`.
-- DigitalOcean smoke harness in `scripts/smoke/digitalocean.cjs`.
-- Prototype learnings from `feat/app-catalog-provisioning`, especially package-owned projections and avoiding Suite Manager restarts mid-request.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep new code inside `version-2/`; treat existing repo code and `feat/app-catalog-provisioning` as reference material only. The next slice is the V2 Suite Manager first-run owner setup: app shell, setup state, owner creation endpoint/UI, password hashing, session creation, and focused tests. Do not add app catalog behavior yet.
 
-## Explicit Non-Goals For Slice 1
+## Product Goal
 
-- No optional app catalog UI.
-- No app package migration.
-- No app-specific setup helpers.
-- No uninstall, backup-per-app, or selected-app update behavior.
-- No migration logic for old all-app development installs.
+Version 2.0 is a self-hosted app launch platform, not a preloaded app suite.
 
-## Validation Gates
+The first user experience should be:
 
-- Unit-level lab contract passes with `npm --prefix version-2 test`.
-- Existing Suite Manager tests still pass after implementation changes.
-- Installer scripts can render without owner credentials.
-- DigitalOcean smoke can run against the branch with a browser-created owner account.
-- E2E owner creation should be added before this becomes a merge candidate, but agents should ask the user to run E2E commands.
+1. Install MOS on a cloud server or own hardware.
+2. Open Suite Manager in the browser.
+3. Create the MOS owner account.
+4. Land in a calm control-plane dashboard.
+5. Later choose apps from an app launcher/catalog.
 
-## Next Implementation Steps
+The first milestone stops before step 5. App installation comes only after the control plane, installer, owner setup, and validation loop feel solid.
 
-1. Add a first-run setup state model to Suite Manager that distinguishes `needs-owner` from signed-out and signed-in states.
-2. Add backend endpoints for owner creation with password hashing, duplicate-owner protection, and session creation.
-3. Add a first-run UI using shared Suite Manager components.
-4. Update installer env templates so owner credentials are optional for fresh V2 control-plane installs.
-5. Adapt the DigitalOcean smoke harness so it can validate the no-owner installer path and report the first-run URL.
+## Working Rules
+
+- `version-2/` is the only home for new V2 runtime code.
+- Existing `apps/`, `scripts/`, `deploy/`, and `agents/` code is old-system reference material until deliberately copied or rebuilt into `version-2/`.
+- Do not import the old Suite Manager at runtime from V2.
+- Do not copy whole old directories into V2.
+- Copy or rebuild one feature at a time, with tests.
+- Preserve old facts when they matter, but redesign boundaries around the V2 launch-platform goal.
+- Reuse the old Suite Manager design language by rebuilding or copying selected primitives into V2.
+- Reuse the DigitalOcean smoke harness only when V2 has a real install path.
+- Do not run paid DigitalOcean smoke commands automatically.
+- Do not run noisy E2E commands automatically; ask the user to run them and paste relevant failures.
+
+## Architecture Direction
+
+V2 should be organized around these first-class pieces:
+
+- Control plane: Suite Manager, Homepage, Caddy, and host agents.
+- Owner setup: first-run account creation in Suite Manager, not installer-time secrets.
+- Runtime state: Suite Manager-owned state for owner identity, sessions, platform setup state, and later installed apps.
+- Install substrate: cloud/USB/SSH front doors converge into one own-infra bootstrap.
+- App packages: later, each app owns its manifest, setup helper, routes, env needs, Homepage contributions, backup metadata, and lifecycle behavior.
+- Projections: later, generated Compose, Caddy, Homepage, env, backup, and update outputs are derived from V2 state and packages.
+
+## Phase Roadmap
+
+### Phase 0: Clean Workspace And Guardrails
+
+Goal: make it obvious where V2 lives and what it is allowed to depend on.
+
+- [x] Create `version-2/`.
+- [x] Add V2-local `package.json`.
+- [x] Add a contract test that rejects preloaded optional apps.
+- [x] Add a contract test that rejects runtime imports from the old Suite Manager.
+- [ ] Add a V2 README section for local development once the app shell exists.
+- [ ] Add a V2 architecture note inside `version-2/` if the folder needs local technical detail.
+
+Exit criteria:
+
+- `npm --prefix version-2 test` passes.
+- A new session can identify the next slice from this roadmap.
+
+### Phase 1: Suite Manager First-Run Owner Setup
+
+Goal: prove the human entry point before touching app installs.
+
+- [ ] Choose the V2 app stack inside `version-2/`.
+- [ ] Create a minimal Suite Manager web app shell.
+- [ ] Add first-run setup status: `needs-owner`, `signed-out`, `signed-in`.
+- [ ] Add persistent state storage for owner account metadata.
+- [ ] Add password hashing.
+- [ ] Add owner creation endpoint.
+- [ ] Add duplicate-owner protection.
+- [ ] Add login/session creation after owner creation.
+- [ ] Add signed-out login endpoint if not created as part of the owner flow.
+- [ ] Add session persistence and logout.
+- [ ] Add first-run owner creation UI.
+- [ ] Rebuild/copy only the needed shared UI primitives from the old Suite Manager.
+- [ ] Add unit/API tests for setup status and owner creation.
+- [ ] Add UI-level tests only when there is enough app surface to justify them.
+
+Exit criteria:
+
+- Starting V2 with empty state shows owner setup.
+- Creating owner persists state and signs the user in.
+- Refreshing after setup does not show owner creation again.
+- Duplicate owner creation is rejected.
+- Tests pass through `npm --prefix version-2 test`.
+
+### Phase 2: Control-Plane Install Shape
+
+Goal: define and test what "installed MOS V2 control plane" means before optional apps.
+
+- [ ] Define control-plane components in V2 state/contract.
+- [ ] Define required runtime env values for control-plane-only install.
+- [ ] Define generated state paths.
+- [ ] Define how Suite Manager discovers its public URL.
+- [ ] Define Homepage role before app catalog exists.
+- [ ] Define Caddy role before app catalog exists.
+- [ ] Define host-agent capabilities needed for first milestone.
+- [ ] Add tests for control-plane install contract.
+
+Exit criteria:
+
+- V2 can describe a control-plane install without optional apps.
+- Owner credentials are not part of installer inputs.
+- Required generated files are documented or represented in V2 code.
+
+### Phase 3: Installer Front Doors
+
+Goal: make cloud, USB, and SSH setup feed the same V2 bootstrap shape.
+
+- [ ] Inventory old installer scripts for reusable behavior.
+- [ ] Decide whether V2 gets new installer scripts under `version-2/` or thin adapters outside it.
+- [ ] Build V2 cloud installer path first.
+- [ ] Make owner email/password optional or absent in V2 install config.
+- [ ] Keep domain/runtime inputs separate from owner account inputs.
+- [ ] Add render tests for V2 installer config.
+- [ ] Add a local dry-run command for installer generation.
+- [ ] Update docs only after the V2 path is actually runnable.
+
+Exit criteria:
+
+- A cloud-machine install can boot V2 control plane without owner credentials.
+- USB and SSH can follow the same bootstrap contract later without custom app logic.
+
+### Phase 4: DigitalOcean Validation Loop
+
+Goal: reuse the known smoke harness for real-machine confidence without letting it drive the architecture.
+
+- [ ] Decide how the existing smoke harness calls a V2 installer/ref.
+- [ ] Add V2 mode to the smoke harness or a V2 wrapper.
+- [ ] Remove owner credential requirement for V2 smoke mode.
+- [ ] Have smoke output the first-run Suite Manager URL.
+- [ ] Add a smoke readiness check that does not require app installs.
+- [ ] Add optional browser-owner-creation validation once E2E exists.
+
+Exit criteria:
+
+- User can run a fresh DigitalOcean smoke install of V2.
+- Smoke validates control-plane readiness.
+- Smoke does not install optional apps.
+- Smoke does not require installer-time owner credentials.
+
+### Phase 5: Control-Plane Operations
+
+Goal: make the empty platform trustworthy before adding apps.
+
+- [ ] Add update-track display or defer it explicitly.
+- [ ] Add host-agent capability display or defer it explicitly.
+- [ ] Add backup placeholder/guidance or defer it explicitly.
+- [ ] Add settings needed for base domain / local HTTPS or defer it explicitly.
+- [ ] Decide what the first dashboard should show before apps exist.
+- [ ] Keep advanced diagnostics behind details/disclosures.
+
+Exit criteria:
+
+- A user with no apps installed still understands the platform state.
+- Missing host capabilities are explained without terminal-first instructions.
+- No app-specific UI appears.
+
+### Phase 6: App Package Contract, No Installs Yet
+
+Goal: design app packages after the control plane is real.
+
+- [ ] Draft V2 app package folder shape.
+- [ ] Define package manifest fields.
+- [ ] Define package-owned setup helper boundaries.
+- [ ] Define projection outputs: Compose, Caddy, Homepage, env, backup, update inclusion.
+- [ ] Define install states.
+- [ ] Define app dependency semantics.
+- [ ] Define what uninstall means before implementing it.
+- [ ] Add manifest validation tests.
+
+Exit criteria:
+
+- App packages can be validated without installing them.
+- The package contract does not depend on old preloaded-suite assumptions.
+
+### Phase 7: First App Install
+
+Goal: install one low-risk app end to end after the control plane is proven.
+
+- [ ] Pick the first app, likely Stirling PDF.
+- [ ] Create package manifest.
+- [ ] Generate required runtime projections.
+- [ ] Apply Compose/Caddy/Homepage changes through a narrow V2 adapter.
+- [ ] Show install status in Suite Manager.
+- [ ] Add idempotency tests.
+- [ ] Run user-driven DigitalOcean validation.
+
+Exit criteria:
+
+- Fresh V2 install can add one app without SSH.
+- Re-running install is safe.
+- Failure states are visible and recoverable.
+
+### Phase 8: Assisted App Install
+
+Goal: prove that V2 handles richer app setup without polluting global onboarding.
+
+- [ ] Pick Radicale or Vaultwarden as the first assisted app.
+- [ ] Move/rebuild only the needed helper UI into the app package.
+- [ ] Keep app credentials and device setup inside the app flow.
+- [ ] Add package-owned Homepage/Caddy contributions if needed.
+- [ ] Add tests proving no global onboarding dependency.
+
+Exit criteria:
+
+- Assisted setup appears only for installed/relevant app.
+- Control-plane owner setup remains app-free.
+
+### Phase 9: Backup, Update, And Restore Semantics
+
+Goal: make app lifecycle safe enough for real users.
+
+- [ ] Define backup inclusion from installed app state and package metadata.
+- [ ] Define update behavior for installed apps only.
+- [ ] Define restore behavior for selected apps.
+- [ ] Decide how disabled/uninstalled apps affect volumes.
+- [ ] Add tests for selected-app backup/update state.
+
+Exit criteria:
+
+- V2 does not treat "detected old containers" as source of truth.
+- Lifecycle behavior follows installed state and package contracts.
+
+## Transfer Or Rebuild Inventory
+
+Use this table to decide what to copy, rebuild, or ignore. Do not transfer anything just because it exists.
+
+| Area | Old source | V2 action | Timing |
+| --- | --- | --- | --- |
+| Suite Manager UI primitives | `apps/suite-manager/frontend/src/components/ui.tsx` | Rebuild/copy selected primitives into `version-2/` | Phase 1 |
+| Owner auth/session ideas | `apps/suite-manager/src/features/auth` | Rebuild around browser-created owner | Phase 1 |
+| Old onboarding | `apps/suite-manager/src/features/onboarding` | Do not transfer wholesale; mine for app helper ideas later | Phase 8 |
+| Homepage customization | `apps/suite-manager/src/features/homepage-config` | Defer; V2 first needs control-plane state | Phase 5+ |
+| Host-agent capability patterns | `apps/suite-manager/src/features/service-agent` | Rebuild narrow client once V2 needs host actions | Phase 5 |
+| DigitalOcean smoke harness | `scripts/smoke/digitalocean.cjs` | Adapt or wrap for V2; do not run automatically | Phase 4 |
+| Installer convergence scripts | `scripts/selfhost/*`, `deploy/self-host/*` | Rebuild V2 bootstrap contract, borrow shell details carefully | Phase 3 |
+| Compose helpers | `scripts/mos-compose.cjs`, `deploy/vps/docker-compose.yml` | Reference only until V2 projection/apply design exists | Phase 2+ |
+| App catalog prototype | `feat/app-catalog-provisioning` | Reference for package/projection lessons only | Phase 6+ |
+| Backup agent | `agents/selfhost/backup` | Defer until installed-app state exists | Phase 9 |
+| Update agent | `agents/selfhost/update` | Defer or show capability only | Phase 5/9 |
+| Caddy local HTTPS | existing Caddy/settings work | Defer until control-plane install is stable | Phase 5 |
+
+## V2 Folder Shape
+
+Current:
+
+```text
+version-2/
+  README.md
+  package.json
+  src/
+    platform-contract.cjs
+  test/
+    platform-contract.test.cjs
+```
+
+Likely next shape:
+
+```text
+version-2/
+  src/
+    server/
+    state/
+    auth/
+    ui/
+    installer/
+    platform-contract.cjs
+  test/
+    *.test.cjs
+  web/
+```
+
+This shape is not final. Let implementation pressure decide, but keep V2 self-contained.
+
+## Testing Strategy
+
+Use layered validation:
+
+- Contract tests: cheap checks for architecture promises.
+- Unit tests: state, auth, validation, projection functions.
+- API tests: first-run status, owner creation, sessions.
+- UI tests: only once the first-run screen exists.
+- Installer render tests: no owner credentials required.
+- DigitalOcean smoke: user-run paid validation.
+- E2E: user-run noisy browser validation.
+
+Agents may run:
+
+```powershell
+cmd /c npm --prefix version-2 test
+```
+
+Agents should ask the user to run:
+
+```powershell
+npm run smoke:do:up
+npm run smoke:do:reset
+npm run e2e:onboarding
+```
+
+## Definition Of Done For The First Milestone
+
+- `version-2/` contains a runnable Suite Manager-first control-plane app.
+- Fresh empty state leads to browser owner creation.
+- Owner credentials are not collected by the installer.
+- Owner creation signs the user in.
+- Control-plane dashboard works with no optional apps.
+- DigitalOcean smoke can validate fresh install readiness.
+- E2E can validate the owner creation flow.
+- No optional app install code is required for milestone completion.
+
+## Parking Lot
+
+These are important but not first-milestone work:
+
+- App catalog UI.
+- App package schema.
+- App install/uninstall.
+- App-specific setup helpers.
+- Backup inclusion by app.
+- Managed update inclusion by app.
+- Migration from legacy all-app installs.
+- Railway/platform V2 strategy.
