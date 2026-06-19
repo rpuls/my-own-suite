@@ -49,9 +49,15 @@ node_modules/
 
 # Frontend build output
 apps/suite-manager/frontend/dist/
+version-2/suite-manager/frontend/dist/
 tests/e2e/node_modules/
 tests/e2e/playwright-report/
 tests/e2e/test-results/
+
+# Local runtime state
+.state/
+version-2/.state/
+version-2/suite-manager/.state/
 
 # Self-host generated artifacts
 deploy/self-host/autoinstall/generated/
