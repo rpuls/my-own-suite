@@ -137,7 +137,7 @@ function renderBootstrapEnv(config) {
 }
 
 function renderBootstrapShell(config) {
-  return `#!/usr/bin/env bash
+  const script = `#!/usr/bin/env bash
 set -euo pipefail
 
 ${renderBootstrapEnv(config)}
@@ -171,6 +171,10 @@ echo "[mos-v2] App choices happen in Suite Manager after install."
 
 export DEBIAN_FRONTEND=noninteractive
 
+if ! command -v caddy >/dev/null 2>&1; then
+  rm -f /etc/apt/sources.list.d/caddy-stable.list
+fi
+
 apt-get update
 apt-get install -y ca-certificates curl git gnupg
 
@@ -180,9 +184,9 @@ if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'Number(process.versions.no
 fi
 
 if ! command -v caddy >/dev/null 2>&1; then
-  install -d -m 0755 /etc/apt/keyrings
-  curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor -o /etc/apt/keyrings/caddy-stable-archive-keyring.gpg
+  curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
   curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt -o /etc/apt/sources.list.d/caddy-stable.list
+  chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg
   apt-get update
   apt-get install -y caddy
 fi
@@ -239,11 +243,11 @@ WantedBy=multi-user.target
 MOS_V2_SUITE_MANAGER_UNIT
 
 cat > /etc/caddy/Caddyfile <<MOS_V2_CADDY
-$MOS_V2_SUITE_HOST {
+http://$MOS_V2_SUITE_HOST {
   reverse_proxy 127.0.0.1:$MOS_V2_SUITE_MANAGER_PORT
 }
 
-$MOS_V2_HOMEPAGE_HOST {
+http://$MOS_V2_HOMEPAGE_HOST {
   respond "MOS V2 Homepage placeholder. Suite Manager is available at $MOS_V2_SUITE_MANAGER_URL" 200
 }
 MOS_V2_CADDY
@@ -260,6 +264,8 @@ MOS_V2_BOOTSTRAP_DONE
 echo "[mos-v2] Wrote bootstrap contract to $MOS_V2_STATE_ROOT/bootstrap-contract.env"
 echo "[mos-v2] Suite Manager is ready for first-run owner setup at $MOS_V2_SUITE_MANAGER_URL"
 `;
+
+  return script.replace(/\r\n/g, '\n');
 }
 
 function renderCloudInit(config) {

@@ -18,12 +18,13 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Added V2-local file-backed platform state, owner password hashing, session tokens, first-run owner creation API, and minimal first-run HTML.
 - [x] Built the first React/Vite V2 Suite Manager owner onboarding app shell.
 - [x] Added a V2 no-preconfig bootstrap contract, dry-run renderers for cloud-init, SSH/bootstrap, USB seed config, and a DigitalOcean smoke harness that can create a Droplet and install the V2 control plane.
+- [x] Ran the first paid V2 DigitalOcean smoke, diagnosed Caddy repository key placement and Windows SSH-render line endings, repaired the existing Droplet, and verified the public setup API returns `needs-owner`.
 
 ### Current Next Slice
 
 Build the next real V2 vertical slice inside `version-2/`:
 
-1. Harden the V2 DigitalOcean smoke bootstrap after the first user-run Droplet test, especially package install logs, Caddy routing, and first-run URL readiness.
+1. Run one fresh V2 DigitalOcean smoke after the Caddy key, LF normalization, and interrupted-install recovery fixes to confirm clean first-boot success without manual repair.
 2. Keep the installer input surface no-preconfig: no owner credentials, no app choices, and no app-specific env values before first boot.
 3. Move Suite Manager persistence from milestone JSON to SQLite before settings, user details, app install state, or richer sessions grow.
 4. Add local backend/frontend dev orchestration once the server entry point is ready for interactive use.

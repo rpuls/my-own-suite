@@ -25,6 +25,14 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.match(plan.env, /MOS_V2_APP_SELECTION='suite-manager-after-install'/);
   assert.match(plan.cloudInit, /ExecStart=\/usr\/bin\/node .*suite-manager\/backend\/src\/server\/start\.cjs/);
   assert.match(plan.cloudInit, /reverse_proxy 127\.0\.0\.1:\$MOS_V2_SUITE_MANAGER_PORT/);
+  assert.match(plan.cloudInit, /\/usr\/share\/keyrings\/caddy-stable-archive-keyring\.gpg/);
+  assert.match(plan.cloudInit, /http:\/\/\$MOS_V2_SUITE_HOST/);
+  assert.ok(
+    plan.cloudInit.indexOf('rm -f /etc/apt/sources.list.d/caddy-stable.list')
+      < plan.cloudInit.indexOf('apt-get update'),
+  );
+  assert.doesNotMatch(plan.cloudInit, /\r/);
+  assert.doesNotMatch(plan.sshBootstrap, /\r/);
 });
 
 test('bootstrap contract derives sslip.io domain for cloud smoke installs', () => {
