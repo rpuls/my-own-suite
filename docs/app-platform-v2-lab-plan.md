@@ -13,17 +13,18 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Created root-level `version-2/` as the clean-slate V2 workspace.
 - [x] Added a self-contained V2 package with `npm --prefix version-2 test`.
 - [x] Added an executable platform contract that rejects preloaded apps and runtime imports from the old Suite Manager.
-- [ ] Build the V2 Suite Manager owner setup flow.
+- [x] Added V2-local file-backed platform state, owner password hashing, session tokens, first-run owner creation API, and minimal first-run HTML.
+- [ ] Build the polished V2 Suite Manager owner setup UI.
 
 ### Current Next Slice
 
 Build the first real V2 vertical slice inside `version-2/`:
 
-1. Minimal V2 web app shell.
-2. Persistent first-run setup state.
-3. Browser-based owner creation form.
-4. Owner password hashing and session creation.
-5. Tests for first-run status, owner creation, duplicate-owner protection, and login/session behavior.
+1. Replace the minimal HTML owner form with a real V2 UI shell.
+2. Decide the V2 frontend stack and local dev command.
+3. Add a login screen for existing-owner signed-out state.
+4. Add logout and signed-in dashboard affordances.
+5. Keep the API/state tests green while adding UI tests when the app shell exists.
 
 ### Latest Verified Command
 
@@ -33,9 +34,11 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
+Current result: 12 V2 tests pass, covering the contract, setup state, owner creation, duplicate-owner protection, login, and the minimal HTTP API.
+
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep new code inside `version-2/`; treat existing repo code and `feat/app-catalog-provisioning` as reference material only. The next slice is the V2 Suite Manager first-run owner setup: app shell, setup state, owner creation endpoint/UI, password hashing, session creation, and focused tests. Do not add app catalog behavior yet.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep new code inside `version-2/`; treat existing repo code and `feat/app-catalog-provisioning` as reference material only. V2 now has file-backed setup state, owner password hashing, session tokens, first-run owner creation API, and minimal HTML. The next slice is a real V2 UI shell for owner setup, signed-out login, logout, and signed-in dashboard affordances. Do not add app catalog behavior yet.
 
 ## Product Goal
 
@@ -85,7 +88,8 @@ Goal: make it obvious where V2 lives and what it is allowed to depend on.
 - [x] Add V2-local `package.json`.
 - [x] Add a contract test that rejects preloaded optional apps.
 - [x] Add a contract test that rejects runtime imports from the old Suite Manager.
-- [ ] Add a V2 README section for local development once the app shell exists.
+- [x] Add first V2 owner/setup implementation without old Suite Manager runtime imports.
+- [ ] Add a V2 README section for local development once the polished app shell exists.
 - [ ] Add a V2 architecture note inside `version-2/` if the folder needs local technical detail.
 
 Exit criteria:
@@ -97,17 +101,18 @@ Exit criteria:
 
 Goal: prove the human entry point before touching app installs.
 
-- [ ] Choose the V2 app stack inside `version-2/`.
-- [ ] Create a minimal Suite Manager web app shell.
-- [ ] Add first-run setup status: `needs-owner`, `signed-out`, `signed-in`.
-- [ ] Add persistent state storage for owner account metadata.
-- [ ] Add password hashing.
-- [ ] Add owner creation endpoint.
-- [ ] Add duplicate-owner protection.
-- [ ] Add login/session creation after owner creation.
-- [ ] Add signed-out login endpoint if not created as part of the owner flow.
-- [ ] Add session persistence and logout.
-- [ ] Add first-run owner creation UI.
+- [ ] Choose the V2 frontend app stack inside `version-2/`.
+- [x] Create a minimal Suite Manager web app shell.
+- [x] Add first-run setup status: `needs-owner`, `signed-out`, `signed-in`.
+- [x] Add persistent state storage for owner account metadata.
+- [x] Add password hashing.
+- [x] Add owner creation endpoint.
+- [x] Add duplicate-owner protection.
+- [x] Add login/session creation after owner creation.
+- [x] Add signed-out login endpoint if not created as part of the owner flow.
+- [x] Add session persistence and logout.
+- [x] Add minimal first-run owner creation UI.
+- [ ] Replace minimal first-run UI with polished V2 UI.
 - [ ] Rebuild/copy only the needed shared UI primitives from the old Suite Manager.
 - [ ] Add unit/API tests for setup status and owner creation.
 - [ ] Add UI-level tests only when there is enough app surface to justify them.
@@ -286,9 +291,15 @@ version-2/
   README.md
   package.json
   src/
+    auth/
+    server/
+    setup/
+    state/
     platform-contract.cjs
   test/
+    http-app.test.cjs
     platform-contract.test.cjs
+    setup-service.test.cjs
 ```
 
 Likely next shape:
