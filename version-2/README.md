@@ -14,8 +14,15 @@ The active roadmap and session checklist lives in `docs/app-platform-v2-lab-plan
 - `scripts/`: V2 operator/development scripts, including future DigitalOcean smoke wrappers and installer entry points.
 - `system-agents/`: host-side agents for narrow privileged actions such as updates, backups, service apply, and restore.
 - `infrastructure/`: shared runtime substrate that is not owned by one app, such as Caddy base config, Compose assembly/templates, Docker build conventions, and generated-output contracts.
+- `branding/`: canonical V2 brand source for shared colors, fonts, marks, favicons, and CSS tokens.
 
 App-owned Dockerfiles should live under `apps/<app>/`. Shared Compose/Caddy templates and projection contracts should live under `infrastructure/`. Suite Manager should orchestrate app install state, but host-level apply work should go through `system-agents/`.
+
+Shared color/style changes start in `branding/styles/mos.css`, then sync to the future site, Suite Manager, and Homepage targets:
+
+```powershell
+npm --prefix version-2 run branding:sync
+```
 
 ## First Slice
 
@@ -35,7 +42,7 @@ From the repo root:
 npm --prefix version-2 test
 ```
 
-This verifies the V2 Suite Manager backend contract without starting Docker, touching host agents, importing the old Suite Manager app, or changing the current stack.
+This syncs branding and verifies the V2 Suite Manager backend contract without starting Docker, touching host agents, importing the old Suite Manager app, or changing the current stack.
 
 ## Reference Material
 

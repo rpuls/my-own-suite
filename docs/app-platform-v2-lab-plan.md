@@ -12,6 +12,7 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Preserved the previous app-catalog prototype branch as reference material.
 - [x] Created root-level `version-2/` as the clean-slate V2 workspace.
 - [x] Added a self-contained V2 package with `npm --prefix version-2 test`.
+- [x] Added canonical V2 branding under `version-2/branding` with sync outputs for future site, Suite Manager, and Homepage styling.
 - [x] Added an executable platform contract that rejects preloaded apps and runtime imports from the old Suite Manager.
 - [x] Moved the first implementation under `version-2/suite-manager/backend/` so Suite Manager is one component in the larger V2 workspace.
 - [x] Added V2-local file-backed platform state, owner password hashing, session tokens, first-run owner creation API, and minimal first-run HTML.
@@ -35,11 +36,11 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
-Current result: 12 V2 Suite Manager backend tests pass, covering the contract, setup state, owner creation, duplicate-owner protection, login, and the minimal HTTP API.
+Current result: 13 V2 tests pass, covering the contract, branding sync, setup state, owner creation, duplicate-owner protection, login, and the minimal HTTP API.
 
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep new code inside `version-2/`; treat existing repo code and `feat/app-catalog-provisioning` as reference material only. V2 now has `suite-manager/`, `apps/`, `site/`, `scripts/`, `system-agents/`, and `infrastructure/` ownership folders. Suite Manager backend has file-backed setup state, owner password hashing, session tokens, first-run owner creation API, and minimal HTML. The next slice is a real V2 Suite Manager UI shell for owner setup, signed-out login, logout, and signed-in dashboard affordances. Do not add app catalog behavior yet.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep new code inside `version-2/`; treat existing repo code and `feat/app-catalog-provisioning` as reference material only. V2 now has `suite-manager/`, `apps/`, `site/`, `scripts/`, `system-agents/`, `infrastructure/`, and canonical `branding/` ownership folders. Suite Manager backend has file-backed setup state, owner password hashing, session tokens, first-run owner creation API, and minimal HTML. Shared colors change in `version-2/branding/styles/mos.css` and sync through `npm --prefix version-2 run branding:sync`. The next slice is a real V2 Suite Manager UI shell for owner setup, signed-out login, logout, and signed-in dashboard affordances. Do not add app catalog behavior yet.
 
 ## Product Goal
 
@@ -75,6 +76,7 @@ V2 should be organized around these first-class pieces:
 - Control plane: Suite Manager, Homepage, Caddy, and system agents.
 - Owner setup: first-run account creation in Suite Manager, not installer-time secrets.
 - Runtime state: Suite Manager-owned state for owner identity, sessions, platform setup state, and later installed apps.
+- Branding: one canonical V2 source under `version-2/branding`, synced into future site, Suite Manager, and Homepage targets.
 - Install substrate: cloud/USB/SSH front doors converge into one own-infra bootstrap.
 - App packages: later, each app owns its manifest, setup helper, routes, env needs, Homepage contributions, backup metadata, and lifecycle behavior.
 - Projections: later, generated Compose, Caddy, Homepage, env, backup, and update outputs are derived from V2 state and packages.
@@ -89,6 +91,7 @@ version-2/
   scripts/            # V2 install, smoke, and developer/operator scripts.
   system-agents/      # Host-side privileged agents.
   infrastructure/     # Shared Caddy, Compose, Docker, and projection substrate.
+  branding/           # Canonical shared colors, fonts, marks, favicons, and CSS tokens.
   package.json        # Root V2 workspace commands.
 ```
 
@@ -100,6 +103,7 @@ Placement rules:
 - DigitalOcean, USB/cloud installer, and development scripts go in `version-2/scripts/`.
 - Host-level update/backup/service/restore agents go in `version-2/system-agents/`.
 - The future landing page goes in `version-2/site/`, but not yet.
+- Shared colors and visual tokens change first in `version-2/branding/styles/mos.css`, then sync with `npm --prefix version-2 run branding:sync`.
 
 ## Phase Roadmap
 
@@ -110,6 +114,7 @@ Goal: make it obvious where V2 lives and what it is allowed to depend on.
 - [x] Create `version-2/`.
 - [x] Add V2-local `package.json`.
 - [x] Split `version-2/` into product-level ownership folders.
+- [x] Add V2 canonical branding source and sync script.
 - [x] Add a contract test that rejects preloaded optional apps.
 - [x] Add a contract test that rejects runtime imports from the old Suite Manager.
 - [x] Add first V2 owner/setup implementation without old Suite Manager runtime imports.
@@ -305,6 +310,7 @@ Use this table to decide what to copy, rebuild, or ignore. Do not transfer anyth
 | Backup agent | `agents/selfhost/backup` | Defer until installed-app state exists | Phase 9 |
 | Update agent | `agents/selfhost/update` | Defer or show capability only | Phase 5/9 |
 | Caddy local HTTPS | existing Caddy/settings work | Defer until control-plane install is stable | Phase 5 |
+| Branding sync | `branding/`, `scripts/sync-branding.cjs` | Rebuild locally under `version-2/branding` and `version-2/scripts/sync-branding.cjs` | Phase 1 |
 
 ## V2 Folder Shape
 
@@ -316,14 +322,30 @@ version-2/
   package.json
   apps/
     README.md
+  branding/
+    README.md
+    styles/
+      mos.css
+    fonts/
+    favicons/
   infrastructure/
     README.md
+    homepage/
+      custom.css
   scripts/
     README.md
+    sync-branding.cjs
   site/
     README.md
+    generated/
+      branding/
+        mos.css
   suite-manager/
     README.md
+    frontend/
+      src/
+        styles/
+          mos.css
     backend/
       src/
         auth/
