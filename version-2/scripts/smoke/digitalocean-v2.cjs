@@ -5,8 +5,8 @@ const path = require('node:path');
 
 const { renderBootstrapPlan } = require('../installers/bootstrap-contract.cjs');
 
-const repoRoot = path.resolve(__dirname, '..', '..', '..');
-const smokeDir = path.join(repoRoot, '.mos-smoke');
+const v2Root = path.resolve(__dirname, '..', '..');
+const smokeDir = path.join(v2Root, '.mos-smoke');
 const logDir = path.join(smokeDir, 'logs');
 const statePath = path.join(smokeDir, 'v2-digitalocean.json');
 const localEnvPath = path.join(smokeDir, 'v2-digitalocean.env');
@@ -330,13 +330,13 @@ URLs:
   Homepage:      ${state.homepageUrl}
 
 State:
-  ${path.relative(repoRoot, statePath)}
+  ${path.relative(v2Root, statePath)}
 
 Destroy when finished:
-  npm --prefix version-2 run smoke:do:destroy
+  npm run smoke:do:destroy
 
 Replace with a fresh V2 smoke Droplet:
-  npm --prefix version-2 run smoke:do:reset
+  npm run smoke:do:reset
 `);
 }
 

@@ -41,7 +41,9 @@ npm --prefix version-2 run smoke:do:render
 
 `smoke:do:up` creates paid DigitalOcean resources, waits for Suite Manager readiness, and prints the first-run Suite Manager URL. `smoke:do:render` is the free dry-run that prints the cloud-init payload without creating resources.
 
-The smoke harness reads the ignored local file `.mos-smoke/v2-digitalocean.env`. Required for `up`, `reset`, and `destroy`:
+The smoke harness reads the ignored V2-local file `version-2/.mos-smoke/v2-digitalocean.env` (or `.mos-smoke/v2-digitalocean.env` when working inside `version-2`). V2 smoke credentials, state, and logs all stay under `version-2/.mos-smoke/`.
+
+Required for `up`, `reset`, and `destroy`:
 
 - `DIGITALOCEAN_ACCESS_TOKEN`
 
