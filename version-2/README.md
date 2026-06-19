@@ -44,6 +44,19 @@ npm --prefix version-2 test
 
 This syncs branding and verifies the V2 Suite Manager backend contract without starting Docker, touching host agents, importing the old Suite Manager app, or changing the current stack.
 
+## Suite Manager Frontend
+
+The first V2 Suite Manager UI is a small React + Vite app under `suite-manager/frontend/`.
+
+From the repo root:
+
+```powershell
+npm --prefix version-2 run dev:client
+npm --prefix version-2 run build:client
+```
+
+The backend serves the built frontend from `suite-manager/frontend/dist/`. The app currently covers only owner first-run setup, login, logout, and a signed-in control-plane placeholder.
+
 ## Reference Material
 
 - `staging`: integration base for this branch.

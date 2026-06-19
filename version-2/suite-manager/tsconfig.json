@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": false,
+    "verbatimModuleSyntax": true,
+    "noUncheckedIndexedAccess": true,
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "frontend/src/**/*.ts",
+    "frontend/src/**/*.tsx",
+    "vite.config.mjs"
+  ]
+}

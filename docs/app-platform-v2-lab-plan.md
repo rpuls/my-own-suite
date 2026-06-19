@@ -16,17 +16,16 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Added an executable platform contract that rejects preloaded apps and runtime imports from the old Suite Manager.
 - [x] Moved the first implementation under `version-2/suite-manager/backend/` so Suite Manager is one component in the larger V2 workspace.
 - [x] Added V2-local file-backed platform state, owner password hashing, session tokens, first-run owner creation API, and minimal first-run HTML.
-- [ ] Build the polished V2 Suite Manager owner setup UI.
+- [x] Built the first React/Vite V2 Suite Manager owner onboarding app shell.
 
 ### Current Next Slice
 
 Build the first real V2 vertical slice inside `version-2/`:
 
-1. Replace the minimal HTML owner form with a real V2 UI shell.
-2. Decide the V2 frontend stack and local dev command.
-3. Add a login screen for existing-owner signed-out state.
-4. Add logout and signed-in dashboard affordances.
-5. Keep the API/state tests green while adding UI tests when the app shell exists.
+1. Keep the React/Vite owner onboarding shell small while the backend contract settles.
+2. Move Suite Manager persistence from milestone JSON to SQLite before settings, user details, app install state, or richer sessions grow.
+3. Add local backend/frontend dev orchestration once the server entry point is ready for interactive use.
+4. Keep the API/state tests green while adding UI tests when the app shell has enough behavior to justify browser coverage.
 
 ### Latest Verified Command
 
@@ -36,11 +35,11 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
-Current result: 13 V2 tests pass, covering the contract, branding sync, setup state, owner creation, duplicate-owner protection, login, and the minimal HTTP API.
+Current result: V2 tests pass, covering the contract, branding sync, setup state, owner creation, duplicate-owner protection, login/logout, and built frontend serving.
 
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep new code inside `version-2/`; treat existing repo code and `feat/app-catalog-provisioning` as reference material only. V2 now has `suite-manager/`, `apps/`, `site/`, `scripts/`, `system-agents/`, `infrastructure/`, and canonical `branding/` ownership folders. Suite Manager backend has file-backed setup state, owner password hashing, session tokens, first-run owner creation API, and minimal HTML. Shared colors change in `version-2/branding/styles/mos.css` and sync through `npm --prefix version-2 run branding:sync`. The next slice is a real V2 Suite Manager UI shell for owner setup, signed-out login, logout, and signed-in dashboard affordances. Do not add app catalog behavior yet.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep new code inside `version-2/`; treat existing repo code and `feat/app-catalog-provisioning` as reference material only. V2 now has `suite-manager/`, `apps/`, `site/`, `scripts/`, `system-agents/`, `infrastructure/`, and canonical `branding/` ownership folders. Suite Manager backend has file-backed setup state, owner password hashing, session tokens, first-run owner creation/login/logout APIs, and a React/Vite owner onboarding frontend shell. Shared colors change in `version-2/branding/styles/mos.css` and sync through `npm --prefix version-2 run branding:sync`. The next slice is to prepare Suite Manager persistence for future settings/user details, likely by moving the milestone JSON store to SQLite before adding app catalog behavior.
 
 ## Product Goal
 
@@ -118,7 +117,7 @@ Goal: make it obvious where V2 lives and what it is allowed to depend on.
 - [x] Add a contract test that rejects preloaded optional apps.
 - [x] Add a contract test that rejects runtime imports from the old Suite Manager.
 - [x] Add first V2 owner/setup implementation without old Suite Manager runtime imports.
-- [ ] Add a V2 README section for local development once the polished app shell exists.
+- [x] Add a V2 README section for local development once the polished app shell exists.
 - [ ] Add a V2 architecture note inside `version-2/` if the folder needs local technical detail.
 
 Exit criteria:
@@ -130,7 +129,7 @@ Exit criteria:
 
 Goal: prove the human entry point before touching app installs.
 
-- [ ] Choose the V2 frontend app stack inside `version-2/`.
+- [x] Choose the V2 frontend app stack inside `version-2/`.
 - [x] Create a minimal Suite Manager web app shell.
 - [x] Add first-run setup status: `needs-owner`, `signed-out`, `signed-in`.
 - [x] Add persistent state storage for owner account metadata.
@@ -141,9 +140,9 @@ Goal: prove the human entry point before touching app installs.
 - [x] Add signed-out login endpoint if not created as part of the owner flow.
 - [x] Add session persistence and logout.
 - [x] Add minimal first-run owner creation UI.
-- [ ] Replace minimal first-run UI with polished V2 UI.
-- [ ] Rebuild/copy only the needed shared UI primitives from the old Suite Manager.
-- [ ] Add unit/API tests for setup status and owner creation.
+- [x] Replace minimal first-run UI with polished V2 UI.
+- [x] Rebuild/copy only the needed shared UI primitives from the old Suite Manager.
+- [x] Add unit/API tests for setup status and owner creation.
 - [ ] Add UI-level tests only when there is enough app surface to justify them.
 
 Exit criteria:

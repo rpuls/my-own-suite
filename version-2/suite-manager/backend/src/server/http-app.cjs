@@ -1,9 +1,23 @@
 const http = require('node:http');
+const fs = require('node:fs');
 const path = require('node:path');
 
 const { SetupError, SetupService } = require('../setup/setup-service.cjs');
 
 const SESSION_COOKIE = 'mos_v2_session';
+const DEFAULT_FRONTEND_DIST_DIR = path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
+
+const MIME_TYPES = new Map([
+  ['.css', 'text/css; charset=utf-8'],
+  ['.html', 'text/html; charset=utf-8'],
+  ['.ico', 'image/x-icon'],
+  ['.js', 'text/javascript; charset=utf-8'],
+  ['.json', 'application/json; charset=utf-8'],
+  ['.png', 'image/png'],
+  ['.svg', 'image/svg+xml'],
+  ['.txt', 'text/plain; charset=utf-8'],
+  ['.webmanifest', 'application/manifest+json; charset=utf-8'],
+]);
 
 function jsonResponse(response, statusCode, payload, headers = {}) {
   response.writeHead(statusCode, {
@@ -18,6 +32,21 @@ function htmlResponse(response, statusCode, html) {
     'Content-Type': 'text/html; charset=utf-8',
   });
   response.end(html);
+}
+
+function textResponse(response, statusCode, text) {
+  response.writeHead(statusCode, {
+    'Content-Type': 'text/plain; charset=utf-8',
+  });
+  response.end(text);
+}
+
+function fileResponse(response, filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  response.writeHead(200, {
+    'Content-Type': MIME_TYPES.get(extension) || 'application/octet-stream',
+  });
+  fs.createReadStream(filePath).pipe(response);
 }
 
 function parseCookies(header = '') {
@@ -70,47 +99,6 @@ function readJsonBody(request) {
   });
 }
 
-function setupPage() {
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Set up My Own Suite</title>
-  </head>
-  <body>
-    <main>
-      <h1>Create your MOS owner account</h1>
-      <form method="post" action="/api/setup/owner">
-        <label>Name <input autocomplete="name" name="name" required></label>
-        <label>Email <input autocomplete="email" name="email" required type="email"></label>
-        <label>Password <input autocomplete="new-password" minlength="12" name="password" required type="password"></label>
-        <button type="submit">Create owner</button>
-      </form>
-    </main>
-  </body>
-</html>
-`;
-}
-
-function dashboardPage(owner) {
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>My Own Suite</title>
-  </head>
-  <body>
-    <main>
-      <h1>My Own Suite</h1>
-      <p>Signed in as ${owner.name}.</p>
-    </main>
-  </body>
-</html>
-`;
-}
-
 function errorStatus(error) {
   if (!(error instanceof SetupError)) {
     return 500;
@@ -127,7 +115,33 @@ function errorStatus(error) {
   return 400;
 }
 
-function createV2Server({ stateDir = path.join(process.cwd(), '.state') } = {}) {
+function resolveStaticPath(rootDir, requestPath) {
+  const decodedPath = decodeURIComponent(requestPath);
+  const normalizedPath = path.normalize(decodedPath).replace(/^(\.\.(\/|\\|$))+/, '');
+  const rootPath = path.resolve(rootDir);
+  const filePath = path.resolve(rootDir, normalizedPath.replace(/^[/\\]+/, ''));
+  const relativePath = path.relative(rootPath, filePath);
+
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    return null;
+  }
+
+  return filePath;
+}
+
+function readFrontendHtml(frontendDistDir) {
+  const indexPath = path.join(frontendDistDir, 'index.html');
+  if (!fs.existsSync(indexPath)) {
+    return null;
+  }
+
+  return fs.readFileSync(indexPath, 'utf8');
+}
+
+function createV2Server({
+  frontendDistDir = DEFAULT_FRONTEND_DIST_DIR,
+  stateDir = path.join(process.cwd(), '.state'),
+} = {}) {
   const setup = new SetupService({ stateDir });
 
   return http.createServer(async (request, response) => {
@@ -136,16 +150,6 @@ function createV2Server({ stateDir = path.join(process.cwd(), '.state') } = {}) 
     const sessionToken = cookies[SESSION_COOKIE] || '';
 
     try {
-      if (request.method === 'GET' && url.pathname === '/') {
-        const status = setup.status(sessionToken);
-        if (status.status === 'needs-owner') {
-          htmlResponse(response, 200, setupPage());
-          return;
-        }
-        htmlResponse(response, 200, dashboardPage(status.owner));
-        return;
-      }
-
       if (request.method === 'GET' && url.pathname === '/api/setup/status') {
         jsonResponse(response, 200, setup.status(sessionToken));
         return;
@@ -174,6 +178,23 @@ function createV2Server({ stateDir = path.join(process.cwd(), '.state') } = {}) 
         jsonResponse(response, 200, result, {
           'Set-Cookie': clearSessionCookie(),
         });
+        return;
+      }
+
+      if (request.method === 'GET' && !url.pathname.startsWith('/api/')) {
+        const staticPath = resolveStaticPath(frontendDistDir, url.pathname === '/' ? '/index.html' : url.pathname);
+        if (staticPath && fs.existsSync(staticPath) && fs.statSync(staticPath).isFile()) {
+          fileResponse(response, staticPath);
+          return;
+        }
+
+        const html = readFrontendHtml(frontendDistDir);
+        if (html) {
+          htmlResponse(response, 200, html);
+          return;
+        }
+
+        textResponse(response, 503, 'Suite Manager frontend is not built yet. Run npm --prefix version-2 run build:client.');
         return;
       }
 

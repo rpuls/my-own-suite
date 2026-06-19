@@ -1,11 +1,23 @@
 {
   "name": "my-own-suite-version-2",
+  "version": "0.1.0",
   "private": true,
   "description": "Clean-slate MOS V2 launch platform workspace.",
   "type": "commonjs",
   "scripts": {
+    "build:client": "npm run branding:sync && vite build --config suite-manager/vite.config.mjs",
     "branding:sync": "node scripts/sync-branding.cjs",
+    "dev:client": "npm run branding:sync && vite --config suite-manager/vite.config.mjs",
     "test": "npm run branding:sync && node --test suite-manager/backend/test/*.test.cjs test/*.test.cjs"
+  },
+  "dependencies": {
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10"
   },
   "engines": {
     "node": "22.x",
