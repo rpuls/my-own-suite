@@ -256,6 +256,7 @@ async function waitForSuiteManager(plan) {
   }
 
   const statusUrl = new URL('/api/setup/status', plan.config.publicUrls.suiteManager).toString();
+  const homeUrl = plan.config.publicUrls.home;
   const deadline = Date.now() + Number(env('MOS_V2_SMOKE_READY_TIMEOUT_MS', '900000'));
 
   while (Date.now() < deadline) {
@@ -264,7 +265,10 @@ async function waitForSuiteManager(plan) {
       if (response.ok) {
         const status = await response.json();
         if (status.status === 'needs-owner' || status.status === 'signed-out') {
-          return;
+          const homeResponse = await fetch(homeUrl, { redirect: 'manual' });
+          if (homeResponse.status === 302 && homeResponse.headers.get('location') === '/setup/') {
+            return;
+          }
         }
       }
     } catch {
@@ -326,8 +330,8 @@ function printSummary(state) {
 [mos-v2-smoke:do] Smoke Droplet is ready.
 
 URLs:
+  MOS Home:      ${state.homepageUrl}
   Suite Manager: ${state.suiteManagerUrl}
-  Homepage:      ${state.homepageUrl}
 
 State:
   ${path.relative(v2Root, statePath)}
@@ -366,6 +370,7 @@ async function up({ replace = false } = {}) {
     domain: plan.config.domain,
     dropletId: droplet.id,
     homepageUrl: plan.config.publicUrls.homepage,
+    setupUrl: plan.config.publicUrls.setup,
     image: config.image,
     ip,
     region: config.region,
@@ -399,6 +404,7 @@ function render() {
     components: plan.config.components,
     domain: plan.config.domain,
     homepageUrl: plan.config.publicUrls.homepage,
+    setupUrl: plan.config.publicUrls.setup,
     note: 'Render-only V2 DigitalOcean smoke payload. No Droplet was created.',
     repoRef: plan.config.repoRef,
     repoUrl: plan.config.repoUrl,

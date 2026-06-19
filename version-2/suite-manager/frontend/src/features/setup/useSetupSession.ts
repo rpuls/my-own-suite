@@ -46,6 +46,15 @@ function errorMessage(body: ApiErrorBody, fallback: string): string {
   return typeof body.error === 'string' && body.error.trim() ? body.error : fallback;
 }
 
+function enterHomeDashboard(): boolean {
+  if (!window.location.hostname.startsWith('home.') || !window.location.pathname.startsWith('/setup')) {
+    return false;
+  }
+
+  window.location.assign('/');
+  return true;
+}
+
 export function useSetupSession() {
   const [state, setState] = useState<SetupSessionState>({ kind: 'loading' });
 
@@ -75,7 +84,9 @@ export function useSetupSession() {
       return;
     }
 
-    setState({ kind: 'signed-in', owner: body.owner });
+    if (!enterHomeDashboard()) {
+      setState({ kind: 'signed-in', owner: body.owner });
+    }
   }
 
   async function login(input: { email: string; password: string; owner: Owner }): Promise<void> {
@@ -95,7 +106,9 @@ export function useSetupSession() {
       return;
     }
 
-    setState({ kind: 'signed-in', owner: body.owner });
+    if (!enterHomeDashboard()) {
+      setState({ kind: 'signed-in', owner: body.owner });
+    }
   }
 
   async function logout(): Promise<void> {

@@ -4,6 +4,19 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-06-19: V2 Homepage Is Authenticated Through Suite Manager
+
+Decision: V2 exposes `home.<domain>` and `suite-manager.<domain>` through Caddy, but both hosts terminate at Suite Manager. Suite Manager authenticates Home requests and proxies the private loopback Homepage service. Sessions remain host-only; V2 does not share a parent-domain session cookie across app subdomains.
+
+Reason: Suite Manager already owns owner identity and sessions. Keeping Homepage behind it avoids duplicating session validation in Caddy and prevents a direct public bypass, while host-only cookies keep MOS credentials away from future independently authenticated apps.
+
+Consequences:
+
+- Home serves Suite Manager onboarding/login at `/setup/` and the authenticated Homepage dashboard at `/`.
+- Caddy has no direct Homepage upstream; Homepage binds only to loopback.
+- Home and Suite Manager browser sessions are independent until a dedicated cross-host SSO design is justified.
+- Suite Manager must preserve streaming, redirects, forwarded headers, and WebSocket upgrades while removing its session cookie before proxying Homepage.
+
 ## 2026-06-18: V2 Restarts From A Suite Manager-First Lab
 
 Decision: The V2 app platform work restarts from a clean branch based on `staging`, with new implementation isolated under a root-level `version-2/` workspace. The first milestone is not app catalog expansion; it is a reliable control-plane install and Suite Manager browser-based owner creation flow. The existing repo code and the previous app catalog prototype branch remain reference material for lessons and selective future extraction, not code to run through or merge wholesale.

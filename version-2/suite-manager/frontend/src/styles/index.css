@@ -119,6 +119,13 @@
   padding: var(--mos-space-5) clamp(1rem, 3vw, 2rem);
 }
 
+.suite-shell-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
 .suite-shell-brand {
   display: flex;
   align-items: center;

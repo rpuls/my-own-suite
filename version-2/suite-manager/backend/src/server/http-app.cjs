@@ -3,9 +3,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { SetupError, SetupService } = require('../setup/setup-service.cjs');
+const { createHomepageProxy } = require('./homepage-proxy.cjs');
 
 const SESSION_COOKIE = 'mos_v2_session';
 const DEFAULT_FRONTEND_DIST_DIR = path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
+const FRONTEND_ASSET_PREFIX = '/suite-manager-assets/';
 
 const MIME_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'],
@@ -138,18 +140,57 @@ function readFrontendHtml(frontendDistDir) {
   return fs.readFileSync(indexPath, 'utf8');
 }
 
+function normalizedHost(request) {
+  return String(request.headers.host || '').toLowerCase().replace(/:\d+$/, '');
+}
+
+function isSignedIn(setup, sessionToken) {
+  return setup.status(sessionToken).status === 'signed-in';
+}
+
+function serveFrontendAsset(response, frontendDistDir, pathname) {
+  const relativePath = pathname.slice(FRONTEND_ASSET_PREFIX.length);
+  const staticPath = resolveStaticPath(frontendDistDir, relativePath);
+  if (!staticPath || !fs.existsSync(staticPath) || !fs.statSync(staticPath).isFile()) {
+    return false;
+  }
+
+  fileResponse(response, staticPath);
+  return true;
+}
+
+function serveFrontend(response, frontendDistDir) {
+  const html = readFrontendHtml(frontendDistDir);
+  if (html) {
+    htmlResponse(response, 200, html);
+    return;
+  }
+
+  textResponse(response, 503, 'Suite Manager frontend is not built yet. Run npm --prefix version-2 run build:client.');
+}
+
 function createV2Server({
   frontendDistDir = DEFAULT_FRONTEND_DIST_DIR,
+  homeHost = process.env.MOS_V2_HOME_HOST || 'home.localhost',
+  homepageUpstream = process.env.MOS_V2_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
   stateDir = path.join(process.cwd(), '.state'),
+  suiteManagerHost = process.env.MOS_V2_SUITE_MANAGER_HOSTNAME || 'suite-manager.localhost',
 } = {}) {
   const setup = new SetupService({ stateDir });
+  const homepage = createHomepageProxy({ upstream: homepageUpstream });
 
-  return http.createServer(async (request, response) => {
+  const server = http.createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://localhost');
+    const requestHost = normalizedHost(request);
     const cookies = parseCookies(request.headers.cookie);
     const sessionToken = cookies[SESSION_COOKIE] || '';
 
     try {
+      if (requestHost !== homeHost && requestHost !== suiteManagerHost) {
+        jsonResponse(response, 421, { error: 'Unknown MOS host.' });
+        return;
+      }
+
       if (request.method === 'GET' && url.pathname === '/api/setup/status') {
         jsonResponse(response, 200, setup.status(sessionToken));
         return;
@@ -181,20 +222,38 @@ function createV2Server({
         return;
       }
 
+      if (request.method === 'GET' && url.pathname.startsWith(FRONTEND_ASSET_PREFIX)) {
+        if (serveFrontendAsset(response, frontendDistDir, url.pathname)) {
+          return;
+        }
+        jsonResponse(response, 404, { error: 'Not found.' });
+        return;
+      }
+
+      if (requestHost === homeHost) {
+        if (request.method === 'GET' && url.pathname === '/setup') {
+          response.writeHead(308, { Location: '/setup/' });
+          response.end();
+          return;
+        }
+
+        if (request.method === 'GET' && url.pathname.startsWith('/setup/')) {
+          serveFrontend(response, frontendDistDir);
+          return;
+        }
+
+        if (!isSignedIn(setup, sessionToken)) {
+          response.writeHead(302, { Location: '/setup/' });
+          response.end();
+          return;
+        }
+
+        homepage.proxyHttp(request, response);
+        return;
+      }
+
       if (request.method === 'GET' && !url.pathname.startsWith('/api/')) {
-        const staticPath = resolveStaticPath(frontendDistDir, url.pathname === '/' ? '/index.html' : url.pathname);
-        if (staticPath && fs.existsSync(staticPath) && fs.statSync(staticPath).isFile()) {
-          fileResponse(response, staticPath);
-          return;
-        }
-
-        const html = readFrontendHtml(frontendDistDir);
-        if (html) {
-          htmlResponse(response, 200, html);
-          return;
-        }
-
-        textResponse(response, 503, 'Suite Manager frontend is not built yet. Run npm --prefix version-2 run build:client.');
+        serveFrontend(response, frontendDistDir);
         return;
       }
 
@@ -206,6 +265,21 @@ function createV2Server({
       });
     }
   });
+
+  server.on('upgrade', (request, socket, head) => {
+    const requestHost = normalizedHost(request);
+    const cookies = parseCookies(request.headers.cookie);
+    const sessionToken = cookies[SESSION_COOKIE] || '';
+
+    if (requestHost !== homeHost || !isSignedIn(setup, sessionToken)) {
+      socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+      return;
+    }
+
+    homepage.proxyUpgrade(request, socket, head);
+  });
+
+  return server;
 }
 
 module.exports = {

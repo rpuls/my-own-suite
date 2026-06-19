@@ -34,6 +34,17 @@ Build and validate the control plane before optional apps:
 - Rebuild or copy only the Suite Manager UI primitives needed for the first-run screen.
 - Reuse the DigitalOcean smoke harness for real install validation once the no-owner path exists.
 
+## Authenticated Control-Plane Routes
+
+V2 uses two public hosts while keeping Homepage private:
+
+- `home.<domain>` is the primary MOS URL. Suite Manager serves onboarding/login at `/setup/` and proxies every authenticated dashboard request to Homepage.
+- `suite-manager.<domain>` serves the Suite Manager control-plane UI and API.
+- Caddy sends both hosts to Suite Manager. It never routes public traffic directly to Homepage.
+- Homepage listens only on `127.0.0.1:3200`, and Suite Manager removes its session cookie before forwarding requests upstream.
+
+Sessions are deliberately host-only. Home and Suite Manager therefore require independent browser sessions; MOS does not use a parent-domain cookie that would also be sent to future app subdomains.
+
 ## Installer Foundation
 
 V2 installer front doors share one bootstrap contract under `scripts/installers/`. The contract requires no `.env` file for the first boot. Repository URL/ref and domain can be supplied, but default to the MOS GitHub repo, `feat/app-platform-v2-lab`, and either `<public-ip>.sslip.io` for smoke/cloud paths or `localhost` for local render checks.
@@ -56,7 +67,7 @@ npm --prefix version-2 run smoke:do:destroy
 npm --prefix version-2 run smoke:do:render
 ```
 
-`smoke:do:up` is the paid, user-run path. It creates a tagged DigitalOcean Droplet, installs Node.js, Caddy, and the V2 Suite Manager control plane from the selected repo/ref, waits for `/api/setup/status`, and prints the first-run Suite Manager URL. `smoke:do:render` remains the free dry-run path.
+`smoke:do:up` is the paid, user-run path. It creates a tagged DigitalOcean Droplet, installs the V2 Caddy, Suite Manager, and private Homepage control plane from the selected repo/ref, waits for `/api/setup/status`, and prints the Home and Suite Manager URLs. `smoke:do:render` remains the free dry-run path.
 
 ## Test Command
 
@@ -79,7 +90,7 @@ npm --prefix version-2 run dev:client
 npm --prefix version-2 run build:client
 ```
 
-The backend serves the built frontend from `suite-manager/frontend/dist/`. The app currently covers only owner first-run setup, login, logout, and a signed-in control-plane placeholder.
+The backend serves the built frontend from `suite-manager/frontend/dist/` under `/suite-manager-assets/`. The app covers owner first-run setup, login, logout, the initial control-plane screen, and the authentication boundary in front of Homepage.
 
 ## Reference Material
 

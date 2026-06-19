@@ -1,0 +1,8 @@
+- datetime:
+    text_size: md
+    format:
+      weekday: short
+      day: numeric
+      month: short
+      hour: numeric
+      minute: 2-digit

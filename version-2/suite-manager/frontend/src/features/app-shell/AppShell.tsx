@@ -6,6 +6,12 @@ type AppShellProps = {
 };
 
 export function AppShell({ onLogout, owner }: AppShellProps) {
+  const dashboardUrl = new URL(window.location.href);
+  dashboardUrl.hostname = dashboardUrl.hostname.replace(/^suite-manager\./, 'home.');
+  dashboardUrl.pathname = '/';
+  dashboardUrl.search = '';
+  dashboardUrl.hash = '';
+
   return (
     <div className="suite-shell">
       <header className="suite-shell-header">
@@ -14,7 +20,7 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
             alt=""
             className="suite-shell-mark"
             height="40"
-            src="/brand/my-own-suite-mark.png"
+            src="/suite-manager-assets/brand/my-own-suite-mark.png"
             width="40"
           />
           <div className="suite-shell-title">
@@ -23,9 +29,14 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
           </div>
         </div>
 
-        <button className="mos-btn mos-btn-secondary" onClick={() => void onLogout()} type="button">
-          Sign out
-        </button>
+        <div className="suite-shell-actions">
+          <a className="mos-btn mos-btn-secondary" href={dashboardUrl.toString()}>
+            Open dashboard
+          </a>
+          <button className="mos-btn mos-btn-secondary" onClick={() => void onLogout()} type="button">
+            Sign out
+          </button>
+        </div>
       </header>
 
       <main className="suite-shell-main">

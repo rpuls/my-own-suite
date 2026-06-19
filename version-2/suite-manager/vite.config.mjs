@@ -7,7 +7,7 @@ import { defineConfig } from 'vite';
 const suiteManagerRoot = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  base: './',
+  base: '/suite-manager-assets/',
   root: path.join(suiteManagerRoot, 'frontend'),
   plugins: [react()],
   build: {

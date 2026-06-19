@@ -18,15 +18,29 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.equal(plan.config.repoRef, 'feat/app-platform-v2-lab');
   assert.equal(plan.config.domain, 'localhost');
   assert.deepEqual(plan.config.components, CONTROL_PLANE_COMPONENTS);
-  assert.match(plan.config.publicUrls.suiteManager, /^http:\/\/localhost\/setup\/$/);
+  assert.equal(plan.config.publicUrls.home, 'http://home.localhost/');
+  assert.equal(plan.config.publicUrls.setup, 'http://home.localhost/setup/');
+  assert.equal(plan.config.publicUrls.suiteManager, 'http://suite-manager.localhost/');
   assert.doesNotMatch(plan.env, /OWNER_EMAIL|OWNER_PASSWORD|MOS_OWNER/);
   assert.doesNotMatch(plan.env, /SELECTED_APPS|MOS_APPS|STIRLING|VAULTWARDEN/);
   assert.match(plan.env, /MOS_V2_OWNER_SETUP='suite-manager-browser'/);
   assert.match(plan.env, /MOS_V2_APP_SELECTION='suite-manager-after-install'/);
   assert.match(plan.cloudInit, /ExecStart=\/usr\/bin\/node .*suite-manager\/backend\/src\/server\/start\.cjs/);
   assert.match(plan.cloudInit, /reverse_proxy 127\.0\.0\.1:\$MOS_V2_SUITE_MANAGER_PORT/);
+  assert.match(plan.cloudInit, /mos-v2-homepage\.service/);
+  assert.match(plan.cloudInit, /--publish 127\.0\.0\.1:3200:3000/);
+  assert.match(plan.cloudInit, /systemctl restart mos-v2-homepage\.service/);
+  assert.match(plan.cloudInit, /curl -fsS -H "Host: \$MOS_V2_HOME_HOST" "\$MOS_V2_HOMEPAGE_UPSTREAM"/);
+  assert.match(plan.cloudInit, /systemctl restart mos-v2-suite-manager\.service/);
+  assert.match(plan.cloudInit, /systemctl restart caddy\.service/);
+  assert.ok(
+    plan.cloudInit.indexOf('systemctl restart mos-v2-homepage.service')
+      < plan.cloudInit.indexOf('systemctl restart mos-v2-suite-manager.service'),
+  );
   assert.match(plan.cloudInit, /\/usr\/share\/keyrings\/caddy-stable-archive-keyring\.gpg/);
-  assert.match(plan.cloudInit, /http:\/\/\$MOS_V2_SUITE_HOST/);
+  assert.match(plan.cloudInit, /http:\/\/\$MOS_V2_HOME_HOST/);
+  assert.match(plan.cloudInit, /http:\/\/\$MOS_V2_SUITE_MANAGER_HOST/);
+  assert.doesNotMatch(plan.cloudInit, /reverse_proxy 127\.0\.0\.1:3200/);
   assert.ok(
     plan.cloudInit.indexOf('rm -f /etc/apt/sources.list.d/caddy-stable.list')
       < plan.cloudInit.indexOf('apt-get update'),
@@ -44,7 +58,9 @@ test('bootstrap contract derives sslip.io domain for cloud smoke installs', () =
 
   assert.equal(defaultDomainFor({ publicIpv4: '203.0.113.42' }), '203.0.113.42.sslip.io');
   assert.equal(config.domain, '203.0.113.42.sslip.io');
-  assert.equal(config.publicUrls.suiteManager, 'http://suite-manager.203.0.113.42.sslip.io/setup/');
+  assert.equal(config.publicUrls.home, 'http://home.203.0.113.42.sslip.io/');
+  assert.equal(config.publicUrls.setup, 'http://home.203.0.113.42.sslip.io/setup/');
+  assert.equal(config.publicUrls.suiteManager, 'http://suite-manager.203.0.113.42.sslip.io/');
   assert.equal(config.repoRef, 'feature/test-ref');
 });
 
@@ -75,14 +91,18 @@ test('rendered cloud, SSH, and USB payloads share the same bootstrap contract', 
     assert.match(rendered, /MOS_V2_REPO_URL='https:\/\/example.test\/mos.git'/);
     assert.match(rendered, /MOS_V2_REPO_REF='refs\/heads\/v2-smoke'/);
     assert.match(rendered, /MOS_V2_DOMAIN='mos.example.test'/);
-    assert.match(rendered, /MOS_V2_SUITE_HOST="suite-manager\.\$MOS_V2_DOMAIN"/);
-    assert.match(rendered, /MOS_V2_SUITE_MANAGER_URL="http:\/\/\$MOS_V2_SUITE_HOST\/setup\/"/);
+    assert.match(rendered, /MOS_V2_SUITE_MANAGER_HOST="suite-manager\.\$MOS_V2_DOMAIN"/);
+    assert.match(rendered, /MOS_V2_HOME_HOST="home\.\$MOS_V2_DOMAIN"/);
+    assert.match(rendered, /MOS_V2_HOME_URL="http:\/\/\$MOS_V2_HOME_HOST\/"/);
+    assert.match(rendered, /MOS_V2_SETUP_URL="http:\/\/\$MOS_V2_HOME_HOST\/setup\/"/);
+    assert.match(rendered, /MOS_V2_SUITE_MANAGER_URL="http:\/\/\$MOS_V2_SUITE_MANAGER_HOST\/"/);
     assert.doesNotMatch(rendered, /MOS_OWNER_PASSWORD|MOS_SMOKE_OWNER_PASSWORD|MOS_SELECTED_APPS/);
   }
 
   assert.match(plan.usbSeed, /MOS_V2_REPO_URL='https:\/\/example.test\/mos.git'/);
   assert.match(plan.usbSeed, /MOS_V2_FRONT_DOOR='usb-autoinstall'/);
-  assert.match(plan.usbSeed, /MOS_V2_SUITE_MANAGER_URL='http:\/\/suite-manager.mos.example.test\/setup\/'/);
+  assert.match(plan.usbSeed, /MOS_V2_SUITE_MANAGER_URL='http:\/\/suite-manager.mos.example.test\/'/);
+  assert.match(plan.usbSeed, /MOS_V2_HOMEPAGE_URL='http:\/\/home.mos.example.test\/'/);
   assert.doesNotMatch(plan.usbSeed, /MOS_OWNER_PASSWORD|MOS_SMOKE_OWNER_PASSWORD|MOS_SELECTED_APPS/);
 });
 
@@ -100,7 +120,8 @@ test('render CLI parses dry-run target inputs without requiring an env file', ()
   assert.equal(parsed.target, 'cloud-init');
   assert.equal(plan.config.domain, '198.51.100.17.sslip.io');
   assert.match(selectOutput(plan, parsed.target), /^#cloud-config/);
-  assert.match(selectOutput(plan, 'json'), /"suiteManager": "http:\/\/suite-manager.198.51.100.17.sslip.io\/setup\/"/);
+  assert.match(selectOutput(plan, 'json'), /"suiteManager": "http:\/\/suite-manager.198.51.100.17.sslip.io\/"/);
+  assert.match(selectOutput(plan, 'json'), /"setup": "http:\/\/home.198.51.100.17.sslip.io\/setup\/"/);
 });
 
 test('DigitalOcean smoke config defaults to a real V2 branch install without owner inputs', () => {

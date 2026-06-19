@@ -54,12 +54,14 @@ function defaultDomainFor(input = {}) {
 }
 
 function publicUrlsFor(domain) {
-  const suiteHost = domain === DEFAULT_LOCAL_DOMAIN ? domain : `suite-manager.${domain}`;
-  const homepageHost = domain === DEFAULT_LOCAL_DOMAIN ? domain : `homepage.${domain}`;
+  const suiteHost = `suite-manager.${domain}`;
+  const homeHost = `home.${domain}`;
 
   return {
-    homepage: `http://${homepageHost}/`,
-    suiteManager: `http://${suiteHost}/setup/`,
+    home: `http://${homeHost}/`,
+    homepage: `http://${homeHost}/`,
+    setup: `http://${homeHost}/setup/`,
+    suiteManager: `http://${suiteHost}/`,
   };
 }
 
@@ -70,6 +72,7 @@ function createBootstrapConfig(input = {}) {
     components: [...CONTROL_PLANE_COMPONENTS],
     domain,
     frontDoor: input.frontDoor || 'ssh-bootstrap',
+    homepagePort: HOMEPAGE_PORT,
     installRoot: input.installRoot || DEFAULT_INSTALL_ROOT,
     noPreconfig: true,
     publicUrls: publicUrlsFor(domain),
@@ -128,6 +131,7 @@ function renderBootstrapEnv(config) {
     ['MOS_V2_STATE_ROOT', config.stateRoot],
     ['MOS_V2_RUNTIME_USER', config.runtimeUser],
     ['MOS_V2_SUITE_MANAGER_PORT', String(config.suiteManagerPort)],
+    ['MOS_V2_HOMEPAGE_PORT', String(config.homepagePort)],
     ['MOS_V2_COMPONENTS', config.components.join(',')],
     ['MOS_V2_OWNER_SETUP', 'suite-manager-browser'],
     ['MOS_V2_APP_SELECTION', 'suite-manager-after-install'],
@@ -141,7 +145,7 @@ function renderBootstrapShell(config) {
 set -euo pipefail
 
 ${renderBootstrapEnv(config)}
-export MOS_V2_REPO_URL MOS_V2_REPO_REF MOS_V2_FRONT_DOOR MOS_V2_DOMAIN MOS_V2_INSTALL_ROOT MOS_V2_STATE_ROOT MOS_V2_RUNTIME_USER MOS_V2_SUITE_MANAGER_PORT MOS_V2_COMPONENTS MOS_V2_OWNER_SETUP MOS_V2_APP_SELECTION
+export MOS_V2_REPO_URL MOS_V2_REPO_REF MOS_V2_FRONT_DOOR MOS_V2_DOMAIN MOS_V2_INSTALL_ROOT MOS_V2_STATE_ROOT MOS_V2_RUNTIME_USER MOS_V2_SUITE_MANAGER_PORT MOS_V2_HOMEPAGE_PORT MOS_V2_COMPONENTS MOS_V2_OWNER_SETUP MOS_V2_APP_SELECTION
 
 if [ "$MOS_V2_DOMAIN" = "localhost" ] && [ "$MOS_V2_FRONT_DOOR" = "digitalocean-smoke" ]; then
   metadata_ip="$(curl -fsS --max-time 5 http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address 2>/dev/null || true)"
@@ -152,20 +156,23 @@ if [ "$MOS_V2_DOMAIN" = "localhost" ] && [ "$MOS_V2_FRONT_DOOR" = "digitalocean-
 fi
 
 if [ "$MOS_V2_DOMAIN" = "localhost" ]; then
-  MOS_V2_SUITE_HOST="localhost"
-  MOS_V2_HOMEPAGE_HOST="localhost"
+  MOS_V2_SUITE_MANAGER_HOST="suite-manager.localhost"
+  MOS_V2_HOME_HOST="home.localhost"
 else
-  MOS_V2_SUITE_HOST="suite-manager.$MOS_V2_DOMAIN"
-  MOS_V2_HOMEPAGE_HOST="homepage.$MOS_V2_DOMAIN"
+  MOS_V2_SUITE_MANAGER_HOST="suite-manager.$MOS_V2_DOMAIN"
+  MOS_V2_HOME_HOST="home.$MOS_V2_DOMAIN"
 fi
 
-MOS_V2_SUITE_MANAGER_URL="http://$MOS_V2_SUITE_HOST/setup/"
-MOS_V2_HOMEPAGE_URL="http://$MOS_V2_HOMEPAGE_HOST/"
-export MOS_V2_SUITE_HOST MOS_V2_HOMEPAGE_HOST MOS_V2_SUITE_MANAGER_URL MOS_V2_HOMEPAGE_URL
+MOS_V2_HOME_URL="http://$MOS_V2_HOME_HOST/"
+MOS_V2_SETUP_URL="http://$MOS_V2_HOME_HOST/setup/"
+MOS_V2_SUITE_MANAGER_URL="http://$MOS_V2_SUITE_MANAGER_HOST/"
+MOS_V2_HOMEPAGE_UPSTREAM="http://127.0.0.1:$MOS_V2_HOMEPAGE_PORT"
+export MOS_V2_SUITE_MANAGER_HOST MOS_V2_HOME_HOST MOS_V2_HOME_URL MOS_V2_SETUP_URL MOS_V2_SUITE_MANAGER_URL MOS_V2_HOMEPAGE_UPSTREAM
 
 echo "[mos-v2] Bootstrapping MOS V2 control plane from ${config.repoUrl}#${config.repoRef}"
 echo "[mos-v2] Components: ${config.components.join(', ')}"
-echo "[mos-v2] Suite Manager first-run URL: $MOS_V2_SUITE_MANAGER_URL"
+echo "[mos-v2] MOS first-run URL: $MOS_V2_HOME_URL"
+echo "[mos-v2] Suite Manager URL: $MOS_V2_SUITE_MANAGER_URL"
 echo "[mos-v2] Owner setup happens in Suite Manager after first boot."
 echo "[mos-v2] App choices happen in Suite Manager after install."
 
@@ -176,7 +183,7 @@ if ! command -v caddy >/dev/null 2>&1; then
 fi
 
 apt-get update
-apt-get install -y ca-certificates curl git gnupg
+apt-get install -y ca-certificates curl docker.io git gnupg
 
 if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'Number(process.versions.node.split(".")[0])')" -lt 22 ]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
@@ -195,11 +202,12 @@ if ! id -u "$MOS_V2_RUNTIME_USER" >/dev/null 2>&1; then
   useradd --system --create-home --shell /usr/sbin/nologin "$MOS_V2_RUNTIME_USER"
 fi
 
-install -d -m 0755 "$MOS_V2_INSTALL_ROOT" "$MOS_V2_STATE_ROOT" "$MOS_V2_STATE_ROOT/suite-manager"
+install -d -m 0755 "$MOS_V2_INSTALL_ROOT" "$MOS_V2_STATE_ROOT" "$MOS_V2_STATE_ROOT/suite-manager" "$MOS_V2_STATE_ROOT/homepage/config"
 cat > "$MOS_V2_STATE_ROOT/bootstrap-contract.env" <<MOS_V2_BOOTSTRAP_ENV
 ${renderBootstrapEnv(config)}
+MOS_V2_HOME_URL="$MOS_V2_HOME_URL"
+MOS_V2_SETUP_URL="$MOS_V2_SETUP_URL"
 MOS_V2_SUITE_MANAGER_URL="$MOS_V2_SUITE_MANAGER_URL"
-MOS_V2_HOMEPAGE_URL="$MOS_V2_HOMEPAGE_URL"
 MOS_V2_BOOTSTRAP_STATUS='installing-control-plane'
 MOS_V2_BOOTSTRAP_NOTE='Install Suite Manager, Caddy, Homepage, and host-agent placeholder only; create owner in browser.'
 MOS_V2_BOOTSTRAP_ENV
@@ -217,12 +225,19 @@ git -C "$MOS_V2_INSTALL_ROOT/repo" reset --hard "$MOS_V2_REPO_REF"
 npm --prefix "$MOS_V2_INSTALL_ROOT/repo/version-2" install
 npm --prefix "$MOS_V2_INSTALL_ROOT/repo/version-2" run build:client
 
+cp -a "$MOS_V2_INSTALL_ROOT/repo/version-2/infrastructure/homepage/." "$MOS_V2_STATE_ROOT/homepage/config/"
 chown -R "$MOS_V2_RUNTIME_USER:$MOS_V2_RUNTIME_USER" "$MOS_V2_STATE_ROOT"
+chown -R 1000:1000 "$MOS_V2_STATE_ROOT/homepage/config"
+
+cat > /etc/systemd/system/mos-v2-homepage.service <<MOS_V2_HOMEPAGE_UNIT
+${renderHomepageSystemdUnit()}
+MOS_V2_HOMEPAGE_UNIT
 
 cat > /etc/systemd/system/mos-v2-suite-manager.service <<MOS_V2_SUITE_MANAGER_UNIT
 [Unit]
 Description=MOS V2 Suite Manager
-After=network-online.target
+After=mos-v2-homepage.service network-online.target
+Requires=mos-v2-homepage.service
 Wants=network-online.target
 
 [Service]
@@ -234,6 +249,9 @@ Environment=MOS_V2_STATE_DIR=$MOS_V2_STATE_ROOT/suite-manager
 Environment=MOS_V2_FRONTEND_DIST_DIR=$MOS_V2_INSTALL_ROOT/repo/version-2/suite-manager/frontend/dist
 Environment=MOS_V2_SUITE_MANAGER_HOST=127.0.0.1
 Environment=MOS_V2_SUITE_MANAGER_PORT=$MOS_V2_SUITE_MANAGER_PORT
+Environment=MOS_V2_SUITE_MANAGER_HOSTNAME=$MOS_V2_SUITE_MANAGER_HOST
+Environment=MOS_V2_HOME_HOST=$MOS_V2_HOME_HOST
+Environment=MOS_V2_HOMEPAGE_UPSTREAM=$MOS_V2_HOMEPAGE_UPSTREAM
 ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/version-2/suite-manager/backend/src/server/start.cjs
 Restart=always
 RestartSec=3
@@ -243,26 +261,38 @@ WantedBy=multi-user.target
 MOS_V2_SUITE_MANAGER_UNIT
 
 cat > /etc/caddy/Caddyfile <<MOS_V2_CADDY
-http://$MOS_V2_SUITE_HOST {
-  reverse_proxy 127.0.0.1:$MOS_V2_SUITE_MANAGER_PORT
-}
-
-http://$MOS_V2_HOMEPAGE_HOST {
-  respond "MOS V2 Homepage placeholder. Suite Manager is available at $MOS_V2_SUITE_MANAGER_URL" 200
-}
+${renderCaddyfile()}
 MOS_V2_CADDY
 
 systemctl daemon-reload
-systemctl enable --now mos-v2-suite-manager.service
-systemctl enable --now caddy.service
-systemctl reload caddy.service
+systemctl enable --now docker.service
+systemctl enable mos-v2-homepage.service
+systemctl restart mos-v2-homepage.service
+
+homepage_ready='0'
+for attempt in $(seq 1 90); do
+  if curl -fsS -H "Host: $MOS_V2_HOME_HOST" "$MOS_V2_HOMEPAGE_UPSTREAM" >/dev/null; then
+    homepage_ready='1'
+    break
+  fi
+  sleep 2
+done
+if [ "$homepage_ready" != '1' ]; then
+  echo "[mos-v2] Homepage did not become ready on its private loopback endpoint." >&2
+  exit 1
+fi
+
+systemctl enable mos-v2-suite-manager.service
+systemctl restart mos-v2-suite-manager.service
+systemctl enable caddy.service
+systemctl restart caddy.service
 
 cat >> "$MOS_V2_STATE_ROOT/bootstrap-contract.env" <<'MOS_V2_BOOTSTRAP_DONE'
 MOS_V2_BOOTSTRAP_STATUS='ready-for-owner-setup'
 MOS_V2_BOOTSTRAP_DONE
 
 echo "[mos-v2] Wrote bootstrap contract to $MOS_V2_STATE_ROOT/bootstrap-contract.env"
-echo "[mos-v2] Suite Manager is ready for first-run owner setup at $MOS_V2_SUITE_MANAGER_URL"
+echo "[mos-v2] MOS is ready for first-run owner setup at $MOS_V2_SETUP_URL"
 `;
 
   return script.replace(/\r\n/g, '\n');
@@ -333,3 +363,8 @@ module.exports = {
   renderUsbSeedConfig,
   validateBootstrapInput,
 };
+const {
+  HOMEPAGE_PORT,
+  renderCaddyfile,
+  renderHomepageSystemdUnit,
+} = require('../../infrastructure/control-plane-runtime.cjs');

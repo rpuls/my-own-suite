@@ -24,6 +24,8 @@ npm --prefix version-2 run install:render -- --target ssh --repo-ref feat/app-pl
 npm --prefix version-2 run install:render -- --target usb
 ```
 
+Rendered installs expose `home.<domain>` as the primary MOS URL and `suite-manager.<domain>` as the control-plane URL. Both terminate at Suite Manager; Homepage remains a private loopback upstream. For local renders the hosts are `home.localhost` and `suite-manager.localhost`.
+
 Minimum input is intentionally empty. Defaults are:
 
 - repository URL: the MOS GitHub repository
@@ -39,7 +41,7 @@ npm --prefix version-2 run smoke:do:destroy
 npm --prefix version-2 run smoke:do:render
 ```
 
-`smoke:do:up` creates paid DigitalOcean resources, waits for Suite Manager readiness, and prints the first-run Suite Manager URL. `smoke:do:render` is the free dry-run that prints the cloud-init payload without creating resources.
+`smoke:do:up` creates paid DigitalOcean resources, waits for Suite Manager readiness, and prints the Home setup and Suite Manager URLs. `smoke:do:render` is the free dry-run that prints the cloud-init payload without creating resources.
 
 The smoke harness reads the ignored V2-local file `version-2/.mos-smoke/v2-digitalocean.env` (or `.mos-smoke/v2-digitalocean.env` when working inside `version-2`). V2 smoke credentials, state, and logs all stay under `version-2/.mos-smoke/`.
 

@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict');
+const http = require('node:http');
+const net = require('node:net');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
@@ -32,10 +34,12 @@ function listen(server) {
   });
 }
 
-async function withServer(fn) {
+async function withServer(fn, options = {}) {
   const server = createV2Server({
     frontendDistDir: await tempFrontendDistDir(),
     stateDir: await tempStateDir(),
+    suiteManagerHost: '127.0.0.1',
+    ...options,
   });
   const baseUrl = await listen(server);
 
@@ -44,6 +48,36 @@ async function withServer(fn) {
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+}
+
+function hostRequest(baseUrl, requestPath, { body = '', headers = {}, method = 'GET' } = {}) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(baseUrl);
+    const request = http.request({
+      headers,
+      hostname: url.hostname,
+      method,
+      path: requestPath,
+      port: url.port,
+    }, (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => {
+        const responseBody = Buffer.concat(chunks).toString('utf8');
+        resolve({
+          body: responseBody,
+          headers: response.headers,
+          json: () => JSON.parse(responseBody),
+          status: response.statusCode,
+        });
+      });
+    });
+    request.on('error', reject);
+    if (body) {
+      request.write(body);
+    }
+    request.end();
+  });
 }
 
 test('first visit serves the built Suite Manager frontend', async () => {
@@ -57,11 +91,11 @@ test('first visit serves the built Suite Manager frontend', async () => {
   });
 });
 
-test('static frontend assets are served from the built app', async () => {
+test('static frontend assets are served from the reserved asset namespace', async () => {
   await withServer(async (baseUrl) => {
-    const scriptResponse = await fetch(`${baseUrl}/assets/index.js`);
+    const scriptResponse = await fetch(`${baseUrl}/suite-manager-assets/assets/index.js`);
     const script = await scriptResponse.text();
-    const brandResponse = await fetch(`${baseUrl}/brand/my-own-suite-mark.png`);
+    const brandResponse = await fetch(`${baseUrl}/suite-manager-assets/brand/my-own-suite-mark.png`);
 
     assert.equal(scriptResponse.status, 200);
     assert.match(script, /mos v2 app/);
@@ -69,6 +103,212 @@ test('static frontend assets are served from the built app', async () => {
     assert.equal(brandResponse.status, 200);
     assert.equal(brandResponse.headers.get('content-type'), 'image/png');
   });
+});
+
+async function createOwner(baseUrl, host = 'home.test') {
+  const response = await hostRequest(baseUrl, '/api/setup/owner', {
+    body: JSON.stringify({
+      email: 'owner@example.com',
+      name: 'Suite Owner',
+      password: 'correct horse battery',
+    }),
+    headers: { 'Content-Type': 'application/json', Host: host },
+    method: 'POST',
+  });
+  return response.headers['set-cookie'][0];
+}
+
+test('Home serves setup but blocks its dashboard until authentication', async () => {
+  await withServer(async (baseUrl) => {
+    const setupResponse = await hostRequest(baseUrl, '/setup/', { headers: { Host: 'home.test' } });
+    const dashboardResponse = await hostRequest(baseUrl, '/', {
+      headers: { Host: 'home.test' },
+    });
+
+    assert.equal(setupResponse.status, 200);
+    assert.equal(dashboardResponse.status, 302);
+    assert.equal(dashboardResponse.headers.location, '/setup/');
+  }, { homeHost: 'home.test' });
+});
+
+test('authenticated Home requests stream through the private Homepage proxy without the MOS cookie', async () => {
+  const seen = [];
+  const upstream = http.createServer((request, response) => {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => { body += chunk; });
+    request.on('end', () => {
+      seen.push({ body, headers: request.headers, method: request.method, url: request.url });
+      response.writeHead(200, { 'Content-Type': 'text/plain', 'Set-Cookie': 'homepage=value' });
+      response.write('first-');
+      response.end('second');
+    });
+  });
+  const upstreamUrl = await listen(upstream);
+
+  try {
+    await withServer(async (baseUrl) => {
+      const cookie = await createOwner(baseUrl);
+      const response = await hostRequest(baseUrl, '/api/data?view=empty', {
+        body: 'dashboard request',
+        headers: { Cookie: cookie, Host: 'home.test', Origin: 'http://home.test' },
+        method: 'POST',
+      });
+
+      assert.equal(response.status, 200);
+      assert.equal(response.body, 'first-second');
+      assert.equal(response.headers['set-cookie'], undefined);
+      assert.deepEqual(seen.map(({ body, method, url }) => ({ body, method, url })), [{
+        body: 'dashboard request',
+        method: 'POST',
+        url: '/api/data?view=empty',
+      }]);
+      assert.equal(seen[0].headers.cookie, undefined);
+      assert.equal(seen[0].headers.host, 'home.test');
+      assert.equal(seen[0].headers['x-forwarded-host'], 'home.test');
+    }, { homeHost: 'home.test', homepageUpstream: upstreamUrl });
+  } finally {
+    await new Promise((resolve) => upstream.close(resolve));
+  }
+});
+
+test('Homepage redirects are rewritten to the public Home origin', async () => {
+  const upstream = http.createServer((request, response) => {
+    response.writeHead(307, { Location: `http://${request.socket.localAddress}:${request.socket.localPort}/next?ok=1` });
+    response.end();
+  });
+  const upstreamUrl = await listen(upstream);
+
+  try {
+    await withServer(async (baseUrl) => {
+      const cookie = await createOwner(baseUrl);
+      const response = await hostRequest(baseUrl, '/redirect', {
+        headers: { Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      });
+
+      assert.equal(response.status, 307);
+      assert.equal(response.headers.location, 'https://home.test/next?ok=1');
+    }, { homeHost: 'home.test', homepageUpstream: upstreamUrl });
+  } finally {
+    await new Promise((resolve) => upstream.close(resolve));
+  }
+});
+
+test('Suite Manager and unknown hosts cannot bypass the Homepage boundary', async () => {
+  let upstreamRequests = 0;
+  const upstream = http.createServer((request, response) => {
+    upstreamRequests += 1;
+    response.end('homepage');
+  });
+  const upstreamUrl = await listen(upstream);
+
+  try {
+    await withServer(async (baseUrl) => {
+      const suiteResponse = await hostRequest(baseUrl, '/', { headers: { Host: 'suite.test' } });
+      const unknownResponse = await hostRequest(baseUrl, '/', { headers: { Host: 'bypass.test' } });
+
+      assert.equal(suiteResponse.status, 200);
+      assert.match(suiteResponse.body, /Suite Manager/);
+      assert.equal(unknownResponse.status, 421);
+      assert.equal(upstreamRequests, 0);
+    }, {
+      homeHost: 'home.test',
+      homepageUpstream: upstreamUrl,
+      suiteManagerHost: 'suite.test',
+    });
+  } finally {
+    await new Promise((resolve) => upstream.close(resolve));
+  }
+});
+
+test('logout immediately blocks Home dashboard access again', async () => {
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    await hostRequest(baseUrl, '/api/auth/logout', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    const response = await hostRequest(baseUrl, '/', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/setup/');
+  }, { homeHost: 'home.test' });
+});
+
+test('Homepage failure returns a controlled bad gateway response', async () => {
+  const unavailable = http.createServer();
+  const unavailableUrl = await listen(unavailable);
+  await new Promise((resolve) => unavailable.close(resolve));
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const response = await hostRequest(baseUrl, '/', { headers: { Cookie: cookie, Host: 'home.test' } });
+
+    assert.equal(response.status, 502);
+    assert.deepEqual(response.json(), { error: 'Homepage is unavailable.' });
+  }, { homeHost: 'home.test', homepageUpstream: unavailableUrl });
+});
+
+function websocketExchange(baseUrl, cookie = '') {
+  return new Promise((resolve, reject) => {
+    const url = new URL(baseUrl);
+    const socket = net.connect(Number(url.port), url.hostname);
+    let received = '';
+    let sentPayload = false;
+
+    socket.setTimeout(3000);
+    socket.on('connect', () => {
+      socket.write([
+        'GET /socket HTTP/1.1',
+        'Host: home.test',
+        'Connection: Upgrade',
+        'Upgrade: websocket',
+        ...(cookie ? [`Cookie: ${cookie}`] : []),
+        '',
+        '',
+      ].join('\r\n'));
+    });
+    socket.on('data', (chunk) => {
+      received += chunk.toString();
+      if (!sentPayload && received.includes('101 Switching Protocols')) {
+        sentPayload = true;
+        socket.write('dashboard-socket-payload');
+      }
+      if (received.includes('dashboard-socket-payload') || received.includes('401 Unauthorized')) {
+        socket.end();
+      }
+    });
+    socket.on('end', () => resolve(received));
+    socket.on('error', reject);
+    socket.on('timeout', () => socket.destroy(new Error('Timed out waiting for WebSocket proxy.')));
+  });
+}
+
+test('WebSocket upgrades require a valid Home session and tunnel when authenticated', async () => {
+  const upstream = http.createServer();
+  upstream.on('upgrade', (request, socket) => {
+    assert.equal(request.headers.cookie, undefined);
+    socket.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSet-Cookie: homepage=value\r\n\r\n');
+    socket.pipe(socket);
+  });
+  const upstreamUrl = await listen(upstream);
+
+  try {
+    await withServer(async (baseUrl) => {
+      const denied = await websocketExchange(baseUrl);
+      const cookie = await createOwner(baseUrl);
+      const allowed = await websocketExchange(baseUrl, cookie);
+
+      assert.match(denied, /401 Unauthorized/);
+      assert.match(allowed, /101 Switching Protocols/);
+      assert.match(allowed, /dashboard-socket-payload/);
+      assert.doesNotMatch(allowed, /Set-Cookie/i);
+    }, { homeHost: 'home.test', homepageUpstream: upstreamUrl });
+  } finally {
+    await new Promise((resolve) => upstream.close(resolve));
+  }
 });
 
 test('empty setup status requires owner creation', async () => {

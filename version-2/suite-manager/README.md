@@ -16,6 +16,7 @@ The first app surface is intentionally narrow:
 - existing-owner login
 - logout
 - a signed-in control-plane placeholder
+- authenticated access to the private Homepage dashboard
 
 The old Suite Manager frontend is useful reference material for the shell shape, feature-folder layout, and shared UI style, but V2 must rebuild only the pieces it needs under `version-2/`.
 
@@ -32,3 +33,11 @@ cmd /c npm --prefix version-2 test
 The first owner-onboarding slice uses the V2-local versioned JSON store at `platform-state.json` for owner metadata and sessions.
 
 This is milestone persistence only. Before V2 adds richer settings, more user details, app install state, migrations, or longer-lived session policy, Suite Manager should move to a local SQLite database owned by Suite Manager. SQLite gives V2 a small self-host-friendly persistence layer with transactions, indexes, migrations, and queryable state without requiring a separate database service for the control plane.
+
+## Homepage Authentication Boundary
+
+Suite Manager accepts the configured `home.<domain>` and `suite-manager.<domain>` hosts and rejects unknown hosts. On Home it serves onboarding/login at `/setup/`; all other requests require a valid `mos_v2_session` before they are streamed to `MOS_V2_HOMEPAGE_UPSTREAM`.
+
+The proxy preserves request paths, query strings, request/response streaming, redirects, forwarded origin information, and WebSocket upgrades. It removes the MOS cookie before contacting Homepage and ignores upstream cookies. Unauthenticated browser traffic is redirected to `/setup/`, unauthenticated upgrades are rejected, and an unavailable upstream returns `502`.
+
+The cookie remains host-only. Logging into Home does not log the browser into the Suite Manager subdomain, and no MOS credential is shared with future app subdomains.

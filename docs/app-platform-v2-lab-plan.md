@@ -19,16 +19,17 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Built the first React/Vite V2 Suite Manager owner onboarding app shell.
 - [x] Added a V2 no-preconfig bootstrap contract, dry-run renderers for cloud-init, SSH/bootstrap, USB seed config, and a DigitalOcean smoke harness that can create a Droplet and install the V2 control plane.
 - [x] Ran the first paid V2 DigitalOcean smoke, diagnosed Caddy repository key placement and Windows SSH-render line endings, repaired the existing Droplet, and verified the public setup API returns `needs-owner`.
+- [x] Added the real V2 Caddy/Homepage control-plane slice: distinct Home and Suite Manager hosts, Suite Manager-authenticated Homepage proxying, loopback-only Homepage runtime, host-only sessions, minimal branded dashboard config, and focused HTTP/WebSocket/render tests.
 
 ### Current Next Slice
 
 Build the next real V2 vertical slice inside `version-2/`:
 
-1. Run one fresh V2 DigitalOcean smoke after the Caddy key, LF normalization, and interrupted-install recovery fixes to confirm clean first-boot success without manual repair.
-2. Keep the installer input surface no-preconfig: no owner credentials, no app choices, and no app-specific env values before first boot.
-3. Move Suite Manager persistence from milestone JSON to SQLite before settings, user details, app install state, or richer sessions grow.
-4. Add local backend/frontend dev orchestration once the server entry point is ready for interactive use.
-5. Keep the API/state/install-render tests green while adding UI tests when the app shell has enough behavior to justify browser coverage.
+1. Run one fresh user-driven V2 DigitalOcean smoke to validate the authenticated Home dashboard and confirm no direct Homepage bypass exists.
+2. Move Suite Manager persistence from milestone JSON to SQLite before settings, user details, app install state, or richer sessions grow.
+3. Add local backend/frontend/Homepage orchestration for interactive development without weakening the production host/auth boundary.
+4. Keep the installer input surface no-preconfig: no owner credentials, app choices, or app-specific env values before first boot.
+5. Add UI-level tests only when the control-plane surface grows beyond the current focused HTTP boundary coverage.
 
 ### Latest Verified Command
 
@@ -38,11 +39,11 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
-Current result: V2 tests pass, covering the platform contract, branding sync, setup state, owner creation, duplicate-owner protection, login/logout, built frontend serving, and no-preconfig bootstrap render contract.
+Current result: V2 tests pass, covering the platform contract, branding sync, setup state, owner creation, login/logout, host-aware routing, authenticated HTTP/WebSocket Homepage proxying, private runtime/Caddy rendering, built frontend serving, and the no-preconfig bootstrap contract.
 
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep new code inside `version-2/`; treat existing repo code and `feat/app-catalog-provisioning` as reference material only. V2 now has `suite-manager/`, `apps/`, `site/`, `scripts/`, `system-agents/`, `infrastructure/`, and canonical `branding/` ownership folders. Suite Manager backend has file-backed setup state, owner password hashing, session tokens, first-run owner creation/login/logout APIs, and a React/Vite owner onboarding frontend shell. V2 also has a no-preconfig installer contract under `version-2/scripts/installers/`, dry-run renderers for cloud-init, SSH/bootstrap, and USB seed config, plus a DigitalOcean smoke harness that can create a Droplet, install Node.js/Caddy, run Suite Manager from a selected repo/ref, and wait for first-run readiness. Shared colors change in `version-2/branding/styles/mos.css` and sync through `npm --prefix version-2 run branding:sync`. The next slice is to harden the first user-run DigitalOcean smoke result, then prepare Suite Manager persistence for future settings/user details before adding app catalog behavior.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep runtime work inside `version-2/`; treat V1 as reference only. V2 now exposes `home.<domain>` and `suite-manager.<domain>` through Caddy to Suite Manager. Home serves onboarding/login at `/setup/`, then Suite Manager authenticates and proxies the private loopback Homepage service, including streaming and WebSocket traffic; sessions are host-only and Caddy has no direct Homepage route. The no-preconfig installer starts digest-pinned Homepage, Suite Manager, and Caddy, and the DigitalOcean harness prints both public URLs. Shared branding still originates under `version-2/branding/`. The next slice is a user-run fresh DigitalOcean validation, followed by SQLite persistence and local control-plane development orchestration before any app catalog work.
 
 ## Product Goal
 
@@ -169,7 +170,7 @@ Goal: define and test what "installed MOS V2 control plane" means before optiona
 - [x] Define host-agent capabilities needed for first milestone.
 - [x] Add tests for control-plane install contract.
 - [x] Turn the cloud/SSH bootstrap contract into a real control-plane apply path.
-- [ ] Replace the Homepage placeholder with the real V2 Homepage role when the control plane needs it.
+- [x] Replace the Homepage placeholder with a private, Suite Manager-authenticated V2 Homepage dashboard.
 
 Exit criteria:
 
@@ -226,7 +227,7 @@ Goal: make the empty platform trustworthy before adding apps.
 - [ ] Add host-agent capability display or defer it explicitly.
 - [ ] Add backup placeholder/guidance or defer it explicitly.
 - [ ] Add settings needed for base domain / local HTTPS or defer it explicitly.
-- [ ] Decide what the first dashboard should show before apps exist.
+- [x] Keep the first Homepage dashboard intentionally minimal and branded before optional apps exist.
 - [ ] Keep advanced diagnostics behind details/disclosures.
 
 Exit criteria:

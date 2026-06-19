@@ -1,0 +1,8 @@
+title: My Own Suite
+description: Your private MOS dashboard
+theme: dark
+color: slate
+headerStyle: clean
+hideVersion: true
+disableUpdateCheck: true
+target: _self
