@@ -4,7 +4,7 @@
   "description": "Clean-slate MOS V2 launch platform workspace.",
   "type": "commonjs",
   "scripts": {
-    "test": "node --test test/*.test.cjs"
+    "test": "node --test suite-manager/backend/test/*.test.cjs"
   },
   "engines": {
     "node": "22.x",

@@ -13,6 +13,7 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Created root-level `version-2/` as the clean-slate V2 workspace.
 - [x] Added a self-contained V2 package with `npm --prefix version-2 test`.
 - [x] Added an executable platform contract that rejects preloaded apps and runtime imports from the old Suite Manager.
+- [x] Moved the first implementation under `version-2/suite-manager/backend/` so Suite Manager is one component in the larger V2 workspace.
 - [x] Added V2-local file-backed platform state, owner password hashing, session tokens, first-run owner creation API, and minimal first-run HTML.
 - [ ] Build the polished V2 Suite Manager owner setup UI.
 
@@ -34,11 +35,11 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
-Current result: 12 V2 tests pass, covering the contract, setup state, owner creation, duplicate-owner protection, login, and the minimal HTTP API.
+Current result: 12 V2 Suite Manager backend tests pass, covering the contract, setup state, owner creation, duplicate-owner protection, login, and the minimal HTTP API.
 
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep new code inside `version-2/`; treat existing repo code and `feat/app-catalog-provisioning` as reference material only. V2 now has file-backed setup state, owner password hashing, session tokens, first-run owner creation API, and minimal HTML. The next slice is a real V2 UI shell for owner setup, signed-out login, logout, and signed-in dashboard affordances. Do not add app catalog behavior yet.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep new code inside `version-2/`; treat existing repo code and `feat/app-catalog-provisioning` as reference material only. V2 now has `suite-manager/`, `apps/`, `site/`, `scripts/`, `system-agents/`, and `infrastructure/` ownership folders. Suite Manager backend has file-backed setup state, owner password hashing, session tokens, first-run owner creation API, and minimal HTML. The next slice is a real V2 Suite Manager UI shell for owner setup, signed-out login, logout, and signed-in dashboard affordances. Do not add app catalog behavior yet.
 
 ## Product Goal
 
@@ -71,12 +72,34 @@ The first milestone stops before step 5. App installation comes only after the c
 
 V2 should be organized around these first-class pieces:
 
-- Control plane: Suite Manager, Homepage, Caddy, and host agents.
+- Control plane: Suite Manager, Homepage, Caddy, and system agents.
 - Owner setup: first-run account creation in Suite Manager, not installer-time secrets.
 - Runtime state: Suite Manager-owned state for owner identity, sessions, platform setup state, and later installed apps.
 - Install substrate: cloud/USB/SSH front doors converge into one own-infra bootstrap.
 - App packages: later, each app owns its manifest, setup helper, routes, env needs, Homepage contributions, backup metadata, and lifecycle behavior.
 - Projections: later, generated Compose, Caddy, Homepage, env, backup, and update outputs are derived from V2 state and packages.
+
+## Workspace Ownership
+
+```text
+version-2/
+  suite-manager/      # Control-plane web UI/backend and app lifecycle orchestration.
+  site/               # Future public landing/docs site. Do not start yet.
+  apps/               # Future package-style apps, one app per folder.
+  scripts/            # V2 install, smoke, and developer/operator scripts.
+  system-agents/      # Host-side privileged agents.
+  infrastructure/     # Shared Caddy, Compose, Docker, and projection substrate.
+  package.json        # Root V2 workspace commands.
+```
+
+Placement rules:
+
+- Suite Manager UI/backend code goes in `version-2/suite-manager/`.
+- App-specific manifests, Dockerfiles, setup helpers, Caddy snippets, Homepage contributions, and docs go in `version-2/apps/<app>/`.
+- Shared Caddy base config, Compose assembly/templates, Docker conventions, and generated-output contracts go in `version-2/infrastructure/`.
+- DigitalOcean, USB/cloud installer, and development scripts go in `version-2/scripts/`.
+- Host-level update/backup/service/restore agents go in `version-2/system-agents/`.
+- The future landing page goes in `version-2/site/`, but not yet.
 
 ## Phase Roadmap
 
@@ -86,6 +109,7 @@ Goal: make it obvious where V2 lives and what it is allowed to depend on.
 
 - [x] Create `version-2/`.
 - [x] Add V2-local `package.json`.
+- [x] Split `version-2/` into product-level ownership folders.
 - [x] Add a contract test that rejects preloaded optional apps.
 - [x] Add a contract test that rejects runtime imports from the old Suite Manager.
 - [x] Add first V2 owner/setup implementation without old Suite Manager runtime imports.
@@ -290,32 +314,54 @@ Current:
 version-2/
   README.md
   package.json
-  src/
-    auth/
-    server/
-    setup/
-    state/
-    platform-contract.cjs
-  test/
-    http-app.test.cjs
-    platform-contract.test.cjs
-    setup-service.test.cjs
+  apps/
+    README.md
+  infrastructure/
+    README.md
+  scripts/
+    README.md
+  site/
+    README.md
+  suite-manager/
+    README.md
+    backend/
+      src/
+        auth/
+        server/
+        setup/
+        state/
+        platform-contract.cjs
+      test/
+        http-app.test.cjs
+        platform-contract.test.cjs
+        setup-service.test.cjs
+  system-agents/
+    README.md
 ```
 
 Likely next shape:
 
 ```text
 version-2/
-  src/
-    server/
-    state/
-    auth/
-    ui/
-    installer/
-    platform-contract.cjs
-  test/
-    *.test.cjs
-  web/
+  suite-manager/
+    backend/
+    frontend/
+    shared/
+  apps/
+    <app-id>/
+  infrastructure/
+    caddy/
+    compose/
+    docker/
+    projections/
+  scripts/
+    smoke/
+    installers/
+  system-agents/
+    service/
+    update/
+    backup/
+    restore/
 ```
 
 This shape is not final. Let implementation pressure decide, but keep V2 self-contained.

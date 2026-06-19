@@ -6,6 +6,17 @@ Everything outside `version-2/` is the existing system. It is useful reference m
 
 The active roadmap and session checklist lives in `docs/app-platform-v2-lab-plan.md`.
 
+## Workspace Layout
+
+- `suite-manager/`: the V2 control-plane app. It owns the web UI, backend API, owner setup, app install orchestration, and communication with system agents.
+- `site/`: future V2 public landing/docs site. Do not start this until the platform direction is steadier.
+- `apps/`: future app packages. Each app should live in its own folder with manifest, runtime assets, setup helpers, Dockerfiles, and app-specific docs.
+- `scripts/`: V2 operator/development scripts, including future DigitalOcean smoke wrappers and installer entry points.
+- `system-agents/`: host-side agents for narrow privileged actions such as updates, backups, service apply, and restore.
+- `infrastructure/`: shared runtime substrate that is not owned by one app, such as Caddy base config, Compose assembly/templates, Docker build conventions, and generated-output contracts.
+
+App-owned Dockerfiles should live under `apps/<app>/`. Shared Compose/Caddy templates and projection contracts should live under `infrastructure/`. Suite Manager should orchestrate app install state, but host-level apply work should go through `system-agents/`.
+
 ## First Slice
 
 Build and validate the control plane before optional apps:
@@ -24,7 +35,7 @@ From the repo root:
 npm --prefix version-2 test
 ```
 
-This verifies the V2 contract without starting Docker, touching host agents, importing the old Suite Manager app, or changing the current stack.
+This verifies the V2 Suite Manager backend contract without starting Docker, touching host agents, importing the old Suite Manager app, or changing the current stack.
 
 ## Reference Material
 
