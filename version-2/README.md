@@ -34,6 +34,27 @@ Build and validate the control plane before optional apps:
 - Rebuild or copy only the Suite Manager UI primitives needed for the first-run screen.
 - Reuse the DigitalOcean smoke harness for real install validation once the no-owner path exists.
 
+## Installer Foundation
+
+V2 installer front doors share one bootstrap contract under `scripts/installers/`. The contract requires no `.env` file for the first boot. Repository URL/ref and domain can be supplied, but default to the MOS GitHub repo, `feat/app-platform-v2-lab`, and either `<public-ip>.sslip.io` for smoke/cloud paths or `localhost` for local render checks.
+
+Render the current bootstrap shape from the repo root:
+
+```powershell
+npm --prefix version-2 run install:render -- --target json
+npm --prefix version-2 run install:render -- --target cloud-init --public-ipv4 203.0.113.42
+npm --prefix version-2 run install:render -- --target ssh
+npm --prefix version-2 run install:render -- --target usb
+```
+
+The V2 DigitalOcean smoke script is currently render-only:
+
+```powershell
+npm --prefix version-2 run smoke:do:render
+```
+
+It outputs the future cloud-init payload, Suite Manager first-run URL, Homepage URL, branch/ref, domain, and component list without creating a Droplet.
+
 ## Test Command
 
 From the repo root:
