@@ -47,13 +47,16 @@ npm --prefix version-2 run install:render -- --target ssh
 npm --prefix version-2 run install:render -- --target usb
 ```
 
-The V2 DigitalOcean smoke script is currently render-only:
+The V2 DigitalOcean smoke script can create a fresh Droplet and install the V2 control plane:
 
 ```powershell
+npm --prefix version-2 run smoke:do:up
+npm --prefix version-2 run smoke:do:reset
+npm --prefix version-2 run smoke:do:destroy
 npm --prefix version-2 run smoke:do:render
 ```
 
-It outputs the future cloud-init payload, Suite Manager first-run URL, Homepage URL, branch/ref, domain, and component list without creating a Droplet.
+`smoke:do:up` is the paid, user-run path. It creates a tagged DigitalOcean Droplet, installs Node.js, Caddy, and the V2 Suite Manager control plane from the selected repo/ref, waits for `/api/setup/status`, and prints the first-run Suite Manager URL. `smoke:do:render` remains the free dry-run path.
 
 ## Test Command
 

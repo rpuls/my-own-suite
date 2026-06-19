@@ -4,6 +4,7 @@ const DEFAULT_LOCAL_DOMAIN = 'localhost';
 const DEFAULT_INSTALL_ROOT = '/opt/mos-v2';
 const DEFAULT_STATE_ROOT = '/var/lib/mos-v2';
 const DEFAULT_RUNTIME_USER = 'mos';
+const DEFAULT_SUITE_MANAGER_PORT = 3100;
 const CONTROL_PLANE_COMPONENTS = ['suite-manager', 'caddy', 'homepage', 'system-agent-placeholder'];
 const FRONT_DOORS = ['digitalocean-smoke', 'cloud-init', 'usb-autoinstall', 'ssh-bootstrap'];
 
@@ -75,6 +76,7 @@ function createBootstrapConfig(input = {}) {
     repoRef: normalizeRef(input.repoRef),
     repoUrl: normalizeRepoUrl(input.repoUrl),
     runtimeUser: input.runtimeUser || DEFAULT_RUNTIME_USER,
+    suiteManagerPort: Number(input.suiteManagerPort || DEFAULT_SUITE_MANAGER_PORT),
     stateRoot: input.stateRoot || DEFAULT_STATE_ROOT,
     version: 1,
   };
@@ -120,10 +122,12 @@ function renderBootstrapEnv(config) {
   return [
     ['MOS_V2_REPO_URL', config.repoUrl],
     ['MOS_V2_REPO_REF', config.repoRef],
+    ['MOS_V2_FRONT_DOOR', config.frontDoor],
     ['MOS_V2_DOMAIN', config.domain],
     ['MOS_V2_INSTALL_ROOT', config.installRoot],
     ['MOS_V2_STATE_ROOT', config.stateRoot],
     ['MOS_V2_RUNTIME_USER', config.runtimeUser],
+    ['MOS_V2_SUITE_MANAGER_PORT', String(config.suiteManagerPort)],
     ['MOS_V2_COMPONENTS', config.components.join(',')],
     ['MOS_V2_OWNER_SETUP', 'suite-manager-browser'],
     ['MOS_V2_APP_SELECTION', 'suite-manager-after-install'],
@@ -137,24 +141,124 @@ function renderBootstrapShell(config) {
 set -euo pipefail
 
 ${renderBootstrapEnv(config)}
-export MOS_V2_REPO_URL MOS_V2_REPO_REF MOS_V2_DOMAIN MOS_V2_INSTALL_ROOT MOS_V2_STATE_ROOT MOS_V2_RUNTIME_USER MOS_V2_COMPONENTS MOS_V2_OWNER_SETUP MOS_V2_APP_SELECTION
+export MOS_V2_REPO_URL MOS_V2_REPO_REF MOS_V2_FRONT_DOOR MOS_V2_DOMAIN MOS_V2_INSTALL_ROOT MOS_V2_STATE_ROOT MOS_V2_RUNTIME_USER MOS_V2_SUITE_MANAGER_PORT MOS_V2_COMPONENTS MOS_V2_OWNER_SETUP MOS_V2_APP_SELECTION
+
+if [ "$MOS_V2_DOMAIN" = "localhost" ] && [ "$MOS_V2_FRONT_DOOR" = "digitalocean-smoke" ]; then
+  metadata_ip="$(curl -fsS --max-time 5 http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address 2>/dev/null || true)"
+  if [ -n "$metadata_ip" ]; then
+    MOS_V2_DOMAIN="$metadata_ip.sslip.io"
+    export MOS_V2_DOMAIN
+  fi
+fi
+
+if [ "$MOS_V2_DOMAIN" = "localhost" ]; then
+  MOS_V2_SUITE_HOST="localhost"
+  MOS_V2_HOMEPAGE_HOST="localhost"
+else
+  MOS_V2_SUITE_HOST="suite-manager.$MOS_V2_DOMAIN"
+  MOS_V2_HOMEPAGE_HOST="homepage.$MOS_V2_DOMAIN"
+fi
+
+MOS_V2_SUITE_MANAGER_URL="http://$MOS_V2_SUITE_HOST/setup/"
+MOS_V2_HOMEPAGE_URL="http://$MOS_V2_HOMEPAGE_HOST/"
+export MOS_V2_SUITE_HOST MOS_V2_HOMEPAGE_HOST MOS_V2_SUITE_MANAGER_URL MOS_V2_HOMEPAGE_URL
 
 echo "[mos-v2] Bootstrapping MOS V2 control plane from ${config.repoUrl}#${config.repoRef}"
 echo "[mos-v2] Components: ${config.components.join(', ')}"
-echo "[mos-v2] Suite Manager first-run URL: ${config.publicUrls.suiteManager}"
+echo "[mos-v2] Suite Manager first-run URL: $MOS_V2_SUITE_MANAGER_URL"
 echo "[mos-v2] Owner setup happens in Suite Manager after first boot."
 echo "[mos-v2] App choices happen in Suite Manager after install."
 
-install -d -m 0755 "$MOS_V2_INSTALL_ROOT" "$MOS_V2_STATE_ROOT"
-cat > "$MOS_V2_STATE_ROOT/bootstrap-contract.env" <<'MOS_V2_BOOTSTRAP_ENV'
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update
+apt-get install -y ca-certificates curl git gnupg
+
+if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'Number(process.versions.node.split(".")[0])')" -lt 22 ]; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  apt-get install -y nodejs
+fi
+
+if ! command -v caddy >/dev/null 2>&1; then
+  install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor -o /etc/apt/keyrings/caddy-stable-archive-keyring.gpg
+  curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt -o /etc/apt/sources.list.d/caddy-stable.list
+  apt-get update
+  apt-get install -y caddy
+fi
+
+if ! id -u "$MOS_V2_RUNTIME_USER" >/dev/null 2>&1; then
+  useradd --system --create-home --shell /usr/sbin/nologin "$MOS_V2_RUNTIME_USER"
+fi
+
+install -d -m 0755 "$MOS_V2_INSTALL_ROOT" "$MOS_V2_STATE_ROOT" "$MOS_V2_STATE_ROOT/suite-manager"
+cat > "$MOS_V2_STATE_ROOT/bootstrap-contract.env" <<MOS_V2_BOOTSTRAP_ENV
 ${renderBootstrapEnv(config)}
-MOS_V2_SUITE_MANAGER_URL=${shellQuote(config.publicUrls.suiteManager)}
-MOS_V2_HOMEPAGE_URL=${shellQuote(config.publicUrls.homepage)}
-MOS_V2_BOOTSTRAP_STATUS='rendered-control-plane-contract'
+MOS_V2_SUITE_MANAGER_URL="$MOS_V2_SUITE_MANAGER_URL"
+MOS_V2_HOMEPAGE_URL="$MOS_V2_HOMEPAGE_URL"
+MOS_V2_BOOTSTRAP_STATUS='installing-control-plane'
 MOS_V2_BOOTSTRAP_NOTE='Install Suite Manager, Caddy, Homepage, and host-agent placeholder only; create owner in browser.'
 MOS_V2_BOOTSTRAP_ENV
 
+if [ -d "$MOS_V2_INSTALL_ROOT/repo/.git" ]; then
+  git -C "$MOS_V2_INSTALL_ROOT/repo" fetch --prune origin
+else
+  rm -rf "$MOS_V2_INSTALL_ROOT/repo"
+  git clone "$MOS_V2_REPO_URL" "$MOS_V2_INSTALL_ROOT/repo"
+fi
+
+git -C "$MOS_V2_INSTALL_ROOT/repo" checkout "$MOS_V2_REPO_REF"
+git -C "$MOS_V2_INSTALL_ROOT/repo" reset --hard "$MOS_V2_REPO_REF"
+
+npm --prefix "$MOS_V2_INSTALL_ROOT/repo/version-2" install
+npm --prefix "$MOS_V2_INSTALL_ROOT/repo/version-2" run build:client
+
+chown -R "$MOS_V2_RUNTIME_USER:$MOS_V2_RUNTIME_USER" "$MOS_V2_STATE_ROOT"
+
+cat > /etc/systemd/system/mos-v2-suite-manager.service <<MOS_V2_SUITE_MANAGER_UNIT
+[Unit]
+Description=MOS V2 Suite Manager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$MOS_V2_RUNTIME_USER
+WorkingDirectory=$MOS_V2_INSTALL_ROOT/repo/version-2
+Environment=NODE_ENV=production
+Environment=MOS_V2_STATE_DIR=$MOS_V2_STATE_ROOT/suite-manager
+Environment=MOS_V2_FRONTEND_DIST_DIR=$MOS_V2_INSTALL_ROOT/repo/version-2/suite-manager/frontend/dist
+Environment=MOS_V2_SUITE_MANAGER_HOST=127.0.0.1
+Environment=MOS_V2_SUITE_MANAGER_PORT=$MOS_V2_SUITE_MANAGER_PORT
+ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/version-2/suite-manager/backend/src/server/start.cjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+MOS_V2_SUITE_MANAGER_UNIT
+
+cat > /etc/caddy/Caddyfile <<MOS_V2_CADDY
+$MOS_V2_SUITE_HOST {
+  reverse_proxy 127.0.0.1:$MOS_V2_SUITE_MANAGER_PORT
+}
+
+$MOS_V2_HOMEPAGE_HOST {
+  respond "MOS V2 Homepage placeholder. Suite Manager is available at $MOS_V2_SUITE_MANAGER_URL" 200
+}
+MOS_V2_CADDY
+
+systemctl daemon-reload
+systemctl enable --now mos-v2-suite-manager.service
+systemctl enable --now caddy.service
+systemctl reload caddy.service
+
+cat >> "$MOS_V2_STATE_ROOT/bootstrap-contract.env" <<'MOS_V2_BOOTSTRAP_DONE'
+MOS_V2_BOOTSTRAP_STATUS='ready-for-owner-setup'
+MOS_V2_BOOTSTRAP_DONE
+
 echo "[mos-v2] Wrote bootstrap contract to $MOS_V2_STATE_ROOT/bootstrap-contract.env"
+echo "[mos-v2] Suite Manager is ready for first-run owner setup at $MOS_V2_SUITE_MANAGER_URL"
 `;
 }
 

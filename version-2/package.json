@@ -9,7 +9,10 @@
     "branding:sync": "node scripts/sync-branding.cjs",
     "dev:client": "npm run branding:sync && vite --config suite-manager/vite.config.mjs",
     "install:render": "node scripts/installers/render-bootstrap.cjs",
+    "smoke:do:destroy": "node scripts/smoke/digitalocean-v2.cjs destroy",
     "smoke:do:render": "node scripts/smoke/digitalocean-v2.cjs render",
+    "smoke:do:reset": "node scripts/smoke/digitalocean-v2.cjs reset",
+    "smoke:do:up": "node scripts/smoke/digitalocean-v2.cjs up",
     "test": "npm run branding:sync && node --test suite-manager/backend/test/*.test.cjs test/*.test.cjs"
   },
   "dependencies": {

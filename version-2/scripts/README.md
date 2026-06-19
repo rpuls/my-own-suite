@@ -30,10 +30,28 @@ Minimum input is intentionally empty. Defaults are:
 - repository ref: `feat/app-platform-v2-lab`
 - domain: `<public-ip>.sslip.io` when a public IPv4 is known, otherwise `localhost`
 
-The V2 DigitalOcean smoke entry point is render-only for now:
+The V2 DigitalOcean smoke entry point can create a fresh Droplet and install the V2 control plane:
 
 ```powershell
+npm --prefix version-2 run smoke:do:up
+npm --prefix version-2 run smoke:do:reset
+npm --prefix version-2 run smoke:do:destroy
 npm --prefix version-2 run smoke:do:render
 ```
 
-It produces the future cloud-init payload and first-run URLs without creating paid resources.
+`smoke:do:up` creates paid DigitalOcean resources, waits for Suite Manager readiness, and prints the first-run Suite Manager URL. `smoke:do:render` is the free dry-run that prints the cloud-init payload without creating resources.
+
+The smoke harness reads `.mos-smoke/digitalocean.env` like the V1 harness. Required for `up`, `reset`, and `destroy`:
+
+- `DIGITALOCEAN_ACCESS_TOKEN`
+
+Optional:
+
+- `MOS_V2_SMOKE_REPO_URL`
+- `MOS_V2_SMOKE_REPO_REF`
+- `MOS_V2_SMOKE_REGION`
+- `MOS_V2_SMOKE_SIZE`
+- `MOS_V2_SMOKE_DOMAIN`
+- `MOS_SMOKE_SSH_KEY_ID`, `MOS_SMOKE_SSH_KEY_FINGERPRINT`, or `MOS_SMOKE_SSH_KEY_NAME`
+
+The smoke install uses cloud-init, so SSH keys are optional for the install itself but useful for debugging.

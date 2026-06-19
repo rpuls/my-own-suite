@@ -17,13 +17,13 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Moved the first implementation under `version-2/suite-manager/backend/` so Suite Manager is one component in the larger V2 workspace.
 - [x] Added V2-local file-backed platform state, owner password hashing, session tokens, first-run owner creation API, and minimal first-run HTML.
 - [x] Built the first React/Vite V2 Suite Manager owner onboarding app shell.
-- [x] Added a V2 no-preconfig bootstrap contract and dry-run renderers for cloud-init, SSH/bootstrap, USB seed config, and DigitalOcean smoke payloads.
+- [x] Added a V2 no-preconfig bootstrap contract, dry-run renderers for cloud-init, SSH/bootstrap, USB seed config, and a DigitalOcean smoke harness that can create a Droplet and install the V2 control plane.
 
 ### Current Next Slice
 
 Build the next real V2 vertical slice inside `version-2/`:
 
-1. Turn the render-only bootstrap contract into a real local control-plane apply path for Suite Manager, Caddy, Homepage, and the host-agent placeholder.
+1. Harden the V2 DigitalOcean smoke bootstrap after the first user-run Droplet test, especially package install logs, Caddy routing, and first-run URL readiness.
 2. Keep the installer input surface no-preconfig: no owner credentials, no app choices, and no app-specific env values before first boot.
 3. Move Suite Manager persistence from milestone JSON to SQLite before settings, user details, app install state, or richer sessions grow.
 4. Add local backend/frontend dev orchestration once the server entry point is ready for interactive use.
@@ -41,7 +41,7 @@ Current result: V2 tests pass, covering the platform contract, branding sync, se
 
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep new code inside `version-2/`; treat existing repo code and `feat/app-catalog-provisioning` as reference material only. V2 now has `suite-manager/`, `apps/`, `site/`, `scripts/`, `system-agents/`, `infrastructure/`, and canonical `branding/` ownership folders. Suite Manager backend has file-backed setup state, owner password hashing, session tokens, first-run owner creation/login/logout APIs, and a React/Vite owner onboarding frontend shell. V2 also has a no-preconfig installer contract under `version-2/scripts/installers/` plus render-only cloud-init, SSH/bootstrap, USB seed, and DigitalOcean smoke payload generation. Shared colors change in `version-2/branding/styles/mos.css` and sync through `npm --prefix version-2 run branding:sync`. The next slice is to turn the render-only control-plane bootstrap into a real local apply path, then prepare Suite Manager persistence for future settings/user details before adding app catalog behavior.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep new code inside `version-2/`; treat existing repo code and `feat/app-catalog-provisioning` as reference material only. V2 now has `suite-manager/`, `apps/`, `site/`, `scripts/`, `system-agents/`, `infrastructure/`, and canonical `branding/` ownership folders. Suite Manager backend has file-backed setup state, owner password hashing, session tokens, first-run owner creation/login/logout APIs, and a React/Vite owner onboarding frontend shell. V2 also has a no-preconfig installer contract under `version-2/scripts/installers/`, dry-run renderers for cloud-init, SSH/bootstrap, and USB seed config, plus a DigitalOcean smoke harness that can create a Droplet, install Node.js/Caddy, run Suite Manager from a selected repo/ref, and wait for first-run readiness. Shared colors change in `version-2/branding/styles/mos.css` and sync through `npm --prefix version-2 run branding:sync`. The next slice is to harden the first user-run DigitalOcean smoke result, then prepare Suite Manager persistence for future settings/user details before adding app catalog behavior.
 
 ## Product Goal
 
@@ -167,14 +167,15 @@ Goal: define and test what "installed MOS V2 control plane" means before optiona
 - [x] Define Caddy role before app catalog exists.
 - [x] Define host-agent capabilities needed for first milestone.
 - [x] Add tests for control-plane install contract.
-- [ ] Turn the rendered bootstrap contract into a real local control-plane apply path.
+- [x] Turn the cloud/SSH bootstrap contract into a real control-plane apply path.
+- [ ] Replace the Homepage placeholder with the real V2 Homepage role when the control plane needs it.
 
 Exit criteria:
 
 - V2 can describe a control-plane install without optional apps.
 - Owner credentials are not part of installer inputs.
 - Required generated files are documented or represented in V2 code.
-- Remaining work: the current contract is render-only and must still install/start the control plane.
+- Remaining work: USB/own-hardware still needs a real media/bootstrap flow around the shared contract.
 
 ### Phase 3: Installer Front Doors
 
@@ -182,19 +183,20 @@ Goal: make cloud, USB, and SSH setup feed the same V2 bootstrap shape.
 
 - [x] Inventory old installer scripts for reusable behavior.
 - [x] Decide whether V2 gets new installer scripts under `version-2/` or thin adapters outside it.
-- [x] Start V2 cloud installer path as a render-only cloud-init payload.
+- [x] Start V2 cloud installer path as real cloud-init that installs and starts the control plane.
 - [x] Make owner email/password absent in V2 install config.
 - [x] Keep domain/runtime inputs separate from owner account inputs.
 - [x] Add render tests for V2 installer config.
 - [x] Add a local dry-run command for installer generation.
-- [x] Update docs for the render-only foundation.
-- [ ] Make the cloud-init/SSH/USB payloads perform a real control-plane install.
+- [x] Update docs for the smoke/install foundation.
+- [x] Make the cloud-init/SSH payloads perform a real control-plane install.
+- [ ] Make USB/autoinstall consume the same contract in a real own-hardware flow.
 
 Exit criteria:
 
 - A cloud-machine install can boot V2 control plane without owner credentials.
 - USB and SSH can follow the same bootstrap contract later without custom app logic.
-- Current state: cloud, USB, and SSH share a tested render contract, but do not yet apply/start services.
+- Current state: cloud and SSH share a tested install contract that starts Suite Manager behind Caddy; USB has the same seed config contract but not a full media flow yet.
 
 ### Phase 4: DigitalOcean Validation Loop
 
@@ -204,7 +206,7 @@ Goal: reuse the known smoke harness for real-machine confidence without letting 
 - [x] Add V2 mode to the smoke harness or a V2 wrapper.
 - [x] Remove owner credential requirement for V2 smoke mode.
 - [x] Have smoke output the first-run Suite Manager URL.
-- [ ] Add a smoke readiness check that does not require app installs.
+- [x] Add a smoke readiness check that does not require app installs.
 - [ ] Add optional browser-owner-creation validation once E2E exists.
 
 Exit criteria:
@@ -213,7 +215,7 @@ Exit criteria:
 - Smoke validates control-plane readiness.
 - Smoke does not install optional apps.
 - Smoke does not require installer-time owner credentials.
-- Current state: `npm --prefix version-2 run smoke:do:render` produces the future payload without creating paid resources.
+- Current state: `npm --prefix version-2 run smoke:do:up` creates a tagged Droplet, installs the V2 control plane from the selected repo/ref, waits for `/api/setup/status`, and prints the first-run Suite Manager URL. `smoke:do:render` remains the free dry-run.
 
 ### Phase 5: Control-Plane Operations
 
