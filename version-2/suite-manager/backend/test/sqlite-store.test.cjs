@@ -50,7 +50,7 @@ test('fresh state creates the SQLite schema and records every migration', async 
   `).all().map(({ name, version }) => ({ name, version }));
   database.close();
 
-  assert.deepEqual(tables, ['https_settings', 'owners', 'schema_migrations', 'sessions']);
+  assert.deepEqual(tables, ['homepage_operations', 'homepage_revisions', 'https_settings', 'owners', 'schema_migrations', 'sessions']);
   assert.deepEqual(migrations, MIGRATIONS.map(({ name, version }) => ({ name, version })));
 });
 
@@ -94,7 +94,7 @@ test('an existing version-one database receives the named HTTPS migration', asyn
   const upgraded = new SuiteManagerStore(stateDir);
   assert.equal(upgraded.getHttpsSettings().tlsMode, 'off');
   const migrations = upgraded.database.prepare('SELECT name FROM schema_migrations ORDER BY version').all();
-  assert.deepEqual(migrations.map(({ name }) => name), ['owner-and-sessions', 'https-settings']);
+  assert.deepEqual(migrations.map(({ name }) => name), ['owner-and-sessions', 'https-settings', 'homepage-revisions-and-operations']);
   upgraded.close();
 });
 

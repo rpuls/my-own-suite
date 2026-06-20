@@ -246,6 +246,32 @@ test('logout immediately blocks Home dashboard access again', async () => {
   }, { homeHost: 'home.test' });
 });
 
+test('Homepage customization APIs require authentication and pass only structured operations', async () => {
+  const calls = [];
+  const homepageAgent = {
+    async status() { calls.push(['status']); return { capabilities: ['homepage.apply'] }; },
+    async read(file) { calls.push(['read', file]); return { content: '- Links: []\n', file, revision: 'sha256:current' }; },
+    async validate(file, content) { calls.push(['validate', file, content]); return { valid: true }; },
+  };
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/customize/file/read', {
+      body: JSON.stringify({ file: 'services.template.yaml' }), headers: { 'Content-Type': 'application/json', Host: 'home.test' }, method: 'POST',
+    });
+    assert.equal(denied.status, 401);
+    assert.equal(calls.length, 0);
+
+    const cookie = await createOwner(baseUrl);
+    const status = await hostRequest(baseUrl, '/suite-manager/api/customize/status', { headers: { Cookie: cookie, Host: 'home.test' } });
+    const read = await hostRequest(baseUrl, '/suite-manager/api/customize/file/read', {
+      body: JSON.stringify({ file: 'services.template.yaml' }), headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' }, method: 'POST',
+    });
+    assert.equal(status.status, 200);
+    assert.deepEqual(status.json().files, ['bookmarks.yaml', 'services.template.yaml', 'settings.yaml', 'widgets.yaml']);
+    assert.equal(read.status, 200);
+    assert.deepEqual(calls, [['status'], ['read', 'services.template.yaml']]);
+  }, { homeHost: 'home.test', homepageAgent });
+});
+
 test('Homepage failure returns a controlled bad gateway response', async () => {
   const unavailable = http.createServer();
   const unavailableUrl = await listen(unavailable);

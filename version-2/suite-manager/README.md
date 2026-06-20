@@ -15,7 +15,7 @@ The first app surface is intentionally narrow:
 - first-run owner account creation
 - existing-owner login
 - logout
-- responsive Dashboard, Settings, and sign-out navigation
+- responsive Dashboard, Customize, Settings, and sign-out navigation
 - Cloudflare DNS-01 HTTPS configuration
 - authenticated access to the private Homepage dashboard
 
@@ -56,3 +56,9 @@ Suite Manager accepts only the configured `home.<domain>` host and rejects unkno
 The proxy preserves request paths, query strings, request/response streaming, redirects, forwarded origin information, and WebSocket upgrades. It removes the MOS cookie before contacting Homepage and ignores upstream cookies. Homepage receives the stable bootstrap host for its private allowlist while `X-Forwarded-Host` retains the browser origin. Unauthenticated browser traffic is redirected to `/suite-manager/`, unauthenticated upgrades are rejected, and an unavailable upstream returns `502`.
 
 The cookie remains host-only. Because dashboard and Suite Manager share the Home origin, one login covers both without sharing MOS credentials with future app subdomains.
+
+## Homepage Customization Boundary
+
+Authenticated owners use `/suite-manager/customize` to edit only `bookmarks.yaml`, `services.template.yaml`, `settings.yaml`, and `widgets.yaml`. Reads return a content revision; saves require that revision and validate through the structured YAML parser before the narrow Homepage agent writes anything. Guided links remain dashboard-only. Guided home services accept only name, description, icon, group, HTTP/HTTPS upstream host and port, and public subdomain; they store stable user-managed metadata without credentials or arbitrary Caddy text.
+
+SQLite records operation and revision metadata, not dashboard layout or app installation inputs. Durable Homepage files remain the dashboard source, `services.yaml` is generated, and app packages will separately own future installation state, secrets, dependencies, volumes, backup, and lifecycle.

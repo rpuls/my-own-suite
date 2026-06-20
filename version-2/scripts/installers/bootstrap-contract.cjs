@@ -5,7 +5,7 @@ const DEFAULT_INSTALL_ROOT = '/opt/mos-v2';
 const DEFAULT_STATE_ROOT = '/var/lib/mos-v2';
 const DEFAULT_RUNTIME_USER = 'mos';
 const DEFAULT_SUITE_MANAGER_PORT = 3100;
-const CONTROL_PLANE_COMPONENTS = ['suite-manager', 'caddy', 'homepage', 'system-agent-placeholder'];
+const CONTROL_PLANE_COMPONENTS = ['suite-manager', 'caddy', 'homepage', 'https-agent', 'homepage-agent'];
 const FRONT_DOORS = ['digitalocean-smoke', 'cloud-init', 'usb-autoinstall', 'ssh-bootstrap'];
 
 const OWNER_KEYS = [
@@ -238,9 +238,11 @@ if ! getent group mos-v2-agent >/dev/null; then
   groupadd --system mos-v2-agent
 fi
 usermod -a -G mos-v2-agent "$MOS_V2_RUNTIME_USER"
-install -d -m 0750 /etc/mos-v2 /etc/mos-v2/secrets /var/lib/mos-v2/https-agent
+install -d -m 0750 /etc/mos-v2 /etc/mos-v2/secrets /var/lib/mos-v2/https-agent /var/lib/mos-v2/homepage-agent
 install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-https-agent
+install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-homepage-agent
 install -d -m 0700 /var/lib/mos-v2/https-agent/transactions
+install -d -m 0700 /var/lib/mos-v2/homepage-agent/transactions /var/lib/mos-v2/homepage-agent/history
 
 install -d -m 0755 /etc/systemd/system/caddy.service.d
 cat > /etc/systemd/system/caddy.service.d/mos-v2.conf <<'MOS_V2_CADDY_OVERRIDE'
@@ -288,6 +290,7 @@ Environment=MOS_V2_SUITE_MANAGER_PORT=$MOS_V2_SUITE_MANAGER_PORT
 Environment=MOS_V2_HOME_HOST=$MOS_V2_HOME_HOST
 Environment=MOS_V2_HOMEPAGE_UPSTREAM=$MOS_V2_HOMEPAGE_UPSTREAM
 Environment=MOS_V2_HTTPS_AGENT_SOCKET=/run/mos-v2-https-agent/agent.sock
+Environment=MOS_V2_HOMEPAGE_AGENT_SOCKET=/run/mos-v2-homepage-agent/agent.sock
 ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/version-2/suite-manager/backend/src/server/start.cjs
 Restart=always
 RestartSec=3
@@ -319,9 +322,37 @@ RestartSec=3
 WantedBy=multi-user.target
 MOS_V2_HTTPS_AGENT_UNIT
 
+cat > /etc/systemd/system/mos-v2-homepage-agent.service <<MOS_V2_HOMEPAGE_AGENT_UNIT
+[Unit]
+Description=MOS V2 narrow Homepage configuration agent
+After=network-online.target caddy.service mos-v2-homepage.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=mos-v2-agent
+UMask=0007
+WorkingDirectory=$MOS_V2_INSTALL_ROOT/repo/version-2
+Environment=NODE_ENV=production
+Environment=MOS_V2_HOMEPAGE_AGENT_SOCKET=/run/mos-v2-homepage-agent/agent.sock
+Environment=MOS_V2_HOMEPAGE_CONFIG_ROOT=$MOS_V2_STATE_ROOT/homepage/config
+Environment=MOS_V2_HOMEPAGE_TRANSACTION_ROOT=$MOS_V2_STATE_ROOT/homepage-agent/transactions
+Environment=MOS_V2_HOMEPAGE_HISTORY_ROOT=$MOS_V2_STATE_ROOT/homepage-agent/history
+ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/version-2/system-agents/homepage/agent.cjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+MOS_V2_HOMEPAGE_AGENT_UNIT
+
 cat > /etc/caddy/Caddyfile <<MOS_V2_CADDY
 ${renderCaddyfile()}
 MOS_V2_CADDY
+cat > /etc/caddy/mos-v2-homepage-routes.caddy <<'MOS_V2_HOMEPAGE_ROUTES'
+# No user-managed Homepage routes.
+MOS_V2_HOMEPAGE_ROUTES
 
 systemctl daemon-reload
 systemctl enable --now docker.service
@@ -347,6 +378,8 @@ systemctl enable caddy.service
 systemctl restart caddy.service
 systemctl enable mos-v2-https-agent.service
 systemctl restart mos-v2-https-agent.service
+systemctl enable mos-v2-homepage-agent.service
+systemctl restart mos-v2-homepage-agent.service
 
 cat >> "$MOS_V2_STATE_ROOT/bootstrap-contract.env" <<'MOS_V2_BOOTSTRAP_DONE'
 MOS_V2_BOOTSTRAP_STATUS='ready-for-owner-setup'

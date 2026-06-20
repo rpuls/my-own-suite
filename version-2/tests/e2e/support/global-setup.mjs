@@ -18,8 +18,8 @@ async function waitForReady() {
   const deadline = Date.now() + 90000;
   while (Date.now() < deadline) {
     try {
-      const homepage = await fetch('http://127.0.0.1:13200/', { headers: { Host: 'home.localhost' } });
-      const suiteManager = await fetch('http://127.0.0.1:13100/suite-manager/api/setup/status', { headers: { Host: 'home.localhost' } });
+      const homepage = await fetch('http://127.0.0.1:13200/', { headers: { Host: 'home.127.0.0.1.sslip.io' } });
+      const suiteManager = await fetch('http://127.0.0.1:13100/suite-manager/api/setup/status', { headers: { Host: 'home.127.0.0.1.sslip.io' } });
       if (homepage.ok && suiteManager.ok) return;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -30,23 +30,30 @@ async function waitForReady() {
 export default async function globalSetup() {
   const runtimeDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-v2-e2e-'));
   const homepageConfig = path.join(runtimeDir, 'homepage');
+  const agentSocket = process.platform === 'win32' ? `\\\\.\\pipe\\mos-v2-homepage-e2e-${process.pid}` : path.join(runtimeDir, 'homepage-agent.sock');
   await fsp.cp(path.join(v2Root, 'infrastructure', 'homepage'), homepageConfig, { recursive: true });
   run('npm', ['run', 'build:client']);
   spawnSync('docker', ['rm', '-f', containerName], { stdio: 'ignore', shell: process.platform === 'win32' });
   run('docker', [
     'run', '--detach', '--rm', '--name', containerName,
     '--publish', '127.0.0.1:13200:3000',
-    '--env', 'HOMEPAGE_ALLOWED_HOSTS=home.localhost',
+    '--env', 'HOMEPAGE_ALLOWED_HOSTS=home.127.0.0.1.sslip.io',
     '--volume', `${homepageConfig}:/app/config`,
     'ghcr.io/gethomepage/homepage@sha256:cc84f2f5eb3c7734353701ccbaa24ed02dacb0d119114e50e4251e2005f3990a',
   ]);
+  const homepageAgent = spawn(process.execPath, ['tests/e2e/support/local-homepage-agent.cjs'], {
+    cwd: v2Root,
+    env: { ...process.env, MOS_V2_HOMEPAGE_AGENT_SOCKET: agentSocket, MOS_V2_HOMEPAGE_CONFIG_ROOT: homepageConfig },
+    stdio: 'ignore',
+  });
   const suiteManager = spawn(process.execPath, ['suite-manager/backend/src/server/start.cjs'], {
     cwd: v2Root,
     env: {
       ...process.env,
       MOS_V2_FRONTEND_DIST_DIR: path.join(v2Root, 'suite-manager', 'frontend', 'dist'),
       MOS_V2_HOMEPAGE_UPSTREAM: 'http://127.0.0.1:13200',
-      MOS_V2_HOME_HOST: 'home.localhost',
+      MOS_V2_HOME_HOST: 'home.127.0.0.1.sslip.io',
+      MOS_V2_HOMEPAGE_AGENT_SOCKET: agentSocket,
       MOS_V2_STATE_DIR: path.join(runtimeDir, 'state'),
       MOS_V2_SUITE_MANAGER_HOST: '127.0.0.1',
       MOS_V2_SUITE_MANAGER_PORT: '13100',
@@ -55,5 +62,5 @@ export default async function globalSetup() {
   });
   await waitForReady();
   await fsp.mkdir(path.dirname(statePath), { recursive: true });
-  await fsp.writeFile(statePath, JSON.stringify({ pid: suiteManager.pid, runtimeDir }));
+  await fsp.writeFile(statePath, JSON.stringify({ agentPid: homepageAgent.pid, pid: suiteManager.pid, runtimeDir }));
 }

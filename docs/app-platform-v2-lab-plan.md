@@ -24,16 +24,16 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Added responsive Suite Manager navigation, the first authenticated V2 Settings page, migrated non-secret HTTPS state, a narrow rollback-capable HTTPS agent, and a pinned repo-built Caddy binary with the Cloudflare DNS module.
 - [x] Added a V2-owned Playwright foundation for real local owner, Homepage, navigation, Settings validation, and logout behavior, plus an explicitly guarded DigitalOcean DNS-01 validation command.
 - [x] Fixed the pinned Caddy build for Ubuntu's default legacy Docker builder after a fresh smoke exposed an unset `BUILDPLATFORM` failure before systemd unit creation.
+- [x] Added the first V2 Homepage customization slice: authenticated Customize navigation, allowlisted revision-aware YAML editing, guided dashboard links and home services, SQLite apply/revision metadata, generated Homepage/Caddy projections, and a separate transactional rollback-capable Homepage agent.
 
 ### Current Next Slice
 
 Build the next real V2 vertical slice inside `version-2/`:
 
-1. Run the user-driven local V2 Playwright suite and address any browser-only failures without adding test behavior to production code.
-2. Run one fresh user-driven V2 DigitalOcean smoke, complete owner setup, and use the guarded DNS-01 command to validate issuance, HTTPS login/dashboard behavior, HTTP redirect, and bootstrap recovery.
-3. Add richer certificate issuance/renewal health reporting after real-machine evidence identifies the minimum useful diagnostics.
-4. Keep the installer input surface no-preconfig: no owner credentials, app choices, or app-specific env values before first boot.
-5. Continue local control-plane development orchestration only where it remains faithful to the production host/auth boundary.
+1. Run the user-driven local V2 Playwright suite for login, Customize editing/guided entries, Homepage tiles, validation, Settings, and logout protection; address browser-only failures without production test behavior.
+2. Run one fresh user-driven V2 DigitalOcean smoke, complete owner setup, validate the Homepage agent transaction on the machine, and use the guarded DNS-01 command to validate issuance, HTTPS behavior, redirects, and recovery.
+3. Keep DNS-01 marked implemented but unverified until that real validation succeeds; add certificate health reporting only from real-machine evidence.
+4. Brainstorm the future app-package contract separately after validation, keeping installation inputs, secrets, dependencies, volumes, backup, and lifecycle outside Homepage YAML.
 
 ### Latest Verified Command
 
@@ -43,11 +43,11 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
-Current result: 51 V2 tests pass, covering the platform contract, branding sync, SQLite schema/migrations and JSON import, setup state, owner creation, login/logout and restart persistence, HTTPS settings and rollback contracts, host-aware routing, authenticated HTTP/WebSocket Homepage proxying, pinned Cloudflare-capable Caddy rendering, privileged-agent behavior, built frontend serving, and the no-preconfig bootstrap contract. TypeScript, the production frontend build, CommonJS syntax, and a local `needs-owner` startup probe also pass. Playwright and real DNS-01 validation remain explicitly user-run.
+Current result: 62 V2 tests pass, covering the platform contract, branding sync, SQLite migrations, auth, HTTPS, allowlisted Homepage YAML/revisions, guided entry identity and validation, projections, Caddy injection resistance, transactional restart/reload decisions and rollback, authenticated HTTP/WebSocket proxying, installer rendering, and system-agent boundaries. TypeScript and syntax checks pass. The expanded Playwright flow and real DigitalOcean/DNS-01/USB validation remain explicitly user-run.
 
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep runtime work inside `version-2/`; treat V1 as reference only. V2 has responsive Dashboard/Settings/sign-out navigation, migrated non-secret HTTPS state, a restricted root HTTPS agent, repo-built Cloudflare-capable Caddy, rollback-safe configuration apply, and a V2 Playwright foundation. The next step is user-run local browser validation followed by a fresh DigitalOcean/DNS-01 validation before expanding certificate health reporting or app catalog work.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. V2 now has Dashboard/Customize/Settings navigation, SQLite platform and operation metadata, durable Homepage YAML, generated Homepage/Caddy projections, and separate restricted HTTPS and Homepage agents. Run the user-driven Playwright and fresh DigitalOcean/DNS-01 validation before certificate-health or app-package work; DNS-01 is implemented but unverified, and app packages remain a separate future brainstorming milestone.
 
 ## Product Goal
 
@@ -234,6 +234,7 @@ Goal: make the empty platform trustworthy before adding apps.
 - [x] Add DNS-01 HTTPS and its explicit base-domain/settings model through a narrow privileged agent.
 - [x] Keep the first Homepage dashboard intentionally minimal and branded before optional apps exist.
 - [x] Keep HTTPS status and sanitized diagnostics behind Advanced details.
+- [x] Add allowlisted Homepage editing, guided dashboard links/home services, and transactional generated Homepage/Caddy apply through a narrow agent.
 
 Exit criteria:
 
@@ -316,7 +317,7 @@ Use this table to decide what to copy, rebuild, or ignore. Do not transfer anyth
 | Suite Manager UI primitives | `apps/suite-manager/frontend/src/components/ui.tsx` | Rebuild/copy selected primitives into `version-2/` | Phase 1 |
 | Owner auth/session ideas | `apps/suite-manager/src/features/auth` | Rebuild around browser-created owner | Phase 1 |
 | Old onboarding | `apps/suite-manager/src/features/onboarding` | Do not transfer wholesale; mine for app helper ideas later | Phase 8 |
-| Homepage customization | `apps/suite-manager/src/features/homepage-config` | Defer; V2 first needs control-plane state | Phase 5+ |
+| Homepage customization | `apps/suite-manager/src/features/homepage-config` | Rebuilt narrowly around V2 file ownership and system-agent contracts | Phase 5 |
 | Host-agent capability patterns | `apps/suite-manager/src/features/service-agent` | Rebuild narrow client once V2 needs host actions | Phase 5 |
 | DigitalOcean smoke harness | `scripts/smoke/digitalocean.cjs` | Adapt or wrap for V2; do not run automatically | Phase 4 |
 | Installer convergence scripts | `scripts/selfhost/*`, `deploy/self-host/*` | Rebuild V2 bootstrap contract, borrow shell details carefully | Phase 3 |

@@ -5,6 +5,8 @@ function renderCaddyfile() {
   return `http://$MOS_V2_HOME_HOST {
   reverse_proxy 127.0.0.1:$MOS_V2_SUITE_MANAGER_PORT
 }
+
+import /etc/caddy/mos-v2-homepage-routes.caddy
 `;
 }
 
@@ -26,6 +28,8 @@ http://${homeHost} {
 https://${homeHost} {
   reverse_proxy 127.0.0.1:${suiteManagerPort}
 }
+
+import /etc/caddy/mos-v2-homepage-routes.caddy
 `;
 }
 

@@ -310,7 +310,9 @@
   text-transform: uppercase;
 }
 
-.suite-field input {
+.suite-field input,
+.suite-field select,
+.suite-field textarea {
   width: 100%;
   min-height: 3rem;
   padding: 0.8rem 0.95rem;
@@ -320,7 +322,9 @@
   color: var(--mos-color-text);
 }
 
-.suite-field input:focus {
+.suite-field input:focus,
+.suite-field select:focus,
+.suite-field textarea:focus {
   border-color: rgba(99, 226, 179, 0.62);
   outline: 3px solid rgba(99, 226, 179, 0.18);
 }
@@ -328,6 +332,47 @@
 .suite-field small {
   color: var(--mos-color-text-muted);
 }
+
+.suite-field textarea { resize: vertical; }
+
+.suite-customize {
+  display: grid;
+  gap: var(--mos-space-5);
+}
+
+.suite-mode-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mos-space-2);
+}
+
+.suite-mode-tabs button {
+  border: var(--mos-border-strong);
+  border-radius: var(--mos-radius-sm);
+  background: rgba(10, 31, 53, 0.7);
+  color: var(--mos-color-text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0.65rem 0.9rem;
+}
+
+.suite-mode-tabs button[aria-selected='true'] {
+  border-color: rgba(99, 226, 179, 0.62);
+  background: rgba(99, 226, 179, 0.12);
+}
+
+.suite-customize-panel,
+.suite-guided-form {
+  display: grid;
+  gap: var(--mos-space-4);
+}
+
+.suite-customize-panel { max-width: 900px; }
+.suite-code-editor { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; line-height: 1.5; }
+.suite-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--mos-space-4); }
+.suite-route-preview { display: grid; grid-template-columns: auto 1fr; gap: var(--mos-space-2) var(--mos-space-4); padding: var(--mos-space-4); border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); }
+.suite-route-preview code, .suite-advanced pre { overflow-wrap: anywhere; white-space: pre-wrap; }
 
 .suite-notice {
   display: grid;
@@ -378,4 +423,5 @@
 
   .suite-advanced dl { grid-template-columns: 1fr; }
   .suite-advanced dd { margin-bottom: var(--mos-space-2); }
+  .suite-form-grid, .suite-route-preview { grid-template-columns: 1fr; }
 }

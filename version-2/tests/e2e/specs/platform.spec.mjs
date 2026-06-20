@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const owner = { email: 'owner@example.com', name: 'MOS Owner', password: 'correct horse battery' };
 
-test('owner onboarding, navigation, Settings validation, and logout use the real control plane', async ({ page }) => {
+test('owner onboarding, Homepage customization, Settings validation, and logout use the real control plane', async ({ page }) => {
   await page.goto('/suite-manager/');
   await expect(page.getByRole('heading', { name: /Create your owner account/i })).toBeVisible();
   await page.getByLabel(/name/i).fill(owner.name);
@@ -15,6 +15,42 @@ test('owner onboarding, navigation, Settings validation, and logout use the real
   await page.goto('/suite-manager/');
   await page.getByRole('button', { name: 'Open navigation menu' }).click();
   await expect(page.getByRole('navigation', { name: 'Suite Manager menu' })).toBeVisible();
+  await page.getByRole('button', { name: /Customize/i }).click();
+  await expect(page).toHaveURL(/\/suite-manager\/customize$/u);
+  await expect(page.getByRole('heading', { name: 'Customize' })).toBeVisible();
+
+  await page.getByLabel('Homepage YAML').fill('- broken: [');
+  await page.getByRole('button', { name: 'Validate and apply' }).click();
+  await expect(page.getByText('Fix the YAML errors before saving.')).toBeVisible();
+  await page.getByLabel('Homepage file').selectOption('services.template.yaml');
+
+  await page.getByRole('tab', { name: 'Add link' }).click();
+  await page.getByLabel('Display name').fill('MOS Test Link');
+  await page.getByLabel('Description').fill('Added by the V2 browser flow');
+  await page.getByLabel('Icon').fill('mdi:link');
+  await page.getByLabel('Destination group').fill('Tests');
+  await page.getByLabel('URL').fill('https://example.com/');
+  await page.getByRole('button', { name: 'Add link' }).click();
+  await expect(page.getByText('Homepage updated')).toBeVisible();
+
+  await page.getByRole('tab', { name: 'Add home service' }).click();
+  await page.getByLabel('Display name').fill('MOS Test Service');
+  await page.getByLabel('Description').fill('Existing network service');
+  await page.getByLabel('Icon').fill('mdi:server-network');
+  await page.getByLabel('Destination group').fill('Tests');
+  await page.getByLabel('Internal host or IP').fill('192.168.1.20');
+  await page.getByLabel('Internal port').fill('8080');
+  await page.getByLabel('Public subdomain').fill('test-service');
+  await page.getByRole('button', { name: 'Preview route' }).click();
+  await expect(page.getByText('http://test-service.127.0.0.1.sslip.io/')).toBeVisible();
+  await page.getByRole('button', { name: 'Add home service' }).click();
+  await expect(page.getByText('Homepage updated')).toBeVisible();
+
+  await page.goto('/');
+  await expect(page.getByText('MOS Test Link')).toBeVisible();
+  await expect(page.getByText('MOS Test Service')).toBeVisible();
+  await page.goto('/suite-manager/');
+  await page.getByRole('button', { name: 'Open navigation menu' }).click();
   await page.getByRole('button', { name: /Settings/i }).click();
   await expect(page).toHaveURL(/\/suite-manager\/settings$/u);
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
@@ -34,5 +70,7 @@ test('owner onboarding, navigation, Settings validation, and logout use the real
   await page.goto('/');
   await expect(page).toHaveURL(/\/suite-manager\/$/u);
   await page.goto('/suite-manager/settings');
+  await expect(page.getByRole('heading', { name: /Welcome back/i })).toBeVisible();
+  await page.goto('/suite-manager/customize');
   await expect(page.getByRole('heading', { name: /Welcome back/i })).toBeVisible();
 });

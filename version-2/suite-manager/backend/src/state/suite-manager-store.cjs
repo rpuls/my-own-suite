@@ -52,6 +52,28 @@ const MIGRATIONS = [
     `,
     version: 2,
   },
+  {
+    name: 'homepage-revisions-and-operations',
+    sql: `
+      CREATE TABLE homepage_revisions (
+        file TEXT PRIMARY KEY,
+        revision TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE homepage_operations (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('applying', 'applied', 'failed')),
+        file TEXT,
+        revision TEXT,
+        error_code TEXT,
+        started_at TEXT NOT NULL,
+        completed_at TEXT
+      ) STRICT;
+    `,
+    version: 3,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -230,6 +252,34 @@ class SuiteManagerStore {
           last_apply_error_code = ?, last_apply_diagnostics = ?, updated_at = ?
       WHERE id = 1
     `).run(at, errorCode, diagnostics, at);
+  }
+
+  recordHomepageRevision({ at, file, revision }) {
+    this.database.prepare(`
+      INSERT INTO homepage_revisions (file, revision, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(file) DO UPDATE SET revision = excluded.revision, updated_at = excluded.updated_at
+    `).run(file, revision, at);
+  }
+
+  startHomepageOperation({ at, id, kind }) {
+    this.database.prepare(`
+      INSERT INTO homepage_operations (id, kind, status, started_at) VALUES (?, ?, 'applying', ?)
+    `).run(id, kind, at);
+  }
+
+  completeHomepageOperation({ at, file, id, revision }) {
+    this.transaction(() => {
+      this.database.prepare(`
+        UPDATE homepage_operations SET status = 'applied', file = ?, revision = ?, completed_at = ? WHERE id = ?
+      `).run(file, revision, at, id);
+      this.recordHomepageRevision({ at, file, revision });
+    });
+  }
+
+  failHomepageOperation({ at, errorCode, id }) {
+    this.database.prepare(`
+      UPDATE homepage_operations SET status = 'failed', error_code = ?, completed_at = ? WHERE id = ?
+    `).run(errorCode, at, id);
   }
 
   createOwnerAndSession(owner, session) {

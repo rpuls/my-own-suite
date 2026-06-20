@@ -11,6 +11,7 @@ export default async function globalTeardown() {
   if (fs.existsSync(statePath)) {
     const state = JSON.parse(await fsp.readFile(statePath, 'utf8'));
     try { process.kill(state.pid, 'SIGTERM'); } catch {}
+    try { process.kill(state.agentPid, 'SIGTERM'); } catch {}
     await fsp.rm(state.runtimeDir, { force: true, recursive: true });
     await fsp.rm(statePath, { force: true });
   }

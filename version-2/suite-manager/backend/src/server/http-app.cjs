@@ -3,6 +3,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { SetupError, SetupService } = require('../setup/setup-service.cjs');
+const { HomepageAgentClient } = require('../homepage/homepage-agent-client.cjs');
+const { HomepageService } = require('../homepage/homepage-service.cjs');
 const { HttpsAgentClient } = require('../settings/https-agent-client.cjs');
 const { HttpsSettingsError } = require('../../../../shared/https-contract.cjs');
 const { HttpsSettingsService } = require('../settings/https-settings-service.cjs');
@@ -111,6 +113,9 @@ function readJsonBody(request, maxBytes = 1_000_000) {
 }
 
 function errorStatus(error) {
+  if (Number.isInteger(error.statusCode)) {
+    return error.statusCode;
+  }
   if (error instanceof HttpsSettingsError) {
     return error.statusCode;
   }
@@ -182,6 +187,7 @@ function serveFrontend(response, frontendDistDir) {
 }
 
 function createV2Server({
+  homepageAgent = new HomepageAgentClient(),
   httpsAgent = new HttpsAgentClient(),
   frontendDistDir = DEFAULT_FRONTEND_DIST_DIR,
   homeHost = process.env.MOS_V2_HOME_HOST || 'home.localhost',
@@ -195,6 +201,11 @@ function createV2Server({
     store: setup.store,
   });
   const homepage = createHomepageProxy({ upstream: homepageUpstream, upstreamHost: homeHost });
+  const homepageConfig = new HomepageService({
+    agent: homepageAgent,
+    bootstrapHost: homeHost,
+    store: setup.store,
+  });
 
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://localhost');
@@ -258,6 +269,33 @@ function createV2Server({
         return;
       }
 
+      if (url.pathname.startsWith(`${SUITE_MANAGER_API_PREFIX}/customize/`)) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to customize Homepage.' });
+          return;
+        }
+        if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/customize/status`) {
+          jsonResponse(response, 200, await homepageConfig.status());
+          return;
+        }
+        if (request.method === 'POST') {
+          const body = await readJsonBody(request, 600 * 1024);
+          const handlers = new Map([
+            [`${SUITE_MANAGER_API_PREFIX}/customize/file/read`, () => homepageConfig.read(body)],
+            [`${SUITE_MANAGER_API_PREFIX}/customize/file/validate`, () => homepageConfig.validate(body)],
+            [`${SUITE_MANAGER_API_PREFIX}/customize/file/apply`, () => homepageConfig.apply(body)],
+            [`${SUITE_MANAGER_API_PREFIX}/customize/add-link`, () => homepageConfig.add(body, false)],
+            [`${SUITE_MANAGER_API_PREFIX}/customize/add-home-service`, () => homepageConfig.add(body, true)],
+            [`${SUITE_MANAGER_API_PREFIX}/customize/home-service-preview`, () => homepageConfig.previewHomeService(body)],
+          ]);
+          const handler = handlers.get(url.pathname);
+          if (handler) {
+            jsonResponse(response, 200, await handler());
+            return;
+          }
+        }
+      }
+
       if (url.pathname === SUITE_MANAGER_API_PREFIX || url.pathname.startsWith(`${SUITE_MANAGER_API_PREFIX}/`)) {
         jsonResponse(response, 404, { error: 'Not found.' });
         return;
@@ -297,6 +335,7 @@ function createV2Server({
     } catch (error) {
       jsonResponse(response, errorStatus(error), {
         code: error.code || 'INTERNAL_ERROR',
+        ...(Array.isArray(error.details) && error.details.length ? { details: error.details } : {}),
         error: error.message || 'Internal server error.',
       });
     }

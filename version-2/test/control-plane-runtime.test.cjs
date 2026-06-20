@@ -16,6 +16,7 @@ test('Caddy exposes the single Home origin only through Suite Manager', () => {
   assert.match(caddyfile, /http:\/\/\$MOS_V2_HOME_HOST/);
   assert.doesNotMatch(caddyfile, /MOS_V2_SUITE_MANAGER_HOST/);
   assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:\$MOS_V2_SUITE_MANAGER_PORT/);
+  assert.match(caddyfile, /import \/etc\/caddy\/mos-v2-homepage-routes\.caddy/);
   assert.doesNotMatch(caddyfile, /3200|homepage:3000|reverse_proxy\s+homepage/);
 });
 
@@ -32,7 +33,8 @@ test('HTTPS Caddy rendering preserves bootstrap recovery and has no Homepage byp
   assert.match(caddyfile, /redir https:\/\/home\.mos\.example\.com\{uri\} permanent/);
   assert.match(caddyfile, /https:\/\/home\.mos\.example\.com/);
   assert.match(caddyfile, /acme_dns cloudflare \{env\.CLOUDFLARE_API_TOKEN\}/);
-  assert.doesNotMatch(caddyfile, /3200|homepage|very-secret/u);
+  assert.match(caddyfile, /import \/etc\/caddy\/mos-v2-homepage-routes\.caddy/);
+  assert.doesNotMatch(caddyfile, /3200|very-secret/u);
 });
 
 test('Caddy build pins the builder digest, Caddy version, and Cloudflare module version', () => {

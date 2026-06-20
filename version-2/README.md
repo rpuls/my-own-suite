@@ -28,7 +28,7 @@ npm --prefix version-2 run branding:sync
 
 Build and validate the control plane before optional apps:
 
-- Install Suite Manager, Homepage, Caddy, and required host agents.
+- Install Suite Manager, Homepage, Caddy, and separate narrow HTTPS/Homepage host agents.
 - Do not require owner email or password in the installer.
 - Let the owner create the MOS account in Suite Manager on first browser visit.
 - Rebuild or copy only the Suite Manager UI primitives needed for the first-run screen.
@@ -106,7 +106,9 @@ npm --prefix version-2 run build:client
 npm --prefix version-2 run dev:server
 ```
 
-The backend serves the built frontend from `suite-manager/frontend/dist/` under `/suite-manager/`, with static assets reserved under `/suite-manager/assets/`. The app covers owner first-run setup, login, responsive Dashboard/Settings/sign-out navigation, post-install HTTPS setup, and the authentication boundary in front of Homepage.
+The backend serves the built frontend from `suite-manager/frontend/dist/` under `/suite-manager/`, with static assets reserved under `/suite-manager/assets/`. The app covers owner first-run setup, login, responsive Dashboard/Customize/Settings/sign-out navigation, post-install HTTPS setup, revision-aware Homepage YAML editing, guided dashboard links/home services, and the authentication boundary in front of Homepage.
+
+SQLite owns platform, operation, and revision metadata. Durable Homepage YAML owns dashboard layout and user-managed network-service presentation; `services.template.yaml` is editable and `services.yaml` plus the MOS Caddy route snippet are generated projections. Future app packages remain responsible for installation inputs, secrets, dependencies, volumes, provisioning, backup, and lifecycle.
 
 ## Reference Material
 

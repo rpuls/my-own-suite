@@ -1,9 +1,10 @@
-import { useEffect, useRef, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useRef, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 
-export type IconName = 'dashboard' | 'menu' | 'settings' | 'sign-out' | 'x';
+export type IconName = 'customize' | 'dashboard' | 'menu' | 'settings' | 'sign-out' | 'x';
 
 export function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
+    customize: <><path d="M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></>,
     dashboard: <><rect height="7" rx="1" width="7" x="3" y="3" /><rect height="7" rx="1" width="7" x="14" y="3" /><rect height="7" rx="1" width="7" x="3" y="14" /><rect height="7" rx="1" width="7" x="14" y="14" /></>,
     menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></>,
@@ -38,6 +39,14 @@ export function Drawer({ children, onClose, open, title }: { children: ReactNode
 
 export function TextInput({ helperText, label, ...props }: InputHTMLAttributes<HTMLInputElement> & { helperText?: string; label: string }) {
   return <label className="suite-field"><span>{label}</span><input {...props} />{helperText ? <small>{helperText}</small> : null}</label>;
+}
+
+export function TextArea({ helperText, label, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement> & { helperText?: string; label: string }) {
+  return <label className="suite-field"><span>{label}</span><textarea {...props} />{helperText ? <small>{helperText}</small> : null}</label>;
+}
+
+export function Select({ children, helperText, label, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode; helperText?: string; label: string }) {
+  return <label className="suite-field"><span>{label}</span><select {...props}>{children}</select>{helperText ? <small>{helperText}</small> : null}</label>;
 }
 
 export function Notice({ children, title, variant = 'info' }: { children: ReactNode; title: string; variant?: 'error' | 'info' | 'success' | 'warning' }) {

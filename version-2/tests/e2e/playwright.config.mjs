@@ -9,7 +9,7 @@ export default defineConfig({
   globalSetup: './support/global-setup.mjs',
   globalTeardown: './support/global-teardown.mjs',
   use: {
-    baseURL: 'http://home.localhost:13100',
+    baseURL: 'http://home.127.0.0.1.sslip.io:13100',
     headless: process.env.MOS_V2_E2E_HEADED !== '1',
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
