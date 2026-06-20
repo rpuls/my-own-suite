@@ -6,6 +6,7 @@ const test = require('node:test');
 const {
   HOMEPAGE_IMAGE,
   renderCaddyfile,
+  renderHttpsCaddyfile,
   renderHomepageSystemdUnit,
 } = require('../infrastructure/control-plane-runtime.cjs');
 
@@ -16,6 +17,30 @@ test('Caddy exposes the single Home origin only through Suite Manager', () => {
   assert.doesNotMatch(caddyfile, /MOS_V2_SUITE_MANAGER_HOST/);
   assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:\$MOS_V2_SUITE_MANAGER_PORT/);
   assert.doesNotMatch(caddyfile, /3200|homepage:3000|reverse_proxy\s+homepage/);
+});
+
+test('HTTPS Caddy rendering preserves bootstrap recovery and has no Homepage bypass or secret', () => {
+  const caddyfile = renderHttpsCaddyfile({
+    acmeEmail: 'owner@example.com',
+    baseDomain: 'mos.example.com',
+    bootstrapHost: 'home.203.0.113.42.sslip.io',
+    suiteManagerPort: '3100',
+  });
+
+  assert.match(caddyfile, /http:\/\/home\.203\.0\.113\.42\.sslip\.io/);
+  assert.match(caddyfile, /http:\/\/home\.mos\.example\.com/);
+  assert.match(caddyfile, /redir https:\/\/home\.mos\.example\.com\{uri\} permanent/);
+  assert.match(caddyfile, /https:\/\/home\.mos\.example\.com/);
+  assert.match(caddyfile, /acme_dns cloudflare \{env\.CLOUDFLARE_API_TOKEN\}/);
+  assert.doesNotMatch(caddyfile, /3200|homepage|very-secret/u);
+});
+
+test('Caddy build pins the builder digest, Caddy version, and Cloudflare module version', () => {
+  const dockerfile = fs.readFileSync(path.join(__dirname, '..', 'infrastructure', 'caddy', 'Dockerfile'), 'utf8');
+  assert.match(dockerfile, /caddy:2\.10\.2-builder@sha256:[a-f0-9]{64}/u);
+  assert.match(dockerfile, /xcaddy build v2\.10\.2/u);
+  assert.match(dockerfile, /github\.com\/caddy-dns\/cloudflare@v0\.2\.4/u);
+  assert.doesNotMatch(dockerfile, /latest/u);
 });
 
 test('Homepage runtime is pinned and reachable only through loopback', () => {

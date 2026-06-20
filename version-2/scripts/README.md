@@ -43,6 +43,8 @@ npm --prefix version-2 run smoke:do:render
 
 `smoke:do:up` creates paid DigitalOcean resources, waits for Suite Manager readiness, and prints the Home setup and Suite Manager URLs. `smoke:do:render` is the free dry-run that prints the cloud-init payload without creating resources.
 
+Bootstrap also builds the pinned Cloudflare-capable Caddy binary, verifies its DNS module, installs the restricted HTTPS agent, and connects Suite Manager to its Unix socket. No domain credential or DNS token is accepted during installation.
+
 The smoke harness reads the ignored V2-local file `version-2/.mos-smoke/v2-digitalocean.env` (or `.mos-smoke/v2-digitalocean.env` when working inside `version-2`). V2 smoke credentials, state, and logs all stay under `version-2/.mos-smoke/`.
 
 Required for `up`, `reset`, and `destroy`:
@@ -59,3 +61,20 @@ Optional:
 - `MOS_V2_SMOKE_SSH_KEY_ID`, `MOS_V2_SMOKE_SSH_KEY_FINGERPRINT`, or `MOS_V2_SMOKE_SSH_KEY_NAME`
 
 The smoke install uses cloud-init, so SSH keys are optional for the install itself but useful for debugging.
+
+### Explicit DNS-01 validation
+
+After creating the owner on an existing V2 smoke Droplet and pointing `home.<base-domain>` at it, real DNS-01 validation is available only with explicit confirmation:
+
+```powershell
+$env:MOS_V2_DNS01_CONFIRM='APPLY_REAL_DNS01'
+$env:MOS_V2_DNS01_BASE_DOMAIN='mos.example.com'
+$env:MOS_V2_DNS01_ACME_EMAIL='owner@example.com'
+$env:MOS_V2_DNS01_OWNER_EMAIL='owner@example.com'
+$env:MOS_V2_DNS01_OWNER_PASSWORD='<owner password>'
+$env:CLOUDFLARE_API_TOKEN='<scoped token>'
+$env:DIGITALOCEAN_ACCESS_TOKEN='<DigitalOcean token>'
+cmd /c npm --prefix version-2 run smoke:do:dns01
+```
+
+The command signs in through the bootstrap URL, submits the production Settings API, and waits for the HTTPS Home status endpoint. It never prints either credential. It refuses to run without the exact confirmation value and existing smoke state.

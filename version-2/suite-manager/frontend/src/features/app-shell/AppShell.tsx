@@ -1,3 +1,7 @@
+import { useCallback, useEffect, useState } from 'react';
+
+import { Drawer, Icon } from '../../components/ui';
+import { SettingsScreen } from '../settings/SettingsScreen';
 import type { Owner } from '../setup/types';
 
 type AppShellProps = {
@@ -6,6 +10,21 @@ type AppShellProps = {
 };
 
 export function AppShell({ onLogout, owner }: AppShellProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [route, setRoute] = useState(() => window.location.pathname.endsWith('/settings') ? 'settings' : 'dashboard');
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  useEffect(() => {
+    const update = () => setRoute(window.location.pathname.endsWith('/settings') ? 'settings' : 'dashboard');
+    window.addEventListener('popstate', update);
+    return () => window.removeEventListener('popstate', update);
+  }, []);
+
+  function openSettings() {
+    window.history.pushState({}, '', '/suite-manager/settings');
+    setRoute('settings');
+    closeMenu();
+  }
+
   return (
     <div className="suite-shell">
       <header className="suite-shell-header">
@@ -23,17 +42,13 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
           </div>
         </div>
 
-        <div className="suite-shell-actions">
-          <a className="mos-btn mos-btn-secondary" href="/">
-            Open dashboard
-          </a>
-          <button className="mos-btn mos-btn-secondary" onClick={() => void onLogout()} type="button">
-            Sign out
-          </button>
-        </div>
+        <button aria-expanded={menuOpen} aria-haspopup="dialog" aria-label="Open navigation menu" className="suite-icon-button" onClick={() => setMenuOpen(true)} title="Menu" type="button"><Icon name="menu" /></button>
       </header>
 
+      <Drawer onClose={closeMenu} open={menuOpen} title="Suite Manager menu"><nav className="suite-nav"><a href="/"><Icon name="dashboard" />Dashboard</a><button aria-current={route === 'settings' ? 'page' : undefined} onClick={openSettings} type="button"><Icon name="settings" />Settings</button><button onClick={() => { closeMenu(); void onLogout(); }} type="button"><Icon name="sign-out" />Sign out</button></nav></Drawer>
+
       <main className="suite-shell-main">
+        {route === 'settings' ? <SettingsScreen /> : (
         <section className="mos-shell suite-dashboard">
           <div className="suite-hero">
             <span className="mos-pill mos-pill-accent">Control plane</span>
@@ -59,6 +74,7 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
             </section>
           </div>
         </section>
+        )}
       </main>
     </div>
   );

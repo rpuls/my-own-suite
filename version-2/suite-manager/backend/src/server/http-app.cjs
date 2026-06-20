@@ -3,6 +3,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { SetupError, SetupService } = require('../setup/setup-service.cjs');
+const { HttpsAgentClient } = require('../settings/https-agent-client.cjs');
+const { HttpsSettingsError } = require('../../../../shared/https-contract.cjs');
+const { HttpsSettingsService } = require('../settings/https-settings-service.cjs');
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
 
 const SESSION_COOKIE = 'mos_v2_session';
@@ -69,21 +72,25 @@ function parseCookies(header = '') {
   );
 }
 
-function sessionCookie(token) {
-  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/`;
+function isHttpsRequest(request) {
+  return String(request.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase() === 'https';
 }
 
-function clearSessionCookie() {
-  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
+function sessionCookie(token, secure = false) {
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/${secure ? '; Secure' : ''}`;
 }
 
-function readJsonBody(request) {
+function clearSessionCookie(secure = false) {
+  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure ? '; Secure' : ''}`;
+}
+
+function readJsonBody(request, maxBytes = 1_000_000) {
   return new Promise((resolve, reject) => {
     let raw = '';
     request.setEncoding('utf8');
     request.on('data', (chunk) => {
       raw += chunk;
-      if (raw.length > 1_000_000) {
+      if (raw.length > maxBytes) {
         reject(new Error('Request body is too large.'));
         request.destroy();
       }
@@ -104,6 +111,9 @@ function readJsonBody(request) {
 }
 
 function errorStatus(error) {
+  if (error instanceof HttpsSettingsError) {
+    return error.statusCode;
+  }
   if (!(error instanceof SetupError)) {
     return 500;
   }
@@ -172,13 +182,19 @@ function serveFrontend(response, frontendDistDir) {
 }
 
 function createV2Server({
+  httpsAgent = new HttpsAgentClient(),
   frontendDistDir = DEFAULT_FRONTEND_DIST_DIR,
   homeHost = process.env.MOS_V2_HOME_HOST || 'home.localhost',
   homepageUpstream = process.env.MOS_V2_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
   stateDir = path.join(process.cwd(), '.state'),
 } = {}) {
   const setup = new SetupService({ stateDir });
-  const homepage = createHomepageProxy({ upstream: homepageUpstream });
+  const httpsSettings = new HttpsSettingsService({
+    agent: httpsAgent,
+    bootstrapHost: homeHost,
+    store: setup.store,
+  });
+  const homepage = createHomepageProxy({ upstream: homepageUpstream, upstreamHost: homeHost });
 
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://localhost');
@@ -187,7 +203,7 @@ function createV2Server({
     const sessionToken = cookies[SESSION_COOKIE] || '';
 
     try {
-      if (requestHost !== homeHost) {
+      if (!httpsSettings.allowedHosts().has(requestHost)) {
         jsonResponse(response, 421, { error: 'Unknown MOS host.' });
         return;
       }
@@ -201,7 +217,7 @@ function createV2Server({
         const body = await readJsonBody(request);
         const result = setup.createOwner(body);
         jsonResponse(response, 201, { owner: result.owner, status: result.status }, {
-          'Set-Cookie': sessionCookie(result.sessionToken),
+          'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),
         });
         return;
       }
@@ -210,7 +226,7 @@ function createV2Server({
         const body = await readJsonBody(request);
         const result = setup.login(body);
         jsonResponse(response, 200, { owner: result.owner, status: result.status }, {
-          'Set-Cookie': sessionCookie(result.sessionToken),
+          'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),
         });
         return;
       }
@@ -218,8 +234,27 @@ function createV2Server({
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/auth/logout`) {
         const result = setup.logout(sessionToken);
         jsonResponse(response, 200, result, {
-          'Set-Cookie': clearSessionCookie(),
+          'Set-Cookie': clearSessionCookie(isHttpsRequest(request)),
         });
+        return;
+      }
+
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/https`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage HTTPS settings.' });
+          return;
+        }
+        jsonResponse(response, 200, await httpsSettings.status());
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/https/apply`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage HTTPS settings.' });
+          return;
+        }
+        const body = await readJsonBody(request, 16 * 1024);
+        jsonResponse(response, 200, await httpsSettings.apply(body));
         return;
       }
 
@@ -273,7 +308,7 @@ function createV2Server({
     const cookies = parseCookies(request.headers.cookie);
     const sessionToken = cookies[SESSION_COOKIE] || '';
 
-    if (requestHost !== homeHost || !isSignedIn(setup, sessionToken)) {
+    if (!httpsSettings.allowedHosts().has(requestHost) || !isSignedIn(setup, sessionToken)) {
       socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
       return;
     }

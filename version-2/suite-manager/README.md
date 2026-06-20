@@ -15,7 +15,8 @@ The first app surface is intentionally narrow:
 - first-run owner account creation
 - existing-owner login
 - logout
-- a signed-in control-plane placeholder
+- responsive Dashboard, Settings, and sign-out navigation
+- Cloudflare DNS-01 HTTPS configuration
 - authenticated access to the private Homepage dashboard
 
 The old Suite Manager frontend is useful reference material for the shell shape, feature-folder layout, and shared UI style, but V2 must rebuild only the pieces it needs under `version-2/`.
@@ -32,6 +33,8 @@ cmd /c npm --prefix version-2 test
 
 SQLite is Suite Manager's durable source of truth. The database is `suite-manager.sqlite` under the configurable `MOS_V2_STATE_DIR`; installed control planes use `/var/lib/mos-v2/suite-manager/suite-manager.sqlite`, while local development defaults to `.state/suite-manager.sqlite` relative to the working directory.
 
+The `https-settings` migration stores only non-secret configuration and status: active/pending base domain, TLS mode, ACME email, provider, timestamps, and sanitized apply outcome. The Cloudflare token is never stored in SQLite or returned by an API. Pending fields keep a candidate host allowlisted during apply without replacing a previously working configuration.
+
 The backend uses the Node 22 built-in `node:sqlite` module, enables foreign keys, a five-second busy timeout, and WAL journaling, and applies ordered schema migrations recorded in `schema_migrations`. SQL stays inside the domain-oriented Suite Manager store. Owner creation and its initial session are committed in one transaction, the schema permits only owner ID `1`, passwords remain scrypt hashes, and only SHA-256 session-token hashes are stored.
 
 ### Legacy JSON import
@@ -40,10 +43,16 @@ On startup, Suite Manager imports `platform-state.json` only when `suite-manager
 
 Back up the database with a SQLite-aware backup tool or while Suite Manager is stopped so the database and WAL state remain consistent. Do not edit the database or migration records manually.
 
+## HTTPS Settings Boundary
+
+Authenticated owners use `/suite-manager/settings`. Suite Manager validates the exact three-field request and sends it over a restricted Unix socket to the V2 HTTPS agent. Successful configuration reports `https://home.<base-domain>/`; because sessions are host-only, the owner signs in again on that new origin.
+
+The original installer-created HTTP Home host remains an authenticated recovery URL. The configured HTTP host redirects to HTTPS. Suite Manager accepts only the bootstrap host plus pending or active Home hosts from SQLite, trusts forwarded protocol at its loopback deployment boundary, and marks session cookies `Secure` on HTTPS.
+
 ## Homepage Authentication Boundary
 
 Suite Manager accepts only the configured `home.<domain>` host and rejects unknown hosts. It owns `/suite-manager/` for onboarding, login, account controls, static assets, and API routes. All other requests require a valid `mos_v2_session` before they are streamed to `MOS_V2_HOMEPAGE_UPSTREAM`.
 
-The proxy preserves request paths, query strings, request/response streaming, redirects, forwarded origin information, and WebSocket upgrades. It removes the MOS cookie before contacting Homepage and ignores upstream cookies. Unauthenticated browser traffic is redirected to `/suite-manager/`, unauthenticated upgrades are rejected, and an unavailable upstream returns `502`.
+The proxy preserves request paths, query strings, request/response streaming, redirects, forwarded origin information, and WebSocket upgrades. It removes the MOS cookie before contacting Homepage and ignores upstream cookies. Homepage receives the stable bootstrap host for its private allowlist while `X-Forwarded-Host` retains the browser origin. Unauthenticated browser traffic is redirected to `/suite-manager/`, unauthenticated upgrades are rejected, and an unavailable upstream returns `502`.
 
 The cookie remains host-only. Because dashboard and Suite Manager share the Home origin, one login covers both without sharing MOS credentials with future app subdomains.

@@ -459,3 +459,78 @@ test('duplicate owner creation returns conflict', async () => {
     assert.equal(duplicate.code, 'OWNER_ALREADY_EXISTS');
   });
 });
+
+test('HTTPS Settings API requires authentication and never returns the submitted token', async () => {
+  const calls = [];
+  const httpsAgent = {
+    apply: async (input) => { calls.push(input); return { rollbackId: 'rollback-one' }; },
+    commit: async () => ({ status: 'committed' }),
+    rollback: async () => ({ status: 'rolled-back' }),
+    status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
+  };
+
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/https', { headers: { Host: 'home.test' } });
+    assert.equal(denied.status, 401);
+
+    const cookie = await createOwner(baseUrl);
+    const token = 'cloudflare_token_1234567890';
+    const applied = await hostRequest(baseUrl, '/suite-manager/api/settings/https/apply', {
+      body: JSON.stringify({ acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', cloudflareApiToken: token }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(applied.status, 200);
+    assert.equal(applied.json().homeUrl, 'https://home.mos.example.com/');
+    assert.doesNotMatch(applied.body, new RegExp(token, 'u'));
+
+    const status = await hostRequest(baseUrl, '/suite-manager/api/settings/https', {
+      headers: { Cookie: cookie, Host: 'home.mos.example.com' },
+    });
+    assert.equal(status.status, 200);
+    assert.equal(status.json().baseDomain, 'mos.example.com');
+    assert.equal(status.json().tokenConfigured, true);
+    assert.doesNotMatch(status.body, new RegExp(token, 'u'));
+    assert.equal(calls[0].cloudflareApiToken, token);
+  }, { homeHost: 'home.test', httpsAgent });
+});
+
+test('HTTPS input validation is sanitized and leaves the bootstrap host active', async () => {
+  const httpsAgent = {
+    apply: async () => { throw new Error('must not run'); },
+    commit: async () => {},
+    rollback: async () => {},
+    status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
+  };
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const secret = 'secret-with-spaces-that-must-not-echo';
+    const response = await hostRequest(baseUrl, '/suite-manager/api/settings/https/apply', {
+      body: JSON.stringify({ acmeEmail: 'bad', baseDomain: 'localhost', cloudflareApiToken: secret }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(response.status, 400);
+    assert.doesNotMatch(response.body, new RegExp(secret, 'u'));
+    const bootstrap = await hostRequest(baseUrl, '/suite-manager/', { headers: { Host: 'home.test' } });
+    assert.equal(bootstrap.status, 200);
+  }, { homeHost: 'home.test', httpsAgent });
+});
+
+test('session cookies become Secure only for HTTPS forwarded requests', async () => {
+  await withServer(async (baseUrl) => {
+    const httpResponse = await hostRequest(baseUrl, '/suite-manager/api/setup/owner', {
+      body: JSON.stringify({ email: 'owner@example.com', name: 'Owner', password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.doesNotMatch(httpResponse.headers['set-cookie'][0], /; Secure/u);
+
+    const httpsLogin = await hostRequest(baseUrl, '/suite-manager/api/auth/login', {
+      body: JSON.stringify({ email: 'owner@example.com', password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json', Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+    assert.match(httpsLogin.headers['set-cookie'][0], /; Secure/u);
+  }, { homeHost: 'home.test' });
+});

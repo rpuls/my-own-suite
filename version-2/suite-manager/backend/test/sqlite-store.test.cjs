@@ -50,8 +50,66 @@ test('fresh state creates the SQLite schema and records every migration', async 
   `).all().map(({ name, version }) => ({ name, version }));
   database.close();
 
-  assert.deepEqual(tables, ['owners', 'schema_migrations', 'sessions']);
+  assert.deepEqual(tables, ['https_settings', 'owners', 'schema_migrations', 'sessions']);
   assert.deepEqual(migrations, MIGRATIONS.map(({ name, version }) => ({ name, version })));
+});
+
+test('HTTPS settings keep pending state separate and never persist the Cloudflare token', async () => {
+  const stateDir = await tempStateDir();
+  const store = new SuiteManagerStore(stateDir);
+  store.beginHttpsApply({
+    acmeEmail: 'owner@example.com',
+    at: '2026-06-20T11:00:00.000Z',
+    baseDomain: 'mos.example.com',
+  });
+  assert.equal(store.getHttpsSettings().baseDomain, null);
+  assert.equal(store.getHttpsSettings().pendingBaseDomain, 'mos.example.com');
+  store.completeHttpsApply('2026-06-20T11:01:00.000Z');
+  assert.equal(store.getHttpsSettings().baseDomain, 'mos.example.com');
+  assert.equal(store.getHttpsSettings().tlsMode, 'cloudflare-dns01');
+  store.close();
+
+  const database = new DatabaseSync(path.join(stateDir, DATABASE_FILENAME), { readOnly: true });
+  const columns = database.prepare('PRAGMA table_info(https_settings)').all().map(({ name }) => name);
+  database.close();
+  assert.equal(columns.some((name) => /token|caddy/u.test(name)), false);
+});
+
+test('an existing version-one database receives the named HTTPS migration', async () => {
+  const stateDir = await tempStateDir();
+  const databasePath = path.join(stateDir, DATABASE_FILENAME);
+  const database = new DatabaseSync(databasePath);
+  database.exec(`
+    CREATE TABLE schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    ) STRICT;
+    ${MIGRATIONS[0].sql}
+  `);
+  database.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (1, ?, ?)')
+    .run(MIGRATIONS[0].name, '2026-06-20T00:00:00.000Z');
+  database.close();
+
+  const upgraded = new SuiteManagerStore(stateDir);
+  assert.equal(upgraded.getHttpsSettings().tlsMode, 'off');
+  const migrations = upgraded.database.prepare('SELECT name FROM schema_migrations ORDER BY version').all();
+  assert.deepEqual(migrations.map(({ name }) => name), ['owner-and-sessions', 'https-settings']);
+  upgraded.close();
+});
+
+test('failed HTTPS apply retains the previously active configuration', async () => {
+  const store = new SuiteManagerStore(await tempStateDir());
+  store.beginHttpsApply({ acmeEmail: 'first@example.com', at: 'one', baseDomain: 'first.example.com' });
+  store.completeHttpsApply('two');
+  store.beginHttpsApply({ acmeEmail: 'second@example.com', at: 'three', baseDomain: 'second.example.com' });
+  store.failHttpsApply({ at: 'four', errorCode: 'HTTPS_APPLY_FAILED' });
+
+  const settings = store.getHttpsSettings();
+  assert.equal(settings.baseDomain, 'first.example.com');
+  assert.equal(settings.pendingBaseDomain, null);
+  assert.equal(settings.lastApplyStatus, 'failed');
+  store.close();
 });
 
 test('owner and initial session creation rolls back as one atomic operation', async () => {

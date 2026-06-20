@@ -8,6 +8,27 @@ function renderCaddyfile() {
 `;
 }
 
+function renderHttpsCaddyfile({ acmeEmail, baseDomain, bootstrapHost, suiteManagerPort = '$MOS_V2_SUITE_MANAGER_PORT' }) {
+  const homeHost = `home.${baseDomain}`;
+  return `{
+  email ${acmeEmail}
+  acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+}
+
+http://${bootstrapHost} {
+  reverse_proxy 127.0.0.1:${suiteManagerPort}
+}
+
+http://${homeHost} {
+  redir https://${homeHost}{uri} permanent
+}
+
+https://${homeHost} {
+  reverse_proxy 127.0.0.1:${suiteManagerPort}
+}
+`;
+}
+
 function renderHomepageSystemdUnit() {
   return `[Unit]
 Description=MOS V2 Homepage dashboard
@@ -32,5 +53,6 @@ module.exports = {
   HOMEPAGE_IMAGE,
   HOMEPAGE_PORT,
   renderCaddyfile,
+  renderHttpsCaddyfile,
   renderHomepageSystemdUnit,
 };

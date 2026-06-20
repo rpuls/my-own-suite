@@ -126,6 +126,97 @@
   gap: 0.65rem;
 }
 
+.suite-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: var(--mos-border-strong);
+  border-radius: var(--mos-radius-sm);
+  background: rgba(10, 31, 53, 0.88);
+  color: var(--mos-color-text-strong);
+  cursor: pointer;
+}
+
+.suite-icon-button:hover,
+.suite-icon-button:focus-visible {
+  border-color: rgba(99, 226, 179, 0.62);
+  outline: 3px solid rgba(99, 226, 179, 0.16);
+}
+
+.suite-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.suite-drawer-layer {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  justify-items: end;
+}
+
+.suite-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  background: rgba(2, 10, 18, 0.72);
+  cursor: default;
+}
+
+.suite-drawer {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: var(--mos-space-5);
+  width: min(22rem, 88vw);
+  height: 100%;
+  padding: var(--mos-space-5);
+  border-left: var(--mos-border-strong);
+  background: var(--mos-color-surface);
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.32);
+}
+
+.suite-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mos-space-4);
+}
+
+.suite-nav {
+  display: grid;
+  gap: var(--mos-space-2);
+}
+
+.suite-nav a,
+.suite-nav button {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-3);
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: var(--mos-radius-sm);
+  background: transparent;
+  color: var(--mos-color-text);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.suite-nav a:hover,
+.suite-nav button:hover,
+.suite-nav button[aria-current='page'] {
+  border-color: rgba(99, 226, 179, 0.3);
+  background: rgba(99, 226, 179, 0.1);
+}
+
 .suite-shell-brand {
   display: flex;
   align-items: center;
@@ -190,6 +281,91 @@
   color: var(--mos-color-text-muted);
 }
 
+.suite-settings {
+  display: grid;
+  gap: var(--mos-space-6);
+}
+
+.suite-settings-panel,
+.suite-settings-form {
+  display: grid;
+  gap: var(--mos-space-5);
+}
+
+.suite-settings-panel {
+  max-width: 780px;
+}
+
+.suite-field {
+  display: grid;
+  gap: var(--mos-space-2);
+}
+
+.suite-field > span,
+.suite-advanced dt {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+  font-weight: 800;
+  letter-spacing: var(--mos-letter-spacing-label);
+  text-transform: uppercase;
+}
+
+.suite-field input {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.8rem 0.95rem;
+  border: var(--mos-border-strong);
+  border-radius: var(--mos-radius-sm);
+  background: rgba(6, 21, 38, 0.72);
+  color: var(--mos-color-text);
+}
+
+.suite-field input:focus {
+  border-color: rgba(99, 226, 179, 0.62);
+  outline: 3px solid rgba(99, 226, 179, 0.18);
+}
+
+.suite-field small {
+  color: var(--mos-color-text-muted);
+}
+
+.suite-notice {
+  display: grid;
+  gap: var(--mos-space-2);
+  padding: var(--mos-space-4);
+  border: 1px solid rgba(142, 180, 212, 0.35);
+  border-radius: var(--mos-radius-sm);
+  background: rgba(142, 180, 212, 0.08);
+}
+
+.suite-notice p { margin: 0; }
+.suite-notice-error { border-color: rgba(255, 157, 157, 0.42); background: rgba(255, 157, 157, 0.09); }
+.suite-notice-success { border-color: rgba(99, 226, 179, 0.42); background: rgba(99, 226, 179, 0.09); }
+.suite-notice-warning { border-color: rgba(255, 205, 120, 0.42); background: rgba(255, 205, 120, 0.09); }
+
+.suite-advanced {
+  border-top: var(--mos-border-subtle);
+  padding-top: var(--mos-space-4);
+}
+
+.suite-advanced summary {
+  color: var(--mos-color-text-strong);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.suite-advanced dl {
+  display: grid;
+  grid-template-columns: minmax(10rem, auto) 1fr;
+  gap: var(--mos-space-2) var(--mos-space-4);
+  margin-bottom: 0;
+}
+
+.suite-advanced dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 720px) {
   .suite-shell-header,
   .suite-dashboard-grid {
@@ -197,7 +373,9 @@
   }
 
   .suite-shell-header {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
   }
+
+  .suite-advanced dl { grid-template-columns: 1fr; }
+  .suite-advanced dd { margin-bottom: var(--mos-space-2); }
 }

@@ -21,16 +21,18 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Ran the first paid V2 DigitalOcean smoke, diagnosed Caddy repository key placement and Windows SSH-render line endings, repaired the existing Droplet, and verified the public setup API returns `needs-owner`.
 - [x] Added and refined the real V2 Caddy/Homepage control-plane slice: one Home origin with Suite Manager at `/suite-manager/`, authenticated private Homepage proxying, the proven V1 Homepage visual layer and bookmark layout, local MOS/Funkyton tile assets, seed-only editable template state, and focused HTTP/WebSocket/render tests.
 - [x] Replaced milestone JSON persistence with a Node 22 built-in SQLite store, ordered schema migrations, database-enforced singleton ownership, atomic owner/session creation, hashed sessions, restart-safe auth behavior, and safe one-time JSON import.
+- [x] Added responsive Suite Manager navigation, the first authenticated V2 Settings page, migrated non-secret HTTPS state, a narrow rollback-capable HTTPS agent, and a pinned repo-built Caddy binary with the Cloudflare DNS module.
+- [x] Added a V2-owned Playwright foundation for real local owner, Homepage, navigation, Settings validation, and logout behavior, plus an explicitly guarded DigitalOcean DNS-01 validation command.
 
 ### Current Next Slice
 
 Build the next real V2 vertical slice inside `version-2/`:
 
-1. Add the V2 DNS-01 HTTPS/settings slice on the SQLite foundation without weakening the one-origin control-plane boundary.
-2. Run one fresh user-driven V2 DigitalOcean smoke to validate the authenticated Home dashboard and confirm no direct Homepage bypass exists.
-3. Add local backend/frontend/Homepage orchestration for interactive development without weakening the production host/auth boundary.
+1. Run the user-driven local V2 Playwright suite and address any browser-only failures without adding test behavior to production code.
+2. Run one fresh user-driven V2 DigitalOcean smoke, complete owner setup, and use the guarded DNS-01 command to validate issuance, HTTPS login/dashboard behavior, HTTP redirect, and bootstrap recovery.
+3. Add richer certificate issuance/renewal health reporting after real-machine evidence identifies the minimum useful diagnostics.
 4. Keep the installer input surface no-preconfig: no owner credentials, app choices, or app-specific env values before first boot.
-5. Add UI-level tests only when the control-plane surface grows beyond the current focused HTTP boundary coverage.
+5. Continue local control-plane development orchestration only where it remains faithful to the production host/auth boundary.
 
 ### Latest Verified Command
 
@@ -40,11 +42,11 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
-Current result: V2 tests pass, covering the platform contract, branding sync, SQLite schema/migrations and JSON import, setup state, owner creation, login/logout and restart persistence, host-aware routing, authenticated HTTP/WebSocket Homepage proxying, private runtime/Caddy rendering, built frontend serving, and the no-preconfig bootstrap contract.
+Current result: 51 V2 tests pass, covering the platform contract, branding sync, SQLite schema/migrations and JSON import, setup state, owner creation, login/logout and restart persistence, HTTPS settings and rollback contracts, host-aware routing, authenticated HTTP/WebSocket Homepage proxying, pinned Cloudflare-capable Caddy rendering, privileged-agent behavior, built frontend serving, and the no-preconfig bootstrap contract. TypeScript, the production frontend build, CommonJS syntax, and a local `needs-owner` startup probe also pass. Playwright and real DNS-01 validation remain explicitly user-run.
 
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep runtime work inside `version-2/`; treat V1 as reference only. V2 now exposes one `home.<domain>` origin through Caddy. Suite Manager owns `/suite-manager/`, authenticates the shared origin, proxies the private loopback Homepage service, and stores owner/session state in a migrated SQLite database under its state directory. The next major slice is DNS-01 HTTPS and its explicit settings model, followed by a user-run fresh DigitalOcean validation and local control-plane development orchestration before app catalog work.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep runtime work inside `version-2/`; treat V1 as reference only. V2 has responsive Dashboard/Settings/sign-out navigation, migrated non-secret HTTPS state, a restricted root HTTPS agent, repo-built Cloudflare-capable Caddy, rollback-safe configuration apply, and a V2 Playwright foundation. The next step is user-run local browser validation followed by a fresh DigitalOcean/DNS-01 validation before expanding certificate health reporting or app catalog work.
 
 ## Product Goal
 
@@ -149,7 +151,7 @@ Goal: prove the human entry point before touching app installs.
 - [x] Replace minimal first-run UI with polished V2 UI.
 - [x] Rebuild/copy only the needed shared UI primitives from the old Suite Manager.
 - [x] Add unit/API tests for setup status and owner creation.
-- [ ] Add UI-level tests only when there is enough app surface to justify them.
+- [x] Add V2-owned Playwright coverage for owner setup, navigation, Settings validation, Homepage protection, and logout.
 
 Exit criteria:
 
@@ -228,9 +230,9 @@ Goal: make the empty platform trustworthy before adding apps.
 - [ ] Add update-track display or defer it explicitly.
 - [ ] Add host-agent capability display or defer it explicitly.
 - [ ] Add backup placeholder/guidance or defer it explicitly.
-- [ ] Add DNS-01 HTTPS and its explicit base-domain/settings model as the next major slice.
+- [x] Add DNS-01 HTTPS and its explicit base-domain/settings model through a narrow privileged agent.
 - [x] Keep the first Homepage dashboard intentionally minimal and branded before optional apps exist.
-- [ ] Keep advanced diagnostics behind details/disclosures.
+- [x] Keep HTTPS status and sanitized diagnostics behind Advanced details.
 
 Exit criteria:
 

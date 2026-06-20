@@ -47,7 +47,7 @@ function errorMessage(body: ApiErrorBody, fallback: string): string {
 }
 
 function enterHomeDashboard(): boolean {
-  if (!window.location.pathname.startsWith('/suite-manager')) {
+  if (window.location.pathname !== '/suite-manager/' && window.location.pathname !== '/suite-manager') {
     return false;
   }
 
@@ -77,7 +77,7 @@ export function useSetupSession() {
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',
     });
-    const body = await readJson<AuthResponse & ApiErrorBody>(response).catch(() => ({}));
+    const body: AuthResponse & ApiErrorBody = await readJson<AuthResponse & ApiErrorBody>(response).catch(() => ({}));
 
     if (!response.ok || !body.owner) {
       setState({ kind: 'needs-owner', error: errorMessage(body, 'Unable to create the owner account.') });
@@ -95,7 +95,7 @@ export function useSetupSession() {
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',
     });
-    const body = await readJson<AuthResponse & ApiErrorBody>(response).catch(() => ({}));
+    const body: AuthResponse & ApiErrorBody = await readJson<AuthResponse & ApiErrorBody>(response).catch(() => ({}));
 
     if (!response.ok || !body.owner) {
       setState({

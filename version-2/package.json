@@ -8,18 +8,28 @@
     "build:client": "npm run branding:sync && vite build --config suite-manager/vite.config.mjs",
     "branding:sync": "node scripts/sync-branding.cjs",
     "dev:client": "npm run branding:sync && vite --config suite-manager/vite.config.mjs",
+    "dev:server": "node suite-manager/backend/src/server/start.cjs",
+    "e2e:install": "playwright install chromium",
+    "e2e:local": "playwright test --config tests/e2e/playwright.config.mjs",
+    "e2e:local:headed": "playwright test --config tests/e2e/playwright.config.mjs --headed",
     "install:render": "node scripts/installers/render-bootstrap.cjs",
     "smoke:do:destroy": "node scripts/smoke/digitalocean-v2.cjs destroy",
+    "smoke:do:dns01": "node scripts/smoke/dns01-v2.cjs",
     "smoke:do:render": "node scripts/smoke/digitalocean-v2.cjs render",
     "smoke:do:reset": "node scripts/smoke/digitalocean-v2.cjs reset",
     "smoke:do:up": "node scripts/smoke/digitalocean-v2.cjs up",
-    "test": "npm run branding:sync && node --test suite-manager/backend/test/*.test.cjs test/*.test.cjs"
+    "test": "npm run branding:sync && node --test suite-manager/backend/test/*.test.cjs system-agents/https/*.test.cjs test/*.test.cjs",
+    "typecheck": "tsc --project suite-manager/tsconfig.json"
   },
   "dependencies": {
+    "my-own-suite": "file:..",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "typescript": "^6.0.3",
     "vite": "^8.0.10"

@@ -29,6 +29,29 @@ const MIGRATIONS = [
     `,
     version: 1,
   },
+  {
+    name: 'https-settings',
+    sql: `
+      CREATE TABLE https_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        base_domain TEXT,
+        tls_mode TEXT NOT NULL DEFAULT 'off' CHECK (tls_mode IN ('off', 'cloudflare-dns01')),
+        acme_email TEXT,
+        provider TEXT CHECK (provider IS NULL OR provider = 'cloudflare'),
+        configured_at TEXT,
+        updated_at TEXT NOT NULL,
+        pending_base_domain TEXT,
+        pending_acme_email TEXT,
+        last_apply_status TEXT NOT NULL DEFAULT 'never' CHECK (last_apply_status IN ('never', 'applying', 'applied', 'failed')),
+        last_apply_at TEXT,
+        last_apply_error_code TEXT,
+        last_apply_diagnostics TEXT
+      ) STRICT;
+
+      INSERT INTO https_settings (id, updated_at) VALUES (1, CURRENT_TIMESTAMP);
+    `,
+    version: 2,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -154,6 +177,59 @@ class SuiteManagerStore {
 
   hasSession(tokenHash) {
     return Boolean(this.database.prepare('SELECT 1 FROM sessions WHERE token_hash = ?').get(tokenHash));
+  }
+
+  getHttpsSettings() {
+    return this.database.prepare(`
+      SELECT
+        acme_email AS acmeEmail,
+        base_domain AS baseDomain,
+        configured_at AS configuredAt,
+        last_apply_at AS lastApplyAt,
+        last_apply_diagnostics AS lastApplyDiagnostics,
+        last_apply_error_code AS lastApplyErrorCode,
+        last_apply_status AS lastApplyStatus,
+        pending_acme_email AS pendingAcmeEmail,
+        pending_base_domain AS pendingBaseDomain,
+        provider,
+        tls_mode AS tlsMode,
+        updated_at AS updatedAt
+      FROM https_settings
+      WHERE id = 1
+    `).get();
+  }
+
+  beginHttpsApply({ acmeEmail, baseDomain, at }) {
+    this.database.prepare(`
+      UPDATE https_settings
+      SET pending_base_domain = ?, pending_acme_email = ?, last_apply_status = 'applying',
+          last_apply_at = ?, last_apply_error_code = NULL, last_apply_diagnostics = NULL,
+          updated_at = ?
+      WHERE id = 1
+    `).run(baseDomain, acmeEmail, at, at);
+  }
+
+  completeHttpsApply(at) {
+    this.database.prepare(`
+      UPDATE https_settings
+      SET base_domain = pending_base_domain, acme_email = pending_acme_email,
+          provider = 'cloudflare', tls_mode = 'cloudflare-dns01',
+          configured_at = COALESCE(configured_at, ?), updated_at = ?,
+          pending_base_domain = NULL, pending_acme_email = NULL,
+          last_apply_status = 'applied', last_apply_at = ?,
+          last_apply_error_code = NULL, last_apply_diagnostics = NULL
+      WHERE id = 1
+    `).run(at, at, at);
+  }
+
+  failHttpsApply({ at, diagnostics = null, errorCode }) {
+    this.database.prepare(`
+      UPDATE https_settings
+      SET pending_base_domain = NULL, pending_acme_email = NULL,
+          last_apply_status = 'failed', last_apply_at = ?,
+          last_apply_error_code = ?, last_apply_diagnostics = ?, updated_at = ?
+      WHERE id = 1
+    `).run(at, errorCode, diagnostics, at);
   }
 
   createOwnerAndSession(owner, session) {

@@ -53,6 +53,8 @@ version-2/suite-manager/frontend/dist/
 tests/e2e/node_modules/
 tests/e2e/playwright-report/
 tests/e2e/test-results/
+version-2/tests/e2e/playwright-report/
+version-2/tests/e2e/test-results/
 
 # Local runtime state
 .state/

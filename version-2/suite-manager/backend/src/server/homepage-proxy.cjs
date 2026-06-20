@@ -17,7 +17,7 @@ function externalOrigin(request) {
   return `${protocol}://${request.headers.host}`;
 }
 
-function upstreamRequestHeaders(request, { upgrade = false } = {}) {
+function upstreamRequestHeaders(request, { upstreamHost = request.headers.host, upgrade = false } = {}) {
   const headers = { ...request.headers };
 
   delete headers.cookie;
@@ -25,7 +25,7 @@ function upstreamRequestHeaders(request, { upgrade = false } = {}) {
     delete headers[name];
   }
 
-  headers.host = request.headers.host;
+  headers.host = upstreamHost;
   headers['x-forwarded-host'] = request.headers.host;
   headers['x-forwarded-proto'] = String(request.headers['x-forwarded-proto'] || 'http').split(',')[0].trim();
 
@@ -86,13 +86,13 @@ function writeSocketResponse(socket, statusCode, statusText, headers = {}) {
   socket.write(`${lines.join('\r\n')}\r\n\r\n`);
 }
 
-function createHomepageProxy({ upstream }) {
+function createHomepageProxy({ upstream, upstreamHost }) {
   const upstreamUrl = new URL(upstream);
   const transport = upstreamUrl.protocol === 'https:' ? https : http;
 
   function requestOptions(request, { upgrade = false } = {}) {
     return {
-      headers: upstreamRequestHeaders(request, { upgrade }),
+      headers: upstreamRequestHeaders(request, { upstreamHost, upgrade }),
       hostname: upstreamUrl.hostname,
       method: request.method,
       path: request.url,

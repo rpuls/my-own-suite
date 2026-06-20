@@ -222,6 +222,36 @@ git -C "$MOS_V2_INSTALL_ROOT/repo" reset --hard "$MOS_V2_REPO_REF"
 npm --prefix "$MOS_V2_INSTALL_ROOT/repo/version-2" install
 npm --prefix "$MOS_V2_INSTALL_ROOT/repo/version-2" run build:client
 
+docker build --file "$MOS_V2_INSTALL_ROOT/repo/version-2/infrastructure/caddy/Dockerfile" --tag mos-v2-caddy-builder "$MOS_V2_INSTALL_ROOT/repo/version-2"
+caddy_builder_container="$(docker create mos-v2-caddy-builder)"
+install -d -m 0755 /usr/local/libexec/mos-v2
+docker cp "$caddy_builder_container:/caddy" /usr/local/libexec/mos-v2/caddy.next
+docker rm "$caddy_builder_container"
+chmod 0755 /usr/local/libexec/mos-v2/caddy.next
+mv /usr/local/libexec/mos-v2/caddy.next /usr/local/libexec/mos-v2/caddy
+if ! /usr/local/libexec/mos-v2/caddy list-modules | grep -q '^dns.providers.cloudflare$'; then
+  echo '[mos-v2] The repo-built Caddy binary is missing dns.providers.cloudflare.' >&2
+  exit 1
+fi
+
+if ! getent group mos-v2-agent >/dev/null; then
+  groupadd --system mos-v2-agent
+fi
+usermod -a -G mos-v2-agent "$MOS_V2_RUNTIME_USER"
+install -d -m 0750 /etc/mos-v2 /etc/mos-v2/secrets /var/lib/mos-v2/https-agent
+install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-https-agent
+install -d -m 0700 /var/lib/mos-v2/https-agent/transactions
+
+install -d -m 0755 /etc/systemd/system/caddy.service.d
+cat > /etc/systemd/system/caddy.service.d/mos-v2.conf <<'MOS_V2_CADDY_OVERRIDE'
+[Service]
+EnvironmentFile=-/etc/mos-v2/secrets/caddy-cloudflare.env
+ExecStart=
+ExecStart=/usr/local/libexec/mos-v2/caddy run --environ --config /etc/caddy/Caddyfile
+ExecReload=
+ExecReload=/usr/local/libexec/mos-v2/caddy reload --config /etc/caddy/Caddyfile --force
+MOS_V2_CADDY_OVERRIDE
+
 homepage_seed_marker="$MOS_V2_STATE_ROOT/homepage/config/.mos-v2-defaults-v2"
 for source_file in "$MOS_V2_INSTALL_ROOT/repo/version-2/infrastructure/homepage/"*; do
   target_file="$MOS_V2_STATE_ROOT/homepage/config/$(basename "$source_file")"
@@ -232,6 +262,8 @@ done
 touch "$homepage_seed_marker"
 chown -R "$MOS_V2_RUNTIME_USER:$MOS_V2_RUNTIME_USER" "$MOS_V2_STATE_ROOT"
 chown -R 1000:1000 "$MOS_V2_STATE_ROOT/homepage/config"
+chown -R root:root "$MOS_V2_STATE_ROOT/https-agent"
+chmod 0700 "$MOS_V2_STATE_ROOT/https-agent" "$MOS_V2_STATE_ROOT/https-agent/transactions"
 
 cat > /etc/systemd/system/mos-v2-homepage.service <<MOS_V2_HOMEPAGE_UNIT
 ${renderHomepageSystemdUnit()}
@@ -255,6 +287,7 @@ Environment=MOS_V2_SUITE_MANAGER_HOST=127.0.0.1
 Environment=MOS_V2_SUITE_MANAGER_PORT=$MOS_V2_SUITE_MANAGER_PORT
 Environment=MOS_V2_HOME_HOST=$MOS_V2_HOME_HOST
 Environment=MOS_V2_HOMEPAGE_UPSTREAM=$MOS_V2_HOMEPAGE_UPSTREAM
+Environment=MOS_V2_HTTPS_AGENT_SOCKET=/run/mos-v2-https-agent/agent.sock
 ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/version-2/suite-manager/backend/src/server/start.cjs
 Restart=always
 RestartSec=3
@@ -262,6 +295,29 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 MOS_V2_SUITE_MANAGER_UNIT
+
+cat > /etc/systemd/system/mos-v2-https-agent.service <<MOS_V2_HTTPS_AGENT_UNIT
+[Unit]
+Description=MOS V2 narrow HTTPS configuration agent
+After=network-online.target caddy.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=mos-v2-agent
+UMask=0007
+WorkingDirectory=$MOS_V2_INSTALL_ROOT/repo/version-2
+Environment=NODE_ENV=production
+Environment=MOS_V2_HTTPS_AGENT_SOCKET=/run/mos-v2-https-agent/agent.sock
+Environment=MOS_V2_HTTPS_TRANSACTION_ROOT=$MOS_V2_STATE_ROOT/https-agent/transactions
+ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/version-2/system-agents/https/agent.cjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+MOS_V2_HTTPS_AGENT_UNIT
 
 cat > /etc/caddy/Caddyfile <<MOS_V2_CADDY
 ${renderCaddyfile()}
@@ -289,6 +345,8 @@ systemctl enable mos-v2-suite-manager.service
 systemctl restart mos-v2-suite-manager.service
 systemctl enable caddy.service
 systemctl restart caddy.service
+systemctl enable mos-v2-https-agent.service
+systemctl restart mos-v2-https-agent.service
 
 cat >> "$MOS_V2_STATE_ROOT/bootstrap-contract.env" <<'MOS_V2_BOOTSTRAP_DONE'
 MOS_V2_BOOTSTRAP_STATUS='ready-for-owner-setup'

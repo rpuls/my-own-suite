@@ -1,12 +1,13 @@
 {
   "compilerOptions": {
     "target": "ES2023",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "strict": true,
     "noEmit": true,
     "allowImportingTsExtensions": false,
     "verbatimModuleSyntax": true,
+    "types": ["vite/client"],
     "noUncheckedIndexedAccess": true,
     "jsx": "react-jsx"
   },

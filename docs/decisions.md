@@ -4,6 +4,21 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-06-20: V2 HTTPS Is Applied By A Narrow Host Agent
+
+Decision: V2 configures post-install HTTPS from authenticated Suite Manager Settings, but a dedicated root system agent owns Cloudflare token storage and Caddy mutation. V2 builds a pinned Caddy binary with `caddy-dns/cloudflare`, stores only non-secret HTTPS state in SQLite, retains the installer-created HTTP Home host for recovery, and uses `home.<base-domain>` as the configured HTTPS origin.
+
+Reason: Stock Caddy packages do not contain the external Cloudflare DNS provider, while the web process must not gain general host privileges or persist DNS credentials in ordinary application state. Keeping the existing origin live during a transactional apply also lets Suite Manager report the new URL without restarting itself mid-request.
+
+Consequences:
+
+- Bootstrap and managed updates must reproducibly rebuild, verify, install, and select the MOS-owned Caddy binary.
+- The HTTPS agent exposes only structured status/apply/commit/rollback operations over a restricted Unix socket; it is not a general host shell or DNS manager.
+- Cloudflare credentials live only in a root-owned secret environment file and must never appear in SQLite, generated Caddy text, public APIs, logs, or diagnostics.
+- Candidate Caddy configuration is validated, atomically installed, reloaded, and rolled back on failure before Suite Manager records it as active.
+- The configured HTTP Home host redirects to HTTPS, while the original authenticated HTTP bootstrap host remains available for transition and recovery.
+- Host-only sessions are not transferred between origins; users sign in again and HTTPS responses set `Secure` cookies.
+
 ## 2026-06-19: V2 Homepage Is Authenticated Through Suite Manager
 
 Decision: V2 exposes one `home.<domain>` control-plane origin through Caddy. Suite Manager owns `/suite-manager/`, authenticates the shared origin, and proxies all other authenticated paths to the private loopback Homepage service. Sessions remain host-only; V2 does not share a parent-domain session cookie across app subdomains.

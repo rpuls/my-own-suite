@@ -33,6 +33,7 @@ Build and validate the control plane before optional apps:
 - Let the owner create the MOS account in Suite Manager on first browser visit.
 - Rebuild or copy only the Suite Manager UI primitives needed for the first-run screen.
 - Reuse the DigitalOcean smoke harness for real install validation once the no-owner path exists.
+- Configure real HTTPS after installation through responsive Suite Manager navigation and Settings, migrated non-secret state, a narrow root agent, and repo-built Cloudflare-capable Caddy.
 
 ## Authenticated Control-Plane Routes
 
@@ -84,7 +85,14 @@ From the repo root:
 npm --prefix version-2 test
 ```
 
-This syncs branding and verifies the V2 Suite Manager backend contract without starting Docker, touching host agents, importing the old Suite Manager app, or changing the current stack.
+This syncs branding and verifies the V2 Suite Manager, SQLite, HTTPS agent, Caddy renderer, installer, and platform contracts without starting Docker, touching installed host services, importing the old Suite Manager app, or changing the current stack.
+
+Browser E2E is deliberately user-run:
+
+```powershell
+cmd /c npm --prefix version-2 run e2e:local
+cmd /c npm --prefix version-2 run e2e:local:headed
+```
 
 ## Suite Manager Frontend
 
@@ -95,9 +103,10 @@ From the repo root:
 ```powershell
 npm --prefix version-2 run dev:client
 npm --prefix version-2 run build:client
+npm --prefix version-2 run dev:server
 ```
 
-The backend serves the built frontend from `suite-manager/frontend/dist/` under `/suite-manager/`, with static assets reserved under `/suite-manager/assets/`. The app covers owner first-run setup, login, logout, the initial control-plane screen, and the authentication boundary in front of Homepage.
+The backend serves the built frontend from `suite-manager/frontend/dist/` under `/suite-manager/`, with static assets reserved under `/suite-manager/assets/`. The app covers owner first-run setup, login, responsive Dashboard/Settings/sign-out navigation, post-install HTTPS setup, and the authentication boundary in front of Homepage.
 
 ## Reference Material
 
