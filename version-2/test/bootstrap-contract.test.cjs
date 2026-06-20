@@ -29,7 +29,7 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.match(plan.cloudInit, /reverse_proxy 127\.0\.0\.1:\$MOS_V2_SUITE_MANAGER_PORT/);
   assert.match(plan.cloudInit, /mos-v2-homepage\.service/);
   assert.match(plan.cloudInit, /--publish 127\.0\.0\.1:3200:3000/);
-  assert.match(plan.cloudInit, /\.mos-v2-defaults-seeded/);
+  assert.match(plan.cloudInit, /\.mos-v2-defaults-v2/);
   assert.match(plan.cloudInit, /if \[ ! -e "\$homepage_seed_marker" \] \|\| \[ ! -e "\$target_file" \]; then/);
   assert.match(plan.cloudInit, /systemctl restart mos-v2-homepage\.service/);
   assert.match(plan.cloudInit, /curl -fsS -H "Host: \$MOS_V2_HOME_HOST" "\$MOS_V2_HOMEPAGE_UPSTREAM"/);

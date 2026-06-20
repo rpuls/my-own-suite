@@ -222,7 +222,7 @@ git -C "$MOS_V2_INSTALL_ROOT/repo" reset --hard "$MOS_V2_REPO_REF"
 npm --prefix "$MOS_V2_INSTALL_ROOT/repo/version-2" install
 npm --prefix "$MOS_V2_INSTALL_ROOT/repo/version-2" run build:client
 
-homepage_seed_marker="$MOS_V2_STATE_ROOT/homepage/config/.mos-v2-defaults-seeded"
+homepage_seed_marker="$MOS_V2_STATE_ROOT/homepage/config/.mos-v2-defaults-v2"
 for source_file in "$MOS_V2_INSTALL_ROOT/repo/version-2/infrastructure/homepage/"*; do
   target_file="$MOS_V2_STATE_ROOT/homepage/config/$(basename "$source_file")"
   if [ ! -e "$homepage_seed_marker" ] || [ ! -e "$target_file" ]; then

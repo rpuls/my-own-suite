@@ -14,5 +14,6 @@ Generated targets:
 - `version-2/suite-manager/frontend/src/styles/mos.css`
 - `version-2/infrastructure/homepage/custom.css` inside the sync marker block
 - public brand assets under future site and Suite Manager folders
+- `version-2/infrastructure/homepage/images/my-own-suite-mark.png` for the local Homepage tile
 
 Do not hand-edit generated copies when the change is shared branding.

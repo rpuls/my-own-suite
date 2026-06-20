@@ -20,7 +20,7 @@ Type=simple
 Restart=always
 RestartSec=3
 ExecStartPre=-/usr/bin/docker rm -f mos-v2-homepage
-ExecStart=/usr/bin/docker run --rm --name mos-v2-homepage --publish 127.0.0.1:${HOMEPAGE_PORT}:3000 --env HOMEPAGE_ALLOWED_HOSTS=$MOS_V2_HOME_HOST --volume $MOS_V2_STATE_ROOT/homepage/config:/app/config ${HOMEPAGE_IMAGE}
+ExecStart=/usr/bin/docker run --rm --name mos-v2-homepage --publish 127.0.0.1:${HOMEPAGE_PORT}:3000 --env HOMEPAGE_ALLOWED_HOSTS=$MOS_V2_HOME_HOST --volume $MOS_V2_STATE_ROOT/homepage/config:/app/config --volume $MOS_V2_STATE_ROOT/homepage/config/images:/app/public/images ${HOMEPAGE_IMAGE}
 ExecStop=/usr/bin/docker stop -t 10 mos-v2-homepage
 
 [Install]

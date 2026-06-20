@@ -32,7 +32,7 @@ export function OwnerSetupScreen({ error, onCreateOwner }: OwnerSetupScreenProps
               alt=""
               className="suite-auth-mark"
               height="56"
-              src="/brand/my-own-suite-mark.png"
+              src="/suite-manager/assets/brand/my-own-suite-mark.png"
               width="56"
             />
             <span className="mos-eyebrow">My Own Suite</span>

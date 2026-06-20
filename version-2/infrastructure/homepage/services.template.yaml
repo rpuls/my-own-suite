@@ -4,10 +4,10 @@
     - Suite Manager:
         href: /suite-manager/
         description: Manage your MOS account and control plane
-        icon: mdi-cog-outline
+        icon: /images/my-own-suite-mark.png
 
 - Open Source Resources:
     - Funkyton:
         href: https://www.funkyton.com
         description: Open source resources, projects, and practical guides
-        icon: mdi-open-source-initiative
+        icon: /images/funkyton-F-icon.png

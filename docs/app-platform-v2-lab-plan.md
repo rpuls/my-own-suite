@@ -19,7 +19,7 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Built the first React/Vite V2 Suite Manager owner onboarding app shell.
 - [x] Added a V2 no-preconfig bootstrap contract, dry-run renderers for cloud-init, SSH/bootstrap, USB seed config, and a DigitalOcean smoke harness that can create a Droplet and install the V2 control plane.
 - [x] Ran the first paid V2 DigitalOcean smoke, diagnosed Caddy repository key placement and Windows SSH-render line endings, repaired the existing Droplet, and verified the public setup API returns `needs-owner`.
-- [x] Added and refined the real V2 Caddy/Homepage control-plane slice: one Home origin with Suite Manager at `/suite-manager/`, authenticated private Homepage proxying, useful branded defaults, seed-only editable template state, and focused HTTP/WebSocket/render tests.
+- [x] Added and refined the real V2 Caddy/Homepage control-plane slice: one Home origin with Suite Manager at `/suite-manager/`, authenticated private Homepage proxying, the proven V1 Homepage visual layer and bookmark layout, local MOS/Funkyton tile assets, seed-only editable template state, and focused HTTP/WebSocket/render tests.
 
 ### Current Next Slice
 
