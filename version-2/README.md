@@ -46,6 +46,12 @@ V2 uses one public origin while keeping Homepage private:
 
 The session remains host-only but now covers both dashboard and Suite Manager because they share one origin. Future apps can keep their own authentication without receiving the MOS control-plane cookie.
 
+## Durable Suite Manager State
+
+Suite Manager stores owner identity and sessions in `suite-manager.sqlite` under `MOS_V2_STATE_DIR`. The installed runtime sets that directory to `/var/lib/mos-v2/suite-manager`; local runs default to `.state`. Schema changes are ordered migrations, owner creation plus its initial session is transactional, and password/session secrets are stored only as hashes. Existing prototype `platform-state.json` state is imported once only when no SQLite database exists and retained as `platform-state.json.migrated`.
+
+See `suite-manager/README.md` for migration precedence and backup expectations.
+
 ## Installer Foundation
 
 V2 installer front doors share one bootstrap contract under `scripts/installers/`. The contract requires no `.env` file for the first boot. Repository URL/ref and domain can be supplied, but default to the MOS GitHub repo, `feat/app-platform-v2-lab`, and either `<public-ip>.sslip.io` for smoke/cloud paths or `localhost` for local render checks.

@@ -30,9 +30,15 @@ cmd /c npm --prefix version-2 test
 
 ## Persistence
 
-The first owner-onboarding slice uses the V2-local versioned JSON store at `platform-state.json` for owner metadata and sessions.
+SQLite is Suite Manager's durable source of truth. The database is `suite-manager.sqlite` under the configurable `MOS_V2_STATE_DIR`; installed control planes use `/var/lib/mos-v2/suite-manager/suite-manager.sqlite`, while local development defaults to `.state/suite-manager.sqlite` relative to the working directory.
 
-This is milestone persistence only. Before V2 adds richer settings, more user details, app install state, migrations, or longer-lived session policy, Suite Manager should move to a local SQLite database owned by Suite Manager. SQLite gives V2 a small self-host-friendly persistence layer with transactions, indexes, migrations, and queryable state without requiring a separate database service for the control plane.
+The backend uses the Node 22 built-in `node:sqlite` module, enables foreign keys, a five-second busy timeout, and WAL journaling, and applies ordered schema migrations recorded in `schema_migrations`. SQL stays inside the domain-oriented Suite Manager store. Owner creation and its initial session are committed in one transaction, the schema permits only owner ID `1`, passwords remain scrypt hashes, and only SHA-256 session-token hashes are stored.
+
+### Legacy JSON import
+
+On startup, Suite Manager imports `platform-state.json` only when `suite-manager.sqlite` does not already exist. The validated owner and hashed sessions are imported in one transaction, then the JSON file is renamed to `platform-state.json.migrated`. Import failure removes the newly created database so the next start can retry safely. If SQLite already exists, it always wins and the JSON file is left untouched; Suite Manager never overwrites initialized SQLite state.
+
+Back up the database with a SQLite-aware backup tool or while Suite Manager is stopped so the database and WAL state remain consistent. Do not edit the database or migration records manually.
 
 ## Homepage Authentication Boundary
 

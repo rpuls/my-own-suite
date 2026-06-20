@@ -1,6 +1,9 @@
 const { hashPassword, verifyPassword } = require('../auth/passwords.cjs');
 const { createSessionToken, hashSessionToken } = require('../auth/sessions.cjs');
-const { PlatformStateStore } = require('../state/platform-state-store.cjs');
+const {
+  OwnerAlreadyExistsError,
+  SuiteManagerStore,
+} = require('../state/suite-manager-store.cjs');
 
 const MIN_PASSWORD_LENGTH = 12;
 
@@ -50,27 +53,26 @@ function validateOwnerInput(input) {
 class SetupService {
   constructor({ now = () => new Date(), stateDir }) {
     this.now = now;
-    this.store = new PlatformStateStore(stateDir);
+    this.store = new SuiteManagerStore(stateDir);
   }
 
   status(sessionToken = '') {
-    const state = this.store.load();
-    const session = this.sessionFromState(state, sessionToken);
+    const owner = this.store.getOwner();
+    const session = this.hasSession(sessionToken);
 
-    if (!state.owner) {
+    if (!owner) {
       return { owner: null, status: 'needs-owner' };
     }
 
     if (session) {
-      return { owner: publicOwner(state.owner), status: 'signed-in' };
+      return { owner: publicOwner(owner), status: 'signed-in' };
     }
 
-    return { owner: publicOwner(state.owner), status: 'signed-out' };
+    return { owner: publicOwner(owner), status: 'signed-out' };
   }
 
   createOwner(input) {
-    const state = this.store.load();
-    if (state.owner) {
+    if (this.store.getOwner()) {
       throw new SetupError('OWNER_ALREADY_EXISTS', 'The MOS owner account already exists.');
     }
 
@@ -87,11 +89,14 @@ class SetupService {
       tokenHash: hashSessionToken(token),
     };
 
-    this.store.save({
-      ...state,
-      owner,
-      sessions: [session],
-    });
+    try {
+      this.store.createOwnerAndSession(owner, session);
+    } catch (error) {
+      if (error instanceof OwnerAlreadyExistsError) {
+        throw new SetupError('OWNER_ALREADY_EXISTS', 'The MOS owner account already exists.');
+      }
+      throw error;
+    }
 
     return {
       owner: publicOwner(owner),
@@ -101,15 +106,15 @@ class SetupService {
   }
 
   login(input) {
-    const state = this.store.load();
+    const owner = this.store.getOwner();
     const email = normalizeEmail(input?.email);
     const password = String(input?.password || '');
 
-    if (!state.owner) {
+    if (!owner) {
       throw new SetupError('OWNER_NOT_CREATED', 'Create the MOS owner account first.');
     }
 
-    if (state.owner.email !== email || !verifyPassword(password, state.owner.passwordHash)) {
+    if (owner.email !== email || !verifyPassword(password, owner.passwordHash)) {
       throw new SetupError('INVALID_LOGIN', 'Email or password is incorrect.');
     }
 
@@ -119,37 +124,33 @@ class SetupService {
       tokenHash: hashSessionToken(token),
     };
 
-    this.store.save({
-      ...state,
-      sessions: [...state.sessions, session],
-    });
+    this.store.createSession(session);
 
     return {
-      owner: publicOwner(state.owner),
+      owner: publicOwner(owner),
       sessionToken: token,
       status: 'signed-in',
     };
   }
 
   logout(sessionToken = '') {
-    const state = this.store.load();
     const tokenHash = sessionToken ? hashSessionToken(sessionToken) : '';
-
-    this.store.save({
-      ...state,
-      sessions: state.sessions.filter((session) => session.tokenHash !== tokenHash),
-    });
+    this.store.deleteSession(tokenHash);
 
     return this.status();
   }
 
-  sessionFromState(state, sessionToken) {
+  hasSession(sessionToken) {
     if (!sessionToken) {
       return null;
     }
 
     const tokenHash = hashSessionToken(sessionToken);
-    return state.sessions.find((session) => session.tokenHash === tokenHash) || null;
+    return this.store.hasSession(tokenHash);
+  }
+
+  close() {
+    this.store.close();
   }
 }
 

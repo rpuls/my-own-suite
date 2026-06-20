@@ -20,13 +20,14 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Added a V2 no-preconfig bootstrap contract, dry-run renderers for cloud-init, SSH/bootstrap, USB seed config, and a DigitalOcean smoke harness that can create a Droplet and install the V2 control plane.
 - [x] Ran the first paid V2 DigitalOcean smoke, diagnosed Caddy repository key placement and Windows SSH-render line endings, repaired the existing Droplet, and verified the public setup API returns `needs-owner`.
 - [x] Added and refined the real V2 Caddy/Homepage control-plane slice: one Home origin with Suite Manager at `/suite-manager/`, authenticated private Homepage proxying, the proven V1 Homepage visual layer and bookmark layout, local MOS/Funkyton tile assets, seed-only editable template state, and focused HTTP/WebSocket/render tests.
+- [x] Replaced milestone JSON persistence with a Node 22 built-in SQLite store, ordered schema migrations, database-enforced singleton ownership, atomic owner/session creation, hashed sessions, restart-safe auth behavior, and safe one-time JSON import.
 
 ### Current Next Slice
 
 Build the next real V2 vertical slice inside `version-2/`:
 
-1. Run one fresh user-driven V2 DigitalOcean smoke to validate the authenticated Home dashboard and confirm no direct Homepage bypass exists.
-2. Move Suite Manager persistence from milestone JSON to SQLite before settings, user details, app install state, or richer sessions grow.
+1. Add the V2 DNS-01 HTTPS/settings slice on the SQLite foundation without weakening the one-origin control-plane boundary.
+2. Run one fresh user-driven V2 DigitalOcean smoke to validate the authenticated Home dashboard and confirm no direct Homepage bypass exists.
 3. Add local backend/frontend/Homepage orchestration for interactive development without weakening the production host/auth boundary.
 4. Keep the installer input surface no-preconfig: no owner credentials, app choices, or app-specific env values before first boot.
 5. Add UI-level tests only when the control-plane surface grows beyond the current focused HTTP boundary coverage.
@@ -39,11 +40,11 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
-Current result: V2 tests pass, covering the platform contract, branding sync, setup state, owner creation, login/logout, host-aware routing, authenticated HTTP/WebSocket Homepage proxying, private runtime/Caddy rendering, built frontend serving, and the no-preconfig bootstrap contract.
+Current result: V2 tests pass, covering the platform contract, branding sync, SQLite schema/migrations and JSON import, setup state, owner creation, login/logout and restart persistence, host-aware routing, authenticated HTTP/WebSocket Homepage proxying, private runtime/Caddy rendering, built frontend serving, and the no-preconfig bootstrap contract.
 
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep runtime work inside `version-2/`; treat V1 as reference only. V2 now exposes one `home.<domain>` origin through Caddy. Suite Manager owns `/suite-manager/`, authenticates the shared origin, and proxies the private loopback Homepage service for all other paths, including streaming and WebSocket traffic. Homepage uses the pinned stock image with seed-only durable config, useful dashboard defaults, and a `services.template.yaml` source ready for a later editor/generator/restart slice. The next slice is a user-run fresh DigitalOcean validation, followed by SQLite persistence and local control-plane development orchestration before any app catalog work.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep runtime work inside `version-2/`; treat V1 as reference only. V2 now exposes one `home.<domain>` origin through Caddy. Suite Manager owns `/suite-manager/`, authenticates the shared origin, proxies the private loopback Homepage service, and stores owner/session state in a migrated SQLite database under its state directory. The next major slice is DNS-01 HTTPS and its explicit settings model, followed by a user-run fresh DigitalOcean validation and local control-plane development orchestration before app catalog work.
 
 ## Product Goal
 
@@ -143,6 +144,7 @@ Goal: prove the human entry point before touching app installs.
 - [x] Add login/session creation after owner creation.
 - [x] Add signed-out login endpoint if not created as part of the owner flow.
 - [x] Add session persistence and logout.
+- [x] Replace milestone JSON state with migrated SQLite persistence and ordered schema migrations.
 - [x] Add minimal first-run owner creation UI.
 - [x] Replace minimal first-run UI with polished V2 UI.
 - [x] Rebuild/copy only the needed shared UI primitives from the old Suite Manager.
@@ -226,7 +228,7 @@ Goal: make the empty platform trustworthy before adding apps.
 - [ ] Add update-track display or defer it explicitly.
 - [ ] Add host-agent capability display or defer it explicitly.
 - [ ] Add backup placeholder/guidance or defer it explicitly.
-- [ ] Add settings needed for base domain / local HTTPS or defer it explicitly.
+- [ ] Add DNS-01 HTTPS and its explicit base-domain/settings model as the next major slice.
 - [x] Keep the first Homepage dashboard intentionally minimal and branded before optional apps exist.
 - [ ] Keep advanced diagnostics behind details/disclosures.
 

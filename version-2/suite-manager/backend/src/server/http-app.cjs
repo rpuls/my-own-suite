@@ -286,6 +286,8 @@ function createV2Server({
     homepage.proxyUpgrade(request, socket, head);
   });
 
+  server.on('close', () => setup.close());
+
   return server;
 }
 
