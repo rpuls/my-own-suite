@@ -14,13 +14,15 @@ async function fixture(failAt = '') {
   await fsp.writeFile(path.join(configRoot, 'services.yaml'), 'old projection\n');
   await fsp.writeFile(routesPath, 'old routes\n');
   const calls = [];
+  const invocations = [];
   const execute = async (file, args) => {
     const action = args[0] === 'validate' ? 'validate' : `${args[0]}-${args[1]}`;
     calls.push(action);
+    invocations.push({ args, file });
     if (action === failAt) throw new Error('failed');
   };
   return {
-    calls, configRoot, root, routesPath,
+    calls, configRoot, invocations, root, routesPath,
     adapter: new SystemHomepageAdapter({ configRoot, execute, historyRoot: path.join(root, 'history'), routesPath, transactionRoot: path.join(root, 'transactions') }),
   };
 }
@@ -31,16 +33,21 @@ test('transaction restarts Homepage and reloads Caddy only when their outputs ch
     caddyRoutes: 'new routes\n', files: { 'services.template.yaml': 'new template\n', 'services.yaml': 'new projection\n' }, restartHomepage: true,
   });
   assert.deepEqual(value.calls, ['validate', 'restart-mos-v2-homepage.service', 'reload-caddy.service']);
+  assert.deepEqual(value.invocations[0].args.slice(0, 3), ['validate', '--adapter', 'caddyfile']);
   assert.deepEqual(result.steps, ['staged', 'validated', 'written', 'homepage-restarted', 'caddy-reloaded']);
 
   value.calls.length = 0;
   await value.adapter.applyTransaction({
     caddyRoutes: 'new routes\n', files: { 'services.template.yaml': 'new template\n', 'services.yaml': 'new projection\n' }, restartHomepage: true,
   });
-  assert.deepEqual(value.calls, ['validate']);
+  assert.deepEqual(value.calls, []);
 });
 
-for (const failure of ['validate', 'restart-mos-v2-homepage.service', 'reload-caddy.service']) {
+for (const [failure, errorCode] of [
+  ['validate', 'HOMEPAGE_CADDY_VALIDATION_FAILED'],
+  ['restart-mos-v2-homepage.service', 'HOMEPAGE_RESTART_FAILED'],
+  ['reload-caddy.service', 'HOMEPAGE_CADDY_RELOAD_FAILED'],
+]) {
   test(`transaction restores Homepage and Caddy after ${failure} failure`, async () => {
     let failed = false;
     const value = await fixture(failure);
@@ -52,7 +59,7 @@ for (const failure of ['validate', 'restart-mos-v2-homepage.service', 'reload-ca
     };
     await assert.rejects(() => value.adapter.applyTransaction({
       caddyRoutes: 'new routes\n', files: { 'services.template.yaml': 'new template\n', 'services.yaml': 'new projection\n' }, restartHomepage: true,
-    }), /HOMEPAGE_APPLY_FAILED/u);
+    }), (error) => error.code === errorCode && error.statusCode === 502);
     assert.equal(await fsp.readFile(path.join(value.configRoot, 'services.template.yaml'), 'utf8'), 'old template\n');
     assert.equal(await fsp.readFile(path.join(value.configRoot, 'services.yaml'), 'utf8'), 'old projection\n');
     assert.equal(await fsp.readFile(value.routesPath, 'utf8'), 'old routes\n');

@@ -1,7 +1,7 @@
 const http = require('node:http');
 
 class HomepageAgentClient {
-  constructor({ socketPath = process.env.MOS_V2_HOMEPAGE_AGENT_SOCKET || '/run/mos-v2-homepage-agent/agent.sock', timeoutMs = 120000 } = {}) {
+  constructor({ socketPath = process.env.MOS_V2_HOMEPAGE_AGENT_SOCKET || '/run/mos-v2-homepage-agent/agent.sock', timeoutMs = 45000 } = {}) {
     this.socketPath = socketPath;
     this.timeoutMs = timeoutMs;
   }
@@ -30,7 +30,13 @@ class HomepageAgentClient {
           reject(error);
         });
       });
-      request.on('error', () => { const error = new Error('Homepage system agent is unavailable.'); error.code = 'HOMEPAGE_AGENT_UNAVAILABLE'; error.statusCode = 503; reject(error); });
+      request.on('error', (cause) => {
+        const timedOut = cause?.message === 'HOMEPAGE_AGENT_TIMEOUT';
+        const error = new Error(timedOut ? 'Homepage apply timed out. The previous dashboard remains active.' : 'Homepage system agent is unavailable.');
+        error.code = timedOut ? 'HOMEPAGE_AGENT_TIMEOUT' : 'HOMEPAGE_AGENT_UNAVAILABLE';
+        error.statusCode = 503;
+        reject(error);
+      });
       request.on('timeout', () => request.destroy(new Error('HOMEPAGE_AGENT_TIMEOUT')));
       if (payload) request.write(payload);
       request.end();

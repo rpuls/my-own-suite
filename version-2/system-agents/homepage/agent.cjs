@@ -5,7 +5,7 @@ const http = require('node:http');
 const path = require('node:path');
 const { HomepageConfigError } = require('../../shared/homepage-contract.cjs');
 const { HomepageAgentCore } = require('./agent-core.cjs');
-const { SystemHomepageAdapter } = require('./system-adapter.cjs');
+const { HomepageApplyError, SystemHomepageAdapter } = require('./system-adapter.cjs');
 
 const socketPath = process.env.MOS_V2_HOMEPAGE_AGENT_SOCKET || '/run/mos-v2-homepage-agent/agent.sock';
 const core = new HomepageAgentCore(new SystemHomepageAdapter());
@@ -41,10 +41,10 @@ const server = http.createServer(async (request, response) => {
     if (!handler) { respond(response, 404, { code: 'NOT_FOUND', error: 'Not found.' }); return; }
     respond(response, 200, await handler(request.method === 'GET' ? {} : await readBody(request)));
   } catch (error) {
-    const known = error instanceof HomepageConfigError;
+    const known = error instanceof HomepageConfigError || error instanceof HomepageApplyError;
     respond(response, known ? error.statusCode : 502, {
       code: known ? error.code : 'HOMEPAGE_APPLY_FAILED',
-      details: known ? error.details : [],
+      details: Array.isArray(error.details) ? error.details : [],
       error: known ? error.message : 'The Homepage operation failed; the previous configuration remains active.',
     });
   }

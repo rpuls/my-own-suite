@@ -9,9 +9,27 @@ const TRANSACTION_ROOT = process.env.MOS_V2_HOMEPAGE_TRANSACTION_ROOT || '/var/l
 const HISTORY_ROOT = process.env.MOS_V2_HOMEPAGE_HISTORY_ROOT || '/var/lib/mos-v2/homepage-agent/history';
 const CADDY_BINARY = process.env.MOS_V2_CADDY_BINARY || '/usr/local/libexec/mos-v2/caddy';
 
-function exec(file, args) {
+const FAILURE_MESSAGES = {
+  'caddy-validation': ['HOMEPAGE_CADDY_VALIDATION_FAILED', 'The generated home-service routes did not pass Caddy validation.'],
+  'caddy-reload': ['HOMEPAGE_CADDY_RELOAD_FAILED', 'Caddy could not reload the generated home-service routes.'],
+  'homepage-restart': ['HOMEPAGE_RESTART_FAILED', 'Homepage did not restart successfully.'],
+  history: ['HOMEPAGE_HISTORY_FAILED', 'The previous Homepage configuration could not be retained safely.'],
+  staging: ['HOMEPAGE_STAGING_FAILED', 'Homepage configuration could not be staged.'],
+  writing: ['HOMEPAGE_WRITE_FAILED', 'Homepage configuration could not be installed.'],
+};
+
+class HomepageApplyError extends Error {
+  constructor(stage) {
+    const [code, message] = FAILURE_MESSAGES[stage] || ['HOMEPAGE_APPLY_FAILED', 'The Homepage operation failed.'];
+    super(message);
+    this.code = code;
+    this.statusCode = 502;
+  }
+}
+
+function exec(file, args, { timeoutMs = 20000 } = {}) {
   return new Promise((resolve, reject) => {
-    execFile(file, args, { timeout: 120000 }, (error) => error ? reject(new Error('COMMAND_FAILED')) : resolve());
+    execFile(file, args, { timeout: timeoutMs }, (error) => error ? reject(new Error('COMMAND_FAILED')) : resolve());
   });
 }
 
@@ -61,6 +79,7 @@ class SystemHomepageAdapter {
     await fsp.mkdir(stageDir, { recursive: true, mode: 0o700 });
     const changedFiles = [];
     let routesChanged = false;
+    let stage = 'staging';
 
     try {
       for (const [file, content] of Object.entries(files)) {
@@ -76,14 +95,25 @@ class SystemHomepageAdapter {
         const current = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
         routesChanged = current !== caddyRoutes;
         await fsp.writeFile(path.join(stageDir, 'routes.caddy'), caddyRoutes);
-        await this.execute(this.caddyBinary, ['validate', '--config', path.join(stageDir, 'routes.caddy')]);
-        if (routesChanged) await snapshot(this.routesPath, path.join(beforeDir, 'routes.caddy'));
+        if (routesChanged) {
+          stage = 'caddy-validation';
+          await this.execute(this.caddyBinary, ['validate', '--adapter', 'caddyfile', '--config', path.join(stageDir, 'routes.caddy')]);
+          await snapshot(this.routesPath, path.join(beforeDir, 'routes.caddy'));
+        }
       }
+      stage = 'writing';
       for (const file of changedFiles) await atomicWrite(path.join(this.configRoot, file), await fsp.readFile(path.join(stageDir, file)));
       if (routesChanged) await atomicWrite(this.routesPath, caddyRoutes);
-      if (restartHomepage && changedFiles.length) await this.execute('/usr/bin/systemctl', ['restart', 'mos-v2-homepage.service']);
-      if (routesChanged) await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service']);
+      if (restartHomepage && changedFiles.length) {
+        stage = 'homepage-restart';
+        await this.execute('/usr/bin/systemctl', ['restart', 'mos-v2-homepage.service']);
+      }
+      if (routesChanged) {
+        stage = 'caddy-reload';
+        await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service']);
+      }
 
+      stage = 'history';
       const historyDir = path.join(this.historyRoot, transactionId);
       await fsp.mkdir(historyDir, { recursive: true, mode: 0o700 });
       for (const file of changedFiles) await fsp.copyFile(path.join(beforeDir, file), path.join(historyDir, file)).catch(() => {});
@@ -94,12 +124,12 @@ class SystemHomepageAdapter {
     } catch {
       for (const file of changedFiles) await restore(path.join(beforeDir, file), path.join(this.configRoot, file)).catch(() => {});
       if (routesChanged) await restore(path.join(beforeDir, 'routes.caddy'), this.routesPath).catch(() => {});
-      if (restartHomepage && changedFiles.length) await this.execute('/usr/bin/systemctl', ['restart', 'mos-v2-homepage.service']).catch(() => {});
-      if (routesChanged) await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service']).catch(() => {});
+      if (restartHomepage && changedFiles.length) await this.execute('/usr/bin/systemctl', ['restart', 'mos-v2-homepage.service'], { timeoutMs: 10000 }).catch(() => {});
+      if (routesChanged) await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 10000 }).catch(() => {});
       await fsp.rm(transactionDir, { recursive: true, force: true }).catch(() => {});
-      throw new Error('HOMEPAGE_APPLY_FAILED');
+      throw new HomepageApplyError(stage);
     }
   }
 }
 
-module.exports = { SystemHomepageAdapter, atomicWrite };
+module.exports = { HomepageApplyError, SystemHomepageAdapter, atomicWrite };
