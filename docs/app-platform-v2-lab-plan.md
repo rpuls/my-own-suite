@@ -43,7 +43,7 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
-Current result: 62 V2 tests pass, covering the platform contract, branding sync, SQLite migrations, auth, HTTPS, allowlisted Homepage YAML/revisions, guided entry identity and validation, projections, Caddy injection resistance, transactional restart/reload decisions and rollback, authenticated HTTP/WebSocket proxying, installer rendering, and system-agent boundaries. TypeScript and syntax checks pass. The expanded Playwright flow and real DigitalOcean/DNS-01/USB validation remain explicitly user-run.
+Current result: 64 V2 tests pass, covering the platform contract, branding sync, SQLite migrations, auth, HTTPS, allowlisted Homepage YAML/revisions, guided entry identity and browser compatibility, persistent shell navigation, projections, Caddy injection resistance, transactional restart/reload decisions and rollback, authenticated HTTP/WebSocket proxying, installer rendering, and system-agent boundaries. TypeScript and syntax checks pass. The expanded Playwright flow and real DigitalOcean/DNS-01/USB validation remain explicitly user-run.
 
 ### Suggested Next Session Prompt
 

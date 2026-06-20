@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Component, useCallback, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
 
 import { Drawer, Icon } from '../../components/ui';
 import { SettingsScreen } from '../settings/SettingsScreen';
@@ -9,6 +9,16 @@ type AppShellProps = {
   onLogout: () => Promise<void>;
   owner: Owner;
 };
+
+class RouteBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('Suite Manager page failed to render.', error, info); }
+  render() {
+    if (this.state.failed) return <section className="mos-shell"><div className="mos-panel suite-card"><h1 className="mos-card-title">This page could not load</h1><p>The Suite Manager navigation is still available. Reload the page to try again.</p></div></section>;
+    return this.props.children;
+  }
+}
 
 export function AppShell({ onLogout, owner }: AppShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -56,7 +66,7 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
       <Drawer onClose={closeMenu} open={menuOpen} title="Suite Manager menu"><nav className="suite-nav"><a href="/"><Icon name="dashboard" />Dashboard</a><button aria-current={route === 'customize' ? 'page' : undefined} onClick={openCustomize} type="button"><Icon name="customize" />Customize</button><button aria-current={route === 'settings' ? 'page' : undefined} onClick={openSettings} type="button"><Icon name="settings" />Settings</button><button onClick={() => { closeMenu(); void onLogout(); }} type="button"><Icon name="sign-out" />Sign out</button></nav></Drawer>
 
       <main className="suite-shell-main">
-        {route === 'settings' ? <SettingsScreen /> : route === 'customize' ? <CustomizeScreen /> : (
+        <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'customize' ? <CustomizeScreen /> : (
         <section className="mos-shell suite-dashboard">
           <div className="suite-hero">
             <span className="mos-pill mos-pill-accent">Control plane</span>
@@ -82,7 +92,7 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
             </section>
           </div>
         </section>
-        )}
+        )}</RouteBoundary>
       </main>
     </div>
   );

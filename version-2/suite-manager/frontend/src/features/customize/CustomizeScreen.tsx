@@ -18,6 +18,16 @@ async function api(path: string, body?: unknown) {
 const emptyLink = { description: '', group: 'Open Source Resources', icon: 'mdi:link', name: '', url: '' };
 const emptyService = { description: '', group: 'Home services', host: '', icon: 'mdi:server-network', name: '', port: '', protocol: 'http', subdomain: '' };
 
+function createRequestId() {
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(bytes);
+  else for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = [...bytes].map((value) => value.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export function CustomizeScreen() {
   const [mode, setMode] = useState<Mode>('editor');
   const [file, setFile] = useState('services.template.yaml');
@@ -28,8 +38,8 @@ export function CustomizeScreen() {
   const [result, setResult] = useState<Result>({});
   const [link, setLink] = useState(emptyLink);
   const [service, setService] = useState(emptyService);
-  const [linkRequestId, setLinkRequestId] = useState(() => crypto.randomUUID());
-  const [serviceRequestId, setServiceRequestId] = useState(() => crypto.randomUUID());
+  const [linkRequestId, setLinkRequestId] = useState(createRequestId);
+  const [serviceRequestId, setServiceRequestId] = useState(createRequestId);
   const [preview, setPreview] = useState<{ publicUrl: string; upstream: string } | null>(null);
 
   async function load(selected = file) {
@@ -75,8 +85,8 @@ export function CustomizeScreen() {
       });
       if (file === 'services.template.yaml') await load('services.template.yaml');
       setResult({ steps: value.steps });
-      if (homeService) { setService(emptyService); setServiceRequestId(crypto.randomUUID()); }
-      else { setLink(emptyLink); setLinkRequestId(crypto.randomUUID()); }
+      if (homeService) { setService(emptyService); setServiceRequestId(createRequestId()); }
+      else { setLink(emptyLink); setLinkRequestId(createRequestId()); }
       setPreview(null);
     } catch (error) { setResult({ error: (error as Error).message }); }
     finally { setBusy(false); }
