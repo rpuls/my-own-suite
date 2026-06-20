@@ -23,6 +23,7 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Replaced milestone JSON persistence with a Node 22 built-in SQLite store, ordered schema migrations, database-enforced singleton ownership, atomic owner/session creation, hashed sessions, restart-safe auth behavior, and safe one-time JSON import.
 - [x] Added responsive Suite Manager navigation, the first authenticated V2 Settings page, migrated non-secret HTTPS state, a narrow rollback-capable HTTPS agent, and a pinned repo-built Caddy binary with the Cloudflare DNS module.
 - [x] Added a V2-owned Playwright foundation for real local owner, Homepage, navigation, Settings validation, and logout behavior, plus an explicitly guarded DigitalOcean DNS-01 validation command.
+- [x] Fixed the pinned Caddy build for Ubuntu's default legacy Docker builder after a fresh smoke exposed an unset `BUILDPLATFORM` failure before systemd unit creation.
 
 ### Current Next Slice
 

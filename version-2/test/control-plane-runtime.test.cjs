@@ -40,6 +40,7 @@ test('Caddy build pins the builder digest, Caddy version, and Cloudflare module 
   assert.match(dockerfile, /caddy:2\.10\.2-builder@sha256:[a-f0-9]{64}/u);
   assert.match(dockerfile, /xcaddy build v2\.10\.2/u);
   assert.match(dockerfile, /github\.com\/caddy-dns\/cloudflare@v0\.2\.4/u);
+  assert.doesNotMatch(dockerfile, /BUILDPLATFORM/u);
   assert.doesNotMatch(dockerfile, /latest/u);
 });
 
