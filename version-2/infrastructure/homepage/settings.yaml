@@ -1,8 +1,14 @@
 title: My Own Suite
-description: Your private MOS dashboard
-theme: dark
-color: slate
+logo: false
+icon: mdi:cube-outline
+header: true
+description: Private self-hosted apps with a calmer default landing page
+cardBlur: md
+columns: 2
+host: false
 headerStyle: clean
+iconStyle: theme
+useEqualHeights: true
 hideVersion: true
 disableUpdateCheck: true
 target: _self

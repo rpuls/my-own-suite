@@ -53,30 +53,3 @@ html.dark {
   color: rgb(238 244 255);
 }
 /* sync-branding:homepage:end */
-
-.mos-dashboard-toolbar {
-  align-items: center;
-  display: flex;
-  gap: 0.65rem;
-  position: fixed;
-  right: 1rem;
-  top: 1rem;
-  z-index: 100;
-}
-
-.mos-dashboard-toolbar a,
-.mos-dashboard-toolbar button {
-  background: var(--mos-surface-strong);
-  border: 1px solid var(--mos-border);
-  border-radius: 0.65rem;
-  color: var(--mos-text);
-  cursor: pointer;
-  font: inherit;
-  padding: 0.55rem 0.8rem;
-  text-decoration: none;
-}
-
-.mos-dashboard-toolbar a:hover,
-.mos-dashboard-toolbar button:hover {
-  border-color: var(--mos-accent);
-}

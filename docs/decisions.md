@@ -6,16 +6,17 @@ For documentation ownership rules, see [docs/README.md](./README.md).
 
 ## 2026-06-19: V2 Homepage Is Authenticated Through Suite Manager
 
-Decision: V2 exposes `home.<domain>` and `suite-manager.<domain>` through Caddy, but both hosts terminate at Suite Manager. Suite Manager authenticates Home requests and proxies the private loopback Homepage service. Sessions remain host-only; V2 does not share a parent-domain session cookie across app subdomains.
+Decision: V2 exposes one `home.<domain>` control-plane origin through Caddy. Suite Manager owns `/suite-manager/`, authenticates the shared origin, and proxies all other authenticated paths to the private loopback Homepage service. Sessions remain host-only; V2 does not share a parent-domain session cookie across app subdomains.
 
 Reason: Suite Manager already owns owner identity and sessions. Keeping Homepage behind it avoids duplicating session validation in Caddy and prevents a direct public bypass, while host-only cookies keep MOS credentials away from future independently authenticated apps.
 
 Consequences:
 
-- Home serves Suite Manager onboarding/login at `/setup/` and the authenticated Homepage dashboard at `/`.
+- Home serves Suite Manager onboarding/login/account controls at `/suite-manager/` and the authenticated Homepage dashboard at `/`.
 - Caddy has no direct Homepage upstream; Homepage binds only to loopback.
-- Home and Suite Manager browser sessions are independent until a dedicated cross-host SSO design is justified.
+- Dashboard and Suite Manager share one browser session without exposing that credential to future app subdomains.
 - Suite Manager must preserve streaming, redirects, forwarded headers, and WebSocket upgrades while removing its session cookie before proxying Homepage.
+- Homepage runtime files are seeded into durable state; `services.template.yaml` is the future editor-owned source and `services.yaml` is its generated stock-Homepage projection.
 
 ## 2026-06-18: V2 Restarts From A Suite Manager-First Lab
 

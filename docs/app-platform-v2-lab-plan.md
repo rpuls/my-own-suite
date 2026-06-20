@@ -19,7 +19,7 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Built the first React/Vite V2 Suite Manager owner onboarding app shell.
 - [x] Added a V2 no-preconfig bootstrap contract, dry-run renderers for cloud-init, SSH/bootstrap, USB seed config, and a DigitalOcean smoke harness that can create a Droplet and install the V2 control plane.
 - [x] Ran the first paid V2 DigitalOcean smoke, diagnosed Caddy repository key placement and Windows SSH-render line endings, repaired the existing Droplet, and verified the public setup API returns `needs-owner`.
-- [x] Added the real V2 Caddy/Homepage control-plane slice: distinct Home and Suite Manager hosts, Suite Manager-authenticated Homepage proxying, loopback-only Homepage runtime, host-only sessions, minimal branded dashboard config, and focused HTTP/WebSocket/render tests.
+- [x] Added and refined the real V2 Caddy/Homepage control-plane slice: one Home origin with Suite Manager at `/suite-manager/`, authenticated private Homepage proxying, useful branded defaults, seed-only editable template state, and focused HTTP/WebSocket/render tests.
 
 ### Current Next Slice
 
@@ -43,7 +43,7 @@ Current result: V2 tests pass, covering the platform contract, branding sync, se
 
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep runtime work inside `version-2/`; treat V1 as reference only. V2 now exposes `home.<domain>` and `suite-manager.<domain>` through Caddy to Suite Manager. Home serves onboarding/login at `/setup/`, then Suite Manager authenticates and proxies the private loopback Homepage service, including streaming and WebSocket traffic; sessions are host-only and Caddy has no direct Homepage route. The no-preconfig installer starts digest-pinned Homepage, Suite Manager, and Caddy, and the DigitalOcean harness prints both public URLs. Shared branding still originates under `version-2/branding/`. The next slice is a user-run fresh DigitalOcean validation, followed by SQLite persistence and local control-plane development orchestration before any app catalog work.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Keep runtime work inside `version-2/`; treat V1 as reference only. V2 now exposes one `home.<domain>` origin through Caddy. Suite Manager owns `/suite-manager/`, authenticates the shared origin, and proxies the private loopback Homepage service for all other paths, including streaming and WebSocket traffic. Homepage uses the pinned stock image with seed-only durable config, useful dashboard defaults, and a `services.template.yaml` source ready for a later editor/generator/restart slice. The next slice is a user-run fresh DigitalOcean validation, followed by SQLite persistence and local control-plane development orchestration before any app catalog work.
 
 ## Product Goal
 
@@ -217,7 +217,7 @@ Exit criteria:
 - Smoke validates control-plane readiness.
 - Smoke does not install optional apps.
 - Smoke does not require installer-time owner credentials.
-- Current state: `npm --prefix version-2 run smoke:do:up` creates a tagged Droplet, installs the V2 control plane from the selected repo/ref, waits for `/api/setup/status`, and prints the first-run Suite Manager URL. `smoke:do:render` remains the free dry-run.
+- Current state: `npm --prefix version-2 run smoke:do:up` creates a tagged Droplet, installs the V2 control plane from the selected repo/ref, waits for `/suite-manager/api/setup/status`, and prints the Home and Suite Manager paths. `smoke:do:render` remains the free dry-run.
 
 ### Phase 5: Control-Plane Operations
 

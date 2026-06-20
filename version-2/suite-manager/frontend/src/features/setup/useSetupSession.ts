@@ -16,7 +16,7 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 async function readStatus(): Promise<SetupStatusResponse> {
-  const response = await fetch('/api/setup/status');
+  const response = await fetch('/suite-manager/api/setup/status');
   const body = await readJson<SetupStatusResponse | ApiErrorBody>(response);
 
   if (!response.ok) {
@@ -47,7 +47,7 @@ function errorMessage(body: ApiErrorBody, fallback: string): string {
 }
 
 function enterHomeDashboard(): boolean {
-  if (!window.location.hostname.startsWith('home.') || !window.location.pathname.startsWith('/setup')) {
+  if (!window.location.pathname.startsWith('/suite-manager')) {
     return false;
   }
 
@@ -72,7 +72,7 @@ export function useSetupSession() {
   }, []);
 
   async function createOwner(input: { email: string; name: string; password: string }): Promise<void> {
-    const response = await fetch('/api/setup/owner', {
+    const response = await fetch('/suite-manager/api/setup/owner', {
       body: JSON.stringify(input),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',
@@ -90,7 +90,7 @@ export function useSetupSession() {
   }
 
   async function login(input: { email: string; password: string; owner: Owner }): Promise<void> {
-    const response = await fetch('/api/auth/login', {
+    const response = await fetch('/suite-manager/api/auth/login', {
       body: JSON.stringify({ email: input.email, password: input.password }),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',
@@ -112,7 +112,7 @@ export function useSetupSession() {
   }
 
   async function logout(): Promise<void> {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    await fetch('/suite-manager/api/auth/logout', { method: 'POST' });
     const status = await readStatus();
 
     if (status.owner) {

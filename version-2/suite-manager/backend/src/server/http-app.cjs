@@ -7,7 +7,9 @@ const { createHomepageProxy } = require('./homepage-proxy.cjs');
 
 const SESSION_COOKIE = 'mos_v2_session';
 const DEFAULT_FRONTEND_DIST_DIR = path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
-const FRONTEND_ASSET_PREFIX = '/suite-manager-assets/';
+const SUITE_MANAGER_BASE_PATH = '/suite-manager/';
+const SUITE_MANAGER_API_PREFIX = `${SUITE_MANAGER_BASE_PATH}api`;
+const FRONTEND_ASSET_PREFIX = `${SUITE_MANAGER_BASE_PATH}assets/`;
 
 const MIME_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'],
@@ -174,7 +176,6 @@ function createV2Server({
   homeHost = process.env.MOS_V2_HOME_HOST || 'home.localhost',
   homepageUpstream = process.env.MOS_V2_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
   stateDir = path.join(process.cwd(), '.state'),
-  suiteManagerHost = process.env.MOS_V2_SUITE_MANAGER_HOSTNAME || 'suite-manager.localhost',
 } = {}) {
   const setup = new SetupService({ stateDir });
   const homepage = createHomepageProxy({ upstream: homepageUpstream });
@@ -186,17 +187,17 @@ function createV2Server({
     const sessionToken = cookies[SESSION_COOKIE] || '';
 
     try {
-      if (requestHost !== homeHost && requestHost !== suiteManagerHost) {
+      if (requestHost !== homeHost) {
         jsonResponse(response, 421, { error: 'Unknown MOS host.' });
         return;
       }
 
-      if (request.method === 'GET' && url.pathname === '/api/setup/status') {
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/setup/status`) {
         jsonResponse(response, 200, setup.status(sessionToken));
         return;
       }
 
-      if (request.method === 'POST' && url.pathname === '/api/setup/owner') {
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/setup/owner`) {
         const body = await readJsonBody(request);
         const result = setup.createOwner(body);
         jsonResponse(response, 201, { owner: result.owner, status: result.status }, {
@@ -205,7 +206,7 @@ function createV2Server({
         return;
       }
 
-      if (request.method === 'POST' && url.pathname === '/api/auth/login') {
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/auth/login`) {
         const body = await readJsonBody(request);
         const result = setup.login(body);
         jsonResponse(response, 200, { owner: result.owner, status: result.status }, {
@@ -214,11 +215,16 @@ function createV2Server({
         return;
       }
 
-      if (request.method === 'POST' && url.pathname === '/api/auth/logout') {
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/auth/logout`) {
         const result = setup.logout(sessionToken);
         jsonResponse(response, 200, result, {
           'Set-Cookie': clearSessionCookie(),
         });
+        return;
+      }
+
+      if (url.pathname === SUITE_MANAGER_API_PREFIX || url.pathname.startsWith(`${SUITE_MANAGER_API_PREFIX}/`)) {
+        jsonResponse(response, 404, { error: 'Not found.' });
         return;
       }
 
@@ -230,34 +236,29 @@ function createV2Server({
         return;
       }
 
-      if (requestHost === homeHost) {
-        if (request.method === 'GET' && url.pathname === '/setup') {
-          response.writeHead(308, { Location: '/setup/' });
-          response.end();
-          return;
-        }
-
-        if (request.method === 'GET' && url.pathname.startsWith('/setup/')) {
-          serveFrontend(response, frontendDistDir);
-          return;
-        }
-
-        if (!isSignedIn(setup, sessionToken)) {
-          response.writeHead(302, { Location: '/setup/' });
-          response.end();
-          return;
-        }
-
-        homepage.proxyHttp(request, response);
+      if (request.method === 'GET' && url.pathname === '/suite-manager') {
+        response.writeHead(308, { Location: SUITE_MANAGER_BASE_PATH });
+        response.end();
         return;
       }
 
-      if (request.method === 'GET' && !url.pathname.startsWith('/api/')) {
+      if (request.method === 'GET' && url.pathname.startsWith(SUITE_MANAGER_BASE_PATH)) {
         serveFrontend(response, frontendDistDir);
         return;
       }
 
-      jsonResponse(response, 404, { error: 'Not found.' });
+      if (url.pathname.startsWith(SUITE_MANAGER_BASE_PATH)) {
+        jsonResponse(response, 404, { error: 'Not found.' });
+        return;
+      }
+
+      if (!isSignedIn(setup, sessionToken)) {
+        response.writeHead(302, { Location: SUITE_MANAGER_BASE_PATH });
+        response.end();
+        return;
+      }
+
+      homepage.proxyHttp(request, response);
     } catch (error) {
       jsonResponse(response, errorStatus(error), {
         code: error.code || 'INTERNAL_ERROR',
@@ -267,12 +268,18 @@ function createV2Server({
   });
 
   server.on('upgrade', (request, socket, head) => {
+    const url = new URL(request.url || '/', 'http://localhost');
     const requestHost = normalizedHost(request);
     const cookies = parseCookies(request.headers.cookie);
     const sessionToken = cookies[SESSION_COOKIE] || '';
 
     if (requestHost !== homeHost || !isSignedIn(setup, sessionToken)) {
       socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+      return;
+    }
+
+    if (url.pathname === '/suite-manager' || url.pathname.startsWith(SUITE_MANAGER_BASE_PATH)) {
+      socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
       return;
     }
 

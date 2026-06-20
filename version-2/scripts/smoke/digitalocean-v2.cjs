@@ -255,7 +255,7 @@ async function waitForSuiteManager(plan) {
     return;
   }
 
-  const statusUrl = new URL('/api/setup/status', plan.config.publicUrls.suiteManager).toString();
+  const statusUrl = new URL('api/setup/status', plan.config.publicUrls.suiteManager).toString();
   const homeUrl = plan.config.publicUrls.home;
   const deadline = Date.now() + Number(env('MOS_V2_SMOKE_READY_TIMEOUT_MS', '900000'));
 
@@ -266,7 +266,7 @@ async function waitForSuiteManager(plan) {
         const status = await response.json();
         if (status.status === 'needs-owner' || status.status === 'signed-out') {
           const homeResponse = await fetch(homeUrl, { redirect: 'manual' });
-          if (homeResponse.status === 302 && homeResponse.headers.get('location') === '/setup/') {
+          if (homeResponse.status === 302 && homeResponse.headers.get('location') === '/suite-manager/') {
             return;
           }
         }

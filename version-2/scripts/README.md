@@ -24,7 +24,7 @@ npm --prefix version-2 run install:render -- --target ssh --repo-ref feat/app-pl
 npm --prefix version-2 run install:render -- --target usb
 ```
 
-Rendered installs expose `home.<domain>` as the primary MOS URL and `suite-manager.<domain>` as the control-plane URL. Both terminate at Suite Manager; Homepage remains a private loopback upstream. For local renders the hosts are `home.localhost` and `suite-manager.localhost`.
+Rendered installs expose `home.<domain>` as the single MOS origin and `/suite-manager/` as its control-plane path. Caddy terminates only the Home host at Suite Manager; Homepage remains a private loopback upstream. Local renders use `home.localhost`.
 
 Minimum input is intentionally empty. Defaults are:
 

@@ -1,3 +1,5 @@
+# Suite Manager will own this editable source when Homepage customization is added.
+# services.yaml is the generated runtime projection consumed by stock Homepage.
 - My Own Suite:
     - Suite Manager:
         href: /suite-manager/

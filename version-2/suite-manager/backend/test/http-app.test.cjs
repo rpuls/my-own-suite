@@ -37,8 +37,8 @@ function listen(server) {
 async function withServer(fn, options = {}) {
   const server = createV2Server({
     frontendDistDir: await tempFrontendDistDir(),
+    homeHost: '127.0.0.1',
     stateDir: await tempStateDir(),
-    suiteManagerHost: '127.0.0.1',
     ...options,
   });
   const baseUrl = await listen(server);
@@ -93,9 +93,9 @@ test('first visit serves the built Suite Manager frontend', async () => {
 
 test('static frontend assets are served from the reserved asset namespace', async () => {
   await withServer(async (baseUrl) => {
-    const scriptResponse = await fetch(`${baseUrl}/suite-manager-assets/assets/index.js`);
+    const scriptResponse = await fetch(`${baseUrl}/suite-manager/assets/assets/index.js`);
     const script = await scriptResponse.text();
-    const brandResponse = await fetch(`${baseUrl}/suite-manager-assets/brand/my-own-suite-mark.png`);
+    const brandResponse = await fetch(`${baseUrl}/suite-manager/assets/brand/my-own-suite-mark.png`);
 
     assert.equal(scriptResponse.status, 200);
     assert.match(script, /mos v2 app/);
@@ -106,7 +106,7 @@ test('static frontend assets are served from the reserved asset namespace', asyn
 });
 
 async function createOwner(baseUrl, host = 'home.test') {
-  const response = await hostRequest(baseUrl, '/api/setup/owner', {
+  const response = await hostRequest(baseUrl, '/suite-manager/api/setup/owner', {
     body: JSON.stringify({
       email: 'owner@example.com',
       name: 'Suite Owner',
@@ -118,16 +118,16 @@ async function createOwner(baseUrl, host = 'home.test') {
   return response.headers['set-cookie'][0];
 }
 
-test('Home serves setup but blocks its dashboard until authentication', async () => {
+test('Home serves Suite Manager but blocks its dashboard until authentication', async () => {
   await withServer(async (baseUrl) => {
-    const setupResponse = await hostRequest(baseUrl, '/setup/', { headers: { Host: 'home.test' } });
+    const setupResponse = await hostRequest(baseUrl, '/suite-manager/', { headers: { Host: 'home.test' } });
     const dashboardResponse = await hostRequest(baseUrl, '/', {
       headers: { Host: 'home.test' },
     });
 
     assert.equal(setupResponse.status, 200);
     assert.equal(dashboardResponse.status, 302);
-    assert.equal(dashboardResponse.headers.location, '/setup/');
+    assert.equal(dashboardResponse.headers.location, '/suite-manager/');
   }, { homeHost: 'home.test' });
 });
 
@@ -149,12 +149,16 @@ test('authenticated Home requests stream through the private Homepage proxy with
   try {
     await withServer(async (baseUrl) => {
       const cookie = await createOwner(baseUrl);
+      const suiteManagerStatus = await hostRequest(baseUrl, '/suite-manager/api/setup/status', {
+        headers: { Cookie: cookie, Host: 'home.test' },
+      });
       const response = await hostRequest(baseUrl, '/api/data?view=empty', {
         body: 'dashboard request',
         headers: { Cookie: cookie, Host: 'home.test', Origin: 'http://home.test' },
         method: 'POST',
       });
 
+      assert.equal(suiteManagerStatus.json().status, 'signed-in');
       assert.equal(response.status, 200);
       assert.equal(response.body, 'first-second');
       assert.equal(response.headers['set-cookie'], undefined);
@@ -194,7 +198,7 @@ test('Homepage redirects are rewritten to the public Home origin', async () => {
   }
 });
 
-test('Suite Manager and unknown hosts cannot bypass the Homepage boundary', async () => {
+test('Suite Manager path and unknown hosts cannot bypass the Homepage boundary', async () => {
   let upstreamRequests = 0;
   const upstream = http.createServer((request, response) => {
     upstreamRequests += 1;
@@ -204,17 +208,22 @@ test('Suite Manager and unknown hosts cannot bypass the Homepage boundary', asyn
 
   try {
     await withServer(async (baseUrl) => {
-      const suiteResponse = await hostRequest(baseUrl, '/', { headers: { Host: 'suite.test' } });
+      const cookie = await createOwner(baseUrl);
+      const suiteResponse = await hostRequest(baseUrl, '/suite-manager/', { headers: { Host: 'home.test' } });
+      const unknownSuiteResponse = await hostRequest(baseUrl, '/suite-manager/unknown', {
+        headers: { Cookie: cookie, Host: 'home.test' },
+        method: 'POST',
+      });
       const unknownResponse = await hostRequest(baseUrl, '/', { headers: { Host: 'bypass.test' } });
 
       assert.equal(suiteResponse.status, 200);
       assert.match(suiteResponse.body, /Suite Manager/);
+      assert.equal(unknownSuiteResponse.status, 404);
       assert.equal(unknownResponse.status, 421);
       assert.equal(upstreamRequests, 0);
     }, {
       homeHost: 'home.test',
       homepageUpstream: upstreamUrl,
-      suiteManagerHost: 'suite.test',
     });
   } finally {
     await new Promise((resolve) => upstream.close(resolve));
@@ -224,7 +233,7 @@ test('Suite Manager and unknown hosts cannot bypass the Homepage boundary', asyn
 test('logout immediately blocks Home dashboard access again', async () => {
   await withServer(async (baseUrl) => {
     const cookie = await createOwner(baseUrl);
-    await hostRequest(baseUrl, '/api/auth/logout', {
+    await hostRequest(baseUrl, '/suite-manager/api/auth/logout', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
@@ -233,7 +242,7 @@ test('logout immediately blocks Home dashboard access again', async () => {
     });
 
     assert.equal(response.status, 302);
-    assert.equal(response.headers.location, '/setup/');
+    assert.equal(response.headers.location, '/suite-manager/');
   }, { homeHost: 'home.test' });
 });
 
@@ -251,7 +260,7 @@ test('Homepage failure returns a controlled bad gateway response', async () => {
   }, { homeHost: 'home.test', homepageUpstream: unavailableUrl });
 });
 
-function websocketExchange(baseUrl, cookie = '') {
+function websocketExchange(baseUrl, cookie = '', requestPath = '/socket') {
   return new Promise((resolve, reject) => {
     const url = new URL(baseUrl);
     const socket = net.connect(Number(url.port), url.hostname);
@@ -261,7 +270,7 @@ function websocketExchange(baseUrl, cookie = '') {
     socket.setTimeout(3000);
     socket.on('connect', () => {
       socket.write([
-        'GET /socket HTTP/1.1',
+        `GET ${requestPath} HTTP/1.1`,
         'Host: home.test',
         'Connection: Upgrade',
         'Upgrade: websocket',
@@ -276,7 +285,11 @@ function websocketExchange(baseUrl, cookie = '') {
         sentPayload = true;
         socket.write('dashboard-socket-payload');
       }
-      if (received.includes('dashboard-socket-payload') || received.includes('401 Unauthorized')) {
+      if (
+        received.includes('dashboard-socket-payload')
+        || received.includes('401 Unauthorized')
+        || received.includes('404 Not Found')
+      ) {
         socket.end();
       }
     });
@@ -299,9 +312,11 @@ test('WebSocket upgrades require a valid Home session and tunnel when authentica
     await withServer(async (baseUrl) => {
       const denied = await websocketExchange(baseUrl);
       const cookie = await createOwner(baseUrl);
+      const suiteManagerDenied = await websocketExchange(baseUrl, cookie, '/suite-manager/socket');
       const allowed = await websocketExchange(baseUrl, cookie);
 
       assert.match(denied, /401 Unauthorized/);
+      assert.match(suiteManagerDenied, /404 Not Found/);
       assert.match(allowed, /101 Switching Protocols/);
       assert.match(allowed, /dashboard-socket-payload/);
       assert.doesNotMatch(allowed, /Set-Cookie/i);
@@ -313,7 +328,7 @@ test('WebSocket upgrades require a valid Home session and tunnel when authentica
 
 test('empty setup status requires owner creation', async () => {
   await withServer(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/setup/status`);
+    const response = await fetch(`${baseUrl}/suite-manager/api/setup/status`);
     const status = await response.json();
 
     assert.equal(response.status, 200);
@@ -326,7 +341,7 @@ test('empty setup status requires owner creation', async () => {
 
 test('owner creation API signs in and changes setup status', async () => {
   await withServer(async (baseUrl) => {
-    const createResponse = await fetch(`${baseUrl}/api/setup/owner`, {
+    const createResponse = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
       body: JSON.stringify({
         email: 'owner@example.com',
         name: 'Suite Owner',
@@ -342,7 +357,7 @@ test('owner creation API signs in and changes setup status', async () => {
     assert.equal(created.status, 'signed-in');
     assert.match(cookie, /mos_v2_session=/);
 
-    const statusResponse = await fetch(`${baseUrl}/api/setup/status`, {
+    const statusResponse = await fetch(`${baseUrl}/suite-manager/api/setup/status`, {
       headers: { Cookie: cookie },
     });
     const status = await statusResponse.json();
@@ -354,7 +369,7 @@ test('owner creation API signs in and changes setup status', async () => {
 
 test('existing-owner signed-out state never returns setup again', async () => {
   await withServer(async (baseUrl) => {
-    await fetch(`${baseUrl}/api/setup/owner`, {
+    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
       body: JSON.stringify({
         email: 'owner@example.com',
         name: 'Suite Owner',
@@ -364,7 +379,7 @@ test('existing-owner signed-out state never returns setup again', async () => {
       method: 'POST',
     });
 
-    const statusResponse = await fetch(`${baseUrl}/api/setup/status`);
+    const statusResponse = await fetch(`${baseUrl}/suite-manager/api/setup/status`);
     const status = await statusResponse.json();
 
     assert.equal(statusResponse.status, 200);
@@ -375,7 +390,7 @@ test('existing-owner signed-out state never returns setup again', async () => {
 
 test('login and logout transition session state', async () => {
   await withServer(async (baseUrl) => {
-    await fetch(`${baseUrl}/api/setup/owner`, {
+    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
       body: JSON.stringify({
         email: 'owner@example.com',
         name: 'Suite Owner',
@@ -385,7 +400,7 @@ test('login and logout transition session state', async () => {
       method: 'POST',
     });
 
-    const loginResponse = await fetch(`${baseUrl}/api/auth/login`, {
+    const loginResponse = await fetch(`${baseUrl}/suite-manager/api/auth/login`, {
       body: JSON.stringify({
         email: 'owner@example.com',
         password: 'correct horse battery',
@@ -400,14 +415,14 @@ test('login and logout transition session state', async () => {
     assert.equal(login.status, 'signed-in');
     assert.match(cookie, /mos_v2_session=/);
 
-    const signedInResponse = await fetch(`${baseUrl}/api/setup/status`, {
+    const signedInResponse = await fetch(`${baseUrl}/suite-manager/api/setup/status`, {
       headers: { Cookie: cookie },
     });
     const signedIn = await signedInResponse.json();
 
     assert.equal(signedIn.status, 'signed-in');
 
-    const logoutResponse = await fetch(`${baseUrl}/api/auth/logout`, {
+    const logoutResponse = await fetch(`${baseUrl}/suite-manager/api/auth/logout`, {
       headers: { Cookie: cookie },
       method: 'POST',
     });
@@ -427,13 +442,13 @@ test('duplicate owner creation returns conflict', async () => {
       password: 'correct horse battery',
     };
 
-    await fetch(`${baseUrl}/api/setup/owner`, {
+    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
       body: JSON.stringify(owner),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',
     });
 
-    const duplicateResponse = await fetch(`${baseUrl}/api/setup/owner`, {
+    const duplicateResponse = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
       body: JSON.stringify(owner),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',

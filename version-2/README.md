@@ -36,14 +36,15 @@ Build and validate the control plane before optional apps:
 
 ## Authenticated Control-Plane Routes
 
-V2 uses two public hosts while keeping Homepage private:
+V2 uses one public origin while keeping Homepage private:
 
-- `home.<domain>` is the primary MOS URL. Suite Manager serves onboarding/login at `/setup/` and proxies every authenticated dashboard request to Homepage.
-- `suite-manager.<domain>` serves the Suite Manager control-plane UI and API.
-- Caddy sends both hosts to Suite Manager. It never routes public traffic directly to Homepage.
+- `home.<domain>` is the only public control-plane host.
+- Suite Manager serves onboarding, login, account controls, UI, and API under `/suite-manager/`.
+- Every other authenticated path is proxied by Suite Manager to Homepage.
+- Caddy sends the Home host to Suite Manager. It never routes public traffic directly to Homepage.
 - Homepage listens only on `127.0.0.1:3200`, and Suite Manager removes its session cookie before forwarding requests upstream.
 
-Sessions are deliberately host-only. Home and Suite Manager therefore require independent browser sessions; MOS does not use a parent-domain cookie that would also be sent to future app subdomains.
+The session remains host-only but now covers both dashboard and Suite Manager because they share one origin. Future apps can keep their own authentication without receiving the MOS control-plane cookie.
 
 ## Installer Foundation
 
@@ -67,7 +68,7 @@ npm --prefix version-2 run smoke:do:destroy
 npm --prefix version-2 run smoke:do:render
 ```
 
-`smoke:do:up` is the paid, user-run path. It creates a tagged DigitalOcean Droplet, installs the V2 Caddy, Suite Manager, and private Homepage control plane from the selected repo/ref, waits for `/api/setup/status`, and prints the Home and Suite Manager URLs. `smoke:do:render` remains the free dry-run path.
+`smoke:do:up` is the paid, user-run path. It creates a tagged DigitalOcean Droplet, installs the V2 Caddy, Suite Manager, and private Homepage control plane from the selected repo/ref, waits for `/suite-manager/api/setup/status`, and prints the Home and Suite Manager paths. `smoke:do:render` remains the free dry-run path.
 
 ## Test Command
 
@@ -90,7 +91,7 @@ npm --prefix version-2 run dev:client
 npm --prefix version-2 run build:client
 ```
 
-The backend serves the built frontend from `suite-manager/frontend/dist/` under `/suite-manager-assets/`. The app covers owner first-run setup, login, logout, the initial control-plane screen, and the authentication boundary in front of Homepage.
+The backend serves the built frontend from `suite-manager/frontend/dist/` under `/suite-manager/`, with static assets reserved under `/suite-manager/assets/`. The app covers owner first-run setup, login, logout, the initial control-plane screen, and the authentication boundary in front of Homepage.
 
 ## Reference Material
 

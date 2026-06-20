@@ -2,7 +2,7 @@ const HOMEPAGE_IMAGE = 'ghcr.io/gethomepage/homepage@sha256:cc84f2f5eb3c77343537
 const HOMEPAGE_PORT = 3200;
 
 function renderCaddyfile() {
-  return `http://$MOS_V2_HOME_HOST, http://$MOS_V2_SUITE_MANAGER_HOST {
+  return `http://$MOS_V2_HOME_HOST {
   reverse_proxy 127.0.0.1:$MOS_V2_SUITE_MANAGER_PORT
 }
 `;

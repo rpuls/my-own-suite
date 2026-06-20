@@ -1,1 +1,12 @@
-[]
+- Project:
+    - Source Code:
+        - abbr: GH
+          href: https://github.com/rpuls/my-own-suite
+    - Documentation:
+        - abbr: DOC
+          href: https://myownsuite.org/docs/
+
+- Community:
+    - Discord:
+        - abbr: DC
+          href: https://discord.gg/K72wyWRt

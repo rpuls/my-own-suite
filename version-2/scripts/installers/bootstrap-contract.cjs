@@ -54,14 +54,13 @@ function defaultDomainFor(input = {}) {
 }
 
 function publicUrlsFor(domain) {
-  const suiteHost = `suite-manager.${domain}`;
   const homeHost = `home.${domain}`;
 
   return {
     home: `http://${homeHost}/`,
     homepage: `http://${homeHost}/`,
-    setup: `http://${homeHost}/setup/`,
-    suiteManager: `http://${suiteHost}/`,
+    setup: `http://${homeHost}/suite-manager/`,
+    suiteManager: `http://${homeHost}/suite-manager/`,
   };
 }
 
@@ -156,18 +155,16 @@ if [ "$MOS_V2_DOMAIN" = "localhost" ] && [ "$MOS_V2_FRONT_DOOR" = "digitalocean-
 fi
 
 if [ "$MOS_V2_DOMAIN" = "localhost" ]; then
-  MOS_V2_SUITE_MANAGER_HOST="suite-manager.localhost"
   MOS_V2_HOME_HOST="home.localhost"
 else
-  MOS_V2_SUITE_MANAGER_HOST="suite-manager.$MOS_V2_DOMAIN"
   MOS_V2_HOME_HOST="home.$MOS_V2_DOMAIN"
 fi
 
 MOS_V2_HOME_URL="http://$MOS_V2_HOME_HOST/"
-MOS_V2_SETUP_URL="http://$MOS_V2_HOME_HOST/setup/"
-MOS_V2_SUITE_MANAGER_URL="http://$MOS_V2_SUITE_MANAGER_HOST/"
+MOS_V2_SETUP_URL="http://$MOS_V2_HOME_HOST/suite-manager/"
+MOS_V2_SUITE_MANAGER_URL="$MOS_V2_SETUP_URL"
 MOS_V2_HOMEPAGE_UPSTREAM="http://127.0.0.1:$MOS_V2_HOMEPAGE_PORT"
-export MOS_V2_SUITE_MANAGER_HOST MOS_V2_HOME_HOST MOS_V2_HOME_URL MOS_V2_SETUP_URL MOS_V2_SUITE_MANAGER_URL MOS_V2_HOMEPAGE_UPSTREAM
+export MOS_V2_HOME_HOST MOS_V2_HOME_URL MOS_V2_SETUP_URL MOS_V2_SUITE_MANAGER_URL MOS_V2_HOMEPAGE_UPSTREAM
 
 echo "[mos-v2] Bootstrapping MOS V2 control plane from ${config.repoUrl}#${config.repoRef}"
 echo "[mos-v2] Components: ${config.components.join(', ')}"
@@ -225,7 +222,14 @@ git -C "$MOS_V2_INSTALL_ROOT/repo" reset --hard "$MOS_V2_REPO_REF"
 npm --prefix "$MOS_V2_INSTALL_ROOT/repo/version-2" install
 npm --prefix "$MOS_V2_INSTALL_ROOT/repo/version-2" run build:client
 
-cp -a "$MOS_V2_INSTALL_ROOT/repo/version-2/infrastructure/homepage/." "$MOS_V2_STATE_ROOT/homepage/config/"
+homepage_seed_marker="$MOS_V2_STATE_ROOT/homepage/config/.mos-v2-defaults-seeded"
+for source_file in "$MOS_V2_INSTALL_ROOT/repo/version-2/infrastructure/homepage/"*; do
+  target_file="$MOS_V2_STATE_ROOT/homepage/config/$(basename "$source_file")"
+  if [ ! -e "$homepage_seed_marker" ] || [ ! -e "$target_file" ]; then
+    cp -a "$source_file" "$target_file"
+  fi
+done
+touch "$homepage_seed_marker"
 chown -R "$MOS_V2_RUNTIME_USER:$MOS_V2_RUNTIME_USER" "$MOS_V2_STATE_ROOT"
 chown -R 1000:1000 "$MOS_V2_STATE_ROOT/homepage/config"
 
@@ -249,7 +253,6 @@ Environment=MOS_V2_STATE_DIR=$MOS_V2_STATE_ROOT/suite-manager
 Environment=MOS_V2_FRONTEND_DIST_DIR=$MOS_V2_INSTALL_ROOT/repo/version-2/suite-manager/frontend/dist
 Environment=MOS_V2_SUITE_MANAGER_HOST=127.0.0.1
 Environment=MOS_V2_SUITE_MANAGER_PORT=$MOS_V2_SUITE_MANAGER_PORT
-Environment=MOS_V2_SUITE_MANAGER_HOSTNAME=$MOS_V2_SUITE_MANAGER_HOST
 Environment=MOS_V2_HOME_HOST=$MOS_V2_HOME_HOST
 Environment=MOS_V2_HOMEPAGE_UPSTREAM=$MOS_V2_HOMEPAGE_UPSTREAM
 ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/version-2/suite-manager/backend/src/server/start.cjs

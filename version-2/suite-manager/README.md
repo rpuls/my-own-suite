@@ -36,8 +36,8 @@ This is milestone persistence only. Before V2 adds richer settings, more user de
 
 ## Homepage Authentication Boundary
 
-Suite Manager accepts the configured `home.<domain>` and `suite-manager.<domain>` hosts and rejects unknown hosts. On Home it serves onboarding/login at `/setup/`; all other requests require a valid `mos_v2_session` before they are streamed to `MOS_V2_HOMEPAGE_UPSTREAM`.
+Suite Manager accepts only the configured `home.<domain>` host and rejects unknown hosts. It owns `/suite-manager/` for onboarding, login, account controls, static assets, and API routes. All other requests require a valid `mos_v2_session` before they are streamed to `MOS_V2_HOMEPAGE_UPSTREAM`.
 
-The proxy preserves request paths, query strings, request/response streaming, redirects, forwarded origin information, and WebSocket upgrades. It removes the MOS cookie before contacting Homepage and ignores upstream cookies. Unauthenticated browser traffic is redirected to `/setup/`, unauthenticated upgrades are rejected, and an unavailable upstream returns `502`.
+The proxy preserves request paths, query strings, request/response streaming, redirects, forwarded origin information, and WebSocket upgrades. It removes the MOS cookie before contacting Homepage and ignores upstream cookies. Unauthenticated browser traffic is redirected to `/suite-manager/`, unauthenticated upgrades are rejected, and an unavailable upstream returns `502`.
 
-The cookie remains host-only. Logging into Home does not log the browser into the Suite Manager subdomain, and no MOS credential is shared with future app subdomains.
+The cookie remains host-only. Because dashboard and Suite Manager share the Home origin, one login covers both without sharing MOS credentials with future app subdomains.
