@@ -4,7 +4,7 @@ const owner = { email: 'owner@example.com', name: 'MOS Owner', password: 'correc
 
 test('owner onboarding, Homepage customization, Settings validation, and logout use the real control plane', async ({ page }) => {
   await page.goto('/suite-manager/');
-  await expect(page.getByRole('heading', { name: /Create your owner account/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Create your MOS owner account/i })).toBeVisible();
   await page.getByLabel(/name/i).fill(owner.name);
   await page.getByLabel(/email/i).fill(owner.email);
   await page.getByLabel(/^Password/i).fill(owner.password);
@@ -20,31 +20,36 @@ test('owner onboarding, Homepage customization, Settings validation, and logout 
   await expect(page.getByRole('heading', { name: 'Customize' })).toBeVisible();
 
   await page.getByLabel('Homepage YAML').fill('- broken: [');
-  await page.getByRole('button', { name: 'Validate and apply' }).click();
+  await page.getByRole('button', { name: 'Validate' }).click();
   await expect(page.getByText('Fix the YAML errors before saving.')).toBeVisible();
-  await page.getByLabel('Homepage file').selectOption('services.template.yaml');
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Reload saved' }).click();
 
-  await page.getByRole('tab', { name: 'Add link' }).click();
-  await page.getByLabel('Display name').fill('MOS Test Link');
-  await page.getByLabel('Description').fill('Added by the V2 browser flow');
-  await page.getByLabel('Icon').fill('mdi:link');
-  await page.getByLabel('Destination group').fill('Tests');
-  await page.getByLabel('URL').fill('https://example.com/');
-  await page.getByRole('button', { name: 'Add link' }).click();
-  await expect(page.getByText('Homepage updated')).toBeVisible();
+  await page.getByRole('button', { name: 'Add to Homepage' }).click();
+  await page.getByRole('button', { name: /Website/ }).click();
+  await page.getByLabel('Name', { exact: true }).fill('MOS Test Link');
+  await page.getByRole('textbox', { name: /^Description/ }).fill('Added by the V2 browser flow');
+  await page.getByRole('textbox', { name: /^Icon/ }).fill('mdi:link');
+  await page.getByRole('combobox', { name: 'Placement' }).selectOption('My Own Suite');
+  await page.getByLabel('Website address', { exact: true }).fill('https://example.com/');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 30000 });
+  await expect(page.getByLabel('Homepage YAML')).toContainText('MOS Test Link');
 
-  await page.getByRole('tab', { name: 'Add home service' }).click();
-  await page.getByLabel('Display name').fill('MOS Test Service');
-  await page.getByLabel('Description').fill('Existing network service');
-  await page.getByLabel('Icon').fill('mdi:server-network');
-  await page.getByLabel('Destination group').fill('Tests');
-  await page.getByLabel('Internal host or IP').fill('192.168.1.20');
-  await page.getByLabel('Internal port').fill('8080');
-  await page.getByLabel('Public subdomain').fill('test-service');
+  await page.getByRole('button', { name: 'Add to Homepage' }).click();
+  await page.getByRole('button', { name: /Home network app/ }).click();
+  await page.getByRole('textbox', { name: /^Name/ }).fill('MOS Test Service');
+  await page.getByRole('textbox', { name: /^Description/ }).fill('Existing network service');
+  await page.getByRole('textbox', { name: /^Icon/ }).fill('mdi:server-network');
+  await page.getByRole('combobox', { name: 'Placement' }).selectOption('My Own Suite');
+  await page.getByRole('textbox', { name: /^App address/ }).fill('http://192.168.1.20:8080');
+  await page.getByRole('button', { name: 'Edit URL subdomain' }).click();
+  await page.getByLabel('URL subdomain').fill('test-service');
   await page.getByRole('button', { name: 'Preview route' }).click();
   await expect(page.getByText('http://test-service.127.0.0.1.sslip.io/')).toBeVisible();
-  await page.getByRole('button', { name: 'Add home service' }).click();
-  await expect(page.getByText('Homepage updated')).toBeVisible();
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 30000 });
+  await expect(page.getByLabel('Homepage YAML')).toContainText('MOS Test Service');
 
   await page.goto('/');
   await expect(page.getByText('MOS Test Link')).toBeVisible();

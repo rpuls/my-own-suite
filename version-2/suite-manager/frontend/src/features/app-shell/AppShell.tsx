@@ -63,7 +63,7 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
         <button aria-expanded={menuOpen} aria-haspopup="dialog" aria-label="Open navigation menu" className="suite-icon-button" onClick={() => setMenuOpen(true)} title="Menu" type="button"><Icon name="menu" /></button>
       </header>
 
-      <Drawer onClose={closeMenu} open={menuOpen} title="Suite Manager menu"><nav className="suite-nav"><a href="/"><Icon name="dashboard" />Dashboard</a><button aria-current={route === 'customize' ? 'page' : undefined} onClick={openCustomize} type="button"><Icon name="customize" />Customize</button><button aria-current={route === 'settings' ? 'page' : undefined} onClick={openSettings} type="button"><Icon name="settings" />Settings</button><button onClick={() => { closeMenu(); void onLogout(); }} type="button"><Icon name="sign-out" />Sign out</button></nav></Drawer>
+      <Drawer onClose={closeMenu} open={menuOpen} title="Suite Manager menu"><nav aria-label="Suite Manager menu" className="suite-nav"><a href="/"><Icon name="dashboard" />Dashboard</a><button aria-current={route === 'customize' ? 'page' : undefined} onClick={openCustomize} type="button"><Icon name="customize" />Customize</button><button aria-current={route === 'settings' ? 'page' : undefined} onClick={openSettings} type="button"><Icon name="settings" />Settings</button><button onClick={() => { closeMenu(); void onLogout(); }} type="button"><Icon name="sign-out" />Sign out</button></nav></Drawer>
 
       <main className="suite-shell-main">
         <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'customize' ? <CustomizeScreen /> : (

@@ -18,8 +18,8 @@ async function waitForReady() {
   const deadline = Date.now() + 90000;
   while (Date.now() < deadline) {
     try {
-      const homepage = await fetch('http://127.0.0.1:13200/', { headers: { Host: 'home.127.0.0.1.sslip.io' } });
-      const suiteManager = await fetch('http://127.0.0.1:13100/suite-manager/api/setup/status', { headers: { Host: 'home.127.0.0.1.sslip.io' } });
+      const homepage = await fetch('http://home.127.0.0.1.sslip.io:13200/');
+      const suiteManager = await fetch('http://home.127.0.0.1.sslip.io:13100/suite-manager/api/setup/status');
       if (homepage.ok && suiteManager.ok) return;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 500));
