@@ -34,6 +34,8 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.match(plan.cloudInit, /systemctl restart mos-v2-homepage\.service/);
   assert.match(plan.cloudInit, /curl -fsS -H "Host: \$MOS_V2_HOME_HOST" "\$MOS_V2_HOMEPAGE_UPSTREAM"/);
   assert.match(plan.cloudInit, /systemctl restart mos-v2-suite-manager\.service/);
+  assert.match(plan.cloudInit, /Wants=mos-v2-homepage\.service network-online\.target/);
+  assert.doesNotMatch(plan.cloudInit, /Requires=mos-v2-homepage\.service/);
   assert.match(plan.cloudInit, /systemctl restart caddy\.service/);
   assert.match(plan.cloudInit, /infrastructure\/caddy\/Dockerfile/);
   assert.match(plan.cloudInit, /dns\.providers\.cloudflare/);

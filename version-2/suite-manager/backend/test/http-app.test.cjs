@@ -5,6 +5,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { HOMEPAGE_AGENT_TIMEOUT_MS } = require('../src/homepage/homepage-agent-client.cjs');
 
 const { createV2Server } = require('../src/server/http-app.cjs');
 
@@ -269,6 +270,34 @@ test('Homepage customization APIs require authentication and pass only structure
     assert.deepEqual(status.json().files, ['bookmarks.yaml', 'services.template.yaml', 'settings.yaml', 'widgets.yaml']);
     assert.equal(read.status, 200);
     assert.deepEqual(calls, [['status'], ['read', 'services.template.yaml']]);
+  }, { homeHost: 'home.test', homepageAgent });
+});
+
+test('Homepage agent request budget exceeds the observed restart rollback window', () => {
+  assert.ok(HOMEPAGE_AGENT_TIMEOUT_MS > 60_000);
+});
+
+test('Homepage restart failure preserves the exact controlled 502 response', async () => {
+  const homepageAgent = {
+    async apply() {
+      throw Object.assign(new Error('Homepage did not restart successfully.'), {
+        code: 'HOMEPAGE_RESTART_FAILED',
+        statusCode: 502,
+      });
+    },
+  };
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const response = await hostRequest(baseUrl, '/suite-manager/api/customize/file/apply', {
+      body: JSON.stringify({ content: '- Links: []\n', expectedRevision: 'sha256:current', file: 'services.template.yaml' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(response.status, 502);
+    assert.deepEqual(response.json(), {
+      code: 'HOMEPAGE_RESTART_FAILED',
+      error: 'Homepage did not restart successfully.',
+    });
   }, { homeHost: 'home.test', homepageAgent });
 });
 

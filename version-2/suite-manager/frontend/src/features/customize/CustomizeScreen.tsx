@@ -1,130 +1,115 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Notice, Select, TextArea, TextInput } from '../../components/ui';
+import { useEffect, useMemo, useState } from 'react';
+import { parseDocument } from 'yaml';
+import { Notice } from '../../components/ui';
+import { AddHomepageItemDialog } from './AddHomepageItemDialog';
+import { CodeEditor } from './CodeEditor';
 
 const API = '/suite-manager/api/customize';
-const files = ['bookmarks.yaml', 'services.template.yaml', 'settings.yaml', 'widgets.yaml'];
-type Mode = 'editor' | 'link' | 'service';
-type Result = { revision?: string; steps?: string[]; error?: string; details?: string[] };
+const FILES = [
+  { description: 'Dashboard bookmarks and quick links.', name: 'bookmarks.yaml' },
+  { description: 'Dashboard groups, links, and home services.', name: 'services.template.yaml' },
+  { description: 'Homepage title, theme, layout, and behavior.', name: 'settings.yaml' },
+  { description: 'Header widgets such as search and system information.', name: 'widgets.yaml' },
+];
 
-async function api(path: string, body?: unknown) {
-  const response = await fetch(`${API}${path}`, body === undefined ? {} : {
-    body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, method: 'POST',
-  });
-  const payload = await response.json();
+type ApiError = Error & { code?: string; details?: string[] };
+type FileResult = { content: string; file: string; revision: string };
+type ApplyResult = { revision: string; steps?: string[] };
+
+async function api<T>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${API}${path}`, body === undefined ? {} : { body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }, method: 'POST' });
+  const payload = await response.json().catch(() => ({ error: 'The operation failed.' }));
   if (!response.ok) throw Object.assign(new Error(payload.error || 'The operation failed.'), payload);
-  return payload;
+  return payload as T;
 }
-
-const emptyLink = { description: '', group: 'Open Source Resources', icon: 'mdi:link', name: '', url: '' };
-const emptyService = { description: '', group: 'Home services', host: '', icon: 'mdi:server-network', name: '', port: '', protocol: 'http', subdomain: '' };
 
 function createRequestId() {
   const bytes = new Uint8Array(16);
   if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(bytes);
   else for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
-  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40; bytes[8] = (bytes[8]! & 0x3f) | 0x80;
   const hex = [...bytes].map((value) => value.toString(16).padStart(2, '0')).join('');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+function groupsFrom(content: string) {
+  try {
+    const value = parseDocument(content).toJS();
+    if (!Array.isArray(value)) return ['Home services'];
+    const groups = value.flatMap((item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.keys(item) : []);
+    return groups.length ? groups : ['Home services'];
+  } catch { return ['Home services']; }
+}
+
 export function CustomizeScreen() {
-  const [mode, setMode] = useState<Mode>('editor');
   const [file, setFile] = useState('services.template.yaml');
   const [content, setContent] = useState('');
+  const [savedContent, setSavedContent] = useState('');
   const [revision, setRevision] = useState('');
   const [agentAvailable, setAgentAvailable] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<Result>({});
-  const [link, setLink] = useState(emptyLink);
-  const [service, setService] = useState(emptyService);
-  const [linkRequestId, setLinkRequestId] = useState(createRequestId);
-  const [serviceRequestId, setServiceRequestId] = useState(createRequestId);
-  const [preview, setPreview] = useState<{ publicUrl: string; upstream: string } | null>(null);
+  const [busy, setBusy] = useState(true);
+  const [validatedContent, setValidatedContent] = useState<string | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [steps, setSteps] = useState<string[]>([]);
+  const [addOpen, setAddOpen] = useState(false);
+  const dirty = content !== savedContent;
+  const selected = FILES.find((item) => item.name === file)!;
+  const groups = useMemo(() => groupsFrom(file === 'services.template.yaml' ? content : savedContent), [content, file, savedContent]);
 
-  async function load(selected = file) {
-    setBusy(true); setResult({});
+  async function load(selectedFile = file) {
+    setBusy(true); setError(null); setSteps([]); setValidatedContent(null);
     try {
-      const value = await api('/file/read', { file: selected });
-      setContent(value.content); setRevision(value.revision);
-    } catch (error) { setResult({ error: (error as Error).message }); }
+      const value = await api<FileResult>('/file/read', { file: selectedFile });
+      setFile(selectedFile); setContent(value.content); setSavedContent(value.content); setRevision(value.revision);
+    } catch (caught) { setError(caught as ApiError); }
     finally { setBusy(false); }
   }
 
   useEffect(() => {
-    void api('/status').then((status) => setAgentAvailable(status.agentAvailable)).catch(() => setAgentAvailable(false));
+    void api<{ agentAvailable: boolean }>('/status').then((status) => setAgentAvailable(status.agentAvailable)).catch(() => setAgentAvailable(false));
     void load();
   }, []);
 
-  async function save() {
-    setBusy(true); setResult({});
-    try {
-      await api('/file/validate', { content, file });
-      const value = await api('/file/apply', { content, expectedRevision: revision, file });
-      setRevision(value.revision); setResult({ steps: value.steps });
-    } catch (error) {
-      const value = error as Error & { details?: string[] };
-      setResult({ details: value.details, error: value.message });
-    } finally { setBusy(false); }
-  }
-
-  async function ensureServicesRevision() {
-    if (file === 'services.template.yaml') return revision;
-    const value = await api('/file/read', { file: 'services.template.yaml' });
-    return value.revision as string;
-  }
-
-  async function addGuided(event: FormEvent, homeService: boolean) {
-    event.preventDefault(); setBusy(true); setResult({});
-    try {
-      const expectedRevision = await ensureServicesRevision();
-      const value = await api(homeService ? '/add-home-service' : '/add-link', {
-        entry: homeService ? { ...service, port: Number(service.port) } : link,
-        expectedRevision,
-        requestId: homeService ? serviceRequestId : linkRequestId,
-      });
-      if (file === 'services.template.yaml') await load('services.template.yaml');
-      setResult({ steps: value.steps });
-      if (homeService) { setService(emptyService); setServiceRequestId(createRequestId()); }
-      else { setLink(emptyLink); setLinkRequestId(createRequestId()); }
-      setPreview(null);
-    } catch (error) { setResult({ error: (error as Error).message }); }
+  async function validate() {
+    setBusy(true); setError(null); setSteps([]);
+    try { await api('/file/validate', { content, file }); setValidatedContent(content); }
+    catch (caught) { setValidatedContent(null); setError(caught as ApiError); }
     finally { setBusy(false); }
   }
 
-  async function updatePreview() {
+  async function save() {
+    if (!dirty || validatedContent !== content) return;
+    setBusy(true); setError(null); setSteps([]);
     try {
-      setPreview(await api('/home-service-preview', { host: service.host, port: Number(service.port), protocol: service.protocol, subdomain: service.subdomain }));
-      setResult({});
-    } catch (error) { setPreview(null); setResult({ error: (error as Error).message }); }
+      const value = await api<ApplyResult>('/file/apply', { content, expectedRevision: revision, file });
+      setRevision(value.revision); setSavedContent(content); setValidatedContent(null); setSteps(value.steps || ['written']);
+    } catch (caught) { setError(caught as ApiError); }
+    finally { setBusy(false); }
+  }
+
+  async function add(kind: 'link' | 'service', entry: Record<string, unknown>) {
+    let expectedRevision = revision;
+    if (file !== 'services.template.yaml') expectedRevision = (await api<FileResult>('/file/read', { file: 'services.template.yaml' })).revision;
+    const value = await api<ApplyResult>(kind === 'service' ? '/add-home-service' : '/add-link', { entry, expectedRevision, requestId: createRequestId() });
+    setSteps(value.steps || ['written']); setAddOpen(false); await load('services.template.yaml'); setSteps(value.steps || ['written']);
   }
 
   return <section className="mos-shell suite-customize">
-    <div className="suite-hero"><span className="mos-pill mos-pill-accent">Dashboard configuration</span><h1>Customize</h1><p className="suite-lead mos-body-lg">Edit Homepage files or add dashboard-only links and existing services on your network.</p></div>
+    <div className="suite-hero"><span className="mos-pill mos-pill-accent">Homepage</span><h1>Customize</h1><p className="suite-lead mos-body-lg">Edit dashboard files or add links and services already running on your home network.</p></div>
     {!agentAvailable ? <Notice title="Homepage agent unavailable" variant="warning"><p>Editing requires the installed V2 Homepage system agent.</p></Notice> : null}
-    <div className="suite-mode-tabs" role="tablist" aria-label="Customize mode">
-      <button aria-selected={mode === 'editor'} onClick={() => setMode('editor')} role="tab" type="button">Files</button>
-      <button aria-selected={mode === 'link'} onClick={() => setMode('link')} role="tab" type="button">Add link</button>
-      <button aria-selected={mode === 'service'} onClick={() => setMode('service')} role="tab" type="button">Add home service</button>
-    </div>
     <section className="mos-panel suite-card suite-customize-panel">
-      {mode === 'editor' ? <>
-        <Select label="Homepage file" value={file} onChange={(event) => { setFile(event.target.value); void load(event.target.value); }}>{files.map((name) => <option key={name}>{name}</option>)}</Select>
-        <TextArea aria-label="Homepage YAML" className="suite-code-editor" label="YAML content" rows={20} spellCheck={false} value={content} onChange={(event) => setContent(event.target.value)} />
-        <button className="mos-button mos-button-primary" disabled={busy || !agentAvailable} onClick={() => void save()} type="button">{busy ? 'Applying...' : 'Validate and apply'}</button>
-      </> : mode === 'link' ? <GuidedForm values={link} setValues={setLink} onSubmit={(event: FormEvent) => void addGuided(event, false)} busy={busy} /> : <GuidedForm values={service} setValues={setService} onSubmit={(event: FormEvent) => void addGuided(event, true)} busy={busy} service onPreview={() => void updatePreview()} preview={preview} />}
-      {result.error ? <Notice title="Could not apply" variant="error"><p>{result.error}</p>{result.details?.map((detail) => <p key={detail}>{detail}</p>)}</Notice> : result.steps ? <Notice title="Homepage updated" variant="success"><p>The new dashboard configuration is active.</p></Notice> : null}
-      {result.steps ? <details className="suite-advanced"><summary>Advanced details</summary><pre>{result.steps.join('\n')}</pre></details> : null}
+      <header className="suite-customize-header"><div><h2>{selected.name}</h2><p className="suite-meta">{selected.description}</p></div>{file === 'services.template.yaml' ? <button className="mos-button mos-button-primary" disabled={busy || !agentAvailable} onClick={() => setAddOpen(true)} type="button">Add to Homepage</button> : null}</header>
+      <div className="suite-customize-layout">
+        <nav className="suite-file-list" aria-label="Homepage config files">{FILES.map((item) => <button aria-current={item.name === file ? 'page' : undefined} disabled={busy} key={item.name} onClick={() => { if (!dirty || window.confirm('Discard unsaved changes?')) void load(item.name); }} type="button"><span>{item.name.replace('.template', '').replace('.yaml', '')}</span><small>YAML</small></button>)}</nav>
+        <div className="suite-editor-column">
+          {validatedContent === content && dirty ? <Notice title="Ready to save" variant="success"><p>No validation errors found.</p></Notice> : null}
+          {error ? <Notice title="Could not apply" variant="error"><p>{error.message}</p>{error.details?.map((detail) => <p key={detail}>{detail}</p>)}</Notice> : null}
+          {steps.length ? <><Notice title="Homepage updated" variant="success"><p>The saved dashboard configuration is active.</p></Notice><details className="suite-advanced"><summary>Advanced details</summary><pre>{steps.join('\n')}</pre></details></> : null}
+          <div className="suite-editor-actions"><button className="mos-button" disabled={busy || !dirty} onClick={() => void validate()} type="button">{busy ? 'Checking...' : 'Validate'}</button><button className="mos-button mos-button-primary" disabled={busy || !dirty || validatedContent !== content || !agentAvailable} onClick={() => void save()} type="button">{busy ? 'Applying...' : 'Save and apply'}</button><button className="mos-button" disabled={busy} onClick={() => { if (!dirty || window.confirm('Discard unsaved changes?')) void load(); }} type="button">Reload saved</button></div>
+          {busy && !content ? <p className="suite-meta">Loading Homepage configuration...</p> : <CodeEditor key={file} value={content} onChange={(value) => { setContent(value); setValidatedContent(null); setError(null); setSteps([]); }} />}
+        </div>
+      </div>
     </section>
+    {addOpen ? <AddHomepageItemDialog groups={groups} onAdd={add} onClose={() => setAddOpen(false)} previewHomeService={(input) => api('/home-service-preview', input)} /> : null}
   </section>;
-}
-
-function GuidedForm({ busy, onPreview, onSubmit, preview, service = false, setValues, values }: any) {
-  const field = (name: string) => ({ value: values[name], onChange: (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setValues({ ...values, [name]: event.target.value }) });
-  return <form className="suite-guided-form" onSubmit={onSubmit}>
-    <div className="suite-form-grid"><TextInput label="Display name" required {...field('name')} /><TextInput label="Description" required {...field('description')} /><TextInput label="Icon" required {...field('icon')} /><TextInput label="Destination group" required {...field('group')} />
-    {service ? <><Select label="Upstream protocol" {...field('protocol')}><option value="http">HTTP</option><option value="https">HTTPS</option></Select><TextInput label="Internal host or IP" required {...field('host')} /><TextInput label="Internal port" min="1" max="65535" required type="number" {...field('port')} /><TextInput label="Public subdomain" required {...field('subdomain')} /></> : <TextInput label="URL" required type="url" {...field('url')} />}</div>
-    {service ? <><button className="mos-button" onClick={onPreview} type="button">Preview route</button>{preview ? <div className="suite-route-preview"><strong>Browser URL</strong><code>{preview.publicUrl}</code><strong>Internal upstream</strong><code>{preview.upstream}</code></div> : null}</> : <p className="suite-meta">This adds a dashboard link only. MOS will not proxy or manage the linked service.</p>}
-    <button className="mos-button mos-button-primary" disabled={busy} type="submit">{busy ? 'Applying...' : service ? 'Add home service' : 'Add link'}</button>
-  </form>;
 }

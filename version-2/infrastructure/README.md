@@ -33,6 +33,7 @@ Current first-boot services:
 - Homepage is published only on `127.0.0.1:3200`; this control-plane container is the intentionally narrow Docker exception before the general app lifecycle design.
 - Caddy proxies only `home.<domain>` to Suite Manager on loopback; Suite Manager owns `/suite-manager/` on that origin.
 - Suite Manager authenticates Home requests and proxies the private Homepage upstream. Caddy does not validate sessions and has no direct Homepage route.
+- Suite Manager starts after and wants Homepage, but does not use a stop-propagating requirement; restarting Homepage during a customization apply must not restart the API serving that request.
 
 The shared runtime renderer is `control-plane-runtime.cjs`. It pulls the pinned stock `ghcr.io/gethomepage/homepage` image and runs it as `mos-v2-homepage`; the application code lives in that container image, while durable runtime config is mounted from `/var/lib/mos-v2/homepage/config`. Local tile images are mounted from its `images/` child into `/app/public/images`.
 
@@ -45,3 +46,5 @@ The HTTPS renderer emits only MOS-owned configuration. It retains the original H
 Repo-owned defaults under `homepage/` seed runtime state once, then only fill missing files, so Suite Manager edits survive bootstrap/update runs. `services.template.yaml` is the editable dashboard source and `services.yaml` is its generated stock Homepage projection. Generated external home-service routes live separately at `/etc/caddy/mos-v2-homepage-routes.caddy`; both bootstrap HTTP and DNS-01 Caddy configurations import it, while the HTTPS agent continues to own the main Caddyfile and secret environment. Customize cannot rewrite those HTTPS-owned files or route directly to Homepage.
 
 The Homepage agent stages and validates candidate YAML, projections, and the MOS route snippet, atomically replaces changed outputs, restarts only Homepage when its files changed, reloads only Caddy when routes changed, and restores the previous files and services on failure. It retains a bounded ten-checkpoint history. Homepage YAML contains dashboard presentation and narrow user-managed network-service metadata only, never app installation configuration or secrets.
+
+The host restart budget is 60 seconds, above the observed container/systemd shutdown lifecycle, and the Suite Manager agent client budget is longer. A genuine timeout still triggers rollback; normal restarts do not discard a successfully validated edit merely because they exceed the old 20-second generic command timeout.

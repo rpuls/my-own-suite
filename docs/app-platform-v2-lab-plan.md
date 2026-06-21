@@ -25,6 +25,7 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Added a V2-owned Playwright foundation for real local owner, Homepage, navigation, Settings validation, and logout behavior, plus an explicitly guarded DigitalOcean DNS-01 validation command.
 - [x] Fixed the pinned Caddy build for Ubuntu's default legacy Docker builder after a fresh smoke exposed an unset `BUILDPLATFORM` failure before systemd unit creation.
 - [x] Added the first V2 Homepage customization slice: authenticated Customize navigation, allowlisted revision-aware YAML editing, guided dashboard links and home services, SQLite apply/revision metadata, generated Homepage/Caddy projections, and a separate transactional rollback-capable Homepage agent.
+- [x] Diagnosed the real DigitalOcean Customize apply failure through the live agent/socket/runtime state, fixed the Homepage restart budget and Suite Manager systemd dependency that caused successful writes to roll back, and aligned Customize with V1's file rail, syntax-aware validation/save flow, shared dialog controls, guided link flow, and automatic home-service URL helper.
 
 ### Current Next Slice
 
@@ -43,7 +44,7 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
-Current result: 64 V2 tests pass, covering the platform contract, branding sync, SQLite migrations, auth, HTTPS, allowlisted Homepage YAML/revisions, guided entry identity and browser compatibility, persistent shell navigation, projections, Caddy injection resistance, transactional restart/reload decisions and rollback, authenticated HTTP/WebSocket proxying, installer rendering, and system-agent boundaries. TypeScript and syntax checks pass. The expanded Playwright flow and real DigitalOcean/DNS-01/USB validation remain explicitly user-run.
+Current result: V2 contract tests, TypeScript checks, and the production frontend build pass after the live-smoke restart rollback repair and V1-aligned Customize rebuild. Coverage includes the exact controlled restart-failure response, coordinated restart/client budgets, non-propagating Suite Manager dependency, syntax-aware editing, guided entry identity, projections, rollback, auth, HTTPS, proxying, installer rendering, and system-agent boundaries. The expanded Playwright flow and real DigitalOcean/DNS-01/USB validation remain explicitly user-run.
 
 ### Suggested Next Session Prompt
 

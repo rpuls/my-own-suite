@@ -275,8 +275,7 @@ cat > /etc/systemd/system/mos-v2-suite-manager.service <<MOS_V2_SUITE_MANAGER_UN
 [Unit]
 Description=MOS V2 Suite Manager
 After=mos-v2-homepage.service network-online.target
-Requires=mos-v2-homepage.service
-Wants=network-online.target
+Wants=mos-v2-homepage.service network-online.target
 
 [Service]
 Type=simple

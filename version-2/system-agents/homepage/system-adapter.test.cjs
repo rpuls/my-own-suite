@@ -3,7 +3,7 @@ const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { SystemHomepageAdapter } = require('./system-adapter.cjs');
+const { HOMEPAGE_RESTART_TIMEOUT_MS, SystemHomepageAdapter } = require('./system-adapter.cjs');
 
 async function fixture(failAt = '') {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-homepage-agent-'));
@@ -15,10 +15,10 @@ async function fixture(failAt = '') {
   await fsp.writeFile(routesPath, 'old routes\n');
   const calls = [];
   const invocations = [];
-  const execute = async (file, args) => {
+  const execute = async (file, args, options) => {
     const action = args[0] === 'validate' ? 'validate' : `${args[0]}-${args[1]}`;
     calls.push(action);
-    invocations.push({ args, file });
+    invocations.push({ args, file, options });
     if (action === failAt) throw new Error('failed');
   };
   return {
@@ -34,6 +34,8 @@ test('transaction restarts Homepage and reloads Caddy only when their outputs ch
   });
   assert.deepEqual(value.calls, ['validate', 'restart-mos-v2-homepage.service', 'reload-caddy.service']);
   assert.deepEqual(value.invocations[0].args.slice(0, 3), ['validate', '--adapter', 'caddyfile']);
+  assert.equal(value.invocations[1].options.timeoutMs, HOMEPAGE_RESTART_TIMEOUT_MS);
+  assert.ok(HOMEPAGE_RESTART_TIMEOUT_MS > 30_000, 'restart budget must exceed the observed rollback deadline');
   assert.deepEqual(result.steps, ['staged', 'validated', 'written', 'homepage-restarted', 'caddy-reloaded']);
 
   value.calls.length = 0;

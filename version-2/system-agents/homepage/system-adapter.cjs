@@ -8,6 +8,7 @@ const ROUTES_PATH = process.env.MOS_V2_HOMEPAGE_ROUTES_PATH || '/etc/caddy/mos-v
 const TRANSACTION_ROOT = process.env.MOS_V2_HOMEPAGE_TRANSACTION_ROOT || '/var/lib/mos-v2/homepage-agent/transactions';
 const HISTORY_ROOT = process.env.MOS_V2_HOMEPAGE_HISTORY_ROOT || '/var/lib/mos-v2/homepage-agent/history';
 const CADDY_BINARY = process.env.MOS_V2_CADDY_BINARY || '/usr/local/libexec/mos-v2/caddy';
+const HOMEPAGE_RESTART_TIMEOUT_MS = 60_000;
 
 const FAILURE_MESSAGES = {
   'caddy-validation': ['HOMEPAGE_CADDY_VALIDATION_FAILED', 'The generated home-service routes did not pass Caddy validation.'],
@@ -106,7 +107,11 @@ class SystemHomepageAdapter {
       if (routesChanged) await atomicWrite(this.routesPath, caddyRoutes);
       if (restartHomepage && changedFiles.length) {
         stage = 'homepage-restart';
-        await this.execute('/usr/bin/systemctl', ['restart', 'mos-v2-homepage.service']);
+        await this.execute(
+          '/usr/bin/systemctl',
+          ['restart', 'mos-v2-homepage.service'],
+          { timeoutMs: HOMEPAGE_RESTART_TIMEOUT_MS },
+        );
       }
       if (routesChanged) {
         stage = 'caddy-reload';
@@ -132,4 +137,4 @@ class SystemHomepageAdapter {
   }
 }
 
-module.exports = { HomepageApplyError, SystemHomepageAdapter, atomicWrite };
+module.exports = { HOMEPAGE_RESTART_TIMEOUT_MS, HomepageApplyError, SystemHomepageAdapter, atomicWrite };

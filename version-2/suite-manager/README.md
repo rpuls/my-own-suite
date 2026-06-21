@@ -61,4 +61,8 @@ The cookie remains host-only. Because dashboard and Suite Manager share the Home
 
 Authenticated owners use `/suite-manager/customize` to edit only `bookmarks.yaml`, `services.template.yaml`, `settings.yaml`, and `widgets.yaml`. Reads return a content revision; saves require that revision and validate through the structured YAML parser before the narrow Homepage agent writes anything. Guided links remain dashboard-only. Guided home services accept only name, description, icon, group, HTTP/HTTPS upstream host and port, and public subdomain; they store stable user-managed metadata without credentials or arbitrary Caddy text.
 
+Customize follows the established MOS Homepage workflow: an always-visible file list, a syntax-aware YAML editor, explicit validation before save/apply, reload protection for dirty content, and a shared two-step Add-to-Homepage dialog. The home-network helper derives protocol, host, port, and a friendly subdomain from the address users already know, then previews the V2-owned public route before applying the same structured agent request.
+
 SQLite records operation and revision metadata, not dashboard layout or app installation inputs. Durable Homepage files remain the dashboard source, `services.yaml` is generated, and app packages will separately own future installation state, secrets, dependencies, volumes, backup, and lifecycle.
+
+Homepage apply may include a bounded service restart. The Homepage agent allows 60 seconds for that host operation and Suite Manager allows 75 seconds for the agent response. Suite Manager orders startup after Homepage and wants the service available, but is not stopped when Homepage restarts, so the authenticated apply request can complete normally.

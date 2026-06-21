@@ -12,6 +12,21 @@ test('Customize request IDs work without crypto.randomUUID', () => {
   assert.match(customize, /getRandomValues/u);
 });
 
+test('Customize reuses the proven file editor, validation, and guided add workflow', () => {
+  const customize = fs.readFileSync(path.join(frontendRoot, 'features', 'customize', 'CustomizeScreen.tsx'), 'utf8');
+  const dialog = fs.readFileSync(path.join(frontendRoot, 'features', 'customize', 'AddHomepageItemDialog.tsx'), 'utf8');
+  const editor = fs.readFileSync(path.join(frontendRoot, 'features', 'customize', 'CodeEditor.tsx'), 'utf8');
+  assert.match(customize, /suite-file-list/u);
+  assert.match(customize, /'Validate'/u);
+  assert.match(customize, /Save and apply/u);
+  assert.match(customize, /Add to Homepage/u);
+  assert.match(dialog, /Home network app/u);
+  assert.match(dialog, /Edit subdomain/u);
+  assert.match(dialog, /previewHomeService/u);
+  assert.match(editor, /lintGutter/u);
+  assert.match(editor, /lang-yaml/u);
+});
+
 test('authenticated page routes render inside the shared shell and route boundary', () => {
   const shell = fs.readFileSync(path.join(frontendRoot, 'features', 'app-shell', 'AppShell.tsx'), 'utf8');
   assert.ok(shell.indexOf('suite-shell-header') < shell.indexOf('<RouteBoundary'));

@@ -52,3 +52,18 @@ export function Select({ children, helperText, label, ...props }: SelectHTMLAttr
 export function Notice({ children, title, variant = 'info' }: { children: ReactNode; title: string; variant?: 'error' | 'info' | 'success' | 'warning' }) {
   return <div className={`suite-notice suite-notice-${variant}`} role={variant === 'error' ? 'alert' : 'status'}><strong>{title}</strong><div>{children}</div></div>;
 }
+
+export function Dialog({ children, footer, onClose, title }: { children: ReactNode; footer?: ReactNode; onClose: () => void; title: string }) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+  return <div className="suite-dialog-layer"><button aria-label="Close dialog" className="suite-dialog-backdrop" onClick={onClose} tabIndex={-1} type="button" /><section aria-modal="true" className="suite-dialog" role="dialog"><header><h2>{title}</h2><button ref={closeRef} aria-label="Close dialog" className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button></header><div className="suite-dialog-body">{children}</div>{footer ? <footer>{footer}</footer> : null}</section></div>;
+}
+
+export function Stepper({ current, steps }: { current: number; steps: string[] }) {
+  return <ol className="suite-stepper" aria-label="Progress">{steps.map((step, index) => <li aria-current={index === current ? 'step' : undefined} className={index <= current ? 'is-active' : ''} key={step}><span>{index + 1}</span>{step}</li>)}</ol>;
+}
