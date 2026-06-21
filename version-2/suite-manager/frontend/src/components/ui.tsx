@@ -37,16 +37,16 @@ export function Drawer({ children, onClose, open, title }: { children: ReactNode
   return <div className="suite-drawer-layer"><button aria-label="Close navigation menu" className="suite-drawer-backdrop" onClick={onClose} tabIndex={-1} type="button" /><aside ref={drawerRef} aria-label={title} aria-modal="true" className="suite-drawer" role="dialog"><div className="suite-drawer-header"><strong>{title}</strong><button ref={closeRef} aria-label="Close navigation menu" className="suite-icon-button" onClick={onClose} title="Close menu" type="button"><Icon name="x" /></button></div>{children}</aside></div>;
 }
 
-export function TextInput({ helperText, label, ...props }: InputHTMLAttributes<HTMLInputElement> & { helperText?: string; label: string }) {
-  return <label className="suite-field"><span>{label}</span><input {...props} />{helperText ? <small>{helperText}</small> : null}</label>;
+export function TextInput({ helperText, label, ...props }: InputHTMLAttributes<HTMLInputElement> & { helperText?: ReactNode; label: string }) {
+  return <label className="suite-control"><span className="suite-field-label">{label}</span><input className="suite-input" {...props} />{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
 }
 
-export function TextArea({ helperText, label, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement> & { helperText?: string; label: string }) {
-  return <label className="suite-field"><span>{label}</span><textarea {...props} />{helperText ? <small>{helperText}</small> : null}</label>;
+export function TextArea({ helperText, label, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement> & { helperText?: ReactNode; label: string }) {
+  return <label className="suite-control"><span className="suite-field-label">{label}</span><textarea className="suite-input suite-textarea" {...props} />{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
 }
 
-export function Select({ children, helperText, label, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode; helperText?: string; label: string }) {
-  return <label className="suite-field"><span>{label}</span><select {...props}>{children}</select>{helperText ? <small>{helperText}</small> : null}</label>;
+export function Select({ children, helperText, label, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode; helperText?: ReactNode; label: string }) {
+  return <label className="suite-control"><span className="suite-field-label">{label}</span><select className="suite-input suite-select" {...props}>{children}</select>{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
 }
 
 export function Notice({ children, title, variant = 'info' }: { children: ReactNode; title: string; variant?: 'error' | 'info' | 'success' | 'warning' }) {
@@ -61,9 +61,9 @@ export function Dialog({ children, footer, onClose, title }: { children: ReactNo
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
-  return <div className="suite-dialog-layer"><button aria-label="Close dialog" className="suite-dialog-backdrop" onClick={onClose} tabIndex={-1} type="button" /><section aria-modal="true" className="suite-dialog" role="dialog"><header><h2>{title}</h2><button ref={closeRef} aria-label="Close dialog" className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button></header><div className="suite-dialog-body">{children}</div>{footer ? <footer>{footer}</footer> : null}</section></div>;
+  return <div className="suite-modal-backdrop" role="presentation"><section aria-modal="true" className="suite-dialog mos-panel" role="dialog"><div className="suite-dialog-header"><h2>{title}</h2><button ref={closeRef} aria-label={`Close ${title}`} className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button></div>{children}{footer ? <div className="suite-dialog-footer">{footer}</div> : null}</section></div>;
 }
 
-export function Stepper({ current, steps }: { current: number; steps: string[] }) {
-  return <ol className="suite-stepper" aria-label="Progress">{steps.map((step, index) => <li aria-current={index === current ? 'step' : undefined} className={index <= current ? 'is-active' : ''} key={step}><span>{index + 1}</span>{step}</li>)}</ol>;
+export function Stepper({ currentStepIndex, steps }: { currentStepIndex: number; steps: string[] }) {
+  return <div className="suite-stepper" aria-label="Progress">{steps.map((step, index) => <span aria-current={index === currentStepIndex ? 'step' : undefined} className={index === currentStepIndex ? 'is-active' : ''} key={step}>{index + 1}. {step}</span>)}</div>;
 }

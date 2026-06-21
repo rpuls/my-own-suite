@@ -20,11 +20,14 @@ test('Customize reuses the proven file editor, validation, and guided add workfl
   assert.match(customize, /'Validate'/u);
   assert.match(customize, /Save and apply/u);
   assert.match(customize, /Add to Homepage/u);
+  assert.match(customize, /mos-btn mos-btn-primary/u);
   assert.match(dialog, /Home network app/u);
-  assert.match(dialog, /Edit subdomain/u);
+  assert.match(dialog, /Edit URL subdomain/u);
   assert.match(dialog, /previewHomeService/u);
+  assert.match(dialog, /suite-homepage-address-preview/u);
   assert.match(editor, /lintGutter/u);
   assert.match(editor, /lang-yaml/u);
+  assert.match(editor, /mosHighlightStyle/u);
 });
 
 test('authenticated page routes render inside the shared shell and route boundary', () => {
