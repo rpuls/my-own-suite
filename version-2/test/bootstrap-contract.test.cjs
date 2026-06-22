@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 
 const {
@@ -86,8 +88,28 @@ test('bootstrap contract derives sslip.io domain for cloud smoke installs', () =
   assert.equal(config.repoRef, 'feature/test-ref');
 });
 
+test('Hyper-V smoke derives its private DHCP address at first boot', () => {
+  const plan = renderBootstrapPlan({ frontDoor: 'hyperv-smoke' });
+
+  assert.equal(plan.config.domain, 'localhost');
+  assert.match(plan.cloudInit, /MOS_V2_FRONT_DOOR='hyperv-smoke'/);
+  assert.match(plan.cloudInit, /private_ip="\$\(hostname -I \| awk '\{print \$1\}'\)"/);
+  assert.match(plan.cloudInit, /MOS_V2_DOMAIN="\$private_ip\.sslip\.io"/);
+});
+
 test('DigitalOcean smoke allows slow first-machine builds to reach readiness', () => {
   assert.equal(DEFAULT_READY_TIMEOUT_MS, 30 * 60 * 1000);
+});
+
+test('Hyper-V smoke is pinned, guarded, and does not add owner or DNS inputs', () => {
+  const script = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'smoke', 'hyperv-v2.ps1'), 'utf8');
+
+  assert.match(script, /release-20260615\/\$ImageName/u);
+  assert.match(script, /99e8fc9be8fe4f805a1ca06349b21377f8d79ef8c02c44f89515ef6557b449b1/u);
+  assert.match(script, /Test-Administrator/u);
+  assert.match(script, /\$VmName = 'mos-v2-smoke'/u);
+  assert.match(script, /--resolve "\$\{hostName\}:80:\$ip"/u);
+  assert.doesNotMatch(script, /OWNER_PASSWORD|CLOUDFLARE|DNS01/u);
 });
 
 test('bootstrap contract rejects owner credentials and app config at installer time', () => {

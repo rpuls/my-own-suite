@@ -6,7 +6,7 @@ const DEFAULT_STATE_ROOT = '/var/lib/mos-v2';
 const DEFAULT_RUNTIME_USER = 'mos';
 const DEFAULT_SUITE_MANAGER_PORT = 3100;
 const CONTROL_PLANE_COMPONENTS = ['suite-manager', 'caddy', 'homepage', 'https-agent', 'homepage-agent'];
-const FRONT_DOORS = ['digitalocean-smoke', 'cloud-init', 'usb-autoinstall', 'ssh-bootstrap'];
+const FRONT_DOORS = ['digitalocean-smoke', 'hyperv-smoke', 'cloud-init', 'usb-autoinstall', 'ssh-bootstrap'];
 
 const OWNER_KEYS = [
   'ownerEmail',
@@ -150,6 +150,14 @@ if [ "$MOS_V2_DOMAIN" = "localhost" ] && [ "$MOS_V2_FRONT_DOOR" = "digitalocean-
   metadata_ip="$(curl -fsS --max-time 5 http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address 2>/dev/null || true)"
   if [ -n "$metadata_ip" ]; then
     MOS_V2_DOMAIN="$metadata_ip.sslip.io"
+    export MOS_V2_DOMAIN
+  fi
+fi
+
+if [ "$MOS_V2_DOMAIN" = "localhost" ] && [ "$MOS_V2_FRONT_DOOR" = "hyperv-smoke" ]; then
+  private_ip="$(hostname -I | awk '{print $1}')"
+  if [ -n "$private_ip" ]; then
+    MOS_V2_DOMAIN="$private_ip.sslip.io"
     export MOS_V2_DOMAIN
   fi
 fi

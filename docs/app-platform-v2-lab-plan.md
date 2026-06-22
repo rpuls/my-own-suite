@@ -27,14 +27,15 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Added the first V2 Homepage customization slice: authenticated Customize navigation, allowlisted revision-aware YAML editing, guided dashboard links and home services, SQLite apply/revision metadata, generated Homepage/Caddy projections, and a separate transactional rollback-capable Homepage agent.
 - [x] Diagnosed the real DigitalOcean Customize apply failure through the live agent/socket/runtime state, fixed the Homepage restart budget and Suite Manager systemd dependency that caused successful writes to roll back, and aligned Customize with V1's file rail, syntax-aware validation/save flow, shared dialog controls, guided link flow, and automatic home-service URL helper.
 - [x] Passed the V2-owned local Playwright flow and a fresh human-driven DigitalOcean control-plane validation, including owner setup, private Homepage access, customization, generated home-service routing, logout protection, persistence, and an optimized eight-minute cold install; DNS-01 remains explicitly unverified.
+- [x] Added a guarded local Hyper-V smoke harness around the shared V2 cloud-init contract, using a checksummed Ubuntu cloud VHD, disposable VM disks, and cached base-image resets; real VM validation remains user-run from an Administrator terminal.
 
 ### Current Next Slice
 
 Build the next real V2 vertical slice inside `version-2/`:
 
-1. Use the guarded DNS-01 command on the validated DigitalOcean machine to verify issuance, HTTPS behavior, redirects, bootstrap recovery, post-HTTPS customization, and persistence.
-2. Keep DNS-01 marked implemented but unverified until that real validation succeeds; add certificate health reporting only from real-machine evidence.
-3. Brainstorm the future app-package contract separately after validation, keeping installation inputs, secrets, dependencies, volumes, backup, and lifecycle outside Homepage YAML.
+1. Run the guarded Hyper-V smoke on a local VM and repeat the owner, Homepage, customization, routing, logout, and persistence checks against the own-hardware-shaped install.
+2. Keep DNS-01 explicitly deferred until a representative local network with the user's chosen DNS wildcard override is available; do not infer public DNS requirements from VPS testing.
+3. Brainstorm the future app-package contract after the available control-plane validation, keeping installation inputs, secrets, dependencies, volumes, backup, and lifecycle outside Homepage YAML.
 
 ### Latest Verified Command
 
@@ -44,11 +45,11 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
-Current result: 68 V2 contract tests, TypeScript checks, the production frontend build, and the V2-owned Playwright flow pass. A fresh DigitalOcean install from `dd962a6` completed in eight minutes after overlapping the pinned Homepage pull with control-plane builds; the human confirmed owner setup, private Homepage access, customization, generated routing, logout protection, and persistence. DNS-01 and USB validation remain explicitly unverified.
+Current result: 70 V2 contract tests, TypeScript checks, the production frontend build, and the V2-owned Playwright flow pass. A fresh DigitalOcean install from `dd962a6` completed in eight minutes after overlapping the pinned Homepage pull with control-plane builds; the human confirmed owner setup, private Homepage access, customization, generated routing, logout protection, and persistence. The guarded Hyper-V harness is locally rendered but not yet run against a real VM. DNS-01 and USB validation remain explicitly unverified.
 
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Local Playwright and fresh DigitalOcean HTTP/control-plane validation pass, including an eight-minute cold install, owner setup, customization, generated routing, logout protection, and persistence. DNS-01 is implemented but unverified and remains the last validation gate before certificate-health or app-package work.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Local Playwright and fresh DigitalOcean HTTP/control-plane validation pass, including an eight-minute cold install, owner setup, customization, generated routing, logout protection, and persistence. Run the new guarded Hyper-V smoke from an Administrator terminal for own-hardware-shaped validation. DNS-01 stays deferred until a representative local DNS wildcard environment is available.
 
 ## Product Goal
 

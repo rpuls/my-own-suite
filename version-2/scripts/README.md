@@ -62,6 +62,21 @@ Optional:
 
 The smoke install uses cloud-init, so SSH keys are optional for the install itself but useful for debugging.
 
+### Local Hyper-V smoke
+
+Windows 10/11 Pro hosts with Hyper-V can boot the same V2 cloud-init contract in a disposable local VM. Run these commands from an Administrator PowerShell terminal:
+
+```powershell
+cmd /c npm --prefix version-2 run smoke:hyperv:render
+cmd /c npm --prefix version-2 run smoke:hyperv:up
+cmd /c npm --prefix version-2 run smoke:hyperv:reset
+cmd /c npm --prefix version-2 run smoke:hyperv:destroy
+```
+
+The first `up` downloads and verifies a pinned 574 MB official Ubuntu 24.04 Azure VHD. The base image remains cached under ignored `version-2/.mos-smoke/cache/`; each VM uses disposable differencing and CIDATA disks under `.mos-smoke/hyperv/`. `reset` destroys and recreates only the exact `mos-v2-smoke` VM, while `destroy` removes that VM and its disposable disks but retains the verified base image.
+
+The harness uses Hyper-V's `Default Switch` when available, otherwise the first external switch. Set `MOS_V2_HYPERV_SWITCH`, `MOS_V2_HYPERV_REPO_URL`, or `MOS_V2_HYPERV_REPO_REF` to override those defaults. DNS-01 is not part of this smoke path; validate it separately only on a representative local network with the user's chosen DNS wildcard override.
+
 ### Explicit DNS-01 validation
 
 After creating the owner on an existing V2 smoke Droplet and pointing `home.<base-domain>` at it, real DNS-01 validation is available only with explicit confirmation:
