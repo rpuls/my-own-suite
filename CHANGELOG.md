@@ -37,6 +37,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Fixed
 
+- Made V2 Hyper-V smoke readiness waits report VM, network, heartbeat, guest IP, and HTTP probe state instead of hiding failures behind a repeated generic message.
 - Allowed managed updates to recover when the only dirty working-tree file is the generated external-proxy Caddy snippet, which can happen on installs that applied `mos.proxy` routes before the snippet became ignored.
 - Hardened the local E2E onboarding flow against Vaultwarden DOM and extension-setup route changes, and fixed Suite Manager onboarding copy buttons so successful clipboard actions reliably show copied feedback.
 

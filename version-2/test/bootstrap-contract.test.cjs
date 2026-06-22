@@ -114,7 +114,10 @@ test('Hyper-V smoke is pinned, guarded, and does not add owner or DNS inputs', (
   assert.match(script, /MemoryStartupBytes 2GB/u);
   assert.match(script, /Set-VMMemory .* -DynamicMemoryEnabled \$true .* -MaximumBytes 4GB/u);
   assert.match(script, /--resolve "\$\{hostName\}:80:\$ip"/u);
-  assert.match(script, /\$ErrorActionPreference = 'SilentlyContinue'/u);
+  assert.match(script, /MOS_V2_HYPERV_READY_TIMEOUT_MINUTES/u);
+  assert.match(script, /Get-VMIntegrationService .* -Name 'Heartbeat'/u);
+  assert.match(script, /HTTP probe failed/u);
+  assert.doesNotMatch(script, /2>\$null/u);
   assert.match(script, /Resuming readiness checks for incomplete VM/u);
   assert.doesNotMatch(script, /OWNER_PASSWORD|CLOUDFLARE|DNS01/u);
 });

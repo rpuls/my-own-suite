@@ -137,34 +137,79 @@ function Get-GuestIpv4 {
   return $addresses | Where-Object { $_ -match '^\d{1,3}(?:\.\d{1,3}){3}$' -and $_ -notmatch '^169\.254\.' } | Select-Object -First 1
 }
 
+function Get-VmReadinessSummary {
+  param([string]$Detail)
+
+  $vm = Get-VM -Name $VmName
+  $adapter = Get-VMNetworkAdapter -VMName $VmName
+  $heartbeat = Get-VMIntegrationService -VMName $VmName -Name 'Heartbeat' -ErrorAction SilentlyContinue
+  $heartbeatStatus = if ($heartbeat) { $heartbeat.PrimaryStatusDescription } else { 'unavailable' }
+  $adapterStatus = if ($adapter.Status) { $adapter.Status } else { 'unknown' }
+  return "VM=$($vm.State); uptime=$($vm.Uptime.ToString('hh\:mm\:ss')); adapter=$adapterStatus; heartbeat=$heartbeatStatus; $Detail"
+}
+
 function Wait-ForReady {
-  $deadline = (Get-Date).AddMinutes(30)
+  $timeoutMinutes = 30
+  if ($env:MOS_V2_HYPERV_READY_TIMEOUT_MINUTES) {
+    if (-not [int]::TryParse($env:MOS_V2_HYPERV_READY_TIMEOUT_MINUTES, [ref]$timeoutMinutes) -or $timeoutMinutes -lt 1) {
+      Fail 'MOS_V2_HYPERV_READY_TIMEOUT_MINUTES must be a positive whole number.'
+    }
+  }
+
+  $startedAt = Get-Date
+  $deadline = $startedAt.AddMinutes($timeoutMinutes)
+  $nextReportAt = $startedAt
+  $lastFingerprint = ''
+  $lastSummary = ''
+  $probeBodyPath = Join-Path $SmokeRoot 'readiness-body.tmp'
+  $probeErrorPath = Join-Path $SmokeRoot 'readiness-error.tmp'
   while ((Get-Date) -lt $deadline) {
     $ip = Get-GuestIpv4
+    $detail = 'guest IPv4 has not been reported by Hyper-V'
     if ($ip) {
       $hostName = "home.$ip.sslip.io"
       $statusUrl = "http://$hostName/suite-manager/api/setup/status"
       $previousErrorAction = $ErrorActionPreference
       try {
-        $ErrorActionPreference = 'SilentlyContinue'
-        $body = & curl.exe -fsS --max-time 5 --resolve "${hostName}:80:$ip" $statusUrl 2>$null
+        $ErrorActionPreference = 'Continue'
+        $httpCode = & curl.exe --silent --show-error --max-time 5 --output $probeBodyPath --write-out '%{http_code}' --stderr $probeErrorPath --resolve "${hostName}:80:$ip" $statusUrl
         $curlExitCode = $LASTEXITCODE
       }
       finally { $ErrorActionPreference = $previousErrorAction }
       if ($curlExitCode -eq 0) {
+        $body = if (Test-Path -LiteralPath $probeBodyPath) { Get-Content -Raw -LiteralPath $probeBodyPath } else { '' }
         try {
           $status = $body | ConvertFrom-Json
           if ($status.status -in @('needs-owner', 'signed-out')) {
+            Remove-Item -LiteralPath $probeBodyPath, $probeErrorPath -Force -ErrorAction SilentlyContinue
             return [pscustomobject]@{ Ip = $ip; HomeUrl = "http://$hostName/"; SuiteManagerUrl = "http://$hostName/suite-manager/" }
           }
+          $detail = "guest IPv4=$ip; HTTP $httpCode; Suite Manager status='$($status.status)'"
         }
-        catch {}
+        catch {
+          $detail = "guest IPv4=$ip; HTTP $httpCode; response was not valid Suite Manager JSON"
+        }
+      }
+      else {
+        $curlError = if (Test-Path -LiteralPath $probeErrorPath) { (Get-Content -Raw -LiteralPath $probeErrorPath).Trim() } else { '' }
+        if (-not $curlError) { $curlError = "curl exited with code $curlExitCode" }
+        $detail = "guest IPv4=$ip; HTTP probe failed: $curlError"
       }
     }
-    Write-Host '[mos-v2-smoke:hyperv] Waiting for VM networking and Suite Manager readiness...'
+
+    $summary = Get-VmReadinessSummary -Detail $detail
+    $fingerprint = $summary -replace 'uptime=\d{2}:\d{2}:\d{2}', 'uptime=*'
+    if ($fingerprint -ne $lastFingerprint -or (Get-Date) -ge $nextReportAt) {
+      $elapsed = [math]::Floor(((Get-Date) - $startedAt).TotalMinutes)
+      Write-Host "[mos-v2-smoke:hyperv] Waiting for readiness ($elapsed/$timeoutMinutes min): $summary"
+      $lastFingerprint = $fingerprint
+      $lastSummary = $summary
+      $nextReportAt = (Get-Date).AddSeconds(30)
+    }
     Start-Sleep -Seconds 10
   }
-  Fail 'Timed out waiting for the Hyper-V VM. Use Hyper-V Manager to inspect its console and cloud-init status.'
+  Remove-Item -LiteralPath $probeBodyPath, $probeErrorPath -Force -ErrorAction SilentlyContinue
+  Fail "Timed out after $timeoutMinutes minutes. Last observation: $lastSummary. Open the '$VmName' console in Hyper-V Manager; if Ubuntu booted, inspect 'cloud-init status --long' and 'journalctl -u cloud-final.service'."
 }
 
 function Show-Summary($State) {

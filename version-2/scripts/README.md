@@ -77,6 +77,8 @@ The first `up` downloads and verifies a pinned 574 MB official Ubuntu 24.04 Azur
 
 The VM uses two virtual CPUs and Hyper-V dynamic memory from 1.5 GB to 4 GB, starting at 2 GB. The harness uses Hyper-V's `Default Switch` when available, otherwise the first external switch. Set `MOS_V2_HYPERV_SWITCH`, `MOS_V2_HYPERV_REPO_URL`, or `MOS_V2_HYPERV_REPO_REF` to override those defaults. DNS-01 is not part of this smoke path; validate it separately only on a representative local network with the user's chosen DNS wildcard override.
 
+Readiness output reports the VM, network adapter, Hyper-V heartbeat, guest IPv4, and HTTP probe state every 30 seconds or whenever the state changes. The default readiness timeout is 30 minutes; set `MOS_V2_HYPERV_READY_TIMEOUT_MINUTES` to a positive whole number to override it. An interrupted or timed-out `up` can be run again to resume checks against the same VM.
+
 ### Explicit DNS-01 validation
 
 After creating the owner on an existing V2 smoke Droplet and pointing `home.<base-domain>` at it, real DNS-01 validation is available only with explicit confirmation:
