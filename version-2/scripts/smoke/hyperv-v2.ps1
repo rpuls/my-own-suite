@@ -78,12 +78,18 @@ function Get-BaseVhd {
   if (-not $extracted) { Fail 'The Ubuntu archive did not contain a VHD.' }
 
   Write-Host '[mos-v2-smoke:hyperv] Normalizing the fixed VHD and creating the reusable dynamic base...'
-  & compact.exe /u /q $extracted.FullName | Out-Null
-  if ($LASTEXITCODE -ne 0) { Fail 'Unable to remove NTFS compression from the Ubuntu VHD.' }
-  & fsutil.exe sparse setflag $extracted.FullName 0 | Out-Null
-  if ($LASTEXITCODE -ne 0) { Fail 'Unable to remove the sparse-file flag from the Ubuntu VHD.' }
-  Convert-VHD -Path $extracted.FullName -DestinationPath $BaseDiskPath -VHDType Dynamic
+  $materializedPath = Join-Path $CacheRoot 'ubuntu-24.04-materialized.vhd'
+  if (Test-Path -LiteralPath $materializedPath) { Remove-Item -LiteralPath $materializedPath -Force }
+  $source = [IO.File]::Open($extracted.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+  try {
+    $target = [IO.File]::Open($materializedPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    try { $source.CopyTo($target, 8MB) }
+    finally { $target.Dispose() }
+  }
+  finally { $source.Dispose() }
+  Convert-VHD -Path $materializedPath -DestinationPath $BaseDiskPath -VHDType Dynamic
   Remove-Item -LiteralPath $extracted.FullName -Force
+  Remove-Item -LiteralPath $materializedPath -Force
   (Get-Item -LiteralPath $BaseDiskPath).IsReadOnly = $true
   return $BaseDiskPath
 }
