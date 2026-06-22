@@ -26,15 +26,15 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Fixed the pinned Caddy build for Ubuntu's default legacy Docker builder after a fresh smoke exposed an unset `BUILDPLATFORM` failure before systemd unit creation.
 - [x] Added the first V2 Homepage customization slice: authenticated Customize navigation, allowlisted revision-aware YAML editing, guided dashboard links and home services, SQLite apply/revision metadata, generated Homepage/Caddy projections, and a separate transactional rollback-capable Homepage agent.
 - [x] Diagnosed the real DigitalOcean Customize apply failure through the live agent/socket/runtime state, fixed the Homepage restart budget and Suite Manager systemd dependency that caused successful writes to roll back, and aligned Customize with V1's file rail, syntax-aware validation/save flow, shared dialog controls, guided link flow, and automatic home-service URL helper.
+- [x] Passed the V2-owned local Playwright flow and a fresh human-driven DigitalOcean control-plane validation, including owner setup, private Homepage access, customization, generated home-service routing, logout protection, persistence, and an optimized eight-minute cold install; DNS-01 remains explicitly unverified.
 
 ### Current Next Slice
 
 Build the next real V2 vertical slice inside `version-2/`:
 
-1. Run the user-driven local V2 Playwright suite for login, Customize editing/guided entries, Homepage tiles, validation, Settings, and logout protection; address browser-only failures without production test behavior.
-2. Run one fresh user-driven V2 DigitalOcean smoke, complete owner setup, validate the Homepage agent transaction on the machine, and use the guarded DNS-01 command to validate issuance, HTTPS behavior, redirects, and recovery.
-3. Keep DNS-01 marked implemented but unverified until that real validation succeeds; add certificate health reporting only from real-machine evidence.
-4. Brainstorm the future app-package contract separately after validation, keeping installation inputs, secrets, dependencies, volumes, backup, and lifecycle outside Homepage YAML.
+1. Use the guarded DNS-01 command on the validated DigitalOcean machine to verify issuance, HTTPS behavior, redirects, bootstrap recovery, post-HTTPS customization, and persistence.
+2. Keep DNS-01 marked implemented but unverified until that real validation succeeds; add certificate health reporting only from real-machine evidence.
+3. Brainstorm the future app-package contract separately after validation, keeping installation inputs, secrets, dependencies, volumes, backup, and lifecycle outside Homepage YAML.
 
 ### Latest Verified Command
 
@@ -44,11 +44,11 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
-Current result: V2 contract tests, TypeScript checks, and the production frontend build pass after the live-smoke restart rollback repair and V1-aligned Customize rebuild. Coverage includes the exact controlled restart-failure response, coordinated restart/client budgets, non-propagating Suite Manager dependency, syntax-aware editing, guided entry identity, projections, rollback, auth, HTTPS, proxying, installer rendering, and system-agent boundaries. The expanded Playwright flow and real DigitalOcean/DNS-01/USB validation remain explicitly user-run.
+Current result: 68 V2 contract tests, TypeScript checks, the production frontend build, and the V2-owned Playwright flow pass. A fresh DigitalOcean install from `dd962a6` completed in eight minutes after overlapping the pinned Homepage pull with control-plane builds; the human confirmed owner setup, private Homepage access, customization, generated routing, logout protection, and persistence. DNS-01 and USB validation remain explicitly unverified.
 
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. V2 now has Dashboard/Customize/Settings navigation, SQLite platform and operation metadata, durable Homepage YAML, generated Homepage/Caddy projections, and separate restricted HTTPS and Homepage agents. Run the user-driven Playwright and fresh DigitalOcean/DNS-01 validation before certificate-health or app-package work; DNS-01 is implemented but unverified, and app packages remain a separate future brainstorming milestone.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Local Playwright and fresh DigitalOcean HTTP/control-plane validation pass, including an eight-minute cold install, owner setup, customization, generated routing, logout protection, and persistence. DNS-01 is implemented but unverified and remains the last validation gate before certificate-health or app-package work.
 
 ## Product Goal
 
