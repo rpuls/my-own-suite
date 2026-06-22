@@ -9,7 +9,7 @@ const {
   validateBootstrapInput,
 } = require('../scripts/installers/bootstrap-contract.cjs');
 const { parseArgs, selectOutput } = require('../scripts/installers/render-bootstrap.cjs');
-const { smokeConfigFromEnv } = require('../scripts/smoke/digitalocean-v2.cjs');
+const { DEFAULT_READY_TIMEOUT_MS, smokeConfigFromEnv } = require('../scripts/smoke/digitalocean-v2.cjs');
 
 test('bootstrap contract defaults to a no-preconfig control-plane install', () => {
   const plan = renderBootstrapPlan({});
@@ -74,6 +74,10 @@ test('bootstrap contract derives sslip.io domain for cloud smoke installs', () =
   assert.equal(config.publicUrls.setup, 'http://home.203.0.113.42.sslip.io/suite-manager/');
   assert.equal(config.publicUrls.suiteManager, 'http://home.203.0.113.42.sslip.io/suite-manager/');
   assert.equal(config.repoRef, 'feature/test-ref');
+});
+
+test('DigitalOcean smoke allows slow first-machine builds to reach readiness', () => {
+  assert.equal(DEFAULT_READY_TIMEOUT_MS, 30 * 60 * 1000);
 });
 
 test('bootstrap contract rejects owner credentials and app config at installer time', () => {

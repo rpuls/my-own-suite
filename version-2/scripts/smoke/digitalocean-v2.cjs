@@ -13,6 +13,7 @@ const localEnvPath = path.join(smokeDir, 'v2-digitalocean.env');
 const smokeTag = 'mos-v2-smoke';
 const namePrefix = 'mos-v2-smoke-';
 const apiBaseUrl = 'https://api.digitalocean.com/v2';
+const DEFAULT_READY_TIMEOUT_MS = 30 * 60 * 1000;
 
 loadLocalEnvFile();
 
@@ -257,7 +258,7 @@ async function waitForSuiteManager(plan) {
 
   const statusUrl = new URL('api/setup/status', plan.config.publicUrls.suiteManager).toString();
   const homeUrl = plan.config.publicUrls.home;
-  const deadline = Date.now() + Number(env('MOS_V2_SMOKE_READY_TIMEOUT_MS', '900000'));
+  const deadline = Date.now() + Number(env('MOS_V2_SMOKE_READY_TIMEOUT_MS', String(DEFAULT_READY_TIMEOUT_MS)));
 
   while (Date.now() < deadline) {
     try {
@@ -451,6 +452,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  DEFAULT_READY_TIMEOUT_MS,
   bootstrapPlanFor,
   main,
   smokeConfigFromEnv,
