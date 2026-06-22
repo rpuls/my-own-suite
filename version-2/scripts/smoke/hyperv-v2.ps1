@@ -16,7 +16,8 @@ $ImageName = 'ubuntu-24.04-server-cloudimg-amd64-azure.vhd.tar.gz'
 $ImageUrl = "https://cloud-images.ubuntu.com/releases/24.04/release-20260615/$ImageName"
 $ImageSha256 = '99e8fc9be8fe4f805a1ca06349b21377f8d79ef8c02c44f89515ef6557b449b1'
 $ArchivePath = Join-Path $CacheRoot $ImageName
-$DiskPath = Join-Path $SmokeRoot 'mos-v2-smoke.vhd'
+$BaseDiskPath = Join-Path $CacheRoot 'ubuntu-24.04-hyperv-base.vhdx'
+$DiskPath = Join-Path $SmokeRoot 'mos-v2-smoke.vhdx'
 $SeedPath = Join-Path $SmokeRoot 'cidata.vhdx'
 
 function Fail([string]$Message) {
@@ -54,8 +55,7 @@ function Get-SmokeSwitch {
 
 function Get-BaseVhd {
   New-Item -ItemType Directory -Force -Path $CacheRoot | Out-Null
-  $base = Get-ChildItem -LiteralPath $CacheRoot -Filter '*.vhd' -File | Where-Object Name -ne (Split-Path $DiskPath -Leaf) | Select-Object -First 1
-  if ($base) { return $base.FullName }
+  if (Test-Path -LiteralPath $BaseDiskPath) { return $BaseDiskPath }
 
   if (-not (Test-Path -LiteralPath $ArchivePath)) {
     Write-Host "[mos-v2-smoke:hyperv] Downloading the pinned Ubuntu 24.04 cloud VHD (574 MB)..."
@@ -68,13 +68,24 @@ function Get-BaseVhd {
     Fail "Ubuntu cloud image checksum mismatch. Remove '$ArchivePath' and retry."
   }
 
-  Write-Host '[mos-v2-smoke:hyperv] Extracting the Ubuntu cloud VHD...'
-  & tar.exe -xzf $ArchivePath -C $CacheRoot
-  if ($LASTEXITCODE -ne 0) { Fail 'Ubuntu cloud image extraction failed.' }
-  $base = Get-ChildItem -LiteralPath $CacheRoot -Filter '*.vhd' -File | Select-Object -First 1
-  if (-not $base) { Fail 'The Ubuntu archive did not contain a VHD.' }
-  $base.IsReadOnly = $true
-  return $base.FullName
+  $extracted = Get-ChildItem -LiteralPath $CacheRoot -Filter '*.vhd' -File | Select-Object -First 1
+  if (-not $extracted) {
+    Write-Host '[mos-v2-smoke:hyperv] Extracting the Ubuntu cloud VHD...'
+    & tar.exe -xzf $ArchivePath -C $CacheRoot
+    if ($LASTEXITCODE -ne 0) { Fail 'Ubuntu cloud image extraction failed.' }
+    $extracted = Get-ChildItem -LiteralPath $CacheRoot -Filter '*.vhd' -File | Select-Object -First 1
+  }
+  if (-not $extracted) { Fail 'The Ubuntu archive did not contain a VHD.' }
+
+  Write-Host '[mos-v2-smoke:hyperv] Normalizing the fixed VHD and creating the reusable dynamic base...'
+  & compact.exe /u /q $extracted.FullName | Out-Null
+  if ($LASTEXITCODE -ne 0) { Fail 'Unable to remove NTFS compression from the Ubuntu VHD.' }
+  & fsutil.exe sparse setflag $extracted.FullName 0 | Out-Null
+  if ($LASTEXITCODE -ne 0) { Fail 'Unable to remove the sparse-file flag from the Ubuntu VHD.' }
+  Convert-VHD -Path $extracted.FullName -DestinationPath $BaseDiskPath -VHDType Dynamic
+  Remove-Item -LiteralPath $extracted.FullName -Force
+  (Get-Item -LiteralPath $BaseDiskPath).IsReadOnly = $true
+  return $BaseDiskPath
 }
 
 function New-SeedDisk {
