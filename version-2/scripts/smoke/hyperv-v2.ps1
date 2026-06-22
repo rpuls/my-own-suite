@@ -144,8 +144,14 @@ function Wait-ForReady {
     if ($ip) {
       $hostName = "home.$ip.sslip.io"
       $statusUrl = "http://$hostName/suite-manager/api/setup/status"
-      $body = & curl.exe -fsS --max-time 5 --resolve "${hostName}:80:$ip" $statusUrl 2>$null
-      if ($LASTEXITCODE -eq 0) {
+      $previousErrorAction = $ErrorActionPreference
+      try {
+        $ErrorActionPreference = 'SilentlyContinue'
+        $body = & curl.exe -fsS --max-time 5 --resolve "${hostName}:80:$ip" $statusUrl 2>$null
+        $curlExitCode = $LASTEXITCODE
+      }
+      finally { $ErrorActionPreference = $previousErrorAction }
+      if ($curlExitCode -eq 0) {
         try {
           $status = $body | ConvertFrom-Json
           if ($status.status -in @('needs-owner', 'signed-out')) {
@@ -171,15 +177,35 @@ function Show-Summary($State) {
 
 function Start-SmokeVm {
   Assert-HyperV
-  if (Get-VM -Name $VmName -ErrorAction SilentlyContinue) {
-    Fail "VM '$VmName' already exists. Run smoke:hyperv:reset or smoke:hyperv:destroy."
+  $repoUrl = if ($env:MOS_V2_HYPERV_REPO_URL) { $env:MOS_V2_HYPERV_REPO_URL } else { 'https://github.com/rpuls/my-own-suite.git' }
+  $repoRef = if ($env:MOS_V2_HYPERV_REPO_REF) { $env:MOS_V2_HYPERV_REPO_REF } else { 'feat/app-platform-v2-lab' }
+  $existing = Get-VM -Name $VmName -ErrorAction SilentlyContinue
+  if ($existing) {
+    if (Test-Path -LiteralPath $StatePath) {
+      Fail "VM '$VmName' already exists and is ready. Run smoke:hyperv:reset or smoke:hyperv:destroy."
+    }
+    Write-Host "[mos-v2-smoke:hyperv] Resuming readiness checks for incomplete VM '$VmName'..."
+    if ($existing.State -eq 'Off') { Start-VM -Name $VmName | Out-Null }
+    $ready = Wait-ForReady
+    $switchName = (Get-VMNetworkAdapter -VMName $VmName).SwitchName
+    $state = [ordered]@{
+      createdAt = (Get-Date).ToUniversalTime().ToString('o')
+      homeUrl = $ready.HomeUrl
+      ip = $ready.Ip
+      repoRef = $repoRef
+      repoUrl = $repoUrl
+      suiteManagerUrl = $ready.SuiteManagerUrl
+      switchName = $switchName
+      vmName = $VmName
+    }
+    $state | ConvertTo-Json | Set-Content -LiteralPath $StatePath -Encoding utf8
+    Show-Summary $state
+    return
   }
 
   New-Item -ItemType Directory -Force -Path $SmokeRoot | Out-Null
   $switch = Get-SmokeSwitch
   $baseVhd = Get-BaseVhd
-  $repoUrl = if ($env:MOS_V2_HYPERV_REPO_URL) { $env:MOS_V2_HYPERV_REPO_URL } else { 'https://github.com/rpuls/my-own-suite.git' }
-  $repoRef = if ($env:MOS_V2_HYPERV_REPO_REF) { $env:MOS_V2_HYPERV_REPO_REF } else { 'feat/app-platform-v2-lab' }
   $renderer = Join-Path $V2Root 'scripts\installers\render-bootstrap.cjs'
   $userData = & node $renderer --target cloud-init --front-door hyperv-smoke --repo-url $repoUrl --repo-ref $repoRef
   if ($LASTEXITCODE -ne 0) { Fail 'V2 cloud-init rendering failed.' }
