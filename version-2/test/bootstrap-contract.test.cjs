@@ -111,6 +111,8 @@ test('Hyper-V smoke is pinned, guarded, and does not add owner or DNS inputs', (
   assert.match(script, /\$source\.CopyTo\(\$target, 8MB\)/u);
   assert.match(script, /ubuntu-24\.04-materialized\.vhd/u);
   assert.match(script, /Convert-VHD .* -VHDType Dynamic/u);
+  assert.match(script, /MemoryStartupBytes 2GB/u);
+  assert.match(script, /Set-VMMemory .* -DynamicMemoryEnabled \$true .* -MaximumBytes 4GB/u);
   assert.match(script, /--resolve "\$\{hostName\}:80:\$ip"/u);
   assert.doesNotMatch(script, /OWNER_PASSWORD|CLOUDFLARE|DNS01/u);
 });

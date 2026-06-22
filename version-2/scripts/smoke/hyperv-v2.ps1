@@ -186,7 +186,8 @@ function Start-SmokeVm {
   New-SeedDisk -UserData ($userData -join "`n")
 
   New-VHD -Path $DiskPath -ParentPath $baseVhd -Differencing | Out-Null
-  New-VM -Name $VmName -Generation 2 -MemoryStartupBytes 4GB -VHDPath $DiskPath -SwitchName $switch.Name | Out-Null
+  New-VM -Name $VmName -Generation 2 -MemoryStartupBytes 2GB -VHDPath $DiskPath -SwitchName $switch.Name | Out-Null
+  Set-VMMemory -VMName $VmName -DynamicMemoryEnabled $true -MinimumBytes 1536MB -StartupBytes 2GB -MaximumBytes 4GB -Buffer 20
   Set-VMProcessor -VMName $VmName -Count 2
   Set-VMFirmware -VMName $VmName -EnableSecureBoot On -SecureBootTemplate MicrosoftUEFICertificateAuthority
   Add-VMHardDiskDrive -VMName $VmName -ControllerType SCSI -Path $SeedPath
