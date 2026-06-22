@@ -17,8 +17,15 @@ test('Hyper-V USB smoke exposes a guarded two-command lifecycle', () => {
   assert.match(script, /Set-VMFirmware .* -BootOrder \$osDisk, \$dvd/u);
   assert.match(script, /Start-VM -Name \$VmName/u);
   assert.match(script, /Wait-ForSuiteManager/u);
-  assert.match(script, /suite-manager\.\$StackDomain/u);
-  assert.match(script, /\/healthz/u);
+  assert.match(script, /Get-NetNeighbor -AddressFamily IPv4/u);
+  assert.match(script, /LinkLayerAddress/u);
+  assert.match(script, /\$adapter\.MacAddress/u);
+  assert.match(script, /# BEGIN MOS V2 HYPERV USB SMOKE/u);
+  assert.match(script, /Set-SmokeHostsEntries -Ip \$ip -StackDomain \$stackDomain/u);
+  assert.match(script, /Remove-SmokeHostsEntries/u);
+  assert.match(script, /ipconfig\.exe \/flushdns/u);
+  assert.match(script, /home\.\$StackDomain/u);
+  assert.match(script, /\/suite-manager\/api\/setup\/status/u);
   assert.ok(script.indexOf('Remove-LabVm') < script.indexOf('Build-InstallerIso'));
   assert.ok(script.indexOf('Build-InstallerIso') < script.indexOf('New-VM -Name $VmName'));
   assert.ok(script.indexOf('Add-VMDvdDrive') < script.indexOf('Start-VM -Name $VmName'));
@@ -26,13 +33,14 @@ test('Hyper-V USB smoke exposes a guarded two-command lifecycle', () => {
 
   const builder = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'smoke', 'build-hyperv-usb-iso.cjs'), 'utf8');
   assert.match(builder, /const smokeRepoRef = 'feat\/app-platform-v2-lab'/u);
-  assert.match(builder, /'--repo-ref', smokeRepoRef/u);
-  assert.match(builder, /'--update-ref', smokeRepoRef/u);
+  assert.match(builder, /render-hyperv-usb-seed\.cjs/u);
+  assert.match(builder, /'--seed-dir', seedDir/u);
   assert.match(builder, /'--auto-boot', 'true'/u);
 
   const rootBuilder = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'selfhost-build-installer-iso.cjs'), 'utf8');
   const remaster = fs.readFileSync(path.join(__dirname, '..', '..', 'deploy', 'self-host', 'iso-builder', 'remaster-iso.sh'), 'utf8');
   assert.match(rootBuilder, /readArg\('auto-boot', 'false'\)/u);
+  assert.match(rootBuilder, /readArg\('seed-dir'\)/u);
   assert.match(rootBuilder, /MOS_INSTALLER_AUTO_BOOT=\$\{autoBoot \? '1' : '0'\}/u);
   assert.match(remaster, /timeout = "3" if os\.environ\.get\("MOS_INSTALLER_AUTO_BOOT"\) == "1" else "-1"/u);
 });

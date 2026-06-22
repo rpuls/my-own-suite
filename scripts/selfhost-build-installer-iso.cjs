@@ -315,21 +315,26 @@ async function resolveInputIso(repoRoot) {
 async function main() {
   const repoRoot = process.cwd();
   const inputIso = await resolveInputIso(repoRoot);
-  const installerConfig = resolveInstallerConfig(repoRoot);
-  validateInstallerConfig(installerConfig);
+  const explicitSeedDir = readArg('seed-dir');
+  const installerConfig = explicitSeedDir ? '' : resolveInstallerConfig(repoRoot);
+  if (installerConfig) {
+    validateInstallerConfig(installerConfig);
+  }
   const outputIso = path.resolve(
     repoRoot,
     readArg('output-iso', 'deploy/self-host/output/my-own-suite-selfhost-installer.iso'),
   );
   const buildRoot = path.resolve(repoRoot, readArg('build-dir', '.tmp/selfhost-iso-build'));
-  const seedDir = path.join(buildRoot, 'seed');
+  const seedDir = explicitSeedDir ? path.resolve(repoRoot, explicitSeedDir) : path.join(buildRoot, 'seed');
   const builderTag = readArg('builder-tag', 'mos-selfhost-iso-builder:latest');
   const autoBoot = readArg('auto-boot', 'false').toLowerCase() === 'true';
 
   assertFile(inputIso, 'Ubuntu ISO');
 
   fs.rmSync(buildRoot, { force: true, recursive: true });
-  fs.mkdirSync(seedDir, { recursive: true });
+  if (!explicitSeedDir) {
+    fs.mkdirSync(seedDir, { recursive: true });
+  }
   fs.mkdirSync(path.dirname(outputIso), { recursive: true });
 
   const passThroughArgs = [];
@@ -342,15 +347,18 @@ async function main() {
       arg.startsWith('--installer-config') ||
       arg.startsWith('--no-auto-download')
       || arg.startsWith('--auto-boot')
+      || arg.startsWith('--seed-dir')
     ) {
       continue;
     }
     passThroughArgs.push(arg);
   }
 
-  run('node', ['scripts/selfhost-write-autoinstall.cjs', '--output-dir', seedDir, '--installer-config', installerConfig, '--quiet', 'true', ...passThroughArgs], {
-    stdio: 'inherit',
-  });
+  if (!explicitSeedDir) {
+    run('node', ['scripts/selfhost-write-autoinstall.cjs', '--output-dir', seedDir, '--installer-config', installerConfig, '--quiet', 'true', ...passThroughArgs], {
+      stdio: 'inherit',
+    });
+  }
 
   assertFile(path.join(seedDir, 'user-data'), 'Generated user-data');
   assertFile(path.join(seedDir, 'meta-data'), 'Generated meta-data');
@@ -359,10 +367,10 @@ async function main() {
     stdio: 'inherit',
   });
 
-  const normalizedRepoRoot = repoRoot.replace(/\\/g, '/');
   const normalizedSeedDir = seedDir.replace(/\\/g, '/');
   const normalizedOutputDir = path.dirname(outputIso).replace(/\\/g, '/');
   const normalizedInputDir = path.dirname(inputIso).replace(/\\/g, '/');
+  const normalizedWorkspaceDir = path.join(buildRoot, 'workspace').replace(/\\/g, '/');
   const inputIsoBaseName = path.basename(inputIso);
   const outputIsoBaseName = path.basename(outputIso);
 
@@ -382,7 +390,7 @@ async function main() {
       '-v',
       `${normalizedSeedDir}:/seed:ro`,
       '-v',
-      `${normalizedRepoRoot}/.tmp/selfhost-iso-build/workspace:/workspace`,
+      `${normalizedWorkspaceDir}:/workspace`,
       '-v',
       `${normalizedInputDir}:/input:ro`,
       '-v',
@@ -398,7 +406,7 @@ async function main() {
   console.log('Self-host installer ISO is ready.');
   console.log(`Flash this file: ${outputIso}`);
   console.log(`Ubuntu ISO source: ${inputIso}`);
-  console.log(`Installer config source: ${installerConfig}`);
+  console.log(explicitSeedDir ? `Installer seed source: ${seedDir}` : `Installer config source: ${installerConfig}`);
   console.log('Ubuntu image source: official Ubuntu release URL verified against SHA256SUMS.');
   console.log('');
   console.log('Recommended USB stick:');

@@ -12,6 +12,9 @@ $VmName = 'mos-v2-usb-smoke'
 $DiskPath = Join-Path $LabRoot 'os.vhdx'
 $IsoPath = Join-Path $LabRoot 'my-own-suite-installer.iso'
 $InstallerConfigPath = Join-Path $V2Root '..\deploy\self-host\autoinstall\installer-config\selfhost-installer.env'
+$HostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
+$HostsStartMarker = '# BEGIN MOS V2 HYPERV USB SMOKE'
+$HostsEndMarker = '# END MOS V2 HYPERV USB SMOKE'
 
 function Fail([string]$Message) {
   throw "[mos-v2-smoke:hyperv-usb] $Message"
@@ -54,6 +57,30 @@ function Remove-LabArtifacts {
   }
 }
 
+function Remove-SmokeHostsEntries {
+  if (-not (Test-Path -LiteralPath $HostsPath)) { return }
+  $content = [IO.File]::ReadAllText($HostsPath)
+  if (-not $content.Contains($HostsStartMarker)) { return }
+  $pattern = "(?ms)^$([regex]::Escape($HostsStartMarker))\r?\n.*?^$([regex]::Escape($HostsEndMarker))\r?\n?"
+  $updated = [regex]::Replace($content, $pattern, '').TrimEnd()
+  [IO.File]::WriteAllText($HostsPath, "$updated`r`n", [Text.Encoding]::ASCII)
+}
+
+function Set-SmokeHostsEntries {
+  param(
+    [string]$Ip,
+    [string]$StackDomain
+  )
+  Remove-SmokeHostsEntries
+  $block = @(
+    $HostsStartMarker,
+    "$Ip home.$StackDomain",
+    $HostsEndMarker
+  ) -join "`r`n"
+  [IO.File]::AppendAllText($HostsPath, "$block`r`n", [Text.Encoding]::ASCII)
+  & ipconfig.exe /flushdns | Out-Null
+}
+
 function Build-InstallerIso {
   $builder = Join-Path $V2Root 'scripts\smoke\build-hyperv-usb-iso.cjs'
   & node $builder
@@ -71,7 +98,18 @@ function Get-StackDomain {
 }
 
 function Get-GuestIpv4Addresses {
-  return (Get-VMNetworkAdapter -VMName $VmName).IPAddresses |
+  $adapter = Get-VMNetworkAdapter -VMName $VmName
+  $reported = @($adapter.IPAddresses)
+  $macAddress = $adapter.MacAddress -replace '[^0-9A-Fa-f]', ''
+  $neighbors = if ($macAddress) {
+    @(Get-NetNeighbor -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+      Where-Object { ($_.LinkLayerAddress -replace '[^0-9A-Fa-f]', '') -eq $macAddress } |
+      Select-Object -ExpandProperty IPAddress)
+  }
+  else { @() }
+
+  $candidates = @($reported) + @($neighbors)
+  return $candidates |
     Where-Object { $_ -match '^\d{1,3}(?:\.\d{1,3}){3}$' -and $_ -notmatch '^(127|169\.254)\.' } |
     Select-Object -Unique
 }
@@ -86,8 +124,8 @@ function Wait-ForSuiteManager {
     }
   }
 
-  $hostName = "suite-manager.$StackDomain"
-  $healthUrl = "http://$hostName/healthz"
+  $hostName = "home.$StackDomain"
+  $healthUrl = "http://$hostName/suite-manager/api/setup/status"
   $startedAt = Get-Date
   $deadline = $startedAt.AddMinutes($timeoutMinutes)
   $nextReportAt = $startedAt
@@ -141,8 +179,8 @@ function Show-Summary {
   Write-Host "  Disk:       $($disk.Path)"
   Write-Host "  Installer:  $($dvd.Path)"
   Write-Host "  IPv4:       $Ip"
-  Write-Host "  Suite Mgr:  http://suite-manager.$StackDomain/setup/"
-  Write-Host "  Homepage:   http://homepage.$StackDomain/"
+  Write-Host "  MOS Home:   http://home.$StackDomain/"
+  Write-Host "  Suite Mgr:  http://home.$StackDomain/suite-manager/"
 }
 
 Assert-HyperV
@@ -150,6 +188,7 @@ Assert-HyperV
 if ($Command -eq 'destroy') {
   Remove-LabVm
   Remove-LabArtifacts
+  Remove-SmokeHostsEntries
   Write-Host "[mos-v2-smoke:hyperv-usb] Removed VM '$VmName' and its disposable lab artifacts."
   exit 0
 }
@@ -157,6 +196,7 @@ if ($Command -eq 'destroy') {
 Write-Host "[mos-v2-smoke:hyperv-usb] Removing any existing '$VmName' VM and lab artifacts..."
 Remove-LabVm
 Remove-LabArtifacts
+Remove-SmokeHostsEntries
 
 Write-Host '[mos-v2-smoke:hyperv-usb] Building the canonical single-USB installer ISO...'
 Build-InstallerIso
@@ -194,4 +234,5 @@ if ($vm.State -ne 'Running' -or -not $dvd) {
 $stackDomain = Get-StackDomain
 Write-Host "[mos-v2-smoke:hyperv-usb] Waiting for Ubuntu installation and Suite Manager readiness on *.$stackDomain..."
 $ip = Wait-ForSuiteManager -StackDomain $stackDomain
+Set-SmokeHostsEntries -Ip $ip -StackDomain $stackDomain
 Show-Summary -Ip $ip -StackDomain $stackDomain

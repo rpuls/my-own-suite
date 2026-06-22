@@ -9,6 +9,7 @@ const repoRoot = path.resolve(v2Root, '..');
 const labRoot = path.join(v2Root, '.mos-smoke', 'hyperv-usb');
 const outputIso = path.join(labRoot, 'my-own-suite-installer.iso');
 const buildRoot = path.join(labRoot, 'iso-build');
+const seedDir = path.join(labRoot, 'v2-seed');
 const smokeRepoRef = 'feat/app-platform-v2-lab';
 
 function fail(message) {
@@ -37,6 +38,15 @@ function verifyIso(isoPath) {
 
 function main(extraArgs = process.argv.slice(2)) {
   fs.mkdirSync(labRoot, { recursive: true });
+  const seedRenderer = path.join(v2Root, 'scripts', 'installers', 'render-hyperv-usb-seed.cjs');
+  const seedResult = spawnSync(process.execPath, [seedRenderer], {
+    cwd: v2Root,
+    env: process.env,
+    stdio: 'inherit',
+  });
+  if (seedResult.error) fail(`Unable to start the V2 USB seed renderer: ${seedResult.error.message}`);
+  if (seedResult.status !== 0) process.exit(seedResult.status || 1);
+
   const builder = path.join(repoRoot, 'scripts', 'selfhost-build-installer-iso.cjs');
   const result = spawnSync(
     process.execPath,
@@ -45,9 +55,7 @@ function main(extraArgs = process.argv.slice(2)) {
       '--output-iso', outputIso,
       '--build-dir', buildRoot,
       '--auto-boot', 'true',
-      '--repo-ref', smokeRepoRef,
-      '--update-track', 'branch',
-      '--update-ref', smokeRepoRef,
+      '--seed-dir', seedDir,
       ...extraArgs,
     ],
     {
