@@ -64,20 +64,16 @@ The smoke install uses cloud-init, so SSH keys are optional for the install itse
 
 ### Local Hyper-V smoke
 
-Windows 10/11 Pro hosts with Hyper-V can boot the same V2 cloud-init contract in a disposable local VM. Run these commands from an Administrator PowerShell terminal:
+The USB-aligned Hyper-V smoke surface has two lifecycle commands:
 
 ```powershell
-cmd /c npm --prefix version-2 run smoke:hyperv:render
-cmd /c npm --prefix version-2 run smoke:hyperv:up
 cmd /c npm --prefix version-2 run smoke:hyperv:reset
 cmd /c npm --prefix version-2 run smoke:hyperv:destroy
 ```
 
-The first `up` downloads and verifies a pinned 574 MB official Ubuntu 24.04 Azure VHD. Hyper-V cannot consume the archive's compressed sparse fixed disk directly, so first setup briefly needs about 34 GB while converting it to a smaller dynamic VHDX. The converted base remains cached under ignored `version-2/.mos-smoke/cache/`; each VM uses disposable differencing and CIDATA disks under `.mos-smoke/hyperv/`. Re-running `up` resumes readiness polling for an incomplete VM when setup was interrupted. `reset` destroys and recreates only the exact `mos-v2-smoke` VM, while `destroy` removes that VM and its disposable disks but retains the verified base image.
+`reset` removes the exact `mos-v2-usb-smoke` VM and its disposable lab directory, regenerates and verifies a smoke-only auto-boot variant of the canonical single-USB installer ISO pinned to `feat/app-platform-v2-lab`, creates a fresh Generation 2 VM with a blank 64 GB disk, attaches the ISO, and starts the VM. The blank disk falls through to the DVD on first boot; after installation the populated disk wins, preventing an installation loop. The command discovers the installed guest IPv4, waits up to 90 minutes for Suite Manager `/healthz`, then prints the IP and configured Suite Manager/Homepage URLs. Set `MOS_V2_HYPERV_READY_TIMEOUT_MINUTES` to override that timeout. `destroy` removes the exact VM and its disposable disk, ISO, and build workspace. The builder uses `deploy/self-host/autoinstall/installer-config/selfhost-installer.env`, the supported Ubuntu ISO under `deploy/self-host/autoinstall/ubuntu-iso/`, and Docker Desktop's Linux container engine, while the smoke wrapper overrides the config's repository/update ref for this V2 branch test.
 
-The VM uses two virtual CPUs and Hyper-V dynamic memory from 1.5 GB to 4 GB, starting at 2 GB. The harness uses Hyper-V's `Default Switch` when available, otherwise the first external switch. Set `MOS_V2_HYPERV_SWITCH`, `MOS_V2_HYPERV_REPO_URL`, or `MOS_V2_HYPERV_REPO_REF` to override those defaults. DNS-01 is not part of this smoke path; validate it separately only on a representative local network with the user's chosen DNS wildcard override.
-
-Readiness output reports the VM, network adapter, Hyper-V heartbeat, guest IPv4, and HTTP probe state every 30 seconds or whenever the state changes. The default readiness timeout is 30 minutes; set `MOS_V2_HYPERV_READY_TIMEOUT_MINUTES` to a positive whole number to override it. An interrupted or timed-out `up` can be run again to resume checks against the same VM.
+Run these commands from an Administrator PowerShell terminal. Set `MOS_V2_HYPERV_SWITCH` to override the default switch selection.
 
 ### Explicit DNS-01 validation
 

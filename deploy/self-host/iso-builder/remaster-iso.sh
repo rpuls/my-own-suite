@@ -48,15 +48,17 @@ patch_grub_file() {
 
   python3 - "$disk_path" <<'PY'
 import pathlib
+import os
 import re
 import sys
 
 path = pathlib.Path(sys.argv[1])
 text = path.read_text(encoding="utf-8")
 
-text = text.replace("set timeout=30", "set timeout=-1")
-text = text.replace("set timeout=10", "set timeout=-1")
-text = text.replace("set timeout=8", "set timeout=-1")
+timeout = "3" if os.environ.get("MOS_INSTALLER_AUTO_BOOT") == "1" else "-1"
+text = text.replace("set timeout=30", f"set timeout={timeout}")
+text = text.replace("set timeout=10", f"set timeout={timeout}")
+text = text.replace("set timeout=8", f"set timeout={timeout}")
 text = text.replace("set timeout_style=hidden", "set timeout_style=menu")
 
 if "set default=" in text:

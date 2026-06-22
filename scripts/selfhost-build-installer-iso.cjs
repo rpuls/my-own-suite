@@ -324,6 +324,7 @@ async function main() {
   const buildRoot = path.resolve(repoRoot, readArg('build-dir', '.tmp/selfhost-iso-build'));
   const seedDir = path.join(buildRoot, 'seed');
   const builderTag = readArg('builder-tag', 'mos-selfhost-iso-builder:latest');
+  const autoBoot = readArg('auto-boot', 'false').toLowerCase() === 'true';
 
   assertFile(inputIso, 'Ubuntu ISO');
 
@@ -340,6 +341,7 @@ async function main() {
       arg.startsWith('--builder-tag') ||
       arg.startsWith('--installer-config') ||
       arg.startsWith('--no-auto-download')
+      || arg.startsWith('--auto-boot')
     ) {
       continue;
     }
@@ -375,6 +377,8 @@ async function main() {
       `INPUT_ISO_BASENAME=${inputIsoBaseName}`,
       '-e',
       `OUTPUT_ISO_BASENAME=${outputIsoBaseName}`,
+      '-e',
+      `MOS_INSTALLER_AUTO_BOOT=${autoBoot ? '1' : '0'}`,
       '-v',
       `${normalizedSeedDir}:/seed:ro`,
       '-v',
