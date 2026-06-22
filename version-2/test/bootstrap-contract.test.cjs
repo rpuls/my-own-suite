@@ -29,6 +29,8 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.match(plan.cloudInit, /reverse_proxy 127\.0\.0\.1:\$MOS_V2_SUITE_MANAGER_PORT/);
   assert.match(plan.cloudInit, /mos-v2-homepage\.service/);
   assert.match(plan.cloudInit, /--publish 127\.0\.0\.1:3200:3000/);
+  assert.match(plan.cloudInit, /docker pull 'ghcr\.io\/gethomepage\/homepage@sha256:[a-f0-9]+' &/);
+  assert.match(plan.cloudInit, /if ! wait "\$homepage_pull_pid"; then/);
   assert.match(plan.cloudInit, /\.mos-v2-defaults-v2/);
   assert.match(plan.cloudInit, /if \[ ! -e "\$homepage_seed_marker" \] \|\| \[ ! -e "\$target_file" \]; then/);
   assert.match(plan.cloudInit, /systemctl restart mos-v2-homepage\.service/);
@@ -45,6 +47,14 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.match(plan.cloudInit, /mos-v2-homepage-routes\.caddy/);
   assert.match(plan.cloudInit, /MOS_V2_HTTPS_AGENT_SOCKET/);
   assert.match(plan.cloudInit, /caddy-cloudflare\.env/);
+  assert.ok(
+    plan.cloudInit.indexOf('docker pull')
+      < plan.cloudInit.indexOf('npm --prefix'),
+  );
+  assert.ok(
+    plan.cloudInit.indexOf('if ! wait "$homepage_pull_pid"; then')
+      < plan.cloudInit.indexOf('systemctl restart mos-v2-homepage.service'),
+  );
   assert.ok(
     plan.cloudInit.indexOf('systemctl restart mos-v2-homepage.service')
       < plan.cloudInit.indexOf('systemctl restart mos-v2-suite-manager.service'),

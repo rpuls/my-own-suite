@@ -181,6 +181,10 @@ fi
 
 apt-get update
 apt-get install -y ca-certificates curl docker.io git gnupg
+systemctl enable --now docker.service
+echo '[mos-v2] Pulling the pinned Homepage image while the control plane builds.'
+docker pull ${shellQuote(HOMEPAGE_IMAGE)} &
+homepage_pull_pid="$!"
 
 if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'Number(process.versions.node.split(".")[0])')" -lt 22 ]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
@@ -354,7 +358,10 @@ cat > /etc/caddy/mos-v2-homepage-routes.caddy <<'MOS_V2_HOMEPAGE_ROUTES'
 MOS_V2_HOMEPAGE_ROUTES
 
 systemctl daemon-reload
-systemctl enable --now docker.service
+if ! wait "$homepage_pull_pid"; then
+  echo '[mos-v2] Pulling the pinned Homepage image failed.' >&2
+  exit 1
+fi
 systemctl enable mos-v2-homepage.service
 systemctl restart mos-v2-homepage.service
 
@@ -457,6 +464,7 @@ module.exports = {
   validateBootstrapInput,
 };
 const {
+  HOMEPAGE_IMAGE,
   HOMEPAGE_PORT,
   renderCaddyfile,
   renderHomepageSystemdUnit,
