@@ -42,6 +42,7 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.match(plan.cloudInit, /infrastructure\/caddy\/Dockerfile/);
   assert.match(plan.cloudInit, /dns\.providers\.cloudflare/);
   assert.match(plan.cloudInit, /mos-v2-https-agent\.service/);
+  assert.match(plan.cloudInit, /Environment=MOS_V2_SUITE_MANAGER_PORT=\$MOS_V2_SUITE_MANAGER_PORT/);
   assert.match(plan.cloudInit, /mos-v2-homepage-agent\.service/);
   assert.match(plan.cloudInit, /MOS_V2_HOMEPAGE_AGENT_SOCKET=\/run\/mos-v2-homepage-agent\/agent\.sock/);
   assert.match(plan.cloudInit, /mos-v2-homepage-routes\.caddy/);

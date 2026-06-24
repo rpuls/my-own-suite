@@ -317,6 +317,7 @@ WorkingDirectory=$MOS_V2_INSTALL_ROOT/repo/version-2
 Environment=NODE_ENV=production
 Environment=MOS_V2_HTTPS_AGENT_SOCKET=/run/mos-v2-https-agent/agent.sock
 Environment=MOS_V2_HTTPS_TRANSACTION_ROOT=$MOS_V2_STATE_ROOT/https-agent/transactions
+Environment=MOS_V2_SUITE_MANAGER_PORT=$MOS_V2_SUITE_MANAGER_PORT
 ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/version-2/system-agents/https/agent.cjs
 Restart=always
 RestartSec=3

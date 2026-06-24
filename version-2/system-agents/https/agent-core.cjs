@@ -3,6 +3,14 @@ const crypto = require('node:crypto');
 const { renderHttpsCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
 const { validateHttpsInput } = require('../../shared/https-contract.cjs');
 
+function suiteManagerPort() {
+  const port = String(process.env.MOS_V2_SUITE_MANAGER_PORT || '3100').trim();
+  if (!/^[1-9][0-9]{0,4}$/u.test(port) || Number(port) > 65535) {
+    throw new Error('INVALID_SUITE_MANAGER_PORT');
+  }
+  return port;
+}
+
 class HttpsAgentCore {
   constructor(adapter) {
     this.adapter = adapter;
@@ -39,6 +47,7 @@ class HttpsAgentCore {
         acmeEmail: input.acmeEmail,
         baseDomain: input.baseDomain,
         bootstrapHost,
+        suiteManagerPort: suiteManagerPort(),
       });
       await this.adapter.installCandidate({ caddyfile, cloudflareApiToken: input.cloudflareApiToken });
       await this.adapter.validateCandidate(input.cloudflareApiToken);

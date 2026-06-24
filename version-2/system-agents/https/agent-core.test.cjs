@@ -37,6 +37,8 @@ test('agent applies only rendered configuration and returns an opaque rollback i
   assert.match(result.rollbackId, /^[0-9a-f-]{36}$/u);
   const candidate = fake.calls.find(([name]) => name === 'installCandidate')[1];
   assert.match(candidate.caddyfile, /home\.mos\.example\.com/u);
+  assert.match(candidate.caddyfile, /reverse_proxy 127\.0\.0\.1:3100/u);
+  assert.doesNotMatch(candidate.caddyfile, /\$MOS_V2_SUITE_MANAGER_PORT/u);
   assert.doesNotMatch(candidate.caddyfile, /token_value/u);
   assert.equal(candidate.cloudflareApiToken, validInput.cloudflareApiToken);
 });
