@@ -253,7 +253,7 @@ cat > /etc/systemd/system/caddy.service.d/mos-v2.conf <<'MOS_V2_CADDY_OVERRIDE'
 [Service]
 EnvironmentFile=-/etc/mos-v2/secrets/caddy-cloudflare.env
 ExecStart=
-ExecStart=/usr/local/libexec/mos-v2/caddy run --environ --config /etc/caddy/Caddyfile
+ExecStart=/usr/local/libexec/mos-v2/caddy run --config /etc/caddy/Caddyfile
 ExecReload=
 ExecReload=/usr/local/libexec/mos-v2/caddy reload --config /etc/caddy/Caddyfile --force
 MOS_V2_CADDY_OVERRIDE

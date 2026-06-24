@@ -32,15 +32,27 @@ export function SettingsScreen() {
   const [applying, setApplying] = useState(false);
   const [result, setResult] = useState<ApplyResult | null>(null);
 
-  async function load() {
+  async function load(): Promise<HttpsStatus | null> {
     try {
       const next = await jsonResponse<HttpsStatus>(await fetch('/suite-manager/api/settings/https'), 'Unable to load HTTPS settings.');
       setStatus(next);
       setBaseDomain(next.baseDomain || '');
       setAcmeEmail(next.acmeEmail || '');
+      setLoadError('');
+      return next;
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Unable to load HTTPS settings.');
+      return null;
     }
+  }
+
+  async function loadAfterRestart(): Promise<HttpsStatus | null> {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const next = await load();
+      if (next) return next;
+    }
+    return null;
   }
 
   useEffect(() => { void load(); }, []);
@@ -75,6 +87,16 @@ export function SettingsScreen() {
       setResult(applied);
       await load();
     } catch (error) {
+      const recovered = await loadAfterRestart();
+      if (recovered?.lastApply.status === 'applied' && recovered.baseDomain === normalizedDomain) {
+        setResult({
+          appliedAt: recovered.lastApply.at || new Date().toISOString(),
+          bootstrapUrl: recovered.bootstrapUrl,
+          homeUrl: recovered.activeHomeUrl,
+          status: 'applied',
+        });
+        return;
+      }
       setFormError(error instanceof Error ? error.message : 'HTTPS could not be applied.');
     } finally {
       setApplying(false);

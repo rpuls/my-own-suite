@@ -10,8 +10,13 @@ const TRANSACTION_ROOT = process.env.MOS_V2_HTTPS_TRANSACTION_ROOT || '/var/lib/
 
 function execFilePromise(file, args, options = {}) {
   return new Promise((resolve, reject) => {
-    execFile(file, args, { timeout: 120000, ...options }, (error, stdout) => {
-      if (error) { reject(new Error('COMMAND_FAILED')); return; }
+    execFile(file, args, { timeout: 120000, ...options }, (error, stdout, stderr) => {
+      if (error) {
+        const command = [path.basename(file), ...args].join(' ');
+        const output = String(stderr || stdout || '').replace(/CLOUDFLARE_API_TOKEN=[^\s]+/gu, 'CLOUDFLARE_API_TOKEN=REDACTED').trim();
+        reject(new Error(`COMMAND_FAILED ${command}${output ? ` :: ${output}` : ''}`));
+        return;
+      }
       resolve(stdout || '');
     });
   });
@@ -31,7 +36,10 @@ async function cloudflareRequest(token, requestPath) {
     signal: AbortSignal.timeout(15000),
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok || body?.success !== true) throw new Error('CLOUDFLARE_ACCESS_DENIED');
+  if (!response.ok || body?.success !== true) {
+    const codes = Array.isArray(body?.errors) ? body.errors.map((error) => error.code).filter(Boolean).join(',') : '';
+    throw new Error(`CLOUDFLARE_ACCESS_DENIED ${requestPath}${codes ? ` codes=${codes}` : ''}`);
+  }
   return body;
 }
 
@@ -57,7 +65,6 @@ class SystemHttpsAdapter {
   }
 
   async verifyCloudflareAccess(token, baseDomain) {
-    await cloudflareRequest(token, '/user/tokens/verify');
     const labels = baseDomain.split('.');
     for (let index = 0; index < labels.length - 1; index += 1) {
       const candidate = labels.slice(index).join('.');
@@ -86,9 +93,8 @@ class SystemHttpsAdapter {
   }
 
   reload(token) {
-    return execFilePromise(CADDY_BINARY, ['reload', '--config', CADDYFILE_PATH], {
-      env: { ...process.env, CLOUDFLARE_API_TOKEN: token },
-    });
+    void token;
+    return execFilePromise('/usr/bin/systemctl', ['restart', 'caddy.service']);
   }
 
   async restoreCheckpoint(rollbackId) {
@@ -98,11 +104,7 @@ class SystemHttpsAdapter {
   }
 
   async reloadPrevious() {
-    let token = '';
-    if (fs.existsSync(SECRET_ENV_PATH)) {
-      token = (await fsp.readFile(SECRET_ENV_PATH, 'utf8')).replace(/^CLOUDFLARE_API_TOKEN=/u, '').trim();
-    }
-    return this.reload(token);
+    return this.reload();
   }
 
   removeCheckpoint(rollbackId) {

@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 
 const { HttpsAgentCore } = require('./agent-core.cjs');
@@ -56,4 +58,25 @@ test('agent rejects malformed tokens before creating a checkpoint', async () => 
   const fake = adapter();
   await assert.rejects(() => new HttpsAgentCore(fake).apply({ ...validInput, cloudflareApiToken: 'bad token' }));
   assert.equal(fake.calls.some(([name]) => name === 'createCheckpoint'), false);
+});
+
+test('agent treats Cloudflare zone lookup as the token preflight', async () => {
+  const fake = adapter();
+  await new HttpsAgentCore(fake).apply(validInput);
+  const names = fake.calls.map(([name]) => name);
+
+  assert.ok(names.includes('verifyCloudflareAccess'));
+  assert.ok(names.indexOf('verifyCloudflareAccess') < names.indexOf('createCheckpoint'));
+});
+
+test('system adapter does not require user-owned token verification before zone lookup', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'system-adapter.cjs'), 'utf8');
+  assert.doesNotMatch(source, /\/user\/tokens\/verify/u);
+  assert.match(source, /\/zones\?name=/u);
+});
+
+test('system adapter restarts Caddy so the Cloudflare secret env is reloaded', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'system-adapter.cjs'), 'utf8');
+  assert.match(source, /systemctl', \['restart', 'caddy\.service'\]/u);
+  assert.doesNotMatch(source, /CADDY_BINARY, \['reload'/u);
 });
