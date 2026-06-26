@@ -26,16 +26,16 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Fixed the pinned Caddy build for Ubuntu's default legacy Docker builder after a fresh smoke exposed an unset `BUILDPLATFORM` failure before systemd unit creation.
 - [x] Added the first V2 Homepage customization slice: authenticated Customize navigation, allowlisted revision-aware YAML editing, guided dashboard links and home services, SQLite apply/revision metadata, generated Homepage/Caddy projections, and a separate transactional rollback-capable Homepage agent.
 - [x] Diagnosed the real DigitalOcean Customize apply failure through the live agent/socket/runtime state, fixed the Homepage restart budget and Suite Manager systemd dependency that caused successful writes to roll back, and aligned Customize with V1's file rail, syntax-aware validation/save flow, shared dialog controls, guided link flow, and automatic home-service URL helper.
-- [x] Passed the V2-owned local Playwright flow and a fresh human-driven DigitalOcean control-plane validation, including owner setup, private Homepage access, customization, generated home-service routing, logout protection, persistence, and an optimized eight-minute cold install; DNS-01 remains explicitly unverified.
-- [x] Added a guarded local Hyper-V smoke harness around the shared V2 cloud-init contract, using a checksummed Ubuntu cloud VHD, disposable VM disks, and cached base-image resets; real VM validation remains user-run from an Administrator terminal.
+- [x] Passed the V2-owned local Playwright flow and a fresh human-driven DigitalOcean control-plane validation, including owner setup, private Homepage access, customization, generated home-service routing, logout protection, persistence, and an optimized eight-minute cold install.
+- [x] Added and validated the USB-aligned local Hyper-V smoke harness around the shared V2 bootstrap contract, including owner setup, Homepage customization, Cloudflare DNS-01 private LAN HTTPS, generated Caddy home-service routing, and a proxied LAN app reached through a local DNS override.
 
 ### Current Next Slice
 
 Build the next real V2 vertical slice inside `version-2/`:
 
-1. Run the guarded Hyper-V smoke on a local VM and repeat the owner, Homepage, customization, routing, logout, and persistence checks against the own-hardware-shaped install.
-2. Keep DNS-01 explicitly deferred until a representative local network with the user's chosen DNS wildcard override is available; do not infer public DNS requirements from VPS testing.
-3. Brainstorm the future app-package contract after the available control-plane validation, keeping installation inputs, secrets, dependencies, volumes, backup, and lifecycle outside Homepage YAML.
+1. Brainstorm the future app-package contract after the validated control-plane slice, keeping installation inputs, secrets, dependencies, volumes, backup, and lifecycle outside Homepage YAML.
+2. Convert any remaining temporary V2 roadmap/checklist state into GitHub Issues before merging the branch.
+3. Keep public internet exposure outside the facilitated private LAN HTTPS flow; cloud/external-provider installs should continue to point custom-domain HTTPS work to the provider guide.
 
 ### Latest Verified Command
 
@@ -45,11 +45,11 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
-Current result: 70 V2 contract tests, TypeScript checks, the production frontend build, and the V2-owned Playwright flow pass. A fresh DigitalOcean install from `dd962a6` completed in eight minutes after overlapping the pinned Homepage pull with control-plane builds; the human confirmed owner setup, private Homepage access, customization, generated routing, logout protection, and persistence. The guarded Hyper-V harness is locally rendered but not yet run against a real VM. DNS-01 and USB validation remain explicitly unverified.
+Current result: V2 contract tests, TypeScript checks, the production frontend build, and the V2-owned Playwright flow pass. Fresh DigitalOcean validation confirms external-provider installs show provider-managed custom-domain guidance instead of the private DNS-01 form. Hyper-V USB validation confirms owner setup, private Homepage access, customization, Cloudflare DNS-01 HTTPS for `home.<domain>`, generated Caddy home-service routing, and proxied LAN app access once the local network resolves the generated app hostname to the VM IP.
 
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Local Playwright and fresh DigitalOcean HTTP/control-plane validation pass, including an eight-minute cold install, owner setup, customization, generated routing, logout protection, and persistence. Run the new guarded Hyper-V smoke from an Administrator terminal for own-hardware-shaped validation. DNS-01 stays deferred until a representative local DNS wildcard environment is available.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Local Playwright, fresh DigitalOcean control-plane validation, and Hyper-V USB validation pass. Hyper-V confirmed owner setup, Homepage customization, Cloudflare DNS-01 private LAN HTTPS, generated Caddy home-service routing, and LAN app proxying once local DNS resolves the generated app hostname to the VM IP. Next focus is the future app-package contract and converting remaining temporary roadmap state into GitHub Issues before merge.
 
 ## Product Goal
 

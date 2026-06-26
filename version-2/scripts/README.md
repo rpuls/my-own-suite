@@ -101,6 +101,7 @@ Readiness and access:
 
 - Browser access is through `http://home.<domain>/suite-manager/`, for example `http://home.mos.home/suite-manager/`. Do not use the old v1 `suite-manager.<domain>/setup/` host.
 - The final summary prints the VM name, switch, disk, installer ISO, IPv4, MOS Home URL, and Suite Manager URL.
+- `reset` only writes the exact `home.<domain>` Windows hosts entry needed for Suite Manager/Home. Generated LAN-app hosts such as `<app>.<domain>` need either matching per-host entries or, preferably, a local wildcard DNS override such as `*.test.example.com -> <guest-ip>` in the user's router, AdGuard Home, Unbound, Pi-hole, or other local DNS service.
 
 If the wait looks stuck, open Hyper-V Manager, connect to `mos-v2-usb-smoke`, and inspect the Ubuntu console. Useful console checks after login are:
 
@@ -115,7 +116,7 @@ Use the non-Docker IPv4 from `hostname -I`; Docker bridge addresses such as `172
 
 Set `MOS_V2_HYPERV_READY_TIMEOUT_MINUTES` to override the default 90 minute readiness timeout. The remasterer uses the supported Ubuntu ISO under `deploy/self-host/autoinstall/ubuntu-iso/` and Docker Desktop's Linux container engine.
 
-### Explicit DNS-01 validation
+### Explicit DigitalOcean DNS-01 validation
 
 After creating the owner on an existing V2 smoke Droplet and pointing `home.<base-domain>` at it, real DNS-01 validation is available only with explicit confirmation:
 
