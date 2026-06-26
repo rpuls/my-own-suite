@@ -27,10 +27,10 @@ async function jsonResponse<T>(response: Response, fallback: string): Promise<T>
 
 function LocalDnsInstructions({ homeHost, serverAddress }: { homeHost: string; serverAddress: string }) {
   return <>
-    <p>Before opening it from this computer or your LAN, make local DNS send <strong>{homeHost}</strong> to <strong>{serverAddress}</strong>.</p>
-    <p>For one Windows PC, add this line to <code>C:\Windows\System32\drivers\etc\hosts</code> as Administrator, then flush DNS:</p>
+    <p>MOS can now serve HTTPS at <strong>{homeHost}</strong>, but your devices or local network may still need to learn where that name lives.</p>
+    <p>Create a local DNS override that sends this hostname to this server IP:</p>
     <pre className="suite-command-block">{`${serverAddress} ${homeHost}`}</pre>
-    <p>For your whole home network, create the same DNS override in AdGuard Home, Unbound, Pi-hole, or your router.</p>
+    <p>The right place to do that depends on your setup: your router, local DNS server, AdGuard Home, Unbound, Pi-hole, or an operating-system hosts file can all be valid options.</p>
   </>;
 }
 
@@ -121,6 +121,13 @@ export function SettingsScreen() {
 
   const activeHomeHost = status?.baseDomain ? `home.${status.baseDomain}` : '';
   const dnsAddress = status?.serverAddress || '<server-ip>';
+  const canApplyHttps = Boolean(
+    status?.agentAvailable &&
+    baseDomain.trim() &&
+    acmeEmail.trim() &&
+    token.trim() &&
+    !applying,
+  );
 
   return <section className="mos-shell suite-settings">
     <div className="suite-hero"><span className="mos-pill mos-pill-accent">Platform settings</span><h1>Settings</h1><p className="suite-lead mos-body-lg">Manage how this MOS Home is reached from your browser.</p></div>
@@ -138,7 +145,7 @@ export function SettingsScreen() {
         <TextInput autoComplete="off" helperText="Requires Zone Read and DNS Edit for the relevant Cloudflare zone. The saved token is never returned." label="Cloudflare API token" onChange={(event) => setToken(event.target.value)} placeholder={status.tokenConfigured ? 'Paste a replacement token to reapply' : 'Paste token once'} type="password" value={token} />
         {formError ? <Notice title="HTTPS was not applied" variant="error"><p>{formError}</p></Notice> : null}
         {result ? <Notice title="HTTPS configuration applied" variant="success"><p>Your new Home URL is <a href={result.homeUrl}>{result.homeUrl}</a>.</p><LocalDnsInstructions homeHost={activeHomeHost} serverAddress={dnsAddress} /><a className="mos-btn mos-btn-primary" href={result.homeUrl}>Open HTTPS Home</a></Notice> : null}
-        <button className="mos-btn mos-btn-primary" disabled={applying} type="submit">{applying ? 'Applying securely...' : 'Apply HTTPS settings'}</button>
+        <button className="mos-btn mos-btn-primary" disabled={!canApplyHttps} type="submit">{applying ? 'Applying securely...' : 'Apply HTTPS settings'}</button>
       </form>
       {!result && status.lastApply.status === 'applied' && activeHomeHost ? <Notice title="HTTPS is configured" variant="success"><p>Active Home URL: <a href={status.activeHomeUrl}>{status.activeHomeUrl}</a>.</p><LocalDnsInstructions homeHost={activeHomeHost} serverAddress={dnsAddress} /></Notice> : null}
       <AdvancedDetails status={status} />
