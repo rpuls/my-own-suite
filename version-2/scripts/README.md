@@ -67,15 +67,12 @@ The USB-aligned Hyper-V smoke surface has two lifecycle commands:
 
 ```powershell
 cmd /c npm --prefix version-2 run smoke:hyperv:reset
-cmd /c npm --prefix version-2 run smoke:hyperv:hosts
 cmd /c npm --prefix version-2 run smoke:hyperv:destroy
 ```
 
 Run these commands from an Administrator PowerShell terminal. Set `MOS_V2_HYPERV_SWITCH` to override the default switch selection.
 
 `reset` is the full disposable lifecycle. It removes the exact `mos-v2-usb-smoke` VM and its lab directory, renders a V2-specific Ubuntu autoinstall seed from the `feat/app-platform-v2-lab` bootstrap contract, remasters and verifies a smoke-only auto-boot installer ISO, creates a fresh Generation 2 VM with a blank 64 GB disk, attaches the ISO, starts the VM, waits for Suite Manager, writes local Windows host resolution, and prints the working URL summary.
-
-`hosts` is a non-destructive repair/update command for an already-running smoke VM. It discovers the current VM IPv4, replaces the marked Windows hosts-file block for `home.<domain>`, flushes DNS, and prints the refreshed URLs.
 
 `destroy` removes the exact VM, its disposable disk/ISO/build workspace, and the hosts-file entries written by `reset`.
 
