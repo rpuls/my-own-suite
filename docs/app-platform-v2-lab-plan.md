@@ -224,7 +224,7 @@ Exit criteria:
 - Smoke validates control-plane readiness.
 - Smoke does not install optional apps.
 - Smoke does not require installer-time owner credentials.
-- Current state: `npm --prefix version-2 run smoke:do:up` creates a tagged Droplet, installs the V2 control plane from the selected repo/ref, waits for `/suite-manager/api/setup/status`, and prints the Home and Suite Manager paths. `smoke:do:render` remains the free dry-run.
+- Current state: `npm --prefix version-2 run smoke:do:reset` creates or replaces a tagged Droplet, installs the V2 control plane from the selected repo/ref, waits for `/suite-manager/api/setup/status`, and prints the Home and Suite Manager paths. `smoke:do:render` remains the free dry-run.
 
 ### Phase 5: Control-Plane Operations
 
@@ -427,7 +427,6 @@ cmd /c npm --prefix version-2 test
 Agents should ask the user to run:
 
 ```powershell
-npm run smoke:do:up
 npm run smoke:do:reset
 npm run e2e:onboarding
 ```

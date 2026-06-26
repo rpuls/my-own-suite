@@ -18,11 +18,10 @@ const DEFAULT_READY_TIMEOUT_MS = 30 * 60 * 1000;
 loadLocalEnvFile();
 
 function usage() {
-  console.log(`Usage: node scripts/smoke/digitalocean-v2.cjs <up|reset|destroy|render>
+  console.log(`Usage: node scripts/smoke/digitalocean-v2.cjs <reset|destroy|render>
 
 Commands:
-  up       Create a tagged DigitalOcean smoke Droplet and install MOS V2.
-  reset    Destroy the current V2 smoke Droplet and create a fresh one.
+  reset    Create a fresh V2 smoke Droplet, replacing the current one if present.
   destroy  Destroy the current tagged V2 smoke Droplet from local state.
   render   Render the V2 DigitalOcean cloud-init payload without creating paid resources.
 
@@ -35,7 +34,6 @@ Environment:
   MOS_V2_SMOKE_REPO_REF           Default: feat/app-platform-v2-lab.
   MOS_V2_SMOKE_DOMAIN             Optional explicit domain.
   MOS_V2_SMOKE_WAIT               Set to 0 to skip HTTP readiness polling.
-  MOS_V2_SMOKE_REPLACE            Set to 1 to replace existing state on up.
   MOS_V2_SMOKE_SSH_KEY_ID         Optional SSH key id.
   MOS_V2_SMOKE_SSH_KEY_FINGERPRINT Optional SSH key fingerprint.
   MOS_V2_SMOKE_SSH_KEY_NAME       Optional SSH key name to resolve.
@@ -345,19 +343,13 @@ Replace with a fresh V2 smoke Droplet:
 `);
 }
 
-async function up({ replace = false } = {}) {
+async function reset() {
   ensureDirs();
   const existingState = readState();
 
-  if (existingState && !replace && env('MOS_V2_SMOKE_REPLACE') !== '1') {
-    console.log('[mos-v2-smoke:do] Existing V2 smoke Droplet state found.');
-    printSummary(existingState);
-    fail('Refusing to create another Droplet. Set MOS_V2_SMOKE_REPLACE=1 or run smoke:do:reset to replace it.');
-  }
-
   const token = getToken();
-  if (existingState && (replace || env('MOS_V2_SMOKE_REPLACE') === '1')) {
-    await destroyExistingFromState(token, existingState, replace ? 'reset' : 'MOS_V2_SMOKE_REPLACE=1');
+  if (existingState) {
+    await destroyExistingFromState(token, existingState, 'reset');
   }
 
   const config = smokeConfigFromEnv(existingState || {});
@@ -426,13 +418,8 @@ async function main(argv = process.argv.slice(2)) {
     return;
   }
 
-  if (command === 'up') {
-    await up();
-    return;
-  }
-
   if (command === 'reset') {
-    await up({ replace: true });
+    await reset();
     return;
   }
 

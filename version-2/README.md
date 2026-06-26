@@ -69,13 +69,12 @@ npm --prefix version-2 run install:render -- --target usb
 The V2 DigitalOcean smoke script can create a fresh Droplet and install the V2 control plane:
 
 ```powershell
-npm --prefix version-2 run smoke:do:up
 npm --prefix version-2 run smoke:do:reset
 npm --prefix version-2 run smoke:do:destroy
 npm --prefix version-2 run smoke:do:render
 ```
 
-`smoke:do:up` is the paid, user-run path. It creates a tagged DigitalOcean Droplet, installs the V2 Caddy, Suite Manager, and private Homepage control plane from the selected repo/ref, waits for `/suite-manager/api/setup/status`, and prints the Home and Suite Manager paths. `smoke:do:render` remains the free dry-run path.
+`smoke:do:reset` is the paid, user-run path. It creates or replaces a tagged DigitalOcean Droplet, installs the V2 Caddy, Suite Manager, and private Homepage control plane from the selected repo/ref, waits for `/suite-manager/api/setup/status`, and prints the Home and Suite Manager paths. `smoke:do:render` remains the free dry-run path.
 
 ## Test Command
 

@@ -17,7 +17,6 @@
     "smoke:do:dns01": "node scripts/smoke/dns01-v2.cjs",
     "smoke:do:render": "node scripts/smoke/digitalocean-v2.cjs render",
     "smoke:do:reset": "node scripts/smoke/digitalocean-v2.cjs reset",
-    "smoke:do:up": "node scripts/smoke/digitalocean-v2.cjs up",
     "smoke:hyperv:destroy": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke/hyperv-usb-lab.ps1 destroy",
     "smoke:hyperv:hosts": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke/hyperv-usb-lab.ps1 hosts",
     "smoke:hyperv:reset": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke/hyperv-usb-lab.ps1 reset",

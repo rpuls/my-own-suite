@@ -47,7 +47,7 @@ test('validation is scoped to V2 and leaves smoke/E2E user-run', () => {
       purpose: 'Validate the clean-slate V2 workspace contract.',
     },
     {
-      command: 'npm run smoke:do:up',
+      command: 'npm --prefix version-2 run smoke:do:reset',
       owner: 'user',
       purpose: 'Run paid DigitalOcean fresh-install validation once V2 has an install path.',
     },

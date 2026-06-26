@@ -29,7 +29,7 @@ async function main() {
   const cloudflareApiToken = required('CLOUDFLARE_API_TOKEN');
   const ownerEmail = required('MOS_V2_DNS01_OWNER_EMAIL');
   const ownerPassword = required('MOS_V2_DNS01_OWNER_PASSWORD');
-  if (!fs.existsSync(smokeStatePath)) throw new Error('No V2 DigitalOcean smoke state exists. Run smoke:do:up first.');
+  if (!fs.existsSync(smokeStatePath)) throw new Error('No V2 DigitalOcean smoke state exists. Run smoke:do:reset first.');
   const state = JSON.parse(fs.readFileSync(smokeStatePath, 'utf8'));
   const suiteUrl = new URL('/suite-manager/', state.homepageUrl);
   const login = await request(new URL('api/auth/login', suiteUrl), {

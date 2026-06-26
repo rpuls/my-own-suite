@@ -82,7 +82,7 @@ function plannedValidationCommands() {
       purpose: 'Validate the clean-slate V2 workspace contract.',
     },
     {
-      command: 'npm run smoke:do:up',
+      command: 'npm --prefix version-2 run smoke:do:reset',
       owner: 'user',
       purpose: 'Run paid DigitalOcean fresh-install validation once V2 has an install path.',
     },
