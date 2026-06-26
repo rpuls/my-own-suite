@@ -1,6 +1,6 @@
 param(
   [Parameter(Position = 0)]
-  [ValidateSet('reset', 'destroy')]
+  [ValidateSet('reset', 'destroy', 'hosts')]
   [string]$Command = 'reset'
 )
 
@@ -79,6 +79,21 @@ function Set-SmokeHostsEntries {
   ) -join "`r`n"
   [IO.File]::AppendAllText($HostsPath, "$block`r`n", [Text.Encoding]::ASCII)
   & ipconfig.exe /flushdns | Out-Null
+}
+
+function Update-SmokeHostsEntries {
+  $vm = Get-VM -Name $VmName -ErrorAction SilentlyContinue
+  if (-not $vm) { Fail "VM '$VmName' does not exist. Run the reset command first." }
+  if ($vm.State -ne 'Running') { Fail "VM '$VmName' is $($vm.State), not Running. Start it or run the reset command first." }
+
+  $stackDomain = Get-StackDomain
+  Write-Host "[mos-v2-smoke:hyperv-usb] Discovering '$VmName' IPv4 and refreshing Windows hosts entry for home.$stackDomain..."
+  $ip = Wait-ForSuiteManager -StackDomain $stackDomain
+  Set-SmokeHostsEntries -Ip $ip -StackDomain $stackDomain
+  Write-Host "[mos-v2-smoke:hyperv-usb] Updated Windows hosts entry and flushed DNS."
+  Write-Host "  $ip home.$stackDomain"
+  Write-Host "  MOS Home:   http://home.$stackDomain/"
+  Write-Host "  Suite Mgr:  http://home.$stackDomain/suite-manager/"
 }
 
 function Build-InstallerIso {
@@ -190,6 +205,11 @@ if ($Command -eq 'destroy') {
   Remove-LabArtifacts
   Remove-SmokeHostsEntries
   Write-Host "[mos-v2-smoke:hyperv-usb] Removed VM '$VmName' and its disposable lab artifacts."
+  exit 0
+}
+
+if ($Command -eq 'hosts') {
+  Update-SmokeHostsEntries
   exit 0
 }
 

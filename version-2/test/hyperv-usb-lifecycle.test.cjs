@@ -3,13 +3,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-test('Hyper-V USB smoke exposes a guarded two-command lifecycle', () => {
+test('Hyper-V USB smoke exposes a guarded lifecycle plus hosts refresh', () => {
   const packageJson = require('../package.json');
   const hypervScripts = Object.keys(packageJson.scripts).filter((name) => name.startsWith('smoke:hyperv:'));
-  assert.deepEqual(hypervScripts.sort(), ['smoke:hyperv:destroy', 'smoke:hyperv:reset']);
+  assert.deepEqual(hypervScripts.sort(), ['smoke:hyperv:destroy', 'smoke:hyperv:hosts', 'smoke:hyperv:reset']);
 
   const script = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'smoke', 'hyperv-usb-lab.ps1'), 'utf8');
-  assert.match(script, /\[ValidateSet\('reset', 'destroy'\)\]/u);
+  assert.match(script, /\[ValidateSet\('reset', 'destroy', 'hosts'\)\]/u);
   assert.match(script, /\$VmName = 'mos-v2-usb-smoke'/u);
   assert.match(script, /New-VHD .* -Dynamic -SizeBytes 64GB/u);
   assert.match(script, /New-VM .* -Generation 2/u);
@@ -22,6 +22,8 @@ test('Hyper-V USB smoke exposes a guarded two-command lifecycle', () => {
   assert.match(script, /\$adapter\.MacAddress/u);
   assert.match(script, /# BEGIN MOS V2 HYPERV USB SMOKE/u);
   assert.match(script, /Set-SmokeHostsEntries -Ip \$ip -StackDomain \$stackDomain/u);
+  assert.match(script, /Update-SmokeHostsEntries/u);
+  assert.match(script, /\$Command -eq 'hosts'/u);
   assert.match(script, /Remove-SmokeHostsEntries/u);
   assert.match(script, /ipconfig\.exe \/flushdns/u);
   assert.match(script, /home\.\$StackDomain/u);

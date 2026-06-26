@@ -68,12 +68,56 @@ The USB-aligned Hyper-V smoke surface has two lifecycle commands:
 
 ```powershell
 cmd /c npm --prefix version-2 run smoke:hyperv:reset
+cmd /c npm --prefix version-2 run smoke:hyperv:hosts
 cmd /c npm --prefix version-2 run smoke:hyperv:destroy
 ```
 
-`reset` removes the exact `mos-v2-usb-smoke` VM and its disposable lab directory, renders a V2-specific Ubuntu autoinstall seed from the `feat/app-platform-v2-lab` bootstrap contract, remasters and verifies a smoke-only auto-boot installer ISO, creates a fresh Generation 2 VM with a blank 64 GB disk, attaches the ISO, and starts the VM. The blank disk falls through to the DVD on first boot; after installation the populated disk wins, preventing an installation loop. The command discovers the installed guest IPv4 from Hyper-V integration data or the Windows neighbor table keyed by VM MAC, waits up to 90 minutes for the V2 `home.<domain>/suite-manager/api/setup/status` endpoint, then writes a marked `home.<domain>` mapping to the Windows hosts file and prints the working IP and URLs. Set `MOS_V2_HYPERV_READY_TIMEOUT_MINUTES` to override that timeout. `destroy` removes the exact VM, its disposable disk/ISO/build workspace, and the marked hosts-file entries. The seed uses the Linux login fields and stack domain from `deploy/self-host/autoinstall/installer-config/selfhost-installer.env`, but does not embed the v1 self-host bootstrap or its preconfigured Suite Manager owner. The remasterer uses the supported Ubuntu ISO under `deploy/self-host/autoinstall/ubuntu-iso/` and Docker Desktop's Linux container engine.
-
 Run these commands from an Administrator PowerShell terminal. Set `MOS_V2_HYPERV_SWITCH` to override the default switch selection.
+
+`reset` is the full disposable lifecycle. It removes the exact `mos-v2-usb-smoke` VM and its lab directory, renders a V2-specific Ubuntu autoinstall seed from the `feat/app-platform-v2-lab` bootstrap contract, remasters and verifies a smoke-only auto-boot installer ISO, creates a fresh Generation 2 VM with a blank 64 GB disk, attaches the ISO, starts the VM, waits for Suite Manager, writes local Windows host resolution, and prints the working URL summary.
+
+`hosts` is a non-destructive repair/update command for an already-running smoke VM. It discovers the current VM IPv4, replaces the marked Windows hosts-file block for `home.<domain>`, flushes DNS, and prints the refreshed URLs.
+
+`destroy` removes the exact VM, its disposable disk/ISO/build workspace, and the hosts-file entries written by `reset`.
+
+The smoke VM intentionally follows the USB install shape instead of the abandoned Azure/cloud-image path. The blank disk is first in the boot order and the installer ISO is second: on first boot the blank disk falls through to the DVD, and after installation the populated disk wins so the VM does not loop back into the installer.
+
+Inputs come from `deploy/self-host/autoinstall/installer-config/selfhost-installer.env`:
+
+- `LINUX_PASSWORD` is used for the Ubuntu console/SSH login.
+- `USERNAME` defaults to `mos`.
+- `HOSTNAME` defaults to `mos`.
+- `STACK_DOMAIN` defaults to `mos.home`.
+
+The V2 Hyper-V seed does not embed the old v1 self-host bootstrap or its preconfigured Suite Manager owner. Owner setup should happen in Suite Manager after first boot.
+
+Readiness and access:
+
+- The command discovers the guest IPv4 from Hyper-V integration data or, when Hyper-V does not report it, from the Windows neighbor table using the VM MAC address.
+- It probes `http://home.<domain>/suite-manager/api/setup/status` with a per-request `curl --resolve`, so readiness does not depend on Windows DNS being configured yet.
+- After readiness succeeds, it writes this marked block to `C:\Windows\System32\drivers\etc\hosts` and flushes DNS:
+
+```text
+# BEGIN MOS V2 HYPERV USB SMOKE
+<guest-ip> home.<domain>
+# END MOS V2 HYPERV USB SMOKE
+```
+
+- Browser access is through `http://home.<domain>/suite-manager/`, for example `http://home.mos.home/suite-manager/`. Do not use the old v1 `suite-manager.<domain>/setup/` host.
+- The final summary prints the VM name, switch, disk, installer ISO, IPv4, MOS Home URL, and Suite Manager URL.
+
+If the wait looks stuck, open Hyper-V Manager, connect to `mos-v2-usb-smoke`, and inspect the Ubuntu console. Useful console checks after login are:
+
+```bash
+hostname -I
+systemctl status cloud-final.service --no-pager
+journalctl -u cloud-final.service -n 120 --no-pager
+docker ps
+```
+
+Use the non-Docker IPv4 from `hostname -I`; Docker bridge addresses such as `172.17.0.1` and `172.18.0.1` are not the VM LAN address. If SSH is reachable from Windows, the same Linux user/password from `selfhost-installer.env` can be used for shell inspection.
+
+Set `MOS_V2_HYPERV_READY_TIMEOUT_MINUTES` to override the default 90 minute readiness timeout. The remasterer uses the supported Ubuntu ISO under `deploy/self-host/autoinstall/ubuntu-iso/` and Docker Desktop's Linux container engine.
 
 ### Explicit DNS-01 validation
 
