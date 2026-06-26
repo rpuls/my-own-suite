@@ -1,10 +1,31 @@
 const { HttpsSettingsError, validateHttpsInput } = require('../../../../shared/https-contract.cjs');
+const os = require('node:os');
 
 function homeHostFor(baseDomain) {
   return baseDomain ? `home.${baseDomain}` : null;
 }
 
-function publicStatus(settings, bootstrapHost, agentAvailable) {
+function detectServerAddress() {
+  const addresses = [];
+  for (const [name, entries] of Object.entries(os.networkInterfaces())) {
+    if (/^(br-|docker|veth)/u.test(name)) continue;
+    for (const entry of entries || []) {
+      if (entry.family !== 'IPv4' || entry.internal) continue;
+      if (/^172\.(17|18)\./u.test(entry.address)) continue;
+      addresses.push(entry.address);
+    }
+  }
+  return addresses[0] || null;
+}
+
+function privateHttpsAvailable(frontDoor) {
+  return !['cloud-init', 'digitalocean-smoke'].includes(frontDoor);
+}
+
+function publicStatus(settings, bootstrapHost, agentAvailable, {
+  frontDoor = 'ssh-bootstrap',
+  serverAddress = detectServerAddress(),
+} = {}) {
   const homeHost = homeHostFor(settings.baseDomain);
   return {
     acmeEmail: settings.acmeEmail,
@@ -18,16 +39,20 @@ function publicStatus(settings, bootstrapHost, agentAvailable) {
       errorCode: settings.lastApplyErrorCode,
       status: settings.lastApplyStatus,
     },
+    installContext: frontDoor,
+    privateHttpsAvailable: privateHttpsAvailable(frontDoor),
     provider: settings.provider,
+    serverAddress,
     tlsMode: settings.tlsMode,
     tokenConfigured: settings.tlsMode === 'cloudflare-dns01',
   };
 }
 
 class HttpsSettingsService {
-  constructor({ agent, bootstrapHost, now = () => new Date(), store }) {
+  constructor({ agent, bootstrapHost, frontDoor = process.env.MOS_V2_FRONT_DOOR || 'ssh-bootstrap', now = () => new Date(), store }) {
     this.agent = agent;
     this.bootstrapHost = bootstrapHost;
+    this.frontDoor = frontDoor;
     this.now = now;
     this.store = store;
   }
@@ -47,10 +72,17 @@ class HttpsSettingsService {
       const status = await this.agent.status();
       agentAvailable = status?.capabilities?.includes('cloudflare-dns01.apply') === true;
     } catch {}
-    return publicStatus(this.store.getHttpsSettings(), this.bootstrapHost, agentAvailable);
+    return publicStatus(this.store.getHttpsSettings(), this.bootstrapHost, agentAvailable, { frontDoor: this.frontDoor });
   }
 
   async apply(rawInput) {
+    if (!privateHttpsAvailable(this.frontDoor)) {
+      throw new HttpsSettingsError(
+        'PRIVATE_HTTPS_UNAVAILABLE',
+        'Private LAN HTTPS setup is only available for self-host installs.',
+        409,
+      );
+    }
     const keys = Object.keys(rawInput && typeof rawInput === 'object' ? rawInput : {}).sort();
     if (keys.join(',') !== 'acmeEmail,baseDomain,cloudflareApiToken') {
       throw new HttpsSettingsError('INVALID_HTTPS_REQUEST', 'Only the required HTTPS settings are accepted.');
@@ -94,4 +126,4 @@ class HttpsSettingsService {
   }
 }
 
-module.exports = { HttpsSettingsService, homeHostFor, publicStatus };
+module.exports = { HttpsSettingsService, detectServerAddress, homeHostFor, privateHttpsAvailable, publicStatus };

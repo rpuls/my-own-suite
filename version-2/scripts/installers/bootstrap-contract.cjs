@@ -290,6 +290,7 @@ Environment=MOS_V2_STATE_DIR=$MOS_V2_STATE_ROOT/suite-manager
 Environment=MOS_V2_FRONTEND_DIST_DIR=$MOS_V2_INSTALL_ROOT/repo/version-2/suite-manager/frontend/dist
 Environment=MOS_V2_SUITE_MANAGER_HOST=127.0.0.1
 Environment=MOS_V2_SUITE_MANAGER_PORT=$MOS_V2_SUITE_MANAGER_PORT
+Environment=MOS_V2_FRONT_DOOR=$MOS_V2_FRONT_DOOR
 Environment=MOS_V2_HOME_HOST=$MOS_V2_HOME_HOST
 Environment=MOS_V2_HOMEPAGE_UPSTREAM=$MOS_V2_HOMEPAGE_UPSTREAM
 Environment=MOS_V2_HTTPS_AGENT_SOCKET=/run/mos-v2-https-agent/agent.sock

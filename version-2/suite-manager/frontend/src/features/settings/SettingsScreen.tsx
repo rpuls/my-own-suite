@@ -8,8 +8,11 @@ type HttpsStatus = {
   agentAvailable: boolean;
   baseDomain: string | null;
   bootstrapUrl: string;
+  installContext: string;
   lastApply: { at: string | null; diagnostics: string | null; errorCode: string | null; status: string };
+  privateHttpsAvailable: boolean;
   provider: string | null;
+  serverAddress: string | null;
   tlsMode: string;
   tokenConfigured: boolean;
 };
@@ -20,6 +23,19 @@ async function jsonResponse<T>(response: Response, fallback: string): Promise<T>
   const body = await response.json().catch(() => ({})) as T & { error?: string };
   if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : fallback);
   return body;
+}
+
+function LocalDnsInstructions({ homeHost, serverAddress }: { homeHost: string; serverAddress: string }) {
+  return <>
+    <p>Before opening it from this computer or your LAN, make local DNS send <strong>{homeHost}</strong> to <strong>{serverAddress}</strong>.</p>
+    <p>For one Windows PC, add this line to <code>C:\Windows\System32\drivers\etc\hosts</code> as Administrator, then flush DNS:</p>
+    <pre className="suite-command-block">{`${serverAddress} ${homeHost}`}</pre>
+    <p>For your whole home network, create the same DNS override in AdGuard Home, Unbound, Pi-hole, or your router.</p>
+  </>;
+}
+
+function AdvancedDetails({ status }: { status: HttpsStatus }) {
+  return <details className="suite-advanced"><summary>Advanced details</summary><dl><dt>Bootstrap recovery URL</dt><dd>{status.bootstrapUrl}</dd><dt>Active Home URL</dt><dd>{status.activeHomeUrl}</dd><dt>Install context</dt><dd>{status.installContext}</dd><dt>Detected server IP</dt><dd>{status.serverAddress || 'Not detected'}</dd><dt>TLS mode</dt><dd>{status.tlsMode}</dd><dt>Provider</dt><dd>{status.provider || 'Not configured'}</dd><dt>Last apply</dt><dd>{status.lastApply.status}{status.lastApply.errorCode ? ` (${status.lastApply.errorCode})` : ''}</dd>{status.lastApply.diagnostics ? <><dt>Sanitized diagnostics</dt><dd>{status.lastApply.diagnostics}</dd></> : null}</dl></details>;
 }
 
 export function SettingsScreen() {
@@ -103,21 +119,29 @@ export function SettingsScreen() {
     }
   }
 
+  const activeHomeHost = status?.baseDomain ? `home.${status.baseDomain}` : '';
+  const dnsAddress = status?.serverAddress || '<server-ip>';
+
   return <section className="mos-shell suite-settings">
-    <div className="suite-hero"><span className="mos-pill mos-pill-accent">Platform settings</span><h1>Settings</h1><p className="suite-lead mos-body-lg">Connect a Cloudflare-managed domain so Caddy can issue and renew real HTTPS certificates for your private MOS Home.</p></div>
+    <div className="suite-hero"><span className="mos-pill mos-pill-accent">Platform settings</span><h1>Settings</h1><p className="suite-lead mos-body-lg">Manage how this MOS Home is reached from your browser.</p></div>
     {loadError ? <Notice title="Settings unavailable" variant="error"><p>{loadError}</p></Notice> : null}
-    {status ? <div className="mos-panel suite-card suite-settings-panel">
-      <div><h2 className="mos-card-title">HTTPS with Cloudflare DNS</h2><p className="suite-meta">Point <strong>home.&lt;your-domain&gt;</strong> to this server. The scoped token is used for ACME DNS challenges and is saved only in a restricted root-owned file.</p></div>
+    {status ? !status.privateHttpsAvailable ? <div className="mos-panel suite-card suite-settings-panel">
+      <div><h2 className="mos-card-title">Custom domains are handled by your provider</h2><p className="suite-meta">This install looks like it is hosted on an external provider. MOS does not manage public DNS, provider routing, or public TLS from here.</p></div>
+      <Notice title="Use your provider guide" variant="info"><p>To use a real domain with this cloud install, follow your hosting provider's custom-domain and HTTPS instructions, then point that domain at the provider endpoint or server they give you.</p></Notice>
+      <AdvancedDetails status={status} />
+    </div> : <div className="mos-panel suite-card suite-settings-panel">
+      <div><h2 className="mos-card-title">Private LAN HTTPS with Cloudflare DNS</h2><p className="suite-meta">Use DNS-01 to get a trusted certificate for private local access to <strong>home.&lt;your-domain&gt;</strong>. This does not publish MOS to the internet or configure public access.</p></div>
       {!status.agentAvailable ? <Notice title="HTTPS agent unavailable" variant="warning"><p>You can review and validate the form, but applying requires the installed V2 HTTPS agent and Cloudflare-capable Caddy build.</p></Notice> : null}
       <form className="suite-settings-form" onSubmit={(event) => void submit(event)}>
         <TextInput autoComplete="url" helperText="Example: mos.example.com. Your Home URL becomes home.mos.example.com." label="MOS base domain" onChange={(event) => setBaseDomain(event.target.value)} placeholder="mos.example.com" value={baseDomain} />
         <TextInput autoComplete="email" helperText="Used by the ACME certificate authority for account notices." label="ACME contact email" onChange={(event) => setAcmeEmail(event.target.value)} placeholder="you@example.com" type="email" value={acmeEmail} />
         <TextInput autoComplete="off" helperText="Requires Zone Read and DNS Edit for the relevant Cloudflare zone. The saved token is never returned." label="Cloudflare API token" onChange={(event) => setToken(event.target.value)} placeholder={status.tokenConfigured ? 'Paste a replacement token to reapply' : 'Paste token once'} type="password" value={token} />
         {formError ? <Notice title="HTTPS was not applied" variant="error"><p>{formError}</p></Notice> : null}
-        {result ? <Notice title="HTTPS configuration applied" variant="success"><p>Your new Home URL is <a href={result.homeUrl}>{result.homeUrl}</a>. This is a new browser origin, so you may need to sign in again.</p><a className="mos-btn mos-btn-primary" href={result.homeUrl}>Open HTTPS Home</a></Notice> : null}
+        {result ? <Notice title="HTTPS configuration applied" variant="success"><p>Your new Home URL is <a href={result.homeUrl}>{result.homeUrl}</a>.</p><LocalDnsInstructions homeHost={activeHomeHost} serverAddress={dnsAddress} /><a className="mos-btn mos-btn-primary" href={result.homeUrl}>Open HTTPS Home</a></Notice> : null}
         <button className="mos-btn mos-btn-primary" disabled={applying} type="submit">{applying ? 'Applying securely...' : 'Apply HTTPS settings'}</button>
       </form>
-      <details className="suite-advanced"><summary>Advanced details</summary><dl><dt>Bootstrap recovery URL</dt><dd>{status.bootstrapUrl}</dd><dt>Active Home URL</dt><dd>{status.activeHomeUrl}</dd><dt>TLS mode</dt><dd>{status.tlsMode}</dd><dt>Provider</dt><dd>{status.provider || 'Not configured'}</dd><dt>Last apply</dt><dd>{status.lastApply.status}{status.lastApply.errorCode ? ` (${status.lastApply.errorCode})` : ''}</dd>{status.lastApply.diagnostics ? <><dt>Sanitized diagnostics</dt><dd>{status.lastApply.diagnostics}</dd></> : null}</dl></details>
+      {!result && status.lastApply.status === 'applied' && activeHomeHost ? <Notice title="HTTPS is configured" variant="success"><p>Active Home URL: <a href={status.activeHomeUrl}>{status.activeHomeUrl}</a>.</p><LocalDnsInstructions homeHost={activeHomeHost} serverAddress={dnsAddress} /></Notice> : null}
+      <AdvancedDetails status={status} />
     </div> : <p className="suite-meta">Loading HTTPS settings...</p>}
   </section>;
 }

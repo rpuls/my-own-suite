@@ -544,10 +544,58 @@ test('HTTPS Settings API requires authentication and never returns the submitted
     });
     assert.equal(status.status, 200);
     assert.equal(status.json().baseDomain, 'mos.example.com');
+    assert.equal(status.json().installContext, 'ssh-bootstrap');
+    assert.equal(status.json().privateHttpsAvailable, true);
     assert.equal(status.json().tokenConfigured, true);
+    assert.ok(Object.hasOwn(status.json(), 'serverAddress'));
     assert.doesNotMatch(status.body, new RegExp(token, 'u'));
     assert.equal(calls[0].cloudflareApiToken, token);
   }, { homeHost: 'home.test', httpsAgent });
+});
+
+test('HTTPS Settings status marks cloud installs as provider-managed domain guidance', async () => {
+  const httpsAgent = {
+    apply: async () => { throw new Error('must not run'); },
+    commit: async () => ({}),
+    rollback: async () => ({}),
+    status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const status = await hostRequest(baseUrl, '/suite-manager/api/settings/https', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+
+    assert.equal(status.status, 200);
+    assert.equal(status.json().installContext, 'cloud-init');
+    assert.equal(status.json().privateHttpsAvailable, false);
+  }, { frontDoor: 'cloud-init', homeHost: 'home.test', httpsAgent });
+});
+
+test('HTTPS Settings apply is blocked for cloud installs', async () => {
+  const httpsAgent = {
+    apply: async () => { throw new Error('must not run'); },
+    commit: async () => ({}),
+    rollback: async () => ({}),
+    status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const response = await hostRequest(baseUrl, '/suite-manager/api/settings/https/apply', {
+      body: JSON.stringify({
+        acmeEmail: 'owner@example.com',
+        baseDomain: 'mos.example.com',
+        cloudflareApiToken: 'abcdefghijklmnopqrstuvwxyz',
+      }),
+      headers: { Cookie: cookie, 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+
+    assert.equal(response.status, 409);
+    assert.equal(response.json().code, 'PRIVATE_HTTPS_UNAVAILABLE');
+  }, { frontDoor: 'cloud-init', homeHost: 'home.test', httpsAgent });
 });
 
 test('HTTPS input validation is sanitized and leaves the bootstrap host active', async () => {

@@ -190,6 +190,7 @@ function createV2Server({
   homepageAgent = new HomepageAgentClient(),
   httpsAgent = new HttpsAgentClient(),
   frontendDistDir = DEFAULT_FRONTEND_DIST_DIR,
+  frontDoor = process.env.MOS_V2_FRONT_DOOR || 'ssh-bootstrap',
   homeHost = process.env.MOS_V2_HOME_HOST || 'home.localhost',
   homepageUpstream = process.env.MOS_V2_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
   stateDir = path.join(process.cwd(), '.state'),
@@ -198,6 +199,7 @@ function createV2Server({
   const httpsSettings = new HttpsSettingsService({
     agent: httpsAgent,
     bootstrapHost: homeHost,
+    frontDoor,
     store: setup.store,
   });
   const homepage = createHomepageProxy({ upstream: homepageUpstream, upstreamHost: homeHost });
