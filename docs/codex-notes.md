@@ -17,6 +17,7 @@ For mandatory agent rules, see [AGENTS.md](../AGENTS.md). For documentation owne
 - Repo docs should hold context that should still matter after an issue is closed.
 - There is no long-lived repo roadmap document; use GitHub Issues for roadmap-like planning, backlog, and active task state.
 - Temporary branch plans are allowed when useful for multi-session work, but they should be deleted or replaced with durable decisions/docs before merge.
+- Keep operator runbooks single-source: V2 Hyper-V and DigitalOcean smoke commands live in `version-2/scripts/README.md`; Codex notes should point there instead of duplicating command steps.
 
 ## Temporary Branch Plan: Own-Infra Self-Host Convergence
 
