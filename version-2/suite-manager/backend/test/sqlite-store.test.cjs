@@ -50,7 +50,18 @@ test('fresh state creates the SQLite schema and records every migration', async 
   `).all().map(({ name, version }) => ({ name, version }));
   database.close();
 
-  assert.deepEqual(tables, ['homepage_operations', 'homepage_revisions', 'https_settings', 'owners', 'schema_migrations', 'sessions']);
+  assert.deepEqual(tables, [
+    'app_instance_config',
+    'app_instance_projections',
+    'app_instances',
+    'app_operations',
+    'homepage_operations',
+    'homepage_revisions',
+    'https_settings',
+    'owners',
+    'schema_migrations',
+    'sessions',
+  ]);
   assert.deepEqual(migrations, MIGRATIONS.map(({ name, version }) => ({ name, version })));
 });
 
@@ -94,8 +105,59 @@ test('an existing version-one database receives the named HTTPS migration', asyn
   const upgraded = new SuiteManagerStore(stateDir);
   assert.equal(upgraded.getHttpsSettings().tlsMode, 'off');
   const migrations = upgraded.database.prepare('SELECT name FROM schema_migrations ORDER BY version').all();
-  assert.deepEqual(migrations.map(({ name }) => name), ['owner-and-sessions', 'https-settings', 'homepage-revisions-and-operations']);
+  assert.deepEqual(migrations.map(({ name }) => name), [
+    'owner-and-sessions',
+    'https-settings',
+    'homepage-revisions-and-operations',
+    'app-package-instances',
+  ]);
   upgraded.close();
+});
+
+test('app instance state stays package-generic and stores projection digests', async () => {
+  const store = new SuiteManagerStore(await tempStateDir());
+  const at = '2026-06-27T10:00:00.000Z';
+  store.installAppInstance({
+    at,
+    instance: {
+      categorySnapshot: 'tools',
+      displayNameSnapshot: 'Example App',
+      id: 'instance-one',
+      manifestDigest: 'sha256:manifest',
+      packageId: 'example-app',
+      packageVersion: '0.1.0',
+    },
+    operationId: 'operation-one',
+    projections: [
+      {
+        contentJson: '{"services":[]}',
+        digest: 'sha256:compose',
+        kind: 'compose',
+      },
+      {
+        contentJson: '{"routes":[]}',
+        digest: 'sha256:caddy',
+        kind: 'caddy',
+      },
+    ],
+    request: { dryRunOnly: true },
+  });
+
+  const instance = store.getAppInstanceByPackageId('example-app');
+  assert.equal(instance.status, 'installed');
+  assert.equal(instance.enabled, true);
+  assert.equal(instance.manifestDigest, 'sha256:manifest');
+  assert.equal(instance.packageVersion, '0.1.0');
+
+  const projections = store.getAppProjections(instance.id);
+  assert.deepEqual(projections.map(({ digest, kind, status }) => ({ digest, kind, status })), [
+    { digest: 'sha256:caddy', kind: 'caddy', status: 'rendered' },
+    { digest: 'sha256:compose', kind: 'compose', status: 'rendered' },
+  ]);
+
+  const columns = store.database.prepare('PRAGMA table_info(app_instances)').all().map(({ name }) => name);
+  assert.equal(columns.some((name) => /stirling|seafile|immich|vaultwarden/u.test(name)), false);
+  store.close();
 });
 
 test('failed HTTPS apply retains the previously active configuration', async () => {

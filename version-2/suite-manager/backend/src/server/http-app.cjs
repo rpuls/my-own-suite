@@ -9,7 +9,7 @@ const { HttpsAgentClient } = require('../settings/https-agent-client.cjs');
 const { HttpsSettingsError } = require('../../../../shared/https-contract.cjs');
 const { HttpsSettingsService } = require('../settings/https-settings-service.cjs');
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
-const { inspectAppPackages } = require('../apps/package-manifest.cjs');
+const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
 
 const SESSION_COOKIE = 'mos_v2_session';
 const DEFAULT_FRONTEND_DIST_DIR = path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
@@ -118,6 +118,9 @@ function errorStatus(error) {
   if (Number.isInteger(error.statusCode)) {
     return error.statusCode;
   }
+  if (error instanceof AppPackageServiceError) {
+    return error.statusCode;
+  }
   if (error instanceof HttpsSettingsError) {
     return error.statusCode;
   }
@@ -209,6 +212,10 @@ function createV2Server({
   const homepageConfig = new HomepageService({
     agent: homepageAgent,
     bootstrapHost: homeHost,
+    store: setup.store,
+  });
+  const appPackages = new AppPackageService({
+    appsDir,
     store: setup.store,
   });
 
@@ -306,7 +313,17 @@ function createV2Server({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review app packages.' });
           return;
         }
-        jsonResponse(response, 200, { packages: inspectAppPackages(appsDir) });
+        jsonResponse(response, 200, { packages: appPackages.listPackages() });
+        return;
+      }
+
+      const appInstallMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/install$/u);
+      if (request.method === 'POST' && appInstallMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to install app packages.' });
+          return;
+        }
+        jsonResponse(response, 200, { instance: appPackages.installPackage(decodeURIComponent(appInstallMatch[1])) });
         return;
       }
 

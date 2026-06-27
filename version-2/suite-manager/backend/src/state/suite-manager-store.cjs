@@ -74,6 +74,67 @@ const MIGRATIONS = [
     `,
     version: 3,
   },
+  {
+    name: 'app-package-instances',
+    sql: `
+      CREATE TABLE app_instances (
+        id TEXT PRIMARY KEY,
+        package_id TEXT NOT NULL UNIQUE,
+        package_version TEXT NOT NULL,
+        manifest_digest TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('installing', 'installed', 'disabled', 'failed', 'uninstalling', 'uninstalled', 'needs-config')),
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+        display_name_snapshot TEXT NOT NULL,
+        category_snapshot TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        installed_at TEXT
+      ) STRICT;
+
+      CREATE INDEX app_instances_package_id_idx ON app_instances(package_id);
+
+      CREATE TABLE app_instance_config (
+        instance_id TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value_json TEXT,
+        source TEXT NOT NULL CHECK (source IN ('user', 'generated', 'default', 'system')),
+        secret_ref TEXT,
+        redacted_label TEXT,
+        fingerprint TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (instance_id, key),
+        FOREIGN KEY (instance_id) REFERENCES app_instances(id) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE TABLE app_instance_projections (
+        instance_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('compose', 'caddy', 'homepage', 'env', 'health', 'backup')),
+        content_json TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        applied_digest TEXT,
+        status TEXT NOT NULL CHECK (status IN ('rendered', 'applied', 'failed')),
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (instance_id, kind),
+        FOREIGN KEY (instance_id) REFERENCES app_instances(id) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE TABLE app_operations (
+        id TEXT PRIMARY KEY,
+        instance_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('install', 'apply', 'disable', 'enable', 'uninstall', 'update', 'validate')),
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
+        error_code TEXT,
+        diagnostics TEXT,
+        request_json TEXT,
+        started_at TEXT NOT NULL,
+        completed_at TEXT,
+        FOREIGN KEY (instance_id) REFERENCES app_instances(id) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE INDEX app_operations_instance_id_idx ON app_operations(instance_id);
+    `,
+    version: 4,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -280,6 +341,120 @@ class SuiteManagerStore {
     this.database.prepare(`
       UPDATE homepage_operations SET status = 'failed', error_code = ?, completed_at = ? WHERE id = ?
     `).run(errorCode, at, id);
+  }
+
+  getAppInstances() {
+    return this.database.prepare(`
+      SELECT
+        category_snapshot AS categorySnapshot,
+        created_at AS createdAt,
+        display_name_snapshot AS displayNameSnapshot,
+        enabled,
+        id,
+        installed_at AS installedAt,
+        manifest_digest AS manifestDigest,
+        package_id AS packageId,
+        package_version AS packageVersion,
+        status,
+        updated_at AS updatedAt
+      FROM app_instances
+      ORDER BY package_id
+    `).all().map((row) => ({ ...row, enabled: row.enabled === 1 }));
+  }
+
+  getAppInstanceByPackageId(packageId) {
+    const row = this.database.prepare(`
+      SELECT
+        category_snapshot AS categorySnapshot,
+        created_at AS createdAt,
+        display_name_snapshot AS displayNameSnapshot,
+        enabled,
+        id,
+        installed_at AS installedAt,
+        manifest_digest AS manifestDigest,
+        package_id AS packageId,
+        package_version AS packageVersion,
+        status,
+        updated_at AS updatedAt
+      FROM app_instances
+      WHERE package_id = ?
+    `).get(packageId);
+    return row ? { ...row, enabled: row.enabled === 1 } : null;
+  }
+
+  getAppProjections(instanceId) {
+    return this.database.prepare(`
+      SELECT
+        applied_digest AS appliedDigest,
+        content_json AS contentJson,
+        digest,
+        kind,
+        status,
+        updated_at AS updatedAt
+      FROM app_instance_projections
+      WHERE instance_id = ?
+      ORDER BY kind
+    `).all(instanceId).map((row) => ({
+      ...row,
+      content: JSON.parse(row.contentJson),
+      contentJson: undefined,
+    }));
+  }
+
+  installAppInstance({ at, config = [], instance, operationId, projections, request = {} }) {
+    this.transaction(() => {
+      this.database.prepare(`
+        INSERT INTO app_instances (
+          id, package_id, package_version, manifest_digest, status, enabled,
+          display_name_snapshot, category_snapshot, created_at, updated_at, installed_at
+        )
+        VALUES (?, ?, ?, ?, 'installed', 1, ?, ?, ?, ?, ?)
+      `).run(
+        instance.id,
+        instance.packageId,
+        instance.packageVersion,
+        instance.manifestDigest,
+        instance.displayNameSnapshot,
+        instance.categorySnapshot,
+        at,
+        at,
+        at,
+      );
+
+      for (const item of config) {
+        this.database.prepare(`
+          INSERT INTO app_instance_config (
+            instance_id, key, value_json, source, secret_ref, redacted_label, fingerprint, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          instance.id,
+          item.key,
+          item.valueJson ?? null,
+          item.source,
+          item.secretRef ?? null,
+          item.redactedLabel ?? null,
+          item.fingerprint ?? null,
+          at,
+        );
+      }
+
+      for (const projection of projections) {
+        this.database.prepare(`
+          INSERT INTO app_instance_projections (
+            instance_id, kind, content_json, digest, applied_digest, status, updated_at
+          )
+          VALUES (?, ?, ?, ?, NULL, 'rendered', ?)
+        `).run(instance.id, projection.kind, projection.contentJson, projection.digest, at);
+      }
+
+      this.database.prepare(`
+        INSERT INTO app_operations (
+          id, instance_id, kind, status, request_json, started_at, completed_at
+        )
+        VALUES (?, ?, 'install', 'succeeded', ?, ?, ?)
+      `).run(operationId, instance.id, JSON.stringify(request), at, at);
+    });
   }
 
   createOwnerAndSession(owner, session) {

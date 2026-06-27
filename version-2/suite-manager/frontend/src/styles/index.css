@@ -343,6 +343,12 @@
   color: var(--mos-color-text);
 }
 
+.suite-app-package-badges .is-installed {
+  border-color: rgba(99, 226, 179, 0.5);
+  background: rgba(99, 226, 179, 0.1);
+  color: var(--mos-color-text-strong);
+}
+
 .suite-app-package-badges .is-invalid {
   border-color: rgba(255, 205, 120, 0.42);
   color: var(--mos-color-warning);

@@ -299,6 +299,38 @@ test('App package catalog API requires authentication and exposes safe manifest 
   }, { homeHost: 'home.test' });
 });
 
+test('App package install API creates a logical instance with dry-run projections', async () => {
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/install', {
+      headers: { Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(denied.status, 401);
+
+    const cookie = await createOwner(baseUrl);
+    const installed = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    const instance = installed.json().instance;
+
+    assert.equal(installed.status, 200);
+    assert.equal(instance.packageId, 'stirling-pdf');
+    assert.equal(instance.status, 'installed');
+    assert.equal(instance.enabled, true);
+    assert.deepEqual(instance.projections.map((projection) => projection.kind).sort(), ['caddy', 'compose', 'health', 'homepage']);
+    assert.equal(instance.projections.find((projection) => projection.kind === 'compose').status, 'rendered');
+
+    const packages = await hostRequest(baseUrl, '/suite-manager/api/apps/packages', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    const stirling = packages.json().packages.find((entry) => entry.id === 'stirling-pdf');
+    assert.equal(stirling.installStatus, 'installed');
+    assert.equal(stirling.instance.packageId, 'stirling-pdf');
+    assert.equal(stirling.instance.projections.find((projection) => projection.kind === 'caddy').content.routes[0].reverseProxy, 'stirling-pdf:8080');
+  }, { homeHost: 'home.test' });
+});
+
 test('Homepage agent request budget exceeds the observed restart rollback window', () => {
   assert.ok(HOMEPAGE_AGENT_TIMEOUT_MS > 60_000);
 });

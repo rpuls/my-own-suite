@@ -7,6 +7,14 @@ type AppPackageSummary = {
   health: { type: string | null; url: string | null } | null;
   homepage: { description: string; group: string; icon: string; name: string } | null;
   icon: string;
+  instance: {
+    enabled: boolean;
+    id: string;
+    installedAt: string;
+    packageId: string;
+    projections: Array<{ content: unknown; digest: string; kind: string; status: string }>;
+    status: string;
+  } | null;
   id: string;
   installStatus: string;
   name: string;
@@ -25,6 +33,7 @@ async function jsonResponse<T>(response: Response, fallback: string): Promise<T>
 }
 
 function PackageDetails({ app }: { app: AppPackageSummary }) {
+  const projections = app.instance?.projections || [];
   return <details className="suite-app-package-details">
     <summary>Package details</summary>
     <dl>
@@ -40,6 +49,8 @@ function PackageDetails({ app }: { app: AppPackageSummary }) {
       <dd>{app.health ? `${app.health.type}: ${app.health.url}` : 'None'}</dd>
       <dt>Setup</dt>
       <dd>{app.setup.fieldCount === 0 ? 'No setup inputs required' : `${app.setup.fieldCount} setup input${app.setup.fieldCount === 1 ? '' : 's'}`}</dd>
+      <dt>Projections</dt>
+      <dd>{projections.length ? projections.map((projection) => `${projection.kind}: ${projection.status}`).join(', ') : 'Rendered after logical install'}</dd>
     </dl>
   </details>;
 }
@@ -47,6 +58,7 @@ function PackageDetails({ app }: { app: AppPackageSummary }) {
 export function AppsScreen() {
   const [packages, setPackages] = useState<AppPackageSummary[]>([]);
   const [error, setError] = useState('');
+  const [installingId, setInstallingId] = useState('');
   const [loading, setLoading] = useState(true);
 
   async function load() {
@@ -66,6 +78,23 @@ export function AppsScreen() {
   }
 
   useEffect(() => { void load(); }, []);
+
+  async function install(app: AppPackageSummary) {
+    if (!app.validation.valid || app.installStatus !== 'not-installed') return;
+    setInstallingId(app.id);
+    setError('');
+    try {
+      await jsonResponse<{ instance: AppPackageSummary['instance'] }>(
+        await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/install`, { method: 'POST' }),
+        `Unable to install ${app.name}.`,
+      );
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : `Unable to install ${app.name}.`);
+    } finally {
+      setInstallingId('');
+    }
+  }
 
   return <section className="mos-shell suite-apps">
     <div className="suite-hero">
@@ -92,7 +121,7 @@ export function AppsScreen() {
 
         <div className="suite-app-package-badges">
           <span className={app.validation.valid ? 'is-ready' : 'is-invalid'}>{app.validation.valid ? 'Package ready' : 'Invalid manifest'}</span>
-          <span>Not installed</span>
+          <span className={app.installStatus === 'installed' ? 'is-installed' : ''}>{app.installStatus === 'installed' ? 'Installed' : 'Not installed'}</span>
           <span>{app.setup.fieldCount === 0 ? 'No setup needed' : `${app.setup.fieldCount} setup fields`}</span>
         </div>
 
@@ -102,7 +131,9 @@ export function AppsScreen() {
 
         <PackageDetails app={app} />
 
-        <button className="mos-btn mos-btn-secondary" disabled type="button">Install coming next</button>
+        {app.installStatus === 'installed'
+          ? <button className="mos-btn mos-btn-secondary" disabled type="button">Disable coming next</button>
+          : <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || installingId === app.id} onClick={() => void install(app)} type="button">{installingId === app.id ? 'Installing...' : 'Install logically'}</button>}
       </article>)}
     </div> : null}
   </section>;
