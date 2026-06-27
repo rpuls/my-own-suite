@@ -9,9 +9,11 @@ const { HttpsAgentClient } = require('../settings/https-agent-client.cjs');
 const { HttpsSettingsError } = require('../../../../shared/https-contract.cjs');
 const { HttpsSettingsService } = require('../settings/https-settings-service.cjs');
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
+const { inspectAppPackages } = require('../apps/package-manifest.cjs');
 
 const SESSION_COOKIE = 'mos_v2_session';
 const DEFAULT_FRONTEND_DIST_DIR = path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
+const DEFAULT_APPS_DIR = path.resolve(__dirname, '..', '..', '..', '..', 'apps');
 const SUITE_MANAGER_BASE_PATH = '/suite-manager/';
 const SUITE_MANAGER_API_PREFIX = `${SUITE_MANAGER_BASE_PATH}api`;
 const FRONTEND_ASSET_PREFIX = `${SUITE_MANAGER_BASE_PATH}assets/`;
@@ -187,6 +189,7 @@ function serveFrontend(response, frontendDistDir) {
 }
 
 function createV2Server({
+  appsDir = DEFAULT_APPS_DIR,
   homepageAgent = new HomepageAgentClient(),
   httpsAgent = new HttpsAgentClient(),
   frontendDistDir = DEFAULT_FRONTEND_DIST_DIR,
@@ -296,6 +299,15 @@ function createV2Server({
             return;
           }
         }
+      }
+
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/packages`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review app packages.' });
+          return;
+        }
+        jsonResponse(response, 200, { packages: inspectAppPackages(appsDir) });
+        return;
       }
 
       if (url.pathname === SUITE_MANAGER_API_PREFIX || url.pathname.startsWith(`${SUITE_MANAGER_API_PREFIX}/`)) {

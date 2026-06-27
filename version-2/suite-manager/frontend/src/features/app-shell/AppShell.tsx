@@ -1,6 +1,7 @@
 import { Component, useCallback, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
 
 import { Drawer, Icon } from '../../components/ui';
+import { AppsScreen } from '../apps/AppsScreen';
 import { SettingsScreen } from '../settings/SettingsScreen';
 import { CustomizeScreen } from '../customize/CustomizeScreen';
 import type { Owner } from '../setup/types';
@@ -22,7 +23,7 @@ class RouteBoundary extends Component<{ children: ReactNode }, { failed: boolean
 
 export function AppShell({ onLogout, owner }: AppShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const routeForPath = () => window.location.pathname.endsWith('/settings') ? 'settings' : window.location.pathname.endsWith('/customize') ? 'customize' : 'dashboard';
+  const routeForPath = () => window.location.pathname.endsWith('/settings') ? 'settings' : window.location.pathname.endsWith('/customize') ? 'customize' : window.location.pathname.endsWith('/apps') ? 'apps' : 'dashboard';
   const [route, setRoute] = useState(routeForPath);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   useEffect(() => {
@@ -31,15 +32,9 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
     return () => window.removeEventListener('popstate', update);
   }, []);
 
-  function openSettings() {
-    window.history.pushState({}, '', '/suite-manager/settings');
-    setRoute('settings');
-    closeMenu();
-  }
-
-  function openCustomize() {
-    window.history.pushState({}, '', '/suite-manager/customize');
-    setRoute('customize');
+  function navigate(nextRoute: 'apps' | 'customize' | 'settings', path: string) {
+    window.history.pushState({}, '', path);
+    setRoute(nextRoute);
     closeMenu();
   }
 
@@ -63,10 +58,10 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
         <button aria-expanded={menuOpen} aria-haspopup="dialog" aria-label="Open navigation menu" className="suite-icon-button" onClick={() => setMenuOpen(true)} title="Menu" type="button"><Icon name="menu" /></button>
       </header>
 
-      <Drawer onClose={closeMenu} open={menuOpen} title="Suite Manager menu"><nav aria-label="Suite Manager menu" className="suite-nav"><a href="/"><Icon name="dashboard" />Dashboard</a><button aria-current={route === 'customize' ? 'page' : undefined} onClick={openCustomize} type="button"><Icon name="customize" />Customize</button><button aria-current={route === 'settings' ? 'page' : undefined} onClick={openSettings} type="button"><Icon name="settings" />Settings</button><button onClick={() => { closeMenu(); void onLogout(); }} type="button"><Icon name="sign-out" />Sign out</button></nav></Drawer>
+      <Drawer onClose={closeMenu} open={menuOpen} title="Suite Manager menu"><nav aria-label="Suite Manager menu" className="suite-nav"><a href="/"><Icon name="dashboard" />Dashboard</a><button aria-current={route === 'apps' ? 'page' : undefined} onClick={() => navigate('apps', '/suite-manager/apps')} type="button"><Icon name="apps" />Apps</button><button aria-current={route === 'customize' ? 'page' : undefined} onClick={() => navigate('customize', '/suite-manager/customize')} type="button"><Icon name="customize" />Customize</button><button aria-current={route === 'settings' ? 'page' : undefined} onClick={() => navigate('settings', '/suite-manager/settings')} type="button"><Icon name="settings" />Settings</button><button onClick={() => { closeMenu(); void onLogout(); }} type="button"><Icon name="sign-out" />Sign out</button></nav></Drawer>
 
       <main className="suite-shell-main">
-        <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'customize' ? <CustomizeScreen /> : (
+        <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'customize' ? <CustomizeScreen /> : route === 'apps' ? <AppsScreen /> : (
         <section className="mos-shell suite-dashboard">
           <div className="suite-hero">
             <span className="mos-pill mos-pill-accent">Control plane</span>

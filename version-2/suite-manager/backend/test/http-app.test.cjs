@@ -273,6 +273,32 @@ test('Homepage customization APIs require authentication and pass only structure
   }, { homeHost: 'home.test', homepageAgent });
 });
 
+test('App package catalog API requires authentication and exposes safe manifest summaries', async () => {
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages', {
+      headers: { Host: 'home.test' },
+    });
+    assert.equal(denied.status, 401);
+
+    const cookie = await createOwner(baseUrl);
+    const response = await hostRequest(baseUrl, '/suite-manager/api/apps/packages', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    const body = response.json();
+    const stirling = body.packages.find((entry) => entry.id === 'stirling-pdf');
+
+    assert.equal(response.status, 200);
+    assert.ok(stirling);
+    assert.equal(stirling.name, 'Stirling PDF');
+    assert.equal(stirling.installStatus, 'not-installed');
+    assert.equal(stirling.validation.valid, true);
+    assert.equal(stirling.setup.fieldCount, 0);
+    assert.deepEqual(stirling.routes, [{ host: 'stirling-pdf', port: 8080, service: 'stirling-pdf' }]);
+    assert.equal(stirling.health.url, 'http://stirling-pdf:8080/api/v1/info/status');
+    assert.equal(JSON.stringify(stirling).includes('reverse_proxy'), false);
+  }, { homeHost: 'home.test' });
+});
+
 test('Homepage agent request budget exceeds the observed restart rollback window', () => {
   assert.ok(HOMEPAGE_AGENT_TIMEOUT_MS > 60_000);
 });

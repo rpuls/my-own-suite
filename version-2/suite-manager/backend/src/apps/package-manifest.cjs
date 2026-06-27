@@ -224,6 +224,83 @@ function readAppPackageManifest(packageDir) {
   };
 }
 
+function publicPackageSummary(manifest, validationErrors = []) {
+  const services = Object.entries(isRecord(manifest.resources?.services) ? manifest.resources.services : {})
+    .map(([id, service]) => ({
+      dockerfile: hasText(service?.dockerfile) ? service.dockerfile : null,
+      id,
+      internalPort: Number.isInteger(service?.internalPort) ? service.internalPort : null,
+      volumes: Array.isArray(service?.volumes) ? service.volumes : [],
+    }));
+  return {
+    category: hasText(manifest.category) ? manifest.category : 'unknown',
+    health: isRecord(manifest.health) ? {
+      type: manifest.health.type || null,
+      url: manifest.health.url || null,
+    } : null,
+    homepage: isRecord(manifest.homepage) ? {
+      description: manifest.homepage.description || '',
+      group: manifest.homepage.group || '',
+      icon: manifest.homepage.icon || '',
+      name: manifest.homepage.name || manifest.name || manifest.id,
+    } : null,
+    icon: manifest.icon || manifest.homepage?.icon || '',
+    id: manifest.id || '',
+    installStatus: 'not-installed',
+    name: manifest.name || manifest.id || 'Unknown package',
+    routes: Array.isArray(manifest.routes) ? manifest.routes.map((route) => ({
+      host: route?.host || '',
+      port: Number.isInteger(route?.port) ? route.port : null,
+      service: route?.service || '',
+    })) : [],
+    services,
+    setup: {
+      fieldCount: Array.isArray(manifest.setup?.fields) ? manifest.setup.fields.length : 0,
+      fields: Array.isArray(manifest.setup?.fields)
+        ? manifest.setup.fields.map((field) => ({
+          id: field?.id || '',
+          label: field?.label || '',
+          required: field?.required === true,
+          secret: field?.secret === true,
+          type: field?.type || '',
+        }))
+        : [],
+    },
+    summary: manifest.summary || '',
+    validation: {
+      errors: validationErrors,
+      valid: validationErrors.length === 0,
+    },
+    version: manifest.version || '',
+  };
+}
+
+function inspectAppPackages(appsDir) {
+  if (!fs.existsSync(appsDir)) return [];
+  return fs.readdirSync(appsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const packageDir = path.join(appsDir, entry.name);
+      const manifestPath = path.join(packageDir, MANIFEST_FILENAME);
+      if (!fs.existsSync(manifestPath)) return null;
+      try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        const errors = validateAppPackageManifest(manifest, { packageDir });
+        return publicPackageSummary(manifest, errors);
+      } catch (error) {
+        return publicPackageSummary({
+          category: 'unknown',
+          id: entry.name,
+          name: entry.name,
+          summary: 'Package manifest could not be read.',
+          version: '0.0.0',
+        }, [error instanceof Error ? error.message : 'Package manifest could not be read.']);
+      }
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
 function discoverAppPackages(appsDir) {
   if (!fs.existsSync(appsDir)) return [];
   return fs.readdirSync(appsDir, { withFileTypes: true })
@@ -238,6 +315,8 @@ module.exports = {
   AppPackageManifestError,
   MANIFEST_FILENAME,
   discoverAppPackages,
+  inspectAppPackages,
+  publicPackageSummary,
   readAppPackageManifest,
   validateAppPackageManifest,
 };
