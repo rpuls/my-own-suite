@@ -28,12 +28,13 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Diagnosed the real DigitalOcean Customize apply failure through the live agent/socket/runtime state, fixed the Homepage restart budget and Suite Manager systemd dependency that caused successful writes to roll back, and aligned Customize with V1's file rail, syntax-aware validation/save flow, shared dialog controls, guided link flow, and automatic home-service URL helper.
 - [x] Passed the V2-owned local Playwright flow and a fresh human-driven DigitalOcean control-plane validation, including owner setup, private Homepage access, customization, generated home-service routing, logout protection, persistence, and an optimized eight-minute cold install.
 - [x] Added and validated the USB-aligned local Hyper-V smoke harness around the shared V2 bootstrap contract, including owner setup, Homepage customization, Cloudflare DNS-01 private LAN HTTPS, generated Caddy home-service routing, and a proxied LAN app reached through a local DNS override.
+- [x] Added the first V2 app-package scaffold: local manifest discovery/validation, guardrails against V1-style raw Caddy and escaped package paths, and a self-contained Stirling PDF package manifest/Dockerfile/docs as the first intentionally boring lifecycle candidate.
 
 ### Current Next Slice
 
 Build the next real V2 vertical slice inside `version-2/`:
 
-1. Brainstorm the future app-package contract after the validated control-plane slice, keeping installation inputs, secrets, dependencies, volumes, backup, and lifecycle outside Homepage YAML.
+1. Build the first app lifecycle engine around the validated package contract and Stirling PDF package, keeping installation inputs, secrets, dependencies, volumes, backup, and lifecycle outside Homepage YAML.
 2. Convert any remaining temporary V2 roadmap/checklist state into GitHub Issues before merging the branch.
 3. Keep public internet exposure outside the facilitated private LAN HTTPS flow; cloud/external-provider installs should continue to point custom-domain HTTPS work to the provider guide.
 
