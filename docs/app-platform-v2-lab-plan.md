@@ -244,41 +244,203 @@ Exit criteria:
 - Missing host capabilities are explained without terminal-first instructions.
 - No app-specific UI appears.
 
-### Phase 6: App Package Contract, No Installs Yet
+### Phase 6: App Package System
 
-Goal: design app packages after the control plane is real.
+Goal: design and validate the package contract after the control plane is real, before building a catalog or adding multiple apps.
 
-- [ ] Draft V2 app package folder shape.
-- [ ] Define package manifest fields.
-- [ ] Define package-owned setup helper boundaries.
-- [ ] Define projection outputs: Compose, Caddy, Homepage, env, backup, update inclusion.
-- [ ] Define install states.
-- [ ] Define app dependency semantics.
-- [ ] Define what uninstall means before implementing it.
-- [ ] Add manifest validation tests.
+Design goals:
+
+- Apps are optional packages selected after owner setup, never preinstalled by the bootstrap path.
+- Each package is self-contained under `version-2/apps/<app-id>/`, like a small npm package for one app.
+- Common setup, post-install onboarding, projections, status, and lifecycle behavior are declarative enough for generated Suite Manager UI.
+- Advanced apps can use controlled hooks and named capabilities without turning the manifest into a brittle programming language.
+- Generated infrastructure is reproducible from the package plus persisted app instance state, not hand-edited mystery files.
+
+Non-goals for the first package milestone:
+
+- No public app store or remote catalog browsing.
+- No migration from V1 all-app installs.
+- No bespoke React setup page per app when a schema-driven wizard can handle the fields and steps.
+- No backup/update/restore completeness beyond recording the package metadata needed to design those flows.
+
+Package folder shape:
+
+```text
+version-2/apps/<app-id>/
+  manifest.json          # or manifest.yaml; one canonical manifest per app
+  README.md              # technical app/package notes
+  Dockerfile             # primary service image, when MOS builds it
+  Dockerfile.<service>   # optional package-owned companion service images
+  assets/                # icons, screenshots, seed files, runtime assets
+  hooks/                 # optional app-scoped lifecycle helpers
+  migrations/            # optional package-state or app-data migrations
+  tests/                 # package validation/projection fixtures
+  homepage/              # optional package-owned Homepage contribution fixtures
+  caddy/                 # optional package-owned route fixtures, not raw user snippets
+```
+
+Conceptual manifest fields:
+
+- Metadata: package id, display name, summary, version, category, icon, upstream project, maintainer notes.
+- Inputs: typed setup fields, defaults, required flags, validation rules, generated values, secret flags, and redaction labels.
+- Onboarding: post-install steps, links, copy/download actions, completion checks, and status messages rendered by Suite Manager.
+- Resources: services, volumes, networks, exposed internal ports, env keys, secret references, dependencies, and app-owned Dockerfiles.
+- Projections: Compose resources, MOS-owned Caddy routes, Homepage tiles/widgets, env/secret references, health checks, backup hints, and update inclusion.
+- Lifecycle: install, apply, disable, uninstall, update, backup/restore, and migration hooks.
+- Capabilities: named escape hatches for app-specific behavior that cannot be expressed safely as declarative fields.
+
+Generated setup UI:
+
+- Suite Manager should render ordinary install inputs from manifest field definitions using shared controls such as text inputs, selects, notices, dialogs, and steppers.
+- Field definitions should include labels, helper text, defaults, validation, required/optional status, secret status, and whether MOS may generate a value.
+- Secret fields should use password-style controls, clear submitted values from client state after apply, and never be returned by status APIs.
+- App-specific React setup screens are allowed only for advanced flows that cannot be expressed as schema fields and must be package-scoped.
+
+Generated post-install onboarding UI:
+
+- The manifest should describe normal follow-up steps: open the app, copy a generated value, download an artifact, wait for a health condition, or manually confirm a task.
+- Suite Manager should render these steps from the same app instance state and mark them complete through explicit checks or user confirmation.
+- Post-install onboarding belongs to installed apps only; it must not pollute global owner setup or the empty control-plane dashboard.
+
+SQLite app instance state:
+
+- Persist package id, package version, instance id, install status, enabled/disabled state, and timestamps.
+- Persist normalized non-secret input values and generated non-secret values.
+- Persist selected generated resources, projection revisions/checksums, lifecycle operation records, last health result, and last apply error.
+- Persist secret references, redacted labels, timestamps, and fingerprints only. Do not persist or return raw secret values from Suite Manager.
+- Keep app instance state as the source of truth for installed apps; detected containers or existing files are diagnostics, not ownership.
+
+Secret handling:
+
+- Collect secrets through generated password fields or an approved package-specific flow.
+- Send submitted secrets only to the package apply path and the narrow app lifecycle agent that needs them.
+- Store raw secrets only in root/agent-owned secret files or a future dedicated secret store with restricted permissions.
+- Redact secrets in logs, operation records, diagnostics, API responses, and generated previews.
+- Pass secrets into runtime services by reference or controlled env/secret projection, not by writing them into broad editable config files.
+
+Package apply and projections:
+
+- Render Compose resources for installed/enabled apps only.
+- Render MOS-owned Caddy route snippets from structured route definitions; do not accept raw Caddy text from users or packages.
+- Render Homepage entries/widgets from package metadata and app instance state; Homepage YAML remains presentation/projection, not app install state.
+- Render env files or env fragments from declared inputs and secret references without app-specific hard-coding in global init/doctor scripts.
+- Apply host changes through a future narrow app lifecycle agent with validation, checkpoint, rollback, and sanitized diagnostics. Suite Manager should own intent and state, not direct host writes.
+
+Lifecycle semantics:
+
+- Install creates app instance state, validates inputs, renders projections, applies resources, starts services, waits for health, and records the applied revision.
+- Disable removes runtime exposure and stops app services where appropriate while preserving config, secrets, and volumes.
+- Re-enable reapplies projections from package plus persisted state and restarts required services.
+- Uninstall defaults to preserving data and secrets unless the user explicitly confirms destructive removal.
+- Update validates package migrations, applies new projections, runs app-scoped hooks, records the new package revision, and leaves recoverable diagnostics on failure.
+
+Simple versus advanced apps:
+
+- A boring HTTP app should need no hooks: one service, one route, one Homepage tile, basic env, volumes, and health checks should be declarative.
+- Hooks are for real app-specific work: first-admin creation, imports, data migrations, post-start API calls, or upstream quirks.
+- Hooks must be app-scoped, capability-declared, validated, logged with redaction, and unable to mutate global platform files directly.
+
+Validation strategy:
+
+- Start with manifest validation tests before any install engine exists.
+- Add projection golden tests for Compose, Caddy, Homepage, env/secret references, and health definitions.
+- Add SQLite migration/state tests for app instance records and lifecycle operations.
+- Add agent contract tests for apply/rollback, status, and secret redaction.
+- Add a local lifecycle test for the first app once the engine exists.
+- Ask the user to run noisy Playwright only when UI behavior changes.
+- Use Hyper-V smoke for local/USB-style lifecycle confidence once the first app exists.
+- Ask before paid DigitalOcean smoke and do not run it automatically.
+
+First app milestone:
+
+- Use Stirling PDF as the first intentionally boring real app unless implementation discovers an even smaller real candidate.
+- Prove install, generated route, Homepage tile, health, disable, re-enable, and uninstall-with-data-preserved.
+- Avoid app store/catalog browsing; the first milestone is the package contract plus one tiny lifecycle.
+
+Unresolved decisions, with recommended defaults:
+
+- Manifest format: use JSON first if validation and tests stay simpler; allow YAML later only if authorship pain justifies it.
+- Secret storage backend: start with agent-owned root-readable files and SQLite secret references; revisit a dedicated secret store once multiple apps need rotation.
+- Compose output shape: generate a MOS-owned app compose fragment from installed state rather than appending to a static all-app compose file.
+- Hook runtime: start with narrow Node or shell helpers executed by the app lifecycle agent with explicit capabilities; do not let hooks run arbitrary global commands.
+- Dependency semantics: support package-to-package dependencies only after the first app; begin with control-plane capabilities and package-owned companion services.
+- Multiple instances: default to one instance per app id until a real app needs multiple instances.
+- Uninstall data removal: preserve by default; destructive delete requires a separate confirmation and should be tested as its own lifecycle path.
+
+Do not repeat V1:
+
+- Do not hard-code app lists, URLs, or generated accounts in Suite Manager config.
+- Do not predeclare Compose profiles for every possible app.
+- Do not put app credentials or app setup into global owner onboarding.
+- Do not use Homepage YAML as the source of app install state.
+- Do not accept raw Caddy snippets from app/user input.
+- Do not install optional apps at bootstrap time.
+- Do not make global init, doctor, update, or smoke scripts know app-specific env details.
+
+Example manifest sketch:
+
+```json
+{
+  "id": "stirling-pdf",
+  "name": "Stirling PDF",
+  "version": "0.1.0",
+  "summary": "Private PDF tools for everyday document tasks.",
+  "category": "tools",
+  "setup": {
+    "fields": []
+  },
+  "resources": {
+    "services": {
+      "stirling-pdf": {
+        "dockerfile": "Dockerfile",
+        "internalPort": 8080,
+        "volumes": ["training-data:/usr/share/tessdata", "configs:/configs"]
+      }
+    }
+  },
+  "routes": [
+    { "host": "stirling-pdf", "service": "stirling-pdf", "port": 8080 }
+  ],
+  "homepage": {
+    "group": "Tools",
+    "name": "Stirling PDF",
+    "description": "Work with PDFs without uploading documents elsewhere.",
+    "icon": "stirling-pdf"
+  },
+  "health": {
+    "type": "http",
+    "url": "http://stirling-pdf:8080/"
+  }
+}
+```
+
+This sketch is illustrative only. Do not treat it as the final schema until manifest validation exists.
 
 Exit criteria:
 
 - App packages can be validated without installing them.
 - The package contract does not depend on old preloaded-suite assumptions.
+- The first implementation task can build package discovery, validation, state, and projections without inventing new architecture decisions.
 
-### Phase 7: First App Install
+### Phase 7: First App Lifecycle
 
-Goal: install one low-risk app end to end after the control plane is proven.
+Goal: install one low-risk app end to end after the package contract is validated, without building a full catalog.
 
 - [ ] Pick the first app, likely Stirling PDF.
-- [ ] Create package manifest.
-- [ ] Generate required runtime projections.
-- [ ] Apply Compose/Caddy/Homepage changes through a narrow V2 adapter.
-- [ ] Show install status in Suite Manager.
-- [ ] Add idempotency tests.
-- [ ] Run user-driven DigitalOcean validation.
+- [ ] Create the first package manifest and validation fixtures.
+- [ ] Add SQLite app instance state and lifecycle operation records.
+- [ ] Generate required Compose, Caddy, Homepage, env/secret-reference, and health projections from package plus instance state.
+- [ ] Apply changes through a narrow V2 app lifecycle agent or adapter with rollback and redacted diagnostics.
+- [ ] Show install, health, disable, re-enable, and uninstall-preserve-data status in Suite Manager.
+- [ ] Add idempotency, projection, and lifecycle tests.
+- [ ] Ask for user-driven Hyper-V and DigitalOcean validation when local tests are green.
 
 Exit criteria:
 
 - Fresh V2 install can add one app without SSH.
-- Re-running install is safe.
-- Failure states are visible and recoverable.
+- Re-running install/apply is safe.
+- Disable, re-enable, and uninstall-preserve-data are visible and recoverable.
+- Failure states are visible, redacted, and recoverable.
 
 ### Phase 8: Assisted App Install
 
@@ -447,9 +609,8 @@ npm run e2e:onboarding
 These are important but not first-milestone work:
 
 - App catalog UI.
-- App package schema.
-- App install/uninstall.
-- App-specific setup helpers.
+- Multi-app package catalog browsing.
+- Migration from the first app lifecycle to richer app-specific setup helpers.
 - Backup inclusion by app.
 - Managed update inclusion by app.
 - Migration from legacy all-app installs.
