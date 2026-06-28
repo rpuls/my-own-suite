@@ -110,28 +110,39 @@ function publicInstance(instance, projections = []) {
   };
 }
 
-function routeEntryForHomepage(instance, projections) {
-  const homepage = projections.find((projection) => projection.kind === 'homepage')?.content;
+function appRouteForHomepage(projections) {
   const caddy = projections.find((projection) => projection.kind === 'caddy')?.content;
   const route = Array.isArray(caddy?.routes) ? caddy.routes[0] : null;
-  const reverseProxy = typeof route?.reverseProxy === 'string' ? route.reverseProxy : '';
-  const separator = reverseProxy.lastIndexOf(':');
-  const port = Number(reverseProxy.slice(separator + 1));
+  if (!route || typeof route.host !== 'string' || !route.host) {
+    throw new AppPackageServiceError('APP_HOMEPAGE_PROJECTION_INVALID', 'This app does not have enough route data for a Homepage entry.', 409);
+  }
+  return route;
+}
 
-  if (!homepage || !route || separator < 1 || !Number.isInteger(port)) {
+function linkEntryForHomepage(instance, projections, requestContext = {}) {
+  const homepage = projections.find((projection) => projection.kind === 'homepage')?.content;
+  const route = appRouteForHomepage(projections);
+  const baseHost = String(requestContext.baseHost || '').trim().toLowerCase();
+  const scheme = requestContext.scheme === 'https' ? 'https' : 'http';
+
+  if (!homepage || !baseHost) {
     throw new AppPackageServiceError('APP_HOMEPAGE_PROJECTION_INVALID', 'This app does not have enough projection data for a Homepage entry.', 409);
   }
 
   return {
     description: homepage.description || instance.displayNameSnapshot,
     group: homepage.group || instance.categorySnapshot,
-    host: reverseProxy.slice(0, separator),
     icon: homepage.icon || instance.packageId,
     name: homepage.name || instance.displayNameSnapshot,
-    port,
-    protocol: 'http',
-    subdomain: route.host,
+    url: `${scheme}://${route.host}.${baseHost}/`,
   };
+}
+
+function runtimeApplied(projections) {
+  return ['compose', 'caddy', 'health'].every((kind) => {
+    const projection = projections.find((item) => item.kind === kind);
+    return projection?.status === 'applied' && projection.appliedDigest === projection.digest;
+  });
 }
 
 class AppPackageService {
@@ -246,7 +257,7 @@ class AppPackageService {
     return publicInstance(this.store.getAppInstanceByPackageId(packageId), this.store.getAppProjections(instance.id));
   }
 
-  async addPackageToHomepage(packageId, homepageService) {
+  async addPackageToHomepage(packageId, homepageService, requestContext = {}) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance || instance.status !== 'installed') {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before adding it to Homepage.', 409);
@@ -257,13 +268,16 @@ class AppPackageService {
     if (!homepageProjection) {
       throw new AppPackageServiceError('APP_HOMEPAGE_PROJECTION_MISSING', 'This app does not expose a Homepage projection.', 409);
     }
+    if (!runtimeApplied(projections)) {
+      throw new AppPackageServiceError('APP_RUNTIME_NOT_APPLIED', 'Apply this app runtime before adding it to Homepage.', 409);
+    }
 
     const current = await homepageService.read({ file: 'services.template.yaml' });
     const result = await homepageService.add({
-      entry: routeEntryForHomepage(instance, projections),
+      entry: linkEntryForHomepage(instance, projections, requestContext),
       expectedRevision: current.revision,
       requestId: instance.id,
-    }, true);
+    }, false);
 
     const at = this.now().toISOString();
     this.store.applyAppProjection({
@@ -294,9 +308,12 @@ module.exports = {
   APP_LOOPBACK_PORT_SPAN,
   AppPackageServiceError,
   AppPackageService,
+  appRouteForHomepage,
   digestFor,
   healthTargetFor,
+  linkEntryForHomepage,
   loopbackPortFor,
   renderDryRunProjections,
+  runtimeApplied,
   stableJson,
 };

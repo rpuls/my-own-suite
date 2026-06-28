@@ -174,7 +174,9 @@ function appPublicUrlFor(request, packageId) {
   const scheme = isHttpsRequest(request) ? 'https' : 'http';
   return {
     appHost,
+    baseHost,
     publicUrl: `${scheme}://${appHost}/`,
+    scheme,
   };
 }
 
@@ -347,7 +349,8 @@ function createV2Server({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to add app packages to Homepage.' });
           return;
         }
-        jsonResponse(response, 200, await appPackages.addPackageToHomepage(decodeURIComponent(appHomepageMatch[1]), homepageConfig));
+        const packageId = decodeURIComponent(appHomepageMatch[1]);
+        jsonResponse(response, 200, await appPackages.addPackageToHomepage(packageId, homepageConfig, appPublicUrlFor(request, packageId)));
         return;
       }
 

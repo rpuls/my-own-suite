@@ -385,6 +385,10 @@ test('Installed app packages can be added to Homepage through the existing agent
   const stirlingPort = loopbackPortFor('stirling-pdf');
   const calls = [];
   const homepageAgent = {
+    async addLink(input) {
+      calls.push(['addLink', input]);
+      return { changed: true, file: 'services.template.yaml', id: input.requestId, revision: 'sha256:next' };
+    },
     async addHomeService(input) {
       calls.push(['addHomeService', input]);
       return { changed: true, file: 'services.template.yaml', id: input.requestId, revision: 'sha256:next' };
@@ -408,25 +412,45 @@ test('Installed app packages can be added to Homepage through the existing agent
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
+    const tooEarly = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/add-to-homepage', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(tooEarly.status, 409);
+    assert.equal(tooEarly.json().code, 'APP_RUNTIME_NOT_APPLIED');
+
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
     const applied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/add-to-homepage', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
 
     assert.equal(applied.status, 200);
-    assert.deepEqual(calls.map((call) => call[0]), ['read', 'addHomeService']);
+    assert.deepEqual(calls.map((call) => call[0]), ['read', 'addLink']);
     assert.equal(calls[1][1].expectedRevision, 'sha256:current');
     assert.equal(calls[1][1].entry.name, 'Stirling PDF');
     assert.equal(calls[1][1].entry.group, 'Tools');
-    assert.equal(calls[1][1].entry.subdomain, 'stirling-pdf');
-    assert.equal(calls[1][1].entry.host, '127.0.0.1');
-    assert.equal(calls[1][1].entry.port, stirlingPort);
+    assert.equal(calls[1][1].entry.url, 'http://stirling-pdf.test/');
+    assert.equal(Object.hasOwn(calls[1][1].entry, 'host'), false);
+    assert.equal(Object.hasOwn(calls[1][1].entry, 'port'), false);
 
     const instance = applied.json().instance;
     const homepageProjection = instance.projections.find((projection) => projection.kind === 'homepage');
     assert.equal(homepageProjection.status, 'applied');
     assert.equal(homepageProjection.appliedDigest, homepageProjection.digest);
-  }, { homeHost: 'home.test', homepageAgent });
+  }, {
+    appAgent: {
+      async apply(input) {
+        assert.equal(input.compose.services[0].loopbackPort, stirlingPort);
+        return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+      },
+    },
+    homeHost: 'home.test',
+    homepageAgent,
+  });
 });
 
 test('Homepage agent request budget exceeds the observed restart rollback window', () => {
