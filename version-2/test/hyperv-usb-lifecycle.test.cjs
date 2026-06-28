@@ -21,6 +21,11 @@ test('Hyper-V USB smoke exposes a guarded two-command lifecycle', () => {
   assert.match(script, /LinkLayerAddress/u);
   assert.match(script, /\$adapter\.MacAddress/u);
   assert.match(script, /# BEGIN MOS V2 HYPERV USB SMOKE/u);
+  assert.match(script, /Get-SmokeHostNames/u);
+  assert.match(script, /manifest\.json/u);
+  assert.match(script, /ConvertFrom-Json/u);
+  assert.match(script, /\$Ip \$_/u);
+  assert.match(script, /App hosts:/u);
   assert.match(script, /Set-SmokeHostsEntries -Ip \$ip -StackDomain \$stackDomain/u);
   assert.match(script, /Remove-SmokeHostsEntries/u);
   assert.match(script, /ipconfig\.exe \/flushdns/u);

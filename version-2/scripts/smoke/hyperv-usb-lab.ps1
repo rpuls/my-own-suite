@@ -57,12 +57,43 @@ function Remove-LabArtifacts {
   }
 }
 
+function Get-SmokeHostNames {
+  param([string]$StackDomain)
+
+  $names = [System.Collections.Generic.List[string]]::new()
+  $names.Add("home.$StackDomain")
+  $appsRoot = Join-Path $V2Root 'apps'
+  if (Test-Path -LiteralPath $appsRoot) {
+    Get-ChildItem -LiteralPath $appsRoot -Directory | ForEach-Object {
+      $manifestPath = Join-Path $_.FullName 'manifest.json'
+      if (-not (Test-Path -LiteralPath $manifestPath)) { return }
+      try {
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        foreach ($route in @($manifest.routes)) {
+          if ($route.host -and "$($route.host)" -match '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$') {
+            $names.Add("$($route.host).$StackDomain")
+          }
+        }
+      }
+      catch {
+        Write-Warning "[mos-v2-smoke:hyperv-usb] Could not inspect app package manifest '$manifestPath'."
+      }
+    }
+  }
+  return $names | Select-Object -Unique
+}
+
 function Remove-SmokeHostsEntries {
   if (-not (Test-Path -LiteralPath $HostsPath)) { return }
   $content = [IO.File]::ReadAllText($HostsPath)
-  if (-not $content.Contains($HostsStartMarker)) { return }
+  $stackDomain = Get-StackDomain
+  $hostNames = @(Get-SmokeHostNames -StackDomain $stackDomain)
   $pattern = "(?ms)^$([regex]::Escape($HostsStartMarker))\r?\n.*?^$([regex]::Escape($HostsEndMarker))\r?\n?"
   $updated = [regex]::Replace($content, $pattern, '').TrimEnd()
+  foreach ($hostName in $hostNames) {
+    $hostPattern = "(?m)^\s*\S+\s+$([regex]::Escape($hostName))(\s|$).*\r?\n?"
+    $updated = [regex]::Replace($updated, $hostPattern, '').TrimEnd()
+  }
   [IO.File]::WriteAllText($HostsPath, "$updated`r`n", [Text.Encoding]::ASCII)
 }
 
@@ -72,11 +103,8 @@ function Set-SmokeHostsEntries {
     [string]$StackDomain
   )
   Remove-SmokeHostsEntries
-  $block = @(
-    $HostsStartMarker,
-    "$Ip home.$StackDomain",
-    $HostsEndMarker
-  ) -join "`r`n"
+  $entries = @(Get-SmokeHostNames -StackDomain $StackDomain | ForEach-Object { "$Ip $_" })
+  $block = (@($HostsStartMarker) + $entries + @($HostsEndMarker)) -join "`r`n"
   [IO.File]::AppendAllText($HostsPath, "$block`r`n", [Text.Encoding]::ASCII)
   & ipconfig.exe /flushdns | Out-Null
 }
@@ -181,6 +209,7 @@ function Show-Summary {
   Write-Host "  IPv4:       $Ip"
   Write-Host "  MOS Home:   http://home.$StackDomain/"
   Write-Host "  Suite Mgr:  http://home.$StackDomain/suite-manager/"
+  Write-Host "  App hosts:  $((Get-SmokeHostNames -StackDomain $StackDomain | Where-Object { $_ -notlike 'home.*' }) -join ', ')"
 }
 
 Assert-HyperV
