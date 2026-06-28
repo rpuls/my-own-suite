@@ -1,4 +1,4 @@
-const { execFile } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const http = require('node:http');
@@ -30,7 +30,28 @@ class AppApplyError extends Error {
 
 function exec(file, args, { cwd = undefined, timeoutMs = 120000 } = {}) {
   return new Promise((resolve, reject) => {
-    execFile(file, args, { cwd, timeout: timeoutMs }, (error) => error ? reject(new Error('COMMAND_FAILED')) : resolve());
+    const child = spawn(file, args, { cwd, stdio: 'ignore' });
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      callback(value);
+    };
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      finish(reject, new Error('COMMAND_TIMEOUT'));
+    }, timeoutMs);
+    child.on('error', (error) => {
+      finish(reject, error);
+    });
+    child.on('exit', (code) => {
+      if (code === 0) {
+        finish(resolve);
+        return;
+      }
+      finish(reject, new Error('COMMAND_FAILED'));
+    });
   });
 }
 
