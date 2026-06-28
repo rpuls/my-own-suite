@@ -31,6 +31,10 @@ function digestFor(value) {
   return `sha256:${crypto.createHash('sha256').update(stableJson(value)).digest('hex')}`;
 }
 
+function fingerprintFor(value) {
+  return digestFor(String(value));
+}
+
 function loopbackPortFor(manifestOrPackageId) {
   const packageId = typeof manifestOrPackageId === 'string' ? manifestOrPackageId : manifestOrPackageId.id;
   const digest = crypto.createHash('sha256').update(packageId).digest();
@@ -42,10 +46,54 @@ function healthTargetFor(manifest, port) {
   return `http://127.0.0.1:${port}${parsed.pathname}${parsed.search}`;
 }
 
-function renderDryRunProjections(manifest) {
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function setupFields(manifest) {
+  return Array.isArray(manifest.setup?.fields) ? manifest.setup.fields : [];
+}
+
+function generateValue(field) {
+  if (!isRecord(field.generated)) return undefined;
+  const bytes = field.generated.bytes;
+  const value = crypto.randomBytes(bytes);
+  if (field.generated.encoding === 'hex') return value.toString('hex');
+  return value.toString('base64url');
+}
+
+function configValueMap(configRows, { includeSecrets = false } = {}) {
+  const map = new Map();
+  for (const row of configRows || []) {
+    if (row.secret) {
+      if (includeSecrets && typeof row.rawValue === 'string') {
+        map.set(row.key, row.rawValue);
+      }
+      continue;
+    }
+    if (row.value !== undefined) map.set(row.key, row.value);
+  }
+  return map;
+}
+
+function resolveConfigTemplate(value, configRows, { includeSecrets = false } = {}) {
+  if (typeof value !== 'string') return value;
+  const values = configValueMap(configRows, { includeSecrets });
+  return value
+    .replace(/\$\{config\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (values.has(key) ? String(values.get(key)) : match))
+    .replace(/\$\{secret\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (values.has(key) ? String(values.get(key)) : match));
+}
+
+function renderEnvironment(environment, configRows, options = {}) {
+  return Object.fromEntries(
+    Object.entries(environment || {}).map(([key, value]) => [key, resolveConfigTemplate(value, configRows, options)]),
+  );
+}
+
+function renderDryRunProjections(manifest, configRows = []) {
   const services = Object.entries(manifest.resources.services).map(([id, service]) => ({
     build: { context: `version-2/apps/${manifest.id}`, dockerfile: service.dockerfile },
-    environment: service.env || {},
+    environment: renderEnvironment(service.env, configRows),
     id,
     internalPort: service.internalPort,
     loopbackPort: loopbackPortFor(manifest, id),
@@ -88,9 +136,23 @@ function renderDryRunProjections(manifest) {
   }));
 }
 
-function publicInstance(instance, projections = []) {
+function publicConfig(configRows = []) {
+  return configRows.map((row) => ({
+    fingerprint: row.fingerprint || null,
+    generated: row.source === 'generated',
+    key: row.key,
+    redactedLabel: row.redactedLabel || null,
+    secret: row.secret === true,
+    source: row.source,
+    updatedAt: row.updatedAt,
+    ...(row.secret ? {} : { value: row.value }),
+  }));
+}
+
+function publicInstance(instance, projections = [], configRows = []) {
   if (!instance) return null;
   return {
+    config: publicConfig(configRows),
     enabled: instance.enabled,
     id: instance.id,
     installedAt: instance.installedAt,
@@ -107,6 +169,71 @@ function publicInstance(instance, projections = []) {
     })),
     status: instance.status,
     updatedAt: instance.updatedAt,
+  };
+}
+
+function secretFilePath(secretDir, instanceId, key) {
+  return path.join(secretDir, instanceId, `${key}.secret`);
+}
+
+function writeSecretFile(secretDir, instanceId, key, value) {
+  const dir = path.join(secretDir, instanceId);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const target = secretFilePath(secretDir, instanceId, key);
+  fs.writeFileSync(target, value, { encoding: 'utf8', mode: 0o600 });
+  try {
+    fs.chmodSync(dir, 0o700);
+    fs.chmodSync(target, 0o600);
+  } catch {}
+  return target;
+}
+
+function readSecretValue(secretRef) {
+  return fs.readFileSync(secretRef, 'utf8');
+}
+
+function createConfigRows({ input = {}, instanceId, manifest, secretDir }) {
+  const supplied = isRecord(input.config) ? input.config : isRecord(input) ? input : {};
+  const rows = [];
+  for (const field of setupFields(manifest)) {
+    const hasUserValue = Object.hasOwn(supplied, field.id) && supplied[field.id] !== undefined && supplied[field.id] !== null && supplied[field.id] !== '';
+    const generated = generateValue(field);
+    const value = hasUserValue ? supplied[field.id] : generated ?? field.default;
+    if ((value === undefined || value === null || value === '') && field.required === true) {
+      throw new AppPackageServiceError('APP_SETUP_REQUIRED', `${field.label || field.id} is required.`, 400);
+    }
+    if (value === undefined || value === null || value === '') continue;
+    if (field.secret === true) {
+      const rawValue = String(value);
+      rows.push({
+        fingerprint: fingerprintFor(rawValue),
+        key: field.id,
+        rawValue,
+        redactedLabel: field.redactedLabel || field.label || 'Secret value',
+        secret: true,
+        secretRef: writeSecretFile(secretDir, instanceId, field.id, rawValue),
+        source: generated !== undefined && !hasUserValue ? 'generated' : 'user',
+      });
+    } else {
+      rows.push({
+        key: field.id,
+        secret: false,
+        source: generated !== undefined && !hasUserValue ? 'generated' : hasUserValue ? 'user' : 'default',
+        value,
+        valueJson: stableJson(value),
+      });
+    }
+  }
+  return rows;
+}
+
+function materializeRuntimeCompose(compose, configRows) {
+  return {
+    ...compose,
+    services: compose.services.map((service) => ({
+      ...service,
+      environment: renderEnvironment(service.environment, configRows, { includeSecrets: true }),
+    })),
   };
 }
 
@@ -146,10 +273,11 @@ function runtimeApplied(projections) {
 }
 
 class AppPackageService {
-  constructor({ agent = null, appsDir, now = () => new Date(), store }) {
+  constructor({ agent = null, appsDir, now = () => new Date(), secretDir = null, store }) {
     this.agent = agent;
     this.appsDir = appsDir;
     this.now = now;
+    this.secretDir = secretDir || path.join(store.stateDir, 'app-secrets');
     this.store = store;
   }
 
@@ -163,6 +291,9 @@ class AppPackageService {
     }
 
     const projections = this.store.getAppProjections(instance.id);
+    const configRows = this.store.getAppConfig(instance.id).map((row) => (
+      row.secretRef ? { ...row, rawValue: readSecretValue(row.secretRef) } : row
+    ));
     const composeProjection = projections.find((projection) => projection.kind === 'compose');
     const caddyProjection = projections.find((projection) => projection.kind === 'caddy');
     const healthProjection = projections.find((projection) => projection.kind === 'health');
@@ -175,7 +306,7 @@ class AppPackageService {
     const result = await this.agent.apply({
       appHost: requestContext.appHost,
       caddy: caddyProjection.content,
-      compose: composeProjection.content,
+      compose: materializeRuntimeCompose(composeProjection.content, configRows),
       health: healthProjection.content,
       instanceId: instance.id,
       packageId: instance.packageId,
@@ -203,7 +334,11 @@ class AppPackageService {
 
     return {
       agent: result,
-      instance: publicInstance(this.store.getAppInstanceByPackageId(packageId), this.store.getAppProjections(instance.id)),
+      instance: publicInstance(
+        this.store.getAppInstanceByPackageId(packageId),
+        this.store.getAppProjections(instance.id),
+        this.store.getAppConfig(instance.id),
+      ),
     };
   }
 
@@ -212,18 +347,19 @@ class AppPackageService {
     return inspectAppPackages(this.appsDir).map((summary) => {
       const instance = instancesByPackage.get(summary.id);
       const projections = instance ? this.store.getAppProjections(instance.id) : [];
+      const config = instance ? this.store.getAppConfig(instance.id) : [];
       return {
         ...summary,
         installStatus: instance?.status || 'not-installed',
-        instance: publicInstance(instance, projections),
+        instance: publicInstance(instance, projections, config),
       };
     });
   }
 
-  installPackage(packageId) {
+  installPackage(packageId, input = {}) {
     const current = this.store.getAppInstanceByPackageId(packageId);
     if (current) {
-      return publicInstance(current, this.store.getAppProjections(current.id));
+      return publicInstance(current, this.store.getAppProjections(current.id), this.store.getAppConfig(current.id));
     }
 
     const packageDir = path.join(this.appsDir, packageId);
@@ -233,7 +369,6 @@ class AppPackageService {
     const { manifest } = readAppPackageManifest(packageDir);
     const at = this.now().toISOString();
     const manifestDigest = digestFor(manifest);
-    const projections = renderDryRunProjections(manifest);
     const instance = {
       categorySnapshot: manifest.category,
       displayNameSnapshot: manifest.name,
@@ -242,19 +377,32 @@ class AppPackageService {
       packageId: manifest.id,
       packageVersion: manifest.version,
     };
-    this.store.installAppInstance({
-      at,
-      instance,
-      operationId: crypto.randomUUID(),
-      projections,
-      request: {
-        dryRunOnly: true,
-        packageId: manifest.id,
-        packageVersion: manifest.version,
-      },
-    });
+    const config = createConfigRows({ input, instanceId: instance.id, manifest, secretDir: this.secretDir });
+    const projections = renderDryRunProjections(manifest, config);
+    try {
+      this.store.installAppInstance({
+        at,
+        config,
+        instance,
+        operationId: crypto.randomUUID(),
+        projections,
+        request: {
+          config: config.map((item) => ({ generated: item.source === 'generated', key: item.key, secret: item.secret === true, source: item.source })),
+          dryRunOnly: true,
+          packageId: manifest.id,
+          packageVersion: manifest.version,
+        },
+      });
+    } catch (error) {
+      fs.rmSync(path.join(this.secretDir, instance.id), { recursive: true, force: true });
+      throw error;
+    }
 
-    return publicInstance(this.store.getAppInstanceByPackageId(packageId), this.store.getAppProjections(instance.id));
+    return publicInstance(
+      this.store.getAppInstanceByPackageId(packageId),
+      this.store.getAppProjections(instance.id),
+      this.store.getAppConfig(instance.id),
+    );
   }
 
   async addPackageToHomepage(packageId, homepageService, requestContext = {}) {
@@ -294,7 +442,11 @@ class AppPackageService {
 
     return {
       homepage: result,
-      instance: publicInstance(this.store.getAppInstanceByPackageId(packageId), this.store.getAppProjections(instance.id)),
+      instance: publicInstance(
+        this.store.getAppInstanceByPackageId(packageId),
+        this.store.getAppProjections(instance.id),
+        this.store.getAppConfig(instance.id),
+      ),
     };
   }
 
@@ -313,7 +465,9 @@ module.exports = {
   healthTargetFor,
   linkEntryForHomepage,
   loopbackPortFor,
+  materializeRuntimeCompose,
   renderDryRunProjections,
+  resolveConfigTemplate,
   runtimeApplied,
   stableJson,
 };

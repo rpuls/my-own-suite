@@ -339,7 +339,8 @@ function createV2Server({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to install app packages.' });
           return;
         }
-        jsonResponse(response, 200, { instance: appPackages.installPackage(decodeURIComponent(appInstallMatch[1])) });
+        const body = await readJsonBody(request, 64 * 1024);
+        jsonResponse(response, 200, { instance: appPackages.installPackage(decodeURIComponent(appInstallMatch[1]), body) });
         return;
       }
 

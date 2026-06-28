@@ -55,6 +55,24 @@ test('Stirling PDF package is discoverable and validates as the first boring app
   assert.deepEqual(validateAppPackageManifest(stirling.manifest, { packageDir: stirling.packageDir }), []);
 });
 
+test('Vaultwarden package is discoverable and declares generated secret setup generically', () => {
+  const packages = discoverAppPackages(v2AppsDir);
+  const vaultwarden = packages.find((entry) => entry.manifest.id === 'vaultwarden');
+
+  assert.ok(vaultwarden);
+  assert.equal(vaultwarden.manifest.name, 'Vaultwarden');
+  assert.equal(vaultwarden.manifest.setup.fields.length, 1);
+  assert.equal(vaultwarden.manifest.setup.fields[0].id, 'adminToken');
+  assert.equal(vaultwarden.manifest.setup.fields[0].secret, true);
+  assert.deepEqual(vaultwarden.manifest.setup.fields[0].generated, {
+    bytes: 32,
+    encoding: 'base64url',
+    kind: 'random',
+  });
+  assert.equal(vaultwarden.manifest.resources.services.vaultwarden.internalPort, 80);
+  assert.deepEqual(validateAppPackageManifest(vaultwarden.manifest, { packageDir: vaultwarden.packageDir }), []);
+});
+
 test('manifest validation rejects V1-style unsafe app coupling', () => {
   const manifest = validManifest({
     routes: [
@@ -121,6 +139,55 @@ test('manifest validation keeps service environment projection generic', () => {
   assert.deepEqual(validateAppPackageManifest(manifest), [
     'resources.services.example-app.env must contain uppercase environment keys with string values.',
   ]);
+});
+
+test('manifest validation rejects unsafe generated setup declarations', () => {
+  const manifest = validManifest({
+    setup: {
+      fields: [
+        {
+          generated: { bytes: 8, encoding: 'plain', kind: 'timestamp' },
+          id: 'adminToken',
+          label: 'Admin token',
+          secret: true,
+          type: 'password',
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(validateAppPackageManifest(manifest), [
+    'setup.fields[0].generated.kind must be one of: random.',
+    'setup.fields[0].generated.bytes must be a whole number from 16 to 128.',
+    'setup.fields[0].generated.encoding must be one of: base64url, hex.',
+  ]);
+});
+
+test('production app package engine code does not hardcode package ids', () => {
+  const roots = [
+    path.join(v2Root, 'suite-manager', 'backend', 'src'),
+    path.join(v2Root, 'suite-manager', 'frontend', 'src'),
+    path.join(v2Root, 'system-agents', 'apps'),
+    path.join(v2Root, 'scripts', 'smoke'),
+  ];
+  const offenders = [];
+  const visit = (target) => {
+    for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
+      const fullPath = path.join(target, entry.name);
+      if (entry.isDirectory()) {
+        visit(fullPath);
+        continue;
+      }
+      if (!/\.(?:cjs|js|ps1|ts|tsx)$/u.test(entry.name) || /\.test\./u.test(entry.name)) continue;
+      const content = fs.readFileSync(fullPath, 'utf8');
+      if (/\b(?:stirling|vaultwarden|Stirling|Vaultwarden)\b/u.test(content)) {
+        offenders.push(path.relative(v2Root, fullPath));
+      }
+    }
+  };
+  roots.forEach(visit);
+
+  assert.deepEqual(offenders, []);
 });
 
 test('readAppPackageManifest reports all validation details', async () => {

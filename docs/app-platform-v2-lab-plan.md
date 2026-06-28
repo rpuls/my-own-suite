@@ -32,14 +32,17 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Added a disposable read-only Suite Manager Apps surface backed by the real package manifest API, so the owner can inspect discovered packages, validation status, setup inputs, routes, Homepage contribution, volumes, and health checks before install exists.
 - [x] Added generic SQLite app instance/config/projection/operation tables and the first logical install path: Stirling PDF can move to `installed` state and persist dry-run Compose/Caddy/Homepage/health projections without mutating Docker, Caddy, or Homepage yet.
 - [x] Reviewed the first app lifecycle architecture before adding more packages; kept separate Homepage and app Caddy route ownership, then tightened the app agent so package route writes are package-scoped blocks and runtime environment values come from package projections instead of Stirling-shaped hardcoding.
+- [x] Added Vaultwarden as the second V2 app package to validate the package contract beyond Stirling: manifests can declare generated setup values, Suite Manager persists app config with redacted secret references and fingerprints, public projections keep secret placeholders, and runtime apply materializes generated secrets only for the app-agent request.
 
 ### Current Next Slice
 
 Build the next real V2 vertical slice inside `version-2/`:
 
-1. Turn logical app installs into a narrow app lifecycle agent apply path around the validated package contract and Stirling PDF package, keeping installation inputs, secrets, dependencies, volumes, backup, and lifecycle outside Homepage YAML.
-2. Convert any remaining temporary V2 roadmap/checklist state into GitHub Issues before merging the branch.
-3. Keep public internet exposure outside the facilitated private LAN HTTPS flow; cloud/external-provider installs should continue to point custom-domain HTTPS work to the provider guide.
+1. Verify Vaultwarden can install and run through the current generic package flow in Hyper-V.
+2. Immediately after that verification, harden V2 secret management before expanding the app package surface further. The current restricted-file secret storage is an early recoverable-secret mechanism, not the final secret management system.
+3. Continue hardening the narrow app lifecycle agent apply path around Stirling PDF and Vaultwarden, especially lifecycle state, disable/re-enable/uninstall-with-data-preserved, and user-facing setup/onboarding rendering.
+4. Convert any remaining temporary V2 roadmap/checklist state into GitHub Issues before merging the branch.
+5. Keep public internet exposure outside the facilitated private LAN HTTPS flow; cloud/external-provider installs should continue to point custom-domain HTTPS work to the provider guide.
 
 ### Latest Verified Command
 
@@ -322,6 +325,11 @@ Secret handling:
 - Redact secrets in logs, operation records, diagnostics, API responses, and generated previews.
 - Pass secrets into runtime services by reference or controlled env/secret projection, not by writing them into broad editable config files.
 
+Current V2 caveat:
+
+- The first Vaultwarden slice uses restricted Suite Manager state-directory files for recoverable runtime secrets, with SQLite storing only references, redacted labels, and fingerprints. This is intentionally a small generic mechanism to validate package runtime needs; it is not the final MOS secret management system.
+- Before adding more secret-bearing packages, harden this area into an explicit secret-management subsystem. Evaluate encrypted-at-rest secret files or a local secret-store agent, backup/restore semantics, rotation/reveal policy, diagnostics redaction tests, permissions ownership, and failure behavior when a secret is missing or unreadable.
+
 Package apply and projections:
 
 - Render Compose resources for installed/enabled apps only.
@@ -344,6 +352,15 @@ Simple versus advanced apps:
 - A boring HTTP app should need no hooks: one service, one route, one Homepage tile, basic env, volumes, and health checks should be declarative.
 - Hooks are for real app-specific work: first-admin creation, imports, data migrations, post-start API calls, or upstream quirks.
 - Hooks must be app-scoped, capability-declared, validated, logged with redaction, and unable to mutate global platform files directly.
+
+Second package findings from Vaultwarden:
+
+- Generated setup values belong in manifest field definitions, with random secret generation happening at logical install time so projections and fingerprints are stable for later apply.
+- Raw generated secrets should not be stored in broad SQLite rows or returned by package APIs. The current smallest mechanism stores raw values in Suite Manager state-directory secret files and stores only secret references, redacted labels, and fingerprints in `app_instance_config`.
+- Public Compose projections may contain secret placeholders such as `${secret.adminToken}`. The app-agent request materializes those placeholders only at runtime apply, preserving redacted API responses while keeping the agent generic.
+- App-specific environment variables can stay declarative in `resources.services.<service>.env`; generic placeholder resolution covers `${app.publicUrl}`, `${config.<field>}`, and `${secret.<field>}` without app-specific Suite Manager or Caddy/Homepage code.
+- Post-install guidance can start as package-owned `onboarding.steps` metadata. A polished generated onboarding UI, show-once secret reveal, token rotation, and completion checks should be separate follow-up work.
+- Secret management is the next architectural pressure point after Vaultwarden runtime validation, not catalog growth. Do not treat the current file-backed mechanism as final just because the tests are green.
 
 Validation strategy:
 

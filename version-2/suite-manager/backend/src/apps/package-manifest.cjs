@@ -7,6 +7,8 @@ const ENV_KEY_PATTERN = /^[A-Z_][A-Z0-9_]*$/u;
 const FIELD_ID_PATTERN = /^[a-z][a-z0-9]*(?:[A-Z][a-z0-9]*)*$/u;
 const SEMVERISH_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u;
 const SUPPORTED_FIELD_TYPES = new Set(['boolean', 'email', 'password', 'select', 'text', 'url']);
+const SUPPORTED_GENERATORS = new Set(['random']);
+const SUPPORTED_GENERATOR_ENCODINGS = new Set(['base64url', 'hex']);
 const SUPPORTED_HEALTH_TYPES = new Set(['http']);
 const RAW_CADDY_PATTERN = /(?:caddyfile|directive|handle|respond|reverse_proxy|route|snippet|tls\s|transport)/iu;
 
@@ -90,6 +92,21 @@ function validateSetup(manifest, errors) {
     }
     if (field.secret === true && field.default !== undefined) {
       errors.push(`${prefix} is secret and must not define a default value.`);
+    }
+    if (field.generated !== undefined) {
+      if (!isRecord(field.generated)) {
+        errors.push(`${prefix}.generated must be an object when present.`);
+      } else {
+        if (!SUPPORTED_GENERATORS.has(field.generated.kind)) {
+          errors.push(`${prefix}.generated.kind must be one of: ${[...SUPPORTED_GENERATORS].join(', ')}.`);
+        }
+        if (!Number.isInteger(field.generated.bytes) || field.generated.bytes < 16 || field.generated.bytes > 128) {
+          errors.push(`${prefix}.generated.bytes must be a whole number from 16 to 128.`);
+        }
+        if (!SUPPORTED_GENERATOR_ENCODINGS.has(field.generated.encoding)) {
+          errors.push(`${prefix}.generated.encoding must be one of: ${[...SUPPORTED_GENERATOR_ENCODINGS].join(', ')}.`);
+        }
+      }
     }
   }
 }
@@ -203,6 +220,21 @@ function validateHealth(manifest, errors) {
   }
 }
 
+function publicOnboarding(manifest) {
+  const onboarding = isRecord(manifest.onboarding) ? manifest.onboarding : {};
+  const steps = Array.isArray(onboarding.steps) ? onboarding.steps : [];
+  return {
+    steps: steps
+      .filter((step) => isRecord(step))
+      .map((step) => ({
+        body: typeof step.body === 'string' ? step.body : '',
+        title: typeof step.title === 'string' ? step.title : '',
+        type: typeof step.type === 'string' ? step.type : 'manual',
+      }))
+      .filter((step) => step.title || step.body),
+  };
+}
+
 function validateAppPackageManifest(manifest, { packageDir = null } = {}) {
   const errors = [];
   if (!isRecord(manifest)) {
@@ -272,6 +304,7 @@ function publicPackageSummary(manifest, validationErrors = []) {
       fields: Array.isArray(manifest.setup?.fields)
         ? manifest.setup.fields.map((field) => ({
           id: field?.id || '',
+          generated: isRecord(field?.generated),
           label: field?.label || '',
           required: field?.required === true,
           secret: field?.secret === true,
@@ -280,6 +313,7 @@ function publicPackageSummary(manifest, validationErrors = []) {
         : [],
     },
     summary: manifest.summary || '',
+    onboarding: publicOnboarding(manifest),
     validation: {
       errors: validationErrors,
       valid: validationErrors.length === 0,

@@ -401,6 +401,27 @@ class SuiteManagerStore {
     }));
   }
 
+  getAppConfig(instanceId) {
+    return this.database.prepare(`
+      SELECT
+        fingerprint,
+        key,
+        redacted_label AS redactedLabel,
+        secret_ref AS secretRef,
+        source,
+        updated_at AS updatedAt,
+        value_json AS valueJson
+      FROM app_instance_config
+      WHERE instance_id = ?
+      ORDER BY key
+    `).all(instanceId).map((row) => ({
+      ...row,
+      secret: Boolean(row.secretRef),
+      value: row.valueJson === null || row.valueJson === undefined ? undefined : JSON.parse(row.valueJson),
+      valueJson: undefined,
+    }));
+  }
+
   applyAppProjection({ at, instanceId, kind, operationId, request = {} }) {
     this.transaction(() => {
       const projection = this.database.prepare(`

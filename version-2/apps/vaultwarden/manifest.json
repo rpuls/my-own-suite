@@ -1,0 +1,73 @@
+{
+  "id": "vaultwarden",
+  "name": "Vaultwarden",
+  "version": "0.1.0",
+  "summary": "Private Bitwarden-compatible password management.",
+  "category": "security",
+  "icon": "vaultwarden",
+  "setup": {
+    "fields": [
+      {
+        "id": "adminToken",
+        "type": "password",
+        "label": "Admin token",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Generated Vaultwarden admin token",
+        "generated": {
+          "kind": "random",
+          "bytes": 32,
+          "encoding": "base64url"
+        }
+      }
+    ]
+  },
+  "resources": {
+    "services": {
+      "vaultwarden": {
+        "dockerfile": "Dockerfile",
+        "internalPort": 80,
+        "env": {
+          "ADMIN_TOKEN": "${secret.adminToken}",
+          "DOMAIN": "${app.publicUrl}",
+          "SIGNUPS_ALLOWED": "true",
+          "WEBSOCKET_ENABLED": "true"
+        },
+        "volumes": [
+          "data:/data"
+        ]
+      }
+    }
+  },
+  "routes": [
+    {
+      "host": "vaultwarden",
+      "service": "vaultwarden",
+      "port": 80
+    }
+  ],
+  "homepage": {
+    "group": "Security",
+    "name": "Vaultwarden",
+    "description": "Keep passwords and secure notes on your own server.",
+    "icon": "vaultwarden"
+  },
+  "health": {
+    "type": "http",
+    "url": "http://vaultwarden:80/alive"
+  },
+  "onboarding": {
+    "steps": [
+      {
+        "type": "open-url",
+        "title": "Create the first Vaultwarden account",
+        "body": "Open Vaultwarden over its generated app URL and create the owner account before storing shared credentials."
+      },
+      {
+        "type": "secret-note",
+        "title": "Admin token generated",
+        "body": "MOS generates a strong admin token for the Vaultwarden admin panel and stores only a secret reference plus fingerprint in Suite Manager state. This slice does not yet include an owner-facing reveal or rotation flow."
+      }
+    ]
+  }
+}

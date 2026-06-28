@@ -6,4 +6,6 @@ Each app package should own its app-specific manifest, Dockerfiles, setup helper
 
 The first package is `stirling-pdf`, intentionally chosen as a boring app to prove discovery, manifest validation, projections, and lifecycle behavior before MOS grows a catalog.
 
+The second package is `vaultwarden`, intentionally chosen to pressure-test generated setup values, secret redaction, persistent storage, package onboarding metadata, and app-specific runtime environment projection without adding app-specific logic to Suite Manager core.
+
 Current package manifests are validation inputs only. They must not imply that the app is installed until Suite Manager persists app instance state and a lifecycle agent applies the generated runtime projections.

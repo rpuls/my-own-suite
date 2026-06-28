@@ -97,6 +97,7 @@ Readiness and access:
 # BEGIN MOS V2 HYPERV USB SMOKE
 <guest-ip> home.<domain>
 <guest-ip> stirling-pdf.<domain>
+<guest-ip> vaultwarden.<domain>
 # END MOS V2 HYPERV USB SMOKE
 ```
 

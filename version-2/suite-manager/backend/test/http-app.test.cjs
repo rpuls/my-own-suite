@@ -287,6 +287,7 @@ test('App package catalog API requires authentication and exposes safe manifest 
     });
     const body = response.json();
     const stirling = body.packages.find((entry) => entry.id === 'stirling-pdf');
+    const vaultwarden = body.packages.find((entry) => entry.id === 'vaultwarden');
 
     assert.equal(response.status, 200);
     assert.ok(stirling);
@@ -297,6 +298,19 @@ test('App package catalog API requires authentication and exposes safe manifest 
     assert.deepEqual(stirling.routes, [{ host: 'stirling-pdf', port: 8080, service: 'stirling-pdf' }]);
     assert.equal(stirling.health.url, 'http://stirling-pdf:8080/api/v1/info/status');
     assert.equal(JSON.stringify(stirling).includes('reverse_proxy'), false);
+    assert.ok(vaultwarden);
+    assert.equal(vaultwarden.name, 'Vaultwarden');
+    assert.equal(vaultwarden.validation.valid, true);
+    assert.equal(vaultwarden.setup.fieldCount, 1);
+    assert.deepEqual(vaultwarden.setup.fields, [{
+      generated: true,
+      id: 'adminToken',
+      label: 'Admin token',
+      required: true,
+      secret: true,
+      type: 'password',
+    }]);
+    assert.equal(vaultwarden.onboarding.steps.length, 2);
   }, { homeHost: 'home.test' });
 });
 
@@ -332,6 +346,61 @@ test('App package install API creates a logical instance with dry-run projection
     assert.equal(stirling.instance.projections.find((projection) => projection.kind === 'caddy').content.routes[0].reverseProxy, `127.0.0.1:${stirlingPort}`);
     assert.equal(stirling.instance.projections.find((projection) => projection.kind === 'health').content.target, `http://127.0.0.1:${stirlingPort}/api/v1/info/status`);
   }, { homeHost: 'home.test' });
+});
+
+test('Vaultwarden install generates a redacted secret and materializes it only for runtime apply', async () => {
+  const vaultwardenPort = loopbackPortFor('vaultwarden');
+  const calls = [];
+  const appAgent = {
+    async apply(input) {
+      calls.push(input);
+      return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const installed = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    const instance = installed.json().instance;
+    const secretConfig = instance.config.find((item) => item.key === 'adminToken');
+    const compose = instance.projections.find((projection) => projection.kind === 'compose').content;
+
+    assert.equal(installed.status, 200);
+    assert.equal(instance.packageId, 'vaultwarden');
+    assert.equal(secretConfig.secret, true);
+    assert.equal(secretConfig.generated, true);
+    assert.equal(secretConfig.value, undefined);
+    assert.match(secretConfig.fingerprint, /^sha256:[a-f0-9]{64}$/u);
+    assert.equal(secretConfig.redactedLabel, 'Generated Vaultwarden admin token');
+    assert.equal(compose.services[0].environment.ADMIN_TOKEN, '${secret.adminToken}');
+    assert.equal(compose.services[0].environment.DOMAIN, '${app.publicUrl}');
+    assert.equal(compose.services[0].volumes[0], 'data:/data');
+
+    const applied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+    const adminToken = calls[0].compose.services[0].environment.ADMIN_TOKEN;
+
+    assert.equal(applied.status, 200);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].appHost, 'vaultwarden.test');
+    assert.equal(calls[0].publicUrl, 'https://vaultwarden.test/');
+    assert.equal(calls[0].compose.services[0].loopbackPort, vaultwardenPort);
+    assert.equal(calls[0].compose.services[0].environment.DOMAIN, '${app.publicUrl}');
+    assert.notEqual(adminToken, '${secret.adminToken}');
+    assert.match(adminToken, /^[A-Za-z0-9_-]{40,}$/u);
+    assert.doesNotMatch(installed.body, new RegExp(adminToken, 'u'));
+    assert.doesNotMatch(applied.body, new RegExp(adminToken, 'u'));
+
+    const packages = await hostRequest(baseUrl, '/suite-manager/api/apps/packages', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    assert.doesNotMatch(packages.body, new RegExp(adminToken, 'u'));
+  }, { appAgent, homeHost: 'home.test' });
 });
 
 test('Installed app packages can apply their runtime through the app agent boundary', async () => {
