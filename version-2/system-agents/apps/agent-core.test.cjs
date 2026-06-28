@@ -52,6 +52,7 @@ test('app apply validates exact shape and delegates sanitized runtime fields', a
   assert.equal(calls[0].packageId, 'example-tool');
   assert.equal(calls[0].loopbackPort, 18123);
   assert.equal(calls[0].healthTarget, 'http://127.0.0.1:18123/health');
+  assert.deepEqual(calls[0].environment, { SERVER_HOST: 'http://example-tool.mos.home/' });
   assert.match(calls[0].caddyRoutes, /reverse_proxy http:\/\/127\.0\.0\.1:18123/u);
 });
 
@@ -70,5 +71,9 @@ test('app apply rejects arbitrary packages, paths, routes, and commands', async 
   await assert.rejects(() => core.apply({
     ...request,
     health: { target: 'http://127.0.0.1:9999/health', type: 'http' },
+  }), AppRuntimeError);
+  await assert.rejects(() => core.apply({
+    ...request,
+    compose: { ...request.compose, services: [{ ...request.compose.services[0], environment: { 'bad-key': 'value' } }] },
   }), AppRuntimeError);
 });

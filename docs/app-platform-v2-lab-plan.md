@@ -31,6 +31,7 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Added the first V2 app-package scaffold: local manifest discovery/validation, guardrails against V1-style raw Caddy and escaped package paths, and a self-contained Stirling PDF package manifest/Dockerfile/docs as the first intentionally boring lifecycle candidate.
 - [x] Added a disposable read-only Suite Manager Apps surface backed by the real package manifest API, so the owner can inspect discovered packages, validation status, setup inputs, routes, Homepage contribution, volumes, and health checks before install exists.
 - [x] Added generic SQLite app instance/config/projection/operation tables and the first logical install path: Stirling PDF can move to `installed` state and persist dry-run Compose/Caddy/Homepage/health projections without mutating Docker, Caddy, or Homepage yet.
+- [x] Reviewed the first app lifecycle architecture before adding more packages; kept separate Homepage and app Caddy route ownership, then tightened the app agent so package route writes are package-scoped blocks and runtime environment values come from package projections instead of Stirling-shaped hardcoding.
 
 ### Current Next Slice
 
@@ -325,6 +326,7 @@ Package apply and projections:
 
 - Render Compose resources for installed/enabled apps only.
 - Render MOS-owned Caddy route snippets from structured route definitions; do not accept raw Caddy text from users or packages.
+- Keep generated Homepage home-service routes and installed app routes in separate imported Caddy files. Homepage routes are user-managed dashboard/proxy entries owned by the Homepage agent; app routes are installed-package runtime exposure owned by the app lifecycle agent. The app routes file must be treated as an aggregate projection with package-scoped blocks, not a single-app scratch file.
 - Render Homepage entries/widgets from package metadata and app instance state; Homepage YAML remains presentation/projection, not app install state.
 - Render env files or env fragments from declared inputs and secret references without app-specific hard-coding in global init/doctor scripts.
 - Apply host changes through a future narrow app lifecycle agent with validation, checkpoint, rollback, and sanitized diagnostics. Suite Manager should own intent and state, not direct host writes.

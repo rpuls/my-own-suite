@@ -4,7 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { SystemAppAdapter } = require('./system-adapter.cjs');
+const { SystemAppAdapter, upsertAppRouteBlock } = require('./system-adapter.cjs');
 
 async function tempDir() {
   return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-v2-app-agent-'));
@@ -35,10 +35,10 @@ test('system adapter builds, runs, health-checks, writes routes, and reloads Cad
     dockerfile: 'Dockerfile',
     healthTarget: 'http://127.0.0.1:18123/health',
     imageTag: 'mos-v2-app-example-tool:0.1.0',
+    environment: { SERVER_HOST: 'http://example-tool.mos.home/' },
     internalPort: 3000,
     loopbackPort: 18123,
     packageId: 'example-tool',
-    publicUrl: 'http://example-tool.mos.home/',
     volumes: ['configs:/configs'],
   });
 
@@ -48,5 +48,28 @@ test('system adapter builds, runs, health-checks, writes routes, and reloads Cad
   assert.deepEqual(commands[2].args.slice(0, 8), ['run', '--detach', '--name', 'mos-v2-app-example-tool', '--restart', 'unless-stopped', '--publish', '127.0.0.1:18123:3000']);
   assert.ok(commands[2].args.includes('SERVER_HOST=http://example-tool.mos.home/'));
   assert.ok(commands[2].args.includes('mos-v2-app-example-tool-configs:/configs'));
+  assert.match(await fsp.readFile(routesPath, 'utf8'), /mos-v2-app-route:start example-tool/u);
   assert.match(await fsp.readFile(routesPath, 'utf8'), /reverse_proxy http:\/\/127\.0\.0\.1:18123/u);
+});
+
+test('route updates replace only the matching package block', () => {
+  const existing = `# mos-v2-app-route:start first-app
+http://first-app.mos.home {
+  reverse_proxy http://127.0.0.1:18101
+}
+# mos-v2-app-route:end first-app
+`;
+
+  const next = upsertAppRouteBlock(existing, {
+    caddyRoutes: `http://second-app.mos.home {
+  reverse_proxy http://127.0.0.1:18102
+}
+`,
+    packageId: 'second-app',
+  });
+
+  assert.match(next, /mos-v2-app-route:start first-app/u);
+  assert.match(next, /mos-v2-app-route:start second-app/u);
+  assert.match(next, /127\.0\.0\.1:18101/u);
+  assert.match(next, /127\.0\.0\.1:18102/u);
 });

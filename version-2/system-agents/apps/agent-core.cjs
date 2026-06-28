@@ -18,6 +18,7 @@ function assertString(value, label, pattern = /^.+$/u) {
 }
 
 const DNS_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
+const ENV_KEY_PATTERN = /^[A-Z_][A-Z0-9_]*$/u;
 const PACKAGE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const SEMVERISH_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u;
 const SAFE_DOCKERFILE_PATTERN = /^(?:Dockerfile|Dockerfile\.[a-z0-9][a-z0-9-]*)$/u;
@@ -75,6 +76,21 @@ function assertRuntimeRequest(input) {
   return { route, service };
 }
 
+function resolveEnvironment(environment, context) {
+  const source = environment === undefined ? {} : environment;
+  if (!source || typeof source !== 'object' || Array.isArray(source)) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The service environment projection is invalid.');
+  }
+  const resolved = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (!ENV_KEY_PATTERN.test(key) || typeof value !== 'string') {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The service environment projection is invalid.');
+    }
+    resolved[key] = value.replace(/\$\{app\.publicUrl\}/gu, context.publicUrl);
+  }
+  return resolved;
+}
+
 function renderAppRoutes({ appHost, reverseProxy }) {
   return `http://${appHost} {
   reverse_proxy http://${reverseProxy}
@@ -99,6 +115,7 @@ class AppAgentCore {
     const result = await this.adapter.applyAppService({
       caddyRoutes: renderAppRoutes({ appHost: input.appHost, reverseProxy: route.reverseProxy }),
       dockerfile: service.build.dockerfile,
+      environment: resolveEnvironment(service.environment, { publicUrl: input.publicUrl }),
       healthTarget: input.health.target,
       imageTag: `mos-v2-app-${input.packageId}:${input.packageVersion}`,
       internalPort: service.internalPort,
@@ -116,4 +133,4 @@ class AppAgentCore {
   }
 }
 
-module.exports = { AppAgentCore, AppRuntimeError, assertRuntimeRequest, exactKeys, renderAppRoutes };
+module.exports = { AppAgentCore, AppRuntimeError, assertRuntimeRequest, exactKeys, renderAppRoutes, resolveEnvironment };

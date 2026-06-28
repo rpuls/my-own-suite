@@ -103,6 +103,26 @@ test('manifest validation rejects package paths that escape the app folder', () 
   ]);
 });
 
+test('manifest validation keeps service environment projection generic', () => {
+  const manifest = validManifest({
+    resources: {
+      services: {
+        'example-app': {
+          dockerfile: 'Dockerfile',
+          env: {
+            'bad-key': 'value',
+          },
+          internalPort: 8080,
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(validateAppPackageManifest(manifest), [
+    'resources.services.example-app.env must contain uppercase environment keys with string values.',
+  ]);
+});
+
 test('readAppPackageManifest reports all validation details', async () => {
   const packageDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-v2-package-'));
   await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify(validManifest({

@@ -9,6 +9,7 @@ const APP_ROUTES_PATH = process.env.MOS_V2_APP_ROUTES_PATH || '/etc/caddy/mos-v2
 const CADDY_BINARY = process.env.MOS_V2_CADDY_BINARY || '/usr/local/libexec/mos-v2/caddy';
 const DOCKER_BINARY = process.env.MOS_V2_DOCKER_BINARY || '/usr/bin/docker';
 const HEALTH_TIMEOUT_MS = 90_000;
+const EMPTY_APP_ROUTES = '# No app runtime routes.\n';
 
 const FAILURE_MESSAGES = {
   build: ['APP_BUILD_FAILED', 'The app image could not be built.'],
@@ -73,6 +74,28 @@ async function restore(source, target) {
   else await atomicWrite(target, await fsp.readFile(source, 'utf8'));
 }
 
+function renderAppRouteBlock(packageId, caddyRoutes) {
+  return `# mos-v2-app-route:start ${packageId}\n${String(caddyRoutes).trimEnd()}\n# mos-v2-app-route:end ${packageId}\n`;
+}
+
+function upsertAppRouteBlock(currentRoutes, { caddyRoutes, packageId }) {
+  const block = renderAppRouteBlock(packageId, caddyRoutes);
+  const current = typeof currentRoutes === 'string' ? currentRoutes : EMPTY_APP_ROUTES;
+  const markerPattern = new RegExp(
+    `# mos-v2-app-route:start ${packageId}\\n[\\s\\S]*?# mos-v2-app-route:end ${packageId}\\n?`,
+    'u',
+  );
+  if (markerPattern.test(current)) {
+    return current.replace(markerPattern, block);
+  }
+
+  const meaningful = current.trim();
+  if (!meaningful || meaningful === EMPTY_APP_ROUTES.trim() || meaningful === String(caddyRoutes).trim()) {
+    return block;
+  }
+  return `${current.trimEnd()}\n\n${block}`;
+}
+
 function waitForHttp(url, { deadlineMs = HEALTH_TIMEOUT_MS } = {}) {
   const started = Date.now();
   return new Promise((resolve, reject) => {
@@ -116,7 +139,7 @@ class SystemAppAdapter {
     this.waitForReady = waitForReady;
   }
 
-  async applyAppService({ caddyRoutes, dockerfile, healthTarget, imageTag, internalPort, loopbackPort, packageId, publicUrl, volumes }) {
+  async applyAppService({ caddyRoutes, dockerfile, environment = {}, healthTarget, imageTag, internalPort, loopbackPort, packageId, volumes }) {
     const packageDir = path.join(this.appsRoot, packageId);
     const routeSnapshot = `${this.routesPath}.before-${process.pid}`;
     let routesChanged = false;
@@ -140,7 +163,7 @@ class SystemAppAdapter {
         '--name', `mos-v2-app-${packageId}`,
         '--restart', 'unless-stopped',
         '--publish', `127.0.0.1:${loopbackPort}:${internalPort}`,
-        '--env', `SERVER_HOST=${publicUrl}`,
+        ...Object.entries(environment).sort(([left], [right]) => left.localeCompare(right)).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
         ...volumeArgs,
         imageTag,
       ], { timeoutMs: 60000 });
@@ -149,17 +172,18 @@ class SystemAppAdapter {
       await this.waitForReady(healthTarget);
 
       const currentRoutes = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
-      routesChanged = currentRoutes !== caddyRoutes;
+      const nextRoutes = upsertAppRouteBlock(currentRoutes, { caddyRoutes, packageId });
+      routesChanged = currentRoutes !== nextRoutes;
       if (routesChanged) {
         stage = 'caddy-validation';
         const candidate = `${this.routesPath}.candidate-${process.pid}`;
-        await fsp.writeFile(candidate, caddyRoutes);
+        await fsp.writeFile(candidate, nextRoutes);
         await this.execute(this.caddyBinary, ['validate', '--adapter', 'caddyfile', '--config', candidate], { timeoutMs: 20000 });
         await fsp.rm(candidate, { force: true }).catch(() => {});
         await snapshot(this.routesPath, routeSnapshot);
 
         stage = 'writing';
-        await atomicWrite(this.routesPath, caddyRoutes);
+        await atomicWrite(this.routesPath, nextRoutes);
 
         stage = 'caddy-reload';
         await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 20000 });
@@ -178,4 +202,13 @@ class SystemAppAdapter {
   }
 }
 
-module.exports = { APP_ROUTES_PATH, AppApplyError, HEALTH_TIMEOUT_MS, SystemAppAdapter, atomicWrite, waitForHttp };
+module.exports = {
+  APP_ROUTES_PATH,
+  AppApplyError,
+  HEALTH_TIMEOUT_MS,
+  SystemAppAdapter,
+  atomicWrite,
+  renderAppRouteBlock,
+  upsertAppRouteBlock,
+  waitForHttp,
+};

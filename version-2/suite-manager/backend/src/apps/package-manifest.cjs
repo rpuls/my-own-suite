@@ -3,6 +3,7 @@ const path = require('node:path');
 
 const MANIFEST_FILENAME = 'manifest.json';
 const APP_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
+const ENV_KEY_PATTERN = /^[A-Z_][A-Z0-9_]*$/u;
 const FIELD_ID_PATTERN = /^[a-z][a-z0-9]*(?:[A-Z][a-z0-9]*)*$/u;
 const SEMVERISH_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u;
 const SUPPORTED_FIELD_TYPES = new Set(['boolean', 'email', 'password', 'select', 'text', 'url']);
@@ -119,6 +120,18 @@ function validateResources(manifest, packageDir, errors) {
     }
     if (!Number.isInteger(service.internalPort) || service.internalPort < 1 || service.internalPort > 65535) {
       errors.push(`${prefix}.internalPort must be a TCP port between 1 and 65535.`);
+    }
+    if (service.env !== undefined) {
+      if (!isRecord(service.env)) {
+        errors.push(`${prefix}.env must be an object when present.`);
+      } else {
+        for (const [key, value] of Object.entries(service.env)) {
+          if (!ENV_KEY_PATTERN.test(key) || typeof value !== 'string') {
+            errors.push(`${prefix}.env must contain uppercase environment keys with string values.`);
+            break;
+          }
+        }
+      }
     }
     if (service.volumes !== undefined && !Array.isArray(service.volumes)) {
       errors.push(`${prefix}.volumes must be an array when present.`);
