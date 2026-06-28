@@ -430,6 +430,39 @@ class SuiteManagerStore {
     });
   }
 
+  applyAppProjections({ at, instanceId, kinds, operationId, request = {} }) {
+    this.transaction(() => {
+      for (const kind of kinds) {
+        const projection = this.database.prepare(`
+          SELECT digest
+          FROM app_instance_projections
+          WHERE instance_id = ? AND kind = ?
+        `).get(instanceId, kind);
+        if (!projection) {
+          throw new Error(`App projection ${kind} was not found.`);
+        }
+      }
+      for (const kind of kinds) {
+        this.database.prepare(`
+          UPDATE app_instance_projections
+          SET applied_digest = digest, status = 'applied', updated_at = ?
+          WHERE instance_id = ? AND kind = ?
+        `).run(at, instanceId, kind);
+      }
+      this.database.prepare(`
+        INSERT INTO app_operations (
+          id, instance_id, kind, status, request_json, started_at, completed_at
+        )
+        VALUES (?, ?, 'apply', 'succeeded', ?, ?, ?)
+      `).run(operationId, instanceId, JSON.stringify(request), at, at);
+      this.database.prepare(`
+        UPDATE app_instances
+        SET updated_at = ?
+        WHERE id = ?
+      `).run(at, instanceId);
+    });
+  }
+
   installAppInstance({ at, config = [], instance, operationId, projections, request = {} }) {
     this.transaction(() => {
       this.database.prepare(`

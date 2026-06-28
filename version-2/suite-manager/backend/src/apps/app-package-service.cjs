@@ -8,6 +8,9 @@ const {
   readAppPackageManifest,
 } = require('./package-manifest.cjs');
 
+const APP_LOOPBACK_PORT_BASE = 18000;
+const APP_LOOPBACK_PORT_SPAN = 1000;
+
 class AppPackageServiceError extends Error {
   constructor(code, message, statusCode = 400) {
     super(message);
@@ -28,12 +31,24 @@ function digestFor(value) {
   return `sha256:${crypto.createHash('sha256').update(stableJson(value)).digest('hex')}`;
 }
 
+function loopbackPortFor(manifestOrPackageId) {
+  const packageId = typeof manifestOrPackageId === 'string' ? manifestOrPackageId : manifestOrPackageId.id;
+  const digest = crypto.createHash('sha256').update(packageId).digest();
+  return APP_LOOPBACK_PORT_BASE + digest.readUInt16BE(0) % APP_LOOPBACK_PORT_SPAN;
+}
+
+function healthTargetFor(manifest, port) {
+  const parsed = new URL(manifest.health.url);
+  return `http://127.0.0.1:${port}${parsed.pathname}${parsed.search}`;
+}
+
 function renderDryRunProjections(manifest) {
   const services = Object.entries(manifest.resources.services).map(([id, service]) => ({
     build: { context: `version-2/apps/${manifest.id}`, dockerfile: service.dockerfile },
     environment: service.env || {},
     id,
     internalPort: service.internalPort,
+    loopbackPort: loopbackPortFor(manifest, id),
     volumes: service.volumes || [],
   }));
   const volumes = [...new Set(services.flatMap((service) => service.volumes.map((volume) => volume.split(':')[0])))].sort();
@@ -49,7 +64,7 @@ function renderDryRunProjections(manifest) {
       content: {
         routes: manifest.routes.map((route) => ({
           host: route.host,
-          reverseProxy: `${route.service}:${route.port}`,
+          reverseProxy: `127.0.0.1:${loopbackPortFor(manifest, route.service)}`,
         })),
       },
       kind: 'caddy',
@@ -60,7 +75,7 @@ function renderDryRunProjections(manifest) {
     },
     {
       content: {
-        target: manifest.health.url,
+        target: healthTargetFor(manifest, loopbackPortFor(manifest, manifest.routes[0]?.service)),
         type: manifest.health.type,
       },
       kind: 'health',
@@ -120,10 +135,65 @@ function routeEntryForHomepage(instance, projections) {
 }
 
 class AppPackageService {
-  constructor({ appsDir, now = () => new Date(), store }) {
+  constructor({ agent = null, appsDir, now = () => new Date(), store }) {
+    this.agent = agent;
     this.appsDir = appsDir;
     this.now = now;
     this.store = store;
+  }
+
+  async applyPackageRuntime(packageId, requestContext = {}) {
+    if (!this.agent) {
+      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
+    }
+    const instance = this.store.getAppInstanceByPackageId(packageId);
+    if (!instance || instance.status !== 'installed') {
+      throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before applying its runtime.', 409);
+    }
+
+    const projections = this.store.getAppProjections(instance.id);
+    const composeProjection = projections.find((projection) => projection.kind === 'compose');
+    const caddyProjection = projections.find((projection) => projection.kind === 'caddy');
+    const healthProjection = projections.find((projection) => projection.kind === 'health');
+    if (!composeProjection || !caddyProjection || !healthProjection) {
+      throw new AppPackageServiceError('APP_RUNTIME_PROJECTION_MISSING', 'This app is missing runtime projections.', 409);
+    }
+
+    const packageDir = path.join(this.appsDir, packageId);
+    const { manifest } = readAppPackageManifest(packageDir);
+    const result = await this.agent.apply({
+      appHost: requestContext.appHost,
+      caddy: caddyProjection.content,
+      compose: composeProjection.content,
+      health: healthProjection.content,
+      instanceId: instance.id,
+      packageId: instance.packageId,
+      packageVersion: instance.packageVersion,
+      publicUrl: requestContext.publicUrl,
+    });
+
+    const at = this.now().toISOString();
+    const operationId = crypto.randomUUID();
+    this.store.applyAppProjections({
+      at,
+      instanceId: instance.id,
+      kinds: ['compose', 'caddy', 'health'],
+      operationId,
+      request: {
+        packageId: manifest.id,
+        projectionDigests: {
+          caddy: caddyProjection.digest,
+          compose: composeProjection.digest,
+          health: healthProjection.digest,
+        },
+        target: 'runtime',
+      },
+    });
+
+    return {
+      agent: result,
+      instance: publicInstance(this.store.getAppInstanceByPackageId(packageId), this.store.getAppProjections(instance.id)),
+    };
   }
 
   listPackages() {
@@ -220,9 +290,13 @@ class AppPackageService {
 }
 
 module.exports = {
+  APP_LOOPBACK_PORT_BASE,
+  APP_LOOPBACK_PORT_SPAN,
   AppPackageServiceError,
   AppPackageService,
   digestFor,
+  healthTargetFor,
+  loopbackPortFor,
   renderDryRunProjections,
   stableJson,
 };

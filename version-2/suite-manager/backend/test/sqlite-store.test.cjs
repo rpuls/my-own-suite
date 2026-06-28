@@ -155,6 +155,22 @@ test('app instance state stays package-generic and stores projection digests', a
     { digest: 'sha256:compose', kind: 'compose', status: 'rendered' },
   ]);
 
+  store.applyAppProjections({
+    at: '2026-06-27T10:05:00.000Z',
+    instanceId: instance.id,
+    kinds: ['compose', 'caddy'],
+    operationId: 'operation-two',
+    request: { target: 'runtime' },
+  });
+  assert.deepEqual(store.getAppProjections(instance.id).map(({ appliedDigest, digest, kind, status }) => ({
+    applied: appliedDigest === digest,
+    kind,
+    status,
+  })), [
+    { applied: true, kind: 'caddy', status: 'applied' },
+    { applied: true, kind: 'compose', status: 'applied' },
+  ]);
+
   const columns = store.database.prepare('PRAGMA table_info(app_instances)').all().map(({ name }) => name);
   assert.equal(columns.some((name) => /stirling|seafile|immich|vaultwarden/u.test(name)), false);
   store.close();

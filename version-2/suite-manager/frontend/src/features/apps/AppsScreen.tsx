@@ -31,6 +31,14 @@ function homepageApplied(app: AppPackageSummary) {
   return Boolean(projection?.appliedDigest && projection.appliedDigest === projection.digest && projection.status === 'applied');
 }
 
+function runtimeApplied(app: AppPackageSummary) {
+  const required = ['compose', 'caddy', 'health'];
+  return required.every((kind) => {
+    const projection = app.instance?.projections.find((item) => item.kind === kind);
+    return Boolean(projection?.appliedDigest && projection.appliedDigest === projection.digest && projection.status === 'applied');
+  });
+}
+
 function psSingleQuoted(value: string) {
   return `'${value.replace(/'/g, "''")}'`;
 }
@@ -81,6 +89,7 @@ function PackageDetails({ app }: { app: AppPackageSummary }) {
 export function AppsScreen() {
   const [packages, setPackages] = useState<AppPackageSummary[]>([]);
   const [addingHomepageId, setAddingHomepageId] = useState('');
+  const [applyingRuntimeId, setApplyingRuntimeId] = useState('');
   const [error, setError] = useState('');
   const [installingId, setInstallingId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -137,6 +146,23 @@ export function AppsScreen() {
     }
   }
 
+  async function applyRuntime(app: AppPackageSummary) {
+    if (app.installStatus !== 'installed' || runtimeApplied(app)) return;
+    setApplyingRuntimeId(app.id);
+    setError('');
+    try {
+      await jsonResponse<{ instance: AppPackageSummary['instance'] }>(
+        await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/apply-runtime`, { method: 'POST' }),
+        `Unable to start ${app.name}.`,
+      );
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : `Unable to start ${app.name}.`);
+    } finally {
+      setApplyingRuntimeId('');
+    }
+  }
+
   return <section className="mos-shell suite-apps">
     <div className="suite-hero">
       <span className="mos-pill mos-pill-accent">App packages</span>
@@ -163,6 +189,7 @@ export function AppsScreen() {
         <div className="suite-app-package-badges">
           <span className={app.validation.valid ? 'is-ready' : 'is-invalid'}>{app.validation.valid ? 'Package ready' : 'Invalid manifest'}</span>
           <span className={app.installStatus === 'installed' ? 'is-installed' : ''}>{app.installStatus === 'installed' ? 'Installed' : 'Not installed'}</span>
+          {runtimeApplied(app) ? <span className="is-installed">Runtime applied</span> : null}
           {homepageApplied(app) ? <span className="is-installed">On Homepage</span> : null}
           <span>{app.setup.fieldCount === 0 ? 'No setup needed' : `${app.setup.fieldCount} setup fields`}</span>
         </div>
@@ -175,6 +202,7 @@ export function AppsScreen() {
 
         {app.installStatus === 'installed'
           ? <div className="suite-app-package-actions">
+            <button className="mos-btn mos-btn-primary" disabled={runtimeApplied(app) || applyingRuntimeId === app.id} onClick={() => void applyRuntime(app)} type="button">{runtimeApplied(app) ? 'Runtime applied' : applyingRuntimeId === app.id ? 'Starting...' : 'Apply runtime'}</button>
             <button className="mos-btn mos-btn-primary" disabled={homepageApplied(app) || addingHomepageId === app.id} onClick={() => void addToHomepage(app)} type="button">{homepageApplied(app) ? 'Added to Homepage' : addingHomepageId === app.id ? 'Adding...' : 'Add to Homepage'}</button>
             <button className="mos-btn mos-btn-secondary" disabled type="button">Disable coming next</button>
           </div>

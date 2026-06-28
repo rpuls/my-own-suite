@@ -19,7 +19,7 @@
     "smoke:do:reset": "node scripts/smoke/digitalocean-v2.cjs reset",
     "smoke:hyperv:destroy": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke/hyperv-usb-lab.ps1 destroy",
     "smoke:hyperv:reset": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke/hyperv-usb-lab.ps1 reset",
-    "test": "npm run branding:sync && node --test suite-manager/backend/test/*.test.cjs system-agents/https/*.test.cjs system-agents/homepage/*.test.cjs test/*.test.cjs",
+    "test": "npm run branding:sync && node --test suite-manager/backend/test/*.test.cjs system-agents/apps/*.test.cjs system-agents/https/*.test.cjs system-agents/homepage/*.test.cjs test/*.test.cjs",
     "typecheck": "tsc --project suite-manager/tsconfig.json"
   },
   "dependencies": {

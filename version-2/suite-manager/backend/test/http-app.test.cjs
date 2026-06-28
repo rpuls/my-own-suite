@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { HOMEPAGE_AGENT_TIMEOUT_MS } = require('../src/homepage/homepage-agent-client.cjs');
+const { loopbackPortFor } = require('../src/apps/app-package-service.cjs');
 
 const { createV2Server } = require('../src/server/http-app.cjs');
 
@@ -300,6 +301,7 @@ test('App package catalog API requires authentication and exposes safe manifest 
 });
 
 test('App package install API creates a logical instance with dry-run projections', async () => {
+  const stirlingPort = loopbackPortFor('stirling-pdf');
   await withServer(async (baseUrl) => {
     const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/install', {
       headers: { Host: 'home.test' },
@@ -327,11 +329,60 @@ test('App package install API creates a logical instance with dry-run projection
     const stirling = packages.json().packages.find((entry) => entry.id === 'stirling-pdf');
     assert.equal(stirling.installStatus, 'installed');
     assert.equal(stirling.instance.packageId, 'stirling-pdf');
-    assert.equal(stirling.instance.projections.find((projection) => projection.kind === 'caddy').content.routes[0].reverseProxy, 'stirling-pdf:8080');
+    assert.equal(stirling.instance.projections.find((projection) => projection.kind === 'caddy').content.routes[0].reverseProxy, `127.0.0.1:${stirlingPort}`);
+    assert.equal(stirling.instance.projections.find((projection) => projection.kind === 'health').content.target, `http://127.0.0.1:${stirlingPort}/api/v1/info/status`);
   }, { homeHost: 'home.test' });
 });
 
+test('Installed app packages can apply their runtime through the app agent boundary', async () => {
+  const stirlingPort = loopbackPortFor('stirling-pdf');
+  const calls = [];
+  const appAgent = {
+    async apply(input) {
+      calls.push(input);
+      return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/apply-runtime', {
+      headers: { Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(denied.status, 401);
+    assert.equal(calls.length, 0);
+
+    const cookie = await createOwner(baseUrl);
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    const applied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+
+    assert.equal(applied.status, 200);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].appHost, 'stirling-pdf.test');
+    assert.equal(calls[0].publicUrl, 'https://stirling-pdf.test/');
+    assert.equal(calls[0].compose.services[0].loopbackPort, stirlingPort);
+    assert.equal(calls[0].caddy.routes[0].reverseProxy, `127.0.0.1:${stirlingPort}`);
+
+    const instance = applied.json().instance;
+    for (const kind of ['compose', 'caddy', 'health']) {
+      const projection = instance.projections.find((item) => item.kind === kind);
+      assert.equal(projection.status, 'applied');
+      assert.equal(projection.appliedDigest, projection.digest);
+    }
+    const homepageProjection = instance.projections.find((item) => item.kind === 'homepage');
+    assert.equal(homepageProjection.status, 'rendered');
+    assert.equal(homepageProjection.appliedDigest, null);
+  }, { appAgent, homeHost: 'home.test' });
+});
+
 test('Installed app packages can be added to Homepage through the existing agent boundary', async () => {
+  const stirlingPort = loopbackPortFor('stirling-pdf');
   const calls = [];
   const homepageAgent = {
     async addHomeService(input) {
@@ -368,8 +419,8 @@ test('Installed app packages can be added to Homepage through the existing agent
     assert.equal(calls[1][1].entry.name, 'Stirling PDF');
     assert.equal(calls[1][1].entry.group, 'Tools');
     assert.equal(calls[1][1].entry.subdomain, 'stirling-pdf');
-    assert.equal(calls[1][1].entry.host, 'stirling-pdf');
-    assert.equal(calls[1][1].entry.port, 8080);
+    assert.equal(calls[1][1].entry.host, '127.0.0.1');
+    assert.equal(calls[1][1].entry.port, stirlingPort);
 
     const instance = applied.json().instance;
     const homepageProjection = instance.projections.find((projection) => projection.kind === 'homepage');

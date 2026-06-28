@@ -10,6 +10,7 @@ const { HttpsSettingsError } = require('../../../../shared/https-contract.cjs');
 const { HttpsSettingsService } = require('../settings/https-settings-service.cjs');
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
 const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
+const { AppAgentClient } = require('../apps/app-agent-client.cjs');
 
 const SESSION_COOKIE = 'mos_v2_session';
 const DEFAULT_FRONTEND_DIST_DIR = path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
@@ -166,6 +167,17 @@ function normalizedHost(request) {
   return String(request.headers.host || '').toLowerCase().replace(/:\d+$/, '');
 }
 
+function appPublicUrlFor(request, packageId) {
+  const homeHost = normalizedHost(request);
+  const baseHost = homeHost.startsWith('home.') ? homeHost.slice(5) : homeHost;
+  const appHost = `${packageId}.${baseHost}`;
+  const scheme = isHttpsRequest(request) ? 'https' : 'http';
+  return {
+    appHost,
+    publicUrl: `${scheme}://${appHost}/`,
+  };
+}
+
 function isSignedIn(setup, sessionToken) {
   return setup.status(sessionToken).status === 'signed-in';
 }
@@ -192,6 +204,7 @@ function serveFrontend(response, frontendDistDir) {
 }
 
 function createV2Server({
+  appAgent = new AppAgentClient(),
   appsDir = DEFAULT_APPS_DIR,
   homepageAgent = new HomepageAgentClient(),
   httpsAgent = new HttpsAgentClient(),
@@ -215,6 +228,7 @@ function createV2Server({
     store: setup.store,
   });
   const appPackages = new AppPackageService({
+    agent: appAgent,
     appsDir,
     store: setup.store,
   });
@@ -334,6 +348,17 @@ function createV2Server({
           return;
         }
         jsonResponse(response, 200, await appPackages.addPackageToHomepage(decodeURIComponent(appHomepageMatch[1]), homepageConfig));
+        return;
+      }
+
+      const appRuntimeMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/apply-runtime$/u);
+      if (request.method === 'POST' && appRuntimeMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to apply app runtimes.' });
+          return;
+        }
+        const packageId = decodeURIComponent(appRuntimeMatch[1]);
+        jsonResponse(response, 200, await appPackages.applyPackageRuntime(packageId, appPublicUrlFor(request, packageId)));
         return;
       }
 

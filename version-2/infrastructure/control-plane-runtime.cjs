@@ -7,6 +7,7 @@ function renderCaddyfile() {
 }
 
 import /etc/caddy/mos-v2-homepage-routes.caddy
+import /etc/caddy/mos-v2-app-routes.caddy
 `;
 }
 
@@ -30,6 +31,7 @@ https://${homeHost} {
 }
 
 import /etc/caddy/mos-v2-homepage-routes.caddy
+import /etc/caddy/mos-v2-app-routes.caddy
 `;
 }
 

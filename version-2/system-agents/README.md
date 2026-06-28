@@ -19,3 +19,9 @@ Suite Manager persists active non-secret state before committing the short-lived
 The agent validates strict YAML and MOS proxy metadata, stages `services.yaml` and the separate MOS-owned route snippet, runs Caddy validation, atomically writes, restarts Homepage only when required, and reloads Caddy only for changed routes. Any validation, restart, or reload failure restores the known-good Homepage and route files. It never restarts Suite Manager and never modifies the HTTPS agent's main Caddyfile or DNS token state.
 
 Homepage restarts have a dedicated 60-second deadline rather than the generic 20-second command deadline. Suite Manager's socket client waits longer than that operation, and its systemd unit is not stop-coupled to Homepage, so the request remains connected until the transaction succeeds or returns a controlled failure.
+
+## App Runtime Agent
+
+`apps/agent.cjs` runs over `/run/mos-v2-app-agent/agent.sock`. The first disposable capability is intentionally narrow: it accepts one validated app-package service projection, builds the package-owned Dockerfile under `version-2/apps/<app-id>/`, starts one Docker container on the assigned loopback port, writes `/etc/caddy/mos-v2-app-routes.caddy`, reloads Caddy, and waits for the loopback health endpoint.
+
+Suite Manager owns app install intent and SQLite projection state. The app agent owns privileged Docker, Caddy route writes, and health probing. It does not accept arbitrary package paths, Docker commands, Caddy snippets, or multi-service lifecycle requests.
