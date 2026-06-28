@@ -36,3 +36,12 @@ test('authenticated page routes render inside the shared shell and route boundar
   assert.match(shell, /<RouteBoundary key=\{route\}>/u);
   assert.match(shell, /<CustomizeScreen \/>/u);
 });
+
+test('Apps host helper repairs stale app host entries after fresh VM resets', () => {
+  const apps = fs.readFileSync(path.join(frontendRoot, 'features', 'apps', 'AppsScreen.tsx'), 'utf8');
+  assert.match(apps, /# BEGIN MOS V2 HYPERV USB SMOKE/u);
+  assert.match(apps, /\$names=\$\{hostsLiteral\}/u);
+  assert.match(apps, /\$line -eq \$start/u);
+  assert.match(apps, /Set-Content -Path \$hostsPath -Value \$next/u);
+  assert.doesNotMatch(apps, /if \(-not \(Select-String/u);
+});

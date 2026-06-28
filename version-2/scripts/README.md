@@ -101,7 +101,7 @@ Readiness and access:
 
 - Browser access is through `http://home.<domain>/suite-manager/`, for example `http://home.mos.home/suite-manager/`. Do not use the old v1 `suite-manager.<domain>/setup/` host.
 - The final summary prints the VM name, switch, disk, installer ISO, IPv4, MOS Home URL, and Suite Manager URL.
-- `reset` only writes the exact `home.<domain>` Windows hosts entry needed for Suite Manager/Home. Generated LAN-app hosts such as `<app>.<domain>` need either matching per-host entries or, preferably, a local wildcard DNS override such as `*.test.example.com -> <guest-ip>` in the user's router, AdGuard Home, Unbound, Pi-hole, or other local DNS service.
+- `reset` writes only the exact `home.<domain>` Windows hosts entry needed for Suite Manager/Home. The temporary Apps page can extend the same marked hosts block with installed app hosts such as `<app>.<domain>` and remove stale copies from earlier VM resets. For lower-friction repeated testing, a local wildcard DNS override such as `*.test.example.com -> <guest-ip>` in the user's router, AdGuard Home, Unbound, Pi-hole, or other local DNS service is still the cleanest option.
 
 If the wait looks stuck, open Hyper-V Manager, connect to `mos-v2-usb-smoke`, and inspect the Ubuntu console. Useful console checks after login are:
 

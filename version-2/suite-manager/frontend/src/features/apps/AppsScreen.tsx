@@ -48,8 +48,23 @@ function windowsHostsCommand(app: AppPackageSummary) {
   const baseDomain = homeHost.startsWith('home.') ? homeHost.slice(5) : homeHost;
   const appHosts = app.routes.map((route) => `${route.host}.${baseDomain}`);
   if (!appHosts.length) return '';
-  const hostsLiteral = `@(${appHosts.map(psSingleQuoted).join(',')})`;
-  return `$hostsPath="$env:SystemRoot\\System32\\drivers\\etc\\hosts"; $ip=(Resolve-DnsName ${psSingleQuoted(homeHost)} -Type A | Select-Object -First 1 -ExpandProperty IPAddress); foreach ($name in ${hostsLiteral}) { if (-not (Select-String -Path $hostsPath -Pattern ("^\\s*\\S+\\s+" + [regex]::Escape($name) + "(\\s|$)") -Quiet)) { Add-Content -Path $hostsPath -Value "$ip $name" } }; ipconfig /flushdns`;
+  const hostsLiteral = `@(${[homeHost, ...appHosts].map(psSingleQuoted).join(',')})`;
+  return [
+    `$hostsPath="$env:SystemRoot\\System32\\drivers\\etc\\hosts"`,
+    `$start="# BEGIN MOS V2 HYPERV USB SMOKE"`,
+    `$end="# END MOS V2 HYPERV USB SMOKE"`,
+    `$names=${hostsLiteral}`,
+    `$ip=(Resolve-DnsName ${psSingleQuoted(homeHost)} -Type A | Select-Object -First 1 -ExpandProperty IPAddress)`,
+    `$lines=@(Get-Content -Path $hostsPath)`,
+    `$next=New-Object System.Collections.Generic.List[string]`,
+    `$inside=$false`,
+    `foreach ($line in $lines) { if ($line -eq $start) { $inside=$true; continue }; if ($line -eq $end) { $inside=$false; continue }; if ($inside) { continue }; $drop=$false; foreach ($name in $names) { if ($line -match ("^\\s*\\S+\\s+" + [regex]::Escape($name) + "(\\s|$)")) { $drop=$true; break } }; if (-not $drop) { [void]$next.Add($line) } }`,
+    `[void]$next.Add($start)`,
+    `foreach ($name in $names) { [void]$next.Add("$ip $name") }`,
+    `[void]$next.Add($end)`,
+    `Set-Content -Path $hostsPath -Value $next`,
+    `ipconfig /flushdns`,
+  ].join('; ');
 }
 
 async function jsonResponse<T>(response: Response, fallback: string): Promise<T> {
