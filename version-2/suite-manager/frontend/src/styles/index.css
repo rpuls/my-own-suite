@@ -354,6 +354,12 @@
   color: var(--mos-color-warning);
 }
 
+.suite-app-package-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mos-space-3);
+}
+
 .suite-app-package-details {
   border-top: var(--mos-border-subtle);
   padding-top: var(--mos-space-4);

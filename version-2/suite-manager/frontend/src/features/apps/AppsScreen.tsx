@@ -12,7 +12,7 @@ type AppPackageSummary = {
     id: string;
     installedAt: string;
     packageId: string;
-    projections: Array<{ content: unknown; digest: string; kind: string; status: string }>;
+    projections: Array<{ appliedDigest: string | null; content: unknown; digest: string; kind: string; status: string }>;
     status: string;
   } | null;
   id: string;
@@ -25,6 +25,11 @@ type AppPackageSummary = {
   validation: { errors: string[]; valid: boolean };
   version: string;
 };
+
+function homepageApplied(app: AppPackageSummary) {
+  const projection = app.instance?.projections.find((item) => item.kind === 'homepage');
+  return Boolean(projection?.appliedDigest && projection.appliedDigest === projection.digest && projection.status === 'applied');
+}
 
 async function jsonResponse<T>(response: Response, fallback: string): Promise<T> {
   const body = await response.json().catch(() => ({})) as T & { error?: string };
@@ -57,6 +62,7 @@ function PackageDetails({ app }: { app: AppPackageSummary }) {
 
 export function AppsScreen() {
   const [packages, setPackages] = useState<AppPackageSummary[]>([]);
+  const [addingHomepageId, setAddingHomepageId] = useState('');
   const [error, setError] = useState('');
   const [installingId, setInstallingId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -96,6 +102,23 @@ export function AppsScreen() {
     }
   }
 
+  async function addToHomepage(app: AppPackageSummary) {
+    if (app.installStatus !== 'installed' || homepageApplied(app)) return;
+    setAddingHomepageId(app.id);
+    setError('');
+    try {
+      await jsonResponse<{ instance: AppPackageSummary['instance'] }>(
+        await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/add-to-homepage`, { method: 'POST' }),
+        `Unable to add ${app.name} to Homepage.`,
+      );
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : `Unable to add ${app.name} to Homepage.`);
+    } finally {
+      setAddingHomepageId('');
+    }
+  }
+
   return <section className="mos-shell suite-apps">
     <div className="suite-hero">
       <span className="mos-pill mos-pill-accent">App packages</span>
@@ -122,6 +145,7 @@ export function AppsScreen() {
         <div className="suite-app-package-badges">
           <span className={app.validation.valid ? 'is-ready' : 'is-invalid'}>{app.validation.valid ? 'Package ready' : 'Invalid manifest'}</span>
           <span className={app.installStatus === 'installed' ? 'is-installed' : ''}>{app.installStatus === 'installed' ? 'Installed' : 'Not installed'}</span>
+          {homepageApplied(app) ? <span className="is-installed">On Homepage</span> : null}
           <span>{app.setup.fieldCount === 0 ? 'No setup needed' : `${app.setup.fieldCount} setup fields`}</span>
         </div>
 
@@ -132,7 +156,10 @@ export function AppsScreen() {
         <PackageDetails app={app} />
 
         {app.installStatus === 'installed'
-          ? <button className="mos-btn mos-btn-secondary" disabled type="button">Disable coming next</button>
+          ? <div className="suite-app-package-actions">
+            <button className="mos-btn mos-btn-primary" disabled={homepageApplied(app) || addingHomepageId === app.id} onClick={() => void addToHomepage(app)} type="button">{homepageApplied(app) ? 'Added to Homepage' : addingHomepageId === app.id ? 'Adding...' : 'Add to Homepage'}</button>
+            <button className="mos-btn mos-btn-secondary" disabled type="button">Disable coming next</button>
+          </div>
           : <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || installingId === app.id} onClick={() => void install(app)} type="button">{installingId === app.id ? 'Installing...' : 'Install logically'}</button>}
       </article>)}
     </div> : null}

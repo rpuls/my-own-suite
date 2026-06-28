@@ -331,6 +331,53 @@ test('App package install API creates a logical instance with dry-run projection
   }, { homeHost: 'home.test' });
 });
 
+test('Installed app packages can be added to Homepage through the existing agent boundary', async () => {
+  const calls = [];
+  const homepageAgent = {
+    async addHomeService(input) {
+      calls.push(['addHomeService', input]);
+      return { changed: true, file: 'services.template.yaml', id: input.requestId, revision: 'sha256:next' };
+    },
+    async read(file) {
+      calls.push(['read', file]);
+      return { content: '- Tools: []\n', file, revision: 'sha256:current' };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/add-to-homepage', {
+      headers: { Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(denied.status, 401);
+    assert.equal(calls.length, 0);
+
+    const cookie = await createOwner(baseUrl);
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    const applied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/add-to-homepage', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+
+    assert.equal(applied.status, 200);
+    assert.deepEqual(calls.map((call) => call[0]), ['read', 'addHomeService']);
+    assert.equal(calls[1][1].expectedRevision, 'sha256:current');
+    assert.equal(calls[1][1].entry.name, 'Stirling PDF');
+    assert.equal(calls[1][1].entry.group, 'Tools');
+    assert.equal(calls[1][1].entry.subdomain, 'stirling-pdf');
+    assert.equal(calls[1][1].entry.host, 'stirling-pdf');
+    assert.equal(calls[1][1].entry.port, 8080);
+
+    const instance = applied.json().instance;
+    const homepageProjection = instance.projections.find((projection) => projection.kind === 'homepage');
+    assert.equal(homepageProjection.status, 'applied');
+    assert.equal(homepageProjection.appliedDigest, homepageProjection.digest);
+  }, { homeHost: 'home.test', homepageAgent });
+});
+
 test('Homepage agent request budget exceeds the observed restart rollback window', () => {
   assert.ok(HOMEPAGE_AGENT_TIMEOUT_MS > 60_000);
 });

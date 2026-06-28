@@ -327,6 +327,16 @@ function createV2Server({
         return;
       }
 
+      const appHomepageMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/add-to-homepage$/u);
+      if (request.method === 'POST' && appHomepageMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to add app packages to Homepage.' });
+          return;
+        }
+        jsonResponse(response, 200, await appPackages.addPackageToHomepage(decodeURIComponent(appHomepageMatch[1]), homepageConfig));
+        return;
+      }
+
       if (url.pathname === SUITE_MANAGER_API_PREFIX || url.pathname.startsWith(`${SUITE_MANAGER_API_PREFIX}/`)) {
         jsonResponse(response, 404, { error: 'Not found.' });
         return;
