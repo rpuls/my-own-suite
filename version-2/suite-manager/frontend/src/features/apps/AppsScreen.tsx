@@ -31,6 +31,19 @@ function homepageApplied(app: AppPackageSummary) {
   return Boolean(projection?.appliedDigest && projection.appliedDigest === projection.digest && projection.status === 'applied');
 }
 
+function psSingleQuoted(value: string) {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function windowsHostsCommand(app: AppPackageSummary) {
+  const homeHost = typeof window === 'undefined' ? 'home.mos.home' : window.location.hostname;
+  const baseDomain = homeHost.startsWith('home.') ? homeHost.slice(5) : homeHost;
+  const appHosts = app.routes.map((route) => `${route.host}.${baseDomain}`);
+  if (!appHosts.length) return '';
+  const hostsLiteral = `@(${appHosts.map(psSingleQuoted).join(',')})`;
+  return `$hostsPath="$env:SystemRoot\\System32\\drivers\\etc\\hosts"; $ip=(Resolve-DnsName ${psSingleQuoted(homeHost)} -Type A | Select-Object -First 1 -ExpandProperty IPAddress); foreach ($name in ${hostsLiteral}) { if (-not (Select-String -Path $hostsPath -Pattern ("^\\s*\\S+\\s+" + [regex]::Escape($name) + "(\\s|$)") -Quiet)) { Add-Content -Path $hostsPath -Value "$ip $name" } }; ipconfig /flushdns`;
+}
+
 async function jsonResponse<T>(response: Response, fallback: string): Promise<T> {
   const body = await response.json().catch(() => ({})) as T & { error?: string };
   if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : fallback);
@@ -39,6 +52,7 @@ async function jsonResponse<T>(response: Response, fallback: string): Promise<T>
 
 function PackageDetails({ app }: { app: AppPackageSummary }) {
   const projections = app.instance?.projections || [];
+  const hostCommand = windowsHostsCommand(app);
   return <details className="suite-app-package-details">
     <summary>Package details</summary>
     <dl>
@@ -56,6 +70,10 @@ function PackageDetails({ app }: { app: AppPackageSummary }) {
       <dd>{app.setup.fieldCount === 0 ? 'No setup inputs required' : `${app.setup.fieldCount} setup input${app.setup.fieldCount === 1 ? '' : 's'}`}</dd>
       <dt>Projections</dt>
       <dd>{projections.length ? projections.map((projection) => `${projection.kind}: ${projection.status}`).join(', ') : 'Rendered after logical install'}</dd>
+      {hostCommand ? <>
+        <dt>Windows hosts helper</dt>
+        <dd><pre className="suite-app-host-command"><code>{hostCommand}</code></pre></dd>
+      </> : null}
     </dl>
   </details>;
 }

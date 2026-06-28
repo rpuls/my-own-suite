@@ -390,6 +390,20 @@
   overflow-wrap: anywhere;
 }
 
+.suite-app-host-command {
+  margin: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: var(--mos-space-3);
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: rgba(5, 14, 24, 0.5);
+  color: var(--mos-color-text);
+  font-size: var(--mos-text-small);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 .suite-settings {
   display: grid;
   gap: var(--mos-space-6);
