@@ -52,6 +52,8 @@ type InstallStep = {
   status: 'complete' | 'failed' | 'pending' | 'running' | 'skipped';
 };
 
+const INSTALL_STEP_MIN_MS = 1000;
+
 const CATEGORY_LABELS: Record<string, string> = {
   files: 'Files',
   office: 'Office',
@@ -141,6 +143,22 @@ function defaultInstallSteps(showOnHomepage = true): InstallStep[] {
 
 function setStep(steps: InstallStep[], id: InstallStep['id'], status: InstallStep['status']) {
   return steps.map((step) => (step.id === id ? { ...step, status } : step));
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function withMinimumInstallStep<T>(work: () => Promise<T>): Promise<T> {
+  const startedAt = Date.now();
+  try {
+    return await work();
+  } finally {
+    const remaining = INSTALL_STEP_MIN_MS - (Date.now() - startedAt);
+    if (remaining > 0) await sleep(remaining);
+  }
 }
 
 function psSingleQuoted(value: string) {
@@ -268,25 +286,24 @@ function AppDetail({
   return <div className="suite-app-detail-layer">
     <button aria-label="Close app details" className="suite-app-detail-backdrop" onClick={onClose} tabIndex={-1} type="button" />
     <aside aria-label={`${app.name} details`} aria-modal="true" className="suite-app-detail" role="dialog">
-      <div className="suite-app-detail-scroll">
-        <header className="suite-app-detail-hero">
-          <button aria-label="Close app details" className="suite-icon-button suite-app-detail-close" onClick={onClose} type="button"><Icon name="x" /></button>
-          <AppIcon app={app} large />
-          <div className="suite-app-detail-heading">
-            <span className={`suite-app-status ${status.className}`}>{status.label}</span>
-            <h2>{app.name}</h2>
-            <p>{descriptionFor(app)}</p>
-          </div>
-          <div className="suite-app-primary-actions">
-            {ready ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : <button className="mos-btn mos-btn-primary" disabled={!canInstall} onClick={() => onInstall(app, { showOnHomepage })} type="button">{installing ? 'Installing...' : 'Install'}</button>}
-            {!ready ? <label className="suite-app-homepage-option">
-              <input checked={showOnHomepage} disabled={installing} onChange={(event) => setShowOnHomepage(event.currentTarget.checked)} type="checkbox" />
-              <span>Add shortcut to Homepage</span>
-            </label> : null}
-            {ready ? <span className={`suite-app-homepage-state ${homepageApplied(app) ? 'is-on' : ''}`}>{homepageApplied(app) ? 'Shown on Homepage' : 'Not on Homepage yet'}</span> : null}
-          </div>
-        </header>
+      <header className="suite-app-detail-hero">
+        <button aria-label="Close app details" className="suite-icon-button suite-app-detail-close" onClick={onClose} type="button"><Icon name="x" /></button>
+        <AppIcon app={app} large />
+        <div className="suite-app-detail-heading">
+          <span className={`suite-app-status ${status.className}`}>{status.label}</span>
+          <h2>{app.name}</h2>
+          <p>{descriptionFor(app)}</p>
+        </div>
+        <div className="suite-app-primary-actions">
+          {ready ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : <button className="mos-btn mos-btn-primary" disabled={!canInstall} onClick={() => onInstall(app, { showOnHomepage })} type="button">{installing ? 'Installing...' : 'Install'}</button>}
+          {!ready ? <label className="suite-app-homepage-option">
+            <input checked={showOnHomepage} disabled={installing} onChange={(event) => setShowOnHomepage(event.currentTarget.checked)} type="checkbox" />
+            <span>Add shortcut to Homepage</span>
+          </label> : null}
+        </div>
+      </header>
 
+      <div className="suite-app-detail-scroll">
         <InstallProgress error={installError} steps={installSteps} />
 
         {!app.validation.valid ? <Notice title="This package cannot be installed yet" variant="warning"><ul>{app.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}
@@ -409,42 +426,58 @@ export function AppsScreen() {
     try {
       if (current.installStatus !== 'installed') {
         setInstallSteps((steps) => setStep(steps, 'prepare', 'running'));
-        const installed = await jsonResponse<{ instance: AppPackageSummary['instance'] }>(
-          await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(current.id)}/install`, { method: 'POST' }),
-          `Unable to prepare ${current.name}.`,
+        const installed = await withMinimumInstallStep(async () =>
+          jsonResponse<{ instance: AppPackageSummary['instance'] }>(
+            await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(current.id)}/install`, { method: 'POST' }),
+            `Unable to prepare ${current.name}.`,
+          ),
         );
         current = { ...current, installStatus: 'installed', instance: installed.instance };
         setInstallSteps((steps) => setStep(steps, 'prepare', 'complete'));
       } else {
+        setInstallSteps((steps) => setStep(steps, 'prepare', 'running'));
+        await withMinimumInstallStep(async () => undefined);
         setInstallSteps((steps) => setStep(steps, 'prepare', 'skipped'));
       }
 
       if (!runtimeApplied(current)) {
         setInstallSteps((steps) => setStep(steps, 'runtime', 'running'));
-        const applied = await jsonResponse<{ instance: AppPackageSummary['instance'] }>(
-          await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(current.id)}/apply-runtime`, { method: 'POST' }),
-          `Unable to start ${current.name}.`,
+        const applied = await withMinimumInstallStep(async () =>
+          jsonResponse<{ instance: AppPackageSummary['instance'] }>(
+            await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(current.id)}/apply-runtime`, { method: 'POST' }),
+            `Unable to start ${current.name}.`,
+          ),
         );
         current = { ...current, instance: applied.instance };
         setInstallSteps((steps) => setStep(steps, 'runtime', 'complete'));
       } else {
+        setInstallSteps((steps) => setStep(steps, 'runtime', 'running'));
+        await withMinimumInstallStep(async () => undefined);
         setInstallSteps((steps) => setStep(steps, 'runtime', 'skipped'));
       }
 
       if (!showOnHomepage) {
+        setInstallSteps((steps) => setStep(steps, 'homepage', 'running'));
+        await withMinimumInstallStep(async () => undefined);
         setInstallSteps((steps) => setStep(steps, 'homepage', 'skipped'));
       } else if (!homepageApplied(current)) {
         setInstallSteps((steps) => setStep(steps, 'homepage', 'running'));
-        const homepage = await jsonResponse<{ instance: AppPackageSummary['instance'] }>(
-          await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(current.id)}/add-to-homepage`, { method: 'POST' }),
-          `Unable to add ${current.name} to Homepage.`,
+        const homepage = await withMinimumInstallStep(async () =>
+          jsonResponse<{ instance: AppPackageSummary['instance'] }>(
+            await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(current.id)}/add-to-homepage`, { method: 'POST' }),
+            `Unable to add ${current.name} to Homepage.`,
+          ),
         );
         current = { ...current, instance: homepage.instance };
         setInstallSteps((steps) => setStep(steps, 'homepage', 'complete'));
       } else {
+        setInstallSteps((steps) => setStep(steps, 'homepage', 'running'));
+        await withMinimumInstallStep(async () => undefined);
         setInstallSteps((steps) => setStep(steps, 'homepage', 'skipped'));
       }
 
+      setInstallSteps((steps) => setStep(steps, 'ready', 'running'));
+      await withMinimumInstallStep(async () => undefined);
       setInstallSteps((steps) => setStep(steps, 'ready', 'complete'));
       await load();
     } catch (caught) {

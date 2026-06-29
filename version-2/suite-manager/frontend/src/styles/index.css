@@ -532,8 +532,11 @@
 
 .suite-app-detail {
   position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   width: min(48rem, 94vw);
-  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
   border-left: var(--mos-border-strong);
   background: rgba(10, 31, 53, 0.97);
   box-shadow: -28px 0 70px rgba(0, 0, 0, 0.34);
@@ -542,9 +545,9 @@
 .suite-app-detail-scroll {
   display: grid;
   gap: var(--mos-space-5);
-  height: 100%;
+  min-height: 0;
   overflow: auto;
-  padding: var(--mos-space-6);
+  padding: var(--mos-space-5) var(--mos-space-6) var(--mos-space-6);
 }
 
 .suite-app-detail-hero {
@@ -552,8 +555,10 @@
   grid-template-columns: auto minmax(0, 1fr);
   gap: var(--mos-space-4);
   position: relative;
-  padding-bottom: var(--mos-space-5);
+  z-index: 1;
+  padding: var(--mos-space-6) var(--mos-space-6) var(--mos-space-5);
   border-bottom: var(--mos-border-hairline);
+  background: rgba(10, 31, 53, 0.985);
 }
 
 .suite-app-detail-close {
@@ -660,7 +665,19 @@
 .suite-app-install-progress li.is-running .suite-app-step-dot {
   border-color: rgba(99, 226, 179, 0.7);
   background: var(--mos-color-accent);
+  animation: suite-app-step-led 820ms ease-in-out infinite alternate;
   box-shadow: 0 0 0 6px rgba(99, 226, 179, 0.12);
+}
+
+@keyframes suite-app-step-led {
+  from {
+    opacity: 0.38;
+    box-shadow: 0 0 0 2px rgba(99, 226, 179, 0.08);
+  }
+  to {
+    opacity: 1;
+    box-shadow: 0 0 0 7px rgba(99, 226, 179, 0.18);
+  }
 }
 
 .suite-app-install-progress li.is-complete .suite-app-step-dot,
@@ -966,7 +983,8 @@
     width: 100%;
     border-left: 0;
   }
-  .suite-app-detail-scroll { padding: var(--mos-space-5) var(--mos-space-4); }
+  .suite-app-detail-hero { padding: var(--mos-space-5) var(--mos-space-4); }
+  .suite-app-detail-scroll { padding: var(--mos-space-4) var(--mos-space-4) var(--mos-space-5); }
   .suite-app-detail-heading { padding-right: 3.25rem; }
   .suite-app-facts,
   .suite-app-feature-grid {
