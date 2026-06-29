@@ -457,6 +457,7 @@
 }
 
 .suite-app-card-actions {
+  align-self: start;
   flex-direction: column;
   align-items: flex-end;
   justify-content: flex-end;
