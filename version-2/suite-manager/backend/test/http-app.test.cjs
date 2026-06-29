@@ -295,6 +295,8 @@ test('App package catalog API requires authentication and exposes safe manifest 
     assert.equal(stirling.installStatus, 'not-installed');
     assert.equal(stirling.validation.valid, true);
     assert.equal(stirling.setup.fieldCount, 0);
+    assert.equal(stirling.icon, 'icon.png');
+    assert.equal(stirling.iconUrl, '/suite-manager/api/apps/packages/stirling-pdf/icon');
     assert.deepEqual(stirling.routes, [{ host: 'stirling-pdf', port: 8080, service: 'stirling-pdf' }]);
     assert.equal(stirling.health.url, 'http://stirling-pdf:8080/api/v1/info/status');
     assert.equal(JSON.stringify(stirling).includes('reverse_proxy'), false);
@@ -311,6 +313,24 @@ test('App package catalog API requires authentication and exposes safe manifest 
       type: 'password',
     }]);
     assert.equal(vaultwarden.onboarding.steps.length, 2);
+  }, { homeHost: 'home.test' });
+});
+
+test('App package icon API serves only authenticated declared package icons', async () => {
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/icon', {
+      headers: { Host: 'home.test' },
+    });
+    assert.equal(denied.status, 401);
+
+    const cookie = await createOwner(baseUrl);
+    const response = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/icon', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers['content-type'], 'image/png');
+    assert.ok(response.body.length > 100);
   }, { homeHost: 'home.test' });
 });
 

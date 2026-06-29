@@ -33,14 +33,15 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Added generic SQLite app instance/config/projection/operation tables and the first logical install path: Stirling PDF can move to `installed` state and persist dry-run Compose/Caddy/Homepage/health projections without mutating Docker, Caddy, or Homepage yet.
 - [x] Reviewed the first app lifecycle architecture before adding more packages; kept separate Homepage and app Caddy route ownership, then tightened the app agent so package route writes are package-scoped blocks and runtime environment values come from package projections instead of Stirling-shaped hardcoding.
 - [x] Added Vaultwarden as the second V2 app package to validate the package contract beyond Stirling: manifests can declare generated setup values, Suite Manager persists app config with redacted secret references and fingerprints, public projections keep secret placeholders, and runtime apply materializes generated secrets only for the app-agent request.
+- [x] Reworked the Apps page into a calm local catalog: one search field, larger package icons from package-root `icon.png`, category pills, detail-first card actions, structured catalog presentation metadata, related apps, advanced technical details behind disclosure, and a default-on install checkbox that controls whether the app is added to Homepage after runtime apply.
 
 ### Current Next Slice
 
 Build the next real V2 vertical slice inside `version-2/`:
 
-1. Verify Vaultwarden can install and run through the current generic package flow in Hyper-V.
+1. Verify the current Apps catalog install flow in Hyper-V, including Stirling PDF, Vaultwarden, app icons, detail-first install, and the default-on/off Homepage shortcut checkbox.
 2. Immediately after that verification, harden V2 secret management before expanding the app package surface further. The current restricted-file secret storage is an early recoverable-secret mechanism, not the final secret management system.
-3. Continue hardening the narrow app lifecycle agent apply path around Stirling PDF and Vaultwarden, especially lifecycle state, disable/re-enable/uninstall-with-data-preserved, and user-facing setup/onboarding rendering.
+3. Continue hardening the narrow app lifecycle agent apply path around Stirling PDF and Vaultwarden, especially lifecycle state, disable/re-enable/uninstall-with-data-preserved, and richer user-facing setup/onboarding rendering.
 4. Convert any remaining temporary V2 roadmap/checklist state into GitHub Issues before merging the branch.
 5. Keep public internet exposure outside the facilitated private LAN HTTPS flow; cloud/external-provider installs should continue to point custom-domain HTTPS work to the provider guide.
 
@@ -56,7 +57,7 @@ Current result: V2 contract tests, TypeScript checks, the production frontend bu
 
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. Local Playwright, fresh DigitalOcean control-plane validation, and Hyper-V USB validation pass. Hyper-V confirmed owner setup, Homepage customization, Cloudflare DNS-01 private LAN HTTPS, generated Caddy home-service routing, and LAN app proxying once local DNS resolves the generated app hostname to the VM IP. Next focus is the future app-package contract and converting remaining temporary roadmap state into GitHub Issues before merge.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. The V2 Suite Manager now has a local Apps catalog backed by package manifests, app-root `icon.png` assets, structured catalog metadata, detail-first install actions, and a default-on Homepage shortcut checkbox. Local tests pass for the package APIs and manifest contract. Next focus is Hyper-V validation of Stirling/Vaultwarden through the current generic install flow, then secret-management hardening before adding more secret-bearing apps.
 
 ## Product Goal
 
@@ -276,9 +277,10 @@ Package folder shape:
 version-2/apps/<app-id>/
   manifest.json          # or manifest.yaml; one canonical manifest per app
   README.md              # technical app/package notes
+  icon.png               # package-root catalog icon referenced by manifest.icon
   Dockerfile             # primary service image, when MOS builds it
   Dockerfile.<service>   # optional package-owned companion service images
-  assets/                # icons, screenshots, seed files, runtime assets
+  assets/                # optional screenshots, seed files, and runtime assets
   hooks/                 # optional app-scoped lifecycle helpers
   migrations/            # optional package-state or app-data migrations
   tests/                 # package validation/projection fixtures
@@ -288,7 +290,7 @@ version-2/apps/<app-id>/
 
 Conceptual manifest fields:
 
-- Metadata: package id, display name, summary, version, category, icon, upstream project, maintainer notes.
+- Metadata: package id, display name, summary, version, category, icon, catalog presentation metadata, upstream project, maintainer notes.
 - Inputs: typed setup fields, defaults, required flags, validation rules, generated values, secret flags, and redaction labels.
 - Onboarding: post-install steps, links, copy/download actions, completion checks, and status messages rendered by Suite Manager.
 - Resources: services, volumes, networks, exposed internal ports, env keys, secret references, dependencies, and app-owned Dockerfiles.
@@ -362,6 +364,13 @@ Second package findings from Vaultwarden:
 - Post-install guidance can start as package-owned `onboarding.steps` metadata. A polished generated onboarding UI, show-once secret reveal, token rotation, and completion checks should be separate follow-up work.
 - Secret management is the next architectural pressure point after Vaultwarden runtime validation, not catalog growth. Do not treat the current file-backed mechanism as final just because the tests are green.
 
+Catalog presentation findings:
+
+- Package manifests now support optional `catalog` metadata for richer descriptions, tags, features, privacy notes, links, setup complexity, resource hints, and related apps. This keeps presentation data structured without duplicating core manifest fields.
+- The package-root `icon.png` convention is the current standard for app catalog icons. Additional screenshots or media can be added later as optional catalog assets.
+- The Apps list should stay discovery-focused: search, icon, name, primary category, summary, and a `View` action. Install and setup choices belong in the detail view.
+- Adding the app to Homepage is a default-on install option, not an unconditional side effect. If unchecked, runtime apply still proceeds and the Homepage projection remains rendered but unapplied.
+
 Validation strategy:
 
 - Start with manifest validation tests before any install engine exists.
@@ -375,9 +384,9 @@ Validation strategy:
 
 First app milestone:
 
-- Use Stirling PDF as the first intentionally boring real app unless implementation discovers an even smaller real candidate.
-- Prove install, generated route, Homepage tile, health, disable, re-enable, and uninstall-with-data-preserved.
-- Avoid app store/catalog browsing; the first milestone is the package contract plus one tiny lifecycle.
+- Stirling PDF is the first intentionally boring real app.
+- Current state proves package discovery, validation, SQLite install state, generated route/Homepage/health projections, app-agent runtime apply, and optional Homepage shortcut apply.
+- Remaining lifecycle hardening: disable, re-enable, uninstall-with-data-preserved, richer health/status feedback, and idempotent recovery paths.
 
 Unresolved decisions, with recommended defaults:
 

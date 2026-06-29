@@ -50,7 +50,10 @@ test('Stirling PDF package is discoverable and validates as the first boring app
 
   assert.ok(stirling);
   assert.equal(stirling.manifest.name, 'Stirling PDF');
+  assert.equal(stirling.manifest.category, 'office');
   assert.equal(stirling.manifest.setup.fields.length, 0);
+  assert.equal(stirling.manifest.catalog.complexity.level, 'easy');
+  assert.ok(stirling.manifest.catalog.tags.includes('adobe-acrobat-alternative'));
   assert.equal(stirling.manifest.resources.services['stirling-pdf'].internalPort, 8080);
   assert.deepEqual(validateAppPackageManifest(stirling.manifest, { packageDir: stirling.packageDir }), []);
 });
@@ -61,6 +64,8 @@ test('Vaultwarden package is discoverable and declares generated secret setup ge
 
   assert.ok(vaultwarden);
   assert.equal(vaultwarden.manifest.name, 'Vaultwarden');
+  assert.equal(vaultwarden.manifest.catalog.complexity.level, 'guided');
+  assert.equal(vaultwarden.manifest.catalog.resourceHint.level, 'low');
   assert.equal(vaultwarden.manifest.setup.fields.length, 1);
   assert.equal(vaultwarden.manifest.setup.fields[0].id, 'adminToken');
   assert.equal(vaultwarden.manifest.setup.fields[0].secret, true);
@@ -71,6 +76,57 @@ test('Vaultwarden package is discoverable and declares generated secret setup ge
   });
   assert.equal(vaultwarden.manifest.resources.services.vaultwarden.internalPort, 80);
   assert.deepEqual(validateAppPackageManifest(vaultwarden.manifest, { packageDir: vaultwarden.packageDir }), []);
+});
+
+test('manifest validation accepts structured optional catalog presentation metadata', () => {
+  const manifest = validManifest({
+    catalog: {
+      complexity: { description: 'One click.', label: 'Easy setup', level: 'easy' },
+      description: 'A longer description for the app detail view.',
+      features: [
+        'Quick setup',
+        { body: 'Useful for everyday workflows.', title: 'Everyday friendly' },
+      ],
+      links: {
+        docs: 'https://example.com/docs',
+        repository: 'https://example.com/repo',
+        website: 'https://example.com/',
+      },
+      privacy: {
+        notes: ['Runs in your own MOS runtime.'],
+        summary: 'Private by default.',
+      },
+      related: ['another-app'],
+      resourceHint: { description: 'Small service.', label: 'Light resources', level: 'low' },
+      screenshots: [{ alt: 'Example app screenshot', src: 'assets/screenshot.png' }],
+      tags: ['example', 'demo'],
+    },
+  });
+
+  assert.deepEqual(validateAppPackageManifest(manifest), []);
+});
+
+test('manifest validation rejects malformed optional catalog metadata', () => {
+  const manifest = validManifest({
+    catalog: {
+      complexity: { level: 'wizard' },
+      features: [{ body: 'Missing title.' }],
+      links: { forum: 'https://example.com/forum', website: 'ftp://example.com' },
+      related: ['Bad_App'],
+      resourceHint: { level: 'tiny' },
+      tags: ['valid', ''],
+    },
+  });
+
+  assert.deepEqual(validateAppPackageManifest(manifest), [
+    'catalog.tags must be an array of non-empty strings when present.',
+    'catalog.related must be an array of DNS-safe app ids when present.',
+    'catalog.features[0] must be a string or an object with title and optional body.',
+    'catalog.complexity.level must be one of: easy, guided, advanced.',
+    'catalog.resourceHint.level must be one of: low, medium, high.',
+    'catalog.links.forum is not supported.',
+    'catalog.links.website must be an HTTP or HTTPS URL.',
+  ]);
 });
 
 test('manifest validation rejects V1-style unsafe app coupling', () => {

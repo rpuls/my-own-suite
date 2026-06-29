@@ -24,10 +24,11 @@ The old Suite Manager frontend is useful reference material for the shell shape,
 Useful commands from the repo root:
 
 ```powershell
-npm --prefix version-2 run dev:client
-npm --prefix version-2 run build:client
+cmd /c npm --prefix version-2 run dev
 cmd /c npm --prefix version-2 test
 ```
+
+`dev` builds the frontend, starts the backend, and serves Suite Manager at `http://home.localhost:3100/suite-manager/`. Use `home.localhost`, not `127.0.0.1`, because the local backend validates the configured Home host.
 
 ## Persistence
 

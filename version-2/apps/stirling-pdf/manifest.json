@@ -3,8 +3,55 @@
   "name": "Stirling PDF",
   "version": "0.1.0",
   "summary": "Private PDF tools for everyday document tasks.",
-  "category": "tools",
-  "icon": "stirling-pdf",
+  "category": "office",
+  "icon": "icon.png",
+  "catalog": {
+    "description": "Stirling PDF gives you a private toolbox for everyday document work: merge, split, compress, convert, OCR, sign, redact, and automate PDFs without uploading them to random websites.",
+    "tags": [
+      "pdf",
+      "documents",
+      "paperwork",
+      "ocr",
+      "tools",
+      "adobe-acrobat-alternative"
+    ],
+    "features": [
+      {
+        "title": "Fix everyday PDF problems",
+        "body": "Merge, split, compress, rotate, redact, sign, and convert documents from one private web app."
+      },
+      {
+        "title": "Keep sensitive files local",
+        "body": "Run document tools on your own server instead of sending private files to third-party upload sites."
+      },
+      {
+        "title": "Automate repeat work",
+        "body": "Use pipelines for repeatable document workflows when the same manual steps keep coming back."
+      }
+    ],
+    "complexity": {
+      "level": "easy",
+      "label": "Easy setup",
+      "description": "No account, secret, or first-run configuration is needed before MOS starts the app."
+    },
+    "resourceHint": {
+      "level": "low",
+      "label": "Light resources",
+      "description": "A good first app for testing the catalog because it runs as one straightforward web service."
+    },
+    "privacy": {
+      "summary": "PDF processing happens in your own MOS runtime instead of a public upload service.",
+      "notes": [
+        "Persistent app data is kept in package-owned volumes.",
+        "Files you process are not intentionally sent to external PDF services by MOS."
+      ]
+    },
+    "links": {
+      "website": "https://www.stirling.com/",
+      "docs": "https://docs.stirlingpdf.com/",
+      "repository": "https://github.com/Stirling-Tools/Stirling-PDF"
+    }
+  },
   "setup": {
     "fields": []
   },

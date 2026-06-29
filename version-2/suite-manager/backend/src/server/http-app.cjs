@@ -333,6 +333,16 @@ function createV2Server({
         return;
       }
 
+      const appIconMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/icon$/u);
+      if (request.method === 'GET' && appIconMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review app packages.' });
+          return;
+        }
+        fileResponse(response, appPackages.iconPath(decodeURIComponent(appIconMatch[1])));
+        return;
+      }
+
       const appInstallMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/install$/u);
       if (request.method === 'POST' && appInstallMatch) {
         if (!isSignedIn(setup, sessionToken)) {

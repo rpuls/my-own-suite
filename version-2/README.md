@@ -21,7 +21,7 @@ App-owned Dockerfiles should live under `apps/<app>/`. Shared Compose/Caddy temp
 Shared color/style changes start in `branding/styles/mos.css`, then sync to the future site, Suite Manager, and Homepage targets:
 
 ```powershell
-npm --prefix version-2 run branding:sync
+cmd /c npm --prefix version-2 run branding:sync
 ```
 
 ## First Slice
@@ -60,18 +60,18 @@ V2 installer front doors share one bootstrap contract under `scripts/installers/
 Render the current bootstrap shape from the repo root:
 
 ```powershell
-npm --prefix version-2 run install:render -- --target json
-npm --prefix version-2 run install:render -- --target cloud-init --public-ipv4 203.0.113.42
-npm --prefix version-2 run install:render -- --target ssh
-npm --prefix version-2 run install:render -- --target usb
+cmd /c npm --prefix version-2 run install:render -- --target json
+cmd /c npm --prefix version-2 run install:render -- --target cloud-init --public-ipv4 203.0.113.42
+cmd /c npm --prefix version-2 run install:render -- --target ssh
+cmd /c npm --prefix version-2 run install:render -- --target usb
 ```
 
 The V2 DigitalOcean smoke script can create a fresh Droplet and install the V2 control plane:
 
 ```powershell
-npm --prefix version-2 run smoke:do:reset
-npm --prefix version-2 run smoke:do:destroy
-npm --prefix version-2 run smoke:do:render
+cmd /c npm --prefix version-2 run smoke:do:reset
+cmd /c npm --prefix version-2 run smoke:do:destroy
+cmd /c npm --prefix version-2 run smoke:do:render
 ```
 
 `smoke:do:reset` is the paid, user-run path. It creates or replaces a tagged DigitalOcean Droplet, installs the V2 Caddy, Suite Manager, and private Homepage control plane from the selected repo/ref, waits for `/suite-manager/api/setup/status`, and prints the Home and Suite Manager paths. `smoke:do:render` remains the free dry-run path.
@@ -81,7 +81,7 @@ npm --prefix version-2 run smoke:do:render
 From the repo root:
 
 ```powershell
-npm --prefix version-2 test
+cmd /c npm --prefix version-2 test
 ```
 
 This syncs branding and verifies the V2 Suite Manager, SQLite, HTTPS agent, Caddy renderer, installer, and platform contracts without starting Docker, touching installed host services, importing the old Suite Manager app, or changing the current stack.
@@ -100,12 +100,12 @@ The first V2 Suite Manager UI is a small React + Vite app under `suite-manager/f
 From the repo root:
 
 ```powershell
-npm --prefix version-2 run dev:client
-npm --prefix version-2 run build:client
-npm --prefix version-2 run dev:server
+cmd /c npm --prefix version-2 run dev
 ```
 
-The backend serves the built frontend from `suite-manager/frontend/dist/` under `/suite-manager/`, with static assets reserved under `/suite-manager/assets/`. The app covers owner first-run setup, login, responsive Dashboard/Customize/Settings/sign-out navigation, post-install HTTPS setup, revision-aware Homepage YAML editing, guided dashboard links/home services, and the authentication boundary in front of Homepage.
+Open `http://home.localhost:3100/suite-manager/`. The backend rejects `127.0.0.1` by default because V2 validates the configured Home host.
+
+The local command builds the frontend, then starts the backend that serves `suite-manager/frontend/dist/` under `/suite-manager/`, with static assets reserved under `/suite-manager/assets/`. The app covers owner first-run setup, login, responsive Dashboard/Customize/Settings/sign-out navigation, post-install HTTPS setup, revision-aware Homepage YAML editing, guided dashboard links/home services, and the authentication boundary in front of Homepage.
 
 SQLite owns platform, operation, and revision metadata. Durable Homepage YAML owns dashboard layout and user-managed network-service presentation; `services.template.yaml` is editable and `services.yaml` plus the MOS Caddy route snippet are generated projections. Future app packages remain responsible for installation inputs, secrets, dependencies, volumes, provisioning, backup, and lifecycle.
 

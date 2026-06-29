@@ -172,10 +172,12 @@ Exit criteria:
 - Add Homepage tile and Caddy route through existing managed paths.
 - Show install status and useful errors.
 
-Good first app candidates:
+Current V2 branch status:
 
-- Vaultwarden if the current setup helper can be extracted cleanly.
-- A simpler stateless or low-state app if Vaultwarden setup is still too credential-heavy.
+- The local Suite Manager Apps page exists and is backed by repo-owned package manifests.
+- Stirling PDF is the first low-risk package and Vaultwarden is the second package for generated secret setup pressure-testing.
+- App cards now lead to a detail view before install, and the install action has a default-on "show on Homepage after installation" checkbox that controls whether the Homepage projection is applied.
+- Remaining MVP work is lifecycle hardening, especially disable/re-enable/uninstall-with-data-preserved, status recovery, and validation in Hyper-V.
 
 Exit criteria:
 
@@ -227,7 +229,7 @@ Fresh installs can use the new lean default once the catalog MVP is reliable.
 
 - Should catalog state live in Suite Manager's existing persistent state, generated YAML, or both?
 - Should generated Compose be an override file, a full assembled file, or profile-based selection?
-- Which current app is the best first MVP install?
+- Which app should pressure-test the next non-secret assisted setup flow after Stirling PDF and Vaultwarden?
 - What is the minimum uninstall story for alpha: disable route, stop service, remove generated config, preserve volumes?
 - How should app backup inclusion be represented before all apps have rich catalog metadata?
 - Should cloud installs default to public domain guidance, while own-hardware defaults to local-only?

@@ -4,7 +4,53 @@
   "version": "0.1.0",
   "summary": "Private Bitwarden-compatible password management.",
   "category": "security",
-  "icon": "vaultwarden",
+  "icon": "icon.png",
+  "catalog": {
+    "description": "Vaultwarden lets you use the familiar Bitwarden apps with your own private backend for passwords, secure notes, cards, identities, and shared vaults.",
+    "tags": [
+      "passwords",
+      "security",
+      "bitwarden",
+      "password-manager",
+      "family-sharing"
+    ],
+    "features": [
+      {
+        "title": "Use Bitwarden clients",
+        "body": "Connect browser extensions, mobile apps, desktop apps, and the web vault to your own server."
+      },
+      {
+        "title": "Keep vault data encrypted",
+        "body": "Vault data is encrypted by the client before it reaches the server, so the server stores encrypted vault data."
+      },
+      {
+        "title": "Share with family or a team",
+        "body": "Use Bitwarden-compatible organization and collection features for shared credentials when you need them."
+      }
+    ],
+    "complexity": {
+      "level": "guided",
+      "label": "Guided setup",
+      "description": "MOS generates the app admin token, starts Vaultwarden, and then guides you to create the first account."
+    },
+    "resourceHint": {
+      "level": "low",
+      "label": "Light resources",
+      "description": "This first V2 package runs Vaultwarden as one service using its built-in SQLite storage."
+    },
+    "privacy": {
+      "summary": "Vaultwarden stores encrypted vault data on your own server, while your master password remains your responsibility.",
+      "notes": [
+        "Use a strong, unique master password.",
+        "Enable two-factor authentication where possible.",
+        "Keep backups, because losing the app data volume can mean losing the vault."
+      ]
+    },
+    "links": {
+      "repository": "https://github.com/dani-garcia/vaultwarden",
+      "docs": "https://bitwarden.com/help/managing-items/"
+    }
+  },
   "setup": {
     "fields": [
       {

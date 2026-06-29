@@ -356,6 +356,27 @@ class AppPackageService {
     });
   }
 
+  iconPath(packageId) {
+    const packageDir = path.join(this.appsDir, packageId);
+    if (!fs.existsSync(path.join(packageDir, 'manifest.json'))) {
+      throw new AppPackageServiceError('APP_PACKAGE_NOT_FOUND', 'That app package is not available.', 404);
+    }
+    const { manifest } = readAppPackageManifest(packageDir);
+    if (!manifest.icon) {
+      throw new AppPackageServiceError('APP_ICON_NOT_FOUND', 'That app package does not declare an icon.', 404);
+    }
+    const normalized = path.posix.normalize(String(manifest.icon).replace(/\\/gu, '/'));
+    if (normalized.startsWith('../') || normalized === '..' || path.posix.isAbsolute(normalized)) {
+      throw new AppPackageServiceError('APP_ICON_NOT_FOUND', 'That app package icon is not available.', 404);
+    }
+    const iconPath = path.resolve(packageDir, normalized);
+    const relative = path.relative(path.resolve(packageDir), iconPath);
+    if (relative.startsWith('..') || path.isAbsolute(relative) || !fs.existsSync(iconPath) || !fs.statSync(iconPath).isFile()) {
+      throw new AppPackageServiceError('APP_ICON_NOT_FOUND', 'That app package icon is not available.', 404);
+    }
+    return iconPath;
+  }
+
   installPackage(packageId, input = {}) {
     const current = this.store.getAppInstanceByPackageId(packageId);
     if (current) {

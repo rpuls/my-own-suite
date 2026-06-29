@@ -10,6 +10,9 @@ const SUPPORTED_FIELD_TYPES = new Set(['boolean', 'email', 'password', 'select',
 const SUPPORTED_GENERATORS = new Set(['random']);
 const SUPPORTED_GENERATOR_ENCODINGS = new Set(['base64url', 'hex']);
 const SUPPORTED_HEALTH_TYPES = new Set(['http']);
+const SUPPORTED_COMPLEXITY_LEVELS = new Set(['easy', 'guided', 'advanced']);
+const SUPPORTED_RESOURCE_LEVELS = new Set(['low', 'medium', 'high']);
+const CATALOG_LINK_KEYS = new Set(['docs', 'repository', 'website']);
 const RAW_CADDY_PATTERN = /(?:caddyfile|directive|handle|respond|reverse_proxy|route|snippet|tls\s|transport)/iu;
 
 class AppPackageManifestError extends Error {
@@ -26,6 +29,20 @@ function isRecord(value) {
 
 function hasText(value) {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isStringArray(value) {
+  return Array.isArray(value) && value.every((item) => hasText(item));
+}
+
+function safeUrl(value) {
+  if (!hasText(value)) return false;
+  try {
+    const parsed = new URL(value);
+    return ['http:', 'https:'].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
 }
 
 function safeRelativePath(value, label, errors) {
@@ -220,6 +237,114 @@ function validateHealth(manifest, errors) {
   }
 }
 
+function validateCatalog(manifest, errors) {
+  if (manifest.catalog === undefined) return;
+  if (!isRecord(manifest.catalog)) {
+    errors.push('catalog must be an object when present.');
+    return;
+  }
+  const catalog = manifest.catalog;
+
+  if (catalog.description !== undefined && !hasText(catalog.description)) {
+    errors.push('catalog.description must be a non-empty string when present.');
+  }
+  if (catalog.tags !== undefined && !isStringArray(catalog.tags)) {
+    errors.push('catalog.tags must be an array of non-empty strings when present.');
+  }
+  if (catalog.related !== undefined) {
+    if (!Array.isArray(catalog.related) || !catalog.related.every((id) => APP_ID_PATTERN.test(String(id)))) {
+      errors.push('catalog.related must be an array of DNS-safe app ids when present.');
+    }
+  }
+  if (catalog.features !== undefined) {
+    if (!Array.isArray(catalog.features)) {
+      errors.push('catalog.features must be an array when present.');
+    } else {
+      for (const [index, feature] of catalog.features.entries()) {
+        if (hasText(feature)) continue;
+        if (isRecord(feature) && hasText(feature.title) && (feature.body === undefined || hasText(feature.body))) continue;
+        errors.push(`catalog.features[${index}] must be a string or an object with title and optional body.`);
+      }
+    }
+  }
+  if (catalog.complexity !== undefined) {
+    if (!isRecord(catalog.complexity)) {
+      errors.push('catalog.complexity must be an object when present.');
+    } else {
+      if (!SUPPORTED_COMPLEXITY_LEVELS.has(catalog.complexity.level)) {
+        errors.push(`catalog.complexity.level must be one of: ${[...SUPPORTED_COMPLEXITY_LEVELS].join(', ')}.`);
+      }
+      for (const field of ['label', 'description']) {
+        if (catalog.complexity[field] !== undefined && !hasText(catalog.complexity[field])) {
+          errors.push(`catalog.complexity.${field} must be a non-empty string when present.`);
+        }
+      }
+    }
+  }
+  if (catalog.resourceHint !== undefined) {
+    if (!isRecord(catalog.resourceHint)) {
+      errors.push('catalog.resourceHint must be an object when present.');
+    } else {
+      if (!SUPPORTED_RESOURCE_LEVELS.has(catalog.resourceHint.level)) {
+        errors.push(`catalog.resourceHint.level must be one of: ${[...SUPPORTED_RESOURCE_LEVELS].join(', ')}.`);
+      }
+      for (const field of ['label', 'description']) {
+        if (catalog.resourceHint[field] !== undefined && !hasText(catalog.resourceHint[field])) {
+          errors.push(`catalog.resourceHint.${field} must be a non-empty string when present.`);
+        }
+      }
+    }
+  }
+  if (catalog.privacy !== undefined) {
+    if (!isRecord(catalog.privacy)) {
+      errors.push('catalog.privacy must be an object when present.');
+    } else {
+      if (catalog.privacy.summary !== undefined && !hasText(catalog.privacy.summary)) {
+        errors.push('catalog.privacy.summary must be a non-empty string when present.');
+      }
+      if (catalog.privacy.notes !== undefined && !isStringArray(catalog.privacy.notes)) {
+        errors.push('catalog.privacy.notes must be an array of non-empty strings when present.');
+      }
+    }
+  }
+  if (catalog.links !== undefined) {
+    if (!isRecord(catalog.links)) {
+      errors.push('catalog.links must be an object when present.');
+    } else {
+      for (const [key, value] of Object.entries(catalog.links)) {
+        if (!CATALOG_LINK_KEYS.has(key)) {
+          errors.push(`catalog.links.${key} is not supported.`);
+        } else if (!safeUrl(value)) {
+          errors.push(`catalog.links.${key} must be an HTTP or HTTPS URL.`);
+        }
+      }
+    }
+  }
+  if (catalog.screenshots !== undefined) {
+    if (!Array.isArray(catalog.screenshots)) {
+      errors.push('catalog.screenshots must be an array when present.');
+    } else {
+      for (const [index, screenshot] of catalog.screenshots.entries()) {
+        const prefix = `catalog.screenshots[${index}]`;
+        if (!isRecord(screenshot)) {
+          errors.push(`${prefix} must be an object.`);
+          continue;
+        }
+        if (!hasText(screenshot.src)) {
+          errors.push(`${prefix}.src is required.`);
+        } else if (!safeUrl(screenshot.src)) {
+          safeRelativePath(screenshot.src, `${prefix}.src`, errors);
+        }
+        for (const field of ['alt', 'caption']) {
+          if (screenshot[field] !== undefined && !hasText(screenshot[field])) {
+            errors.push(`${prefix}.${field} must be a non-empty string when present.`);
+          }
+        }
+      }
+    }
+  }
+}
+
 function publicOnboarding(manifest) {
   const onboarding = isRecord(manifest.onboarding) ? manifest.onboarding : {};
   const steps = Array.isArray(onboarding.steps) ? onboarding.steps : [];
@@ -235,6 +360,52 @@ function publicOnboarding(manifest) {
   };
 }
 
+function publicCatalog(manifest) {
+  const catalog = isRecord(manifest.catalog) ? manifest.catalog : {};
+  const normalizeFeature = (feature) => {
+    if (hasText(feature)) return { body: '', title: feature };
+    return {
+      body: hasText(feature?.body) ? feature.body : '',
+      title: hasText(feature?.title) ? feature.title : '',
+    };
+  };
+  const complexity = isRecord(catalog.complexity) ? catalog.complexity : {};
+  const resourceHint = isRecord(catalog.resourceHint) ? catalog.resourceHint : {};
+  const privacy = isRecord(catalog.privacy) ? catalog.privacy : {};
+  const links = isRecord(catalog.links) ? catalog.links : {};
+
+  return {
+    complexity: {
+      description: hasText(complexity.description) ? complexity.description : '',
+      label: hasText(complexity.label) ? complexity.label : '',
+      level: SUPPORTED_COMPLEXITY_LEVELS.has(complexity.level) ? complexity.level : '',
+    },
+    description: hasText(catalog.description) ? catalog.description : '',
+    features: Array.isArray(catalog.features) ? catalog.features.map(normalizeFeature).filter((item) => item.title) : [],
+    links: Object.fromEntries(
+      Object.entries(links).filter(([key, value]) => CATALOG_LINK_KEYS.has(key) && safeUrl(value)),
+    ),
+    privacy: {
+      notes: isStringArray(privacy.notes) ? privacy.notes : [],
+      summary: hasText(privacy.summary) ? privacy.summary : '',
+    },
+    related: Array.isArray(catalog.related) ? catalog.related.filter((id) => APP_ID_PATTERN.test(String(id))) : [],
+    resourceHint: {
+      description: hasText(resourceHint.description) ? resourceHint.description : '',
+      label: hasText(resourceHint.label) ? resourceHint.label : '',
+      level: SUPPORTED_RESOURCE_LEVELS.has(resourceHint.level) ? resourceHint.level : '',
+    },
+    screenshots: Array.isArray(catalog.screenshots) ? catalog.screenshots
+      .filter((screenshot) => isRecord(screenshot) && hasText(screenshot.src))
+      .map((screenshot) => ({
+        alt: hasText(screenshot.alt) ? screenshot.alt : '',
+        caption: hasText(screenshot.caption) ? screenshot.caption : '',
+        src: screenshot.src,
+      })) : [],
+    tags: isStringArray(catalog.tags) ? catalog.tags : [],
+  };
+}
+
 function validateAppPackageManifest(manifest, { packageDir = null } = {}) {
   const errors = [];
   if (!isRecord(manifest)) {
@@ -245,12 +416,19 @@ function validateAppPackageManifest(manifest, { packageDir = null } = {}) {
   if (!SEMVERISH_PATTERN.test(String(manifest.version || ''))) errors.push('version must be semver-like.');
   if (!hasText(manifest.summary)) errors.push('summary is required.');
   if (!hasText(manifest.category)) errors.push('category is required.');
+  if (manifest.icon !== undefined) {
+    const icon = safeRelativePath(manifest.icon, 'icon', errors);
+    if (icon && packageDir && !fs.existsSync(path.join(packageDir, icon))) {
+      errors.push('icon points to a missing package file.');
+    }
+  }
 
   validateSetup(manifest, errors);
   const serviceIds = validateResources(manifest, packageDir, errors);
   validateRoutes(manifest, serviceIds, errors);
   validateHomepage(manifest, errors);
   validateHealth(manifest, errors);
+  validateCatalog(manifest, errors);
   assertNoRawCaddy(manifest, errors);
   return errors;
 }
@@ -283,6 +461,7 @@ function publicPackageSummary(manifest, validationErrors = []) {
       type: manifest.health.type || null,
       url: manifest.health.url || null,
     } : null,
+    catalog: publicCatalog(manifest),
     homepage: isRecord(manifest.homepage) ? {
       description: manifest.homepage.description || '',
       group: manifest.homepage.group || '',
@@ -290,6 +469,7 @@ function publicPackageSummary(manifest, validationErrors = []) {
       name: manifest.homepage.name || manifest.name || manifest.id,
     } : null,
     icon: manifest.icon || manifest.homepage?.icon || '',
+    iconUrl: hasText(manifest.icon) ? `/suite-manager/api/apps/packages/${encodeURIComponent(manifest.id || '')}/icon` : '',
     id: manifest.id || '',
     installStatus: 'not-installed',
     name: manifest.name || manifest.id || 'Unknown package',
