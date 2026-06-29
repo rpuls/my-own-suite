@@ -233,6 +233,7 @@ function AppIcon({ app, large = false }: { app: AppPackageSummary; large?: boole
 }
 
 function AppCard({ app, onOpen }: { app: AppPackageSummary; onOpen: (app: AppPackageSummary) => void }) {
+  const installed = app.installStatus === 'installed' || Boolean(app.instance);
   return <article className="suite-app-card">
     <button className="suite-app-card-main" onClick={() => onOpen(app)} type="button">
       <AppIcon app={app} />
@@ -245,6 +246,7 @@ function AppCard({ app, onOpen }: { app: AppPackageSummary; onOpen: (app: AppPac
       </span>
     </button>
     <div className="suite-app-card-actions">
+      {installed ? <span className="suite-app-installed-indicator">Installed<span aria-hidden="true" /></span> : null}
       <button className="mos-btn mos-btn-primary" onClick={() => onOpen(app)} type="button">View</button>
     </div>
   </article>;

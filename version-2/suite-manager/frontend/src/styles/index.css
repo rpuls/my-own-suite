@@ -457,7 +457,28 @@
 }
 
 .suite-app-card-actions {
+  flex-direction: column;
+  align-items: flex-end;
   justify-content: flex-end;
+}
+
+.suite-app-installed-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  color: rgba(205, 216, 231, 0.78);
+  font-size: var(--mos-text-label);
+  font-weight: 800;
+  letter-spacing: var(--mos-letter-spacing-label);
+  text-transform: uppercase;
+}
+
+.suite-app-installed-indicator span {
+  width: 0.56rem;
+  height: 0.56rem;
+  border-radius: 50%;
+  background: var(--mos-color-accent);
+  box-shadow: 0 0 0 4px rgba(99, 226, 179, 0.12);
 }
 
 .suite-app-status,
@@ -977,7 +998,10 @@
   .suite-app-related-list button {
     grid-template-columns: 1fr;
   }
-  .suite-app-card-actions { justify-content: flex-start; }
+  .suite-app-card-actions {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
   .suite-app-icon { width: 4.75rem; height: 4.75rem; }
   .suite-app-detail {
     width: 100%;
