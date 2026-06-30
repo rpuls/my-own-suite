@@ -172,8 +172,22 @@ function publicInstance(instance, projections = [], configRows = []) {
   };
 }
 
+function resolveInsideSecretDir(secretDir, target) {
+  const root = path.resolve(secretDir);
+  const resolved = path.resolve(target);
+  const relative = path.relative(root, resolved);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new AppPackageServiceError(
+      'APP_SECRET_UNAVAILABLE',
+      'A required app secret is unavailable. Restore the app secret before applying this runtime.',
+      409,
+    );
+  }
+  return resolved;
+}
+
 function secretFilePath(secretDir, instanceId, key) {
-  return path.join(secretDir, instanceId, `${key}.secret`);
+  return resolveInsideSecretDir(secretDir, path.join(secretDir, instanceId, `${key}.secret`));
 }
 
 function writeSecretFile(secretDir, instanceId, key, value) {
@@ -188,8 +202,22 @@ function writeSecretFile(secretDir, instanceId, key, value) {
   return target;
 }
 
-function readSecretValue(secretRef) {
-  return fs.readFileSync(secretRef, 'utf8');
+function readSecretValue(secretDir, secretRef) {
+  try {
+    const resolved = resolveInsideSecretDir(secretDir, secretRef);
+    const stat = fs.statSync(resolved);
+    if (!stat.isFile()) {
+      throw new Error('APP_SECRET_NOT_FILE');
+    }
+    return fs.readFileSync(resolved, 'utf8');
+  } catch (error) {
+    if (error instanceof AppPackageServiceError) throw error;
+    throw new AppPackageServiceError(
+      'APP_SECRET_UNAVAILABLE',
+      'A required app secret is unavailable. Restore the app secret before applying this runtime.',
+      409,
+    );
+  }
 }
 
 function createConfigRows({ input = {}, instanceId, manifest, secretDir }) {
@@ -292,7 +320,7 @@ class AppPackageService {
 
     const projections = this.store.getAppProjections(instance.id);
     const configRows = this.store.getAppConfig(instance.id).map((row) => (
-      row.secretRef ? { ...row, rawValue: readSecretValue(row.secretRef) } : row
+      row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
     ));
     const composeProjection = projections.find((projection) => projection.kind === 'compose');
     const caddyProjection = projections.find((projection) => projection.kind === 'caddy');

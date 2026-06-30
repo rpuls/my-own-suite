@@ -34,13 +34,14 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Reviewed the first app lifecycle architecture before adding more packages; kept separate Homepage and app Caddy route ownership, then tightened the app agent so package route writes are package-scoped blocks and runtime environment values come from package projections instead of Stirling-shaped hardcoding.
 - [x] Added Vaultwarden as the second V2 app package to validate the package contract beyond Stirling: manifests can declare generated setup values, Suite Manager persists app config with redacted secret references and fingerprints, public projections keep secret placeholders, and runtime apply materializes generated secrets only for the app-agent request.
 - [x] Reworked the Apps page into a calm local catalog: one search field, larger package icons from package-root `icon.png`, category pills, detail-first card actions, structured catalog presentation metadata, related apps, advanced technical details behind disclosure, and a default-on install checkbox that controls whether the app is added to Homepage after runtime apply.
+- [x] Hardened the first V2 generated-secret boundary: runtime apply now resolves app secrets only from the configured Suite Manager app secret directory, fails with a controlled `APP_SECRET_UNAVAILABLE` lifecycle error when a secret file is missing/unreadable/outside that directory, and avoids calling the app agent or returning secret paths in that state.
 
 ### Current Next Slice
 
 Build the next real V2 vertical slice inside `version-2/`:
 
 1. Verify the current Apps catalog install flow in Hyper-V, including Stirling PDF, Vaultwarden, app icons, detail-first install, and the default-on/off Homepage shortcut checkbox.
-2. Immediately after that verification, harden V2 secret management before expanding the app package surface further. The current restricted-file secret storage is an early recoverable-secret mechanism, not the final secret management system.
+2. Continue hardening V2 secret management before expanding the app package surface further. The current restricted-file secret storage now has a controlled materialization failure boundary, but it is still an early recoverable-secret mechanism rather than the final secret management system.
 3. Continue hardening the narrow app lifecycle agent apply path around Stirling PDF and Vaultwarden, especially lifecycle state, disable/re-enable/uninstall-with-data-preserved, and richer user-facing setup/onboarding rendering.
 4. Convert any remaining temporary V2 roadmap/checklist state into GitHub Issues before merging the branch.
 5. Keep public internet exposure outside the facilitated private LAN HTTPS flow; cloud/external-provider installs should continue to point custom-domain HTTPS work to the provider guide.
@@ -330,7 +331,7 @@ Secret handling:
 Current V2 caveat:
 
 - The first Vaultwarden slice uses restricted Suite Manager state-directory files for recoverable runtime secrets, with SQLite storing only references, redacted labels, and fingerprints. This is intentionally a small generic mechanism to validate package runtime needs; it is not the final MOS secret management system.
-- Before adding more secret-bearing packages, harden this area into an explicit secret-management subsystem. Evaluate encrypted-at-rest secret files or a local secret-store agent, backup/restore semantics, rotation/reveal policy, diagnostics redaction tests, permissions ownership, and failure behavior when a secret is missing or unreadable.
+- Before adding more secret-bearing packages, harden this area into an explicit secret-management subsystem. Evaluate encrypted-at-rest secret files or a local secret-store agent, backup/restore semantics, rotation/reveal policy, diagnostics redaction tests, permissions ownership, and operator recovery when a secret is missing or unreadable.
 
 Package apply and projections:
 
@@ -360,6 +361,7 @@ Second package findings from Vaultwarden:
 - Generated setup values belong in manifest field definitions, with random secret generation happening at logical install time so projections and fingerprints are stable for later apply.
 - Raw generated secrets should not be stored in broad SQLite rows or returned by package APIs. The current smallest mechanism stores raw values in Suite Manager state-directory secret files and stores only secret references, redacted labels, and fingerprints in `app_instance_config`.
 - Public Compose projections may contain secret placeholders such as `${secret.adminToken}`. The app-agent request materializes those placeholders only at runtime apply, preserving redacted API responses while keeping the agent generic.
+- Secret references now fail closed during runtime apply if the backing file cannot be resolved under the configured app secret directory. This keeps missing-secret and path-tamper states out of the app agent and out of raw HTTP errors.
 - App-specific environment variables can stay declarative in `resources.services.<service>.env`; generic placeholder resolution covers `${app.publicUrl}`, `${config.<field>}`, and `${secret.<field>}` without app-specific Suite Manager or Caddy/Homepage code.
 - Post-install guidance can start as package-owned `onboarding.steps` metadata. A polished generated onboarding UI, show-once secret reveal, token rotation, and completion checks should be separate follow-up work.
 - Secret management is the next architectural pressure point after Vaultwarden runtime validation, not catalog growth. Do not treat the current file-backed mechanism as final just because the tests are green.

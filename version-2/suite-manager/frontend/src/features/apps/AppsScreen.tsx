@@ -127,6 +127,48 @@ function descriptionFor(app: AppPackageSummary) {
   return app.catalog.description || app.homepage?.description || app.summary;
 }
 
+function powershellSingleQuote(value: string) {
+  return `'${value.replace(/'/gu, "''")}'`;
+}
+
+function hypervHostsRepairCommand(packages: AppPackageSummary[]) {
+  const hostBase = baseHost();
+  const names = new Set([`home.${hostBase}`]);
+  for (const app of packages) {
+    for (const route of app.routes) {
+      if (route.host) names.add(`${route.host}.${hostBase}`);
+    }
+  }
+  const hostsLiteral = `@(${[...names].sort().map(powershellSingleQuote).join(', ')})`;
+  const homeHost = powershellSingleQuote(`home.${hostBase}`);
+
+  return `$ErrorActionPreference='Stop'
+$hostsPath="$env:SystemRoot\\System32\\drivers\\etc\\hosts"
+$start='# BEGIN MOS V2 HYPERV USB SMOKE'
+$end='# END MOS V2 HYPERV USB SMOKE'
+$names=${hostsLiteral}
+$home=${homeHost}
+$ip=(Resolve-DnsName $home -Type A | Select-Object -First 1 -ExpandProperty IPAddress)
+$content=Get-Content -Path $hostsPath
+$next=New-Object System.Collections.Generic.List[string]
+$inside=$false
+foreach ($line in $content) {
+  if ($line -eq $start) { $inside=$true; continue }
+  if ($line -eq $end) { $inside=$false; continue }
+  if ($inside) { continue }
+  $matches=$false
+  foreach ($name in $names) {
+    if ($line -match "^\\s*\\S+\\s+$([regex]::Escape($name))(\\s|$)") { $matches=$true; break }
+  }
+  if (-not $matches) { $next.Add($line) }
+}
+$next.Add($start)
+foreach ($name in $names) { $next.Add("$ip $name") }
+$next.Add($end)
+Set-Content -Path $hostsPath -Value $next -Encoding ASCII
+ipconfig /flushdns`;
+}
+
 function defaultInstallSteps(showOnHomepage = true): InstallStep[] {
   return [
     { detail: 'Saving the app choice and generating any safe defaults.', id: 'prepare', label: 'Preparing app', status: 'pending' },
@@ -366,6 +408,7 @@ export function AppsScreen() {
   useEffect(() => { void load(); }, []);
 
   const selected = packages.find((app) => app.id === selectedId) || null;
+  const hostsRepairCommand = useMemo(() => hypervHostsRepairCommand(packages), [packages]);
 
   const filtered = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -483,6 +526,14 @@ export function AppsScreen() {
     {!loading && !error && filtered.length ? <div className="suite-app-grid">
       {filtered.map((app) => <AppCard app={app} key={app.id} onOpen={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} />)}
     </div> : null}
+
+    {!loading && !error && packages.length ? <details className="suite-advanced suite-app-advanced">
+      <summary>Advanced details</summary>
+      <dl>
+        <dt>Hyper-V hosts repair</dt>
+        <dd><pre>{hostsRepairCommand}</pre></dd>
+      </dl>
+    </details> : null}
 
     {selected ? <AppDetail app={selected} installing={installingId === selected.id} installError={installError} installSteps={installingId === selected.id || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onInstall={(target, options) => void performInstall(target, options)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} packages={packages} /> : null}
   </section>;

@@ -31,10 +31,10 @@ Runtime environment values are projected generically from manifest fields:
 - `SIGNUPS_ALLOWED=true`
 - `WEBSOCKET_ENABLED=true`
 
-Suite Manager must not return the raw admin token in package listings, install responses, logs, or projection previews.
+Suite Manager must not return the raw admin token in package listings, install responses, logs, or projection previews. Runtime apply resolves the secret only from the configured MOS app secret directory. If the secret file is missing, unreadable, or outside that directory, Suite Manager returns a controlled `APP_SECRET_UNAVAILABLE` lifecycle error without calling the app agent or exposing the secret path.
 
 ## Secret Management Caveat
 
-The current file-backed secret storage is a V2 package-contract proving step, not the final MOS secret management system. Vaultwarden needs a recoverable admin token so the runtime can be reapplied, restarted, or updated with the same value, but this first slice only separates raw secret material from broad SQLite state and public APIs.
+The current file-backed secret storage is a V2 package-contract proving step, not the final MOS secret management system. Vaultwarden needs a recoverable admin token so the runtime can be reapplied, restarted, or updated with the same value, but this first slice only separates raw secret material from broad SQLite state and public APIs, then fails closed when the secret cannot be materialized.
 
-After Vaultwarden is verified to install and run in Hyper-V, the next package-platform task should harden this into an explicit secret-management subsystem before adding more secret-bearing app packages. That follow-up should cover encrypted-at-rest storage or a local secret-store agent, rotation/reveal rules, backup/restore behavior, permission ownership, missing-secret recovery, and expanded redaction tests.
+After Vaultwarden is verified to install and run in Hyper-V, a later package-platform task should harden this into an explicit secret-management subsystem before adding more secret-bearing app packages. That follow-up should cover encrypted-at-rest storage or a local secret-store agent, rotation/reveal rules, backup/restore behavior, permission ownership, operator recovery, and expanded redaction tests.

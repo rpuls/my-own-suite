@@ -423,6 +423,41 @@ test('Vaultwarden install generates a redacted secret and materializes it only f
   }, { appAgent, homeHost: 'home.test' });
 });
 
+test('Vaultwarden runtime apply returns a controlled redacted error when its secret file is missing', async () => {
+  const stateDir = await tempStateDir();
+  const calls = [];
+  const appAgent = {
+    async apply(input) {
+      calls.push(input);
+      return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const installed = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    const instance = installed.json().instance;
+    const secretPath = path.join(stateDir, 'app-secrets', instance.id, 'adminToken.secret');
+    await fs.rm(secretPath, { force: true });
+
+    const applied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+    const body = applied.json();
+
+    assert.equal(applied.status, 409);
+    assert.equal(body.code, 'APP_SECRET_UNAVAILABLE');
+    assert.equal(body.error, 'A required app secret is unavailable. Restore the app secret before applying this runtime.');
+    assert.equal(calls.length, 0);
+    assert.doesNotMatch(applied.body, /adminToken\.secret/u);
+    assert.doesNotMatch(applied.body, new RegExp(instance.id, 'u'));
+  }, { appAgent, homeHost: 'home.test', stateDir });
+});
+
 test('Installed app packages can apply their runtime through the app agent boundary', async () => {
   const stirlingPort = loopbackPortFor('stirling-pdf');
   const calls = [];

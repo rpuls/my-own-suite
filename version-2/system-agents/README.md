@@ -25,3 +25,5 @@ Homepage restarts have a dedicated 60-second deadline rather than the generic 20
 `apps/agent.cjs` runs over `/run/mos-v2-app-agent/agent.sock`. The first disposable capability is intentionally narrow: it accepts one validated app-package service projection, builds the package-owned Dockerfile under `version-2/apps/<app-id>/`, starts one Docker container on the assigned loopback port, writes `/etc/caddy/mos-v2-app-routes.caddy`, reloads Caddy, and waits for the loopback health endpoint.
 
 Suite Manager owns app install intent and SQLite projection state. The app agent owns privileged Docker, Caddy route writes, and health probing. It does not accept arbitrary package paths, Docker commands, Caddy snippets, or multi-service lifecycle requests.
+
+Secret material is resolved before the request crosses into the app agent. Suite Manager stores raw generated package secrets only in its restricted app secret directory and sends materialized environment values to the agent for the single apply request. If a secret reference is missing, unreadable, or outside that directory, runtime apply fails with `APP_SECRET_UNAVAILABLE` before the agent is called.
