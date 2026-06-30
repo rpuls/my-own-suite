@@ -482,8 +482,7 @@
   box-shadow: 0 0 0 4px rgba(99, 226, 179, 0.12);
 }
 
-.suite-app-status,
-.suite-app-homepage-state {
+.suite-app-status {
   display: inline-flex;
   align-items: center;
   width: fit-content;
@@ -498,8 +497,7 @@
   letter-spacing: var(--mos-letter-spacing-label);
 }
 
-.suite-app-status.is-ready,
-.suite-app-homepage-state.is-on {
+.suite-app-status.is-ready {
   border-color: rgba(99, 226, 179, 0.46);
   background: rgba(99, 226, 179, 0.1);
   color: var(--mos-color-text-strong);
@@ -585,8 +583,8 @@
 
 .suite-app-detail-close {
   position: absolute;
-  top: 0;
-  right: 0;
+  top: var(--mos-space-6);
+  right: var(--mos-space-6);
 }
 
 .suite-app-detail-heading {
@@ -595,11 +593,20 @@
   padding-right: 3.5rem;
 }
 
+.suite-app-detail-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mos-space-3);
+}
+
 .suite-app-detail-heading h2 {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   color: var(--mos-color-text-strong);
   font-size: 2rem;
   line-height: var(--mos-line-height-tight);
+  overflow-wrap: anywhere;
 }
 
 .suite-app-detail-heading p,
@@ -807,20 +814,6 @@
   grid-template-columns: minmax(8rem, auto) 1fr;
 }
 
-.suite-app-host-command {
-  margin: 0;
-  max-width: 100%;
-  overflow-x: auto;
-  padding: var(--mos-space-3);
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: var(--mos-radius-sm);
-  background: rgba(5, 14, 24, 0.5);
-  color: var(--mos-color-text);
-  font-size: var(--mos-text-small);
-  line-height: 1.5;
-  white-space: pre-wrap;
-}
-
 .suite-settings {
   display: grid;
   gap: var(--mos-space-6);
@@ -1010,7 +1003,14 @@
   }
   .suite-app-detail-hero { padding: var(--mos-space-5) var(--mos-space-4); }
   .suite-app-detail-scroll { padding: var(--mos-space-4) var(--mos-space-4) var(--mos-space-5); }
+  .suite-app-detail-close {
+    top: var(--mos-space-5);
+    right: var(--mos-space-4);
+  }
   .suite-app-detail-heading { padding-right: 3.25rem; }
+  .suite-app-detail-title-row {
+    align-items: flex-start;
+  }
   .suite-app-facts,
   .suite-app-feature-grid {
     grid-template-columns: 1fr;

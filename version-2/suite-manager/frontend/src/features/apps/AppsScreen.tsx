@@ -103,7 +103,7 @@ function appUrl(app: AppPackageSummary) {
 function statusFor(app: AppPackageSummary) {
   if (!app.validation.valid) return { className: 'is-attention', label: 'Unavailable', tone: 'warning' };
   if (app.installStatus === 'failed' || app.instance?.status === 'failed') return { className: 'is-attention', label: 'Needs attention', tone: 'error' };
-  if (runtimeApplied(app)) return { className: 'is-ready', label: 'Ready', tone: 'success' };
+  if (runtimeApplied(app)) return { className: 'is-ready', label: 'Running', tone: 'success' };
   if (app.installStatus === 'installed') return { className: 'is-progress', label: 'Finishing setup', tone: 'info' };
   if (app.setup.fields.some((field) => field.required && !field.generated)) return { className: 'is-setup', label: 'Needs setup', tone: 'info' };
   return { className: 'is-available', label: 'Available', tone: 'info' };
@@ -131,12 +131,12 @@ function defaultInstallSteps(showOnHomepage = true): InstallStep[] {
   return [
     { detail: 'Saving the app choice and generating any safe defaults.', id: 'prepare', label: 'Preparing app', status: 'pending' },
     { detail: 'Building and starting the app through the MOS runtime agent.', id: 'runtime', label: 'Starting app', status: 'pending' },
-    {
+    ...(showOnHomepage ? [{
       detail: showOnHomepage ? 'Adding a clean shortcut to your private Homepage.' : 'Leaving Homepage unchanged for now.',
       id: 'homepage',
       label: 'Homepage shortcut',
       status: 'pending',
-    },
+    } satisfies InstallStep] : []),
     { detail: 'The app is ready to open.', id: 'ready', label: 'Ready', status: 'pending' },
   ];
 }
@@ -161,33 +161,6 @@ async function withMinimumInstallStep<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-function psSingleQuoted(value: string) {
-  return `'${value.replace(/'/g, "''")}'`;
-}
-
-function windowsHostsCommand(app: AppPackageSummary) {
-  const homeHost = typeof window === 'undefined' ? 'home.mos.home' : window.location.hostname;
-  const appHosts = app.routes.map((route) => `${route.host}.${baseHost()}`);
-  if (!appHosts.length) return '';
-  const hostsLiteral = `@(${[homeHost, ...appHosts].map(psSingleQuoted).join(',')})`;
-  return [
-    `$hostsPath="$env:SystemRoot\\System32\\drivers\\etc\\hosts"`,
-    `$start="# BEGIN MOS V2 HYPERV USB SMOKE"`,
-    `$end="# END MOS V2 HYPERV USB SMOKE"`,
-    `$names=${hostsLiteral}`,
-    `$ip=(Resolve-DnsName ${psSingleQuoted(homeHost)} -Type A | Select-Object -First 1 -ExpandProperty IPAddress)`,
-    `$lines=@(Get-Content -Path $hostsPath)`,
-    `$next=New-Object System.Collections.Generic.List[string]`,
-    `$inside=$false`,
-    `foreach ($line in $lines) { if ($line -eq $start) { $inside=$true; continue }; if ($line -eq $end) { $inside=$false; continue }; if ($inside) { continue }; $drop=$false; foreach ($name in $names) { if ($line -match ("^\\s*\\S+\\s+" + [regex]::Escape($name) + "(\\s|$)")) { $drop=$true; break } }; if (-not $drop) { [void]$next.Add($line) } }`,
-    `[void]$next.Add($start)`,
-    `foreach ($name in $names) { [void]$next.Add("$ip $name") }`,
-    `[void]$next.Add($end)`,
-    `Set-Content -Path $hostsPath -Value $next`,
-    `ipconfig /flushdns`,
-  ].join('; ');
-}
-
 async function jsonResponse<T>(response: Response, fallback: string): Promise<T> {
   const body = await response.json().catch(() => ({})) as T & { error?: string };
   if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : fallback);
@@ -209,7 +182,6 @@ function InstallProgress({ error, steps }: { error: string; steps: InstallStep[]
 
 function AdvancedDetails({ app }: { app: AppPackageSummary }) {
   const projections = app.instance?.projections || [];
-  const hostCommand = windowsHostsCommand(app);
   return <details className="suite-advanced suite-app-advanced">
     <summary>Advanced details</summary>
     <dl>
@@ -221,7 +193,6 @@ function AdvancedDetails({ app }: { app: AppPackageSummary }) {
       <dt>Health</dt><dd>{app.health ? `${app.health.type}: ${app.health.url}` : 'None'}</dd>
       <dt>Projections</dt><dd>{projections.length ? projections.map((projection) => `${projection.kind}: ${projection.status}`).join(', ') : 'Rendered during install'}</dd>
       {app.instance?.config?.length ? <><dt>Config</dt><dd>{app.instance.config.map((item) => `${item.key}: ${item.secret ? item.redactedLabel || 'secret stored' : item.value}`).join(', ')}</dd></> : null}
-      {hostCommand ? <><dt>Windows hosts helper</dt><dd><pre className="suite-app-host-command"><code>{hostCommand}</code></pre></dd></> : null}
     </dl>
   </details>;
 }
@@ -292,8 +263,10 @@ function AppDetail({
         <button aria-label="Close app details" className="suite-icon-button suite-app-detail-close" onClick={onClose} type="button"><Icon name="x" /></button>
         <AppIcon app={app} large />
         <div className="suite-app-detail-heading">
-          <span className={`suite-app-status ${status.className}`}>{status.label}</span>
-          <h2>{app.name}</h2>
+          <div className="suite-app-detail-title-row">
+            <h2>{app.name}</h2>
+            <span className={`suite-app-status ${status.className}`}>{status.label}</span>
+          </div>
           <p>{descriptionFor(app)}</p>
         </div>
         <div className="suite-app-primary-actions">
@@ -458,11 +431,7 @@ export function AppsScreen() {
         setInstallSteps((steps) => setStep(steps, 'runtime', 'skipped'));
       }
 
-      if (!showOnHomepage) {
-        setInstallSteps((steps) => setStep(steps, 'homepage', 'running'));
-        await withMinimumInstallStep(async () => undefined);
-        setInstallSteps((steps) => setStep(steps, 'homepage', 'skipped'));
-      } else if (!homepageApplied(current)) {
+      if (showOnHomepage && !homepageApplied(current)) {
         setInstallSteps((steps) => setStep(steps, 'homepage', 'running'));
         const homepage = await withMinimumInstallStep(async () =>
           jsonResponse<{ instance: AppPackageSummary['instance'] }>(
@@ -472,7 +441,7 @@ export function AppsScreen() {
         );
         current = { ...current, instance: homepage.instance };
         setInstallSteps((steps) => setStep(steps, 'homepage', 'complete'));
-      } else {
+      } else if (showOnHomepage) {
         setInstallSteps((steps) => setStep(steps, 'homepage', 'running'));
         await withMinimumInstallStep(async () => undefined);
         setInstallSteps((steps) => setStep(steps, 'homepage', 'skipped'));
