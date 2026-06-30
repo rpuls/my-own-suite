@@ -484,6 +484,37 @@ class SuiteManagerStore {
     });
   }
 
+  recordAppHealthCheck({ at, errorCode = null, healthy, instanceId, operationId, request = {} }) {
+    this.transaction(() => {
+      const projection = this.database.prepare(`
+        SELECT digest
+        FROM app_instance_projections
+        WHERE instance_id = ? AND kind = 'health'
+      `).get(instanceId);
+      if (!projection) {
+        throw new Error('App projection health was not found.');
+      }
+      this.database.prepare(`
+        UPDATE app_instance_projections
+        SET applied_digest = CASE WHEN ? THEN digest ELSE applied_digest END,
+            status = ?,
+            updated_at = ?
+        WHERE instance_id = ? AND kind = 'health'
+      `).run(healthy ? 1 : 0, healthy ? 'applied' : 'failed', at, instanceId);
+      this.database.prepare(`
+        INSERT INTO app_operations (
+          id, instance_id, kind, status, error_code, request_json, started_at, completed_at
+        )
+        VALUES (?, ?, 'validate', ?, ?, ?, ?, ?)
+      `).run(operationId, instanceId, healthy ? 'succeeded' : 'failed', errorCode, JSON.stringify(request), at, at);
+      this.database.prepare(`
+        UPDATE app_instances
+        SET updated_at = ?
+        WHERE id = ?
+      `).run(at, instanceId);
+    });
+  }
+
   installAppInstance({ at, config = [], instance, operationId, projections, request = {} }) {
     this.transaction(() => {
       this.database.prepare(`

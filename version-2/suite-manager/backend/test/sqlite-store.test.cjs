@@ -176,6 +176,63 @@ test('app instance state stays package-generic and stores projection digests', a
   store.close();
 });
 
+test('app health refresh records validation operations and projection truth', async () => {
+  const store = new SuiteManagerStore(await tempStateDir());
+  const at = '2026-06-27T10:00:00.000Z';
+  store.installAppInstance({
+    at,
+    instance: {
+      categorySnapshot: 'tools',
+      displayNameSnapshot: 'Example App',
+      id: 'instance-one',
+      manifestDigest: 'sha256:manifest',
+      packageId: 'example-app',
+      packageVersion: '0.1.0',
+    },
+    operationId: 'operation-one',
+    projections: [
+      { contentJson: '{"target":"http://127.0.0.1:18123/health","type":"http"}', digest: 'sha256:health', kind: 'health' },
+    ],
+    request: { dryRunOnly: true },
+  });
+
+  store.recordAppHealthCheck({
+    at: '2026-06-27T10:05:00.000Z',
+    errorCode: 'APP_HEALTH_FAILED',
+    healthy: false,
+    instanceId: 'instance-one',
+    operationId: 'operation-two',
+    request: { target: 'health' },
+  });
+  assert.deepEqual(store.getAppProjections('instance-one').map(({ appliedDigest, kind, status }) => ({ appliedDigest, kind, status })), [
+    { appliedDigest: null, kind: 'health', status: 'failed' },
+  ]);
+
+  store.recordAppHealthCheck({
+    at: '2026-06-27T10:06:00.000Z',
+    healthy: true,
+    instanceId: 'instance-one',
+    operationId: 'operation-three',
+    request: { target: 'health' },
+  });
+  assert.deepEqual(store.getAppProjections('instance-one').map(({ appliedDigest, digest, kind, status }) => ({
+    applied: appliedDigest === digest,
+    kind,
+    status,
+  })), [
+    { applied: true, kind: 'health', status: 'applied' },
+  ]);
+
+  const operations = store.database.prepare(`
+    SELECT error_code AS errorCode, kind, status FROM app_operations WHERE kind = 'validate' ORDER BY started_at
+  `).all().map((row) => ({ errorCode: row.errorCode, kind: row.kind, status: row.status }));
+  assert.deepEqual(operations, [
+    { errorCode: 'APP_HEALTH_FAILED', kind: 'validate', status: 'failed' },
+    { errorCode: null, kind: 'validate', status: 'succeeded' },
+  ]);
+  store.close();
+});
+
 test('failed HTTPS apply retains the previously active configuration', async () => {
   const store = new SuiteManagerStore(await tempStateDir());
   store.beginHttpsApply({ acmeEmail: 'first@example.com', at: 'one', baseDomain: 'first.example.com' });

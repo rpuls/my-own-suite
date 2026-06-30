@@ -370,6 +370,66 @@ class AppPackageService {
     };
   }
 
+  async refreshPackageRuntimeStatus(packageId) {
+    if (!this.agent) {
+      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
+    }
+    const instance = this.store.getAppInstanceByPackageId(packageId);
+    if (!instance || instance.status !== 'installed') {
+      throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before checking its runtime.', 409);
+    }
+
+    const projections = this.store.getAppProjections(instance.id);
+    const healthProjection = projections.find((projection) => projection.kind === 'health');
+    if (!healthProjection) {
+      throw new AppPackageServiceError('APP_RUNTIME_PROJECTION_MISSING', 'This app is missing runtime projections.', 409);
+    }
+
+    const at = this.now().toISOString();
+    const operationId = crypto.randomUUID();
+    const request = {
+      packageId: instance.packageId,
+      projectionDigest: healthProjection.digest,
+      target: 'health',
+    };
+
+    try {
+      const result = await this.agent.checkHealth({
+        health: healthProjection.content,
+        packageId: instance.packageId,
+      });
+      this.store.recordAppHealthCheck({
+        at,
+        healthy: true,
+        instanceId: instance.id,
+        operationId,
+        request,
+      });
+      return {
+        agent: result,
+        instance: publicInstance(
+          this.store.getAppInstanceByPackageId(packageId),
+          this.store.getAppProjections(instance.id),
+          this.store.getAppConfig(instance.id),
+        ),
+      };
+    } catch (error) {
+      this.store.recordAppHealthCheck({
+        at,
+        errorCode: error.code || 'APP_HEALTH_CHECK_FAILED',
+        healthy: false,
+        instanceId: instance.id,
+        operationId,
+        request,
+      });
+      throw new AppPackageServiceError(
+        'APP_HEALTH_FAILED',
+        'The app runtime health check failed.',
+        502,
+      );
+    }
+  }
+
   listPackages() {
     const instancesByPackage = new Map(this.store.getAppInstances().map((instance) => [instance.packageId, instance]));
     return inspectAppPackages(this.appsDir).map((summary) => {

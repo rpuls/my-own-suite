@@ -9,6 +9,7 @@ const APP_ROUTES_PATH = process.env.MOS_V2_APP_ROUTES_PATH || '/etc/caddy/mos-v2
 const CADDY_BINARY = process.env.MOS_V2_CADDY_BINARY || '/usr/local/libexec/mos-v2/caddy';
 const DOCKER_BINARY = process.env.MOS_V2_DOCKER_BINARY || '/usr/bin/docker';
 const HEALTH_TIMEOUT_MS = 90_000;
+const HEALTH_REFRESH_TIMEOUT_MS = 5_000;
 const EMPTY_APP_ROUTES = '# No app runtime routes.\n';
 
 const FAILURE_MESSAGES = {
@@ -200,11 +201,21 @@ class SystemAppAdapter {
       throw new AppApplyError(stage);
     }
   }
+
+  async checkAppHealth({ healthTarget }) {
+    try {
+      await this.waitForReady(healthTarget, { deadlineMs: HEALTH_REFRESH_TIMEOUT_MS });
+      return { status: 'healthy' };
+    } catch {
+      throw new AppApplyError('health');
+    }
+  }
 }
 
 module.exports = {
   APP_ROUTES_PATH,
   AppApplyError,
+  HEALTH_REFRESH_TIMEOUT_MS,
   HEALTH_TIMEOUT_MS,
   SystemAppAdapter,
   atomicWrite,

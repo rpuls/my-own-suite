@@ -4,7 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { SystemAppAdapter, upsertAppRouteBlock } = require('./system-adapter.cjs');
+const { HEALTH_REFRESH_TIMEOUT_MS, SystemAppAdapter, upsertAppRouteBlock } = require('./system-adapter.cjs');
 
 async function tempDir() {
   return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-v2-app-agent-'));
@@ -72,4 +72,21 @@ http://first-app.mos.home {
   assert.match(next, /mos-v2-app-route:start second-app/u);
   assert.match(next, /127\.0\.0\.1:18101/u);
   assert.match(next, /127\.0\.0\.1:18102/u);
+});
+
+test('system adapter checks app health with a short refresh budget', async () => {
+  const calls = [];
+  const adapter = new SystemAppAdapter({
+    async waitForReady(url, options) {
+      calls.push({ options, url });
+    },
+  });
+
+  const result = await adapter.checkAppHealth({ healthTarget: 'http://127.0.0.1:18123/health' });
+
+  assert.equal(result.status, 'healthy');
+  assert.deepEqual(calls, [{
+    options: { deadlineMs: HEALTH_REFRESH_TIMEOUT_MS },
+    url: 'http://127.0.0.1:18123/health',
+  }]);
 });

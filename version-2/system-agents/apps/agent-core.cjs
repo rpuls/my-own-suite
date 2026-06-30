@@ -76,6 +76,26 @@ function assertRuntimeRequest(input) {
   return { route, service };
 }
 
+function assertHealthCheckRequest(input) {
+  if (!exactKeys(input, ['health', 'packageId'])) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app health fields are accepted.');
+  }
+  assertString(input.packageId, 'packageId', PACKAGE_ID_PATTERN);
+  if (input.health?.type !== 'http' || typeof input.health?.target !== 'string') {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The app health projection is invalid.');
+  }
+  let healthUrl;
+  try {
+    healthUrl = new URL(input.health.target);
+  } catch {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The app health URL is invalid.');
+  }
+  if (healthUrl.protocol !== 'http:' || healthUrl.hostname !== '127.0.0.1' || !healthUrl.port) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The health check must target a loopback app port.');
+  }
+  return input.health;
+}
+
 function resolveEnvironment(environment, context) {
   const source = environment === undefined ? {} : environment;
   if (!source || typeof source !== 'object' || Array.isArray(source)) {
@@ -105,7 +125,7 @@ class AppAgentCore {
 
   async status() {
     return {
-      capabilities: ['apps.one-service.apply'],
+      capabilities: ['apps.one-service.apply', 'apps.health.check'],
       service: 'mos-v2-app-agent',
     };
   }
@@ -131,6 +151,19 @@ class AppAgentCore {
       status: 'applied',
     };
   }
+
+  async checkHealth(input) {
+    const health = assertHealthCheckRequest(input);
+    const result = await this.adapter.checkAppHealth({
+      healthTarget: health.target,
+      packageId: input.packageId,
+    });
+    return {
+      ...result,
+      packageId: input.packageId,
+      status: 'healthy',
+    };
+  }
 }
 
-module.exports = { AppAgentCore, AppRuntimeError, assertRuntimeRequest, exactKeys, renderAppRoutes, resolveEnvironment };
+module.exports = { AppAgentCore, AppRuntimeError, assertHealthCheckRequest, assertRuntimeRequest, exactKeys, renderAppRoutes, resolveEnvironment };

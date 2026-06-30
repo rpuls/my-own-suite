@@ -35,16 +35,16 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Added Vaultwarden as the second V2 app package to validate the package contract beyond Stirling: manifests can declare generated setup values, Suite Manager persists app config with redacted secret references and fingerprints, public projections keep secret placeholders, and runtime apply materializes generated secrets only for the app-agent request.
 - [x] Reworked the Apps page into a calm local catalog: one search field, larger package icons from package-root `icon.png`, category pills, detail-first card actions, structured catalog presentation metadata, related apps, advanced technical details behind disclosure, and a default-on install checkbox that controls whether the app is added to Homepage after runtime apply.
 - [x] Hardened the first V2 generated-secret boundary: runtime apply now resolves app secrets only from the configured Suite Manager app secret directory, fails with a controlled `APP_SECRET_UNAVAILABLE` lifecycle error when a secret file is missing/unreadable/outside that directory, and avoids calling the app agent or returning secret paths in that state.
+- [x] Verified the V2 Vaultwarden package lifecycle and generated-secret hardening in the Hyper-V USB smoke VM on commit `b11dfc4`: Vaultwarden installed and reapplied through the generic app-agent path, the container stayed healthy, Compose/Caddy/health/Homepage projections were applied, the secret file was present with mode `0600`, SQLite held only the secret reference/redacted label/fingerprint, public package serialization and reapply responses exposed neither the raw secret nor secret path, and recent Suite Manager/app-agent logs did not contain the secret.
 
 ### Current Next Slice
 
 Build the next real V2 vertical slice inside `version-2/`:
 
-1. Verify the current Apps catalog install flow in Hyper-V, including Stirling PDF, Vaultwarden, app icons, detail-first install, and the default-on/off Homepage shortcut checkbox.
-2. Continue hardening V2 secret management before expanding the app package surface further. The current restricted-file secret storage now has a controlled materialization failure boundary, but it is still an early recoverable-secret mechanism rather than the final secret management system.
-3. Continue hardening the narrow app lifecycle agent apply path around Stirling PDF and Vaultwarden, especially lifecycle state, disable/re-enable/uninstall-with-data-preserved, and richer user-facing setup/onboarding rendering.
-4. Convert any remaining temporary V2 roadmap/checklist state into GitHub Issues before merging the branch.
-5. Keep public internet exposure outside the facilitated private LAN HTTPS flow; cloud/external-provider installs should continue to point custom-domain HTTPS work to the provider guide.
+1. Continue hardening V2 secret management before expanding the app package surface further. The current restricted-file secret storage now has a controlled materialization failure boundary and Hyper-V validation, but it is still an early recoverable-secret mechanism rather than the final secret management system.
+2. Continue hardening the narrow app lifecycle agent apply path around Stirling PDF and Vaultwarden, especially lifecycle state, disable/re-enable/uninstall-with-data-preserved, and richer user-facing setup/onboarding rendering.
+3. Convert any remaining temporary V2 roadmap/checklist state into GitHub Issues before merging the branch.
+4. Keep public internet exposure outside the facilitated private LAN HTTPS flow; cloud/external-provider installs should continue to point custom-domain HTTPS work to the provider guide.
 
 ### Latest Verified Command
 
@@ -54,11 +54,11 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
-Current result: V2 contract tests, TypeScript checks, the production frontend build, and the V2-owned Playwright flow pass. Fresh DigitalOcean validation confirms external-provider installs show provider-managed custom-domain guidance instead of the private DNS-01 form. Hyper-V USB validation confirms owner setup, private Homepage access, customization, Cloudflare DNS-01 HTTPS for `home.<domain>`, generated Caddy home-service routing, and proxied LAN app access once the local network resolves the generated app hostname to the VM IP.
+Current result: V2 contract tests, TypeScript checks, the production frontend build, and the V2-owned Playwright flow pass. Fresh DigitalOcean validation confirms external-provider installs show provider-managed custom-domain guidance instead of the private DNS-01 form. Hyper-V USB validation confirms owner setup, private Homepage access, customization, Cloudflare DNS-01 HTTPS for `home.<domain>`, generated Caddy home-service routing, proxied LAN app access once the local network resolves the generated app hostname to the VM IP, and the Vaultwarden app lifecycle with generated-secret redaction through install and idempotent runtime reapply.
 
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. The V2 Suite Manager now has a local Apps catalog backed by package manifests, app-root `icon.png` assets, structured catalog metadata, detail-first install actions, and a default-on Homepage shortcut checkbox. Local tests pass for the package APIs and manifest contract. Next focus is Hyper-V validation of Stirling/Vaultwarden through the current generic install flow, then secret-management hardening before adding more secret-bearing apps.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. The V2 Suite Manager now has a local Apps catalog backed by package manifests, app-root `icon.png` assets, structured catalog metadata, detail-first install actions, and a default-on Homepage shortcut checkbox. Local tests pass for the package APIs and manifest contract, and Hyper-V has verified Vaultwarden install/reapply with generated-secret redaction. Next focus is the next narrow secret-management or app-lifecycle hardening slice before adding more secret-bearing apps.
 
 ## Product Goal
 

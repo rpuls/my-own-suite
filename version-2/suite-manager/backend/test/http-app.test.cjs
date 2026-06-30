@@ -505,6 +505,54 @@ test('Installed app packages can apply their runtime through the app agent bound
   }, { appAgent, homeHost: 'home.test' });
 });
 
+test('app runtime status refresh marks stale applied health as failed', async () => {
+  const appAgent = {
+    async apply(input) {
+      return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+    async checkHealth() {
+      throw Object.assign(new Error('The app container started but did not become healthy in time.'), {
+        code: 'APP_HEALTH_FAILED',
+        statusCode: 502,
+      });
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/refresh-runtime-status', {
+      headers: { Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(denied.status, 401);
+
+    const cookie = await createOwner(baseUrl);
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+
+    const refreshed = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/refresh-runtime-status', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(refreshed.status, 502);
+    assert.equal(refreshed.json().code, 'APP_HEALTH_FAILED');
+
+    const packages = await hostRequest(baseUrl, '/suite-manager/api/apps/packages', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    const stirling = packages.json().packages.find((entry) => entry.id === 'stirling-pdf');
+    const health = stirling.instance.projections.find((projection) => projection.kind === 'health');
+    assert.equal(health.status, 'failed');
+    assert.equal(stirling.instance.projections.find((projection) => projection.kind === 'compose').status, 'applied');
+    assert.equal(stirling.instance.projections.find((projection) => projection.kind === 'caddy').status, 'applied');
+  }, { appAgent, homeHost: 'home.test' });
+});
+
 test('Installed app packages can be added to Homepage through the existing agent boundary', async () => {
   const stirlingPort = loopbackPortFor('stirling-pdf');
   const calls = [];

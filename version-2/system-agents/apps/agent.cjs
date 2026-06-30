@@ -27,6 +27,7 @@ function readBody(request) {
 const routes = new Map([
   ['GET /v1/status', () => core.status()],
   ['POST /v1/apps/apply', (body) => core.apply(body)],
+  ['POST /v1/apps/check-health', (body) => core.checkHealth(body)],
 ]);
 
 const server = http.createServer(async (request, response) => {

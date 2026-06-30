@@ -24,10 +24,10 @@ const request = {
   publicUrl: 'http://example-tool.mos.home/',
 };
 
-test('app agent exposes only the first narrow one-service runtime capability', async () => {
-  const core = new AppAgentCore({ applyAppService: async () => ({ steps: [] }) });
+test('app agent exposes only narrow app runtime capabilities', async () => {
+  const core = new AppAgentCore({ applyAppService: async () => ({ steps: [] }), checkAppHealth: async () => ({}) });
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['apps.one-service.apply']);
+  assert.deepEqual(status.capabilities, ['apps.one-service.apply', 'apps.health.check']);
 });
 
 test('app route rendering uses structured host and loopback upstream only', () => {
@@ -75,5 +75,33 @@ test('app apply rejects arbitrary packages, paths, routes, and commands', async 
   await assert.rejects(() => core.apply({
     ...request,
     compose: { ...request.compose, services: [{ ...request.compose.services[0], environment: { 'bad-key': 'value' } }] },
+  }), AppRuntimeError);
+});
+
+test('app health check validates loopback health projection only', async () => {
+  const calls = [];
+  const core = new AppAgentCore({
+    async checkAppHealth(input) {
+      calls.push(input);
+      return { status: 'healthy' };
+    },
+  });
+
+  const result = await core.checkHealth({
+    health: { target: 'http://127.0.0.1:18123/health', type: 'http' },
+    packageId: 'example-tool',
+  });
+
+  assert.equal(result.status, 'healthy');
+  assert.equal(result.packageId, 'example-tool');
+  assert.deepEqual(calls, [{ healthTarget: 'http://127.0.0.1:18123/health', packageId: 'example-tool' }]);
+  await assert.rejects(() => core.checkHealth({
+    command: 'docker ps',
+    health: { target: 'http://127.0.0.1:18123/health', type: 'http' },
+    packageId: 'example-tool',
+  }), AppRuntimeError);
+  await assert.rejects(() => core.checkHealth({
+    health: { target: 'http://example-tool:3000/health', type: 'http' },
+    packageId: 'example-tool',
   }), AppRuntimeError);
 });

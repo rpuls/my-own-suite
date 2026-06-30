@@ -83,6 +83,10 @@ function runtimeApplied(app: AppPackageSummary) {
   });
 }
 
+function healthFailed(app: AppPackageSummary) {
+  return app.instance?.projections.some((item) => item.kind === 'health' && item.status === 'failed') === true;
+}
+
 function initialsFor(name: string) {
   const words = name.split(/\s+/u).filter(Boolean);
   return (words.length > 1 ? `${words[0]![0]}${words[1]![0]}` : name.slice(0, 2)).toUpperCase();
@@ -102,7 +106,7 @@ function appUrl(app: AppPackageSummary) {
 
 function statusFor(app: AppPackageSummary) {
   if (!app.validation.valid) return { className: 'is-attention', label: 'Unavailable', tone: 'warning' };
-  if (app.installStatus === 'failed' || app.instance?.status === 'failed') return { className: 'is-attention', label: 'Needs attention', tone: 'error' };
+  if (app.installStatus === 'failed' || app.instance?.status === 'failed' || healthFailed(app)) return { className: 'is-attention', label: 'Needs attention', tone: 'error' };
   if (runtimeApplied(app)) return { className: 'is-ready', label: 'Running', tone: 'success' };
   if (app.installStatus === 'installed') return { className: 'is-progress', label: 'Finishing setup', tone: 'info' };
   if (app.setup.fields.some((field) => field.required && !field.generated)) return { className: 'is-setup', label: 'Needs setup', tone: 'info' };
@@ -272,8 +276,10 @@ function AppDetail({
   installSteps,
   onClose,
   onInstall,
+  onRefresh,
   onSelect,
   packages,
+  refreshing,
 }: {
   app: AppPackageSummary;
   installing: boolean;
@@ -281,8 +287,10 @@ function AppDetail({
   installSteps: InstallStep[];
   onClose: () => void;
   onInstall: (app: AppPackageSummary, options?: { showOnHomepage?: boolean }) => void;
+  onRefresh: (app: AppPackageSummary) => void;
   onSelect: (app: AppPackageSummary) => void;
   packages: AppPackageSummary[];
+  refreshing: boolean;
 }) {
   const [showOnHomepage, setShowOnHomepage] = useState(true);
   const status = statusFor(app);
@@ -313,6 +321,7 @@ function AppDetail({
         </div>
         <div className="suite-app-primary-actions">
           {ready ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : <button className="mos-btn mos-btn-primary" disabled={!canInstall} onClick={() => onInstall(app, { showOnHomepage })} type="button">{installing ? 'Installing...' : 'Install'}</button>}
+          {app.instance ? <button className="mos-btn mos-btn-secondary" disabled={installing || refreshing} onClick={() => onRefresh(app)} type="button">{refreshing ? 'Checking...' : 'Refresh status'}</button> : null}
           {!ready ? <label className="suite-app-homepage-option">
             <input checked={showOnHomepage} disabled={installing} onChange={(event) => setShowOnHomepage(event.currentTarget.checked)} type="checkbox" />
             <span>Add shortcut to Homepage</span>
@@ -387,6 +396,7 @@ export function AppsScreen() {
   const [installingId, setInstallingId] = useState('');
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [refreshingId, setRefreshingId] = useState('');
   const [selectedId, setSelectedId] = useState('');
 
   async function load() {
@@ -506,6 +516,25 @@ export function AppsScreen() {
     }
   }
 
+  async function refreshRuntimeStatus(app: AppPackageSummary) {
+    if (!app.instance || refreshingId) return;
+    setSelectedId(app.id);
+    setRefreshingId(app.id);
+    setInstallError('');
+    try {
+      await jsonResponse<{ instance: AppPackageSummary['instance'] }>(
+        await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/refresh-runtime-status`, { method: 'POST' }),
+        `Unable to refresh ${app.name}.`,
+      );
+      await load();
+    } catch (caught) {
+      setInstallError(caught instanceof Error ? caught.message : `Unable to refresh ${app.name}.`);
+      await load();
+    } finally {
+      setRefreshingId('');
+    }
+  }
+
   return <section className="mos-shell suite-apps suite-app-catalog">
     <div className="suite-app-simple-header">
       <h1>Apps</h1>
@@ -535,6 +564,6 @@ export function AppsScreen() {
       </dl>
     </details> : null}
 
-    {selected ? <AppDetail app={selected} installing={installingId === selected.id} installError={installError} installSteps={installingId === selected.id || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onInstall={(target, options) => void performInstall(target, options)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} packages={packages} /> : null}
+    {selected ? <AppDetail app={selected} installing={installingId === selected.id} installError={installError} installSteps={installingId === selected.id || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onInstall={(target, options) => void performInstall(target, options)} onRefresh={(target) => void refreshRuntimeStatus(target)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} packages={packages} refreshing={refreshingId === selected.id} /> : null}
   </section>;
 }

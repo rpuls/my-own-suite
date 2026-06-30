@@ -376,6 +376,17 @@ function createV2Server({
         return;
       }
 
+      const appRefreshMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/refresh-runtime-status$/u);
+      if (request.method === 'POST' && appRefreshMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to refresh app runtime status.' });
+          return;
+        }
+        const packageId = decodeURIComponent(appRefreshMatch[1]);
+        jsonResponse(response, 200, await appPackages.refreshPackageRuntimeStatus(packageId));
+        return;
+      }
+
       if (url.pathname === SUITE_MANAGER_API_PREFIX || url.pathname.startsWith(`${SUITE_MANAGER_API_PREFIX}/`)) {
         jsonResponse(response, 404, { error: 'Not found.' });
         return;
