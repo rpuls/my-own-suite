@@ -111,7 +111,6 @@ function statusFor(app: AppPackageSummary) {
   if (app.installStatus === 'failed' || app.instance?.status === 'failed' || healthFailed(app)) return { className: 'is-attention', label: 'Needs attention', tone: 'error' };
   if (runtimeApplied(app)) return { className: 'is-ready', label: 'Running', tone: 'success' };
   if (app.installStatus === 'installed') return { className: 'is-progress', label: 'Finishing setup', tone: 'info' };
-  if (app.setup.fields.some((field) => field.required && !field.generated)) return { className: 'is-setup', label: 'Needs setup', tone: 'info' };
   return { className: 'is-available', label: 'Available', tone: 'info' };
 }
 
@@ -324,12 +323,14 @@ function AppDetail({
   refreshing: boolean;
 }) {
   const [showOnHomepage, setShowOnHomepage] = useState(true);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app));
   const ready = runtimeApplied(app);
   const disabled = app.instance?.status === 'disabled' || app.instance?.enabled === false;
   const uninstalled = app.instance?.status === 'uninstalled';
   const url = appUrl(app);
   const inputFields = setupFieldsNeedInput(app);
+  const needsPreparation = !app.instance && inputFields.length > 0;
   const relatedIds = app.catalog.related.length
     ? app.catalog.related
     : packages.filter((item) => primaryCategory(item) === primaryCategory(app) && item.id !== app.id).slice(0, 3).map((item) => item.id);
@@ -338,8 +339,18 @@ function AppDetail({
 
   useEffect(() => {
     setShowOnHomepage(true);
+    setSetupOpen(false);
     setSetupConfig(initialSetupConfig(app));
   }, [app.id]);
+
+  function submitInstall() {
+    const config = { ...setupConfig };
+    onInstall(app, { config, showOnHomepage });
+    setSetupConfig((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => {
+      const field = app.setup.fields.find((item) => item.id === key);
+      return [key, field?.secret ? '' : value];
+    })));
+  }
 
   return <div className="suite-app-detail-layer">
     <button aria-label="Close app details" className="suite-app-detail-backdrop" onClick={onClose} tabIndex={-1} type="button" />
@@ -355,14 +366,7 @@ function AppDetail({
           <p>{descriptionFor(app)}</p>
         </div>
         <div className="suite-app-primary-actions">
-          {ready ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Enabling...' : 'Enable'}</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={() => {
-            const config = { ...setupConfig };
-            onInstall(app, { config, showOnHomepage });
-            setSetupConfig((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => {
-              const field = app.setup.fields.find((item) => item.id === key);
-              return [key, field?.secret ? '' : value];
-            })));
-          }} type="button">{installing ? 'Installing...' : 'Install'}</button>}
+          {ready ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Enabling...' : 'Enable'}</button> : needsPreparation && !setupOpen ? <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setSetupOpen(true)} type="button">Prepare</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={submitInstall} type="button">{installing ? 'Installing...' : 'Install'}</button>}
           {app.instance ? <button className="mos-btn mos-btn-secondary" disabled={installing || refreshing} onClick={() => onRefresh(app)} type="button">{refreshing ? 'Checking...' : 'Refresh status'}</button> : null}
           {ready ? <button className="mos-btn mos-btn-secondary" disabled={installing} onClick={() => onLifecycle(app, 'disable')} type="button">{installing ? 'Disabling...' : 'Disable'}</button> : null}
           {app.instance && !uninstalled ? <button className="mos-btn mos-btn-secondary" disabled={installing} onClick={() => onLifecycle(app, 'uninstall')} type="button">{installing ? 'Uninstalling...' : 'Uninstall'}</button> : null}
@@ -370,6 +374,21 @@ function AppDetail({
             <input checked={showOnHomepage} disabled={installing} onChange={(event) => setShowOnHomepage(event.currentTarget.checked)} type="checkbox" />
             <span>Add shortcut to Homepage</span>
           </label> : null}
+          {setupOpen && needsPreparation ? <div className="suite-app-setup-panel">
+            {inputFields.map((field) => <label key={field.id}>
+              <span>{field.label}{field.required ? ' *' : ''}</span>
+              <input
+                autoComplete={field.secret ? 'new-password' : 'off'}
+                disabled={installing}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setSetupConfig((current) => ({ ...current, [field.id]: value }));
+                }}
+                type={field.secret ? 'password' : field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : 'text'}
+                value={setupConfig[field.id] || ''}
+              />
+            </label>)}
+          </div> : null}
         </div>
       </header>
 
@@ -403,18 +422,6 @@ function AppDetail({
               <span>{field.generated ? 'Generated and stored by MOS' : field.required ? 'Required before install' : field.default !== undefined ? 'Default provided' : 'Optional'}</span>
             </div>)}
           </div>}
-          {!app.instance && inputFields.length ? <div className="suite-app-setup-form">
-            {inputFields.map((field) => <label key={field.id}>
-              <span>{field.label}{field.required ? ' *' : ''}</span>
-              <input
-                autoComplete={field.secret ? 'new-password' : 'off'}
-                disabled={installing}
-                onChange={(event) => setSetupConfig((current) => ({ ...current, [field.id]: event.currentTarget.value }))}
-                type={field.secret ? 'password' : field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : 'text'}
-                value={setupConfig[field.id] || ''}
-              />
-            </label>)}
-          </div> : null}
           {app.onboarding?.steps.length ? <div className="suite-app-next-steps">
             <h4>After install</h4>
             {app.onboarding.steps.map((step) => <article key={`${step.type}-${step.title}`}>

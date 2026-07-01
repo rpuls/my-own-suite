@@ -719,6 +719,42 @@
   opacity: 0.72;
 }
 
+.suite-app-setup-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: var(--mos-space-3);
+  width: min(100%, 34rem);
+  padding: var(--mos-space-4);
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface);
+}
+
+.suite-app-setup-panel label {
+  display: grid;
+  gap: var(--mos-space-2);
+  color: var(--mos-color-text-strong);
+  font-size: var(--mos-text-label);
+  font-weight: 800;
+}
+
+.suite-app-setup-panel input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 var(--mos-space-3);
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface-muted);
+  color: var(--mos-color-text);
+  font: inherit;
+}
+
+.suite-app-setup-panel input:focus {
+  border-color: var(--mos-color-focus);
+  outline: 2px solid var(--mos-color-focus-ring);
+  outline-offset: 2px;
+}
+
 .suite-app-install-progress {
   display: grid;
   gap: var(--mos-space-4);
@@ -842,36 +878,10 @@
 }
 
 .suite-app-setup-list,
-.suite-app-setup-form,
 .suite-app-next-steps,
 .suite-app-privacy {
   display: grid;
   gap: var(--mos-space-3);
-}
-
-.suite-app-setup-form label {
-  display: grid;
-  gap: var(--mos-space-2);
-  color: var(--mos-color-text-strong);
-  font-size: var(--mos-text-label);
-  font-weight: 800;
-}
-
-.suite-app-setup-form input {
-  width: 100%;
-  min-height: 2.75rem;
-  padding: 0 var(--mos-space-3);
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: var(--mos-radius-sm);
-  background: var(--mos-color-surface);
-  color: var(--mos-color-text);
-  font: inherit;
-}
-
-.suite-app-setup-form input:focus {
-  border-color: var(--mos-color-focus);
-  outline: 2px solid var(--mos-color-focus-ring);
-  outline-offset: 2px;
 }
 
 .suite-app-privacy ul {
