@@ -51,6 +51,7 @@ class AppAgentClient {
   status() { return this.request('GET', '/v1/status'); }
   apply(input) { return this.request('POST', '/v1/apps/apply', input); }
   checkHealth(input) { return this.request('POST', '/v1/apps/check-health', input); }
+  remove(input) { return this.request('POST', '/v1/apps/remove', input); }
 }
 
 module.exports = { APP_AGENT_TIMEOUT_MS, AppAgentClient };

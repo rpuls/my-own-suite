@@ -4,6 +4,7 @@ const {
   addEntry,
   assertAllowedFile,
   projectServices,
+  removeEntryById,
   renderCaddyRoutes,
   revisionFor,
   validateYaml,
@@ -19,7 +20,7 @@ class HomepageAgentCore {
 
   async status() {
     return {
-      capabilities: ['homepage.read', 'homepage.apply', 'homepage.add-link', 'homepage.add-home-service'],
+      capabilities: ['homepage.read', 'homepage.apply', 'homepage.add-link', 'homepage.add-home-service', 'homepage.remove-link'],
       files: HOMEPAGE_FILES,
       service: 'mos-v2-homepage-agent',
     };
@@ -58,6 +59,21 @@ class HomepageAgentCore {
       throw new HomepageConfigError('HOMEPAGE_REVISION_CONFLICT', 'Homepage configuration changed. Reload it before saving.', 409);
     }
     const mutation = addEntry(current, input.entry, { homeService, id: input.requestId });
+    if (!mutation.changed) return { changed: false, file, id: mutation.id, revision: revisionFor(current) };
+    const result = await this.applyFile(file, mutation.content, input.expectedRevision, input.domainState);
+    return { ...result, id: mutation.id };
+  }
+
+  async removeLink(input) {
+    if (!exactKeys(input, ['domainState', 'expectedRevision', 'id'])) {
+      throw new HomepageConfigError('INVALID_REQUEST_SHAPE', 'Only the documented guided-removal fields are accepted.');
+    }
+    const file = 'services.template.yaml';
+    const current = await this.adapter.readHomepageFile(file);
+    if (revisionFor(current) !== input.expectedRevision) {
+      throw new HomepageConfigError('HOMEPAGE_REVISION_CONFLICT', 'Homepage configuration changed. Reload it before saving.', 409);
+    }
+    const mutation = removeEntryById(current, input.id);
     if (!mutation.changed) return { changed: false, file, id: mutation.id, revision: revisionFor(current) };
     const result = await this.applyFile(file, mutation.content, input.expectedRevision, input.domainState);
     return { ...result, id: mutation.id };

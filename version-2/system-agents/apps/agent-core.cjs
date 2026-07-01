@@ -96,6 +96,14 @@ function assertHealthCheckRequest(input) {
   return input.health;
 }
 
+function assertRuntimeRemoveRequest(input) {
+  if (!exactKeys(input, ['packageId'])) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app runtime removal fields are accepted.');
+  }
+  assertString(input.packageId, 'packageId', PACKAGE_ID_PATTERN);
+  return { packageId: input.packageId };
+}
+
 function resolveEnvironment(environment, context) {
   const source = environment === undefined ? {} : environment;
   if (!source || typeof source !== 'object' || Array.isArray(source)) {
@@ -125,7 +133,7 @@ class AppAgentCore {
 
   async status() {
     return {
-      capabilities: ['apps.one-service.apply', 'apps.health.check'],
+      capabilities: ['apps.one-service.apply', 'apps.health.check', 'apps.one-service.remove'],
       service: 'mos-v2-app-agent',
     };
   }
@@ -164,6 +172,16 @@ class AppAgentCore {
       status: 'healthy',
     };
   }
+
+  async remove(input) {
+    const { packageId } = assertRuntimeRemoveRequest(input);
+    const result = await this.adapter.removeAppService({ packageId });
+    return {
+      ...result,
+      packageId,
+      status: 'removed',
+    };
+  }
 }
 
-module.exports = { AppAgentCore, AppRuntimeError, assertHealthCheckRequest, assertRuntimeRequest, exactKeys, renderAppRoutes, resolveEnvironment };
+module.exports = { AppAgentCore, AppRuntimeError, assertHealthCheckRequest, assertRuntimeRemoveRequest, assertRuntimeRequest, exactKeys, renderAppRoutes, resolveEnvironment };

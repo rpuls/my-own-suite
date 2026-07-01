@@ -106,6 +106,8 @@ function appUrl(app: AppPackageSummary) {
 
 function statusFor(app: AppPackageSummary) {
   if (!app.validation.valid) return { className: 'is-attention', label: 'Unavailable', tone: 'warning' };
+  if (app.instance?.status === 'uninstalled') return { className: 'is-available', label: 'Uninstalled', tone: 'info' };
+  if (app.instance?.status === 'disabled' || app.instance?.enabled === false) return { className: 'is-progress', label: 'Disabled', tone: 'info' };
   if (app.installStatus === 'failed' || app.instance?.status === 'failed' || healthFailed(app)) return { className: 'is-attention', label: 'Needs attention', tone: 'error' };
   if (runtimeApplied(app)) return { className: 'is-ready', label: 'Running', tone: 'success' };
   if (app.installStatus === 'installed') return { className: 'is-progress', label: 'Finishing setup', tone: 'info' };
@@ -288,6 +290,7 @@ function AppDetail({
   installSteps,
   onClose,
   onInstall,
+  onLifecycle,
   onRefresh,
   onSelect,
   packages,
@@ -299,6 +302,7 @@ function AppDetail({
   installSteps: InstallStep[];
   onClose: () => void;
   onInstall: (app: AppPackageSummary, options?: { showOnHomepage?: boolean }) => void;
+  onLifecycle: (app: AppPackageSummary, action: 'disable' | 'enable' | 'uninstall') => void;
   onRefresh: (app: AppPackageSummary) => void;
   onSelect: (app: AppPackageSummary) => void;
   packages: AppPackageSummary[];
@@ -306,6 +310,8 @@ function AppDetail({
 }) {
   const [showOnHomepage, setShowOnHomepage] = useState(true);
   const ready = runtimeApplied(app);
+  const disabled = app.instance?.status === 'disabled' || app.instance?.enabled === false;
+  const uninstalled = app.instance?.status === 'uninstalled';
   const url = appUrl(app);
   const relatedIds = app.catalog.related.length
     ? app.catalog.related
@@ -331,9 +337,11 @@ function AppDetail({
           <p>{descriptionFor(app)}</p>
         </div>
         <div className="suite-app-primary-actions">
-          {ready ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : <button className="mos-btn mos-btn-primary" disabled={!canInstall} onClick={() => onInstall(app, { showOnHomepage })} type="button">{installing ? 'Installing...' : 'Install'}</button>}
+          {ready ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Enabling...' : 'Enable'}</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={() => onInstall(app, { showOnHomepage })} type="button">{installing ? 'Installing...' : 'Install'}</button>}
           {app.instance ? <button className="mos-btn mos-btn-secondary" disabled={installing || refreshing} onClick={() => onRefresh(app)} type="button">{refreshing ? 'Checking...' : 'Refresh status'}</button> : null}
-          {!ready ? <label className="suite-app-homepage-option">
+          {ready ? <button className="mos-btn mos-btn-secondary" disabled={installing} onClick={() => onLifecycle(app, 'disable')} type="button">{installing ? 'Disabling...' : 'Disable'}</button> : null}
+          {app.instance && !uninstalled ? <button className="mos-btn mos-btn-secondary" disabled={installing} onClick={() => onLifecycle(app, 'uninstall')} type="button">{installing ? 'Uninstalling...' : 'Uninstall'}</button> : null}
+          {!ready && !disabled && !uninstalled ? <label className="suite-app-homepage-option">
             <input checked={showOnHomepage} disabled={installing} onChange={(event) => setShowOnHomepage(event.currentTarget.checked)} type="checkbox" />
             <span>Add shortcut to Homepage</span>
           </label> : null}
@@ -527,6 +535,33 @@ export function AppsScreen() {
     }
   }
 
+  async function performLifecycle(app: AppPackageSummary, action: 'disable' | 'enable' | 'uninstall') {
+    if (!app.instance || installingId) return;
+    const labels = { disable: 'Disable', enable: 'Enable', uninstall: 'Uninstall' };
+    setSelectedId(app.id);
+    setInstallingId(app.id);
+    setInstallError('');
+    setInstallSteps([
+      { detail: `${labels[action]} ${app.name}.`, id: 'runtime', label: labels[action], status: 'running' },
+    ]);
+    try {
+      await withMinimumInstallStep(async () =>
+        jsonResponse<{ instance: AppPackageSummary['instance'] }>(
+          await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/${action}`, { method: 'POST' }),
+          `Unable to ${action} ${app.name}.`,
+        ),
+      );
+      setInstallSteps((steps) => setStep(steps, 'runtime', 'complete'));
+      await load();
+    } catch (caught) {
+      setInstallError(caught instanceof Error ? caught.message : `Unable to ${action} ${app.name}.`);
+      setInstallSteps((steps) => setStep(steps, 'runtime', 'failed'));
+      await load();
+    } finally {
+      setInstallingId('');
+    }
+  }
+
   async function refreshRuntimeStatus(app: AppPackageSummary) {
     if (!app.instance || refreshingId) return;
     setSelectedId(app.id);
@@ -575,6 +610,6 @@ export function AppsScreen() {
       </dl>
     </details> : null}
 
-    {selected ? <AppDetail app={selected} installing={installingId === selected.id} installError={installError} installSteps={installingId === selected.id || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onInstall={(target, options) => void performInstall(target, options)} onRefresh={(target) => void refreshRuntimeStatus(target)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} packages={packages} refreshing={refreshingId === selected.id} /> : null}
+    {selected ? <AppDetail app={selected} installing={installingId === selected.id} installError={installError} installSteps={installingId === selected.id || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onRefresh={(target) => void refreshRuntimeStatus(target)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} packages={packages} refreshing={refreshingId === selected.id} /> : null}
   </section>;
 }

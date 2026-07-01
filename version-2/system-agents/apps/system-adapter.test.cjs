@@ -4,7 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { HEALTH_REFRESH_TIMEOUT_MS, SystemAppAdapter, upsertAppRouteBlock } = require('./system-adapter.cjs');
+const { HEALTH_REFRESH_TIMEOUT_MS, SystemAppAdapter, removeAppRouteBlock, upsertAppRouteBlock } = require('./system-adapter.cjs');
 
 async function tempDir() {
   return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-v2-app-agent-'));
@@ -72,6 +72,68 @@ http://first-app.mos.home {
   assert.match(next, /mos-v2-app-route:start second-app/u);
   assert.match(next, /127\.0\.0\.1:18101/u);
   assert.match(next, /127\.0\.0\.1:18102/u);
+});
+
+test('route removal deletes only the matching package block', () => {
+  const existing = `# mos-v2-app-route:start first-app
+http://first-app.mos.home {
+  reverse_proxy http://127.0.0.1:18101
+}
+# mos-v2-app-route:end first-app
+
+# mos-v2-app-route:start second-app
+http://second-app.mos.home {
+  reverse_proxy http://127.0.0.1:18102
+}
+# mos-v2-app-route:end second-app
+`;
+
+  const next = removeAppRouteBlock(existing, 'second-app');
+
+  assert.match(next, /mos-v2-app-route:start first-app/u);
+  assert.doesNotMatch(next, /mos-v2-app-route:start second-app/u);
+  assert.match(next, /127\.0\.0\.1:18101/u);
+  assert.doesNotMatch(next, /127\.0\.0\.1:18102/u);
+});
+
+test('system adapter removes runtime and app route without deleting volumes', async () => {
+  const root = await tempDir();
+  const routesPath = path.join(root, 'routes.caddy');
+  const commands = [];
+  await fsp.writeFile(routesPath, `# mos-v2-app-route:start first-app
+http://first-app.mos.home {
+  reverse_proxy http://127.0.0.1:18101
+}
+# mos-v2-app-route:end first-app
+
+# mos-v2-app-route:start second-app
+http://second-app.mos.home {
+  reverse_proxy http://127.0.0.1:18102
+}
+# mos-v2-app-route:end second-app
+`);
+
+  const adapter = new SystemAppAdapter({
+    caddyBinary: 'caddy',
+    dockerBinary: 'docker',
+    routesPath,
+    async execute(file, args, options = {}) {
+      commands.push({ args, cwd: options.cwd, file });
+    },
+  });
+
+  const result = await adapter.removeAppService({ packageId: 'second-app' });
+
+  assert.deepEqual(result.steps, ['stopped', 'route-removed', 'caddy-reloaded']);
+  assert.deepEqual(commands.map((command) => [command.file, command.args.slice(0, 3)]), [
+    ['docker', ['rm', '-f', 'mos-v2-app-second-app']],
+    ['caddy', ['validate', '--adapter', 'caddyfile']],
+    ['/usr/bin/systemctl', ['reload', 'caddy.service']],
+  ]);
+  assert.equal(commands.some((command) => command.args.includes('volume') || command.args.includes('rmi')), false);
+  const routes = await fsp.readFile(routesPath, 'utf8');
+  assert.match(routes, /first-app/u);
+  assert.doesNotMatch(routes, /second-app/u);
 });
 
 test('system adapter checks app health with a short refresh budget', async () => {

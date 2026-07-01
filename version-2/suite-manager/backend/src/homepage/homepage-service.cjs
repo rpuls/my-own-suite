@@ -52,6 +52,14 @@ class HomepageService {
     return { ...result, requestId };
   }
 
+  async removeLink(body) {
+    return this.runOperation('remove-link', () => this.agent.removeLink({
+      domainState: this.domainState(),
+      expectedRevision: body?.expectedRevision,
+      id: body?.id,
+    }));
+  }
+
   previewHomeService(body) {
     const proxy = validateProxy({
       subdomain: body?.subdomain,

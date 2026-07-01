@@ -300,6 +300,11 @@ function runtimeApplied(projections) {
   });
 }
 
+function homepageProjectionApplied(projections) {
+  const projection = projections.find((item) => item.kind === 'homepage');
+  return projection?.status === 'applied' && projection.appliedDigest === projection.digest;
+}
+
 class AppPackageService {
   constructor({ agent = null, appsDir, now = () => new Date(), secretDir = null, store }) {
     this.agent = agent;
@@ -309,12 +314,13 @@ class AppPackageService {
     this.store = store;
   }
 
-  async applyPackageRuntime(packageId, requestContext = {}) {
+  async applyPackageRuntime(packageId, requestContext = {}, options = {}) {
     if (!this.agent) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
     }
     const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (!instance || instance.status !== 'installed') {
+    const allowedStatuses = options.allowDisabled ? ['installed', 'disabled'] : ['installed'];
+    if (!instance || !allowedStatuses.includes(instance.status)) {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before applying its runtime.', 409);
     }
 
@@ -468,6 +474,9 @@ class AppPackageService {
   installPackage(packageId, input = {}) {
     const current = this.store.getAppInstanceByPackageId(packageId);
     if (current) {
+      if (current.status === 'uninstalled') {
+        throw new AppPackageServiceError('APP_PREVIOUSLY_UNINSTALLED', 'This app was uninstalled with its data preserved. Reinstall recovery is a future lifecycle action.', 409);
+      }
       return publicInstance(current, this.store.getAppProjections(current.id), this.store.getAppConfig(current.id));
     }
 
@@ -559,6 +568,124 @@ class AppPackageService {
     };
   }
 
+  async removePackageFromHomepage(instance, homepageService) {
+    const projections = this.store.getAppProjections(instance.id);
+    if (!homepageProjectionApplied(projections)) {
+      return { skipped: true };
+    }
+    const current = await homepageService.read({ file: 'services.template.yaml' });
+    return homepageService.removeLink({
+      expectedRevision: current.revision,
+      id: instance.id,
+    });
+  }
+
+  async disablePackage(packageId, homepageService) {
+    if (!this.agent) {
+      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
+    }
+    const instance = this.store.getAppInstanceByPackageId(packageId);
+    if (!instance || instance.status === 'uninstalled') {
+      throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before disabling it.', 409);
+    }
+    if (instance.status === 'disabled') {
+      return {
+        agent: { status: 'skipped', steps: [] },
+        homepage: { skipped: true },
+        instance: publicInstance(instance, this.store.getAppProjections(instance.id), this.store.getAppConfig(instance.id)),
+      };
+    }
+    if (instance.status !== 'installed') {
+      throw new AppPackageServiceError('APP_INVALID_TRANSITION', 'This app cannot be disabled from its current state.', 409);
+    }
+
+    const homepage = await this.removePackageFromHomepage(instance, homepageService);
+    const agent = await this.agent.remove({ packageId: instance.packageId });
+    const at = this.now().toISOString();
+    this.store.markAppDisabled({
+      at,
+      instanceId: instance.id,
+      operationId: crypto.randomUUID(),
+      request: { packageId: instance.packageId, preserveData: true, target: 'runtime-and-route' },
+    });
+    return {
+      agent,
+      homepage,
+      instance: publicInstance(
+        this.store.getAppInstanceByPackageId(packageId),
+        this.store.getAppProjections(instance.id),
+        this.store.getAppConfig(instance.id),
+      ),
+    };
+  }
+
+  async enablePackage(packageId, requestContext = {}) {
+    const instance = this.store.getAppInstanceByPackageId(packageId);
+    if (!instance || instance.status === 'uninstalled') {
+      throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before enabling it.', 409);
+    }
+    if (instance.status === 'installed') {
+      return this.applyPackageRuntime(packageId, requestContext);
+    }
+    if (instance.status !== 'disabled') {
+      throw new AppPackageServiceError('APP_INVALID_TRANSITION', 'This app cannot be enabled from its current state.', 409);
+    }
+    const applied = await this.applyPackageRuntime(packageId, requestContext, { allowDisabled: true });
+    this.store.markAppEnabled({
+      at: this.now().toISOString(),
+      instanceId: instance.id,
+      operationId: crypto.randomUUID(),
+      request: { packageId: instance.packageId, target: 'runtime' },
+    });
+    return {
+      ...applied,
+      instance: publicInstance(
+        this.store.getAppInstanceByPackageId(packageId),
+        this.store.getAppProjections(instance.id),
+        this.store.getAppConfig(instance.id),
+      ),
+    };
+  }
+
+  async uninstallPackagePreserveData(packageId, homepageService) {
+    if (!this.agent) {
+      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
+    }
+    const instance = this.store.getAppInstanceByPackageId(packageId);
+    if (!instance) {
+      throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before uninstalling it.', 409);
+    }
+    if (instance.status === 'uninstalled') {
+      return {
+        agent: { status: 'skipped', steps: [] },
+        homepage: { skipped: true },
+        instance: publicInstance(instance, this.store.getAppProjections(instance.id), this.store.getAppConfig(instance.id)),
+      };
+    }
+    if (!['installed', 'disabled'].includes(instance.status)) {
+      throw new AppPackageServiceError('APP_INVALID_TRANSITION', 'This app cannot be uninstalled from its current state.', 409);
+    }
+
+    const homepage = await this.removePackageFromHomepage(instance, homepageService);
+    const agent = await this.agent.remove({ packageId: instance.packageId });
+    const at = this.now().toISOString();
+    this.store.markAppUninstalled({
+      at,
+      instanceId: instance.id,
+      operationId: crypto.randomUUID(),
+      request: { packageId: instance.packageId, preserveData: true, preserveSecrets: true, target: 'runtime-and-route' },
+    });
+    return {
+      agent,
+      homepage,
+      instance: publicInstance(
+        this.store.getAppInstanceByPackageId(packageId),
+        this.store.getAppProjections(instance.id),
+        this.store.getAppConfig(instance.id),
+      ),
+    };
+  }
+
   packageSummaryFor(manifest, validationErrors = []) {
     return publicPackageSummary(manifest, validationErrors);
   }
@@ -577,6 +704,7 @@ module.exports = {
   materializeRuntimeCompose,
   renderDryRunProjections,
   resolveConfigTemplate,
+  homepageProjectionApplied,
   runtimeApplied,
   stableJson,
 };

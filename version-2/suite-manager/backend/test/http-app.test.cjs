@@ -625,6 +625,140 @@ test('Installed app packages can be added to Homepage through the existing agent
   });
 });
 
+test('app lifecycle disable, enable, and uninstall preserve metadata while removing runtime and Homepage shortcut', async () => {
+  const appCalls = [];
+  const homepageCalls = [];
+  const appAgent = {
+    async apply(input) {
+      appCalls.push(['apply', input]);
+      return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+    async remove(input) {
+      appCalls.push(['remove', input]);
+      return { status: 'removed', steps: ['stopped', 'route-removed', 'caddy-reloaded'] };
+    },
+  };
+  const homepageAgent = {
+    async addLink(input) {
+      homepageCalls.push(['addLink', input]);
+      return { changed: true, file: 'services.template.yaml', id: input.requestId, revision: 'sha256:with-link' };
+    },
+    async read(file) {
+      homepageCalls.push(['read', file]);
+      return { content: '- Tools: []\n', file, revision: homepageCalls.some((call) => call[0] === 'addLink') ? 'sha256:with-link' : 'sha256:current' };
+    },
+    async removeLink(input) {
+      homepageCalls.push(['removeLink', input]);
+      return { changed: true, file: 'services.template.yaml', id: input.id, revision: 'sha256:without-link' };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/add-to-homepage', {
+      headers: { Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+
+    const before = await hostRequest(baseUrl, '/suite-manager/api/apps/packages', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    const beforeVaultwarden = before.json().packages.find((entry) => entry.id === 'vaultwarden');
+    const instanceId = beforeVaultwarden.instance.id;
+    const fingerprint = beforeVaultwarden.instance.config.find((item) => item.key === 'adminToken').fingerprint;
+
+    const disabled = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/disable', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(disabled.status, 200);
+    assert.equal(disabled.json().instance.status, 'disabled');
+    assert.equal(disabled.json().instance.enabled, false);
+    assert.equal(disabled.json().instance.config.find((item) => item.key === 'adminToken').fingerprint, fingerprint);
+    for (const kind of ['compose', 'caddy', 'health', 'homepage']) {
+      const projection = disabled.json().instance.projections.find((item) => item.kind === kind);
+      assert.equal(projection.appliedDigest, null);
+      assert.equal(projection.status, 'rendered');
+    }
+    assert.deepEqual(appCalls.map((call) => call[0]), ['apply', 'remove']);
+    assert.deepEqual(appCalls[1], ['remove', { packageId: 'vaultwarden' }]);
+    assert.equal(homepageCalls.some((call) => call[0] === 'removeLink' && call[1].id === instanceId), true);
+
+    const enabled = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/enable', {
+      headers: { Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+    assert.equal(enabled.status, 200);
+    assert.equal(enabled.json().instance.status, 'installed');
+    assert.equal(enabled.json().instance.enabled, true);
+    assert.equal(enabled.json().instance.config.find((item) => item.key === 'adminToken').fingerprint, fingerprint);
+    assert.equal(appCalls.map((call) => call[0]).join(','), 'apply,remove,apply');
+
+    const uninstalled = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/uninstall', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(uninstalled.status, 200);
+    assert.equal(uninstalled.json().instance.status, 'uninstalled');
+    assert.equal(uninstalled.json().instance.enabled, false);
+    assert.equal(uninstalled.json().instance.id, instanceId);
+    assert.equal(uninstalled.json().instance.config.find((item) => item.key === 'adminToken').fingerprint, fingerprint);
+    assert.equal(appCalls.map((call) => call[0]).join(','), 'apply,remove,apply,remove');
+    assert.doesNotMatch(JSON.stringify(appCalls), /volume rm|rmi/u);
+
+    const reinstall = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(reinstall.status, 409);
+    assert.equal(reinstall.json().code, 'APP_PREVIOUSLY_UNINSTALLED');
+  }, { appAgent, homeHost: 'home.test', homepageAgent });
+});
+
+test('invalid app lifecycle transitions fail clearly', async () => {
+  const appAgent = {
+    async apply() {
+      throw Object.assign(new Error('App runtime system agent is unavailable.'), {
+        code: 'APP_AGENT_UNAVAILABLE',
+        statusCode: 503,
+      });
+    },
+    async remove() { throw new Error('must not run'); },
+  };
+  const homepageAgent = {
+    async read() { throw new Error('must not run'); },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const missingDisable = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/disable', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(missingDisable.status, 409);
+    assert.equal(missingDisable.json().code, 'APP_NOT_INSTALLED');
+
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    const enableInstalled = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/enable', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(enableInstalled.status, 503);
+    assert.equal(enableInstalled.json().code, 'APP_AGENT_UNAVAILABLE');
+  }, { appAgent, homeHost: 'home.test', homepageAgent });
+});
+
 test('Homepage agent request budget exceeds the observed restart rollback window', () => {
   assert.ok(HOMEPAGE_AGENT_TIMEOUT_MS > 60_000);
 });

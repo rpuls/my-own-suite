@@ -376,6 +376,39 @@ function createV2Server({
         return;
       }
 
+      const appDisableMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/disable$/u);
+      if (request.method === 'POST' && appDisableMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to disable app packages.' });
+          return;
+        }
+        const packageId = decodeURIComponent(appDisableMatch[1]);
+        jsonResponse(response, 200, await appPackages.disablePackage(packageId, homepageConfig));
+        return;
+      }
+
+      const appEnableMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/enable$/u);
+      if (request.method === 'POST' && appEnableMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to enable app packages.' });
+          return;
+        }
+        const packageId = decodeURIComponent(appEnableMatch[1]);
+        jsonResponse(response, 200, await appPackages.enablePackage(packageId, appPublicUrlFor(request, packageId)));
+        return;
+      }
+
+      const appUninstallMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/uninstall$/u);
+      if (request.method === 'POST' && appUninstallMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to uninstall app packages.' });
+          return;
+        }
+        const packageId = decodeURIComponent(appUninstallMatch[1]);
+        jsonResponse(response, 200, await appPackages.uninstallPackagePreserveData(packageId, homepageConfig));
+        return;
+      }
+
       const appRefreshMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/refresh-runtime-status$/u);
       if (request.method === 'POST' && appRefreshMatch) {
         if (!isSignedIn(setup, sessionToken)) {

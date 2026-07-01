@@ -17,6 +17,7 @@ const FAILURE_MESSAGES = {
   'caddy-reload': ['APP_CADDY_RELOAD_FAILED', 'Caddy could not reload the app route.'],
   'caddy-validation': ['APP_CADDY_VALIDATION_FAILED', 'The generated app route did not pass Caddy validation.'],
   health: ['APP_HEALTH_FAILED', 'The app container started but did not become healthy in time.'],
+  remove: ['APP_RUNTIME_REMOVE_FAILED', 'The app runtime could not be removed.'],
   run: ['APP_RUN_FAILED', 'The app container could not be started.'],
   writing: ['APP_ROUTE_WRITE_FAILED', 'The app route could not be installed.'],
 };
@@ -95,6 +96,16 @@ function upsertAppRouteBlock(currentRoutes, { caddyRoutes, packageId }) {
     return block;
   }
   return `${current.trimEnd()}\n\n${block}`;
+}
+
+function removeAppRouteBlock(currentRoutes, packageId) {
+  const current = typeof currentRoutes === 'string' ? currentRoutes : EMPTY_APP_ROUTES;
+  const markerPattern = new RegExp(
+    `# mos-v2-app-route:start ${packageId}\\n[\\s\\S]*?# mos-v2-app-route:end ${packageId}\\n?`,
+    'u',
+  );
+  const next = current.replace(markerPattern, '').trim();
+  return next ? `${next}\n` : EMPTY_APP_ROUTES;
 }
 
 function waitForHttp(url, { deadlineMs = HEALTH_TIMEOUT_MS } = {}) {
@@ -210,6 +221,37 @@ class SystemAppAdapter {
       throw new AppApplyError('health');
     }
   }
+
+  async removeAppService({ packageId }) {
+    const routeSnapshot = `${this.routesPath}.before-${process.pid}`;
+    let routesChanged = false;
+    try {
+      await this.execute(this.dockerBinary, ['rm', '-f', `mos-v2-app-${packageId}`], { timeoutMs: 30000 }).catch(() => {});
+
+      const currentRoutes = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
+      const nextRoutes = removeAppRouteBlock(currentRoutes, packageId);
+      routesChanged = currentRoutes !== nextRoutes;
+      if (routesChanged) {
+        const candidate = `${this.routesPath}.candidate-${process.pid}`;
+        await fsp.writeFile(candidate, nextRoutes);
+        await this.execute(this.caddyBinary, ['validate', '--adapter', 'caddyfile', '--config', candidate], { timeoutMs: 20000 });
+        await fsp.rm(candidate, { force: true }).catch(() => {});
+        await snapshot(this.routesPath, routeSnapshot);
+        await atomicWrite(this.routesPath, nextRoutes);
+        await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 20000 });
+        await fsp.rm(routeSnapshot, { force: true }).catch(() => {});
+        await fsp.rm(`${routeSnapshot}.missing`, { force: true }).catch(() => {});
+      }
+
+      return { steps: ['stopped', ...(routesChanged ? ['route-removed', 'caddy-reloaded'] : [])] };
+    } catch {
+      if (routesChanged) {
+        await restore(routeSnapshot, this.routesPath).catch(() => {});
+        await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 10000 }).catch(() => {});
+      }
+      throw new AppApplyError('remove');
+    }
+  }
 }
 
 module.exports = {
@@ -219,6 +261,7 @@ module.exports = {
   HEALTH_TIMEOUT_MS,
   SystemAppAdapter,
   atomicWrite,
+  removeAppRouteBlock,
   renderAppRouteBlock,
   upsertAppRouteBlock,
   waitForHttp,

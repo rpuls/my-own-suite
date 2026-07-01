@@ -27,7 +27,7 @@ const request = {
 test('app agent exposes only narrow app runtime capabilities', async () => {
   const core = new AppAgentCore({ applyAppService: async () => ({ steps: [] }), checkAppHealth: async () => ({}) });
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['apps.one-service.apply', 'apps.health.check']);
+  assert.deepEqual(status.capabilities, ['apps.one-service.apply', 'apps.health.check', 'apps.one-service.remove']);
 });
 
 test('app route rendering uses structured host and loopback upstream only', () => {
@@ -104,4 +104,21 @@ test('app health check validates loopback health projection only', async () => {
     health: { target: 'http://example-tool:3000/health', type: 'http' },
     packageId: 'example-tool',
   }), AppRuntimeError);
+});
+
+test('app remove accepts only a package id and delegates without volume deletion fields', async () => {
+  const calls = [];
+  const core = new AppAgentCore({
+    async removeAppService(input) {
+      calls.push(input);
+      return { steps: ['stopped', 'route-removed'] };
+    },
+  });
+
+  const result = await core.remove({ packageId: 'example-tool' });
+
+  assert.equal(result.status, 'removed');
+  assert.deepEqual(calls, [{ packageId: 'example-tool' }]);
+  await assert.rejects(() => core.remove({ packageId: 'example-tool', volumes: true }), AppRuntimeError);
+  await assert.rejects(() => core.remove({ packageId: '../example-tool' }), AppRuntimeError);
 });

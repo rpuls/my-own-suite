@@ -5,6 +5,7 @@ const {
   addEntry,
   projectServices,
   publicUrlFor,
+  removeEntryById,
   renderCaddyRoutes,
   revisionFor,
   validateYaml,
@@ -47,6 +48,18 @@ test('guided links preserve comments and stable IDs make retries idempotent', ()
   assert.equal(retry.content, first.content);
 });
 
+test('guided link removal uses stable MOS IDs and leaves other entries alone', () => {
+  const first = addEntry(seed, link, { id });
+  const secondId = '22345678-1234-4123-8123-123456789abc';
+  const second = addEntry(first.content, { ...link, name: 'Other Docs' }, { id: secondId });
+  const removed = removeEntryById(second.content, id);
+
+  assert.equal(removed.changed, true);
+  assert.doesNotMatch(removed.content, new RegExp(id, 'u'));
+  assert.match(removed.content, new RegExp(secondId, 'u'));
+  assert.equal(removeEntryById(removed.content, id).changed, false);
+});
+
 test('home services generate a clean projection and a separate escaped Caddy route', () => {
   const added = addEntry(seed, service, { homeService: true, id });
   const projection = projectServices(added.content, domainState);
@@ -79,9 +92,22 @@ test('agent requires the expected revision and projects only services template s
   assert.match(fake.transactions[0].caddyRoutes, /No user-managed/u);
 });
 
+test('agent removes guided links through the same transactional projection path', async () => {
+  const added = addEntry(seed, link, { id });
+  const fake = adapter(added.content);
+  const core = new HomepageAgentCore(fake);
+
+  const result = await core.removeLink({ domainState, expectedRevision: revisionFor(added.content), id });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.id, id);
+  assert.deepEqual(Object.keys(fake.transactions[0].files).sort(), ['services.template.yaml', 'services.yaml']);
+  assert.doesNotMatch(fake.transactions[0].files['services.template.yaml'], new RegExp(id, 'u'));
+});
+
 test('agent API has no arbitrary command, path, file, or service operation', async () => {
   const core = new HomepageAgentCore(adapter());
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['homepage.read', 'homepage.apply', 'homepage.add-link', 'homepage.add-home-service']);
+  assert.deepEqual(status.capabilities, ['homepage.read', 'homepage.apply', 'homepage.add-link', 'homepage.add-home-service', 'homepage.remove-link']);
   await assert.rejects(() => core.apply({ command: 'sh', file: 'services.template.yaml' }), HomepageConfigError);
 });

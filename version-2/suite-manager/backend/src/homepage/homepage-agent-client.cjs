@@ -50,6 +50,7 @@ class HomepageAgentClient {
   apply(input) { return this.request('POST', '/v1/homepage/apply', input); }
   addLink(input) { return this.request('POST', '/v1/homepage/add-link', input); }
   addHomeService(input) { return this.request('POST', '/v1/homepage/add-home-service', input); }
+  removeLink(input) { return this.request('POST', '/v1/homepage/remove-link', input); }
 }
 
 module.exports = { HOMEPAGE_AGENT_TIMEOUT_MS, HomepageAgentClient };

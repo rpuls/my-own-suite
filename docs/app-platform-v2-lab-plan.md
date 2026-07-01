@@ -42,7 +42,7 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 Build the next real V2 vertical slice inside `version-2/`:
 
 1. Continue hardening V2 secret management before expanding the app package surface further. The current restricted-file secret storage now has a controlled materialization failure boundary and Hyper-V validation, but it is still an early recoverable-secret mechanism rather than the final secret management system.
-2. Continue hardening the narrow app lifecycle agent apply path around Stirling PDF and Vaultwarden, especially lifecycle state, disable/re-enable/uninstall-with-data-preserved, and richer user-facing setup/onboarding rendering.
+2. Continue hardening the narrow app lifecycle path around Stirling PDF and Vaultwarden, especially failure recovery, richer user-facing setup/onboarding rendering, and eventual reinstall/cleanup decisions for apps that were uninstalled with data preserved.
 3. Convert any remaining temporary V2 roadmap/checklist state into GitHub Issues before merging the branch.
 4. Keep public internet exposure outside the facilitated private LAN HTTPS flow; cloud/external-provider installs should continue to point custom-domain HTTPS work to the provider guide.
 
@@ -54,7 +54,7 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
-Current result: V2 contract tests, TypeScript checks, the production frontend build, and the V2-owned Playwright flow pass. Fresh DigitalOcean validation confirms external-provider installs show provider-managed custom-domain guidance instead of the private DNS-01 form. Hyper-V USB validation confirms owner setup, private Homepage access, customization, Cloudflare DNS-01 HTTPS for `home.<domain>`, generated Caddy home-service routing, proxied LAN app access once the local network resolves the generated app hostname to the VM IP, and the Vaultwarden app lifecycle with generated-secret redaction through install and idempotent runtime reapply.
+Current result: V2 contract tests, TypeScript checks, the production frontend build, and the V2-owned Playwright flow pass. Fresh DigitalOcean validation confirms external-provider installs show provider-managed custom-domain guidance instead of the private DNS-01 form. Hyper-V USB validation confirms owner setup, private Homepage access, customization, Cloudflare DNS-01 HTTPS for `home.<domain>`, generated Caddy home-service routing, proxied LAN app access once the local network resolves the generated app hostname to the VM IP, and the Vaultwarden app lifecycle with generated-secret redaction through install and idempotent runtime reapply. Local deterministic tests now cover disable, re-enable, and uninstall-with-data-preserved semantics for V2 app packages.
 
 ### Suggested Next Session Prompt
 
@@ -387,8 +387,8 @@ Validation strategy:
 First app milestone:
 
 - Stirling PDF is the first intentionally boring real app.
-- Current state proves package discovery, validation, SQLite install state, generated route/Homepage/health projections, app-agent runtime apply, and optional Homepage shortcut apply.
-- Remaining lifecycle hardening: disable, re-enable, uninstall-with-data-preserved, richer health/status feedback, and idempotent recovery paths.
+- Current state proves package discovery, validation, SQLite install state, generated route/Homepage/health projections, app-agent runtime apply, optional Homepage shortcut apply, authenticated health refresh, disable, re-enable, and uninstall-with-data-preserved.
+- Remaining lifecycle hardening: richer setup/onboarding rendering, failed-operation recovery UX, reinstallation or cleanup decisions after preserved-data uninstall, and broader idempotency checks in live host validation.
 
 Unresolved decisions, with recommended defaults:
 

@@ -197,6 +197,33 @@ function addEntry(content, rawInput, { homeService = false, id = crypto.randomUU
   return { changed: true, content: next, id };
 }
 
+function removeEntryById(content, id) {
+  if (!ID_PATTERN.test(String(id || ''))) {
+    throw new HomepageConfigError('INVALID_HOMEPAGE_ID', 'A stable dashboard entry ID is required.');
+  }
+  const document = parseDocument(content);
+  const current = document.toJS();
+  validateServices(current);
+  let changed = false;
+  for (const groupNode of document.contents.items || []) {
+    const groupPair = groupNode?.items?.[0];
+    const serviceList = groupPair?.value;
+    if (!serviceList?.items) continue;
+    const before = serviceList.items.length;
+    serviceList.items = serviceList.items.filter((serviceNode) => {
+      const servicePair = serviceNode?.items?.[0];
+      const configPair = servicePair?.value?.items?.find((pair) => pair?.key?.value === 'mos');
+      const idPair = configPair?.value?.items?.find((pair) => pair?.key?.value === 'id');
+      return idPair?.value?.value !== id;
+    });
+    if (serviceList.items.length !== before) changed = true;
+  }
+  if (!changed) return { changed: false, content, id };
+  const next = String(document);
+  validateYaml(next, 'services.template.yaml');
+  return { changed: true, content: next, id };
+}
+
 function publicUrlFor(proxy, domainState) {
   const baseDomain = String(domainState?.baseDomain || '').trim().toLowerCase();
   if (!HOST_PATTERN.test(baseDomain) || baseDomain === 'localhost') {
@@ -237,6 +264,7 @@ module.exports = {
   entriesFromServices,
   projectServices,
   publicUrlFor,
+  removeEntryById,
   renderCaddyRoutes,
   revisionFor,
   validateProxy,

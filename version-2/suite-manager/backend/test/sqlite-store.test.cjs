@@ -233,6 +233,109 @@ test('app health refresh records validation operations and projection truth', as
   store.close();
 });
 
+test('app lifecycle transitions preserve config and projection metadata while clearing active apply state', async () => {
+  const store = new SuiteManagerStore(await tempStateDir());
+  const at = '2026-06-27T10:00:00.000Z';
+  store.installAppInstance({
+    at,
+    config: [
+      {
+        fingerprint: 'sha256:secret',
+        key: 'adminToken',
+        redactedLabel: 'Generated token',
+        secretRef: '/state/app-secrets/instance-one/adminToken.secret',
+        source: 'generated',
+      },
+    ],
+    instance: {
+      categorySnapshot: 'tools',
+      displayNameSnapshot: 'Example App',
+      id: 'instance-one',
+      manifestDigest: 'sha256:manifest',
+      packageId: 'example-app',
+      packageVersion: '0.1.0',
+    },
+    operationId: 'operation-one',
+    projections: [
+      { contentJson: '{"services":[]}', digest: 'sha256:compose', kind: 'compose' },
+      { contentJson: '{"routes":[]}', digest: 'sha256:caddy', kind: 'caddy' },
+      { contentJson: '{"target":"http://127.0.0.1:18123/health","type":"http"}', digest: 'sha256:health', kind: 'health' },
+      { contentJson: '{"name":"Example App"}', digest: 'sha256:homepage', kind: 'homepage' },
+    ],
+    request: { dryRunOnly: true },
+  });
+  store.applyAppProjections({
+    at: '2026-06-27T10:01:00.000Z',
+    instanceId: 'instance-one',
+    kinds: ['compose', 'caddy', 'health'],
+    operationId: 'operation-two',
+    request: { target: 'runtime' },
+  });
+  store.applyAppProjection({
+    at: '2026-06-27T10:02:00.000Z',
+    instanceId: 'instance-one',
+    kind: 'homepage',
+    operationId: 'operation-three',
+    request: { target: 'homepage' },
+  });
+
+  store.markAppDisabled({
+    at: '2026-06-27T10:03:00.000Z',
+    instanceId: 'instance-one',
+    operationId: 'operation-four',
+    request: { preserveData: true },
+  });
+  let instance = store.getAppInstanceByPackageId('example-app');
+  assert.equal(instance.status, 'disabled');
+  assert.equal(instance.enabled, false);
+  assert.deepEqual(store.getAppConfig('instance-one').map(({ fingerprint, key, secret, secretRef }) => ({ fingerprint, key, secret, secretRef })), [
+    { fingerprint: 'sha256:secret', key: 'adminToken', secret: true, secretRef: '/state/app-secrets/instance-one/adminToken.secret' },
+  ]);
+  assert.deepEqual(store.getAppProjections('instance-one').map(({ appliedDigest, digest, kind, status }) => ({
+    appliedDigest,
+    digest,
+    kind,
+    status,
+  })), [
+    { appliedDigest: null, digest: 'sha256:caddy', kind: 'caddy', status: 'rendered' },
+    { appliedDigest: null, digest: 'sha256:compose', kind: 'compose', status: 'rendered' },
+    { appliedDigest: null, digest: 'sha256:health', kind: 'health', status: 'rendered' },
+    { appliedDigest: null, digest: 'sha256:homepage', kind: 'homepage', status: 'rendered' },
+  ]);
+
+  store.markAppEnabled({
+    at: '2026-06-27T10:04:00.000Z',
+    instanceId: 'instance-one',
+    operationId: 'operation-five',
+    request: { target: 'runtime' },
+  });
+  instance = store.getAppInstanceByPackageId('example-app');
+  assert.equal(instance.status, 'installed');
+  assert.equal(instance.enabled, true);
+
+  store.markAppUninstalled({
+    at: '2026-06-27T10:05:00.000Z',
+    instanceId: 'instance-one',
+    operationId: 'operation-six',
+    request: { preserveData: true, preserveSecrets: true },
+  });
+  instance = store.getAppInstanceByPackageId('example-app');
+  assert.equal(instance.status, 'uninstalled');
+  assert.equal(instance.enabled, false);
+  assert.equal(store.getAppConfig('instance-one').length, 1);
+  assert.equal(store.getAppProjections('instance-one').length, 4);
+
+  const operations = store.database.prepare(`
+    SELECT kind, status FROM app_operations WHERE kind IN ('disable', 'enable', 'uninstall') ORDER BY started_at
+  `).all().map((row) => ({ kind: row.kind, status: row.status }));
+  assert.deepEqual(operations, [
+    { kind: 'disable', status: 'succeeded' },
+    { kind: 'enable', status: 'succeeded' },
+    { kind: 'uninstall', status: 'succeeded' },
+  ]);
+  store.close();
+});
+
 test('failed HTTPS apply retains the previously active configuration', async () => {
   const store = new SuiteManagerStore(await tempStateDir());
   store.beginHttpsApply({ acmeEmail: 'first@example.com', at: 'one', baseDomain: 'first.example.com' });

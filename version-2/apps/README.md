@@ -10,4 +10,4 @@ The first package is `stirling-pdf`, intentionally chosen as a boring app to pro
 
 The second package is `vaultwarden`, intentionally chosen to pressure-test generated setup values, secret redaction, persistent storage, package onboarding metadata, and app-specific runtime environment projection without adding app-specific logic to Suite Manager core.
 
-Current package manifests are validation inputs only. They must not imply that the app is installed until Suite Manager persists app instance state and a lifecycle agent applies the generated runtime projections.
+Package manifests describe install inputs and projections only. An app becomes active only after Suite Manager persists app instance state and the app lifecycle agent applies the generated runtime projection. Disable and preserved-data uninstall remove the active runtime and route without deleting package config, secret references, or Docker volumes.

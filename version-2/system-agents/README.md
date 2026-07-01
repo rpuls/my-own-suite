@@ -14,7 +14,7 @@ Suite Manager persists active non-secret state before committing the short-lived
 
 ## Homepage Agent
 
-`homepage/agent.cjs` runs separately over `/run/mos-v2-homepage-agent/agent.sock`. It exposes only status, allowlisted file read/validation/apply, add-link, and add-home-service operations. It has no arbitrary path, shell, service, command, or Caddy-text capability.
+`homepage/agent.cjs` runs separately over `/run/mos-v2-homepage-agent/agent.sock`. It exposes only status, allowlisted file read/validation/apply, add-link, add-home-service, and stable-ID remove-link operations. It has no arbitrary path, shell, service, command, or Caddy-text capability.
 
 The agent validates strict YAML and MOS proxy metadata, stages `services.yaml` and the separate MOS-owned route snippet, runs Caddy validation, atomically writes, restarts Homepage only when required, and reloads Caddy only for changed routes. Any validation, restart, or reload failure restores the known-good Homepage and route files. It never restarts Suite Manager and never modifies the HTTPS agent's main Caddyfile or DNS token state.
 
@@ -22,8 +22,8 @@ Homepage restarts have a dedicated 60-second deadline rather than the generic 20
 
 ## App Runtime Agent
 
-`apps/agent.cjs` runs over `/run/mos-v2-app-agent/agent.sock`. The first disposable capability is intentionally narrow: it accepts one validated app-package service projection, builds the package-owned Dockerfile under `version-2/apps/<app-id>/`, starts one Docker container on the assigned loopback port, writes `/etc/caddy/mos-v2-app-routes.caddy`, reloads Caddy, and waits for the loopback health endpoint.
+`apps/agent.cjs` runs over `/run/mos-v2-app-agent/agent.sock`. The first disposable capability is intentionally narrow: it accepts one validated app-package service projection, builds the package-owned Dockerfile under `version-2/apps/<app-id>/`, starts one Docker container on the assigned loopback port, writes package-scoped blocks in `/etc/caddy/mos-v2-app-routes.caddy`, reloads Caddy, and waits for the loopback health endpoint.
 
-Suite Manager owns app install intent and SQLite projection state. The app agent owns privileged Docker, Caddy route writes, and health probing. It does not accept arbitrary package paths, Docker commands, Caddy snippets, or multi-service lifecycle requests.
+Suite Manager owns app install intent and SQLite projection state. The app agent owns privileged Docker, Caddy route writes, health probing, and the non-destructive remove-runtime action used by disable and preserved-data uninstall. Remove stops/removes only the app container and removes only that package's Caddy route block; it does not delete Docker volumes, app config, or secrets. It does not accept arbitrary package paths, Docker commands, Caddy snippets, or multi-service lifecycle requests.
 
 Secret material is resolved before the request crosses into the app agent. Suite Manager stores raw generated package secrets only in its restricted app secret directory and sends materialized environment values to the agent for the single apply request. If a secret reference is missing, unreadable, or outside that directory, runtime apply fails with `APP_SECRET_UNAVAILABLE` before the agent is called.
