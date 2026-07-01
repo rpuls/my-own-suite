@@ -286,10 +286,35 @@ test('App package catalog API requires authentication and exposes safe manifest 
       headers: { Cookie: cookie, Host: 'home.test' },
     });
     const body = response.json();
+    const radicale = body.packages.find((entry) => entry.id === 'radicale');
     const stirling = body.packages.find((entry) => entry.id === 'stirling-pdf');
     const vaultwarden = body.packages.find((entry) => entry.id === 'vaultwarden');
 
     assert.equal(response.status, 200);
+    assert.ok(radicale);
+    assert.equal(radicale.name, 'Radicale');
+    assert.equal(radicale.validation.valid, true);
+    assert.deepEqual(radicale.routes, [{ host: 'radicale', port: 5232, service: 'radicale' }]);
+    assert.equal(radicale.health.url, 'http://radicale:5232/');
+    assert.deepEqual(radicale.setup.fields, [
+      {
+        default: 'admin',
+        generated: false,
+        id: 'adminUsername',
+        label: 'Radicale username',
+        required: true,
+        secret: false,
+        type: 'text',
+      },
+      {
+        generated: false,
+        id: 'adminPassword',
+        label: 'Radicale password',
+        required: true,
+        secret: true,
+        type: 'password',
+      },
+    ]);
     assert.ok(stirling);
     assert.equal(stirling.name, 'Stirling PDF');
     assert.equal(stirling.installStatus, 'not-installed');
@@ -456,6 +481,68 @@ test('Vaultwarden runtime apply returns a controlled redacted error when its sec
     assert.doesNotMatch(applied.body, /adminToken\.secret/u);
     assert.doesNotMatch(applied.body, new RegExp(instance.id, 'u'));
   }, { appAgent, homeHost: 'home.test', stateDir });
+});
+
+test('Radicale install stores user-supplied credentials with secret redaction and runtime materialization', async () => {
+  const radicalePort = loopbackPortFor('radicale');
+  const calls = [];
+  const appAgent = {
+    async apply(input) {
+      calls.push(input);
+      return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const missing = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/radicale/install', {
+      body: JSON.stringify({ config: { adminUsername: 'admin' } }),
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(missing.status, 400);
+    assert.equal(missing.json().code, 'APP_SETUP_REQUIRED');
+
+    const password = 'correct horse battery staple';
+    const installed = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/radicale/install', {
+      body: JSON.stringify({ config: { adminPassword: password, adminUsername: 'calendar-admin' } }),
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    const instance = installed.json().instance;
+    const username = instance.config.find((item) => item.key === 'adminUsername');
+    const passwordConfig = instance.config.find((item) => item.key === 'adminPassword');
+    const compose = instance.projections.find((projection) => projection.kind === 'compose').content;
+
+    assert.equal(installed.status, 200);
+    assert.equal(instance.packageId, 'radicale');
+    assert.equal(username.value, 'calendar-admin');
+    assert.equal(passwordConfig.secret, true);
+    assert.equal(passwordConfig.generated, false);
+    assert.equal(passwordConfig.value, undefined);
+    assert.equal(passwordConfig.redactedLabel, 'Radicale admin password');
+    assert.match(passwordConfig.fingerprint, /^sha256:[a-f0-9]{64}$/u);
+    assert.equal(compose.services[0].environment.RADICALE_ADMIN_USERNAME, 'calendar-admin');
+    assert.equal(compose.services[0].environment.RADICALE_ADMIN_PASSWORD, '${secret.adminPassword}');
+    assert.equal(compose.services[0].internalPort, 5232);
+    assert.equal(compose.services[0].loopbackPort, radicalePort);
+    assert.deepEqual(compose.services[0].volumes, ['data:/data']);
+    assert.doesNotMatch(installed.body, new RegExp(password, 'u'));
+
+    const applied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/radicale/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+
+    assert.equal(applied.status, 200);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].appHost, 'radicale.test');
+    assert.equal(calls[0].publicUrl, 'https://radicale.test/');
+    assert.equal(calls[0].compose.services[0].environment.RADICALE_ADMIN_USERNAME, 'calendar-admin');
+    assert.equal(calls[0].compose.services[0].environment.RADICALE_ADMIN_PASSWORD, password);
+    assert.equal(calls[0].health.target, `http://127.0.0.1:${radicalePort}/`);
+    assert.doesNotMatch(applied.body, new RegExp(password, 'u'));
+  }, { appAgent, homeHost: 'home.test' });
 });
 
 test('Installed app packages can apply their runtime through the app agent boundary', async () => {

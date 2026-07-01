@@ -489,6 +489,7 @@ function publicPackageSummary(manifest, validationErrors = []) {
           required: field?.required === true,
           secret: field?.secret === true,
           type: field?.type || '',
+          ...(field?.secret === true || field?.default === undefined ? {} : { default: field.default }),
         }))
         : [],
     },

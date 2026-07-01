@@ -1,0 +1,121 @@
+{
+  "id": "radicale",
+  "name": "Radicale",
+  "version": "0.1.0",
+  "summary": "Private CalDAV and CardDAV sync for calendars and contacts.",
+  "category": "office",
+  "icon": "icon.png",
+  "catalog": {
+    "description": "Radicale provides a small private calendar and contacts sync server for CalDAV and CardDAV clients on phones, tablets, and desktops.",
+    "tags": [
+      "calendar",
+      "contacts",
+      "caldav",
+      "carddav",
+      "sync",
+      "google-calendar-alternative"
+    ],
+    "features": [
+      {
+        "title": "Sync existing calendar apps",
+        "body": "Use standard CalDAV clients instead of changing the app you already use on each device."
+      },
+      {
+        "title": "Keep personal schedules private",
+        "body": "Store calendar and contact data in your MOS runtime instead of a large cloud provider."
+      },
+      {
+        "title": "Start with one private account",
+        "body": "This first V2 slice creates one htpasswd-backed Radicale user and a default calendar collection."
+      }
+    ],
+    "complexity": {
+      "level": "guided",
+      "label": "Guided setup",
+      "description": "Choose a Radicale username and password, then connect your CalDAV or CardDAV client after MOS starts the app."
+    },
+    "resourceHint": {
+      "level": "low",
+      "label": "Light resources",
+      "description": "Radicale runs as one small service with one persistent data volume."
+    },
+    "privacy": {
+      "summary": "Calendar and contact collections are stored on your own MOS server.",
+      "notes": [
+        "Use a strong app password because Radicale is exposed on its own authenticated app address.",
+        "Back up the data volume before relying on it for important calendars or contacts.",
+        "Client apps may still sync data to device or vendor backups depending on your phone or desktop settings."
+      ]
+    },
+    "links": {
+      "website": "https://radicale.org/",
+      "docs": "https://radicale.org/v3.html",
+      "repository": "https://github.com/Kozea/Radicale"
+    }
+  },
+  "setup": {
+    "fields": [
+      {
+        "id": "adminUsername",
+        "type": "text",
+        "label": "Radicale username",
+        "required": true,
+        "default": "admin"
+      },
+      {
+        "id": "adminPassword",
+        "type": "password",
+        "label": "Radicale password",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Radicale admin password"
+      }
+    ]
+  },
+  "resources": {
+    "services": {
+      "radicale": {
+        "dockerfile": "Dockerfile",
+        "internalPort": 5232,
+        "env": {
+          "RADICALE_ADMIN_USERNAME": "${config.adminUsername}",
+          "RADICALE_ADMIN_PASSWORD": "${secret.adminPassword}"
+        },
+        "volumes": [
+          "data:/data"
+        ]
+      }
+    }
+  },
+  "routes": [
+    {
+      "host": "radicale",
+      "service": "radicale",
+      "port": 5232
+    }
+  ],
+  "homepage": {
+    "group": "Office",
+    "name": "Radicale",
+    "description": "Sync calendars and contacts from your own server.",
+    "icon": "radicale"
+  },
+  "health": {
+    "type": "http",
+    "url": "http://radicale:5232/"
+  },
+  "onboarding": {
+    "steps": [
+      {
+        "type": "open-url",
+        "title": "Open the Radicale address",
+        "body": "Open Radicale at its generated app URL and sign in with the username and password you entered during install."
+      },
+      {
+        "type": "manual",
+        "title": "Connect a CalDAV or CardDAV client",
+        "body": "Use the server URL shown by MOS, your Radicale username, and the password you chose. The default calendar collection is available under /<username>/default-calendar/."
+      }
+    ]
+  }
+}

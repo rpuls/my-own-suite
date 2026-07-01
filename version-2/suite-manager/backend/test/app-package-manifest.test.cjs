@@ -78,6 +78,28 @@ test('Vaultwarden package is discoverable and declares generated secret setup ge
   assert.deepEqual(validateAppPackageManifest(vaultwarden.manifest, { packageDir: vaultwarden.packageDir }), []);
 });
 
+test('Radicale package is discoverable and declares user-supplied credentials generically', () => {
+  const packages = discoverAppPackages(v2AppsDir);
+  const radicale = packages.find((entry) => entry.manifest.id === 'radicale');
+
+  assert.ok(radicale);
+  assert.equal(radicale.manifest.name, 'Radicale');
+  assert.equal(radicale.manifest.catalog.complexity.level, 'guided');
+  assert.equal(radicale.manifest.setup.fields.length, 2);
+  assert.deepEqual(radicale.manifest.setup.fields.map((field) => ({
+    id: field.id,
+    required: field.required,
+    secret: field.secret === true,
+    type: field.type,
+  })), [
+    { id: 'adminUsername', required: true, secret: false, type: 'text' },
+    { id: 'adminPassword', required: true, secret: true, type: 'password' },
+  ]);
+  assert.equal(radicale.manifest.resources.services.radicale.internalPort, 5232);
+  assert.deepEqual(radicale.manifest.resources.services.radicale.volumes, ['data:/data']);
+  assert.deepEqual(validateAppPackageManifest(radicale.manifest, { packageDir: radicale.packageDir }), []);
+});
+
 test('manifest validation accepts structured optional catalog presentation metadata', () => {
   const manifest = validManifest({
     catalog: {
@@ -236,7 +258,7 @@ test('production app package engine code does not hardcode package ids', () => {
       }
       if (!/\.(?:cjs|js|ps1|ts|tsx)$/u.test(entry.name) || /\.test\./u.test(entry.name)) continue;
       const content = fs.readFileSync(fullPath, 'utf8');
-      if (/\b(?:stirling|vaultwarden|Stirling|Vaultwarden)\b/u.test(content)) {
+      if (/\b(?:stirling|vaultwarden|radicale|Stirling|Vaultwarden|Radicale)\b/u.test(content)) {
         offenders.push(path.relative(v2Root, fullPath));
       }
     }

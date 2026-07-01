@@ -39,7 +39,7 @@ type AppPackageSummary = {
   onboarding?: { steps: Array<{ body: string; title: string; type: string }> };
   routes: Array<{ host: string; port: number | null; service: string }>;
   services: Array<{ dockerfile: string | null; id: string; internalPort: number | null; volumes: string[] }>;
-  setup: { fieldCount: number; fields: Array<{ generated: boolean; id: string; label: string; required: boolean; secret: boolean; type: string }> };
+  setup: { fieldCount: number; fields: Array<{ default?: unknown; generated: boolean; id: string; label: string; required: boolean; secret: boolean; type: string }> };
   summary: string;
   validation: { errors: string[]; valid: boolean };
   version: string;
@@ -118,7 +118,22 @@ function statusFor(app: AppPackageSummary) {
 function setupLabel(app: AppPackageSummary) {
   if (app.setup.fieldCount === 0) return 'No setup needed';
   if (app.setup.fields.every((field) => field.generated)) return 'MOS generates setup';
+  if (app.setup.fields.some((field) => field.required && !field.generated)) return 'Needs your input';
   return `${app.setup.fieldCount} setup field${app.setup.fieldCount === 1 ? '' : 's'}`;
+}
+
+function setupFieldsNeedInput(app: AppPackageSummary) {
+  return app.setup.fields.filter((field) => !field.generated);
+}
+
+function initialSetupConfig(app: AppPackageSummary) {
+  return Object.fromEntries(
+    setupFieldsNeedInput(app).map((field) => [field.id, typeof field.default === 'string' ? field.default : '']),
+  );
+}
+
+function requiredSetupMissing(app: AppPackageSummary, setupConfig: Record<string, string>) {
+  return setupFieldsNeedInput(app).some((field) => field.required && !String(setupConfig[field.id] || '').trim());
 }
 
 function AppHealthIndicator({ app, ledVariant = false }: { app: AppPackageSummary; ledVariant?: boolean }) {
@@ -301,7 +316,7 @@ function AppDetail({
   installError: string;
   installSteps: InstallStep[];
   onClose: () => void;
-  onInstall: (app: AppPackageSummary, options?: { showOnHomepage?: boolean }) => void;
+  onInstall: (app: AppPackageSummary, options?: { config?: Record<string, string>; showOnHomepage?: boolean }) => void;
   onLifecycle: (app: AppPackageSummary, action: 'disable' | 'enable' | 'uninstall') => void;
   onRefresh: (app: AppPackageSummary) => void;
   onSelect: (app: AppPackageSummary) => void;
@@ -309,18 +324,21 @@ function AppDetail({
   refreshing: boolean;
 }) {
   const [showOnHomepage, setShowOnHomepage] = useState(true);
+  const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app));
   const ready = runtimeApplied(app);
   const disabled = app.instance?.status === 'disabled' || app.instance?.enabled === false;
   const uninstalled = app.instance?.status === 'uninstalled';
   const url = appUrl(app);
+  const inputFields = setupFieldsNeedInput(app);
   const relatedIds = app.catalog.related.length
     ? app.catalog.related
     : packages.filter((item) => primaryCategory(item) === primaryCategory(app) && item.id !== app.id).slice(0, 3).map((item) => item.id);
   const related = relatedIds.map((id) => packages.find((item) => item.id === id)).filter(Boolean) as AppPackageSummary[];
-  const canInstall = app.validation.valid && !app.setup.fields.some((field) => field.required && !field.generated) && !installing;
+  const canInstall = app.validation.valid && !requiredSetupMissing(app, setupConfig) && !installing;
 
   useEffect(() => {
     setShowOnHomepage(true);
+    setSetupConfig(initialSetupConfig(app));
   }, [app.id]);
 
   return <div className="suite-app-detail-layer">
@@ -337,7 +355,14 @@ function AppDetail({
           <p>{descriptionFor(app)}</p>
         </div>
         <div className="suite-app-primary-actions">
-          {ready ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Enabling...' : 'Enable'}</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={() => onInstall(app, { showOnHomepage })} type="button">{installing ? 'Installing...' : 'Install'}</button>}
+          {ready ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Enabling...' : 'Enable'}</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={() => {
+            const config = { ...setupConfig };
+            onInstall(app, { config, showOnHomepage });
+            setSetupConfig((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => {
+              const field = app.setup.fields.find((item) => item.id === key);
+              return [key, field?.secret ? '' : value];
+            })));
+          }} type="button">{installing ? 'Installing...' : 'Install'}</button>}
           {app.instance ? <button className="mos-btn mos-btn-secondary" disabled={installing || refreshing} onClick={() => onRefresh(app)} type="button">{refreshing ? 'Checking...' : 'Refresh status'}</button> : null}
           {ready ? <button className="mos-btn mos-btn-secondary" disabled={installing} onClick={() => onLifecycle(app, 'disable')} type="button">{installing ? 'Disabling...' : 'Disable'}</button> : null}
           {app.instance && !uninstalled ? <button className="mos-btn mos-btn-secondary" disabled={installing} onClick={() => onLifecycle(app, 'uninstall')} type="button">{installing ? 'Uninstalling...' : 'Uninstall'}</button> : null}
@@ -375,9 +400,21 @@ function AppDetail({
           {app.setup.fieldCount === 0 ? <p className="suite-meta">This app does not need extra setup before MOS starts it.</p> : <div className="suite-app-setup-list">
             {app.setup.fields.map((field) => <div key={field.id}>
               <strong>{field.label}</strong>
-              <span>{field.generated ? 'Generated and stored by MOS' : field.required ? 'Required before install' : 'Optional'}</span>
+              <span>{field.generated ? 'Generated and stored by MOS' : field.required ? 'Required before install' : field.default !== undefined ? 'Default provided' : 'Optional'}</span>
             </div>)}
           </div>}
+          {!app.instance && inputFields.length ? <div className="suite-app-setup-form">
+            {inputFields.map((field) => <label key={field.id}>
+              <span>{field.label}{field.required ? ' *' : ''}</span>
+              <input
+                autoComplete={field.secret ? 'new-password' : 'off'}
+                disabled={installing}
+                onChange={(event) => setSetupConfig((current) => ({ ...current, [field.id]: event.currentTarget.value }))}
+                type={field.secret ? 'password' : field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : 'text'}
+                value={setupConfig[field.id] || ''}
+              />
+            </label>)}
+          </div> : null}
           {app.onboarding?.steps.length ? <div className="suite-app-next-steps">
             <h4>After install</h4>
             {app.onboarding.steps.map((step) => <article key={`${step.type}-${step.title}`}>
@@ -460,8 +497,9 @@ export function AppsScreen() {
     });
   }, [packages, query]);
 
-  async function performInstall(app: AppPackageSummary, options: { showOnHomepage?: boolean } = {}) {
-    const canInstall = app.validation.valid && !app.setup.fields.some((field) => field.required && !field.generated);
+  async function performInstall(app: AppPackageSummary, options: { config?: Record<string, string>; showOnHomepage?: boolean } = {}) {
+    const setupConfig = options.config || {};
+    const canInstall = app.validation.valid && !requiredSetupMissing(app, setupConfig);
     if (!canInstall) return;
     const showOnHomepage = options.showOnHomepage !== false;
     setSelectedId(app.id);
@@ -475,7 +513,11 @@ export function AppsScreen() {
         setInstallSteps((steps) => setStep(steps, 'prepare', 'running'));
         const installed = await withMinimumInstallStep(async () =>
           jsonResponse<{ instance: AppPackageSummary['instance'] }>(
-            await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(current.id)}/install`, { method: 'POST' }),
+            await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(current.id)}/install`, {
+              body: JSON.stringify({ config: setupConfig }),
+              headers: { 'Content-Type': 'application/json' },
+              method: 'POST',
+            }),
             `Unable to prepare ${current.name}.`,
           ),
         );

@@ -36,13 +36,15 @@ Use this section as the first stop when resuming the branch in a new chat sessio
 - [x] Reworked the Apps page into a calm local catalog: one search field, larger package icons from package-root `icon.png`, category pills, detail-first card actions, structured catalog presentation metadata, related apps, advanced technical details behind disclosure, and a default-on install checkbox that controls whether the app is added to Homepage after runtime apply.
 - [x] Hardened the first V2 generated-secret boundary: runtime apply now resolves app secrets only from the configured Suite Manager app secret directory, fails with a controlled `APP_SECRET_UNAVAILABLE` lifecycle error when a secret file is missing/unreadable/outside that directory, and avoids calling the app agent or returning secret paths in that state.
 - [x] Verified the V2 Vaultwarden package lifecycle and generated-secret hardening in the Hyper-V USB smoke VM on commit `b11dfc4`: Vaultwarden installed and reapplied through the generic app-agent path, the container stayed healthy, Compose/Caddy/health/Homepage projections were applied, the secret file was present with mode `0600`, SQLite held only the secret reference/redacted label/fingerprint, public package serialization and reapply responses exposed neither the raw secret nor secret path, and recent Suite Manager/app-agent logs did not contain the secret.
+- [x] Verified the V2 disable, re-enable, and uninstall-with-data-preserved lifecycle in a fresh Hyper-V USB smoke VM on commit `239f48e`: Stirling PDF installed through Suite Manager, applied runtime through the app agent, added the optional Homepage shortcut, disabled with the app container removed, app Caddy route block removed, Homepage shortcut detached, and Docker volumes preserved, re-enabled with the runtime and app route recreated from persisted state, then uninstalled with the container and route removed again while the five app Docker volumes remained and no owner password appeared in recent Suite Manager/app-agent logs.
+- [x] Added Radicale as the third V2 app package to validate the package model against a smaller V1-era calendar/contact sync app: package-owned Dockerfile/entrypoint/manifest/docs/icon, generic user-supplied setup fields for the bootstrap htpasswd account, one persistent data volume, one `radicale.<base-domain>` route, one Homepage tile, HTTP health projection, and tests for discovery, redaction, runtime materialization, and no production core hardcoding.
 
 ### Current Next Slice
 
 Build the next real V2 vertical slice inside `version-2/`:
 
 1. Continue hardening V2 secret management before expanding the app package surface further. The current restricted-file secret storage now has a controlled materialization failure boundary and Hyper-V validation, but it is still an early recoverable-secret mechanism rather than the final secret management system.
-2. Continue hardening the narrow app lifecycle path around Stirling PDF and Vaultwarden, especially failure recovery, richer user-facing setup/onboarding rendering, and eventual reinstall/cleanup decisions for apps that were uninstalled with data preserved.
+2. Continue hardening the narrow app lifecycle path around Stirling PDF, Vaultwarden, and Radicale, especially failure recovery, richer user-facing setup/onboarding rendering, show-once or user-managed secret reveal/rotation policy, and eventual reinstall/cleanup decisions for apps that were uninstalled with data preserved.
 3. Convert any remaining temporary V2 roadmap/checklist state into GitHub Issues before merging the branch.
 4. Keep public internet exposure outside the facilitated private LAN HTTPS flow; cloud/external-provider installs should continue to point custom-domain HTTPS work to the provider guide.
 
@@ -54,11 +56,11 @@ cmd /c npm --prefix version-2 test
 
 Expected result: V2 contract tests pass.
 
-Current result: V2 contract tests, TypeScript checks, the production frontend build, and the V2-owned Playwright flow pass. Fresh DigitalOcean validation confirms external-provider installs show provider-managed custom-domain guidance instead of the private DNS-01 form. Hyper-V USB validation confirms owner setup, private Homepage access, customization, Cloudflare DNS-01 HTTPS for `home.<domain>`, generated Caddy home-service routing, proxied LAN app access once the local network resolves the generated app hostname to the VM IP, and the Vaultwarden app lifecycle with generated-secret redaction through install and idempotent runtime reapply. Local deterministic tests now cover disable, re-enable, and uninstall-with-data-preserved semantics for V2 app packages.
+Current result: V2 contract tests, TypeScript checks, the production frontend build, and the V2-owned Playwright flow pass. Fresh DigitalOcean validation confirms external-provider installs show provider-managed custom-domain guidance instead of the private DNS-01 form. Hyper-V USB validation confirms owner setup, private Homepage access, customization, Cloudflare DNS-01 HTTPS for `home.<domain>`, generated Caddy home-service routing, proxied LAN app access once the local network resolves the generated app hostname to the VM IP, the Vaultwarden app lifecycle with generated-secret redaction through install and idempotent runtime reapply, and the Stirling PDF disable, re-enable, and uninstall-with-data-preserved flow. Local deterministic tests now cover disable, re-enable, and uninstall-with-data-preserved semantics for V2 app packages.
 
 ### Suggested Next Session Prompt
 
-Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. The V2 Suite Manager now has a local Apps catalog backed by package manifests, app-root `icon.png` assets, structured catalog metadata, detail-first install actions, and a default-on Homepage shortcut checkbox. Local tests pass for the package APIs and manifest contract, and Hyper-V has verified Vaultwarden install/reapply with generated-secret redaction. Next focus is the next narrow secret-management or app-lifecycle hardening slice before adding more secret-bearing apps.
+Continue the clean MOS V2 launch-platform branch on `feat/app-platform-v2-lab`. Start from `docs/app-platform-v2-lab-plan.md`. The V2 Suite Manager now has a local Apps catalog backed by package manifests, app-root `icon.png` assets, structured catalog metadata, detail-first install actions, generic setup inputs for user-supplied package fields, and a default-on Homepage shortcut checkbox. Local tests pass for the package APIs and manifest contract, Hyper-V has verified Vaultwarden install/reapply with generated-secret redaction, and Hyper-V has verified Stirling PDF disable, re-enable, and uninstall-with-data-preserved. Radicale has been added locally as the third package to pressure-test V1-era calendar/contact sync with user-supplied credentials and persistent data. Next focus is Hyper-V validation for Radicale, followed by the next narrow secret-management or app-lifecycle hardening slice before heavier apps.
 
 ## Product Goal
 
@@ -366,6 +368,12 @@ Second package findings from Vaultwarden:
 - Post-install guidance can start as package-owned `onboarding.steps` metadata. A polished generated onboarding UI, show-once secret reveal, token rotation, and completion checks should be separate follow-up work.
 - Secret management is the next architectural pressure point after Vaultwarden runtime validation, not catalog growth. Do not treat the current file-backed mechanism as final just because the tests are green.
 
+Third package findings from Radicale:
+
+- Some packages need user-supplied secrets instead of generated secrets because the user must later enter the same credential in external clients. The manifest's existing setup fields can express this without app-specific Suite Manager code, as long as the generic Apps UI renders input fields and clears submitted secret values from client state.
+- Radicale validates the one-service package path for V1-era sync apps: a package-owned entrypoint can perform app-local bootstrap work such as htpasswd setup and default collection creation while the app agent still only sees declarative env, volume, route, and health projections.
+- The V1 Homepage iCal bridge, generated bridge token, Vaultwarden handoff, DAV auto-discovery, and multi-user/device onboarding are intentionally deferred. Adding them should happen as explicit package-contract work rather than by hardcoding Radicale into control-plane core.
+
 Catalog presentation findings:
 
 - Package manifests now support optional `catalog` metadata for richer descriptions, tags, features, privacy notes, links, setup complexity, resource hints, and related apps. This keeps presentation data structured without duplicating core manifest fields.
@@ -387,7 +395,7 @@ Validation strategy:
 First app milestone:
 
 - Stirling PDF is the first intentionally boring real app.
-- Current state proves package discovery, validation, SQLite install state, generated route/Homepage/health projections, app-agent runtime apply, optional Homepage shortcut apply, authenticated health refresh, disable, re-enable, and uninstall-with-data-preserved.
+- Current state proves package discovery, validation, SQLite install state, generated route/Homepage/health projections, app-agent runtime apply, optional Homepage shortcut apply, authenticated health refresh, disable, re-enable, and uninstall-with-data-preserved. Hyper-V validation proved disable and preserved-data uninstall remove the app container, remove only that app's Caddy route block, detach the MOS-owned Homepage shortcut, and preserve app Docker volumes; re-enable recreates runtime and route from persisted state.
 - Remaining lifecycle hardening: richer setup/onboarding rendering, failed-operation recovery UX, reinstallation or cleanup decisions after preserved-data uninstall, and broader idempotency checks in live host validation.
 
 Unresolved decisions, with recommended defaults:
