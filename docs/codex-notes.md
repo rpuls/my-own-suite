@@ -19,6 +19,52 @@ For mandatory agent rules, see [AGENTS.md](../AGENTS.md). For documentation owne
 - Temporary branch plans are allowed when useful for multi-session work, but they should be deleted or replaced with durable decisions/docs before merge.
 - Keep operator runbooks single-source: V2 Hyper-V and DigitalOcean smoke commands live in `version-2/scripts/README.md`; Codex notes should point there instead of duplicating command steps.
 
+## V2 Hyper-V SSH For Codex
+
+Use this when the user has run the V2 Hyper-V USB smoke and gives Codex the VM IPv4. The IP changes between resets; the SSH login details usually do not.
+
+- Do not ask the user to upload SSH keys into the VM. The Hyper-V autoinstall enables password SSH for the Linux user.
+- Read the Linux username/password from `deploy/self-host/autoinstall/installer-config/selfhost-installer.env`. `USERNAME` defaults to `mos` when it is not set; `LINUX_PASSWORD` is the SSH/sudo password. Do not print the password in chat.
+- First check port 22 from Windows:
+
+```powershell
+Test-NetConnection -ComputerName <vm-ip> -Port 22 | Select-Object ComputerName,RemotePort,TcpTestSucceeded
+```
+
+- If OpenSSH has no key for the VM, `ssh -o BatchMode=yes ...` will fail with `Permission denied (publickey,password)`. That is expected and does not mean SSH is broken.
+- `plink.exe` from PuTTY works well for non-interactive password SSH. It is commonly installed at `C:\Program Files\PuTTY\plink.exe` on this machine.
+- Pin the host key before using `plink`. One safe pattern is to let OpenSSH record the host key while forcing non-interactive auth failure, then ask OpenSSH which known-hosts file it actually uses in the Codex shell and read the fingerprint from that file. In this environment it may be `C:\Users\CodexSandboxOffline\.ssh\known_hosts` instead of `$env:USERPROFILE\.ssh\known_hosts`.
+
+```powershell
+$ip = '<vm-ip>'
+ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new "mos@$ip" "hostname"
+$knownHosts = ((ssh -G $ip | Select-String '^userknownhostsfile\s+(.+?)(?:\s+\S+)?$').Matches[0].Groups[1].Value)
+ssh-keygen -F $ip -f $knownHosts
+ssh-keygen -lf $knownHosts | Select-String $ip
+```
+
+- Then use `plink` with the pinned `SHA256:...` fingerprint and the password read from the local env file:
+
+```powershell
+$ip = '<vm-ip>'
+$cfg = Get-Content -LiteralPath 'deploy\self-host\autoinstall\installer-config\selfhost-installer.env'
+$userLine = $cfg | Where-Object { $_ -match '^\s*USERNAME\s*=' } | Select-Object -Last 1
+$user = if ($userLine) { (($userLine -split '=', 2)[1]).Trim().Trim('"').Trim("'") } else { 'mos' }
+$password = (($cfg | Where-Object { $_ -match '^\s*LINUX_PASSWORD\s*=' } | Select-Object -Last 1) -split '=', 2)[1].Trim().Trim('"').Trim("'")
+$hostKey = '<SHA256:fingerprint-from-ssh-keygen>'
+& 'C:\Program Files\PuTTY\plink.exe' -ssh -batch -hostkey $hostKey -pw $password "$user@$ip" "hostname; whoami"
+```
+
+- For sudo-backed read-only checks, feed the same password to `sudo -S` over SSH. Keep commands read-only unless the user explicitly approves a reversible tamper test:
+
+```powershell
+$remote = "printf '%s\n' '$password' | sudo -S sh -c 'systemctl list-units ''mos-v2*'' --no-pager --plain; docker ps'"
+& 'C:\Program Files\PuTTY\plink.exe' -ssh -batch -hostkey $hostKey -pw $password "$user@$ip" $remote
+```
+
+- The V2 checkout is expected at `/opt/mos-v2/repo`, Suite Manager state at `/var/lib/mos-v2/suite-manager`, app secrets at `/var/lib/mos-v2/suite-manager/app-secrets`, and V2 services are named `mos-v2-suite-manager`, `mos-v2-app-agent`, `mos-v2-homepage`, `mos-v2-homepage-agent`, and `mos-v2-https-agent`.
+- If `plink` is unavailable, ask the user for their exact SSH command or ask them to run a read-only command bundle and paste the output. Do not spend time trying to invent a new key workflow.
+
 ## Temporary Branch Plan: Own-Infra Self-Host Convergence
 
 Branch: `feat/own-infra-selfhost-convergence`

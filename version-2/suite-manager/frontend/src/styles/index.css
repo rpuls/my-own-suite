@@ -463,26 +463,7 @@
   justify-content: flex-end;
 }
 
-.suite-app-installed-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.42rem;
-  color: rgba(205, 216, 231, 0.78);
-  font-size: var(--mos-text-label);
-  font-weight: 800;
-  letter-spacing: var(--mos-letter-spacing-label);
-  text-transform: uppercase;
-}
-
-.suite-app-installed-indicator span {
-  width: 0.56rem;
-  height: 0.56rem;
-  border-radius: 50%;
-  background: var(--mos-color-accent);
-  box-shadow: 0 0 0 4px rgba(99, 226, 179, 0.12);
-}
-
-.suite-app-status {
+.suite-app-health-indicator {
   display: inline-flex;
   align-items: center;
   width: fit-content;
@@ -497,23 +478,112 @@
   letter-spacing: var(--mos-letter-spacing-label);
 }
 
-.suite-app-status.is-ready {
+.suite-app-health-indicator.is-ready {
   border-color: rgba(99, 226, 179, 0.46);
   background: rgba(99, 226, 179, 0.1);
   color: var(--mos-color-text-strong);
 }
 
-.suite-app-status.is-attention {
+.suite-app-health-indicator.is-attention {
   border-color: rgba(255, 205, 120, 0.42);
   background: rgba(255, 205, 120, 0.09);
   color: #ffcd78;
 }
 
-.suite-app-status.is-progress,
-.suite-app-status.is-setup {
+.suite-app-health-indicator.is-progress,
+.suite-app-health-indicator.is-setup,
+.suite-app-health-indicator.is-available {
   border-color: rgba(142, 180, 212, 0.35);
   background: rgba(142, 180, 212, 0.08);
   color: var(--mos-color-text);
+}
+
+.suite-app-health-led-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+}
+
+.suite-app-health-led-wrap:focus-visible {
+  outline: 2px solid rgba(99, 226, 179, 0.62);
+  outline-offset: 3px;
+}
+
+.suite-app-health-led {
+  display: inline-flex;
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 1px solid rgba(205, 216, 231, 0.3);
+  border-radius: 50%;
+  background: rgba(142, 180, 212, 0.48);
+  box-shadow: 0 0 0 4px rgba(142, 180, 212, 0.1);
+}
+
+.suite-app-health-led.is-ready {
+  border-color: rgba(99, 226, 179, 0.66);
+  background: var(--mos-color-accent);
+  box-shadow: 0 0 0 4px rgba(99, 226, 179, 0.13);
+}
+
+.suite-app-health-led.is-attention {
+  border-color: rgba(255, 205, 120, 0.68);
+  background: #ffcd78;
+  box-shadow: 0 0 0 4px rgba(255, 205, 120, 0.13);
+}
+
+.suite-app-health-led.is-progress,
+.suite-app-health-led.is-setup {
+  border-color: rgba(125, 196, 255, 0.58);
+  background: #7dc4ff;
+  box-shadow: 0 0 0 4px rgba(125, 196, 255, 0.12);
+}
+
+.suite-app-health-tooltip {
+  position: absolute;
+  z-index: 12;
+  right: 50%;
+  bottom: calc(100% + 0.55rem);
+  transform: translateX(50%) translateY(0.25rem);
+  min-width: max-content;
+  max-width: 14rem;
+  padding: 0.45rem 0.62rem;
+  border: 1px solid rgba(99, 226, 179, 0.24);
+  border-radius: var(--mos-radius-sm);
+  background: rgba(16, 24, 34, 0.97);
+  box-shadow: var(--mos-shadow-md);
+  color: var(--mos-color-text-strong);
+  font-size: var(--mos-text-label);
+  font-weight: 800;
+  letter-spacing: var(--mos-letter-spacing-label);
+  line-height: 1.2;
+  opacity: 0;
+  pointer-events: none;
+  text-align: center;
+  text-transform: uppercase;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.suite-app-health-tooltip::after {
+  content: "";
+  position: absolute;
+  right: 50%;
+  top: 100%;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 1px solid rgba(99, 226, 179, 0.24);
+  border-bottom: 1px solid rgba(99, 226, 179, 0.24);
+  background: rgba(16, 24, 34, 0.97);
+  transform: translate(50%, -50%) rotate(45deg);
+}
+
+.suite-app-health-led-wrap:hover .suite-app-health-tooltip,
+.suite-app-health-led-wrap:focus-visible .suite-app-health-tooltip {
+  opacity: 1;
+  transform: translateX(50%) translateY(0);
 }
 
 .suite-app-empty {

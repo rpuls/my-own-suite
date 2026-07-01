@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 
 import { Icon, Notice } from '../../components/ui';
 
@@ -117,6 +117,19 @@ function setupLabel(app: AppPackageSummary) {
   if (app.setup.fieldCount === 0) return 'No setup needed';
   if (app.setup.fields.every((field) => field.generated)) return 'MOS generates setup';
   return `${app.setup.fieldCount} setup field${app.setup.fieldCount === 1 ? '' : 's'}`;
+}
+
+function AppHealthIndicator({ app, ledVariant = false }: { app: AppPackageSummary; ledVariant?: boolean }) {
+  const tooltipId = useId();
+  const status = statusFor(app);
+  const label = `${app.name}: ${status.label}`;
+  if (ledVariant) {
+    return <span aria-describedby={tooltipId} aria-label={label} className="suite-app-health-led-wrap" role="img" tabIndex={0}>
+      <span aria-hidden="true" className={`suite-app-health-led ${status.className}`} />
+      <span className="suite-app-health-tooltip" id={tooltipId} role="tooltip">{status.label}</span>
+    </span>;
+  }
+  return <span className={`suite-app-health-indicator ${status.className}`}>{status.label}</span>;
 }
 
 function complexityLabel(app: AppPackageSummary) {
@@ -250,7 +263,6 @@ function AppIcon({ app, large = false }: { app: AppPackageSummary; large?: boole
 }
 
 function AppCard({ app, onOpen }: { app: AppPackageSummary; onOpen: (app: AppPackageSummary) => void }) {
-  const installed = app.installStatus === 'installed' || Boolean(app.instance);
   return <article className="suite-app-card">
     <button className="suite-app-card-main" onClick={() => onOpen(app)} type="button">
       <AppIcon app={app} />
@@ -263,7 +275,7 @@ function AppCard({ app, onOpen }: { app: AppPackageSummary; onOpen: (app: AppPac
       </span>
     </button>
     <div className="suite-app-card-actions">
-      {installed ? <span className="suite-app-installed-indicator">Installed<span aria-hidden="true" /></span> : null}
+      <AppHealthIndicator app={app} ledVariant />
       <button className="mos-btn mos-btn-primary" onClick={() => onOpen(app)} type="button">View</button>
     </div>
   </article>;
@@ -293,7 +305,6 @@ function AppDetail({
   refreshing: boolean;
 }) {
   const [showOnHomepage, setShowOnHomepage] = useState(true);
-  const status = statusFor(app);
   const ready = runtimeApplied(app);
   const url = appUrl(app);
   const relatedIds = app.catalog.related.length
@@ -315,7 +326,7 @@ function AppDetail({
         <div className="suite-app-detail-heading">
           <div className="suite-app-detail-title-row">
             <h2>{app.name}</h2>
-            <span className={`suite-app-status ${status.className}`}>{status.label}</span>
+            <AppHealthIndicator app={app} />
           </div>
           <p>{descriptionFor(app)}</p>
         </div>
