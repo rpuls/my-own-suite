@@ -9,27 +9,27 @@ import { useEffect, useRef } from 'react';
 import { parseDocument } from 'yaml';
 
 const mosEditorTheme = EditorView.theme({
-  '&': { backgroundColor: 'rgba(9, 24, 39, 0.98)', color: 'var(--mos-color-text)', fontSize: '0.92rem' },
-  '&.cm-focused': { outline: '2px solid rgba(99, 226, 179, 0.34)', outlineOffset: '-2px' },
+  '&': { backgroundColor: 'var(--mos-color-bg-soft)', color: 'var(--mos-color-text)', fontSize: '0.92rem' },
+  '&.cm-focused': { outline: 'var(--mos-focus-ring)', outlineOffset: '-2px' },
   '.cm-content': { caretColor: 'var(--mos-color-accent)', fontFamily: '"Cascadia Code", "Courier New", monospace', lineHeight: '1.5', padding: '0.9rem 0' },
   '.cm-cursor': { borderLeftColor: 'var(--mos-color-accent)' },
-  '.cm-gutters': { backgroundColor: 'rgba(15, 35, 55, 0.96)', borderRight: '1px solid var(--mos-color-surface-border)', color: 'rgba(203, 218, 230, 0.74)' },
+  '.cm-gutters': { backgroundColor: 'var(--mos-color-surface-elevated)', borderRight: '1px solid var(--mos-color-surface-border)', color: 'var(--mos-color-text-muted)' },
   '.cm-line': { padding: '0 0.9rem' },
-  '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'rgba(99, 226, 179, 0.1)' },
-  '.cm-selectionBackground': { backgroundColor: 'rgba(99, 226, 179, 0.24) !important' },
+  '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'var(--mos-color-accent-soft)' },
+  '.cm-selectionBackground': { backgroundColor: 'var(--mos-color-accent-focus) !important' },
   '.cm-tooltip': { backgroundColor: 'var(--mos-color-surface-elevated)', border: '1px solid var(--mos-color-surface-border)', color: 'var(--mos-color-text)' },
 }, { dark: true });
 
 const mosHighlightStyle = HighlightStyle.define([
-  { tag: tags.comment, color: '#8da6b8', fontStyle: 'italic' },
-  { tag: [tags.name, tags.propertyName], color: '#8fd3ff' },
-  { tag: [tags.string, tags.special(tags.string)], color: '#f7d88a' },
-  { tag: [tags.number, tags.bool, tags.null], color: '#ffb86b' },
-  { tag: [tags.keyword, tags.operatorKeyword], color: '#b9a7ff' },
-  { tag: [tags.operator, tags.punctuation, tags.separator], color: '#cbdce8' },
-  { tag: [tags.variableName, tags.definition(tags.variableName)], color: '#63e2b3' },
-  { tag: [tags.atom, tags.labelName], color: '#f5a6d6' },
-  { tag: tags.invalid, color: '#ff8c8c' },
+  { tag: tags.comment, color: 'var(--mos-color-text-muted)', fontStyle: 'italic' },
+  { tag: [tags.name, tags.propertyName], color: 'var(--mos-color-info)' },
+  { tag: [tags.string, tags.special(tags.string)], color: 'var(--mos-color-warning)' },
+  { tag: [tags.number, tags.bool, tags.null], color: 'var(--mos-color-warning)' },
+  { tag: [tags.keyword, tags.operatorKeyword], color: 'var(--mos-color-text-strong)' },
+  { tag: [tags.operator, tags.punctuation, tags.separator], color: 'var(--mos-color-text-muted)' },
+  { tag: [tags.variableName, tags.definition(tags.variableName)], color: 'var(--mos-color-accent)' },
+  { tag: [tags.atom, tags.labelName], color: 'var(--mos-color-info)' },
+  { tag: tags.invalid, color: 'var(--mos-color-danger)' },
 ]);
 
 function yamlLinter() {

@@ -38,18 +38,34 @@
 :root {
   --mos-color-bg: #061526;
   --mos-color-bg-soft: #0b2138;
-  --mos-color-surface: rgba(255, 255, 255, 0.06);
-  --mos-color-surface-strong: rgba(255, 255, 255, 0.1);
+  --mos-color-surface: rgba(255, 255, 255, 0.08);
+  --mos-color-surface-muted: rgba(255, 255, 255, 0.04);
+  --mos-color-surface-strong: rgba(255, 255, 255, 0.12);
   --mos-color-surface-elevated: rgba(10, 31, 53, 0.86);
+  --mos-color-overlay: rgba(2, 10, 18, 0.72);
+  --mos-color-backdrop: rgba(0, 0, 0, 0.64);
   --mos-color-surface-border: rgba(255, 255, 255, 0.18);
-  --mos-color-hairline: rgba(255, 255, 255, 0.08);
+  --mos-color-hairline: var(--mos-color-surface-muted);
   --mos-color-text: #eef4ff;
   --mos-color-text-strong: #f4fbff;
   --mos-color-text-muted: #b8c9de;
   --mos-color-accent: #63e2b3;
   --mos-color-accent-strong: #28bc84;
   --mos-color-accent-soft: rgba(99, 226, 179, 0.12);
+  --mos-color-accent-border: rgba(99, 226, 179, 0.32);
+  --mos-color-accent-focus: rgba(99, 226, 179, 0.18);
   --mos-color-danger: #ff9d9d;
+  --mos-color-danger-soft: rgba(255, 157, 157, 0.1);
+  --mos-color-danger-border: rgba(255, 157, 157, 0.42);
+  --mos-color-warning: #ffcd78;
+  --mos-color-warning-soft: rgba(255, 205, 120, 0.1);
+  --mos-color-warning-border: rgba(255, 205, 120, 0.42);
+  --mos-color-info: #7dc4ff;
+  --mos-color-info-soft: rgba(125, 196, 255, 0.1);
+  --mos-color-info-border: rgba(125, 196, 255, 0.42);
+  --mos-color-button-primary-text: #062016;
+  --mos-color-link-hover: #9ff0cf;
+  --mos-color-focus-visible: #ffffff;
   --mos-shadow-soft: 0 18px 48px rgba(0, 0, 0, 0.24);
   --mos-shadow-strong: 0 28px 70px rgba(0, 0, 0, 0.28);
 
@@ -85,7 +101,9 @@
   --mos-letter-spacing-eyebrow: 0.08em;
 
   --mos-border-hairline: 1px solid var(--mos-color-hairline);
+  --mos-border-subtle: 1px solid var(--mos-color-hairline);
   --mos-border-strong: 1px solid var(--mos-color-surface-border);
+  --mos-focus-ring: 3px solid var(--mos-color-accent-focus);
 
   --bg: var(--mos-color-bg);
   --bg-soft: var(--mos-color-bg-soft);
@@ -127,8 +145,8 @@ body {
     sans-serif;
   color: var(--mos-color-text);
   background:
-    radial-gradient(circle at 18% 12%, rgba(99, 226, 179, 0.2), transparent 38%),
-    radial-gradient(circle at 85% 0%, rgba(86, 188, 246, 0.16), transparent 34%),
+    radial-gradient(circle at 18% 12%, var(--mos-color-accent-soft), transparent 38%),
+    radial-gradient(circle at 85% 0%, var(--mos-color-info-soft), transparent 34%),
     linear-gradient(155deg, var(--mos-color-bg), var(--mos-color-bg-soft));
   line-height: var(--mos-line-height-body);
   min-height: 100vh;
@@ -220,14 +238,14 @@ select {
 a:focus-visible,
 button:focus-visible,
 summary:focus-visible {
-  outline: 3px solid #ffffff;
+  outline: 3px solid var(--mos-color-focus-visible);
   outline-offset: 2px;
 }
 
 .mos-btn-primary {
   background: linear-gradient(160deg, var(--mos-color-accent), var(--mos-color-accent-strong));
-  color: #062016;
-  box-shadow: 0 12px 28px rgba(20, 105, 76, 0.26);
+  color: var(--mos-color-button-primary-text);
+  box-shadow: var(--mos-shadow-soft);
 }
 
 .mos-btn-secondary {
@@ -241,8 +259,8 @@ summary:focus-visible {
 }
 
 .mos-btn-secondary:hover {
-  border-color: rgba(99, 226, 179, 0.32);
-  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--mos-color-accent-border);
+  background: var(--mos-color-surface-strong);
 }
 
 .mos-panel {
@@ -254,7 +272,7 @@ summary:focus-visible {
 }
 
 .mos-panel-subtle {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--mos-color-surface-muted);
   box-shadow: none;
 }
 
@@ -268,11 +286,11 @@ summary:focus-visible {
 .mos-label {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--mos-space-2);
   border-radius: var(--mos-radius-pill);
   padding: 0.25rem 0.7rem;
   border: var(--mos-border-strong);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--mos-color-surface);
   color: var(--mos-color-text-muted);
   font-size: var(--mos-text-label);
   font-weight: 700;
@@ -288,7 +306,7 @@ summary:focus-visible {
 }
 
 .mos-pill-accent {
-  border-color: rgba(99, 226, 179, 0.24);
+  border-color: var(--mos-color-accent-border);
   background: var(--mos-color-accent-soft);
   color: var(--mos-color-accent);
 }
@@ -314,5 +332,5 @@ summary:focus-visible {
 }
 
 .mos-link:hover {
-  color: #9ff0cf;
+  color: var(--mos-color-link-hover);
 }
