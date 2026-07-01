@@ -22,7 +22,7 @@ Homepage restarts have a dedicated 60-second deadline rather than the generic 20
 
 ## App Runtime Agent
 
-`apps/agent.cjs` runs over `/run/mos-v2-app-agent/agent.sock`. The first disposable capability is intentionally narrow: it accepts one validated app-package service projection, builds the package-owned Dockerfile under `version-2/apps/<app-id>/`, starts one Docker container on the assigned loopback port, writes package-scoped blocks in `/etc/caddy/mos-v2-app-routes.caddy`, reloads Caddy, and waits for the loopback health endpoint.
+`apps/agent.cjs` runs over `/run/mos-v2-app-agent/agent.sock`. The first disposable capability is intentionally narrow: it accepts one validated app-package service projection, builds the package-owned Dockerfile under `version-2/apps/<app-id>/`, starts one Docker container on the assigned loopback port, writes package-scoped blocks in `/etc/caddy/mos-v2-app-routes.caddy`, reloads Caddy, and waits for the loopback health endpoint. It may render constrained package-declared helper routes, such as the tokenized Radicale iCal bridge, from structured fields only.
 
 Suite Manager owns app install intent and SQLite projection state. The app agent owns privileged Docker, Caddy route writes, health probing, and the non-destructive remove-runtime action used by disable and preserved-data uninstall. Remove stops/removes only the app container and removes only that package's Caddy route block; it does not delete Docker volumes, app config, or secrets. It does not accept arbitrary package paths, Docker commands, Caddy snippets, or multi-service lifecycle requests.
 

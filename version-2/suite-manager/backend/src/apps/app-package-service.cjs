@@ -76,10 +76,11 @@ function configValueMap(configRows, { includeSecrets = false } = {}) {
   return map;
 }
 
-function resolveConfigTemplate(value, configRows, { includeSecrets = false } = {}) {
+function resolveConfigTemplate(value, configRows, { app = {}, includeSecrets = false } = {}) {
   if (typeof value !== 'string') return value;
   const values = configValueMap(configRows, { includeSecrets });
   return value
+    .replace(/\$\{app\.publicUrl\}/gu, () => (typeof app.publicUrl === 'string' ? app.publicUrl : '${app.publicUrl}'))
     .replace(/\$\{config\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (values.has(key) ? String(values.get(key)) : match))
     .replace(/\$\{secret\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (values.has(key) ? String(values.get(key)) : match));
 }
@@ -88,6 +89,15 @@ function renderEnvironment(environment, configRows, options = {}) {
   return Object.fromEntries(
     Object.entries(environment || {}).map(([key, value]) => [key, resolveConfigTemplate(value, configRows, options)]),
   );
+}
+
+function resolveTemplatesDeep(value, configRows, options = {}) {
+  if (typeof value === 'string') return resolveConfigTemplate(value, configRows, options);
+  if (Array.isArray(value)) return value.map((item) => resolveTemplatesDeep(item, configRows, options));
+  if (isRecord(value)) {
+    return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, resolveTemplatesDeep(child, configRows, options)]));
+  }
+  return value;
 }
 
 function renderDryRunProjections(manifest, configRows = []) {
@@ -112,6 +122,7 @@ function renderDryRunProjections(manifest, configRows = []) {
       content: {
         routes: manifest.routes.map((route) => ({
           host: route.host,
+          ...(isRecord(route.internalIcalBridge) ? { internalIcalBridge: resolveTemplatesDeep(route.internalIcalBridge, configRows) } : {}),
           reverseProxy: `127.0.0.1:${loopbackPortFor(manifest, route.service)}`,
         })),
       },
@@ -265,6 +276,10 @@ function materializeRuntimeCompose(compose, configRows) {
   };
 }
 
+function materializeRuntimeCaddy(caddy, configRows) {
+  return resolveTemplatesDeep(caddy, configRows, { includeSecrets: true });
+}
+
 function appRouteForHomepage(projections) {
   const caddy = projections.find((projection) => projection.kind === 'caddy')?.content;
   const route = Array.isArray(caddy?.routes) ? caddy.routes[0] : null;
@@ -290,6 +305,19 @@ function linkEntryForHomepage(instance, projections, requestContext = {}) {
     icon: homepage.icon || instance.packageId,
     name: homepage.name || instance.displayNameSnapshot,
     url: `${scheme}://${route.host}.${baseHost}/`,
+  };
+}
+
+function homepageEntryForHomepage(instance, projections, configRows, requestContext = {}) {
+  const base = linkEntryForHomepage(instance, projections, requestContext);
+  const homepage = projections.find((projection) => projection.kind === 'homepage')?.content;
+  if (!isRecord(homepage?.widget)) return base;
+  return {
+    ...base,
+    widget: resolveTemplatesDeep(homepage.widget, configRows, {
+      app: { publicUrl: base.url },
+      includeSecrets: true,
+    }),
   };
 }
 
@@ -339,7 +367,7 @@ class AppPackageService {
     const { manifest } = readAppPackageManifest(packageDir);
     const result = await this.agent.apply({
       appHost: requestContext.appHost,
-      caddy: caddyProjection.content,
+      caddy: materializeRuntimeCaddy(caddyProjection.content, configRows),
       compose: materializeRuntimeCompose(composeProjection.content, configRows),
       health: healthProjection.content,
       instanceId: instance.id,
@@ -539,8 +567,11 @@ class AppPackageService {
     }
 
     const current = await homepageService.read({ file: 'services.template.yaml' });
+    const configRows = this.store.getAppConfig(instance.id).map((row) => (
+      row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
+    ));
     const result = await homepageService.add({
-      entry: linkEntryForHomepage(instance, projections, requestContext),
+      entry: homepageEntryForHomepage(instance, projections, configRows, requestContext),
       expectedRevision: current.revision,
       requestId: instance.id,
     }, false);
@@ -699,11 +730,14 @@ module.exports = {
   appRouteForHomepage,
   digestFor,
   healthTargetFor,
+  homepageEntryForHomepage,
   linkEntryForHomepage,
   loopbackPortFor,
+  materializeRuntimeCaddy,
   materializeRuntimeCompose,
   renderDryRunProjections,
   resolveConfigTemplate,
+  resolveTemplatesDeep,
   homepageProjectionApplied,
   runtimeApplied,
   stableJson,

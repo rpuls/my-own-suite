@@ -112,6 +112,7 @@ function validateServices(value) {
   const subdomains = new Set();
   for (const { config } of entriesFromServices(value)) {
     if (!config || typeof config !== 'object' || Array.isArray(config)) continue;
+    if (config.widget !== undefined) validateWidget(config.widget);
     if (config.mos === undefined) continue;
     const mos = config.mos;
     const keys = Object.keys(mos && typeof mos === 'object' && !Array.isArray(mos) ? mos : {}).sort();
@@ -129,10 +130,51 @@ function validateServices(value) {
   return true;
 }
 
+function validateWidget(widget) {
+  const keys = Object.keys(widget && typeof widget === 'object' && !Array.isArray(widget) ? widget : {}).sort();
+  if (keys.join(',') !== 'integrations,maxEvents,showTime,type,view') {
+    throw new HomepageConfigError('INVALID_WIDGET_METADATA', 'Homepage widget metadata has an unsupported field.');
+  }
+  if (widget.type !== 'calendar' || widget.view !== 'monthly' || widget.showTime !== true) {
+    throw new HomepageConfigError('INVALID_WIDGET_METADATA', 'Only monthly calendar widgets are supported for package tiles right now.');
+  }
+  if (!Number.isInteger(widget.maxEvents) || widget.maxEvents < 1 || widget.maxEvents > 50) {
+    throw new HomepageConfigError('INVALID_WIDGET_METADATA', 'Calendar widget maxEvents must be between 1 and 50.');
+  }
+  if (!Array.isArray(widget.integrations) || widget.integrations.length < 1 || widget.integrations.length > 3) {
+    throw new HomepageConfigError('INVALID_WIDGET_METADATA', 'Calendar widgets must declare one to three integrations.');
+  }
+  return {
+    integrations: widget.integrations.map((integration) => {
+      const integrationKeys = Object.keys(integration && typeof integration === 'object' && !Array.isArray(integration) ? integration : {}).sort();
+      if (integrationKeys.join(',') !== 'color,name,type,url' || integration.type !== 'ical') {
+        throw new HomepageConfigError('INVALID_WIDGET_METADATA', 'Only iCal calendar integrations are supported right now.');
+      }
+      let url;
+      try { url = new URL(String(integration.url || '').trim()); } catch {
+        throw new HomepageConfigError('INVALID_WIDGET_METADATA', 'Calendar integration URLs must be valid HTTP or HTTPS URLs.');
+      }
+      if (!PROTOCOLS.has(url.protocol.replace(':', '')) || url.username || url.password) {
+        throw new HomepageConfigError('INVALID_WIDGET_METADATA', 'Calendar integration URLs must use HTTP or HTTPS without credentials.');
+      }
+      const name = String(integration.name || '').trim();
+      const color = String(integration.color || '').trim();
+      if (!name || name.length > 80 || /[\r\n]/u.test(name) || !/^[a-z]+$/u.test(color)) {
+        throw new HomepageConfigError('INVALID_WIDGET_METADATA', 'Calendar integration name and color must be plain values.');
+      }
+      return { color, name, type: 'ical', url: url.href };
+    }),
+    maxEvents: widget.maxEvents,
+    showTime: true,
+    type: 'calendar',
+    view: 'monthly',
+  };
+}
+
 function normalizeDashboardInput(input, homeService) {
   const allowed = homeService
     ? ['description', 'group', 'host', 'icon', 'name', 'port', 'protocol', 'subdomain']
-    : ['description', 'group', 'icon', 'name', 'url'];
+    : ['description', 'group', 'icon', 'name', 'url', ...(input && typeof input === 'object' && Object.hasOwn(input, 'widget') ? ['widget'] : [])];
   const keys = Object.keys(input && typeof input === 'object' ? input : {}).sort();
   if (keys.join(',') !== allowed.sort().join(',')) {
     throw new HomepageConfigError('INVALID_GUIDED_REQUEST', 'Only the documented dashboard fields are accepted.');
@@ -152,7 +194,7 @@ function normalizeDashboardInput(input, homeService) {
     if (!PROTOCOLS.has(url.protocol.replace(':', '')) || url.username || url.password) {
       throw new HomepageConfigError('INVALID_LINK_URL', 'Links must use HTTP or HTTPS and cannot contain credentials.');
     }
-    return { ...text, url: url.href };
+    return { ...text, ...(input.widget === undefined ? {} : { widget: validateWidget(input.widget) }), url: url.href };
   }
   const proxy = validateProxy({
     subdomain: input.subdomain,
@@ -184,6 +226,7 @@ function addEntry(content, rawInput, { homeService = false, id = crypto.randomUU
       description: input.description,
       href: homeService ? '#' : input.url,
       icon: input.icon,
+      ...(input.widget === undefined ? {} : { widget: input.widget }),
       mos: {
         id,
         managedBy: 'user',
@@ -269,5 +312,6 @@ module.exports = {
   revisionFor,
   validateProxy,
   validateServices,
+  validateWidget,
   validateYaml,
 };

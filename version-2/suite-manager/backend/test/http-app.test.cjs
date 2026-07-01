@@ -314,7 +314,17 @@ test('App package catalog API requires authentication and exposes safe manifest 
         secret: true,
         type: 'password',
       },
+      {
+        generated: true,
+        id: 'icalToken',
+        label: 'Calendar widget token',
+        required: true,
+        secret: true,
+        type: 'password',
+      },
     ]);
+    assert.equal(radicale.homepage.widget.type, 'calendar');
+    assert.equal(radicale.homepage.widget.integrations[0].url, '${app.publicUrl}__mos-v2/ical/${secret.icalToken}');
     assert.ok(stirling);
     assert.equal(stirling.name, 'Stirling PDF');
     assert.equal(stirling.installStatus, 'not-installed');
@@ -512,7 +522,10 @@ test('Radicale install stores user-supplied credentials with secret redaction an
     const instance = installed.json().instance;
     const username = instance.config.find((item) => item.key === 'adminUsername');
     const passwordConfig = instance.config.find((item) => item.key === 'adminPassword');
+    const tokenConfig = instance.config.find((item) => item.key === 'icalToken');
     const compose = instance.projections.find((projection) => projection.kind === 'compose').content;
+    const caddy = instance.projections.find((projection) => projection.kind === 'caddy').content;
+    const homepage = instance.projections.find((projection) => projection.kind === 'homepage').content;
 
     assert.equal(installed.status, 200);
     assert.equal(instance.packageId, 'radicale');
@@ -522,8 +535,14 @@ test('Radicale install stores user-supplied credentials with secret redaction an
     assert.equal(passwordConfig.value, undefined);
     assert.equal(passwordConfig.redactedLabel, 'Radicale admin password');
     assert.match(passwordConfig.fingerprint, /^sha256:[a-f0-9]{64}$/u);
+    assert.equal(tokenConfig.secret, true);
+    assert.equal(tokenConfig.generated, true);
+    assert.equal(tokenConfig.value, undefined);
     assert.equal(compose.services[0].environment.RADICALE_ADMIN_USERNAME, 'calendar-admin');
     assert.equal(compose.services[0].environment.RADICALE_ADMIN_PASSWORD, '${secret.adminPassword}');
+    assert.equal(caddy.routes[0].internalIcalBridge.path, '/__mos-v2/ical/${secret.icalToken}');
+    assert.equal(caddy.routes[0].internalIcalBridge.basicAuth.password, '${secret.adminPassword}');
+    assert.equal(homepage.widget.integrations[0].url, '${app.publicUrl}__mos-v2/ical/${secret.icalToken}');
     assert.equal(compose.services[0].internalPort, 5232);
     assert.equal(compose.services[0].loopbackPort, radicalePort);
     assert.deepEqual(compose.services[0].volumes, ['data:/data']);
@@ -540,8 +559,11 @@ test('Radicale install stores user-supplied credentials with secret redaction an
     assert.equal(calls[0].publicUrl, 'https://radicale.test/');
     assert.equal(calls[0].compose.services[0].environment.RADICALE_ADMIN_USERNAME, 'calendar-admin');
     assert.equal(calls[0].compose.services[0].environment.RADICALE_ADMIN_PASSWORD, password);
+    assert.match(calls[0].caddy.routes[0].internalIcalBridge.path, /^\/__mos-v2\/ical\/[A-Za-z0-9_-]{40,}$/u);
+    assert.equal(calls[0].caddy.routes[0].internalIcalBridge.basicAuth.password, password);
     assert.equal(calls[0].health.target, `http://127.0.0.1:${radicalePort}/`);
     assert.doesNotMatch(applied.body, new RegExp(password, 'u'));
+    assert.doesNotMatch(applied.body, new RegExp(calls[0].caddy.routes[0].internalIcalBridge.path.split('/').at(-1), 'u'));
   }, { appAgent, homeHost: 'home.test' });
 });
 
@@ -710,6 +732,52 @@ test('Installed app packages can be added to Homepage through the existing agent
     homeHost: 'home.test',
     homepageAgent,
   });
+});
+
+test('Radicale Homepage projection adds a calendar widget without exposing credentials in package APIs', async () => {
+  const calls = [];
+  const homepageAgent = {
+    async addLink(input) {
+      calls.push(['addLink', input]);
+      return { changed: true, file: 'services.template.yaml', id: input.requestId, revision: 'sha256:next' };
+    },
+    async read(file) {
+      calls.push(['read', file]);
+      return { content: '- Office: []\n', file, revision: 'sha256:current' };
+    },
+  };
+  const appAgent = {
+    async apply(input) {
+      return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const password = 'calendar widget passphrase';
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/radicale/install', {
+      body: JSON.stringify({ config: { adminPassword: password, adminUsername: 'calendar-admin' } }),
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/radicale/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+    const applied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/radicale/add-to-homepage', {
+      headers: { Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+
+    assert.equal(applied.status, 200);
+    const add = calls.find((call) => call[0] === 'addLink')[1];
+    assert.equal(add.entry.name, 'Radicale');
+    assert.equal(add.entry.widget.type, 'calendar');
+    assert.equal(add.entry.widget.integrations[0].type, 'ical');
+    assert.match(add.entry.widget.integrations[0].url, /^https:\/\/radicale\.test\/__mos-v2\/ical\/[A-Za-z0-9_-]{40,}$/u);
+    assert.doesNotMatch(JSON.stringify(add.entry), new RegExp(password, 'u'));
+    assert.doesNotMatch(applied.body, new RegExp(add.entry.widget.integrations[0].url.split('/').at(-1), 'u'));
+  }, { appAgent, homeHost: 'home.test', homepageAgent });
 });
 
 test('app lifecycle disable, enable, and uninstall preserve metadata while removing runtime and Homepage shortcut', async () => {

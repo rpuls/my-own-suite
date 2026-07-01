@@ -69,6 +69,19 @@
         "required": true,
         "secret": true,
         "redactedLabel": "Radicale admin password"
+      },
+      {
+        "id": "icalToken",
+        "type": "password",
+        "label": "Calendar widget token",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Generated Radicale calendar widget token",
+        "generated": {
+          "kind": "random",
+          "bytes": 32,
+          "encoding": "base64url"
+        }
       }
     ]
   },
@@ -91,14 +104,36 @@
     {
       "host": "radicale",
       "service": "radicale",
-      "port": 5232
+      "port": 5232,
+      "internalIcalBridge": {
+        "path": "/__mos-v2/ical/${secret.icalToken}",
+        "targetPath": "/${config.adminUsername}/default-calendar/?export",
+        "basicAuth": {
+          "username": "${config.adminUsername}",
+          "password": "${secret.adminPassword}"
+        }
+      }
     }
   ],
   "homepage": {
     "group": "Office",
     "name": "Radicale",
     "description": "Sync calendars and contacts from your own server.",
-    "icon": "radicale"
+    "icon": "radicale",
+    "widget": {
+      "type": "calendar",
+      "view": "monthly",
+      "maxEvents": 8,
+      "showTime": true,
+      "integrations": [
+        {
+          "type": "ical",
+          "name": "My Calendar",
+          "url": "${app.publicUrl}__mos-v2/ical/${secret.icalToken}",
+          "color": "cyan"
+        }
+      ]
+    }
   },
   "health": {
     "type": "http",

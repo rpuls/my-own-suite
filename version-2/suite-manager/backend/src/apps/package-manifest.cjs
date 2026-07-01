@@ -14,6 +14,8 @@ const SUPPORTED_COMPLEXITY_LEVELS = new Set(['easy', 'guided', 'advanced']);
 const SUPPORTED_RESOURCE_LEVELS = new Set(['low', 'medium', 'high']);
 const CATALOG_LINK_KEYS = new Set(['docs', 'repository', 'website']);
 const RAW_CADDY_PATTERN = /(?:caddyfile|directive|handle|respond|reverse_proxy|route|snippet|tls\s|transport)/iu;
+const SAFE_INTERNAL_PATH_PATTERN = /^\/__[A-Za-z0-9/_${}.-]{8,220}$/u;
+const SAFE_TARGET_PATH_PATTERN = /^\/[A-Za-z0-9._~!$&'()*+,;=:@%/?${}.-]{1,220}$/u;
 
 class AppPackageManifestError extends Error {
   constructor(message, details = []) {
@@ -200,6 +202,22 @@ function validateRoutes(manifest, serviceIds, errors) {
     if (!Number.isInteger(route.port) || route.port < 1 || route.port > 65535) {
       errors.push(`${prefix}.port must be a TCP port between 1 and 65535.`);
     }
+    if (route.internalIcalBridge !== undefined) {
+      const bridge = route.internalIcalBridge;
+      if (!isRecord(bridge)) {
+        errors.push(`${prefix}.internalIcalBridge must be an object when present.`);
+      } else {
+        if (!SAFE_INTERNAL_PATH_PATTERN.test(String(bridge.path || ''))) {
+          errors.push(`${prefix}.internalIcalBridge.path must be a safe internal path.`);
+        }
+        if (!SAFE_TARGET_PATH_PATTERN.test(String(bridge.targetPath || ''))) {
+          errors.push(`${prefix}.internalIcalBridge.targetPath must be a safe target path.`);
+        }
+        if (!isRecord(bridge.basicAuth) || !hasText(bridge.basicAuth.username) || !hasText(bridge.basicAuth.password)) {
+          errors.push(`${prefix}.internalIcalBridge.basicAuth must declare username and password templates.`);
+        }
+      }
+    }
   }
 }
 
@@ -211,6 +229,38 @@ function validateHomepage(manifest, errors) {
   for (const field of ['description', 'group', 'icon', 'name']) {
     if (!hasText(manifest.homepage[field])) {
       errors.push(`homepage.${field} is required.`);
+    }
+  }
+  if (manifest.homepage.widget !== undefined) validateHomepageWidget(manifest.homepage.widget, 'homepage.widget', errors);
+}
+
+function validateHomepageWidget(widget, prefix, errors) {
+  if (!isRecord(widget)) {
+    errors.push(`${prefix} must be an object when present.`);
+    return;
+  }
+  if (widget.type !== 'calendar' || widget.view !== 'monthly' || widget.showTime !== true) {
+    errors.push(`${prefix} currently supports monthly calendar widgets only.`);
+  }
+  if (!Number.isInteger(widget.maxEvents) || widget.maxEvents < 1 || widget.maxEvents > 50) {
+    errors.push(`${prefix}.maxEvents must be a whole number from 1 to 50.`);
+  }
+  if (!Array.isArray(widget.integrations) || widget.integrations.length < 1 || widget.integrations.length > 3) {
+    errors.push(`${prefix}.integrations must contain one to three iCal integrations.`);
+    return;
+  }
+  for (const [index, integration] of widget.integrations.entries()) {
+    const itemPrefix = `${prefix}.integrations[${index}]`;
+    if (!isRecord(integration)) {
+      errors.push(`${itemPrefix} must be an object.`);
+      continue;
+    }
+    if (integration.type !== 'ical') errors.push(`${itemPrefix}.type must be ical.`);
+    for (const field of ['color', 'name', 'url']) {
+      if (!hasText(integration[field])) errors.push(`${itemPrefix}.${field} is required.`);
+    }
+    if (hasText(integration.url) && !/^(?:https?:\/\/|\$\{app\.publicUrl\})/u.test(integration.url)) {
+      errors.push(`${itemPrefix}.url must be an HTTP URL or app public URL template.`);
     }
   }
 }
@@ -467,6 +517,7 @@ function publicPackageSummary(manifest, validationErrors = []) {
       group: manifest.homepage.group || '',
       icon: manifest.homepage.icon || '',
       name: manifest.homepage.name || manifest.name || manifest.id,
+      ...(isRecord(manifest.homepage.widget) ? { widget: manifest.homepage.widget } : {}),
     } : null,
     icon: manifest.icon || manifest.homepage?.icon || '',
     iconUrl: hasText(manifest.icon) ? `/suite-manager/api/apps/packages/${encodeURIComponent(manifest.id || '')}/icon` : '',

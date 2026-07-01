@@ -22,6 +22,8 @@ const ENV_KEY_PATTERN = /^[A-Z_][A-Z0-9_]*$/u;
 const PACKAGE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const SEMVERISH_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u;
 const SAFE_DOCKERFILE_PATTERN = /^(?:Dockerfile|Dockerfile\.[a-z0-9][a-z0-9-]*)$/u;
+const SAFE_INTERNAL_PATH_PATTERN = /^\/__[A-Za-z0-9/_-]{8,220}$/u;
+const SAFE_TARGET_PATH_PATTERN = /^\/[A-Za-z0-9._~!$&'()*+,;=:@%/?-]{1,220}$/u;
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
@@ -57,6 +59,15 @@ function assertRuntimeRequest(input) {
   }
   if (route?.reverseProxy !== `127.0.0.1:${service.loopbackPort}`) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The route must target the assigned loopback port.');
+  }
+  if (route.internalIcalBridge !== undefined) {
+    const bridge = route.internalIcalBridge;
+    if (!exactKeys(bridge, ['basicAuth', 'path', 'targetPath']) || !SAFE_INTERNAL_PATH_PATTERN.test(String(bridge.path || '')) || !SAFE_TARGET_PATH_PATTERN.test(String(bridge.targetPath || ''))) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The internal iCal bridge projection is invalid.');
+    }
+    if (!exactKeys(bridge.basicAuth, ['password', 'username']) || typeof bridge.basicAuth.username !== 'string' || typeof bridge.basicAuth.password !== 'string' || /[\r\n:]/u.test(bridge.basicAuth.username) || /[\r\n]/u.test(bridge.basicAuth.password) || !bridge.basicAuth.username || !bridge.basicAuth.password) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The internal iCal bridge auth projection is invalid.');
+    }
   }
   assertString(input.appHost, 'appHost', new RegExp(`^${escapeRegExp(route.host)}\\.[a-z0-9.-]+$`, 'u'));
   assertString(input.publicUrl, 'publicUrl', new RegExp(`^https?://${escapeRegExp(input.appHost)}/$`, 'u'));
@@ -119,9 +130,19 @@ function resolveEnvironment(environment, context) {
   return resolved;
 }
 
-function renderAppRoutes({ appHost, reverseProxy }) {
+function renderAppRoutes({ appHost, internalIcalBridge = null, reverseProxy }) {
+  const bridge = internalIcalBridge ? `  handle ${internalIcalBridge.path} {
+    rewrite * ${internalIcalBridge.targetPath}
+    reverse_proxy http://${reverseProxy} {
+      header_up Authorization "Basic ${Buffer.from(`${internalIcalBridge.basicAuth.username}:${internalIcalBridge.basicAuth.password}`).toString('base64')}"
+    }
+  }
+
+  handle {
+    reverse_proxy http://${reverseProxy}
+  }` : `  reverse_proxy http://${reverseProxy}`;
   return `http://${appHost} {
-  reverse_proxy http://${reverseProxy}
+${bridge}
 }
 `;
 }
@@ -141,7 +162,7 @@ class AppAgentCore {
   async apply(input) {
     const { route, service } = assertRuntimeRequest(input);
     const result = await this.adapter.applyAppService({
-      caddyRoutes: renderAppRoutes({ appHost: input.appHost, reverseProxy: route.reverseProxy }),
+      caddyRoutes: renderAppRoutes({ appHost: input.appHost, internalIcalBridge: route.internalIcalBridge, reverseProxy: route.reverseProxy }),
       dockerfile: service.build.dockerfile,
       environment: resolveEnvironment(service.environment, { publicUrl: input.publicUrl }),
       healthTarget: input.health.target,

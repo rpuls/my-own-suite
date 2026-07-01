@@ -37,6 +37,50 @@ test('app route rendering uses structured host and loopback upstream only', () =
   }), 'http://example-tool.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n');
 });
 
+test('app route rendering supports a structured tokenized iCal bridge', () => {
+  const routes = renderAppRoutes({
+    appHost: 'calendar.mos.home',
+    internalIcalBridge: {
+      basicAuth: { password: 'secret-pass', username: 'calendar-admin' },
+      path: '/__mos-v2/ical/token-value',
+      targetPath: '/calendar-admin/default-calendar/?export',
+    },
+    reverseProxy: '127.0.0.1:18124',
+  });
+
+  assert.match(routes, /handle \/__mos-v2\/ical\/token-value/u);
+  assert.match(routes, /rewrite \* \/calendar-admin\/default-calendar\/\?export/u);
+  assert.match(routes, /header_up Authorization "Basic Y2FsZW5kYXItYWRtaW46c2VjcmV0LXBhc3M="/u);
+  assert.match(routes, /handle \{\n    reverse_proxy http:\/\/127\.0\.0\.1:18124/u);
+});
+
+test('app apply validates internal iCal bridge shape', async () => {
+  const core = new AppAgentCore({ applyAppService: async () => ({ steps: [] }) });
+  const bridged = {
+    ...request,
+    caddy: {
+      routes: [{
+        ...request.caddy.routes[0],
+        internalIcalBridge: {
+          basicAuth: { password: 'secret-pass', username: 'calendar-admin' },
+          path: '/__mos-v2/ical/token-value',
+          targetPath: '/calendar-admin/default-calendar/?export',
+        },
+      }],
+    },
+  };
+
+  await core.apply(bridged);
+  await assert.rejects(() => core.apply({
+    ...bridged,
+    caddy: { routes: [{ ...bridged.caddy.routes[0], internalIcalBridge: { ...bridged.caddy.routes[0].internalIcalBridge, path: '/public' } }] },
+  }), AppRuntimeError);
+  await assert.rejects(() => core.apply({
+    ...bridged,
+    caddy: { routes: [{ ...bridged.caddy.routes[0], internalIcalBridge: { ...bridged.caddy.routes[0].internalIcalBridge, basicAuth: { password: 'x', username: 'bad:user' } } }] },
+  }), AppRuntimeError);
+});
+
 test('app apply validates exact shape and delegates sanitized runtime fields', async () => {
   const calls = [];
   const core = new AppAgentCore({

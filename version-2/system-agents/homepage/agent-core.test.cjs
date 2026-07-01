@@ -22,6 +22,17 @@ const seed = `# retained comment
 const domainState = { baseDomain: 'mos.example.com', tlsMode: 'cloudflare-dns01' };
 const link = { description: 'Useful docs', group: 'Links', icon: 'mdi:link', name: 'Docs', url: 'https://example.com/docs' };
 const service = { description: 'Office printer', group: 'Home services', host: '192.168.1.20', icon: 'mdi:printer', name: 'Printer', port: 8080, protocol: 'http', subdomain: 'printer' };
+const calendarLink = {
+  ...link,
+  name: 'Calendar',
+  widget: {
+    integrations: [{ color: 'cyan', name: 'My Calendar', type: 'ical', url: 'https://radicale.mos.example.com/__mos-v2/ical/token-value' }],
+    maxEvents: 8,
+    showTime: true,
+    type: 'calendar',
+    view: 'monthly',
+  },
+};
 const id = '12345678-1234-4123-8123-123456789abc';
 
 function adapter(content = seed) {
@@ -46,6 +57,22 @@ test('guided links preserve comments and stable IDs make retries idempotent', ()
   const retry = addEntry(first.content, link, { id });
   assert.equal(retry.changed, false);
   assert.equal(retry.content, first.content);
+});
+
+test('guided package links can include a constrained calendar widget', () => {
+  const added = addEntry(seed, calendarLink, { id });
+  const projection = projectServices(added.content, domainState);
+
+  assert.match(projection, /widget:/u);
+  assert.match(projection, /type: calendar/u);
+  assert.match(projection, /url: https:\/\/radicale\.mos\.example\.com\/__mos-v2\/ical\/token-value/u);
+  assert.throws(() => addEntry(seed, {
+    ...calendarLink,
+    widget: {
+      ...calendarLink.widget,
+      integrations: [{ ...calendarLink.widget.integrations[0], url: 'https://user:secret@radicale.mos.example.com/calendar.ics' }],
+    },
+  }, { id }), /without credentials/u);
 });
 
 test('guided link removal uses stable MOS IDs and leaves other entries alone', () => {

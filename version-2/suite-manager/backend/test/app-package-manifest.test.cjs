@@ -85,16 +85,21 @@ test('Radicale package is discoverable and declares user-supplied credentials ge
   assert.ok(radicale);
   assert.equal(radicale.manifest.name, 'Radicale');
   assert.equal(radicale.manifest.catalog.complexity.level, 'guided');
-  assert.equal(radicale.manifest.setup.fields.length, 2);
+  assert.equal(radicale.manifest.setup.fields.length, 3);
   assert.deepEqual(radicale.manifest.setup.fields.map((field) => ({
     id: field.id,
+    generated: Boolean(field.generated),
     required: field.required,
     secret: field.secret === true,
     type: field.type,
   })), [
-    { id: 'adminUsername', required: true, secret: false, type: 'text' },
-    { id: 'adminPassword', required: true, secret: true, type: 'password' },
+    { generated: false, id: 'adminUsername', required: true, secret: false, type: 'text' },
+    { generated: false, id: 'adminPassword', required: true, secret: true, type: 'password' },
+    { generated: true, id: 'icalToken', required: true, secret: true, type: 'password' },
   ]);
+  assert.equal(radicale.manifest.homepage.widget.type, 'calendar');
+  assert.equal(radicale.manifest.homepage.widget.integrations[0].url, '${app.publicUrl}__mos-v2/ical/${secret.icalToken}');
+  assert.equal(radicale.manifest.routes[0].internalIcalBridge.path, '/__mos-v2/ical/${secret.icalToken}');
   assert.equal(radicale.manifest.resources.services.radicale.internalPort, 5232);
   assert.deepEqual(radicale.manifest.resources.services.radicale.volumes, ['data:/data']);
   assert.deepEqual(validateAppPackageManifest(radicale.manifest, { packageDir: radicale.packageDir }), []);
