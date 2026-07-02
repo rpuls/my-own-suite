@@ -4,6 +4,20 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-07-02: V2 App Setup Guides Are Declarative And App-Scoped
+
+Decision: V2 app packages may declare post-install setup guides in their manifest `onboarding` metadata. Suite Manager renders those guides generically from declarative sections such as copyable non-secret values, notes/warnings, device/client choice guides, ordered steps, and manual completion actions. Guide state is stored per app instance in SQLite as viewed, completed, or skipped, and completed/skipped guides stay quiet while remaining available from the app detail view.
+
+Reason: Some apps are technically running after install but still need human setup in an external client or device. Radicale is the proving case: Suite Manager can show CalDAV/CardDAV server details and device instructions without hardcoding a Radicale React page or trying to automate each client. This keeps app-specific help attached to the installed app instead of polluting global owner onboarding.
+
+Consequences:
+
+- Package guide metadata must remain declarative; package manifests must not include arbitrary JavaScript, shell commands, database queries, or app-specific React components.
+- Guide values may interpolate app public URLs and non-secret config values. They must not reveal or copy raw secrets; secret fields should be explained as user-entered or app-native values.
+- Suite Manager persists guide state per app instance, not in the old global onboarding state.
+- App-native onboarding remains app-owned when it is good enough. Suite Manager should guide the owner only where MOS can add clear contextual value.
+- Richer guide capabilities such as per-section progress, secret reveal, app-specific observers, or custom components require a separate reviewed contract.
+
 ## 2026-06-20: V2 HTTPS Is Applied By A Narrow Host Agent
 
 Decision: V2 configures post-install HTTPS from authenticated Suite Manager Settings, but a dedicated root system agent owns Cloudflare token storage and Caddy mutation. V2 builds a pinned Caddy binary with `caddy-dns/cloudflare`, stores only non-secret HTTPS state in SQLite, retains the installer-created HTTP Home host for recovery, and uses `home.<base-domain>` as the configured HTTPS origin.

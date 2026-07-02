@@ -13,3 +13,28 @@ The second package is `vaultwarden`, intentionally chosen to pressure-test gener
 The third package is `radicale`, intentionally chosen to validate a V1-era calendar/contact sync app against the V2 package model. It uses generic package setup fields for user-supplied credentials, one persistent data volume, one app route with a structured tokenized iCal bridge, one Homepage tile with a calendar widget, and the same lifecycle preserve-data semantics as the earlier packages.
 
 Package manifests describe install inputs and projections only. An app becomes active only after Suite Manager persists app instance state and the app lifecycle agent applies the generated runtime projection. Disable and preserved-data uninstall remove the active runtime and route without deleting package config, secret references, or Docker volumes.
+
+## Post-install setup guides
+
+Packages may declare lightweight post-install guidance in `manifest.json` under `onboarding`. This is for apps that run successfully after install but still need owner action in another client, device, or app-native setup flow.
+
+Use setup guides for contextual help such as:
+
+- app URL and non-secret connection details;
+- copyable non-secret config values;
+- warnings and notes;
+- ordered instructions;
+- device or client choices with one selected guide at a time;
+- manual completion or skip actions.
+
+Do not use setup guides for:
+
+- arbitrary JavaScript or app-specific React components;
+- shell commands or host mutations;
+- app database queries or polling;
+- cross-app credential collection;
+- raw secret reveal or copy actions.
+
+Guide values may interpolate `${app.publicUrl}` and non-secret `${config.fieldId}` values. They must not interpolate `${secret.fieldId}` values. For secret fields, write explanatory text instead, such as "Use the password you entered during install."
+
+Suite Manager persists guide state per app instance in SQLite. The first guide slice tracks only viewed, completed, and skipped state for the whole guide; per-section progress is future contract work.
