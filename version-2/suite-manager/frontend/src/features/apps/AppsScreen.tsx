@@ -374,11 +374,10 @@ function AppGuidePanel({
           {section.steps?.length ? <ol className="suite-app-guide-steps">{section.steps.map((step) => <li key={step}>{step}</li>)}</ol> : null}
         </section>;
       })}
+      {status !== 'completed' ? <div className="suite-app-guide-end-actions">
+        <button className="mos-btn mos-btn-secondary" disabled={updating} onClick={() => onStatus('skipped')} type="button">Skip for now</button>
+      </div> : null}
     </div>
-
-    <footer className="suite-app-guide-footer">
-      <button className="mos-btn mos-btn-secondary" disabled={updating} onClick={() => onStatus('skipped')} type="button">Skip for now</button>
-    </footer>
   </aside>;
 }
 
