@@ -52,6 +52,7 @@ test('fresh state creates the SQLite schema and records every migration', async 
 
   assert.deepEqual(tables, [
     'app_instance_config',
+    'app_instance_guides',
     'app_instance_projections',
     'app_instances',
     'app_operations',
@@ -110,6 +111,7 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'https-settings',
     'homepage-revisions-and-operations',
     'app-package-instances',
+    'app-instance-guides',
   ]);
   upgraded.close();
 });
@@ -333,6 +335,46 @@ test('app lifecycle transitions preserve config and projection metadata while cl
     { kind: 'enable', status: 'succeeded' },
     { kind: 'uninstall', status: 'succeeded' },
   ]);
+  store.close();
+});
+
+test('app guide state is persisted per app instance', async () => {
+  const store = new SuiteManagerStore(await tempStateDir());
+  const at = '2026-06-27T10:00:00.000Z';
+  store.installAppInstance({
+    at,
+    instance: {
+      categorySnapshot: 'office',
+      displayNameSnapshot: 'Example App',
+      id: 'instance-one',
+      manifestDigest: 'sha256:manifest',
+      packageId: 'example-app',
+      packageVersion: '0.1.0',
+    },
+    operationId: 'operation-one',
+    projections: [],
+    request: { dryRunOnly: true },
+  });
+
+  assert.equal(store.getAppGuideState('instance-one'), null);
+  let guide = store.setAppGuideStatus({
+    at: '2026-06-27T10:01:00.000Z',
+    instanceId: 'instance-one',
+    status: 'viewed',
+  });
+  assert.equal(guide.status, 'viewed');
+  assert.equal(guide.firstViewedAt, '2026-06-27T10:01:00.000Z');
+  assert.equal(guide.completedAt, null);
+
+  guide = store.setAppGuideStatus({
+    at: '2026-06-27T10:02:00.000Z',
+    instanceId: 'instance-one',
+    status: 'completed',
+  });
+  assert.equal(guide.status, 'completed');
+  assert.equal(guide.firstViewedAt, '2026-06-27T10:01:00.000Z');
+  assert.equal(guide.completedAt, '2026-06-27T10:02:00.000Z');
+  assert.equal(guide.manifestDigest, 'sha256:manifest');
   store.close();
 });
 

@@ -102,6 +102,11 @@ test('Radicale package is discoverable and declares user-supplied credentials ge
   assert.equal(radicale.manifest.routes[0].internalIcalBridge.path, '/__mos-v2/ical/${secret.icalToken}');
   assert.equal(radicale.manifest.resources.services.radicale.internalPort, 5232);
   assert.deepEqual(radicale.manifest.resources.services.radicale.volumes, ['data:/data']);
+  assert.equal(radicale.manifest.onboarding.title, 'Connect your calendar');
+  assert.equal(radicale.manifest.onboarding.sections[0].type, 'values');
+  assert.equal(radicale.manifest.onboarding.sections[0].values[0].value, '${app.publicUrl}');
+  assert.equal(radicale.manifest.onboarding.sections[2].type, 'choice-guide');
+  assert.ok(radicale.manifest.onboarding.sections[2].choices.some((choice) => choice.id === 'ios'));
   assert.deepEqual(validateAppPackageManifest(radicale.manifest, { packageDir: radicale.packageDir }), []);
 });
 
@@ -186,6 +191,28 @@ test('manifest validation rejects V1-style unsafe app coupling', () => {
     'manifest.routes[0].snippet must not contain raw Caddy directives.',
   ]);
 });
+
+test('manifest validation rejects malformed onboarding guide sections', () => {
+  const manifest = validManifest({
+    onboarding: {
+      sections: [
+        {
+          id: 'bad',
+          title: '',
+          type: 'script',
+          values: [{ label: 'Password', value: '${secret.adminPassword}' }],
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(validateAppPackageManifest(manifest), [
+    'onboarding.sections[0].type must be one of: choice-guide, manual-complete, note, steps, values, warning.',
+    'onboarding.sections[0].title is required.',
+    'onboarding.sections[0].values[0].value must not reference secrets.',
+  ]);
+});
+
 
 test('manifest validation rejects package paths that escape the app folder', () => {
   const manifest = validManifest({

@@ -135,6 +135,22 @@ const MIGRATIONS = [
     `,
     version: 4,
   },
+  {
+    name: 'app-instance-guides',
+    sql: `
+      CREATE TABLE app_instance_guides (
+        instance_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL CHECK (status IN ('not-started', 'viewed', 'completed', 'skipped')),
+        manifest_digest TEXT NOT NULL,
+        first_viewed_at TEXT,
+        completed_at TEXT,
+        skipped_at TEXT,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (instance_id) REFERENCES app_instances(id) ON DELETE CASCADE
+      ) STRICT;
+    `,
+    version: 5,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -420,6 +436,65 @@ class SuiteManagerStore {
       value: row.valueJson === null || row.valueJson === undefined ? undefined : JSON.parse(row.valueJson),
       valueJson: undefined,
     }));
+  }
+
+  getAppGuideState(instanceId) {
+    return this.database.prepare(`
+      SELECT
+        completed_at AS completedAt,
+        first_viewed_at AS firstViewedAt,
+        instance_id AS instanceId,
+        manifest_digest AS manifestDigest,
+        skipped_at AS skippedAt,
+        status,
+        updated_at AS updatedAt
+      FROM app_instance_guides
+      WHERE instance_id = ?
+    `).get(instanceId) || null;
+  }
+
+  setAppGuideStatus({ at, instanceId, status }) {
+    if (!['viewed', 'completed', 'skipped'].includes(status)) {
+      throw new Error('Invalid app guide status.');
+    }
+    const instance = this.database.prepare(`
+      SELECT manifest_digest AS manifestDigest
+      FROM app_instances
+      WHERE id = ?
+    `).get(instanceId);
+    if (!instance) {
+      throw new Error('App instance was not found.');
+    }
+    this.database.prepare(`
+      INSERT INTO app_instance_guides (
+        instance_id, status, manifest_digest, first_viewed_at, completed_at, skipped_at, updated_at
+      )
+      VALUES (
+        ?, ?, ?, CASE WHEN ? = 'viewed' THEN ? ELSE NULL END,
+        CASE WHEN ? = 'completed' THEN ? ELSE NULL END,
+        CASE WHEN ? = 'skipped' THEN ? ELSE NULL END,
+        ?
+      )
+      ON CONFLICT(instance_id) DO UPDATE SET
+        status = excluded.status,
+        manifest_digest = excluded.manifest_digest,
+        first_viewed_at = COALESCE(app_instance_guides.first_viewed_at, excluded.first_viewed_at, excluded.updated_at),
+        completed_at = CASE WHEN excluded.status = 'completed' THEN excluded.updated_at ELSE app_instance_guides.completed_at END,
+        skipped_at = CASE WHEN excluded.status = 'skipped' THEN excluded.updated_at ELSE app_instance_guides.skipped_at END,
+        updated_at = excluded.updated_at
+    `).run(
+      instanceId,
+      status,
+      instance.manifestDigest,
+      status,
+      at,
+      status,
+      at,
+      status,
+      at,
+      at,
+    );
+    return this.getAppGuideState(instanceId);
   }
 
   applyAppProjection({ at, instanceId, kind, operationId, request = {} }) {

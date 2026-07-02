@@ -420,6 +420,22 @@ function createV2Server({
         return;
       }
 
+      const appGuideMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/guide$/u);
+      if (request.method === 'POST' && appGuideMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to update app setup guides.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        const status = String(body.status || '');
+        if (!['viewed', 'completed', 'skipped'].includes(status)) {
+          jsonResponse(response, 400, { code: 'INVALID_GUIDE_STATUS', error: 'Guide status must be viewed, completed, or skipped.' });
+          return;
+        }
+        jsonResponse(response, 200, appPackages.setPackageGuideStatus(decodeURIComponent(appGuideMatch[1]), status));
+        return;
+      }
+
       if (url.pathname === SUITE_MANAGER_API_PREFIX || url.pathname.startsWith(`${SUITE_MANAGER_API_PREFIX}/`)) {
         jsonResponse(response, 404, { error: 'Not found.' });
         return;

@@ -26,6 +26,7 @@ type AppPackageSummary = {
   instance: {
     config?: Array<{ fingerprint: string | null; generated: boolean; key: string; redactedLabel: string | null; secret: boolean; source: string; updatedAt: string; value?: unknown }>;
     enabled: boolean;
+    guideState?: { completedAt: string | null; firstViewedAt: string | null; manifestDigest: string; skippedAt: string | null; status: 'not-started' | 'viewed' | 'completed' | 'skipped'; updatedAt: string } | null;
     id: string;
     installedAt: string;
     packageId: string;
@@ -36,7 +37,21 @@ type AppPackageSummary = {
   id: string;
   installStatus: string;
   name: string;
-  onboarding?: { steps: Array<{ body: string; title: string; type: string }> };
+  onboarding?: {
+    sections?: Array<{
+      actionLabel?: string;
+      body?: string;
+      choices?: Array<{ id: string; label: string; steps: string[] }>;
+      id: string;
+      steps?: string[];
+      title: string;
+      type: string;
+      values?: Array<{ copy: boolean; label: string; qr: boolean; value: string }>;
+    }>;
+    steps: Array<{ body: string; title: string; type: string }>;
+    summary?: string;
+    title?: string;
+  };
   routes: Array<{ host: string; port: number | null; service: string }>;
   services: Array<{ dockerfile: string | null; id: string; internalPort: number | null; volumes: string[] }>;
   setup: { fieldCount: number; fields: Array<{ default?: unknown; generated: boolean; id: string; label: string; required: boolean; secret: boolean; type: string }> };
@@ -102,6 +117,18 @@ function appUrl(app: AppPackageSummary) {
   const route = app.routes[0];
   if (!route?.host || typeof window === 'undefined') return '';
   return `${window.location.protocol}//${route.host}.${baseHost()}/`;
+}
+
+function hasGuide(app: AppPackageSummary) {
+  return Boolean(app.onboarding && ((app.onboarding.sections?.length || 0) > 0 || app.onboarding.steps.length > 0));
+}
+
+function guideStatusLabel(app: AppPackageSummary) {
+  const status = app.instance?.guideState?.status;
+  if (status === 'completed') return 'Guide complete';
+  if (status === 'skipped') return 'Guide skipped';
+  if (status === 'viewed') return 'Continue guide';
+  return 'Setup guide';
 }
 
 function statusFor(app: AppPackageSummary) {
@@ -255,6 +282,115 @@ function InstallProgress({ error, steps }: { error: string; steps: InstallStep[]
   </div>;
 }
 
+function resolveGuideValue(app: AppPackageSummary, value: string) {
+  const config = new Map((app.instance?.config || [])
+    .filter((item) => !item.secret)
+    .map((item) => [item.key, String(item.value ?? '')]));
+  return value
+    .replace(/\$\{app\.publicUrl\}/gu, appUrl(app))
+    .replace(/\$\{config\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => config.get(key) || match);
+}
+
+function GuideQrHint({ value }: { value: string }) {
+  const marks = Array.from({ length: 49 }, (_, index) => value.charCodeAt(index % Math.max(value.length, 1)) + index);
+  return <div aria-label="QR-style transfer hint" className="suite-app-guide-qr">
+    {marks.map((mark, index) => <span className={mark % 3 === 0 ? 'is-filled' : ''} key={index} />)}
+  </div>;
+}
+
+function AppGuidePanel({
+  app,
+  onClose,
+  onStatus,
+  updating,
+}: {
+  app: AppPackageSummary;
+  onClose: () => void;
+  onStatus: (status: 'completed' | 'skipped') => void;
+  updating: boolean;
+}) {
+  const [copied, setCopied] = useState('');
+  const [choiceBySection, setChoiceBySection] = useState<Record<string, string>>({});
+  const sections = app.onboarding?.sections?.length ? app.onboarding.sections : [{
+    id: 'legacy-steps',
+    steps: app.onboarding?.steps.map((step) => `${step.title}: ${step.body}`) || [],
+    title: 'After install',
+    type: 'steps',
+  }];
+  const status = app.instance?.guideState?.status || 'not-started';
+
+  async function copyValue(key: string, value: string) {
+    await navigator.clipboard.writeText(value);
+    setCopied(key);
+    window.setTimeout(() => setCopied((current) => (current === key ? '' : current)), 1400);
+  }
+
+  return <aside aria-label={`${app.name} setup guide`} className="suite-app-guide-panel">
+    <header className="suite-app-guide-header">
+      <div>
+        <span className="mos-eyebrow">Setup guide</span>
+        <h3>{app.onboarding?.title || `Set up ${app.name}`}</h3>
+        {app.onboarding?.summary ? <p>{app.onboarding.summary}</p> : null}
+      </div>
+      <button aria-label="Close setup guide" className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button>
+    </header>
+
+    <div className="suite-app-guide-scroll">
+      {status === 'completed' ? <Notice title="Guide marked complete" variant="success"><p>You can reopen it any time from this app detail view.</p></Notice> : null}
+      {status === 'skipped' ? <Notice title="Guide skipped for now" variant="info"><p>The guide stays available here when you need it.</p></Notice> : null}
+
+      {sections.map((section) => {
+        if (section.type === 'values') {
+          return <section className="suite-app-guide-section" key={section.id}>
+            <h4>{section.title}</h4>
+            <div className="suite-app-guide-values">
+              {(section.values || []).map((item) => {
+                const value = resolveGuideValue(app, item.value);
+                const key = `${section.id}-${item.label}`;
+                return <div className="suite-app-guide-value" key={key}>
+                  <span>{item.label}</span>
+                  <code>{value}</code>
+                  {item.copy ? <button className="mos-btn mos-btn-secondary" onClick={() => void copyValue(key, value)} type="button">{copied === key ? 'Copied' : 'Copy'}</button> : null}
+                  {item.qr ? <GuideQrHint value={value} /> : null}
+                </div>;
+              })}
+            </div>
+          </section>;
+        }
+        if (section.type === 'choice-guide') {
+          const choices = section.choices || [];
+          const selectedId = choiceBySection[section.id] || choices[0]?.id || '';
+          const selected = choices.find((choice) => choice.id === selectedId) || choices[0];
+          return <section className="suite-app-guide-section" key={section.id}>
+            <h4>{section.title}</h4>
+            <div className="suite-app-guide-choice-tabs">
+              {choices.map((choice) => <button aria-pressed={choice.id === selected?.id} key={choice.id} onClick={() => setChoiceBySection((current) => ({ ...current, [section.id]: choice.id }))} type="button">{choice.label}</button>)}
+            </div>
+            {selected ? <ol className="suite-app-guide-steps">{selected.steps.map((step) => <li key={step}>{step}</li>)}</ol> : null}
+          </section>;
+        }
+        if (section.type === 'manual-complete') {
+          return <section className="suite-app-guide-section" key={section.id}>
+            <h4>{section.title}</h4>
+            {section.body ? <p>{section.body}</p> : null}
+            <button className="mos-btn mos-btn-primary" disabled={updating} onClick={() => onStatus('completed')} type="button">{section.actionLabel || 'Mark guide complete'}</button>
+          </section>;
+        }
+        return <section className={`suite-app-guide-section is-${section.type}`} key={section.id}>
+          <h4>{section.title}</h4>
+          {section.body ? <p>{section.body}</p> : null}
+          {section.steps?.length ? <ol className="suite-app-guide-steps">{section.steps.map((step) => <li key={step}>{step}</li>)}</ol> : null}
+        </section>;
+      })}
+    </div>
+
+    <footer className="suite-app-guide-footer">
+      <button className="mos-btn mos-btn-secondary" disabled={updating} onClick={() => onStatus('skipped')} type="button">Skip for now</button>
+      <a className="mos-btn mos-btn-secondary" href={appUrl(app)}>Open {app.name}</a>
+    </footer>
+  </aside>;
+}
+
 function AdvancedDetails({ app }: { app: AppPackageSummary }) {
   const projections = app.instance?.projections || [];
   return <details className="suite-advanced suite-app-advanced">
@@ -306,9 +442,11 @@ function AppDetail({
   onInstall,
   onLifecycle,
   onRefresh,
+  onGuideStatus,
   onSelect,
   packages,
   refreshing,
+  guideUpdating,
 }: {
   app: AppPackageSummary;
   installing: boolean;
@@ -318,12 +456,15 @@ function AppDetail({
   onInstall: (app: AppPackageSummary, options?: { config?: Record<string, string>; showOnHomepage?: boolean }) => void;
   onLifecycle: (app: AppPackageSummary, action: 'disable' | 'enable' | 'uninstall') => void;
   onRefresh: (app: AppPackageSummary) => void;
+  onGuideStatus: (app: AppPackageSummary, status: 'viewed' | 'completed' | 'skipped') => void;
   onSelect: (app: AppPackageSummary) => void;
   packages: AppPackageSummary[];
   refreshing: boolean;
+  guideUpdating: boolean;
 }) {
   const [showOnHomepage, setShowOnHomepage] = useState(true);
   const [setupOpen, setSetupOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app));
   const ready = runtimeApplied(app);
   const disabled = app.instance?.status === 'disabled' || app.instance?.enabled === false;
@@ -340,6 +481,7 @@ function AppDetail({
   useEffect(() => {
     setShowOnHomepage(true);
     setSetupOpen(false);
+    setGuideOpen(false);
     setSetupConfig(initialSetupConfig(app));
   }, [app.id]);
 
@@ -352,8 +494,16 @@ function AppDetail({
     })));
   }
 
-  return <div className="suite-app-detail-layer">
+  function openGuide() {
+    setGuideOpen(true);
+    if (!app.instance?.guideState || app.instance.guideState.status === 'not-started') {
+      onGuideStatus(app, 'viewed');
+    }
+  }
+
+  return <div className={`suite-app-detail-layer${guideOpen ? ' has-guide' : ''}`}>
     <button aria-label="Close app details" className="suite-app-detail-backdrop" onClick={onClose} tabIndex={-1} type="button" />
+    {guideOpen && hasGuide(app) ? <AppGuidePanel app={app} onClose={() => setGuideOpen(false)} onStatus={(status) => onGuideStatus(app, status)} updating={guideUpdating} /> : null}
     <aside aria-label={`${app.name} details`} aria-modal="true" className="suite-app-detail" role="dialog">
       <header className="suite-app-detail-hero">
         <button aria-label="Close app details" className="suite-icon-button suite-app-detail-close" onClick={onClose} type="button"><Icon name="x" /></button>
@@ -367,6 +517,7 @@ function AppDetail({
         </div>
         <div className="suite-app-primary-actions">
           {ready ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Enabling...' : 'Enable'}</button> : needsPreparation && !setupOpen ? <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setSetupOpen(true)} type="button">Prepare</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={submitInstall} type="button">{installing ? 'Installing...' : 'Install'}</button>}
+          {ready && hasGuide(app) ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
           {app.instance ? <button className="mos-btn mos-btn-secondary" disabled={installing || refreshing} onClick={() => onRefresh(app)} type="button">{refreshing ? 'Checking...' : 'Refresh status'}</button> : null}
           {ready ? <button className="mos-btn mos-btn-secondary" disabled={installing} onClick={() => onLifecycle(app, 'disable')} type="button">{installing ? 'Disabling...' : 'Disable'}</button> : null}
           {app.instance && !uninstalled ? <button className="mos-btn mos-btn-secondary" disabled={installing} onClick={() => onLifecycle(app, 'uninstall')} type="button">{installing ? 'Uninstalling...' : 'Uninstall'}</button> : null}
@@ -457,6 +608,7 @@ export function AppsScreen() {
   const [installError, setInstallError] = useState('');
   const [installSteps, setInstallSteps] = useState<InstallStep[]>([]);
   const [installingId, setInstallingId] = useState('');
+  const [guideUpdatingId, setGuideUpdatingId] = useState('');
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [refreshingId, setRefreshingId] = useState('');
@@ -630,6 +782,27 @@ export function AppsScreen() {
     }
   }
 
+  async function updateGuideStatus(app: AppPackageSummary, status: 'viewed' | 'completed' | 'skipped') {
+    if (!app.instance || guideUpdatingId) return;
+    setGuideUpdatingId(app.id);
+    try {
+      await jsonResponse<{ instance: AppPackageSummary['instance'] }>(
+        await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/guide`, {
+          body: JSON.stringify({ status }),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        }),
+        `Unable to update ${app.name} setup guide.`,
+      );
+      await load();
+    } catch (caught) {
+      setInstallError(caught instanceof Error ? caught.message : `Unable to update ${app.name} setup guide.`);
+      await load();
+    } finally {
+      setGuideUpdatingId('');
+    }
+  }
+
   return <section className="mos-shell suite-apps suite-app-catalog">
     <div className="suite-app-simple-header">
       <h1>Apps</h1>
@@ -659,6 +832,6 @@ export function AppsScreen() {
       </dl>
     </details> : null}
 
-    {selected ? <AppDetail app={selected} installing={installingId === selected.id} installError={installError} installSteps={installingId === selected.id || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onRefresh={(target) => void refreshRuntimeStatus(target)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} packages={packages} refreshing={refreshingId === selected.id} /> : null}
+    {selected ? <AppDetail app={selected} guideUpdating={guideUpdatingId === selected.id} installing={installingId === selected.id} installError={installError} installSteps={installingId === selected.id || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onGuideStatus={(target, status) => void updateGuideStatus(target, status)} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onRefresh={(target) => void refreshRuntimeStatus(target)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} packages={packages} refreshing={refreshingId === selected.id} /> : null}
   </section>;
 }

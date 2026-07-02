@@ -170,6 +170,7 @@ function publicInstance(instance, projections = [], configRows = []) {
     manifestDigest: instance.manifestDigest,
     packageId: instance.packageId,
     packageVersion: instance.packageVersion,
+    guideState: instance.guideState || null,
     projections: projections.map((projection) => ({
       appliedDigest: projection.appliedDigest,
       content: projection.content,
@@ -470,10 +471,11 @@ class AppPackageService {
       const instance = instancesByPackage.get(summary.id);
       const projections = instance ? this.store.getAppProjections(instance.id) : [];
       const config = instance ? this.store.getAppConfig(instance.id) : [];
+      const guideState = instance ? this.store.getAppGuideState(instance.id) : null;
       return {
         ...summary,
         installStatus: instance?.status || 'not-installed',
-        instance: publicInstance(instance, projections, config),
+        instance: publicInstance(instance ? { ...instance, guideState } : null, projections, config),
       };
     });
   }
@@ -505,7 +507,7 @@ class AppPackageService {
       if (current.status === 'uninstalled') {
         throw new AppPackageServiceError('APP_PREVIOUSLY_UNINSTALLED', 'This app was uninstalled with its data preserved. Reinstall recovery is a future lifecycle action.', 409);
       }
-      return publicInstance(current, this.store.getAppProjections(current.id), this.store.getAppConfig(current.id));
+      return publicInstance(this.withGuideState(current), this.store.getAppProjections(current.id), this.store.getAppConfig(current.id));
     }
 
     const packageDir = path.join(this.appsDir, packageId);
@@ -545,10 +547,35 @@ class AppPackageService {
     }
 
     return publicInstance(
-      this.store.getAppInstanceByPackageId(packageId),
+      this.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
       this.store.getAppProjections(instance.id),
       this.store.getAppConfig(instance.id),
     );
+  }
+
+  withGuideState(instance) {
+    if (!instance) return null;
+    return { ...instance, guideState: this.store.getAppGuideState(instance.id) };
+  }
+
+  setPackageGuideStatus(packageId, status) {
+    const instance = this.store.getAppInstanceByPackageId(packageId);
+    if (!instance || !['installed', 'disabled'].includes(instance.status)) {
+      throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before updating its setup guide.', 409);
+    }
+    const guideState = this.store.setAppGuideStatus({
+      at: this.now().toISOString(),
+      instanceId: instance.id,
+      status,
+    });
+    return {
+      guideState,
+      instance: publicInstance(
+        { ...this.store.getAppInstanceByPackageId(packageId), guideState },
+        this.store.getAppProjections(instance.id),
+        this.store.getAppConfig(instance.id),
+      ),
+    };
   }
 
   async addPackageToHomepage(packageId, homepageService, requestContext = {}) {

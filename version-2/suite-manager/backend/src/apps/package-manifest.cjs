@@ -12,6 +12,7 @@ const SUPPORTED_GENERATOR_ENCODINGS = new Set(['base64url', 'hex']);
 const SUPPORTED_HEALTH_TYPES = new Set(['http']);
 const SUPPORTED_COMPLEXITY_LEVELS = new Set(['easy', 'guided', 'advanced']);
 const SUPPORTED_RESOURCE_LEVELS = new Set(['low', 'medium', 'high']);
+const SUPPORTED_GUIDE_SECTION_TYPES = new Set(['choice-guide', 'manual-complete', 'note', 'steps', 'values', 'warning']);
 const CATALOG_LINK_KEYS = new Set(['docs', 'repository', 'website']);
 const RAW_CADDY_PATTERN = /(?:caddyfile|directive|handle|respond|reverse_proxy|route|snippet|tls\s|transport)/iu;
 const SAFE_INTERNAL_PATH_PATTERN = /^\/__[A-Za-z0-9/_${}.-]{8,220}$/u;
@@ -395,10 +396,64 @@ function validateCatalog(manifest, errors) {
   }
 }
 
+function validateOnboarding(manifest, errors) {
+  if (manifest.onboarding === undefined) return;
+  if (!isRecord(manifest.onboarding)) {
+    errors.push('onboarding must be an object when present.');
+    return;
+  }
+  const onboarding = manifest.onboarding;
+  if (onboarding.title !== undefined && !hasText(onboarding.title)) {
+    errors.push('onboarding.title must be a non-empty string when present.');
+  }
+  if (onboarding.summary !== undefined && !hasText(onboarding.summary)) {
+    errors.push('onboarding.summary must be a non-empty string when present.');
+  }
+  if (onboarding.steps !== undefined && !Array.isArray(onboarding.steps)) {
+    errors.push('onboarding.steps must be an array when present.');
+  }
+  if (onboarding.sections !== undefined) {
+    if (!Array.isArray(onboarding.sections)) {
+      errors.push('onboarding.sections must be an array when present.');
+      return;
+    }
+    for (const [index, section] of onboarding.sections.entries()) {
+      const prefix = `onboarding.sections[${index}]`;
+      if (!isRecord(section)) {
+        errors.push(`${prefix} must be an object.`);
+        continue;
+      }
+      if (!hasText(section.id)) errors.push(`${prefix}.id is required.`);
+      if (!SUPPORTED_GUIDE_SECTION_TYPES.has(section.type)) {
+        errors.push(`${prefix}.type must be one of: ${[...SUPPORTED_GUIDE_SECTION_TYPES].join(', ')}.`);
+      }
+      if (!hasText(section.title)) errors.push(`${prefix}.title is required.`);
+      if (section.values !== undefined && !Array.isArray(section.values)) {
+        errors.push(`${prefix}.values must be an array when present.`);
+      } else if (Array.isArray(section.values)) {
+        for (const [valueIndex, value] of section.values.entries()) {
+          if (isRecord(value) && typeof value.value === 'string' && /\$\{secret\.[a-z][A-Za-z0-9]*\}/u.test(value.value)) {
+            errors.push(`${prefix}.values[${valueIndex}].value must not reference secrets.`);
+          }
+        }
+      }
+      if (section.choices !== undefined && !Array.isArray(section.choices)) {
+        errors.push(`${prefix}.choices must be an array when present.`);
+      }
+      if (section.steps !== undefined && !isStringArray(section.steps)) {
+        errors.push(`${prefix}.steps must be an array of non-empty strings when present.`);
+      }
+    }
+  }
+}
+
 function publicOnboarding(manifest) {
   const onboarding = isRecord(manifest.onboarding) ? manifest.onboarding : {};
   const steps = Array.isArray(onboarding.steps) ? onboarding.steps : [];
+  const sections = Array.isArray(onboarding.sections) ? onboarding.sections : [];
   return {
+    summary: typeof onboarding.summary === 'string' ? onboarding.summary : '',
+    title: typeof onboarding.title === 'string' ? onboarding.title : '',
     steps: steps
       .filter((step) => isRecord(step))
       .map((step) => ({
@@ -407,6 +462,34 @@ function publicOnboarding(manifest) {
         type: typeof step.type === 'string' ? step.type : 'manual',
       }))
       .filter((step) => step.title || step.body),
+    sections: sections
+      .filter((section) => isRecord(section))
+      .map((section) => ({
+        body: typeof section.body === 'string' ? section.body : '',
+        choices: Array.isArray(section.choices) ? section.choices
+          .filter((choice) => isRecord(choice))
+          .map((choice) => ({
+            id: typeof choice.id === 'string' ? choice.id : '',
+            label: typeof choice.label === 'string' ? choice.label : '',
+            steps: isStringArray(choice.steps) ? choice.steps : [],
+          }))
+          .filter((choice) => choice.id && choice.label) : [],
+        id: typeof section.id === 'string' ? section.id : '',
+        steps: isStringArray(section.steps) ? section.steps : [],
+        title: typeof section.title === 'string' ? section.title : '',
+        type: typeof section.type === 'string' ? section.type : 'steps',
+        values: Array.isArray(section.values) ? section.values
+          .filter((value) => isRecord(value))
+          .map((value) => ({
+            copy: value.copy === true,
+            label: typeof value.label === 'string' ? value.label : '',
+            qr: value.qr === true,
+            value: typeof value.value === 'string' ? value.value : '',
+          }))
+          .filter((value) => value.label || value.value) : [],
+        actionLabel: typeof section.actionLabel === 'string' ? section.actionLabel : '',
+      }))
+      .filter((section) => section.id && section.title),
   };
 }
 
@@ -479,6 +562,7 @@ function validateAppPackageManifest(manifest, { packageDir = null } = {}) {
   validateHomepage(manifest, errors);
   validateHealth(manifest, errors);
   validateCatalog(manifest, errors);
+  validateOnboarding(manifest, errors);
   assertNoRawCaddy(manifest, errors);
   return errors;
 }
