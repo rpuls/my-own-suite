@@ -291,13 +291,6 @@ function resolveGuideValue(app: AppPackageSummary, value: string) {
     .replace(/\$\{config\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => config.get(key) || match);
 }
 
-function GuideQrHint({ value }: { value: string }) {
-  const marks = Array.from({ length: 49 }, (_, index) => value.charCodeAt(index % Math.max(value.length, 1)) + index);
-  return <div aria-label="QR-style transfer hint" className="suite-app-guide-qr">
-    {marks.map((mark, index) => <span className={mark % 3 === 0 ? 'is-filled' : ''} key={index} />)}
-  </div>;
-}
-
 function AppGuidePanel({
   app,
   onClose,
@@ -351,7 +344,6 @@ function AppGuidePanel({
                   <span>{item.label}</span>
                   <code>{value}</code>
                   {item.copy ? <button className="mos-btn mos-btn-secondary" onClick={() => void copyValue(key, value)} type="button">{copied === key ? 'Copied' : 'Copy'}</button> : null}
-                  {item.qr ? <GuideQrHint value={value} /> : null}
                 </div>;
               })}
             </div>
@@ -386,7 +378,6 @@ function AppGuidePanel({
 
     <footer className="suite-app-guide-footer">
       <button className="mos-btn mos-btn-secondary" disabled={updating} onClick={() => onStatus('skipped')} type="button">Skip for now</button>
-      <a className="mos-btn mos-btn-secondary" href={appUrl(app)}>Open {app.name}</a>
     </footer>
   </aside>;
 }

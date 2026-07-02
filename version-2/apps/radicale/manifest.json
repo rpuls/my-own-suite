@@ -164,7 +164,7 @@
             "label": "Server URL",
             "value": "${app.publicUrl}",
             "copy": true,
-            "qr": true
+            "qr": false
           },
           {
             "label": "Default calendar collection",
@@ -198,45 +198,66 @@
             "id": "ios",
             "label": "iPhone / iPad",
             "steps": [
-              "Open Settings, then Apps, Calendar, Calendar Accounts, and Add Account.",
-              "Choose Add Other Account, then Add CalDAV Account.",
-              "Paste the Server URL into Server, enter your username, and use the password from install."
+              "Open Settings.",
+              "Open Apps, then Calendar, then Calendar Accounts, then Add Account.",
+              "Tap Add Other Account, then Add CalDAV Account.",
+              "Paste the Server URL into the Server field.",
+              "Paste the Username into the User Name field.",
+              "Enter the Radicale password you chose during install.",
+              "Tap Next or Save, then open the Calendar app and confirm the account appears there."
             ]
           },
           {
             "id": "android",
             "label": "Android / DAVx5",
             "steps": [
-              "Install and open DAVx5.",
-              "Add an account with URL and user name.",
-              "Paste the Server URL, enter your username, and use the password from install."
+              "Install and open DAVx5. DAVx5 connects Android to private CalDAV and CardDAV servers.",
+              "Add a new account and choose Login with URL and user name, or the closest manual server setup option.",
+              "Paste the Server URL into the Base URL or Server URL field.",
+              "Paste the Username into the user name field.",
+              "Enter the Radicale password you chose during install.",
+              "Finish the DAVx5 setup and enable the calendar or contacts collection after DAVx5 finds it.",
+              "Open your normal calendar app, or install Etar if you want a simple open-source calendar app."
             ]
           },
           {
             "id": "macos",
             "label": "macOS Calendar",
             "steps": [
-              "Open Calendar, then Add Account.",
-              "Choose Other CalDAV Account and set Account Type to Manual.",
-              "Paste the Server URL, enter your username, and use the password from install."
+              "Open Calendar.",
+              "Choose Calendar, then Add Account.",
+              "Choose Add Other Account, then CalDAV Account.",
+              "Set Account Type to Manual if macOS asks how to sign in.",
+              "Paste the Server URL into the Server Address field.",
+              "Paste the Username into the User Name field.",
+              "Enter the Radicale password you chose during install.",
+              "Finish setup and confirm the calendar appears in Apple Calendar."
             ]
           },
           {
             "id": "thunderbird",
             "label": "Thunderbird / Windows",
             "steps": [
-              "Open Thunderbird Calendar and add a new calendar.",
-              "Choose On the Network and use CalDAV.",
-              "Paste the Default calendar collection URL when Thunderbird asks for the location."
+              "Open Thunderbird and switch to Calendar.",
+              "Create a New Calendar.",
+              "Choose On the Network, then choose CalDAV if Thunderbird asks for a format.",
+              "Paste the Server URL into the location or server field. If Thunderbird asks for an exact calendar location, paste the Default calendar collection URL instead.",
+              "Paste the Username when Thunderbird asks for it.",
+              "Enter the Radicale password you chose during install.",
+              "Choose your calendar when Thunderbird lists it, then finish setup."
             ]
           },
           {
             "id": "generic",
             "label": "Generic CalDAV",
             "steps": [
-              "Choose manual CalDAV or CardDAV setup in your client.",
+              "Open the account or sync settings in your calendar or contacts client.",
+              "Choose manual CalDAV or CardDAV setup.",
               "Use the Server URL as the account server.",
-              "Use your Radicale username and the password you entered during install."
+              "Use the Default calendar collection URL if your client asks for one specific calendar URL.",
+              "Use the Username shown above.",
+              "Use the Radicale password you chose during install.",
+              "Save the account, then confirm your calendar or contacts appear in the client."
             ]
           }
         ]

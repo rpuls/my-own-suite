@@ -659,7 +659,7 @@
 }
 
 .suite-app-detail-layer.has-guide {
-  grid-template-columns: minmax(0, 1fr) minmax(28rem, 48rem);
+  grid-template-columns: minmax(34rem, 42rem) minmax(28rem, 48rem);
 }
 
 .suite-app-detail-backdrop {
@@ -688,8 +688,8 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   justify-self: end;
-  width: min(34rem, calc(100vw - min(48rem, 94vw)));
-  min-width: 28rem;
+  width: min(42rem, calc(100vw - min(48rem, 94vw)));
+  min-width: 34rem;
   height: 100dvh;
   overflow: hidden;
   border-left: var(--mos-border-strong);
@@ -795,28 +795,6 @@
   color: var(--mos-color-text-strong);
   overflow-wrap: anywhere;
   white-space: normal;
-}
-
-.suite-app-guide-qr {
-  display: grid;
-  grid-template-columns: repeat(7, 0.36rem);
-  gap: 0.12rem;
-  padding: 0.35rem;
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: var(--mos-radius-sm);
-  background: #0b2138;
-}
-
-.suite-app-guide-qr span {
-  display: block;
-  width: 0.36rem;
-  height: 0.36rem;
-  border-radius: 1px;
-  background: var(--mos-color-surface-border);
-}
-
-.suite-app-guide-qr span.is-filled {
-  background: var(--mos-color-text-strong);
 }
 
 .suite-app-guide-choice-tabs {
