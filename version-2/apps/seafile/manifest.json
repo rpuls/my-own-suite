@@ -174,57 +174,5 @@
   "health": {
     "type": "http",
     "url": "http://seafile:80/api2/ping/"
-  },
-  "onboarding": {
-    "title": "Start using Seafile",
-    "summary": "Sign in to Seafile with the admin credentials you entered during install, then add clients or create libraries.",
-    "steps": [
-      {
-        "type": "open-url",
-        "title": "Open Seafile",
-        "body": "Open the generated Seafile app URL after MOS reports the runtime healthy."
-      },
-      {
-        "type": "manual",
-        "title": "Sign in with the initial admin",
-        "body": "Use the Seafile admin email and password you entered during install. MOS stores the password as a secret reference and does not show it again."
-      }
-    ],
-    "sections": [
-      {
-        "id": "connection-details",
-        "type": "values",
-        "title": "Connection details",
-        "values": [
-          {
-            "label": "Server URL",
-            "value": "${app.publicUrl}",
-            "copy": true
-          },
-          {
-            "label": "Admin email",
-            "value": "${config.adminEmail}",
-            "copy": true
-          },
-          {
-            "label": "Admin password",
-            "value": "Use the password you entered during install.",
-            "copy": false
-          }
-        ]
-      },
-      {
-        "id": "core-only",
-        "type": "note",
-        "title": "OnlyOffice is deferred",
-        "body": "This first V2 Seafile package provides core file sync and sharing only. Browser-based office document editing will be added as a separate integration slice."
-      },
-      {
-        "id": "backup-warning",
-        "type": "warning",
-        "title": "Back up before relying on it",
-        "body": "Seafile stores files under /shared and metadata in MySQL. Keep both package volumes together in backups."
-      }
-    ]
   }
 }
