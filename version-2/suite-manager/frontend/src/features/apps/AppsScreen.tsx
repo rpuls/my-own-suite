@@ -126,7 +126,7 @@ function hasGuide(app: AppPackageSummary) {
 function guideStatusLabel(app: AppPackageSummary) {
   const status = app.instance?.guideState?.status;
   if (status === 'completed') return 'Guide complete';
-  if (status === 'skipped') return 'Guide skipped';
+  if (status === 'skipped') return 'Setup guide';
   if (status === 'viewed') return 'Continue guide';
   return 'Setup guide';
 }
@@ -465,11 +465,13 @@ function AppDetail({
   const [showOnHomepage, setShowOnHomepage] = useState(true);
   const [setupOpen, setSetupOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app));
   const ready = runtimeApplied(app);
   const disabled = app.instance?.status === 'disabled' || app.instance?.enabled === false;
   const uninstalled = app.instance?.status === 'uninstalled';
   const url = appUrl(app);
+  const guideCompleted = app.instance?.guideState?.status === 'completed';
   const inputFields = setupFieldsNeedInput(app);
   const needsPreparation = !app.instance && inputFields.length > 0;
   const relatedIds = app.catalog.related.length
@@ -482,6 +484,7 @@ function AppDetail({
     setShowOnHomepage(true);
     setSetupOpen(false);
     setGuideOpen(false);
+    setActionsOpen(false);
     setSetupConfig(initialSetupConfig(app));
   }, [app.id]);
 
@@ -496,10 +499,19 @@ function AppDetail({
 
   function openGuide() {
     setGuideOpen(true);
+    setActionsOpen(false);
     if (!app.instance?.guideState || app.instance.guideState.status === 'not-started') {
       onGuideStatus(app, 'viewed');
     }
   }
+
+  function runMenuAction(action: () => void) {
+    setActionsOpen(false);
+    action();
+  }
+
+  const canRefreshRuntime = Boolean(app.instance && !disabled && !uninstalled);
+  const hasMaintenanceActions = Boolean(canRefreshRuntime || ready || (app.instance && !uninstalled) || (ready && hasGuide(app) && guideCompleted));
 
   return <div className={`suite-app-detail-layer${guideOpen ? ' has-guide' : ''}`}>
     <button aria-label="Close app details" className="suite-app-detail-backdrop" onClick={onClose} tabIndex={-1} type="button" />
@@ -517,10 +529,16 @@ function AppDetail({
         </div>
         <div className="suite-app-primary-actions">
           {ready ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Enabling...' : 'Enable'}</button> : needsPreparation && !setupOpen ? <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setSetupOpen(true)} type="button">Prepare</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={submitInstall} type="button">{installing ? 'Installing...' : 'Install'}</button>}
-          {ready && hasGuide(app) ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
-          {app.instance ? <button className="mos-btn mos-btn-secondary" disabled={installing || refreshing} onClick={() => onRefresh(app)} type="button">{refreshing ? 'Checking...' : 'Refresh status'}</button> : null}
-          {ready ? <button className="mos-btn mos-btn-secondary" disabled={installing} onClick={() => onLifecycle(app, 'disable')} type="button">{installing ? 'Disabling...' : 'Disable'}</button> : null}
-          {app.instance && !uninstalled ? <button className="mos-btn mos-btn-secondary" disabled={installing} onClick={() => onLifecycle(app, 'uninstall')} type="button">{installing ? 'Uninstalling...' : 'Uninstall'}</button> : null}
+          {ready && hasGuide(app) && !guideCompleted ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
+          {hasMaintenanceActions ? <div className="suite-app-actions-menu">
+            <button aria-expanded={actionsOpen} aria-haspopup="menu" aria-label="More app actions" className="suite-icon-button" disabled={installing || guideUpdating} onClick={() => setActionsOpen((current) => !current)} title="More app actions" type="button"><Icon name="more" /></button>
+            {actionsOpen ? <div className="suite-app-actions-popover" role="menu">
+              {ready && hasGuide(app) && guideCompleted ? <button onClick={() => runMenuAction(openGuide)} role="menuitem" type="button">Setup guide</button> : null}
+              {canRefreshRuntime ? <button disabled={refreshing} onClick={() => runMenuAction(() => onRefresh(app))} role="menuitem" type="button">{refreshing ? 'Checking status...' : 'Refresh status'}</button> : null}
+              {ready ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'disable'))} role="menuitem" type="button">Disable</button> : null}
+              {app.instance && !uninstalled ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'uninstall'))} role="menuitem" type="button">Uninstall</button> : null}
+            </div> : null}
+          </div> : null}
           {!ready && !disabled && !uninstalled ? <label className="suite-app-homepage-option">
             <input checked={showOnHomepage} disabled={installing} onChange={(event) => setShowOnHomepage(event.currentTarget.checked)} type="checkbox" />
             <span>Add shortcut to Homepage</span>
