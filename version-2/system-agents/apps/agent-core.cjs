@@ -39,36 +39,56 @@ function assertRuntimeRequest(input) {
 
   const services = input.compose?.services;
   const routes = input.caddy?.routes;
-  if (!Array.isArray(services) || services.length !== 1 || !Array.isArray(routes) || routes.length !== 1) {
-    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'This first runtime slice supports one service and one route.');
+  if (!Array.isArray(services) || services.length < 1 || services.length > 8 || !Array.isArray(routes) || routes.length < 1 || routes.length > 8) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The app runtime request must declare one to eight services and routes.');
   }
 
-  const service = services[0];
-  const route = routes[0];
-  if (!DNS_LABEL_PATTERN.test(String(service?.id || '')) || !DNS_LABEL_PATTERN.test(String(route?.host || ''))) {
-    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Service and route ids must be DNS-safe labels.');
-  }
-  if (service?.build?.context !== `version-2/apps/${input.packageId}` || !SAFE_DOCKERFILE_PATTERN.test(String(service?.build?.dockerfile || ''))) {
-    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The service build must use the installed app package folder.');
-  }
-  if (!Number.isInteger(service?.internalPort) || service.internalPort < 1 || service.internalPort > 65535) {
-    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The service internal port is invalid.');
-  }
-  if (!Number.isInteger(service?.loopbackPort) || service.loopbackPort < 1024 || service.loopbackPort > 65535) {
-    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The service loopback port is invalid.');
-  }
-  if (route?.reverseProxy !== `127.0.0.1:${service.loopbackPort}`) {
-    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The route must target the assigned loopback port.');
-  }
-  if (route.internalIcalBridge !== undefined) {
-    const bridge = route.internalIcalBridge;
-    if (!exactKeys(bridge, ['basicAuth', 'path', 'targetPath']) || !SAFE_INTERNAL_PATH_PATTERN.test(String(bridge.path || '')) || !SAFE_TARGET_PATH_PATTERN.test(String(bridge.targetPath || ''))) {
-      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The internal iCal bridge projection is invalid.');
+  const servicesById = new Map();
+  const loopbackPorts = new Set();
+  for (const service of services) {
+    if (!DNS_LABEL_PATTERN.test(String(service?.id || ''))) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Service ids must be DNS-safe labels.');
     }
-    if (!exactKeys(bridge.basicAuth, ['password', 'username']) || typeof bridge.basicAuth.username !== 'string' || typeof bridge.basicAuth.password !== 'string' || /[\r\n:]/u.test(bridge.basicAuth.username) || /[\r\n]/u.test(bridge.basicAuth.password) || !bridge.basicAuth.username || !bridge.basicAuth.password) {
-      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The internal iCal bridge auth projection is invalid.');
+    if (servicesById.has(service.id)) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Service ids must be unique.');
     }
+    if (service?.build?.context !== `version-2/apps/${input.packageId}` || !SAFE_DOCKERFILE_PATTERN.test(String(service?.build?.dockerfile || ''))) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Each service build must use the installed app package folder.');
+    }
+    if (!Number.isInteger(service?.internalPort) || service.internalPort < 1 || service.internalPort > 65535) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A service internal port is invalid.');
+    }
+    if (!Number.isInteger(service?.loopbackPort) || service.loopbackPort < 1024 || service.loopbackPort > 65535 || loopbackPorts.has(service.loopbackPort)) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'A service loopback port is invalid.');
+    }
+    loopbackPorts.add(service.loopbackPort);
+    servicesById.set(service.id, service);
   }
+
+  const normalizedRoutes = [];
+  for (const route of routes) {
+    if (!DNS_LABEL_PATTERN.test(String(route?.host || ''))) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Route hosts must be DNS-safe labels.');
+    }
+    if (!DNS_LABEL_PATTERN.test(String(route?.service || '')) || !servicesById.has(route.service)) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Each route must reference a declared service.');
+    }
+    const service = servicesById.get(route.service);
+    if (route?.reverseProxy !== `127.0.0.1:${service.loopbackPort}`) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Each route must target its assigned loopback port.');
+    }
+    if (route.internalIcalBridge !== undefined) {
+      const bridge = route.internalIcalBridge;
+      if (!exactKeys(bridge, ['basicAuth', 'path', 'targetPath']) || !SAFE_INTERNAL_PATH_PATTERN.test(String(bridge.path || '')) || !SAFE_TARGET_PATH_PATTERN.test(String(bridge.targetPath || ''))) {
+        throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The internal iCal bridge projection is invalid.');
+      }
+      if (!exactKeys(bridge.basicAuth, ['password', 'username']) || typeof bridge.basicAuth.username !== 'string' || typeof bridge.basicAuth.password !== 'string' || /[\r\n:]/u.test(bridge.basicAuth.username) || /[\r\n]/u.test(bridge.basicAuth.password) || !bridge.basicAuth.username || !bridge.basicAuth.password) {
+        throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The internal iCal bridge auth projection is invalid.');
+      }
+    }
+    normalizedRoutes.push(route);
+  }
+  const route = normalizedRoutes[0];
   assertString(input.appHost, 'appHost', new RegExp(`^${escapeRegExp(route.host)}\\.[a-z0-9.-]+$`, 'u'));
   assertString(input.publicUrl, 'publicUrl', new RegExp(`^https?://${escapeRegExp(input.appHost)}/$`, 'u'));
   if (input.health?.type !== 'http' || typeof input.health?.target !== 'string') {
@@ -80,11 +100,12 @@ function assertRuntimeRequest(input) {
   } catch {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The app health URL is invalid.');
   }
-  if (healthUrl.protocol !== 'http:' || healthUrl.hostname !== '127.0.0.1' || healthUrl.port !== String(service.loopbackPort)) {
+  const healthService = services.find((candidate) => String(candidate.loopbackPort) === healthUrl.port);
+  if (healthUrl.protocol !== 'http:' || healthUrl.hostname !== '127.0.0.1' || !healthService) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The health check must target the assigned loopback port.');
   }
 
-  return { route, service };
+  return { routes: normalizedRoutes, services };
 }
 
 function assertHealthCheckRequest(input) {
@@ -108,11 +129,15 @@ function assertHealthCheckRequest(input) {
 }
 
 function assertRuntimeRemoveRequest(input) {
-  if (!exactKeys(input, ['packageId'])) {
+  if (!exactKeys(input, ['packageId']) && !exactKeys(input, ['packageId', 'services'])) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app runtime removal fields are accepted.');
   }
   assertString(input.packageId, 'packageId', PACKAGE_ID_PATTERN);
-  return { packageId: input.packageId };
+  const services = input.services === undefined ? [] : input.services;
+  if (!Array.isArray(services) || services.length > 8 || services.some((service) => !DNS_LABEL_PATTERN.test(String(service)))) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The app runtime removal service list is invalid.');
+  }
+  return { packageId: input.packageId, services };
 }
 
 function resolveEnvironment(environment, context) {
@@ -125,12 +150,16 @@ function resolveEnvironment(environment, context) {
     if (!ENV_KEY_PATTERN.test(key) || typeof value !== 'string') {
       throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The service environment projection is invalid.');
     }
-    resolved[key] = value.replace(/\$\{app\.publicUrl\}/gu, context.publicUrl);
+    const publicUrl = new URL(context.publicUrl);
+    resolved[key] = value
+      .replace(/\$\{app\.publicUrl\}/gu, context.publicUrl)
+      .replace(/\$\{app\.host\}/gu, publicUrl.host)
+      .replace(/\$\{app\.scheme\}/gu, publicUrl.protocol.replace(/:$/u, ''));
   }
   return resolved;
 }
 
-function renderAppRoutes({ appHost, internalIcalBridge = null, reverseProxy }) {
+function renderAppRouteSite({ appHost, internalIcalBridge = null, reverseProxy }) {
   const bridge = internalIcalBridge ? `  handle ${internalIcalBridge.path} {
     rewrite * ${internalIcalBridge.targetPath}
     reverse_proxy http://${reverseProxy} {
@@ -147,6 +176,17 @@ ${bridge}
 `;
 }
 
+function renderAppRoutes({ appHost, internalIcalBridge = null, reverseProxy, routes = null }) {
+  if (Array.isArray(routes)) {
+    return routes.map((route) => renderAppRouteSite({
+      appHost: `${route.host}.${appHost.split('.').slice(1).join('.')}`,
+      internalIcalBridge: route.internalIcalBridge || null,
+      reverseProxy: route.reverseProxy,
+    })).join('\n');
+  }
+  return renderAppRouteSite({ appHost, internalIcalBridge, reverseProxy });
+}
+
 class AppAgentCore {
   constructor(adapter) {
     this.adapter = adapter;
@@ -154,24 +194,28 @@ class AppAgentCore {
 
   async status() {
     return {
-      capabilities: ['apps.one-service.apply', 'apps.health.check', 'apps.one-service.remove'],
+      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.remove'],
       service: 'mos-v2-app-agent',
     };
   }
 
   async apply(input) {
-    const { route, service } = assertRuntimeRequest(input);
-    const result = await this.adapter.applyAppService({
-      caddyRoutes: renderAppRoutes({ appHost: input.appHost, internalIcalBridge: route.internalIcalBridge, reverseProxy: route.reverseProxy }),
-      dockerfile: service.build.dockerfile,
-      environment: resolveEnvironment(service.environment, { publicUrl: input.publicUrl }),
+    const { routes, services } = assertRuntimeRequest(input);
+    const result = await this.adapter.applyAppServices({
+      caddyRoutes: renderAppRoutes({ appHost: input.appHost, routes }),
       healthTarget: input.health.target,
-      imageTag: `mos-v2-app-${input.packageId}:${input.packageVersion}`,
-      internalPort: service.internalPort,
-      loopbackPort: service.loopbackPort,
       packageId: input.packageId,
       publicUrl: input.publicUrl,
-      volumes: service.volumes,
+      services: services.map((service) => ({
+        dockerfile: service.build.dockerfile,
+        environment: resolveEnvironment(service.environment, { publicUrl: input.publicUrl }),
+        id: service.id,
+        imageTag: `mos-v2-app-${input.packageId}-${service.id}:${input.packageVersion}`,
+        internalPort: service.internalPort,
+        loopbackPort: service.loopbackPort,
+        public: routes.some((route) => route.service === service.id),
+        volumes: service.volumes,
+      })),
     });
     return {
       ...result,
@@ -195,8 +239,8 @@ class AppAgentCore {
   }
 
   async remove(input) {
-    const { packageId } = assertRuntimeRemoveRequest(input);
-    const result = await this.adapter.removeAppService({ packageId });
+    const { packageId, services } = assertRuntimeRemoveRequest(input);
+    const result = await this.adapter.removeAppService({ packageId, serviceIds: services });
     return {
       ...result,
       packageId,

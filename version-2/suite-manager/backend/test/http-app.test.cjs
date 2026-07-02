@@ -567,6 +567,59 @@ test('Radicale install stores user-supplied credentials with secret redaction an
   }, { appAgent, homeHost: 'home.test' });
 });
 
+test('Seafile install renders multi-service projections with internal services unrouted and redacted secrets', async () => {
+  const calls = [];
+  const appAgent = {
+    async apply(input) {
+      calls.push(input);
+      return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const installed = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/seafile/install', {
+      body: JSON.stringify({ config: { adminEmail: 'owner@example.com', adminPassword: 'seafile-admin-pass' } }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    const instance = installed.json().instance;
+    const compose = instance.projections.find((projection) => projection.kind === 'compose').content;
+    const caddy = instance.projections.find((projection) => projection.kind === 'caddy').content;
+    const health = instance.projections.find((projection) => projection.kind === 'health').content;
+
+    assert.equal(installed.status, 200);
+    assert.equal(instance.packageId, 'seafile');
+    assert.deepEqual(compose.services.map((service) => service.id).sort(), ['seafile', 'seafile-mysql', 'seafile-valkey']);
+    assert.deepEqual(caddy.routes, [{
+      host: 'seafile',
+      reverseProxy: `127.0.0.1:${loopbackPortFor('seafile', 'seafile')}`,
+      service: 'seafile',
+    }]);
+    assert.equal(JSON.stringify(caddy).includes('seafile-mysql'), false);
+    assert.equal(JSON.stringify(caddy).includes('seafile-valkey'), false);
+    assert.equal(health.target, `http://127.0.0.1:${loopbackPortFor('seafile', 'seafile')}/api2/ping/`);
+    assert.equal(compose.services.find((service) => service.id === 'seafile').environment.SEAFILE_MYSQL_DB_PASSWORD, '${secret.mysqlUserPassword}');
+    assert.equal(compose.services.find((service) => service.id === 'seafile').environment.SEAFILE_SERVER_HOSTNAME, '${app.host}');
+    assert.equal(instance.config.find((item) => item.key === 'adminPassword').value, undefined);
+    assert.equal(instance.config.filter((item) => item.secret).length, 4);
+    assert.doesNotMatch(installed.body, /seafile-admin-pass/u);
+
+    const applied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/seafile/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+
+    assert.equal(applied.status, 200);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].appHost, 'seafile.test');
+    assert.equal(calls[0].compose.services.find((service) => service.id === 'seafile').environment.SEAFILE_SERVER_HOSTNAME, '${app.host}');
+    assert.equal(calls[0].compose.services.find((service) => service.id === 'seafile').environment.INIT_SEAFILE_ADMIN_PASSWORD, 'seafile-admin-pass');
+    assert.equal(calls[0].compose.services.find((service) => service.id === 'seafile-mysql').environment.MYSQL_ROOT_PASSWORD.includes('${secret.'), false);
+    assert.doesNotMatch(applied.body, /seafile-admin-pass/u);
+  }, { appAgent, homeHost: 'home.test' });
+});
+
 test('Installed app packages can apply their runtime through the app agent boundary', async () => {
   const stirlingPort = loopbackPortFor('stirling-pdf');
   const calls = [];
@@ -844,7 +897,7 @@ test('app lifecycle disable, enable, and uninstall preserve metadata while remov
       assert.equal(projection.status, 'rendered');
     }
     assert.deepEqual(appCalls.map((call) => call[0]), ['apply', 'remove']);
-    assert.deepEqual(appCalls[1], ['remove', { packageId: 'vaultwarden' }]);
+    assert.deepEqual(appCalls[1], ['remove', { packageId: 'vaultwarden', services: ['vaultwarden'] }]);
     assert.equal(homepageCalls.some((call) => call[0] === 'removeLink' && call[1].id === instanceId), true);
 
     const enabled = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/enable', {

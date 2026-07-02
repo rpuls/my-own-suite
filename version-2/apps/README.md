@@ -12,6 +12,8 @@ The second package is `vaultwarden`, intentionally chosen to pressure-test gener
 
 The third package is `radicale`, intentionally chosen to validate a V1-era calendar/contact sync app against the V2 package model. It uses generic package setup fields for user-supplied credentials, one persistent data volume, one app route with a structured tokenized iCal bridge, one Homepage tile with a calendar widget, and the same lifecycle preserve-data semantics as the earlier packages.
 
+The fourth package is `seafile`, intentionally chosen as the first serious multi-service V1-era pillar app in V2. It uses package-owned Seafile, MySQL, and Valkey services, generated internal database/JWT secrets, user-supplied initial Seafile admin credentials, one public app route, internal-only dependency services, and preserved Seafile/MySQL volumes. OnlyOffice is explicitly deferred to a later integration slice.
+
 Package manifests describe install inputs and projections only. An app becomes active only after Suite Manager persists app instance state and the app lifecycle agent applies the generated runtime projection. Disable and preserved-data uninstall remove the active runtime and route without deleting package config, secret references, or Docker volumes.
 
 ## Post-install setup guides

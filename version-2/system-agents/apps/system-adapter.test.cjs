@@ -127,6 +127,7 @@ http://second-app.mos.home {
   assert.deepEqual(result.steps, ['stopped', 'route-removed', 'caddy-reloaded']);
   assert.deepEqual(commands.map((command) => [command.file, command.args.slice(0, 3)]), [
     ['docker', ['rm', '-f', 'mos-v2-app-second-app']],
+    ['docker', ['network', 'rm', 'mos-v2-app-second-app']],
     ['caddy', ['validate', '--adapter', 'caddyfile']],
     ['/usr/bin/systemctl', ['reload', 'caddy.service']],
   ]);
@@ -134,6 +135,63 @@ http://second-app.mos.home {
   const routes = await fsp.readFile(routesPath, 'utf8');
   assert.match(routes, /first-app/u);
   assert.doesNotMatch(routes, /second-app/u);
+});
+
+test('system adapter runs multi-service packages on a private package network', async () => {
+  const root = await tempDir();
+  const routesPath = path.join(root, 'routes.caddy');
+  const packageDir = path.join(root, 'seafile');
+  const commands = [];
+  await fsp.mkdir(packageDir);
+
+  const adapter = new SystemAppAdapter({
+    appsRoot: root,
+    caddyBinary: 'caddy',
+    dockerBinary: 'docker',
+    routesPath,
+    async execute(file, args, options = {}) {
+      commands.push({ args, cwd: options.cwd, file });
+    },
+    async waitForReady(url) {
+      commands.push({ args: [url], file: 'health' });
+    },
+  });
+
+  await adapter.applyAppServices({
+    caddyRoutes: 'http://seafile.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n',
+    healthTarget: 'http://127.0.0.1:18123/api2/ping/',
+    packageId: 'seafile',
+    services: [
+      {
+        dockerfile: 'Dockerfile.mysql',
+        environment: { MYSQL_ROOT_PASSWORD: 'root-secret' },
+        id: 'seafile-mysql',
+        imageTag: 'mos-v2-app-seafile-seafile-mysql:0.1.0',
+        internalPort: 3306,
+        loopbackPort: 18124,
+        public: false,
+        volumes: ['mysql-data:/var/lib/mysql'],
+      },
+      {
+        dockerfile: 'Dockerfile',
+        environment: { SEAFILE_SERVER_HOSTNAME: 'seafile.mos.home' },
+        id: 'seafile',
+        imageTag: 'mos-v2-app-seafile-seafile:0.1.0',
+        internalPort: 80,
+        loopbackPort: 18123,
+        public: true,
+        volumes: ['data:/shared'],
+      },
+    ],
+  });
+
+  const dockerRuns = commands.filter((command) => command.file === 'docker' && command.args[0] === 'run');
+  assert.equal(commands.some((command) => command.file === 'docker' && command.args.join(' ') === 'network create mos-v2-app-seafile'), true);
+  assert.equal(dockerRuns.length, 2);
+  assert.ok(dockerRuns[0].args.includes('--network-alias'));
+  assert.equal(dockerRuns[0].args.includes('--publish'), false);
+  assert.ok(dockerRuns[1].args.includes('127.0.0.1:18123:80'));
+  assert.ok(dockerRuns[1].args.includes('mos-v2-app-seafile-data:/shared'));
 });
 
 test('system adapter checks app health with a short refresh budget', async () => {

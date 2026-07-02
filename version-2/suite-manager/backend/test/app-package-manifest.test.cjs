@@ -110,6 +110,38 @@ test('Radicale package is discoverable and declares user-supplied credentials ge
   assert.deepEqual(validateAppPackageManifest(radicale.manifest, { packageDir: radicale.packageDir }), []);
 });
 
+test('Seafile package is discoverable and declares a multi-service core package generically', () => {
+  const packages = discoverAppPackages(v2AppsDir);
+  const seafile = packages.find((entry) => entry.manifest.id === 'seafile');
+
+  assert.ok(seafile);
+  assert.equal(seafile.manifest.name, 'Seafile');
+  assert.equal(seafile.manifest.catalog.complexity.level, 'advanced');
+  assert.deepEqual(Object.keys(seafile.manifest.resources.services).sort(), ['seafile', 'seafile-mysql', 'seafile-valkey']);
+  assert.equal(seafile.manifest.routes.length, 1);
+  assert.equal(seafile.manifest.routes[0].service, 'seafile');
+  assert.equal(seafile.manifest.health.url, 'http://seafile:80/api2/ping/');
+  assert.deepEqual(seafile.manifest.resources.services.seafile.volumes, ['data:/shared']);
+  assert.deepEqual(seafile.manifest.resources.services['seafile-mysql'].volumes, ['mysql-data:/var/lib/mysql']);
+  assert.equal(seafile.manifest.resources.services['seafile-valkey'].internalPort, 6379);
+  assert.equal(seafile.manifest.setup.fields.length, 5);
+  assert.deepEqual(seafile.manifest.setup.fields.map((field) => ({
+    id: field.id,
+    generated: Boolean(field.generated),
+    required: field.required,
+    secret: field.secret === true,
+    type: field.type,
+  })), [
+    { generated: false, id: 'adminEmail', required: true, secret: false, type: 'email' },
+    { generated: false, id: 'adminPassword', required: true, secret: true, type: 'password' },
+    { generated: true, id: 'mysqlRootPassword', required: true, secret: true, type: 'password' },
+    { generated: true, id: 'mysqlUserPassword', required: true, secret: true, type: 'password' },
+    { generated: true, id: 'jwtPrivateKey', required: true, secret: true, type: 'password' },
+  ]);
+  assert.equal(JSON.stringify(seafile.manifest).includes('ONLYOFFICE_APIJS_URL'), false);
+  assert.deepEqual(validateAppPackageManifest(seafile.manifest, { packageDir: seafile.packageDir }), []);
+});
+
 test('manifest validation accepts structured optional catalog presentation metadata', () => {
   const manifest = validManifest({
     catalog: {
@@ -290,7 +322,7 @@ test('production app package engine code does not hardcode package ids', () => {
       }
       if (!/\.(?:cjs|js|ps1|ts|tsx)$/u.test(entry.name) || /\.test\./u.test(entry.name)) continue;
       const content = fs.readFileSync(fullPath, 'utf8');
-      if (/\b(?:stirling|vaultwarden|radicale|Stirling|Vaultwarden|Radicale)\b/u.test(content)) {
+      if (/\b(?:stirling|vaultwarden|radicale|seafile|Stirling|Vaultwarden|Radicale|Seafile)\b/u.test(content)) {
         offenders.push(path.relative(v2Root, fullPath));
       }
     }

@@ -35,10 +35,16 @@ function fingerprintFor(value) {
   return digestFor(String(value));
 }
 
-function loopbackPortFor(manifestOrPackageId) {
+function loopbackPortFor(manifestOrPackageId, serviceId = null) {
   const packageId = typeof manifestOrPackageId === 'string' ? manifestOrPackageId : manifestOrPackageId.id;
-  const digest = crypto.createHash('sha256').update(packageId).digest();
+  const digest = crypto.createHash('sha256').update(`${packageId}:${serviceId || packageId}`).digest();
   return APP_LOOPBACK_PORT_BASE + digest.readUInt16BE(0) % APP_LOOPBACK_PORT_SPAN;
+}
+
+function serviceForHealth(manifest) {
+  const parsed = new URL(manifest.health.url);
+  const serviceIds = new Set(Object.keys(manifest.resources.services || {}));
+  return serviceIds.has(parsed.hostname) ? parsed.hostname : manifest.routes[0]?.service;
 }
 
 function healthTargetFor(manifest, port) {
@@ -81,6 +87,8 @@ function resolveConfigTemplate(value, configRows, { app = {}, includeSecrets = f
   const values = configValueMap(configRows, { includeSecrets });
   return value
     .replace(/\$\{app\.publicUrl\}/gu, () => (typeof app.publicUrl === 'string' ? app.publicUrl : '${app.publicUrl}'))
+    .replace(/\$\{app\.host\}/gu, () => (typeof app.host === 'string' ? app.host : '${app.host}'))
+    .replace(/\$\{app\.scheme\}/gu, () => (typeof app.scheme === 'string' ? app.scheme : '${app.scheme}'))
     .replace(/\$\{config\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (values.has(key) ? String(values.get(key)) : match))
     .replace(/\$\{secret\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (values.has(key) ? String(values.get(key)) : match));
 }
@@ -109,6 +117,8 @@ function renderDryRunProjections(manifest, configRows = []) {
     loopbackPort: loopbackPortFor(manifest, id),
     volumes: service.volumes || [],
   }));
+  const servicePorts = new Map(services.map((service) => [service.id, service.loopbackPort]));
+  const healthService = serviceForHealth(manifest);
   const volumes = [...new Set(services.flatMap((service) => service.volumes.map((volume) => volume.split(':')[0])))].sort();
   const projections = [
     {
@@ -123,7 +133,8 @@ function renderDryRunProjections(manifest, configRows = []) {
         routes: manifest.routes.map((route) => ({
           host: route.host,
           ...(isRecord(route.internalIcalBridge) ? { internalIcalBridge: resolveTemplatesDeep(route.internalIcalBridge, configRows) } : {}),
-          reverseProxy: `127.0.0.1:${loopbackPortFor(manifest, route.service)}`,
+          reverseProxy: `127.0.0.1:${servicePorts.get(route.service)}`,
+          service: route.service,
         })),
       },
       kind: 'caddy',
@@ -134,7 +145,7 @@ function renderDryRunProjections(manifest, configRows = []) {
     },
     {
       content: {
-        target: healthTargetFor(manifest, loopbackPortFor(manifest, manifest.routes[0]?.service)),
+        target: healthTargetFor(manifest, servicePorts.get(healthService)),
         type: manifest.health.type,
       },
       kind: 'health',
@@ -657,8 +668,10 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_INVALID_TRANSITION', 'This app cannot be disabled from its current state.', 409);
     }
 
+    const projections = this.store.getAppProjections(instance.id);
+    const services = projections.find((projection) => projection.kind === 'compose')?.content?.services || [];
     const homepage = await this.removePackageFromHomepage(instance, homepageService);
-    const agent = await this.agent.remove({ packageId: instance.packageId });
+    const agent = await this.agent.remove({ packageId: instance.packageId, services: services.map((service) => service.id) });
     const at = this.now().toISOString();
     this.store.markAppDisabled({
       at,
@@ -724,8 +737,10 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_INVALID_TRANSITION', 'This app cannot be uninstalled from its current state.', 409);
     }
 
+    const projections = this.store.getAppProjections(instance.id);
+    const services = projections.find((projection) => projection.kind === 'compose')?.content?.services || [];
     const homepage = await this.removePackageFromHomepage(instance, homepageService);
-    const agent = await this.agent.remove({ packageId: instance.packageId });
+    const agent = await this.agent.remove({ packageId: instance.packageId, services: services.map((service) => service.id) });
     const at = this.now().toISOString();
     this.store.markAppUninstalled({
       at,

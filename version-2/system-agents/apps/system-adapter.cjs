@@ -151,34 +151,74 @@ class SystemAppAdapter {
     this.waitForReady = waitForReady;
   }
 
+  containerName(packageId, serviceId, serviceCount) {
+    return serviceCount === 1 ? `mos-v2-app-${packageId}` : `mos-v2-app-${packageId}-${serviceId}`;
+  }
+
+  networkName(packageId) {
+    return `mos-v2-app-${packageId}`;
+  }
+
   async applyAppService({ caddyRoutes, dockerfile, environment = {}, healthTarget, imageTag, internalPort, loopbackPort, packageId, volumes }) {
+    return this.applyAppServices({
+      caddyRoutes,
+      healthTarget,
+      packageId,
+      services: [{
+        dockerfile,
+        environment,
+        id: packageId,
+        imageTag,
+        internalPort,
+        loopbackPort,
+        public: true,
+        volumes,
+      }],
+    });
+  }
+
+  async applyAppServices({ caddyRoutes, healthTarget, packageId, services }) {
     const packageDir = path.join(this.appsRoot, packageId);
     const routeSnapshot = `${this.routesPath}.before-${process.pid}`;
     let routesChanged = false;
     let stage = 'build';
 
     try {
-      await this.execute(this.dockerBinary, ['build', '--file', dockerfile, '--tag', imageTag, '.'], { cwd: packageDir, timeoutMs: 300000 });
+      const serviceCount = services.length;
+      for (const service of services) {
+        await this.execute(this.dockerBinary, ['build', '--file', service.dockerfile, '--tag', service.imageTag, '.'], { cwd: packageDir, timeoutMs: 300000 });
+      }
 
       stage = 'run';
-      await this.execute(this.dockerBinary, ['rm', '-f', `mos-v2-app-${packageId}`], { timeoutMs: 30000 }).catch(() => {});
-      const volumeArgs = [];
-      for (const volume of volumes || []) {
-        const separator = String(volume).indexOf(':');
-        if (separator > 0) {
-          volumeArgs.push('--volume', `mos-v2-app-${packageId}-${String(volume).slice(0, separator)}:${String(volume).slice(separator + 1)}`);
-        }
+      await this.removePackageContainers({ packageId, serviceIds: services.map((service) => service.id), serviceCount });
+      const networkName = this.networkName(packageId);
+      if (serviceCount > 1) {
+        await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
       }
-      await this.execute(this.dockerBinary, [
-        'run',
-        '--detach',
-        '--name', `mos-v2-app-${packageId}`,
-        '--restart', 'unless-stopped',
-        '--publish', `127.0.0.1:${loopbackPort}:${internalPort}`,
-        ...Object.entries(environment).sort(([left], [right]) => left.localeCompare(right)).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
-        ...volumeArgs,
-        imageTag,
-      ], { timeoutMs: 60000 });
+
+      for (const service of services) {
+        const volumeArgs = [];
+        for (const volume of service.volumes || []) {
+          const separator = String(volume).indexOf(':');
+          if (separator > 0) {
+            volumeArgs.push('--volume', `mos-v2-app-${packageId}-${String(volume).slice(0, separator)}:${String(volume).slice(separator + 1)}`);
+          }
+        }
+        const containerName = this.containerName(packageId, service.id, serviceCount);
+        await this.execute(this.dockerBinary, [
+          'run',
+          '--detach',
+          '--name', containerName,
+          '--restart', 'unless-stopped',
+          ...(serviceCount > 1 ? ['--network', networkName, '--network-alias', service.id] : []),
+          ...(service.public ? ['--publish', `127.0.0.1:${service.loopbackPort}:${service.internalPort}`] : []),
+          '--label', `mos-v2.package=${packageId}`,
+          '--label', `mos-v2.service=${service.id}`,
+          ...Object.entries(service.environment || {}).sort(([left], [right]) => left.localeCompare(right)).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
+          ...volumeArgs,
+          service.imageTag,
+        ], { timeoutMs: 60000 });
+      }
 
       stage = 'health';
       await this.waitForReady(healthTarget);
@@ -222,11 +262,25 @@ class SystemAppAdapter {
     }
   }
 
-  async removeAppService({ packageId }) {
+  async removePackageContainers({ packageId, serviceCount = 1, serviceIds = [] }) {
+    const ids = serviceIds.length ? serviceIds : [packageId];
+    for (const serviceId of ids) {
+      await this.execute(this.dockerBinary, ['rm', '-f', this.containerName(packageId, serviceId, serviceCount)], { timeoutMs: 30000 }).catch(() => {});
+    }
+    if (serviceCount > 1 || serviceIds.length > 1) {
+      await this.execute(this.dockerBinary, ['network', 'rm', this.networkName(packageId)], { timeoutMs: 30000 }).catch(() => {});
+    }
+  }
+
+  async removeAppService({ packageId, serviceIds = [] }) {
     const routeSnapshot = `${this.routesPath}.before-${process.pid}`;
     let routesChanged = false;
     try {
       await this.execute(this.dockerBinary, ['rm', '-f', `mos-v2-app-${packageId}`], { timeoutMs: 30000 }).catch(() => {});
+      for (const serviceId of serviceIds) {
+        await this.execute(this.dockerBinary, ['rm', '-f', `mos-v2-app-${packageId}-${serviceId}`], { timeoutMs: 30000 }).catch(() => {});
+      }
+      await this.execute(this.dockerBinary, ['network', 'rm', this.networkName(packageId)], { timeoutMs: 30000 }).catch(() => {});
 
       const currentRoutes = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
       const nextRoutes = removeAppRouteBlock(currentRoutes, packageId);

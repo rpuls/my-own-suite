@@ -5,11 +5,11 @@ const { AppAgentCore, AppRuntimeError, renderAppRoutes } = require('./agent-core
 
 const request = {
   appHost: 'example-tool.mos.home',
-  caddy: { routes: [{ host: 'example-tool', reverseProxy: '127.0.0.1:18123' }] },
+  caddy: { routes: [{ host: 'example-tool', reverseProxy: '127.0.0.1:18123', service: 'web' }] },
   compose: {
     services: [{
       build: { context: 'version-2/apps/example-tool', dockerfile: 'Dockerfile' },
-      environment: { SERVER_HOST: '${app.publicUrl}' },
+      environment: { APP_HOST: '${app.host}', APP_SCHEME: '${app.scheme}', SERVER_HOST: '${app.publicUrl}' },
       id: 'web',
       internalPort: 3000,
       loopbackPort: 18123,
@@ -25,9 +25,9 @@ const request = {
 };
 
 test('app agent exposes only narrow app runtime capabilities', async () => {
-  const core = new AppAgentCore({ applyAppService: async () => ({ steps: [] }), checkAppHealth: async () => ({}) });
+  const core = new AppAgentCore({ applyAppServices: async () => ({ steps: [] }), checkAppHealth: async () => ({}) });
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['apps.one-service.apply', 'apps.health.check', 'apps.one-service.remove']);
+  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.remove']);
 });
 
 test('app route rendering uses structured host and loopback upstream only', () => {
@@ -55,7 +55,7 @@ test('app route rendering supports a structured tokenized iCal bridge', () => {
 });
 
 test('app apply validates internal iCal bridge shape', async () => {
-  const core = new AppAgentCore({ applyAppService: async () => ({ steps: [] }) });
+  const core = new AppAgentCore({ applyAppServices: async () => ({ steps: [] }) });
   const bridged = {
     ...request,
     caddy: {
@@ -84,7 +84,7 @@ test('app apply validates internal iCal bridge shape', async () => {
 test('app apply validates exact shape and delegates sanitized runtime fields', async () => {
   const calls = [];
   const core = new AppAgentCore({
-    async applyAppService(input) {
+    async applyAppServices(input) {
       calls.push(input);
       return { steps: ['built', 'started', 'healthy'] };
     },
@@ -94,14 +94,54 @@ test('app apply validates exact shape and delegates sanitized runtime fields', a
   assert.equal(result.status, 'applied');
   assert.equal(result.publicUrl, 'http://example-tool.mos.home/');
   assert.equal(calls[0].packageId, 'example-tool');
-  assert.equal(calls[0].loopbackPort, 18123);
   assert.equal(calls[0].healthTarget, 'http://127.0.0.1:18123/health');
-  assert.deepEqual(calls[0].environment, { SERVER_HOST: 'http://example-tool.mos.home/' });
+  assert.equal(calls[0].services[0].loopbackPort, 18123);
+  assert.deepEqual(calls[0].services[0].environment, {
+    APP_HOST: 'example-tool.mos.home',
+    APP_SCHEME: 'http',
+    SERVER_HOST: 'http://example-tool.mos.home/',
+  });
   assert.match(calls[0].caddyRoutes, /reverse_proxy http:\/\/127\.0\.0\.1:18123/u);
 });
 
+test('app apply delegates multiple services while exposing only declared public routes', async () => {
+  const calls = [];
+  const core = new AppAgentCore({
+    async applyAppServices(input) {
+      calls.push(input);
+      return { steps: ['built', 'started', 'healthy'] };
+    },
+  });
+  const multi = {
+    ...request,
+    caddy: { routes: [{ host: 'example-tool', reverseProxy: '127.0.0.1:18123', service: 'web' }] },
+    compose: {
+      services: [
+        request.compose.services[0],
+        {
+          build: { context: 'version-2/apps/example-tool', dockerfile: 'Dockerfile.mysql' },
+          environment: { MYSQL_ROOT_PASSWORD: 'secret' },
+          id: 'database',
+          internalPort: 3306,
+          loopbackPort: 18124,
+          volumes: ['mysql-data:/var/lib/mysql'],
+        },
+      ],
+      volumes: ['configs', 'mysql-data'],
+    },
+  };
+
+  await core.apply(multi);
+
+  assert.equal(calls[0].services.length, 2);
+  assert.equal(calls[0].services.find((service) => service.id === 'web').public, true);
+  assert.equal(calls[0].services.find((service) => service.id === 'database').public, false);
+  assert.match(calls[0].caddyRoutes, /example-tool\.mos\.home/u);
+  assert.doesNotMatch(calls[0].caddyRoutes, /database/u);
+});
+
 test('app apply rejects arbitrary packages, paths, routes, and commands', async () => {
-  const core = new AppAgentCore({ applyAppService: async () => ({ steps: [] }) });
+  const core = new AppAgentCore({ applyAppServices: async () => ({ steps: [] }) });
   await assert.rejects(() => core.apply({ ...request, command: 'docker ps' }), AppRuntimeError);
   await assert.rejects(() => core.apply({ ...request, packageId: '../vaultwarden' }), AppRuntimeError);
   await assert.rejects(() => core.apply({
@@ -162,7 +202,10 @@ test('app remove accepts only a package id and delegates without volume deletion
   const result = await core.remove({ packageId: 'example-tool' });
 
   assert.equal(result.status, 'removed');
-  assert.deepEqual(calls, [{ packageId: 'example-tool' }]);
+  assert.deepEqual(calls, [{ packageId: 'example-tool', serviceIds: [] }]);
+  await core.remove({ packageId: 'example-tool', services: ['web', 'database'] });
+  assert.deepEqual(calls[1], { packageId: 'example-tool', serviceIds: ['web', 'database'] });
   await assert.rejects(() => core.remove({ packageId: 'example-tool', volumes: true }), AppRuntimeError);
   await assert.rejects(() => core.remove({ packageId: '../example-tool' }), AppRuntimeError);
+  await assert.rejects(() => core.remove({ packageId: 'example-tool', services: ['../bad'] }), AppRuntimeError);
 });
