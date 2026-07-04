@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 
 import { Icon, Notice } from '../../components/ui';
+import type { Owner } from '../setup/types';
 
 type CatalogFeature = { body: string; title: string };
 type CatalogLinkKey = 'docs' | 'repository' | 'website';
@@ -170,9 +171,12 @@ function setupFieldsNeedInput(app: AppPackageSummary) {
   return app.setup.fields.filter((field) => !field.generated);
 }
 
-function initialSetupConfig(app: AppPackageSummary) {
+function initialSetupConfig(app: AppPackageSummary, ownerEmail: string) {
   return Object.fromEntries(
-    setupFieldsNeedInput(app).map((field) => [field.id, typeof field.default === 'string' ? field.default : '']),
+    setupFieldsNeedInput(app).map((field) => [
+      field.id,
+      typeof field.default === 'string' ? field.default : field.type === 'email' ? ownerEmail : '',
+    ]),
   );
 }
 
@@ -457,6 +461,7 @@ function AppDetail({
   packages,
   refreshing,
   guideUpdating,
+  owner,
 }: {
   app: AppPackageSummary;
   connectingId: string;
@@ -473,12 +478,13 @@ function AppDetail({
   packages: AppPackageSummary[];
   refreshing: boolean;
   guideUpdating: boolean;
+  owner: Owner;
 }) {
   const [showOnHomepage, setShowOnHomepage] = useState(true);
   const [setupOpen, setSetupOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
-  const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app));
+  const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app, owner.email));
   const ready = runtimeApplied(app);
   const disabled = app.instance?.status === 'disabled' || app.instance?.enabled === false;
   const uninstalled = app.instance?.status === 'uninstalled';
@@ -499,8 +505,8 @@ function AppDetail({
     setSetupOpen(false);
     setGuideOpen(false);
     setActionsOpen(false);
-    setSetupConfig(initialSetupConfig(app));
-  }, [app.id]);
+    setSetupConfig(initialSetupConfig(app, owner.email));
+  }, [app.id, owner.email]);
 
   function submitInstall() {
     const config = { ...setupConfig };
@@ -649,7 +655,7 @@ function AppDetail({
   </div>;
 }
 
-export function AppsScreen() {
+export function AppsScreen({ owner }: { owner: Owner }) {
   const [packages, setPackages] = useState<AppPackageSummary[]>([]);
   const [connectingId, setConnectingId] = useState('');
   const [error, setError] = useState('');
@@ -916,6 +922,6 @@ export function AppsScreen() {
       </dl>
     </details> : null}
 
-    {selected ? <AppDetail app={selected} connectingId={connectingId} guideUpdating={guideUpdatingId === selected.id} installing={installingId === selected.id || connectingId.startsWith(`${selected.id}:`)} installError={installError} installSteps={installingId === selected.id || connectingId.startsWith(`${selected.id}:`) || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onConnect={(connection) => void connectPackages(connection)} onGuideStatus={(target, status) => void updateGuideStatus(target, status)} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onRefresh={(target) => void refreshRuntimeStatus(target)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} packages={packages} refreshing={refreshingId === selected.id} /> : null}
+    {selected ? <AppDetail app={selected} connectingId={connectingId} guideUpdating={guideUpdatingId === selected.id} installing={installingId === selected.id || connectingId.startsWith(`${selected.id}:`)} installError={installError} installSteps={installingId === selected.id || connectingId.startsWith(`${selected.id}:`) || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onConnect={(connection) => void connectPackages(connection)} onGuideStatus={(target, status) => void updateGuideStatus(target, status)} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onRefresh={(target) => void refreshRuntimeStatus(target)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} owner={owner} packages={packages} refreshing={refreshingId === selected.id} /> : null}
   </section>;
 }

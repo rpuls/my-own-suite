@@ -45,3 +45,11 @@ test('Apps host helper repairs stale app host entries after fresh VM resets', ()
   assert.match(apps, /Set-Content -Path \$hostsPath -Value \$next/u);
   assert.doesNotMatch(apps, /if \(-not \(Select-String/u);
 });
+
+test('Apps setup email fields default to the signed-in owner email', () => {
+  const shell = fs.readFileSync(path.join(frontendRoot, 'features', 'app-shell', 'AppShell.tsx'), 'utf8');
+  const apps = fs.readFileSync(path.join(frontendRoot, 'features', 'apps', 'AppsScreen.tsx'), 'utf8');
+  assert.match(shell, /<AppsScreen owner=\{owner\} \/>/u);
+  assert.match(apps, /initialSetupConfig\(app, owner\.email\)/u);
+  assert.match(apps, /field\.type === 'email' \? ownerEmail/u);
+});
