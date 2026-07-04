@@ -138,8 +138,26 @@ test('Seafile package is discoverable and declares a multi-service core package 
     { generated: true, id: 'mysqlUserPassword', required: true, secret: true, type: 'password' },
     { generated: true, id: 'jwtPrivateKey', required: true, secret: true, type: 'password' },
   ]);
-  assert.equal(JSON.stringify(seafile.manifest).includes('ONLYOFFICE_APIJS_URL'), false);
+  assert.equal(seafile.manifest.exports.filePlatform.type, 'document-platform');
+  assert.equal(seafile.manifest.integrations.documentEditor.accepts[0].type, 'document-editor');
+  assert.equal(seafile.manifest.integrations.documentEditor.apply.kind, 'service-env');
   assert.deepEqual(validateAppPackageManifest(seafile.manifest, { packageDir: seafile.packageDir }), []);
+});
+
+test('OnlyOffice package is discoverable and exports a document editor capability', () => {
+  const packages = discoverAppPackages(v2AppsDir);
+  const onlyoffice = packages.find((entry) => entry.manifest.id === 'onlyoffice');
+
+  assert.ok(onlyoffice);
+  assert.equal(onlyoffice.manifest.name, 'ONLYOFFICE Docs');
+  assert.equal(onlyoffice.manifest.catalog.complexity.level, 'advanced');
+  assert.equal(onlyoffice.manifest.resources.services.onlyoffice.internalPort, 80);
+  assert.deepEqual(onlyoffice.manifest.resources.services.onlyoffice.volumes, ['data:/var/www/onlyoffice/Data']);
+  assert.equal(onlyoffice.manifest.setup.fields.length, 2);
+  assert.equal(onlyoffice.manifest.exports.documentEditor.type, 'document-editor');
+  assert.equal(onlyoffice.manifest.exports.documentEditor.protocol, 'onlyoffice-docs-api');
+  assert.equal(onlyoffice.manifest.usefulness.requiresOneOf[0], 'document-platform');
+  assert.deepEqual(validateAppPackageManifest(onlyoffice.manifest, { packageDir: onlyoffice.packageDir }), []);
 });
 
 test('manifest validation accepts structured optional catalog presentation metadata', () => {

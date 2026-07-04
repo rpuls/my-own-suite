@@ -17,8 +17,26 @@ type CatalogMetadata = {
 };
 
 type AppPackageSummary = {
+  capabilities: {
+    exports: Array<{ features: Record<string, unknown>; id: string; implementation: string; interfaceVersion: number | null; protocol: string; title: string; type: string }>;
+    integrations: Array<{ accepts: Array<{ interfaceVersion: number | null; protocol: string; type: string }>; id: string; providerLabel: string; title: string }>;
+    usefulness: { emptyState: string; requiresOneOf: string[] };
+  };
   catalog: CatalogMetadata;
   category: string | string[];
+  compatibility?: {
+    connections: Array<{
+      actionLabel: string;
+      capabilityId: string;
+      consumerPackageId: string;
+      provider: { id: string; installStatus: string; name: string; runtimeState: string };
+      ready: boolean;
+      relationship: { id: string; lastErrorCode: string | null; status: string; updatedAt: string } | null;
+      slotId: string;
+      title: string;
+    }>;
+    missingUsefulPeers: Array<{ message: string; type: string }>;
+  };
   health: { type: string | null; url: string | null } | null;
   homepage: { description: string; group: string; icon: string; name: string } | null;
   icon: string;
@@ -425,12 +443,14 @@ function AppCard({ app, onOpen }: { app: AppPackageSummary; onOpen: (app: AppPac
 
 function AppDetail({
   app,
+  connectingId,
   installing,
   installError,
   installSteps,
   onClose,
   onInstall,
   onLifecycle,
+  onConnect,
   onRefresh,
   onGuideStatus,
   onSelect,
@@ -439,12 +459,14 @@ function AppDetail({
   guideUpdating,
 }: {
   app: AppPackageSummary;
+  connectingId: string;
   installing: boolean;
   installError: string;
   installSteps: InstallStep[];
   onClose: () => void;
   onInstall: (app: AppPackageSummary, options?: { config?: Record<string, string>; showOnHomepage?: boolean }) => void;
   onLifecycle: (app: AppPackageSummary, action: 'disable' | 'enable' | 'uninstall') => void;
+  onConnect: (connection: NonNullable<AppPackageSummary['compatibility']>['connections'][number]) => void;
   onRefresh: (app: AppPackageSummary) => void;
   onGuideStatus: (app: AppPackageSummary, status: 'viewed' | 'completed' | 'skipped') => void;
   onSelect: (app: AppPackageSummary) => void;
@@ -469,6 +491,8 @@ function AppDetail({
     : packages.filter((item) => primaryCategory(item) === primaryCategory(app) && item.id !== app.id).slice(0, 3).map((item) => item.id);
   const related = relatedIds.map((id) => packages.find((item) => item.id === id)).filter(Boolean) as AppPackageSummary[];
   const canInstall = app.validation.valid && !requiredSetupMissing(app, setupConfig) && !installing;
+  const connections = app.compatibility?.connections || [];
+  const missingUsefulPeers = app.compatibility?.missingUsefulPeers || [];
 
   useEffect(() => {
     setShowOnHomepage(true);
@@ -555,6 +579,7 @@ function AppDetail({
         <InstallProgress error={installError} steps={installSteps} />
 
         {!app.validation.valid ? <Notice title="This package cannot be installed yet" variant="warning"><ul>{app.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}
+        {missingUsefulPeers.length ? <Notice title="Needs a compatible app" variant="info"><p>{missingUsefulPeers[0]!.message}</p></Notice> : null}
 
         <section className="suite-app-facts" aria-label="App facts">
           <div><span>Category</span><strong>{categoryLabel(primaryCategory(app))}</strong></div>
@@ -596,6 +621,20 @@ function AppDetail({
           {app.catalog.privacy.notes.length ? <ul>{app.catalog.privacy.notes.map((note) => <li key={note}>{note}</li>)}</ul> : null}
         </section> : null}
 
+        {connections.length ? <section className="suite-app-detail-section">
+          <h3>Connections</h3>
+          <div className="suite-app-related-list">
+            {connections.map((connection) => {
+              const status = connection.relationship?.status || (connection.provider.installStatus === 'not-installed' ? 'Install first' : connection.provider.runtimeState === 'running' ? 'Ready to connect' : 'Start both apps first');
+              const busy = connectingId === `${connection.consumerPackageId}:${connection.provider.id}:${connection.slotId}:${connection.capabilityId}`;
+              return <button disabled={!connection.ready || busy || installing} key={`${connection.provider.id}-${connection.slotId}-${connection.capabilityId}`} onClick={() => onConnect(connection)} type="button">
+                <span><strong>{connection.title}</strong><small>{connection.provider.name} - {status}</small></span>
+                <span>{busy ? 'Connecting...' : connection.ready ? connection.actionLabel : 'Unavailable'}</span>
+              </button>;
+            })}
+          </div>
+        </section> : null}
+
         {(Object.keys(app.catalog.links).length || related.length) ? <section className="suite-app-detail-section">
           <h3>Links And Related Apps</h3>
           {Object.keys(app.catalog.links).length ? <div className="suite-app-link-row">
@@ -612,6 +651,7 @@ function AppDetail({
 
 export function AppsScreen() {
   const [packages, setPackages] = useState<AppPackageSummary[]>([]);
+  const [connectingId, setConnectingId] = useState('');
   const [error, setError] = useState('');
   const [installError, setInstallError] = useState('');
   const [installSteps, setInstallSteps] = useState<InstallStep[]>([]);
@@ -790,6 +830,42 @@ export function AppsScreen() {
     }
   }
 
+  async function connectPackages(connection: NonNullable<AppPackageSummary['compatibility']>['connections'][number]) {
+    if (connectingId || installingId) return;
+    const operationId = `${connection.consumerPackageId}:${connection.provider.id}:${connection.slotId}:${connection.capabilityId}`;
+    setSelectedId(connection.consumerPackageId);
+    setConnectingId(operationId);
+    setInstallError('');
+    setInstallSteps([
+      { detail: `Connecting ${connection.provider.name}.`, id: 'runtime', label: 'Connecting apps', status: 'running' },
+    ]);
+    try {
+      await withMinimumInstallStep(async () =>
+        jsonResponse<{ instance: AppPackageSummary['instance'] }>(
+          await fetch('/suite-manager/api/apps/integrations/connect', {
+            body: JSON.stringify({
+              consumerPackageId: connection.consumerPackageId,
+              providerCapabilityId: connection.capabilityId,
+              providerPackageId: connection.provider.id,
+              slotId: connection.slotId,
+            }),
+            headers: { 'Content-Type': 'application/json' },
+            method: 'POST',
+          }),
+          'Unable to connect these apps.',
+        ),
+      );
+      setInstallSteps((steps) => setStep(steps, 'runtime', 'complete'));
+      await load();
+    } catch (caught) {
+      setInstallError(caught instanceof Error ? caught.message : 'Unable to connect these apps.');
+      setInstallSteps((steps) => setStep(steps, 'runtime', 'failed'));
+      await load();
+    } finally {
+      setConnectingId('');
+    }
+  }
+
   async function updateGuideStatus(app: AppPackageSummary, status: 'viewed' | 'completed' | 'skipped') {
     if (!app.instance || guideUpdatingId) return;
     setGuideUpdatingId(app.id);
@@ -840,6 +916,6 @@ export function AppsScreen() {
       </dl>
     </details> : null}
 
-    {selected ? <AppDetail app={selected} guideUpdating={guideUpdatingId === selected.id} installing={installingId === selected.id} installError={installError} installSteps={installingId === selected.id || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onGuideStatus={(target, status) => void updateGuideStatus(target, status)} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onRefresh={(target) => void refreshRuntimeStatus(target)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} packages={packages} refreshing={refreshingId === selected.id} /> : null}
+    {selected ? <AppDetail app={selected} connectingId={connectingId} guideUpdating={guideUpdatingId === selected.id} installing={installingId === selected.id || connectingId.startsWith(`${selected.id}:`)} installError={installError} installSteps={installingId === selected.id || connectingId.startsWith(`${selected.id}:`) || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onConnect={(connection) => void connectPackages(connection)} onGuideStatus={(target, status) => void updateGuideStatus(target, status)} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onRefresh={(target) => void refreshRuntimeStatus(target)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} packages={packages} refreshing={refreshingId === selected.id} /> : null}
   </section>;
 }

@@ -151,6 +151,32 @@ const MIGRATIONS = [
     `,
     version: 5,
   },
+  {
+    name: 'app-integrations',
+    sql: `
+      CREATE TABLE app_integrations (
+        id TEXT PRIMARY KEY,
+        provider_instance_id TEXT NOT NULL,
+        consumer_instance_id TEXT NOT NULL,
+        provider_capability_id TEXT NOT NULL,
+        consumer_integration_slot TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('planned', 'applying', 'active', 'degraded', 'disabled', 'removing', 'removed', 'failed')),
+        desired_projection_digest TEXT,
+        last_applied_projection_digest TEXT,
+        consumed_export_digest TEXT,
+        last_error_code TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (provider_instance_id, consumer_instance_id, provider_capability_id, consumer_integration_slot),
+        FOREIGN KEY (provider_instance_id) REFERENCES app_instances(id) ON DELETE CASCADE,
+        FOREIGN KEY (consumer_instance_id) REFERENCES app_instances(id) ON DELETE CASCADE
+      ) STRICT;
+
+      CREATE INDEX app_integrations_provider_idx ON app_integrations(provider_instance_id);
+      CREATE INDEX app_integrations_consumer_idx ON app_integrations(consumer_instance_id);
+    `,
+    version: 6,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -451,6 +477,134 @@ class SuiteManagerStore {
       FROM app_instance_guides
       WHERE instance_id = ?
     `).get(instanceId) || null;
+  }
+
+  getAppIntegrations() {
+    return this.database.prepare(`
+      SELECT
+        consumer_instance_id AS consumerInstanceId,
+        consumer_integration_slot AS consumerIntegrationSlot,
+        consumed_export_digest AS consumedExportDigest,
+        created_at AS createdAt,
+        desired_projection_digest AS desiredProjectionDigest,
+        id,
+        last_applied_projection_digest AS lastAppliedProjectionDigest,
+        last_error_code AS lastErrorCode,
+        provider_capability_id AS providerCapabilityId,
+        provider_instance_id AS providerInstanceId,
+        status,
+        updated_at AS updatedAt
+      FROM app_integrations
+      ORDER BY created_at
+    `).all();
+  }
+
+  upsertAppConfigRows({ at, rows }) {
+    for (const row of rows) {
+      this.database.prepare(`
+        INSERT INTO app_instance_config (
+          instance_id, key, value_json, source, secret_ref, redacted_label, fingerprint, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(instance_id, key) DO UPDATE SET
+          value_json = excluded.value_json,
+          source = excluded.source,
+          secret_ref = excluded.secret_ref,
+          redacted_label = excluded.redacted_label,
+          fingerprint = excluded.fingerprint,
+          updated_at = excluded.updated_at
+      `).run(
+        row.instanceId,
+        row.key,
+        row.valueJson ?? null,
+        row.source,
+        row.secretRef ?? null,
+        row.redactedLabel ?? null,
+        row.fingerprint ?? null,
+        at,
+      );
+    }
+  }
+
+  replaceAppProjections({ at, instanceId, projections }) {
+    for (const projection of projections) {
+      this.database.prepare(`
+        INSERT INTO app_instance_projections (
+          instance_id, kind, content_json, digest, applied_digest, status, updated_at
+        )
+        VALUES (?, ?, ?, ?, NULL, 'rendered', ?)
+        ON CONFLICT(instance_id, kind) DO UPDATE SET
+          content_json = excluded.content_json,
+          digest = excluded.digest,
+          applied_digest = CASE
+            WHEN app_instance_projections.applied_digest = excluded.digest THEN app_instance_projections.applied_digest
+            ELSE NULL
+          END,
+          status = CASE
+            WHEN app_instance_projections.applied_digest = excluded.digest THEN app_instance_projections.status
+            ELSE 'rendered'
+          END,
+          updated_at = excluded.updated_at
+      `).run(instanceId, projection.kind, projection.contentJson, projection.digest, at);
+    }
+    this.database.prepare(`
+      UPDATE app_instances
+      SET updated_at = ?
+      WHERE id = ?
+    `).run(at, instanceId);
+  }
+
+  beginAppIntegration({ at, consumerInstanceId, consumerIntegrationSlot, consumedExportDigest, desiredProjectionDigest, id, providerCapabilityId, providerInstanceId }) {
+    this.database.prepare(`
+      INSERT INTO app_integrations (
+        id, provider_instance_id, consumer_instance_id, provider_capability_id, consumer_integration_slot,
+        status, desired_projection_digest, consumed_export_digest, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, 'applying', ?, ?, ?, ?)
+      ON CONFLICT(provider_instance_id, consumer_instance_id, provider_capability_id, consumer_integration_slot) DO UPDATE SET
+        status = 'applying',
+        desired_projection_digest = excluded.desired_projection_digest,
+        consumed_export_digest = excluded.consumed_export_digest,
+        last_error_code = NULL,
+        updated_at = excluded.updated_at
+    `).run(
+      id,
+      providerInstanceId,
+      consumerInstanceId,
+      providerCapabilityId,
+      consumerIntegrationSlot,
+      desiredProjectionDigest,
+      consumedExportDigest,
+      at,
+      at,
+    );
+  }
+
+  completeAppIntegration({ at, consumerInstanceId, consumerIntegrationSlot, lastAppliedProjectionDigest, providerCapabilityId, providerInstanceId }) {
+    this.database.prepare(`
+      UPDATE app_integrations
+      SET status = 'active',
+          last_applied_projection_digest = ?,
+          last_error_code = NULL,
+          updated_at = ?
+      WHERE provider_instance_id = ?
+        AND consumer_instance_id = ?
+        AND provider_capability_id = ?
+        AND consumer_integration_slot = ?
+    `).run(lastAppliedProjectionDigest, at, providerInstanceId, consumerInstanceId, providerCapabilityId, consumerIntegrationSlot);
+  }
+
+  failAppIntegration({ at, consumerInstanceId, consumerIntegrationSlot, errorCode, providerCapabilityId, providerInstanceId }) {
+    this.database.prepare(`
+      UPDATE app_integrations
+      SET status = 'failed',
+          last_error_code = ?,
+          updated_at = ?
+      WHERE provider_instance_id = ?
+        AND consumer_instance_id = ?
+        AND provider_capability_id = ?
+        AND consumer_integration_slot = ?
+    `).run(errorCode, at, providerInstanceId, consumerInstanceId, providerCapabilityId, consumerIntegrationSlot);
   }
 
   setAppGuideStatus({ at, instanceId, status }) {

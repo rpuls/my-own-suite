@@ -345,6 +345,95 @@ function homepageProjectionApplied(projections) {
   return projection?.status === 'applied' && projection.appliedDigest === projection.digest;
 }
 
+function capabilityMatches(exported, matcher) {
+  if (!isRecord(exported) || !isRecord(matcher)) return false;
+  if (exported.type !== matcher.type) return false;
+  if (matcher.protocol !== undefined && matcher.protocol !== exported.protocol) return false;
+  if (Number.isInteger(matcher.interfaceVersion) && Number.isInteger(exported.interfaceVersion) && matcher.interfaceVersion !== exported.interfaceVersion) return false;
+  return true;
+}
+
+function integrationSlots(manifest) {
+  return Object.entries(isRecord(manifest.integrations) ? manifest.integrations : {});
+}
+
+function exportEntries(manifest) {
+  return Object.entries(isRecord(manifest.exports) ? manifest.exports : {});
+}
+
+function integrationConfigKey(slotId, envKey) {
+  const pascal = String(envKey).toLowerCase().replace(/_([a-z0-9])/gu, (_match, letter) => letter.toUpperCase());
+  return `integration${slotId.slice(0, 1).toUpperCase()}${slotId.slice(1)}${pascal.slice(0, 1).toUpperCase()}${pascal.slice(1)}`;
+}
+
+function templateSecretRef(value) {
+  const match = typeof value === 'string' ? value.match(/^\$\{secret\.([a-z][A-Za-z0-9]*)\}$/u) : null;
+  return match ? match[1] : null;
+}
+
+function providerSecretRows(providerConfig) {
+  return new Map((providerConfig || []).filter((row) => row.secretRef).map((row) => [row.key, row]));
+}
+
+function resolveCapabilityValue(value, { consumerExport, providerCapability, providerConfig, providerPublicUrl }) {
+  if (typeof value !== 'string') return value;
+  const secretRows = providerSecretRows(providerConfig);
+  return value
+    .replace(/\$\{app\.publicUrl\}/gu, providerPublicUrl.publicUrl)
+    .replace(/\$\{app\.host\}/gu, providerPublicUrl.appHost)
+    .replace(/\$\{app\.scheme\}/gu, providerPublicUrl.scheme)
+    .replace(/\$\{export\.([a-z][A-Za-z0-9]*)\.([a-zA-Z][A-Za-z0-9]*)\}/gu, (match, exportId, key) => {
+      if (!consumerExport || exportId !== consumerExport.id) return match;
+      return typeof consumerExport.capability[key] === 'string' ? consumerExport.capability[key] : match;
+    })
+    .replace(/\$\{import\.([a-z][A-Za-z0-9]*)\.([a-zA-Z][A-Za-z0-9]*)\}/gu, (match, _slot, key) => {
+      const raw = providerCapability[key];
+      if (typeof raw !== 'string') return match;
+      return resolveCapabilityValue(raw, { consumerExport, providerCapability, providerConfig, providerPublicUrl });
+    })
+    .replace(/\$\{import\.([a-z][A-Za-z0-9]*)\.secrets\.([a-z][A-Za-z0-9]*)\}/gu, (match, _slot, secretId) => {
+      const secretTemplate = providerCapability.secrets?.[secretId]?.ref;
+      const key = templateSecretRef(secretTemplate);
+      const row = key ? secretRows.get(key) : null;
+      return row ? `__secret_ref__:${row.secretRef}` : match;
+    });
+}
+
+function cloneProjectionWithIntegrationEnv(projections, targetService, values) {
+  return projections.map((projection) => {
+    if (projection.kind !== 'compose') {
+      return {
+        content: projection.content,
+        contentJson: stableJson(projection.content),
+        digest: digestFor(projection.content),
+        kind: projection.kind,
+      };
+    }
+    const content = {
+      ...projection.content,
+      services: projection.content.services.map((service) => (
+        service.id === targetService
+          ? { ...service, environment: { ...(service.environment || {}), ...values } }
+          : service
+      )),
+    };
+    return {
+      content,
+      contentJson: stableJson(content),
+      digest: digestFor(content),
+      kind: projection.kind,
+    };
+  });
+}
+
+function runtimeConnectionState(app) {
+  if (!app.instance) return 'available';
+  if (app.instance.status === 'disabled' || app.instance.enabled === false) return 'disabled';
+  if (runtimeApplied(app.instance.projections || [])) return 'running';
+  if (app.instance.status === 'installed') return 'installed';
+  return app.instance.status || 'available';
+}
+
 class AppPackageService {
   constructor({ agent = null, appsDir, now = () => new Date(), secretDir = null, store }) {
     this.agent = agent;
@@ -416,6 +505,126 @@ class AppPackageService {
     };
   }
 
+  async connectPackages({ consumerPackageId, providerCapabilityId, providerPackageId, requestContext = {}, slotId }) {
+    const consumer = this.store.getAppInstanceByPackageId(consumerPackageId);
+    const provider = this.store.getAppInstanceByPackageId(providerPackageId);
+    if (!consumer || consumer.status !== 'installed' || !provider || provider.status !== 'installed') {
+      throw new AppPackageServiceError('APP_INTEGRATION_APPS_NOT_READY', 'Install both apps before connecting them.', 409);
+    }
+    if (!runtimeApplied(this.store.getAppProjections(consumer.id)) || !runtimeApplied(this.store.getAppProjections(provider.id))) {
+      throw new AppPackageServiceError('APP_INTEGRATION_RUNTIME_NOT_READY', 'Both app runtimes must be running before this integration can be applied.', 409);
+    }
+
+    const consumerPackage = readAppPackageManifest(path.join(this.appsDir, consumerPackageId));
+    const providerPackage = readAppPackageManifest(path.join(this.appsDir, providerPackageId));
+    const [, slot] = integrationSlots(consumerPackage.manifest).find(([id]) => id === slotId) || [];
+    const [capabilityId, providerCapability] = exportEntries(providerPackage.manifest).find(([id]) => id === providerCapabilityId) || [];
+    if (!slot || !providerCapability || !slot.accepts.some((matcher) => capabilityMatches(providerCapability, matcher))) {
+      throw new AppPackageServiceError('APP_INTEGRATION_NOT_COMPATIBLE', 'These app packages do not declare a compatible integration.', 409);
+    }
+    if (slot.apply?.kind !== 'service-env') {
+      throw new AppPackageServiceError('APP_INTEGRATION_APPLY_UNSUPPORTED', 'This integration apply type is not supported yet.', 409);
+    }
+    const target = consumerPackage.manifest.configTargets?.[slot.apply.target];
+    if (!target || target.kind !== 'service-env') {
+      throw new AppPackageServiceError('APP_INTEGRATION_TARGET_INVALID', 'This integration target is not declared by the app package.', 409);
+    }
+
+    const publicUrlFor = typeof requestContext.publicUrlFor === 'function'
+      ? requestContext.publicUrlFor
+      : () => requestContext;
+    const providerConfig = this.store.getAppConfig(provider.id);
+    const consumerExportEntry = exportEntries(consumerPackage.manifest)[0];
+    const consumerExport = consumerExportEntry ? { id: consumerExportEntry[0], capability: consumerExportEntry[1] } : null;
+    const providerPublicUrl = publicUrlFor(providerPackageId);
+    const rows = [];
+    const envPatch = {};
+    for (const [envKey, template] of Object.entries(slot.apply.values || {})) {
+      if (!target.allowedKeys.includes(envKey)) {
+        throw new AppPackageServiceError('APP_INTEGRATION_TARGET_INVALID', 'The app package did not allow this integration setting.', 409);
+      }
+      const resolved = resolveCapabilityValue(template, {
+        consumerExport,
+        providerCapability,
+        providerConfig,
+        providerPublicUrl,
+      });
+      const configKey = integrationConfigKey(slotId, envKey);
+      if (typeof resolved === 'string' && resolved.startsWith('__secret_ref__:')) {
+        const secretRef = resolved.slice('__secret_ref__:'.length);
+        rows.push({
+          fingerprint: fingerprintFor(secretRef),
+          instanceId: consumer.id,
+          key: configKey,
+          redactedLabel: `${providerPackage.manifest.name} integration secret`,
+          secretRef,
+          source: 'system',
+        });
+        envPatch[envKey] = `\${secret.${configKey}}`;
+      } else {
+        rows.push({
+          instanceId: consumer.id,
+          key: configKey,
+          source: 'system',
+          value: resolved,
+          valueJson: stableJson(resolved),
+        });
+        envPatch[envKey] = `\${config.${configKey}}`;
+      }
+    }
+
+    const currentProjections = this.store.getAppProjections(consumer.id);
+    const nextProjections = cloneProjectionWithIntegrationEnv(currentProjections, target.service, envPatch);
+    const composeDigest = nextProjections.find((projection) => projection.kind === 'compose')?.digest || null;
+    const consumedExportDigest = digestFor({ capabilityId, providerCapability, publicUrl: providerPublicUrl.publicUrl });
+    const at = this.now().toISOString();
+    this.store.transaction(() => {
+      this.store.upsertAppConfigRows({ at, rows });
+      this.store.replaceAppProjections({ at, instanceId: consumer.id, projections: nextProjections });
+      this.store.beginAppIntegration({
+        at,
+        consumerInstanceId: consumer.id,
+        consumerIntegrationSlot: slotId,
+        consumedExportDigest,
+        desiredProjectionDigest: composeDigest,
+        id: crypto.randomUUID(),
+        providerCapabilityId: capabilityId,
+        providerInstanceId: provider.id,
+      });
+    });
+
+    try {
+      const applied = await this.applyPackageRuntime(consumerPackageId, publicUrlFor(consumerPackageId));
+      this.store.completeAppIntegration({
+        at: this.now().toISOString(),
+        consumerInstanceId: consumer.id,
+        consumerIntegrationSlot: slotId,
+        lastAppliedProjectionDigest: composeDigest,
+        providerCapabilityId: capabilityId,
+        providerInstanceId: provider.id,
+      });
+      return {
+        integration: this.store.getAppIntegrations().find((item) => (
+          item.consumerInstanceId === consumer.id
+          && item.providerInstanceId === provider.id
+          && item.providerCapabilityId === capabilityId
+          && item.consumerIntegrationSlot === slotId
+        )),
+        instance: applied.instance,
+      };
+    } catch (error) {
+      this.store.failAppIntegration({
+        at: this.now().toISOString(),
+        consumerInstanceId: consumer.id,
+        consumerIntegrationSlot: slotId,
+        errorCode: error.code || 'APP_INTEGRATION_APPLY_FAILED',
+        providerCapabilityId: capabilityId,
+        providerInstanceId: provider.id,
+      });
+      throw error;
+    }
+  }
+
   async refreshPackageRuntimeStatus(packageId) {
     if (!this.agent) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
@@ -478,7 +687,8 @@ class AppPackageService {
 
   listPackages() {
     const instancesByPackage = new Map(this.store.getAppInstances().map((instance) => [instance.packageId, instance]));
-    return inspectAppPackages(this.appsDir).map((summary) => {
+    const integrations = this.store.getAppIntegrations();
+    const packages = inspectAppPackages(this.appsDir).map((summary) => {
       const instance = instancesByPackage.get(summary.id);
       const projections = instance ? this.store.getAppProjections(instance.id) : [];
       const config = instance ? this.store.getAppConfig(instance.id) : [];
@@ -488,6 +698,51 @@ class AppPackageService {
         installStatus: instance?.status || 'not-installed',
         instance: publicInstance(instance ? { ...instance, guideState } : null, projections, config),
       };
+    });
+    return this.withCompatibility(packages, integrations);
+  }
+
+  withCompatibility(packages, integrations = []) {
+    return packages.map((app) => {
+      const connections = [];
+      for (const slot of app.capabilities.integrations || []) {
+        for (const provider of packages) {
+          if (provider.id === app.id) continue;
+          for (const exported of provider.capabilities.exports || []) {
+            if (!slot.accepts.some((matcher) => capabilityMatches(exported, matcher))) continue;
+            const relationship = integrations.find((item) => (
+              item.consumerInstanceId === app.instance?.id
+              && item.providerInstanceId === provider.instance?.id
+              && item.consumerIntegrationSlot === slot.id
+              && item.providerCapabilityId === exported.id
+            ));
+            connections.push({
+              actionLabel: relationship?.status === 'active' ? 'Reconnect' : `Connect ${provider.name}`,
+              capabilityId: exported.id,
+              consumerPackageId: app.id,
+              provider: {
+                id: provider.id,
+                installStatus: provider.installStatus,
+                name: provider.name,
+                runtimeState: runtimeConnectionState(provider),
+              },
+              ready: app.instance?.status === 'installed' && runtimeConnectionState(app) === 'running' && runtimeConnectionState(provider) === 'running',
+              relationship: relationship ? {
+                id: relationship.id,
+                lastErrorCode: relationship.lastErrorCode,
+                status: relationship.status,
+                updatedAt: relationship.updatedAt,
+              } : null,
+              slotId: slot.id,
+              title: slot.title,
+            });
+          }
+        }
+      }
+      const missingUsefulPeers = (app.capabilities.usefulness.requiresOneOf || [])
+        .filter((type) => !packages.some((candidate) => candidate.id !== app.id && (candidate.capabilities.exports || []).some((capability) => capability.type === type)))
+        .map((type) => ({ type, message: app.capabilities.usefulness.emptyState || `Install a compatible ${type} app to use this package well.` }));
+      return { ...app, compatibility: { connections, missingUsefulPeers } };
     });
   }
 

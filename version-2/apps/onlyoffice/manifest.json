@@ -1,0 +1,145 @@
+{
+  "id": "onlyoffice",
+  "name": "ONLYOFFICE Docs",
+  "version": "0.1.0",
+  "summary": "Document editor service for compatible file and content apps.",
+  "category": "office",
+  "catalog": {
+    "description": "ONLYOFFICE Docs runs the document editor service that compatible MOS file apps can connect to for browser-based editing.",
+    "tags": [
+      "documents",
+      "office",
+      "editor",
+      "collaboration"
+    ],
+    "features": [
+      {
+        "title": "Browser document editing",
+        "body": "Connect a compatible file app so documents open in the browser editor."
+      },
+      {
+        "title": "Independent service",
+        "body": "Install and run the editor separately from the file app that stores documents."
+      }
+    ],
+    "complexity": {
+      "level": "advanced",
+      "label": "Integration service",
+      "description": "ONLYOFFICE is useful after it is connected to a compatible document platform."
+    },
+    "resourceHint": {
+      "level": "high",
+      "label": "High resources",
+      "description": "Document Server is heavier than small utility packages and may take several minutes to start cold."
+    },
+    "privacy": {
+      "summary": "Documents remain in the connected file app; ONLYOFFICE receives editing callbacks and temporary document data.",
+      "notes": [
+        "MOS generates a stable JWT secret so integrations keep working across restarts.",
+        "Connect this package to a compatible file app before expecting a normal user workflow."
+      ]
+    },
+    "links": {
+      "website": "https://www.onlyoffice.com/",
+      "docs": "https://helpcenter.onlyoffice.com/docs/installation/docs-community-install-docker.aspx",
+      "repository": "https://github.com/ONLYOFFICE/DocumentServer"
+    },
+    "related": [
+      "seafile"
+    ]
+  },
+  "setup": {
+    "fields": [
+      {
+        "id": "jwtSecret",
+        "type": "password",
+        "label": "ONLYOFFICE JWT secret",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Generated ONLYOFFICE JWT secret",
+        "generated": {
+          "kind": "random",
+          "bytes": 40,
+          "encoding": "base64url"
+        }
+      },
+      {
+        "id": "secureLinkSecret",
+        "type": "password",
+        "label": "ONLYOFFICE secure-link secret",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Generated ONLYOFFICE secure-link secret",
+        "generated": {
+          "kind": "random",
+          "bytes": 32,
+          "encoding": "base64url"
+        }
+      }
+    ]
+  },
+  "resources": {
+    "services": {
+      "onlyoffice": {
+        "dockerfile": "Dockerfile",
+        "internalPort": 80,
+        "env": {
+          "TZ": "UTC",
+          "ALLOW_PRIVATE_IP_ADDRESS": "true",
+          "ALLOW_META_IP_ADDRESS": "false",
+          "JWT_ENABLED": "true",
+          "JWT_SECRET": "${secret.jwtSecret}",
+          "SECURE_LINK_SECRET": "${secret.secureLinkSecret}"
+        },
+        "volumes": [
+          "data:/var/www/onlyoffice/Data"
+        ]
+      }
+    }
+  },
+  "routes": [
+    {
+      "host": "onlyoffice",
+      "service": "onlyoffice",
+      "port": 80
+    }
+  ],
+  "homepage": {
+    "group": "Office",
+    "name": "ONLYOFFICE Docs",
+    "description": "Document editor service for connected file apps.",
+    "icon": "onlyoffice"
+  },
+  "health": {
+    "type": "http",
+    "url": "http://onlyoffice:80/welcome/"
+  },
+  "exports": {
+    "documentEditor": {
+      "type": "document-editor",
+      "implementation": "onlyoffice-docs",
+      "interfaceVersion": 1,
+      "protocol": "onlyoffice-docs-api",
+      "title": "ONLYOFFICE document editing",
+      "features": {
+        "browserEditing": true,
+        "jwt": true
+      },
+      "url": "${app.publicUrl}web-apps/apps/api/documents/api.js",
+      "healthUrl": "${app.publicUrl}welcome/",
+      "secrets": {
+        "jwt": {
+          "scope": "provider-instance",
+          "ref": "${secret.jwtSecret}",
+          "rotationBlastRadius": "all-consumers"
+        }
+      }
+    }
+  },
+  "usefulness": {
+    "requiresOneOf": [
+      "document-platform"
+    ],
+    "emptyState": "Install a compatible file app such as Seafile, then connect it to ONLYOFFICE Docs."
+  }
+}

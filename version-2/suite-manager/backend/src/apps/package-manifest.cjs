@@ -13,6 +13,8 @@ const SUPPORTED_HEALTH_TYPES = new Set(['http']);
 const SUPPORTED_COMPLEXITY_LEVELS = new Set(['easy', 'guided', 'advanced']);
 const SUPPORTED_RESOURCE_LEVELS = new Set(['low', 'medium', 'high']);
 const SUPPORTED_GUIDE_SECTION_TYPES = new Set(['choice-guide', 'manual-complete', 'note', 'steps', 'values', 'warning']);
+const SUPPORTED_SECRET_SCOPES = new Set(['consumer-instance', 'generated-client', 'provider-instance', 'relationship']);
+const SUPPORTED_INTEGRATION_APPLY_KINDS = new Set(['service-env']);
 const CATALOG_LINK_KEYS = new Set(['docs', 'repository', 'website']);
 const RAW_CADDY_PATTERN = /(?:caddyfile|directive|handle|respond|reverse_proxy|route|snippet|tls\s|transport)/iu;
 const SAFE_INTERNAL_PATH_PATTERN = /^\/__[A-Za-z0-9/_${}.-]{8,220}$/u;
@@ -447,6 +449,134 @@ function validateOnboarding(manifest, errors) {
   }
 }
 
+function validateCapabilityMap(value, prefix, errors) {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    errors.push(`${prefix} must be an object when present.`);
+    return;
+  }
+  for (const [id, capability] of Object.entries(value)) {
+    const itemPrefix = `${prefix}.${id}`;
+    if (!FIELD_ID_PATTERN.test(id)) errors.push(`${itemPrefix} must use a camelCase capability id.`);
+    if (!isRecord(capability)) {
+      errors.push(`${itemPrefix} must be an object.`);
+      continue;
+    }
+    if (!hasText(capability.type)) errors.push(`${itemPrefix}.type is required.`);
+    if (capability.interfaceVersion !== undefined && !Number.isInteger(capability.interfaceVersion)) {
+      errors.push(`${itemPrefix}.interfaceVersion must be a whole number when present.`);
+    }
+    if (capability.protocol !== undefined && !hasText(capability.protocol)) {
+      errors.push(`${itemPrefix}.protocol must be a non-empty string when present.`);
+    }
+    if (capability.secrets !== undefined) {
+      if (!isRecord(capability.secrets)) {
+        errors.push(`${itemPrefix}.secrets must be an object when present.`);
+      } else {
+        for (const [secretId, secret] of Object.entries(capability.secrets)) {
+          const secretPrefix = `${itemPrefix}.secrets.${secretId}`;
+          if (!FIELD_ID_PATTERN.test(secretId)) errors.push(`${secretPrefix} must use a camelCase secret id.`);
+          if (!isRecord(secret)) {
+            errors.push(`${secretPrefix} must be an object.`);
+            continue;
+          }
+          if (!SUPPORTED_SECRET_SCOPES.has(secret.scope)) {
+            errors.push(`${secretPrefix}.scope must be one of: ${[...SUPPORTED_SECRET_SCOPES].join(', ')}.`);
+          }
+          if (!hasText(secret.ref) || !/^\$\{secret\.[a-z][A-Za-z0-9]*\}$/u.test(secret.ref)) {
+            errors.push(`${secretPrefix}.ref must reference a declared setup secret.`);
+          }
+        }
+      }
+    }
+  }
+}
+
+function validateConfigTargets(manifest, errors) {
+  if (manifest.configTargets === undefined) return;
+  if (!isRecord(manifest.configTargets)) {
+    errors.push('configTargets must be an object when present.');
+    return;
+  }
+  const serviceIds = new Set(Object.keys(isRecord(manifest.resources?.services) ? manifest.resources.services : {}));
+  for (const [id, target] of Object.entries(manifest.configTargets)) {
+    const prefix = `configTargets.${id}`;
+    if (!FIELD_ID_PATTERN.test(id)) errors.push(`${prefix} must use a camelCase target id.`);
+    if (!isRecord(target)) {
+      errors.push(`${prefix} must be an object.`);
+      continue;
+    }
+    if (target.kind !== 'service-env') errors.push(`${prefix}.kind must be service-env.`);
+    if (!serviceIds.has(target.service)) errors.push(`${prefix}.service must reference a declared service.`);
+    if (!isStringArray(target.allowedKeys) || target.allowedKeys.some((key) => !ENV_KEY_PATTERN.test(key))) {
+      errors.push(`${prefix}.allowedKeys must contain uppercase environment keys.`);
+    }
+  }
+}
+
+function validateIntegrations(manifest, errors) {
+  if (manifest.integrations === undefined) return;
+  if (!isRecord(manifest.integrations)) {
+    errors.push('integrations must be an object when present.');
+    return;
+  }
+  const configTargets = isRecord(manifest.configTargets) ? manifest.configTargets : {};
+  for (const [id, integration] of Object.entries(manifest.integrations)) {
+    const prefix = `integrations.${id}`;
+    if (!FIELD_ID_PATTERN.test(id)) errors.push(`${prefix} must use a camelCase integration id.`);
+    if (!isRecord(integration)) {
+      errors.push(`${prefix} must be an object.`);
+      continue;
+    }
+    if (!Array.isArray(integration.accepts) || integration.accepts.length < 1) {
+      errors.push(`${prefix}.accepts must contain at least one capability matcher.`);
+    } else {
+      for (const [index, matcher] of integration.accepts.entries()) {
+        const matcherPrefix = `${prefix}.accepts[${index}]`;
+        if (!isRecord(matcher)) {
+          errors.push(`${matcherPrefix} must be an object.`);
+          continue;
+        }
+        if (!hasText(matcher.type)) errors.push(`${matcherPrefix}.type is required.`);
+        if (matcher.protocol !== undefined && !hasText(matcher.protocol)) errors.push(`${matcherPrefix}.protocol must be a non-empty string when present.`);
+        if (matcher.interfaceVersion !== undefined && !Number.isInteger(matcher.interfaceVersion)) errors.push(`${matcherPrefix}.interfaceVersion must be a whole number when present.`);
+      }
+    }
+    if (!isRecord(integration.apply)) {
+      errors.push(`${prefix}.apply must be an object.`);
+      continue;
+    }
+    const apply = integration.apply;
+    if (!SUPPORTED_INTEGRATION_APPLY_KINDS.has(apply.kind)) errors.push(`${prefix}.apply.kind must be one of: ${[...SUPPORTED_INTEGRATION_APPLY_KINDS].join(', ')}.`);
+    if (!hasText(apply.target) || !configTargets[apply.target]) errors.push(`${prefix}.apply.target must reference a declared config target.`);
+    if (!isRecord(apply.values)) {
+      errors.push(`${prefix}.apply.values must be an object.`);
+    } else {
+      const target = configTargets[apply.target];
+      const allowed = new Set(Array.isArray(target?.allowedKeys) ? target.allowedKeys : []);
+      for (const [key, value] of Object.entries(apply.values)) {
+        if (!ENV_KEY_PATTERN.test(key)) errors.push(`${prefix}.apply.values.${key} must use an uppercase environment key.`);
+        if (allowed.size && !allowed.has(key)) errors.push(`${prefix}.apply.values.${key} is not allowed by the config target.`);
+        if (typeof value !== 'string') errors.push(`${prefix}.apply.values.${key} must be a string template.`);
+      }
+    }
+  }
+}
+
+function validateUsefulness(manifest, errors) {
+  if (manifest.usefulness === undefined) return;
+  if (!isRecord(manifest.usefulness)) {
+    errors.push('usefulness must be an object when present.');
+    return;
+  }
+  if (manifest.usefulness.requiresOneOf !== undefined && !isStringArray(manifest.usefulness.requiresOneOf)) {
+    errors.push('usefulness.requiresOneOf must be an array of capability types when present.');
+  }
+  if (manifest.usefulness.emptyState !== undefined && !hasText(manifest.usefulness.emptyState)) {
+    errors.push('usefulness.emptyState must be a non-empty string when present.');
+  }
+}
+
 function publicOnboarding(manifest) {
   const onboarding = isRecord(manifest.onboarding) ? manifest.onboarding : {};
   const steps = Array.isArray(onboarding.steps) ? onboarding.steps : [];
@@ -563,6 +693,10 @@ function validateAppPackageManifest(manifest, { packageDir = null } = {}) {
   validateHealth(manifest, errors);
   validateCatalog(manifest, errors);
   validateOnboarding(manifest, errors);
+  validateCapabilityMap(manifest.exports, 'exports', errors);
+  validateConfigTargets(manifest, errors);
+  validateIntegrations(manifest, errors);
+  validateUsefulness(manifest, errors);
   assertNoRawCaddy(manifest, errors);
   return errors;
 }
@@ -603,6 +737,11 @@ function publicPackageSummary(manifest, validationErrors = []) {
       name: manifest.homepage.name || manifest.name || manifest.id,
       ...(isRecord(manifest.homepage.widget) ? { widget: manifest.homepage.widget } : {}),
     } : null,
+    capabilities: {
+      exports: publicCapabilityExports(manifest.exports),
+      integrations: publicIntegrationSlots(manifest.integrations),
+      usefulness: publicUsefulness(manifest.usefulness),
+    },
     icon: manifest.icon || manifest.homepage?.icon || '',
     iconUrl: hasText(manifest.icon) ? `/suite-manager/api/apps/packages/${encodeURIComponent(manifest.id || '')}/icon` : '',
     id: manifest.id || '',
@@ -635,6 +774,41 @@ function publicPackageSummary(manifest, validationErrors = []) {
       valid: validationErrors.length === 0,
     },
     version: manifest.version || '',
+  };
+}
+
+function publicCapabilityExports(exports) {
+  if (!isRecord(exports)) return [];
+  return Object.entries(exports).map(([id, capability]) => ({
+    features: isRecord(capability.features) ? capability.features : {},
+    id,
+    implementation: typeof capability.implementation === 'string' ? capability.implementation : '',
+    interfaceVersion: Number.isInteger(capability.interfaceVersion) ? capability.interfaceVersion : null,
+    protocol: typeof capability.protocol === 'string' ? capability.protocol : '',
+    title: typeof capability.title === 'string' ? capability.title : '',
+    type: typeof capability.type === 'string' ? capability.type : '',
+  })).filter((item) => item.type);
+}
+
+function publicIntegrationSlots(integrations) {
+  if (!isRecord(integrations)) return [];
+  return Object.entries(integrations).map(([id, integration]) => ({
+    accepts: Array.isArray(integration.accepts) ? integration.accepts.map((matcher) => ({
+      interfaceVersion: Number.isInteger(matcher?.interfaceVersion) ? matcher.interfaceVersion : null,
+      protocol: typeof matcher?.protocol === 'string' ? matcher.protocol : '',
+      type: typeof matcher?.type === 'string' ? matcher.type : '',
+    })).filter((matcher) => matcher.type) : [],
+    id,
+    providerLabel: typeof integration.providerLabel === 'string' ? integration.providerLabel : '',
+    title: typeof integration.title === 'string' ? integration.title : id,
+  })).filter((item) => item.accepts.length);
+}
+
+function publicUsefulness(usefulness) {
+  if (!isRecord(usefulness)) return { emptyState: '', requiresOneOf: [] };
+  return {
+    emptyState: typeof usefulness.emptyState === 'string' ? usefulness.emptyState : '',
+    requiresOneOf: isStringArray(usefulness.requiresOneOf) ? usefulness.requiresOneOf : [],
   };
 }
 

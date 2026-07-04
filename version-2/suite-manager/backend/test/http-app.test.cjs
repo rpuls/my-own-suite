@@ -493,6 +493,75 @@ test('Vaultwarden runtime apply returns a controlled redacted error when its sec
   }, { appAgent, homeHost: 'home.test', stateDir });
 });
 
+test('app integration connect materializes provider exports into consumer runtime without leaking secrets', async () => {
+  const calls = [];
+  const appAgent = {
+    async apply(input) {
+      calls.push(input);
+      return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/seafile/install', {
+      body: JSON.stringify({ config: { adminEmail: 'owner@example.com', adminPassword: 'seafile-password' } }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/seafile/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/onlyoffice/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/onlyoffice/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+
+    const before = await hostRequest(baseUrl, '/suite-manager/api/apps/packages', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    const seafile = before.json().packages.find((entry) => entry.id === 'seafile');
+    const connection = seafile.compatibility.connections.find((entry) => entry.provider.id === 'onlyoffice');
+    assert.equal(connection.ready, true);
+
+    const connected = await hostRequest(baseUrl, '/suite-manager/api/apps/integrations/connect', {
+      body: JSON.stringify({
+        consumerPackageId: connection.consumerPackageId,
+        providerCapabilityId: connection.capabilityId,
+        providerPackageId: connection.provider.id,
+        slotId: connection.slotId,
+      }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+    const connectedBody = connected.json();
+    const seafileApply = calls.at(-1);
+    const seafileService = seafileApply.compose.services.find((service) => service.id === 'seafile');
+    const jwtSecret = seafileService.environment.ONLYOFFICE_JWT_SECRET;
+
+    assert.equal(connected.status, 200);
+    assert.equal(connectedBody.integration.status, 'active');
+    assert.equal(seafileApply.packageId, 'seafile');
+    assert.equal(seafileService.environment.ONLYOFFICE_APIJS_URL, 'https://onlyoffice.test/web-apps/apps/api/documents/api.js');
+    assert.equal(seafileService.environment.ONLYOFFICE_INTERNAL_SEAFILE_URL, 'http://seafile');
+    assert.equal(seafileService.environment.VERIFY_ONLYOFFICE_CERTIFICATE, 'false');
+    assert.match(jwtSecret, /^[A-Za-z0-9_-]{40,}$/u);
+    assert.doesNotMatch(connected.body, new RegExp(jwtSecret, 'u'));
+
+    const after = await hostRequest(baseUrl, '/suite-manager/api/apps/packages', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    assert.doesNotMatch(after.body, new RegExp(jwtSecret, 'u'));
+    const afterSeafile = after.json().packages.find((entry) => entry.id === 'seafile');
+    assert.equal(afterSeafile.compatibility.connections.find((entry) => entry.provider.id === 'onlyoffice').relationship.status, 'active');
+  }, { appAgent, homeHost: 'home.test' });
+});
+
 test('Radicale install stores user-supplied credentials with secret redaction and runtime materialization', async () => {
   const radicalePort = loopbackPortFor('radicale');
   const calls = [];

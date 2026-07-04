@@ -180,6 +180,10 @@ function appPublicUrlFor(request, packageId) {
   };
 }
 
+function appPublicUrlResolver(request) {
+  return (packageId) => appPublicUrlFor(request, packageId);
+}
+
 function isSignedIn(setup, sessionToken) {
   return setup.status(sessionToken).status === 'signed-in';
 }
@@ -373,6 +377,22 @@ function createV2Server({
         }
         const packageId = decodeURIComponent(appRuntimeMatch[1]);
         jsonResponse(response, 200, await appPackages.applyPackageRuntime(packageId, appPublicUrlFor(request, packageId)));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/integrations/connect`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to connect app packages.' });
+          return;
+        }
+        const body = await readJsonBody(request, 16 * 1024);
+        jsonResponse(response, 200, await appPackages.connectPackages({
+          consumerPackageId: String(body.consumerPackageId || ''),
+          providerCapabilityId: String(body.providerCapabilityId || ''),
+          providerPackageId: String(body.providerPackageId || ''),
+          requestContext: { publicUrlFor: appPublicUrlResolver(request) },
+          slotId: String(body.slotId || ''),
+        }));
         return;
       }
 

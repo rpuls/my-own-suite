@@ -43,7 +43,7 @@
       "notes": [
         "Back up the Seafile and MySQL volumes before relying on this package for important files.",
         "Only the Seafile web service is exposed through Caddy; MySQL and Valkey stay internal to the package network.",
-        "OnlyOffice document editing is intentionally deferred to a later integration slice."
+        "ONLYOFFICE document editing is enabled only after an explicit MOS integration connection."
       ]
     },
     "links": {
@@ -174,5 +174,52 @@
   "health": {
     "type": "http",
     "url": "http://seafile:80/api2/ping/"
+  },
+  "exports": {
+    "filePlatform": {
+      "type": "document-platform",
+      "implementation": "seafile",
+      "interfaceVersion": 1,
+      "protocol": "seafile-web",
+      "title": "Seafile document platform",
+      "internalBaseUrl": "http://seafile"
+    }
+  },
+  "configTargets": {
+    "seahubSettings": {
+      "kind": "service-env",
+      "service": "seafile",
+      "allowedKeys": [
+        "ONLYOFFICE_APIJS_URL",
+        "ONLYOFFICE_JWT_SECRET",
+        "ONLYOFFICE_INTERNAL_SEAFILE_URL",
+        "VERIFY_ONLYOFFICE_CERTIFICATE",
+        "ONLYOFFICE_FORCE_SAVE"
+      ]
+    }
+  },
+  "integrations": {
+    "documentEditor": {
+      "accepts": [
+        {
+          "type": "document-editor",
+          "protocol": "onlyoffice-docs-api",
+          "interfaceVersion": 1
+        }
+      ],
+      "title": "Document editing",
+      "providerLabel": "Document editor",
+      "apply": {
+        "kind": "service-env",
+        "target": "seahubSettings",
+        "values": {
+          "ONLYOFFICE_APIJS_URL": "${import.documentEditor.url}",
+          "ONLYOFFICE_JWT_SECRET": "${import.documentEditor.secrets.jwt}",
+          "ONLYOFFICE_INTERNAL_SEAFILE_URL": "${export.filePlatform.internalBaseUrl}",
+          "VERIFY_ONLYOFFICE_CERTIFICATE": "false",
+          "ONLYOFFICE_FORCE_SAVE": "true"
+        }
+      }
+    }
   }
 }
