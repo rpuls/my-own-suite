@@ -4,6 +4,34 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-07-04: V2 App Integrations Use Capability Relationships
+
+Decision: V2 models optional app-to-app integrations as capability relationships between independently installable packages. A provider package exports a capability, a consumer package imports a compatible capability, and Suite Manager records an explicit relationship with its own lifecycle, projections, and redacted secret grants. ONLYOFFICE is an independent document-editor provider; Seafile is one compatible document-platform consumer, not the parent package.
+
+Reason: Seafile plus ONLYOFFICE is the first concrete case, but the architecture should also fit future file platforms, SSO providers, SMTP providers, object storage, backup targets, databases, caches, and media helpers. Bundling ONLYOFFICE into Seafile would make Seafile heavier and would hardcode one app pair into the product model.
+
+Consequences:
+
+- Suite Manager may render generic compatibility and "connect" actions, but production core must not hardcode Seafile/ONLYOFFICE-specific environment names or app pair logic.
+- Integration state must be separate from each app's install state so one provider can serve multiple consumers and one consumer can degrade cleanly if a provider is disabled.
+- Shared integration secrets are grants, not arbitrary cross-app secret reads. They must stay out of public APIs, logs, projections, and broad SQLite rows.
+- Provider or consumer route/secret changes must make affected relationships require reapply or revalidation.
+- Complex pair-specific glue may be introduced later only through a reviewed package-owned contract, not arbitrary frontend code or broad shell hooks.
+
+## 2026-07-03: V2 App Packages Own Runtime Shape And Lifecycle
+
+Decision: V2 app packages are self-contained folders under `version-2/apps/<app-id>/` that declare metadata, setup fields, services, routes, Homepage projections, health checks, widgets, onboarding, and capabilities. Suite Manager persists app instance/config/projection/operation state in SQLite and asks a narrow app agent to apply Docker, Caddy, and health changes. Runtime state supports health refresh, disable, re-enable, restart, and uninstall-with-data-preserved.
+
+Reason: V1 scattered app-specific behavior across Compose files, env generation, Caddy generation, onboarding, doctor scripts, and Suite Manager UI. V2 needs adding an app to mostly mean adding a package folder, while keeping privileged host actions out of the web process.
+
+Consequences:
+
+- App-specific code and Dockerfiles belong in the package folder; Suite Manager core and host agents operate on validated generic projections.
+- Generated infrastructure must be reproducible from package manifests plus persisted app/relationship state.
+- Secrets use redacted references in normal state and are materialized only for narrow runtime apply operations.
+- App routes remain separate from Homepage customization routes.
+- Destructive data deletion is not part of ordinary uninstall; preserved volumes/secrets need a later explicit cleanup story.
+
 ## 2026-07-02: V2 App Setup Guides Are Declarative And App-Scoped
 
 Decision: V2 app packages may declare post-install setup guides in their manifest `onboarding` metadata. Suite Manager renders those guides generically from declarative sections such as copyable non-secret values, notes/warnings, device/client choice guides, ordered steps, and manual completion actions. Guide state is stored per app instance in SQLite as viewed, completed, or skipped, and completed/skipped guides stay quiet while remaining available from the app detail view.
@@ -74,7 +102,7 @@ Consequences:
 - Existing onboarding logic should be split into suite-level owner setup and app-specific install/setup helpers.
 - Fresh installs can become lean by default, while existing installs should be migrated conservatively and never have apps removed automatically.
 - The catalog needs a repo-owned manifest/contract for app metadata, Compose participation, routes, Homepage defaults, volumes, provisioning mode, backup behavior, and lifecycle actions.
-- The detailed temporary implementation plan lives in [docs/app-catalog-alpha-plan.md](./app-catalog-alpha-plan.md) while the epic is active and should be converted to GitHub Issues before merge or release.
+- The old alpha plan has been superseded by the compact V2 lab plan and durable V2 decisions in this file; task state should move to GitHub Issues before merge or release.
 
 ## 2026-06-08: Own-Infra Is One Self-Hosted Runtime
 
