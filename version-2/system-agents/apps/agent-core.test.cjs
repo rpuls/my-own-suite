@@ -27,7 +27,7 @@ const request = {
 test('app agent exposes only narrow app runtime capabilities', async () => {
   const core = new AppAgentCore({ applyAppServices: async () => ({ steps: [] }), checkAppHealth: async () => ({}) });
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.remove', 'apps.network.connect']);
+  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect']);
 });
 
 test('app route rendering uses structured host and loopback upstream only', () => {
@@ -208,6 +208,23 @@ test('app remove accepts only a package id and delegates without volume deletion
   await assert.rejects(() => core.remove({ packageId: 'example-tool', volumes: true }), AppRuntimeError);
   await assert.rejects(() => core.remove({ packageId: '../example-tool' }), AppRuntimeError);
   await assert.rejects(() => core.remove({ packageId: 'example-tool', services: ['../bad'] }), AppRuntimeError);
+});
+
+test('app stop accepts only package service ids and leaves route removal to uninstall', async () => {
+  const calls = [];
+  const core = new AppAgentCore({
+    async stopAppService(input) {
+      calls.push(input);
+      return { steps: ['stopped'] };
+    },
+  });
+
+  const result = await core.stop({ packageId: 'example-tool', services: ['web'] });
+
+  assert.equal(result.status, 'stopped');
+  assert.deepEqual(calls, [{ packageId: 'example-tool', serviceIds: ['web'] }]);
+  await assert.rejects(() => core.stop({ packageId: 'example-tool', removeRoutes: true }), AppRuntimeError);
+  await assert.rejects(() => core.stop({ packageId: '../example-tool' }), AppRuntimeError);
 });
 
 test('app network connect accepts only package and service ids', async () => {

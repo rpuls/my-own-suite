@@ -916,7 +916,7 @@ test('Radicale Homepage projection adds a calendar widget without exposing crede
   }, { appAgent, homeHost: 'home.test', homepageAgent });
 });
 
-test('app lifecycle disable, enable, and uninstall preserve metadata while removing runtime and Homepage shortcut', async () => {
+test('app lifecycle stop, start, restart, and uninstall preserve metadata while managing runtime and Homepage shortcut', async () => {
   const appCalls = [];
   const homepageCalls = [];
   const appAgent = {
@@ -927,6 +927,10 @@ test('app lifecycle disable, enable, and uninstall preserve metadata while remov
     async remove(input) {
       appCalls.push(['remove', input]);
       return { status: 'removed', steps: ['stopped', 'route-removed', 'caddy-reloaded'] };
+    },
+    async stop(input) {
+      appCalls.push(['stop', input]);
+      return { status: 'stopped', steps: ['stopped'] };
     },
   };
   const homepageAgent = {
@@ -966,7 +970,7 @@ test('app lifecycle disable, enable, and uninstall preserve metadata while remov
     const instanceId = beforeVaultwarden.instance.id;
     const fingerprint = beforeVaultwarden.instance.config.find((item) => item.key === 'adminToken').fingerprint;
 
-    const disabled = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/disable', {
+    const disabled = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/stop', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
@@ -974,14 +978,13 @@ test('app lifecycle disable, enable, and uninstall preserve metadata while remov
     assert.equal(disabled.json().instance.status, 'disabled');
     assert.equal(disabled.json().instance.enabled, false);
     assert.equal(disabled.json().instance.config.find((item) => item.key === 'adminToken').fingerprint, fingerprint);
-    for (const kind of ['compose', 'caddy', 'health', 'homepage']) {
-      const projection = disabled.json().instance.projections.find((item) => item.kind === kind);
-      assert.equal(projection.appliedDigest, null);
-      assert.equal(projection.status, 'rendered');
-    }
-    assert.deepEqual(appCalls.map((call) => call[0]), ['apply', 'remove']);
-    assert.deepEqual(appCalls[1], ['remove', { packageId: 'vaultwarden', services: ['vaultwarden'] }]);
-    assert.equal(homepageCalls.some((call) => call[0] === 'removeLink' && call[1].id === instanceId), true);
+    assert.equal(disabled.json().instance.projections.find((item) => item.kind === 'compose').appliedDigest, null);
+    assert.equal(disabled.json().instance.projections.find((item) => item.kind === 'health').appliedDigest, null);
+    assert.equal(disabled.json().instance.projections.find((item) => item.kind === 'caddy').status, 'applied');
+    assert.equal(disabled.json().instance.projections.find((item) => item.kind === 'homepage').status, 'applied');
+    assert.deepEqual(appCalls.map((call) => call[0]), ['apply', 'stop']);
+    assert.deepEqual(appCalls[1], ['stop', { packageId: 'vaultwarden', services: ['vaultwarden'] }]);
+    assert.equal(homepageCalls.some((call) => call[0] === 'removeLink' && call[1].id === instanceId), false);
 
     const enabled = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/enable', {
       headers: { Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
@@ -991,7 +994,17 @@ test('app lifecycle disable, enable, and uninstall preserve metadata while remov
     assert.equal(enabled.json().instance.status, 'installed');
     assert.equal(enabled.json().instance.enabled, true);
     assert.equal(enabled.json().instance.config.find((item) => item.key === 'adminToken').fingerprint, fingerprint);
-    assert.equal(appCalls.map((call) => call[0]).join(','), 'apply,remove,apply');
+    assert.equal(appCalls.map((call) => call[0]).join(','), 'apply,stop,apply');
+
+    const restarted = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/restart', {
+      headers: { Cookie: cookie, Host: 'home.test', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+    assert.equal(restarted.status, 200);
+    assert.equal(restarted.json().instance.status, 'installed');
+    assert.equal(restarted.json().instance.enabled, true);
+    assert.equal(restarted.json().instance.config.find((item) => item.key === 'adminToken').fingerprint, fingerprint);
+    assert.equal(appCalls.map((call) => call[0]).join(','), 'apply,stop,apply,apply');
 
     const uninstalled = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/uninstall', {
       headers: { Cookie: cookie, Host: 'home.test' },
@@ -1002,7 +1015,8 @@ test('app lifecycle disable, enable, and uninstall preserve metadata while remov
     assert.equal(uninstalled.json().instance.enabled, false);
     assert.equal(uninstalled.json().instance.id, instanceId);
     assert.equal(uninstalled.json().instance.config.find((item) => item.key === 'adminToken').fingerprint, fingerprint);
-    assert.equal(appCalls.map((call) => call[0]).join(','), 'apply,remove,apply,remove');
+    assert.equal(appCalls.map((call) => call[0]).join(','), 'apply,stop,apply,apply,remove');
+    assert.equal(homepageCalls.some((call) => call[0] === 'removeLink' && call[1].id === instanceId), true);
     assert.doesNotMatch(JSON.stringify(appCalls), /volume rm|rmi/u);
 
     const reinstall = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
@@ -1030,7 +1044,7 @@ test('invalid app lifecycle transitions fail clearly', async () => {
 
   await withServer(async (baseUrl) => {
     const cookie = await createOwner(baseUrl);
-    const missingDisable = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/disable', {
+    const missingDisable = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/stop', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
@@ -1041,6 +1055,13 @@ test('invalid app lifecycle transitions fail clearly', async () => {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
+    const restartBeforeRuntime = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/restart', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(restartBeforeRuntime.status, 409);
+    assert.equal(restartBeforeRuntime.json().code, 'APP_RUNTIME_NOT_APPLIED');
+
     const enableInstalled = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/enable', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',

@@ -20,6 +20,7 @@ const FAILURE_MESSAGES = {
   network: ['APP_NETWORK_CONNECT_FAILED', 'The app integration network could not be connected.'],
   remove: ['APP_RUNTIME_REMOVE_FAILED', 'The app runtime could not be removed.'],
   run: ['APP_RUN_FAILED', 'The app container could not be started.'],
+  stop: ['APP_RUNTIME_STOP_FAILED', 'The app runtime could not be stopped.'],
   writing: ['APP_ROUTE_WRITE_FAILED', 'The app route could not be installed.'],
 };
 
@@ -292,6 +293,19 @@ class SystemAppAdapter {
     }
     if (serviceCount > 1 || serviceIds.length > 1) {
       await this.execute(this.dockerBinary, ['network', 'rm', this.networkName(packageId)], { timeoutMs: 30000 }).catch(() => {});
+    }
+  }
+
+  async stopAppService({ packageId, serviceIds = [] }) {
+    try {
+      await this.execute(this.dockerBinary, ['rm', '-f', `mos-v2-app-${packageId}`], { timeoutMs: 30000 }).catch(() => {});
+      for (const serviceId of serviceIds) {
+        await this.execute(this.dockerBinary, ['rm', '-f', `mos-v2-app-${packageId}-${serviceId}`], { timeoutMs: 30000 }).catch(() => {});
+      }
+      await this.execute(this.dockerBinary, ['network', 'rm', this.networkName(packageId)], { timeoutMs: 30000 }).catch(() => {});
+      return { steps: ['stopped'] };
+    } catch {
+      throw new AppApplyError('stop');
     }
   }
 

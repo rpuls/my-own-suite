@@ -219,7 +219,7 @@ class AppAgentCore {
 
   async status() {
     return {
-      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.remove', 'apps.network.connect'],
+      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect'],
       service: 'mos-v2-app-agent',
     };
   }
@@ -270,6 +270,16 @@ class AppAgentCore {
       ...result,
       packageId,
       status: 'removed',
+    };
+  }
+
+  async stop(input) {
+    const { packageId, services } = assertRuntimeRemoveRequest(input);
+    const result = await this.adapter.stopAppService({ packageId, serviceIds: services });
+    return {
+      ...result,
+      packageId,
+      status: 'stopped',
     };
   }
 

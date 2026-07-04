@@ -340,6 +340,13 @@ function runtimeApplied(projections) {
   });
 }
 
+function runtimeRouteApplied(projections) {
+  return ['compose', 'caddy'].every((kind) => {
+    const projection = projections.find((item) => item.kind === kind);
+    return projection?.status === 'applied' && projection.appliedDigest === projection.digest;
+  });
+}
+
 function homepageProjectionApplied(projections) {
   const projection = projections.find((item) => item.kind === 'homepage');
   return projection?.status === 'applied' && projection.appliedDigest === projection.digest;
@@ -693,6 +700,19 @@ class AppPackageService {
     }
   }
 
+  async restartPackageRuntime(packageId, requestContext = {}) {
+    const instance = this.store.getAppInstanceByPackageId(packageId);
+    if (!instance || instance.status !== 'installed') {
+      throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Start this app before restarting it.', 409);
+    }
+    const projections = this.store.getAppProjections(instance.id);
+    if (!runtimeRouteApplied(projections)) {
+      throw new AppPackageServiceError('APP_RUNTIME_NOT_APPLIED', 'Start this app before restarting it.', 409);
+    }
+
+    return this.applyPackageRuntime(packageId, requestContext);
+  }
+
   listPackages() {
     const instancesByPackage = new Map(this.store.getAppInstances().map((instance) => [instance.packageId, instance]));
     const integrations = this.store.getAppIntegrations();
@@ -912,7 +932,7 @@ class AppPackageService {
     });
   }
 
-  async disablePackage(packageId, homepageService) {
+  async disablePackage(packageId, _homepageService) {
     if (!this.agent) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
     }
@@ -928,29 +948,32 @@ class AppPackageService {
       };
     }
     if (instance.status !== 'installed') {
-      throw new AppPackageServiceError('APP_INVALID_TRANSITION', 'This app cannot be disabled from its current state.', 409);
+      throw new AppPackageServiceError('APP_INVALID_TRANSITION', 'This app cannot be stopped from its current state.', 409);
     }
 
     const projections = this.store.getAppProjections(instance.id);
     const services = projections.find((projection) => projection.kind === 'compose')?.content?.services || [];
-    const homepage = await this.removePackageFromHomepage(instance, homepageService);
-    const agent = await this.agent.remove({ packageId: instance.packageId, services: services.map((service) => service.id) });
+    const agent = await this.agent.stop({ packageId: instance.packageId, services: services.map((service) => service.id) });
     const at = this.now().toISOString();
     this.store.markAppDisabled({
       at,
       instanceId: instance.id,
       operationId: crypto.randomUUID(),
-      request: { packageId: instance.packageId, preserveData: true, target: 'runtime-and-route' },
+      request: { packageId: instance.packageId, preserveData: true, target: 'runtime' },
     });
     return {
       agent,
-      homepage,
+      homepage: { skipped: true },
       instance: publicInstance(
         this.store.getAppInstanceByPackageId(packageId),
         this.store.getAppProjections(instance.id),
         this.store.getAppConfig(instance.id),
       ),
     };
+  }
+
+  async stopPackageRuntime(packageId) {
+    return this.disablePackage(packageId, null);
   }
 
   async enablePackage(packageId, requestContext = {}) {

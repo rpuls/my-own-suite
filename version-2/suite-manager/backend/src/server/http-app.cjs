@@ -407,6 +407,17 @@ function createV2Server({
         return;
       }
 
+      const appStopMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/stop$/u);
+      if (request.method === 'POST' && appStopMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to stop app packages.' });
+          return;
+        }
+        const packageId = decodeURIComponent(appStopMatch[1]);
+        jsonResponse(response, 200, await appPackages.stopPackageRuntime(packageId));
+        return;
+      }
+
       const appEnableMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/enable$/u);
       if (request.method === 'POST' && appEnableMatch) {
         if (!isSignedIn(setup, sessionToken)) {
@@ -415,6 +426,17 @@ function createV2Server({
         }
         const packageId = decodeURIComponent(appEnableMatch[1]);
         jsonResponse(response, 200, await appPackages.enablePackage(packageId, appPublicUrlFor(request, packageId)));
+        return;
+      }
+
+      const appRestartMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/restart$/u);
+      if (request.method === 'POST' && appRestartMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to restart app packages.' });
+          return;
+        }
+        const packageId = decodeURIComponent(appRestartMatch[1]);
+        jsonResponse(response, 200, await appPackages.restartPackageRuntime(packageId, appPublicUrlFor(request, packageId)));
         return;
       }
 

@@ -296,15 +296,15 @@ test('app lifecycle transitions preserve config and projection metadata while cl
     { fingerprint: 'sha256:secret', key: 'adminToken', secret: true, secretRef: '/state/app-secrets/instance-one/adminToken.secret' },
   ]);
   assert.deepEqual(store.getAppProjections('instance-one').map(({ appliedDigest, digest, kind, status }) => ({
-    appliedDigest,
+    applied: appliedDigest === digest,
     digest,
     kind,
     status,
   })), [
-    { appliedDigest: null, digest: 'sha256:caddy', kind: 'caddy', status: 'rendered' },
-    { appliedDigest: null, digest: 'sha256:compose', kind: 'compose', status: 'rendered' },
-    { appliedDigest: null, digest: 'sha256:health', kind: 'health', status: 'rendered' },
-    { appliedDigest: null, digest: 'sha256:homepage', kind: 'homepage', status: 'rendered' },
+    { applied: true, digest: 'sha256:caddy', kind: 'caddy', status: 'applied' },
+    { applied: false, digest: 'sha256:compose', kind: 'compose', status: 'rendered' },
+    { applied: false, digest: 'sha256:health', kind: 'health', status: 'rendered' },
+    { applied: true, digest: 'sha256:homepage', kind: 'homepage', status: 'applied' },
   ]);
 
   store.markAppEnabled({

@@ -117,6 +117,14 @@ function runtimeApplied(app: AppPackageSummary) {
   });
 }
 
+function runtimeRouteApplied(app: AppPackageSummary) {
+  const required = ['compose', 'caddy'];
+  return required.every((kind) => {
+    const projection = app.instance?.projections.find((item) => item.kind === kind);
+    return Boolean(projection?.appliedDigest && projection.appliedDigest === projection.digest && projection.status === 'applied');
+  });
+}
+
 function healthFailed(app: AppPackageSummary) {
   return app.instance?.projections.some((item) => item.kind === 'health' && item.status === 'failed') === true;
 }
@@ -153,7 +161,7 @@ function guideStatusLabel(app: AppPackageSummary) {
 function statusFor(app: AppPackageSummary) {
   if (!app.validation.valid) return { className: 'is-attention', label: 'Unavailable', tone: 'warning' };
   if (app.instance?.status === 'uninstalled') return { className: 'is-available', label: 'Uninstalled', tone: 'info' };
-  if (app.instance?.status === 'disabled' || app.instance?.enabled === false) return { className: 'is-progress', label: 'Disabled', tone: 'info' };
+  if (app.instance?.status === 'disabled' || app.instance?.enabled === false) return { className: 'is-progress', label: 'Stopped', tone: 'info' };
   if (app.installStatus === 'failed' || app.instance?.status === 'failed' || healthFailed(app)) return { className: 'is-attention', label: 'Needs attention', tone: 'error' };
   if (runtimeApplied(app)) return { className: 'is-ready', label: 'Running', tone: 'success' };
   if (app.installStatus === 'installed') return { className: 'is-progress', label: 'Finishing setup', tone: 'info' };
@@ -455,11 +463,9 @@ function AppDetail({
   onInstall,
   onLifecycle,
   onConnect,
-  onRefresh,
   onGuideStatus,
   onSelect,
   packages,
-  refreshing,
   guideUpdating,
   owner,
 }: {
@@ -470,13 +476,11 @@ function AppDetail({
   installSteps: InstallStep[];
   onClose: () => void;
   onInstall: (app: AppPackageSummary, options?: { config?: Record<string, string>; showOnHomepage?: boolean }) => void;
-  onLifecycle: (app: AppPackageSummary, action: 'disable' | 'enable' | 'uninstall') => void;
+  onLifecycle: (app: AppPackageSummary, action: 'enable' | 'restart' | 'stop' | 'uninstall') => void;
   onConnect: (connection: NonNullable<AppPackageSummary['compatibility']>['connections'][number]) => void;
-  onRefresh: (app: AppPackageSummary) => void;
   onGuideStatus: (app: AppPackageSummary, status: 'viewed' | 'completed' | 'skipped') => void;
   onSelect: (app: AppPackageSummary) => void;
   packages: AppPackageSummary[];
-  refreshing: boolean;
   guideUpdating: boolean;
   owner: Owner;
 }) {
@@ -530,8 +534,8 @@ function AppDetail({
     action();
   }
 
-  const canRefreshRuntime = Boolean(app.instance && !disabled && !uninstalled);
-  const hasMaintenanceActions = Boolean(canRefreshRuntime || ready || (app.instance && !uninstalled) || (ready && hasGuide(app) && guideCompleted));
+  const canRestartRuntime = Boolean(runtimeRouteApplied(app) && !disabled && !uninstalled);
+  const hasMaintenanceActions = Boolean(canRestartRuntime || ready || disabled || (app.instance && !uninstalled) || (ready && hasGuide(app) && guideCompleted));
 
   return <div className={`suite-app-detail-layer${guideOpen ? ' has-guide' : ''}`}>
     <button aria-label="Close app details" className="suite-app-detail-backdrop" onClick={onClose} tabIndex={-1} type="button" />
@@ -548,14 +552,15 @@ function AppDetail({
           <p>{descriptionFor(app)}</p>
         </div>
         <div className="suite-app-primary-actions">
-          {ready ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Enabling...' : 'Enable'}</button> : needsPreparation && !setupOpen ? <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setSetupOpen(true)} type="button">Prepare</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={submitInstall} type="button">{installing ? 'Installing...' : 'Install'}</button>}
+          {ready ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : needsPreparation && !setupOpen ? <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setSetupOpen(true)} type="button">Prepare</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={submitInstall} type="button">{installing ? 'Installing...' : 'Install'}</button>}
           {ready && hasGuide(app) && !guideCompleted ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
           {hasMaintenanceActions ? <div className="suite-app-actions-menu">
             <button aria-expanded={actionsOpen} aria-haspopup="menu" aria-label="More app actions" className="suite-icon-button" disabled={installing || guideUpdating} onClick={() => setActionsOpen((current) => !current)} title="More app actions" type="button"><Icon name="more" /></button>
             {actionsOpen ? <div className="suite-app-actions-popover" role="menu">
               {ready && hasGuide(app) && guideCompleted ? <button onClick={() => runMenuAction(openGuide)} role="menuitem" type="button">Setup guide</button> : null}
-              {canRefreshRuntime ? <button disabled={refreshing} onClick={() => runMenuAction(() => onRefresh(app))} role="menuitem" type="button">{refreshing ? 'Checking status...' : 'Refresh status'}</button> : null}
-              {ready ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'disable'))} role="menuitem" type="button">Disable</button> : null}
+              {canRestartRuntime ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'restart'))} role="menuitem" type="button">Restart</button> : null}
+              {ready ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'stop'))} role="menuitem" type="button">Stop</button> : null}
+              {disabled ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'enable'))} role="menuitem" type="button">Start</button> : null}
               {app.instance && !uninstalled ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'uninstall'))} role="menuitem" type="button">Uninstall</button> : null}
             </div> : null}
           </div> : null}
@@ -665,7 +670,6 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   const [guideUpdatingId, setGuideUpdatingId] = useState('');
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
-  const [refreshingId, setRefreshingId] = useState('');
   const [selectedId, setSelectedId] = useState('');
 
   async function load() {
@@ -790,9 +794,9 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     }
   }
 
-  async function performLifecycle(app: AppPackageSummary, action: 'disable' | 'enable' | 'uninstall') {
+  async function performLifecycle(app: AppPackageSummary, action: 'enable' | 'restart' | 'stop' | 'uninstall') {
     if (!app.instance || installingId) return;
-    const labels = { disable: 'Disable', enable: 'Enable', uninstall: 'Uninstall' };
+    const labels = { enable: 'Start', restart: 'Restart', stop: 'Stop', uninstall: 'Uninstall' };
     setSelectedId(app.id);
     setInstallingId(app.id);
     setInstallError('');
@@ -803,36 +807,17 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       await withMinimumInstallStep(async () =>
         jsonResponse<{ instance: AppPackageSummary['instance'] }>(
           await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/${action}`, { method: 'POST' }),
-          `Unable to ${action} ${app.name}.`,
+          `Unable to ${labels[action].toLowerCase()} ${app.name}.`,
         ),
       );
       setInstallSteps((steps) => setStep(steps, 'runtime', 'complete'));
       await load();
     } catch (caught) {
-      setInstallError(caught instanceof Error ? caught.message : `Unable to ${action} ${app.name}.`);
+      setInstallError(caught instanceof Error ? caught.message : `Unable to ${labels[action].toLowerCase()} ${app.name}.`);
       setInstallSteps((steps) => setStep(steps, 'runtime', 'failed'));
       await load();
     } finally {
       setInstallingId('');
-    }
-  }
-
-  async function refreshRuntimeStatus(app: AppPackageSummary) {
-    if (!app.instance || refreshingId) return;
-    setSelectedId(app.id);
-    setRefreshingId(app.id);
-    setInstallError('');
-    try {
-      await jsonResponse<{ instance: AppPackageSummary['instance'] }>(
-        await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/refresh-runtime-status`, { method: 'POST' }),
-        `Unable to refresh ${app.name}.`,
-      );
-      await load();
-    } catch (caught) {
-      setInstallError(caught instanceof Error ? caught.message : `Unable to refresh ${app.name}.`);
-      await load();
-    } finally {
-      setRefreshingId('');
     }
   }
 
@@ -922,6 +907,6 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       </dl>
     </details> : null}
 
-    {selected ? <AppDetail app={selected} connectingId={connectingId} guideUpdating={guideUpdatingId === selected.id} installing={installingId === selected.id || connectingId.startsWith(`${selected.id}:`)} installError={installError} installSteps={installingId === selected.id || connectingId.startsWith(`${selected.id}:`) || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onConnect={(connection) => void connectPackages(connection)} onGuideStatus={(target, status) => void updateGuideStatus(target, status)} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onRefresh={(target) => void refreshRuntimeStatus(target)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} owner={owner} packages={packages} refreshing={refreshingId === selected.id} /> : null}
+    {selected ? <AppDetail app={selected} connectingId={connectingId} guideUpdating={guideUpdatingId === selected.id} installing={installingId === selected.id || connectingId.startsWith(`${selected.id}:`)} installError={installError} installSteps={installingId === selected.id || connectingId.startsWith(`${selected.id}:`) || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onConnect={(connection) => void connectPackages(connection)} onGuideStatus={(target, status) => void updateGuideStatus(target, status)} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} owner={owner} packages={packages} /> : null}
   </section>;
 }

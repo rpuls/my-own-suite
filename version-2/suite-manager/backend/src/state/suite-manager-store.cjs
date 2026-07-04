@@ -749,9 +749,9 @@ class SuiteManagerStore {
       this.database.prepare(`
         UPDATE app_instance_projections
         SET applied_digest = NULL,
-            status = CASE WHEN kind IN ('compose', 'caddy', 'health', 'homepage') THEN 'rendered' ELSE status END,
+            status = CASE WHEN kind IN ('compose', 'health') THEN 'rendered' ELSE status END,
             updated_at = ?
-        WHERE instance_id = ? AND kind IN ('compose', 'caddy', 'health', 'homepage')
+        WHERE instance_id = ? AND kind IN ('compose', 'health')
       `).run(at, instanceId);
       this.database.prepare(`
         UPDATE app_instances

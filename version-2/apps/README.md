@@ -16,7 +16,7 @@ The fourth package is `seafile`, intentionally chosen as the first serious multi
 
 The fifth package is `onlyoffice`, intentionally chosen as the first capability provider package. It installs independently, exports a document-editor capability, and becomes useful after a compatible document platform such as Seafile is installed and connected through the app integration flow.
 
-Package manifests describe install inputs and projections only. An app becomes active only after Suite Manager persists app instance state and the app lifecycle agent applies the generated runtime projection. Disable and preserved-data uninstall remove the active runtime and route without deleting package config, secret references, or Docker volumes.
+Package manifests describe install inputs and projections only. An app becomes active only after Suite Manager persists app instance state and the app lifecycle agent applies the generated runtime projection. Stop removes the active containers without deleting package config, secret references, Docker volumes, routes, or Homepage shortcuts. Preserved-data uninstall removes the active runtime, route, and Homepage shortcut without deleting package config, secret references, or Docker volumes.
 
 ## Post-install setup guides
 

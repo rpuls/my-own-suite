@@ -137,6 +137,37 @@ http://second-app.mos.home {
   assert.doesNotMatch(routes, /second-app/u);
 });
 
+test('system adapter stops runtime without removing app routes or volumes', async () => {
+  const root = await tempDir();
+  const routesPath = path.join(root, 'routes.caddy');
+  const commands = [];
+  await fsp.writeFile(routesPath, `# mos-v2-app-route:start second-app
+http://second-app.mos.home {
+  reverse_proxy http://127.0.0.1:18102
+}
+# mos-v2-app-route:end second-app
+`);
+
+  const adapter = new SystemAppAdapter({
+    dockerBinary: 'docker',
+    routesPath,
+    async execute(file, args) {
+      commands.push({ args, file });
+    },
+  });
+
+  const result = await adapter.stopAppService({ packageId: 'second-app', serviceIds: ['web'] });
+
+  assert.deepEqual(result.steps, ['stopped']);
+  assert.deepEqual(commands.map((command) => command.args), [
+    ['rm', '-f', 'mos-v2-app-second-app'],
+    ['rm', '-f', 'mos-v2-app-second-app-web'],
+    ['network', 'rm', 'mos-v2-app-second-app'],
+  ]);
+  assert.equal(commands.some((command) => command.args.includes('volume') || command.args.includes('rmi')), false);
+  assert.match(await fsp.readFile(routesPath, 'utf8'), /mos-v2-app-route:start second-app/u);
+});
+
 test('system adapter runs multi-service packages on a private package network', async () => {
   const root = await tempDir();
   const routesPath = path.join(root, 'routes.caddy');
