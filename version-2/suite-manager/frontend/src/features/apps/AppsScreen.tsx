@@ -72,6 +72,7 @@ type AppPackageSummary = {
     title?: string;
   };
   routes: Array<{ host: string; port: number | null; service: string }>;
+  role: 'standalone' | 'companion' | 'capability-provider' | 'integration-helper' | string;
   services: Array<{ dockerfile: string | null; id: string; internalPort: number | null; volumes: string[] }>;
   setup: { fieldCount: number; fields: Array<{ default?: unknown; generated: boolean; id: string; label: string; required: boolean; secret: boolean; type: string }> };
   summary: string;
@@ -107,6 +108,18 @@ function primaryCategory(app: AppPackageSummary) {
 function homepageApplied(app: AppPackageSummary) {
   const projection = app.instance?.projections.find((item) => item.kind === 'homepage');
   return Boolean(projection?.appliedDigest && projection.appliedDigest === projection.digest && projection.status === 'applied');
+}
+
+function hasHomepageContribution(app: AppPackageSummary) {
+  return Boolean(app.homepage);
+}
+
+function isCompanionApp(app: AppPackageSummary) {
+  return app.role === 'companion' || app.role === 'capability-provider' || app.role === 'integration-helper';
+}
+
+function hasPrimaryAppDestination(app: AppPackageSummary) {
+  return !isCompanionApp(app) && app.routes.length > 0;
 }
 
 function runtimeApplied(app: AppPackageSummary) {
@@ -490,6 +503,8 @@ function AppDetail({
   const [actionsOpen, setActionsOpen] = useState(false);
   const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app, owner.email));
   const ready = runtimeApplied(app);
+  const homepageAvailable = hasHomepageContribution(app);
+  const primaryDestination = hasPrimaryAppDestination(app);
   const disabled = app.instance?.status === 'disabled' || app.instance?.enabled === false;
   const uninstalled = app.instance?.status === 'uninstalled';
   const url = appUrl(app);
@@ -503,9 +518,10 @@ function AppDetail({
   const canInstall = app.validation.valid && !requiredSetupMissing(app, setupConfig) && !installing;
   const connections = app.compatibility?.connections || [];
   const missingUsefulPeers = app.compatibility?.missingUsefulPeers || [];
+  const installedCompatiblePeers = packages.filter((item) => item.id !== app.id && item.instance && item.capabilities.exports.some((capability) => app.capabilities.usefulness.requiresOneOf.includes(capability.type)));
 
   useEffect(() => {
-    setShowOnHomepage(true);
+    setShowOnHomepage(hasHomepageContribution(app));
     setSetupOpen(false);
     setGuideOpen(false);
     setActionsOpen(false);
@@ -514,7 +530,7 @@ function AppDetail({
 
   function submitInstall() {
     const config = { ...setupConfig };
-    onInstall(app, { config, showOnHomepage });
+    onInstall(app, { config, showOnHomepage: homepageAvailable && showOnHomepage });
     setSetupConfig((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => {
       const field = app.setup.fields.find((item) => item.id === key);
       return [key, field?.secret ? '' : value];
@@ -552,7 +568,7 @@ function AppDetail({
           <p>{descriptionFor(app)}</p>
         </div>
         <div className="suite-app-primary-actions">
-          {ready ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : needsPreparation && !setupOpen ? <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setSetupOpen(true)} type="button">Prepare</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={submitInstall} type="button">{installing ? 'Installing...' : 'Install'}</button>}
+          {ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : needsPreparation && !setupOpen ? <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setSetupOpen(true)} type="button">Prepare</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={submitInstall} type="button">{installing ? 'Installing...' : 'Install'}</button>}
           {ready && hasGuide(app) && !guideCompleted ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
           {hasMaintenanceActions ? <div className="suite-app-actions-menu">
             <button aria-expanded={actionsOpen} aria-haspopup="menu" aria-label="More app actions" className="suite-icon-button" disabled={installing || guideUpdating} onClick={() => setActionsOpen((current) => !current)} title="More app actions" type="button"><Icon name="more" /></button>
@@ -564,7 +580,7 @@ function AppDetail({
               {app.instance && !uninstalled ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'uninstall'))} role="menuitem" type="button">Uninstall</button> : null}
             </div> : null}
           </div> : null}
-          {!ready && !disabled && !uninstalled ? <label className="suite-app-homepage-option">
+          {homepageAvailable && !ready && !disabled && !uninstalled ? <label className="suite-app-homepage-option">
             <input checked={showOnHomepage} disabled={installing} onChange={(event) => setShowOnHomepage(event.currentTarget.checked)} type="checkbox" />
             <span>Add shortcut to Homepage</span>
           </label> : null}
@@ -591,6 +607,7 @@ function AppDetail({
 
         {!app.validation.valid ? <Notice title="This package cannot be installed yet" variant="warning"><ul>{app.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}
         {missingUsefulPeers.length ? <Notice title="Needs a compatible app" variant="info"><p>{missingUsefulPeers[0]!.message}</p></Notice> : null}
+        {ready && isCompanionApp(app) && !installedCompatiblePeers.length ? <Notice title="Companion app" variant="info"><p>{app.capabilities.usefulness.emptyState || 'Install a compatible app to use this service.'}</p></Notice> : null}
 
         <section className="suite-app-facts" aria-label="App facts">
           <div><span>Category</span><strong>{categoryLabel(primaryCategory(app))}</strong></div>
@@ -718,7 +735,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     const setupConfig = options.config || {};
     const canInstall = app.validation.valid && !requiredSetupMissing(app, setupConfig);
     if (!canInstall) return;
-    const showOnHomepage = options.showOnHomepage !== false;
+    const showOnHomepage = hasHomepageContribution(app) && options.showOnHomepage !== false;
     setSelectedId(app.id);
     setInstallingId(app.id);
     setInstallError('');
@@ -878,6 +895,9 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     }
   }
 
+  const standaloneApps = filtered.filter((app) => !isCompanionApp(app));
+  const companionApps = filtered.filter(isCompanionApp);
+
   return <section className="mos-shell suite-apps suite-app-catalog">
     <div className="suite-app-simple-header">
       <h1>Apps</h1>
@@ -895,8 +915,19 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       <p>Try the app name or the thing you want to solve, like passwords, PDFs, files, photos, security, or office documents.</p>
     </div> : null}
 
-    {!loading && !error && filtered.length ? <div className="suite-app-grid">
-      {filtered.map((app) => <AppCard app={app} key={app.id} onOpen={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} />)}
+    {!loading && !error && filtered.length ? <div className="suite-app-catalog-sections">
+      {standaloneApps.length ? <section className="suite-app-catalog-section">
+        <div className="suite-app-section-heading"><h2>Apps</h2></div>
+        <div className="suite-app-grid">
+          {standaloneApps.map((app) => <AppCard app={app} key={app.id} onOpen={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} />)}
+        </div>
+      </section> : null}
+      {companionApps.length ? <section className="suite-app-catalog-section">
+        <div className="suite-app-section-heading"><h2>Companion apps</h2></div>
+        <div className="suite-app-grid">
+          {companionApps.map((app) => <AppCard app={app} key={app.id} onOpen={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} />)}
+        </div>
+      </section> : null}
     </div> : null}
 
     {!loading && !error && packages.length ? <details className="suite-advanced suite-app-advanced">

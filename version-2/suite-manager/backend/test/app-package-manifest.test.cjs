@@ -154,10 +154,21 @@ test('OnlyOffice package is discoverable and exports a document editor capabilit
   assert.equal(onlyoffice.manifest.resources.services.onlyoffice.internalPort, 80);
   assert.deepEqual(onlyoffice.manifest.resources.services.onlyoffice.volumes, ['data:/var/www/onlyoffice/Data']);
   assert.equal(onlyoffice.manifest.setup.fields.length, 2);
+  assert.equal(onlyoffice.manifest.role, 'capability-provider');
+  assert.equal(onlyoffice.manifest.homepage, undefined);
   assert.equal(onlyoffice.manifest.exports.documentEditor.type, 'document-editor');
   assert.equal(onlyoffice.manifest.exports.documentEditor.protocol, 'onlyoffice-docs-api');
   assert.equal(onlyoffice.manifest.usefulness.requiresOneOf[0], 'document-platform');
   assert.deepEqual(validateAppPackageManifest(onlyoffice.manifest, { packageDir: onlyoffice.packageDir }), []);
+});
+
+test('manifest validation accepts companion packages without Homepage metadata', () => {
+  const manifest = validManifest({
+    homepage: undefined,
+    role: 'capability-provider',
+  });
+
+  assert.deepEqual(validateAppPackageManifest(manifest), []);
 });
 
 test('manifest validation accepts structured optional catalog presentation metadata', () => {

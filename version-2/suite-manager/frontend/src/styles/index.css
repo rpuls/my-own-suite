@@ -335,6 +335,29 @@
   gap: var(--mos-space-3);
 }
 
+.suite-app-catalog-sections {
+  display: grid;
+  gap: var(--mos-space-7);
+}
+
+.suite-app-catalog-section {
+  display: grid;
+  gap: var(--mos-space-3);
+}
+
+.suite-app-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: var(--mos-border-subtle);
+  padding-bottom: var(--mos-space-2);
+}
+
+.suite-app-section-heading h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
 .suite-app-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

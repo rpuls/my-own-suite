@@ -16,6 +16,8 @@ Consequences:
 - Integration state must be separate from each app's install state so one provider can serve multiple consumers and one consumer can degrade cleanly if a provider is disabled.
 - Shared integration secrets are grants, not arbitrary cross-app secret reads. They must stay out of public APIs, logs, projections, and broad SQLite rows.
 - Provider or consumer route/secret changes must make affected relationships require reapply or revalidation.
+- Provider/consumer lifecycle actions must update relationship state truthfully and reapply or revalidate compatible active relationships where safe.
+- Capability-provider and companion packages may omit Homepage contributions; Suite Manager should present them as integration services rather than ordinary app destinations.
 - Complex pair-specific glue may be introduced later only through a reviewed package-owned contract, not arbitrary frontend code or broad shell hooks.
 
 ## 2026-07-03: V2 App Packages Own Runtime Shape And Lifecycle

@@ -53,3 +53,13 @@ test('Apps setup email fields default to the signed-in owner email', () => {
   assert.match(apps, /initialSetupConfig\(app, owner\.email\)/u);
   assert.match(apps, /field\.type === 'email' \? ownerEmail/u);
 });
+
+test('Apps catalog separates companion apps and hides Homepage controls when absent', () => {
+  const apps = fs.readFileSync(path.join(frontendRoot, 'features', 'apps', 'AppsScreen.tsx'), 'utf8');
+
+  assert.match(apps, /function isCompanionApp/u);
+  assert.match(apps, /Companion apps/u);
+  assert.match(apps, /function hasHomepageContribution/u);
+  assert.match(apps, /homepageAvailable && !ready && !disabled && !uninstalled/u);
+  assert.match(apps, /hasPrimaryAppDestination/u);
+});

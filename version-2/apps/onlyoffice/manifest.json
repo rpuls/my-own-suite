@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "summary": "Office editor suite for compatible file and content apps.",
   "category": "office",
+  "role": "capability-provider",
   "icon": "icon.png",
   "catalog": {
     "description": "ONLYOFFICE provides document, spreadsheet, and presentation editing that compatible MOS file apps can connect to for browser-based office workflows.",
@@ -105,12 +106,6 @@
       "port": 80
     }
   ],
-  "homepage": {
-    "group": "Office",
-    "name": "ONLYOFFICE",
-    "description": "Office editor suite for connected file apps.",
-    "icon": "onlyoffice"
-  },
   "health": {
     "type": "http",
     "url": "http://onlyoffice:80/welcome/"

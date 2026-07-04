@@ -13,6 +13,7 @@ const SUPPORTED_HEALTH_TYPES = new Set(['http']);
 const SUPPORTED_COMPLEXITY_LEVELS = new Set(['easy', 'guided', 'advanced']);
 const SUPPORTED_RESOURCE_LEVELS = new Set(['low', 'medium', 'high']);
 const SUPPORTED_GUIDE_SECTION_TYPES = new Set(['choice-guide', 'manual-complete', 'note', 'steps', 'values', 'warning']);
+const SUPPORTED_PACKAGE_ROLES = new Set(['standalone', 'companion', 'capability-provider', 'integration-helper']);
 const SUPPORTED_SECRET_SCOPES = new Set(['consumer-instance', 'generated-client', 'provider-instance', 'relationship']);
 const SUPPORTED_INTEGRATION_APPLY_KINDS = new Set(['service-env']);
 const CATALOG_LINK_KEYS = new Set(['docs', 'repository', 'website']);
@@ -225,6 +226,7 @@ function validateRoutes(manifest, serviceIds, errors) {
 }
 
 function validateHomepage(manifest, errors) {
+  if (manifest.homepage === undefined) return;
   if (!isRecord(manifest.homepage)) {
     errors.push('homepage must be an object.');
     return;
@@ -235,6 +237,13 @@ function validateHomepage(manifest, errors) {
     }
   }
   if (manifest.homepage.widget !== undefined) validateHomepageWidget(manifest.homepage.widget, 'homepage.widget', errors);
+}
+
+function validatePackageRole(manifest, errors) {
+  if (manifest.role === undefined) return;
+  if (!SUPPORTED_PACKAGE_ROLES.has(manifest.role)) {
+    errors.push(`role must be one of: ${[...SUPPORTED_PACKAGE_ROLES].join(', ')}.`);
+  }
 }
 
 function validateHomepageWidget(widget, prefix, errors) {
@@ -687,6 +696,7 @@ function validateAppPackageManifest(manifest, { packageDir = null } = {}) {
   }
 
   validateSetup(manifest, errors);
+  validatePackageRole(manifest, errors);
   const serviceIds = validateResources(manifest, packageDir, errors);
   validateRoutes(manifest, serviceIds, errors);
   validateHomepage(manifest, errors);
@@ -747,6 +757,7 @@ function publicPackageSummary(manifest, validationErrors = []) {
     id: manifest.id || '',
     installStatus: 'not-installed',
     name: manifest.name || manifest.id || 'Unknown package',
+    role: SUPPORTED_PACKAGE_ROLES.has(manifest.role) ? manifest.role : 'standalone',
     routes: Array.isArray(manifest.routes) ? manifest.routes.map((route) => ({
       host: route?.host || '',
       port: Number.isInteger(route?.port) ? route.port : null,

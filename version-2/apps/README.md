@@ -2,7 +2,7 @@
 
 Future app packages live here, one app per folder.
 
-Each app package should own its app-specific manifest, Dockerfiles, setup helpers, runtime assets, Caddy snippets, Homepage contributions, backup metadata, and technical notes.
+Each app package should own its app-specific manifest, Dockerfiles, setup helpers, runtime assets, Caddy snippets, optional Homepage contributions, backup metadata, and technical notes.
 
 Use `icon.png` in the package root for the catalog icon, and point `manifest.json` `icon` at that file. Richer screenshots or marketing assets are optional catalog metadata, not required package scaffolding.
 
@@ -14,7 +14,7 @@ The third package is `radicale`, intentionally chosen to validate a V1-era calen
 
 The fourth package is `seafile`, intentionally chosen as the first serious multi-service V1-era pillar app in V2. It uses package-owned Seafile, MySQL, and Valkey services, generated internal database/JWT secrets, user-supplied initial Seafile admin credentials, one public app route, internal-only dependency services, and preserved Seafile/MySQL volumes.
 
-The fifth package is `onlyoffice`, intentionally chosen as the first capability provider package. It installs independently, exports a document-editor capability, and becomes useful after a compatible document platform such as Seafile is installed and connected through the app integration flow.
+The fifth package is `onlyoffice`, intentionally chosen as the first capability provider package. It installs independently, exports a document-editor capability, has no normal Homepage shortcut, and becomes useful after a compatible document platform such as Seafile is installed and connected through the app integration flow.
 
 Package manifests describe install inputs and projections only. An app becomes active only after Suite Manager persists app instance state and the app lifecycle agent applies the generated runtime projection. Stop removes the active containers without deleting package config, secret references, Docker volumes, routes, or Homepage shortcuts. Preserved-data uninstall removes the active runtime, route, and Homepage shortcut without deleting package config, secret references, or Docker volumes.
 
@@ -48,3 +48,5 @@ Suite Manager persists guide state per app instance in SQLite. The first guide s
 Packages may declare capability exports, integration slots, usefulness hints, and package-owned config targets in `manifest.json`.
 
 The first real relationship is Seafile consuming ONLYOFFICE as an office editor. Suite Manager resolves the compatible manifests, grants Seafile the provider-instance ONLYOFFICE JWT secret only for the apply operation, patches Seafile's allowlisted service environment projection, attaches ONLYOFFICE to Seafile's package network for server-to-server document traffic, reapplies Seafile through the app agent, and records relationship state in SQLite.
+
+Packages may set a `role` such as `capability-provider` when they are useful mainly through other apps. Suite Manager groups those packages as companion apps, suppresses Homepage shortcut controls when no `homepage` contribution is declared, and keeps integration relationships truthful across restart, stop, start, and preserved-data uninstall lifecycle actions.

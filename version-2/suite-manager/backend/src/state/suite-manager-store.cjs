@@ -607,6 +607,27 @@ class SuiteManagerStore {
     `).run(errorCode, at, providerInstanceId, consumerInstanceId, providerCapabilityId, consumerIntegrationSlot);
   }
 
+  markAppIntegrationStatus({ at, errorCode = null, id, status }) {
+    this.database.prepare(`
+      UPDATE app_integrations
+      SET status = ?,
+          last_error_code = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(status, errorCode, at, id);
+  }
+
+  markAppIntegrationsForInstance({ at, errorCode = null, instanceId, status }) {
+    this.database.prepare(`
+      UPDATE app_integrations
+      SET status = ?,
+          last_error_code = ?,
+          updated_at = ?
+      WHERE provider_instance_id = ?
+         OR consumer_instance_id = ?
+    `).run(status, errorCode, at, instanceId, instanceId);
+  }
+
   setAppGuideStatus({ at, instanceId, status }) {
     if (!['viewed', 'completed', 'skipped'].includes(status)) {
       throw new Error('Invalid app guide status.');

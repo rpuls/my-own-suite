@@ -376,7 +376,10 @@ function createV2Server({
           return;
         }
         const packageId = decodeURIComponent(appRuntimeMatch[1]);
-        jsonResponse(response, 200, await appPackages.applyPackageRuntime(packageId, appPublicUrlFor(request, packageId)));
+        jsonResponse(response, 200, await appPackages.applyPackageRuntime(packageId, {
+          ...appPublicUrlFor(request, packageId),
+          publicUrlFor: appPublicUrlResolver(request),
+        }));
         return;
       }
 
@@ -425,7 +428,10 @@ function createV2Server({
           return;
         }
         const packageId = decodeURIComponent(appEnableMatch[1]);
-        jsonResponse(response, 200, await appPackages.enablePackage(packageId, appPublicUrlFor(request, packageId)));
+        jsonResponse(response, 200, await appPackages.enablePackage(packageId, {
+          ...appPublicUrlFor(request, packageId),
+          publicUrlFor: appPublicUrlResolver(request),
+        }));
         return;
       }
 
@@ -436,7 +442,10 @@ function createV2Server({
           return;
         }
         const packageId = decodeURIComponent(appRestartMatch[1]);
-        jsonResponse(response, 200, await appPackages.restartPackageRuntime(packageId, appPublicUrlFor(request, packageId)));
+        jsonResponse(response, 200, await appPackages.restartPackageRuntime(packageId, {
+          ...appPublicUrlFor(request, packageId),
+          publicUrlFor: appPublicUrlResolver(request),
+        }));
         return;
       }
 

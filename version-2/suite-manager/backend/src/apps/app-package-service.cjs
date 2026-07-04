@@ -140,10 +140,6 @@ function renderDryRunProjections(manifest, configRows = []) {
       kind: 'caddy',
     },
     {
-      content: manifest.homepage,
-      kind: 'homepage',
-    },
-    {
       content: {
         target: healthTargetFor(manifest, servicePorts.get(healthService)),
         type: manifest.health.type,
@@ -151,6 +147,12 @@ function renderDryRunProjections(manifest, configRows = []) {
       kind: 'health',
     },
   ];
+  if (isRecord(manifest.homepage)) {
+    projections.splice(2, 0, {
+      content: manifest.homepage,
+      kind: 'homepage',
+    });
+  }
   return projections.map((projection) => ({
     ...projection,
     contentJson: stableJson(projection.content),
@@ -441,6 +443,11 @@ function runtimeConnectionState(app) {
   return app.instance.status || 'available';
 }
 
+function requestContextForPackage(packageId, requestContext = {}) {
+  if (typeof requestContext.publicUrlFor === 'function') return requestContext.publicUrlFor(packageId);
+  return requestContext;
+}
+
 class AppPackageService {
   constructor({ agent = null, appsDir, now = () => new Date(), secretDir = null, store }) {
     this.agent = agent;
@@ -640,6 +647,88 @@ class AppPackageService {
     }
   }
 
+  async reapplyIntegrationRelationship(relationship, requestContext = {}) {
+    const provider = this.store.getAppInstances().find((item) => item.id === relationship.providerInstanceId);
+    const consumer = this.store.getAppInstances().find((item) => item.id === relationship.consumerInstanceId);
+    if (!provider || !consumer || provider.status === 'uninstalled' || consumer.status === 'uninstalled') {
+      this.store.markAppIntegrationStatus({
+        at: this.now().toISOString(),
+        errorCode: 'APP_INTEGRATION_APP_UNINSTALLED',
+        id: relationship.id,
+        status: 'removed',
+      });
+      return { relationshipId: relationship.id, status: 'removed' };
+    }
+    if (provider.status === 'disabled' || provider.enabled === false) {
+      this.store.markAppIntegrationStatus({
+        at: this.now().toISOString(),
+        errorCode: 'APP_INTEGRATION_PROVIDER_DISABLED',
+        id: relationship.id,
+        status: 'degraded',
+      });
+      return { relationshipId: relationship.id, status: 'degraded' };
+    }
+    if (consumer.status === 'disabled' || consumer.enabled === false) {
+      this.store.markAppIntegrationStatus({
+        at: this.now().toISOString(),
+        errorCode: 'APP_INTEGRATION_CONSUMER_DISABLED',
+        id: relationship.id,
+        status: 'degraded',
+      });
+      return { relationshipId: relationship.id, status: 'degraded' };
+    }
+    if (!runtimeApplied(this.store.getAppProjections(provider.id)) || !runtimeApplied(this.store.getAppProjections(consumer.id))) {
+      this.store.markAppIntegrationStatus({
+        at: this.now().toISOString(),
+        errorCode: 'APP_INTEGRATION_RUNTIME_NOT_READY',
+        id: relationship.id,
+        status: 'degraded',
+      });
+      return { relationshipId: relationship.id, status: 'degraded' };
+    }
+
+    try {
+      await this.applyPackageRuntime(consumer.packageId, requestContextForPackage(consumer.packageId, requestContext));
+      const providerPackage = readAppPackageManifest(path.join(this.appsDir, provider.packageId));
+      const providerServices = Object.keys(providerPackage.manifest.resources?.services || {});
+      const network = await this.agent.connectNetwork({
+        consumerPackageId: consumer.packageId,
+        providerPackageId: provider.packageId,
+        providerServiceCount: providerServices.length,
+        providerServices,
+      });
+      this.store.completeAppIntegration({
+        at: this.now().toISOString(),
+        consumerInstanceId: consumer.id,
+        consumerIntegrationSlot: relationship.consumerIntegrationSlot,
+        lastAppliedProjectionDigest: this.store.getAppProjections(consumer.id).find((projection) => projection.kind === 'compose')?.digest || relationship.desiredProjectionDigest,
+        providerCapabilityId: relationship.providerCapabilityId,
+        providerInstanceId: provider.id,
+      });
+      return { network, relationshipId: relationship.id, status: 'active' };
+    } catch (error) {
+      this.store.markAppIntegrationStatus({
+        at: this.now().toISOString(),
+        errorCode: error.code || 'APP_INTEGRATION_REAPPLY_FAILED',
+        id: relationship.id,
+        status: 'failed',
+      });
+      return { relationshipId: relationship.id, status: 'failed' };
+    }
+  }
+
+  async reconcilePackageIntegrations(packageId, requestContext = {}) {
+    const instance = this.store.getAppInstanceByPackageId(packageId);
+    if (!instance) return [];
+    const relationships = this.store.getAppIntegrations()
+      .filter((item) => item.status !== 'removed' && (item.providerInstanceId === instance.id || item.consumerInstanceId === instance.id));
+    const results = [];
+    for (const relationship of relationships) {
+      results.push(await this.reapplyIntegrationRelationship(relationship, requestContext));
+    }
+    return results;
+  }
+
   async refreshPackageRuntimeStatus(packageId) {
     if (!this.agent) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
@@ -710,7 +799,11 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_RUNTIME_NOT_APPLIED', 'Start this app before restarting it.', 409);
     }
 
-    return this.applyPackageRuntime(packageId, requestContext);
+    const applied = await this.applyPackageRuntime(packageId, requestContext);
+    return {
+      ...applied,
+      integrations: await this.reconcilePackageIntegrations(packageId, requestContext),
+    };
   }
 
   listPackages() {
@@ -961,6 +1054,12 @@ class AppPackageService {
       operationId: crypto.randomUUID(),
       request: { packageId: instance.packageId, preserveData: true, target: 'runtime' },
     });
+    this.store.markAppIntegrationsForInstance({
+      at,
+      errorCode: 'APP_INTEGRATION_APP_DISABLED',
+      instanceId: instance.id,
+      status: 'degraded',
+    });
     return {
       agent,
       homepage: { skipped: true },
@@ -982,7 +1081,11 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before enabling it.', 409);
     }
     if (instance.status === 'installed') {
-      return this.applyPackageRuntime(packageId, requestContext);
+      const applied = await this.applyPackageRuntime(packageId, requestContext);
+      return {
+        ...applied,
+        integrations: await this.reconcilePackageIntegrations(packageId, requestContext),
+      };
     }
     if (instance.status !== 'disabled') {
       throw new AppPackageServiceError('APP_INVALID_TRANSITION', 'This app cannot be enabled from its current state.', 409);
@@ -996,6 +1099,7 @@ class AppPackageService {
     });
     return {
       ...applied,
+      integrations: await this.reconcilePackageIntegrations(packageId, requestContext),
       instance: publicInstance(
         this.store.getAppInstanceByPackageId(packageId),
         this.store.getAppProjections(instance.id),
@@ -1033,6 +1137,12 @@ class AppPackageService {
       instanceId: instance.id,
       operationId: crypto.randomUUID(),
       request: { packageId: instance.packageId, preserveData: true, preserveSecrets: true, target: 'runtime-and-route' },
+    });
+    this.store.markAppIntegrationsForInstance({
+      at,
+      errorCode: 'APP_INTEGRATION_APP_UNINSTALLED',
+      instanceId: instance.id,
+      status: 'removed',
     });
     return {
       agent,
