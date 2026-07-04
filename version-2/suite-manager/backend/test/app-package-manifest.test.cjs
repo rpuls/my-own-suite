@@ -149,7 +149,7 @@ test('OnlyOffice package is discoverable and exports a document editor capabilit
   const onlyoffice = packages.find((entry) => entry.manifest.id === 'onlyoffice');
 
   assert.ok(onlyoffice);
-  assert.equal(onlyoffice.manifest.name, 'ONLYOFFICE Docs');
+  assert.equal(onlyoffice.manifest.name, 'ONLYOFFICE');
   assert.equal(onlyoffice.manifest.catalog.complexity.level, 'advanced');
   assert.equal(onlyoffice.manifest.resources.services.onlyoffice.internalPort, 80);
   assert.deepEqual(onlyoffice.manifest.resources.services.onlyoffice.volumes, ['data:/var/www/onlyoffice/Data']);

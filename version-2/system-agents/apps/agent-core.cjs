@@ -140,6 +140,31 @@ function assertRuntimeRemoveRequest(input) {
   return { packageId: input.packageId, services };
 }
 
+function assertNetworkConnectRequest(input) {
+  if (!exactKeys(input, ['consumerPackageId', 'providerPackageId', 'providerServiceCount', 'providerServices'])) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app network fields are accepted.');
+  }
+  assertString(input.consumerPackageId, 'consumerPackageId', PACKAGE_ID_PATTERN);
+  assertString(input.providerPackageId, 'providerPackageId', PACKAGE_ID_PATTERN);
+  if (!Number.isInteger(input.providerServiceCount) || input.providerServiceCount < 1 || input.providerServiceCount > 8) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The provider service count is invalid.');
+  }
+  if (!Array.isArray(input.providerServices) || input.providerServices.length < 1 || input.providerServices.length > 8) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The provider service list is invalid.');
+  }
+  for (const serviceId of input.providerServices) {
+    if (!DNS_LABEL_PATTERN.test(String(serviceId))) {
+      throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Provider service ids must be DNS-safe labels.');
+    }
+  }
+  return {
+    consumerPackageId: input.consumerPackageId,
+    providerPackageId: input.providerPackageId,
+    providerServiceCount: input.providerServiceCount,
+    providerServices: input.providerServices,
+  };
+}
+
 function resolveEnvironment(environment, context) {
   const source = environment === undefined ? {} : environment;
   if (!source || typeof source !== 'object' || Array.isArray(source)) {
@@ -194,7 +219,7 @@ class AppAgentCore {
 
   async status() {
     return {
-      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.remove'],
+      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.remove', 'apps.network.connect'],
       service: 'mos-v2-app-agent',
     };
   }
@@ -247,6 +272,15 @@ class AppAgentCore {
       status: 'removed',
     };
   }
+
+  async connectNetwork(input) {
+    const request = assertNetworkConnectRequest(input);
+    const result = await this.adapter.connectPackageNetwork(request);
+    return {
+      ...result,
+      status: 'connected',
+    };
+  }
 }
 
-module.exports = { AppAgentCore, AppRuntimeError, assertHealthCheckRequest, assertRuntimeRemoveRequest, assertRuntimeRequest, exactKeys, renderAppRoutes, resolveEnvironment };
+module.exports = { AppAgentCore, AppRuntimeError, assertHealthCheckRequest, assertNetworkConnectRequest, assertRuntimeRemoveRequest, assertRuntimeRequest, exactKeys, renderAppRoutes, resolveEnvironment };

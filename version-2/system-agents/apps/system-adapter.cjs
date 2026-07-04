@@ -17,6 +17,7 @@ const FAILURE_MESSAGES = {
   'caddy-reload': ['APP_CADDY_RELOAD_FAILED', 'Caddy could not reload the app route.'],
   'caddy-validation': ['APP_CADDY_VALIDATION_FAILED', 'The generated app route did not pass Caddy validation.'],
   health: ['APP_HEALTH_FAILED', 'The app container started but did not become healthy in time.'],
+  network: ['APP_NETWORK_CONNECT_FAILED', 'The app integration network could not be connected.'],
   remove: ['APP_RUNTIME_REMOVE_FAILED', 'The app runtime could not be removed.'],
   run: ['APP_RUN_FAILED', 'The app container could not be started.'],
   writing: ['APP_ROUTE_WRITE_FAILED', 'The app route could not be installed.'],
@@ -259,6 +260,28 @@ class SystemAppAdapter {
       return { status: 'healthy' };
     } catch {
       throw new AppApplyError('health');
+    }
+  }
+
+  async connectPackageNetwork({ consumerPackageId, providerPackageId, providerServiceCount, providerServices }) {
+    try {
+      const networkName = this.networkName(consumerPackageId);
+      await this.execute(this.dockerBinary, ['network', 'inspect', networkName], { timeoutMs: 30000 });
+      for (const serviceId of providerServices) {
+        const containerName = this.containerName(providerPackageId, serviceId, providerServiceCount);
+        const aliases = [...new Set([providerPackageId, serviceId])].flatMap((alias) => ['--alias', alias]);
+        await this.execute(this.dockerBinary, ['network', 'disconnect', networkName, containerName], { timeoutMs: 30000 }).catch(() => {});
+        await this.execute(this.dockerBinary, [
+          'network',
+          'connect',
+          ...aliases,
+          networkName,
+          containerName,
+        ], { timeoutMs: 30000 });
+      }
+      return { steps: ['network-connected'] };
+    } catch {
+      throw new AppApplyError('network');
     }
   }
 

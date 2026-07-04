@@ -27,7 +27,7 @@ const request = {
 test('app agent exposes only narrow app runtime capabilities', async () => {
   const core = new AppAgentCore({ applyAppServices: async () => ({ steps: [] }), checkAppHealth: async () => ({}) });
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.remove']);
+  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.remove', 'apps.network.connect']);
 });
 
 test('app route rendering uses structured host and loopback upstream only', () => {
@@ -208,4 +208,41 @@ test('app remove accepts only a package id and delegates without volume deletion
   await assert.rejects(() => core.remove({ packageId: 'example-tool', volumes: true }), AppRuntimeError);
   await assert.rejects(() => core.remove({ packageId: '../example-tool' }), AppRuntimeError);
   await assert.rejects(() => core.remove({ packageId: 'example-tool', services: ['../bad'] }), AppRuntimeError);
+});
+
+test('app network connect accepts only package and service ids', async () => {
+  const calls = [];
+  const core = new AppAgentCore({
+    async connectPackageNetwork(input) {
+      calls.push(input);
+      return { steps: ['network-connected'] };
+    },
+  });
+
+  const result = await core.connectNetwork({
+    consumerPackageId: 'seafile',
+    providerPackageId: 'onlyoffice',
+    providerServiceCount: 1,
+    providerServices: ['onlyoffice'],
+  });
+
+  assert.equal(result.status, 'connected');
+  assert.deepEqual(calls, [{
+    consumerPackageId: 'seafile',
+    providerPackageId: 'onlyoffice',
+    providerServiceCount: 1,
+    providerServices: ['onlyoffice'],
+  }]);
+  await assert.rejects(() => core.connectNetwork({
+    consumerPackageId: '../seafile',
+    providerPackageId: 'onlyoffice',
+    providerServiceCount: 1,
+    providerServices: ['onlyoffice'],
+  }), AppRuntimeError);
+  await assert.rejects(() => core.connectNetwork({
+    consumerPackageId: 'seafile',
+    providerPackageId: 'onlyoffice',
+    providerServiceCount: 1,
+    providerServices: ['bad/service'],
+  }), AppRuntimeError);
 });

@@ -1,11 +1,12 @@
 {
   "id": "onlyoffice",
-  "name": "ONLYOFFICE Docs",
+  "name": "ONLYOFFICE",
   "version": "0.1.0",
-  "summary": "Document editor service for compatible file and content apps.",
+  "summary": "Office editor suite for compatible file and content apps.",
   "category": "office",
+  "icon": "icon.png",
   "catalog": {
-    "description": "ONLYOFFICE Docs runs the document editor service that compatible MOS file apps can connect to for browser-based editing.",
+    "description": "ONLYOFFICE provides document, spreadsheet, and presentation editing that compatible MOS file apps can connect to for browser-based office workflows.",
     "tags": [
       "documents",
       "office",
@@ -14,12 +15,12 @@
     ],
     "features": [
       {
-        "title": "Browser document editing",
-        "body": "Connect a compatible file app so documents open in the browser editor."
+        "title": "Browser office editing",
+        "body": "Connect a compatible file app so documents, spreadsheets, and presentations open in the browser editor."
       },
       {
         "title": "Independent service",
-        "body": "Install and run the editor separately from the file app that stores documents."
+        "body": "Install and run the office editor separately from the file app that stores documents."
       }
     ],
     "complexity": {
@@ -106,8 +107,8 @@
   ],
   "homepage": {
     "group": "Office",
-    "name": "ONLYOFFICE Docs",
-    "description": "Document editor service for connected file apps.",
+    "name": "ONLYOFFICE",
+    "description": "Office editor suite for connected file apps.",
     "icon": "onlyoffice"
   },
   "health": {
@@ -120,7 +121,7 @@
       "implementation": "onlyoffice-docs",
       "interfaceVersion": 1,
       "protocol": "onlyoffice-docs-api",
-      "title": "ONLYOFFICE document editing",
+      "title": "ONLYOFFICE office editing",
       "features": {
         "browserEditing": true,
         "jwt": true
@@ -140,6 +141,6 @@
     "requiresOneOf": [
       "document-platform"
     ],
-    "emptyState": "Install a compatible file app such as Seafile, then connect it to ONLYOFFICE Docs."
+    "emptyState": "Install a compatible file app such as Seafile, then connect it to ONLYOFFICE."
   }
 }

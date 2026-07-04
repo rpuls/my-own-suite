@@ -47,4 +47,4 @@ Suite Manager persists guide state per app instance in SQLite. The first guide s
 
 Packages may declare capability exports, integration slots, usefulness hints, and package-owned config targets in `manifest.json`.
 
-The first real relationship is Seafile consuming ONLYOFFICE Docs as a document editor. Suite Manager resolves the compatible manifests, grants Seafile the provider-instance ONLYOFFICE JWT secret only for the apply operation, patches Seafile's allowlisted service environment projection, reapplies Seafile through the app agent, and records relationship state in SQLite.
+The first real relationship is Seafile consuming ONLYOFFICE as an office editor. Suite Manager resolves the compatible manifests, grants Seafile the provider-instance ONLYOFFICE JWT secret only for the apply operation, patches Seafile's allowlisted service environment projection, attaches ONLYOFFICE to Seafile's package network for server-to-server document traffic, reapplies Seafile through the app agent, and records relationship state in SQLite.

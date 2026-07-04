@@ -463,8 +463,12 @@ test('Vaultwarden runtime apply returns a controlled redacted error when its sec
   const calls = [];
   const appAgent = {
     async apply(input) {
-      calls.push(input);
+      calls.push(['apply', input]);
       return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+    async connectNetwork(input) {
+      calls.push(['connectNetwork', input]);
+      return { status: 'connected', steps: ['network-connected'] };
     },
   };
 
@@ -497,8 +501,12 @@ test('app integration connect materializes provider exports into consumer runtim
   const calls = [];
   const appAgent = {
     async apply(input) {
-      calls.push(input);
+      calls.push(['apply', input]);
       return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+    async connectNetwork(input) {
+      calls.push(['connectNetwork', input]);
+      return { status: 'connected', steps: ['network-connected'] };
     },
   };
 
@@ -540,13 +548,19 @@ test('app integration connect materializes provider exports into consumer runtim
       method: 'POST',
     });
     const connectedBody = connected.json();
-    const seafileApply = calls.at(-1);
+    const seafileApply = calls.at(-2)[1];
     const seafileService = seafileApply.compose.services.find((service) => service.id === 'seafile');
     const jwtSecret = seafileService.environment.ONLYOFFICE_JWT_SECRET;
 
     assert.equal(connected.status, 200);
     assert.equal(connectedBody.integration.status, 'active');
     assert.equal(seafileApply.packageId, 'seafile');
+    assert.deepEqual(calls.at(-1), ['connectNetwork', {
+      consumerPackageId: 'seafile',
+      providerPackageId: 'onlyoffice',
+      providerServiceCount: 1,
+      providerServices: ['onlyoffice'],
+    }]);
     assert.equal(seafileService.environment.ONLYOFFICE_APIJS_URL, 'https://onlyoffice.test/web-apps/apps/api/documents/api.js');
     assert.equal(seafileService.environment.ONLYOFFICE_INTERNAL_SEAFILE_URL, 'http://seafile');
     assert.equal(seafileService.environment.VERIFY_ONLYOFFICE_CERTIFICATE, 'false');

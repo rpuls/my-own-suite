@@ -595,6 +595,13 @@ class AppPackageService {
 
     try {
       const applied = await this.applyPackageRuntime(consumerPackageId, publicUrlFor(consumerPackageId));
+      const providerServices = Object.keys(providerPackage.manifest.resources?.services || {});
+      const network = await this.agent.connectNetwork({
+        consumerPackageId,
+        providerPackageId,
+        providerServiceCount: providerServices.length,
+        providerServices,
+      });
       this.store.completeAppIntegration({
         at: this.now().toISOString(),
         consumerInstanceId: consumer.id,
@@ -611,6 +618,7 @@ class AppPackageService {
           && item.consumerIntegrationSlot === slotId
         )),
         instance: applied.instance,
+        network,
       };
     } catch (error) {
       this.store.failAppIntegration({

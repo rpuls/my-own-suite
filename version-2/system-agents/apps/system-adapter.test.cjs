@@ -210,3 +210,30 @@ test('system adapter checks app health with a short refresh budget', async () =>
     url: 'http://127.0.0.1:18123/health',
   }]);
 });
+
+test('system adapter connects a provider container to a consumer package network', async () => {
+  const commands = [];
+  const adapter = new SystemAppAdapter({
+    dockerBinary: 'docker',
+    async execute(file, args) {
+      commands.push({ args, file });
+      if (args[0] === 'network' && args[1] === 'disconnect') {
+        throw new Error('not connected yet');
+      }
+    },
+  });
+
+  const result = await adapter.connectPackageNetwork({
+    consumerPackageId: 'seafile',
+    providerPackageId: 'onlyoffice',
+    providerServiceCount: 1,
+    providerServices: ['onlyoffice'],
+  });
+
+  assert.deepEqual(result.steps, ['network-connected']);
+  assert.deepEqual(commands.map((command) => command.args), [
+    ['network', 'inspect', 'mos-v2-app-seafile'],
+    ['network', 'disconnect', 'mos-v2-app-seafile', 'mos-v2-app-onlyoffice'],
+    ['network', 'connect', '--alias', 'onlyoffice', 'mos-v2-app-seafile', 'mos-v2-app-onlyoffice'],
+  ]);
+});
