@@ -90,6 +90,21 @@ function jobMessage(job: BackupJob | null) {
   return job.stage || (job.kind === 'restore' ? 'Restore in progress' : 'Backup in progress');
 }
 
+function operationTitle(job: BackupJob | null, restoreStarted: boolean) {
+  if (restoreStarted || job?.kind === 'restore') return 'Restoring your backup';
+  return 'Backing up your suite';
+}
+
+function operationMessage(job: BackupJob | null, restoreStarted: boolean) {
+  if (restoreStarted || job?.kind === 'restore') return 'MOS is replacing the current install with the selected backup. Suite Manager may briefly reconnect while services restart.';
+  return 'MOS is pausing apps, saving their data, and then starting them again. Please wait until the backup finishes.';
+}
+
+function operationStage(job: BackupJob | null, restoreStarted: boolean) {
+  if (job?.stage) return job.stage;
+  return restoreStarted ? 'Starting restore' : 'Starting backup';
+}
+
 function backupDescription(backup: BackupBundle) {
   if (backup.appCount > 0) return `${backup.appCount} app${backup.appCount === 1 ? '' : 's'} and ${backup.volumeCount} data store${backup.volumeCount === 1 ? '' : 's'}`;
   return 'No apps in this backup';
@@ -103,7 +118,8 @@ export function BackupsScreen() {
   const [restoreStarted, setRestoreStarted] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
-  const running = restoreStarted || isRunning(status?.currentJob || null);
+  const activeJob = status?.currentJob || null;
+  const running = restoreStarted || isRunning(activeJob);
   const selectedDestination = status?.destinations.find((destination) => destination.id === selectedDestinationId);
 
   async function load() {
@@ -191,7 +207,16 @@ export function BackupsScreen() {
     {restoreStarted ? <Notice title="Restore started" variant="info"><p>MOS is restoring the selected backup and may be unavailable for a short moment. This page will reconnect when Suite Manager starts again.</p></Notice> : null}
     {status && !status.serviceAvailable ? <Notice title="Backup is not available yet" variant="warning"><p>The host backup service is not running on this install. Update or restart the MOS V2 host services, then come back here.</p></Notice> : null}
 
-    {status?.serviceAvailable ? <div className="suite-backup-layout">
+    {status?.serviceAvailable ? <div className="suite-backup-layout" aria-busy={running}>
+      {running ? <div className="suite-backup-busy" aria-live="polite" role="status">
+        <div className="suite-backup-spinner" aria-hidden="true" />
+        <div>
+          <strong>{operationTitle(activeJob, restoreStarted)}</strong>
+          <p>{operationMessage(activeJob, restoreStarted)}</p>
+          <small>{operationStage(activeJob, restoreStarted)}</small>
+        </div>
+      </div> : null}
+
       <section className="mos-panel suite-card suite-backup-panel">
         <div className="suite-backup-header-row">
           <div>
@@ -231,7 +256,7 @@ export function BackupsScreen() {
           {status.backups.map((backup) => <article key={backup.path}>
             <div><strong>{backup.createdAt ? formatDate(backup.createdAt) : 'MOS backup'}</strong><span>{backupDescription(backup)} · {backup.destinationLabel || 'Backup drive'}</span></div>
             <div className="suite-backup-action-row">
-              <a className="mos-btn mos-btn-secondary" href={`/suite-manager/api/backups/download?path=${encodeURIComponent(backup.path)}`}>Download</a>
+              {running ? <button className="mos-btn mos-btn-secondary" disabled type="button">Download</button> : <a className="mos-btn mos-btn-secondary" href={`/suite-manager/api/backups/download?path=${encodeURIComponent(backup.path)}`}>Download</a>}
               <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => { setSelectedRestore(backup); setRestoreConfirmation(''); }} type="button">Restore</button>
             </div>
           </article>)}
@@ -254,7 +279,7 @@ export function BackupsScreen() {
         <button className="mos-btn mos-btn-primary" disabled={restoreConfirmation !== 'RESTORE' || Boolean(busy)} onClick={() => void startRestore()} type="button">{busy === 'restore' ? 'Starting restore...' : 'Restore backup'}</button>
         <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => setSelectedRestore(null)} type="button">Cancel</button>
       </>}
-      onClose={() => setSelectedRestore(null)}
+      onClose={() => { if (!busy) setSelectedRestore(null); }}
       title="Restore this backup?"
     >
       <Notice title="This will replace the current install" variant="warning"><p>MOS will stop, restore the selected backup, and start again. Current app data will be replaced. A small rescue copy is saved first.</p></Notice>
