@@ -5,12 +5,16 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { execFile, execFileSync, spawn } = require('node:child_process');
+const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-agent-client.cjs');
+const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
+const { SuiteManagerStore } = require('../../suite-manager/backend/src/state/suite-manager-store.cjs');
 
 const socketPath = process.env.MOS_V2_BACKUP_AGENT_SOCKET || '/run/mos-v2-backup-agent/agent.sock';
 const stateRoot = process.env.MOS_V2_STATE_ROOT || '/var/lib/mos-v2';
 const stateDir = process.env.MOS_V2_STATE_DIR || path.join(stateRoot, 'suite-manager');
 const repoDir = process.env.MOS_V2_REPO_DIR || path.resolve(__dirname, '..', '..');
 const agentStateDir = process.env.MOS_V2_BACKUP_AGENT_STATE_DIR || path.join(stateRoot, 'backup-agent');
+const bootstrapContractPath = path.join(stateRoot, 'bootstrap-contract.env');
 const jobsDir = path.join(agentStateDir, 'jobs');
 const currentJobPath = path.join(agentStateDir, 'current-job.json');
 const managedMountRoot = '/media/mos-v2-backup';
@@ -18,6 +22,7 @@ const destinationRoots = ['/media', '/mnt', '/run/media'];
 const mountableFileSystems = new Set(['exfat', 'ext2', 'ext3', 'ext4', 'ntfs', 'ntfs3', 'vfat', 'xfs', 'btrfs']);
 const caddyFiles = ['/etc/caddy/Caddyfile', '/etc/caddy/mos-v2-homepage-routes.caddy', '/etc/caddy/mos-v2-app-routes.caddy'];
 const httpsSecret = '/etc/mos-v2/secrets/caddy-cloudflare.env';
+const completeMarker = 'COMPLETE';
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 function readJson(file) { return JSON.parse(fs.readFileSync(file, 'utf8')); }
@@ -152,6 +157,7 @@ function normalizeBundlePath(candidate) {
   const resolved = path.resolve(String(candidate || ''));
   if (!destinationRoots.some((root) => resolved.startsWith(`${root}${path.sep}`))) return null;
   if (!fs.existsSync(path.join(resolved, 'manifest.json'))) return null;
+  if (!fs.existsSync(path.join(resolved, completeMarker))) return null;
   return resolved;
 }
 function listBundles(destinations) {
@@ -164,6 +170,8 @@ function listBundles(destinations) {
       if (!entry.isDirectory()) continue;
       const bundlePath = path.join(root, entry.name);
       try {
+        if (!fs.existsSync(path.join(bundlePath, completeMarker))) continue;
+        if (!fs.existsSync(path.join(bundlePath, 'bundle.tar.gz'))) continue;
         const manifest = readJson(path.join(bundlePath, 'manifest.json'));
         bundles.push({ appCount: manifest.contents?.apps?.length || 0, archivePath: path.join(bundlePath, 'bundle.tar.gz'), createdAt: manifest.backup?.createdAt || null, destinationId: destination.id, destinationLabel: destination.label, id: manifest.backup?.id || entry.name, path: bundlePath, schemaVersion: manifest.backup?.schemaVersion || null, sourceCommit: manifest.source?.commit || null, sourceVersion: manifest.source?.version || null, volumeCount: manifest.contents?.volumes?.length || 0 });
       } catch {}
@@ -183,6 +191,71 @@ function log(file, message) { updateJob(file, (job) => { job.logs.push({ at: new
 function stage(file, name) { updateJob(file, (job) => { job.stage = name; job.status = 'running'; }); log(file, name); }
 function sha256(file) { return command('sha256sum', [file], { timeout: 300_000 }).split(/\s+/)[0]; }
 function copyIfExists(source, target) { if (fs.existsSync(source)) fs.cpSync(source, target, { dereference: false, force: true, preserveTimestamps: true, recursive: true }); }
+function version2Root() {
+  return fs.existsSync(path.join(repoDir, 'suite-manager')) ? repoDir : path.join(repoDir, 'version-2');
+}
+function readBootstrapContract() {
+  if (!fs.existsSync(bootstrapContractPath)) return {};
+  return Object.fromEntries(fs.readFileSync(bootstrapContractPath, 'utf8').split(/\r?\n/u).map((line) => {
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/u);
+    if (!match) return null;
+    return [match[1], match[2].trim().replace(/^['"]|['"]$/gu, '')];
+  }).filter(Boolean));
+}
+function runtimeUser() {
+  return process.env.MOS_V2_RUNTIME_USER || readBootstrapContract().MOS_V2_RUNTIME_USER || 'mos';
+}
+function restoreBaseUrl() {
+  const contract = readBootstrapContract();
+  if (process.env.MOS_V2_HOME_HOST) return { homeHost: process.env.MOS_V2_HOME_HOST, scheme: 'http' };
+  if (contract.MOS_V2_HOME_URL) {
+    try {
+      const parsed = new URL(contract.MOS_V2_HOME_URL);
+      return { homeHost: parsed.hostname, scheme: parsed.protocol === 'https:' ? 'https' : 'http' };
+    } catch {}
+  }
+  if (contract.MOS_V2_DOMAIN) return { homeHost: `home.${contract.MOS_V2_DOMAIN}`, scheme: 'http' };
+  return { homeHost: 'home.mos.home', scheme: 'http' };
+}
+function restoreRequestContext(packageId) {
+  const { homeHost, scheme } = restoreBaseUrl();
+  const baseHost = homeHost.startsWith('home.') ? homeHost.slice(5) : homeHost;
+  const appHost = `${packageId}.${baseHost}`;
+  return {
+    appHost,
+    baseHost,
+    publicUrl: `${scheme}://${appHost}/`,
+    publicUrlFor: (nextPackageId) => restoreRequestContext(nextPackageId),
+    scheme,
+  };
+}
+function restoreStateOwnership() {
+  const user = runtimeUser();
+  for (const target of [stateDir, path.join(stateRoot, 'homepage', 'config')]) {
+    if (fs.existsSync(target)) optionalCommand('chown', ['-R', `${user}:${user}`, target], { timeout: 300_000 });
+  }
+}
+async function reconcileRestoredApps(jobFile) {
+  const store = new SuiteManagerStore({ stateDir });
+  try {
+    const appPackages = new AppPackageService({
+      agent: new AppAgentClient(),
+      appsDir: path.join(version2Root(), 'apps'),
+      store,
+    });
+    const instances = store.getAppInstances().filter((instance) => instance.status === 'installed' && instance.enabled);
+    if (!instances.length) {
+      log(jobFile, 'No installed app runtimes to restore');
+      return;
+    }
+    for (const instance of instances) {
+      log(jobFile, `Restoring ${instance.displayNameSnapshot || instance.packageId}`);
+      await appPackages.enablePackage(instance.packageId, restoreRequestContext(instance.packageId));
+    }
+  } finally {
+    store.close();
+  }
+}
 function dockerVolumes() {
   const output = optionalCommand('docker', ['volume', 'ls', '--format', '{{.Name}}']) || '';
   return output.split(/\r?\n/u).map((line) => line.trim()).filter((name) => name.startsWith('mos-v2-app-')).sort();
@@ -210,6 +283,7 @@ function backup(jobFile) {
   const stateStage = path.join(bundleDir, 'state');
   const volumesDir = path.join(bundleDir, 'volumes');
   ensureDir(bundleDir);
+  ensureDir(volumesDir);
   updateJob(jobFile, (job) => { job.outputPath = bundleDir; });
   const stoppedContainers = runningAppContainers();
   try {
@@ -240,6 +314,7 @@ function backup(jobFile) {
     writeJson(path.join(bundleDir, 'manifest.json'), manifest);
     fs.writeFileSync(path.join(bundleDir, 'MANIFEST.sha256'), `${sha256(path.join(bundleDir, 'manifest.json'))}  manifest.json\n`);
     command('tar', ['-czf', path.join(bundleDir, 'bundle.tar.gz'), '-C', bundleDir, 'manifest.json', 'MANIFEST.sha256', 'state.tar.gz', 'volumes'], { timeout: 1_800_000 });
+    fs.writeFileSync(path.join(bundleDir, completeMarker), `${new Date().toISOString()}\n`, 'utf8');
   } finally {
     stage(jobFile, 'Restarting runtime');
     systemctl('start', 'mos-v2-homepage.service');
@@ -247,7 +322,7 @@ function backup(jobFile) {
   }
   updateJob(jobFile, (job) => { job.stage = 'completed'; job.status = 'succeeded'; });
 }
-function restore(jobFile) {
+async function restore(jobFile) {
   const started = updateJob(jobFile, (job) => { job.status = 'running'; job.stage = 'starting'; });
   const bundleDir = started.backupPath;
   stage(jobFile, 'Validating backup bundle');
@@ -290,6 +365,10 @@ function restore(jobFile) {
     command('tar', ['-xzf', path.join(bundleDir, volume.archive), '-C', inspected.mountpoint], { timeout: 1_800_000 });
   }
 
+  stage(jobFile, 'Restoring app runtime');
+  await reconcileRestoredApps(jobFile);
+  restoreStateOwnership();
+
   stage(jobFile, 'Starting restored control plane');
   systemctl('start', 'mos-v2-homepage.service');
   systemctl('start', 'mos-v2-suite-manager.service');
@@ -298,40 +377,42 @@ function restore(jobFile) {
 }
 
 if (process.argv[2] === '--worker') {
-  try {
-    const file = process.argv[3];
-    const job = readJson(file);
-    if (job.kind === 'restore') restore(file);
-    else backup(file);
-  } catch (error) {
-    const file = process.argv[3];
-    updateJob(file, (job) => { job.error = error instanceof Error ? error.message : String(error); job.stage = 'failed'; job.status = 'failed'; });
-  }
-  process.exit(0);
-}
-
-ensureDir(path.dirname(socketPath));
-ensureDir(agentStateDir);
-ensureDir(jobsDir);
-fs.rmSync(socketPath, { force: true });
-
-const server = http.createServer(async (request, response) => {
-  try {
-    const url = new URL(request.url || '/', 'http://localhost');
-    if (request.method === 'GET' && url.pathname === '/v1/status') {
-      const destinations = await listDestinations();
-      respond(response, 200, { backups: listBundles(destinations), capabilities: { backups: ['create', 'download', 'list'], destinations: ['list', 'mount'], restores: ['apply', 'list'] }, currentJob: summarizeJob(readCurrentJob()), destinations, lastJob: summarizeJob(latestJob()), service: 'mos-v2-backup-agent' });
-      return;
+  (async () => {
+    try {
+      const file = process.argv[3];
+      const job = readJson(file);
+      if (job.kind === 'restore') await restore(file);
+      else backup(file);
+    } catch (error) {
+      const file = process.argv[3];
+      updateJob(file, (job) => { job.error = error instanceof Error ? error.message : String(error); job.stage = 'failed'; job.status = 'failed'; });
     }
-    if (request.method === 'POST' && url.pathname === '/v1/destinations/mount') { respond(response, 200, { destination: await mountDestination((await readBody(request)).destinationId) }); return; }
-    if (request.method === 'POST' && url.pathname === '/v1/backups') { respond(response, 202, { job: createJob('backup', await readBody(request)) }); return; }
-    if (request.method === 'POST' && url.pathname === '/v1/restores') { respond(response, 202, { job: createJob('restore', await readBody(request)) }); return; }
-    respond(response, 404, { code: 'NOT_FOUND', error: 'Not found.' });
-  } catch (error) {
-    respond(response, 409, { code: 'BACKUP_AGENT_ERROR', error: error instanceof Error ? error.message : 'Backup agent operation failed.' });
-  }
-});
-server.listen(socketPath, () => { fs.chmodSync(socketPath, 0o660); process.stdout.write('[mos-v2-backup-agent] ready\n'); });
-function shutdown() { server.close(() => { fs.rmSync(socketPath, { force: true }); process.exit(0); }); }
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+    process.exit(0);
+  })();
+} else {
+  ensureDir(path.dirname(socketPath));
+  ensureDir(agentStateDir);
+  ensureDir(jobsDir);
+  fs.rmSync(socketPath, { force: true });
+
+  const server = http.createServer(async (request, response) => {
+    try {
+      const url = new URL(request.url || '/', 'http://localhost');
+      if (request.method === 'GET' && url.pathname === '/v1/status') {
+        const destinations = await listDestinations();
+        respond(response, 200, { backups: listBundles(destinations), capabilities: { backups: ['create', 'download', 'list'], destinations: ['list', 'mount'], restores: ['apply', 'list'] }, currentJob: summarizeJob(readCurrentJob()), destinations, lastJob: summarizeJob(latestJob()), service: 'mos-v2-backup-agent' });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/destinations/mount') { respond(response, 200, { destination: await mountDestination((await readBody(request)).destinationId) }); return; }
+      if (request.method === 'POST' && url.pathname === '/v1/backups') { respond(response, 202, { job: createJob('backup', await readBody(request)) }); return; }
+      if (request.method === 'POST' && url.pathname === '/v1/restores') { respond(response, 202, { job: createJob('restore', await readBody(request)) }); return; }
+      respond(response, 404, { code: 'NOT_FOUND', error: 'Not found.' });
+    } catch (error) {
+      respond(response, 409, { code: 'BACKUP_AGENT_ERROR', error: error instanceof Error ? error.message : 'Backup agent operation failed.' });
+    }
+  });
+  server.listen(socketPath, () => { fs.chmodSync(socketPath, 0o660); process.stdout.write('[mos-v2-backup-agent] ready\n'); });
+  function shutdown() { server.close(() => { fs.rmSync(socketPath, { force: true }); process.exit(0); }); }
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}

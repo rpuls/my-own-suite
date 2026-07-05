@@ -90,6 +90,11 @@ function jobMessage(job: BackupJob | null) {
   return job.stage || (job.kind === 'restore' ? 'Restore in progress' : 'Backup in progress');
 }
 
+function backupDescription(backup: BackupBundle) {
+  if (backup.appCount > 0) return `${backup.appCount} app${backup.appCount === 1 ? '' : 's'} and ${backup.volumeCount} data store${backup.volumeCount === 1 ? '' : 's'}`;
+  return 'No apps in this backup';
+}
+
 export function BackupsScreen() {
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [selectedDestinationId, setSelectedDestinationId] = useState('');
@@ -213,7 +218,7 @@ export function BackupsScreen() {
         <h2 className="mos-card-title">Restore from a backup</h2>
         {status.backups.length ? <div className="suite-backup-bundle-list">
           {status.backups.map((backup) => <article key={backup.path}>
-            <div><strong>{backup.createdAt ? formatDate(backup.createdAt) : 'MOS backup'}</strong><span>{backup.destinationLabel || 'Backup drive'}</span></div>
+            <div><strong>{backup.createdAt ? formatDate(backup.createdAt) : 'MOS backup'}</strong><span>{backupDescription(backup)} · {backup.destinationLabel || 'Backup drive'}</span></div>
             <div className="suite-backup-action-row">
               <a className="mos-btn mos-btn-secondary" href={`/suite-manager/api/backups/download?path=${encodeURIComponent(backup.path)}`}>Download</a>
               <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => { setSelectedRestore(backup); setRestoreConfirmation(''); }} type="button">Restore</button>
@@ -242,7 +247,7 @@ export function BackupsScreen() {
       title="Restore this backup?"
     >
       <Notice title="This will replace the current install" variant="warning"><p>MOS will stop, restore the selected backup, and start again. Current app data will be replaced. A small rescue copy is saved first.</p></Notice>
-      <p className="suite-meta">{formatDate(selectedRestore.createdAt)} from {selectedRestore.destinationLabel || 'backup storage'}</p>
+      <p className="suite-meta">{formatDate(selectedRestore.createdAt)} · {backupDescription(selectedRestore)} · {selectedRestore.destinationLabel || 'backup storage'}</p>
       <label className="suite-auth-field">
         <span>Type RESTORE to continue</span>
         <input autoFocus onChange={(event) => setRestoreConfirmation(event.currentTarget.value)} value={restoreConfirmation} />
