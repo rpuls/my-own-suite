@@ -11,6 +11,7 @@ const { HttpsSettingsService } = require('../settings/https-settings-service.cjs
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
 const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
+const { BackupAgentClient } = require('../backups/backup-agent-client.cjs');
 const { BackupInventoryService } = require('../backups/backup-inventory-service.cjs');
 
 const SESSION_COOKIE = 'mos_v2_session';
@@ -58,6 +59,14 @@ function fileResponse(response, filePath) {
   const extension = path.extname(filePath).toLowerCase();
   response.writeHead(200, {
     'Content-Type': MIME_TYPES.get(extension) || 'application/octet-stream',
+  });
+  fs.createReadStream(filePath).pipe(response);
+}
+
+function downloadResponse(response, filePath, filename) {
+  response.writeHead(200, {
+    'Content-Disposition': `attachment; filename="${filename.replace(/[^A-Za-z0-9_.-]/g, '_')}"`,
+    'Content-Type': 'application/gzip',
   });
   fs.createReadStream(filePath).pipe(response);
 }
@@ -212,6 +221,7 @@ function serveFrontend(response, frontendDistDir) {
 
 function createV2Server({
   appAgent = new AppAgentClient(),
+  backupAgent = new BackupAgentClient(),
   appsDir = DEFAULT_APPS_DIR,
   homepageAgent = new HomepageAgentClient(),
   httpsAgent = new HttpsAgentClient(),
@@ -313,6 +323,80 @@ function createV2Server({
           return;
         }
         jsonResponse(response, 200, backupInventory.inventory());
+        return;
+      }
+
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/status`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        try {
+          jsonResponse(response, 200, {
+            ...(await backupAgent.status()),
+            inventory: backupInventory.inventory(),
+            serviceAvailable: true,
+          });
+        } catch (error) {
+          jsonResponse(response, 200, {
+            backups: [],
+            currentJob: null,
+            destinations: [],
+            error: error.message || 'Backup agent is unavailable.',
+            inventory: backupInventory.inventory(),
+            lastJob: null,
+            serviceAvailable: false,
+          });
+        }
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/mount`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.mount(String(body.destinationId || '')));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/start`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 202, await backupAgent.startBackup({ destinationId: String(body.destinationId || '') }));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/restore`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to restore backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 202, await backupAgent.startRestore({
+          backupPath: String(body.backupPath || ''),
+          confirmation: String(body.confirmation || ''),
+        }));
+        return;
+      }
+
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/download`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to download backups.' });
+          return;
+        }
+        const backupPath = url.searchParams.get('path') || '';
+        const status = await backupAgent.status();
+        const backup = (status.backups || []).find((item) => item.path === backupPath);
+        if (!backup || !backup.archivePath || !fs.existsSync(backup.archivePath)) {
+          jsonResponse(response, 404, { error: 'Backup bundle is no longer available.' });
+          return;
+        }
+        downloadResponse(response, backup.archivePath, `${backup.id || 'mos-v2-backup'}.tar.gz`);
         return;
       }
 

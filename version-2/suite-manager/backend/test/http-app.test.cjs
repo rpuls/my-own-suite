@@ -438,6 +438,91 @@ test('Backup inventory API requires auth and reports V2 protected state', async 
   }, { homeHost: 'home.test', stateDir });
 });
 
+test('Backup API proxies simple owner backup, restore, and download actions', async () => {
+  const backupDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-v2-backup-bundle-'));
+  const archivePath = path.join(backupDir, 'bundle.tar.gz');
+  await fs.writeFile(archivePath, 'fake backup archive');
+  const calls = [];
+  const backupAgent = {
+    async mount(destinationId) {
+      calls.push(['mount', destinationId]);
+      return { destination: { id: '/media/backup', label: 'Backup Drive', mountPath: '/media/backup', writable: true } };
+    },
+    async startBackup(input) {
+      calls.push(['backup', input]);
+      return { job: { id: 'job-backup', status: 'queued' } };
+    },
+    async startRestore(input) {
+      calls.push(['restore', input]);
+      return { job: { id: 'job-restore', status: 'queued' } };
+    },
+    async status() {
+      calls.push(['status']);
+      return {
+        backups: [{
+          archivePath,
+          appCount: 1,
+          createdAt: '2026-07-05T12:00:00.000Z',
+          destinationId: '/media/backup',
+          destinationLabel: 'Backup Drive',
+          id: 'backup-one',
+          path: backupDir,
+          sourceVersion: null,
+          volumeCount: 1,
+        }],
+        currentJob: null,
+        destinations: [{
+          availableBytes: 1024,
+          id: '/media/backup',
+          label: 'Backup Drive',
+          mountPath: '/media/backup',
+          mountState: 'mounted',
+          sizeBytes: 2048,
+          storageKind: 'external',
+          writable: true,
+        }],
+        lastJob: null,
+      };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/backups/status', { headers: { Host: 'home.test' } });
+    assert.equal(denied.status, 401);
+
+    const cookie = await createOwner(baseUrl);
+    const status = await hostRequest(baseUrl, '/suite-manager/api/backups/status', { headers: { Cookie: cookie, Host: 'home.test' } });
+    assert.equal(status.status, 200);
+    assert.equal(status.json().serviceAvailable, true);
+    assert.equal(status.json().destinations[0].label, 'Backup Drive');
+
+    const start = await hostRequest(baseUrl, '/suite-manager/api/backups/start', {
+      body: JSON.stringify({ destinationId: '/media/backup' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(start.status, 202);
+
+    const restore = await hostRequest(baseUrl, '/suite-manager/api/backups/restore', {
+      body: JSON.stringify({ backupPath: backupDir, confirmation: 'RESTORE' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(restore.status, 202);
+
+    const download = await hostRequest(baseUrl, `/suite-manager/api/backups/download?path=${encodeURIComponent(backupDir)}`, {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    assert.equal(download.status, 200);
+    assert.equal(download.body, 'fake backup archive');
+    assert.match(download.headers['content-disposition'], /backup-one\.tar\.gz/);
+    assert.deepEqual(calls.filter((call) => call[0] !== 'status'), [
+      ['backup', { destinationId: '/media/backup' }],
+      ['restore', { backupPath: backupDir, confirmation: 'RESTORE' }],
+    ]);
+  }, { backupAgent, homeHost: 'home.test' });
+});
+
 test('Vaultwarden install generates a redacted secret and materializes it only for runtime apply', async () => {
   const vaultwardenPort = loopbackPortFor('vaultwarden');
   const calls = [];

@@ -1,37 +1,55 @@
 import { useEffect, useState } from 'react';
 
-import { Notice } from '../../components/ui';
+import { Dialog, Notice } from '../../components/ui';
 
-type PathState = { exists: boolean; kind: string; path: string };
-type BackupInventory = {
-  actions: { backupEnabled: boolean; backupLabel: string; backupReason: string; restoreEnabled: boolean };
-  checkedAt: string;
-  contents: {
-    caddyFiles: PathState[];
-    homepageConfig: { files: PathState[]; path: string };
-    httpsSecret: PathState;
-    suiteManager: {
-      appSecrets: PathState;
-      database: PathState;
-      databaseShm: PathState;
-      databaseWal: PathState;
-      stateDir: string;
-    };
+type BackupDestination = {
+  availableBytes: number | null;
+  canMount?: boolean;
+  id: string;
+  label: string;
+  mountBlockedReason?: string | null;
+  mountPath: string | null;
+  mountState?: 'mounted' | 'unmounted' | 'unsupported-mount';
+  sizeBytes: number | null;
+  storageKind?: 'external' | 'local' | 'network' | null;
+  writable: boolean;
+};
+
+type BackupJob = {
+  error: string | null;
+  id: string;
+  kind: string | null;
+  logs?: Array<{ at?: string; message?: string }>;
+  outputPath: string | null;
+  rescuePath: string | null;
+  stage: string | null;
+  status: string | null;
+  updatedAt: string | null;
+};
+
+type BackupBundle = {
+  appCount: number;
+  archivePath?: string;
+  createdAt: string | null;
+  destinationId: string;
+  destinationLabel: string;
+  id: string;
+  path: string;
+  sourceVersion: string | null;
+  volumeCount: number;
+};
+
+type BackupStatus = {
+  backups: BackupBundle[];
+  currentJob: BackupJob | null;
+  destinations: BackupDestination[];
+  error?: string | null;
+  inventory?: {
+    summary: { appCount: number; declaredVolumeCount: number; relationshipCount: number; warningCount: number };
+    warnings: Array<{ message: string; packageId: string }>;
   };
-  destinationModel: { preferred: string[]; status: string; summary: string };
-  packages: Array<{
-    declaredVolumes: Array<{ backupClass: string; declaredName: string; dockerVolume: string; requiredOnRestore: boolean }>;
-    installedAt: string | null;
-    manifestDigest: string;
-    manifestPresent: boolean;
-    packageId: string;
-    packageVersion: string;
-    status: string;
-    warnings: string[];
-  }>;
-  relationships: { active: number; count: number; statuses: Array<{ count: number; status: string }> };
-  summary: { appCount: number; declaredVolumeCount: number; relationshipCount: number; warningCount: number };
-  warnings: Array<{ message: string; packageId: string }>;
+  lastJob: BackupJob | null;
+  serviceAvailable: boolean;
 };
 
 async function jsonResponse<T>(response: Response, fallback: string): Promise<T> {
@@ -40,164 +58,195 @@ async function jsonResponse<T>(response: Response, fallback: string): Promise<T>
   return body;
 }
 
-function formatDate(value: string) {
+function formatDate(value: string | null) {
+  if (!value) return 'Unknown date';
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
 }
 
-function statusLabel(value: string) {
-  return value.replace(/-/gu, ' ').replace(/\b\w/gu, (match) => match.toUpperCase());
+function formatBytes(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return 'Unknown space';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = value;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
+  return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
-function PathList({ items }: { items: PathState[] }) {
-  return <ul className="suite-backup-path-list">
-    {items.map((item) => <li key={item.path}>
-      <span aria-hidden="true" className={`suite-backup-dot ${item.exists ? 'is-ready' : 'is-missing'}`} />
-      <code>{item.path}</code>
-      <small>{item.exists ? item.kind : 'missing'}</small>
-    </li>)}
-  </ul>;
+function isRunning(job: BackupJob | null) {
+  return Boolean(job && (job.status === 'queued' || job.status === 'running'));
 }
 
-function downloadInventory(inventory: BackupInventory) {
-  const timestamp = inventory.checkedAt.replace(/[:.]/gu, '-');
-  const blob = new Blob([`${JSON.stringify(inventory, null, 2)}\n`], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `mos-v2-backup-inventory-${timestamp}.json`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+function destinationTitle(destination: BackupDestination) {
+  if (destination.storageKind === 'external') return `External drive: ${destination.label}`;
+  if (destination.storageKind === 'network') return `Network storage: ${destination.label}`;
+  return `This computer: ${destination.label}`;
+}
+
+function jobMessage(job: BackupJob | null) {
+  if (!job) return '';
+  if (job.status === 'succeeded') return job.kind === 'restore' ? 'Restore completed.' : 'Backup completed.';
+  if (job.status === 'failed') return job.kind === 'restore' ? 'Restore failed.' : 'Backup failed.';
+  return job.stage || (job.kind === 'restore' ? 'Restore in progress' : 'Backup in progress');
 }
 
 export function BackupsScreen() {
-  const [inventory, setInventory] = useState<BackupInventory | null>(null);
+  const [status, setStatus] = useState<BackupStatus | null>(null);
+  const [selectedDestinationId, setSelectedDestinationId] = useState('');
+  const [selectedRestore, setSelectedRestore] = useState<BackupBundle | null>(null);
+  const [restoreConfirmation, setRestoreConfirmation] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState('');
+  const running = isRunning(status?.currentJob || null);
+  const selectedDestination = status?.destinations.find((destination) => destination.id === selectedDestinationId);
 
   async function load() {
-    setLoading(true);
     setError('');
-    try {
-      setInventory(await jsonResponse<BackupInventory>(
-        await fetch('/suite-manager/api/backups/inventory'),
-        'Unable to load backup inventory.',
-      ));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load backup inventory.');
-    } finally {
-      setLoading(false);
+    const next = await jsonResponse<BackupStatus>(await fetch('/suite-manager/api/backups/status'), 'Unable to load backups.');
+    setStatus(next);
+    if (!selectedDestinationId) {
+      const firstWritable = next.destinations.find((destination) => destination.mountState === 'mounted' && destination.writable);
+      if (firstWritable) setSelectedDestinationId(firstWritable.id);
     }
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load().catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load backups.')); }, []);
+  useEffect(() => {
+    if (!running) return undefined;
+    const timer = window.setInterval(() => { void load().catch(() => undefined); }, 4000);
+    return () => window.clearInterval(timer);
+  }, [running]);
+
+  async function runAction(name: string, action: () => Promise<void>) {
+    setBusy(name);
+    setError('');
+    try {
+      await action();
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Something went wrong.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function mount(destination: BackupDestination) {
+    await runAction(`mount:${destination.id}`, async () => {
+      const result = await jsonResponse<{ destination: BackupDestination }>(await fetch('/suite-manager/api/backups/mount', {
+        body: JSON.stringify({ destinationId: destination.id }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Unable to mount this drive.');
+      setSelectedDestinationId(result.destination.id);
+    });
+  }
+
+  async function startBackup() {
+    if (!selectedDestination) return;
+    await runAction('backup', async () => {
+      await jsonResponse(await fetch('/suite-manager/api/backups/start', {
+        body: JSON.stringify({ destinationId: selectedDestination.id }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Unable to start backup.');
+    });
+  }
+
+  async function startRestore() {
+    if (!selectedRestore) return;
+    await runAction('restore', async () => {
+      await jsonResponse(await fetch('/suite-manager/api/backups/restore', {
+        body: JSON.stringify({ backupPath: selectedRestore.path, confirmation: restoreConfirmation }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Unable to start restore.');
+      setSelectedRestore(null);
+      setRestoreConfirmation('');
+    });
+  }
 
   return <section className="mos-shell suite-backups">
     <div className="suite-hero">
-      <span className="mos-pill mos-pill-accent">Whole-suite recovery</span>
+      <span className="mos-pill mos-pill-accent">Backup and restore</span>
       <h1>Backup</h1>
-      <p className="suite-lead mos-body-lg">
-        Back up everything needed to recover this MOS install, including Suite Manager, Homepage, HTTPS settings, apps, relationships, secrets, and app data.
-      </p>
+      <p className="suite-lead mos-body-lg">Save a copy of My Own Suite to another drive, then restore it if this install ever needs to recover.</p>
     </div>
 
-    {error ? <Notice title="Backup inventory unavailable" variant="error"><p>{error}</p></Notice> : null}
-    {loading ? <p className="suite-meta">Loading backup inventory...</p> : null}
+    {error ? <Notice title="Backup needs attention" variant="error"><p>{error}</p></Notice> : null}
+    {status && !status.serviceAvailable ? <Notice title="Backup is not available yet" variant="warning"><p>The host backup service is not running on this install. Update or restart the MOS V2 host services, then come back here.</p></Notice> : null}
 
-    {inventory ? <div className="suite-backup-layout">
+    {status?.serviceAvailable ? <div className="suite-backup-layout">
       <section className="mos-panel suite-card suite-backup-panel">
         <div className="suite-backup-header-row">
           <div>
-            <h2 className="mos-card-title">Back up everything</h2>
-            <p className="suite-meta">Checked {formatDate(inventory.checkedAt)}</p>
+            <h2 className="mos-card-title">Where should the backup go?</h2>
+            <p className="suite-meta">Use an external USB drive when you can. A local disk is useful, but it will not help if the machine itself is lost.</p>
           </div>
-          <span className={`mos-pill ${inventory.summary.warningCount === 0 ? 'is-active' : ''}`}>
-            {inventory.summary.warningCount === 0 ? 'Inventory ready' : `${inventory.summary.warningCount} warning(s)`}
-          </span>
+          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => void load()} type="button">Scan again</button>
         </div>
 
-        <div className="suite-backup-facts">
-          <div><span>Apps</span><strong>{inventory.summary.appCount}</strong></div>
-          <div><span>Volumes</span><strong>{inventory.summary.declaredVolumeCount}</strong></div>
-          <div><span>Relationships</span><strong>{inventory.summary.relationshipCount}</strong></div>
-        </div>
+        {status.destinations.length ? <div className="suite-backup-destination-list">
+          {status.destinations.map((destination) => {
+            const mounted = destination.mountState === 'mounted';
+            const selectable = mounted && destination.writable && !running && !busy;
+            return <article className={`suite-backup-destination-card${selectedDestinationId === destination.id ? ' is-selected' : ''}`} key={destination.id}>
+              <button disabled={!selectable} onClick={() => setSelectedDestinationId(destination.id)} type="button">
+                <span><strong>{destinationTitle(destination)}</strong><small>{mounted ? `${formatBytes(destination.availableBytes)} free` : destination.mountBlockedReason || 'Drive is connected but not mounted yet.'}</small></span>
+              </button>
+              {!mounted && destination.canMount ? <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => void mount(destination)} type="button">{busy === `mount:${destination.id}` ? 'Mounting...' : 'Mount drive'}</button> : null}
+            </article>;
+          })}
+        </div> : <p className="suite-meta">No backup drives were found. Plug in a USB drive or connect backup storage, then scan again.</p>}
 
-        <Notice title="Archive jobs are not enabled yet" variant="warning">
-          <p>{inventory.actions.backupReason}</p>
-        </Notice>
-
-        <div className="suite-backup-action-row">
-          <button className="mos-btn mos-btn-primary" disabled={!inventory.actions.backupEnabled} type="button">
-            {inventory.actions.backupLabel}
-          </button>
-          <button className="mos-btn mos-btn-secondary" disabled type="button">
-            Download backup
-          </button>
-          <button className="mos-btn mos-btn-secondary" onClick={() => downloadInventory(inventory)} type="button">
-            Download inventory
-          </button>
-        </div>
-        <p className="suite-meta">
-          Browser archive download will be enabled after the V2 backup agent can create encrypted backup bundles without depending on Suite Manager staying online during the cold snapshot.
-        </p>
+        <button className="mos-btn mos-btn-primary" disabled={!selectedDestination?.writable || Boolean(busy) || running} onClick={() => void startBackup()} type="button">
+          {busy === 'backup' ? 'Starting backup...' : 'Back up now'}
+        </button>
       </section>
 
-      <section className="mos-panel suite-card suite-backup-panel">
-        <h2 className="mos-card-title">Destination model</h2>
-        <p className="suite-meta">{inventory.destinationModel.summary}</p>
-        <div className="suite-backup-destination-preview">
-          {inventory.destinationModel.preferred.map((item) => <div key={item}>
-            <strong>{item}</strong>
-            <span>{item.includes('USB') ? 'Planned for removable storage detection and mount flow.' : 'Planned for same-machine recovery snapshots.'}</span>
-          </div>)}
-        </div>
-      </section>
-
-      {inventory.warnings.length ? <Notice title="Inventory warnings" variant="warning">
-        <ul>{inventory.warnings.map((warning) => <li key={`${warning.packageId}-${warning.message}`}>{warning.packageId}: {warning.message}</li>)}</ul>
-      </Notice> : null}
+      {(status.currentJob || status.lastJob) ? <section className="mos-panel suite-card suite-backup-panel">
+        <h2 className="mos-card-title">{running ? 'Working on it' : 'Latest activity'}</h2>
+        <p>{jobMessage(status.currentJob || status.lastJob)}</p>
+        {(status.currentJob || status.lastJob)?.error ? <p className="suite-error">{(status.currentJob || status.lastJob)?.error}</p> : null}
+      </section> : null}
 
       <section className="mos-panel suite-card suite-backup-panel">
-        <h2 className="mos-card-title">Protected areas</h2>
-        <div className="suite-backup-protected-grid">
-          <div><span>Suite Manager state</span><strong>{inventory.contents.suiteManager.database.exists ? 'Found' : 'Missing'}</strong></div>
-          <div><span>App secrets</span><strong>{inventory.contents.suiteManager.appSecrets.exists ? 'Found' : 'Pending'}</strong></div>
-          <div><span>Homepage config</span><strong>{inventory.contents.homepageConfig.files.filter((item) => item.exists).length}/{inventory.contents.homepageConfig.files.length}</strong></div>
-          <div><span>HTTPS token</span><strong>{inventory.contents.httpsSecret.exists ? 'Found' : 'Not configured'}</strong></div>
-        </div>
-      </section>
-
-      <section className="mos-panel suite-card suite-backup-panel">
-        <h2 className="mos-card-title">Installed app data</h2>
-        {inventory.packages.length ? <div className="suite-backup-package-list">
-          {inventory.packages.map((app) => <article key={app.packageId}>
-            <div>
-              <strong>{app.packageId}</strong>
-              <span>{statusLabel(app.status)} - {app.packageVersion}</span>
+        <h2 className="mos-card-title">Restore from a backup</h2>
+        {status.backups.length ? <div className="suite-backup-bundle-list">
+          {status.backups.map((backup) => <article key={backup.path}>
+            <div><strong>{backup.createdAt ? formatDate(backup.createdAt) : 'MOS backup'}</strong><span>{backup.destinationLabel || 'Backup drive'}</span></div>
+            <div className="suite-backup-action-row">
+              <a className="mos-btn mos-btn-secondary" href={`/suite-manager/api/backups/download?path=${encodeURIComponent(backup.path)}`}>Download</a>
+              <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => { setSelectedRestore(backup); setRestoreConfirmation(''); }} type="button">Restore</button>
             </div>
-            <span className="mos-pill">{app.declaredVolumes.length} volume(s)</span>
-            {app.declaredVolumes.length ? <ul>
-              {app.declaredVolumes.map((volume) => <li key={volume.dockerVolume}><code>{volume.dockerVolume}</code></li>)}
-            </ul> : null}
           </article>)}
-        </div> : <p className="suite-meta">No app packages are installed yet.</p>}
+        </div> : <p className="suite-meta">Backups found on connected drives will appear here.</p>}
       </section>
 
       <details className="suite-advanced suite-backup-advanced">
         <summary>Advanced details</summary>
         <dl>
-          <dt>Suite Manager database</dt><dd><code>{inventory.contents.suiteManager.database.path}</code></dd>
-          <dt>State directory</dt><dd><code>{inventory.contents.suiteManager.stateDir}</code></dd>
-          <dt>Homepage config root</dt><dd><code>{inventory.contents.homepageConfig.path}</code></dd>
-          <dt>Relationships</dt><dd>{inventory.relationships.statuses.map((item) => `${item.status}: ${item.count}`).join(', ') || 'None'}</dd>
+          <dt>Detected apps</dt><dd>{status.inventory?.summary.appCount ?? 0}</dd>
+          <dt>Detected app data stores</dt><dd>{status.inventory?.summary.declaredVolumeCount ?? 0}</dd>
+          <dt>App connections</dt><dd>{status.inventory?.summary.relationshipCount ?? 0}</dd>
+          <dt>Warnings</dt><dd>{status.inventory?.warnings.map((warning) => `${warning.packageId}: ${warning.message}`).join(', ') || 'None'}</dd>
         </dl>
-        <h3>Homepage files</h3>
-        <PathList items={inventory.contents.homepageConfig.files} />
-        <h3>Caddy files</h3>
-        <PathList items={inventory.contents.caddyFiles} />
       </details>
     </div> : null}
+
+    {selectedRestore ? <Dialog
+      footer={<>
+        <button className="mos-btn mos-btn-primary" disabled={restoreConfirmation !== 'RESTORE' || Boolean(busy)} onClick={() => void startRestore()} type="button">{busy === 'restore' ? 'Starting restore...' : 'Restore backup'}</button>
+        <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => setSelectedRestore(null)} type="button">Cancel</button>
+      </>}
+      onClose={() => setSelectedRestore(null)}
+      title="Restore this backup?"
+    >
+      <Notice title="This will replace the current install" variant="warning"><p>MOS will stop, restore the selected backup, and start again. Current app data will be replaced. A small rescue copy is saved first.</p></Notice>
+      <p className="suite-meta">{formatDate(selectedRestore.createdAt)} from {selectedRestore.destinationLabel || 'backup storage'}</p>
+      <label className="suite-auth-field">
+        <span>Type RESTORE to continue</span>
+        <input autoFocus onChange={(event) => setRestoreConfirmation(event.currentTarget.value)} value={restoreConfirmation} />
+      </label>
+    </Dialog> : null}
   </section>;
 }
