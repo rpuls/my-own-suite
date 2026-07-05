@@ -100,15 +100,17 @@ export function BackupsScreen() {
   const [selectedDestinationId, setSelectedDestinationId] = useState('');
   const [selectedRestore, setSelectedRestore] = useState<BackupBundle | null>(null);
   const [restoreConfirmation, setRestoreConfirmation] = useState('');
+  const [restoreStarted, setRestoreStarted] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
-  const running = isRunning(status?.currentJob || null);
+  const running = restoreStarted || isRunning(status?.currentJob || null);
   const selectedDestination = status?.destinations.find((destination) => destination.id === selectedDestinationId);
 
   async function load() {
     setError('');
     const next = await jsonResponse<BackupStatus>(await fetch('/suite-manager/api/backups/status'), 'Unable to load backups.');
     setStatus(next);
+    if (!isRunning(next.currentJob) && restoreStarted) setRestoreStarted(false);
     if (!selectedDestinationId) {
       const firstWritable = next.destinations.find((destination) => destination.mountState === 'mounted' && destination.writable);
       if (firstWritable) setSelectedDestinationId(firstWritable.id);
@@ -159,7 +161,9 @@ export function BackupsScreen() {
 
   async function startRestore() {
     if (!selectedRestore) return;
-    await runAction('restore', async () => {
+    setBusy('restore');
+    setError('');
+    try {
       await jsonResponse(await fetch('/suite-manager/api/backups/restore', {
         body: JSON.stringify({ backupPath: selectedRestore.path, confirmation: restoreConfirmation }),
         headers: { 'Content-Type': 'application/json' },
@@ -167,7 +171,13 @@ export function BackupsScreen() {
       }), 'Unable to start restore.');
       setSelectedRestore(null);
       setRestoreConfirmation('');
-    });
+      setRestoreStarted(true);
+      await load().catch(() => undefined);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Something went wrong.');
+    } finally {
+      setBusy('');
+    }
   }
 
   return <section className="mos-shell suite-backups">
@@ -178,6 +188,7 @@ export function BackupsScreen() {
     </div>
 
     {error ? <Notice title="Backup needs attention" variant="error"><p>{error}</p></Notice> : null}
+    {restoreStarted ? <Notice title="Restore started" variant="info"><p>MOS is restoring the selected backup and may be unavailable for a short moment. This page will reconnect when Suite Manager starts again.</p></Notice> : null}
     {status && !status.serviceAvailable ? <Notice title="Backup is not available yet" variant="warning"><p>The host backup service is not running on this install. Update or restart the MOS V2 host services, then come back here.</p></Notice> : null}
 
     {status?.serviceAvailable ? <div className="suite-backup-layout">

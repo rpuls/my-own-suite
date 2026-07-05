@@ -58,13 +58,18 @@ export function Notice({ children, title, variant = 'info' }: { children: ReactN
 
 export function Dialog({ children, footer, onClose, title }: { children: ReactNode; footer?: ReactNode; onClose: () => void; title: string }) {
   const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+  const onCloseRef = useRef(onClose);
   useEffect(() => {
-    closeRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    onCloseRef.current = onClose;
+  }, [onClose]);
+  useEffect(() => {
+    if (!dialogRef.current?.contains(document.activeElement)) closeRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onCloseRef.current(); };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
-  return <div className="suite-modal-backdrop" role="presentation"><section aria-modal="true" className="suite-dialog mos-panel" role="dialog"><div className="suite-dialog-header"><h2>{title}</h2><button ref={closeRef} aria-label={`Close ${title}`} className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button></div>{children}{footer ? <div className="suite-dialog-footer">{footer}</div> : null}</section></div>;
+  }, []);
+  return <div className="suite-modal-backdrop" role="presentation"><section ref={dialogRef} aria-modal="true" className="suite-dialog mos-panel" role="dialog"><div className="suite-dialog-header"><h2>{title}</h2><button ref={closeRef} aria-label={`Close ${title}`} className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button></div>{children}{footer ? <div className="suite-dialog-footer">{footer}</div> : null}</section></div>;
 }
 
 export function Stepper({ currentStepIndex, steps }: { currentStepIndex: number; steps: string[] }) {

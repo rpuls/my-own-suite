@@ -236,7 +236,7 @@ function restoreStateOwnership() {
   }
 }
 async function reconcileRestoredApps(jobFile) {
-  const store = new SuiteManagerStore({ stateDir });
+  const store = new SuiteManagerStore(stateDir);
   try {
     const appPackages = new AppPackageService({
       agent: new AppAgentClient(),
@@ -325,6 +325,7 @@ function backup(jobFile) {
 async function restore(jobFile) {
   const started = updateJob(jobFile, (job) => { job.status = 'running'; job.stage = 'starting'; });
   const bundleDir = started.backupPath;
+  let runtimeStopped = false;
   stage(jobFile, 'Validating backup bundle');
   const manifest = readJson(path.join(bundleDir, 'manifest.json'));
   if (manifest.backup?.kind !== 'mos-v2-whole-suite') throw new Error('Backup bundle is not a MOS V2 whole-suite backup.');
@@ -345,34 +346,39 @@ async function restore(jobFile) {
   for (const container of containers) optionalCommand('docker', ['rm', '-f', container], { timeout: 120_000 });
   systemctl('stop', 'mos-v2-suite-manager.service');
   systemctl('stop', 'mos-v2-homepage.service');
+  runtimeStopped = true;
 
-  stage(jobFile, 'Restoring suite state');
-  const temp = fs.mkdtempSync(path.join(agentStateDir, 'restore-'));
-  command('tar', ['-xzf', path.join(bundleDir, 'state.tar.gz'), '-C', temp], { timeout: 300_000 });
-  fs.rmSync(stateDir, { force: true, recursive: true });
-  copyIfExists(path.join(temp, 'var-lib-mos-v2', 'suite-manager'), stateDir);
-  fs.rmSync(path.join(stateRoot, 'homepage', 'config'), { force: true, recursive: true });
-  copyIfExists(path.join(temp, 'var-lib-mos-v2', 'homepage', 'config'), path.join(stateRoot, 'homepage', 'config'));
-  copyIfExists(path.join(temp, 'etc', 'caddy'), '/etc/caddy');
-  copyIfExists(path.join(temp, 'etc', 'mos-v2', 'secrets'), '/etc/mos-v2/secrets');
+  try {
+    stage(jobFile, 'Restoring suite state');
+    const temp = fs.mkdtempSync(path.join(agentStateDir, 'restore-'));
+    command('tar', ['-xzf', path.join(bundleDir, 'state.tar.gz'), '-C', temp], { timeout: 300_000 });
+    fs.rmSync(stateDir, { force: true, recursive: true });
+    copyIfExists(path.join(temp, 'var-lib-mos-v2', 'suite-manager'), stateDir);
+    fs.rmSync(path.join(stateRoot, 'homepage', 'config'), { force: true, recursive: true });
+    copyIfExists(path.join(temp, 'var-lib-mos-v2', 'homepage', 'config'), path.join(stateRoot, 'homepage', 'config'));
+    copyIfExists(path.join(temp, 'etc', 'caddy'), '/etc/caddy');
+    copyIfExists(path.join(temp, 'etc', 'mos-v2', 'secrets'), '/etc/mos-v2/secrets');
 
-  stage(jobFile, 'Restoring app volumes');
-  for (const volume of manifest.contents?.volumes || []) {
-    log(jobFile, `Restoring ${volume.name}`);
-    optionalCommand('docker', ['volume', 'rm', volume.name], { timeout: 300_000 });
-    command('docker', ['volume', 'create', volume.name], { timeout: 300_000 });
-    const inspected = inspectVolume(volume.name);
-    command('tar', ['-xzf', path.join(bundleDir, volume.archive), '-C', inspected.mountpoint], { timeout: 1_800_000 });
+    stage(jobFile, 'Restoring app volumes');
+    for (const volume of manifest.contents?.volumes || []) {
+      log(jobFile, `Restoring ${volume.name}`);
+      optionalCommand('docker', ['volume', 'rm', volume.name], { timeout: 300_000 });
+      command('docker', ['volume', 'create', volume.name], { timeout: 300_000 });
+      const inspected = inspectVolume(volume.name);
+      command('tar', ['-xzf', path.join(bundleDir, volume.archive), '-C', inspected.mountpoint], { timeout: 1_800_000 });
+    }
+
+    stage(jobFile, 'Restoring app runtime');
+    await reconcileRestoredApps(jobFile);
+  } finally {
+    if (runtimeStopped) {
+      restoreStateOwnership();
+      stage(jobFile, 'Starting restored control plane');
+      systemctl('start', 'mos-v2-homepage.service');
+      systemctl('start', 'mos-v2-suite-manager.service');
+      systemctl('reload', 'caddy.service');
+    }
   }
-
-  stage(jobFile, 'Restoring app runtime');
-  await reconcileRestoredApps(jobFile);
-  restoreStateOwnership();
-
-  stage(jobFile, 'Starting restored control plane');
-  systemctl('start', 'mos-v2-homepage.service');
-  systemctl('start', 'mos-v2-suite-manager.service');
-  systemctl('reload', 'caddy.service');
   updateJob(jobFile, (job) => { job.stage = 'completed'; job.status = 'succeeded'; });
 }
 
