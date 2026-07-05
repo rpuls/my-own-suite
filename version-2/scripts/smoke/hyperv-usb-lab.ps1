@@ -10,6 +10,7 @@ $V2Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $LabRoot = Join-Path $V2Root '.mos-smoke\hyperv-usb'
 $VmName = 'mos-v2-usb-smoke'
 $DiskPath = Join-Path $LabRoot 'os.vhdx'
+$BackupDiskPath = Join-Path $LabRoot 'backup.vhdx'
 $IsoPath = Join-Path $LabRoot 'my-own-suite-installer.iso'
 $InstallerConfigPath = Join-Path $V2Root '..\deploy\self-host\autoinstall\installer-config\selfhost-installer.env'
 $HostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
@@ -116,6 +117,16 @@ function Build-InstallerIso {
   if (-not (Test-Path -LiteralPath $IsoPath)) { Fail "USB installer ISO was not created at '$IsoPath'." }
 }
 
+function Get-BackupDiskSizeBytes {
+  $sizeGb = 16
+  if ($env:MOS_V2_HYPERV_BACKUP_DISK_GB) {
+    if (-not [int]::TryParse($env:MOS_V2_HYPERV_BACKUP_DISK_GB, [ref]$sizeGb) -or $sizeGb -lt 4 -or $sizeGb -gt 256) {
+      Fail 'MOS_V2_HYPERV_BACKUP_DISK_GB must be a whole number from 4 to 256.'
+    }
+  }
+  return $sizeGb * 1GB
+}
+
 function Get-StackDomain {
   $line = Get-Content -LiteralPath $InstallerConfigPath |
     Where-Object { $_ -match '^\s*STACK_DOMAIN\s*=' } |
@@ -198,6 +209,7 @@ function Show-Summary {
   $vm = Get-VM -Name $VmName
   $adapter = Get-VMNetworkAdapter -VMName $VmName
   $disk = Get-VMHardDiskDrive -VMName $VmName | Where-Object Path -eq $DiskPath
+  $backupDisk = Get-VMHardDiskDrive -VMName $VmName | Where-Object Path -eq $BackupDiskPath
   $dvd = Get-VMDvdDrive -VMName $VmName | Where-Object Path -eq $IsoPath
   Write-Host ''
   Write-Host '[mos-v2-smoke:hyperv-usb] USB installer smoke VM is ready.'
@@ -205,6 +217,7 @@ function Show-Summary {
   Write-Host "  Generation: $($vm.Generation)"
   Write-Host "  Switch:     $($adapter.SwitchName)"
   Write-Host "  Disk:       $($disk.Path)"
+  Write-Host "  Backup:     $($backupDisk.Path)"
   Write-Host "  Installer:  $($dvd.Path)"
   Write-Host "  IPv4:       $Ip"
   Write-Host "  MOS Home:   http://home.$StackDomain/"
@@ -232,8 +245,10 @@ Build-InstallerIso
 
 $switch = Get-LabSwitch
 New-VHD -Path $DiskPath -Dynamic -SizeBytes 64GB | Out-Null
+New-VHD -Path $BackupDiskPath -Dynamic -SizeBytes (Get-BackupDiskSizeBytes) | Out-Null
 try {
   New-VM -Name $VmName -Generation 2 -MemoryStartupBytes 2GB -VHDPath $DiskPath -SwitchName $switch.Name | Out-Null
+  Add-VMHardDiskDrive -VMName $VmName -Path $BackupDiskPath
   Set-VMMemory -VMName $VmName -DynamicMemoryEnabled $true -MinimumBytes 2GB -StartupBytes 2GB -MaximumBytes 4GB
   Set-VMProcessor -VMName $VmName -Count 2
   Set-VMFirmware -VMName $VmName -EnableSecureBoot On -SecureBootTemplate MicrosoftUEFICertificateAuthority
@@ -245,6 +260,7 @@ try {
 catch {
   Remove-LabVm
   if (Test-Path -LiteralPath $DiskPath) { Remove-Item -LiteralPath $DiskPath -Force -ErrorAction SilentlyContinue }
+  if (Test-Path -LiteralPath $BackupDiskPath) { Remove-Item -LiteralPath $BackupDiskPath -Force -ErrorAction SilentlyContinue }
   throw
 }
 

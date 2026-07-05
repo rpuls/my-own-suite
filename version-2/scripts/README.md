@@ -72,11 +72,13 @@ cmd /c npm --prefix version-2 run smoke:hyperv:destroy
 
 Run these commands from an Administrator PowerShell terminal. Set `MOS_V2_HYPERV_SWITCH` to override the default switch selection.
 
-`reset` is the full disposable lifecycle. It removes the exact `mos-v2-usb-smoke` VM and its lab directory, renders a V2-specific Ubuntu autoinstall seed from the `feat/app-platform-v2-lab` bootstrap contract, remasters and verifies a smoke-only auto-boot installer ISO, creates a fresh Generation 2 VM with a blank 64 GB disk, attaches the ISO, starts the VM, waits for Suite Manager, writes local Windows host resolution, and prints the working URL summary.
+`reset` is the full disposable lifecycle. It removes the exact `mos-v2-usb-smoke` VM and its lab directory, renders a V2-specific Ubuntu autoinstall seed from the `feat/app-platform-v2-lab` bootstrap contract, remasters and verifies a smoke-only auto-boot installer ISO, creates a fresh Generation 2 VM with a blank 64 GB OS disk and a smaller disposable backup disk, attaches the ISO, starts the VM, waits for Suite Manager, writes local Windows host resolution, and prints the working URL summary.
 
 `destroy` removes the exact VM, its disposable disk/ISO/build workspace, and the hosts-file entries written by `reset`.
 
 The smoke VM intentionally follows the USB install shape instead of the abandoned Azure/cloud-image path. The blank disk is first in the boot order and the installer ISO is second: on first boot the blank disk falls through to the DVD, and after installation the populated disk wins so the VM does not loop back into the installer.
+
+The harness also attaches `backup.vhdx` as a second disk and the V2 seed formats/mounts that empty disk at `/media/mos-backup` on first boot. This gives the Backup page a ready-made external-style destination for testing backup, download, and restore flows without opening Hyper-V Manager. The default backup disk is 16 GB; set `MOS_V2_HYPERV_BACKUP_DISK_GB` to a whole number from 4 to 256 to change it.
 
 Inputs come from `deploy/self-host/autoinstall/installer-config/selfhost-installer.env`:
 
@@ -102,7 +104,7 @@ Readiness and access:
 ```
 
 - Browser access is through `http://home.<domain>/suite-manager/`, for example `http://home.mos.home/suite-manager/`. Do not use the old v1 `suite-manager.<domain>/setup/` host.
-- The final summary prints the VM name, switch, disk, installer ISO, IPv4, MOS Home URL, and Suite Manager URL.
+- The final summary prints the VM name, switch, OS disk, backup disk, installer ISO, IPv4, MOS Home URL, and Suite Manager URL.
 - `reset` writes the Home host and known package route hosts into the same marked Windows hosts block, and removes stale copies from earlier VM resets. The temporary Apps page still shows a repair command for app hosts, but the normal Stirling smoke path should not need it. For lower-friction repeated testing across arbitrary domains, a local wildcard DNS override such as `*.test.example.com -> <guest-ip>` in the user's router, AdGuard Home, Unbound, Pi-hole, or other local DNS service is still the cleanest option.
 
 If the wait looks stuck, open Hyper-V Manager, connect to `mos-v2-usb-smoke`, and inspect the Ubuntu console. Useful console checks after login are:

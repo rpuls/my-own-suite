@@ -33,6 +33,37 @@ function shellQuote(value) {
   return `'${String(value).replace(/'/gu, `'"'"'`)}'`;
 }
 
+function renderBackupDiskSetupCommand() {
+  return String.raw`bash -lc 'set -euo pipefail
+mountpoint -q /media/mos-backup && exit 0
+root_source="$(findmnt -n -o SOURCE / || true)"
+root_disk="$(lsblk -no PKNAME "$root_source" 2>/dev/null | head -n1 || true)"
+if [ -z "$root_disk" ]; then root_disk="$(basename "$root_source" | sed "s/[0-9]*$//")"; fi
+candidate=""
+while read -r disk type; do
+  [ "$type" = "disk" ] || continue
+  [ "$(basename "$disk")" != "$root_disk" ] || continue
+  if lsblk -nrpo MOUNTPOINT "$disk" | grep -q "/"; then continue; fi
+  if lsblk -nrpo FSTYPE "$disk" | grep -q "."; then continue; fi
+  candidate="$disk"
+  break
+done < <(lsblk -dnpo NAME,TYPE)
+if [ -z "$candidate" ]; then
+  echo "[mos-v2-smoke:hyperv-usb] No empty second disk found for backup storage."
+  exit 0
+fi
+mkfs.ext4 -F -L MOS_V2_BACKUP "$candidate"
+mkdir -p /media/mos-backup
+uuid="$(blkid -s UUID -o value "$candidate")"
+if [ -n "$uuid" ] && ! grep -q "$uuid" /etc/fstab; then
+  printf "UUID=%s /media/mos-backup ext4 defaults,nofail 0 2\n" "$uuid" >> /etc/fstab
+fi
+mount /media/mos-backup
+chmod 0777 /media/mos-backup
+echo "[mos-v2-smoke:hyperv-usb] Mounted disposable backup disk at /media/mos-backup."'
+`;
+}
+
 function renderSeed(config) {
   const hostname = config.HOSTNAME || 'mos';
   const username = config.USERNAME || 'mos';
@@ -53,6 +84,7 @@ function renderSeed(config) {
   const firstBoot = YAML.parse(plan.cloudInit);
   firstBoot.runcmd = [
     `printf '%s:%s\\n' ${shellQuote(username)} ${shellQuote(linuxPassword)} | chpasswd`,
+    renderBackupDiskSetupCommand(),
     ...(firstBoot.runcmd || []),
   ];
 

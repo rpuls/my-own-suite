@@ -90,7 +90,8 @@ async function listDestinations() {
       const mountPath = normalizeDestination(point);
       if (!mountPath) continue;
       mounted = true;
-      add({ availableBytes: availableBytes(mountPath), canMount: false, devicePath, fileSystem: device.fstype || null, id: mountPath, label, mountPath, mountState: 'mounted', sizeBytes: Number(device.size) || null, storageKind: external ? 'external' : 'local', transport: device.tran || (external ? 'removable' : 'local'), writable: isWritable(mountPath) });
+      const externalMount = external || mountPath.startsWith('/media/');
+      add({ availableBytes: availableBytes(mountPath), canMount: false, devicePath, fileSystem: device.fstype || null, id: mountPath, label, mountPath, mountState: 'mounted', sizeBytes: Number(device.size) || null, storageKind: externalMount ? 'external' : 'local', transport: device.tran || (externalMount ? 'removable' : 'local'), writable: isWritable(mountPath) });
     }
     if (!mounted && device.type !== 'disk') {
       const blocked = mountBlockReason(device);

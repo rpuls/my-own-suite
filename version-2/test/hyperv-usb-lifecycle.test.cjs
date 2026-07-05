@@ -12,7 +12,11 @@ test('Hyper-V USB smoke exposes a guarded two-command lifecycle', () => {
   assert.match(script, /\[ValidateSet\('reset', 'destroy'\)\]/u);
   assert.match(script, /\$VmName = 'mos-v2-usb-smoke'/u);
   assert.match(script, /New-VHD .* -Dynamic -SizeBytes 64GB/u);
+  assert.match(script, /\$BackupDiskPath = Join-Path \$LabRoot 'backup\.vhdx'/u);
+  assert.match(script, /MOS_V2_HYPERV_BACKUP_DISK_GB/u);
+  assert.match(script, /New-VHD -Path \$BackupDiskPath -Dynamic -SizeBytes \(Get-BackupDiskSizeBytes\)/u);
   assert.match(script, /New-VM .* -Generation 2/u);
+  assert.match(script, /Add-VMHardDiskDrive -VMName \$VmName -Path \$BackupDiskPath/u);
   assert.match(script, /Add-VMDvdDrive .* -Path \$IsoPath -Passthru/u);
   assert.match(script, /Set-VMFirmware .* -BootOrder \$osDisk, \$dvd/u);
   assert.match(script, /Start-VM -Name \$VmName/u);
@@ -26,6 +30,7 @@ test('Hyper-V USB smoke exposes a guarded two-command lifecycle', () => {
   assert.match(script, /ConvertFrom-Json/u);
   assert.match(script, /\$Ip \$_/u);
   assert.match(script, /App hosts:/u);
+  assert.match(script, /Backup:/u);
   assert.match(script, /Set-SmokeHostsEntries -Ip \$ip -StackDomain \$stackDomain/u);
   assert.match(script, /Remove-SmokeHostsEntries/u);
   assert.match(script, /ipconfig\.exe \/flushdns/u);

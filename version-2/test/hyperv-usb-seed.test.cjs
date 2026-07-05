@@ -23,5 +23,8 @@ test('Hyper-V USB seed embeds the V2 bootstrap without the v1 owner handoff', ()
   assert.match(renderedFirstBoot, /MOS_V2_REPO_REF='feat\/app-platform-v2-lab'/u);
   assert.match(renderedFirstBoot, /mos-v2-suite-manager\.service/u);
   assert.match(renderedFirstBoot, /linux-console-password/u);
+  assert.match(renderedFirstBoot, /mkfs\.ext4 -F -L MOS_V2_BACKUP/u);
+  assert.match(renderedFirstBoot, /\/media\/mos-backup/u);
+  assert.match(renderedFirstBoot, /No empty second disk found for backup storage/u);
   assert.doesNotMatch(rendered.userData, /v1-owner@example\.com|v1-owner-password|mos-selfhost-bootstrap/u);
 });
