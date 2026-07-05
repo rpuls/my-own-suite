@@ -66,7 +66,6 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
         <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'updates' ? <UpdatesScreen /> : route === 'backups' ? <BackupsScreen /> : route === 'customize' ? <CustomizeScreen /> : route === 'apps' ? <AppsScreen owner={owner} /> : (
         <section className="mos-shell suite-dashboard">
           <div className="suite-hero">
-            <span className="mos-pill mos-pill-accent">Control plane</span>
             <h1>Suite Manager is ready</h1>
             <p className="suite-lead mos-body-lg">
               Owner setup is complete. App installs, platform settings, and host-agent controls will grow from here.

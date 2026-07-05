@@ -47,7 +47,6 @@ export function OwnerSetupScreen({ error, onCreateOwner }: OwnerSetupScreenProps
 
           <div className="mos-panel suite-card suite-auth-card">
             <div className="suite-auth-card-header">
-              <span className="mos-pill mos-pill-accent">First run</span>
               <h2 className="mos-card-title">Owner details</h2>
             </div>
 

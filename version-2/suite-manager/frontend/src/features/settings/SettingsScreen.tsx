@@ -130,7 +130,7 @@ export function SettingsScreen() {
   );
 
   return <section className="mos-shell suite-settings">
-    <div className="suite-hero"><span className="mos-pill mos-pill-accent">Platform settings</span><h1>Settings</h1><p className="suite-lead mos-body-lg">Manage how this MOS Home is reached from your browser.</p></div>
+    <div className="suite-hero"><h1>Settings</h1><p className="suite-lead mos-body-lg">Manage how this MOS Home is reached from your browser.</p></div>
     {loadError ? <Notice title="Settings unavailable" variant="error"><p>{loadError}</p></Notice> : null}
     {status ? !status.privateHttpsAvailable ? <div className="mos-panel suite-card suite-settings-panel">
       <div><h2 className="mos-card-title">Custom domains are handled by your provider</h2><p className="suite-meta">This install looks like it is hosted on an external provider. MOS does not manage public DNS, provider routing, or public TLS from here.</p></div>

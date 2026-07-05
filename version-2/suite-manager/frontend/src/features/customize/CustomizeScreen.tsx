@@ -95,7 +95,7 @@ export function CustomizeScreen() {
   }
 
   return <section className="mos-shell suite-customize">
-    <div className="suite-hero"><span className="mos-pill mos-pill-accent">Homepage</span><h1>Customize</h1><p className="suite-lead mos-body-lg">Edit dashboard files or add links and services already running on your home network.</p></div>
+    <div className="suite-hero"><h1>Customize</h1><p className="suite-lead mos-body-lg">Edit dashboard files or add links and services already running on your home network.</p></div>
     {!agentAvailable ? <Notice title="Homepage agent unavailable" variant="warning"><p>Editing requires the installed V2 Homepage system agent.</p></Notice> : null}
     <section className="mos-panel suite-card suite-customize-panel">
       <header className="suite-customize-header"><div><h2>{selected.name}</h2><p className="suite-meta">{selected.description}</p></div>{file === 'services.template.yaml' ? <button className="mos-btn mos-btn-primary" disabled={busy || !agentAvailable} onClick={() => setAddOpen(true)} type="button">Add to Homepage</button> : null}</header>

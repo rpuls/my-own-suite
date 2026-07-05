@@ -198,7 +198,6 @@ export function BackupsScreen() {
 
   return <section className="mos-shell suite-backups">
     <div className="suite-hero">
-      <span className="mos-pill mos-pill-accent">Backup and restore</span>
       <h1>Backup</h1>
       <p className="suite-lead mos-body-lg">Save a copy of My Own Suite to another drive, then restore it if this install ever needs to recover.</p>
     </div>

@@ -105,7 +105,6 @@ export function UpdatesScreen() {
 
   return <section className="mos-shell suite-updates">
     <div className="suite-hero">
-      <span className="mos-pill mos-pill-accent">Managed updates</span>
       <h1>Updates</h1>
       <p className="suite-lead mos-body-lg">Update the V2 control plane through a host-owned agent, with progress and diagnostics kept visible.</p>
     </div>
