@@ -25,6 +25,7 @@ Verified app package capabilities:
 - Runtime health refresh, disable, re-enable, restart, and uninstall-with-data-preserved.
 - Multi-service package apply/remove for Seafile core.
 - Capability-based app-to-app integration, proven by ONLYOFFICE plus Seafile, with relationship recovery/status hooks around restart, re-enable, disable, and preserved-data uninstall.
+- First managed-update/reconciliation slice: new installs include `mos-v2-update-agent`, Suite Manager exposes an Updates page, branch-track jobs can fast-forward the V2 lab branch, rebuild Suite Manager, reconcile repo-owned host services/agents/Caddy wiring, and report progress/logs through the UI.
 
 Current packages:
 
@@ -43,17 +44,21 @@ Current packages:
 - Homepage routes and app package routes stay separate: Homepage customization owns user dashboard/home-service routes; app packages own lifecycle-managed app routes.
 - Post-install setup guides are declarative and app-scoped, not global owner onboarding.
 - ONLYOFFICE should be its own package that provides a document-editor capability. Seafile is one compatible consumer, not the parent package. Future file/content platforms should be able to consume the same capability through generic metadata. Capability providers and companion apps do not need normal Homepage contributions.
+- V2 managed updates follow the V1 host-managed updater pattern through V2 boundaries: Suite Manager talks only to a local update agent socket, `version-2/scripts/reconcile-system.cjs` refreshes repo-owned host units/agents/Caddy wiring after checkout, and installed app runtimes are preserved with an explicit manual reapply/restart note until automatic package reconciliation is proven.
 
 ## Next Slice
 
-Before adding more heavy apps, validate the hardened capability/integration path:
+Before adding more heavy apps, validate managed updates and the hardened capability/integration path:
 
-1. Validate Seafile core and ONLYOFFICE integration in Hyper-V, including install order, app health, document editing connection, provider restart recovery, disable/re-enable, and preserved-data uninstall.
-2. Confirm relationship state remains truthful when either side is stopped, disabled, re-enabled, or uninstalled with data preserved.
-3. Inspect integration failure recovery diagnostics in live runtime logs/API responses without leaking JWT or other secret material.
-4. Decide the next single follow-up:
+1. Install a V2 Hyper-V machine from this branch, then validate the next branch-track update through Suite Manager Updates.
+2. Confirm the update refreshes Suite Manager, Caddy wiring, and all V2 system agents without reporting success while old repo-owned services are still running.
+3. After update, manually reapply/restart installed app runtimes whose package manifests/Dockerfiles changed; record the automatic package-runtime reconciliation contract for the next updater slice.
+4. Validate Seafile core and ONLYOFFICE integration in Hyper-V, including install order, app health, document editing connection, provider restart recovery, disable/re-enable, and preserved-data uninstall.
+5. Confirm relationship state remains truthful when either side is stopped, disabled, re-enabled, or uninstalled with data preserved.
+6. Inspect integration failure recovery diagnostics in live runtime logs/API responses without leaking JWT or other secret material.
+7. Decide the next single follow-up:
+   - automatic app runtime reapply/rebuild during managed update,
    - deeper integration lifecycle diagnostics if Hyper-V exposes issues,
-   - backup/restore metadata for installed app data,
    - or the next V1 app package once Seafile/ONLYOFFICE is operationally proven.
 
 Do not start `/site`, Railway alignment, public documentation migration, or broad catalog growth until the V2 app engine is proven enough.
@@ -86,7 +91,7 @@ version-2/
 
 - Secret storage is hardened for current use but still not a final long-term secret subsystem. Remaining decisions include rotation, reveal policy, backup/restore behavior, and missing-secret recovery.
 - Preserved-data uninstall needs a later cleanup/reinstall story so users can intentionally delete abandoned volumes/secrets without accidents.
-- App backup/restore semantics are not yet modeled for V2 packages. Temporary research lives in [v2-backup-restore-design.md](./v2-backup-restore-design.md); the next recommended slice is a V2 backup inventory/dry-run endpoint before archive or restore implementation.
+- Managed updates preserve installed app runtimes but do not yet automatically rebuild/reapply them after package Dockerfile or manifest changes.
 - Integration relationships now have deterministic lifecycle coverage, but still need live Hyper-V validation before adding many provider/consumer pairs.
 - Public `/site` docs and Railway/platform alignment are intentionally deferred.
 

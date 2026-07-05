@@ -1157,6 +1157,94 @@
   max-width: 920px;
 }
 
+.suite-updates {
+  display: grid;
+  gap: var(--mos-space-6);
+  max-width: 920px;
+}
+
+.suite-updates-layout,
+.suite-updates-panel {
+  display: grid;
+  gap: var(--mos-space-4);
+}
+
+.suite-updates-header,
+.suite-updates-track {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--mos-space-4);
+}
+
+.suite-updates-track .suite-control {
+  flex: 1 1 18rem;
+}
+
+.suite-updates-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--mos-space-3);
+  margin: 0;
+}
+
+.suite-updates-facts div {
+  display: grid;
+  gap: var(--mos-space-1);
+  padding: var(--mos-space-3);
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface-muted);
+}
+
+.suite-updates-facts dt {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+  font-weight: 800;
+  letter-spacing: var(--mos-letter-spacing-label);
+  text-transform: uppercase;
+}
+
+.suite-updates-facts dd {
+  margin: 0;
+  color: var(--mos-color-text-strong);
+  overflow-wrap: anywhere;
+}
+
+.suite-updates-change-list {
+  display: grid;
+  gap: var(--mos-space-2);
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--mos-color-text-muted);
+}
+
+.suite-updates-log {
+  display: grid;
+  gap: var(--mos-space-2);
+  padding-left: 0;
+  list-style: none;
+}
+
+.suite-updates-log li {
+  display: grid;
+  gap: var(--mos-space-1);
+  padding: var(--mos-space-2);
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface-muted);
+}
+
+.suite-updates-log span {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+}
+
+.suite-updates-log code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .suite-backup-layout {
   display: grid;
   gap: var(--mos-space-4);
@@ -1525,9 +1613,15 @@
   }
   .suite-app-facts,
   .suite-app-feature-grid,
+  .suite-updates-facts,
   .suite-backup-destination-card,
   .suite-backup-bundle-list article {
     grid-template-columns: 1fr;
+  }
+  .suite-updates-header,
+  .suite-updates-track {
+    flex-direction: column;
+    align-items: stretch;
   }
   .suite-backup-busy {
     grid-template-columns: 1fr;

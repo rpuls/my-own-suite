@@ -13,6 +13,8 @@ const { AppPackageService, AppPackageServiceError } = require('../apps/app-packa
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
 const { BackupAgentClient } = require('../backups/backup-agent-client.cjs');
 const { BackupInventoryService } = require('../backups/backup-inventory-service.cjs');
+const { UpdateAgentClient } = require('../updates/update-agent-client.cjs');
+const { UpdateService } = require('../updates/update-service.cjs');
 
 const SESSION_COOKIE = 'mos_v2_session';
 const DEFAULT_FRONTEND_DIST_DIR = path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
@@ -225,6 +227,7 @@ function createV2Server({
   appsDir = DEFAULT_APPS_DIR,
   homepageAgent = new HomepageAgentClient(),
   httpsAgent = new HttpsAgentClient(),
+  updateAgent = new UpdateAgentClient(),
   frontendDistDir = DEFAULT_FRONTEND_DIST_DIR,
   frontDoor = process.env.MOS_V2_FRONT_DOOR || 'ssh-bootstrap',
   homeHost = process.env.MOS_V2_HOME_HOST || 'home.localhost',
@@ -254,6 +257,7 @@ function createV2Server({
     stateDir,
     store: setup.store,
   });
+  const updates = new UpdateService({ agent: updateAgent });
 
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://localhost');
@@ -323,6 +327,38 @@ function createV2Server({
           return;
         }
         jsonResponse(response, 200, backupInventory.inventory());
+        return;
+      }
+
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/status`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review updates.' });
+          return;
+        }
+        jsonResponse(response, 200, await updates.status());
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/start`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to update My Own Suite.' });
+          return;
+        }
+        jsonResponse(response, 202, await updates.start({ initiator: setup.status(sessionToken).owner?.email || 'owner' }));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/track`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to switch update tracks.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        if (body.track !== 'stable' && body.track !== 'staging') {
+          jsonResponse(response, 400, { code: 'INVALID_UPDATE_TRACK', error: 'Update track must be stable or staging.' });
+          return;
+        }
+        jsonResponse(response, 200, await updates.configureTrack(body));
         return;
       }
 

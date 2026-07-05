@@ -438,6 +438,67 @@ test('Backup inventory API requires auth and reports V2 protected state', async 
   }, { homeHost: 'home.test', stateDir });
 });
 
+test('Updates API requires auth and proxies narrow update-agent actions', async () => {
+  const calls = [];
+  const updateAgent = {
+    async configureTrack(input) {
+      calls.push(['track', input]);
+      return { track: input, updaterStatus: {} };
+    },
+    async startUpdate(input) {
+      calls.push(['start', input]);
+      return { job: { id: 'job-one', status: 'queued' } };
+    },
+    async status() {
+      calls.push(['status']);
+      return {
+        capabilities: { updates: { capabilities: ['apply', 'configure-track'] } },
+        currentJob: null,
+        updaterStatus: {
+          appRuntimeReconciliation: { automatic: false, summary: 'Installed app runtimes are preserved.' },
+          changeSummary: { items: ['Managed update support.'], source: 'CHANGELOG.md [Unreleased]', title: 'Upcoming V2 lab changes' },
+          checkedAt: '2026-07-05T12:00:00.000Z',
+          latestRevision: 'abc123',
+          track: { currentBranch: 'feat/app-platform-v2-lab', currentCommit: 'def456', label: 'V2 lab branch', ref: 'feat/app-platform-v2-lab', type: 'branch' },
+          updateAvailable: true,
+        },
+      };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/updates/status', { headers: { Host: 'home.test' } });
+    assert.equal(denied.status, 401);
+
+    const cookie = await createOwner(baseUrl);
+    const status = await hostRequest(baseUrl, '/suite-manager/api/updates/status', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    assert.equal(status.status, 200);
+    assert.equal(status.json().managedApplyAvailable, true);
+    assert.equal(status.json().changeSummary.items[0], 'Managed update support.');
+    assert.equal(status.json().appRuntimeReconciliation.automatic, false);
+
+    const track = await hostRequest(baseUrl, '/suite-manager/api/updates/track', {
+      body: JSON.stringify({ track: 'staging' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(track.status, 200);
+
+    const started = await hostRequest(baseUrl, '/suite-manager/api/updates/start', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(started.status, 202);
+    assert.equal(started.json().job.id, 'job-one');
+    assert.deepEqual(calls.filter((call) => call[0] !== 'status'), [
+      ['track', { ref: 'feat/app-platform-v2-lab', track: 'branch' }],
+      ['start', { initiator: 'owner@example.com', target: 'latest' }],
+    ]);
+  }, { homeHost: 'home.test', updateAgent });
+});
+
 test('Backup API proxies simple owner backup, restore, and download actions', async () => {
   const backupDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-v2-backup-bundle-'));
   const archivePath = path.join(backupDir, 'bundle.tar.gz');

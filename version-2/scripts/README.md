@@ -44,6 +44,15 @@ npm --prefix version-2 run smoke:do:render
 
 Bootstrap also builds the pinned Cloudflare-capable Caddy binary, verifies its DNS module, installs the separate restricted HTTPS and Homepage agents, seeds the MOS-owned Homepage route snippet, and connects Suite Manager to both protected Unix sockets. No domain credential or DNS token is accepted during installation.
 
+Bootstrap also installs the V2 update agent and connects Suite Manager to its protected local socket. Managed updates call the same repo-owned reconciliation surface after checkout:
+
+```powershell
+cmd /c npm --prefix version-2 run build:client
+node version-2/scripts/reconcile-system.cjs --dry-run
+```
+
+`reconcile-system.cjs` is the Linux/root apply path used by `mos-v2-update-agent`. It refreshes repo-owned systemd units, socket directories, the Cloudflare-capable Caddy binary/override, Suite Manager service wiring, and all V2 host agents. `--dry-run` is for deterministic validation only; it does not touch systemd, Docker, or host files.
+
 The smoke harness reads the ignored V2-local file `version-2/.mos-smoke/v2-digitalocean.env` (or `.mos-smoke/v2-digitalocean.env` when working inside `version-2`). V2 smoke credentials, state, and logs all stay under `version-2/.mos-smoke/`.
 
 Required for `up`, `reset`, and `destroy`:

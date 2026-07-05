@@ -20,6 +20,20 @@ Consequences:
 - Capability-provider and companion packages may omit Homepage contributions; Suite Manager should present them as integration services rather than ordinary app destinations.
 - Complex pair-specific glue may be introduced later only through a reviewed package-owned contract, not arbitrary frontend code or broad shell hooks.
 
+## 2026-07-05: V2 Managed Updates Use A Narrow Host Agent And Reconciliation Script
+
+Decision: V2 managed updates are requested from Suite Manager but applied by a root-owned `mos-v2-update-agent` over a local Unix socket. The first supported apply path is branch-track updates for V2 lab and Hyper-V validation. The update worker fetches and fast-forwards the configured branch, installs V2 dependencies, rebuilds Suite Manager frontend assets, and runs `version-2/scripts/reconcile-system.cjs` to refresh repo-owned systemd units, host agents, Caddy override/binary wiring, socket directories, and control-plane service restarts.
+
+Reason: This preserves the successful V1 model where the web app communicates intent while a host-owned updater applies infrastructure changes. V2 has more separated agents than V1, so the refresh path must reconcile all repo-owned host services instead of only recreating a Compose stack.
+
+Consequences:
+
+- Suite Manager must not run git, npm, Docker, Caddy, or systemctl update commands itself.
+- The update agent API stays narrow: status, start update job, read job state, and configure track.
+- The update result may report core reconciliation success while installed app runtimes are preserved and marked for manual reapply/restart after package Dockerfile or manifest changes.
+- A later updater slice should add package-aware runtime reconciliation so changed installed app packages can be rebuilt/reapplied automatically without weakening preserved-data guarantees.
+- Stable release-track polish can reuse the same agent boundary, but branch-track updates remain the practical validation path until V2 release metadata is finalized.
+
 ## 2026-07-03: V2 App Packages Own Runtime Shape And Lifecycle
 
 Decision: V2 app packages are self-contained folders under `version-2/apps/<app-id>/` that declare metadata, setup fields, services, routes, Homepage projections, health checks, widgets, onboarding, and capabilities. Suite Manager persists app instance/config/projection/operation state in SQLite and asks a narrow app agent to apply Docker, Caddy, and health changes. Runtime state supports health refresh, disable, re-enable, restart, and uninstall-with-data-preserved.
