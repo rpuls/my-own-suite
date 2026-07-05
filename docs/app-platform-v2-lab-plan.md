@@ -86,7 +86,7 @@ version-2/
 
 - Secret storage is hardened for current use but still not a final long-term secret subsystem. Remaining decisions include rotation, reveal policy, backup/restore behavior, and missing-secret recovery.
 - Preserved-data uninstall needs a later cleanup/reinstall story so users can intentionally delete abandoned volumes/secrets without accidents.
-- App backup/restore semantics are not yet modeled for V2 packages.
+- App backup/restore semantics are not yet modeled for V2 packages. Temporary research lives in [v2-backup-restore-design.md](./v2-backup-restore-design.md); the next recommended slice is a V2 backup inventory/dry-run endpoint before archive or restore implementation.
 - Integration relationships now have deterministic lifecycle coverage, but still need live Hyper-V validation before adding many provider/consumer pairs.
 - Public `/site` docs and Railway/platform alignment are intentionally deferred.
 

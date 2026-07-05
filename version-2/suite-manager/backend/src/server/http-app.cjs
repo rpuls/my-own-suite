@@ -11,6 +11,7 @@ const { HttpsSettingsService } = require('../settings/https-settings-service.cjs
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
 const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
+const { BackupInventoryService } = require('../backups/backup-inventory-service.cjs');
 
 const SESSION_COOKIE = 'mos_v2_session';
 const DEFAULT_FRONTEND_DIST_DIR = path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
@@ -238,6 +239,11 @@ function createV2Server({
     appsDir,
     store: setup.store,
   });
+  const backupInventory = new BackupInventoryService({
+    appsDir,
+    stateDir,
+    store: setup.store,
+  });
 
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://localhost');
@@ -298,6 +304,15 @@ function createV2Server({
         }
         const body = await readJsonBody(request, 16 * 1024);
         jsonResponse(response, 200, await httpsSettings.apply(body));
+        return;
+      }
+
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/inventory`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review backup readiness.' });
+          return;
+        }
+        jsonResponse(response, 200, backupInventory.inventory());
         return;
       }
 

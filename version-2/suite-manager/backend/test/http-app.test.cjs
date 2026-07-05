@@ -403,6 +403,41 @@ test('App package install API creates a logical instance with dry-run projection
   }, { homeHost: 'home.test' });
 });
 
+test('Backup inventory API requires auth and reports V2 protected state', async () => {
+  const stateDir = await tempStateDir();
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/backups/inventory', {
+      headers: { Host: 'home.test' },
+    });
+    assert.equal(denied.status, 401);
+
+    const cookie = await createOwner(baseUrl);
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+
+    const response = await hostRequest(baseUrl, '/suite-manager/api/backups/inventory', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    const inventory = response.json();
+    const vaultwarden = inventory.packages.find((entry) => entry.packageId === 'vaultwarden');
+
+    assert.equal(response.status, 200);
+    assert.equal(inventory.actions.backupEnabled, false);
+    assert.equal(inventory.contents.suiteManager.database.path, path.join(stateDir, 'suite-manager.sqlite'));
+    assert.equal(inventory.contents.suiteManager.database.exists, true);
+    assert.equal(inventory.contents.suiteManager.appSecrets.exists, true);
+    assert.equal(inventory.summary.appCount, 1);
+    assert.ok(vaultwarden);
+    assert.equal(vaultwarden.manifestPresent, true);
+    assert.deepEqual(vaultwarden.declaredVolumes.map((volume) => volume.dockerVolume), ['mos-v2-app-vaultwarden-data']);
+    assert.match(vaultwarden.manifestDigest, /^sha256:[a-f0-9]{64}$/u);
+    assert.ok(inventory.warnings.some((warning) => warning.packageId === 'vaultwarden' && /no explicit backup metadata/u.test(warning.message)));
+    assert.ok(inventory.packageManifestDigests.some((entry) => entry.packageId === 'vaultwarden'));
+  }, { homeHost: 'home.test', stateDir });
+});
+
 test('Vaultwarden install generates a redacted secret and materializes it only for runtime apply', async () => {
   const vaultwardenPort = loopbackPortFor('vaultwarden');
   const calls = [];
