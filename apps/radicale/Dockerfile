@@ -1,7 +1,7 @@
 # Radicale Service (Platform Deployments)
 # Uses a stable /apps/radicale build target while reusing the upstream image.
 
-FROM tomsquest/docker-radicale@sha256:454e7def1324f6f05a3786854346a035b7ad84b47eee15bc155b2fbc17cafb9d
+FROM tomsquest/docker-radicale@sha256:7e4e3fc0e65e8da37dc09baaabb8f1bae8cbf486179890f257634ac5439c9a69
 
 COPY entrypoint.sh /entrypoint.sh
 RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
