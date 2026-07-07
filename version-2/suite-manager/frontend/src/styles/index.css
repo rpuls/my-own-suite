@@ -163,8 +163,10 @@
   width: 100%;
   border: 0;
   background: var(--mos-color-overlay);
-  -webkit-backdrop-filter: var(--mos-frost-filter-backdrop);
-  backdrop-filter: var(--mos-frost-filter-backdrop);
+  cursor: default;
+  width: 100%;
+  border: 0;
+  background: var(--mos-color-overlay);
   cursor: default;
 }
 
@@ -1518,7 +1520,7 @@
 .suite-route-preview code, .suite-advanced pre { overflow-wrap: anywhere; white-space: pre-wrap; }
 .suite-command-block { margin: var(--mos-space-3) 0; padding: var(--mos-space-3); overflow-wrap: anywhere; white-space: pre-wrap; border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface); color: var(--mos-color-text-strong); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.92rem; }
 
-.suite-modal-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: var(--mos-space-4); background: var(--mos-color-backdrop); -webkit-backdrop-filter: var(--mos-frost-filter-backdrop); backdrop-filter: var(--mos-frost-filter-backdrop); }
+.suite-modal-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: var(--mos-space-4); background: var(--mos-color-backdrop); }
 .suite-dialog { display: grid; gap: var(--mos-space-4); width: min(100%, 760px); max-height: min(86vh, 820px); padding: var(--mos-space-5); overflow: auto; border: 1px solid var(--mos-color-surface-border); border-radius: var(--mos-radius-md); background: var(--mos-color-frost-strong); -webkit-backdrop-filter: var(--mos-frost-filter-strong); backdrop-filter: var(--mos-frost-filter-strong); box-shadow: var(--mos-shadow-strong); }
 .suite-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--mos-space-4); }
 .suite-dialog-header h2 { margin: 0; }

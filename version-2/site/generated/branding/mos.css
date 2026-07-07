@@ -42,8 +42,8 @@
   --mos-color-surface-muted: rgba(255, 255, 255, 0.04);
   --mos-color-surface-strong: rgba(255, 255, 255, 0.12);
   --mos-color-surface-elevated: rgba(10, 31, 53, 0.86);
-  --mos-color-frost: rgba(10, 31, 53, 0.68);
-  --mos-color-frost-strong: rgba(10, 31, 53, 0.82);
+  --mos-color-frost: rgba(10, 31, 53, 0.58);
+  --mos-color-frost-strong: rgba(10, 31, 53, 0.72);
   --mos-color-overlay: rgba(2, 10, 18, 0.58);
   --mos-color-backdrop: rgba(0, 0, 0, 0.54);
   --mos-color-surface-border: rgba(255, 255, 255, 0.18);
@@ -300,9 +300,8 @@ summary:focus-visible {
 }
 
 .mos-frost-backdrop {
-  background: var(--mos-color-overlay);
-  -webkit-backdrop-filter: var(--mos-frost-filter-backdrop);
-  backdrop-filter: var(--mos-frost-filter-backdrop);
+  background: var(--mos-color-backdrop);
+  /* No backdrop-filter here. Blur is applied only on the actual overlay content, not the full scrim */
 }
 
 .mos-badge,
