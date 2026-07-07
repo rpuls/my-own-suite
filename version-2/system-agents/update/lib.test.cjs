@@ -20,7 +20,8 @@ function makeRepo() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-v2-update-repo-'));
   fs.mkdirSync(path.join(root, 'version-2'), { recursive: true });
   write(path.join(root, 'package.json'), JSON.stringify({ name: 'my-own-suite', repository: { url: 'https://github.com/rpuls/my-own-suite.git' } }));
-  write(path.join(root, 'version-2', 'package.json'), JSON.stringify({ name: 'my-own-suite-version-2' }));
+  write(path.join(root, 'version-2', 'package.json'), JSON.stringify({ name: 'my-own-suite-version-2', scripts: { 'build:client': 'node -e "process.exit(0)"' } }));
+  write(path.join(root, 'version-2', 'package-lock.json'), JSON.stringify({ name: 'my-own-suite-version-2', lockfileVersion: 3, packages: { '': { name: 'my-own-suite-version-2' } }, requires: true }));
   write(path.join(root, 'CHANGELOG.md'), '# Changelog\n\n## [Unreleased]\n\n- Test update summary.\n');
   run(root, ['init', '-b', 'feat/app-platform-v2-lab']);
   run(root, ['config', 'user.email', 'test@example.com']);
@@ -68,4 +69,28 @@ test('apply refuses dirty working trees before running host reconciliation', asy
   write(path.join(repo, 'version-2', 'dirty.txt'), 'dirty');
 
   await assert.rejects(() => runApply(paths, { log() {} }), /Working tree is not clean/u);
+});
+
+test('apply installs dependencies from lockfile without dirtying package-lock', async () => {
+  const repo = makeRepo();
+  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-v2-update-state-'));
+  const paths = buildPaths(repo, stateRoot);
+  const logs = [];
+  write(path.join(repo, 'version-2', 'scripts', 'reconcile-system.cjs'), 'process.exit(0);\n');
+  run(repo, ['add', '.']);
+  run(repo, ['commit', '-m', 'add reconcile stub']);
+  const remote = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mos-v2-update-remote-')), 'origin.git');
+  execFileSync('git', ['clone', '--bare', repo, remote], { encoding: 'utf8' });
+  run(repo, ['remote', 'set-url', 'origin', remote]);
+  run(repo, ['reset', '--hard', 'HEAD~1']);
+
+  process.env.MOS_V2_UPDATE_SKIP_RELEASE_LOOKUP = '1';
+  try {
+    await runApply(paths, { log(message) { logs.push(message); } });
+  } finally {
+    delete process.env.MOS_V2_UPDATE_SKIP_RELEASE_LOOKUP;
+  }
+
+  assert(logs.some((message) => /npm --prefix version-2 ci/u.test(message)));
+  assert.equal(run(repo, ['status', '--porcelain']), '');
 });

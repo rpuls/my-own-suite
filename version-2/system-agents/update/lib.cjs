@@ -66,9 +66,12 @@ function safeRunCommand(cwd, command, args) {
 }
 
 function runNpm(paths, args, log) {
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
   log(`npm --prefix version-2 ${args.join(' ')}`);
-  runCommand(paths.repoRoot, npm, ['--prefix', paths.version2Root, ...args], { stdio: 'inherit' });
+  if (process.platform === 'win32') {
+    runCommand(paths.repoRoot, 'cmd.exe', ['/d', '/s', '/c', 'npm', '--prefix', paths.version2Root, ...args], { stdio: 'inherit' });
+    return;
+  }
+  runCommand(paths.repoRoot, 'npm', ['--prefix', paths.version2Root, ...args], { stdio: 'inherit' });
 }
 
 function runNode(paths, scriptPath, args, log) {
@@ -226,7 +229,7 @@ function ensurePrerequisites(paths) {
 function ensureCleanWorkingTree(paths) {
   const result = runCommand(paths.repoRoot, 'git', ['status', '--porcelain']);
   if (result.trim()) {
-    throw new Error(`Working tree is not clean. Commit or stash changes before applying an update. Dirty paths: ${result.trim().split(/\r?\n/u).map((line) => line.slice(3).trim()).join(', ')}`);
+    throw new Error(`Working tree is not clean. Commit or stash changes before applying an update. Dirty paths: ${result.trim().split(/\r?\n/u).map((line) => line.slice(2).trim()).join(', ')}`);
   }
 }
 
@@ -296,8 +299,8 @@ async function runApply(paths, { log = () => {} } = {}) {
   log(`Repository before update: ${shortCommit(status.track.currentCommit) || 'unknown'}`);
   checkoutBranch(paths, status.track.ref, log);
   log(`Repository after checkout: ${shortCommit(currentGitState(paths.repoRoot).commit) || 'unknown'}`);
-  log('Installing V2 dependencies');
-  runNpm(paths, ['install'], log);
+  log('Installing V2 dependencies from lockfile');
+  runNpm(paths, ['ci'], log);
   log('Building Suite Manager frontend');
   runNpm(paths, ['run', 'build:client'], log);
   log('Reconciling V2 host services and agents');

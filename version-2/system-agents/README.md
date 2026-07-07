@@ -34,6 +34,6 @@ Secret material is resolved before the request crosses into the app agent. Suite
 
 `update/agent.cjs` runs over `/run/mos-v2-update-agent/agent.sock`. It exposes only status, start-job, read-job, and track-configuration operations for managed V2 updates. It does not accept arbitrary shell commands, paths, service names, Docker operations, or Caddy text.
 
-The first apply path is branch-track reconciliation for V2 lab installs. The worker fetches and fast-forwards the configured branch, installs `version-2` dependencies, rebuilds the Suite Manager frontend, runs `version-2/scripts/reconcile-system.cjs`, and records bounded progress logs for Suite Manager. The reconciliation script refreshes repo-owned host services and agents, including the updater itself, before the job reports success.
+The first apply path is branch-track reconciliation for V2 lab installs. The worker fetches and fast-forwards the configured branch, installs `version-2` dependencies from `package-lock.json`, rebuilds the Suite Manager frontend, runs `version-2/scripts/reconcile-system.cjs`, and records bounded progress logs for Suite Manager. The reconciliation script refreshes repo-owned host services and agents, including the updater itself, before the job reports success.
 
 Installed app runtimes are preserved in this first slice. If app package manifests or Dockerfiles changed, Suite Manager tells the owner to reapply or restart installed apps after the core update. Automatic app-runtime rebuild/reapply belongs to a later package-aware updater slice.

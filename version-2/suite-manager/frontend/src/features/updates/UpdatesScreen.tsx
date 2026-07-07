@@ -60,6 +60,7 @@ export function UpdatesScreen() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const running = isRunning(status?.currentJob || null);
+  const updating = running || busy === 'update';
 
   async function load() {
     const next = await jsonResponse<UpdateStatus>(await fetch('/suite-manager/api/updates/status'), 'Unable to load update status.');
@@ -69,10 +70,10 @@ export function UpdatesScreen() {
 
   useEffect(() => { void load().catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load update status.')); }, []);
   useEffect(() => {
-    if (!running) return undefined;
+    if (!updating) return undefined;
     const timer = window.setInterval(() => { void load().catch(() => undefined); }, 4000);
     return () => window.clearInterval(timer);
-  }, [running]);
+  }, [updating]);
 
   async function runAction(name: string, action: () => Promise<void>) {
     setBusy(name);
@@ -103,7 +104,7 @@ export function UpdatesScreen() {
     });
   }
 
-  return <section className="mos-shell suite-updates">
+  return <section aria-busy={updating} className="mos-shell suite-updates">
     <div className="suite-hero">
       <h1>Updates</h1>
       <p className="suite-lead mos-body-lg">Update the V2 control plane through a host-owned agent, with progress and diagnostics kept visible.</p>
@@ -111,7 +112,14 @@ export function UpdatesScreen() {
 
     {error ? <Notice title="Updates need attention" variant="error"><p>{error}</p></Notice> : null}
     {status && !status.serviceAvailable ? <Notice title="Update agent unavailable" variant="warning"><p>This install does not expose the V2 update agent to Suite Manager yet. Install or repair the host services before using in-app updates.</p></Notice> : null}
-    {running ? <Notice title="Update in progress" variant="info"><p>Suite Manager may briefly reconnect while the host refreshes repo-owned services and agents.</p></Notice> : null}
+    {updating ? <Notice title={busy === 'update' && !running ? 'Starting update' : 'Update in progress'} variant="info"><p>Suite Manager may briefly reconnect while the host refreshes repo-owned services and agents.</p></Notice> : null}
+    {updating ? <div className="suite-updates-progress" role="status" aria-live="polite">
+      <div className="suite-updates-progress-bar" aria-hidden="true" />
+      <div>
+        <strong>{busy === 'update' && !running ? 'Asking the update agent to start...' : status?.currentJob?.stage || 'Refreshing repo-owned services...'}</strong>
+        <span>Keep this page open; progress and failure details will appear below.</span>
+      </div>
+    </div> : null}
 
     {status ? <div className="suite-updates-layout">
       <section className="mos-panel suite-card suite-updates-panel">
@@ -135,11 +143,11 @@ export function UpdatesScreen() {
             <option value="staging">V2 lab branch</option>
             <option value="stable">Stable releases</option>
           </Select>
-          <button className="mos-btn mos-btn-secondary" disabled={busy === 'track' || running || track === selectedTrack(status)} onClick={() => void switchTrack()} type="button">{busy === 'track' ? 'Switching...' : 'Switch track'}</button>
+          <button className="mos-btn mos-btn-secondary" disabled={busy === 'track' || updating || track === selectedTrack(status)} onClick={() => void switchTrack()} type="button">{busy === 'track' ? 'Switching...' : 'Switch track'}</button>
         </div> : null}
 
         <button className="mos-btn mos-btn-primary" disabled={!status.managedApplyAvailable || !status.updateAvailable || Boolean(busy) || running} onClick={() => void startUpdate()} type="button">
-          {busy === 'update' ? 'Starting update...' : status.updateAvailable ? 'Update now' : 'Already up to date'}
+          {updating ? 'Update running...' : status.updateAvailable ? 'Update now' : 'Already up to date'}
         </button>
       </section>
 
