@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { Notice, Select } from '../../components/ui';
+import { Notice, Select, Spinner } from '../../components/ui';
 
 type UpdateJob = {
   error: string | null;
@@ -112,7 +112,7 @@ export function UpdatesScreen() {
 
     {error ? <Notice title="Updates need attention" variant="error"><p>{error}</p></Notice> : null}
     {status && !status.serviceAvailable ? <Notice title="Update agent unavailable" variant="warning"><p>This install does not expose the V2 update agent to Suite Manager yet. Install or repair the host services before using in-app updates.</p></Notice> : null}
-    {updating ? <Notice title={busy === 'update' && !running ? 'Starting update' : 'Update in progress'} variant="info"><p>Suite Manager may briefly reconnect while the host refreshes repo-owned services and agents.</p></Notice> : null}
+    {updating ? <Notice title={<span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Spinner />{busy === 'update' && !running ? 'Starting update' : 'Update in progress'}</span>} variant="info"><p>Suite Manager may briefly reconnect while the host refreshes repo-owned services and agents.</p></Notice> : null}
     {updating ? <div className="suite-updates-progress" role="status" aria-live="polite">
       <div className="suite-updates-progress-bar" aria-hidden="true" />
       <div>
@@ -147,7 +147,7 @@ export function UpdatesScreen() {
         </div> : null}
 
         <button className="mos-btn mos-btn-primary" disabled={!status.managedApplyAvailable || !status.updateAvailable || Boolean(busy) || running} onClick={() => void startUpdate()} type="button">
-          {updating ? 'Update running...' : status.updateAvailable ? 'Update now' : 'Already up to date'}
+          {updating ? 'Updating...' : status.updateAvailable ? 'Update now' : 'Already up to date'}
         </button>
       </section>
 

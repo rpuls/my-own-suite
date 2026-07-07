@@ -10,15 +10,64 @@ const {
   renderHomepageSystemdUnit,
 } = require('../infrastructure/control-plane-runtime.cjs');
 
-const repoRoot = process.env.MOS_V2_REPO_DIR || path.resolve(__dirname, '..', '..');
-const version2Root = path.join(repoRoot, 'version-2');
-const stateRoot = process.env.MOS_V2_STATE_ROOT || '/var/lib/mos-v2';
-const installRoot = process.env.MOS_V2_INSTALL_ROOT || path.dirname(repoRoot);
-const runtimeUser = process.env.MOS_V2_RUNTIME_USER || 'mos';
-const suiteManagerPort = process.env.MOS_V2_SUITE_MANAGER_PORT || '3100';
-const homepagePort = process.env.MOS_V2_HOMEPAGE_PORT || '3200';
-const homeHost = process.env.MOS_V2_HOME_HOST || 'home.localhost';
-const frontDoor = process.env.MOS_V2_FRONT_DOOR || 'ssh-bootstrap';
+function parseEnvFile(filePath) {
+  try {
+    return Object.fromEntries(fs.readFileSync(filePath, 'utf8').split(/\r?\n/u).map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return null;
+      const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/u);
+      if (!match) return null;
+      const rawValue = match[2].trim();
+      const value = rawValue.replace(/^(['"])(.*)\1$/u, '$2');
+      return [match[1], value];
+    }).filter(Boolean));
+  } catch {
+    return {};
+  }
+}
+
+function homeHostFromContract(contract) {
+  if (contract.MOS_V2_HOME_HOST) return contract.MOS_V2_HOME_HOST;
+  if (contract.MOS_V2_HOME_URL) {
+    try {
+      return new URL(contract.MOS_V2_HOME_URL).hostname;
+    } catch {}
+  }
+  if (contract.MOS_V2_DOMAIN) {
+    return contract.MOS_V2_DOMAIN === 'localhost' ? 'home.localhost' : `home.${contract.MOS_V2_DOMAIN}`;
+  }
+  return 'home.localhost';
+}
+
+function resolveRuntimeConfig(env = process.env) {
+  const repoRoot = env.MOS_V2_REPO_DIR || path.resolve(__dirname, '..', '..');
+  const version2Root = path.join(repoRoot, 'version-2');
+  const stateRoot = env.MOS_V2_STATE_ROOT || '/var/lib/mos-v2';
+  const bootstrapContract = parseEnvFile(path.join(stateRoot, 'bootstrap-contract.env'));
+
+  return {
+    frontDoor: env.MOS_V2_FRONT_DOOR || bootstrapContract.MOS_V2_FRONT_DOOR || 'ssh-bootstrap',
+    homeHost: env.MOS_V2_HOME_HOST || homeHostFromContract(bootstrapContract),
+    homepagePort: env.MOS_V2_HOMEPAGE_PORT || bootstrapContract.MOS_V2_HOMEPAGE_PORT || '3200',
+    repoRoot,
+    runtimeUser: env.MOS_V2_RUNTIME_USER || bootstrapContract.MOS_V2_RUNTIME_USER || 'mos',
+    stateRoot,
+    suiteManagerPort: env.MOS_V2_SUITE_MANAGER_PORT || bootstrapContract.MOS_V2_SUITE_MANAGER_PORT || '3100',
+    version2Root,
+  };
+}
+
+const runtimeConfig = resolveRuntimeConfig();
+const {
+  frontDoor,
+  homeHost,
+  homepagePort,
+  repoRoot,
+  runtimeUser,
+  stateRoot,
+  suiteManagerPort,
+  version2Root,
+} = runtimeConfig;
 const dryRun = process.argv.includes('--dry-run');
 
 function log(message) {
@@ -105,7 +154,7 @@ WantedBy=multi-user.target
 `;
 }
 
-function suiteManagerUnit() {
+function suiteManagerUnit(config = runtimeConfig) {
   return `[Unit]
 Description=MOS V2 Suite Manager
 After=mos-v2-homepage.service network-online.target
@@ -113,22 +162,22 @@ Wants=mos-v2-homepage.service network-online.target
 
 [Service]
 Type=simple
-User=${runtimeUser}
-WorkingDirectory=${version2Root}
+User=${config.runtimeUser}
+WorkingDirectory=${config.version2Root}
 Environment=NODE_ENV=production
-Environment=MOS_V2_STATE_DIR=${stateRoot}/suite-manager
-Environment=MOS_V2_FRONTEND_DIST_DIR=${version2Root}/suite-manager/frontend/dist
+Environment=MOS_V2_STATE_DIR=${config.stateRoot}/suite-manager
+Environment=MOS_V2_FRONTEND_DIST_DIR=${config.version2Root}/suite-manager/frontend/dist
 Environment=MOS_V2_SUITE_MANAGER_HOST=127.0.0.1
-Environment=MOS_V2_SUITE_MANAGER_PORT=${suiteManagerPort}
-Environment=MOS_V2_FRONT_DOOR=${frontDoor}
-Environment=MOS_V2_HOME_HOST=${homeHost}
-Environment=MOS_V2_HOMEPAGE_UPSTREAM=http://127.0.0.1:${homepagePort}
+Environment=MOS_V2_SUITE_MANAGER_PORT=${config.suiteManagerPort}
+Environment=MOS_V2_FRONT_DOOR=${config.frontDoor}
+Environment=MOS_V2_HOME_HOST=${config.homeHost}
+Environment=MOS_V2_HOMEPAGE_UPSTREAM=http://127.0.0.1:${config.homepagePort}
 Environment=MOS_V2_HTTPS_AGENT_SOCKET=/run/mos-v2-https-agent/agent.sock
 Environment=MOS_V2_HOMEPAGE_AGENT_SOCKET=/run/mos-v2-homepage-agent/agent.sock
 Environment=MOS_V2_APP_AGENT_SOCKET=/run/mos-v2-app-agent/agent.sock
 Environment=MOS_V2_BACKUP_AGENT_SOCKET=/run/mos-v2-backup-agent/agent.sock
 Environment=MOS_V2_UPDATE_AGENT_SOCKET=/run/mos-v2-update-agent/agent.sock
-ExecStart=/usr/bin/node ${version2Root}/suite-manager/backend/src/server/start.cjs
+ExecStart=/usr/bin/node ${config.version2Root}/suite-manager/backend/src/server/start.cjs
 Restart=always
 RestartSec=3
 
@@ -251,9 +300,18 @@ ExecReload=/usr/local/libexec/mos-v2/caddy reload --config /etc/caddy/Caddyfile 
   log('system reconciliation complete');
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(`[mos-v2:reconcile] ERROR: ${error.message}`);
-  process.exit(1);
+if (require.main === module) {
+  try {
+    main();
+  } catch (error) {
+    console.error(`[mos-v2:reconcile] ERROR: ${error.message}`);
+    process.exit(1);
+  }
 }
+
+module.exports = {
+  homeHostFromContract,
+  parseEnvFile,
+  resolveRuntimeConfig,
+  suiteManagerUnit,
+};
