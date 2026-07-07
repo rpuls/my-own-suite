@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { Dialog, Notice } from '../../components/ui';
+import { Dialog, Icon, Notice } from '../../components/ui';
 
 type BackupDestination = {
   availableBytes: number | null;
@@ -77,10 +77,14 @@ function isRunning(job: BackupJob | null) {
   return Boolean(job && (job.status === 'queued' || job.status === 'running'));
 }
 
-function destinationTitle(destination: BackupDestination) {
-  if (destination.storageKind === 'external') return `External drive: ${destination.label}`;
-  if (destination.storageKind === 'network') return `Network storage: ${destination.label}`;
-  return `This computer: ${destination.label}`;
+function driveIconName(kind: string | null | undefined) {
+  if (kind === 'external') return 'usb-drive';
+  if (kind === 'network') return 'network-drive';
+  return 'hard-drive';
+}
+
+function driveLabel(destination: BackupDestination) {
+  return destination.label;
 }
 
 function jobMessage(job: BackupJob | null) {
@@ -198,8 +202,8 @@ export function BackupsScreen() {
 
   return <section className="mos-shell suite-backups">
     <div className="suite-hero">
-      <h1>Backup</h1>
-      <p className="suite-lead mos-body-lg">Save a copy of My Own Suite to another drive, then restore it if this install ever needs to recover.</p>
+      <h1>Backup & Restore</h1>
+      <p className="suite-lead mos-body-lg">Save a copy of My Own Suite to an external drive, then restore it if you ever need to recover your system.</p>
     </div>
 
     {error ? <Notice title="Backup needs attention" variant="error"><p>{error}</p></Notice> : null}
@@ -219,28 +223,52 @@ export function BackupsScreen() {
       <section className="mos-panel suite-card suite-backup-panel">
         <div className="suite-backup-header-row">
           <div>
-            <h2 className="mos-card-title">Where should the backup go?</h2>
-            <p className="suite-meta">Use an external USB drive when you can. A local disk is useful, but it will not help if the machine itself is lost.</p>
+            <h2 className="mos-card-title">Available backup drives</h2>
+            <p className="suite-meta">Select where you want to save your backup. Always use an external USB drive when possible.</p>
           </div>
-          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => void load()} type="button">Scan again</button>
+          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => void load()} type="button">
+            <Icon name="refresh" /> Refresh
+          </button>
         </div>
 
-        {status.destinations.length ? <div className="suite-backup-destination-list">
+        {status.destinations.length ? <div className="suite-drive-list">
           {status.destinations.map((destination) => {
             const mounted = destination.mountState === 'mounted';
             const selectable = mounted && destination.writable && !running && !busy;
-            return <article className={`suite-backup-destination-card${selectedDestinationId === destination.id ? ' is-selected' : ''}`} key={destination.id}>
-              <button disabled={!selectable} onClick={() => setSelectedDestinationId(destination.id)} type="button">
-                <span><strong>{destinationTitle(destination)}</strong><small>{mounted ? `${formatBytes(destination.availableBytes)} free` : destination.mountBlockedReason || 'Drive is connected but not mounted yet.'}</small></span>
-              </button>
-              {!mounted && destination.canMount ? <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => void mount(destination)} type="button">{busy === `mount:${destination.id}` ? 'Mounting...' : 'Mount drive'}</button> : null}
-            </article>;
-          })}
-        </div> : <p className="suite-meta">No backup drives were found. Plug in a USB drive or connect backup storage, then scan again.</p>}
+            const selected = selectedDestinationId === destination.id;
 
-        <button className="mos-btn mos-btn-primary" disabled={!selectedDestination?.writable || Boolean(busy) || running} onClick={() => void startBackup()} type="button">
-          {busy === 'backup' ? 'Starting backup...' : 'Back up now'}
-        </button>
+            return <div className={`suite-drive-item ${selected ? 'is-selected' : ''}`} key={destination.id}>
+              <button className="suite-drive-select" disabled={!selectable} onClick={() => setSelectedDestinationId(destination.id)} type="button">
+                <span className="suite-drive-icon"><Icon name={driveIconName(destination.storageKind)} /></span>
+                <div className="suite-drive-info">
+                  <strong>{driveLabel(destination)}</strong>
+                  {mounted && destination.sizeBytes
+                    ? <small>{formatBytes(destination.availableBytes)} free of {formatBytes(destination.sizeBytes)}</small>
+                    : <small>{mounted ? 'Calculating space...' : destination.mountBlockedReason || 'Drive connected but not available'}</small>
+                  }
+                </div>
+              </button>
+
+              {!mounted && destination.canMount
+                ? <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={() => void mount(destination)} type="button">
+                    {busy === `mount:${destination.id}` ? 'Mounting...' : 'Mount'}
+                  </button>
+                : null
+              }
+            </div>;
+          })}
+        </div> :
+          <div className="suite-empty-state">
+            <p className="suite-meta">No backup drives found.</p>
+            <p className="suite-meta">Plug in a USB drive and click Refresh above.</p>
+          </div>
+        }
+
+        <div className="suite-backup-actions">
+          <button className="mos-btn mos-btn-primary" disabled={!selectedDestination?.writable || Boolean(busy) || running} onClick={() => void startBackup()} type="button">
+            {busy === 'backup' ? 'Starting backup...' : 'Back up now'}
+          </button>
+        </div>
       </section>
 
       {(status.currentJob || status.lastJob) ? <section className="mos-panel suite-card suite-backup-panel">
