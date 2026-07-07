@@ -280,9 +280,8 @@ export function BackupsScreen() {
                   <div className="suite-drive-info">
                     <div className="suite-drive-header">
                       <strong>{destination.label}</strong>
-                      <span className="suite-drive-badges">
+                        <span className="suite-drive-badges">
                         <span className="suite-category-pill">{kindLabel}</span>
-                        {selected ? <span className="suite-category-pill is-selected">Selected</span> : null}
                         {destination.writable && mounted ? <span className="suite-category-pill is-success">Writable</span> : null}
                       </span>
                     </div>
