@@ -104,7 +104,7 @@ export function UpdatesScreen() {
     });
   }
 
-  return <section aria-busy={updating} className="mos-shell suite-updates">
+  return <section aria-busy={updating} className="mos-shell mos-page">
     <div className="suite-hero">
       <h1>Updates</h1>
       <p className="suite-lead mos-body-lg">Update the V2 control plane through a host-owned agent, with live progress, restart-safe feedback, and diagnostics kept visible.</p>

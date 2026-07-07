@@ -898,7 +898,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   const standaloneApps = filtered.filter((app) => !isCompanionApp(app));
   const companionApps = filtered.filter(isCompanionApp);
 
-  return <section className="mos-shell suite-apps suite-app-catalog">
+  return <section className="mos-shell mos-page">
     <div className="suite-app-simple-header">
       <h1>Apps</h1>
     </div>

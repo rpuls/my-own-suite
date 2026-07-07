@@ -129,7 +129,7 @@ export function SettingsScreen() {
     !applying,
   );
 
-  return <section className="mos-shell suite-settings">
+  return <section className="mos-shell mos-page">
     <div className="suite-hero"><h1>Settings</h1><p className="suite-lead mos-body-lg">Manage how this MOS Home is reached from your browser.</p></div>
     {loadError ? <Notice title="Settings unavailable" variant="error"><p>{loadError}</p></Notice> : null}
     {status ? !status.privateHttpsAvailable ? <div className="mos-panel suite-card suite-settings-panel">

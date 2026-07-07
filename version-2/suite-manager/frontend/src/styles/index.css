@@ -111,6 +111,19 @@
     var(--mos-color-bg);
 }
 
+.mos-page {
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 0 clamp(1rem, 3vw, 2rem);
+  display: grid;
+  gap: var(--mos-space-5);
+}
+
+.mos-page-wider {
+  max-width: 1200px;
+}
+
 .suite-shell-header {
   display: flex;
   align-items: center;
@@ -294,14 +307,6 @@
   color: var(--mos-color-text-muted);
 }
 
-.suite-apps {
-  display: grid;
-  gap: var(--mos-space-5);
-}
-
-.suite-app-catalog {
-  max-width: 920px;
-}
 
 .suite-app-simple-header {
   display: grid;
@@ -1162,32 +1167,6 @@
   grid-template-columns: minmax(8rem, auto) 1fr;
 }
 
-.suite-settings {
-  display: grid;
-  gap: var(--mos-space-6);
-}
-
-.suite-settings-panel,
-.suite-settings-form {
-  display: grid;
-  gap: var(--mos-space-5);
-}
-
-.suite-settings-panel {
-  max-width: 780px;
-}
-
-.suite-backups {
-  display: grid;
-  gap: var(--mos-space-6);
-  max-width: 920px;
-}
-
-.suite-updates {
-  display: grid;
-  gap: var(--mos-space-6);
-  max-width: 920px;
-}
 
 .suite-updates-layout,
 .suite-updates-panel {
