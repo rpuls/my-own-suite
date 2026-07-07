@@ -1683,3 +1683,193 @@
   .suite-file-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .suite-form-grid, .suite-route-preview, .suite-choice-grid { grid-template-columns: 1fr; }
 }
+
+/* Backup & Restore Drive List */
+.suite-drive-list {
+  display: grid;
+  gap: var(--mos-space-3);
+  margin-top: var(--mos-space-4);
+  margin-bottom: var(--mos-space-5);
+}
+
+.suite-drive-item {
+  display: grid;
+  gap: var(--mos-space-2);
+}
+
+.suite-drive-select {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: var(--mos-space-4);
+  width: 100%;
+  text-align: left;
+  padding: var(--mos-space-4);
+  border: var(--mos-border-subtle);
+  border-radius: var(--mos-radius-lg);
+  background: var(--mos-color-surface-muted);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease;
+}
+
+.suite-drive-select:hover:not(:disabled) {
+  border-color: var(--mos-color-accent-border);
+  background: var(--mos-color-surface);
+}
+
+.suite-drive-item.is-selected .suite-drive-select {
+  border-color: var(--mos-color-accent-border);
+  background: var(--mos-color-accent-soft);
+  outline: var(--mos-focus-ring);
+}
+
+.suite-drive-select:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.suite-drive-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--mos-radius-md);
+  background: var(--mos-color-surface-strong);
+  color: var(--mos-color-text-muted);
+}
+
+.suite-drive-item.is-selected .suite-drive-icon {
+  color: var(--mos-color-accent);
+  background: var(--mos-color-accent-soft);
+}
+
+.suite-drive-info {
+  display: grid;
+  gap: var(--mos-space-2);
+  min-width: 0;
+}
+
+.suite-drive-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mos-space-3);
+  flex-wrap: wrap;
+}
+
+.suite-drive-header strong {
+  color: var(--mos-color-text-strong);
+  font-size: 1.1rem;
+  line-height: 1.3;
+}
+
+.suite-drive-badges {
+  display: flex;
+  gap: var(--mos-space-2);
+  flex-wrap: wrap;
+}
+
+.suite-drive-badges .suite-category-pill.is-selected {
+  border-color: var(--mos-color-accent-border);
+  background: var(--mos-color-accent);
+  color: var(--mos-color-text-strong);
+}
+
+.suite-drive-badges .suite-category-pill.is-success {
+  border-color: var(--mos-color-success-border);
+  background: var(--mos-color-success-soft);
+  color: var(--mos-color-success);
+}
+
+.suite-drive-path {
+  font-family: var(--mos-font-mono);
+  font-size: 0.9rem;
+  color: var(--mos-color-text-muted);
+}
+
+.suite-drive-space {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: var(--mos-color-text-muted);
+}
+
+.suite-drive-bar {
+  height: 0.5rem;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-surface-strong);
+  overflow: hidden;
+}
+
+.suite-drive-bar-fill {
+  height: 100%;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-accent);
+  transition: width 300ms ease;
+}
+
+.suite-drive-status {
+  font-size: 0.9rem;
+  color: var(--mos-color-text-muted);
+}
+
+.suite-drive-selector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.suite-drive-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--mos-color-accent);
+  color: white;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.suite-backup-action-footer {
+  display: grid;
+  gap: var(--mos-space-3);
+  padding-top: var(--mos-space-4);
+  border-top: var(--mos-border-subtle);
+}
+
+.suite-backup-status-message {
+  margin: 0;
+  color: var(--mos-color-text-muted);
+  font-size: 0.95rem;
+}
+
+.suite-backup-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--mos-space-4);
+  flex-wrap: wrap;
+}
+
+.suite-empty-state {
+  display: grid;
+  gap: var(--mos-space-2);
+  padding: var(--mos-space-6);
+  text-align: center;
+  border-radius: var(--mos-radius-lg);
+  background: var(--mos-color-surface-muted);
+  margin-top: var(--mos-space-4);
+  margin-bottom: var(--mos-space-5);
+}
+
+.suite-empty-state p {
+  margin: 0;
+}
+
