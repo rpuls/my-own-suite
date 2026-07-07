@@ -35,7 +35,11 @@ import /etc/caddy/mos-v2-app-routes.caddy
 `;
 }
 
-function renderHomepageSystemdUnit() {
+function renderHomepageSystemdUnit({
+  homeHost = '$MOS_V2_HOME_HOST',
+  homepagePort = HOMEPAGE_PORT,
+  stateRoot = '$MOS_V2_STATE_ROOT',
+} = {}) {
   return `[Unit]
 Description=MOS V2 Homepage dashboard
 After=docker.service network-online.target
@@ -47,7 +51,7 @@ Type=simple
 Restart=always
 RestartSec=3
 ExecStartPre=-/usr/bin/docker rm -f mos-v2-homepage
-ExecStart=/usr/bin/docker run --rm --name mos-v2-homepage --publish 127.0.0.1:${HOMEPAGE_PORT}:3000 --env HOMEPAGE_ALLOWED_HOSTS=$MOS_V2_HOME_HOST --volume $MOS_V2_STATE_ROOT/homepage/config:/app/config --volume $MOS_V2_STATE_ROOT/homepage/config/images:/app/public/images ${HOMEPAGE_IMAGE}
+ExecStart=/usr/bin/docker run --rm --name mos-v2-homepage --publish 127.0.0.1:${homepagePort}:3000 --env HOMEPAGE_ALLOWED_HOSTS=${homeHost} --volume ${stateRoot}/homepage/config:/app/config --volume ${stateRoot}/homepage/config/images:/app/public/images ${HOMEPAGE_IMAGE}
 ExecStop=/usr/bin/docker stop -t 10 mos-v2-homepage
 
 [Install]

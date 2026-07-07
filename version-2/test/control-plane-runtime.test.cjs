@@ -57,6 +57,19 @@ test('Homepage runtime is pinned and reachable only through loopback', () => {
   assert.doesNotMatch(unit, /0\.0\.0\.0:3200|--network host/);
 });
 
+test('Homepage runtime can render concrete update reconciliation paths', () => {
+  const unit = renderHomepageSystemdUnit({
+    homeHost: 'home.mos.home',
+    homepagePort: '3200',
+    stateRoot: '/var/lib/mos-v2',
+  });
+
+  assert.match(unit, /HOMEPAGE_ALLOWED_HOSTS=home\.mos\.home/);
+  assert.match(unit, /--volume \/var\/lib\/mos-v2\/homepage\/config:\/app\/config/);
+  assert.match(unit, /--volume \/var\/lib\/mos-v2\/homepage\/config\/images:\/app\/public\/images/);
+  assert.doesNotMatch(unit, /\$MOS_V2_(HOME_HOST|STATE_ROOT|HOMEPAGE_PORT)/u);
+});
+
 test('Homepage ships useful defaults and an editable source template without overlay account controls', () => {
   const configDir = path.join(__dirname, '..', 'infrastructure', 'homepage');
   const services = fs.readFileSync(path.join(configDir, 'services.yaml'), 'utf8');

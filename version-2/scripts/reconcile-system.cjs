@@ -186,6 +186,14 @@ WantedBy=multi-user.target
 `;
 }
 
+function homepageUnit(config = runtimeConfig) {
+  return renderHomepageSystemdUnit({
+    homeHost: config.homeHost,
+    homepagePort: config.homepagePort,
+    stateRoot: config.stateRoot,
+  });
+}
+
 function refreshCaddyBinary() {
   run('docker', ['build', '--file', path.join(version2Root, 'infrastructure/caddy/Dockerfile'), '--tag', 'mos-v2-caddy-builder', version2Root]);
   const container = dryRun ? 'dry-run-container' : run('docker', ['create', 'mos-v2-caddy-builder'], { stdio: ['ignore', 'pipe', 'inherit'] }).trim();
@@ -247,7 +255,7 @@ ExecReload=/usr/local/libexec/mos-v2/caddy reload --config /etc/caddy/Caddyfile 
     if (!dryRun) fs.writeFileSync(homepageSeedMarker, '');
   }
 
-  unit('mos-v2-homepage.service', renderHomepageSystemdUnit());
+  unit('mos-v2-homepage.service', homepageUnit());
   unit('mos-v2-suite-manager.service', suiteManagerUnit());
   unit('mos-v2-https-agent.service', agentUnit({
     after: 'network-online.target caddy.service',
@@ -311,6 +319,7 @@ if (require.main === module) {
 
 module.exports = {
   homeHostFromContract,
+  homepageUnit,
   parseEnvFile,
   resolveRuntimeConfig,
   suiteManagerUnit,

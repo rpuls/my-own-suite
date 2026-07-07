@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  homepageUnit,
   resolveRuntimeConfig,
   suiteManagerUnit,
 } = require('../scripts/reconcile-system.cjs');
@@ -28,10 +29,14 @@ test('system reconciliation preserves the installed Home host from the bootstrap
     MOS_V2_STATE_ROOT: tempDir,
   });
   const unit = suiteManagerUnit(config);
+  const homepage = homepageUnit(config);
 
   assert.equal(config.homeHost, 'home.mos.home');
   assert.equal(config.frontDoor, 'usb-autoinstall');
   assert.match(unit, /Environment=MOS_V2_HOME_HOST=home\.mos\.home/u);
   assert.match(unit, /Environment=MOS_V2_FRONT_DOOR=usb-autoinstall/u);
   assert.doesNotMatch(unit, /home\.localhost/u);
+  assert.match(homepage, /HOMEPAGE_ALLOWED_HOSTS=home\.mos\.home/u);
+  assert.match(homepage, new RegExp(`${tempDir.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}\\/homepage\\/config:\\/app\\/config`, 'u'));
+  assert.doesNotMatch(homepage, /\$MOS_V2_(HOME_HOST|STATE_ROOT|HOMEPAGE_PORT)/u);
 });
