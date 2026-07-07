@@ -44,13 +44,13 @@ Current packages:
 - Homepage routes and app package routes stay separate: Homepage customization owns user dashboard/home-service routes; app packages own lifecycle-managed app routes.
 - Post-install setup guides are declarative and app-scoped, not global owner onboarding.
 - ONLYOFFICE should be its own package that provides a document-editor capability. Seafile is one compatible consumer, not the parent package. Future file/content platforms should be able to consume the same capability through generic metadata. Capability providers and companion apps do not need normal Homepage contributions.
-- V2 managed updates follow the V1 host-managed updater pattern through V2 boundaries: Suite Manager talks only to a local update agent socket, `version-2/scripts/reconcile-system.cjs` refreshes repo-owned host units/agents/Caddy wiring after checkout, and installed app runtimes are preserved with an explicit manual reapply/restart note until automatic package reconciliation is proven. Hyper-V validation reproduced a dirty-lockfile failure from the updater using `npm install`; the updater now uses lockfile installs so future update runs should not leave `version-2/package-lock.json` modified.
+- V2 managed updates follow the V1 host-managed updater pattern through V2 boundaries: Suite Manager talks only to a local update agent socket, `version-2/scripts/reconcile-system.cjs` refreshes repo-owned host units/agents/Caddy wiring after checkout, and installed app runtimes are preserved with an explicit manual reapply/restart note until automatic package reconciliation is proven. Hyper-V validation reproduced a dirty-lockfile failure from the updater using `npm install`; the updater now uses lockfile installs so future update runs should not leave `version-2/package-lock.json` modified, and it recovers the known single-file lockfile artifact left by the earlier updater.
 
 ## Next Slice
 
 Before adding more heavy apps, finish managed-update validation and the hardened capability/integration path:
 
-1. Re-run Hyper-V branch-track update validation after clearing the already-dirtied repo-owned lockfile on the current VM, then confirm the fixed updater applies the next pushed Suite Manager UI change.
+1. Re-run Hyper-V branch-track update validation, then confirm the fixed updater applies the next pushed Suite Manager UI change and recovers the earlier single-file package-lock artifact if present.
 2. Confirm the update refreshes Suite Manager, Caddy wiring, and all V2 system agents without reporting success while old repo-owned services are still running.
 3. After update, manually reapply/restart installed app runtimes whose package manifests/Dockerfiles changed; record the automatic package-runtime reconciliation contract for the next updater slice.
 4. Validate Seafile core and ONLYOFFICE integration in Hyper-V, including install order, app health, document editing connection, provider restart recovery, disable/re-enable, and preserved-data uninstall.

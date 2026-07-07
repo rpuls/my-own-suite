@@ -226,10 +226,27 @@ function ensurePrerequisites(paths) {
   if (!fs.existsSync(paths.version2PackageJsonPath)) throw new Error('This does not look like a MOS V2 checkout.');
 }
 
+function dirtyPathsFromPorcelain(value) {
+  return value.trim().split(/\r?\n/u).filter(Boolean).map((line) => line.slice(2).trim());
+}
+
+function recoverKnownMutableFiles(paths, dirtyPaths) {
+  const knownMutablePaths = new Set(['version-2/package-lock.json']);
+  if (!dirtyPaths.length || dirtyPaths.some((dirtyPath) => !knownMutablePaths.has(dirtyPath))) return false;
+  runCommand(paths.repoRoot, 'git', ['checkout', '--', ...dirtyPaths], { stdio: 'inherit' });
+  return true;
+}
+
 function ensureCleanWorkingTree(paths) {
-  const result = runCommand(paths.repoRoot, 'git', ['status', '--porcelain']);
+  let result = runCommand(paths.repoRoot, 'git', ['status', '--porcelain']);
   if (result.trim()) {
-    throw new Error(`Working tree is not clean. Commit or stash changes before applying an update. Dirty paths: ${result.trim().split(/\r?\n/u).map((line) => line.slice(2).trim()).join(', ')}`);
+    const dirtyPaths = dirtyPathsFromPorcelain(result);
+    if (recoverKnownMutableFiles(paths, dirtyPaths)) {
+      result = runCommand(paths.repoRoot, 'git', ['status', '--porcelain']);
+    }
+  }
+  if (result.trim()) {
+    throw new Error(`Working tree is not clean. Commit or stash changes before applying an update. Dirty paths: ${dirtyPathsFromPorcelain(result).join(', ')}`);
   }
 }
 

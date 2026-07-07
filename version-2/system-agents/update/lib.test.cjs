@@ -71,6 +71,22 @@ test('apply refuses dirty working trees before running host reconciliation', asy
   await assert.rejects(() => runApply(paths, { log() {} }), /Working tree is not clean/u);
 });
 
+test('apply recovers the known npm package-lock metadata dirtiness', async () => {
+  const repo = makeRepo();
+  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-v2-update-state-'));
+  const paths = buildPaths(repo, stateRoot);
+  write(path.join(repo, 'version-2', 'package-lock.json'), '{"name":"dirty"}\n');
+
+  process.env.MOS_V2_UPDATE_SKIP_RELEASE_LOOKUP = '1';
+  try {
+    await assert.rejects(() => runApply(paths, { log() {} }), /already up to date/u);
+  } finally {
+    delete process.env.MOS_V2_UPDATE_SKIP_RELEASE_LOOKUP;
+  }
+
+  assert.equal(run(repo, ['status', '--porcelain']), '');
+});
+
 test('apply installs dependencies from lockfile without dirtying package-lock', async () => {
   const repo = makeRepo();
   const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-v2-update-state-'));
