@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 
 const { buildPaths, collectStatus, readJson, repoRootFrom, writeJson, writeUpdateTrack } = require('./lib.cjs');
 
@@ -52,8 +52,36 @@ function summarizeJob(job) {
   };
 }
 
+function jobUnitName(jobId) {
+  return `mos-v2-update-job-${String(jobId || '').replace(/[^A-Za-z0-9:-]/gu, '-')}`;
+}
+
+function systemdUnitActive(unitName) {
+  if (process.platform !== 'linux') return false;
+  const result = spawnSync('systemctl', ['is-active', '--quiet', unitName], { stdio: 'ignore' });
+  return result.status === 0;
+}
+
+function markLostJobIfNeeded(job) {
+  if (!isActive(job) || process.platform !== 'linux') return job;
+  const updatedAt = new Date(job.updatedAt || job.createdAt || 0).getTime();
+  if (!Number.isFinite(updatedAt) || Date.now() - updatedAt < 120_000) return job;
+  if (systemdUnitActive(jobUnitName(job.id))) return job;
+  const next = {
+    ...job,
+    completedAt: new Date().toISOString(),
+    error: 'Update job stopped before reporting completion. The updater service may have restarted during reconciliation; start the update again after checking the latest status.',
+    stage: 'failed',
+    status: 'failed',
+    updatedAt: new Date().toISOString(),
+  };
+  writeJson(path.join(paths.jobsDir, `${job.id}.json`), next);
+  writeJson(paths.currentJobPath, summarizeJob(next));
+  return next;
+}
+
 function readCurrentJob() {
-  try { return readJson(paths.currentJobPath); } catch { return null; }
+  try { return markLostJobIfNeeded(readJson(paths.currentJobPath)); } catch { return null; }
 }
 
 function readLatestJob() {
@@ -86,10 +114,27 @@ function createJob(payload) {
 }
 
 function startWorker(job) {
-  const child = spawn(process.execPath, [path.join(__dirname, 'worker.cjs'), '--job-file', path.join(paths.jobsDir, `${job.id}.json`)], {
+  const workerArgs = [path.join(__dirname, 'worker.cjs'), '--job-file', path.join(paths.jobsDir, `${job.id}.json`)];
+  const workerCwd = path.join(repoRoot, 'version-2');
+  const workerEnv = { ...process.env, MOS_V2_REPO_DIR: repoRoot, MOS_V2_STATE_ROOT: stateRoot };
+  if (process.platform === 'linux') {
+    const unitName = jobUnitName(job.id);
+    const systemdRun = spawnSync('systemd-run', [
+      '--collect',
+      `--unit=${unitName}`,
+      `--working-directory=${workerCwd}`,
+      `--setenv=MOS_V2_REPO_DIR=${repoRoot}`,
+      `--setenv=MOS_V2_STATE_ROOT=${stateRoot}`,
+      `--setenv=NODE_ENV=${workerEnv.NODE_ENV || 'production'}`,
+      process.execPath,
+      ...workerArgs,
+    ], { encoding: 'utf8', stdio: ['ignore', 'ignore', 'ignore'] });
+    if (systemdRun.status === 0) return;
+  }
+  const child = spawn(process.execPath, workerArgs, {
     cwd: path.join(repoRoot, 'version-2'),
     detached: true,
-    env: { ...process.env, MOS_V2_REPO_DIR: repoRoot, MOS_V2_STATE_ROOT: stateRoot },
+    env: workerEnv,
     stdio: 'ignore',
   });
   child.unref();
