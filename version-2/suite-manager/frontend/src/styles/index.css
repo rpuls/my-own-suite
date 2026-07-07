@@ -1776,10 +1776,13 @@
 
 .suite-drive-badges .suite-category-pill.is-selected {
   border-color: var(--mos-color-accent-border);
-  background: var(--mos-color-accent);
-  color: var(--mos-color-text-strong);
+  background: var(--mos-color-accent-soft);
+  color: var(--mos-color-accent);
 }
 
+.suite-drive-select {
+  user-select: text;
+}
 .suite-drive-badges .suite-category-pill.is-success {
   border-color: var(--mos-color-success-border);
   background: var(--mos-color-success-soft);
