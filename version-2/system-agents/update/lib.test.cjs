@@ -107,6 +107,6 @@ test('apply installs dependencies from lockfile without dirtying package-lock', 
     delete process.env.MOS_V2_UPDATE_SKIP_RELEASE_LOOKUP;
   }
 
-  assert(logs.some((message) => /npm --prefix version-2 ci/u.test(message)));
+  assert(logs.some((message) => /npm --prefix version-2 ci --include=dev/u.test(message)));
   assert.equal(run(repo, ['status', '--porcelain']), '');
 });

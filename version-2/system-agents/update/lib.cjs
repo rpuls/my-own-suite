@@ -316,8 +316,8 @@ async function runApply(paths, { log = () => {} } = {}) {
   log(`Repository before update: ${shortCommit(status.track.currentCommit) || 'unknown'}`);
   checkoutBranch(paths, status.track.ref, log);
   log(`Repository after checkout: ${shortCommit(currentGitState(paths.repoRoot).commit) || 'unknown'}`);
-  log('Installing V2 dependencies from lockfile');
-  runNpm(paths, ['ci'], log);
+  log('Installing V2 dependencies from lockfile, including build tooling');
+  runNpm(paths, ['ci', '--include=dev'], log);
   log('Building Suite Manager frontend');
   runNpm(paths, ['run', 'build:client'], log);
   log('Reconciling V2 host services and agents');

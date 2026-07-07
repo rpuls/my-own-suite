@@ -25,7 +25,7 @@ Verified app package capabilities:
 - Runtime health refresh, disable, re-enable, restart, and uninstall-with-data-preserved.
 - Multi-service package apply/remove for Seafile core.
 - Capability-based app-to-app integration, proven by ONLYOFFICE plus Seafile, with relationship recovery/status hooks around restart, re-enable, disable, and preserved-data uninstall.
-- First managed-update/reconciliation slice: new installs include `mos-v2-update-agent`, Suite Manager exposes an Updates page, branch-track jobs can fast-forward the V2 lab branch, install dependencies from the lockfile, rebuild Suite Manager, reconcile repo-owned host services/agents/Caddy wiring, and report progress/logs through the UI.
+- First managed-update/reconciliation slice: new installs include `mos-v2-update-agent`, Suite Manager exposes an Updates page, branch-track jobs can fast-forward the V2 lab branch, install dependencies and build tooling from the lockfile, rebuild Suite Manager, reconcile repo-owned host services/agents/Caddy wiring, and report progress/logs through the UI.
 
 Current packages:
 
