@@ -107,7 +107,7 @@ export function UpdatesScreen() {
   return <section aria-busy={updating} className="mos-shell suite-updates">
     <div className="suite-hero">
       <h1>Updates</h1>
-      <p className="suite-lead mos-body-lg">Update the V2 control plane through a host-owned agent, with live progress, restart feedback, and diagnostics kept visible.</p>
+      <p className="suite-lead mos-body-lg">Update the V2 control plane through a host-owned agent, with live progress, restart-safe feedback, and diagnostics kept visible.</p>
     </div>
 
     {error ? <Notice title="Updates need attention" variant="error"><p>{error}</p></Notice> : null}
