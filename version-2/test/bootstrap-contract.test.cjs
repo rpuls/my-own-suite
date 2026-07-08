@@ -25,6 +25,7 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.doesNotMatch(plan.env, /SELECTED_APPS|MOS_APPS|STIRLING|VAULTWARDEN/);
   assert.match(plan.env, /MOS_V2_OWNER_SETUP='suite-manager-browser'/);
   assert.match(plan.env, /MOS_V2_APP_SELECTION='suite-manager-after-install'/);
+  assert.match(plan.env, /MOS_V2_LAB_RESET_ENABLED='0'/);
   assert.match(plan.cloudInit, /ExecStart=\/usr\/bin\/node .*suite-manager\/backend\/src\/server\/start\.cjs/);
   assert.match(plan.cloudInit, /reverse_proxy 127\.0\.0\.1:\$MOS_V2_SUITE_MANAGER_PORT/);
   assert.match(plan.cloudInit, /mos-v2-homepage\.service/);
@@ -48,6 +49,9 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.match(plan.cloudInit, /MOS_V2_HOMEPAGE_AGENT_SOCKET=\/run\/mos-v2-homepage-agent\/agent\.sock/);
   assert.match(plan.cloudInit, /mos-v2-backup-agent\.service/);
   assert.match(plan.cloudInit, /MOS_V2_BACKUP_AGENT_SOCKET=\/run\/mos-v2-backup-agent\/agent\.sock/);
+  assert.match(plan.cloudInit, /mos-v2-lab-reset-agent\.service/);
+  assert.match(plan.cloudInit, /MOS_V2_LAB_RESET_AGENT_SOCKET=\/run\/mos-v2-lab-reset-agent\/agent\.sock/);
+  assert.match(plan.cloudInit, /if \[ "\$MOS_V2_LAB_RESET_ENABLED" = '1' \]; then/);
   assert.match(plan.cloudInit, /mos-v2-homepage-routes\.caddy/);
   assert.match(plan.cloudInit, /MOS_V2_HTTPS_AGENT_SOCKET/);
   assert.match(plan.cloudInit, /caddy-cloudflare\.env/);
@@ -130,6 +134,7 @@ test('rendered cloud, SSH, and USB payloads share the same bootstrap contract', 
 
   assert.match(plan.usbSeed, /MOS_V2_REPO_URL='https:\/\/example.test\/mos.git'/);
   assert.match(plan.usbSeed, /MOS_V2_FRONT_DOOR='usb-autoinstall'/);
+  assert.match(plan.usbSeed, /MOS_V2_LAB_RESET_ENABLED='1'/);
   assert.match(plan.usbSeed, /MOS_V2_SUITE_MANAGER_URL='http:\/\/home.mos.example.test\/suite-manager\/'/);
   assert.match(plan.usbSeed, /MOS_V2_HOMEPAGE_URL='http:\/\/home.mos.example.test\/'/);
   assert.doesNotMatch(plan.usbSeed, /MOS_OWNER_PASSWORD|MOS_SMOKE_OWNER_PASSWORD|MOS_SELECTED_APPS/);

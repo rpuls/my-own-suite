@@ -49,6 +49,7 @@ function resolveRuntimeConfig(env = process.env) {
     frontDoor: env.MOS_V2_FRONT_DOOR || bootstrapContract.MOS_V2_FRONT_DOOR || 'ssh-bootstrap',
     homeHost: env.MOS_V2_HOME_HOST || homeHostFromContract(bootstrapContract),
     homepagePort: env.MOS_V2_HOMEPAGE_PORT || bootstrapContract.MOS_V2_HOMEPAGE_PORT || '3200',
+    labResetEnabled: env.MOS_V2_LAB_RESET_ENABLED || bootstrapContract.MOS_V2_LAB_RESET_ENABLED || (bootstrapContract.MOS_V2_FRONT_DOOR === 'usb-autoinstall' ? '1' : '0'),
     repoRoot,
     runtimeUser: env.MOS_V2_RUNTIME_USER || bootstrapContract.MOS_V2_RUNTIME_USER || 'mos',
     stateRoot,
@@ -62,6 +63,7 @@ const {
   frontDoor,
   homeHost,
   homepagePort,
+  labResetEnabled,
   repoRoot,
   runtimeUser,
   stateRoot,
@@ -177,6 +179,8 @@ Environment=MOS_V2_HOMEPAGE_AGENT_SOCKET=/run/mos-v2-homepage-agent/agent.sock
 Environment=MOS_V2_APP_AGENT_SOCKET=/run/mos-v2-app-agent/agent.sock
 Environment=MOS_V2_BACKUP_AGENT_SOCKET=/run/mos-v2-backup-agent/agent.sock
 Environment=MOS_V2_UPDATE_AGENT_SOCKET=/run/mos-v2-update-agent/agent.sock
+Environment=MOS_V2_LAB_RESET_ENABLED=${config.labResetEnabled}
+Environment=MOS_V2_LAB_RESET_AGENT_SOCKET=/run/mos-v2-lab-reset-agent/agent.sock
 ExecStart=/usr/bin/node ${config.version2Root}/suite-manager/backend/src/server/start.cjs
 Restart=always
 RestartSec=3
@@ -229,7 +233,7 @@ function main() {
   installDir(`${stateRoot}/backup-agent`, 0o700);
   installDir(`${stateRoot}/update-agent/jobs`, 0o700);
 
-  for (const socketDir of ['https', 'homepage', 'app', 'backup', 'update']) {
+  for (const socketDir of ['https', 'homepage', 'app', 'backup', 'update', 'lab-reset']) {
     installSocketDir(`/run/mos-v2-${socketDir}-agent`);
   }
 
@@ -295,6 +299,14 @@ ExecReload=/usr/local/libexec/mos-v2/caddy reload --config /etc/caddy/Caddyfile 
     script: 'system-agents/update/agent.cjs',
     wants: 'network-online.target docker.service',
   }));
+  unit('mos-v2-lab-reset-agent.service', agentUnit({
+    after: 'network-online.target docker.service',
+    description: 'MOS V2 lab reset agent',
+    env: { MOS_V2_INSTALL_ROOT: path.dirname(repoRoot), MOS_V2_LAB_RESET_AGENT_SOCKET: '/run/mos-v2-lab-reset-agent/agent.sock', MOS_V2_REPO_DIR: repoRoot, MOS_V2_STATE_ROOT: stateRoot },
+    name: 'mos-v2-lab-reset-agent.service',
+    script: 'system-agents/lab-reset/agent.cjs',
+    wants: 'network-online.target docker.service',
+  }));
 
   if (!fs.existsSync('/etc/caddy/Caddyfile') || dryRun) writeFile('/etc/caddy/Caddyfile', renderCaddyfile(), 0o644);
   if (!fs.existsSync('/etc/caddy/mos-v2-homepage-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-v2-homepage-routes.caddy', '# No user-managed Homepage routes.\n', 0o644);
@@ -304,6 +316,10 @@ ExecReload=/usr/local/libexec/mos-v2/caddy reload --config /etc/caddy/Caddyfile 
   for (const service of ['mos-v2-homepage.service', 'mos-v2-suite-manager.service', 'caddy.service', 'mos-v2-https-agent.service', 'mos-v2-homepage-agent.service', 'mos-v2-app-agent.service', 'mos-v2-backup-agent.service', 'mos-v2-update-agent.service']) {
     run('systemctl', ['enable', service]);
     run('systemctl', ['restart', service]);
+  }
+  if (labResetEnabled === '1') {
+    run('systemctl', ['enable', 'mos-v2-lab-reset-agent.service']);
+    run('systemctl', ['restart', 'mos-v2-lab-reset-agent.service']);
   }
   log('system reconciliation complete');
 }

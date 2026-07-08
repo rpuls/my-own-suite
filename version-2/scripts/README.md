@@ -89,6 +89,15 @@ The smoke VM intentionally follows the USB install shape instead of the abandone
 
 The harness also attaches `backup.vhdx` as a second disk and the V2 seed formats/mounts that empty disk at `/media/mos-backup` on first boot. This gives the Backup page a ready-made external-style destination for testing backup, download, and restore flows without opening Hyper-V Manager. The default backup disk is 16 GB; set `MOS_V2_HYPERV_BACKUP_DISK_GB` to a whole number from 4 to 256 to change it.
 
+After a Hyper-V VM is already running and reachable, the human operator can run the real full-platform browser regression without reinstalling the VM:
+
+```powershell
+cmd /c npm --prefix version-2 run e2e:full
+cmd /c npm --prefix version-2 run e2e:full:headed
+```
+
+The E2E command reads ignored local config from `version-2/tests/e2e/.env`, never creates or destroys Hyper-V, and keeps destructive restore/update validation out of the default flow. By default it calls the Hyper-V lab-only reset endpoint to clear Suite Manager/Homepage/app state before each run; set `MOS_V2_E2E_RESET_BEFORE_RUN=0` only when preserving current lab state. See `version-2/tests/README.md` for the env shape and coverage.
+
 Inputs come from `deploy/self-host/autoinstall/installer-config/selfhost-installer.env`:
 
 - `LINUX_PASSWORD` is used for the Ubuntu console/SSH login.
@@ -101,20 +110,23 @@ The V2 Hyper-V seed does not embed the old v1 self-host bootstrap or its preconf
 Readiness and access:
 
 - The command discovers the guest IPv4 from Hyper-V integration data or, when Hyper-V does not report it, from the Windows neighbor table using the VM MAC address.
-- It probes `http://home.<domain>/suite-manager/api/setup/status` with a per-request `curl --resolve`, so readiness does not depend on Windows DNS being configured yet.
-- After readiness succeeds, it writes this marked block to `C:\Windows\System32\drivers\etc\hosts` and flushes DNS. The block includes `home.<domain>` plus route hosts discovered from local V2 app package manifests, so the first packaged-app smoke path does not require a separate hosts edit.
+- It probes both `http://home.<domain>/suite-manager/api/setup/status` and `http://home.<domain>/` with per-request `curl --resolve`, so readiness requires Suite Manager and Homepage without depending on Windows DNS being configured yet.
+- After readiness succeeds, it writes this marked block to `C:\Windows\System32\drivers\etc\hosts` and flushes DNS. The block includes `home.<domain>` plus route hosts discovered from local V2 app package manifests for both the bootstrap domain and the DNS-01 E2E domain, so packaged-app smoke and post-HTTPS browser checks do not require a separate hosts edit. The DNS-01 host domain defaults to `hyperv.diemernet.uk`; set `MOS_V2_HYPERV_EXTRA_HOST_DOMAINS` to a comma-separated list to override or add domains for another lab.
 
 ```text
 # BEGIN MOS V2 HYPERV USB SMOKE
 <guest-ip> home.<domain>
 <guest-ip> stirling-pdf.<domain>
 <guest-ip> vaultwarden.<domain>
+<guest-ip> home.hyperv.diemernet.uk
+<guest-ip> stirling-pdf.hyperv.diemernet.uk
+<guest-ip> vaultwarden.hyperv.diemernet.uk
 # END MOS V2 HYPERV USB SMOKE
 ```
 
 - Browser access is through `http://home.<domain>/suite-manager/`, for example `http://home.mos.home/suite-manager/`. Do not use the old v1 `suite-manager.<domain>/setup/` host.
 - The final summary prints the VM name, switch, OS disk, backup disk, installer ISO, IPv4, MOS Home URL, and Suite Manager URL.
-- `reset` writes the Home host and known package route hosts into the same marked Windows hosts block, and removes stale copies from earlier VM resets. The temporary Apps page still shows a repair command for app hosts, but the normal Stirling smoke path should not need it. For lower-friction repeated testing across arbitrary domains, a local wildcard DNS override such as `*.test.example.com -> <guest-ip>` in the user's router, AdGuard Home, Unbound, Pi-hole, or other local DNS service is still the cleanest option.
+- `reset` writes the Home host and known package route hosts into the same marked Windows hosts block for `STACK_DOMAIN` plus the configured DNS-01 test domain, and removes stale copies from earlier VM resets. The temporary Apps page still shows a repair command for app hosts, but the normal Stirling smoke path should not need it. For lower-friction repeated testing across arbitrary domains, a local wildcard DNS override such as `*.test.example.com -> <guest-ip>` in the user's router, AdGuard Home, Unbound, Pi-hole, or other local DNS service is still the cleanest option.
 
 If the wait looks stuck, open Hyper-V Manager, connect to `mos-v2-usb-smoke`, and inspect the Ubuntu console. Useful console checks after login are:
 

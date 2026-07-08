@@ -9,6 +9,8 @@
     "branding:sync": "node scripts/sync-branding.cjs",
     "dev": "npm run build:client && node suite-manager/backend/src/server/start.cjs",
     "e2e:install": "playwright install chromium",
+    "e2e:full": "playwright test --config tests/e2e/playwright.hyperv.config.mjs",
+    "e2e:full:headed": "playwright test --config tests/e2e/playwright.hyperv.config.mjs --headed",
     "e2e:local": "playwright test --config tests/e2e/playwright.config.mjs",
     "e2e:local:headed": "playwright test --config tests/e2e/playwright.config.mjs --headed",
     "install:render": "node scripts/installers/render-bootstrap.cjs",

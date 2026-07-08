@@ -8,6 +8,7 @@ const { HomepageService } = require('../homepage/homepage-service.cjs');
 const { HttpsAgentClient } = require('../settings/https-agent-client.cjs');
 const { HttpsSettingsError } = require('../../../../shared/https-contract.cjs');
 const { HttpsSettingsService } = require('../settings/https-settings-service.cjs');
+const { LabResetAgentClient } = require('../lab/lab-reset-agent-client.cjs');
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
 const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
@@ -241,11 +242,13 @@ function createV2Server({
   appsDir = DEFAULT_APPS_DIR,
   homepageAgent = new HomepageAgentClient(),
   httpsAgent = new HttpsAgentClient(),
+  labResetAgent = new LabResetAgentClient(),
   updateAgent = new UpdateAgentClient(),
   frontendDistDir = DEFAULT_FRONTEND_DIST_DIR,
   frontDoor = process.env.MOS_V2_FRONT_DOOR || 'ssh-bootstrap',
   homeHost = process.env.MOS_V2_HOME_HOST || 'home.localhost',
   homepageUpstream = process.env.MOS_V2_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
+  labResetEnabled = process.env.MOS_V2_LAB_RESET_ENABLED === '1',
   stateDir = path.join(process.cwd(), '.state'),
 } = {}) {
   const setup = new SetupService({ stateDir });
@@ -287,6 +290,18 @@ function createV2Server({
 
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/setup/status`) {
         jsonResponse(response, 200, setup.status(sessionToken));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/lab/reset`) {
+        if (!labResetEnabled) {
+          jsonResponse(response, 404, { code: 'LAB_RESET_DISABLED', error: 'Lab reset is not enabled on this install.' });
+          return;
+        }
+        const result = await labResetAgent.reset({ reason: 'hyperv-e2e' });
+        jsonResponse(response, 202, result, {
+          'Set-Cookie': clearSessionCookie(isHttpsRequest(request)),
+        });
         return;
       }
 

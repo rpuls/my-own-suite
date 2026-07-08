@@ -16,6 +16,7 @@ $InstallerConfigPath = Join-Path $V2Root '..\deploy\self-host\autoinstall\instal
 $HostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
 $HostsStartMarker = '# BEGIN MOS V2 HYPERV USB SMOKE'
 $HostsEndMarker = '# END MOS V2 HYPERV USB SMOKE'
+$DefaultDns01SmokeDomain = 'hyperv.diemernet.uk'
 
 function Fail([string]$Message) {
   throw "[mos-v2-smoke:hyperv-usb] $Message"
@@ -58,11 +59,34 @@ function Remove-LabArtifacts {
   }
 }
 
-function Get-SmokeHostNames {
+function Get-SmokeHostDomains {
   param([string]$StackDomain)
 
+  $domains = [System.Collections.Generic.List[string]]::new()
+  $domains.Add($StackDomain)
+
+  $extraDomains = if ($env:MOS_V2_HYPERV_EXTRA_HOST_DOMAINS) {
+    $env:MOS_V2_HYPERV_EXTRA_HOST_DOMAINS
+  }
+  else {
+    $DefaultDns01SmokeDomain
+  }
+
+  foreach ($domain in ($extraDomains -split ',')) {
+    $normalized = $domain.Trim().Trim('.').ToLowerInvariant()
+    if ($normalized -and $normalized -match '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$') {
+      $domains.Add($normalized)
+    }
+  }
+
+  return $domains | Select-Object -Unique
+}
+
+function Get-SmokeHostNamesForDomain {
+  param([string]$Domain)
+
   $names = [System.Collections.Generic.List[string]]::new()
-  $names.Add("home.$StackDomain")
+  $names.Add("home.$Domain")
   $appsRoot = Join-Path $V2Root 'apps'
   if (Test-Path -LiteralPath $appsRoot) {
     Get-ChildItem -LiteralPath $appsRoot -Directory | ForEach-Object {
@@ -72,13 +96,25 @@ function Get-SmokeHostNames {
         $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
         foreach ($route in @($manifest.routes)) {
           if ($route.host -and "$($route.host)" -match '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$') {
-            $names.Add("$($route.host).$StackDomain")
+            $names.Add("$($route.host).$Domain")
           }
         }
       }
       catch {
         Write-Warning "[mos-v2-smoke:hyperv-usb] Could not inspect app package manifest '$manifestPath'."
       }
+    }
+  }
+  return $names | Select-Object -Unique
+}
+
+function Get-SmokeHostNames {
+  param([string]$StackDomain)
+
+  $names = [System.Collections.Generic.List[string]]::new()
+  foreach ($domain in @(Get-SmokeHostDomains -StackDomain $StackDomain)) {
+    foreach ($name in @(Get-SmokeHostNamesForDomain -Domain $domain)) {
+      $names.Add($name)
     }
   }
   return $names | Select-Object -Unique
@@ -165,6 +201,7 @@ function Wait-ForSuiteManager {
 
   $hostName = "home.$StackDomain"
   $healthUrl = "http://$hostName/suite-manager/api/setup/status"
+  $homepageUrl = "http://$hostName/"
   $startedAt = Get-Date
   $deadline = $startedAt.AddMinutes($timeoutMinutes)
   $nextReportAt = $startedAt
@@ -177,16 +214,23 @@ function Wait-ForSuiteManager {
     }
 
     $addresses = @(Get-GuestIpv4Addresses)
-    $detail = if ($addresses.Count -eq 0) { 'waiting for installer networking' } else { "guest IPv4=$($addresses -join ', '); waiting for Suite Manager" }
+    $detail = if ($addresses.Count -eq 0) { 'waiting for installer networking' } else { "guest IPv4=$($addresses -join ', '); waiting for Suite Manager and Homepage" }
     foreach ($ip in $addresses) {
       $previousErrorAction = $ErrorActionPreference
       try {
         $ErrorActionPreference = 'Continue'
         & curl.exe --fail --silent --show-error --max-time 4 --output NUL --resolve "${hostName}:80:$ip" $healthUrl 2>$null
-        $curlExitCode = $LASTEXITCODE
+        $suiteManagerExitCode = $LASTEXITCODE
+        if ($suiteManagerExitCode -eq 0) {
+          & curl.exe --fail --silent --show-error --max-time 4 --output NUL --resolve "${hostName}:80:$ip" $homepageUrl 2>$null
+          $homepageExitCode = $LASTEXITCODE
+        }
+        else {
+          $homepageExitCode = 1
+        }
       }
       finally { $ErrorActionPreference = $previousErrorAction }
-      if ($curlExitCode -eq 0) { return $ip }
+      if ($suiteManagerExitCode -eq 0 -and $homepageExitCode -eq 0) { return $ip }
     }
 
     if ($detail -ne $lastDetail -or (Get-Date) -ge $nextReportAt) {
@@ -198,7 +242,7 @@ function Wait-ForSuiteManager {
     Start-Sleep -Seconds 5
   }
 
-  Fail "Timed out after $timeoutMinutes minutes waiting for $healthUrl. Open the '$VmName' console in Hyper-V Manager to inspect installer/bootstrap errors."
+  Fail "Timed out after $timeoutMinutes minutes waiting for $healthUrl and $homepageUrl. Open the '$VmName' console in Hyper-V Manager to inspect installer/bootstrap errors."
 }
 
 function Show-Summary {
@@ -222,6 +266,7 @@ function Show-Summary {
   Write-Host "  IPv4:       $Ip"
   Write-Host "  MOS Home:   http://home.$StackDomain/"
   Write-Host "  Suite Mgr:  http://home.$StackDomain/suite-manager/"
+  Write-Host "  Host domains: $((Get-SmokeHostDomains -StackDomain $StackDomain) -join ', ')"
   Write-Host "  App hosts:  $((Get-SmokeHostNames -StackDomain $StackDomain | Where-Object { $_ -notlike 'home.*' }) -join ', ')"
 }
 

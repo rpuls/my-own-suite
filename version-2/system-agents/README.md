@@ -37,3 +37,9 @@ Secret material is resolved before the request crosses into the app agent. Suite
 The first apply path is branch-track reconciliation for V2 lab installs. The agent starts each update worker as a transient systemd unit when systemd is available, so the job can survive `mos-v2-update-agent` being restarted by reconciliation. If an older job is left marked running after its worker disappears, the agent marks it failed with a truthful recovery message instead of blocking future updates forever. The worker fetches and fast-forwards the configured branch, installs `version-2` dependencies and build tooling from `package-lock.json`, rebuilds the Suite Manager frontend, runs `version-2/scripts/reconcile-system.cjs`, and records bounded progress logs for Suite Manager. The reconciliation script refreshes repo-owned host services and agents, including the updater itself, before the job reports success.
 
 Installed app runtimes are preserved in this first slice. If app package manifests or Dockerfiles changed, Suite Manager tells the owner to reapply or restart installed apps after the core update. Automatic app-runtime rebuild/reapply belongs to a later package-aware updater slice.
+
+## Lab Reset Agent
+
+`lab-reset/agent.cjs` runs over `/run/mos-v2-lab-reset-agent/agent.sock` only on USB/Hyper-V lab installs where `MOS_V2_LAB_RESET_ENABLED=1`. Suite Manager exposes `/suite-manager/api/lab/reset` only when that flag is set; non-lab installs return `LAB_RESET_DISABLED`.
+
+The agent schedules a repo-owned reset worker and returns before Suite Manager is restarted. The worker clears only disposable lab state: Suite Manager SQLite/session/app state, Homepage runtime config, MOS-owned Homepage/app Caddy route snippets, and `mos-v2-app-*` Docker containers, networks, and volumes. It preserves the VM, installed repo checkout, npm dependencies, pinned control-plane images, HTTPS secret files, and backup disk state.

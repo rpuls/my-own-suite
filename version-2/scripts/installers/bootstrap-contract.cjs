@@ -5,7 +5,7 @@ const DEFAULT_INSTALL_ROOT = '/opt/mos-v2';
 const DEFAULT_STATE_ROOT = '/var/lib/mos-v2';
 const DEFAULT_RUNTIME_USER = 'mos';
 const DEFAULT_SUITE_MANAGER_PORT = 3100;
-const CONTROL_PLANE_COMPONENTS = ['suite-manager', 'caddy', 'homepage', 'https-agent', 'homepage-agent', 'app-agent', 'backup-agent', 'update-agent'];
+const CONTROL_PLANE_COMPONENTS = ['suite-manager', 'caddy', 'homepage', 'https-agent', 'homepage-agent', 'app-agent', 'backup-agent', 'update-agent', 'lab-reset-agent'];
 const FRONT_DOORS = ['digitalocean-smoke', 'cloud-init', 'usb-autoinstall', 'ssh-bootstrap'];
 
 const OWNER_KEYS = [
@@ -132,6 +132,7 @@ function renderBootstrapEnv(config) {
     ['MOS_V2_SUITE_MANAGER_PORT', String(config.suiteManagerPort)],
     ['MOS_V2_HOMEPAGE_PORT', String(config.homepagePort)],
     ['MOS_V2_COMPONENTS', config.components.join(',')],
+    ['MOS_V2_LAB_RESET_ENABLED', config.frontDoor === 'usb-autoinstall' ? '1' : '0'],
     ['MOS_V2_OWNER_SETUP', 'suite-manager-browser'],
     ['MOS_V2_APP_SELECTION', 'suite-manager-after-install'],
   ]
@@ -144,7 +145,7 @@ function renderBootstrapShell(config) {
 set -euo pipefail
 
 ${renderBootstrapEnv(config)}
-export MOS_V2_REPO_URL MOS_V2_REPO_REF MOS_V2_FRONT_DOOR MOS_V2_DOMAIN MOS_V2_INSTALL_ROOT MOS_V2_STATE_ROOT MOS_V2_RUNTIME_USER MOS_V2_SUITE_MANAGER_PORT MOS_V2_HOMEPAGE_PORT MOS_V2_COMPONENTS MOS_V2_OWNER_SETUP MOS_V2_APP_SELECTION
+export MOS_V2_REPO_URL MOS_V2_REPO_REF MOS_V2_FRONT_DOOR MOS_V2_DOMAIN MOS_V2_INSTALL_ROOT MOS_V2_STATE_ROOT MOS_V2_RUNTIME_USER MOS_V2_SUITE_MANAGER_PORT MOS_V2_HOMEPAGE_PORT MOS_V2_COMPONENTS MOS_V2_LAB_RESET_ENABLED MOS_V2_OWNER_SETUP MOS_V2_APP_SELECTION
 
 if [ "$MOS_V2_DOMAIN" = "localhost" ] && [ "$MOS_V2_FRONT_DOOR" = "digitalocean-smoke" ]; then
   metadata_ip="$(curl -fsS --max-time 5 http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address 2>/dev/null || true)"
@@ -248,6 +249,7 @@ install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-homepage-agent
 install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-app-agent
 install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-backup-agent
 install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-update-agent
+install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-lab-reset-agent
 install -d -m 0700 /var/lib/mos-v2/https-agent/transactions
 install -d -m 0700 /var/lib/mos-v2/homepage-agent/transactions /var/lib/mos-v2/homepage-agent/history
 install -d -m 0700 /var/lib/mos-v2/backup-agent
@@ -303,6 +305,8 @@ Environment=MOS_V2_HOMEPAGE_AGENT_SOCKET=/run/mos-v2-homepage-agent/agent.sock
 Environment=MOS_V2_APP_AGENT_SOCKET=/run/mos-v2-app-agent/agent.sock
 Environment=MOS_V2_BACKUP_AGENT_SOCKET=/run/mos-v2-backup-agent/agent.sock
 Environment=MOS_V2_UPDATE_AGENT_SOCKET=/run/mos-v2-update-agent/agent.sock
+Environment=MOS_V2_LAB_RESET_ENABLED=$MOS_V2_LAB_RESET_ENABLED
+Environment=MOS_V2_LAB_RESET_AGENT_SOCKET=/run/mos-v2-lab-reset-agent/agent.sock
 ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/version-2/suite-manager/backend/src/server/start.cjs
 Restart=always
 RestartSec=3
@@ -436,6 +440,32 @@ RestartSec=3
 WantedBy=multi-user.target
 MOS_V2_UPDATE_AGENT_UNIT
 
+cat > /etc/systemd/system/mos-v2-lab-reset-agent.service <<MOS_V2_LAB_RESET_AGENT_UNIT
+[Unit]
+Description=MOS V2 lab reset agent
+After=network-online.target docker.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=mos-v2-agent
+UMask=0007
+WorkingDirectory=$MOS_V2_INSTALL_ROOT/repo/version-2
+Environment=NODE_ENV=production
+Environment=MOS_V2_LAB_RESET_AGENT_SOCKET=/run/mos-v2-lab-reset-agent/agent.sock
+Environment=MOS_V2_INSTALL_ROOT=$MOS_V2_INSTALL_ROOT
+Environment=MOS_V2_REPO_DIR=$MOS_V2_INSTALL_ROOT/repo
+Environment=MOS_V2_STATE_ROOT=$MOS_V2_STATE_ROOT
+ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/version-2/system-agents/lab-reset/agent.cjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+MOS_V2_LAB_RESET_AGENT_UNIT
+
 cat > /etc/caddy/Caddyfile <<MOS_V2_CADDY
 ${renderCaddyfile()}
 MOS_V2_CADDY
@@ -481,6 +511,10 @@ systemctl enable mos-v2-backup-agent.service
 systemctl restart mos-v2-backup-agent.service
 systemctl enable mos-v2-update-agent.service
 systemctl restart mos-v2-update-agent.service
+if [ "$MOS_V2_LAB_RESET_ENABLED" = '1' ]; then
+  systemctl enable mos-v2-lab-reset-agent.service
+  systemctl restart mos-v2-lab-reset-agent.service
+fi
 
 cat >> "$MOS_V2_STATE_ROOT/bootstrap-contract.env" <<'MOS_V2_BOOTSTRAP_DONE'
 MOS_V2_BOOTSTRAP_STATUS='ready-for-owner-setup'
@@ -522,8 +556,8 @@ MOS_V2_BOOTSTRAP`;
 }
 
 function renderUsbSeedConfig(config) {
-  return `${renderBootstrapEnv(config)}
-MOS_V2_FRONT_DOOR='usb-autoinstall'
+  const usbConfig = { ...config, frontDoor: 'usb-autoinstall' };
+  return `${renderBootstrapEnv(usbConfig)}
 MOS_V2_SUITE_MANAGER_URL=${shellQuote(config.publicUrls.suiteManager)}
 MOS_V2_HOMEPAGE_URL=${shellQuote(config.publicUrls.homepage)}
 `;

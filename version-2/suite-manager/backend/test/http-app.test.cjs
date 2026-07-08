@@ -1401,6 +1401,35 @@ test('owner creation API signs in and changes setup status', async () => {
   });
 });
 
+test('lab reset endpoint is disabled unless explicitly enabled by the install', async () => {
+  await withServer(async (baseUrl) => {
+    const response = await hostRequest(baseUrl, '/suite-manager/api/lab/reset', { method: 'POST' });
+
+    assert.equal(response.status, 404);
+    assert.equal(response.json().code, 'LAB_RESET_DISABLED');
+  });
+});
+
+test('lab reset endpoint schedules the narrow lab agent when enabled', async () => {
+  const calls = [];
+  await withServer(async (baseUrl) => {
+    const response = await hostRequest(baseUrl, '/suite-manager/api/lab/reset', { method: 'POST' });
+
+    assert.equal(response.status, 202);
+    assert.deepEqual(response.json(), { scheduled: true });
+    assert.deepEqual(calls, [{ reason: 'hyperv-e2e' }]);
+    assert.match(String(response.headers['set-cookie']), /mos_v2_session=/u);
+  }, {
+    labResetEnabled: true,
+    labResetAgent: {
+      async reset(input) {
+        calls.push(input);
+        return { scheduled: true };
+      },
+    },
+  });
+});
+
 test('existing-owner signed-out state never returns setup again', async () => {
   await withServer(async (baseUrl) => {
     await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
