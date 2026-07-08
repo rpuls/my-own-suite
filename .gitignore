@@ -54,7 +54,10 @@ tests/e2e/node_modules/
 tests/e2e/playwright-report/
 tests/e2e/test-results/
 version-2/tests/e2e/playwright-report/
+version-2/tests/e2e/playwright-report-hyperv/
 version-2/tests/e2e/test-results/
+version-2/test-results/
+version-2/tests/e2e/.env
 
 # Local runtime state
 .state/

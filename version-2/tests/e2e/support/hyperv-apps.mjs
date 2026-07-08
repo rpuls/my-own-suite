@@ -283,23 +283,20 @@ async function loginToRadicale(page, env) {
 }
 
 async function dismissVaultwardenExtensionPrompt(page, fallbackUrl) {
-  const dismissControlNames = /skip(?: to web app| for now)?|add it later|maybe later|not now|continue to web app|go to web app/i;
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < 30000) {
-    if (fallbackUrl && page.url().toLowerCase() === fallbackUrl.toLowerCase()) return;
-    const control = page.locator('button, a, [role="button"], [role="link"]').filter({ hasText: dismissControlNames }).first();
-    if (await visible(control)) {
-      await control.click({ timeout: 1000 }).catch(() => undefined);
-      await page.waitForLoadState('domcontentloaded').catch(() => undefined);
-    }
-    if (fallbackUrl && /setup-extension/i.test(page.url())) {
-      await page.goto(fallbackUrl);
-      await page.waitForLoadState('domcontentloaded').catch(() => undefined);
-      return;
-    }
-    await page.waitForTimeout(250);
+  // It is NOT a <button> element! It is an <a> anchor tag with role="button"
+  // Playwright getByRole('button') matches both native buttons AND elements with role="button"
+
+  // Step 1: Click first button "Add it later"
+  await page.getByRole('button', { name: /add it later/i }).click({ timeout: 10000 });
+
+  // Step 2: Click second button "Skip to web app"
+  await page.getByText(/skip to web app/i).click({ timeout: 10000, force: true });
+  await page.waitForTimeout(1000);
+
+  // Fallback if anything went wrong
+  if (/setup-extension/i.test(page.url())) {
+    await page.goto(fallbackUrl);
   }
-  if (fallbackUrl && /setup-extension/i.test(page.url())) await page.goto(fallbackUrl);
 }
 
 function uniqueVaultwardenEmail(email) {
@@ -361,7 +358,9 @@ async function fillVaultwardenSignupEmail(page, emailAddress) {
   await expect(email, 'Vaultwarden account email field should be visible').toBeVisible({ timeout: 30000 });
   await email.fill(emailAddress);
   const continueButton = page.getByRole('button', { name: /continue|create account|submit|sign up|forts.t/i }).first();
-  if (await visible(continueButton)) await continueButton.click();
+  if (await visible(continueButton)) {
+    await continueButton.click();
+  }
   await page.waitForLoadState('domcontentloaded').catch(() => undefined);
 }
 
@@ -381,18 +380,33 @@ async function loginToVaultwarden(page, env) {
   }
 
   const name = page.locator('input[name="name"], input[autocomplete="name"]').first();
-  if (await visible(name)) await name.fill(env.vaultwarden.name);
+  if (await visible(name)) {
+    await name.fill(env.vaultwarden.name);
+  }
   const password = page.locator('input[type="password"]').nth(0);
   const confirmPassword = page.locator('input[type="password"]').nth(1);
   await expect(password, 'Vaultwarden account password field should be visible').toBeVisible({ timeout: 30000 });
   await expect(confirmPassword, 'Vaultwarden confirm password field should be visible').toBeVisible({ timeout: 30000 });
   await password.fill(env.vaultwarden.password);
   await confirmPassword.fill(env.vaultwarden.password);
+  
+  // Small intentional pause before submit to prevent race condition
+  await page.waitForTimeout(300);
+  
   await page.getByRole('button', { name: /create account|opret konto|submit|continue|sign up/i }).click();
+  
+  // Vaultwarden automatically logs you in immediately after signup, no separate login required
   await waitForVaultwardenSignupOutcome(page);
-  if (!/#\/vault/i.test(page.url())) await page.goto(vaultUrl);
-  await signInToVaultwardenIfNeeded(page, env, emailAddress);
+  
+  // Small pause for state to settle after signup
+  await page.waitForTimeout(500);
+  
+  if (!/#\/vault/i.test(page.url())) {
+    await page.goto(vaultUrl);
+  }
+  // await signInToVaultwardenIfNeeded(page, env, emailAddress);
   await dismissVaultwardenExtensionPrompt(page, vaultUrl);
+  
   await expect(page).toHaveURL(/#\/vault/i, { timeout: 90000 });
 }
 

@@ -27,6 +27,7 @@ Verified app package capabilities:
 - Capability-based app-to-app integration, proven by ONLYOFFICE plus Seafile, with relationship recovery/status hooks around restart, re-enable, disable, and preserved-data uninstall.
 - First managed-update/reconciliation slice: new installs include `mos-v2-update-agent`, Suite Manager exposes an Updates page, branch-track jobs can fast-forward the V2 lab branch, install dependencies and build tooling from the lockfile, rebuild Suite Manager, reconcile repo-owned host services/agents/Caddy wiring with concrete installed Homepage runtime paths, and report progress/logs through the UI.
 - DNS-01/app-route reconciliation now reapplies installed app Caddy routes with the current HTTPS app subdomains, updates MOS-owned catalog app Homepage entries/widgets by stable app instance ID, and regenerates MOS-managed LAN/home-service projections from `mos.proxy` metadata while leaving ordinary user links alone.
+- A real Hyper-V full-platform Playwright harness now lives beside the V2 local E2E suite. It targets an already-running VM, uses ignored local env for owner/app/DNS credentials, covers owner/auth, Homepage customization, app installs, route checks, Seafile/ONLYOFFICE integration, and backup creation by default, and keeps DNS-01, lifecycle, restore, and update validation explicit or separate.
 
 Current packages:
 
@@ -49,14 +50,14 @@ Current packages:
 
 ## Next Slice
 
-Before adding more heavy apps, finish DNS-01 app-route validation, then return to managed-update validation and the hardened capability/integration path:
+Before adding more heavy apps, validate the new Hyper-V full E2E command on the current VM, then return to managed-update validation and the hardened capability/integration path:
 
-1. Validate the DNS-01 routing fix on the current Hyper-V VM without reset: repair/reapply installed app routes, confirm Stirling/Radicale/Vaultwarden HTTPS app subdomains load, confirm MOS-owned app tiles/widgets move to the current domain, and confirm arbitrary user links are unchanged.
-2. Re-run Hyper-V branch-track update validation, then confirm the fixed updater preserves `home.mos.home`, applies the next pushed Suite Manager UI change, and recovers the earlier single-file package-lock artifact if present.
-3. Confirm the update refreshes Suite Manager, Caddy wiring, and all V2 system agents without reporting success while old repo-owned services are still running.
-4. After update, manually reapply/restart installed app runtimes whose package manifests/Dockerfiles changed; record the automatic package-runtime reconciliation contract for the next updater slice.
-5. Validate Seafile core and ONLYOFFICE integration in Hyper-V, including install order, app health, document editing connection, provider restart recovery, disable/re-enable, and preserved-data uninstall.
-6. Confirm relationship state remains truthful when either side is stopped, disabled, re-enabled, or uninstalled with data preserved.
+1. Run `cmd /c npm --prefix version-2 run e2e:full` against the current Hyper-V VM and tighten selectors/waiters based on the first real failure output.
+2. Run the same suite with `MOS_V2_E2E_ENABLE_DNS01=1` to validate DNS-01 routing reconciliation: confirm Stirling/Radicale/Vaultwarden HTTPS app subdomains load, MOS-owned app tiles/widgets move to the current domain, and arbitrary user links are unchanged.
+3. Re-run Hyper-V branch-track update validation, then confirm the fixed updater preserves `home.mos.home`, applies the next pushed Suite Manager UI change, and recovers the earlier single-file package-lock artifact if present.
+4. Confirm the update refreshes Suite Manager, Caddy wiring, and all V2 system agents without reporting success while old repo-owned services are still running.
+5. After update, manually reapply/restart installed app runtimes whose package manifests/Dockerfiles changed; record the automatic package-runtime reconciliation contract for the next updater slice.
+6. Extend the Hyper-V suite with separate opt-in restore and update specs once their mutation boundaries are stable.
 7. Inspect integration failure recovery diagnostics in live runtime logs/API responses without leaking JWT or other secret material.
 8. Decide the next single follow-up:
    - automatic app runtime reapply/rebuild during managed update,

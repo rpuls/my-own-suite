@@ -40,6 +40,8 @@ export async function restoreBackupIfAvailable(page, env, backup) {
   if (!env.enableRestore) throw new Error('Hyper-V full E2E requires restore validation. Set MOS_V2_E2E_ENABLE_RESTORE=1.');
   if (!backup) throw new Error('Hyper-V full E2E restore validation needs the early backup created after the first app.');
 
+  await openSuiteManager(page, 'Backup');
+
   await apiJson(page, '/suite-manager/api/backups/restore', {
     body: JSON.stringify({ backupPath: backup.path, confirmation: 'RESTORE' }),
     method: 'POST',
