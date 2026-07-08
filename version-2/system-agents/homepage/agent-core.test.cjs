@@ -5,6 +5,7 @@ const {
   addEntry,
   projectServices,
   publicUrlFor,
+  reconcileManagedUrls,
   removeEntryById,
   renderCaddyRoutes,
   revisionFor,
@@ -132,9 +133,40 @@ test('agent removes guided links through the same transactional projection path'
   assert.doesNotMatch(fake.transactions[0].files['services.template.yaml'], new RegExp(id, 'u'));
 });
 
+test('managed URL reconciliation updates only MOS-owned app IDs and keeps random links untouched', () => {
+  const appId = '32345678-1234-4123-8123-123456789abc';
+  const randomId = '42345678-1234-4123-8123-123456789abc';
+  const withApp = addEntry(seed, { ...link, name: 'Stirling', url: 'http://stirling-pdf.mos.home/' }, { id: appId }).content;
+  const withRandom = addEntry(withApp, { ...link, name: 'Docs', url: 'https://example.com/docs' }, { id: randomId }).content;
+
+  const reconciled = reconcileManagedUrls(withRandom, [{ href: 'https://stirling-pdf.mos.example.com/', id: appId }]);
+
+  assert.equal(reconciled.changed, true);
+  assert.match(reconciled.content, /href: https:\/\/stirling-pdf\.mos\.example\.com\//u);
+  assert.match(reconciled.content, /href: https:\/\/example\.com\/docs/u);
+});
+
+test('agent reconciles app URLs while regenerating separate home-service routes', async () => {
+  const appId = '32345678-1234-4123-8123-123456789abc';
+  const withApp = addEntry(seed, { ...link, name: 'Stirling', url: 'http://stirling-pdf.mos.home/' }, { id: appId }).content;
+  const withService = addEntry(withApp, service, { homeService: true, id }).content;
+  const fake = adapter(withService);
+  const core = new HomepageAgentCore(fake);
+
+  await core.reconcileUrls({
+    domainState,
+    entries: [{ href: 'https://stirling-pdf.mos.example.com/', id: appId }],
+    expectedRevision: revisionFor(withService),
+  });
+
+  assert.match(fake.transactions[0].files['services.template.yaml'], /href: https:\/\/stirling-pdf\.mos\.example\.com\//u);
+  assert.match(fake.transactions[0].files['services.yaml'], /https:\/\/printer\.mos\.example\.com\//u);
+  assert.equal(fake.transactions[0].caddyRoutes, 'https://printer.mos.example.com {\n  reverse_proxy http://192.168.1.20:8080\n}\n');
+});
+
 test('agent API has no arbitrary command, path, file, or service operation', async () => {
   const core = new HomepageAgentCore(adapter());
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['homepage.read', 'homepage.apply', 'homepage.add-link', 'homepage.add-home-service', 'homepage.remove-link']);
+  assert.deepEqual(status.capabilities, ['homepage.read', 'homepage.apply', 'homepage.add-link', 'homepage.add-home-service', 'homepage.remove-link', 'homepage.reconcile-urls']);
   await assert.rejects(() => core.apply({ command: 'sh', file: 'services.template.yaml' }), HomepageConfigError);
 });

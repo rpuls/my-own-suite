@@ -35,6 +35,11 @@ test('app route rendering uses structured host and loopback upstream only', () =
     appHost: 'example-tool.mos.home',
     reverseProxy: '127.0.0.1:18123',
   }), 'http://example-tool.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n');
+  assert.equal(renderAppRoutes({
+    appHost: 'example-tool.mos.example.com',
+    reverseProxy: '127.0.0.1:18123',
+    scheme: 'https',
+  }), 'https://example-tool.mos.example.com {\n  reverse_proxy http://127.0.0.1:18123\n}\n');
 });
 
 test('app route rendering supports a structured tokenized iCal bridge', () => {
@@ -102,6 +107,25 @@ test('app apply validates exact shape and delegates sanitized runtime fields', a
     SERVER_HOST: 'http://example-tool.mos.home/',
   });
   assert.match(calls[0].caddyRoutes, /reverse_proxy http:\/\/127\.0\.0\.1:18123/u);
+});
+
+test('app apply renders HTTPS Caddy routes when public URL is HTTPS', async () => {
+  const calls = [];
+  const core = new AppAgentCore({
+    async applyAppServices(input) {
+      calls.push(input);
+      return { steps: ['built', 'started', 'healthy'] };
+    },
+  });
+
+  await core.apply({
+    ...request,
+    appHost: 'example-tool.mos.example.com',
+    publicUrl: 'https://example-tool.mos.example.com/',
+  });
+
+  assert.match(calls[0].caddyRoutes, /^https:\/\/example-tool\.mos\.example\.com \{/u);
+  assert.equal(calls[0].services[0].environment.APP_SCHEME, 'https');
 });
 
 test('app apply delegates multiple services while exposing only declared public routes', async () => {

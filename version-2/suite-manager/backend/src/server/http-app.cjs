@@ -196,6 +196,20 @@ function appPublicUrlResolver(request) {
   return (packageId) => appPublicUrlFor(request, packageId);
 }
 
+function appPublicUrlResolverForBase(baseHost, scheme = 'http') {
+  const normalizedBase = String(baseHost || '').trim().toLowerCase();
+  const normalizedScheme = scheme === 'https' ? 'https' : 'http';
+  return (packageId) => {
+    const appHost = `${packageId}.${normalizedBase}`;
+    return {
+      appHost,
+      baseHost: normalizedBase,
+      publicUrl: `${normalizedScheme}://${appHost}/`,
+      scheme: normalizedScheme,
+    };
+  };
+}
+
 function isSignedIn(setup, sessionToken) {
   return setup.status(sessionToken).status === 'signed-in';
 }
@@ -317,7 +331,21 @@ function createV2Server({
           return;
         }
         const body = await readJsonBody(request, 16 * 1024);
-        jsonResponse(response, 200, await httpsSettings.apply(body));
+        const applied = await httpsSettings.apply(body);
+        let appReconciliation = { skipped: true };
+        try {
+          const baseDomain = new URL(applied.homeUrl).hostname.replace(/^home\./u, '');
+          appReconciliation = await appPackages.reconcilePublicUrls(homepageConfig, {
+            publicUrlFor: appPublicUrlResolverForBase(baseDomain, 'https'),
+          });
+        } catch (error) {
+          appReconciliation = {
+            errorCode: error.code || 'APP_PUBLIC_URL_RECONCILE_FAILED',
+            skipped: false,
+            status: 'failed',
+          };
+        }
+        jsonResponse(response, 200, { ...applied, appReconciliation });
         return;
       }
 

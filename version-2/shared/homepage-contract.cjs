@@ -267,6 +267,65 @@ function removeEntryById(content, id) {
   return { changed: true, content: next, id };
 }
 
+function reconcileManagedUrls(content, entries = []) {
+  const document = parseDocument(content);
+  const current = document.toJS();
+  validateServices(current);
+  const entryMap = new Map();
+  for (const entry of entries) {
+    if (!ID_PATTERN.test(String(entry?.id || ''))) {
+      throw new HomepageConfigError('INVALID_HOMEPAGE_ID', 'A stable dashboard entry ID is required.');
+    }
+    let href;
+    try { href = new URL(String(entry.href || '').trim()); } catch {
+      throw new HomepageConfigError('INVALID_LINK_URL', 'Enter a valid HTTP or HTTPS link URL.');
+    }
+    if (!PROTOCOLS.has(href.protocol.replace(':', '')) || href.username || href.password) {
+      throw new HomepageConfigError('INVALID_LINK_URL', 'Links must use HTTP or HTTPS and cannot contain credentials.');
+    }
+    entryMap.set(entry.id, {
+      href: href.href,
+      ...(entry.widget === undefined ? {} : { widget: validateWidget(entry.widget) }),
+    });
+  }
+
+  let changed = false;
+  for (const groupNode of document.contents.items || []) {
+    const groupPair = groupNode?.items?.[0];
+    const serviceList = groupPair?.value;
+    if (!serviceList?.items) continue;
+    for (const serviceNode of serviceList.items || []) {
+      const servicePair = serviceNode?.items?.[0];
+      const configNode = servicePair?.value;
+      const configPairItems = configNode?.items;
+      if (!Array.isArray(configPairItems)) continue;
+      const mosPair = configPairItems.find((pair) => pair?.key?.value === 'mos');
+      const idPair = mosPair?.value?.items?.find((pair) => pair?.key?.value === 'id');
+      const target = entryMap.get(idPair?.value?.value);
+      if (!target) continue;
+      const hrefPair = configPairItems.find((pair) => pair?.key?.value === 'href');
+      if (hrefPair?.value?.value !== target.href) {
+        if (hrefPair) hrefPair.value = document.createNode(target.href);
+        else configNode.add(document.createPair('href', target.href));
+        changed = true;
+      }
+      const widgetPair = configPairItems.find((pair) => pair?.key?.value === 'widget');
+      if (target.widget !== undefined) {
+        const nextWidget = document.createNode(target.widget);
+        if (JSON.stringify(widgetPair?.value?.toJSON()) !== JSON.stringify(target.widget)) {
+          if (widgetPair) widgetPair.value = nextWidget;
+          else configNode.add(document.createPair('widget', target.widget));
+          changed = true;
+        }
+      }
+    }
+  }
+  if (!changed) return { changed: false, content };
+  const next = String(document);
+  validateYaml(next, 'services.template.yaml');
+  return { changed: true, content: next };
+}
+
 function publicUrlFor(proxy, domainState) {
   const baseDomain = String(domainState?.baseDomain || '').trim().toLowerCase();
   if (!HOST_PATTERN.test(baseDomain) || baseDomain === 'localhost') {
@@ -307,6 +366,7 @@ module.exports = {
   entriesFromServices,
   projectServices,
   publicUrlFor,
+  reconcileManagedUrls,
   removeEntryById,
   renderCaddyRoutes,
   revisionFor,

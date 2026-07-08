@@ -4,6 +4,7 @@ const {
   addEntry,
   assertAllowedFile,
   projectServices,
+  reconcileManagedUrls,
   removeEntryById,
   renderCaddyRoutes,
   revisionFor,
@@ -20,7 +21,7 @@ class HomepageAgentCore {
 
   async status() {
     return {
-      capabilities: ['homepage.read', 'homepage.apply', 'homepage.add-link', 'homepage.add-home-service', 'homepage.remove-link'],
+      capabilities: ['homepage.read', 'homepage.apply', 'homepage.add-link', 'homepage.add-home-service', 'homepage.remove-link', 'homepage.reconcile-urls'],
       files: HOMEPAGE_FILES,
       service: 'mos-v2-homepage-agent',
     };
@@ -77,6 +78,34 @@ class HomepageAgentCore {
     if (!mutation.changed) return { changed: false, file, id: mutation.id, revision: revisionFor(current) };
     const result = await this.applyFile(file, mutation.content, input.expectedRevision, input.domainState);
     return { ...result, id: mutation.id };
+  }
+
+  async reconcileUrls(input) {
+    if (!exactKeys(input, ['domainState', 'entries', 'expectedRevision'])) {
+      throw new HomepageConfigError('INVALID_REQUEST_SHAPE', 'Only the documented URL reconciliation fields are accepted.');
+    }
+    const file = 'services.template.yaml';
+    const current = await this.adapter.readHomepageFile(file);
+    if (revisionFor(current) !== input.expectedRevision) {
+      throw new HomepageConfigError('HOMEPAGE_REVISION_CONFLICT', 'Homepage configuration changed. Reload it before saving.', 409);
+    }
+    const mutation = reconcileManagedUrls(current, input.entries);
+    const content = mutation.content;
+    const files = {
+      [file]: content,
+      'services.yaml': projectServices(content, input.domainState),
+    };
+    const result = await this.adapter.applyTransaction({
+      caddyRoutes: renderCaddyRoutes(content, input.domainState),
+      files,
+      restartHomepage: true,
+    });
+    return {
+      changed: mutation.changed || result.steps.includes('homepage-restarted') || result.steps.includes('caddy-reloaded'),
+      file,
+      revision: revisionFor(content),
+      steps: result.steps,
+    };
   }
 
   async applyFile(file, content, expectedRevision, domainState) {

@@ -4,6 +4,19 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-07-08: V2 Homepage URL Reconciliation Is Metadata-Scoped
+
+Decision: V2 Homepage URL reconciliation is driven by MOS metadata, not by blind URL search/replace. Plain user-authored links remain untouched. MOS catalog app tiles are updated only when their stable Homepage entry ID matches an installed app instance. Non-catalog LAN/home-service tiles are updated only when they carry structured `mos.proxy` metadata, which regenerates the public URL and Caddy route from the current domain state.
+
+Reason: Homepage can intentionally contain unrelated internet shortcuts, MOS-owned app package shortcuts, and user-managed LAN apps exposed through MOS HTTPS. DNS/domain changes should repair the two MOS-managed classes without corrupting arbitrary links that happen to use old domains or HTTP.
+
+Consequences:
+
+- App package routes and Homepage customization routes remain separate generated outputs.
+- HTTPS/DNS-01 apply may trigger app runtime route reapply and Homepage projection reconciliation, but it must not rewrite unannotated links. Homepage/home-service reconciliation runs as its own phase, and per-app runtime failures are reported as partial reconciliation instead of silently turning HTTPS apply into a misleading success.
+- Catalog app widget URLs follow the app's current public URL when the tile is MOS-owned by app instance ID.
+- Home-service proxy routes follow `mos.proxy` metadata and current domain state; the source Homepage template remains the user-facing ownership document.
+
 ## 2026-07-04: V2 App Integrations Use Capability Relationships
 
 Decision: V2 models optional app-to-app integrations as capability relationships between independently installable packages. A provider package exports a capability, a consumer package imports a compatible capability, and Suite Manager records an explicit relationship with its own lifecycle, projections, and redacted secret grants. ONLYOFFICE is an independent document-editor provider; Seafile is one compatible document-platform consumer, not the parent package.

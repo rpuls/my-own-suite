@@ -184,7 +184,7 @@ function resolveEnvironment(environment, context) {
   return resolved;
 }
 
-function renderAppRouteSite({ appHost, internalIcalBridge = null, reverseProxy }) {
+function renderAppRouteSite({ appHost, internalIcalBridge = null, reverseProxy, scheme = 'http' }) {
   const bridge = internalIcalBridge ? `  handle ${internalIcalBridge.path} {
     rewrite * ${internalIcalBridge.targetPath}
     reverse_proxy http://${reverseProxy} {
@@ -195,21 +195,22 @@ function renderAppRouteSite({ appHost, internalIcalBridge = null, reverseProxy }
   handle {
     reverse_proxy http://${reverseProxy}
   }` : `  reverse_proxy http://${reverseProxy}`;
-  return `http://${appHost} {
+  return `${scheme}://${appHost} {
 ${bridge}
 }
 `;
 }
 
-function renderAppRoutes({ appHost, internalIcalBridge = null, reverseProxy, routes = null }) {
+function renderAppRoutes({ appHost, internalIcalBridge = null, reverseProxy, routes = null, scheme = 'http' }) {
   if (Array.isArray(routes)) {
     return routes.map((route) => renderAppRouteSite({
       appHost: `${route.host}.${appHost.split('.').slice(1).join('.')}`,
       internalIcalBridge: route.internalIcalBridge || null,
       reverseProxy: route.reverseProxy,
+      scheme,
     })).join('\n');
   }
-  return renderAppRouteSite({ appHost, internalIcalBridge, reverseProxy });
+  return renderAppRouteSite({ appHost, internalIcalBridge, reverseProxy, scheme });
 }
 
 class AppAgentCore {
@@ -226,8 +227,10 @@ class AppAgentCore {
 
   async apply(input) {
     const { routes, services } = assertRuntimeRequest(input);
+    const publicUrl = new URL(input.publicUrl);
+    const scheme = publicUrl.protocol.replace(/:$/u, '');
     const result = await this.adapter.applyAppServices({
-      caddyRoutes: renderAppRoutes({ appHost: input.appHost, routes }),
+      caddyRoutes: renderAppRoutes({ appHost: input.appHost, routes, scheme }),
       healthTarget: input.health.target,
       packageId: input.packageId,
       publicUrl: input.publicUrl,

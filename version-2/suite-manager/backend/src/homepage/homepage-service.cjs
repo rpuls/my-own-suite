@@ -60,6 +60,15 @@ class HomepageService {
     }));
   }
 
+  async reconcileUrls(body) {
+    const current = await this.read({ file: 'services.template.yaml' });
+    return this.runOperation('reconcile-urls', () => this.agent.reconcileUrls({
+      domainState: this.domainState(),
+      entries: Array.isArray(body?.entries) ? body.entries : [],
+      expectedRevision: current.revision,
+    }));
+  }
+
   previewHomeService(body) {
     const proxy = validateProxy({
       subdomain: body?.subdomain,

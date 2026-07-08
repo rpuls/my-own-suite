@@ -26,6 +26,7 @@ Verified app package capabilities:
 - Multi-service package apply/remove for Seafile core.
 - Capability-based app-to-app integration, proven by ONLYOFFICE plus Seafile, with relationship recovery/status hooks around restart, re-enable, disable, and preserved-data uninstall.
 - First managed-update/reconciliation slice: new installs include `mos-v2-update-agent`, Suite Manager exposes an Updates page, branch-track jobs can fast-forward the V2 lab branch, install dependencies and build tooling from the lockfile, rebuild Suite Manager, reconcile repo-owned host services/agents/Caddy wiring with concrete installed Homepage runtime paths, and report progress/logs through the UI.
+- DNS-01/app-route reconciliation now reapplies installed app Caddy routes with the current HTTPS app subdomains, updates MOS-owned catalog app Homepage entries/widgets by stable app instance ID, and regenerates MOS-managed LAN/home-service projections from `mos.proxy` metadata while leaving ordinary user links alone.
 
 Current packages:
 
@@ -44,19 +45,20 @@ Current packages:
 - Homepage routes and app package routes stay separate: Homepage customization owns user dashboard/home-service routes; app packages own lifecycle-managed app routes.
 - Post-install setup guides are declarative and app-scoped, not global owner onboarding.
 - ONLYOFFICE should be its own package that provides a document-editor capability. Seafile is one compatible consumer, not the parent package. Future file/content platforms should be able to consume the same capability through generic metadata. Capability providers and companion apps do not need normal Homepage contributions.
-- V2 managed updates follow the V1 host-managed updater pattern through V2 boundaries: Suite Manager talks only to a local update agent socket, update jobs run as their own transient systemd units so updater self-refresh does not kill active jobs, orphaned running jobs are marked failed instead of blocking future updates forever, `version-2/scripts/reconcile-system.cjs` refreshes repo-owned host units/agents/Caddy wiring after checkout while preserving the installed Home host and concrete Homepage state paths from the bootstrap contract, and installed app runtimes are preserved with an explicit manual reapply/restart note until automatic package reconciliation is proven. Hyper-V validation reproduced a dirty-lockfile failure from the updater using `npm install`; the updater now uses lockfile installs so future update runs should not leave `version-2/package-lock.json` modified, and it recovers the known single-file lockfile artifact left by the earlier updater.
+- V2 managed updates follow the V1 host-managed updater pattern through V2 boundaries: Suite Manager talks only to a local update agent socket, update jobs run as their own transient systemd units so updater self-refresh does not kill active jobs, orphaned running jobs are marked failed instead of blocking future updates forever, `version-2/scripts/reconcile-system.cjs` refreshes repo-owned host units/agents/Caddy wiring after checkout while preserving the installed Home host and concrete Homepage state paths from the bootstrap contract, and installed app runtimes are preserved with an explicit manual reapply/restart note until automatic package reconciliation is proven. Hyper-V validation reproduced a dirty-lockfile failure from the updater using `npm install`; the updater now uses lockfile installs so future update runs should not leave `version-2/package-lock.json` modified, and it recovers the known single-file lockfile artifact left by the earlier updater. DNS/domain changes are the first automatic package-aware reconciliation path and should inform the later managed-update package reconciliation design.
 
 ## Next Slice
 
-Before adding more heavy apps, finish managed-update validation and the hardened capability/integration path:
+Before adding more heavy apps, finish DNS-01 app-route validation, then return to managed-update validation and the hardened capability/integration path:
 
-1. Re-run Hyper-V branch-track update validation, then confirm the fixed updater preserves `home.mos.home`, applies the next pushed Suite Manager UI change, and recovers the earlier single-file package-lock artifact if present.
-2. Confirm the update refreshes Suite Manager, Caddy wiring, and all V2 system agents without reporting success while old repo-owned services are still running.
-3. After update, manually reapply/restart installed app runtimes whose package manifests/Dockerfiles changed; record the automatic package-runtime reconciliation contract for the next updater slice.
-4. Validate Seafile core and ONLYOFFICE integration in Hyper-V, including install order, app health, document editing connection, provider restart recovery, disable/re-enable, and preserved-data uninstall.
-5. Confirm relationship state remains truthful when either side is stopped, disabled, re-enabled, or uninstalled with data preserved.
-6. Inspect integration failure recovery diagnostics in live runtime logs/API responses without leaking JWT or other secret material.
-7. Decide the next single follow-up:
+1. Validate the DNS-01 routing fix on the current Hyper-V VM without reset: repair/reapply installed app routes, confirm Stirling/Radicale/Vaultwarden HTTPS app subdomains load, confirm MOS-owned app tiles/widgets move to the current domain, and confirm arbitrary user links are unchanged.
+2. Re-run Hyper-V branch-track update validation, then confirm the fixed updater preserves `home.mos.home`, applies the next pushed Suite Manager UI change, and recovers the earlier single-file package-lock artifact if present.
+3. Confirm the update refreshes Suite Manager, Caddy wiring, and all V2 system agents without reporting success while old repo-owned services are still running.
+4. After update, manually reapply/restart installed app runtimes whose package manifests/Dockerfiles changed; record the automatic package-runtime reconciliation contract for the next updater slice.
+5. Validate Seafile core and ONLYOFFICE integration in Hyper-V, including install order, app health, document editing connection, provider restart recovery, disable/re-enable, and preserved-data uninstall.
+6. Confirm relationship state remains truthful when either side is stopped, disabled, re-enabled, or uninstalled with data preserved.
+7. Inspect integration failure recovery diagnostics in live runtime logs/API responses without leaking JWT or other secret material.
+8. Decide the next single follow-up:
    - automatic app runtime reapply/rebuild during managed update,
    - deeper integration lifecycle diagnostics if Hyper-V exposes issues,
    - or the next V1 app package once Seafile/ONLYOFFICE is operationally proven.

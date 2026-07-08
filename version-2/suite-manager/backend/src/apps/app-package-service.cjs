@@ -1013,6 +1013,80 @@ class AppPackageService {
     };
   }
 
+  async reconcilePublicUrls(homepageService, requestContext = {}) {
+    const runtime = [];
+    const homepageEntries = [];
+    const homepageEntryFailures = [];
+    for (const instance of this.store.getAppInstances()) {
+      if (instance.status !== 'installed') continue;
+      const packageContext = requestContextForPackage(instance.packageId, requestContext);
+      const projections = this.store.getAppProjections(instance.id);
+      if (homepageProjectionApplied(projections)) {
+        try {
+          const configRows = this.store.getAppConfig(instance.id).map((row) => (
+            row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
+          ));
+          const entry = homepageEntryForHomepage(instance, projections, configRows, packageContext);
+          homepageEntries.push({
+            href: entry.url,
+            id: instance.id,
+            ...(entry.widget === undefined ? {} : { widget: entry.widget }),
+          });
+        } catch (error) {
+          homepageEntryFailures.push({
+            errorCode: error.code || 'APP_HOMEPAGE_ENTRY_RECONCILE_FAILED',
+            id: instance.id,
+            packageId: instance.packageId,
+            status: 'failed',
+          });
+        }
+      }
+    }
+
+    let homepage;
+    try {
+      homepage = await homepageService.reconcileUrls({ entries: homepageEntries });
+    } catch (error) {
+      homepage = {
+        errorCode: error.code || 'HOMEPAGE_PUBLIC_URL_RECONCILE_FAILED',
+        status: 'failed',
+      };
+    }
+
+    for (const instance of this.store.getAppInstances()) {
+      if (instance.status !== 'installed') continue;
+      const packageContext = requestContextForPackage(instance.packageId, requestContext);
+      try {
+        const result = await this.applyPackageRuntime(instance.packageId, packageContext);
+        runtime.push({
+          appHost: result.appHost || packageContext.appHost,
+          packageId: instance.packageId,
+          publicUrl: result.publicUrl || packageContext.publicUrl,
+          status: result.status || 'applied',
+        });
+      } catch (error) {
+        runtime.push({
+          appHost: packageContext.appHost,
+          errorCode: error.code || 'APP_RUNTIME_PUBLIC_URL_REAPPLY_FAILED',
+          packageId: instance.packageId,
+          publicUrl: packageContext.publicUrl,
+          status: 'failed',
+        });
+      }
+    }
+
+    const homepageFailed = homepage?.status === 'failed' || homepageEntryFailures.length > 0;
+    const runtimeFailed = runtime.some((item) => item.status === 'failed');
+    const status = homepageFailed || runtimeFailed ? 'partial' : 'applied';
+
+    return {
+      homepage,
+      homepageEntryFailures,
+      runtime,
+      status,
+    };
+  }
+
   async removePackageFromHomepage(instance, homepageService) {
     const projections = this.store.getAppProjections(instance.id);
     if (!homepageProjectionApplied(projections)) {

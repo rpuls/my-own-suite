@@ -33,6 +33,7 @@ const routes = new Map([
   ['POST /v1/homepage/add-link', (body) => core.add(body, false)],
   ['POST /v1/homepage/add-home-service', (body) => core.add(body, true)],
   ['POST /v1/homepage/remove-link', (body) => core.removeLink(body)],
+  ['POST /v1/homepage/reconcile-urls', (body) => core.reconcileUrls(body)],
 ]);
 
 const server = http.createServer(async (request, response) => {

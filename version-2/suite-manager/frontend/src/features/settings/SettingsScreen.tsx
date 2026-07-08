@@ -17,7 +17,22 @@ type HttpsStatus = {
   tokenConfigured: boolean;
 };
 
-type ApplyResult = { appliedAt: string; bootstrapUrl: string; homeUrl: string; status: string };
+type AppReconciliationResult = {
+  errorCode?: string;
+  homepage?: { errorCode?: string; status?: string };
+  homepageEntryFailures?: Array<{ errorCode?: string; packageId: string; status: string }>;
+  runtime?: Array<{ errorCode?: string; packageId: string; status: string }>;
+  skipped?: boolean;
+  status?: string;
+};
+
+type ApplyResult = {
+  appReconciliation?: AppReconciliationResult;
+  appliedAt: string;
+  bootstrapUrl: string;
+  homeUrl: string;
+  status: string;
+};
 
 async function jsonResponse<T>(response: Response, fallback: string): Promise<T> {
   const body = await response.json().catch(() => ({})) as T & { error?: string };
@@ -36,6 +51,23 @@ function LocalDnsInstructions({ homeHost, serverAddress }: { homeHost: string; s
 
 function AdvancedDetails({ status }: { status: HttpsStatus }) {
   return <details className="suite-advanced"><summary>Advanced details</summary><dl><dt>Bootstrap recovery URL</dt><dd>{status.bootstrapUrl}</dd><dt>Active Home URL</dt><dd>{status.activeHomeUrl}</dd><dt>Install context</dt><dd>{status.installContext}</dd><dt>Detected server IP</dt><dd>{status.serverAddress || 'Not detected'}</dd><dt>TLS mode</dt><dd>{status.tlsMode}</dd><dt>Provider</dt><dd>{status.provider || 'Not configured'}</dd><dt>Last apply</dt><dd>{status.lastApply.status}{status.lastApply.errorCode ? ` (${status.lastApply.errorCode})` : ''}</dd>{status.lastApply.diagnostics ? <><dt>Sanitized diagnostics</dt><dd>{status.lastApply.diagnostics}</dd></> : null}</dl></details>;
+}
+
+function AppReconciliationNotice({ reconciliation }: { reconciliation?: AppReconciliationResult }) {
+  if (!reconciliation || reconciliation.skipped || !['failed', 'partial'].includes(String(reconciliation.status || ''))) return null;
+  const failedRuntime = (reconciliation.runtime || []).filter((item) => item.status === 'failed');
+  const failedEntries = reconciliation.homepageEntryFailures || [];
+  const failedPackages = [...new Set([...failedRuntime, ...failedEntries].map((item) => item.packageId))];
+  const details = [
+    reconciliation.homepage?.status === 'failed' ? `Homepage routes: ${reconciliation.homepage.errorCode || 'failed'}` : '',
+    reconciliation.errorCode ? `Reconciliation: ${reconciliation.errorCode}` : '',
+    failedPackages.length ? `Apps: ${failedPackages.join(', ')}` : '',
+  ].filter(Boolean).join(' | ');
+
+  return <Notice title="HTTPS applied, but app URL reconciliation needs attention" variant="warning">
+    <p>Your Home URL was updated. Some app routes or MOS-managed Homepage entries may still need to be reapplied from the Apps or Customize screens.</p>
+    {details ? <p className="suite-meta">{details}</p> : null}
+  </Notice>;
 }
 
 export function SettingsScreen() {
@@ -145,6 +177,7 @@ export function SettingsScreen() {
         <TextInput autoComplete="off" helperText="Requires Zone Read and DNS Edit for the relevant Cloudflare zone. The saved token is never returned." label="Cloudflare API token" onChange={(event) => setToken(event.target.value)} placeholder={status.tokenConfigured ? 'Paste a replacement token to reapply' : 'Paste token once'} type="password" value={token} />
         {formError ? <Notice title="HTTPS was not applied" variant="error"><p>{formError}</p></Notice> : null}
         {result ? <Notice title="HTTPS configuration applied" variant="success"><p>Your new Home URL is <a href={result.homeUrl}>{result.homeUrl}</a>.</p><LocalDnsInstructions homeHost={activeHomeHost} serverAddress={dnsAddress} /><a className="mos-btn mos-btn-primary" href={result.homeUrl}>Open HTTPS Home</a></Notice> : null}
+        {result ? <AppReconciliationNotice reconciliation={result.appReconciliation} /> : null}
         <button className="mos-btn mos-btn-primary" disabled={!canApplyHttps} type="submit">{applying ? 'Applying securely...' : 'Apply HTTPS settings'}</button>
       </form>
       {!result && status.lastApply.status === 'applied' && activeHomeHost ? <Notice title="HTTPS is configured" variant="success"><p>Active Home URL: <a href={status.activeHomeUrl}>{status.activeHomeUrl}</a>.</p><LocalDnsInstructions homeHost={activeHomeHost} serverAddress={dnsAddress} /></Notice> : null}

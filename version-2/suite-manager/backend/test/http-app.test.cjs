@@ -1502,6 +1502,10 @@ test('HTTPS Settings API requires authentication and never returns the submitted
     rollback: async () => ({ status: 'rolled-back' }),
     status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
   };
+  const homepageAgent = {
+    async read(file) { return { content: '[]', file, revision: 'sha256:current' }; },
+    async reconcileUrls(input) { return { changed: false, entries: input.entries, file: 'services.template.yaml', revision: 'sha256:next' }; },
+  };
 
   await withServer(async (baseUrl) => {
     const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/https', { headers: { Host: 'home.test' } });
@@ -1516,6 +1520,7 @@ test('HTTPS Settings API requires authentication and never returns the submitted
     });
     assert.equal(applied.status, 200);
     assert.equal(applied.json().homeUrl, 'https://home.mos.example.com/');
+    assert.equal(applied.json().appReconciliation.status, 'applied');
     assert.doesNotMatch(applied.body, new RegExp(token, 'u'));
 
     const status = await hostRequest(baseUrl, '/suite-manager/api/settings/https', {
@@ -1529,7 +1534,79 @@ test('HTTPS Settings API requires authentication and never returns the submitted
     assert.ok(Object.hasOwn(status.json(), 'serverAddress'));
     assert.doesNotMatch(status.body, new RegExp(token, 'u'));
     assert.equal(calls[0].cloudflareApiToken, token);
-  }, { homeHost: 'home.test', httpsAgent });
+  }, { homeHost: 'home.test', homepageAgent, httpsAgent });
+});
+
+test('HTTPS Settings apply reports partial app URL reconciliation without hiding HTTPS success', async () => {
+  const calls = [];
+  const appAgent = {
+    async apply(input) {
+      calls.push(['app', input.packageId, input.publicUrl]);
+      if (input.publicUrl.startsWith('https://')) {
+        throw Object.assign(new Error('route apply failed'), { code: 'APP_AGENT_ROUTE_FAILED' });
+      }
+      return { publicUrl: input.publicUrl, status: 'applied', steps: [] };
+    },
+  };
+  const homepageAgent = {
+    async addLink(input) {
+      calls.push(['homepage-add', input.entry.url]);
+      return { changed: true, file: 'services.template.yaml', id: input.requestId, revision: 'sha256:added' };
+    },
+    async read(file) {
+      calls.push(['homepage-read', file]);
+      return { content: '[]', file, revision: 'sha256:current' };
+    },
+    async reconcileUrls(input) {
+      calls.push(['homepage-reconcile', input.entries.map((entry) => entry.href)]);
+      return { changed: true, file: 'services.template.yaml', revision: 'sha256:reconciled' };
+    },
+  };
+  const httpsAgent = {
+    apply: async () => ({ rollbackId: 'rollback-one' }),
+    commit: async () => ({ status: 'committed' }),
+    rollback: async () => ({ status: 'rolled-back' }),
+    status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/add-to-homepage', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+
+    const applied = await hostRequest(baseUrl, '/suite-manager/api/settings/https/apply', {
+      body: JSON.stringify({
+        acmeEmail: 'owner@example.com',
+        baseDomain: 'mos.example.com',
+        cloudflareApiToken: 'cloudflare_token_1234567890',
+      }),
+      headers: { Cookie: cookie, 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+
+    assert.equal(applied.status, 200);
+    assert.equal(applied.json().homeUrl, 'https://home.mos.example.com/');
+    assert.equal(applied.json().appReconciliation.status, 'partial');
+    assert.deepEqual(applied.json().appReconciliation.runtime, [{
+      appHost: 'stirling-pdf.mos.example.com',
+      errorCode: 'APP_AGENT_ROUTE_FAILED',
+      packageId: 'stirling-pdf',
+      publicUrl: 'https://stirling-pdf.mos.example.com/',
+      status: 'failed',
+    }]);
+    assert.deepEqual(calls.find((call) => call[0] === 'homepage-reconcile')[1], ['https://stirling-pdf.mos.example.com/']);
+    assert.ok(calls.findIndex((call) => call[0] === 'homepage-reconcile') < calls.findIndex((call) => call[0] === 'app' && call[2].startsWith('https://')));
+  }, { appAgent, homeHost: 'home.test', homepageAgent, httpsAgent });
 });
 
 test('HTTPS Settings status marks cloud installs as provider-managed domain guidance', async () => {
