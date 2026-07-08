@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "summary": "High performance self-hosted photo and video backup solution.",
   "category": "media",
-  "icon": "immich",
+  "icon": "icon.png",
   "catalog": {
     "description": "Immich is a self-hosted photo and video management server with automatic backup from mobile devices, facial recognition, object detection, and album organization.",
     "tags": [
