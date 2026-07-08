@@ -13,6 +13,8 @@
     "e2e:full:headed": "playwright test --config tests/e2e/playwright.hyperv.config.mjs --headed",
     "e2e:local": "playwright test --config tests/e2e/playwright.config.mjs",
     "e2e:local:headed": "playwright test --config tests/e2e/playwright.config.mjs --headed",
+    "e2e:vaultwarden": "playwright test --config tests/e2e/playwright.hyperv.config.mjs tests/e2e/specs/hyperv-vaultwarden.spec.mjs",
+    "e2e:vaultwarden:headed": "playwright test --config tests/e2e/playwright.hyperv.config.mjs tests/e2e/specs/hyperv-vaultwarden.spec.mjs --headed",
     "install:render": "node scripts/installers/render-bootstrap.cjs",
     "smoke:do:destroy": "node scripts/smoke/digitalocean-v2.cjs destroy",
     "smoke:do:dns01": "node scripts/smoke/dns01-v2.cjs",

@@ -72,15 +72,22 @@ function dockerList(args) {
     .filter(Boolean);
 }
 
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
 function resetDockerRuntime() {
-  const appContainers = dockerList(['ps', '-aq', '--filter', 'name=^mos-v2-app-']);
-  if (appContainers.length) tryRun('/usr/bin/docker', ['rm', '-f', ...appContainers], { timeoutMs: 120_000 });
+  const appContainers = unique([
+    ...dockerList(['ps', '-aq', '--filter', 'label=mos-v2.package']),
+    ...dockerList(['ps', '-a', '--format', '{{.Names}}']).filter((name) => name.startsWith('mos-v2-app-')),
+  ]);
+  for (const container of appContainers) tryRun('/usr/bin/docker', ['rm', '-f', container], { timeoutMs: 120_000 });
 
   const appNetworks = dockerList(['network', 'ls', '--format', '{{.Name}}']).filter((name) => name.startsWith('mos-v2-app-'));
   for (const network of appNetworks) tryRun('/usr/bin/docker', ['network', 'rm', network]);
 
   const appVolumes = dockerList(['volume', 'ls', '-q']).filter((name) => name.startsWith('mos-v2-app-'));
-  if (appVolumes.length) tryRun('/usr/bin/docker', ['volume', 'rm', ...appVolumes], { timeoutMs: 120_000 });
+  for (const volume of appVolumes) tryRun('/usr/bin/docker', ['volume', 'rm', volume], { timeoutMs: 120_000 });
 }
 
 function copyDirectory(source, target) {

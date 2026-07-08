@@ -66,6 +66,15 @@ class HttpsSettingsService {
     ].filter(Boolean));
   }
 
+  publicUrlSchemeForHost(host, fallback = 'http') {
+    const settings = this.store.getHttpsSettings();
+    const normalizedHost = String(host || '').trim().toLowerCase();
+    if (settings.tlsMode === 'cloudflare-dns01' && normalizedHost === homeHostFor(settings.baseDomain)) {
+      return 'https';
+    }
+    return fallback === 'https' ? 'https' : 'http';
+  }
+
   async status() {
     let agentAvailable = false;
     try {

@@ -2,7 +2,10 @@ async function requestJson(request, path, options = {}) {
   const response = await request.fetch(path, options);
   const body = await response.json().catch(() => ({}));
   if (!response.ok()) {
-    throw new Error(body.error || `${options.method || 'GET'} ${path} failed with ${response.status()}`);
+    const error = new Error(body.error || `${options.method || 'GET'} ${path} failed with ${response.status()}`);
+    error.status = response.status();
+    error.body = body;
+    throw error;
   }
   return body;
 }
@@ -10,10 +13,19 @@ async function requestJson(request, path, options = {}) {
 export async function resetLabIfConfigured(page, env) {
   if (!env.enableLabReset) return;
 
-  await requestJson(page.request, '/suite-manager/api/lab/reset', {
-    data: { reason: 'hyperv-e2e' },
-    method: 'POST',
-  });
+  try {
+    await requestJson(page.request, '/suite-manager/api/lab/reset', {
+      data: { reason: 'hyperv-e2e' },
+      method: 'POST',
+    });
+  } catch (error) {
+    if (error.status === 404 || error.message === 'LAB_RESET_DISABLED') {
+      throw new Error(
+        'Lab reset endpoint is not available on the Hyper-V VM. Run one fresh Hyper-V reset/update with the current branch so mos-v2-lab-reset-agent is installed, or set MOS_V2_E2E_RESET_BEFORE_RUN=0 to skip automatic reset.'
+      );
+    }
+    throw error;
+  }
 
   const deadline = Date.now() + 3 * 60 * 1000;
   let lastError = null;

@@ -6,35 +6,35 @@ function uniqueSuffix() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-async function homepageBodyText(page) {
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+async function homepageBodyText(page, homeUrl = '/') {
+  await page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
   return page.locator('body').innerText().catch(() => '');
 }
 
-export async function waitForHomepageAvailable(page) {
+export async function waitForHomepageAvailable(page, homeUrl = '/') {
   const deadline = Date.now() + 3 * 60 * 1000;
   let lastText = '';
 
   while (Date.now() < deadline) {
-    lastText = await homepageBodyText(page);
+    lastText = await homepageBodyText(page, homeUrl);
     if (!lastText.includes('Homepage is unavailable.')) return;
     await page.waitForTimeout(3000);
   }
 
-  throw new Error(`Homepage did not become available at /. Last response body: ${lastText.slice(0, 300)}`);
+  throw new Error(`Homepage did not become available at ${homeUrl}. Last response body: ${lastText.slice(0, 300)}`);
 }
 
-async function waitForHomepageText(page, text) {
+async function waitForHomepageText(page, text, homeUrl = '/') {
   const deadline = Date.now() + 3 * 60 * 1000;
   let lastText = '';
 
   while (Date.now() < deadline) {
-    lastText = await homepageBodyText(page);
+    lastText = await homepageBodyText(page, homeUrl);
     if (lastText.includes(text)) return;
     await page.waitForTimeout(3000);
   }
 
-  throw new Error(`Homepage did not render "${text}" at /. Last response body: ${lastText.slice(0, 300)}`);
+  throw new Error(`Homepage did not render "${text}" at ${homeUrl}. Last response body: ${lastText.slice(0, 300)}`);
 }
 
 export async function customizeHomepage(page) {
@@ -77,4 +77,12 @@ export async function customizeHomepage(page) {
 
   const linkHref = await page.getByRole('link', { name: new RegExp(linkName) }).first().getAttribute('href');
   expect(linkHref).toBe('https://example.com/');
+
+  return { linkName, serviceName };
+}
+
+export async function verifyHomepageCustomization(page, checkpoint) {
+  await waitForHomepageText(page, checkpoint.linkName);
+  await expect(page.getByText(checkpoint.linkName)).toBeVisible({ timeout: 60000 });
+  await expect(page.getByText(checkpoint.serviceName)).toBeVisible();
 }

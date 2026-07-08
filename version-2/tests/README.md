@@ -37,34 +37,36 @@ Required values:
 
 - `MOS_V2_E2E_BASE_URL`: the Home origin, for example `http://home.mos.home`.
 - `MOS_V2_E2E_OWNER_EMAIL` and `MOS_V2_E2E_OWNER_PASSWORD`: used to create the owner on a fresh install or sign in on an existing one.
-- App setup passwords for packages that need human-supplied credentials, especially Radicale and Seafile.
+- App setup passwords for packages that need human-supplied credentials, especially Radicale, Seafile, and Vaultwarden.
 - `MOS_V2_E2E_RESET_BEFORE_RUN`: defaults to `1`. The test calls the lab-only `/suite-manager/api/lab/reset` endpoint so repeated failures can be rerun without reinstalling the VM. Set it to `0` only when intentionally preserving current Suite Manager/Homepage/app state.
 
 Before DNS-01 runs, Windows must resolve both the bootstrap hosts, such as `home.mos.home`, and the post-DNS-01 hosts, such as `home.hyperv.diemernet.uk`, to the Hyper-V guest IP. `smoke:hyperv:reset` writes both sets into the marked hosts block and flushes DNS automatically. If you use another DNS-01 lab domain, set `MOS_V2_HYPERV_EXTRA_HOST_DOMAINS` before reset or add equivalent local DNS/hosts entries yourself.
 
-Optional DNS-01 values:
+DNS-01 values for the full Hyper-V regression:
 
-- Set `MOS_V2_E2E_ENABLE_DNS01=1` only when you want to apply real HTTPS settings.
 - Set `MOS_V2_E2E_DNS01_BASE_DOMAIN` to the Cloudflare-managed MOS base domain, such as `mos.example.com`.
 - Set `CLOUDFLARE_API_TOKEN` in `.env`; never commit it.
+- The full Hyper-V regression applies DNS-01 after the first pre-DNS app phase and before post-DNS app installs. If both DNS values are present, the harness enables DNS-01 automatically even if an old local `.env` still contains `MOS_V2_E2E_ENABLE_DNS01=0`.
 
 Default coverage:
 
 - Owner creation or sign-in.
 - Dashboard/Homepage reachability.
 - Homepage customization with one external link and one safe home-service route.
-- App catalog package installation for Stirling PDF, Vaultwarden, Radicale, Seafile, and ONLYOFFICE.
+- Restore checkpoint creation after owner setup, Homepage customization, and the first pre-DNS app install.
+- App catalog package installation in three phases: the first pre-DNS app is installed before backup, remaining pre-DNS apps are installed before DNS-01, and post-DNS apps default to Vaultwarden, Seafile, and ONLYOFFICE after DNS-01.
 - Runtime health/projection polling through Suite Manager's authenticated APIs.
-- Homepage app tile URL checks. When DNS-01 is enabled, HTTPS is applied before app installation so app projections use the final `https://<app>.<base-domain>/` URLs.
+- Homepage app tile URL checks before and after DNS-01, so existing app shortcuts are verified after HTTPS/public URL reconciliation and later apps are verified with final `https://<app>.<base-domain>/` URLs.
+- Homepage tile click-through checks for installed apps, including login validation for app packages with web or HTTP authentication where the package exposes test credentials.
 - App route checks that fail on server errors. Vaultwarden direct route checks are skipped on plain HTTP because the web vault requires HTTPS for normal browser loading.
 - Seafile plus ONLYOFFICE connection state.
-- Backup creation when the backup agent reports a mounted writable destination.
+- Restore from the early backup checkpoint, followed by assertions that the owner, Homepage customization, and the first-app catalog state are restored while later apps are rolled back.
 
 Opt-in or deferred coverage:
 
-- DNS-01 HTTPS apply is opt-in with `MOS_V2_E2E_ENABLE_DNS01=1`; when enabled, it runs before package installation so Vaultwarden and other app routes are created with HTTPS public URLs.
 - Lifecycle stop/start is opt-in with `MOS_V2_E2E_ENABLE_LIFECYCLE=1`.
-- Restore and update validation are intentionally not part of the default command yet. They need separate opt-in specs because they replace state or depend on pushed update commits.
+- Restore validation defaults to on for the Hyper-V full suite. Set `MOS_V2_E2E_ENABLE_RESTORE=0` only when diagnosing an earlier phase and intentionally leaving the post-test app state in place.
+- Update validation is intentionally not part of the default command yet because it depends on pushed update commits.
 
 The suite stores traces, screenshots, videos, and the HTML report under `version-2/tests/e2e/` on failure. It keeps secrets in `.env`, avoids printing request bodies, and uses generated or local test credentials only for app setup.
 

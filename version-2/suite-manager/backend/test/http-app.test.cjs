@@ -1638,6 +1638,67 @@ test('HTTPS Settings apply reports partial app URL reconciliation without hiding
   }, { appAgent, homeHost: 'home.test', homepageAgent, httpsAgent });
 });
 
+test('app package URLs use active DNS-01 HTTPS settings even without forwarded proto', async () => {
+  const appCalls = [];
+  const homepageCalls = [];
+  const appAgent = {
+    async apply(input) {
+      appCalls.push(input);
+      return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+  };
+  const homepageAgent = {
+    async addLink(input) {
+      homepageCalls.push(input);
+      return { changed: true, file: 'services.template.yaml', id: input.requestId, revision: 'sha256:added' };
+    },
+    async read(file) {
+      return { content: '[]', file, revision: 'sha256:current' };
+    },
+    async reconcileUrls() {
+      return { changed: false, file: 'services.template.yaml', revision: 'sha256:current' };
+    },
+  };
+  const httpsAgent = {
+    apply: async () => ({ rollbackId: 'rollback-one' }),
+    commit: async () => ({ status: 'committed' }),
+    rollback: async () => ({ status: 'rolled-back' }),
+    status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const applied = await hostRequest(baseUrl, '/suite-manager/api/settings/https/apply', {
+      body: JSON.stringify({
+        acmeEmail: 'owner@example.com',
+        baseDomain: 'mos.example.com',
+        cloudflareApiToken: 'cloudflare_token_1234567890',
+      }),
+      headers: { Cookie: cookie, 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(applied.status, 200);
+
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
+      headers: { Cookie: cookie, Host: 'home.mos.example.com' },
+      method: 'POST',
+    });
+    const runtime = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.mos.example.com' },
+      method: 'POST',
+    });
+    const homepage = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/add-to-homepage', {
+      headers: { Cookie: cookie, Host: 'home.mos.example.com' },
+      method: 'POST',
+    });
+
+    assert.equal(runtime.status, 200);
+    assert.equal(homepage.status, 200);
+    assert.equal(appCalls[0].publicUrl, 'https://vaultwarden.mos.example.com/');
+    assert.equal(homepageCalls[0].entry.url, 'https://vaultwarden.mos.example.com/');
+  }, { appAgent, homeHost: 'home.test', homepageAgent, httpsAgent });
+});
+
 test('HTTPS Settings status marks cloud installs as provider-managed domain guidance', async () => {
   const httpsAgent = {
     apply: async () => { throw new Error('must not run'); },

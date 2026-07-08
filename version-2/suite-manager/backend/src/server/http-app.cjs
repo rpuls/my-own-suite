@@ -180,11 +180,12 @@ function normalizedHost(request) {
   return String(request.headers.host || '').toLowerCase().replace(/:\d+$/, '');
 }
 
-function appPublicUrlFor(request, packageId) {
+function appPublicUrlFor(request, packageId, httpsSettings = null) {
   const homeHost = normalizedHost(request);
   const baseHost = homeHost.startsWith('home.') ? homeHost.slice(5) : homeHost;
   const appHost = `${packageId}.${baseHost}`;
-  const scheme = isHttpsRequest(request) ? 'https' : 'http';
+  const fallbackScheme = isHttpsRequest(request) ? 'https' : 'http';
+  const scheme = httpsSettings?.publicUrlSchemeForHost(homeHost, fallbackScheme) || fallbackScheme;
   return {
     appHost,
     baseHost,
@@ -193,8 +194,8 @@ function appPublicUrlFor(request, packageId) {
   };
 }
 
-function appPublicUrlResolver(request) {
-  return (packageId) => appPublicUrlFor(request, packageId);
+function appPublicUrlResolver(request, httpsSettings = null) {
+  return (packageId) => appPublicUrlFor(request, packageId, httpsSettings);
 }
 
 function appPublicUrlResolverForBase(baseHost, scheme = 'http') {
@@ -543,7 +544,7 @@ function createV2Server({
           return;
         }
         const packageId = decodeURIComponent(appHomepageMatch[1]);
-        jsonResponse(response, 200, await appPackages.addPackageToHomepage(packageId, homepageConfig, appPublicUrlFor(request, packageId)));
+        jsonResponse(response, 200, await appPackages.addPackageToHomepage(packageId, homepageConfig, appPublicUrlFor(request, packageId, httpsSettings)));
         return;
       }
 
@@ -555,8 +556,8 @@ function createV2Server({
         }
         const packageId = decodeURIComponent(appRuntimeMatch[1]);
         jsonResponse(response, 200, await appPackages.applyPackageRuntime(packageId, {
-          ...appPublicUrlFor(request, packageId),
-          publicUrlFor: appPublicUrlResolver(request),
+          ...appPublicUrlFor(request, packageId, httpsSettings),
+          publicUrlFor: appPublicUrlResolver(request, httpsSettings),
         }));
         return;
       }
@@ -571,7 +572,7 @@ function createV2Server({
           consumerPackageId: String(body.consumerPackageId || ''),
           providerCapabilityId: String(body.providerCapabilityId || ''),
           providerPackageId: String(body.providerPackageId || ''),
-          requestContext: { publicUrlFor: appPublicUrlResolver(request) },
+          requestContext: { publicUrlFor: appPublicUrlResolver(request, httpsSettings) },
           slotId: String(body.slotId || ''),
         }));
         return;
@@ -607,8 +608,8 @@ function createV2Server({
         }
         const packageId = decodeURIComponent(appEnableMatch[1]);
         jsonResponse(response, 200, await appPackages.enablePackage(packageId, {
-          ...appPublicUrlFor(request, packageId),
-          publicUrlFor: appPublicUrlResolver(request),
+          ...appPublicUrlFor(request, packageId, httpsSettings),
+          publicUrlFor: appPublicUrlResolver(request, httpsSettings),
         }));
         return;
       }
@@ -621,8 +622,8 @@ function createV2Server({
         }
         const packageId = decodeURIComponent(appRestartMatch[1]);
         jsonResponse(response, 200, await appPackages.restartPackageRuntime(packageId, {
-          ...appPublicUrlFor(request, packageId),
-          publicUrlFor: appPublicUrlResolver(request),
+          ...appPublicUrlFor(request, packageId, httpsSettings),
+          publicUrlFor: appPublicUrlResolver(request, httpsSettings),
         }));
         return;
       }
