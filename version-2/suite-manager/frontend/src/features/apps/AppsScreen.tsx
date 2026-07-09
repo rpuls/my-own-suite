@@ -505,8 +505,8 @@ function AppDetail({
   const ready = runtimeApplied(app);
   const homepageAvailable = hasHomepageContribution(app);
   const primaryDestination = hasPrimaryAppDestination(app);
-  const disabled = app.instance?.status === 'disabled' || app.instance?.enabled === false;
   const uninstalled = app.instance?.status === 'uninstalled';
+  const disabled = !uninstalled && (app.instance?.status === 'disabled' || app.instance?.enabled === false);
   const url = appUrl(app);
   const guideCompleted = app.instance?.guideState?.status === 'completed';
   const inputFields = setupFieldsNeedInput(app);

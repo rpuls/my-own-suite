@@ -437,6 +437,7 @@ function cloneProjectionWithIntegrationEnv(projections, targetService, values) {
 
 function runtimeConnectionState(app) {
   if (!app.instance) return 'available';
+  if (app.instance.status === 'uninstalled') return 'available';
   if (app.instance.status === 'disabled' || app.instance.enabled === false) return 'disabled';
   if (runtimeApplied(app.instance.projections || [])) return 'running';
   if (app.instance.status === 'installed') return 'installed';
@@ -810,7 +811,8 @@ class AppPackageService {
     const instancesByPackage = new Map(this.store.getAppInstances().map((instance) => [instance.packageId, instance]));
     const integrations = this.store.getAppIntegrations();
     const packages = inspectAppPackages(this.appsDir).map((summary) => {
-      const instance = instancesByPackage.get(summary.id);
+      const storedInstance = instancesByPackage.get(summary.id);
+      const instance = storedInstance?.status === 'uninstalled' ? null : storedInstance;
       const projections = instance ? this.store.getAppProjections(instance.id) : [];
       const config = instance ? this.store.getAppConfig(instance.id) : [];
       const guideState = instance ? this.store.getAppGuideState(instance.id) : null;
@@ -892,9 +894,11 @@ class AppPackageService {
     const current = this.store.getAppInstanceByPackageId(packageId);
     if (current) {
       if (current.status === 'uninstalled') {
-        throw new AppPackageServiceError('APP_PREVIOUSLY_UNINSTALLED', 'This app was uninstalled with its data preserved. Reinstall recovery is a future lifecycle action.', 409);
+        fs.rmSync(path.join(this.secretDir, current.id), { recursive: true, force: true });
+        this.store.deleteAppInstance({ instanceId: current.id });
+      } else {
+        return publicInstance(this.withGuideState(current), this.store.getAppProjections(current.id), this.store.getAppConfig(current.id));
       }
-      return publicInstance(this.withGuideState(current), this.store.getAppProjections(current.id), this.store.getAppConfig(current.id));
     }
 
     const packageDir = path.join(this.appsDir, packageId);
@@ -1182,7 +1186,7 @@ class AppPackageService {
     };
   }
 
-  async uninstallPackagePreserveData(packageId, homepageService) {
+  async uninstallPackage(packageId, homepageService) {
     if (!this.agent) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
     }
@@ -1190,42 +1194,32 @@ class AppPackageService {
     if (!instance) {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before uninstalling it.', 409);
     }
-    if (instance.status === 'uninstalled') {
-      return {
-        agent: { status: 'skipped', steps: [] },
-        homepage: { skipped: true },
-        instance: publicInstance(instance, this.store.getAppProjections(instance.id), this.store.getAppConfig(instance.id)),
-      };
-    }
     if (!['installed', 'disabled'].includes(instance.status)) {
       throw new AppPackageServiceError('APP_INVALID_TRANSITION', 'This app cannot be uninstalled from its current state.', 409);
     }
 
     const projections = this.store.getAppProjections(instance.id);
-    const services = projections.find((projection) => projection.kind === 'compose')?.content?.services || [];
+    const composeProjection = projections.find((projection) => projection.kind === 'compose');
+    const services = composeProjection?.content?.services || [];
+    const volumes = composeProjection?.content?.volumes || [];
     const homepage = await this.removePackageFromHomepage(instance, homepageService);
-    const agent = await this.agent.remove({ packageId: instance.packageId, services: services.map((service) => service.id) });
-    const at = this.now().toISOString();
-    this.store.markAppUninstalled({
-      at,
-      instanceId: instance.id,
-      operationId: crypto.randomUUID(),
-      request: { packageId: instance.packageId, preserveData: true, preserveSecrets: true, target: 'runtime-and-route' },
+    const agent = await this.agent.remove({
+      packageId: instance.packageId,
+      services: services.map((service) => service.id),
+      volumes,
     });
+    fs.rmSync(path.join(this.secretDir, instance.id), { recursive: true, force: true });
     this.store.markAppIntegrationsForInstance({
-      at,
+      at: this.now().toISOString(),
       errorCode: 'APP_INTEGRATION_APP_UNINSTALLED',
       instanceId: instance.id,
       status: 'removed',
     });
+    this.store.deleteAppInstance({ instanceId: instance.id });
     return {
       agent,
       homepage,
-      instance: publicInstance(
-        this.store.getAppInstanceByPackageId(packageId),
-        this.store.getAppProjections(instance.id),
-        this.store.getAppConfig(instance.id),
-      ),
+      instance: null,
     };
   }
 

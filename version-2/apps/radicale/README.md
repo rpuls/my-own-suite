@@ -10,7 +10,7 @@
 
 - `data:/data`: Stores htpasswd users plus CalDAV/CardDAV collections.
 
-Disable and preserved-data uninstall remove the running container and route while leaving this Docker volume intact.
+Disable removes the running container while leaving the route, config, secrets, and Docker volume intact. Uninstall removes the running container, route, MOS-owned Homepage shortcut, stored config/secrets, and Docker volume.
 
 ## Health Check
 

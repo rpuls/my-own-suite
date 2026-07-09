@@ -96,7 +96,7 @@ http://second-app.mos.home {
   assert.doesNotMatch(next, /127\.0\.0\.1:18102/u);
 });
 
-test('system adapter removes runtime and app route without deleting volumes', async () => {
+test('system adapter removes runtime, app route, and app volumes on uninstall', async () => {
   const root = await tempDir();
   const routesPath = path.join(root, 'routes.caddy');
   const commands = [];
@@ -122,16 +122,20 @@ http://second-app.mos.home {
     },
   });
 
-  const result = await adapter.removeAppService({ packageId: 'second-app' });
+  const result = await adapter.removeAppService({ packageId: 'second-app', volumes: ['data', 'cache'] });
 
-  assert.deepEqual(result.steps, ['stopped', 'route-removed', 'caddy-reloaded']);
+  assert.deepEqual(result.steps, ['stopped', 'volumes-removed', 'route-removed', 'caddy-reloaded']);
   assert.deepEqual(commands.map((command) => [command.file, command.args.slice(0, 3)]), [
     ['docker', ['rm', '-f', 'mos-v2-app-second-app']],
     ['docker', ['network', 'rm', 'mos-v2-app-second-app']],
+    ['docker', ['volume', 'inspect', 'mos-v2-app-second-app-data']],
+    ['docker', ['volume', 'rm', 'mos-v2-app-second-app-data']],
+    ['docker', ['volume', 'inspect', 'mos-v2-app-second-app-cache']],
+    ['docker', ['volume', 'rm', 'mos-v2-app-second-app-cache']],
     ['caddy', ['validate', '--adapter', 'caddyfile']],
     ['/usr/bin/systemctl', ['reload', 'caddy.service']],
   ]);
-  assert.equal(commands.some((command) => command.args.includes('volume') || command.args.includes('rmi')), false);
+  assert.equal(commands.some((command) => command.args.includes('rmi')), false);
   const routes = await fsp.readFile(routesPath, 'utf8');
   assert.match(routes, /first-app/u);
   assert.doesNotMatch(routes, /second-app/u);

@@ -1097,7 +1097,7 @@ test('Radicale Homepage projection adds a calendar widget without exposing crede
   }, { appAgent, homeHost: 'home.test', homepageAgent });
 });
 
-test('app lifecycle stop, start, restart, and uninstall preserve metadata while managing runtime and Homepage shortcut', async () => {
+test('app lifecycle stop, start, restart, and uninstall remove app state, data, and Homepage shortcut', async () => {
   const appCalls = [];
   const homepageCalls = [];
   const appAgent = {
@@ -1192,20 +1192,26 @@ test('app lifecycle stop, start, restart, and uninstall preserve metadata while 
       method: 'POST',
     });
     assert.equal(uninstalled.status, 200);
-    assert.equal(uninstalled.json().instance.status, 'uninstalled');
-    assert.equal(uninstalled.json().instance.enabled, false);
-    assert.equal(uninstalled.json().instance.id, instanceId);
-    assert.equal(uninstalled.json().instance.config.find((item) => item.key === 'adminToken').fingerprint, fingerprint);
+    assert.equal(uninstalled.json().instance, null);
     assert.equal(appCalls.map((call) => call[0]).join(','), 'apply,stop,apply,apply,remove');
+    assert.deepEqual(appCalls.at(-1)[1], { packageId: 'vaultwarden', services: ['vaultwarden'], volumes: ['data'] });
     assert.equal(homepageCalls.some((call) => call[0] === 'removeLink' && call[1].id === instanceId), true);
-    assert.doesNotMatch(JSON.stringify(appCalls), /volume rm|rmi/u);
+    assert.doesNotMatch(JSON.stringify(appCalls), /rmi/u);
+
+    const catalogAfterUninstall = await hostRequest(baseUrl, '/suite-manager/api/apps/packages', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    const uninstalledVaultwarden = catalogAfterUninstall.json().packages.find((entry) => entry.id === 'vaultwarden');
+    assert.equal(uninstalledVaultwarden.installStatus, 'not-installed');
+    assert.equal(uninstalledVaultwarden.instance, null);
 
     const reinstall = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
-    assert.equal(reinstall.status, 409);
-    assert.equal(reinstall.json().code, 'APP_PREVIOUSLY_UNINSTALLED');
+    assert.equal(reinstall.status, 200);
+    assert.equal(reinstall.json().instance.status, 'installed');
+    assert.notEqual(reinstall.json().instance.id, instanceId);
   }, { appAgent, homeHost: 'home.test', homepageAgent });
 });
 

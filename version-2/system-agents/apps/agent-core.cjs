@@ -128,8 +128,13 @@ function assertHealthCheckRequest(input) {
   return input.health;
 }
 
-function assertRuntimeRemoveRequest(input) {
-  if (!exactKeys(input, ['packageId']) && !exactKeys(input, ['packageId', 'services'])) {
+function assertRuntimeRemoveRequest(input, { allowVolumes = false } = {}) {
+  const accepted = [
+    ['packageId'],
+    ['packageId', 'services'],
+    ...(allowVolumes ? [['packageId', 'volumes'], ['packageId', 'services', 'volumes']] : []),
+  ];
+  if (!accepted.some((keys) => exactKeys(input, keys))) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app runtime removal fields are accepted.');
   }
   assertString(input.packageId, 'packageId', PACKAGE_ID_PATTERN);
@@ -137,7 +142,11 @@ function assertRuntimeRemoveRequest(input) {
   if (!Array.isArray(services) || services.length > 8 || services.some((service) => !DNS_LABEL_PATTERN.test(String(service)))) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The app runtime removal service list is invalid.');
   }
-  return { packageId: input.packageId, services };
+  const volumes = input.volumes === undefined ? [] : input.volumes;
+  if (!Array.isArray(volumes) || volumes.length > 16 || volumes.some((volume) => !DNS_LABEL_PATTERN.test(String(volume)))) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The app runtime removal volume list is invalid.');
+  }
+  return { packageId: input.packageId, services, volumes };
 }
 
 function assertNetworkConnectRequest(input) {
@@ -267,8 +276,8 @@ class AppAgentCore {
   }
 
   async remove(input) {
-    const { packageId, services } = assertRuntimeRemoveRequest(input);
-    const result = await this.adapter.removeAppService({ packageId, serviceIds: services });
+    const { packageId, services, volumes } = assertRuntimeRemoveRequest(input, { allowVolumes: true });
+    const result = await this.adapter.removeAppService({ packageId, serviceIds: services, volumes });
     return {
       ...result,
       packageId,

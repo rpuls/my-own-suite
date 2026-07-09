@@ -20,7 +20,7 @@ The package declares persistent mounts for:
 - `/pipeline`
 - `/usr/share/tessdata`
 
-The first lifecycle implementation should preserve these volumes on disable and default uninstall. Destructive removal should require a separate explicit confirmation.
+Disable preserves these volumes so the app can be started again. Uninstall removes the app containers, routes, Suite Manager state, and these Docker volumes so the package returns to a clean installable state.
 
 ## Setup
 

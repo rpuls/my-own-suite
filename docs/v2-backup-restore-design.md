@@ -81,7 +81,7 @@ The backup should include:
 - V2 state root Homepage config.
 - `/etc/mos-v2/secrets` entries required by MOS-owned agents.
 - Caddy MOS-owned active/generated files for audit and fallback.
-- All package-declared durable Docker volumes for installed or preserved-data apps.
+- All package-declared durable Docker volumes for installed or stopped apps.
 - Package manifests, manifest digests, package versions, repo commit/ref, runtime service/unit metadata, and active relationship state.
 - A machine-readable backup manifest plus human-readable restore notes.
 
@@ -99,7 +99,7 @@ V2 manifests need backup metadata rather than agent-side guesses. Suggested futu
 - `backup.volumes[]`: declared volume name, class (`data`, `database`, `cache`, `generated`), required-on-restore, and optional description.
 - `backup.databases[]`: service, engine, volume, and future dump preference. First slice can still cold-archive the volume.
 - `backup.quiesce`: safe stop/start order or service groups when package default order is insufficient.
-- `backup.restore`: restore order, required secrets, whether existing preserved-data volumes must be overwritten, and package version compatibility policy.
+- `backup.restore`: restore order, required secrets, whether existing app volumes must be overwritten, and package version compatibility policy.
 - `backup.externalDependencies`: object storage, remote SMTP, DNS, identity providers, or other state MOS cannot fully capture.
 - `backup.integrations`: whether relationship state is purely SQLite/projection data or needs package-specific post-restore validation.
 
@@ -187,7 +187,7 @@ Do not implement full archive/restore first. Do not start with per-app backup, c
 - Should app caches be backed up by default? Recommendation: yes until packages can explicitly mark cache/regenerable volumes; correctness beats space savings initially.
 - How should backups be encrypted? Recommendation: not optional for broadly shipped owner backups that contain secrets; design key/passphrase UX before exposing production backups.
 - Can V1 bundles restore into V2? Recommendation: no automatic restore. Treat V1-to-V2 as a separate migration/import design.
-- How are preserved-data uninstalled apps represented? Recommendation: include their Suite Manager state, secrets, and volumes until the user explicitly deletes abandoned data.
+- If MOS later adds a named archive-data action, how should archived apps be represented in backups? Recommendation: keep archived app state separate from ordinary uninstall, which now removes app state and volumes.
 
 ## Final Recommendation
 

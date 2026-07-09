@@ -237,7 +237,7 @@ test('app health refresh records validation operations and projection truth', as
   store.close();
 });
 
-test('app lifecycle transitions preserve config and projection metadata while clearing active apply state', async () => {
+test('app lifecycle transitions preserve stopped app metadata and delete state on uninstall', async () => {
   const store = new SuiteManagerStore(await tempStateDir());
   const at = '2026-06-27T10:00:00.000Z';
   store.installAppInstance({
@@ -317,26 +317,18 @@ test('app lifecycle transitions preserve config and projection metadata while cl
   assert.equal(instance.status, 'installed');
   assert.equal(instance.enabled, true);
 
-  store.markAppUninstalled({
-    at: '2026-06-27T10:05:00.000Z',
+  store.deleteAppInstance({
     instanceId: 'instance-one',
-    operationId: 'operation-six',
-    request: { preserveData: true, preserveSecrets: true },
   });
   instance = store.getAppInstanceByPackageId('example-app');
-  assert.equal(instance.status, 'uninstalled');
-  assert.equal(instance.enabled, false);
-  assert.equal(store.getAppConfig('instance-one').length, 1);
-  assert.equal(store.getAppProjections('instance-one').length, 4);
+  assert.equal(instance, null);
+  assert.equal(store.getAppConfig('instance-one').length, 0);
+  assert.equal(store.getAppProjections('instance-one').length, 0);
 
   const operations = store.database.prepare(`
     SELECT kind, status FROM app_operations WHERE kind IN ('disable', 'enable', 'uninstall') ORDER BY started_at
   `).all().map((row) => ({ kind: row.kind, status: row.status }));
-  assert.deepEqual(operations, [
-    { kind: 'disable', status: 'succeeded' },
-    { kind: 'enable', status: 'succeeded' },
-    { kind: 'uninstall', status: 'succeeded' },
-  ]);
+  assert.deepEqual(operations, []);
   store.close();
 });
 

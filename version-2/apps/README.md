@@ -10,13 +10,13 @@ The first package is `stirling-pdf`, intentionally chosen as a boring app to pro
 
 The second package is `vaultwarden`, intentionally chosen to pressure-test generated setup values, secret redaction, persistent storage, package onboarding metadata, and app-specific runtime environment projection without adding app-specific logic to Suite Manager core.
 
-The third package is `radicale`, intentionally chosen to validate a V1-era calendar/contact sync app against the V2 package model. It uses generic package setup fields for user-supplied credentials, one persistent data volume, one app route with a structured tokenized iCal bridge, one Homepage tile with a calendar widget, and the same lifecycle preserve-data semantics as the earlier packages.
+The third package is `radicale`, intentionally chosen to validate a V1-era calendar/contact sync app against the V2 package model. It uses generic package setup fields for user-supplied credentials, one persistent data volume, one app route with a structured tokenized iCal bridge, and one Homepage tile with a calendar widget.
 
-The fourth package is `seafile`, intentionally chosen as the first serious multi-service V1-era pillar app in V2. It uses package-owned Seafile, MySQL, and Valkey services, generated internal database/JWT secrets, user-supplied initial Seafile admin credentials, one public app route, internal-only dependency services, and preserved Seafile/MySQL volumes.
+The fourth package is `seafile`, intentionally chosen as the first serious multi-service V1-era pillar app in V2. It uses package-owned Seafile, MySQL, and Valkey services, generated internal database/JWT secrets, user-supplied initial Seafile admin credentials, one public app route, internal-only dependency services, and persistent Seafile/MySQL volumes.
 
 The fifth package is `onlyoffice`, intentionally chosen as the first capability provider package. It installs independently, exports a document-editor capability, has no normal Homepage shortcut, and becomes useful after a compatible document platform such as Seafile is installed and connected through the app integration flow.
 
-Package manifests describe install inputs and projections only. An app becomes active only after Suite Manager persists app instance state and the app lifecycle agent applies the generated runtime projection. Stop removes the active containers without deleting package config, secret references, Docker volumes, routes, or Homepage shortcuts. Preserved-data uninstall removes the active runtime, route, and Homepage shortcut without deleting package config, secret references, or Docker volumes.
+Package manifests describe install inputs and projections only. An app becomes active only after Suite Manager persists app instance state and the app lifecycle agent applies the generated runtime projection. Stop removes the active containers without deleting package config, secret references, Docker volumes, routes, or Homepage shortcuts. Uninstall removes the active runtime, route, MOS-owned Homepage shortcut, package Docker volumes, package config, secret references, and integration rows so the app returns to a clean installable state.
 
 ## Post-install setup guides
 
@@ -49,4 +49,4 @@ Packages may declare capability exports, integration slots, usefulness hints, an
 
 The first real relationship is Seafile consuming ONLYOFFICE as an office editor. Suite Manager resolves the compatible manifests, grants Seafile the provider-instance ONLYOFFICE JWT secret only for the apply operation, patches Seafile's allowlisted service environment projection, attaches ONLYOFFICE to Seafile's package network for server-to-server document traffic, reapplies Seafile through the app agent, and records relationship state in SQLite.
 
-Packages may set a `role` such as `capability-provider` when they are useful mainly through other apps. Suite Manager groups those packages as companion apps, suppresses Homepage shortcut controls when no `homepage` contribution is declared, and keeps integration relationships truthful across restart, stop, start, and preserved-data uninstall lifecycle actions.
+Packages may set a `role` such as `capability-provider` when they are useful mainly through other apps. Suite Manager groups those packages as companion apps, suppresses Homepage shortcut controls when no `homepage` contribution is declared, and keeps integration relationships truthful across restart, stop, start, and uninstall lifecycle actions.

@@ -31,7 +31,7 @@ The manifest supplies Seafile's database, cache, admin, JWT, and public URL sett
 - `data:/shared` stores Seafile runtime config and file data.
 - `mysql-data:/var/lib/mysql` stores MySQL metadata.
 
-Preserved-data uninstall and disable stop/remove containers and routes but keep these volumes and the stored secret references.
+Disable stops/removes containers while keeping routes, volumes, and stored secret references. Uninstall removes containers, routes, MOS-owned Homepage shortcuts, these Docker volumes, stored config/secrets, and integration rows.
 
 ## Health
 

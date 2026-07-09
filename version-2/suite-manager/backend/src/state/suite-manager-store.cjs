@@ -804,26 +804,9 @@ class SuiteManagerStore {
     });
   }
 
-  markAppUninstalled({ at, instanceId, operationId, request = {} }) {
+  deleteAppInstance({ instanceId }) {
     this.transaction(() => {
-      this.database.prepare(`
-        UPDATE app_instance_projections
-        SET applied_digest = NULL,
-            status = CASE WHEN kind IN ('compose', 'caddy', 'health', 'homepage') THEN 'rendered' ELSE status END,
-            updated_at = ?
-        WHERE instance_id = ? AND kind IN ('compose', 'caddy', 'health', 'homepage')
-      `).run(at, instanceId);
-      this.database.prepare(`
-        UPDATE app_instances
-        SET enabled = 0, status = 'uninstalled', updated_at = ?
-        WHERE id = ?
-      `).run(at, instanceId);
-      this.database.prepare(`
-        INSERT INTO app_operations (
-          id, instance_id, kind, status, request_json, started_at, completed_at
-        )
-        VALUES (?, ?, 'uninstall', 'succeeded', ?, ?, ?)
-      `).run(operationId, instanceId, JSON.stringify(request), at, at);
+      this.database.prepare('DELETE FROM app_instances WHERE id = ?').run(instanceId);
     });
   }
 

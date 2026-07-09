@@ -22,9 +22,9 @@ Verified app package capabilities:
 - Generated and user-supplied setup values with secret redaction.
 - SQLite app instance/config/projection/operation state.
 - Narrow app agent for Docker/Caddy/health work instead of broad Suite Manager host privileges.
-- Runtime health refresh, disable, re-enable, restart, and uninstall-with-data-preserved.
+- Runtime health refresh, disable, re-enable, restart, and destructive uninstall that returns apps to a fresh installable state.
 - Multi-service package apply/remove for Seafile core.
-- Capability-based app-to-app integration, proven by ONLYOFFICE plus Seafile, with relationship recovery/status hooks around restart, re-enable, disable, and preserved-data uninstall.
+- Capability-based app-to-app integration, proven by ONLYOFFICE plus Seafile, with relationship recovery/status hooks around restart, re-enable, disable, and uninstall.
 - First managed-update/reconciliation slice: new installs include `mos-v2-update-agent`, Suite Manager exposes an Updates page, branch-track jobs can fast-forward the V2 lab branch, install dependencies and build tooling from the lockfile, rebuild Suite Manager, reconcile repo-owned host services/agents/Caddy wiring with concrete installed Homepage runtime paths, and report progress/logs through the UI.
 - DNS-01/app-route reconciliation now reapplies installed app Caddy routes with the current HTTPS app subdomains, updates MOS-owned catalog app Homepage entries/widgets by stable app instance ID, and regenerates MOS-managed LAN/home-service projections from `mos.proxy` metadata while leaving ordinary user links alone.
 - A real Hyper-V full-platform Playwright harness now lives beside the V2 local E2E suite. It targets an already-running VM, uses ignored local env for owner/app/DNS credentials, covers owner/auth, Homepage customization, app installs, route checks, Seafile/ONLYOFFICE integration, and backup creation by default, and keeps DNS-01, lifecycle, restore, and update validation explicit or separate.
@@ -94,7 +94,7 @@ version-2/
 ## Remaining Known Gaps
 
 - Secret storage is hardened for current use but still not a final long-term secret subsystem. Remaining decisions include rotation, reveal policy, backup/restore behavior, and missing-secret recovery.
-- Preserved-data uninstall needs a later cleanup/reinstall story so users can intentionally delete abandoned volumes/secrets without accidents.
+- A future archive/remove-while-keeping-data action may be useful, but ordinary uninstall is now intentionally destructive so the catalog does not strand archived app state.
 - Managed updates preserve installed app runtimes but do not yet automatically rebuild/reapply them after package Dockerfile or manifest changes.
 - Integration relationships now have deterministic lifecycle coverage, but still need live Hyper-V validation before adding many provider/consumer pairs.
 - Public `/site` docs and Railway/platform alignment are intentionally deferred.

@@ -309,7 +309,7 @@ class SystemAppAdapter {
     }
   }
 
-  async removeAppService({ packageId, serviceIds = [] }) {
+  async removeAppService({ packageId, serviceIds = [], volumes = [] }) {
     const routeSnapshot = `${this.routesPath}.before-${process.pid}`;
     let routesChanged = false;
     try {
@@ -318,6 +318,13 @@ class SystemAppAdapter {
         await this.execute(this.dockerBinary, ['rm', '-f', `mos-v2-app-${packageId}-${serviceId}`], { timeoutMs: 30000 }).catch(() => {});
       }
       await this.execute(this.dockerBinary, ['network', 'rm', this.networkName(packageId)], { timeoutMs: 30000 }).catch(() => {});
+      for (const volume of volumes) {
+        const volumeName = `mos-v2-app-${packageId}-${volume}`;
+        const exists = await this.execute(this.dockerBinary, ['volume', 'inspect', volumeName], { timeoutMs: 30000 }).then(() => true, () => false);
+        if (exists) {
+          await this.execute(this.dockerBinary, ['volume', 'rm', volumeName], { timeoutMs: 120000 });
+        }
+      }
 
       const currentRoutes = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
       const nextRoutes = removeAppRouteBlock(currentRoutes, packageId);
@@ -334,7 +341,7 @@ class SystemAppAdapter {
         await fsp.rm(`${routeSnapshot}.missing`, { force: true }).catch(() => {});
       }
 
-      return { steps: ['stopped', ...(routesChanged ? ['route-removed', 'caddy-reloaded'] : [])] };
+      return { steps: ['stopped', ...(volumes.length ? ['volumes-removed'] : []), ...(routesChanged ? ['route-removed', 'caddy-reloaded'] : [])] };
     } catch {
       if (routesChanged) {
         await restore(routeSnapshot, this.routesPath).catch(() => {});

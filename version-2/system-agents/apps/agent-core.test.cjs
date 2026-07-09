@@ -214,7 +214,7 @@ test('app health check validates loopback health projection only', async () => {
   }), AppRuntimeError);
 });
 
-test('app remove accepts only a package id and delegates without volume deletion fields', async () => {
+test('app remove accepts only package-scoped removal fields and delegates volumes', async () => {
   const calls = [];
   const core = new AppAgentCore({
     async removeAppService(input) {
@@ -226,10 +226,11 @@ test('app remove accepts only a package id and delegates without volume deletion
   const result = await core.remove({ packageId: 'example-tool' });
 
   assert.equal(result.status, 'removed');
-  assert.deepEqual(calls, [{ packageId: 'example-tool', serviceIds: [] }]);
-  await core.remove({ packageId: 'example-tool', services: ['web', 'database'] });
-  assert.deepEqual(calls[1], { packageId: 'example-tool', serviceIds: ['web', 'database'] });
+  assert.deepEqual(calls, [{ packageId: 'example-tool', serviceIds: [], volumes: [] }]);
+  await core.remove({ packageId: 'example-tool', services: ['web', 'database'], volumes: ['data', 'cache'] });
+  assert.deepEqual(calls[1], { packageId: 'example-tool', serviceIds: ['web', 'database'], volumes: ['data', 'cache'] });
   await assert.rejects(() => core.remove({ packageId: 'example-tool', volumes: true }), AppRuntimeError);
+  await assert.rejects(() => core.remove({ packageId: 'example-tool', volumes: ['../bad'] }), AppRuntimeError);
   await assert.rejects(() => core.remove({ packageId: '../example-tool' }), AppRuntimeError);
   await assert.rejects(() => core.remove({ packageId: 'example-tool', services: ['../bad'] }), AppRuntimeError);
 });
@@ -247,6 +248,7 @@ test('app stop accepts only package service ids and leaves route removal to unin
 
   assert.equal(result.status, 'stopped');
   assert.deepEqual(calls, [{ packageId: 'example-tool', serviceIds: ['web'] }]);
+  await assert.rejects(() => core.stop({ packageId: 'example-tool', volumes: ['data'] }), AppRuntimeError);
   await assert.rejects(() => core.stop({ packageId: 'example-tool', removeRoutes: true }), AppRuntimeError);
   await assert.rejects(() => core.stop({ packageId: '../example-tool' }), AppRuntimeError);
 });

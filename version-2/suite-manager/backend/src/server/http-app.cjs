@@ -635,7 +635,7 @@ function createV2Server({
           return;
         }
         const packageId = decodeURIComponent(appUninstallMatch[1]);
-        jsonResponse(response, 200, await appPackages.uninstallPackagePreserveData(packageId, homepageConfig));
+        jsonResponse(response, 200, await appPackages.uninstallPackage(packageId, homepageConfig));
         return;
       }
 

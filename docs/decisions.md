@@ -44,12 +44,12 @@ Consequences:
 - Suite Manager must not run git, npm, Docker, Caddy, or systemctl update commands itself.
 - The update agent API stays narrow: status, start update job, read job state, and configure track.
 - The update result may report core reconciliation success while installed app runtimes are preserved and marked for manual reapply/restart after package Dockerfile or manifest changes.
-- A later updater slice should add package-aware runtime reconciliation so changed installed app packages can be rebuilt/reapplied automatically without weakening preserved-data guarantees.
+- A later updater slice should add package-aware runtime reconciliation so changed installed app packages can be rebuilt/reapplied automatically without weakening app data that still belongs to installed or stopped apps.
 - Stable release-track polish can reuse the same agent boundary, but branch-track updates remain the practical validation path until V2 release metadata is finalized.
 
 ## 2026-07-03: V2 App Packages Own Runtime Shape And Lifecycle
 
-Decision: V2 app packages are self-contained folders under `version-2/apps/<app-id>/` that declare metadata, setup fields, services, routes, Homepage projections, health checks, widgets, onboarding, and capabilities. Suite Manager persists app instance/config/projection/operation state in SQLite and asks a narrow app agent to apply Docker, Caddy, and health changes. Runtime state supports health refresh, disable, re-enable, restart, and uninstall-with-data-preserved.
+Decision: V2 app packages are self-contained folders under `version-2/apps/<app-id>/` that declare metadata, setup fields, services, routes, Homepage projections, health checks, widgets, onboarding, and capabilities. Suite Manager persists app instance/config/projection/operation state in SQLite and asks a narrow app agent to apply Docker, Caddy, and health changes. Runtime state supports health refresh, disable, re-enable, restart, and destructive uninstall.
 
 Reason: V1 scattered app-specific behavior across Compose files, env generation, Caddy generation, onboarding, doctor scripts, and Suite Manager UI. V2 needs adding an app to mostly mean adding a package folder, while keeping privileged host actions out of the web process.
 
@@ -59,7 +59,9 @@ Consequences:
 - Generated infrastructure must be reproducible from package manifests plus persisted app/relationship state.
 - Secrets use redacted references in normal state and are materialized only for narrow runtime apply operations.
 - App routes remain separate from Homepage customization routes.
-- Destructive data deletion is not part of ordinary uninstall; preserved volumes/secrets need a later explicit cleanup story.
+- Stop/disable is the non-destructive pause action: it removes runtime containers but keeps app routes, Homepage shortcuts, volumes, config, and secrets so the app can be started again.
+- Uninstall is the destructive removal action: it removes runtime containers, package routes, MOS-owned Homepage shortcuts, package Docker volumes, Suite Manager app instance/config/projection state, app secrets, and app integration rows so the catalog returns to a fresh installable state.
+- If MOS later needs an archive-data workflow, it should be a separately named action instead of overloading uninstall.
 
 ## 2026-07-02: V2 App Setup Guides Are Declarative And App-Scoped
 

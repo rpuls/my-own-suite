@@ -252,9 +252,11 @@ test('integration lifecycle recovers provider restart and reports disabled/unins
   await service.enablePackage('onlyoffice', requestContext());
   assert.equal(store.getAppIntegrations()[0].status, 'active');
 
-  const uninstalled = await service.uninstallPackagePreserveData('onlyoffice', homepageService);
+  const uninstalled = await service.uninstallPackage('onlyoffice', homepageService);
   assert.equal(uninstalled.homepage.skipped, true);
-  assert.equal(store.getAppIntegrations()[0].status, 'removed');
+  assert.equal(uninstalled.instance, null);
+  assert.equal(store.getAppIntegrations().length, 0);
+  assert.equal(store.getAppInstanceByPackageId('onlyoffice'), null);
   assert.equal(store.getAppInstanceByPackageId('seafile').status, 'installed');
   assert.doesNotMatch(JSON.stringify(store.getAppIntegrations()), /not-a-real-secret/u);
 
