@@ -168,6 +168,7 @@ test('Immich package is discoverable and declares its heavy multi-service stack 
 
   assert.ok(immich);
   assert.equal(immich.manifest.name, 'Immich');
+  assert.equal(immich.manifest.version, '0.2.0');
   assert.equal(immich.manifest.catalog.complexity.level, 'advanced');
   assert.deepEqual(Object.keys(immich.manifest.resources.services).sort(), [
     'immich-machine-learning',
@@ -179,6 +180,7 @@ test('Immich package is discoverable and declares its heavy multi-service stack 
   assert.equal(immich.manifest.resources.services['immich-postgres'].env.POSTGRES_INITDB_ARGS, '--data-checksums');
   assert.deepEqual(immich.manifest.resources.services['immich-postgres'].volumes, ['postgres-data:/var/lib/postgresql/data']);
   assert.equal(immich.manifest.resources.services['immich-valkey'].dockerfile, 'Dockerfile.valkey');
+  assert.equal(immich.manifest.homepage.icon, 'immich');
   assert.equal(immich.manifest.routes[0].service, 'immich-server');
   assert.equal(immich.manifest.health.url, 'http://immich-server:2283/api/server-info/ping');
   assert.equal(immich.manifest.setup.fields.length, 2);
