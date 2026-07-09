@@ -36,6 +36,7 @@ Current packages:
 - `radicale`: V1-era calendar/contact sync app with user-supplied setup, setup guide, and Homepage calendar widget.
 - `seafile`: first serious multi-service app package with internal database/cache and one public route.
 - `onlyoffice`: independent document-editor capability provider connected to Seafile through the first generic relationship flow, presented as a companion app without a normal Homepage shortcut.
+- `immich`: heavy multi-service photo package under live Hyper-V validation, using package-owned server, machine-learning, Valkey, and Immich-compatible Postgres/vector database images.
 
 ## Durable Conclusions
 

@@ -162,6 +162,39 @@ test('OnlyOffice package is discoverable and exports a document editor capabilit
   assert.deepEqual(validateAppPackageManifest(onlyoffice.manifest, { packageDir: onlyoffice.packageDir }), []);
 });
 
+test('Immich package is discoverable and declares its heavy multi-service stack generically', () => {
+  const packages = discoverAppPackages(v2AppsDir);
+  const immich = packages.find((entry) => entry.manifest.id === 'immich');
+
+  assert.ok(immich);
+  assert.equal(immich.manifest.name, 'Immich');
+  assert.equal(immich.manifest.catalog.complexity.level, 'advanced');
+  assert.deepEqual(Object.keys(immich.manifest.resources.services).sort(), [
+    'immich-machine-learning',
+    'immich-postgres',
+    'immich-server',
+    'immich-valkey',
+  ]);
+  assert.equal(immich.manifest.resources.services['immich-postgres'].dockerfile, 'Dockerfile.postgres');
+  assert.equal(immich.manifest.resources.services['immich-postgres'].env.POSTGRES_INITDB_ARGS, '--data-checksums');
+  assert.deepEqual(immich.manifest.resources.services['immich-postgres'].volumes, ['postgres-data:/var/lib/postgresql/data']);
+  assert.equal(immich.manifest.resources.services['immich-valkey'].dockerfile, 'Dockerfile.valkey');
+  assert.equal(immich.manifest.routes[0].service, 'immich-server');
+  assert.equal(immich.manifest.health.url, 'http://immich-server:2283/api/server-info/ping');
+  assert.equal(immich.manifest.setup.fields.length, 2);
+  assert.deepEqual(immich.manifest.setup.fields.map((field) => ({
+    id: field.id,
+    generated: Boolean(field.generated),
+    required: field.required,
+    secret: field.secret === true,
+    type: field.type,
+  })), [
+    { generated: true, id: 'postgresPassword', required: true, secret: true, type: 'password' },
+    { generated: true, id: 'jwtSecret', required: true, secret: true, type: 'password' },
+  ]);
+  assert.deepEqual(validateAppPackageManifest(immich.manifest, { packageDir: immich.packageDir }), []);
+});
+
 test('manifest validation accepts companion packages without Homepage metadata', () => {
   const manifest = validManifest({
     homepage: undefined,
@@ -351,7 +384,7 @@ test('production app package engine code does not hardcode package ids', () => {
       }
       if (!/\.(?:cjs|js|ps1|ts|tsx)$/u.test(entry.name) || /\.test\./u.test(entry.name)) continue;
       const content = fs.readFileSync(fullPath, 'utf8');
-      if (/\b(?:stirling|vaultwarden|radicale|seafile|Stirling|Vaultwarden|Radicale|Seafile)\b/u.test(content)) {
+      if (/\b(?:immich|stirling|vaultwarden|radicale|seafile|Immich|Stirling|Vaultwarden|Radicale|Seafile)\b/u.test(content)) {
         offenders.push(path.relative(v2Root, fullPath));
       }
     }
