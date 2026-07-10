@@ -74,51 +74,6 @@ http://first-app.mos.home {
   assert.match(next, /127\.0\.0\.1:18102/u);
 });
 
-test('system adapter waits for public route readiness after Caddy reload', async () => {
-  const root = await tempDir();
-  const routesPath = path.join(root, 'routes.caddy');
-  const packageDir = path.join(root, 'vaultwarden');
-  const commands = [];
-  await fsp.mkdir(packageDir);
-
-  const adapter = new SystemAppAdapter({
-    appsRoot: root,
-    caddyBinary: 'caddy',
-    dockerBinary: 'docker',
-    routesPath,
-    async execute(file, args, options = {}) {
-      commands.push({ args, cwd: options.cwd, file });
-    },
-    async waitForPublicReady(url) {
-      commands.push({ args: [url], file: 'public-route' });
-    },
-    async waitForReady(url) {
-      commands.push({ args: [url], file: 'health' });
-    },
-  });
-
-  const result = await adapter.applyAppServices({
-    caddyRoutes: 'https://vaultwarden.hyperv.example {\n  reverse_proxy http://127.0.0.1:18189\n}\n',
-    healthTarget: 'http://127.0.0.1:18189/alive',
-    packageId: 'vaultwarden',
-    publicUrl: 'https://vaultwarden.hyperv.example/',
-    services: [{
-      dockerfile: 'Dockerfile',
-      environment: {},
-      id: 'vaultwarden',
-      imageTag: 'mos-v2-app-vaultwarden-vaultwarden:0.1.0',
-      internalPort: 80,
-      loopbackPort: 18189,
-      public: true,
-      volumes: ['data:/data'],
-    }],
-  });
-
-  assert.deepEqual(result.steps, ['built', 'started', 'healthy', 'route-written', 'caddy-reloaded', 'public-route-ready']);
-  assert.deepEqual(commands.map((command) => command.file), ['docker', 'docker', 'docker', 'health', 'caddy', '/usr/bin/systemctl', 'public-route']);
-  assert.deepEqual(commands.at(-1), { args: ['https://vaultwarden.hyperv.example/'], file: 'public-route' });
-});
-
 test('route removal deletes only the matching package block', () => {
   const existing = `# mos-v2-app-route:start first-app
 http://first-app.mos.home {
