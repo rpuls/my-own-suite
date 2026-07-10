@@ -26,10 +26,10 @@ These rules are required for every non-trivial change (docs, config, code, infra
    - When in doubt, compress multiple related tweaks into one broader bullet instead of listing them separately.
 4. **Release process must follow `RELEASING.md`.**
    - Do not invent ad-hoc versioning or release steps.
-   - Keep all release metadata files aligned when preparing a release:
+- Keep all release metadata files aligned when preparing a release:
      - root `VERSION`
      - root `releases/stable.json`
-     - `apps/suite-manager/release.json`
+     - any Suite Manager release metadata file that exists in the active root layout
    - Run `npm run release:check` whenever a task changes release metadata or prepares a release branch.
 5. **No direct pushes to `main` and no direct commits on `main`.**
    - Use PR workflow only.
@@ -49,7 +49,7 @@ Before making edits, agents should confirm:
 - `CHANGELOG.md` contains or will contain an `Unreleased` entry for the change.
 - Any needed docs split rules (MDX vs app README) are respected.
 - Local git hooks are installed (`npm run hooks:install`) so commits/pushes on `main` are blocked.
-- If the work is release-related, confirm `VERSION`, `releases/stable.json`, and `apps/suite-manager/release.json` will stay in sync with the intended tag.
+- If the work is release-related, confirm `VERSION`, `releases/stable.json`, and any Suite Manager release metadata will stay in sync with the intended tag.
 
 ## Documentation Ownership Workflow
 
@@ -65,10 +65,12 @@ Use these locations:
 - `docs/decisions.md`: durable architecture decisions and their consequences.
 - `docs/codex-notes.md`: durable Codex/project working context.
 - `.github/ISSUE_TEMPLATE/codex-task.yml`: task template source of truth.
-- `site/src/content/docs/`: public/end-user documentation.
+- `site/`: MOS2 public/end-user documentation source after the public docs rebuild.
+- `site-mos1-reference/`: preserved MOS1 public site source for reference only.
 - `apps/<app>/README.md`: app-level technical reference.
-- `deploy/<target>/README.md`: deployment runbooks and operator guidance.
-- `agents/selfhost/update/docs/`: low-level updater smoke tests and host checks.
+- `scripts/README.md`: MOS2 operator/developer script and smoke-harness guidance.
+- `infrastructure/`: shared MOS2 runtime and installer substrate.
+- `system-agents/`: MOS2 host-agent implementation.
 
 Maintenance rules:
 
@@ -88,7 +90,7 @@ Branding in this repo uses a single-source-of-truth workflow. Agents must follow
 - Canonical project branding lives under `branding/`.
 - `branding/styles/mos.css` is the canonical shared MOS brand stylesheet.
 - Canonical logo and favicon assets live in `branding/` and `branding/favicons/`.
-- Do not create or maintain hand-edited duplicate brand styles inside `site/`, `apps/suite-manager/`, or other app folders when the change is meant to affect shared MOS branding.
+- Do not create or maintain hand-edited duplicate brand styles inside `site/`, `suite-manager/`, or other app folders when the change is meant to affect shared MOS branding.
 - App-local branding copies that exist for runtime isolation are generated artifacts or sync targets, not the source of truth.
 - When changing shared branding, run `npm run branding:sync`.
 - If a task changes shared branding inputs, verify the affected app-local outputs were refreshed before finalizing.
@@ -96,16 +98,16 @@ Branding in this repo uses a single-source-of-truth workflow. Agents must follow
 
 Current shared-branding sync targets include:
 
-- `site/src/generated/branding/mos.css`
-- `apps/suite-manager/frontend/src/styles/mos.css`
-- `apps/homepage/config/custom.css` for the synced Homepage theme block
+- `site/generated/branding/mos.css`
+- `suite-manager/frontend/src/styles/mos.css`
+- `infrastructure/homepage/custom.css` for the synced Homepage theme block
 - public brand/favicons copied into app-local runtime folders
 
 ## Suite Manager UI Component Workflow
 
 Suite Manager UI must stay cohesive and predictable. Agents must treat shared UI primitives as part of the design framework, not as optional convenience helpers.
 
-- Reuse existing shared components before creating new local controls. Current shared primitives live in `apps/suite-manager/frontend/src/components/` and include dialog frames, notices/alerts, text inputs, text areas, and selects.
+- Reuse existing shared components before creating new local controls. Current shared primitives live in `suite-manager/frontend/src/components/` and include dialog frames, notices/alerts, text inputs, text areas, and selects.
 - Do not create one-off or near-duplicate dialogs, dropdowns, alert banners, text inputs, expand/collapse controls, or choice cards with slightly different styling or behavior.
 - If a new interaction pattern is needed, first extend the shared component API or add a new shared primitive, then migrate the feature to use it.
 - Keep component behavior consistent across Suite Manager: labels, helper text, disabled states, focus states, icon placement, spacing, responsive layout, and error/success/info styling should come from the shared component layer and shared CSS.
@@ -116,8 +118,8 @@ Suite Manager UI must stay cohesive and predictable. Agents must treat shared UI
 
 ## Goal
 
-Use a strict split:
-- End-user content lives in `site/src/content/docs/apps/*.mdx`
+Use a strict split after the MOS2 public docs rebuild:
+- End-user content lives in the active `site/` docs source
 - Technical/operational content lives in `apps/*/README.md`
 
 No duplicated content across these two sources.
@@ -131,7 +133,7 @@ No duplicated content across these two sources.
 
 ## Audience Split
 
-### MDX (`site/src/content/docs/apps/*.mdx`) is for end users
+### Public Site Docs Are For End Users
 
 Include:
 - Short, plain-language app description immediately under title/logo.
@@ -229,27 +231,24 @@ For each app page:
 
 ## E2E Testing Workflow
 
-The repo now includes real black-box Playwright tests that run against the Docker stack without test-only application bypasses.
+The repo includes real black-box Playwright tests for MOS2 flows without test-only application bypasses.
 
 - Do not run E2E tests automatically as an agent. Ask the user to run the relevant E2E command and paste only the relevant failure output, because full Playwright/Docker logs are noisy and quickly pollute the context window.
 - Do not run `npm run smoke:do:up` automatically as an agent. Like E2E, ask the user to run it and paste only the relevant failure output or final readiness summary, because it creates paid cloud resources and produces noisy logs.
 - Do not run `npm run smoke:do:reset` automatically as an agent. It reuses the existing smoke Droplet but destructively removes MOS containers, Docker volumes, and the remote checkout before reinstalling.
 - `npm run smoke:do:destroy` may be run by an agent only when explicitly asked or confirmed by the user, because it is a paid-resource cleanup command.
 - Prefer end-to-end validation for onboarding and app reachability changes before adding unit-test-only coverage.
-- Keep E2E tooling isolated under `tests/e2e` unless a shared repo-level script or config is genuinely needed.
+- Keep E2E tooling isolated under `test/e2e` unless a shared repo-level script or config is genuinely needed.
 - Do not add source-code-only test hooks, fake auth shortcuts, or alternate code paths just to make tests easier.
 - When changing onboarding, auth, Homepage routing, or app integration behavior, consider whether `npm run e2e:full` should be rerun before finalizing.
 
 Useful commands:
 
-- `npm run e2e:install` installs Playwright browser dependencies for the local harness.
-- `npm run e2e:onboarding` runs the real onboarding flow headlessly.
-- `npm run e2e:onboarding:headed` runs the onboarding flow in a visible browser.
-- `npm run e2e:onboarding:manual` runs the onboarding flow and then pauses on Homepage so the browser stays open for manual testing.
-- `npm run e2e:apps` runs Homepage-driven app verification.
-- `npm run e2e:apps:headed` runs app verification in a visible browser.
-- `npm run e2e:full` runs the full local E2E suite headlessly.
-- `npm run e2e:full:headed` runs the full local E2E suite in a visible browser.
+- `npm run e2e:install` installs Playwright browser dependencies.
+- `npm run e2e:local` runs the local MOS2 browser suite.
+- `npm run e2e:local:headed` runs the local MOS2 browser suite in a visible browser.
+- `npm run e2e:full` runs the Hyper-V full-platform suite against an already-running VM.
+- `npm run e2e:full:headed` runs the Hyper-V suite in a visible browser.
 
 ## Container and Versioning Rules
 
@@ -257,8 +256,8 @@ These rules are mandatory for app/service onboarding and version updates.
 
 ### Single source of truth for container versions
 
-- Do not write runtime image tags/digests directly in `deploy/vps/docker-compose.yml`.
-- `deploy/vps/docker-compose.yml` must use `build:` entries that point to Dockerfiles in `apps/`.
+- Do not write runtime image tags/digests directly into generated runtime projections.
+- MOS2 app package services must use package-owned Dockerfiles in `apps/`.
 - Pin base images in Dockerfiles with immutable digests (`FROM image@sha256:...`).
 - Never use floating tags like `latest` or `release` in runtime Dockerfiles.
 
@@ -290,27 +289,14 @@ Do not introduce new canonical Dockerfiles in nested subfolders like `apps/<app>
   - Add a deprecation comment pointing to the canonical root-level Dockerfile.
   - Remove old paths only in a clearly documented breaking release.
 
-### Compose authoring rules when adding a service
+### App Manifest Runtime Rules
 
-When adding a new service to `deploy/vps/docker-compose.yml`:
-
-- Use:
-  - `build.context: ../../apps/<app>`
-  - `build.dockerfile: Dockerfile` or `Dockerfile.<service>`
-- Do not use direct `image:` references for services managed by this repo.
-
-### VPS env template layout
-
-- Runtime env templates live in:
-  - `deploy/vps/.env.template`
-  - `deploy/vps/services/<service>/.env.template`
-- Do not reintroduce runtime env templates under `deploy/vps/apps/`.
-- `deploy/vps/services/suite-manager/.env.template` is the shared control-plane input file for local/VPS setup.
+When adding or changing a package service, update the package manifest and keep generated runtime projections rooted at `apps/<app>`.
 
 ### Docs and automation updates required with each new service
 
 When adding/changing an app service, also update:
 
 - `apps/<app>/README.md` technical specs (env vars, volumes, healthchecks, dependencies).
-- `deploy/vps/services/<service>/.env.template` when relevant.
+- package manifest setup fields, resources, routes, and capabilities when relevant.
 - `.github/dependabot.yml` Docker entries for the affected app root directory.

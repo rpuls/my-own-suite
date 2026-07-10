@@ -1,12 +1,12 @@
 # V2 Backup and Restore Design
 
-Temporary branch research for `feat/app-platform-v2-lab`. Keep this concise; before merge, convert durable conclusions into `docs/decisions.md` and implementation follow-up into GitHub Issues.
+Historical MOS2 design research retained as background. Durable platform decisions belong in `docs/decisions.md`; implementation follow-up belongs in GitHub Issues.
 
 ## Research Summary
 
 V1 backup/restore is a host-owned, whole-suite offline snapshot flow. Suite Manager talks to `mos-backup-agent` over a token-protected Unix socket, shows destinations, starts jobs, polls persistent job state, and keeps low-level logs behind advanced details. The agent discovers mounted or mountable storage under `/media`, `/mnt`, and `/run/media`, starts a worker, records a manifest, copies repo-managed runtime config, records rendered Compose config, stops the MOS Compose stack, archives Docker volumes, restarts the same detected profiles, and lists bundles from connected storage. Restore verifies manifest and archive checksums, creates a pre-restore runtime-config rescue archive, stops the current stack, restores config and Docker volumes, and restarts the profiles recorded in the bundle.
 
-The V1 UX is directionally right: owners think in terms of "back up MOS" and "restore MOS", not per-container operations. Its limits are that the backup contract is hardcoded around V1 Compose profiles, known `mos_` volume names, and repo-managed `deploy/vps` config. V2 should reuse the concepts, not the shape.
+The V1 UX is directionally right: owners think in terms of "back up MOS" and "restore MOS", not per-container operations. Its limits are that the backup contract is hardcoded around V1 Compose profiles, known `mos_` volume names, and repo-managed old VPS config. V2 should reuse the concepts, not the shape.
 
 V2 must protect Suite Manager SQLite, app instance/config/projection/operation state, app relationship state, app secret files, Homepage durable files, generated Caddy route state, non-secret HTTPS state, the Cloudflare DNS token file, app Docker volumes, package manifests/source version expectations, and enough runtime metadata to recreate containers and routes. V2 adds package instances, capability relationships, companion apps, generated secret references, tokenized helper routes, and package-owned multi-service networks. Those are not just "more volumes"; they are restore ordering and compatibility constraints.
 
@@ -35,7 +35,7 @@ V1 strengths:
 V1 assumptions to avoid in V2:
 
 - Hardcoded Compose profiles and expected volume names.
-- Treating `deploy/vps` runtime config as the canonical full suite state.
+- Treating the old VPS runtime config as the canonical full suite state.
 - Restoring only `mos_` volumes, which does not fit V2 `mos-v2-app-*` volume naming or control-plane state paths.
 - No package-level distinction between durable data, cache, generated runtime state, or dump-preferred databases.
 - Version pairing is conservative but too coarse for V2 package restore compatibility.

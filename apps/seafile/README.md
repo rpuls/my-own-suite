@@ -1,67 +1,42 @@
-#### Environment variables
+# Seafile V2 package
 
-- `SEAFILE_MYSQL_DB_HOST`: MySQL host for Seafile.
-- `SEAFILE_MYSQL_DB_PORT`: MySQL port (typically `3306`).
-- `SEAFILE_MYSQL_DB_USER`: MySQL application user for Seafile.
-- `SEAFILE_MYSQL_DB_PASSWORD`: MySQL application user password for Seafile.
-- `SEAFILE_MYSQL_DB_CCNET_DB_NAME`: Database name for ccnet metadata.
-- `SEAFILE_MYSQL_DB_SEAFILE_DB_NAME`: Database name for Seafile data metadata.
-- `SEAFILE_MYSQL_DB_SEAHUB_DB_NAME`: Database name for Seahub web data.
-- `INIT_SEAFILE_MYSQL_ROOT_PASSWORD`: MySQL root password used for first bootstrap.
-- `INIT_SEAFILE_ADMIN_EMAIL`: Initial Seafile admin email.
-- `INIT_SEAFILE_ADMIN_PASSWORD`: Initial Seafile admin password.
-- `JWT_PRIVATE_KEY`: Required Seafile server JWT signing key.
-- `CACHE_PROVIDER`: Cache backend (`redis` in this stack).
-- `REDIS_HOST`: Valkey/Redis-compatible cache host.
-- `REDIS_PORT`: Valkey/Redis-compatible cache port.
-- `REDIS_PASSWORD`: Valkey/Redis-compatible cache password, when auth is enabled.
-- `SEAFILE_SERVER_HOSTNAME`: Public Seafile hostname (no protocol).
-- `SEAFILE_SERVER_PROTOCOL`: Public scheme (`http` or `https`).
-- `TIME_ZONE`: Container timezone.
-- `VERIFY_ONLYOFFICE_CERTIFICATE`: Toggle TLS verification for ONLYOFFICE callbacks.
-- `ONLYOFFICE_APIJS_URL`: ONLYOFFICE Docs API JS URL. Enables ONLYOFFICE integration when set.
-- `ONLYOFFICE_FORCE_SAVE`: Enables/disables ONLYOFFICE force-save behavior.
-- `ONLYOFFICE_INTERNAL_SEAFILE_URL`: Internal Seafile URL for ONLYOFFICE server-to-server traffic.
-- `ONLYOFFICE_JWT_SECRET`: JWT secret for ONLYOFFICE integration when JWT is enabled.
-- Shared SMTP inputs from `deploy/vps/services/suite-manager/.env` when enabled:
-  - `SMTP_ENABLED`
-  - `SMTP_HOST`
-  - `SMTP_PORT`
-  - `SMTP_SECURITY` (`starttls`, `force_tls`, or `off`)
-  - `SMTP_USERNAME`
-  - `SMTP_PASSWORD`
-  - `SMTP_FROM`
+This package runs Seafile core as a MOS V2 multi-service app package. It installs independently from ONLYOFFICE, SMTP wiring, backup automation, and app-specific Suite Manager code.
 
-#### Volumes and persistence
+## Services
 
-- Required volume mount: `/shared`
-- Without `/shared`, config and runtime state can drift across restarts.
+- `seafile`: Seafile Community web and file service, exposed through the single public `seafile.<base-domain>` app route.
+- `seafile-mysql`: internal MySQL 8 service for Seafile metadata.
+- `seafile-valkey`: internal Redis-compatible cache service.
 
-#### Dependencies and integrations
+Only `seafile` is routed through Caddy. MySQL and Valkey are package-internal services on the package-owned Docker network.
 
-Requirements:
-- Use MySQL `8.x` (recommended `mysql:8.0`).
-- Do not update the Seafile MySQL service to MySQL `9.x` unless a newer supported Seafile image has been explicitly validated with it. The current Seafile stack still depends on `mysql_native_password`, and MySQL 9 rejects the `default-authentication-plugin=mysql_native_password` startup option.
-- Provide a reachable Valkey/Redis-compatible cache server (`host:port`).
-- Mount persistent storage at `/shared` for Seafile data and config.
+## Environment
 
-Integrations:
-- Works with ONLYOFFICE for in-browser document editing.
-- Can reuse the shared stack SMTP settings for password resets and share-link email delivery.
+The manifest supplies Seafile's database, cache, admin, JWT, and public URL settings from generated projections:
 
-#### Optional SMTP behavior
+- `SEAFILE_MYSQL_DB_HOST`, `SEAFILE_MYSQL_DB_PORT`, `SEAFILE_MYSQL_DB_USER`, `SEAFILE_MYSQL_DB_PASSWORD`
+- `SEAFILE_MYSQL_DB_CCNET_DB_NAME`, `SEAFILE_MYSQL_DB_SEAFILE_DB_NAME`, `SEAFILE_MYSQL_DB_SEAHUB_DB_NAME`
+- `INIT_SEAFILE_MYSQL_ROOT_PASSWORD`
+- `INIT_SEAFILE_ADMIN_EMAIL`, `INIT_SEAFILE_ADMIN_PASSWORD`
+- `JWT_PRIVATE_KEY`
+- `CACHE_PROVIDER`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
+- `SEAFILE_SERVER_HOSTNAME`, `SEAFILE_SERVER_PROTOCOL`
+- `TIME_ZONE`
+- `ONLYOFFICE_APIJS_URL`, `ONLYOFFICE_JWT_SECRET`, `ONLYOFFICE_INTERNAL_SEAFILE_URL`, `VERIFY_ONLYOFFICE_CERTIFICATE`, `ONLYOFFICE_FORCE_SAVE` only after Suite Manager applies a compatible document-editor integration.
 
-- SMTP is fully optional and is intended for operators who already have access to an SMTP server.
-- When `SMTP_ENABLED=true`, the shared SMTP values from `deploy/vps/services/suite-manager/.env` are written into `seahub_settings.py` at container start.
-- Typical SMTP-backed Seafile features include password reset mail, share-link delivery, and other notification-style emails.
-- The canonical setup and troubleshooting guide lives in the dedicated advanced SMTP doc: [Optional email with SMTP](/docs/optional-email-with-smtp).
-- If mail-related actions appear to hang, Seafile may be waiting on the SMTP server during the live request path.
+`adminEmail` and `adminPassword` are collected during package install. MySQL root/user passwords and the JWT private key are generated by MOS and persisted as secret references.
 
-#### Customizations in this project
+## Volumes
 
-- Entry-point patches `seahub_settings.py` with proxy, ONLYOFFICE, and optional SMTP settings.
-- Adds runtime patching for ONLYOFFICE internal callback/download URL handling.
-- Patch targets are version-sensitive and should be revalidated after Seafile image upgrades.
+- `data:/shared` stores Seafile runtime config and file data.
+- `mysql-data:/var/lib/mysql` stores MySQL metadata.
 
+Disable stops/removes containers while keeping routes, volumes, and stored secret references. Uninstall removes containers, routes, MOS-owned Homepage shortcuts, these Docker volumes, stored config/secrets, and integration rows.
 
+## Health
 
+MOS checks `http://seafile:80/api2/ping/` through the generated loopback projection for the public Seafile service.
+
+## V2 scope notes
+
+The entrypoint patches proxy-facing Seahub settings so Seafile knows the generated MOS app host and forwarded scheme. It also contains the package-owned Seahub patching needed when Suite Manager connects a compatible ONLYOFFICE provider: Seahub settings receive the allowlisted integration values and ONLYOFFICE server-side downloads/callbacks can use Seafile's package network.

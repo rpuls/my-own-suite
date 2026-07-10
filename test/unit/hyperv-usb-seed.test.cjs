@@ -1,0 +1,47 @@
+const assert = require('node:assert/strict');
+const test = require('node:test');
+const YAML = require('yaml');
+
+const {
+  loadSmokeConfig,
+  renderSeed,
+  resolveSmokeRepoRef,
+} = require('../../scripts/installers/render-hyperv-usb-seed.cjs');
+
+test('Hyper-V USB seed embeds the V2 bootstrap without the v1 owner handoff', () => {
+  const rendered = renderSeed(
+    {
+      HOSTNAME: 'mos',
+      LINUX_PASSWORD: 'linux-console-password',
+      OWNER_EMAIL: 'v1-owner@example.com',
+      OWNER_PASSWORD: 'v1-owner-password',
+      STACK_DOMAIN: 'mos.home',
+    },
+    { repoRef: 'staging' },
+  );
+  const document = YAML.parse(rendered.userData);
+  const firstBoot = document.autoinstall['user-data'];
+  const renderedFirstBoot = YAML.stringify(firstBoot);
+
+  assert.equal(document.autoinstall.identity.hostname, 'mos');
+  assert.equal(rendered.plan.config.frontDoor, 'usb-autoinstall');
+  assert.equal(rendered.plan.config.repoRef, 'staging');
+  assert.equal(rendered.plan.config.publicUrls.home, 'http://home.mos.home/');
+  assert.match(renderedFirstBoot, /MOS_V2_REPO_REF='staging'/u);
+  assert.match(renderedFirstBoot, /mos-v2-suite-manager\.service/u);
+  assert.match(renderedFirstBoot, /linux-console-password/u);
+  assert.match(renderedFirstBoot, /mkfs\.ext4 -F -L MOS_V2_BACKUP/u);
+  assert.match(renderedFirstBoot, /\/media\/mos-backup/u);
+  assert.match(renderedFirstBoot, /No empty second disk found for backup storage/u);
+  assert.doesNotMatch(rendered.userData, /v1-owner@example\.com|v1-owner-password|mos-selfhost-bootstrap/u);
+});
+
+test('Hyper-V USB seed can load tracked template defaults without a local installer env', () => {
+  const config = loadSmokeConfig();
+  assert.equal(config.STACK_DOMAIN, 'mos.home');
+  assert.equal(config.LINUX_PASSWORD, 'change-me-before-build');
+});
+
+test('Hyper-V USB seed repo ref is explicit for branch smoke installs', () => {
+  assert.equal(resolveSmokeRepoRef({ MOS_V2_SMOKE_REPO_REF: 'feat/root-layout-smoke' }), 'feat/root-layout-smoke');
+});

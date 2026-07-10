@@ -8,14 +8,14 @@ Durable working context for future Codex sessions. Mandatory rules live in [AGEN
 - GitHub Issues are preferred for task state, backlog, and roadmap-like planning.
 - Repo docs should hold context that still matters after an issue is closed.
 - Temporary branch plans are allowed for multi-session work, but must be deleted, converted to issues, or reduced to durable decisions before merge.
-- Keep operator runbooks single-source. V2 Hyper-V and DigitalOcean smoke commands live in `version-2/scripts/README.md`; do not duplicate full command runbooks here.
+- Keep operator runbooks single-source. Hyper-V and DigitalOcean smoke commands live in `scripts/README.md`; do not duplicate full command runbooks here.
 
 ## V2 Hyper-V SSH For Codex
 
 Use this when the user has run the V2 Hyper-V USB smoke and gives Codex the VM IPv4. The IP changes between resets; login details usually do not.
 
 - Do not ask the user to upload SSH keys into the VM. The Hyper-V autoinstall enables password SSH for the Linux user.
-- Read the Linux username/password from `deploy/self-host/autoinstall/installer-config/selfhost-installer.env`. `USERNAME` defaults to `mos`; `LINUX_PASSWORD` is the SSH/sudo password. Do not print the password in chat.
+- Read the Linux username/password from `infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env`. `USERNAME` defaults to `mos`; `LINUX_PASSWORD` is the SSH/sudo password. Do not print the password in chat.
 - First check port 22 from Windows:
 
 ```powershell

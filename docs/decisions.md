@@ -4,6 +4,21 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-07-10: MOS2 Replaces MOS1 As The Default Repository Layout
+
+Decision: MOS2 is the default root layout. The former `version-2/` workspace has moved to root-level `suite-manager/`, `apps/`, `system-agents/`, `infrastructure/`, `scripts/`, `shared/`, and `test/` paths. The old MOS1 root shape is preserved on `archive/mos1-main-snapshot`; the old public site source remains in `site-mos1-reference/` only as reference while the MOS2 public site/docs are rebuilt later.
+
+Reason: MOS2 is now validated enough to replace the isolated lab shape, and there are no external MOS1 users whose migration blocks the repo default. Keeping MOS2 under `version-2/` would make installers, managed updates, docs, package paths, and contributor behavior keep carrying a temporary architecture.
+
+Consequences:
+
+- New development should target the root MOS2 layout and `staging` integration branch.
+- Installed bootstrap/update/reconciliation paths use `/opt/mos-v2/repo/...`, not `/opt/mos-v2/repo/version-2/...`.
+- App runtime build contexts use `apps/<app-id>`.
+- Root npm commands such as `npm test`, `npm run build:client`, and `npm run install:render` replace `npm --prefix version-2 ...`.
+- MOS1 runtime code is not kept in the active root layout; use the archive branch for recovery or reference.
+- Public landing page and end-user docs cleanup is deliberately deferred from the functional cutover.
+
 ## 2026-07-08: V2 Homepage URL Reconciliation Is Metadata-Scoped
 
 Decision: V2 Homepage URL reconciliation is driven by MOS metadata, not by blind URL search/replace. Plain user-authored links remain untouched. MOS catalog app tiles are updated only when their stable Homepage entry ID matches an installed app instance. Non-catalog LAN/home-service tiles are updated only when they carry structured `mos.proxy` metadata, which regenerates the public URL and Caddy route from the current domain state.

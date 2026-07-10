@@ -1,3 +1,0 @@
----
-# Docker config (not used in Railway deployment)
-# Railway containers don't have access to Docker socket

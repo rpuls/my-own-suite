@@ -227,7 +227,7 @@ function parseEnvFile(filePath) {
 
 function resolveInstallerConfig(repoRoot) {
   const explicitConfig = readArg('installer-config');
-  const installerConfigDir = path.join(repoRoot, 'deploy', 'self-host', 'autoinstall', 'installer-config');
+  const installerConfigDir = path.join(repoRoot, 'infrastructure', 'self-host', 'autoinstall', 'installer-config');
   const defaultConfig = path.join(installerConfigDir, 'selfhost-installer.env');
   const templatePath = path.join(installerConfigDir, 'selfhost-installer.env.template');
   const resolvedPath = explicitConfig ? path.resolve(repoRoot, explicitConfig) : defaultConfig;
@@ -282,7 +282,7 @@ async function resolveInputIso(repoRoot) {
     return path.resolve(repoRoot, explicitIso);
   }
 
-  const isoDropDir = path.join(repoRoot, 'deploy', 'self-host', 'autoinstall', 'ubuntu-iso');
+  const isoDropDir = path.join(repoRoot, 'infrastructure', 'self-host', 'autoinstall', 'ubuntu-iso');
   fs.mkdirSync(isoDropDir, { recursive: true });
 
   const isoFiles = fs
@@ -316,13 +316,14 @@ async function main() {
   const repoRoot = process.cwd();
   const inputIso = await resolveInputIso(repoRoot);
   const explicitSeedDir = readArg('seed-dir');
-  const installerConfig = explicitSeedDir ? '' : resolveInstallerConfig(repoRoot);
-  if (installerConfig) {
-    validateInstallerConfig(installerConfig);
+  if (!explicitSeedDir) {
+    console.error('WARNING: the MOS2 ISO remasterer requires --seed-dir with a rendered installer seed.');
+    console.error('Render the seed with scripts/installers/render-hyperv-usb-seed.cjs or another MOS2 bootstrap renderer.');
+    process.exit(1);
   }
   const outputIso = path.resolve(
     repoRoot,
-    readArg('output-iso', 'deploy/self-host/output/my-own-suite-selfhost-installer.iso'),
+    readArg('output-iso', 'infrastructure/self-host/output/my-own-suite-selfhost-installer.iso'),
   );
   const buildRoot = path.resolve(repoRoot, readArg('build-dir', '.tmp/selfhost-iso-build'));
   const seedDir = explicitSeedDir ? path.resolve(repoRoot, explicitSeedDir) : path.join(buildRoot, 'seed');
@@ -332,9 +333,6 @@ async function main() {
   assertFile(inputIso, 'Ubuntu ISO');
 
   fs.rmSync(buildRoot, { force: true, recursive: true });
-  if (!explicitSeedDir) {
-    fs.mkdirSync(seedDir, { recursive: true });
-  }
   fs.mkdirSync(path.dirname(outputIso), { recursive: true });
 
   const passThroughArgs = [];
@@ -354,16 +352,10 @@ async function main() {
     passThroughArgs.push(arg);
   }
 
-  if (!explicitSeedDir) {
-    run('node', ['scripts/selfhost-write-autoinstall.cjs', '--output-dir', seedDir, '--installer-config', installerConfig, '--quiet', 'true', ...passThroughArgs], {
-      stdio: 'inherit',
-    });
-  }
-
   assertFile(path.join(seedDir, 'user-data'), 'Generated user-data');
   assertFile(path.join(seedDir, 'meta-data'), 'Generated meta-data');
 
-  run('docker', ['build', '-t', builderTag, 'deploy/self-host/iso-builder'], {
+  run('docker', ['build', '-t', builderTag, 'infrastructure/self-host/iso-builder'], {
     stdio: 'inherit',
   });
 
@@ -406,7 +398,7 @@ async function main() {
   console.log('Self-host installer ISO is ready.');
   console.log(`Flash this file: ${outputIso}`);
   console.log(`Ubuntu ISO source: ${inputIso}`);
-  console.log(explicitSeedDir ? `Installer seed source: ${seedDir}` : `Installer config source: ${installerConfig}`);
+  console.log(`Installer seed source: ${seedDir}`);
   console.log('Ubuntu image source: official Ubuntu release URL verified against SHA256SUMS.');
   console.log('');
   console.log('Recommended USB stick:');
