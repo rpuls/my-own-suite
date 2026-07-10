@@ -10,5 +10,5 @@ export async function openSuiteManager(page, screenName, entryUrl = '/') {
   await page.getByRole('button', { name: 'Open navigation menu' }).click();
   await expect(page.getByRole('navigation', { name: 'Suite Manager menu' })).toBeVisible();
   await page.getByRole('button', { name: screenName }).click();
-  await expect(page.getByRole('heading', { name: screenName === 'Backup' ? 'Backup & Restore' : screenName })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: screenName === 'Backup' ? 'Backup & Restore' : screenName })).toBeVisible();
 }

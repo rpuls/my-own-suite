@@ -100,6 +100,7 @@ test('app apply validates exact shape and delegates sanitized runtime fields', a
   assert.equal(result.publicUrl, 'http://example-tool.mos.home/');
   assert.equal(calls[0].packageId, 'example-tool');
   assert.equal(calls[0].healthTarget, 'http://127.0.0.1:18123/health');
+  assert.equal(calls[0].publicUrl, 'http://example-tool.mos.home/');
   assert.equal(calls[0].services[0].loopbackPort, 18123);
   assert.deepEqual(calls[0].services[0].environment, {
     APP_HOST: 'example-tool.mos.home',

@@ -2,6 +2,7 @@ const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const http = require('node:http');
+const https = require('node:https');
 const path = require('node:path');
 
 const APPS_ROOT = process.env.MOS_V2_APPS_ROOT || path.resolve(process.cwd(), 'apps');
@@ -10,6 +11,7 @@ const CADDY_BINARY = process.env.MOS_V2_CADDY_BINARY || '/usr/local/libexec/mos-
 const DOCKER_BINARY = process.env.MOS_V2_DOCKER_BINARY || '/usr/bin/docker';
 const HEALTH_TIMEOUT_MS = 90_000;
 const HEALTH_REFRESH_TIMEOUT_MS = 5_000;
+const PUBLIC_ROUTE_TIMEOUT_MS = 240_000;
 const EMPTY_APP_ROUTES = '# No app runtime routes.\n';
 
 const FAILURE_MESSAGES = {
@@ -18,6 +20,7 @@ const FAILURE_MESSAGES = {
   'caddy-validation': ['APP_CADDY_VALIDATION_FAILED', 'The generated app route did not pass Caddy validation.'],
   health: ['APP_HEALTH_FAILED', 'The app container started but did not become healthy in time.'],
   network: ['APP_NETWORK_CONNECT_FAILED', 'The app integration network could not be connected.'],
+  'public-route': ['APP_PUBLIC_ROUTE_FAILED', 'The app public route did not become reachable in time.'],
   remove: ['APP_RUNTIME_REMOVE_FAILED', 'The app runtime could not be removed.'],
   run: ['APP_RUN_FAILED', 'The app container could not be started.'],
   stop: ['APP_RUNTIME_STOP_FAILED', 'The app runtime could not be stopped.'],
@@ -136,6 +139,43 @@ function waitForHttp(url, { deadlineMs = HEALTH_TIMEOUT_MS } = {}) {
   });
 }
 
+function waitForPublicRoute(url, { deadlineMs = PUBLIC_ROUTE_TIMEOUT_MS } = {}) {
+  const parsed = new URL(url);
+  if (parsed.protocol === 'http:') return waitForHttp(url, { deadlineMs });
+  if (parsed.protocol !== 'https:') return Promise.reject(new Error('UNSUPPORTED_PUBLIC_ROUTE_SCHEME'));
+
+  const started = Date.now();
+  return new Promise((resolve, reject) => {
+    const attempt = () => {
+      const request = https.get({
+        hostname: parsed.hostname,
+        lookup: (hostname, options, callback) => callback(null, '127.0.0.1', 4),
+        path: `${parsed.pathname || '/'}${parsed.search || ''}`,
+        port: parsed.port || 443,
+        servername: parsed.hostname,
+        timeout: 5000,
+      }, (response) => {
+        response.resume();
+        if (response.statusCode >= 200 && response.statusCode < 500) {
+          resolve();
+          return;
+        }
+        retry();
+      });
+      request.on('timeout', () => request.destroy(new Error('TIMEOUT')));
+      request.on('error', retry);
+    };
+    const retry = () => {
+      if (Date.now() - started >= deadlineMs) {
+        reject(new Error('PUBLIC_ROUTE_TIMEOUT'));
+        return;
+      }
+      setTimeout(attempt, 3000);
+    };
+    attempt();
+  });
+}
+
 class SystemAppAdapter {
   constructor({
     appsRoot = APPS_ROOT,
@@ -143,6 +183,7 @@ class SystemAppAdapter {
     dockerBinary = DOCKER_BINARY,
     execute = exec,
     routesPath = APP_ROUTES_PATH,
+    waitForPublicReady = waitForPublicRoute,
     waitForReady = waitForHttp,
   } = {}) {
     this.appsRoot = appsRoot;
@@ -150,6 +191,7 @@ class SystemAppAdapter {
     this.dockerBinary = dockerBinary;
     this.execute = execute;
     this.routesPath = routesPath;
+    this.waitForPublicReady = waitForPublicReady;
     this.waitForReady = waitForReady;
   }
 
@@ -161,11 +203,12 @@ class SystemAppAdapter {
     return `mos-v2-app-${packageId}`;
   }
 
-  async applyAppService({ caddyRoutes, dockerfile, environment = {}, healthTarget, imageTag, internalPort, loopbackPort, packageId, volumes }) {
+  async applyAppService({ caddyRoutes, dockerfile, environment = {}, healthTarget, imageTag, internalPort, loopbackPort, packageId, publicUrl = '', volumes }) {
     return this.applyAppServices({
       caddyRoutes,
       healthTarget,
       packageId,
+      publicUrl,
       services: [{
         dockerfile,
         environment,
@@ -179,7 +222,7 @@ class SystemAppAdapter {
     });
   }
 
-  async applyAppServices({ caddyRoutes, healthTarget, packageId, services }) {
+  async applyAppServices({ caddyRoutes, healthTarget, packageId, publicUrl = '', services }) {
     const packageDir = path.join(this.appsRoot, packageId);
     const routeSnapshot = `${this.routesPath}.before-${process.pid}`;
     let routesChanged = false;
@@ -245,7 +288,12 @@ class SystemAppAdapter {
         await fsp.rm(`${routeSnapshot}.missing`, { force: true }).catch(() => {});
       }
 
-      return { steps: ['built', 'started', 'healthy', ...(routesChanged ? ['route-written', 'caddy-reloaded'] : [])] };
+      if (publicUrl) {
+        stage = 'public-route';
+        await this.waitForPublicReady(publicUrl);
+      }
+
+      return { steps: ['built', 'started', 'healthy', ...(routesChanged ? ['route-written', 'caddy-reloaded'] : []), ...(publicUrl ? ['public-route-ready'] : [])] };
     } catch {
       if (routesChanged) {
         await restore(routeSnapshot, this.routesPath).catch(() => {});
