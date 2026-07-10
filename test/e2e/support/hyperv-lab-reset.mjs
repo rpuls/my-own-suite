@@ -13,6 +13,7 @@ async function requestJson(request, path, options = {}) {
 export async function resetLabIfConfigured(page, env) {
   if (!env.enableLabReset) return;
 
+  const resetStartedAt = Date.now();
   try {
     await requestJson(page.request, '/suite-manager/api/lab/reset', {
       data: { reason: 'hyperv-e2e' },
@@ -29,12 +30,19 @@ export async function resetLabIfConfigured(page, env) {
 
   const deadline = Date.now() + 3 * 60 * 1000;
   let lastError = null;
+  let consecutiveReady = 0;
   while (Date.now() < deadline) {
     try {
       const status = await requestJson(page.request, '/suite-manager/api/setup/status');
-      if (status.status === 'needs-owner') return;
+      if (status.status === 'needs-owner') {
+        consecutiveReady += 1;
+        if (consecutiveReady >= 3 && Date.now() - resetStartedAt >= 10_000) return;
+      } else {
+        consecutiveReady = 0;
+      }
     } catch (error) {
       lastError = error;
+      consecutiveReady = 0;
     }
     await page.waitForTimeout(3000);
   }
