@@ -23,6 +23,7 @@ function adapter({ failAt = '' } = {}) {
     restoreCheckpoint: make('restoreCheckpoint'),
     validateCandidate: make('validateCandidate'),
     verifyCloudflareAccess: make('verifyCloudflareAccess'),
+    waitForPublicRoute: make('waitForPublicRoute'),
   };
 }
 
@@ -43,6 +44,9 @@ test('agent applies only rendered configuration and returns an opaque rollback i
   assert.doesNotMatch(candidate.caddyfile, /\$MOS_V2_SUITE_MANAGER_PORT/u);
   assert.doesNotMatch(candidate.caddyfile, /token_value/u);
   assert.equal(candidate.cloudflareApiToken, validInput.cloudflareApiToken);
+  const names = fake.calls.map(([name]) => name);
+  assert.ok(names.indexOf('waitForPublicRoute') > names.indexOf('reload'));
+  assert.equal(fake.calls.find(([name]) => name === 'waitForPublicRoute')[1], 'https://home.mos.example.com/');
 });
 
 test('agent restores and reloads the checkpoint when candidate validation fails', async () => {
@@ -52,6 +56,15 @@ test('agent restores and reloads the checkpoint when candidate validation fails'
   assert.ok(names.indexOf('restoreCheckpoint') > names.indexOf('validateCandidate'));
   assert.ok(names.indexOf('reloadPrevious') > names.indexOf('restoreCheckpoint'));
   assert.ok(names.includes('removeCheckpoint'));
+});
+
+test('agent restores and reloads the checkpoint when public HTTPS readiness fails', async () => {
+  const fake = adapter({ failAt: 'waitForPublicRoute' });
+  await assert.rejects(() => new HttpsAgentCore(fake).apply(validInput), /HTTPS_APPLY_FAILED/u);
+  const names = fake.calls.map(([name]) => name);
+  assert.ok(names.indexOf('waitForPublicRoute') > names.indexOf('reload'));
+  assert.ok(names.indexOf('restoreCheckpoint') > names.indexOf('waitForPublicRoute'));
+  assert.ok(names.indexOf('reloadPrevious') > names.indexOf('restoreCheckpoint'));
 });
 
 test('agent rejects malformed tokens before creating a checkpoint', async () => {

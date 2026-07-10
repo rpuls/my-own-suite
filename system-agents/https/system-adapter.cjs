@@ -1,12 +1,14 @@
 const { execFile } = require('node:child_process');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
+const https = require('node:https');
 const path = require('node:path');
 
 const CADDY_BINARY = process.env.MOS_V2_CADDY_BINARY || '/usr/local/libexec/mos-v2/caddy';
 const CADDYFILE_PATH = process.env.MOS_V2_CADDYFILE_PATH || '/etc/caddy/Caddyfile';
 const SECRET_ENV_PATH = process.env.MOS_V2_CADDY_SECRET_ENV || '/etc/mos-v2/secrets/caddy-cloudflare.env';
 const TRANSACTION_ROOT = process.env.MOS_V2_HTTPS_TRANSACTION_ROOT || '/var/lib/mos-v2/https-agent/transactions';
+const PUBLIC_ROUTE_TIMEOUT_MS = 240_000;
 
 function execFilePromise(file, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -58,6 +60,42 @@ async function restoreFile(source, target) {
   else await atomicWrite(target, await fsp.readFile(source), target === SECRET_ENV_PATH ? 0o600 : 0o644);
 }
 
+function waitForHttpsRoute(url, { deadlineMs = PUBLIC_ROUTE_TIMEOUT_MS } = {}) {
+  const parsed = new URL(url);
+  if (parsed.protocol !== 'https:') return Promise.reject(new Error('UNSUPPORTED_PUBLIC_ROUTE_SCHEME'));
+
+  const started = Date.now();
+  return new Promise((resolve, reject) => {
+    const attempt = () => {
+      const request = https.get({
+        hostname: parsed.hostname,
+        lookup: (hostname, options, callback) => callback(null, '127.0.0.1', 4),
+        path: `${parsed.pathname || '/'}${parsed.search || ''}`,
+        port: parsed.port || 443,
+        servername: parsed.hostname,
+        timeout: 5000,
+      }, (response) => {
+        response.resume();
+        if (response.statusCode >= 200 && response.statusCode < 500) {
+          resolve();
+          return;
+        }
+        retry();
+      });
+      request.on('timeout', () => request.destroy(new Error('TIMEOUT')));
+      request.on('error', retry);
+    };
+    const retry = () => {
+      if (Date.now() - started >= deadlineMs) {
+        reject(new Error('PUBLIC_ROUTE_TIMEOUT'));
+        return;
+      }
+      setTimeout(attempt, 3000);
+    };
+    attempt();
+  });
+}
+
 class SystemHttpsAdapter {
   async hasCloudflareModule() {
     const output = await execFilePromise(CADDY_BINARY, ['list-modules']);
@@ -97,6 +135,10 @@ class SystemHttpsAdapter {
     return execFilePromise('/usr/bin/systemctl', ['restart', 'caddy.service']);
   }
 
+  waitForPublicRoute(url) {
+    return waitForHttpsRoute(url);
+  }
+
   async restoreCheckpoint(rollbackId) {
     const dir = transactionPath(rollbackId);
     await restoreFile(path.join(dir, 'Caddyfile'), CADDYFILE_PATH);
@@ -112,4 +154,4 @@ class SystemHttpsAdapter {
   }
 }
 
-module.exports = { SystemHttpsAdapter, atomicWrite };
+module.exports = { SystemHttpsAdapter, atomicWrite, waitForHttpsRoute };
