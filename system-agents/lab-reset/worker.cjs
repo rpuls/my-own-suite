@@ -7,9 +7,26 @@ const path = require('node:path');
 const stateRoot = process.env.MOS_V2_STATE_ROOT || '/var/lib/mos-v2';
 const installRoot = process.env.MOS_V2_INSTALL_ROOT || '/opt/mos-v2';
 const repoRoot = process.env.MOS_V2_REPO_DIR || path.join(installRoot, 'repo');
+const resetId = process.env.MOS_V2_LAB_RESET_ID || '';
+const statusDir = process.env.MOS_V2_LAB_RESET_STATUS_DIR || '/run/mos-v2-lab-reset-agent/jobs';
 const homepageSource = path.join(repoRoot, 'infrastructure', 'homepage');
 const homepageConfig = path.join(stateRoot, 'homepage', 'config');
 const bootstrapContract = path.join(stateRoot, 'bootstrap-contract.env');
+
+function validResetId(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(value);
+}
+
+function writeJob(status, details = {}) {
+  if (!validResetId(resetId)) return;
+  fs.mkdirSync(statusDir, { mode: 0o755, recursive: true });
+  fs.writeFileSync(path.join(statusDir, `${resetId}.json`), `${JSON.stringify({
+    resetId,
+    status,
+    updatedAt: new Date().toISOString(),
+    ...details,
+  })}\n`, { mode: 0o644 });
+}
 
 function parseEnvFile(filePath) {
   try {
@@ -117,15 +134,22 @@ function main() {
     'mos-v2-update-agent.service',
   ];
 
-  tryRun('/usr/bin/systemctl', ['stop', ...stoppedServices], { timeoutMs: 120_000 });
-  resetDockerRuntime();
-  fs.rmSync(path.join(stateRoot, 'suite-manager'), { force: true, recursive: true });
-  copyDirectory(homepageSource, homepageConfig);
-  tryRun('/usr/bin/chown', ['-R', '1000:1000', homepageConfig]);
-  fs.writeFileSync('/etc/caddy/Caddyfile', renderBootstrapCaddyfile());
-  fs.writeFileSync('/etc/caddy/mos-v2-homepage-routes.caddy', '# No user-managed Homepage routes.\n');
-  fs.writeFileSync('/etc/caddy/mos-v2-app-routes.caddy', '# No app runtime routes.\n');
-  tryRun('/usr/bin/systemctl', ['restart', ...startedServices], { timeoutMs: 120_000 });
+  writeJob('running');
+  try {
+    tryRun('/usr/bin/systemctl', ['stop', ...stoppedServices], { timeoutMs: 120_000 });
+    resetDockerRuntime();
+    fs.rmSync(path.join(stateRoot, 'suite-manager'), { force: true, recursive: true });
+    copyDirectory(homepageSource, homepageConfig);
+    tryRun('/usr/bin/chown', ['-R', '1000:1000', homepageConfig]);
+    fs.writeFileSync('/etc/caddy/Caddyfile', renderBootstrapCaddyfile());
+    fs.writeFileSync('/etc/caddy/mos-v2-homepage-routes.caddy', '# No user-managed Homepage routes.\n');
+    fs.writeFileSync('/etc/caddy/mos-v2-app-routes.caddy', '# No app runtime routes.\n');
+    tryRun('/usr/bin/systemctl', ['restart', ...startedServices], { timeoutMs: 120_000 });
+    writeJob('completed');
+  } catch (error) {
+    writeJob('failed', { error: error.message || 'Lab reset failed.' });
+    process.exitCode = 1;
+  }
 }
 
 main();

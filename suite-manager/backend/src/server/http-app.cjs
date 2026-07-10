@@ -306,6 +306,16 @@ function createV2Server({
         return;
       }
 
+      const labResetStatusMatch = url.pathname.match(/^\/suite-manager\/api\/lab\/reset\/([^/]+)$/u);
+      if (request.method === 'GET' && labResetStatusMatch) {
+        if (!labResetEnabled) {
+          jsonResponse(response, 404, { code: 'LAB_RESET_DISABLED', error: 'Lab reset is not enabled on this install.' });
+          return;
+        }
+        jsonResponse(response, 200, await labResetAgent.resetStatus(decodeURIComponent(labResetStatusMatch[1])));
+        return;
+      }
+
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/setup/owner`) {
         const body = await readJsonBody(request);
         const result = setup.createOwner(body);

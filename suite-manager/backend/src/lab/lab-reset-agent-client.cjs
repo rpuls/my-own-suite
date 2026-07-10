@@ -45,6 +45,8 @@ class LabResetAgentClient {
   }
 
   reset(input) { return this.request('POST', '/v1/lab/reset', input); }
+
+  resetStatus(resetId) { return this.request('GET', `/v1/lab/reset/${encodeURIComponent(resetId)}`); }
 }
 
 module.exports = { LAB_RESET_AGENT_TIMEOUT_MS, LabResetAgentClient };

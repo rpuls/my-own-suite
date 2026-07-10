@@ -1422,7 +1422,7 @@ test('lab reset endpoint schedules the narrow lab agent when enabled', async () 
     const response = await hostRequest(baseUrl, '/suite-manager/api/lab/reset', { method: 'POST' });
 
     assert.equal(response.status, 202);
-    assert.deepEqual(response.json(), { scheduled: true });
+    assert.deepEqual(response.json(), { resetId: 'reset-one', scheduled: true });
     assert.deepEqual(calls, [{ reason: 'hyperv-e2e' }]);
     assert.match(String(response.headers['set-cookie']), /mos_v2_session=/u);
   }, {
@@ -1430,7 +1430,27 @@ test('lab reset endpoint schedules the narrow lab agent when enabled', async () 
     labResetAgent: {
       async reset(input) {
         calls.push(input);
-        return { scheduled: true };
+        return { resetId: 'reset-one', scheduled: true };
+      },
+    },
+  });
+});
+
+test('lab reset status endpoint proxies the scheduled reset job when enabled', async () => {
+  await withServer(async (baseUrl) => {
+    const response = await hostRequest(baseUrl, '/suite-manager/api/lab/reset/reset-one');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.json(), {
+      resetId: 'reset-one',
+      status: 'completed',
+    });
+  }, {
+    labResetEnabled: true,
+    labResetAgent: {
+      async resetStatus(resetId) {
+        assert.equal(resetId, 'reset-one');
+        return { resetId, status: 'completed' };
       },
     },
   });

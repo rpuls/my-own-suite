@@ -43,6 +43,30 @@ async function waitForDns01Applied(page, env, responsePromise) {
   throw new Error(`DNS-01 apply did not reach applied state with token ${redact(env.cloudflareApiToken)}. Last HTTPS status: ${lastState}`);
 }
 
+async function diagnostics(page, result) {
+  const httpsStatus = await apiJson(page, apiPathFor(result.homeUrl, '/suite-manager/api/settings/https')).catch((error) => ({ error: error.message }));
+  const setupStatus = await apiJson(page, apiPathFor(result.homeUrl, '/suite-manager/api/setup/status')).catch((error) => ({ error: error.message }));
+  return `url=${page.url()} httpsStatus=${JSON.stringify(httpsStatus)} setupStatus=${JSON.stringify(setupStatus)}`;
+}
+
+async function gotoAppliedHome(page, result) {
+  const deadline = Date.now() + 2 * 60 * 1000;
+  let lastError = null;
+
+  while (Date.now() < deadline) {
+    try {
+      await page.goto(result.homeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await expect(page.locator('body')).toContainText('My Own Suite', { timeout: 30000 });
+      return;
+    } catch (error) {
+      lastError = error;
+      await page.waitForTimeout(5000);
+    }
+  }
+
+  throw new Error(`Applied DNS-01 Home URL did not become browser-reachable. Last error: ${lastError?.message || 'unknown'}. ${await diagnostics(page, result)}`);
+}
+
 export async function applyDns01IfConfigured(page, env) {
   if (!env.enableDns01) return null;
   if (!env.cloudflareApiToken || !env.dns01BaseDomain) {
@@ -74,7 +98,6 @@ export async function applyDns01IfConfigured(page, env) {
   await expect(page.getByRole('link', { name: result.homeUrl })).toBeVisible({ timeout: 30000 }).catch(() => undefined);
   const recovered = await apiJson(page, apiPathFor(result.homeUrl, '/suite-manager/api/settings/https')).catch(() => null);
   expect(recovered?.lastApply?.status || result.status).toBe('applied');
-  await page.goto(result.homeUrl);
-  await expect(page.locator('body')).toContainText('My Own Suite', { timeout: 90000 });
+  await gotoAppliedHome(page, result);
   return result;
 }

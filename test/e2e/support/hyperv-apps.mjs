@@ -149,7 +149,7 @@ async function installAppViaUi(page, app, env) {
 
 export async function verifyAppsPage(page, entryUrl = '/') {
   await openSuiteManager(page, 'Apps', entryUrl);
-  await expect(page.getByRole('heading', { name: 'Apps' })).toBeVisible();
+  await expect(page.getByRole('heading', { exact: true, level: 1, name: 'Apps' })).toBeVisible();
   await expect(page.getByLabel('Search apps')).toBeVisible();
 }
 
