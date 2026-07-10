@@ -52,7 +52,6 @@ class HttpsAgentCore {
       await this.adapter.installCandidate({ caddyfile, cloudflareApiToken: input.cloudflareApiToken });
       await this.adapter.validateCandidate(input.cloudflareApiToken);
       await this.adapter.reload(input.cloudflareApiToken);
-      await this.adapter.waitForPublicRoute(`https://home.${input.baseDomain}/`);
       return { rollbackId, status: 'applied' };
     } catch {
       await this.adapter.restoreCheckpoint(rollbackId);
