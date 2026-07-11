@@ -1,33 +1,16 @@
 # Environment files
 .env
 .env.selfhost
-vps/.env
 
 # temporary files
 .tmp/
 .local-tools/
-.mos-updater/
 .mos-smoke/
 .playwright-mcp/
 playwright-mcp
 .test-results-current/
 test-results-current
 test-results-current-full
-
-
-# VPS persistent data
-vps/apps/vaultwarden/data/*
-!vps/apps/vaultwarden/data/.gitkeep
-
-# Shared config local overrides
-shared/configs/local/
-
-# Caddy data
-vps/apps/caddy/data/
-
-# Docker volumes (if using local bind mounts)
-caddy_data/
-caddy_config/
 
 # OS files
 .DS_Store

@@ -4,6 +4,19 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-07-11: Post-Cutover Repo Hygiene And Public Site Continuity
+
+Decision: `AGENTS.md` is the single tool-agnostic agent instruction file; `CLAUDE.md` exists only as a loader pointer for Claude Code, and tool-specific rule folders (`.codex/`, `.agents/`, `.clinerules/`) are removed. The deployed public site keeps building from the preserved MOS1 source: `site-mos1-reference/` embeds frozen MOS1 technical reference copies under `src/reference/` (taken from `archive/mos1-main-snapshot`) instead of reading live `apps/` packages, root `npm run build` builds it, and Cloudflare Pages output is `site-mos1-reference/dist`. Release metadata guardrails (`npm run release:check`) cover root `VERSION` and `releases/stable.json` only until MOS2 gains stable release-track managed updates.
+
+Reason: The cutover left agent rules split across tool-specific folders, silently broke the public site build by making MOS1 docs import MOS2 package READMEs (or removed paths), and dropped the `hooks:install`/`release:check` guardrails that root docs still referenced. The public site documents the latest published release, which is still MOS1, so it must stay buildable and deployable without depending on removed MOS1 runtime paths.
+
+Consequences:
+
+- New hard agent rules go to `AGENTS.md`; durable working context goes to `docs/codex-notes.md`; no new tool-specific rule folders.
+- The MOS1 site is content-frozen: factual fixes only, no new product docs; the MOS2 public site rebuild happens under `site/`.
+- CI runs the MOS2 workspace checks, the release metadata check, and the preserved public site build; paid/destructive smoke and full E2E remain human-run.
+- A Suite Manager release metadata file returns, with `release:check` coverage, when MOS2 stable-track managed updates land.
+
 ## 2026-07-10: MOS2 Replaces MOS1 As The Default Repository Layout
 
 Decision: MOS2 is the default root layout. The former `version-2/` workspace has moved to root-level `suite-manager/`, `apps/`, `system-agents/`, `infrastructure/`, `scripts/`, `shared/`, and `test/` paths. The old MOS1 root shape is preserved on `archive/mos1-main-snapshot`; the old public site source remains in `site-mos1-reference/` only as reference while the MOS2 public site/docs are rebuilt later.

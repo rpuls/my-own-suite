@@ -6,7 +6,7 @@ This folder holds durable project memory: architectural decisions, documentation
 
 | Need | Source of truth |
 | --- | --- |
-| Product and end-user documentation | `site/` after the MOS2 public docs rebuild |
+| Product and end-user documentation | `site/` after the MOS2 public docs rebuild; until then the deployed public site builds from `site-mos1-reference/` |
 | App technical reference | `apps/<app>/README.md` |
 | MOS2 operator/developer scripts | `scripts/README.md` |
 | Test harness guidance | `test/README.md` |
