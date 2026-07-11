@@ -1,0 +1,17 @@
+---
+// Inlines the canonical brand mark (branding/my-own-suite-mark.svg) so the
+// SVG can inherit --mos-mark-color from the page. An external <img> cannot
+// pick up CSS custom properties, which is why this is not an image tag.
+import markSvg from '../../../branding/my-own-suite-mark.svg?raw'
+
+interface Props {
+  size?: number
+  class?: string
+}
+
+const { size = 34, class: className = '' } = Astro.props
+
+const svg = markSvg.trim().replace('<svg ', `<svg width="${size}" height="${size}" `)
+---
+
+<span class={`brand-mark ${className}`.trim()} set:html={svg} />

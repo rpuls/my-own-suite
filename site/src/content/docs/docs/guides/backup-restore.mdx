@@ -1,0 +1,58 @@
+---
+title: Back up and restore
+description: One-click whole-suite backups to an external drive, and how restore works — everything you need to make self-hosting low-stakes.
+---
+
+import { Steps } from '@astrojs/starlight/components'
+
+A backup makes every other decision in these docs reversible. My Own Suite keeps it deliberately simple: **one button, one external drive, everything included.**
+
+## What a backup contains
+
+A MOS backup is a *whole-suite* bundle — not per-app pieces you have to assemble. One backup captures:
+
+- every installed app **and all of its data** (your files, photos, passwords, calendars),
+- your suite's settings, owner account, and app connections,
+- your Home dashboard layout,
+- your domain/HTTPS configuration.
+
+In other words: enough to bring your entire suite back on a fresh machine.
+
+## Taking a backup
+
+<Steps>
+
+1. **Plug an external USB drive into the server machine** (not your everyday computer — the server itself).
+
+2. Open **Suite Manager → Backup** and click **Refresh drives**. Your drive appears in the destination list; if it isn't mounted yet, MOS offers to mount it for you.
+
+3. Click **Back up now**. Apps pause briefly while their data is captured — MOS is making sure the backup is a clean, consistent snapshot — then start again by themselves. Progress is shown throughout.
+
+</Steps>
+
+Backups land in a `MOS-v2-backups/` folder on the drive, each one a self-contained, integrity-checked bundle. Recent backups are listed on the screen, and you can also **download** a bundle through the browser to stash a copy elsewhere.
+
+:::caution[Treat the backup drive like the keys to your data]
+Backup bundles are **not encrypted** — anyone holding the drive holds your data, including the suite's stored settings and secrets. Keep it somewhere as safe as the server itself. Encrypted backups are on the roadmap.
+:::
+
+:::tip[A workable routine]
+Backups are currently started manually — there is no scheduler yet. A monthly rhythm works well: back up, and when the bundle finishes, you're done. Before big changes (updates, uninstalling an app), take an extra one.
+:::
+
+## Restoring
+
+Restore is the break-glass operation: it takes a machine running MOS and replaces **everything** — apps, data, settings — with the contents of a backup.
+
+1. Plug in the backup drive, open **Suite Manager → Backup**, and pick the backup bundle.
+2. Type `RESTORE` to confirm. The screen is explicit about what will be replaced.
+3. MOS first sets aside a small rescue copy of the current state, then restores the suite's settings, recreates every app and its data, and brings everything back online.
+
+Two rules of thumb:
+
+- **Restore onto the same MOS version the backup came from.** Each bundle records the version that made it; matching versions is the supported, conservative path.
+- **Restore is whole-suite.** There is no per-app restore today — it's designed for "bring my suite back", not "undo one app's mistake".
+
+## Honest limitations, today
+
+Manual only (no scheduling yet) · external/local drives only (no cloud destinations yet) · bundles unencrypted · whole-suite restore only. These are all known, deliberate v1 boundaries of the backup system — simple and trustworthy first, convenient second.

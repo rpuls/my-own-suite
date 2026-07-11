@@ -1,0 +1,236 @@
+/* MOS docs theme for Starlight.
+
+   Brand tokens come from the canonical stylesheet synced into
+   generated/branding/mos.css (loaded before this file via Starlight
+   customCss) — this file only maps them onto Starlight's variables and
+   styles the docs-specific pieces. Never hardcode brand values here. */
+
+:root {
+  --sl-font: var(--mos-font-sans);
+  --sl-color-accent-low: var(--mos-color-accent-soft);
+  --sl-color-accent: var(--mos-color-accent-strong);
+  --sl-color-accent-high: var(--mos-color-accent);
+  --sl-color-bg: var(--mos-color-bg);
+  --sl-color-bg-nav: var(--mos-color-bg-soft);
+  --sl-color-hairline: var(--mos-color-surface-border);
+  --sl-color-hairline-light: var(--mos-color-hairline);
+  /* Starlight derives inverted text (e.g. the current sidebar item) from
+     accent-low, which is a translucent brand token here — pin it to the
+     page background so text on accent pills stays readable. */
+  --sl-color-text-invert: var(--mos-color-bg);
+}
+
+/* Starlight asides → the MOS status palette (info / success / warning /
+   danger tokens), matching the design system's status cards: soft fill,
+   uniform border, rounded corners, colored title. */
+.starlight-aside {
+  border: 1px solid var(--sl-color-asides-border);
+  border-radius: var(--mos-radius-md);
+}
+
+.starlight-aside--note {
+  --sl-color-asides-text-accent: var(--mos-color-info);
+  --sl-color-asides-border: var(--mos-color-info-border);
+  background-color: var(--mos-color-info-soft);
+}
+
+.starlight-aside--tip {
+  --sl-color-asides-text-accent: var(--mos-color-success);
+  --sl-color-asides-border: var(--mos-color-success-border);
+  background-color: var(--mos-color-success-soft);
+}
+
+.starlight-aside--caution {
+  --sl-color-asides-text-accent: var(--mos-color-warning);
+  --sl-color-asides-border: var(--mos-color-warning-border);
+  background-color: var(--mos-color-warning-soft);
+}
+
+.starlight-aside--danger {
+  --sl-color-asides-text-accent: var(--mos-color-danger);
+  --sl-color-asides-border: var(--mos-color-danger-border);
+  background-color: var(--mos-color-danger-soft);
+}
+
+/* The brand stylesheet's global `a { color: … }` rule outweighs
+   Starlight's :where()-scoped link styles, so navigation chrome loses
+   its muted/inverted colors. Restore Starlight's link hierarchy. */
+.site-title {
+  color: var(--sl-color-white);
+}
+
+.sidebar-content a {
+  color: var(--sl-color-gray-2);
+}
+
+.sidebar-content a:hover,
+.sidebar-content a:focus-visible {
+  color: var(--sl-color-white);
+}
+
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover,
+.sidebar-content a[aria-current='page']:focus-visible {
+  color: var(--sl-color-text-invert);
+  background-color: var(--sl-color-text-accent);
+}
+
+starlight-toc nav a {
+  color: var(--sl-color-gray-3);
+}
+
+starlight-toc nav a:hover {
+  color: var(--sl-color-white);
+}
+
+starlight-toc nav a[aria-current='true'] {
+  color: var(--sl-color-white);
+}
+
+/* --- App docs pages (generated from apps/*) ----------------------- */
+
+.app-doc-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.app-doc-head-ico {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--mos-radius-lg);
+  background: var(--mos-color-surface);
+  border: var(--mos-border-subtle);
+}
+
+/* Icons ship with inconsistent internal padding, so the tile always
+   adds breathing room of its own (matches the landing catalog). */
+.app-doc-head-ico img,
+.app-doc-card-ico img {
+  display: block;
+  width: 72%;
+  height: 72%;
+  object-fit: contain;
+}
+
+.app-doc-head-meta {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.app-doc-replaces {
+  margin: 0;
+  font-weight: 600;
+  color: var(--sl-color-white);
+}
+
+.app-doc-badges {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.app-doc-badge {
+  font-size: var(--sl-text-xs);
+  padding: 0.15rem 0.6rem;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-surface);
+  border: var(--mos-border-subtle);
+  color: var(--sl-color-gray-2);
+}
+
+.app-doc-refnote {
+  font-size: var(--sl-text-sm);
+  color: var(--sl-color-gray-3);
+}
+
+/* Embedded package READMEs: keep them readable, hide their own H1
+   (the page already carries the app title). */
+.tech-specs h1 {
+  display: none;
+}
+
+.tech-specs {
+  font-size: var(--sl-text-sm);
+}
+
+/* READMEs bring their own heading hierarchy; render it a step smaller
+   so it reads as part of the Technical reference section instead of
+   competing with the page's own sections. */
+.tech-specs h2 {
+  font-size: var(--sl-text-h4);
+}
+
+.tech-specs h3,
+.tech-specs h4 {
+  font-size: var(--sl-text-h5);
+}
+
+.tech-specs table {
+  display: block;
+  overflow-x: auto;
+}
+
+/* --- App catalog index grid ---------------------------------------- */
+
+.app-doc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.9rem;
+  margin-top: 1.5rem;
+}
+
+.app-doc-card {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  padding: 0.9rem;
+  border-radius: var(--mos-radius-lg);
+  background: var(--mos-color-surface-muted);
+  border: var(--mos-border-subtle);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.app-doc-card:hover {
+  background: var(--mos-color-surface);
+  border-color: var(--mos-color-accent-border);
+}
+
+.app-doc-card-ico {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--mos-radius-md);
+  background: var(--mos-color-surface);
+  border: var(--mos-border-subtle);
+}
+
+.app-doc-card-body {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.app-doc-card-name {
+  font-weight: 700;
+  color: var(--sl-color-white);
+}
+
+.app-doc-card-summary {
+  font-size: var(--sl-text-sm);
+  color: var(--sl-color-gray-2);
+}
+
+.app-doc-card-replaces {
+  font-size: var(--sl-text-xs);
+  color: var(--sl-color-accent-high);
+  font-weight: 600;
+}

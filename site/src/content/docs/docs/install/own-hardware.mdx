@@ -1,0 +1,87 @@
+---
+title: Install on your own hardware
+description: Build the My Own Suite USB installer and turn a spare PC, mini PC, or old laptop into your family's private cloud server.
+---
+
+import { Steps } from '@astrojs/starlight/components'
+
+This path gives you full physical ownership: a machine in your home, running your suite, with no monthly bill. You build a bootable USB stick on your everyday computer, boot the spare machine from it once, and it installs Ubuntu plus the whole MOS platform unattended.
+
+:::caution
+The installer **erases the entire disk** of the machine it installs onto. Use a machine you can dedicate to being your server, and double-check nothing you need is still on it.
+:::
+
+**What you need**
+
+- **The server-to-be:** a 64-bit PC, mini PC, or old laptop with 4 GB+ RAM. Old machines work well — this is a great second life for retired hardware.
+- **A USB stick:** 8 GB or larger (it will be overwritten).
+- **Your everyday computer** with [Git](https://git-scm.com/), [Node.js 22](https://nodejs.org/), and [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed (Docker assembles the installer image), plus [Rufus](https://rufus.ie/) on Windows or [balenaEtcher](https://etcher.balena.io/) elsewhere to flash the stick.
+
+## Build the installer
+
+<Steps>
+
+1. **Get the repository:**
+
+   ```sh
+   git clone https://github.com/rpuls/my-own-suite.git
+   cd my-own-suite
+   ```
+
+2. **Set the machine's login password.** Copy the template
+
+   `infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env.template`
+
+   to `selfhost-installer.env` in the same folder, open it in a text editor, and set:
+
+   - `LINUX_PASSWORD` — the login password for the server machine itself (you'll rarely need it, but keep it somewhere safe).
+   - Optional: `STACK_DOMAIN` (default `mos.home` — fine for almost everyone) and `TIMEZONE`.
+
+   That's all the installer needs — your owner account and everything else about your suite is set up **in the browser after install**, never in config files.
+
+3. **Render the installer seed:**
+
+   ```sh
+   node scripts/installers/render-hyperv-usb-seed.cjs
+   ```
+
+   This reads your config and writes the install instructions to `.mos-smoke/hyperv-usb/v2-seed`.
+
+4. **Build the USB installer image** (make sure Docker Desktop is running):
+
+   ```sh
+   node scripts/selfhost-build-installer-iso.cjs --seed-dir .mos-smoke/hyperv-usb/v2-seed
+   ```
+
+   The first run downloads the official Ubuntu Server 24.04 image (~3 GB) and verifies its checksum, then produces:
+
+   `infrastructure/self-host/output/my-own-suite-selfhost-installer.iso`
+
+5. **Flash the stick.** Write the ISO to your USB stick with Rufus (choose ISO mode if asked) or balenaEtcher.
+
+</Steps>
+
+## Install the server
+
+<Steps>
+
+1. **Boot the spare machine from the USB stick.** Plug it in, power on, and open the boot menu — usually by tapping **F12**, **F2**, or **Del** right after power-on (the exact key flashes on screen or is in the machine's manual). Pick the USB stick.
+
+2. **Choose "Install My Own Suite (ERASES DISK)"** from the menu. This is the point of no return for the machine's old contents. Everything after this is unattended — the machine installs Ubuntu, reboots, and then installs the MOS platform on first boot. Plug it into your router with a network cable if you can; go make coffee.
+
+3. **Find the machine on your network.** After 15–30 minutes, open your router's admin page and look for a new device called **`mos`** in the connected-devices list. Note its IP address (something like `192.168.1.42`).
+
+4. **Teach your network the suite's name.** Your suite lives at `mos.home`, and your network needs to know that name points at the server. Two options:
+
+   - **Quick (one computer):** add lines to the [hosts file](https://en.wikipedia.org/wiki/Hosts_(file)) on the computer you'll use, e.g. `192.168.1.42 home.mos.home` — plus one line per app you install later (`192.168.1.42 seafile.mos.home`, and so on).
+   - **Proper (whole household):** add a wildcard DNS rule `*.mos.home → 192.168.1.42` in your router, AdGuard Home, or Pi-hole. Every device in the house can then reach the suite, and new apps work with no extra steps.
+
+5. **Open your suite** at `http://home.mos.home/` and create your owner account. Continue with [Your first sign-in](/docs/install/first-start/).
+
+</Steps>
+
+## Good to know
+
+- **The USB stick is safe by design.** The install option must be chosen manually from the boot menu — the default entry boots normally, so a forgotten stick can't wipe a machine by accident.
+- **Give the server a stable IP.** In your router, reserve the server's IP address (often called "DHCP reservation") so your DNS rules never go stale.
+- **Next step — a real domain with HTTPS.** Own-hardware installs unlock the built-in [Cloudflare HTTPS setup](/docs/guides/https-domain/): your suite on `home.yourdomain.example` with a real certificate, still completely private to your home network.

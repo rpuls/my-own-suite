@@ -1,0 +1,54 @@
+---
+import { DOCS_PATH } from '../lib/links'
+---
+
+<section class="band" id="install">
+  <div class="shell">
+    <div class="section-head center">
+      <span class="mos-eyebrow">Choose your platform</span>
+      <h2 class="mos-section-title">Where should your cloud live?</h2>
+      <p class="mos-body-lg mos-meta">MOS runs on hardware you pick — a computer at home, a cloud server you rent, or (soon) one we run for you. Honest about what each one needs.</p>
+    </div>
+    <div class="paths">
+      <div class="mos-panel path">
+        <span class="mos-pill mos-pill-accent">Own hardware</span>
+        <h3>USB installer</h3>
+        <p class="mos-meta" style="font-size:0.92rem">Flash the installer, boot a dedicated machine, confirm. LAN-first at <code style="font-family:var(--mos-font-mono)">home.mos.home</code>.</p>
+        <ul>
+          <li>A spare mini-PC or PC to dedicate</li>
+          <li>Erases the target disk (Ubuntu Server 24.04-based)</li>
+          <li>Costs only your electricity — usually a small amount each month</li>
+          <li>Best privacy — nothing leaves your home</li>
+        </ul>
+        <a class="mos-link" href={DOCS_PATH} style="margin-top:8px">Read the install guide →</a>
+      </div>
+      <div class="mos-panel path">
+        <span class="mos-pill mos-pill-accent">Cloud server</span>
+        <h3>One command</h3>
+        <p class="mos-meta" style="font-size:0.92rem">Paste one command into a fresh Ubuntu 24.04 VPS, or use cloud-init user data. Provider-agnostic.</p>
+        <ul>
+          <li>A small server you rent — often about the price of a couple of coffees a month (DigitalOcean is the tested reference)</li>
+          <li>SSH access, or cloud-init</li>
+          <li>Reachable from anywhere you allow</li>
+        </ul>
+        <a class="mos-link" href={DOCS_PATH} style="margin-top:8px">Read the install guide →</a>
+      </div>
+      <div class="mos-panel path coming">
+        <span class="mos-badge">Coming soon</span>
+        <h3>Managed hosting</h3>
+        <p class="mos-meta" style="font-size:0.92rem">Buy from MOS: one click provisions and runs a cloud server for you. No terminal, no VPS account.</p>
+        <ul>
+          <li>Nothing to set up yourself</li>
+          <li>MOS-provisioned and maintained</li>
+          <li>A paid subscription — pricing announced at launch</li>
+          <li>Planned — not yet available</li>
+        </ul>
+        <span class="mos-meta" style="font-size:0.86rem;margin-top:8px">We'll announce it here.</span>
+      </div>
+    </div>
+    <div class="install-line shell" style="width:100%;max-width:760px;margin-inline:auto;margin-top:var(--mos-space-7)">
+      <div class="cmd"><span class="dollar">$</span> curl -fsSL https://get.myownsuite.org | sh</div>
+      <p class="mos-small mos-meta" style="margin-top:8px;text-align:center">For the technically inclined: on a cloud server that one line installs everything. The USB installer does the same on your own hardware.</p>
+    </div>
+  </div>
+</section>

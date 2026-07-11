@@ -7,6 +7,7 @@
   "icon": "icon.png",
   "catalog": {
     "description": "Radicale provides a small private calendar and contacts sync server for CalDAV and CardDAV clients on phones, tablets, and desktops.",
+    "replaces": "Google Calendar / Contacts",
     "tags": [
       "calendar",
       "contacts",

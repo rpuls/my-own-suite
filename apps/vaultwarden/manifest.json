@@ -7,6 +7,7 @@
   "icon": "icon.png",
   "catalog": {
     "description": "Vaultwarden lets you use the familiar Bitwarden apps with your own private backend for passwords, secure notes, cards, identities, and shared vaults.",
+    "replaces": "LastPass / 1Password / Bitwarden cloud",
     "tags": [
       "passwords",
       "security",

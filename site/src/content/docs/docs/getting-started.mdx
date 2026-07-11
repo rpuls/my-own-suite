@@ -1,0 +1,87 @@
+---
+title: How to get started
+description: Choose where My Own Suite should run — a cloud server or your own hardware — and see exactly what you need for each path.
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components'
+
+Every My Own Suite install ends in the same place: a machine running the full platform, ready for you to create your owner account in the browser and start installing apps. The only real decision is **where that machine lives**.
+
+## The two paths
+
+### A cloud server you rent
+
+A small virtual server at a hosting provider (like DigitalOcean). The provider supplies the hardware, power, and internet connection; MOS installs itself on top.
+
+:::note[The easiest way in, for now]
+Until MOS managed hosting arrives, this is the smoothest route: the machine comes ready-made, nothing in your home needs setting up, and the install is mostly waiting. If you wouldn't call yourself technical, start here.
+:::
+
+- **Good because:** no hardware to buy, reachable from anywhere immediately, running in ~15 minutes.
+- **The trade:** a monthly bill (roughly the price of the subscriptions you're replacing), and your disk physically sits in a datacenter — encrypted-at-rest per your provider, but not in your house.
+
+### Your own hardware at home
+
+A spare computer, a mini PC, or an old laptop that becomes your family's server. You prepare a USB installer stick, boot the machine from it, and MOS installs itself.
+
+- **Good because:** full physical ownership, no monthly fee, and this path unlocks the built-in [real domain + HTTPS setup](/docs/guides/https-domain/) for your home network.
+- **The trade:** you supply the machine, and reaching your apps from outside your home network is a separate topic (MOS keeps your suite private by default rather than exposing it to the internet).
+
+## What you need
+
+{/* Plain HTML: GFM pipe tables don't compile in this MDX pipeline. */}
+<table>
+  <thead>
+    <tr>
+      <th></th>
+      <th>Cloud server</th>
+      <th>Own hardware</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>Machine</th>
+      <td>Ubuntu 24.04 server, 2 vCPU / 4 GB RAM or better</td>
+      <td>64-bit PC with 4 GB+ RAM you can dedicate (its disk <strong>will be erased</strong>)</td>
+    </tr>
+    <tr>
+      <th>Cost</th>
+      <td>From roughly $20–25/month</td>
+      <td>One-time hardware, if any — old machines work</td>
+    </tr>
+    <tr>
+      <th>Extra kit</th>
+      <td>A hosting-provider account</td>
+      <td>A USB stick (8 GB+)</td>
+    </tr>
+    <tr>
+      <th>To prepare the install</th>
+      <td>A computer with <a href="https://git-scm.com/">Git</a> and <a href="https://nodejs.org/">Node.js 22</a></td>
+      <td>Same, plus <a href="https://www.docker.com/products/docker-desktop/">Docker Desktop</a></td>
+    </tr>
+    <tr>
+      <th>Time</th>
+      <td>~15 minutes</td>
+      <td>~45 minutes including the ISO build</td>
+    </tr>
+    <tr>
+      <th>A domain name?</th>
+      <td>Not required — a working web address is generated for you</td>
+      <td>Not required — your suite lives at <code>mos.home</code> on your network</td>
+    </tr>
+  </tbody>
+</table>
+
+:::note[Honest early-access note]
+My Own Suite is pre-1.0. Right now, preparing an install means running one or two commands from the MOS repository on your own computer — that's why Git and Node.js appear in the table. A polished one-line installer is on the roadmap, and guided video walkthroughs are planned once the platform is feature-locked. The guides below spell out every step in the meantime.
+:::
+
+## Pick your guide
+
+<CardGrid>
+  <LinkCard title="Install on DigitalOcean" href="/docs/install/digitalocean/" description="The fastest path — a fully worked cloud example, click by click." />
+  <LinkCard title="Install on any cloud server" href="/docs/install/cloud-server/" description="Any provider that gives you a fresh Ubuntu 24.04 server." />
+  <LinkCard title="Install on your own hardware" href="/docs/install/own-hardware/" description="Build the USB installer and turn a spare machine into your server." />
+</CardGrid>
+
+Whichever path you choose, finish with [Your first sign-in](/docs/install/first-start/) — it covers creating your owner account and finding your way around.

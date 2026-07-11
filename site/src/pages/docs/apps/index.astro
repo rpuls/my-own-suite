@@ -1,0 +1,41 @@
+---
+// The docs app catalog: generated at build time from apps/*/manifest.json
+// (via src/lib/app-catalog.ts) — new app packages appear here and in the
+// sidebar automatically.
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import { catalogApps } from '../../../lib/app-catalog'
+---
+
+<StarlightPage
+  frontmatter={{
+    title: 'App catalog',
+    description:
+      'Every app available in My Own Suite — what it does, what it replaces, and its full technical reference.'
+  }}
+  headings={[]}
+>
+  <p>
+    These are the apps you can install from <a href="/docs/guides/apps/">Suite Manager → Apps</a>.
+    Every one is a vetted open-source application, packaged and version-pinned by MOS so that
+    installing, connecting, backing up, and updating all work the same way.
+  </p>
+  <p>
+    Each page below is generated from the app's package itself — the description you see in Suite
+    Manager and the technical reference maintained next to the code are the same, single source of
+    truth.
+  </p>
+  <div class="app-doc-grid">
+    {catalogApps.map((app) => (
+      <a class="app-doc-card" href={`/docs/apps/${app.id}/`}>
+        <span class="app-doc-card-ico">
+          <img src={app.icon} alt="" loading="lazy" />
+        </span>
+        <span class="app-doc-card-body">
+          <span class="app-doc-card-name">{app.name}</span>
+          <span class="app-doc-card-summary">{app.summary}</span>
+          {app.replaces && <span class="app-doc-card-replaces">Replaces {app.replaces}</span>}
+        </span>
+      </a>
+    ))}
+  </div>
+</StarlightPage>

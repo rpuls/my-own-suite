@@ -6,6 +6,7 @@ const path = require('node:path');
 const v2Root = path.resolve(__dirname, '..');
 const canonicalDir = path.join(v2Root, 'branding');
 const canonicalMarkPath = path.join(canonicalDir, 'my-own-suite-mark.png');
+const canonicalMarkSvgPath = path.join(canonicalDir, 'my-own-suite-mark.svg');
 const canonicalFaviconsDir = path.join(canonicalDir, 'favicons');
 const canonicalFontsDir = path.join(canonicalDir, 'fonts');
 const canonicalStylesPath = path.join(canonicalDir, 'styles', 'mos.css');
@@ -180,6 +181,7 @@ html.dark {
 
 function syncBranding() {
   assertExists(canonicalMarkPath);
+  assertExists(canonicalMarkSvgPath);
   assertExists(canonicalFaviconsDir);
   assertExists(canonicalFontsDir);
   assertExists(canonicalStylesPath);
@@ -188,6 +190,8 @@ function syncBranding() {
   copyFile(canonicalMarkPath, path.join(destinations.sitePublicBrand, 'my-own-suite-mark.png'));
   copyFile(canonicalMarkPath, path.join(destinations.suitePublicBrand, 'my-own-suite-mark.png'));
   copyFile(canonicalMarkPath, path.join(destinations.homepageImages, 'my-own-suite-mark.png'));
+  copyFile(canonicalMarkSvgPath, path.join(destinations.sitePublicBrand, 'my-own-suite-mark.svg'));
+  copyFile(canonicalMarkSvgPath, path.join(destinations.suitePublicBrand, 'my-own-suite-mark.svg'));
 
   syncDirectory(canonicalFaviconsDir, destinations.sitePublicBrand);
   syncDirectory(canonicalFaviconsDir, destinations.suitePublicBrand);

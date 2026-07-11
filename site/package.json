@@ -1,0 +1,34 @@
+{
+  "name": "my-own-suite-site",
+  "description": "Public website and documentation for My Own Suite, the self-hosted personal cloud platform with a curated app catalog.",
+  "private": true,
+  "version": "0.0.1",
+  "homepage": "https://myownsuite.org/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rpuls/my-own-suite.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rpuls/my-own-suite/issues"
+  },
+  "type": "module",
+  "packageManager": "npm@11.2.0",
+  "engines": {
+    "node": "22.x",
+    "npm": "11.x"
+  },
+  "scripts": {
+    "predev": "node ../scripts/sync-branding.cjs",
+    "prebuild": "node ../scripts/sync-branding.cjs",
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.38.4",
+    "astro": "^6.1.10"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

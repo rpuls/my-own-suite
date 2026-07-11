@@ -1,0 +1,74 @@
+---
+// MOS1's "Built on great open-source work" panel, ported to the V2 site:
+// frosted panel with a scrolling logo marquee and maker attribution.
+// The maker logo is self-hosted so the page makes no third-party requests.
+import funkytonLogo from '../assets/funkyton-logo.png'
+
+const logoModules = import.meta.glob('../assets/logos/*.{png,jpg,jpeg,svg,webp,avif}', {
+  eager: true,
+  import: 'default'
+}) as Record<string, ImageMetadata>
+
+const normalizeLogoName = (name: string) =>
+  name
+    .replace(/[-_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+
+const appLogos = Object.entries(logoModules)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([path, image]) => {
+    const fileName = path.split('/').pop() ?? ''
+    return {
+      src: image.src,
+      alt: normalizeLogoName(fileName.replace(/\.[^.]+$/, ''))
+    }
+  })
+  .filter((logo) => logo.src.length > 0)
+---
+
+<section class="band" aria-labelledby="made-with-title">
+  <div class="shell">
+    <div class="mos-panel made-with-panel">
+      <div class="made-with-copy">
+        <span class="mos-eyebrow">Open source matters</span>
+        <h2 class="mos-section-title" id="made-with-title">Built on great open-source work</h2>
+        <p class="mos-meta">
+          My Own Suite stands on top of some of the best open-source tools available today. Huge credit to the teams
+          and communities behind them. This would not exist without their work.
+        </p>
+      </div>
+
+      <div class="made-with-attribution" aria-label="Attribution">
+        <p class="made-with-label">Built with</p>
+        <div class="logo-marquee" aria-label="Included apps">
+          <div class="logo-track">
+            {appLogos.map((logo) => (
+              <img class="app-logo" src={logo.src} alt={logo.alt} loading="lazy" decoding="async" />
+            ))}
+            {appLogos.map((logo) => (
+              <img class="app-logo" src={logo.src} alt={logo.alt} aria-hidden="true" loading="lazy" decoding="async" />
+            ))}
+          </div>
+        </div>
+        <p class="made-with-label">A project by</p>
+        <a
+          class="made-by"
+          href="https://funkyton.com/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="A project by Funkyton"
+        >
+          <img
+            class="site-logo"
+            src={funkytonLogo.src}
+            alt="Funkyton"
+            loading="lazy"
+            decoding="async"
+          />
+        </a>
+      </div>
+    </div>
+  </div>
+</section>

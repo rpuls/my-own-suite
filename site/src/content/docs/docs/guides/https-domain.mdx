@@ -1,0 +1,49 @@
+---
+title: Use your own domain with HTTPS
+description: Give your self-hosted My Own Suite a real domain with trusted HTTPS certificates via Cloudflare DNS — private to your home network, no ports opened.
+---
+
+import { Steps } from '@astrojs/starlight/components'
+
+Out of the box, a self-hosted suite lives at `http://home.mos.home/` — which works, but browsers grumble about plain HTTP, and some apps (password managers especially) genuinely want a secure origin. This guide upgrades your suite to a real domain with a trusted certificate:
+
+```
+https://home.yourdomain.example/        ← your dashboard
+https://seafile.yourdomain.example/     ← and every app
+```
+
+The remarkable part: **your suite stays completely private.** Nothing is exposed to the internet, no router ports are opened, and your domain never publicly points at your house. In plain terms, MOS proves to the certificate authority that you own the domain by briefly writing a note *in the domain's own DNS records* — no public website required. (For the technically minded: it's an ACME **DNS-01 challenge**, performed by Caddy through the Cloudflare API.)
+
+## What you need
+
+- A **self-hosted install** (USB or SSH). Cloud installs handle domains through the hosting provider instead, and this screen says so.
+- A **domain name** whose DNS is managed by [Cloudflare](https://www.cloudflare.com/) (the free plan is fine). Cloudflare is the first supported provider; others may follow.
+- A **Cloudflare API token** — created in the next step.
+- The ability to add one local DNS rule on your network (same as in the install guide).
+
+## Set it up
+
+<Steps>
+
+1. **Create the API token.** In the Cloudflare dashboard: profile icon → **My Profile → API Tokens → Create Token**, use the **Edit zone DNS** template, and scope it to just your domain's zone. The token needs **Zone: Read** and **DNS: Edit** — nothing more. Copy it; Cloudflare shows it only once.
+
+2. **Apply in Suite Manager.** Go to **Settings**, and under private HTTPS fill in:
+
+   - your **base domain** — e.g. `mos.yourdomain.example` (a subdomain keeps the rest of your domain untouched; your dashboard becomes `home.mos.yourdomain.example`),
+   - a **contact email** for the certificate authority (Let's Encrypt),
+   - the **Cloudflare API token**.
+
+   Click **Apply HTTPS settings**. MOS verifies the token, requests the certificate, and reconfigures the web server — with an automatic rollback if anything fails. The token is stored in a root-only file on your server and is never shown again.
+
+3. **Add the local DNS rule.** The screen shows your server's IP and the exact rule to add: point `home.<your-base-domain>` (or better, the wildcard `*.<your-base-domain>`) at the server — in your router, AdGuard Home, Pi-hole, or as hosts-file lines on each computer. This is what makes the name resolve *inside* your network while staying invisible outside it.
+
+4. **Sign in on the new address.** Open `https://home.<your-base-domain>/` — padlock and all — and sign in again (moving to a new address ends the old session; that's expected). Installed apps are re-routed to `https://<app>.<your-base-domain>/` automatically, and their dashboard tiles update themselves.
+
+</Steps>
+
+## Good to know
+
+- **The old address remains as a recovery door.** If your local DNS rule ever breaks, the original `http://home.mos.home/` address still reaches Suite Manager so you can fix things.
+- **Certificates renew themselves.** Caddy (the built-in web server) owns issuance and renewal; there is nothing to remember.
+- **Why Cloudflare specifically?** The certificate flow needs API access to your DNS. MOS ships a web server custom-built with the Cloudflare DNS integration, version-pinned and verified at install time. Broader provider support is a roadmap item.
+- **Troubleshooting:** give the first certificate a minute or two; if the new address doesn't load, it's almost always the local DNS rule (test with `ping home.<your-base-domain>` — it should answer with your server's LAN IP). Your devices may also cache old DNS for a few minutes.

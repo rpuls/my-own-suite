@@ -7,6 +7,7 @@
   "icon": "icon.png",
   "catalog": {
     "description": "Seafile is a self-hosted file sync and sharing server for private libraries, browser access, desktop sync clients, mobile clients, and share links.",
+    "replaces": "Dropbox / Google Drive / OneDrive",
     "tags": [
       "files",
       "sync",
