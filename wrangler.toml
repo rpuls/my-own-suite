@@ -1,5 +1,7 @@
 name = "my-own-suite"
-pages_build_output_dir = "site/dist"
+# The deployed public site still builds from the preserved MOS1 source until
+# the MOS2 public site is rebuilt under site/. See docs/decisions.md.
+pages_build_output_dir = "site-mos1-reference/dist"
 
 [vars]
 NODE_VERSION = "22.16.0"
