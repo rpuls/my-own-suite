@@ -2,6 +2,8 @@
 
 This file defines how AI agents should work in this repository, with special rules for documentation, app onboarding, and platform validation.
 
+It is the single tool-agnostic source of truth for agent rules: Codex, Claude Code (via the `CLAUDE.md` pointer), and other coding agents all follow this file. Do not create tool-specific rule folders (`.codex/`, `.agents/`, `.clinerules/`, etc.); put durable rules here and durable working context in [docs/codex-notes.md](./docs/codex-notes.md).
+
 ## Mandatory Workflow (All Agent Tasks)
 
 These rules are required for every non-trivial change (docs, config, code, infra).
@@ -66,7 +68,7 @@ Use these locations:
 - `docs/codex-notes.md`: durable Codex/project working context.
 - `.github/ISSUE_TEMPLATE/codex-task.yml`: task template source of truth.
 - `site/`: MOS2 public/end-user documentation source after the public docs rebuild.
-- `site-mos1-reference/`: preserved MOS1 public site source for reference only.
+- `site-mos1-reference/`: preserved MOS1 public site source; still the deployed public site (`npm run build`) until the MOS2 docs rebuild. Frozen content only; no new product docs.
 - `apps/<app>/README.md`: app-level technical reference.
 - `scripts/README.md`: MOS2 operator/developer script and smoke-harness guidance.
 - `infrastructure/`: shared MOS2 runtime and installer substrate.
@@ -78,7 +80,7 @@ Maintenance rules:
 - Use GitHub Issues for task state and roadmap-like planning; do not maintain long-lived task lists in repo docs.
 - If a task changes long-term direction, capture actionable follow-up in GitHub Issues and update `docs/decisions.md` only when the direction changes architecture, deployment contracts, security boundaries, or ownership model.
 - If a task changes architecture, deployment contracts, security boundaries, or ownership model, update `docs/decisions.md`.
-- If a task changes how Codex or contributors should work, update `AGENTS.md` or `docs/codex-notes.md`, depending on whether it is a hard rule or contextual note.
+- If a task changes how agents or contributors should work, update `AGENTS.md` or `docs/codex-notes.md`, depending on whether it is a hard rule or contextual note.
 - If a temporary feature plan is useful during a branch, remove it or replace it with a pointer before merging.
 - Keep runbooks close to the thing they operate unless they become broad project policy.
 - Do not move `README.md`, `CHANGELOG.md`, `RELEASING.md`, or `AGENTS.md` into `docs/`; these are intentionally root-level convention files.
@@ -234,8 +236,7 @@ For each app page:
 The repo includes real black-box Playwright tests for MOS2 flows without test-only application bypasses.
 
 - Do not run E2E tests automatically as an agent. Ask the user to run the relevant E2E command and paste only the relevant failure output, because full Playwright/Docker logs are noisy and quickly pollute the context window.
-- Do not run `npm run smoke:do:up` automatically as an agent. Like E2E, ask the user to run it and paste only the relevant failure output or final readiness summary, because it creates paid cloud resources and produces noisy logs.
-- Do not run `npm run smoke:do:reset` automatically as an agent. It reuses the existing smoke Droplet but destructively removes MOS containers, Docker volumes, and the remote checkout before reinstalling.
+- Do not run `npm run smoke:do:reset` automatically as an agent. It creates or replaces a paid smoke Droplet, destructively removes MOS containers, Docker volumes, and the remote checkout before reinstalling, and produces noisy logs. Ask the user to run it and paste only the relevant failure output or final readiness summary.
 - `npm run smoke:do:destroy` may be run by an agent only when explicitly asked or confirmed by the user, because it is a paid-resource cleanup command.
 - Prefer end-to-end validation for onboarding and app reachability changes before adding unit-test-only coverage.
 - Keep E2E tooling isolated under `test/e2e` unless a shared repo-level script or config is genuinely needed.
