@@ -5,6 +5,7 @@
   "description": "My Own Suite V2 launch platform workspace.",
   "type": "commonjs",
   "scripts": {
+    "build": "cd site-mos1-reference && npm install --no-audit --progress=false && npm run build",
     "build:client": "npm run branding:sync && vite build --config suite-manager/vite.config.mjs",
     "branding:sync": "node scripts/sync-branding.cjs",
     "dev": "npm run build:client && node suite-manager/backend/src/server/start.cjs",
@@ -15,7 +16,9 @@
     "e2e:local:headed": "playwright test --config test/e2e/playwright.config.mjs --headed",
     "e2e:vaultwarden": "playwright test --config test/e2e/playwright.hyperv-vaultwarden.config.mjs",
     "e2e:vaultwarden:headed": "playwright test --config test/e2e/playwright.hyperv-vaultwarden.config.mjs --headed",
+    "hooks:install": "git config core.hooksPath .githooks",
     "install:render": "node scripts/installers/render-bootstrap.cjs",
+    "release:check": "node scripts/release-check.cjs",
     "smoke:do:destroy": "node scripts/smoke/digitalocean-v2.cjs destroy",
     "smoke:do:dns01": "node scripts/smoke/dns01-v2.cjs",
     "smoke:do:render": "node scripts/smoke/digitalocean-v2.cjs render",
