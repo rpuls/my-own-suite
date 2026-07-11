@@ -78,6 +78,14 @@ function main(extraArgs = process.argv.slice(2)) {
   console.log(`  ISO:  ${outputIso}`);
   console.log(`  Size: ${(size / (1024 ** 3)).toFixed(2)} GB`);
   console.log(`  Ref:  ${smokeRepoRef}`);
+  try {
+    const seedSummary = JSON.parse(fs.readFileSync(path.join(seedDir, 'seed-summary.json'), 'utf8'));
+    if (seedSummary.linuxPasswordGenerated) {
+      console.log(`  Login: ${seedSummary.linuxUsername} / ${seedSummary.linuxPassword} (generated for this build)`);
+    }
+  } catch {
+    // Login printout is best-effort; the ISO itself is already verified.
+  }
   console.log('  VM:   unchanged and powered off');
 }
 

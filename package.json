@@ -18,6 +18,7 @@
     "e2e:vaultwarden:headed": "playwright test --config test/e2e/playwright.hyperv-vaultwarden.config.mjs --headed",
     "hooks:install": "git config core.hooksPath .githooks",
     "install:render": "node scripts/installers/render-bootstrap.cjs",
+    "installer:usb": "node scripts/selfhost-build-installer-iso.cjs",
     "release:check": "node scripts/release-check.cjs",
     "smoke:do:destroy": "node scripts/smoke/digitalocean-v2.cjs destroy",
     "smoke:do:dns01": "node scripts/smoke/dns01-v2.cjs",

@@ -234,17 +234,21 @@ async function main() {
   const repoRoot = process.cwd();
   const inputIso = await resolveInputIso(repoRoot);
   const explicitSeedDir = readArg('seed-dir');
-  if (!explicitSeedDir) {
-    console.error('WARNING: the MOS2 ISO remasterer requires --seed-dir with a rendered installer seed.');
-    console.error('Render the seed with scripts/installers/render-hyperv-usb-seed.cjs or another MOS2 bootstrap renderer.');
-    process.exit(1);
+  let seedDir;
+  if (explicitSeedDir) {
+    seedDir = path.resolve(repoRoot, explicitSeedDir);
+  } else {
+    console.log('Rendering the installer seed with defaults (no configuration required).');
+    run(process.execPath, [path.join(repoRoot, 'scripts', 'installers', 'render-hyperv-usb-seed.cjs')], {
+      stdio: 'inherit',
+    });
+    seedDir = path.join(repoRoot, '.mos-smoke', 'hyperv-usb', 'v2-seed');
   }
   const outputIso = path.resolve(
     repoRoot,
     readArg('output-iso', 'infrastructure/self-host/output/my-own-suite-selfhost-installer.iso'),
   );
   const buildRoot = path.resolve(repoRoot, readArg('build-dir', '.tmp/selfhost-iso-build'));
-  const seedDir = explicitSeedDir ? path.resolve(repoRoot, explicitSeedDir) : path.join(buildRoot, 'seed');
   const builderTag = readArg('builder-tag', 'mos-selfhost-iso-builder:latest');
   const autoBoot = readArg('auto-boot', 'false').toLowerCase() === 'true';
 
@@ -318,6 +322,21 @@ async function main() {
   console.log(`Ubuntu ISO source: ${inputIso}`);
   console.log(`Installer seed source: ${seedDir}`);
   console.log('Ubuntu image source: official Ubuntu release URL verified against SHA256SUMS.');
+
+  const seedSummaryPath = path.join(seedDir, 'seed-summary.json');
+  if (fs.existsSync(seedSummaryPath)) {
+    try {
+      const seedSummary = JSON.parse(fs.readFileSync(seedSummaryPath, 'utf8'));
+      console.log('');
+      console.log(`Suite Home URL after install: ${seedSummary.home}`);
+      if (seedSummary.linuxPasswordGenerated) {
+        console.log(`Server machine login (generated — save it somewhere safe): ${seedSummary.linuxUsername} / ${seedSummary.linuxPassword}`);
+        console.log('You will rarely need this login; your suite itself is set up in the browser after install.');
+      }
+    } catch {
+      // A malformed summary only affects this convenience printout, never the ISO.
+    }
+  }
   console.log('');
   console.log('Recommended USB stick:');
   console.log('- Use a simple 8 GB or larger USB 3.0 stick from a reliable brand.');

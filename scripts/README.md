@@ -100,9 +100,9 @@ cmd /c npm run e2e:full:headed
 
 The E2E command reads ignored local config from `test/e2e/.env`, never creates or destroys Hyper-V, and keeps destructive restore/update validation out of the default flow. By default it calls the Hyper-V lab-only reset endpoint to clear Suite Manager/Homepage/app state before each run; set `MOS_V2_E2E_RESET_BEFORE_RUN=0` only when preserving current lab state. See `test/README.md` for the env shape and coverage.
 
-Inputs come from `infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env`:
+Inputs are optional and come from `infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env` (or matching environment variables) when the file exists:
 
-- `LINUX_PASSWORD` is used for the Ubuntu console/SSH login.
+- `LINUX_PASSWORD` is used for the Ubuntu console/SSH login. When it is not set, the seed renderer generates a random password and prints it during the build (also in the final ISO summary). Pin it locally if you need a stable lab login across resets.
 - `USERNAME` defaults to `mos`.
 - `HOSTNAME` defaults to `mos`.
 - `STACK_DOMAIN` defaults to `mos.home`.
@@ -139,7 +139,7 @@ journalctl -u cloud-final.service -n 120 --no-pager
 docker ps
 ```
 
-Use the non-Docker IPv4 from `hostname -I`; Docker bridge addresses such as `172.17.0.1` and `172.18.0.1` are not the VM LAN address. If SSH is reachable from Windows, the same Linux user/password from `selfhost-installer.env` can be used for shell inspection.
+Use the non-Docker IPv4 from `hostname -I`; Docker bridge addresses such as `172.17.0.1` and `172.18.0.1` are not the VM LAN address. If SSH is reachable from Windows, the Linux user/password can be used for shell inspection — either the pinned value from `selfhost-installer.env` or the generated password printed by the ISO build.
 
 Set `MOS_V2_HYPERV_READY_TIMEOUT_MINUTES` to override the default 90 minute readiness timeout. The remasterer uses the supported Ubuntu ISO under `infrastructure/self-host/autoinstall/ubuntu-iso/` and Docker Desktop's Linux container engine.
 

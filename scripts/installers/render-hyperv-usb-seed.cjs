@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -21,6 +22,23 @@ const configEnvOverrides = {
   TIMEZONE: 'TIMEZONE',
   USERNAME: 'MOS_V2_HYPERV_USERNAME',
 };
+const placeholderLinuxPassword = 'change-me-before-build';
+// No 0/1/l/o characters: the password may need to be typed on a physical console.
+const passwordAlphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
+
+function generateLinuxPassword() {
+  const unbiasedLimit = passwordAlphabet.length * Math.floor(256 / passwordAlphabet.length);
+  const groups = [];
+  while (groups.length < 3) {
+    let group = '';
+    while (group.length < 5) {
+      const byte = crypto.randomBytes(1)[0];
+      if (byte < unbiasedLimit) group += passwordAlphabet[byte % passwordAlphabet.length];
+    }
+    groups.push(group);
+  }
+  return groups.join('-');
+}
 
 function git(args, options = {}) {
   const result = spawnSync('git', args, {
@@ -87,7 +105,7 @@ function loadSmokeConfig() {
   if (fs.existsSync(defaultConfigPath)) {
     Object.assign(values, parseEnvFile(defaultConfigPath));
   } else {
-    console.log(`[mos-v2-smoke:hyperv-usb] Installer config not found; using template defaults from ${defaultConfigTemplatePath}.`);
+    console.log('[mos-v2-smoke:hyperv-usb] No local installer config found; using defaults (no configuration is required).');
   }
   for (const [key, envKey] of Object.entries(configEnvOverrides)) {
     if (process.env[envKey]) values[key] = process.env[envKey];
@@ -136,11 +154,12 @@ function renderSeed(config, options = {}) {
   const realname = config.REALNAME || 'My Own Suite';
   const timezone = config.TIMEZONE || 'Europe/Copenhagen';
   const domain = config.STACK_DOMAIN || 'mos.home';
-  const linuxPassword = config.LINUX_PASSWORD || '';
+  const configuredPassword = String(config.LINUX_PASSWORD || '').trim();
+  const linuxPasswordGenerated = !configuredPassword || configuredPassword === placeholderLinuxPassword;
+  const linuxPassword = linuxPasswordGenerated ? generateLinuxPassword() : configuredPassword;
 
   if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$/u.test(hostname)) throw new Error('HOSTNAME is invalid.');
   if (!/^[a-z_][a-z0-9_-]*[$]?$/u.test(username)) throw new Error('USERNAME is invalid.');
-  if (!linuxPassword) throw new Error('LINUX_PASSWORD is required for Hyper-V smoke console access.');
 
   const smokeRepoRef = options.repoRef || resolveSmokeRepoRef();
 
@@ -176,6 +195,9 @@ function renderSeed(config, options = {}) {
   };
 
   return {
+    linuxPassword,
+    linuxPasswordGenerated,
+    linuxUsername: username,
     metaData: `instance-id: mos-v2-hyperv-usb\nlocal-hostname: ${hostname}\n`,
     plan,
     userData: `#cloud-config\n${YAML.stringify(userData, { lineWidth: 0 })}`,
@@ -190,9 +212,26 @@ function main() {
   fs.mkdirSync(defaultOutputDir, { recursive: true });
   fs.writeFileSync(path.join(defaultOutputDir, 'user-data'), rendered.userData, 'utf8');
   fs.writeFileSync(path.join(defaultOutputDir, 'meta-data'), rendered.metaData, 'utf8');
+  fs.writeFileSync(
+    path.join(defaultOutputDir, 'seed-summary.json'),
+    `${JSON.stringify(
+      {
+        home: rendered.plan.config.publicUrls.home,
+        linuxPassword: rendered.linuxPassword,
+        linuxPasswordGenerated: rendered.linuxPasswordGenerated,
+        linuxUsername: rendered.linuxUsername,
+      },
+      null,
+      2,
+    )}\n`,
+    'utf8',
+  );
   console.log(`[mos-v2-smoke:hyperv-usb] Rendered V2 Ubuntu autoinstall seed for ${smokeRepoRef}.`);
   console.log(`  Home: ${rendered.plan.config.publicUrls.home}`);
   console.log(`  Seed: ${defaultOutputDir}`);
+  if (rendered.linuxPasswordGenerated) {
+    console.log(`  Linux login: ${rendered.linuxUsername} / ${rendered.linuxPassword} (generated; shown again after the ISO build)`);
+  }
 }
 
 if (require.main === module) {
@@ -206,6 +245,7 @@ if (require.main === module) {
 
 module.exports = {
   assertSmokeRepoRefContainsRootLayout,
+  generateLinuxPassword,
   loadSmokeConfig,
   parseEnvFile,
   renderSeed,
