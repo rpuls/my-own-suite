@@ -19,6 +19,8 @@ The installer **erases the entire disk** of the machine it installs onto. Use a 
 
 ## Build the installer
 
+No configuration files, no editing — two commands and a flash.
+
 <Steps>
 
 1. **Get the repository:**
@@ -26,40 +28,28 @@ The installer **erases the entire disk** of the machine it installs onto. Use a 
    ```sh
    git clone https://github.com/rpuls/my-own-suite.git
    cd my-own-suite
+   npm ci
    ```
 
-2. **Set the machine's login password.** Copy the template
-
-   `infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env.template`
-
-   to `selfhost-installer.env` in the same folder, open it in a text editor, and set:
-
-   - `LINUX_PASSWORD` — the login password for the server machine itself (you'll rarely need it, but keep it somewhere safe).
-   - Optional: `STACK_DOMAIN` (default `mos.home` — fine for almost everyone) and `TIMEZONE`.
-
-   That's all the installer needs — your owner account and everything else about your suite is set up **in the browser after install**, never in config files.
-
-3. **Render the installer seed:**
+2. **Build the USB installer image** (make sure Docker Desktop is running):
 
    ```sh
-   node scripts/installers/render-hyperv-usb-seed.cjs
-   ```
-
-   This reads your config and writes the install instructions to `.mos-smoke/hyperv-usb/v2-seed`.
-
-4. **Build the USB installer image** (make sure Docker Desktop is running):
-
-   ```sh
-   node scripts/selfhost-build-installer-iso.cjs --seed-dir .mos-smoke/hyperv-usb/v2-seed
+   npm run installer:usb
    ```
 
    The first run downloads the official Ubuntu Server 24.04 image (~3 GB) and verifies its checksum, then produces:
 
    `infrastructure/self-host/output/my-own-suite-selfhost-installer.iso`
 
-5. **Flash the stick.** Write the ISO to your USB stick with Rufus (choose ISO mode if asked) or balenaEtcher.
+   At the end, the build prints a **generated login password for the server machine** — save it somewhere safe. You'll rarely need it: your owner account and everything else about your suite is set up **in the browser after install**, never in config files or a terminal.
+
+3. **Flash the stick.** Write the ISO to your USB stick with Rufus (choose ISO mode if asked) or balenaEtcher.
 
 </Steps>
+
+:::note[Optional: pin your own values]
+If you'd rather choose the machine's login password yourself — or change the timezone or the local domain (default `mos.home`, fine for almost everyone) — copy `infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env.template` to `selfhost-installer.env` in the same folder and uncomment the values you want before building. Entirely optional.
+:::
 
 ## Install the server
 
