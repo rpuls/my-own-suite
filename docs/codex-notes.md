@@ -1,6 +1,6 @@
 # Codex Notes
 
-Durable working context for future Codex sessions. Mandatory rules live in [AGENTS.md](../AGENTS.md); documentation ownership lives in [docs/README.md](./README.md).
+Durable working context for AI agent sessions (Codex, Claude Code, and others). Mandatory rules live in [AGENTS.md](../AGENTS.md); documentation ownership lives in [docs/README.md](./README.md).
 
 ## Project Habits
 
@@ -42,4 +42,5 @@ Test-NetConnection -ComputerName <vm-ip> -Port 22 | Select-Object ComputerName,R
 - Railway-like deployments should stay notify-only; the platform applies updates.
 - Self-host managed updates must keep the host-control boundary explicit.
 - For Homepage external service tiles, `href` is the public/browser URL and `mos.proxy.upstream` is the private target.
+- Homepage `icon:` values use the Material Design Icons hyphen form (`mdi-tag-text-outline`), not the colon form (`mdi:tag-text-outline`). Ref: https://gethomepage.dev/configs/services/#icons
 - MOS should not rewrite arbitrary user-authored Homepage URLs when the domain changes. Safe regeneration belongs to MOS-managed structured tiles or explicit user-confirmed conversion.

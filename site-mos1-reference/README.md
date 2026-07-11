@@ -1,38 +1,32 @@
-# My Own Suite Site
+# MOS1 Public Site (Preserved Reference)
 
-This folder contains the Astro + Starlight website for `myownsuite.org`.
+This folder preserves the MOS1 Astro + Starlight website for `myownsuite.org`. It remains the deployed public site source until the MOS2 public site is rebuilt under `site/`, because the latest published release is still MOS1.
+
+Content is frozen at the MOS1 cutover point:
+
+- App and self-host technical reference content is embedded from `src/reference/`, which holds copies taken from the `archive/mos1-main-snapshot` branch. It intentionally does not read the live MOS2 `apps/` packages.
+- Do not add new product documentation here. New end-user docs belong to the MOS2 rebuild in `site/`.
+- Small factual fixes (broken links, typos, release notes) are fine.
 
 ## Local development
 
 ```bash
-cd site
-npm i
+cd site-mos1-reference
+npm install
 npm run dev
 ```
 
 ## Build and preview
 
 ```bash
-npm run build
-npm run preview
+npm run build          # from the repo root (also used by Cloudflare Pages)
+cd site-mos1-reference && npm run preview
 ```
-
-## App screenshots
-
-App screenshots for the public docs live under `site/src/assets/screenshots/<app>/` and are registered in `site/src/data/app-screenshots.ts`.
-
-Keep this simple:
-
-- Screenshots are served from the static site build, so prefer 1080p-class exports for reasonable load speed.
-- Use 16:9 screenshots by default for consistency, unless the image is intentionally showing a mobile view.
-- Save files under `site/src/assets/screenshots/<app>/` with long, descriptive, SEO-friendly names.
-- Register them in `site/src/data/app-screenshots.ts` with clear `alt`, `title`, and `caption` text.
-- Reuse `AppScreenshotGallery` on the app MDX page and run `npm run build` to verify the result.
 
 ## Cloudflare Pages
 
-Use these settings:
+The root `wrangler.toml` points Pages at `site-mos1-reference/dist`. The expected setup is:
 
-- Build command: `npm run build`
-- Output directory: `dist`
-- Node version: `20` (recommended)
+- Build command: `npm run build` (repo root)
+- Output directory: `site-mos1-reference/dist` (from `wrangler.toml`)
+- Node version: `22`

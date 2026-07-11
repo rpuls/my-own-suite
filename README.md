@@ -16,7 +16,7 @@ MOS2 is now the default repo layout. The old MOS1 root shape is preserved on the
 | `shared/` | Cross-process contracts used by Suite Manager and host agents. |
 | `test/` | Deterministic unit tests and browser/E2E harnesses. |
 | `site/` | Future MOS2 public site placeholder. |
-| `site-mos1-reference/` | Preserved MOS1 public site source for reference only. |
+| `site-mos1-reference/` | Preserved MOS1 public site source; still builds and deploys as the live public site (`npm run build`) until the MOS2 docs rebuild. |
 
 ## Local Development
 
@@ -24,8 +24,11 @@ Install dependencies, build the Suite Manager frontend, and run the local contro
 
 ```bash
 npm install
+npm run hooks:install
 npm run dev
 ```
+
+`npm run hooks:install` wires the local git hooks in `.githooks/` that block direct commits/pushes on `main`.
 
 Open `http://home.localhost:3100/suite-manager/`.
 
@@ -36,6 +39,8 @@ npm test
 npm run typecheck
 npm run build:client
 npm run install:render -- --target json
+npm run release:check
+npm run build   # preserved MOS1 public site (Cloudflare Pages)
 ```
 
 Browser and infrastructure smoke commands are intentionally human-run because they are noisy or can create paid/destructive resources. See [scripts/README.md](./scripts/README.md) and [test/README.md](./test/README.md).
