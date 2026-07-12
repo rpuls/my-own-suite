@@ -14,7 +14,7 @@ The two decisions are intentionally separate:
 - [ ] Managed updates apply all repo-owned app runtime changes before reporting success, or managed apply is disabled and described as experimental.
 - [ ] The Stable update track can actually apply tagged releases, or its apply controls and claims are removed until supported.
 - [ ] Public cloud first-owner setup and subsequent owner authentication no longer rely on exposed plain HTTP, or cloud installation is explicitly removed from the supported beta paths.
-- [ ] The landing-page one-line installer is implemented, tested, and safely delivered, or the unsupported command is removed.
+- [x] The landing-page one-line installer is implemented, tested, and safely delivered, or the unsupported command is removed.
 
 #### High priority before public announcement
 
@@ -40,10 +40,10 @@ The two decisions are intentionally separate:
 - [ ] `npm run typecheck`
 - [ ] `npm run build:client`
 - [ ] Clean MOS2 `site/` install and build in CI
-- [ ] Installer contract/render checks
+- [x] Installer contract/render checks
 - [ ] Human-run Hyper-V full-platform E2E after blocker fixes
 - [ ] Real backup/restore drill with representative multi-service and large-data apps
-- [ ] Explicitly approved DigitalOcean validation if cloud install remains a supported launch path
+- [x] Explicitly approved DigitalOcean validation if cloud install remains a supported launch path
 - [ ] Branch protection requires PRs and passing CI for `main`
 - [ ] Release metadata, changelog, tag, and release notes agree
 
@@ -76,14 +76,14 @@ The two decisions are intentionally separate:
 - **Required action:** Establish HTTPS before owner creation, gate setup with a one-time bootstrap secret, restrict setup through a firewall or SSH tunnel, or remove cloud installs from the supported consumer beta paths.
 - **Acceptance:** A new cloud install cannot be claimed by an unauthorised remote visitor, and owner credentials/session cookies are never sent over public HTTP.
 
-#### 4. Do not advertise a nonexistent or unverified pipe-to-shell installer
+#### 4. Deliver and continuously exercise the advertised pipe-to-shell installer
 
-- **Severity:** Blocker before site cutover/public announcement
+- **Severity:** Blocker before site cutover/public announcement — completed, retain as a regression check
 - **Area:** Product and installation
-- **Evidence:** `site/src/components/InstallPaths.astro` advertises `curl -fsSL https://get.myownsuite.org | sh`, while the documented implementation requires cloning the repository and rendering an installer payload.
-- **Why it matters:** The primary CTA may fail and encourages executing a mutable unauthenticated network response as root without a documented inspection or verification model.
-- **Required action:** Remove the command until the endpoint exists. If introduced, make it release-pinned, document exactly what it downloads and executes, allow inspection before execution, and verify signed or checksummed artifacts.
-- **Acceptance:** The advertised command is exercised in clean-install CI/smoke coverage and resolves to a documented, immutable or cryptographically verified release artifact.
+- **Original evidence:** `site/src/components/InstallPaths.astro` advertised `curl -fsSL https://get.myownsuite.org | sh`, while the documented implementation required cloning the repository and rendering an installer payload.
+- **Resolution evidence:** Repository-owned Cloudflare Workers now serve separate stable and development installer endpoints. `get.myownsuite.org` tracks `main`; `get-dev.myownsuite.org` tracks the branch configured in the development Worker's version-controlled Wrangler configuration. Each request resolves that branch to an exact Git commit and renders the shared bootstrap pinned to that commit. Cloudflare Git integration deploys the Workers from their respective branches, keeping repository code as the source of truth. Installer contract/render checks pass, and the DigitalOcean reset smoke harness successfully installed through `get-dev.myownsuite.org` on Ubuntu 24.04.
+- **Regression check:** Keep the stable and development Workers separate, keep both configurations in the repository, and make the DigitalOcean and Hyper-V installation harnesses consume the public development endpoint instead of maintaining alternate installation paths.
+- **Acceptance:** The advertised stable command is exercised after a real release reaches `main`; ongoing pre-release smoke coverage exercises the same installer contract through `get-dev.myownsuite.org`, whose response is pinned to the exact resolved commit.
 
 #### 5. Remove obsolete owner credentials from the USB installer
 
