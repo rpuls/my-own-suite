@@ -53,7 +53,7 @@ node scripts/reconcile-system.cjs --dry-run
 
 `reconcile-system.cjs` is the Linux/root apply path used by `mos-v2-update-agent`. It refreshes repo-owned systemd units, socket directories, the Cloudflare-capable Caddy binary/override, Suite Manager service wiring, and all V2 host agents. `--dry-run` is for deterministic validation only; it does not touch systemd, Docker, or host files.
 
-The smoke harness reads the ignored V2-local file `.mos-smoke/v2-digitalocean.env` (). V2 smoke credentials, state, and logs all stay under `.mos-smoke/`.
+The smoke harness reads the ignored local file `.mos-smoke/digitalocean.env`. Smoke credentials, state, and logs all stay under `.mos-smoke/`.
 
 Required for `up`, `reset`, and `destroy`:
 
