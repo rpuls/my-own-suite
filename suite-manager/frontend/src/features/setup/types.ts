@@ -8,6 +8,8 @@ export type SetupStatus = 'needs-owner' | 'signed-out' | 'signed-in';
 
 export type SetupStatusResponse = {
   owner: Owner | null;
+  ownerClaimRequired?: boolean;
+  secureTransport?: boolean;
   status: SetupStatus;
 };
 

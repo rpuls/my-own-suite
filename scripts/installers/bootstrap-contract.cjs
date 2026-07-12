@@ -53,28 +53,30 @@ function defaultDomainFor(input = {}) {
   return DEFAULT_LOCAL_DOMAIN;
 }
 
-function publicUrlsFor(domain) {
+function publicUrlsFor(domain, scheme = 'http') {
   const homeHost = `home.${domain}`;
 
   return {
-    home: `http://${homeHost}/`,
-    homepage: `http://${homeHost}/`,
-    setup: `http://${homeHost}/suite-manager/`,
-    suiteManager: `http://${homeHost}/suite-manager/`,
+    home: `${scheme}://${homeHost}/`,
+    homepage: `${scheme}://${homeHost}/`,
+    setup: `${scheme}://${homeHost}/suite-manager/`,
+    suiteManager: `${scheme}://${homeHost}/suite-manager/`,
   };
 }
 
 function createBootstrapConfig(input = {}) {
   const domain = defaultDomainFor(input);
+  const frontDoor = input.frontDoor || 'ssh-bootstrap';
+  const publicScheme = ['cloud-init', 'digitalocean-smoke'].includes(frontDoor) ? 'https' : 'http';
 
   return {
     components: [...CONTROL_PLANE_COMPONENTS],
     domain,
-    frontDoor: input.frontDoor || 'ssh-bootstrap',
+    frontDoor,
     homepagePort: HOMEPAGE_PORT,
     installRoot: input.installRoot || DEFAULT_INSTALL_ROOT,
     noPreconfig: true,
-    publicUrls: publicUrlsFor(domain),
+    publicUrls: publicUrlsFor(domain, publicScheme),
     repoRef: normalizeRef(input.repoRef),
     repoUrl: normalizeRepoUrl(input.repoUrl),
     runtimeUser: input.runtimeUser || DEFAULT_RUNTIME_USER,
@@ -141,6 +143,9 @@ function renderBootstrapEnv(config) {
 }
 
 function renderBootstrapShell(config) {
+  const cloudBootstrap = ['cloud-init', 'digitalocean-smoke'].includes(config.frontDoor);
+  const initialScheme = cloudBootstrap ? 'https' : 'http';
+  const caddyfile = cloudBootstrap ? renderPublicCloudCaddyfile() : renderCaddyfile();
   const script = `#!/usr/bin/env bash
 set -euo pipefail
 
@@ -161,8 +166,8 @@ else
   MOS_V2_HOME_HOST="home.$MOS_V2_DOMAIN"
 fi
 
-MOS_V2_HOME_URL="http://$MOS_V2_HOME_HOST/"
-MOS_V2_SETUP_URL="http://$MOS_V2_HOME_HOST/suite-manager/"
+MOS_V2_HOME_URL="${initialScheme}://$MOS_V2_HOME_HOST/"
+MOS_V2_SETUP_URL="${initialScheme}://$MOS_V2_HOME_HOST/suite-manager/"
 MOS_V2_SUITE_MANAGER_URL="$MOS_V2_SETUP_URL"
 MOS_V2_HOMEPAGE_UPSTREAM="http://127.0.0.1:$MOS_V2_HOMEPAGE_PORT"
 export MOS_V2_HOME_HOST MOS_V2_HOME_URL MOS_V2_SETUP_URL MOS_V2_SUITE_MANAGER_URL MOS_V2_HOMEPAGE_UPSTREAM
@@ -181,7 +186,7 @@ if ! command -v caddy >/dev/null 2>&1; then
 fi
 
 apt-get update
-apt-get install -y ca-certificates curl docker.io git gnupg
+apt-get install -y ca-certificates curl docker.io git gnupg ufw
 systemctl enable --now docker.service
 echo '[mos-v2] Pulling the pinned Homepage image while the control plane builds.'
 docker pull ${shellQuote(HOMEPAGE_IMAGE)} &
@@ -244,6 +249,18 @@ if ! getent group mos-v2-agent >/dev/null; then
 fi
 usermod -a -G mos-v2-agent "$MOS_V2_RUNTIME_USER"
 install -d -m 0750 /etc/mos-v2 /etc/mos-v2/secrets /var/lib/mos-v2/https-agent /var/lib/mos-v2/homepage-agent
+if [ "$MOS_V2_FRONT_DOOR" = 'cloud-init' ] || [ "$MOS_V2_FRONT_DOOR" = 'digitalocean-smoke' ]; then
+  MOS_V2_OWNER_CLAIM_TOKEN="$(openssl rand -hex 32)"
+  cat > /etc/mos-v2/secrets/owner-claim.env <<MOS_V2_OWNER_CLAIM
+MOS_V2_OWNER_CLAIM_TOKEN=$MOS_V2_OWNER_CLAIM_TOKEN
+MOS_V2_OWNER_CLAIM
+  chown root:mos-v2-agent /etc/mos-v2/secrets/owner-claim.env
+  chmod 0640 /etc/mos-v2/secrets/owner-claim.env
+  ufw allow OpenSSH >/dev/null
+  ufw allow 80/tcp >/dev/null
+  ufw allow 443/tcp >/dev/null
+  ufw --force enable >/dev/null
+fi
 install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-https-agent
 install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-homepage-agent
 install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-app-agent
@@ -307,6 +324,7 @@ Environment=MOS_V2_BACKUP_AGENT_SOCKET=/run/mos-v2-backup-agent/agent.sock
 Environment=MOS_V2_UPDATE_AGENT_SOCKET=/run/mos-v2-update-agent/agent.sock
 Environment=MOS_V2_LAB_RESET_ENABLED=$MOS_V2_LAB_RESET_ENABLED
 Environment=MOS_V2_LAB_RESET_AGENT_SOCKET=/run/mos-v2-lab-reset-agent/agent.sock
+EnvironmentFile=-/etc/mos-v2/secrets/owner-claim.env
 ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/suite-manager/backend/src/server/start.cjs
 Restart=always
 RestartSec=3
@@ -467,7 +485,7 @@ WantedBy=multi-user.target
 MOS_V2_LAB_RESET_AGENT_UNIT
 
 cat > /etc/caddy/Caddyfile <<MOS_V2_CADDY
-${renderCaddyfile()}
+${caddyfile}
 MOS_V2_CADDY
 cat > /etc/caddy/mos-v2-homepage-routes.caddy <<'MOS_V2_HOMEPAGE_ROUTES'
 # No user-managed Homepage routes.
@@ -522,6 +540,7 @@ MOS_V2_BOOTSTRAP_DONE
 
 echo "[mos-v2] Wrote bootstrap contract to $MOS_V2_STATE_ROOT/bootstrap-contract.env"
 echo "[mos-v2] MOS is ready for first-run owner setup at $MOS_V2_SETUP_URL"
+${cloudBootstrap ? 'echo "[mos-v2] Secure one-time owner setup URL: $MOS_V2_SETUP_URL?claim=$MOS_V2_OWNER_CLAIM_TOKEN"' : ''}
 `;
 
   return script.replace(/\r\n/g, '\n');
@@ -598,4 +617,5 @@ const {
   HOMEPAGE_PORT,
   renderCaddyfile,
   renderHomepageSystemdUnit,
+  renderPublicCloudCaddyfile,
 } = require('../../infrastructure/control-plane-runtime.cjs');

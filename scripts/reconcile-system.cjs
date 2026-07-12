@@ -181,6 +181,7 @@ Environment=MOS_V2_BACKUP_AGENT_SOCKET=/run/mos-v2-backup-agent/agent.sock
 Environment=MOS_V2_UPDATE_AGENT_SOCKET=/run/mos-v2-update-agent/agent.sock
 Environment=MOS_V2_LAB_RESET_ENABLED=${config.labResetEnabled}
 Environment=MOS_V2_LAB_RESET_AGENT_SOCKET=/run/mos-v2-lab-reset-agent/agent.sock
+EnvironmentFile=-/etc/mos-v2/secrets/owner-claim.env
 ExecStart=/usr/bin/node ${config.mosRoot}/suite-manager/backend/src/server/start.cjs
 Restart=always
 RestartSec=3

@@ -13,6 +13,7 @@ const frontendDistDir = process.env.MOS_V2_FRONTEND_DIST_DIR
 
 const server = createV2Server({
   frontendDistDir,
+  homeHost,
   stateDir,
 });
 

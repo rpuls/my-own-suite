@@ -89,9 +89,9 @@ test('bootstrap contract derives sslip.io domain for cloud smoke installs', () =
 
   assert.equal(defaultDomainFor({ publicIpv4: '203.0.113.42' }), '203.0.113.42.sslip.io');
   assert.equal(config.domain, '203.0.113.42.sslip.io');
-  assert.equal(config.publicUrls.home, 'http://home.203.0.113.42.sslip.io/');
-  assert.equal(config.publicUrls.setup, 'http://home.203.0.113.42.sslip.io/suite-manager/');
-  assert.equal(config.publicUrls.suiteManager, 'http://home.203.0.113.42.sslip.io/suite-manager/');
+  assert.equal(config.publicUrls.home, 'https://home.203.0.113.42.sslip.io/');
+  assert.equal(config.publicUrls.setup, 'https://home.203.0.113.42.sslip.io/suite-manager/');
+  assert.equal(config.publicUrls.suiteManager, 'https://home.203.0.113.42.sslip.io/suite-manager/');
   assert.equal(config.repoRef, 'feature/test-ref');
 });
 
@@ -147,6 +147,8 @@ test('render CLI parses dry-run target inputs without requiring an env file', ()
     'cloud-init',
     '--public-ipv4',
     '198.51.100.17',
+    '--front-door',
+    'cloud-init',
     '--repo-ref',
     'test-ref',
   ]);
@@ -155,8 +157,8 @@ test('render CLI parses dry-run target inputs without requiring an env file', ()
   assert.equal(parsed.target, 'cloud-init');
   assert.equal(plan.config.domain, '198.51.100.17.sslip.io');
   assert.match(selectOutput(plan, parsed.target), /^#cloud-config/);
-  assert.match(selectOutput(plan, 'json'), /"suiteManager": "http:\/\/home.198.51.100.17.sslip.io\/suite-manager\/"/);
-  assert.match(selectOutput(plan, 'json'), /"setup": "http:\/\/home.198.51.100.17.sslip.io\/suite-manager\/"/);
+  assert.match(selectOutput(plan, 'json'), /"suiteManager": "https:\/\/home.198.51.100.17.sslip.io\/suite-manager\/"/);
+  assert.match(selectOutput(plan, 'json'), /"setup": "https:\/\/home.198.51.100.17.sslip.io\/suite-manager\/"/);
   assert.match(selectOutput(plan, 'shell'), /^#!\/usr\/bin\/env bash/);
 });
 

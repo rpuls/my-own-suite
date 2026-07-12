@@ -1374,9 +1374,39 @@ test('empty setup status requires owner creation', async () => {
     assert.equal(response.status, 200);
     assert.deepEqual(status, {
       owner: null,
+      ownerClaimRequired: false,
+      secureTransport: false,
       status: 'needs-owner',
     });
   });
+});
+
+test('cloud owner creation requires HTTPS and the one-time claim token', async () => {
+  await withServer(async (baseUrl) => {
+    const insecure = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
+      body: JSON.stringify({ claimToken: 'claim-secret', email: 'owner@example.com', name: 'Owner', password: 'correct horse battery staple' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+    assert.equal(insecure.status, 403);
+    assert.equal((await insecure.json()).code, 'HTTPS_REQUIRED_FOR_OWNER_SETUP');
+
+    const wrongClaim = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
+      body: JSON.stringify({ claimToken: 'wrong', email: 'owner@example.com', name: 'Owner', password: 'correct horse battery staple' }),
+      headers: { 'Content-Type': 'application/json', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+    assert.equal(wrongClaim.status, 403);
+    assert.equal((await wrongClaim.json()).code, 'OWNER_CLAIM_REQUIRED');
+
+    const claimed = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
+      body: JSON.stringify({ claimToken: 'claim-secret', email: 'owner@example.com', name: 'Owner', password: 'correct horse battery staple' }),
+      headers: { 'Content-Type': 'application/json', 'X-Forwarded-Proto': 'https' },
+      method: 'POST',
+    });
+    assert.equal(claimed.status, 201);
+    assert.match(String(claimed.headers.get('set-cookie')), /; Secure/u);
+  }, { ownerClaimToken: 'claim-secret' });
 });
 
 test('owner creation API signs in and changes setup status', async () => {

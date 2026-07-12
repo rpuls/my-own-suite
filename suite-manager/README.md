@@ -50,6 +50,8 @@ Authenticated owners use `/suite-manager/settings`. Suite Manager validates the 
 
 The original installer-created HTTP Home host remains an authenticated recovery URL. The configured HTTP host redirects to HTTPS. Suite Manager accepts only the bootstrap host plus pending or active Home hosts from SQLite, trusts forwarded protocol at its loopback deployment boundary, and marks session cookies `Secure` on HTTPS.
 
+Cloud-init installs additionally require HTTPS and an installer-generated one-time claim secret before the first owner can be created. If a provider-level firewall blocks public certificate issuance or HTTPS reachability, the HTTP origin exposes only setup diagnostics and never accepts owner credentials.
+
 ## Homepage Authentication Boundary
 
 Suite Manager accepts only the configured `home.<domain>` host and rejects unknown hosts. It owns `/suite-manager/` for onboarding, login, account controls, static assets, and API routes. All other requests require a valid `mos_v2_session` before they are streamed to `MOS_V2_HOMEPAGE_UPSTREAM`.

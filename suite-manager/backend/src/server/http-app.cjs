@@ -1,4 +1,5 @@
 const http = require('node:http');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -92,6 +93,14 @@ function parseCookies(header = '') {
 
 function isHttpsRequest(request) {
   return String(request.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase() === 'https';
+}
+
+function secureTokenEqual(actual, expected) {
+  const actualBuffer = Buffer.from(String(actual || ''));
+  const expectedBuffer = Buffer.from(String(expected || ''));
+  return actualBuffer.length > 0
+    && actualBuffer.length === expectedBuffer.length
+    && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
 function sessionCookie(token, secure = false) {
@@ -250,6 +259,7 @@ function createV2Server({
   homeHost = process.env.MOS_V2_HOME_HOST || 'home.localhost',
   homepageUpstream = process.env.MOS_V2_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
   labResetEnabled = process.env.MOS_V2_LAB_RESET_ENABLED === '1',
+  ownerClaimToken = process.env.MOS_V2_OWNER_CLAIM_TOKEN || '',
   stateDir = path.join(process.cwd(), '.state'),
 } = {}) {
   const setup = new SetupService({ stateDir });
@@ -290,7 +300,11 @@ function createV2Server({
       }
 
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/setup/status`) {
-        jsonResponse(response, 200, setup.status(sessionToken));
+        jsonResponse(response, 200, {
+          ...setup.status(sessionToken),
+          ownerClaimRequired: Boolean(ownerClaimToken),
+          secureTransport: isHttpsRequest(request),
+        });
         return;
       }
 
@@ -318,6 +332,20 @@ function createV2Server({
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/setup/owner`) {
         const body = await readJsonBody(request);
+        if (ownerClaimToken && !isHttpsRequest(request)) {
+          jsonResponse(response, 403, {
+            code: 'HTTPS_REQUIRED_FOR_OWNER_SETUP',
+            error: 'Owner setup is locked until this cloud server is reachable over HTTPS. Check that inbound ports 80 and 443 are allowed by the VPS provider firewall.',
+          });
+          return;
+        }
+        if (ownerClaimToken && !secureTokenEqual(body.claimToken, ownerClaimToken)) {
+          jsonResponse(response, 403, {
+            code: 'OWNER_CLAIM_REQUIRED',
+            error: 'Use the secure one-time owner setup URL printed by the MOS installer.',
+          });
+          return;
+        }
         const result = setup.createOwner(body);
         jsonResponse(response, 201, { owner: result.owner, status: result.status }, {
           'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),

@@ -28,6 +28,12 @@ async function readStatus(): Promise<SetupStatusResponse> {
 
 function stateFromStatus(status: SetupStatusResponse): SetupSessionState {
   if (status.status === 'needs-owner') {
+    if (status.ownerClaimRequired && !status.secureTransport) {
+      return {
+        kind: 'error',
+        message: 'Secure owner setup is not ready. MOS could not establish HTTPS. Check that your VPS provider allows inbound TCP traffic on ports 80 and 443, then reload this page using HTTPS.',
+      };
+    }
     return { kind: 'needs-owner', error: null };
   }
 
@@ -72,8 +78,9 @@ export function useSetupSession() {
   }, []);
 
   async function createOwner(input: { email: string; name: string; password: string }): Promise<void> {
+    const claimToken = new URLSearchParams(window.location.search).get('claim') || '';
     const response = await fetch('/suite-manager/api/setup/owner', {
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, claimToken }),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',
     });

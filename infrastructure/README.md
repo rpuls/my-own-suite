@@ -26,6 +26,8 @@ Required runtime values for the first milestone are discoverable or defaulted:
 
 The generated contract also records `MOS_V2_OWNER_SETUP=suite-manager-browser` and `MOS_V2_APP_SELECTION=suite-manager-after-install` so installer paths cannot accidentally reintroduce owner credentials or app-specific setup before first boot.
 
+Public cloud-init installs use `home.<public-ip>.sslip.io`, ask Caddy to obtain a public certificate automatically, and configure UFW to preserve SSH while allowing inbound HTTP and HTTPS. The installer creates a one-time owner-claim URL in a root-owned secret file and prints it at completion. HTTP remains available only to explain an HTTPS/provider-firewall failure; first-owner creation requires both HTTPS and the claim secret. USB/LAN bootstrap behavior is unchanged.
+
 Current first-boot services:
 
 - `mos-v2-suite-manager.service` runs the V2 Suite Manager backend/frontend from the selected repo/ref.

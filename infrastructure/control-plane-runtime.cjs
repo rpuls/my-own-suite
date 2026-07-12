@@ -11,6 +11,20 @@ import /etc/caddy/mos-v2-app-routes.caddy
 `;
 }
 
+function renderPublicCloudCaddyfile() {
+  return `http://$MOS_V2_HOME_HOST {
+  reverse_proxy 127.0.0.1:$MOS_V2_SUITE_MANAGER_PORT
+}
+
+https://$MOS_V2_HOME_HOST {
+  reverse_proxy 127.0.0.1:$MOS_V2_SUITE_MANAGER_PORT
+}
+
+import /etc/caddy/mos-v2-homepage-routes.caddy
+import /etc/caddy/mos-v2-app-routes.caddy
+`;
+}
+
 function renderHttpsCaddyfile({ acmeEmail, baseDomain, bootstrapHost, suiteManagerPort = '$MOS_V2_SUITE_MANAGER_PORT' }) {
   const homeHost = `home.${baseDomain}`;
   return `{
@@ -65,4 +79,5 @@ module.exports = {
   renderCaddyfile,
   renderHttpsCaddyfile,
   renderHomepageSystemdUnit,
+  renderPublicCloudCaddyfile,
 };

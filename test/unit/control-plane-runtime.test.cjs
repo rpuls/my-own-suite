@@ -7,6 +7,7 @@ const {
   HOMEPAGE_IMAGE,
   renderCaddyfile,
   renderHttpsCaddyfile,
+  renderPublicCloudCaddyfile,
   renderHomepageSystemdUnit,
 } = require('../../infrastructure/control-plane-runtime.cjs');
 
@@ -18,6 +19,14 @@ test('Caddy exposes the single Home origin only through Suite Manager', () => {
   assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:\$MOS_V2_SUITE_MANAGER_PORT/);
   assert.match(caddyfile, /import \/etc\/caddy\/mos-v2-homepage-routes\.caddy/);
   assert.doesNotMatch(caddyfile, /3200|homepage:3000|reverse_proxy\s+homepage/);
+});
+
+test('public-cloud Caddy serves diagnostics on HTTP and owner setup on automatic HTTPS', () => {
+  const caddyfile = renderPublicCloudCaddyfile();
+  assert.match(caddyfile, /http:\/\/\$MOS_V2_HOME_HOST/u);
+  assert.match(caddyfile, /https:\/\/\$MOS_V2_HOME_HOST/u);
+  assert.equal((caddyfile.match(/reverse_proxy 127\.0\.0\.1:\$MOS_V2_SUITE_MANAGER_PORT/gu) || []).length, 2);
+  assert.doesNotMatch(caddyfile, /redir/u);
 });
 
 test('HTTPS Caddy rendering preserves bootstrap recovery and has no Homepage bypass or secret', () => {
