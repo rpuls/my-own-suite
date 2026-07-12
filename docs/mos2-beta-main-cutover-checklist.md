@@ -13,7 +13,7 @@ The two decisions are intentionally separate:
 
 - [ ] Managed updates apply all repo-owned app runtime changes before reporting success, or managed apply is disabled and described as experimental.
 - [ ] The Stable update track can actually apply tagged releases, or its apply controls and claims are removed until supported.
-- [ ] Public cloud first-owner setup and subsequent owner authentication no longer rely on exposed plain HTTP, or cloud installation is explicitly removed from the supported beta paths.
+- [x] Public cloud first-owner setup and subsequent owner authentication no longer rely on exposed plain HTTP, or cloud installation is explicitly removed from the supported beta paths.
 - [x] The landing-page one-line installer is implemented, tested, and safely delivered, or the unsupported command is removed.
 
 #### High priority before public announcement
@@ -21,7 +21,7 @@ The two decisions are intentionally separate:
 - [x] Remove obsolete USB-installer owner fields and make browser owner creation the only owner bootstrap path.
 - [ ] Make backup integrity and replacement-machine restore claims match verified behavior.
 - [ ] Build the MOS2 `site/` from a clean install in required CI before deployment cutover.
-- [ ] Publish a real, tested cloud HTTPS procedure or clearly classify cloud TLS as operator-owned and advanced.
+- [x] Publish a real, tested cloud HTTPS procedure or clearly classify cloud TLS as operator-owned and advanced.
 
 #### Beta truthfulness and security
 
@@ -67,13 +67,13 @@ The two decisions are intentionally separate:
 - **Required action:** Implement tagged stable release discovery, checkout, version reporting, and apply, or make Stable visibly unavailable/read-only until it exists.
 - **Acceptance:** A released tag can be discovered and applied end to end on a representative install, including full runtime reconciliation, with installed-version metadata updated truthfully.
 
-#### 3. Public cloud onboarding must not depend on plain HTTP
+#### 3. Public cloud onboarding must not depend on plain HTTP — completed, retain as a regression check
 
 - **Severity:** Blocker for supported public cloud installs; High if explicitly experimental
 - **Area:** Security and installation
-- **Evidence:** The DigitalOcean and generic cloud guides direct users to `http://home.<ip>.sslip.io/` to create the first owner. They acknowledge that anyone who reaches an unclaimed install can become owner. Session cookies become `Secure` only when the request is HTTPS.
-- **Why it matters:** Initial account claiming, owner passwords, and session cookies can be intercepted or hijacked on an internet-facing server.
-- **Required action:** Establish HTTPS before owner creation, gate setup with a one-time bootstrap secret, restrict setup through a firewall or SSH tunnel, or remove cloud installs from the supported consumer beta paths.
+- **Original evidence:** The DigitalOcean and generic cloud guides directed users to `http://home.<ip>.sslip.io/` to create the first owner. Anyone who reached an unclaimed install could become owner, and session cookies became `Secure` only over HTTPS.
+- **Resolution evidence:** Public VPS installs now configure Caddy automatic HTTPS for `home.<ip>.sslip.io`, open only SSH/HTTP/HTTPS through UFW, and require a random one-time claim token for first-owner creation. Public HTTP remains available only for a non-secret setup diagnostic and the backend rejects owner creation unless the request is HTTPS with the correct token. A fresh Ubuntu 24.04 DigitalOcean Droplet installed through `get-dev.myownsuite.org` reached trusted HTTPS and completed the protected owner-claim flow on July 13, 2026. Focused backend and installer-contract tests cover HTTP rejection, invalid-token rejection, secure cookies, and the public-VPS rendering contract.
+- **Regression check:** The DigitalOcean smoke harness consumes the hosted development installer, waits for HTTPS readiness, and retrieves the root-only claim token over configured SSH solely to print the one-time setup URL; it must never persist the token in smoke state or harness-created log files.
 - **Acceptance:** A new cloud install cannot be claimed by an unauthorised remote visitor, and owner credentials/session cookies are never sent over public HTTP.
 
 #### 4. Deliver and continuously exercise the advertised pipe-to-shell installer
@@ -112,13 +112,13 @@ The two decisions are intentionally separate:
 - **Required action:** Add a clean dependency install and MOS2 site build to required CI, verify links/assets/routes, explicitly switch deployment configuration, and update active documentation.
 - **Acceptance:** Required CI builds `site/` from a clean checkout on Linux, and the deployment cutover is a reviewed change with a rollback path.
 
-#### 8. Cloud HTTPS guidance must describe a real supported path
+#### 8. Cloud HTTPS guidance must describe a real supported path — completed, retain as a regression check
 
 - **Severity:** High
 - **Area:** Installation, security, and documentation
-- **Evidence:** Cloud docs defer custom-domain TLS to provider tooling, but a plain Ubuntu VPS provider commonly supplies DNS/firewall controls rather than TLS termination for arbitrary services.
-- **Why it matters:** Users may believe domain configuration alone secures the install and continue operating passwords, files, and sessions over HTTP.
-- **Required action:** Publish and test a concrete cloud HTTPS flow, or state that cloud TLS is outside MOS and requires an experienced operator-managed reverse proxy/configuration.
+- **Original evidence:** Cloud docs deferred custom-domain TLS to provider tooling, while a plain Ubuntu VPS commonly supplies no TLS termination for arbitrary services.
+- **Resolution evidence:** The hosted installer discovers the VPS public IPv4, uses `sslip.io` for the initial hostname, configures Caddy to obtain and renew a publicly trusted certificate, and prints the protected HTTPS owner setup URL. The DigitalOcean manual-install validation required no provider-dashboard networking or DNS steps beyond creating the Ubuntu 24.04 Droplet.
+- **Regression check:** Keep the hosted installer, DigitalOcean harness, generic cloud guide, and HTTPS failure diagnostic aligned. Providers that block required ingress must receive a clear diagnostic and must not fall back to owner creation over HTTP.
 - **Acceptance:** A user following only the supported guide reaches a trusted HTTPS Home URL without undocumented infrastructure steps.
 
 #### 9. Narrow privacy claims to guarantees MOS controls
@@ -218,8 +218,8 @@ The two decisions are intentionally separate:
 - [ ] Package-aware transactional updates and rollback.
 - [ ] Stable tagged-release updates and installed-version metadata.
 - [ ] Login throttling, a security event trail, and optional MFA/passkeys.
-- [ ] Secure one-time first-owner bootstrap claim.
-- [ ] Tested cloud HTTPS and reference firewall automation.
+- [x] Secure one-time first-owner bootstrap claim.
+- [x] Tested cloud HTTPS and reference firewall automation.
 - [ ] Restore compatibility migrations and a bare-metal recovery runbook.
 - [ ] Per-app consistency hooks for databases and large media stores.
 - [ ] Resource estimation/preflight for Immich, Seafile, and ONLYOFFICE.

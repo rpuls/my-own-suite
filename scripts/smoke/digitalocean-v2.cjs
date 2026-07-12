@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 
 const { renderBootstrapPlan } = require('../installers/bootstrap-contract.cjs');
 
@@ -36,6 +37,7 @@ Environment:
   MOS_V2_SMOKE_SSH_KEY_ID         Optional SSH key id.
   MOS_V2_SMOKE_SSH_KEY_FINGERPRINT Optional SSH key fingerprint.
   MOS_V2_SMOKE_SSH_KEY_NAME       Optional SSH key name to resolve.
+  MOS_V2_SMOKE_SSH_PRIVATE_KEY    Optional private-key path used to print the owner claim URL.
 `);
 }
 
@@ -85,6 +87,10 @@ function loadLocalEnvFile() {
 function env(name, fallback = '') {
   const value = process.env[name];
   return value === undefined || value === '' ? fallback : value;
+}
+
+function compatibleEnv(name, legacyName, fallback = '') {
+  return env(name, env(legacyName, fallback));
 }
 
 function requireEnv(name) {
@@ -168,17 +174,17 @@ async function ensureTag(token) {
 }
 
 async function resolveOptionalSshKeys(token) {
-  const byId = env('MOS_V2_SMOKE_SSH_KEY_ID');
+  const byId = compatibleEnv('MOS_V2_SMOKE_SSH_KEY_ID', 'MOS_SMOKE_SSH_KEY_ID');
   if (byId) {
     return [Number.isNaN(Number(byId)) ? byId : Number(byId)];
   }
 
-  const byFingerprint = env('MOS_V2_SMOKE_SSH_KEY_FINGERPRINT');
+  const byFingerprint = compatibleEnv('MOS_V2_SMOKE_SSH_KEY_FINGERPRINT', 'MOS_SMOKE_SSH_KEY_FINGERPRINT');
   if (byFingerprint) {
     return [byFingerprint];
   }
 
-  const byName = env('MOS_V2_SMOKE_SSH_KEY_NAME');
+  const byName = compatibleEnv('MOS_V2_SMOKE_SSH_KEY_NAME', 'MOS_SMOKE_SSH_KEY_NAME');
   if (!byName) {
     return [];
   }
@@ -219,11 +225,43 @@ runcmd:
 function bootstrapPlanFor(config, ip = '') {
   return renderBootstrapPlan({
     domain: env('MOS_V2_SMOKE_DOMAIN'),
-    frontDoor: 'digitalocean-smoke',
+    frontDoor: 'public-vps',
     publicIpv4: ip || env('MOS_V2_SMOKE_PUBLIC_IPV4'),
     repoRef: config.repoRef,
     repoUrl: config.repoUrl,
   });
+}
+
+function ownerClaimUrl(setupUrl, token) {
+  const url = new URL(setupUrl);
+  url.searchParams.set('claim', token);
+  return url.toString();
+}
+
+async function readOwnerClaimToken(ip) {
+  const privateKey = compatibleEnv('MOS_V2_SMOKE_SSH_PRIVATE_KEY', 'MOS_SMOKE_SSH_PRIVATE_KEY');
+  if (!privateKey) {
+    return '';
+  }
+
+  const deadline = Date.now() + Number(env('MOS_V2_SMOKE_SSH_TIMEOUT_MS', '120000'));
+  while (Date.now() < deadline) {
+    const result = spawnSync('ssh', [
+      '-i', privateKey,
+      '-o', 'BatchMode=yes',
+      '-o', 'ConnectTimeout=10',
+      '-o', 'StrictHostKeyChecking=accept-new',
+      `root@${ip}`,
+      "sed -n 's/^MOS_V2_OWNER_CLAIM_TOKEN=//p' /etc/mos-v2/secrets/owner-claim.env",
+    ], { encoding: 'utf8', windowsHide: true });
+    const token = String(result.stdout || '').trim();
+    if (/^[a-f0-9]{64}$/.test(token)) {
+      return token;
+    }
+    await sleep(5000);
+  }
+
+  return '';
 }
 
 function dropletPublicIpv4(droplet) {
@@ -338,13 +376,14 @@ async function destroyExistingFromState(token, state, reason) {
   return true;
 }
 
-function printSummary(state) {
+function printSummary(state, claimUrl = '') {
   console.log(`
 [mos-v2-smoke:do] Smoke Droplet is ready.
 
 URLs:
   MOS Home:      ${state.homepageUrl}
   Suite Manager: ${state.suiteManagerUrl}
+${claimUrl ? `  Owner setup:  ${claimUrl}` : '  Owner setup:  claim URL unavailable; configure MOS_V2_SMOKE_SSH_PRIVATE_KEY'}
 
 State:
   ${path.relative(v2Root, statePath)}
@@ -388,7 +427,8 @@ async function reset() {
 
   writeState(state);
   await waitForSuiteManager(plan);
-  printSummary(state);
+  const claimToken = await readOwnerClaimToken(ip);
+  printSummary(state, claimToken ? ownerClaimUrl(state.setupUrl, claimToken) : '');
 }
 
 async function destroy() {
@@ -457,4 +497,5 @@ module.exports = {
   main,
   smokeConfigFromEnv,
   renderPublicInstallerCloudInit,
+  ownerClaimUrl,
 };

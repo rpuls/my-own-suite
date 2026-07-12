@@ -40,7 +40,7 @@ npm run smoke:do:destroy
 npm run smoke:do:render
 ```
 
-`smoke:do:reset` creates or replaces paid DigitalOcean resources, waits for Suite Manager readiness, and prints the Home and Suite Manager URLs. `smoke:do:render` is the free dry-run that prints the cloud-init payload without creating resources.
+`smoke:do:reset` creates or replaces paid DigitalOcean resources through the public development installer, waits for HTTPS Suite Manager readiness, and prints the Home, Suite Manager, and one-time owner setup URLs. `smoke:do:render` is the free dry-run that prints the cloud-init payload without creating resources.
 
 Bootstrap also builds the pinned Cloudflare-capable Caddy binary, verifies its DNS module, installs the separate restricted HTTPS and Homepage agents, seeds the MOS-owned Homepage route snippet, and connects Suite Manager to both protected Unix sockets. No domain credential or DNS token is accepted during installation.
 
@@ -67,8 +67,9 @@ Optional:
 - `MOS_V2_SMOKE_SIZE`
 - `MOS_V2_SMOKE_DOMAIN`
 - `MOS_V2_SMOKE_SSH_KEY_ID`, `MOS_V2_SMOKE_SSH_KEY_FINGERPRINT`, or `MOS_V2_SMOKE_SSH_KEY_NAME`
+- `MOS_V2_SMOKE_SSH_PRIVATE_KEY` (local key path used to retrieve and print the one-time owner claim URL)
 
-The smoke install uses cloud-init, so SSH keys are optional for the install itself but useful for debugging.
+The smoke install uses cloud-init, so SSH keys are optional for installation. When both a Droplet SSH key and `MOS_V2_SMOKE_SSH_PRIVATE_KEY` are configured, the harness reads the root-only claim secret over SSH and prints the owner setup URL without storing the token in smoke state or harness-created log files. The legacy `MOS_SMOKE_SSH_*` key names remain accepted for existing local harness configuration.
 
 ### Local Hyper-V smoke
 

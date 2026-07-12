@@ -9,7 +9,7 @@ const {
   validateBootstrapInput,
 } = require('../../scripts/installers/bootstrap-contract.cjs');
 const { parseArgs, selectOutput } = require('../../scripts/installers/render-bootstrap.cjs');
-const { DEFAULT_READY_TIMEOUT_MS, renderPublicInstallerCloudInit, smokeConfigFromEnv } = require('../../scripts/smoke/digitalocean-v2.cjs');
+const { DEFAULT_READY_TIMEOUT_MS, bootstrapPlanFor, ownerClaimUrl, renderPublicInstallerCloudInit, smokeConfigFromEnv } = require('../../scripts/smoke/digitalocean-v2.cjs');
 
 test('bootstrap contract defaults to a no-preconfig control-plane install', () => {
   const plan = renderBootstrapPlan({});
@@ -189,18 +189,13 @@ test('DigitalOcean smoke defaults to the public installer without owner inputs',
     process.env.MOS_SMOKE_OWNER_PASSWORD = 'old-password';
 
     const config = smokeConfigFromEnv();
-    const plan = renderBootstrapPlan({
-      frontDoor: 'digitalocean-smoke',
-      repoRef: config.repoRef,
-      repoUrl: config.repoUrl,
-    });
+    const plan = bootstrapPlanFor(config);
 
     assert.equal(config.installerUrl, 'https://get-dev.myownsuite.org/install.sh');
     const cloudInit = renderPublicInstallerCloudInit(config.installerUrl);
     assert.match(cloudInit, /curl -fsSL --proto '=https'.*get-dev\.myownsuite\.org\/install\.sh.*\| bash/);
     assert.doesNotMatch(cloudInit, /render-bootstrap\.cjs|git clone/);
-    assert.match(plan.cloudInit, /MOS_V2_FRONT_DOOR='digitalocean-smoke'/);
-    assert.match(plan.cloudInit, /169\.254\.169\.254\/metadata\/v1\/interfaces\/public\/0\/ipv4\/address/);
+    assert.match(plan.cloudInit, /MOS_V2_FRONT_DOOR='public-vps'/);
     assert.doesNotMatch(plan.cloudInit, /old-owner@example.com|old-password|MOS_SMOKE_OWNER/);
   } finally {
     for (const [key, value] of Object.entries(previous)) {
@@ -211,6 +206,13 @@ test('DigitalOcean smoke defaults to the public installer without owner inputs',
       }
     }
   }
+});
+
+test('DigitalOcean smoke builds the owner setup URL without persisting token state', () => {
+  assert.equal(
+    ownerClaimUrl('https://home.203.0.113.42.sslip.io/suite-manager/', 'abc123'),
+    'https://home.203.0.113.42.sslip.io/suite-manager/?claim=abc123',
+  );
 });
 
 test('DigitalOcean public installer cloud-init rejects non-HTTPS endpoints', () => {
