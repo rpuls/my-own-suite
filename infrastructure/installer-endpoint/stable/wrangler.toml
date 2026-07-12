@@ -1,5 +1,3 @@
 name = "my-own-suite-installer"
 main = "worker.mjs"
 compatibility_date = "2026-07-12"
-
-# Supply INSTALL_REF as an approved full commit SHA at deploy time.

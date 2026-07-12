@@ -308,3 +308,15 @@ Consequences:
 - Temporary branch plans are allowed only while actively useful and should be removed or replaced before merge.
 - Use `.github/ISSUE_TEMPLATE/codex-task.yml` for Codex-ready tasks.
 - Use `docs/decisions.md` for architecture decisions and `docs/codex-notes.md` for durable working context.
+## 2026-07-12: Public Installer Uses Stable And Development Channels
+
+Decision: One Cloudflare Worker implementation serves two public installer channels. `get.myownsuite.org` tracks `main` for released installs, while `get-dev.myownsuite.org` tracks a Worker-configured development branch. Each request resolves the branch tip through GitHub, validates a full commit SHA, and generates an installer pinned to that immutable commit. Cloud-machine smoke harnesses use the development URL by default.
+
+Reason: Release users need a stable entry point, while Hyper-V and DigitalOcean validation need to follow active branch work without manually redeploying a Worker or maintaining a separate installer implementation.
+
+Consequences:
+
+- The stable Worker sets `INSTALL_BRANCH=main`; the development Worker sets it to the branch under test and can later switch to `staging`.
+- The public repository requires no GitHub credential for branch resolution and no Cloudflare token at installer request time.
+- A branch may move between requests, but every individual installation is pinned to and verifies one exact resolved commit.
+- Stable installer validation remains a release gate after changes reach `main`; development harnesses continuously exercise the same installer contract beforehand.

@@ -30,8 +30,7 @@ Environment:
   MOS_V2_SMOKE_REGION             Default: fra1.
   MOS_V2_SMOKE_SIZE               Default: s-2vcpu-4gb.
   MOS_V2_SMOKE_IMAGE              Default: ubuntu-24-04-x64.
-  MOS_V2_SMOKE_REPO_URL           Default: MOS GitHub repo.
-  MOS_V2_SMOKE_REPO_REF           Default: staging.
+  MOS_V2_SMOKE_INSTALLER_URL      Default: https://get-dev.myownsuite.org/install.sh.
   MOS_V2_SMOKE_DOMAIN             Optional explicit domain.
   MOS_V2_SMOKE_WAIT               Set to 0 to skip HTTP readiness polling.
   MOS_V2_SMOKE_SSH_KEY_ID         Optional SSH key id.
@@ -195,10 +194,24 @@ function smokeConfigFromEnv(state = {}) {
   return {
     image: env('MOS_V2_SMOKE_IMAGE', state.image || 'ubuntu-24-04-x64'),
     region: env('MOS_V2_SMOKE_REGION', state.region || 'fra1'),
-    repoRef: env('MOS_V2_SMOKE_REPO_REF', state.repoRef || 'staging'),
-    repoUrl: env('MOS_V2_SMOKE_REPO_URL', state.repoUrl || 'https://github.com/rpuls/my-own-suite.git'),
+    installerUrl: env('MOS_V2_SMOKE_INSTALLER_URL', state.installerUrl || 'https://get-dev.myownsuite.org/install.sh'),
     size: env('MOS_V2_SMOKE_SIZE', state.size || 's-2vcpu-4gb'),
   };
+}
+
+function renderPublicInstallerCloudInit(installerUrl) {
+  const parsed = new URL(installerUrl);
+  if (parsed.protocol !== 'https:') {
+    throw new Error('MOS_V2_SMOKE_INSTALLER_URL must use HTTPS.');
+  }
+  return `#cloud-config
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+runcmd:
+  - [ bash, -lc, "curl -fsSL --proto '=https' --tlsv1.2 '${installerUrl}' | bash" ]
+`;
 }
 
 function bootstrapPlanFor(config, ip = '') {
@@ -285,7 +298,6 @@ async function createDroplet(token, config) {
   await ensureTag(token);
   const sshKeys = await resolveOptionalSshKeys(token);
   const name = `${namePrefix}${timestamp().slice(0, 19).toLowerCase()}`;
-  const preliminaryPlan = bootstrapPlanFor(config);
   const payload = await doRequest(token, 'POST', '/droplets', {
     backups: false,
     image: config.image,
@@ -296,7 +308,7 @@ async function createDroplet(token, config) {
     size: config.size,
     ssh_keys: sshKeys,
     tags: [smokeTag],
-    user_data: preliminaryPlan.cloudInit,
+    user_data: renderPublicInstallerCloudInit(config.installerUrl),
   });
 
   return payload.droplet;
@@ -365,10 +377,9 @@ async function reset() {
     homepageUrl: plan.config.publicUrls.homepage,
     setupUrl: plan.config.publicUrls.setup,
     image: config.image,
+    installerUrl: config.installerUrl,
     ip,
     region: config.region,
-    repoRef: config.repoRef,
-    repoUrl: config.repoUrl,
     size: config.size,
     suiteManagerUrl: plan.config.publicUrls.suiteManager,
   };
@@ -391,16 +402,16 @@ async function destroy() {
 }
 
 function render() {
-  const plan = bootstrapPlanFor(smokeConfigFromEnv());
+  const config = smokeConfigFromEnv();
+  const plan = bootstrapPlanFor(config);
   process.stdout.write(`${JSON.stringify({
-    cloudInit: plan.cloudInit,
+    cloudInit: renderPublicInstallerCloudInit(config.installerUrl),
     components: plan.config.components,
     domain: plan.config.domain,
     homepageUrl: plan.config.publicUrls.homepage,
     setupUrl: plan.config.publicUrls.setup,
     note: 'Render-only V2 DigitalOcean smoke payload. No Droplet was created.',
-    repoRef: plan.config.repoRef,
-    repoUrl: plan.config.repoUrl,
+    installerUrl: config.installerUrl,
     suiteManagerUrl: plan.config.publicUrls.suiteManager,
   }, null, 2)}\n`);
 }
@@ -443,4 +454,5 @@ module.exports = {
   bootstrapPlanFor,
   main,
   smokeConfigFromEnv,
+  renderPublicInstallerCloudInit,
 };

@@ -9,7 +9,7 @@ const {
   validateBootstrapInput,
 } = require('../../scripts/installers/bootstrap-contract.cjs');
 const { parseArgs, selectOutput } = require('../../scripts/installers/render-bootstrap.cjs');
-const { DEFAULT_READY_TIMEOUT_MS, smokeConfigFromEnv } = require('../../scripts/smoke/digitalocean-v2.cjs');
+const { DEFAULT_READY_TIMEOUT_MS, renderPublicInstallerCloudInit, smokeConfigFromEnv } = require('../../scripts/smoke/digitalocean-v2.cjs');
 
 test('bootstrap contract defaults to a no-preconfig control-plane install', () => {
   const plan = renderBootstrapPlan({});
@@ -160,7 +160,7 @@ test('render CLI parses dry-run target inputs without requiring an env file', ()
   assert.match(selectOutput(plan, 'shell'), /^#!\/usr\/bin\/env bash/);
 });
 
-test('DigitalOcean smoke config defaults to a real V2 branch install without owner inputs', () => {
+test('DigitalOcean smoke defaults to the public installer without owner inputs', () => {
   const previous = {
     MOS_V2_SMOKE_REPO_REF: process.env.MOS_V2_SMOKE_REPO_REF,
     MOS_V2_SMOKE_REPO_URL: process.env.MOS_V2_SMOKE_REPO_URL,
@@ -181,8 +181,10 @@ test('DigitalOcean smoke config defaults to a real V2 branch install without own
       repoUrl: config.repoUrl,
     });
 
-    assert.equal(config.repoRef, 'staging');
-    assert.equal(config.repoUrl, 'https://github.com/rpuls/my-own-suite.git');
+    assert.equal(config.installerUrl, 'https://get-dev.myownsuite.org/install.sh');
+    const cloudInit = renderPublicInstallerCloudInit(config.installerUrl);
+    assert.match(cloudInit, /curl -fsSL --proto '=https'.*get-dev\.myownsuite\.org\/install\.sh.*\| bash/);
+    assert.doesNotMatch(cloudInit, /render-bootstrap\.cjs|git clone/);
     assert.match(plan.cloudInit, /MOS_V2_FRONT_DOOR='digitalocean-smoke'/);
     assert.match(plan.cloudInit, /169\.254\.169\.254\/metadata\/v1\/interfaces\/public\/0\/ipv4\/address/);
     assert.doesNotMatch(plan.cloudInit, /old-owner@example.com|old-password|MOS_SMOKE_OWNER/);
@@ -195,4 +197,8 @@ test('DigitalOcean smoke config defaults to a real V2 branch install without own
       }
     }
   }
+});
+
+test('DigitalOcean public installer cloud-init rejects non-HTTPS endpoints', () => {
+  assert.throws(() => renderPublicInstallerCloudInit('http://example.test/install.sh'), /must use HTTPS/);
 });

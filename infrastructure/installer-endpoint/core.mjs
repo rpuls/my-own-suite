@@ -1,8 +1,9 @@
 const REPO_URL = 'https://github.com/rpuls/my-own-suite.git';
+const COMMITS_API = 'https://api.github.com/repos/rpuls/my-own-suite/commits/';
 
-export function renderInstaller(env) {
-  const ref = String(env.INSTALL_REF || '').trim().toLowerCase();
-  if (!/^[a-f0-9]{40}$/.test(ref)) throw new Error('INSTALL_REF must be a full 40-character commit SHA.');
+export function renderInstaller(ref) {
+  ref = String(ref || '').trim().toLowerCase();
+  if (!/^[a-f0-9]{40}$/.test(ref)) throw new Error('Installer source must resolve to a full 40-character commit SHA.');
   return `#!/usr/bin/env bash
 set -euo pipefail
 REF='${ref}'
@@ -29,13 +30,27 @@ node "$WORK/scripts/installers/render-bootstrap.cjs" --target shell --front-door
 `;
 }
 
-export default { async fetch(request, env) {
+export async function resolveInstallRef(branch, fetchImpl = fetch) {
+  branch = String(branch || '').trim();
+  if (!/^[A-Za-z0-9._/-]+$/.test(branch)) throw new Error('INSTALL_BRANCH is invalid.');
+  const response = await fetchImpl(`${COMMITS_API}${branch}`, { headers: {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'my-own-suite-installer',
+  }});
+  if (!response.ok) throw new Error(`GitHub could not resolve INSTALL_BRANCH (${response.status}).`);
+  const ref = String((await response.json()).sha || '').trim().toLowerCase();
+  if (!/^[a-f0-9]{40}$/.test(ref)) throw new Error('GitHub returned an invalid commit SHA.');
+  return { branch, ref };
+}
+
+export function createInstallerWorker(branchFromEnv) { return { async fetch(request, env) {
   const path = new URL(request.url).pathname;
   if (request.method !== 'GET' || (path !== '/' && path !== '/install.sh')) return new Response('Not found\n', { status: 404 });
   try {
-    return new Response(renderInstaller(env), { headers: {
+    const { branch, ref } = await resolveInstallRef(branchFromEnv(env));
+    return new Response(renderInstaller(ref), { headers: {
       'Cache-Control': 'no-store', 'Content-Type': 'text/x-shellscript; charset=utf-8',
-      'X-Content-Type-Options': 'nosniff', 'X-MOS-Install-Ref': env.INSTALL_REF,
+      'X-Content-Type-Options': 'nosniff', 'X-MOS-Install-Branch': branch, 'X-MOS-Install-Ref': ref,
     }});
   } catch (error) { return new Response(`Installer unavailable: ${error.message}\n`, { status: 503 }); }
-}};
+}}; }
