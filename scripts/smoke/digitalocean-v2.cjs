@@ -149,7 +149,9 @@ async function doRequest(token, method, resourcePath, body = null) {
 
   if (!response.ok) {
     const message = payload?.message || payload?.id || response.statusText;
-    throw new Error(`${method} ${resourcePath} failed: ${message}`);
+    const error = new Error(`${method} ${resourcePath} failed: ${message}`);
+    error.status = response.status;
+    throw error;
   }
 
   return payload;
@@ -237,7 +239,7 @@ async function getDroplet(token, dropletId) {
     const payload = await doRequest(token, 'GET', `/droplets/${dropletId}`);
     return payload.droplet;
   } catch (error) {
-    if (String(error.message).includes('not_found')) {
+    if (error.status === 404) {
       return null;
     }
     throw error;
