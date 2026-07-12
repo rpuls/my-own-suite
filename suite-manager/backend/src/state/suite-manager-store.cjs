@@ -177,6 +177,24 @@ const MIGRATIONS = [
     `,
     version: 6,
   },
+  {
+    name: 'security-event-buckets',
+    sql: `
+      CREATE TABLE security_events (
+        bucket_start TEXT NOT NULL,
+        event_type TEXT NOT NULL CHECK (event_type IN ('login-throttled')),
+        client_fingerprint TEXT NOT NULL,
+        event_count INTEGER NOT NULL CHECK (event_count > 0),
+        max_retry_seconds INTEGER NOT NULL CHECK (max_retry_seconds > 0),
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        PRIMARY KEY (bucket_start, event_type, client_fingerprint)
+      ) STRICT;
+
+      CREATE INDEX security_events_last_seen_idx ON security_events(last_seen_at);
+    `,
+    version: 7,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -383,6 +401,71 @@ class SuiteManagerStore {
     this.database.prepare(`
       UPDATE homepage_operations SET status = 'failed', error_code = ?, completed_at = ? WHERE id = ?
     `).run(errorCode, at, id);
+  }
+
+  recordSecurityEvent({
+    at,
+    clientFingerprint,
+    eventType,
+    maxRows = 5_000,
+    retentionDays = 30,
+    retryAfterSeconds,
+  }) {
+    const occurredAt = new Date(at);
+    if (Number.isNaN(occurredAt.getTime())) {
+      throw new Error('Security event timestamp must be valid.');
+    }
+    const bucketStart = new Date(occurredAt);
+    bucketStart.setUTCMinutes(0, 0, 0);
+    const cutoff = new Date(occurredAt.getTime() - (retentionDays * 24 * 60 * 60 * 1_000)).toISOString();
+
+    this.transaction(() => {
+      this.database.prepare(`
+        INSERT INTO security_events (
+          bucket_start, event_type, client_fingerprint, event_count,
+          max_retry_seconds, first_seen_at, last_seen_at
+        )
+        VALUES (?, ?, ?, 1, ?, ?, ?)
+        ON CONFLICT(bucket_start, event_type, client_fingerprint) DO UPDATE SET
+          event_count = security_events.event_count + 1,
+          max_retry_seconds = MAX(security_events.max_retry_seconds, excluded.max_retry_seconds),
+          last_seen_at = excluded.last_seen_at
+      `).run(
+        bucketStart.toISOString(),
+        eventType,
+        clientFingerprint,
+        retryAfterSeconds,
+        occurredAt.toISOString(),
+        occurredAt.toISOString(),
+      );
+      this.database.prepare('DELETE FROM security_events WHERE last_seen_at < ?').run(cutoff);
+      const count = this.database.prepare('SELECT COUNT(*) AS count FROM security_events').get().count;
+      const excess = Math.max(0, Number(count) - maxRows);
+      if (excess > 0) {
+        this.database.prepare(`
+          DELETE FROM security_events
+          WHERE rowid IN (
+            SELECT rowid FROM security_events ORDER BY last_seen_at ASC, rowid ASC LIMIT ?
+          )
+        `).run(excess);
+      }
+    });
+  }
+
+  getSecurityEventSummary({ since }) {
+    const summary = this.database.prepare(`
+      SELECT
+        COALESCE(SUM(event_count), 0) AS eventCount,
+        COUNT(DISTINCT client_fingerprint) AS sourceCount,
+        MAX(last_seen_at) AS lastSeenAt
+      FROM security_events
+      WHERE last_seen_at >= ?
+    `).get(since);
+    return {
+      eventCount: Number(summary.eventCount),
+      lastSeenAt: summary.lastSeenAt || null,
+      sourceCount: Number(summary.sourceCount),
+    };
   }
 
   getAppInstances() {

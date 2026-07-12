@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { SetupError, SetupService } = require('../setup/setup-service.cjs');
+const { LoginThrottle, resolveClientAddress } = require('../auth/login-throttle.cjs');
 const { HomepageAgentClient } = require('../homepage/homepage-agent-client.cjs');
 const { HomepageService } = require('../homepage/homepage-service.cjs');
 const { HttpsAgentClient } = require('../settings/https-agent-client.cjs');
@@ -259,6 +260,9 @@ function createV2Server({
   homeHost = process.env.MOS_V2_HOME_HOST || 'home.localhost',
   homepageUpstream = process.env.MOS_V2_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
   labResetEnabled = process.env.MOS_V2_LAB_RESET_ENABLED === '1',
+  loginThrottle = new LoginThrottle(),
+  securityLogger = (event) => console.warn(JSON.stringify(event)),
+  securityEventRecorder = null,
   ownerClaimToken = process.env.MOS_V2_OWNER_CLAIM_TOKEN || '',
   stateDir = path.join(process.cwd(), '.state'),
 } = {}) {
@@ -286,6 +290,7 @@ function createV2Server({
     store: setup.store,
   });
   const updates = new UpdateService({ agent: updateAgent });
+  const recordSecurityEvent = securityEventRecorder || ((event) => setup.store.recordSecurityEvent(event));
 
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://localhost');
@@ -355,7 +360,45 @@ function createV2Server({
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/auth/login`) {
         const body = await readJsonBody(request);
-        const result = setup.login(body);
+        const attempt = { email: body.email, ip: resolveClientAddress(request) };
+        const retryAfterMs = loginThrottle.retryAfterMs(attempt);
+        if (retryAfterMs > 0) {
+          const retryAfterSeconds = Math.max(1, Math.ceil(retryAfterMs / 1_000));
+          const securityEvent = {
+            clientFingerprint: crypto.createHash('sha256').update(attempt.ip).digest('hex').slice(0, 12),
+            event: 'login-throttled',
+            retryAfterSeconds,
+          };
+          try {
+            recordSecurityEvent({
+              at: new Date().toISOString(),
+              clientFingerprint: securityEvent.clientFingerprint,
+              eventType: securityEvent.event,
+              retryAfterSeconds,
+            });
+          } catch {
+            securityLogger({ event: 'security-event-persistence-failed' });
+          }
+          securityLogger(securityEvent);
+          jsonResponse(response, 429, {
+            code: 'LOGIN_THROTTLED',
+            error: 'Too many sign-in attempts. Wait a moment and try again.',
+          }, {
+            'Retry-After': String(retryAfterSeconds),
+          });
+          return;
+        }
+
+        let result;
+        try {
+          result = setup.login(body);
+        } catch (error) {
+          if (error instanceof SetupError && (error.code === 'INVALID_LOGIN' || error.code === 'OWNER_NOT_CREATED')) {
+            loginThrottle.recordFailure(attempt);
+          }
+          throw error;
+        }
+        loginThrottle.recordSuccess(attempt);
         jsonResponse(response, 200, { owner: result.owner, status: result.status }, {
           'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),
         });

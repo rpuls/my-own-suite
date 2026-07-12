@@ -7,6 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { HOMEPAGE_AGENT_TIMEOUT_MS } = require('../src/homepage/homepage-agent-client.cjs');
 const { loopbackPortFor } = require('../src/apps/app-package-service.cjs');
+const { LoginThrottle } = require('../src/auth/login-throttle.cjs');
 
 const { createV2Server } = require('../src/server/http-app.cjs');
 
@@ -1550,6 +1551,52 @@ test('login and logout transition session state', async () => {
     assert.equal(logoutResponse.status, 200);
     assert.equal(logout.status, 'signed-out');
     assert.match(logoutResponse.headers.get('set-cookie'), /Max-Age=0/);
+  });
+});
+
+test('repeated login failures return a retry contract without logging secrets', async () => {
+  const securityEvents = [];
+  const recordedEvents = [];
+  const loginThrottle = new LoginThrottle({ policy: {
+    account: { freeFailures: 10 },
+    ip: { baseDelayMs: 5_000, freeFailures: 1, maxDelayMs: 5_000 },
+  } });
+  await withServer(async (baseUrl) => {
+    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
+      body: JSON.stringify({ email: 'owner@example.com', name: 'Suite Owner', password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+    const badLogin = () => fetch(`${baseUrl}/suite-manager/api/auth/login`, {
+      body: JSON.stringify({ email: 'owner@example.com', password: 'definitely-wrong' }),
+      headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.25' },
+      method: 'POST',
+    });
+
+    assert.equal((await badLogin()).status, 401);
+    assert.equal((await badLogin()).status, 401);
+    const throttled = await badLogin();
+    const body = await throttled.json();
+
+    assert.equal(throttled.status, 429);
+    assert.equal(throttled.headers.get('retry-after'), '5');
+    assert.equal(body.code, 'LOGIN_THROTTLED');
+    assert.deepEqual(securityEvents, [{
+      clientFingerprint: securityEvents[0].clientFingerprint,
+      event: 'login-throttled',
+      retryAfterSeconds: 5,
+    }]);
+    assert.match(securityEvents[0].clientFingerprint, /^[a-f0-9]{12}$/u);
+    assert.doesNotMatch(JSON.stringify(securityEvents), /owner@example|definitely-wrong/u);
+    assert.equal(recordedEvents.length, 1);
+    assert.equal(recordedEvents[0].clientFingerprint, securityEvents[0].clientFingerprint);
+    assert.equal(recordedEvents[0].eventType, 'login-throttled');
+    assert.equal(recordedEvents[0].retryAfterSeconds, 5);
+    assert.equal(Number.isNaN(Date.parse(recordedEvents[0].at)), false);
+  }, {
+    loginThrottle,
+    securityEventRecorder: (event) => recordedEvents.push(event),
+    securityLogger: (event) => securityEvents.push(event),
   });
 });
 

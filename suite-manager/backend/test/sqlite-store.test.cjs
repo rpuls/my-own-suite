@@ -62,6 +62,7 @@ test('fresh state creates the SQLite schema and records every migration', async 
     'https_settings',
     'owners',
     'schema_migrations',
+    'security_events',
     'sessions',
   ]);
   assert.deepEqual(migrations, MIGRATIONS.map(({ name, version }) => ({ name, version })));
@@ -86,6 +87,59 @@ test('HTTPS settings keep pending state separate and never persist the Cloudflar
   const columns = database.prepare('PRAGMA table_info(https_settings)').all().map(({ name }) => name);
   database.close();
   assert.equal(columns.some((name) => /token|caddy/u.test(name)), false);
+});
+
+test('security events aggregate, persist, expire, and stay hard-capped', async () => {
+  const stateDir = await tempStateDir();
+  let store = new SuiteManagerStore(stateDir);
+  store.recordSecurityEvent({
+    at: '2026-07-13T10:05:00.000Z',
+    clientFingerprint: 'client-a',
+    eventType: 'login-throttled',
+    retryAfterSeconds: 2,
+  });
+  store.recordSecurityEvent({
+    at: '2026-07-13T10:55:00.000Z',
+    clientFingerprint: 'client-a',
+    eventType: 'login-throttled',
+    retryAfterSeconds: 8,
+  });
+  assert.deepEqual(store.getSecurityEventSummary({ since: '2026-07-13T00:00:00.000Z' }), {
+    eventCount: 2,
+    lastSeenAt: '2026-07-13T10:55:00.000Z',
+    sourceCount: 1,
+  });
+  let rows = store.database.prepare('SELECT * FROM security_events').all();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].event_count, 2);
+  assert.equal(rows[0].max_retry_seconds, 8);
+  store.close();
+
+  store = new SuiteManagerStore(stateDir);
+  assert.equal(store.getSecurityEventSummary({ since: '2026-07-13T00:00:00.000Z' }).eventCount, 2);
+  store.recordSecurityEvent({
+    at: '2026-05-01T10:00:00.000Z',
+    clientFingerprint: 'expired-client',
+    eventType: 'login-throttled',
+    retryAfterSeconds: 1,
+  });
+  store.recordSecurityEvent({
+    at: '2026-07-13T11:00:00.000Z',
+    clientFingerprint: 'client-b',
+    eventType: 'login-throttled',
+    maxRows: 2,
+    retryAfterSeconds: 1,
+  });
+  store.recordSecurityEvent({
+    at: '2026-07-13T12:00:00.000Z',
+    clientFingerprint: 'client-c',
+    eventType: 'login-throttled',
+    maxRows: 2,
+    retryAfterSeconds: 1,
+  });
+  rows = store.database.prepare('SELECT client_fingerprint FROM security_events ORDER BY last_seen_at').all();
+  assert.deepEqual(rows.map((row) => row.client_fingerprint), ['client-b', 'client-c']);
+  store.close();
 });
 
 test('an existing version-one database receives the named HTTPS migration', async () => {
@@ -114,6 +168,7 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'app-package-instances',
     'app-instance-guides',
     'app-integrations',
+    'security-event-buckets',
   ]);
   upgraded.close();
 });

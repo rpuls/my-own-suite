@@ -23,6 +23,10 @@ Suite Manager is where you run your suite. It lives at `home.<your-domain>/suite
 
 **Screens degrade honestly.** Each feature is backed by a small dedicated service on the machine (see [Host agents](/docs/reference/host-agents/)). If one is unreachable, its screen says so plainly — for example *"The host backup service is not running"* — instead of failing mysteriously. Running an [update](/docs/guides/updates/) refreshes all of these services; that resolves most such messages.
 
+## Owner account security
+
+Repeated failed sign-in attempts receive progressively longer, temporary delays. This slows online password guessing without permanently locking the single owner out. Multi-factor authentication and passkeys are not available yet, so use a unique password from a password manager and do not reuse it for an app or another service.
+
 ## Where Suite Manager ends
 
 Suite Manager deliberately does **not** manage things *inside* your apps — Seafile's libraries, Immich's albums, Vaultwarden's vaults all belong to the apps themselves and their own admin tools. Suite Manager runs the platform *around* them: installing, connecting, routing, backing up, and updating.

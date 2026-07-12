@@ -28,7 +28,7 @@ The two decisions are intentionally separate:
 - [ ] Narrow absolute privacy claims to behavior MOS can actually guarantee.
 - [ ] Replace "no sysadmin required" and optimistic install-time promises with beta-appropriate expectations.
 - [ ] State clearly which backup destinations work on own hardware and cloud servers.
-- [ ] Add login throttling/progressive delay for an internet-reachable control plane.
+- [x] Add login throttling/progressive delay for an internet-reachable control plane.
 - [ ] Keep the unencrypted-backup warning prominent and avoid suggesting casual storage of downloaded bundles.
 - [ ] Remove stale scaffold/MOS1 wording from active MOS2 documentation.
 - [ ] Condense `CHANGELOG.md` into release-shaped MOS2 outcomes and explicit known limitations.
@@ -148,13 +148,14 @@ The two decisions are intentionally separate:
 - **Required action:** Mark whole-suite backup as own-hardware/local-mount oriented until cloud/object destinations exist. If provider snapshots are suggested, document their external nature and consistency/restore limitations.
 - **Acceptance:** Each supported install guide states exactly which backup destinations and restore procedure apply to that install type.
 
-#### 12. Harden internet-facing login against brute force
+#### 12. Harden internet-facing login against brute force — completed, retain as a regression check
 
 - **Severity:** Medium
 - **Area:** Authentication security
 - **Evidence:** Password hashing and session-token hashing are strong, but the review found no obvious rate limiter, progressive delay, or bounded lockout around owner login.
 - **Why it matters:** A public control-plane endpoint permits sustained online password guessing against the only privileged account.
 - **Required action:** Add per-IP and per-account throttling or progressive delay, bounded recovery behavior, and secret-free security event logging. State clearly that MFA is not yet available.
+- **Resolution evidence:** Suite Manager applies bounded, expiring progressive backoff per client address and a looser account-wide limit, returns `429` with `Retry-After`, clears applicable state after successful authentication, and emits security events containing only a one-way client fingerprint and retry duration. Events persist as hourly SQLite aggregates with 30-day retention and a 5,000-row hard cap so later owner-facing monitoring cannot become an attacker-controlled raw log. Forwarded addresses are accepted only from the loopback Caddy boundary. Focused tests cover progressive caps, distributed attempts, recovery, bounded memory and database storage, forwarding-header trust, persistence across restart, retention, the HTTP retry contract, and secret-free events. Public Suite Manager guidance states that MFA and passkeys are not yet available.
 - **Acceptance:** Automated repeated failures are throttled without enabling trivial permanent denial of service, with focused tests covering reset and proxy-address handling.
 
 #### 13. Treat unencrypted backup bundles as full-secret exports
@@ -205,7 +206,7 @@ The two decisions are intentionally separate:
 - [ ] Replacement-machine restore prerequisites are explicit.
 - [ ] Stable-track managed apply status is stated accurately.
 - [ ] App package changes that are not automatically reconciled are stated before an update starts.
-- [ ] MFA availability and login-hardening status are explicit.
+- [x] MFA availability and login-hardening status are explicit.
 - [ ] Own-hardware setup requirements include USB creation, disk erasure, LAN addressing, and DNS/hosts configuration.
 - [ ] Immich resource and backup-size expectations are prominent.
 - [ ] ONLYOFFICE's companion role is clear.
@@ -217,7 +218,7 @@ The two decisions are intentionally separate:
 - [ ] Scheduled backups, retention policy, and object/object-storage destinations.
 - [ ] Package-aware transactional updates and rollback.
 - [ ] Stable tagged-release updates and installed-version metadata.
-- [ ] Login throttling, a security event trail, and optional MFA/passkeys.
+- [ ] Owner-facing security event monitoring and optional MFA/passkeys; login throttling and bounded event persistence are complete.
 - [x] Secure one-time first-owner bootstrap claim.
 - [x] Tested cloud HTTPS and reference firewall automation.
 - [ ] Restore compatibility migrations and a bare-metal recovery runbook.

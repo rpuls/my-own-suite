@@ -38,6 +38,10 @@ The `https-settings` migration stores only non-secret configuration and status: 
 
 The backend uses the Node 22 built-in `node:sqlite` module, enables foreign keys, a five-second busy timeout, and WAL journaling, and applies ordered schema migrations recorded in `schema_migrations`. SQL stays inside the domain-oriented Suite Manager store. Owner creation and its initial session are committed in one transaction, the schema permits only owner ID `1`, passwords remain scrypt hashes, and only SHA-256 session-token hashes are stored.
 
+Owner login uses bounded in-memory progressive throttling. A per-client-address limit slows concentrated guessing, while a looser account-wide limit catches attempts distributed across addresses without creating a permanent owner lockout. Entries expire automatically, successful login clears the applicable backoff, and account identifiers are hashed in limiter memory. Suite Manager accepts `X-Forwarded-For` for this purpose only when the direct peer is the loopback Caddy proxy.
+
+Throttle events are persisted without raw addresses or account identifiers. SQLite stores one aggregate per UTC hour, event type, and pseudonymous client fingerprint, including only the count, maximum retry delay, and first/last timestamps. Writes enforce 30-day retention and a 5,000-row hard cap, and persistence failure never bypasses or breaks the in-memory throttle. This bounded event history is intended for a future authenticated security summary rather than a raw request log.
+
 ### Legacy JSON import
 
 On startup, Suite Manager imports `platform-state.json` only when `suite-manager.sqlite` does not already exist. The validated owner and hashed sessions are imported in one transaction, then the JSON file is renamed to `platform-state.json.migrated`. Import failure removes the newly created database so the next start can retry safely. If SQLite already exists, it always wins and the JSON file is left untouched; Suite Manager never overwrites initialized SQLite state.
