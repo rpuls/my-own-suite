@@ -76,6 +76,7 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
       < plan.cloudInit.indexOf('apt-get update'),
   );
   assert.doesNotMatch(plan.cloudInit, /\r/);
+  assert.match(plan.shell, /^#!\/usr\/bin\/env bash/);
   assert.doesNotMatch(plan.sshBootstrap, /\r/);
 });
 
@@ -156,6 +157,7 @@ test('render CLI parses dry-run target inputs without requiring an env file', ()
   assert.match(selectOutput(plan, parsed.target), /^#cloud-config/);
   assert.match(selectOutput(plan, 'json'), /"suiteManager": "http:\/\/home.198.51.100.17.sslip.io\/suite-manager\/"/);
   assert.match(selectOutput(plan, 'json'), /"setup": "http:\/\/home.198.51.100.17.sslip.io\/suite-manager\/"/);
+  assert.match(selectOutput(plan, 'shell'), /^#!\/usr\/bin\/env bash/);
 });
 
 test('DigitalOcean smoke config defaults to a real V2 branch install without owner inputs', () => {

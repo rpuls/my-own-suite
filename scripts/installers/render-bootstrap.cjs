@@ -8,7 +8,7 @@ function usage() {
 Render a no-preconfig MOS V2 control-plane bootstrap contract.
 
 Options:
-  --target <json|env|cloud-init|ssh|usb>  Output format. Default: json.
+  --target <json|env|cloud-init|shell|ssh|usb>  Output format. Default: json.
   --repo-url <url>                        Repository URL. Defaults to the MOS GitHub repo.
   --repo-ref <ref>                        Branch, tag, or SHA. Defaults to staging.
   --domain <domain>                       Base domain. Defaults to <public-ip>.sslip.io or localhost.
@@ -66,6 +66,9 @@ function selectOutput(plan, target) {
   }
   if (target === 'cloud-init') {
     return plan.cloudInit;
+  }
+  if (target === 'shell') {
+    return plan.shell;
   }
   if (target === 'ssh') {
     return `${plan.sshBootstrap}\n`;

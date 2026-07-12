@@ -571,6 +571,7 @@ function renderBootstrapPlan(input = {}) {
     cloudInit: renderCloudInit(config),
     config,
     env: renderBootstrapEnv(config),
+    shell: renderBootstrapShell(config),
     sshBootstrap: renderSshBootstrapCommand(config),
     usbSeed: renderUsbSeedConfig(config),
   };
