@@ -26,7 +26,7 @@ git -C "$WORK" remote add origin "$REPO"
 git -C "$WORK" fetch --quiet --depth 1 origin "$REF"
 git -C "$WORK" checkout --quiet --detach FETCH_HEAD
 [ "$(git -C "$WORK" rev-parse HEAD)" = "$REF" ] || { echo 'Source verification failed.' >&2; exit 1; }
-node "$WORK/scripts/installers/render-bootstrap.cjs" --target shell --front-door ssh-bootstrap --repo-url "$REPO" --repo-ref "$REF" --public-ipv4 "$IP" | bash
+node "$WORK/scripts/installers/render-bootstrap.cjs" --target shell --front-door public-vps --repo-url "$REPO" --repo-ref "$REF" --public-ipv4 "$IP" | bash
 `;
 }
 

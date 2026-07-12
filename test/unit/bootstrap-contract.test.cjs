@@ -95,6 +95,18 @@ test('bootstrap contract derives sslip.io domain for cloud smoke installs', () =
   assert.equal(config.repoRef, 'feature/test-ref');
 });
 
+test('public VPS installs use the protected HTTPS cloud contract', () => {
+  const plan = renderBootstrapPlan({
+    frontDoor: 'public-vps',
+    publicIpv4: '159.65.197.98',
+  });
+
+  assert.equal(plan.config.publicUrls.setup, 'https://home.159.65.197.98.sslip.io/suite-manager/');
+  assert.match(plan.shell, /MOS_V2_FRONT_DOOR='public-vps'/);
+  assert.match(plan.shell, /OWNER_CLAIM_TOKEN=/);
+  assert.match(plan.shell, /https:\/\/\$MOS_V2_HOME_HOST/);
+});
+
 test('DigitalOcean smoke allows slow first-machine builds to reach readiness', () => {
   assert.equal(DEFAULT_READY_TIMEOUT_MS, 30 * 60 * 1000);
 });

@@ -9,6 +9,8 @@ test('installer pins source and delegates to the shared renderer', () => {
   const script = renderInstaller(commit);
   assert.match(script, /Ubuntu 24\.04/);
   assert.match(script, /render-bootstrap\.cjs.*--target shell/);
+  assert.match(script, /--front-door public-vps/);
+  assert.doesNotMatch(script, /--front-door ssh-bootstrap/);
   assert.throws(() => renderInstaller('main'), /full 40-character/);
 });
 

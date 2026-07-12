@@ -6,7 +6,8 @@ const DEFAULT_STATE_ROOT = '/var/lib/mos-v2';
 const DEFAULT_RUNTIME_USER = 'mos';
 const DEFAULT_SUITE_MANAGER_PORT = 3100;
 const CONTROL_PLANE_COMPONENTS = ['suite-manager', 'caddy', 'homepage', 'https-agent', 'homepage-agent', 'app-agent', 'backup-agent', 'update-agent', 'lab-reset-agent'];
-const FRONT_DOORS = ['digitalocean-smoke', 'cloud-init', 'usb-autoinstall', 'ssh-bootstrap'];
+const FRONT_DOORS = ['digitalocean-smoke', 'cloud-init', 'public-vps', 'usb-autoinstall', 'ssh-bootstrap'];
+const PUBLIC_CLOUD_FRONT_DOORS = ['cloud-init', 'digitalocean-smoke', 'public-vps'];
 
 const OWNER_KEYS = [
   'ownerEmail',
@@ -67,7 +68,7 @@ function publicUrlsFor(domain, scheme = 'http') {
 function createBootstrapConfig(input = {}) {
   const domain = defaultDomainFor(input);
   const frontDoor = input.frontDoor || 'ssh-bootstrap';
-  const publicScheme = ['cloud-init', 'digitalocean-smoke'].includes(frontDoor) ? 'https' : 'http';
+  const publicScheme = PUBLIC_CLOUD_FRONT_DOORS.includes(frontDoor) ? 'https' : 'http';
 
   return {
     components: [...CONTROL_PLANE_COMPONENTS],
@@ -143,7 +144,7 @@ function renderBootstrapEnv(config) {
 }
 
 function renderBootstrapShell(config) {
-  const cloudBootstrap = ['cloud-init', 'digitalocean-smoke'].includes(config.frontDoor);
+  const cloudBootstrap = PUBLIC_CLOUD_FRONT_DOORS.includes(config.frontDoor);
   const initialScheme = cloudBootstrap ? 'https' : 'http';
   const caddyfile = cloudBootstrap ? renderPublicCloudCaddyfile() : renderCaddyfile();
   const script = `#!/usr/bin/env bash
@@ -249,7 +250,7 @@ if ! getent group mos-v2-agent >/dev/null; then
 fi
 usermod -a -G mos-v2-agent "$MOS_V2_RUNTIME_USER"
 install -d -m 0750 /etc/mos-v2 /etc/mos-v2/secrets /var/lib/mos-v2/https-agent /var/lib/mos-v2/homepage-agent
-if [ "$MOS_V2_FRONT_DOOR" = 'cloud-init' ] || [ "$MOS_V2_FRONT_DOOR" = 'digitalocean-smoke' ]; then
+if [ "$MOS_V2_FRONT_DOOR" = 'cloud-init' ] || [ "$MOS_V2_FRONT_DOOR" = 'digitalocean-smoke' ] || [ "$MOS_V2_FRONT_DOOR" = 'public-vps' ]; then
   MOS_V2_OWNER_CLAIM_TOKEN="$(openssl rand -hex 32)"
   cat > /etc/mos-v2/secrets/owner-claim.env <<MOS_V2_OWNER_CLAIM
 MOS_V2_OWNER_CLAIM_TOKEN=$MOS_V2_OWNER_CLAIM_TOKEN

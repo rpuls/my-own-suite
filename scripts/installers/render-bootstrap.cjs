@@ -13,7 +13,7 @@ Options:
   --repo-ref <ref>                        Branch, tag, or SHA. Defaults to staging.
   --domain <domain>                       Base domain. Defaults to <public-ip>.sslip.io or localhost.
   --public-ipv4 <ip>                      Public IPv4 used to derive an sslip.io smoke domain.
-  --front-door <name>                     cloud-init, usb-autoinstall, ssh-bootstrap, or digitalocean-smoke.
+  --front-door <name>                     cloud-init, public-vps, usb-autoinstall, ssh-bootstrap, or digitalocean-smoke.
   --help                                  Show this help.
 `);
 }
