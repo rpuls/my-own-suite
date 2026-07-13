@@ -1,14 +1,70 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { digestAppPackage } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 
 const { HEALTH_REFRESH_TIMEOUT_MS, SystemAppAdapter, removeAppRouteBlock, upsertAppRouteBlock } = require('./system-adapter.cjs');
 
 async function tempDir() {
   return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-v2-app-agent-'));
 }
+
+async function writePackage(root, packageId = 'example-tool') {
+  const packageDir = path.join(root, packageId);
+  await fsp.mkdir(packageDir, { recursive: true });
+  await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify({ id: packageId, packageFiles: [] })}\n`);
+  await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
+  return { packageDir, packageDigest: digestAppPackage(packageDir) };
+}
+
+test('system adapter atomically snapshots only validated package files', async () => {
+  const root = await tempDir();
+  const appsRoot = path.join(root, 'apps');
+  const appPackageRoot = path.join(root, 'state');
+  const { packageDigest } = await writePackage(appsRoot);
+  const adapter = new SystemAppAdapter({ appPackageRoot, appsRoot });
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+
+  const result = await adapter.snapshotAppPackage({ instanceId, packageDigest, packageId: 'example-tool' });
+
+  assert.deepEqual(result.steps, ['validated', 'copied', 'verified', 'promoted']);
+  assert.equal(result.snapshotPath, path.join(appPackageRoot, instanceId, 'installed'));
+  assert.equal(digestAppPackage(result.snapshotPath), packageDigest);
+  assert.deepEqual((await fsp.readdir(path.join(appPackageRoot, instanceId))).sort(), ['installed']);
+});
+
+test('system adapter leaves no snapshot after digest or package validation failure', async () => {
+  const root = await tempDir();
+  const appsRoot = path.join(root, 'apps');
+  const appPackageRoot = path.join(root, 'state');
+  await writePackage(appsRoot);
+  const adapter = new SystemAppAdapter({ appPackageRoot, appsRoot });
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+
+  await assert.rejects(() => adapter.snapshotAppPackage({ instanceId, packageDigest: `sha256:${'0'.repeat(64)}`, packageId: 'example-tool' }), /validated app package could not be snapshotted/u);
+  assert.equal(fs.existsSync(path.join(appPackageRoot, instanceId, 'installed')), false);
+  await fsp.writeFile(path.join(appsRoot, 'example-tool', 'undeclared.bin'), 'escape');
+  await assert.rejects(() => adapter.snapshotAppPackage({ instanceId, packageDigest: `sha256:${'0'.repeat(64)}`, packageId: 'example-tool' }), /validated app package could not be snapshotted/u);
+  assert.equal(fs.existsSync(path.join(appPackageRoot, instanceId, 'installed')), false);
+});
+
+test('system adapter never replaces an existing installed snapshot', async () => {
+  const root = await tempDir();
+  const appsRoot = path.join(root, 'apps');
+  const appPackageRoot = path.join(root, 'state');
+  const { packageDigest } = await writePackage(appsRoot);
+  const adapter = new SystemAppAdapter({ appPackageRoot, appsRoot });
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const installed = path.join(appPackageRoot, instanceId, 'installed');
+  await fsp.mkdir(installed, { recursive: true });
+  await fsp.writeFile(path.join(installed, 'sentinel'), 'keep');
+
+  await assert.rejects(() => adapter.snapshotAppPackage({ instanceId, packageDigest, packageId: 'example-tool' }), /validated app package could not be snapshotted/u);
+  assert.equal(await fsp.readFile(path.join(installed, 'sentinel'), 'utf8'), 'keep');
+});
 
 test('system adapter builds, runs, health-checks, writes routes, and reloads Caddy', async () => {
   const root = await tempDir();

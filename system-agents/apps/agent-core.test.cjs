@@ -27,7 +27,18 @@ const request = {
 test('app agent exposes only narrow app runtime capabilities', async () => {
   const core = new AppAgentCore({ applyAppServices: async () => ({ steps: [] }), checkAppHealth: async () => ({}) });
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect']);
+  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot']);
+});
+
+test('app package snapshot accepts only identity and expected digest', async () => {
+  const calls = [];
+  const core = new AppAgentCore({ async snapshotAppPackage(input) { calls.push(input); return { snapshotPath: '/state/installed', steps: ['promoted'] }; } });
+  const input = { instanceId: request.instanceId, packageDigest: `sha256:${'a'.repeat(64)}`, packageId: request.packageId };
+  const result = await core.snapshotPackage(input);
+  assert.equal(result.status, 'snapshotted');
+  assert.deepEqual(calls, [input]);
+  await assert.rejects(() => core.snapshotPackage({ ...input, sourcePath: '/tmp/escape' }), AppRuntimeError);
+  await assert.rejects(() => core.snapshotPackage({ ...input, instanceId: '../escape' }), AppRuntimeError);
 });
 
 test('app route rendering uses structured host and loopback upstream only', () => {

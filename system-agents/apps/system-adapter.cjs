@@ -1,10 +1,13 @@
 const { spawn } = require('node:child_process');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const http = require('node:http');
 const path = require('node:path');
+const { collectPackageFiles, digestAppPackage } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 
 const APPS_ROOT = process.env.MOS_V2_APPS_ROOT || path.resolve(process.cwd(), 'apps');
+const APP_PACKAGE_ROOT = process.env.MOS_V2_APP_PACKAGE_ROOT || '/var/lib/mos-v2/app-packages';
 const APP_ROUTES_PATH = process.env.MOS_V2_APP_ROUTES_PATH || '/etc/caddy/mos-v2-app-routes.caddy';
 const CADDY_BINARY = process.env.MOS_V2_CADDY_BINARY || '/usr/local/libexec/mos-v2/caddy';
 const DOCKER_BINARY = process.env.MOS_V2_DOCKER_BINARY || '/usr/bin/docker';
@@ -20,6 +23,7 @@ const FAILURE_MESSAGES = {
   network: ['APP_NETWORK_CONNECT_FAILED', 'The app integration network could not be connected.'],
   remove: ['APP_RUNTIME_REMOVE_FAILED', 'The app runtime could not be removed.'],
   run: ['APP_RUN_FAILED', 'The app container could not be started.'],
+  snapshot: ['APP_PACKAGE_SNAPSHOT_FAILED', 'The validated app package could not be snapshotted.'],
   stop: ['APP_RUNTIME_STOP_FAILED', 'The app runtime could not be stopped.'],
   writing: ['APP_ROUTE_WRITE_FAILED', 'The app route could not be installed.'],
 };
@@ -139,6 +143,7 @@ function waitForHttp(url, { deadlineMs = HEALTH_TIMEOUT_MS } = {}) {
 class SystemAppAdapter {
   constructor({
     appsRoot = APPS_ROOT,
+    appPackageRoot = APP_PACKAGE_ROOT,
     caddyBinary = CADDY_BINARY,
     dockerBinary = DOCKER_BINARY,
     execute = exec,
@@ -146,6 +151,7 @@ class SystemAppAdapter {
     waitForReady = waitForHttp,
   } = {}) {
     this.appsRoot = appsRoot;
+    this.appPackageRoot = appPackageRoot;
     this.caddyBinary = caddyBinary;
     this.dockerBinary = dockerBinary;
     this.execute = execute;
@@ -159,6 +165,35 @@ class SystemAppAdapter {
 
   networkName(packageId) {
     return `mos-v2-app-${packageId}`;
+  }
+
+  async snapshotAppPackage({ instanceId, packageDigest, packageId }) {
+    const source = path.join(this.appsRoot, packageId);
+    const instanceRoot = path.join(this.appPackageRoot, instanceId);
+    const installed = path.join(instanceRoot, 'installed');
+    const temporary = path.join(instanceRoot, `.snapshot-${crypto.randomUUID()}`);
+    try {
+      const manifest = JSON.parse(await fsp.readFile(path.join(source, 'manifest.json'), 'utf8'));
+      if (manifest.id !== packageId || digestAppPackage(source, { manifest }) !== packageDigest) throw new Error('PACKAGE_DIGEST_MISMATCH');
+      if (fs.existsSync(installed)) throw new Error('INSTALLED_SNAPSHOT_EXISTS');
+
+      await fsp.mkdir(temporary, { recursive: true, mode: 0o750 });
+      for (const file of collectPackageFiles(source, { manifest })) {
+        const target = path.join(temporary, ...file.relativePath.split('/'));
+        await fsp.mkdir(path.dirname(target), { recursive: true, mode: 0o750 });
+        await fsp.copyFile(file.absolutePath, target);
+        const sourceMode = (await fsp.stat(file.absolutePath)).mode;
+        await fsp.chmod(target, sourceMode & 0o111 ? 0o750 : 0o640);
+      }
+      if (digestAppPackage(temporary, { manifest }) !== packageDigest) throw new Error('COPIED_PACKAGE_DIGEST_MISMATCH');
+      await fsp.rename(temporary, installed);
+      return { snapshotPath: installed, steps: ['validated', 'copied', 'verified', 'promoted'] };
+    } catch (error) {
+      await fsp.rm(temporary, { force: true, recursive: true }).catch(() => {});
+      const failure = new AppApplyError('snapshot');
+      failure.details = error?.details || [String(error?.message || 'snapshot failed')];
+      throw failure;
+    }
   }
 
   async applyAppService({ caddyRoutes, dockerfile, environment = {}, healthTarget, imageTag, internalPort, loopbackPort, packageId, volumes }) {
@@ -353,6 +388,7 @@ class SystemAppAdapter {
 }
 
 module.exports = {
+  APP_PACKAGE_ROOT,
   APP_ROUTES_PATH,
   AppApplyError,
   HEALTH_REFRESH_TIMEOUT_MS,

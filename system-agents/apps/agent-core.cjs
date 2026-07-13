@@ -24,6 +24,7 @@ const SEMVERISH_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u;
 const SAFE_DOCKERFILE_PATTERN = /^(?:Dockerfile|Dockerfile\.[a-z0-9][a-z0-9-]*)$/u;
 const SAFE_INTERNAL_PATH_PATTERN = /^\/__[A-Za-z0-9/_-]{8,220}$/u;
 const SAFE_TARGET_PATH_PATTERN = /^\/[A-Za-z0-9._~!$&'()*+,;=:@%/?-]{1,220}$/u;
+const PACKAGE_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
@@ -174,6 +175,16 @@ function assertNetworkConnectRequest(input) {
   };
 }
 
+function assertPackageSnapshotRequest(input) {
+  if (!exactKeys(input, ['instanceId', 'packageDigest', 'packageId'])) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app package snapshot fields are accepted.');
+  }
+  assertString(input.instanceId, 'instanceId', /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+  assertString(input.packageId, 'packageId', PACKAGE_ID_PATTERN);
+  assertString(input.packageDigest, 'packageDigest', PACKAGE_DIGEST_PATTERN);
+  return input;
+}
+
 function resolveEnvironment(environment, context) {
   const source = environment === undefined ? {} : environment;
   if (!source || typeof source !== 'object' || Array.isArray(source)) {
@@ -229,9 +240,15 @@ class AppAgentCore {
 
   async status() {
     return {
-      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect'],
+      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot'],
       service: 'mos-v2-app-agent',
     };
+  }
+
+  async snapshotPackage(input) {
+    const request = assertPackageSnapshotRequest(input);
+    const result = await this.adapter.snapshotAppPackage(request);
+    return { ...result, instanceId: request.instanceId, packageDigest: request.packageDigest, packageId: request.packageId, status: 'snapshotted' };
   }
 
   async apply(input) {
@@ -305,4 +322,4 @@ class AppAgentCore {
   }
 }
 
-module.exports = { AppAgentCore, AppRuntimeError, assertHealthCheckRequest, assertNetworkConnectRequest, assertRuntimeRemoveRequest, assertRuntimeRequest, exactKeys, renderAppRoutes, resolveEnvironment };
+module.exports = { AppAgentCore, AppRuntimeError, assertHealthCheckRequest, assertNetworkConnectRequest, assertPackageSnapshotRequest, assertRuntimeRemoveRequest, assertRuntimeRequest, exactKeys, renderAppRoutes, resolveEnvironment };

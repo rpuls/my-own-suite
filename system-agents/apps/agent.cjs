@@ -29,6 +29,7 @@ const routes = new Map([
   ['POST /v1/apps/apply', (body) => core.apply(body)],
   ['POST /v1/apps/check-health', (body) => core.checkHealth(body)],
   ['POST /v1/apps/connect-network', (body) => core.connectNetwork(body)],
+  ['POST /v1/apps/snapshot', (body) => core.snapshotPackage(body)],
   ['POST /v1/apps/stop', (body) => core.stop(body)],
   ['POST /v1/apps/remove', (body) => core.remove(body)],
 ]);
