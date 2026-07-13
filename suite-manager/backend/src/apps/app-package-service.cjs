@@ -7,6 +7,7 @@ const {
   publicPackageSummary,
   readAppPackageManifest,
 } = require('./package-manifest.cjs');
+const { digestAppPackage, validatePrivacyBinding } = require('./package-contracts.cjs');
 
 const APP_LOOPBACK_PORT_BASE = 18000;
 const APP_LOOPBACK_PORT_SPAN = 1000;
@@ -450,10 +451,18 @@ function requestContextForPackage(packageId, requestContext = {}) {
 }
 
 class AppPackageService {
-  constructor({ agent = null, appsDir, now = () => new Date(), secretDir = null, store }) {
+  constructor({
+    agent = null,
+    appsDir,
+    now = () => new Date(),
+    officialRepository = 'https://github.com/rpuls/my-own-suite',
+    secretDir = null,
+    store,
+  }) {
     this.agent = agent;
     this.appsDir = appsDir;
     this.now = now;
+    this.officialRepository = officialRepository;
     this.secretDir = secretDir || path.join(store.stateDir, 'app-secrets');
     this.store = store;
   }
@@ -890,7 +899,7 @@ class AppPackageService {
     return iconPath;
   }
 
-  installPackage(packageId, input = {}) {
+  async installPackage(packageId, input = {}) {
     const current = this.store.getAppInstanceByPackageId(packageId);
     if (current) {
       if (current.status === 'uninstalled') {
@@ -906,16 +915,50 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_PACKAGE_NOT_FOUND', 'That app package is not available.', 404);
     }
     const { manifest } = readAppPackageManifest(packageDir);
+    if (!this.agent?.snapshotPackage) {
+      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App package snapshot system agent is unavailable.', 503);
+    }
     const at = this.now().toISOString();
     const manifestDigest = digestFor(manifest);
+    const packageDigest = digestAppPackage(packageDir);
+    const source = {
+      kind: 'official-git',
+      path: `apps/${manifest.id}`,
+      repository: this.officialRepository,
+      revision: packageDigest,
+      trust: 'mos-reviewed',
+    };
+    let privacy = { posture: 'review-required', reviewedAt: null, status: 'review-required' };
+    const privacyReviewPath = path.join(packageDir, 'privacy-review.json');
+    if (fs.existsSync(privacyReviewPath)) {
+      const review = JSON.parse(fs.readFileSync(privacyReviewPath, 'utf8'));
+      const errors = validatePrivacyBinding(review, { manifest, packageDigest, source });
+      if (errors.length) {
+        throw new AppPackageServiceError('APP_PRIVACY_REVIEW_INVALID', `The app privacy review is not valid: ${errors.join(' ')}`, 409);
+      }
+      privacy = { posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
+    }
     const instance = {
       categorySnapshot: manifest.category,
       displayNameSnapshot: manifest.name,
       id: crypto.randomUUID(),
       manifestDigest,
+      packageDigest,
       packageId: manifest.id,
       packageVersion: manifest.version,
+      privacy,
+      source,
     };
+    const snapshot = await this.agent.snapshotPackage({
+      instanceId: instance.id,
+      packageDigest,
+      packageId: manifest.id,
+    });
+    if (!snapshot?.snapshotPath) {
+      throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The app package snapshot agent did not return an installed snapshot path.', 502);
+    }
+    instance.snapshotPath = snapshot.snapshotPath;
+    instance.snapshotState = 'installed';
     const config = createConfigRows({ input, instanceId: instance.id, manifest, secretDir: this.secretDir });
     const projections = renderDryRunProjections(manifest, config);
     try {

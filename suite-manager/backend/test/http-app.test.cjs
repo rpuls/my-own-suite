@@ -38,11 +38,18 @@ function listen(server) {
 }
 
 async function withServer(fn, options = {}) {
+  const appAgent = {
+    async snapshotPackage(input) {
+      return { snapshotPath: path.join('/var/lib/mos-v2/app-packages', input.instanceId, 'installed') };
+    },
+    ...(options.appAgent || {}),
+  };
   const server = createV2Server({
     frontendDistDir: await tempFrontendDistDir(),
     homeHost: '127.0.0.1',
     stateDir: await tempStateDir(),
     ...options,
+    appAgent,
   });
   const baseUrl = await listen(server);
 

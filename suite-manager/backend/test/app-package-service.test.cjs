@@ -14,6 +14,10 @@ const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
 const v2Root = path.resolve(__dirname, '..', '..', '..');
 const v2AppsDir = path.join(v2Root, 'apps');
 
+function snapshotResult(input) {
+  return { snapshotPath: path.join('/var/lib/mos-v2/app-packages', input.instanceId, 'installed') };
+}
+
 async function tempStateDir() {
   return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-v2-app-service-'));
 }
@@ -40,9 +44,62 @@ test('packages without Homepage metadata render no Homepage projection', () => {
   assert.deepEqual(projections.map((projection) => projection.kind).sort(), ['caddy', 'compose', 'health']);
 });
 
+test('new installs snapshot package contents before persisting configuration and identity', async () => {
+  const stateDir = await tempStateDir();
+  const store = new SuiteManagerStore(stateDir);
+  const calls = [];
+  const agent = {
+    async snapshotPackage(input) {
+      calls.push(['snapshot', store.getAppInstanceByPackageId(input.packageId)]);
+      return snapshotResult(input);
+    },
+  };
+  const service = new AppPackageService({ agent, appsDir: v2AppsDir, store });
+
+  await service.installPackage('stirling-pdf');
+
+  const installed = store.getAppInstanceByPackageId('stirling-pdf');
+  assert.deepEqual(calls, [['snapshot', null]]);
+  assert.match(installed.packageDigest, /^sha256:[a-f0-9]{64}$/u);
+  assert.equal(installed.sourceKind, 'official-git');
+  assert.equal(installed.sourcePath, 'apps/stirling-pdf');
+  assert.equal(installed.sourceRevision, installed.packageDigest);
+  assert.equal(installed.sourceTrust, 'mos-reviewed');
+  assert.equal(installed.snapshotPath, path.join('/var/lib/mos-v2/app-packages', installed.id, 'installed'));
+  assert.equal(installed.snapshotState, 'installed');
+  assert.equal(installed.privacyStatus, 'review-required');
+  assert.equal(installed.privacyPosture, 'review-required');
+
+  store.close();
+});
+
+test('snapshot failure leaves no app configuration or install record', async () => {
+  const stateDir = await tempStateDir();
+  const store = new SuiteManagerStore(stateDir);
+  const service = new AppPackageService({
+    agent: {
+      async snapshotPackage() {
+        throw Object.assign(new Error('digest mismatch'), { code: 'APP_PACKAGE_DIGEST_MISMATCH' });
+      },
+    },
+    appsDir: v2AppsDir,
+    store,
+  });
+
+  await assert.rejects(service.installPackage('seafile', {
+    adminEmail: 'owner@example.test',
+    adminPassword: 'not-a-real-secret',
+  }), { code: 'APP_PACKAGE_DIGEST_MISMATCH' });
+  assert.equal(store.getAppInstanceByPackageId('seafile'), null);
+  assert.deepEqual(await fsp.readdir(path.join(stateDir, 'app-secrets')).catch(() => []), []);
+
+  store.close();
+});
+
 test('public URL reconciliation reapplies installed app routes and Homepage app entries', async () => {
   const calls = [];
   const appAgent = {
+    async snapshotPackage(input) { return snapshotResult(input); },
     async apply(input) {
       calls.push(input);
       return { appHost: input.appHost, publicUrl: input.publicUrl, status: 'applied', steps: [] };
@@ -68,7 +125,7 @@ test('public URL reconciliation reapplies installed app routes and Homepage app 
   const store = new SuiteManagerStore(await tempStateDir());
   const service = new AppPackageService({ agent: appAgent, appsDir: v2AppsDir, store });
 
-  service.installPackage('stirling-pdf');
+  await service.installPackage('stirling-pdf');
   await service.applyPackageRuntime('stirling-pdf', {
     appHost: 'stirling-pdf.mos.home',
     baseHost: 'mos.home',
@@ -96,6 +153,7 @@ test('public URL reconciliation reapplies installed app routes and Homepage app 
 
 test('public URL reconciliation keeps Homepage regeneration separate from per-app runtime failures', async () => {
   const appAgent = {
+    async snapshotPackage(input) { return snapshotResult(input); },
     async apply(input) {
       if (input.packageId === 'vaultwarden' && input.publicUrl.startsWith('https://')) {
         throw Object.assign(new Error('missing secret'), { code: 'APP_SECRET_UNAVAILABLE' });
@@ -123,7 +181,7 @@ test('public URL reconciliation keeps Homepage regeneration separate from per-ap
   const service = new AppPackageService({ agent: appAgent, appsDir: v2AppsDir, store });
 
   for (const packageId of ['stirling-pdf', 'vaultwarden']) {
-    service.installPackage(packageId);
+    await service.installPackage(packageId);
     await service.applyPackageRuntime(packageId, {
       appHost: `${packageId}.mos.home`,
       baseHost: 'mos.home',
@@ -155,6 +213,7 @@ test('public URL reconciliation keeps Homepage regeneration separate from per-ap
 test('public URL reconciliation keeps disabled apps out of runtime reapply', async () => {
   const calls = [];
   const appAgent = {
+    async snapshotPackage(input) { return snapshotResult(input); },
     async apply(input) {
       calls.push(input);
       return { status: 'applied', steps: [] };
@@ -174,7 +233,7 @@ test('public URL reconciliation keeps disabled apps out of runtime reapply', asy
   const store = new SuiteManagerStore(await tempStateDir());
   const service = new AppPackageService({ agent: appAgent, appsDir: v2AppsDir, store });
 
-  service.installPackage('stirling-pdf');
+  await service.installPackage('stirling-pdf');
   await service.disablePackage('stirling-pdf', homepageService);
   await service.reconcilePublicUrls(homepageService, requestContext());
 
@@ -186,6 +245,7 @@ test('public URL reconciliation keeps disabled apps out of runtime reapply', asy
 test('integration lifecycle recovers provider restart and reports disabled/uninstalled relationships truthfully', async () => {
   const calls = [];
   const appAgent = {
+    async snapshotPackage(input) { return snapshotResult(input); },
     async apply(input) {
       calls.push(['apply', input.packageId]);
       return { status: 'applied', steps: [] };
@@ -218,11 +278,11 @@ test('integration lifecycle recovers provider restart and reports disabled/unins
   const store = new SuiteManagerStore(await tempStateDir());
   const service = new AppPackageService({ agent: appAgent, appsDir: v2AppsDir, store });
 
-  service.installPackage('seafile', {
+  await service.installPackage('seafile', {
     adminEmail: 'owner@example.test',
     adminPassword: 'not-a-real-secret',
   });
-  service.installPackage('onlyoffice');
+  await service.installPackage('onlyoffice');
   await service.applyPackageRuntime('seafile', requestContext().publicUrlFor('seafile'));
   await service.applyPackageRuntime('onlyoffice', requestContext().publicUrlFor('onlyoffice'));
   await service.connectPackages({

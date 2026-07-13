@@ -614,7 +614,7 @@ function createV2Server({
           return;
         }
         const body = await readJsonBody(request, 64 * 1024);
-        jsonResponse(response, 200, { instance: appPackages.installPackage(decodeURIComponent(appInstallMatch[1]), body) });
+        jsonResponse(response, 200, { instance: await appPackages.installPackage(decodeURIComponent(appInstallMatch[1]), body) });
         return;
       }
 
