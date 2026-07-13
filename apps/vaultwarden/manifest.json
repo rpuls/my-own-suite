@@ -2,6 +2,7 @@
   "id": "vaultwarden",
   "name": "Vaultwarden",
   "version": "0.1.0",
+  "minimumMosVersion": "0.1.0",
   "summary": "Private Bitwarden-compatible password management.",
   "category": "security",
   "icon": "icon.png",

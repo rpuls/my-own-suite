@@ -23,7 +23,7 @@ Prefer observed package/runtime evidence over upstream marketing. Label every co
 6. Classify the dimensions defined in `apps/README.md`. Derive the overall posture mechanically; do not select it by intuition.
 7. Record provenance. Use the runtime-reported provider/model identifier when available and `unknown` otherwise. Never guess a model version. Record human review separately.
 8. Write the candidate package's `apps/<app>/privacy-review.json`, update its compact manifest `privacy` block, and document package-owned telemetry controls. This review travels with the package snapshot when installed.
-9. Run `npm run apps:privacy:check` and relevant manifest tests.
+9. Run `npm run apps:privacy:check`, `npm run apps:catalog` after changing a review, `npm run apps:catalog:check`, and relevant manifest tests.
 
 ## Change monitoring
 

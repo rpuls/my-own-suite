@@ -19,8 +19,9 @@
         "source": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["repository", "path", "revision", "trust"],
+          "required": ["kind", "repository", "path", "revision", "trust"],
           "properties": {
+            "kind": { "enum": ["official-git", "external-git", "local"] },
             "repository": { "type": "string", "format": "uri" },
             "path": { "type": "string" },
             "revision": { "type": "string" },

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MOS app update comparison",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "packageId", "installed", "candidate", "compatibility", "changes", "confirmationToken"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "packageId": { "type": "string" },
+    "installed": { "type": "object", "required": ["packageVersion", "packageDigest"], "properties": { "packageVersion": { "type": "string" }, "packageDigest": { "type": "string" } } },
+    "candidate": { "type": "object", "required": ["packageVersion", "packageDigest", "source"], "properties": { "packageVersion": { "type": "string" }, "packageDigest": { "type": "string" }, "source": { "$ref": "app-package-source.schema.json" } } },
+    "compatibility": { "enum": ["compatible", "owner-action-required", "unsupported", "unresolved"] },
+    "changes": { "type": "array", "items": { "type": "object", "required": ["area", "classification", "summary"], "properties": { "area": { "type": "string" }, "classification": { "enum": ["automatically-handled", "migration-required", "operator-action-required", "unsupported", "unresolved"] }, "summary": { "type": "string" } } } },
+    "confirmationToken": { "type": "string", "minLength": 1 }
+  }
+}

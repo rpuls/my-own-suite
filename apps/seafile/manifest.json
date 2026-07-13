@@ -2,6 +2,8 @@
   "id": "seafile",
   "name": "Seafile",
   "version": "0.1.0",
+  "minimumMosVersion": "0.1.0",
+  "packageFiles": ["entrypoint.sh"],
   "summary": "Private file sync, sharing, and browser-based file access.",
   "category": "storage",
   "icon": "icon.png",

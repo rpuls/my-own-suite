@@ -32,6 +32,6 @@ Classify each relevant change as automatically handled, migration required, oper
 5. Preserve public Dockerfile paths and volume semantics; call compatibility changes out in `CHANGELOG.md`.
 6. Verify that installed instances can compare their preserved installed snapshot with this candidate without replacing installed settings or privacy information before apply.
 7. Test fresh install and supported upgrade paths, including health, integrations, backup assumptions, and failures.
-8. Run privacy, manifest, unit, typecheck, and build checks. Ask the user to run relevant E2E or hardware validation.
+8. Run `npm run apps:catalog` after package changes, then `npm run apps:catalog:check`, privacy/manifest tests, `npm run typecheck`, and the relevant build. Ask the user to run relevant E2E or hardware validation.
 
 Never refresh a digest without identifying the resolved version and reviewing the releases it crosses.

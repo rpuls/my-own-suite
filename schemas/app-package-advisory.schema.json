@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MOS app package advisory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "packageId", "affectedVersions", "severity", "type", "summary", "publishedAt", "remediation"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "packageId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "affectedVersions": { "type": "string", "minLength": 1 },
+    "severity": { "enum": ["info", "low", "medium", "high", "critical"] },
+    "type": { "enum": ["security", "privacy-review-invalidated", "policy-change", "package-withdrawn"] },
+    "summary": { "type": "string", "minLength": 1 },
+    "publishedAt": { "type": "string", "format": "date-time" },
+    "evidenceUrl": { "type": "string", "format": "uri" },
+    "remediation": { "type": "string", "minLength": 1 }
+  }
+}

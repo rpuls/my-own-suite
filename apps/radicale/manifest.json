@@ -2,6 +2,8 @@
   "id": "radicale",
   "name": "Radicale",
   "version": "0.1.0",
+  "minimumMosVersion": "0.1.0",
+  "packageFiles": ["entrypoint.sh"],
   "summary": "Private CalDAV and CardDAV sync for calendars and contacts.",
   "category": "office",
   "icon": "icon.png",

@@ -20,6 +20,7 @@ function validManifest(overrides = {}) {
     id: 'example-app',
     name: 'Example App',
     version: '0.1.0',
+    minimumMosVersion: '0.1.0',
     summary: 'A small example app.',
     category: 'tools',
     setup: { fields: [] },

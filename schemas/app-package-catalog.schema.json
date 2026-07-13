@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MOS app package catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "packages"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "packages": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "packageVersion", "packageDigest", "minimumMosVersion"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^apps/[a-z0-9][a-z0-9-]*$" },
+          "packageVersion": { "type": "string" },
+          "packageDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+          "minimumMosVersion": { "type": "string" },
+          "privacy": { "type": "object", "additionalProperties": false, "required": ["status"], "properties": { "status": { "enum": ["reviewed", "review-required", "unverified"] }, "posture": { "enum": ["private-by-default", "privacy-configured", "external-dependency", "review-required"] } } }
+        }
+      }
+    }
+  }
+}

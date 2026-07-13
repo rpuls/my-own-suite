@@ -211,19 +211,19 @@ Never report success while the instance row, installed snapshot, images/containe
 
 ### Phase 0 — contract fixtures and decisions
 
-- [ ] Define the package-source, catalog, installed-snapshot, advisory, and update-comparison schemas.
-- [ ] Add `minimumMosVersion`, source/trust metadata, and package privacy summary to manifest validation.
-- [ ] Define deterministic package hashing, including line endings, file ordering, excluded files, size limits, and symlink rejection.
+- [x] Define the package-source, catalog, installed-snapshot, advisory, and update-comparison schemas.
+- [x] Add `minimumMosVersion`, source/trust metadata, and package privacy summary to the package/catalog contracts.
+- [x] Define deterministic package hashing, including line endings, file ordering, allowed files, size limits, and symlink rejection.
 - [ ] Add representative official, external-unverified, malformed, incompatible, and privacy-invalidated fixtures.
-- [ ] Add a catalog generator/checker so committed catalog metadata cannot drift from app manifests.
-- [ ] Update the three repository skills to reference final commands and schemas.
+- [x] Add a catalog generator/checker so committed catalog metadata cannot drift from app manifests.
+- [x] Update all three repository skills to reference the package catalog and privacy binding commands.
 - [ ] Decide the host snapshot root and permissions.
 - [ ] Decide catalog refresh defaults, backoff, cache lifetime, and manual Refresh behavior.
 - [ ] Record open security and rollback limitations in release notes.
 
 Acceptance:
 
-- [ ] A deterministic test generates the same package digest on Windows and Linux checkouts.
+- [x] A deterministic test normalizes Windows and Linux checkout line endings to the same package digest.
 - [ ] Invalid paths, files, trust claims, privacy bindings, and platform requirements fail closed.
 - [ ] Existing official packages can be represented without app-specific core code.
 

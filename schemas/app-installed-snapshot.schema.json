@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MOS installed app package snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "instanceId", "packageId", "packageVersion", "packageDigest", "source", "snapshotState", "installedAt"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "instanceId": { "type": "string", "minLength": 1 },
+    "packageId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "packageVersion": { "type": "string" },
+    "packageDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "source": { "$ref": "app-package-source.schema.json" },
+    "minimumMosVersion": { "type": "string" },
+    "snapshotState": { "enum": ["installed", "needs-package-recovery"] },
+    "installedAt": { "type": "string", "format": "date-time" },
+    "privacy": { "type": "object", "additionalProperties": false, "required": ["status"], "properties": { "status": { "enum": ["reviewed", "review-required", "invalidated", "unverified"] }, "posture": { "type": "string" }, "reviewedAt": { "type": "string", "format": "date-time" } } }
+  }
+}

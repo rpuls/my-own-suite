@@ -686,8 +686,28 @@ function validateAppPackageManifest(manifest, { packageDir = null } = {}) {
   if (!APP_ID_PATTERN.test(String(manifest.id || ''))) errors.push('id must be a DNS-safe app id.');
   if (!hasText(manifest.name)) errors.push('name is required.');
   if (!SEMVERISH_PATTERN.test(String(manifest.version || ''))) errors.push('version must be semver-like.');
+  if (!SEMVERISH_PATTERN.test(String(manifest.minimumMosVersion || ''))) errors.push('minimumMosVersion must be semver-like.');
+  if (!SEMVERISH_PATTERN.test(String(manifest.minimumMosVersion || ''))) errors.push('minimumMosVersion must be semver-like.');
   if (!hasText(manifest.summary)) errors.push('summary is required.');
   if (!hasText(manifest.category)) errors.push('category is required.');
+  if (manifest.packageFiles !== undefined) {
+    if (!isStringArray(manifest.packageFiles)) {
+      errors.push('packageFiles must be an array of non-empty relative paths when present.');
+    } else {
+      const seen = new Set();
+      for (const [index, packageFile] of manifest.packageFiles.entries()) {
+        const normalized = safeRelativePath(packageFile, `packageFiles[${index}]`, errors);
+        if (normalized !== packageFile || packageFile.includes('\\')) {
+          errors.push(`packageFiles[${index}] must use a canonical forward-slash path.`);
+        }
+        if (seen.has(packageFile)) errors.push(`packageFiles[${index}] duplicates another package file.`);
+        seen.add(packageFile);
+        if (packageDir && normalized && !fs.existsSync(path.join(packageDir, normalized))) {
+          errors.push(`packageFiles[${index}] points to a missing package file.`);
+        }
+      }
+    }
+  }
   if (manifest.icon !== undefined) {
     const icon = safeRelativePath(manifest.icon, 'icon', errors);
     if (icon && packageDir && !fs.existsSync(path.join(packageDir, icon))) {
@@ -785,6 +805,8 @@ function publicPackageSummary(manifest, validationErrors = []) {
       valid: validationErrors.length === 0,
     },
     version: manifest.version || '',
+    minimumMosVersion: manifest.minimumMosVersion || '',
+    minimumMosVersion: manifest.minimumMosVersion || '',
   };
 }
 
