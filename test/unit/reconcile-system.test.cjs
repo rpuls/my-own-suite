@@ -38,6 +38,7 @@ test('system reconciliation preserves the installed Home host from the bootstrap
   assert.match(unit, /Environment=MOS_V2_FRONT_DOOR=usb-autoinstall/u);
   assert.match(unit, /Environment=MOS_V2_LAB_RESET_ENABLED=1/u);
   assert.match(unit, /Environment=MOS_V2_LAB_RESET_AGENT_SOCKET=\/run\/mos-v2-lab-reset-agent\/agent\.sock/u);
+  assert.match(unit, new RegExp(`Environment=MOS_V2_APP_PACKAGE_ROOT=${tempDir.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}\\/app-packages`, 'u'));
   assert.doesNotMatch(unit, /home\.localhost/u);
   assert.match(homepage, /HOMEPAGE_ALLOWED_HOSTS=home\.mos\.home/u);
   assert.match(homepage, new RegExp(`${tempDir.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}\\/homepage\\/config:\\/app\\/config`, 'u'));

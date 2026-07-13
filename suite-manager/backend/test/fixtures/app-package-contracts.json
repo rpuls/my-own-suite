@@ -1,0 +1,39 @@
+{
+  "officialSource": {
+    "kind": "official-git",
+    "repository": "https://github.com/rpuls/my-own-suite",
+    "path": "apps/example-app",
+    "revision": "0123456789abcdef0123456789abcdef01234567",
+    "trust": "mos-reviewed"
+  },
+  "externalUnverifiedSource": {
+    "kind": "external-git",
+    "repository": "https://code.example/community/apps",
+    "path": "apps/example-app",
+    "revision": "89abcdef0123456789abcdef0123456789abcdef",
+    "trust": "unverified"
+  },
+  "malformedSource": {
+    "kind": "external-git",
+    "repository": "https://code.example/malicious/apps",
+    "path": "../escape",
+    "revision": "moving-main",
+    "trust": "mos-reviewed"
+  },
+  "incompatibleManifest": {
+    "id": "example-app",
+    "version": "2.0.0",
+    "minimumMosVersion": "99.0.0"
+  },
+  "privacyInvalidatedAdvisory": {
+    "schemaVersion": 1,
+    "id": "MOS-PRIV-2026-001",
+    "packageId": "example-app",
+    "affectedVersions": ">=1.0.0 <2.0.0",
+    "severity": "high",
+    "type": "privacy-review-invalidated",
+    "summary": "New evidence invalidates the installed privacy review.",
+    "publishedAt": "2026-07-14T00:00:00Z",
+    "remediation": "Update to a reviewed package version or stop the app."
+  }
+}

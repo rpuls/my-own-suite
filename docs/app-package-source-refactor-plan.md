@@ -214,18 +214,18 @@ Never report success while the instance row, installed snapshot, images/containe
 - [x] Define the package-source, catalog, installed-snapshot, advisory, and update-comparison schemas.
 - [x] Add `minimumMosVersion`, source/trust metadata, and package privacy summary to the package/catalog contracts.
 - [x] Define deterministic package hashing, including line endings, file ordering, allowed files, size limits, and symlink rejection.
-- [ ] Add representative official, external-unverified, malformed, incompatible, and privacy-invalidated fixtures.
+- [x] Add representative official, external-unverified, malformed, incompatible, and privacy-invalidated fixtures.
 - [x] Add a catalog generator/checker so committed catalog metadata cannot drift from app manifests.
 - [x] Update all three repository skills to reference the package catalog and privacy binding commands.
-- [ ] Decide the host snapshot root and permissions.
-- [ ] Decide catalog refresh defaults, backoff, cache lifetime, and manual Refresh behavior.
-- [ ] Record open security and rollback limitations in release notes.
+- [x] Decide the host snapshot root and permissions.
+- [x] Decide catalog refresh defaults, backoff, cache lifetime, and manual Refresh behavior.
+- [x] Record open security and rollback limitations in release notes.
 
 Acceptance:
 
 - [x] A deterministic test normalizes Windows and Linux checkout line endings to the same package digest.
-- [ ] Invalid paths, files, trust claims, privacy bindings, and platform requirements fail closed.
-- [ ] Existing official packages can be represented without app-specific core code.
+- [x] Invalid paths, files, trust claims, privacy bindings, and platform requirements fail closed in the Phase 0 contract validators.
+- [x] Existing official packages can be represented in the generated catalog without app-specific core code.
 
 ### Phase 1 — installed snapshot foundation
 

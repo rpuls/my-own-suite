@@ -177,6 +177,7 @@ Environment=MOS_V2_HOMEPAGE_UPSTREAM=http://127.0.0.1:${config.homepagePort}
 Environment=MOS_V2_HTTPS_AGENT_SOCKET=/run/mos-v2-https-agent/agent.sock
 Environment=MOS_V2_HOMEPAGE_AGENT_SOCKET=/run/mos-v2-homepage-agent/agent.sock
 Environment=MOS_V2_APP_AGENT_SOCKET=/run/mos-v2-app-agent/agent.sock
+Environment=MOS_V2_APP_PACKAGE_ROOT=${config.stateRoot}/app-packages
 Environment=MOS_V2_BACKUP_AGENT_SOCKET=/run/mos-v2-backup-agent/agent.sock
 Environment=MOS_V2_UPDATE_AGENT_SOCKET=/run/mos-v2-update-agent/agent.sock
 Environment=MOS_V2_LAB_RESET_ENABLED=${config.labResetEnabled}
@@ -232,6 +233,8 @@ function main() {
   installDir(`${stateRoot}/homepage-agent/transactions`, 0o700);
   installDir(`${stateRoot}/homepage-agent/history`, 0o700);
   installDir(`${stateRoot}/backup-agent`, 0o700);
+  installDir(`${stateRoot}/app-packages`, 0o750);
+  if (!dryRun) run('chown', ['root:mos-v2-agent', `${stateRoot}/app-packages`]);
   installDir(`${stateRoot}/update-agent/jobs`, 0o700);
 
   for (const socketDir of ['https', 'homepage', 'app', 'backup', 'update', 'lab-reset']) {
@@ -279,7 +282,7 @@ ExecReload=/usr/local/libexec/mos-v2/caddy reload --config /etc/caddy/Caddyfile 
   unit('mos-v2-app-agent.service', agentUnit({
     after: 'network-online.target docker.service caddy.service',
     description: 'MOS V2 narrow app runtime agent',
-    env: { MOS_V2_APP_AGENT_SOCKET: '/run/mos-v2-app-agent/agent.sock', MOS_V2_APPS_ROOT: `${mosRoot}/apps` },
+    env: { MOS_V2_APP_AGENT_SOCKET: '/run/mos-v2-app-agent/agent.sock', MOS_V2_APP_PACKAGE_ROOT: `${stateRoot}/app-packages`, MOS_V2_APPS_ROOT: `${mosRoot}/apps` },
     name: 'mos-v2-app-agent.service',
     script: 'system-agents/apps/agent.cjs',
     wants: 'network-online.target docker.service',

@@ -47,6 +47,9 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.match(plan.cloudInit, /Environment=MOS_V2_SUITE_MANAGER_PORT=\$MOS_V2_SUITE_MANAGER_PORT/);
   assert.match(plan.cloudInit, /mos-v2-homepage-agent\.service/);
   assert.match(plan.cloudInit, /MOS_V2_HOMEPAGE_AGENT_SOCKET=\/run\/mos-v2-homepage-agent\/agent\.sock/);
+  assert.match(plan.cloudInit, /install -d -m 0750 .*"\$MOS_V2_STATE_ROOT\/app-packages"/);
+  assert.match(plan.cloudInit, /chown root:mos-v2-agent "\$MOS_V2_STATE_ROOT\/app-packages"/);
+  assert.match(plan.cloudInit, /Environment=MOS_V2_APP_PACKAGE_ROOT=\$MOS_V2_STATE_ROOT\/app-packages/);
   assert.match(plan.cloudInit, /mos-v2-backup-agent\.service/);
   assert.match(plan.cloudInit, /MOS_V2_BACKUP_AGENT_SOCKET=\/run\/mos-v2-backup-agent\/agent\.sock/);
   assert.match(plan.cloudInit, /mos-v2-lab-reset-agent\.service/);

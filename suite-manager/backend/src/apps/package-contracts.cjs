@@ -9,6 +9,20 @@ const DEFAULT_PACKAGE_LIMITS = Object.freeze({
 });
 const ALLOWED_ROOT_FILES = /^(?:Dockerfile(?:\.[a-z0-9][a-z0-9-]*)?|README\.md|entrypoint\.sh|icon\.(?:avif|gif|jpe?g|png|svg|webp)|manifest\.json|privacy-review\.json)$/iu;
 const TEXT_FILE = /(?:^Dockerfile(?:\.|$)|\.(?:cjs|css|html|js|json|md|mjs|sh|svg|txt|yaml|yml)$)/iu;
+const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
+const PACKAGE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
+const SEMVER_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$/u;
+const SOURCE_KINDS = new Set(['external-git', 'local', 'official-git']);
+const TRUST_LEVELS = new Set(['mos-reviewed', 'publisher-signed', 'unverified']);
+const CATALOG_REFRESH_POLICY = Object.freeze({
+  advisoryIntervalMs: 60 * 60 * 1000,
+  backoffInitialMs: 5 * 60 * 1000,
+  backoffMaximumMs: 6 * 60 * 60 * 1000,
+  cacheStaleAfterMs: 24 * 60 * 60 * 1000,
+  catalogIntervalMs: 6 * 60 * 60 * 1000,
+  jitterRatio: 0.1,
+  manualMinimumIntervalMs: 30 * 1000,
+});
 
 class AppPackageContractError extends Error {
   constructor(message, details = []) {
@@ -100,10 +114,124 @@ function digestAppPackage(packageDir, options = {}) {
   return `sha256:${hash.digest('hex')}`;
 }
 
+function compareSemver(left, right) {
+  const leftMatch = String(left).match(SEMVER_PATTERN);
+  const rightMatch = String(right).match(SEMVER_PATTERN);
+  if (!leftMatch || !rightMatch) return null;
+  for (let index = 1; index <= 3; index += 1) {
+    const difference = Number(leftMatch[index]) - Number(rightMatch[index]);
+    if (difference) return Math.sign(difference);
+  }
+  return 0;
+}
+
+function validateSourceIdentity(source, { officialRepository = null } = {}) {
+  const errors = [];
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return ['source must be an object.'];
+  if (!SOURCE_KINDS.has(source.kind)) errors.push('source.kind is unsupported.');
+  if (typeof source.repository !== 'string' || !source.repository.trim()) errors.push('source.repository is required.');
+  if (!canonicalPackagePath(source.path)) errors.push('source.path must be a canonical package-local path.');
+  if (typeof source.revision !== 'string' || !source.revision.trim()) errors.push('source.revision is required.');
+  if (!TRUST_LEVELS.has(source.trust)) errors.push('source.trust is unsupported.');
+  if (source.trust === 'mos-reviewed' && (source.kind !== 'official-git' || !officialRepository || source.repository !== officialRepository)) {
+    errors.push('mos-reviewed trust is derived only from the configured official repository.');
+  }
+  if (source.kind === 'external-git' && source.trust === 'mos-reviewed') {
+    errors.push('external sources cannot claim mos-reviewed trust.');
+  }
+  return [...new Set(errors)];
+}
+
+function validateCatalog(catalog) {
+  const errors = [];
+  if (!catalog || typeof catalog !== 'object' || Array.isArray(catalog)) return ['catalog must be an object.'];
+  if (catalog.schemaVersion !== 1) errors.push('catalog.schemaVersion must be 1.');
+  if (!catalog.packages || typeof catalog.packages !== 'object' || Array.isArray(catalog.packages)) return [...errors, 'catalog.packages must be an object.'];
+  for (const [packageId, entry] of Object.entries(catalog.packages)) {
+    const prefix = `catalog.packages.${packageId}`;
+    if (!PACKAGE_ID_PATTERN.test(packageId)) errors.push(`${prefix} uses an invalid package id.`);
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      errors.push(`${prefix} must be an object.`);
+      continue;
+    }
+    if (entry.path !== `apps/${packageId}`) errors.push(`${prefix}.path must match its official package id.`);
+    if (!SEMVER_PATTERN.test(String(entry.packageVersion || ''))) errors.push(`${prefix}.packageVersion must be semver-like.`);
+    if (!SEMVER_PATTERN.test(String(entry.minimumMosVersion || ''))) errors.push(`${prefix}.minimumMosVersion must be semver-like.`);
+    if (!DIGEST_PATTERN.test(String(entry.packageDigest || ''))) errors.push(`${prefix}.packageDigest must be a SHA-256 digest.`);
+    if (!['review-required', 'reviewed', 'unverified'].includes(entry.privacy?.status)) errors.push(`${prefix}.privacy.status is invalid.`);
+  }
+  return errors;
+}
+
+function validatePlatformCompatibility(manifest, platformVersion) {
+  const comparison = compareSemver(platformVersion, manifest?.minimumMosVersion);
+  if (comparison === null) return ['Platform and minimum MOS versions must be semver-like.'];
+  return comparison < 0 ? [`Package requires MOS ${manifest.minimumMosVersion} or newer; current version is ${platformVersion}.`] : [];
+}
+
+function validatePrivacyBinding(review, { manifest, packageDigest, source }) {
+  const errors = [];
+  if (!review || typeof review !== 'object' || Array.isArray(review)) return ['privacy review must be an object.'];
+  if (review.schemaVersion !== 1) errors.push('privacy review schemaVersion must be 1.');
+  if (review.appId !== manifest?.id) errors.push('privacy review appId does not match the manifest.');
+  if (review.scope?.packageVersion !== manifest?.version) errors.push('privacy review packageVersion does not match the manifest.');
+  if (review.scope?.packageDigest !== packageDigest) errors.push('privacy review packageDigest does not match the package contents.');
+  for (const sourceError of validateSourceIdentity(review.scope?.source, {
+    officialRepository: source?.trust === 'mos-reviewed' ? source.repository : null,
+  })) errors.push(`privacy review ${sourceError}`);
+  for (const field of ['kind', 'repository', 'path', 'revision', 'trust']) {
+    if (review.scope?.source?.[field] !== source?.[field]) errors.push(`privacy review source.${field} does not match the resolved source.`);
+  }
+  if (!Array.isArray(review.scope?.components) || review.scope.components.length === 0) errors.push('privacy review must identify upstream components.');
+  if (review.provenance?.model === undefined || !String(review.provenance.model).trim()) errors.push('privacy review must record the auditing model.');
+  return errors;
+}
+
+function advisoryAffectsVersion(advisory, packageVersion) {
+  const range = String(advisory?.affectedVersions || '').trim();
+  if (range === '*') return SEMVER_PATTERN.test(String(packageVersion));
+  if (SEMVER_PATTERN.test(range)) return compareSemver(packageVersion, range) === 0;
+  const comparators = range.split(/\s+/u).filter(Boolean);
+  if (!comparators.length) return false;
+  return comparators.every((comparator) => {
+    const match = comparator.match(/^(<=|>=|<|>)(.+)$/u);
+    if (!match) return false;
+    const comparison = compareSemver(packageVersion, match[2]);
+    if (comparison === null) return false;
+    return match[1] === '<' ? comparison < 0
+      : match[1] === '<=' ? comparison <= 0
+        : match[1] === '>' ? comparison > 0
+          : comparison >= 0;
+  });
+}
+
+function validateAdvisory(advisory) {
+  const errors = [];
+  if (!advisory || typeof advisory !== 'object' || Array.isArray(advisory)) return ['advisory must be an object.'];
+  if (advisory.schemaVersion !== 1) errors.push('advisory.schemaVersion must be 1.');
+  if (!PACKAGE_ID_PATTERN.test(String(advisory.packageId || ''))) errors.push('advisory.packageId is invalid.');
+  if (!['info', 'low', 'medium', 'high', 'critical'].includes(advisory.severity)) errors.push('advisory.severity is invalid.');
+  if (!['package-withdrawn', 'policy-change', 'privacy-review-invalidated', 'security'].includes(advisory.type)) errors.push('advisory.type is invalid.');
+  const range = String(advisory.affectedVersions || '').trim();
+  const supportedRange = range === '*' || SEMVER_PATTERN.test(range) || range.split(/\s+/u).every((part) => /^(?:<=|>=|<|>)\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u.test(part));
+  if (!supportedRange) errors.push('advisory.affectedVersions is unsupported.');
+  if (typeof advisory.summary !== 'string' || !advisory.summary.trim()) errors.push('advisory.summary is required.');
+  if (typeof advisory.remediation !== 'string' || !advisory.remediation.trim()) errors.push('advisory.remediation is required.');
+  return errors;
+}
+
 module.exports = {
   AppPackageContractError,
+  CATALOG_REFRESH_POLICY,
   DEFAULT_PACKAGE_LIMITS,
+  advisoryAffectsVersion,
   canonicalPackagePath,
+  compareSemver,
   collectPackageFiles,
   digestAppPackage,
+  validateCatalog,
+  validateAdvisory,
+  validatePlatformCompatibility,
+  validatePrivacyBinding,
+  validateSourceIdentity,
 };

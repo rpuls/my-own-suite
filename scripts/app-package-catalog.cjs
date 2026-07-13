@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { digestAppPackage } = require('../suite-manager/backend/src/apps/package-contracts.cjs');
+const { digestAppPackage, validateCatalog } = require('../suite-manager/backend/src/apps/package-contracts.cjs');
 const { discoverAppPackages } = require('../suite-manager/backend/src/apps/package-manifest.cjs');
 
 const repoRoot = path.resolve(__dirname, '..');
@@ -34,7 +34,10 @@ function serializeCatalog(catalog) {
 }
 
 function main(args = process.argv.slice(2)) {
-  const expected = serializeCatalog(generateCatalog());
+  const generated = generateCatalog();
+  const validationErrors = validateCatalog(generated);
+  if (validationErrors.length) throw new Error(`Generated catalog is invalid:\n${validationErrors.join('\n')}`);
+  const expected = serializeCatalog(generated);
   if (args.includes('--check')) {
     const actual = fs.existsSync(catalogPath) ? fs.readFileSync(catalogPath, 'utf8').replace(/\r\n?/gu, '\n') : '';
     if (actual !== expected) {

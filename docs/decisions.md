@@ -322,6 +322,9 @@ Consequences:
 - Unknown or stale privacy evidence yields `review-required`; assessments bind to exact package/component identities and configuration is not described as proof of network silence.
 - A lightweight advisory can invalidate installed assessments without retaining complete historical packages in the source repository.
 - Unverified packages must remain visibly unverified and operate under a constrained capability contract because installing package code is a privileged action.
+- Installed, candidate, and bounded previous package snapshots live under `/var/lib/mos-v2/app-packages` (or `<MOS_V2_STATE_ROOT>/app-packages`). The root app agent owns writes; Suite Manager receives read access through `mos-v2-agent`. The root is provisioned as `root:mos-v2-agent` mode `0750`, while snapshot transaction directories may be stricter.
+- Package source trust is derived by MOS from the configured source and verification path. Package-controlled metadata cannot promote an external source to `mos-reviewed`.
+- Official catalog refresh defaults to every six hours with 10% jitter; advisories refresh hourly. Failures use exponential backoff from five minutes to six hours and preserve the last-known-good cache, which is labelled stale after 24 hours rather than deleted. Manual Refresh may bypass freshness/backoff but is rate-limited to one attempt per 30 seconds and never clears usable cached data on failure.
 
 ## 2026-07-12: Public Installer Uses Stable And Development Channels
 

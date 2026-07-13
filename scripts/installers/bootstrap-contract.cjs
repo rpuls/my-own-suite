@@ -249,7 +249,7 @@ if ! getent group mos-v2-agent >/dev/null; then
   groupadd --system mos-v2-agent
 fi
 usermod -a -G mos-v2-agent "$MOS_V2_RUNTIME_USER"
-install -d -m 0750 /etc/mos-v2 /etc/mos-v2/secrets /var/lib/mos-v2/https-agent /var/lib/mos-v2/homepage-agent
+install -d -m 0750 /etc/mos-v2 /etc/mos-v2/secrets /var/lib/mos-v2/https-agent /var/lib/mos-v2/homepage-agent "$MOS_V2_STATE_ROOT/app-packages"
 if [ "$MOS_V2_FRONT_DOOR" = 'cloud-init' ] || [ "$MOS_V2_FRONT_DOOR" = 'digitalocean-smoke' ] || [ "$MOS_V2_FRONT_DOOR" = 'public-vps' ]; then
   MOS_V2_OWNER_CLAIM_TOKEN="$(openssl rand -hex 32)"
   cat > /etc/mos-v2/secrets/owner-claim.env <<MOS_V2_OWNER_CLAIM
@@ -294,6 +294,8 @@ touch "$homepage_seed_marker"
 chown -R "$MOS_V2_RUNTIME_USER:$MOS_V2_RUNTIME_USER" "$MOS_V2_STATE_ROOT"
 chown -R 1000:1000 "$MOS_V2_STATE_ROOT/homepage/config"
 chown -R root:root "$MOS_V2_STATE_ROOT/https-agent"
+chown root:mos-v2-agent "$MOS_V2_STATE_ROOT/app-packages"
+chmod 0750 "$MOS_V2_STATE_ROOT/app-packages"
 chmod 0700 "$MOS_V2_STATE_ROOT/https-agent" "$MOS_V2_STATE_ROOT/https-agent/transactions"
 
 cat > /etc/systemd/system/mos-v2-homepage.service <<MOS_V2_HOMEPAGE_UNIT
@@ -321,6 +323,7 @@ Environment=MOS_V2_HOMEPAGE_UPSTREAM=$MOS_V2_HOMEPAGE_UPSTREAM
 Environment=MOS_V2_HTTPS_AGENT_SOCKET=/run/mos-v2-https-agent/agent.sock
 Environment=MOS_V2_HOMEPAGE_AGENT_SOCKET=/run/mos-v2-homepage-agent/agent.sock
 Environment=MOS_V2_APP_AGENT_SOCKET=/run/mos-v2-app-agent/agent.sock
+Environment=MOS_V2_APP_PACKAGE_ROOT=$MOS_V2_STATE_ROOT/app-packages
 Environment=MOS_V2_BACKUP_AGENT_SOCKET=/run/mos-v2-backup-agent/agent.sock
 Environment=MOS_V2_UPDATE_AGENT_SOCKET=/run/mos-v2-update-agent/agent.sock
 Environment=MOS_V2_LAB_RESET_ENABLED=$MOS_V2_LAB_RESET_ENABLED
@@ -398,6 +401,7 @@ UMask=0007
 WorkingDirectory=$MOS_V2_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_V2_APP_AGENT_SOCKET=/run/mos-v2-app-agent/agent.sock
+Environment=MOS_V2_APP_PACKAGE_ROOT=$MOS_V2_STATE_ROOT/app-packages
 Environment=MOS_V2_APPS_ROOT=$MOS_V2_INSTALL_ROOT/repo/apps
 ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/system-agents/apps/agent.cjs
 Restart=always
