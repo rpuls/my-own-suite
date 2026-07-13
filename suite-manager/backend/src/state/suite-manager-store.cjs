@@ -195,6 +195,23 @@ const MIGRATIONS = [
     `,
     version: 7,
   },
+  {
+    name: 'installed-app-package-identity',
+    sql: `
+      ALTER TABLE app_instances ADD COLUMN package_digest TEXT;
+      ALTER TABLE app_instances ADD COLUMN source_kind TEXT CHECK (source_kind IS NULL OR source_kind IN ('official-git', 'external-git', 'local'));
+      ALTER TABLE app_instances ADD COLUMN source_repository TEXT;
+      ALTER TABLE app_instances ADD COLUMN source_path TEXT;
+      ALTER TABLE app_instances ADD COLUMN source_revision TEXT;
+      ALTER TABLE app_instances ADD COLUMN source_trust TEXT CHECK (source_trust IS NULL OR source_trust IN ('mos-reviewed', 'publisher-signed', 'unverified'));
+      ALTER TABLE app_instances ADD COLUMN snapshot_path TEXT;
+      ALTER TABLE app_instances ADD COLUMN snapshot_state TEXT NOT NULL DEFAULT 'legacy-unmigrated' CHECK (snapshot_state IN ('legacy-unmigrated', 'installed', 'needs-package-recovery'));
+      ALTER TABLE app_instances ADD COLUMN privacy_status TEXT CHECK (privacy_status IS NULL OR privacy_status IN ('reviewed', 'review-required', 'invalidated', 'unverified'));
+      ALTER TABLE app_instances ADD COLUMN privacy_posture TEXT;
+      ALTER TABLE app_instances ADD COLUMN privacy_reviewed_at TEXT;
+    `,
+    version: 8,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -478,8 +495,19 @@ class SuiteManagerStore {
         id,
         installed_at AS installedAt,
         manifest_digest AS manifestDigest,
+        package_digest AS packageDigest,
         package_id AS packageId,
         package_version AS packageVersion,
+        privacy_posture AS privacyPosture,
+        privacy_reviewed_at AS privacyReviewedAt,
+        privacy_status AS privacyStatus,
+        snapshot_path AS snapshotPath,
+        snapshot_state AS snapshotState,
+        source_kind AS sourceKind,
+        source_path AS sourcePath,
+        source_repository AS sourceRepository,
+        source_revision AS sourceRevision,
+        source_trust AS sourceTrust,
         status,
         updated_at AS updatedAt
       FROM app_instances
@@ -497,8 +525,19 @@ class SuiteManagerStore {
         id,
         installed_at AS installedAt,
         manifest_digest AS manifestDigest,
+        package_digest AS packageDigest,
         package_id AS packageId,
         package_version AS packageVersion,
+        privacy_posture AS privacyPosture,
+        privacy_reviewed_at AS privacyReviewedAt,
+        privacy_status AS privacyStatus,
+        snapshot_path AS snapshotPath,
+        snapshot_state AS snapshotState,
+        source_kind AS sourceKind,
+        source_path AS sourcePath,
+        source_repository AS sourceRepository,
+        source_revision AS sourceRevision,
+        source_trust AS sourceTrust,
         status,
         updated_at AS updatedAt
       FROM app_instances
@@ -898,9 +937,11 @@ class SuiteManagerStore {
       this.database.prepare(`
         INSERT INTO app_instances (
           id, package_id, package_version, manifest_digest, status, enabled,
-          display_name_snapshot, category_snapshot, created_at, updated_at, installed_at
+          display_name_snapshot, category_snapshot, created_at, updated_at, installed_at,
+          package_digest, source_kind, source_repository, source_path, source_revision, source_trust,
+          snapshot_path, snapshot_state, privacy_status, privacy_posture, privacy_reviewed_at
         )
-        VALUES (?, ?, ?, ?, 'installed', 1, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, 'installed', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         instance.id,
         instance.packageId,
@@ -911,6 +952,17 @@ class SuiteManagerStore {
         at,
         at,
         at,
+        instance.packageDigest ?? null,
+        instance.source?.kind ?? null,
+        instance.source?.repository ?? null,
+        instance.source?.path ?? null,
+        instance.source?.revision ?? null,
+        instance.source?.trust ?? null,
+        instance.snapshotPath ?? null,
+        instance.snapshotState ?? 'legacy-unmigrated',
+        instance.privacy?.status ?? null,
+        instance.privacy?.posture ?? null,
+        instance.privacy?.reviewedAt ?? null,
       );
 
       for (const item of config) {

@@ -229,7 +229,7 @@ Acceptance:
 
 ### Phase 1 — installed snapshot foundation
 
-- [ ] Add SQLite source identity, package digest, snapshot path/state, and installed assessment summary through a migration.
+- [x] Add SQLite source identity, package digest, snapshot path/state, and installed assessment summary through a migration.
 - [ ] Add a narrow host-agent snapshot capability that copies only validated package files into the host-owned root.
 - [ ] During new install, validate and persist the snapshot before creating configuration or runtime projections.
 - [ ] Change projection rendering and runtime apply to load the installed snapshot.

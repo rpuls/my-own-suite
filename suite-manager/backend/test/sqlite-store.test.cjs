@@ -169,7 +169,42 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'app-instance-guides',
     'app-integrations',
     'security-event-buckets',
+    'installed-app-package-identity',
   ]);
+  upgraded.close();
+});
+
+test('existing app rows migrate without inventing package source identity', async () => {
+  const stateDir = await tempStateDir();
+  const database = new DatabaseSync(path.join(stateDir, DATABASE_FILENAME));
+  database.exec(`
+    CREATE TABLE schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    ) STRICT;
+  `);
+  for (const migration of MIGRATIONS.filter(({ version }) => version < 8)) {
+    database.exec(migration.sql);
+    database.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)')
+      .run(migration.version, migration.name, '2026-07-13T00:00:00.000Z');
+  }
+  database.prepare(`
+    INSERT INTO app_instances (
+      id, package_id, package_version, manifest_digest, status, enabled,
+      display_name_snapshot, category_snapshot, created_at, updated_at, installed_at
+    ) VALUES (?, ?, ?, ?, 'installed', 1, ?, ?, ?, ?, ?)
+  `).run('legacy-instance', 'example-app', '0.1.0', 'sha256:legacy-manifest', 'Example App', 'tools', 'one', 'one', 'one');
+  database.close();
+
+  const upgraded = new SuiteManagerStore(stateDir);
+  const instance = upgraded.getAppInstanceByPackageId('example-app');
+  assert.equal(instance.snapshotState, 'legacy-unmigrated');
+  assert.equal(instance.packageDigest, null);
+  assert.equal(instance.snapshotPath, null);
+  assert.equal(instance.sourceKind, null);
+  assert.equal(instance.sourceRevision, null);
+  assert.equal(instance.privacyStatus, null);
   upgraded.close();
 });
 
@@ -183,8 +218,19 @@ test('app instance state stays package-generic and stores projection digests', a
       displayNameSnapshot: 'Example App',
       id: 'instance-one',
       manifestDigest: 'sha256:manifest',
+      packageDigest: `sha256:${'a'.repeat(64)}`,
       packageId: 'example-app',
       packageVersion: '0.1.0',
+      privacy: { posture: 'privacy-configured', reviewedAt: '2026-06-26T10:00:00.000Z', status: 'reviewed' },
+      snapshotPath: '/var/lib/mos-v2/app-packages/instance-one/installed',
+      snapshotState: 'installed',
+      source: {
+        kind: 'official-git',
+        path: 'apps/example-app',
+        repository: 'https://github.com/rpuls/my-own-suite',
+        revision: '0123456789abcdef0123456789abcdef01234567',
+        trust: 'mos-reviewed',
+      },
     },
     operationId: 'operation-one',
     projections: [
@@ -206,7 +252,15 @@ test('app instance state stays package-generic and stores projection digests', a
   assert.equal(instance.status, 'installed');
   assert.equal(instance.enabled, true);
   assert.equal(instance.manifestDigest, 'sha256:manifest');
+  assert.equal(instance.packageDigest, `sha256:${'a'.repeat(64)}`);
   assert.equal(instance.packageVersion, '0.1.0');
+  assert.equal(instance.snapshotState, 'installed');
+  assert.equal(instance.snapshotPath, '/var/lib/mos-v2/app-packages/instance-one/installed');
+  assert.equal(instance.sourceKind, 'official-git');
+  assert.equal(instance.sourceTrust, 'mos-reviewed');
+  assert.equal(instance.sourceRevision, '0123456789abcdef0123456789abcdef01234567');
+  assert.equal(instance.privacyStatus, 'reviewed');
+  assert.equal(instance.privacyPosture, 'privacy-configured');
 
   const projections = store.getAppProjections(instance.id);
   assert.deepEqual(projections.map(({ digest, kind, status }) => ({ digest, kind, status })), [
