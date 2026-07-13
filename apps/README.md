@@ -1,8 +1,29 @@
 # V2 App Packages
 
-Future app packages live here, one app per folder.
+MOS2 app packages live here, one app per folder.
 
 Each app package should own its app-specific manifest, Dockerfiles, setup helpers, runtime assets, Caddy snippets, optional Homepage contributions, backup metadata, and technical notes.
+
+## Package identity and sources
+
+MOS platform versions, MOS app-package versions, and upstream component versions are separate identities. Updating an app package does not require publishing a MOS platform release unless the candidate requires a newer platform contract.
+
+The repository holds the latest available official package for each app. On install or update, a MOS instance preserves a self-contained installed package snapshot: its manifest and setup schema, privacy review, runtime assets, package/source identity, and exact component artifacts. Settings and lifecycle actions use that installed snapshot. A periodically fetched candidate package is used only for update comparison until it applies successfully. Implementations may retain one prior local snapshot for bounded recovery; the repository does not need a full package-version archive.
+
+Every installed package records its source repository, path, immutable source revision, package digest, package version, minimum compatible MOS platform version, and trust level. Official and external packages use the same source-addressed contract, while their trust remains explicit as `mos-reviewed`, `publisher-signed`, or `unverified`. Structural validity never makes an external package MOS-reviewed.
+
+## MOS Privacy Posture
+
+Each reviewed candidate package owns a `privacy-review.json` validated against `schemas/app-privacy-assessment.schema.json` and a compact manifest summary. The assessment binds to the package version, digest, immutable source revision, component versions, and artifact digests. It travels into the installed package snapshot, so an owner sees the review for the package actually running rather than the latest repository wording. The assessment records provenance, including the AI model only when runtime-reported and whether a human reviewed it. It is not a legal audit or guarantee.
+
+Postures are derived from their dimensions:
+
+- `private-by-default`: reviewed behavior requires no external service or account, processes app data locally, and has no known enabled telemetry.
+- `privacy-configured`: MOS uses supported package configuration to disable known optional telemetry, with no required external data processing.
+- `external-dependency`: normal operation requires an upstream account, service, telemetry, or external data processing.
+- `review-required`: evidence is missing, stale, unresolved, or does not support another posture.
+
+Unknown facts always produce `review-required`. Evidence is labeled `observed`, `configured`, `documented`, or `inferred`; configuration alone must not be presented as proof of network silence. App updates and detected Terms, privacy-policy, ownership, telemetry, or outbound-dependency changes trigger reassessment.
 
 Use `icon.png` in the package root for the catalog icon, and point `manifest.json` `icon` at that file. Richer screenshots or marketing assets are optional catalog metadata, not required package scaffolding.
 

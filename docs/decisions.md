@@ -308,6 +308,21 @@ Consequences:
 - Temporary branch plans are allowed only while actively useful and should be removed or replaced before merge.
 - Use `.github/ISSUE_TEMPLATE/codex-task.yml` for Codex-ready tasks.
 - Use `docs/decisions.md` for architecture decisions and `docs/codex-notes.md` for durable working context.
+## 2026-07-13: App Packages Are Independently Versioned Source Snapshots
+
+Decision: MOS platform releases, MOS app-package releases, and upstream app versions are independent. The repository contains the latest official package source, while each installation preserves the exact package snapshot it installed or last updated: manifest/setup schema, runtime assets, source revision and digest, component identities, and privacy review. Normal management renders from the installed snapshot; a fetched candidate is used for update comparison until successfully applied. Official and external sources share this source-addressed package contract with explicit trust levels.
+
+Reason: Apps need frequent security and feature updates without forcing MOS platform releases. Installed settings and privacy claims must continue to match the running package even after the source publishes a newer candidate. Preserving a bounded local snapshot provides that truth without maintaining a permanent public archive of every historical package. The same source contract also enables future manually added community packages without confusing structural validity with MOS review.
+
+Consequences:
+
+- App-package versions advance independently and declare their minimum compatible MOS platform version.
+- Installed settings, lifecycle, backup metadata, and privacy posture come from the installed snapshot, not the moving repository checkout.
+- Update discovery periodically fetches a small source catalog, resolves a candidate through an immutable revision, verifies its digest, and compares it with installed state before apply.
+- Unknown or stale privacy evidence yields `review-required`; assessments bind to exact package/component identities and configuration is not described as proof of network silence.
+- A lightweight advisory can invalidate installed assessments without retaining complete historical packages in the source repository.
+- Unverified packages must remain visibly unverified and operate under a constrained capability contract because installing package code is a privileged action.
+
 ## 2026-07-12: Public Installer Uses Stable And Development Channels
 
 Decision: One Cloudflare Worker implementation serves two public installer channels. `get.myownsuite.org` tracks `main` for released installs, while `get-dev.myownsuite.org` tracks a Worker-configured development branch. Each request resolves the branch tip through GitHub, validates a full commit SHA, and generates an installer pinned to that immutable commit. Cloud-machine smoke harnesses use the development URL by default.

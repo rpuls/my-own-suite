@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MOS app privacy assessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "appId", "reviewedAt", "scope", "posture", "dimensions", "evidence", "policies", "provenance", "openQuestions"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "appId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$" },
+    "reviewedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageVersion", "packageDigest", "source", "components"],
+      "properties": {
+        "packageVersion": { "type": "string" },
+        "packageDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "path", "revision", "trust"],
+          "properties": {
+            "repository": { "type": "string", "format": "uri" },
+            "path": { "type": "string" },
+            "revision": { "type": "string" },
+            "trust": { "enum": ["mos-reviewed", "publisher-signed", "unverified"] }
+          }
+        },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "version", "artifact"],
+            "properties": {
+              "name": { "type": "string" },
+              "version": { "type": "string" },
+              "artifact": { "type": "string" },
+              "digest": { "type": "string" }
+            }
+          }
+        },
+        "clientsExcluded": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "posture": { "enum": ["private-by-default", "privacy-configured", "external-dependency", "review-required"] },
+    "dimensions": {
+      "type": "object",
+      "required": ["telemetry", "externalServices", "accountDependency", "dataProcessing", "policyExposure", "confidence"],
+      "properties": {
+        "telemetry": { "enum": ["none-observed", "disabled-by-mos", "optional", "unavoidable", "unknown"] },
+        "externalServices": { "enum": ["none-required", "optional", "required", "unknown"] },
+        "accountDependency": { "enum": ["local-only", "optional-upstream-account", "required-upstream-account", "unknown"] },
+        "dataProcessing": { "enum": ["local", "optional-external", "required-external", "unknown"] },
+        "policyExposure": { "enum": ["self-hosted-software-only", "upstream-services-involved", "unclear"] },
+        "confidence": { "enum": ["verified", "documented", "inferred", "unknown"] }
+      }
+    },
+    "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+    "telemetryControls": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+    "policies": { "type": "array", "items": { "type": "object", "required": ["kind", "url", "retrievedAt"], "properties": { "kind": { "enum": ["terms", "privacy", "license"] }, "url": { "type": "string" }, "retrievedAt": { "type": "string" }, "effectiveDate": { "type": "string" }, "publisher": { "type": "string" }, "contentHash": { "type": "string" } } } },
+    "provenance": { "type": "object", "required": ["method", "provider", "model", "modelIdentifierSource", "skill", "skillRevision", "repositoryCommit", "humanReviewed"], "properties": { "method": { "enum": ["ai-assisted", "human"] }, "provider": { "type": "string" }, "model": { "type": "string" }, "modelIdentifierSource": { "enum": ["runtime-reported", "user-supplied", "unknown"] }, "skill": { "const": "assess-app-privacy" }, "skillRevision": { "type": "string" }, "repositoryCommit": { "type": "string" }, "humanReviewed": { "type": "boolean" }, "humanReviewer": { "type": "string" } } },
+    "openQuestions": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "evidence": { "type": "object", "required": ["type", "claim", "source"], "properties": { "type": { "enum": ["observed", "configured", "documented", "inferred"] }, "claim": { "type": "string" }, "source": { "type": "string" }, "url": { "type": "string" }, "retrievedAt": { "type": "string" } } }
+  }
+}

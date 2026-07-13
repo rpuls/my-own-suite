@@ -13,6 +13,7 @@ MOS2 is now the default repo layout. The old MOS1 root shape is preserved on the
 | `system-agents/` | Narrow host-owned agents for app runtime, Homepage, HTTPS, backups, updates, and lab reset. |
 | `infrastructure/` | Shared runtime substrate for Caddy, Homepage defaults, installer support, and control-plane contracts. |
 | `scripts/` | MOS2 installer renderers, smoke harnesses, reconciliation, branding sync, and developer commands. |
+| `skills/` | Public, versioned workflows for adding apps, updating apps, and assessing app privacy. |
 | `shared/` | Cross-process contracts used by Suite Manager and host agents. |
 | `test/` | Deterministic unit tests and browser/E2E harnesses. |
 | `site/` | Future MOS2 public site placeholder. |
@@ -55,6 +56,7 @@ Browser and infrastructure smoke commands are intentionally human-run because th
 | Release notes | [CHANGELOG.md](./CHANGELOG.md) |
 | Suite Manager technical notes | [suite-manager/README.md](./suite-manager/README.md) |
 | App package technical notes | `apps/<app>/README.md` |
+| App review workflows | [skills/README.md](./skills/README.md) |
 | Host-agent notes | [system-agents/README.md](./system-agents/README.md) |
 | Operator/developer scripts | [scripts/README.md](./scripts/README.md) |
 | Test harness notes | [test/README.md](./test/README.md) |
