@@ -12,7 +12,6 @@ type UpdateJob = {
 };
 
 type UpdateStatus = {
-  appRuntimeReconciliation: { automatic?: boolean; mode?: string; summary?: string } | null;
   changeSummary: { items: string[]; source: string | null; title: string };
   checkedAt: string;
   currentJob: UpdateJob | null;
@@ -158,7 +157,6 @@ export function UpdatesScreen() {
         {status.error ? <Notice title="Lookup warning" variant="warning"><p>{status.error}</p></Notice> : null}
       </section>
 
-      {status.appRuntimeReconciliation ? <Notice title="Installed app runtimes" variant="warning"><p>{status.appRuntimeReconciliation.summary || 'Installed app runtimes may need manual reapply after a core update.'}</p></Notice> : null}
 
       {status.currentJob ? <section className="mos-panel suite-card suite-updates-panel">
         <h2 className="mos-card-title">Update activity</h2>

@@ -23,7 +23,6 @@ function normalizeStatus(agentPayload, serviceAvailable) {
   const track = updaterStatus.track || {};
   const latestRelease = updaterStatus.latestRelease || {};
   return {
-    appRuntimeReconciliation: updaterStatus.appRuntimeReconciliation || null,
     changeSummary: {
       items: Array.isArray(updaterStatus.changeSummary?.items)
         ? updaterStatus.changeSummary.items.filter((item) => typeof item === 'string').slice(0, 6)

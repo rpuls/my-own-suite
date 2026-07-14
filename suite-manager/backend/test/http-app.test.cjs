@@ -498,7 +498,7 @@ test('Updates API requires auth and proxies narrow update-agent actions', async 
     assert.equal(status.status, 200);
     assert.equal(status.json().managedApplyAvailable, true);
     assert.equal(status.json().changeSummary.items[0], 'Managed update support.');
-    assert.equal(status.json().appRuntimeReconciliation.automatic, false);
+    assert.equal(status.json().appRuntimeReconciliation, undefined);
 
     const track = await hostRequest(baseUrl, '/suite-manager/api/updates/track', {
       body: JSON.stringify({ track: 'staging' }),

@@ -171,6 +171,7 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'security-event-buckets',
     'installed-app-package-identity',
     'app-update-operation-stages',
+    'app-update-recovery-state',
   ]);
   upgraded.close();
 });
@@ -203,6 +204,7 @@ test('existing app rows migrate without inventing package source identity', asyn
   assert.equal(instance.snapshotState, 'legacy-unmigrated');
   assert.equal(instance.packageDigest, null);
   assert.equal(instance.snapshotPath, null);
+  assert.equal(instance.updateRecoveryState, 'none');
   assert.equal(instance.sourceKind, null);
   assert.equal(instance.sourceRevision, null);
   assert.equal(instance.privacyStatus, null);

@@ -259,6 +259,8 @@ function assertPackageUpdateActivateRequest(input) {
   return { candidate, installed };
 }
 
+const assertPackageUpdateRollbackRequest = assertPackageUpdateActivateRequest;
+
 function resolveEnvironment(environment, context) {
   const source = environment === undefined ? {} : environment;
   if (!source || typeof source !== 'object' || Array.isArray(source)) {
@@ -314,8 +316,8 @@ class AppAgentCore {
 
   async status() {
     return {
-      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.promote'],
-      contractVersion: 5,
+      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'],
+      contractVersion: 6,
       service: 'mos-v2-app-agent',
     };
   }
@@ -359,6 +361,15 @@ class AppAgentCore {
     const request = assertPackageUpdatePromoteRequest(input);
     const result = await this.adapter.promoteAppPackageUpdate(request);
     return { ...result, candidateDigest: request.candidateDigest, instanceId: request.instanceId, packageId: request.packageId, status: 'snapshot-promoted' };
+  }
+
+  async rollbackPackageUpdate(input) {
+    const { candidate, installed } = assertPackageUpdateRollbackRequest(input);
+    const result = await this.adapter.rollbackAppPackageUpdate({
+      candidate: runtimeAdapterInput(input.candidate, candidate.routes),
+      installed: runtimeAdapterInput(input.installed, installed.routes),
+    });
+    return { ...result, instanceId: input.installed.instanceId, packageDigest: input.installed.packageDigest, packageId: input.installed.packageId, status: 'installed-restored' };
   }
 
   async apply(input) {

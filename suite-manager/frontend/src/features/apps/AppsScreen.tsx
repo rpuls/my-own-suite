@@ -67,6 +67,7 @@ type AppPackageSummary = {
     packageId: string;
     projections: Array<{ appliedDigest: string | null; content: unknown; digest: string; kind: string; status: string; updatedAt?: string }>;
     status: string;
+    updateRecovery?: { errorCode: string; state: 'retry-safe' | 'rollback-required' | 'commit-required' } | null;
     updatedAt?: string;
   } | null;
   id: string;
@@ -637,6 +638,7 @@ function AppDetail({
           </div> : null}
         </div>
       </header>
+      {app.instance?.updateRecovery ? <Notice title="App update needs attention" variant="warning"><p>{app.instance.updateRecovery.state === 'retry-safe' ? 'The update stopped before changing the running app. Review the latest candidate and try again.' : app.instance.updateRecovery.state === 'rollback-required' ? 'The update stopped after changing runtime state. Restore the installed app runtime before retrying.' : 'The package snapshot was promoted before Suite Manager committed its identity. Complete package recovery before another update.'}</p><details className="suite-advanced"><summary>Advanced details</summary><code>{app.instance.updateRecovery.errorCode}</code></details></Notice> : null}
 
       <div className="suite-app-detail-scroll">
         <InstallProgress error={installError} steps={installSteps} />

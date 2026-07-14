@@ -222,6 +222,15 @@ const MIGRATIONS = [
     `,
     version: 9,
   },
+  {
+    name: 'app-update-recovery-state',
+    sql: `
+      ALTER TABLE app_instances ADD COLUMN update_recovery_state TEXT NOT NULL DEFAULT 'none'
+        CHECK (update_recovery_state IN ('none', 'retry-safe', 'rollback-required', 'commit-required'));
+      ALTER TABLE app_instances ADD COLUMN update_recovery_error TEXT;
+    `,
+    version: 10,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -519,6 +528,8 @@ class SuiteManagerStore {
         source_revision AS sourceRevision,
         source_trust AS sourceTrust,
         status,
+        update_recovery_error AS updateRecoveryError,
+        update_recovery_state AS updateRecoveryState,
         updated_at AS updatedAt
       FROM app_instances
       ORDER BY package_id
@@ -549,6 +560,8 @@ class SuiteManagerStore {
         source_revision AS sourceRevision,
         source_trust AS sourceTrust,
         status,
+        update_recovery_error AS updateRecoveryError,
+        update_recovery_state AS updateRecoveryState,
         updated_at AS updatedAt
       FROM app_instances
       WHERE package_id = ?
@@ -846,6 +859,7 @@ class SuiteManagerStore {
           request_json, started_at
         ) VALUES (?, ?, 'update', 'running', 'candidate-verified', ?, ?, ?, ?)
       `).run(operationId, instanceId, expectedInstalledDigest, candidateDigest, JSON.stringify(request), at);
+      this.database.prepare(`UPDATE app_instances SET update_recovery_state = 'none', update_recovery_error = NULL WHERE id = ?`).run(instanceId);
     });
   }
 
@@ -858,13 +872,41 @@ class SuiteManagerStore {
     return this.getAppOperation(operationId);
   }
 
-  failAppUpdate({ at, errorCode, instanceId, operationId, stage }) {
-    this.database.prepare(`
-      UPDATE app_operations
-      SET status = 'failed', stage = ?, error_code = ?, completed_at = ?
-      WHERE id = ? AND instance_id = ? AND kind = 'update' AND status = 'running'
-    `).run(stage, errorCode, at, operationId, instanceId);
+  failAppUpdate({ at, errorCode, instanceId, operationId, recoveryState = 'none', stage }) {
+    this.transaction(() => {
+      this.database.prepare(`
+        UPDATE app_operations
+        SET status = 'failed', stage = ?, error_code = ?, completed_at = ?
+        WHERE id = ? AND instance_id = ? AND kind = 'update' AND status = 'running'
+      `).run(stage, errorCode, at, operationId, instanceId);
+      this.database.prepare(`
+        UPDATE app_instances SET update_recovery_state = ?, update_recovery_error = ?, updated_at = ? WHERE id = ?
+      `).run(recoveryState, recoveryState === 'none' ? null : errorCode, at, instanceId);
+    });
     return this.getAppOperation(operationId);
+  }
+
+  recoverInterruptedAppUpdates({ at }) {
+    const operations = this.database.prepare(`
+      SELECT id, instance_id AS instanceId, stage FROM app_operations
+      WHERE kind = 'update' AND status = 'running' ORDER BY started_at
+    `).all();
+    return operations.map((operation) => {
+      const recoveryState = operation.stage === 'snapshot-promoted'
+        ? 'commit-required'
+        : ['candidate-healthy', 'integrations-reconciled', 'homepage-reconciled'].includes(operation.stage)
+          ? 'rollback-required'
+          : 'retry-safe';
+      this.failAppUpdate({
+        at,
+        errorCode: 'APP_UPDATE_INTERRUPTED',
+        instanceId: operation.instanceId,
+        operationId: operation.id,
+        recoveryState,
+        stage: `${operation.stage || 'unknown'}-interrupted`,
+      });
+      return { ...operation, recoveryState, status: 'recovery-required' };
+    });
   }
 
   completeAppUpdate({ at, homepageApplied = false, instanceId, operationId, instance, projections, snapshotPath }) {
@@ -878,7 +920,8 @@ class SuiteManagerStore {
         UPDATE app_instances SET
           package_version = ?, manifest_digest = ?, display_name_snapshot = ?, category_snapshot = ?,
           package_digest = ?, source_kind = ?, source_repository = ?, source_path = ?, source_revision = ?, source_trust = ?,
-          snapshot_path = ?, snapshot_state = 'installed', privacy_status = ?, privacy_posture = ?, privacy_reviewed_at = ?, updated_at = ?
+          snapshot_path = ?, snapshot_state = 'installed', privacy_status = ?, privacy_posture = ?, privacy_reviewed_at = ?,
+          update_recovery_state = 'none', update_recovery_error = NULL, updated_at = ?
         WHERE id = ?
       `).run(
         instance.packageVersion, instance.manifestDigest, instance.displayNameSnapshot, instance.categorySnapshot,

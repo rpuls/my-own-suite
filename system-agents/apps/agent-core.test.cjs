@@ -29,8 +29,8 @@ const request = {
 test('app agent exposes only narrow app runtime capabilities', async () => {
   const core = new AppAgentCore({ applyAppServices: async () => ({ steps: [] }), checkAppHealth: async () => ({}) });
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.promote']);
-  assert.equal(status.contractVersion, 5);
+  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote']);
+  assert.equal(status.contractVersion, 6);
 });
 
 test('app update promotion accepts only digest-bound snapshot identity', async () => {
@@ -53,6 +53,17 @@ test('app update activation binds candidate and installed runtime identities', a
   assert.equal(calls[0].installed.packageDigest, request.packageDigest);
   await assert.rejects(() => core.activatePackageUpdate({ candidate: { ...candidate, expectedInstalledDigest: `sha256:${'c'.repeat(64)}` }, installed: request }), AppRuntimeError);
   await assert.rejects(() => core.activatePackageUpdate({ candidate, installed: request, path: '/tmp/app' }), AppRuntimeError);
+});
+
+test('app update rollback restores only the identity-bound installed runtime', async () => {
+  const calls = [];
+  const core = new AppAgentCore({ async rollbackAppPackageUpdate(input) { calls.push(input); return { steps: ['installed-runtime-healthy'] }; } });
+  const candidate = { ...request, expectedInstalledDigest: request.packageDigest, packageDigest: `sha256:${'b'.repeat(64)}`, packageVersion: '0.2.0', sourceRevision: 'b'.repeat(40) };
+  const result = await core.rollbackPackageUpdate({ candidate, installed: request });
+  assert.equal(result.status, 'installed-restored');
+  assert.equal(calls[0].candidate.packageDigest, candidate.packageDigest);
+  assert.equal(calls[0].installed.packageDigest, request.packageDigest);
+  await assert.rejects(() => core.rollbackPackageUpdate({ candidate: { ...candidate, expectedInstalledDigest: `sha256:${'c'.repeat(64)}` }, installed: request }), AppRuntimeError);
 });
 
 test('app update build uses a validated candidate runtime without applying it', async () => {

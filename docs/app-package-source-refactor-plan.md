@@ -303,19 +303,19 @@ Acceptance:
 - [x] Add app-agent update capability with explicit candidate snapshot path/digest and expected installed digest.
 - [x] Reject stale apply requests when installed or candidate identity changed after preview.
 - [x] Build candidate images before stopping current containers when resources permit.
-- [ ] Preserve volumes and integration state according to the declared migration.
-- [ ] Record update operation stages durably for restart recovery.
+- [x] Preserve volumes and integration state according to the declared migration.
+- [x] Record update operation stages durably for restart recovery.
 - [x] Health-check the candidate before committing snapshot/database identity.
 - [x] Reconcile Caddy, Homepage, and cross-app networks as one reported transaction.
 - [x] Retain one previous snapshot/image reference only where rollback is declared safe.
-- [ ] On failure, restore old containers/routes and leave an explicit recovery state when full rollback is impossible.
-- [ ] Remove the core updater's manual app-reapply warning only after installed apps are completely decoupled from repo-owned package files.
+- [x] On failure, restore old containers/routes and leave an explicit recovery state when full rollback is impossible.
+- [x] Remove the core updater's manual app-reapply warning only after installed apps are completely decoupled from repo-owned package files.
 
 Acceptance:
 
-- [ ] Updating one app does not update the MOS platform or unrelated apps.
-- [ ] Success means running containers and persisted installed identity match the candidate.
-- [ ] Interruption at every durable stage recovers or reports an actionable state.
+- [x] Updating one app does not update the MOS platform or unrelated apps.
+- [x] Success means running containers and persisted installed identity match the candidate.
+- [x] Interruption at every durable stage recovers or reports an actionable state.
 - [ ] A representative multi-service database app updates successfully on real hardware/VM validation.
 
 ### Phase 6 — advisories and version-aware privacy UI

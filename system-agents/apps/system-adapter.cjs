@@ -386,6 +386,37 @@ class SystemAppAdapter {
     }
   }
 
+  async rollbackAppPackageUpdate({ candidate, installed }) {
+    const instanceRoot = path.join(this.appPackageRoot, installed.instanceId);
+    const installedDir = path.join(instanceRoot, 'installed');
+    const candidateDir = path.join(instanceRoot, 'candidate');
+    try {
+      const installedManifest = JSON.parse(await fsp.readFile(path.join(installedDir, 'manifest.json'), 'utf8'));
+      const candidateManifest = JSON.parse(await fsp.readFile(path.join(candidateDir, 'manifest.json'), 'utf8'));
+      if (installedManifest.id !== installed.packageId || digestAppPackage(installedDir, { manifest: installedManifest }) !== installed.packageDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
+      if (candidateManifest.id !== candidate.packageId || digestAppPackage(candidateDir, { manifest: candidateManifest }) !== candidate.packageDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
+      await this.removePackageContainers({ packageId: candidate.packageId, serviceIds: candidate.services.map((service) => service.id), serviceCount: candidate.services.length });
+      await this.startPackageContainers(installed);
+      await this.waitForReady(installed.healthTarget);
+      const currentRoutes = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
+      const nextRoutes = upsertAppRouteBlock(currentRoutes, { caddyRoutes: installed.caddyRoutes, packageId: installed.packageId });
+      if (currentRoutes !== nextRoutes) {
+        const routeCandidate = `${this.routesPath}.rollback-${process.pid}`;
+        await fsp.writeFile(routeCandidate, nextRoutes);
+        await this.execute(this.caddyBinary, ['validate', '--adapter', 'caddyfile', '--config', routeCandidate], { timeoutMs: 20000 });
+        await fsp.rm(routeCandidate, { force: true }).catch(() => {});
+        await atomicWrite(this.routesPath, nextRoutes);
+        await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 20000 });
+      }
+      return { steps: ['candidate-runtime-stopped', 'installed-runtime-started', 'installed-runtime-healthy', 'installed-route-restored'] };
+    } catch (error) {
+      const failure = new AppApplyError('run');
+      failure.code = 'APP_UPDATE_ROLLBACK_FAILED';
+      failure.details = [String(error?.message || 'old runtime restore failed')];
+      throw failure;
+    }
+  }
+
   async applyAppService({ caddyRoutes, dockerfile, environment = {}, healthTarget, imageTag, instanceId, internalPort, loopbackPort, packageDigest, packageId, packageVersion, sourceRevision, volumes }) {
     return this.applyAppServices({
       caddyRoutes,

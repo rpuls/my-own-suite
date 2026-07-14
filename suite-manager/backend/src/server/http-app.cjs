@@ -866,6 +866,7 @@ function createV2Server({
 
   server.on('close', () => { catalogService.stop(); setup.close(); });
   server.migrateAppPackages = () => appPackages.migrateLegacyPackages();
+  server.recoverAppPackageUpdates = () => appPackages.recoverInterruptedUpdates();
   server.startCatalogRefresh = async () => {
     let result;
     try { result = await catalogService.refresh(); }

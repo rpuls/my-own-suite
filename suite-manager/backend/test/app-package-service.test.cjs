@@ -153,7 +153,7 @@ test('confirmed app updates are re-compared and durably staged against exact ide
   store.close();
 });
 
-test('contract v5 app updates activate, promote, and commit candidate identity as one operation', async () => {
+test('contract v6 app updates activate, promote, and commit candidate identity as one operation', async () => {
   const root = await tempStateDir();
   const candidateDir = path.join(root, 'candidate');
   await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
@@ -168,9 +168,10 @@ test('contract v5 app updates activate, promote, and commit candidate identity a
     async activatePackageUpdate(input) { calls.push(['activate', input]); return { status: 'candidate-healthy' }; },
     async buildPackageUpdate() { return { status: 'built' }; },
     async promotePackageUpdate(input) { calls.push(['promote', input]); return { snapshotPath: candidateDir, status: 'snapshot-promoted' }; },
+    async rollbackPackageUpdate(input) { calls.push(['rollback', input]); return { status: 'installed-restored' }; },
     async snapshotPackage(input) { return snapshotResult(input); },
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.promote'], contractVersion: 5 }; },
+    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
   };
   const catalogService = { platformVersion: '0.1.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } };
   const store = new SuiteManagerStore(path.join(root, 'state'));
@@ -209,9 +210,10 @@ test('app updates replace an applied Homepage entry and retain its applied proje
       async activatePackageUpdate() { return { status: 'candidate-healthy' }; },
       async buildPackageUpdate() { return { status: 'built' }; },
       async promotePackageUpdate() { return { snapshotPath: candidateDir, status: 'snapshot-promoted' }; },
+      async rollbackPackageUpdate() { return { status: 'installed-restored' }; },
       async snapshotPackage(input) { return snapshotResult(input); },
       async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
-      async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.promote'], contractVersion: 5 }; },
+      async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
     },
     appsDir: v2AppsDir,
     catalogService: { platformVersion: '0.1.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
@@ -236,6 +238,40 @@ test('app updates replace an applied Homepage entry and retain its applied proje
   assert.equal(homepageProjection.status, 'applied');
   assert.equal(homepageProjection.appliedDigest, homepageProjection.digest);
   store.close();
+});
+
+test('startup classifies every interrupted update boundary into an actionable recovery state', async () => {
+  const cases = [
+    ['candidate-verified', 'retry-safe'],
+    ['candidate-staged', 'retry-safe'],
+    ['candidate-built', 'retry-safe'],
+    ['candidate-healthy', 'rollback-required'],
+    ['integrations-reconciled', 'rollback-required'],
+    ['homepage-reconciled', 'rollback-required'],
+    ['snapshot-promoted', 'commit-required'],
+  ];
+  for (const [stage, expectedState] of cases) {
+    const root = await tempStateDir();
+    const store = new SuiteManagerStore(root);
+    const service = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); } }, appsDir: v2AppsDir, store });
+    await service.installPackage('stirling-pdf');
+    const instance = store.getAppInstanceByPackageId('stirling-pdf');
+    const operationId = `interrupted-${stage}`;
+    store.beginAppUpdate({
+      at: '2026-07-14T00:00:00.000Z',
+      candidateDigest: `sha256:${'b'.repeat(64)}`,
+      expectedInstalledDigest: instance.packageDigest,
+      instanceId: instance.id,
+      operationId,
+    });
+    if (stage !== 'candidate-verified') store.advanceAppUpdate({ at: '2026-07-14T00:00:01.000Z', instanceId: instance.id, operationId, stage });
+
+    const [recovery] = service.recoverInterruptedUpdates();
+    assert.equal(recovery.recoveryState, expectedState);
+    assert.equal(store.getAppOperation(operationId).status, 'failed');
+    assert.equal(store.getAppInstanceByPackageId('stirling-pdf').updateRecoveryState, expectedState);
+    store.close();
+  }
 });
 
 test('legacy instances migrate only from an exactly matching validated package', async () => {

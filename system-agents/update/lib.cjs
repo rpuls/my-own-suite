@@ -269,11 +269,6 @@ async function collectStatus(paths = buildPaths()) {
   }
 
   const status = {
-    appRuntimeReconciliation: {
-      automatic: false,
-      mode: 'manual-reapply-after-core-update',
-      summary: 'Installed app runtimes are preserved. Reapply or restart installed apps after updating when package Dockerfiles or manifests changed.',
-    },
     checkedAt: now(),
     changeSummary: buildChangeSummary(paths, track.type, latestRelease),
     error: errors.length ? errors.join(' ') : null,
@@ -318,7 +313,7 @@ async function runApply(paths, { log = () => {} } = {}) {
   runNpm(paths, ['run', 'build:client'], log);
   log('Reconciling MOS host services and agents');
   runNode(paths, path.join('scripts', 'reconcile-system.cjs'), [], log);
-  log('Managed core update completed; installed app runtimes may need manual reapply');
+  log('Managed core update completed; installed app runtimes remain bound to their package snapshots');
   return collectStatus(paths);
 }
 

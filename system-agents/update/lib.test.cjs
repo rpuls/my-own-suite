@@ -43,7 +43,7 @@ test('update track config validates branch refs and writes persisted track state
   assert.throws(() => writeUpdateTrack(paths, { ref: 'bad;ref', track: 'branch' }), /unsupported/u);
 });
 
-test('status reports branch target, changelog summary, and manual app runtime reconciliation', async () => {
+test('status reports branch target without a manual app runtime reconciliation warning', async () => {
   const repo = makeRepo();
   const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-v2-update-state-'));
   const paths = buildPaths(repo, stateRoot);
@@ -54,7 +54,7 @@ test('status reports branch target, changelog summary, and manual app runtime re
     assert.equal(status.track.type, 'branch');
     assert.equal(status.track.ref, 'staging');
     assert.deepEqual(status.changeSummary.items, ['Test update summary.']);
-    assert.equal(status.appRuntimeReconciliation.automatic, false);
+    assert.equal(status.appRuntimeReconciliation, undefined);
     assert.equal(status.updateAvailable, false);
   } finally {
     delete process.env.MOS_V2_UPDATE_SKIP_RELEASE_LOOKUP;

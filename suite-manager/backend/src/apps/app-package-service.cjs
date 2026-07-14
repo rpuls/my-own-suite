@@ -195,6 +195,10 @@ function publicInstance(instance, projections = [], configRows = []) {
       updatedAt: projection.updatedAt,
     })),
     status: instance.status,
+    updateRecovery: instance.updateRecoveryState && instance.updateRecoveryState !== 'none' ? {
+      errorCode: instance.updateRecoveryError,
+      state: instance.updateRecoveryState,
+    } : null,
     updatedAt: instance.updatedAt,
   };
 }
@@ -559,6 +563,10 @@ class AppPackageService {
       }
     }
     return results;
+  }
+
+  recoverInterruptedUpdates() {
+    return this.store.recoverInterruptedAppUpdates({ at: this.now().toISOString() });
   }
 
   async applyPackageRuntime(packageId, requestContext = {}, options = {}) {
@@ -1147,6 +1155,8 @@ class AppPackageService {
     let operationId = null;
     let lastDurableStage = null;
     let homepageRollback = null;
+    let activatedRuntimes = null;
+    let snapshotPromoted = false;
     try {
       candidate = await this.catalogService.downloadCandidate(packageId);
       const agentStatus = await this.agent.status();
@@ -1229,10 +1239,11 @@ class AppPackageService {
       });
       let operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'candidate-built' });
       lastDurableStage = 'candidate-built';
-      const canApply = agentStatus.contractVersion >= 5
+      const canApply = agentStatus.contractVersion >= 6
         && agentStatus.capabilities?.includes('apps.package.update.activate')
+        && agentStatus.capabilities?.includes('apps.package.update.rollback')
         && agentStatus.capabilities?.includes('apps.package.update.promote')
-        && this.agent.activatePackageUpdate && this.agent.promotePackageUpdate;
+        && this.agent.activatePackageUpdate && this.agent.rollbackPackageUpdate && this.agent.promotePackageUpdate;
       if (!canApply) return { built, comparison, operation, staged };
 
       const installedConfig = candidateConfig;
@@ -1258,6 +1269,7 @@ class AppPackageService {
         sourceRevision: candidate.source.revision,
       });
       const activated = await this.agent.activatePackageUpdate({ candidate: candidateRuntime, installed: installedRuntime });
+      activatedRuntimes = { candidate: candidateRuntime, installed: installedRuntime };
       operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'candidate-healthy' });
       lastDurableStage = 'candidate-healthy';
 
@@ -1299,6 +1311,7 @@ class AppPackageService {
         packageId,
         rollbackSafe,
       });
+      snapshotPromoted = true;
       operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'snapshot-promoted' });
       lastDurableStage = 'snapshot-promoted';
       operation = this.store.completeAppUpdate({
@@ -1321,6 +1334,18 @@ class AppPackageService {
       homepageRollback = null;
       return { activated, built, comparison, homepage, integrations, operation, promoted, staged };
     } catch (error) {
+      if (activatedRuntimes && !snapshotPromoted) {
+        try {
+          await this.agent.rollbackPackageUpdate(activatedRuntimes);
+        } catch (rollbackError) {
+          error = new AppPackageServiceError(
+            'APP_UPDATE_ROLLBACK_FAILED',
+            'The app update failed and the previous runtime could not be restored. Recovery is required.',
+            502,
+          );
+          error.cause = rollbackError;
+        }
+      }
       if (homepageRollback) {
         try {
           const current = await homepageRollback.homepageService.read({ file: 'services.template.yaml' });
@@ -1339,11 +1364,17 @@ class AppPackageService {
         }
       }
       if (operationId) {
+        const recoveryState = snapshotPromoted
+          ? 'commit-required'
+          : String(error.code || '').endsWith('ROLLBACK_FAILED')
+            ? 'rollback-required'
+            : 'none';
         this.store.failAppUpdate({
           at: this.now().toISOString(),
           errorCode: error.code || 'APP_UPDATE_STAGE_FAILED',
           instanceId: instance.id,
           operationId,
+          recoveryState,
           stage: lastDurableStage ? `${lastDurableStage}-failed` : 'candidate-stage-failed',
         });
       }
