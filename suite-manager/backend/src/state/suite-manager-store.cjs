@@ -231,6 +231,29 @@ const MIGRATIONS = [
     `,
     version: 10,
   },
+  {
+    name: 'external-app-sources',
+    sql: `
+      CREATE TABLE app_sources (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (kind IN ('external-git', 'local')),
+        repository TEXT NOT NULL,
+        catalog_path TEXT NOT NULL DEFAULT 'apps',
+        revision TEXT,
+        publisher TEXT,
+        signature TEXT,
+        trust TEXT NOT NULL CHECK (trust IN ('publisher-signed', 'unverified')),
+        status TEXT NOT NULL DEFAULT 'active'
+          CHECK (status IN ('active', 'unavailable', 'key-rotated', 'compromised', 'removed')),
+        status_reason TEXT,
+        added_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX app_sources_status_idx ON app_sources(status);
+    `,
+    version: 11,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -642,6 +665,86 @@ class SuiteManagerStore {
       FROM app_integrations
       ORDER BY created_at
     `).all();
+  }
+
+  // Owner-added external package sources. This table is deliberately independent
+  // of app_instances with no foreign key or cascade, so removing a source never
+  // uninstalls an already-installed snapshot.
+  listAppSources() {
+    return this.database.prepare(`
+      SELECT
+        added_at AS addedAt,
+        catalog_path AS catalogPath,
+        id,
+        kind,
+        publisher,
+        repository,
+        revision,
+        signature,
+        status,
+        status_reason AS statusReason,
+        trust,
+        updated_at AS updatedAt
+      FROM app_sources
+      ORDER BY added_at
+    `).all();
+  }
+
+  getAppSource(id) {
+    return this.database.prepare(`
+      SELECT
+        added_at AS addedAt,
+        catalog_path AS catalogPath,
+        id,
+        kind,
+        publisher,
+        repository,
+        revision,
+        signature,
+        status,
+        status_reason AS statusReason,
+        trust,
+        updated_at AS updatedAt
+      FROM app_sources
+      WHERE id = ?
+    `).get(id) || null;
+  }
+
+  insertAppSource(record) {
+    this.database.prepare(`
+      INSERT INTO app_sources (
+        id, kind, repository, catalog_path, revision, publisher, signature, trust, status, status_reason, added_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      record.id,
+      record.kind,
+      record.repository,
+      record.catalogPath,
+      record.revision ?? null,
+      record.publisher ?? null,
+      record.signature ?? null,
+      record.trust,
+      record.status,
+      record.statusReason ?? null,
+      record.addedAt,
+      record.updatedAt,
+    );
+    return this.getAppSource(record.id);
+  }
+
+  updateAppSourceRevision({ at, id, revision }) {
+    this.database.prepare(`
+      UPDATE app_sources SET revision = ?, updated_at = ? WHERE id = ?
+    `).run(revision, at, id);
+    return this.getAppSource(id);
+  }
+
+  updateAppSourceStatus({ at, id, status, statusReason = null }) {
+    this.database.prepare(`
+      UPDATE app_sources SET status = ?, status_reason = ?, updated_at = ? WHERE id = ?
+    `).run(status, statusReason, at, id);
+    return this.getAppSource(id);
   }
 
   upsertAppConfigRows({ at, rows }) {

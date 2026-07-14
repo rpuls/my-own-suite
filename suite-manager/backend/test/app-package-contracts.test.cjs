@@ -10,10 +10,16 @@ const {
   advisoriesForVersion,
   advisoryAffectsVersion,
   canonicalPackagePath,
+  describeRequestedPermissions,
+  diffRequestedPermissions,
   digestAppPackage,
+  namespacedPackageId,
+  parseNamespacedPackageId,
   validateAdvisory,
   validateAdvisoryIndex,
   validateCatalog,
+  validateConstrainedCapabilities,
+  validateExternalIdentity,
   validatePlatformCompatibility,
   validatePrivacyBinding,
   validateSourceIdentity,
@@ -162,6 +168,55 @@ test('advisoriesForVersion returns applicable advisories most severe first', () 
   assert.deepEqual(applicable.map((advisory) => advisory.id), ['B', 'A']);
   assert.deepEqual(advisoriesForVersion(index, 'example-app', '2.5.0').map((advisory) => advisory.id), ['A']);
   assert.deepEqual(advisoriesForVersion(null, 'example-app', '1.4.0'), []);
+});
+
+test('the constrained profile permits declared routes and named volumes but rejects host escalation', () => {
+  const source = contractFixtures.externalUnverifiedSource;
+  assert.deepEqual(validateConstrainedCapabilities(contractFixtures.constrainedManifest, { trust: source.trust }), []);
+  assert.deepEqual(validateConstrainedCapabilities(contractFixtures.constrainedManifest, { trust: 'mos-reviewed' }), []);
+  const errors = validateConstrainedCapabilities(contractFixtures.escalatingManifest, { trust: 'unverified' });
+  assert.ok(errors.some((error) => error.includes('manifest.privileged')));
+  assert.ok(errors.some((error) => error.includes('networkMode')));
+  assert.ok(errors.some((error) => error.includes('host path or bind mounts')));
+  assert.ok(errors.some((error) => error.includes('Docker socket')));
+});
+
+test('an mos-reviewed package is exempt from the constrained profile', () => {
+  assert.deepEqual(validateConstrainedCapabilities(contractFixtures.escalatingManifest, { trust: 'mos-reviewed' }), []);
+});
+
+test('namespaced identity keeps official ids bare and isolates external sources by repository and path', () => {
+  assert.equal(namespacedPackageId(contractFixtures.officialSource, 'immich'), 'immich');
+  const external = namespacedPackageId(contractFixtures.externalUnverifiedSource, 'immich');
+  assert.match(external, /^x-[a-f0-9]{8}-immich$/u);
+  const otherPath = { ...contractFixtures.externalUnverifiedSource, path: 'apps/other' };
+  assert.notEqual(namespacedPackageId(otherPath, 'immich'), external);
+  assert.equal(namespacedPackageId(contractFixtures.externalUnverifiedSource, 'immich'), external);
+  assert.deepEqual(parseNamespacedPackageId(external), { namespace: external.slice(2, 10), namespaced: true, packageId: 'immich' });
+  assert.deepEqual(parseNamespacedPackageId('immich'), { namespace: null, namespaced: false, packageId: 'immich' });
+});
+
+test('external identity blocks official impersonation and self-asserted trust', () => {
+  const source = contractFixtures.externalUnverifiedSource;
+  const officialPackageIds = ['immich', 'seafile'];
+  assert.deepEqual(validateExternalIdentity(contractFixtures.constrainedManifest, source, { officialPackageIds }), []);
+  assert.deepEqual(validateExternalIdentity({ id: 'immich' }, source, { officialPackageIds }), ['external package id collides with an official package id.']);
+  assert.ok(validateExternalIdentity({ id: 'mos-secrets' }, source, { officialPackageIds }).some((error) => error.includes('reserved official prefix')));
+  assert.ok(validateExternalIdentity({ id: 'community-notes', verified: true }, source, { officialPackageIds }).some((error) => error.includes('self-assert verified')));
+  assert.deepEqual(validateExternalIdentity({ id: 'immich' }, contractFixtures.officialSource, { officialPackageIds }), []);
+});
+
+test('requested permissions summarize routes, volumes, and integrations and expose increases', () => {
+  const installed = describeRequestedPermissions(contractFixtures.constrainedManifest);
+  assert.deepEqual(installed, ['route:notes', 'volume:notes-data']);
+  const candidate = describeRequestedPermissions({
+    ...contractFixtures.constrainedManifest,
+    integrations: { postgres: {} },
+    resources: { services: { notes: { volumes: ['notes-data:/data', 'notes-uploads:/uploads'] } } },
+    routes: [{ host: 'notes' }, { host: 'notes-admin' }],
+  });
+  assert.deepEqual(diffRequestedPermissions(installed, candidate), ['integration:postgres', 'route:notes-admin', 'volume:notes-uploads']);
+  assert.deepEqual(diffRequestedPermissions(candidate, installed), []);
 });
 
 test('catalog refresh policy keeps a bounded retry cadence and last-known-good cache window', () => {

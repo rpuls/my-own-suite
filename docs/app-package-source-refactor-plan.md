@@ -334,15 +334,15 @@ Acceptance:
 
 ### Phase 7 — external package sources
 
-- [ ] Add an owner-only flow for a catalog/package URL with explicit risk explanation.
-- [ ] Require HTTPS initially; define whether local/file sources are development-only.
-- [ ] Store source URL, immutable revision, publisher identity/signature when present, and trust separately from package metadata.
-- [ ] Enforce the constrained capability profile for non-official packages.
-- [ ] Display requested permissions before install and permission increases before update.
-- [ ] Prevent external packages from claiming MOS review or using official identifiers/icons deceptively.
-- [ ] Namespace package/source identity to handle id collisions.
-- [ ] Define source removal, ownership change, signing-key rotation, compromise, and unavailable-source behavior.
-- [ ] Provide Remove source without uninstalling already-installed snapshots.
+- [ ] Add an owner-only flow for a catalog/package URL with explicit risk explanation. (Contract/registry foundations landed; owner-facing API/UI flow is pending.)
+- [x] Require HTTPS initially; define whether local/file sources are development-only. (`validateSourceUrl`/`buildSourceRecord`: uncredentialed HTTPS only; `local`/`file` sources are opt-in development-only.)
+- [x] Store source URL, immutable revision, publisher identity/signature when present, and trust separately from package metadata. (New `app_sources` table plus registry record model; revision is bound separately via `withRevision` after resolution.)
+- [ ] Enforce the constrained capability profile for non-official packages. (`validateConstrainedCapabilities` and the `validateExternalCandidate` gate exist and fail closed; still to be wired into a real external install path.)
+- [ ] Display requested permissions before install and permission increases before update. (`describeRequestedPermissions`/`diffRequestedPermissions` primitives exist; UI display is pending.)
+- [ ] Prevent external packages from claiming MOS review or using official identifiers/icons deceptively. (`validateExternalIdentity` blocks id/prefix/self-asserted-trust claims in the gate; install-path wiring and icon/UI labeling are pending.)
+- [x] Namespace package/source identity to handle id collisions. (`namespacedPackageId`/`instanceNamespaceId`: official ids stay bare, other sources are isolated by a repository+path digest.)
+- [x] Define source removal, ownership change, signing-key rotation, compromise, and unavailable-source behavior. (Registry status model with gated transitions: `unavailable`/`key-rotated` are recoverable and block new installs; `compromised`/`removed` are terminal.)
+- [x] Provide Remove source without uninstalling already-installed snapshots. (`app_sources` has no cascade to `app_instances`; `removalPlan` marks matching installs source-orphaned while their snapshots stay installed and manageable.)
 
 Acceptance:
 

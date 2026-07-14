@@ -57,6 +57,7 @@ test('fresh state creates the SQLite schema and records every migration', async 
     'app_instances',
     'app_integrations',
     'app_operations',
+    'app_sources',
     'homepage_operations',
     'homepage_revisions',
     'https_settings',
@@ -172,6 +173,7 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'installed-app-package-identity',
     'app-update-operation-stages',
     'app-update-recovery-state',
+    'external-app-sources',
   ]);
   upgraded.close();
 });
@@ -585,4 +587,56 @@ test('an existing SQLite database is never overwritten by legacy JSON', async ()
   assert.equal(reopened.getOwner(), null);
   reopened.close();
   assert.equal(fs.existsSync(legacyPath), true);
+});
+
+test('external sources persist separately and removing one never uninstalls its snapshot', async () => {
+  const store = new SuiteManagerStore(await tempStateDir());
+  const record = {
+    addedAt: '2026-07-15T10:00:00.000Z',
+    catalogPath: 'apps',
+    id: 'src-abc123def456',
+    kind: 'external-git',
+    publisher: 'community',
+    repository: 'https://code.example/community/apps',
+    revision: null,
+    signature: null,
+    status: 'active',
+    statusReason: null,
+    trust: 'unverified',
+    updatedAt: '2026-07-15T10:00:00.000Z',
+  };
+  store.insertAppSource(record);
+  assert.deepEqual(store.listAppSources().map((source) => source.id), ['src-abc123def456']);
+
+  store.installAppInstance({
+    at: '2026-07-15T10:05:00.000Z',
+    instance: {
+      categorySnapshot: 'tools',
+      displayNameSnapshot: 'Community Notes',
+      id: 'x-abc123de-community-notes',
+      manifestDigest: 'sha256:manifest',
+      packageDigest: `sha256:${'c'.repeat(64)}`,
+      packageId: 'community-notes',
+      packageVersion: '1.0.0',
+      snapshotPath: '/var/lib/mos-v2/app-packages/x-abc123de-community-notes/installed',
+      snapshotState: 'installed',
+      source: { kind: 'external-git', path: 'apps/community-notes', repository: 'https://code.example/community/apps', revision: '89abcdef0123456789abcdef0123456789abcdef', trust: 'unverified' },
+    },
+    operationId: 'operation-external-one',
+    projections: [{ contentJson: '{"services":[]}', digest: 'sha256:compose', kind: 'compose' }],
+    request: { dryRunOnly: true },
+  });
+
+  const resolved = store.updateAppSourceRevision({ at: '2026-07-15T10:06:00.000Z', id: record.id, revision: '89abcdef0123456789abcdef0123456789abcdef' });
+  assert.equal(resolved.revision, '89abcdef0123456789abcdef0123456789abcdef');
+
+  const removed = store.updateAppSourceStatus({ at: '2026-07-15T10:10:00.000Z', id: record.id, status: 'removed', statusReason: 'Removed by owner.' });
+  assert.equal(removed.status, 'removed');
+  assert.equal(store.getAppSource(record.id).statusReason, 'Removed by owner.');
+
+  const instance = store.getAppInstanceByPackageId('community-notes');
+  assert.equal(instance.status, 'installed');
+  assert.equal(instance.snapshotState, 'installed');
+  assert.equal(instance.sourceTrust, 'unverified');
+  store.close();
 });

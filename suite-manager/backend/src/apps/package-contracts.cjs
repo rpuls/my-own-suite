@@ -247,6 +247,151 @@ function validateAdvisoryIndex(index) {
   return errors;
 }
 
+// --- External package sources: constrained capability profile -------------
+//
+// Non-official packages (external-git / not mos-reviewed) run under a strict
+// capability profile. They may only expose declared routes and named volumes;
+// they must not reach for host networking, privileged containers, the Docker
+// socket, host paths/devices, raw proxy config, or host-agent/systemd install.
+// Enforcement here is structural and fails closed on any unknown escalation
+// field so a manifest cannot smuggle capabilities past MOS projection.
+
+const VOLUME_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,61}$/u;
+const FORBIDDEN_MANIFEST_KEYS = Object.freeze([
+  'caddy', 'caddyfile', 'capAdd', 'capabilities', 'compose', 'devices', 'dockerSocket',
+  'hostAgent', 'hooks', 'network', 'networkMode', 'privileged', 'rootScript', 'scripts',
+  'securityOpt', 'systemd',
+]);
+const FORBIDDEN_SERVICE_KEYS = Object.freeze([
+  'capAdd', 'capabilities', 'cgroupParent', 'devices', 'deviceCgroupRules', 'deviceRequests',
+  'dns', 'dockerSocket', 'extraHosts', 'groupAdd', 'ipc', 'mounts', 'network', 'networkMode',
+  'pid', 'ports', 'privileged', 'securityOpt', 'sysctls', 'userns', 'uts',
+]);
+const CONSTRAINED_CAPABILITY_PROFILE = Object.freeze({
+  forbiddenManifestKeys: FORBIDDEN_MANIFEST_KEYS,
+  forbiddenServiceKeys: FORBIDDEN_SERVICE_KEYS,
+  volumeNamePattern: VOLUME_NAME_PATTERN.source,
+});
+const RESERVED_ID_PREFIXES = Object.freeze(['mos', 'official', 'suite']);
+
+function isPlainRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+// A package is unconstrained only when it is MOS-reviewed, which
+// validateSourceIdentity permits solely from the configured official source.
+function isConstrainedTrust(trust) {
+  return trust !== 'mos-reviewed';
+}
+
+function volumeSource(spec) {
+  return String(spec).split(':')[0];
+}
+
+function volumeTarget(spec) {
+  return String(spec).split(':')[1] || '';
+}
+
+function validateConstrainedCapabilities(manifest, { trust } = {}) {
+  const errors = [];
+  if (!isConstrainedTrust(trust)) return errors;
+  if (!isPlainRecord(manifest)) return ['manifest must be an object.'];
+  for (const key of FORBIDDEN_MANIFEST_KEYS) {
+    if (manifest[key] !== undefined) errors.push(`manifest.${key} is not permitted for a non-official package.`);
+  }
+  const services = isPlainRecord(manifest.resources?.services) ? manifest.resources.services : {};
+  for (const [serviceId, service] of Object.entries(services)) {
+    const prefix = `resources.services.${serviceId}`;
+    if (!isPlainRecord(service)) continue;
+    for (const key of FORBIDDEN_SERVICE_KEYS) {
+      if (service[key] !== undefined) errors.push(`${prefix}.${key} is not permitted for a non-official package.`);
+    }
+    const volumes = Array.isArray(service.volumes) ? service.volumes : [];
+    for (const spec of volumes) {
+      const source = volumeSource(spec);
+      const target = volumeTarget(spec);
+      if (!VOLUME_NAME_PATTERN.test(source)) {
+        errors.push(`${prefix}.volumes must use named volumes only; host path or bind mounts are not permitted (${spec}).`);
+      }
+      if (target === '/var/run/docker.sock' || target === '/run/docker.sock' || target.startsWith('/dev/')) {
+        errors.push(`${prefix}.volumes must not mount host devices or the Docker socket (${spec}).`);
+      }
+    }
+  }
+  return [...new Set(errors)];
+}
+
+// Stable, collision-safe instance identity. Official packages keep their bare
+// id; every other source is namespaced by a short digest of its repository and
+// path so two sources can ship the same package id without colliding.
+function sourceNamespace(source) {
+  const repository = String(source?.repository || '').trim().toLowerCase().replace(/\.git$/u, '').replace(/\/+$/u, '');
+  const packagePath = String(source?.path || '').trim().toLowerCase();
+  return crypto.createHash('sha256').update(`${repository}\n${packagePath}`).digest('hex').slice(0, 8);
+}
+
+function namespacedPackageId(source, packageId) {
+  if (!PACKAGE_ID_PATTERN.test(String(packageId || ''))) return null;
+  if (source?.kind === 'official-git' && source?.trust === 'mos-reviewed') return packageId;
+  const namespaced = `x-${sourceNamespace(source)}-${packageId}`;
+  return namespaced.length <= 63 ? namespaced : null;
+}
+
+function parseNamespacedPackageId(id) {
+  const match = String(id || '').match(/^x-([a-f0-9]{8})-([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)$/u);
+  if (!match) return { namespace: null, namespaced: false, packageId: String(id || '') };
+  return { namespace: match[1], namespaced: true, packageId: match[2] };
+}
+
+// Prevent an external package from impersonating an official one: it may not
+// reuse an official package id, sit under a reserved id prefix, or self-assert
+// review/verification the platform has not granted.
+function validateExternalIdentity(manifest, source, { officialPackageIds = [] } = {}) {
+  const errors = [];
+  if (!isPlainRecord(manifest)) return ['manifest must be an object.'];
+  if (source?.kind === 'official-git' && source?.trust === 'mos-reviewed') return errors;
+  const id = String(manifest.id || '');
+  if (officialPackageIds.includes(id)) errors.push('external package id collides with an official package id.');
+  if (RESERVED_ID_PREFIXES.some((prefix) => id === prefix || id.startsWith(`${prefix}-`))) {
+    errors.push('external package id uses a reserved official prefix.');
+  }
+  for (const claim of ['certified', 'mosReviewed', 'official', 'trust', 'verified']) {
+    if (manifest[claim] !== undefined) errors.push(`external package must not self-assert ${claim}.`);
+  }
+  if (source?.trust === 'mos-reviewed') errors.push('external package cannot claim mos-reviewed trust.');
+  return [...new Set(errors)];
+}
+
+// The security-relevant permission surface a package requests, as stable keys.
+// Used to show owners what they are granting before install and to detect
+// permission increases before an update.
+function describeRequestedPermissions(manifest) {
+  const permissions = new Set();
+  for (const route of Array.isArray(manifest?.routes) ? manifest.routes : []) {
+    if (route?.host) permissions.add(`route:${route.host}`);
+  }
+  const services = isPlainRecord(manifest?.resources?.services) ? manifest.resources.services : {};
+  for (const service of Object.values(services)) {
+    for (const spec of Array.isArray(service?.volumes) ? service.volumes : []) {
+      permissions.add(`volume:${volumeSource(spec)}`);
+    }
+  }
+  if (isPlainRecord(manifest?.integrations)) {
+    for (const key of Object.keys(manifest.integrations)) permissions.add(`integration:${key}`);
+  }
+  if (manifest?.role === 'capability-provider') permissions.add('provides-capability');
+  return [...permissions].sort((left, right) => left.localeCompare(right, 'en'));
+}
+
+// Permissions present in the candidate but not the installed package. An update
+// that increases the requested surface must be surfaced for explicit consent.
+function diffRequestedPermissions(installedPermissions, candidatePermissions) {
+  const installed = new Set(Array.isArray(installedPermissions) ? installedPermissions : []);
+  return (Array.isArray(candidatePermissions) ? candidatePermissions : [])
+    .filter((permission) => !installed.has(permission))
+    .sort((left, right) => left.localeCompare(right, 'en'));
+}
+
 // Applicable advisories for an installed/candidate version, most severe first.
 // Advisories are current metadata about a version; they never mutate the
 // installed package snapshot or its stored assessment.
@@ -262,16 +407,23 @@ module.exports = {
   ADVISORY_SEVERITY_RANK,
   AppPackageContractError,
   CATALOG_REFRESH_POLICY,
+  CONSTRAINED_CAPABILITY_PROFILE,
   DEFAULT_PACKAGE_LIMITS,
   advisoriesForVersion,
   advisoryAffectsVersion,
   canonicalPackagePath,
   compareSemver,
   collectPackageFiles,
+  describeRequestedPermissions,
+  diffRequestedPermissions,
   digestAppPackage,
-  validateCatalog,
+  namespacedPackageId,
+  parseNamespacedPackageId,
   validateAdvisory,
   validateAdvisoryIndex,
+  validateCatalog,
+  validateConstrainedCapabilities,
+  validateExternalIdentity,
   validatePlatformCompatibility,
   validatePrivacyBinding,
   validateSourceIdentity,

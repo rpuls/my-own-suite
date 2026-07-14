@@ -35,5 +35,36 @@
     "summary": "New evidence invalidates the installed privacy review.",
     "publishedAt": "2026-07-14T00:00:00Z",
     "remediation": "Update to a reviewed package version or stop the app."
+  },
+  "constrainedManifest": {
+    "id": "community-notes",
+    "version": "1.0.0",
+    "role": "standalone",
+    "routes": [{ "host": "notes", "port": 8080, "service": "notes" }],
+    "resources": {
+      "services": {
+        "notes": {
+          "dockerfile": "Dockerfile",
+          "internalPort": 8080,
+          "volumes": ["notes-data:/data"]
+        }
+      }
+    }
+  },
+  "escalatingManifest": {
+    "id": "community-notes",
+    "version": "1.0.0",
+    "privileged": true,
+    "routes": [{ "host": "notes", "port": 8080, "service": "notes" }],
+    "resources": {
+      "services": {
+        "notes": {
+          "dockerfile": "Dockerfile",
+          "internalPort": 8080,
+          "networkMode": "host",
+          "volumes": ["/var/run/docker.sock:/var/run/docker.sock", "/etc:/host-etc", "notes-data:/data"]
+        }
+      }
+    }
   }
 }
