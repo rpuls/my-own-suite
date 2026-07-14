@@ -467,6 +467,77 @@ class AppPackageService {
     this.store = store;
   }
 
+  installedPackageFor(instance) {
+    if (!instance || instance.snapshotState !== 'installed' || !instance.snapshotPath || !instance.packageDigest) {
+      throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_UNAVAILABLE', 'This app does not have a verified installed package snapshot.', 409);
+    }
+    const appPackage = readAppPackageManifest(instance.snapshotPath);
+    if (appPackage.manifest.id !== instance.packageId || digestAppPackage(instance.snapshotPath) !== instance.packageDigest) {
+      throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The installed app package snapshot no longer matches its recorded identity.', 409);
+    }
+    return appPackage;
+  }
+
+  async migrateLegacyPackages() {
+    const results = [];
+    for (const instance of this.store.getAppInstances().filter((item) => item.snapshotState === 'legacy-unmigrated')) {
+      const packageDir = path.join(this.appsDir, instance.packageId);
+      let appPackage;
+      try {
+        appPackage = readAppPackageManifest(packageDir);
+      } catch {
+        this.store.markAppPackageRecoveryRequired({ at: this.now().toISOString(), instanceId: instance.id });
+        results.push({ packageId: instance.packageId, status: 'needs-package-recovery' });
+        continue;
+      }
+      const { manifest } = appPackage;
+      if (manifest.version !== instance.packageVersion || digestFor(manifest) !== instance.manifestDigest) {
+        this.store.markAppPackageRecoveryRequired({ at: this.now().toISOString(), instanceId: instance.id });
+        results.push({ packageId: instance.packageId, status: 'needs-package-recovery' });
+        continue;
+      }
+
+      const packageDigest = digestAppPackage(packageDir);
+      const source = {
+        kind: 'official-git',
+        path: `apps/${manifest.id}`,
+        repository: this.officialRepository,
+        revision: packageDigest,
+        trust: 'mos-reviewed',
+      };
+      let privacy = { posture: 'review-required', reviewedAt: null, status: 'review-required' };
+      const privacyReviewPath = path.join(packageDir, 'privacy-review.json');
+      if (fs.existsSync(privacyReviewPath)) {
+        const review = JSON.parse(fs.readFileSync(privacyReviewPath, 'utf8'));
+        const errors = validatePrivacyBinding(review, { manifest, packageDigest, source });
+        if (errors.length) {
+          this.store.markAppPackageRecoveryRequired({ at: this.now().toISOString(), instanceId: instance.id });
+          results.push({ packageId: instance.packageId, status: 'needs-package-recovery' });
+          continue;
+        }
+        privacy = { posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
+      }
+      try {
+        const snapshot = await this.agent?.snapshotPackage({ instanceId: instance.id, packageDigest, packageId: manifest.id });
+        if (!snapshot?.snapshotPath) throw new Error('snapshot unavailable');
+        const installed = readAppPackageManifest(snapshot.snapshotPath);
+        if (installed.manifest.id !== manifest.id || digestAppPackage(snapshot.snapshotPath) !== packageDigest) throw new Error('snapshot mismatch');
+        this.store.migrateAppPackageIdentity({
+          at: this.now().toISOString(),
+          instanceId: instance.id,
+          packageDigest,
+          privacy,
+          snapshotPath: snapshot.snapshotPath,
+          source,
+        });
+        results.push({ packageId: instance.packageId, status: 'migrated' });
+      } catch (error) {
+        results.push({ errorCode: error.code || 'APP_PACKAGE_MIGRATION_RETRY_REQUIRED', packageId: instance.packageId, status: 'retry-required' });
+      }
+    }
+    return results;
+  }
+
   async applyPackageRuntime(packageId, requestContext = {}, options = {}) {
     if (!this.agent) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
@@ -488,13 +559,7 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_RUNTIME_PROJECTION_MISSING', 'This app is missing runtime projections.', 409);
     }
 
-    if (instance.snapshotState !== 'installed' || !instance.snapshotPath || !instance.packageDigest) {
-      throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_UNAVAILABLE', 'This app does not have a verified installed package snapshot.', 409);
-    }
-    const { manifest } = readAppPackageManifest(instance.snapshotPath);
-    if (manifest.id !== instance.packageId || digestAppPackage(instance.snapshotPath) !== instance.packageDigest) {
-      throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The installed app package snapshot no longer matches its recorded identity.', 409);
-    }
+    const { manifest } = this.installedPackageFor(instance);
     const result = await this.agent.apply({
       appHost: requestContext.appHost,
       caddy: materializeRuntimeCaddy(caddyProjection.content, configRows),
@@ -546,8 +611,8 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_INTEGRATION_RUNTIME_NOT_READY', 'Both app runtimes must be running before this integration can be applied.', 409);
     }
 
-    const consumerPackage = readAppPackageManifest(path.join(this.appsDir, consumerPackageId));
-    const providerPackage = readAppPackageManifest(path.join(this.appsDir, providerPackageId));
+    const consumerPackage = this.installedPackageFor(consumer);
+    const providerPackage = this.installedPackageFor(provider);
     const [, slot] = integrationSlots(consumerPackage.manifest).find(([id]) => id === slotId) || [];
     const [capabilityId, providerCapability] = exportEntries(providerPackage.manifest).find(([id]) => id === providerCapabilityId) || [];
     if (!slot || !providerCapability || !slot.accepts.some((matcher) => capabilityMatches(providerCapability, matcher))) {
@@ -706,7 +771,7 @@ class AppPackageService {
 
     try {
       await this.applyPackageRuntime(consumer.packageId, requestContextForPackage(consumer.packageId, requestContext));
-      const providerPackage = readAppPackageManifest(path.join(this.appsDir, provider.packageId));
+      const providerPackage = this.installedPackageFor(provider);
       const providerServices = Object.keys(providerPackage.manifest.resources?.services || {});
       const network = await this.agent.connectNetwork({
         consumerPackageId: consumer.packageId,
@@ -826,9 +891,22 @@ class AppPackageService {
   listPackages() {
     const instancesByPackage = new Map(this.store.getAppInstances().map((instance) => [instance.packageId, instance]));
     const integrations = this.store.getAppIntegrations();
-    const packages = inspectAppPackages(this.appsDir).map((summary) => {
-      const storedInstance = instancesByPackage.get(summary.id);
+    const candidatesByPackage = new Map(inspectAppPackages(this.appsDir).map((summary) => [summary.id, summary]));
+    const packageIds = new Set([...candidatesByPackage.keys(), ...instancesByPackage.keys()]);
+    const packages = [...packageIds].sort().map((packageId) => {
+      const storedInstance = instancesByPackage.get(packageId);
       const instance = storedInstance?.status === 'uninstalled' ? null : storedInstance;
+      const summary = instance?.snapshotState === 'installed'
+        ? publicPackageSummary(this.installedPackageFor(instance).manifest)
+        : instance
+          ? publicPackageSummary({
+            category: instance.categorySnapshot,
+            id: instance.packageId,
+            name: instance.displayNameSnapshot,
+            summary: 'Installed package metadata requires recovery before this app can be managed.',
+            version: instance.packageVersion,
+          }, ['The installed package snapshot is unavailable.'])
+          : candidatesByPackage.get(packageId);
       const projections = instance ? this.store.getAppProjections(instance.id) : [];
       const config = instance ? this.store.getAppConfig(instance.id) : [];
       const guideState = instance ? this.store.getAppGuideState(instance.id) : null;
@@ -886,7 +964,12 @@ class AppPackageService {
   }
 
   iconPath(packageId) {
-    const packageDir = path.join(this.appsDir, packageId);
+    const storedInstance = this.store.getAppInstanceByPackageId(packageId);
+    const instance = storedInstance?.status === 'uninstalled' ? null : storedInstance;
+    if (instance && instance.snapshotState !== 'installed') {
+      throw new AppPackageServiceError('APP_ICON_NOT_FOUND', 'This app icon is unavailable until its installed package is recovered.', 404);
+    }
+    const packageDir = instance ? this.installedPackageFor(instance).packageDir : path.join(this.appsDir, packageId);
     if (!fs.existsSync(path.join(packageDir, 'manifest.json'))) {
       throw new AppPackageServiceError('APP_PACKAGE_NOT_FOUND', 'That app package is not available.', 404);
     }

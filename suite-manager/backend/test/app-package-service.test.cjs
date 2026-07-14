@@ -6,6 +6,7 @@ const test = require('node:test');
 
 const {
   AppPackageService,
+  digestFor,
   renderDryRunProjections,
 } = require('../src/apps/app-package-service.cjs');
 const { readAppPackageManifest } = require('../src/apps/package-manifest.cjs');
@@ -69,6 +70,84 @@ test('new installs snapshot package contents before persisting configuration and
   assert.equal(installed.snapshotState, 'installed');
   assert.equal(installed.privacyStatus, 'review-required');
   assert.equal(installed.privacyPosture, 'review-required');
+
+  store.close();
+});
+
+test('installed package details and icons remain bound to the snapshot when the candidate changes or disappears', async () => {
+  const root = await tempStateDir();
+  const appsDir = path.join(root, 'apps');
+  const candidateDir = path.join(appsDir, 'stirling-pdf');
+  const snapshotDir = path.join(root, 'snapshots', 'stirling-pdf');
+  await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({
+    agent: {
+      async snapshotPackage() {
+        await fsp.cp(candidateDir, snapshotDir, { recursive: true });
+        return { snapshotPath: snapshotDir };
+      },
+    },
+    appsDir,
+    store,
+  });
+
+  await service.installPackage('stirling-pdf');
+  const installedBefore = service.listPackages().find((item) => item.id === 'stirling-pdf');
+  const installedIcon = await fsp.readFile(service.iconPath('stirling-pdf'));
+  const candidateManifestPath = path.join(candidateDir, 'manifest.json');
+  const candidateManifest = JSON.parse(await fsp.readFile(candidateManifestPath, 'utf8'));
+  await fsp.writeFile(candidateManifestPath, `${JSON.stringify({ ...candidateManifest, name: 'Moving candidate', version: '99.0.0' }, null, 2)}\n`);
+  await fsp.rm(candidateDir, { recursive: true });
+
+  const installedAfter = service.listPackages().find((item) => item.id === 'stirling-pdf');
+  assert.equal(installedAfter.name, installedBefore.name);
+  assert.equal(installedAfter.version, installedBefore.version);
+  assert.deepEqual(await fsp.readFile(service.iconPath('stirling-pdf')), installedIcon);
+
+  store.close();
+});
+
+test('legacy instances migrate only from an exactly matching validated package', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const matching = readAppPackageManifest(path.join(v2AppsDir, 'stirling-pdf')).manifest;
+  const mismatched = readAppPackageManifest(path.join(v2AppsDir, 'onlyoffice')).manifest;
+  const installLegacy = (id, manifest, manifestDigest) => store.installAppInstance({
+    at: '2026-07-14T00:00:00.000Z',
+    config: [],
+    instance: {
+      categorySnapshot: manifest.category,
+      displayNameSnapshot: manifest.name,
+      id,
+      manifestDigest,
+      packageId: manifest.id,
+      packageVersion: manifest.version,
+    },
+    operationId: `${id}-operation`,
+    projections: renderDryRunProjections(manifest, []),
+  });
+  installLegacy('legacy-matching', matching, digestFor(matching));
+  installLegacy('legacy-mismatch', mismatched, 'sha256:not-the-current-manifest');
+  const service = new AppPackageService({
+    agent: {
+      async snapshotPackage(input) {
+        const snapshotPath = path.join(root, 'snapshots', input.instanceId);
+        await fsp.cp(path.join(v2AppsDir, input.packageId), snapshotPath, { recursive: true });
+        return { snapshotPath };
+      },
+    },
+    appsDir: v2AppsDir,
+    store,
+  });
+
+  const results = await service.migrateLegacyPackages();
+  assert.deepEqual(results.map(({ packageId, status }) => ({ packageId, status })), [
+    { packageId: 'onlyoffice', status: 'needs-package-recovery' },
+    { packageId: 'stirling-pdf', status: 'migrated' },
+  ]);
+  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').snapshotState, 'installed');
+  assert.equal(store.getAppInstanceByPackageId('onlyoffice').snapshotState, 'needs-package-recovery');
 
   store.close();
 });

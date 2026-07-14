@@ -812,6 +812,7 @@ function createV2Server({
   });
 
   server.on('close', () => setup.close());
+  server.migrateAppPackages = () => appPackages.migrateLegacyPackages();
 
   return server;
 }

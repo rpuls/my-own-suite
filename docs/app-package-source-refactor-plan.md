@@ -235,16 +235,16 @@ Acceptance:
 - [x] Change projection rendering and runtime apply to load the installed snapshot.
 - [x] Pass an explicit validated build context/snapshot identity to the app agent; stop deriving it from `appsRoot/<packageId>`.
 - [x] Tag and label images/containers with package version, package digest, and source revision.
-- [ ] Change restart, enable, Stop, Uninstall, integration reconciliation, icon serving, and setup guides to use installed package data where an instance exists.
-- [ ] Preserve repo discovery only for not-yet-installed catalog candidates.
-- [ ] Migrate existing installed instances by snapshotting the current matching repo package only when manifest version/digest agrees; otherwise mark `needs-package-recovery` instead of guessing.
+- [x] Change restart, enable, Stop, Uninstall, integration reconciliation, icon serving, and setup guides to use installed package data where an instance exists.
+- [x] Preserve repo discovery only for not-yet-installed catalog candidates.
+- [x] Migrate existing installed instances by snapshotting the current matching repo package only when manifest version/digest agrees; otherwise mark `needs-package-recovery` instead of guessing.
 
 Acceptance:
 
-- [ ] Editing the repository manifest/Dockerfile after install does not change installed app detail, settings, restart build context, or privacy posture.
-- [ ] A missing repository checkout does not prevent management of an already-installed app.
-- [ ] Snapshot creation is atomic and rejects partial copies.
-- [ ] Existing instances migrate truthfully or enter an actionable recovery state.
+- [x] Editing the repository manifest/Dockerfile after install does not change installed app detail, settings, restart build context, or privacy posture.
+- [x] A missing repository checkout does not prevent management of an already-installed app.
+- [x] Snapshot creation is atomic and rejects partial copies.
+- [x] Existing instances migrate truthfully or enter an actionable recovery state.
 
 ### Phase 2 — backup and restore alignment
 

@@ -11,16 +11,21 @@ const stateDir = process.env.MOS_V2_STATE_DIR || path.resolve(process.cwd(), '.s
 const frontendDistDir = process.env.MOS_V2_FRONTEND_DIST_DIR
   || path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
 
-const server = createV2Server({
-  frontendDistDir,
-  homeHost,
-  stateDir,
-});
+const server = createV2Server({ frontendDistDir, homeHost, stateDir });
 
-server.listen(port, host, () => {
-  console.log(`[mos-v2-suite-manager] Listening on http://${host}:${port}`);
-  console.log(`[mos-v2-suite-manager] Open http://${homeHost}:${port}/suite-manager/`);
-  console.log(`[mos-v2-suite-manager] State directory: ${stateDir}`);
+async function start() {
+  const migrations = await server.migrateAppPackages();
+  for (const migration of migrations) console.log(`[mos-v2-suite-manager] App package migration ${migration.packageId}: ${migration.status}`);
+  server.listen(port, host, () => {
+    console.log(`[mos-v2-suite-manager] Listening on http://${host}:${port}`);
+    console.log(`[mos-v2-suite-manager] Open http://${homeHost}:${port}/suite-manager/`);
+    console.log(`[mos-v2-suite-manager] State directory: ${stateDir}`);
+  });
+}
+
+start().catch((error) => {
+  console.error(error);
+  process.exit(1);
 });
 
 server.on('error', (error) => {

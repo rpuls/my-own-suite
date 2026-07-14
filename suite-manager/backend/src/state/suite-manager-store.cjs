@@ -926,6 +926,37 @@ class SuiteManagerStore {
     });
   }
 
+  markAppPackageRecoveryRequired({ at, instanceId }) {
+    this.database.prepare(`
+      UPDATE app_instances
+      SET snapshot_state = 'needs-package-recovery', updated_at = ?
+      WHERE id = ? AND snapshot_state = 'legacy-unmigrated'
+    `).run(at, instanceId);
+  }
+
+  migrateAppPackageIdentity({ at, instanceId, packageDigest, privacy, snapshotPath, source }) {
+    this.database.prepare(`
+      UPDATE app_instances
+      SET package_digest = ?, source_kind = ?, source_repository = ?, source_path = ?,
+          source_revision = ?, source_trust = ?, snapshot_path = ?, snapshot_state = 'installed',
+          privacy_status = ?, privacy_posture = ?, privacy_reviewed_at = ?, updated_at = ?
+      WHERE id = ? AND snapshot_state = 'legacy-unmigrated'
+    `).run(
+      packageDigest,
+      source.kind,
+      source.repository,
+      source.path,
+      source.revision,
+      source.trust,
+      snapshotPath,
+      privacy.status,
+      privacy.posture,
+      privacy.reviewedAt,
+      at,
+      instanceId,
+    );
+  }
+
   deleteAppInstance({ instanceId }) {
     this.transaction(() => {
       this.database.prepare('DELETE FROM app_instances WHERE id = ?').run(instanceId);
