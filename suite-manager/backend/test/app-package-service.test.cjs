@@ -10,6 +10,7 @@ const {
   renderDryRunProjections,
 } = require('../src/apps/app-package-service.cjs');
 const { readAppPackageManifest } = require('../src/apps/package-manifest.cjs');
+const { digestAppPackage } = require('../src/apps/package-contracts.cjs');
 const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
 
 const v2Root = path.resolve(__dirname, '..', '..', '..');
@@ -105,6 +106,44 @@ test('installed package details and icons remain bound to the snapshot when the 
   assert.equal(installedAfter.version, installedBefore.version);
   assert.deepEqual(await fsp.readFile(service.iconPath('stirling-pdf')), installedIcon);
 
+  store.close();
+});
+
+test('confirmed app updates are re-compared and durably staged against exact identities', async () => {
+  const root = await tempStateDir();
+  const candidateDir = path.join(root, 'candidate');
+  await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
+  const manifestPath = path.join(candidateDir, 'manifest.json');
+  const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  const candidatePackage = readAppPackageManifest(candidateDir);
+  const candidateDigest = digestAppPackage(candidateDir);
+  const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'b'.repeat(40), trust: 'mos-reviewed' };
+  const stagedCalls = [];
+  const agent = {
+    async snapshotPackage(input) { return snapshotResult(input); },
+    async stagePackageUpdate(input) { stagedCalls.push(input); return { snapshotPath: '/state/candidate', steps: ['staged'] }; },
+    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage'], contractVersion: 2 }; },
+  };
+  const catalogService = {
+    platformVersion: '0.1.0',
+    async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; },
+  };
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({ agent, appsDir: v2AppsDir, catalogService, store });
+  await service.installPackage('stirling-pdf');
+  const comparison = await service.preparePackageUpdate('stirling-pdf');
+
+  await assert.rejects(() => service.stagePackageUpdate('stirling-pdf', { confirmationToken: '0'.repeat(64) }), (error) => error.code === 'APP_UPDATE_IDENTITY_CHANGED');
+  const result = await service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken });
+
+  assert.equal(result.operation.stage, 'candidate-staged');
+  assert.equal(result.operation.status, 'running');
+  assert.equal(result.operation.candidateDigest, candidateDigest);
+  assert.equal(stagedCalls.length, 1);
+  assert.equal(stagedCalls[0].candidatePath, candidateDir);
+  assert.equal(stagedCalls[0].expectedInstalledDigest, store.getAppInstanceByPackageId('stirling-pdf').packageDigest);
+  await assert.rejects(() => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }), (error) => error.code === 'APP_UPDATE_ALREADY_RUNNING');
   store.close();
 });
 

@@ -170,6 +170,7 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'app-integrations',
     'security-event-buckets',
     'installed-app-package-identity',
+    'app-update-operation-stages',
   ]);
   upgraded.close();
 });
@@ -287,6 +288,36 @@ test('app instance state stays package-generic and stores projection digests', a
   const columns = store.database.prepare('PRAGMA table_info(app_instances)').all().map(({ name }) => name);
   assert.equal(columns.some((name) => /stirling|seafile|immich|vaultwarden/u.test(name)), false);
   store.close();
+});
+
+test('app update operations persist digest-bound stages and reject overlap', async () => {
+  const store = new SuiteManagerStore(await tempStateDir());
+  const at = '2026-07-14T10:00:00.000Z';
+  store.installAppInstance({
+    at,
+    instance: {
+      categorySnapshot: 'tools', displayNameSnapshot: 'Example', id: 'update-instance',
+      manifestDigest: 'sha256:manifest', packageDigest: `sha256:${'a'.repeat(64)}`,
+      packageId: 'update-example', packageVersion: '1.0.0', privacy: { posture: 'review-required', reviewedAt: null, status: 'review-required' },
+      snapshotPath: '/var/lib/mos-v2/app-packages/update-instance/installed', snapshotState: 'installed',
+      source: { kind: 'official-git', path: 'apps/update-example', repository: 'https://github.com/rpuls/my-own-suite', revision: 'a'.repeat(40), trust: 'mos-reviewed' },
+    },
+    operationId: 'install-update-instance', projections: [],
+  });
+  store.beginAppUpdate({ at, candidateDigest: `sha256:${'b'.repeat(64)}`, expectedInstalledDigest: `sha256:${'a'.repeat(64)}`, instanceId: 'update-instance', operationId: 'update-one' });
+  assert.throws(() => store.beginAppUpdate({ at, candidateDigest: `sha256:${'c'.repeat(64)}`, expectedInstalledDigest: `sha256:${'a'.repeat(64)}`, instanceId: 'update-instance', operationId: 'update-two' }), /APP_UPDATE_ALREADY_RUNNING/u);
+  assert.equal(store.advanceAppUpdate({ at, instanceId: 'update-instance', operationId: 'update-one', stage: 'candidate-staged' }).stage, 'candidate-staged');
+  store.close();
+
+  const reopened = new SuiteManagerStore(store.stateDir);
+  const operation = reopened.getAppOperation('update-one');
+  assert.equal(operation.status, 'running');
+  assert.equal(operation.stage, 'candidate-staged');
+  assert.equal(operation.expectedInstalledDigest, `sha256:${'a'.repeat(64)}`);
+  assert.equal(operation.candidateDigest, `sha256:${'b'.repeat(64)}`);
+  reopened.failAppUpdate({ at, errorCode: 'APP_UPDATE_INTERRUPTED', instanceId: 'update-instance', operationId: 'update-one', stage: 'recovery-required' });
+  assert.equal(reopened.getAppOperation('update-one').status, 'failed');
+  reopened.close();
 });
 
 test('app health refresh records validation operations and projection truth', async () => {

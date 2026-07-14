@@ -360,6 +360,18 @@ test('App package catalog API requires authentication and exposes safe manifest 
   }, { homeHost: 'home.test' });
 });
 
+test('app update staging endpoint requires owner authentication', async () => {
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/stage-update', {
+      body: JSON.stringify({ confirmationToken: '0'.repeat(64) }),
+      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(denied.status, 401);
+    assert.equal(denied.json().code, 'AUTH_REQUIRED');
+  }, { homeHost: 'home.test' });
+});
+
 test('App package icon API serves only authenticated declared package icons', async () => {
   await withServer(async (baseUrl) => {
     const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/icon', {

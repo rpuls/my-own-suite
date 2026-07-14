@@ -1113,6 +1113,82 @@ class AppPackageService {
     } finally { candidate?.cleanup?.(); }
   }
 
+  async stagePackageUpdate(packageId, input = {}) {
+    const instance = this.store.getAppInstanceByPackageId(packageId);
+    if (!instance || instance.status === 'uninstalled') throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before staging an update.', 409);
+    if (typeof input.confirmationToken !== 'string' || !/^[a-f0-9]{64}$/u.test(input.confirmationToken)) {
+      throw new AppPackageServiceError('APP_UPDATE_CONFIRMATION_INVALID', 'Prepare and confirm this exact app update before staging it.', 400);
+    }
+    if (!this.catalogService?.downloadCandidate || !this.agent?.stagePackageUpdate) {
+      throw new AppPackageServiceError('APP_UPDATE_STAGING_UNAVAILABLE', 'App update staging is unavailable.', 503);
+    }
+    const installedPackage = this.installedPackageFor(instance);
+    let candidate;
+    let operationId = null;
+    try {
+      candidate = await this.catalogService.downloadCandidate(packageId);
+      const agentStatus = await this.agent.status();
+      const comparison = compareAppPackages({
+        agentCapabilities: Array.isArray(agentStatus.capabilities) ? agentStatus.capabilities : [],
+        agentContractVersion: Number.isInteger(agentStatus.contractVersion) ? agentStatus.contractVersion : 0,
+        candidate,
+        installed: { ...installedPackage, packageDigest: instance.packageDigest, source: {
+          kind: instance.sourceKind,
+          path: instance.sourcePath,
+          repository: instance.sourceRepository,
+          revision: instance.sourceRevision,
+          trust: instance.sourceTrust,
+        } },
+        platformVersion: this.catalogService.platformVersion,
+      });
+      if (comparison.confirmationToken !== input.confirmationToken) {
+        throw new AppPackageServiceError('APP_UPDATE_IDENTITY_CHANGED', 'The installed app or update candidate changed after preview. Review the update again.', 409);
+      }
+      if (comparison.compatibility === 'unsupported') {
+        throw new AppPackageServiceError('APP_UPDATE_UNSUPPORTED', 'This update is not compatible with the current MOS installation.', 409);
+      }
+      if (!agentStatus.capabilities?.includes('apps.package.update.stage') || agentStatus.contractVersion < 2) {
+        throw new AppPackageServiceError('APP_UPDATE_STAGING_UNAVAILABLE', 'The installed app agent cannot stage package updates.', 503);
+      }
+      operationId = crypto.randomUUID();
+      const at = this.now().toISOString();
+      try {
+        this.store.beginAppUpdate({
+          at,
+          candidateDigest: candidate.packageDigest,
+          expectedInstalledDigest: instance.packageDigest,
+          instanceId: instance.id,
+          operationId,
+          request: { packageId, packageVersion: candidate.manifest.version },
+        });
+      } catch (error) {
+        if (error.message === 'APP_UPDATE_ALREADY_RUNNING') throw new AppPackageServiceError('APP_UPDATE_ALREADY_RUNNING', 'An update operation is already active for this app.', 409);
+        throw error;
+      }
+      const staged = await this.agent.stagePackageUpdate({
+        candidateDigest: candidate.packageDigest,
+        candidatePath: candidate.packageDir,
+        expectedInstalledDigest: instance.packageDigest,
+        instanceId: instance.id,
+        packageId,
+      });
+      const operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'candidate-staged' });
+      return { comparison, operation, staged };
+    } catch (error) {
+      if (operationId) {
+        this.store.failAppUpdate({
+          at: this.now().toISOString(),
+          errorCode: error.code || 'APP_UPDATE_STAGE_FAILED',
+          instanceId: instance.id,
+          operationId,
+          stage: 'candidate-stage-failed',
+        });
+      }
+      if (error instanceof AppPackageServiceError) throw error;
+      throw new AppPackageServiceError(error.code || 'APP_UPDATE_STAGE_FAILED', error.message || 'The app update could not be staged.', error.statusCode || 502);
+    } finally { candidate?.cleanup?.(); }
+  }
+
   withGuideState(instance) {
     if (!instance) return null;
     return { ...instance, guideState: this.store.getAppGuideState(instance.id) };

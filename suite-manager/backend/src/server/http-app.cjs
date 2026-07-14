@@ -637,12 +637,23 @@ function createV2Server({
 
       const appInstallMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/install$/u);
       const appPrepareUpdateMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/prepare-update$/u);
+      const appStageUpdateMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/stage-update$/u);
       if (request.method === 'POST' && appPrepareUpdateMatch) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review app updates.' });
           return;
         }
         jsonResponse(response, 200, { comparison: await appPackages.preparePackageUpdate(decodeURIComponent(appPrepareUpdateMatch[1])) });
+        return;
+      }
+
+      if (request.method === 'POST' && appStageUpdateMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to update app packages.' });
+          return;
+        }
+        const body = await readJsonBody(request, 4 * 1024);
+        jsonResponse(response, 200, await appPackages.stagePackageUpdate(decodeURIComponent(appStageUpdateMatch[1]), body));
         return;
       }
 

@@ -212,6 +212,16 @@ const MIGRATIONS = [
     `,
     version: 8,
   },
+  {
+    name: 'app-update-operation-stages',
+    sql: `
+      ALTER TABLE app_operations ADD COLUMN stage TEXT;
+      ALTER TABLE app_operations ADD COLUMN expected_installed_digest TEXT;
+      ALTER TABLE app_operations ADD COLUMN candidate_digest TEXT;
+      CREATE INDEX app_operations_active_update_idx ON app_operations(instance_id, kind, status);
+    `,
+    version: 9,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -821,6 +831,51 @@ class SuiteManagerStore {
         WHERE id = ?
       `).run(at, instanceId);
     });
+  }
+
+  beginAppUpdate({ at, candidateDigest, expectedInstalledDigest, instanceId, operationId, request = {} }) {
+    this.transaction(() => {
+      const active = this.database.prepare(`
+        SELECT id FROM app_operations
+        WHERE instance_id = ? AND kind = 'update' AND status IN ('queued', 'running')
+      `).get(instanceId);
+      if (active) throw new Error('APP_UPDATE_ALREADY_RUNNING');
+      this.database.prepare(`
+        INSERT INTO app_operations (
+          id, instance_id, kind, status, stage, expected_installed_digest, candidate_digest,
+          request_json, started_at
+        ) VALUES (?, ?, 'update', 'running', 'candidate-verified', ?, ?, ?, ?)
+      `).run(operationId, instanceId, expectedInstalledDigest, candidateDigest, JSON.stringify(request), at);
+    });
+  }
+
+  advanceAppUpdate({ at, instanceId, operationId, stage }) {
+    const result = this.database.prepare(`
+      UPDATE app_operations SET stage = ?
+      WHERE id = ? AND instance_id = ? AND kind = 'update' AND status = 'running'
+    `).run(stage, operationId, instanceId);
+    if (result.changes !== 1) throw new Error('APP_UPDATE_OPERATION_NOT_RUNNING');
+    return this.getAppOperation(operationId);
+  }
+
+  failAppUpdate({ at, errorCode, instanceId, operationId, stage }) {
+    this.database.prepare(`
+      UPDATE app_operations
+      SET status = 'failed', stage = ?, error_code = ?, completed_at = ?
+      WHERE id = ? AND instance_id = ? AND kind = 'update' AND status = 'running'
+    `).run(stage, errorCode, at, operationId, instanceId);
+    return this.getAppOperation(operationId);
+  }
+
+  getAppOperation(operationId) {
+    const row = this.database.prepare(`
+      SELECT id, instance_id AS instanceId, kind, status, stage,
+             expected_installed_digest AS expectedInstalledDigest,
+             candidate_digest AS candidateDigest, error_code AS errorCode,
+             started_at AS startedAt, completed_at AS completedAt
+      FROM app_operations WHERE id = ?
+    `).get(operationId);
+    return row || null;
   }
 
   applyAppProjections({ at, instanceId, kinds, operationId, request = {} }) {
