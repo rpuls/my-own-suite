@@ -46,12 +46,13 @@ Restore is the break-glass operation: it takes a machine running MOS and replace
 
 1. Plug in the backup drive, open **Suite Manager → Backup**, and pick the backup bundle.
 2. Type `RESTORE` to confirm. The screen is explicit about what will be replaced.
-3. MOS first sets aside a small rescue copy of the current state, then restores the suite's settings, recreates every app and its data, and brings everything back online.
+3. MOS validates the bundle and each saved app-package snapshot before it stops anything. It then sets aside a small rescue copy of the current state, restores the suite's settings, exact app definitions, and data, and brings everything back online.
 
 Two rules of thumb:
 
 - **Restore onto the same MOS version the backup came from.** Each bundle records the version that made it; matching versions is the supported, conservative path.
 - **Restore is whole-suite.** There is no per-app restore today — it's designed for "bring my suite back", not "undo one app's mistake".
+- **App definitions are preserved, upstream downloads are not.** A backup keeps the exact MOS package and settings you installed. If an app's publisher later removes a pinned container image needed to rebuild it, MOS restores your state and reports that app as failed instead of silently installing a different version.
 
 ## Honest limitations, today
 

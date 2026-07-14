@@ -1,10 +1,9 @@
-const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const { DATABASE_FILENAME } = require('../state/suite-manager-store.cjs');
-const { discoverAppPackages } = require('../apps/package-manifest.cjs');
-const { stableJson } = require('../apps/app-package-service.cjs');
+const { readAppPackageManifest } = require('../apps/package-manifest.cjs');
+const { digestAppPackage } = require('../apps/package-contracts.cjs');
 
 const DEFAULT_CADDY_FILES = [
   '/etc/caddy/Caddyfile',
@@ -21,10 +20,6 @@ const HOMEPAGE_CONFIG_FILES = [
   'custom.js',
   'images',
 ];
-
-function digestFor(value) {
-  return `sha256:${crypto.createHash('sha256').update(stableJson(value)).digest('hex')}`;
-}
 
 function pathState(target) {
   try {
@@ -91,11 +86,17 @@ class BackupInventoryService {
   }
 
   inventory() {
-    const manifests = new Map(discoverAppPackages(this.appsDir).map(({ manifest }) => [manifest.id, manifest]));
     const installed = this.store.getAppInstances();
     const relationships = this.store.getAppIntegrations();
     const packages = installed.map((instance) => {
-      const manifest = manifests.get(instance.packageId);
+      let manifest = null;
+      let snapshotVerified = false;
+      if (instance.snapshotState === 'installed' && instance.snapshotPath) {
+        try {
+          manifest = readAppPackageManifest(instance.snapshotPath).manifest;
+          snapshotVerified = manifest.id === instance.packageId && digestAppPackage(instance.snapshotPath) === instance.packageDigest;
+        } catch {}
+      }
       const declaredVolumes = manifest ? uniqueVolumesFor(manifest) : [];
       return {
         declaredVolumes,
@@ -103,11 +104,20 @@ class BackupInventoryService {
         installedAt: instance.installedAt,
         manifestDigest: instance.manifestDigest,
         manifestPresent: Boolean(manifest),
+        packageDigest: instance.packageDigest,
         packageId: instance.packageId,
         packageVersion: instance.packageVersion,
+        snapshot: { path: instance.snapshotPath, state: instance.snapshotState, verified: snapshotVerified },
+        source: {
+          kind: instance.sourceKind,
+          path: instance.sourcePath,
+          repository: instance.sourceRepository,
+          revision: instance.sourceRevision,
+          trust: instance.sourceTrust,
+        },
         status: instance.status,
         warnings: [
-          ...(manifest ? [] : ['Package manifest is missing locally; restore compatibility cannot be checked.']),
+          ...(snapshotVerified ? [] : ['Installed package snapshot is missing or invalid; restore compatibility cannot be guaranteed.']),
           ...(declaredVolumes.length > 0 ? ['Package declares volumes but no explicit backup metadata yet.'] : []),
         ],
       };
@@ -161,10 +171,10 @@ class BackupInventoryService {
         warningCount: warningDetails.length,
       },
       warnings: warningDetails,
-      packageManifestDigests: [...manifests.values()].map((manifest) => ({
-        digest: digestFor(manifest),
-        packageId: manifest.id,
-        version: manifest.version,
+      packageManifestDigests: packages.filter((item) => item.snapshot.verified).map((item) => ({
+        digest: item.manifestDigest,
+        packageId: item.packageId,
+        version: item.packageVersion,
       })),
     };
   }

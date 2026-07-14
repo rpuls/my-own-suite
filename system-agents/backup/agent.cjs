@@ -7,6 +7,8 @@ const path = require('node:path');
 const { execFile, execFileSync, spawn } = require('node:child_process');
 const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-agent-client.cjs');
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
+const { collectPackageFiles, digestAppPackage } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
+const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
 const { SuiteManagerStore } = require('../../suite-manager/backend/src/state/suite-manager-store.cjs');
 
 const socketPath = process.env.MOS_V2_BACKUP_AGENT_SOCKET || '/run/mos-v2-backup-agent/agent.sock';
@@ -189,7 +191,43 @@ function updateJob(file, mutator) {
 }
 function log(file, message) { updateJob(file, (job) => { job.logs.push({ at: new Date().toISOString(), message }); }); }
 function stage(file, name) { updateJob(file, (job) => { job.stage = name; job.status = 'running'; }); log(file, name); }
-function sha256(file) { return command('sha256sum', [file], { timeout: 300_000 }).split(/\s+/)[0]; }
+function sha256(file) { return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); }
+function packageBackupInventory() {
+  const store = new SuiteManagerStore(stateDir);
+  try {
+    return store.getAppInstances().filter((instance) => instance.status !== 'uninstalled').map((instance) => {
+      if (instance.snapshotState !== 'installed' || !instance.snapshotPath || !instance.packageDigest) throw new Error(`Installed package snapshot is unavailable for ${instance.packageId}.`);
+      const { manifest } = readAppPackageManifest(instance.snapshotPath);
+      if (manifest.id !== instance.packageId || digestAppPackage(instance.snapshotPath) !== instance.packageDigest) throw new Error(`Installed package snapshot is invalid for ${instance.packageId}.`);
+      const expected = path.join(stateRoot, 'app-packages', instance.id, 'installed');
+      if (path.resolve(instance.snapshotPath) !== path.resolve(expected)) throw new Error(`Installed package snapshot path is invalid for ${instance.packageId}.`);
+      return {
+        instanceId: instance.id,
+        manifestDigest: instance.manifestDigest,
+        packageDigest: instance.packageDigest,
+        packageId: instance.packageId,
+        packageVersion: instance.packageVersion,
+        payload: collectPackageFiles(instance.snapshotPath, { manifest }).map((file) => ({ bytes: file.size, path: file.relativePath, sha256: sha256(file.absolutePath) })),
+        source: { kind: instance.sourceKind, path: instance.sourcePath, repository: instance.sourceRepository, revision: instance.sourceRevision, trust: instance.sourceTrust },
+      };
+    });
+  } finally {
+    store.close();
+  }
+}
+function validatePackagePayloads(root, packages) {
+  for (const item of packages || []) {
+    const packageDir = path.join(root, 'var-lib-mos-v2', 'app-packages', item.instanceId, 'installed');
+    const { manifest } = readAppPackageManifest(packageDir);
+    if (manifest.id !== item.packageId || manifest.version !== item.packageVersion || digestAppPackage(packageDir) !== item.packageDigest) throw new Error(`Backup package identity is invalid for ${item.packageId}.`);
+    const files = collectPackageFiles(packageDir, { manifest });
+    if (files.length !== item.payload?.length) throw new Error(`Backup package payload is incomplete for ${item.packageId}.`);
+    for (const file of files) {
+      const expected = item.payload.find((entry) => entry.path === file.relativePath);
+      if (!expected || expected.bytes !== file.size || expected.sha256 !== sha256(file.absolutePath)) throw new Error(`Backup package payload hash is invalid for ${item.packageId}/${file.relativePath}.`);
+    }
+  }
+}
 function copyIfExists(source, target) { if (fs.existsSync(source)) fs.cpSync(source, target, { dereference: false, force: true, preserveTimestamps: true, recursive: true }); }
 function repoRoot() {
   return repoDir;
@@ -286,6 +324,7 @@ function backup(jobFile) {
   ensureDir(volumesDir);
   updateJob(jobFile, (job) => { job.outputPath = bundleDir; });
   const stoppedContainers = runningAppContainers();
+  const packageInventory = packageBackupInventory();
   try {
     stage(jobFile, 'Preparing backup bundle');
     stage(jobFile, 'Stopping app runtime for volume snapshot');
@@ -294,6 +333,7 @@ function backup(jobFile) {
 
     stage(jobFile, 'Copying suite state');
     copyIfExists(stateDir, path.join(stateStage, 'var-lib-mos-v2', 'suite-manager'));
+    copyIfExists(path.join(stateRoot, 'app-packages'), path.join(stateStage, 'var-lib-mos-v2', 'app-packages'));
     copyIfExists(path.join(stateRoot, 'homepage', 'config'), path.join(stateStage, 'var-lib-mos-v2', 'homepage', 'config'));
     for (const file of caddyFiles) copyIfExists(file, path.join(stateStage, 'etc', 'caddy', path.basename(file)));
     copyIfExists(httpsSecret, path.join(stateStage, 'etc', 'mos-v2', 'secrets', path.basename(httpsSecret)));
@@ -307,8 +347,14 @@ function backup(jobFile) {
 
     stage(jobFile, 'Writing manifest');
     const manifest = {
-      backup: { createdAt: new Date().toISOString(), id: started.id, kind: 'mos-v2-whole-suite', schemaVersion: 1 },
-      contents: { apps: archivedVolumes.map((volume) => volume.name.replace(/^mos-v2-app-/u, '').split('-')[0]), stateArchive: 'state.tar.gz', volumes: archivedVolumes },
+      backup: { createdAt: new Date().toISOString(), id: started.id, kind: 'mos-v2-whole-suite', schemaVersion: 2 },
+      contents: {
+        apps: packageInventory,
+        stateArchive: 'state.tar.gz',
+        stateArchiveBytes: fs.statSync(path.join(bundleDir, 'state.tar.gz')).size,
+        stateArchiveSha256: sha256(path.join(bundleDir, 'state.tar.gz')),
+        volumes: archivedVolumes,
+      },
       source: { branch: optionalCommand('git', ['branch', '--show-current']), commit: optionalCommand('git', ['rev-parse', 'HEAD']), repoDir, version: fs.existsSync(path.join(repoDir, 'VERSION')) ? fs.readFileSync(path.join(repoDir, 'VERSION'), 'utf8').trim() : null },
     };
     writeJson(path.join(bundleDir, 'manifest.json'), manifest);
@@ -329,8 +375,19 @@ async function restore(jobFile) {
   stage(jobFile, 'Validating backup bundle');
   const manifest = readJson(path.join(bundleDir, 'manifest.json'));
   if (manifest.backup?.kind !== 'mos-v2-whole-suite') throw new Error('Backup bundle is not a MOS V2 whole-suite backup.');
+  if (manifest.backup?.schemaVersion !== 2) throw new Error('Backup bundle schema is not supported by package-aware restore.');
+  if (sha256(path.join(bundleDir, 'manifest.json')) !== fs.readFileSync(path.join(bundleDir, 'MANIFEST.sha256'), 'utf8').trim().split(/\s+/u)[0]) throw new Error('Backup manifest checksum is invalid.');
+  if (sha256(path.join(bundleDir, 'state.tar.gz')) !== manifest.contents?.stateArchiveSha256) throw new Error('Backup state archive checksum is invalid.');
+  for (const volume of manifest.contents?.volumes || []) if (sha256(path.join(bundleDir, volume.archive)) !== volume.archiveSha256) throw new Error(`Backup volume checksum is invalid for ${volume.name}.`);
   command('tar', ['-tzf', path.join(bundleDir, 'state.tar.gz')], { timeout: 300_000 });
   for (const volume of manifest.contents?.volumes || []) command('tar', ['-tzf', path.join(bundleDir, volume.archive)], { timeout: 300_000 });
+  const validationRoot = fs.mkdtempSync(path.join(agentStateDir, 'validate-'));
+  try {
+    command('tar', ['-xzf', path.join(bundleDir, 'state.tar.gz'), '-C', validationRoot], { timeout: 300_000 });
+    validatePackagePayloads(validationRoot, manifest.contents?.apps);
+  } finally {
+    fs.rmSync(validationRoot, { force: true, recursive: true });
+  }
 
   stage(jobFile, 'Saving pre-restore rescue copy');
   const rescueDir = path.join(agentStateDir, 'pre-restore-rescue', started.id);
@@ -354,6 +411,8 @@ async function restore(jobFile) {
     command('tar', ['-xzf', path.join(bundleDir, 'state.tar.gz'), '-C', temp], { timeout: 300_000 });
     fs.rmSync(stateDir, { force: true, recursive: true });
     copyIfExists(path.join(temp, 'var-lib-mos-v2', 'suite-manager'), stateDir);
+    fs.rmSync(path.join(stateRoot, 'app-packages'), { force: true, recursive: true });
+    copyIfExists(path.join(temp, 'var-lib-mos-v2', 'app-packages'), path.join(stateRoot, 'app-packages'));
     fs.rmSync(path.join(stateRoot, 'homepage', 'config'), { force: true, recursive: true });
     copyIfExists(path.join(temp, 'var-lib-mos-v2', 'homepage', 'config'), path.join(stateRoot, 'homepage', 'config'));
     copyIfExists(path.join(temp, 'etc', 'caddy'), '/etc/caddy');
@@ -382,7 +441,7 @@ async function restore(jobFile) {
   updateJob(jobFile, (job) => { job.stage = 'completed'; job.status = 'succeeded'; });
 }
 
-if (process.argv[2] === '--worker') {
+if (require.main === module && process.argv[2] === '--worker') {
   (async () => {
     try {
       const file = process.argv[3];
@@ -395,7 +454,7 @@ if (process.argv[2] === '--worker') {
     }
     process.exit(0);
   })();
-} else {
+} else if (require.main === module) {
   ensureDir(path.dirname(socketPath));
   ensureDir(agentStateDir);
   ensureDir(jobsDir);
@@ -422,3 +481,5 @@ if (process.argv[2] === '--worker') {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }
+
+module.exports = { packageBackupInventory, sha256, validatePackagePayloads };

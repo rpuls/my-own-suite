@@ -248,18 +248,18 @@ Acceptance:
 
 ### Phase 2 — backup and restore alignment
 
-- [ ] Make backup inventory read installed manifests rather than current repo packages.
-- [ ] Include installed source metadata and package snapshots in the state archive/bundle inventory.
-- [ ] Hash every included snapshot payload as part of the broader backup-integrity work.
-- [ ] Validate snapshot/package compatibility before destructive restore begins.
-- [ ] Restore snapshots before reconciling app runtimes.
-- [ ] Define behavior when referenced upstream/base artifacts are unavailable.
-- [ ] Document that restoring the definition does not guarantee an upstream registry still serves an old artifact.
+- [x] Make backup inventory read installed manifests rather than current repo packages.
+- [x] Include installed source metadata and package snapshots in the state archive/bundle inventory.
+- [x] Hash every included snapshot payload as part of the broader backup-integrity work.
+- [x] Validate snapshot/package compatibility before destructive restore begins.
+- [x] Restore snapshots before reconciling app runtimes.
+- [x] Define behavior when referenced upstream/base artifacts are unavailable.
+- [x] Document that restoring the definition does not guarantee an upstream registry still serves an old artifact.
 
 Acceptance:
 
-- [ ] Restore reproduces app settings/projections from the backed-up package snapshot even when the repo package has advanced.
-- [ ] Corrupt or missing snapshot payloads fail before services are stopped.
+- [x] Restore reproduces app settings/projections from the backed-up package snapshot even when the repo package has advanced.
+- [x] Corrupt or missing snapshot payloads fail before services are stopped.
 
 ### Phase 3 — read-only official catalog refresh
 
