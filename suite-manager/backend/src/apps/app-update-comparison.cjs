@@ -16,12 +16,12 @@ function volumes(manifest) { return new Set(Object.values(manifest.resources?.se
 
 function privacyFor(packageDir, manifest, packageDigest, source) {
   const reviewPath = path.join(packageDir, 'privacy-review.json');
-  if (!fs.existsSync(reviewPath)) return { posture: 'review-required', reviewedAt: null, status: 'review-required' };
+  if (!fs.existsSync(reviewPath)) return { dimensions: null, posture: 'review-required', reviewedAt: null, status: 'review-required' };
   const review = JSON.parse(fs.readFileSync(reviewPath, 'utf8'));
   const errors = validatePrivacyBinding(review, { manifest, packageDigest, source });
   return errors.length
-    ? { errors, posture: 'review-required', reviewedAt: null, status: 'invalid' }
-    : { posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
+    ? { dimensions: null, errors, posture: 'review-required', reviewedAt: null, status: 'invalid' }
+    : { dimensions: review.dimensions || null, posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
 }
 
 function compareAppPackages({ candidate, installed, platformVersion, agentCapabilities = [], agentContractVersion = 0 }) {
@@ -57,7 +57,7 @@ function compareAppPackages({ candidate, installed, platformVersion, agentCapabi
   const agentReady = agentCapabilities.includes('apps.package.snapshot') && agentContractVersion >= requiredAgentVersion;
   const installedPrivacy = privacyFor(installed.packageDir, installed.manifest, installed.packageDigest, installed.source);
   const candidatePrivacy = privacyFor(candidate.packageDir, candidate.manifest, candidate.packageDigest, candidate.source);
-  if (!equal(installedPrivacy, candidatePrivacy)) changes.push({ area: 'privacy', classification: candidatePrivacy.status === 'reviewed' ? 'automatically-handled' : 'operator-action-required', summary: `Privacy posture changes from ${installedPrivacy.posture} to ${candidatePrivacy.posture}.` });
+  if (!equal(installedPrivacy, candidatePrivacy)) changes.push({ area: 'privacy', classification: candidatePrivacy.status === 'reviewed' ? 'automatically-handled' : 'operator-action-required', summary: installedPrivacy.posture === candidatePrivacy.posture ? 'The privacy assessment changes without changing the overall posture.' : `Privacy posture changes from ${installedPrivacy.posture} to ${candidatePrivacy.posture}.` });
   const unsupported = platformErrors.length || !agentReady || undeclaredBreaking.length;
   const ownerAction = requiredInput.length || changes.some((change) => ['migration-required', 'operator-action-required'].includes(change.classification));
   const compatibility = unsupported ? 'unsupported' : ownerAction ? 'owner-action-required' : 'compatible';

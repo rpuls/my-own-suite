@@ -1,0 +1,423 @@
+---
+// Privacy posture tile + score dialog for the public app pages (Phase 6).
+//
+// SIBLING COMPONENT — there is no shared component library between the
+// public site (Astro) and Suite Manager (React) yet, so the shield badge,
+// facts tile, and posture dialog are implemented twice and must stay
+// visually identical:
+//   site/src/components/PrivacyPosture.astro                      (this file)
+//   suite-manager/frontend/src/features/apps/PrivacyPosture.tsx
+// The update-preview PrivacyChangeRow exists only in Suite Manager.
+// Shared logic and copy live in the byte-identical sibling modules
+// site/src/lib/privacy-posture.ts and
+// suite-manager/frontend/src/features/apps/privacy-posture.ts.
+// The CSS below mirrors the .suite-privacy-* rules in
+// suite-manager/frontend/src/styles/index.css (plus a local copy of the
+// suite-modal-backdrop/suite-dialog frame, which the site does not have).
+// If you change look, copy, or logic here, mirror it in the siblings.
+import {
+  ASSESSMENT_DOCS_URL,
+  GLYPHS,
+  SHIELD_PATH,
+  badgeTextFor,
+  dimensionRowsFor,
+  isRated,
+  postureFor,
+  provenanceLine,
+  tileMetaLine,
+  type PrivacyReviewSummary
+} from '../lib/privacy-posture'
+
+interface Props {
+  appName: string
+  packageVersion?: string | null
+  privacy: PrivacyReviewSummary
+  assessmentUrl?: string
+}
+
+const { appName, packageVersion = null, privacy, assessmentUrl = ASSESSMENT_DOCS_URL } = Astro.props
+const posture = postureFor(privacy)
+const badge = badgeTextFor(privacy)
+const rows = dimensionRowsFor(privacy)
+const provenance = provenanceLine(privacy, isRated(privacy) ? packageVersion : null)
+---
+
+<div class="privacy-posture" data-privacy-posture>
+  <button class="suite-privacy-tile" data-open type="button">
+    <span class="suite-privacy-tile-label">Privacy</span>
+    <span class="suite-privacy-tile-posture">
+      <span class={`suite-privacy-shield is-tile${badge.length > 1 ? ' is-wide' : ''}`} aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d={SHIELD_PATH} fill={posture.soft} stroke={posture.color} stroke-linejoin="round" stroke-width="1.6"></path></svg>
+        <span style={`color: ${posture.color}`}>{badge}</span>
+      </span>
+      <strong>{posture.label}</strong>
+    </span>
+    <span class="suite-privacy-tile-meta">
+      {tileMetaLine(privacy)}
+      <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d={GLYPHS.chevronRight}></path></svg>
+    </span>
+  </button>
+
+  <div class="suite-modal-backdrop" data-dialog hidden>
+    <section aria-label={`${appName} privacy`} aria-modal="true" class="suite-dialog suite-privacy-dialog" role="dialog">
+      <div class="suite-dialog-header">
+        <div class="suite-privacy-dialog-heading">
+          <span class={`suite-privacy-shield is-dialog${badge.length > 1 ? ' is-wide' : ''}`} aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d={SHIELD_PATH} fill={posture.soft} stroke={posture.color} stroke-linejoin="round" stroke-width="1.6"></path></svg>
+            <span style={`color: ${posture.color}`}>{badge}</span>
+          </span>
+          <div>
+            <h2>{appName}</h2>
+            <span class="suite-privacy-pill" style={`background: ${posture.soft}; border-color: ${posture.border}`}>{posture.label}</span>
+          </div>
+        </div>
+        <button aria-label={`Close ${appName} privacy`} class="suite-icon-button" data-close type="button">
+          <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+        </button>
+      </div>
+      <p class="suite-privacy-sentence">{posture.sentence}</p>
+      <div class="suite-privacy-rows">
+        {rows.map((row) => (
+          <div class="suite-privacy-row">
+            <span class="suite-privacy-row-icon">
+              <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d={row.iconPath}></path></svg>
+            </span>
+            <span class="suite-privacy-row-text">
+              <strong>{row.label}</strong>
+              <span>{row.phrase}</span>
+            </span>
+            <span class="suite-privacy-verdict" style={`background: ${row.verdict.soft}; border-color: ${row.verdict.border}; color: ${row.verdict.color}`}>{row.verdict.word}</span>
+          </div>
+        ))}
+      </div>
+      <div class="suite-privacy-footer">
+        <div class="suite-privacy-footer-meta">
+          <span>{provenance}</span>
+          <a class="suite-privacy-link" href={assessmentUrl} rel="noreferrer" target="_blank">
+            How MOS assesses app privacy
+            <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d={GLYPHS.externalLink}></path></svg>
+          </a>
+        </div>
+        <button class="mos-btn mos-btn-secondary" data-close type="button">Close</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+  for (const root of document.querySelectorAll<HTMLElement>('[data-privacy-posture]')) {
+    const opener = root.querySelector<HTMLButtonElement>('[data-open]')!
+    const backdrop = root.querySelector<HTMLElement>('[data-dialog]')!
+    const onKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close()
+    }
+    const open = () => {
+      backdrop.hidden = false
+      document.body.style.overflow = 'hidden'
+      document.addEventListener('keydown', onKeydown)
+      backdrop.querySelector<HTMLButtonElement>('[data-close]')?.focus()
+    }
+    const close = () => {
+      backdrop.hidden = true
+      document.body.style.overflow = ''
+      document.removeEventListener('keydown', onKeydown)
+      opener.focus()
+    }
+    opener.addEventListener('click', open)
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop) close()
+    })
+    for (const button of backdrop.querySelectorAll<HTMLButtonElement>('[data-close]')) {
+      button.addEventListener('click', close)
+    }
+  }
+</script>
+
+<style>
+  /* Mirrors the .suite-privacy-* rules in
+     suite-manager/frontend/src/styles/index.css — keep in sync. */
+  .privacy-posture {
+    display: block;
+  }
+
+  .suite-privacy-shield {
+    position: relative;
+    display: inline-grid;
+    flex: 0 0 auto;
+    place-items: center;
+  }
+
+  .suite-privacy-shield svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .suite-privacy-shield > span {
+    position: relative;
+    transform: translateY(-9%);
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .suite-privacy-shield.is-tile { width: 2.2rem; height: 2.2rem; font-size: 0.95rem; }
+  .suite-privacy-shield.is-tile.is-wide { font-size: 0.78rem; }
+  .suite-privacy-shield.is-dialog { width: 4rem; height: 4rem; font-size: 1.4rem; filter: drop-shadow(var(--mos-shadow-soft)); }
+  .suite-privacy-shield.is-dialog.is-wide { font-size: 1.15rem; }
+
+  .suite-privacy-tile {
+    display: grid;
+    align-content: start;
+    gap: 0.45rem;
+    width: 100%;
+    max-width: 18rem;
+    padding: var(--mos-space-4);
+    border: 1px solid var(--mos-color-surface-border);
+    border-radius: var(--mos-radius-sm);
+    background: var(--mos-color-surface-muted);
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+  }
+
+  .suite-privacy-tile:hover {
+    border-color: var(--mos-color-accent-border);
+    background: var(--mos-color-surface);
+    transform: translateY(-1px);
+  }
+
+  .suite-privacy-tile:focus-visible {
+    outline: var(--mos-focus-ring);
+  }
+
+  .suite-privacy-tile-label {
+    color: var(--mos-color-text-muted);
+    font-size: var(--mos-text-label);
+    font-weight: 800;
+    letter-spacing: var(--mos-letter-spacing-label);
+    text-transform: uppercase;
+  }
+
+  .suite-privacy-tile-posture {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+  }
+
+  .suite-privacy-tile-posture strong {
+    color: var(--mos-color-text-strong);
+    line-height: 1.15;
+  }
+
+  .suite-privacy-tile-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    overflow: hidden;
+    color: var(--mos-color-text-muted);
+    font-size: var(--mos-text-small);
+    white-space: nowrap;
+  }
+
+  .suite-privacy-tile-meta svg {
+    width: 0.85rem;
+    height: 0.85rem;
+    flex: 0 0 auto;
+  }
+
+  /* Local copy of Suite Manager's modal frame (suite-modal-backdrop /
+     suite-dialog / suite-dialog-header / suite-icon-button). */
+  .suite-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: grid;
+    place-items: center;
+    padding: var(--mos-space-4);
+    background: var(--mos-color-backdrop);
+  }
+
+  .suite-dialog {
+    display: grid;
+    gap: var(--mos-space-4);
+    max-height: min(86vh, 820px);
+    padding: var(--mos-space-5);
+    overflow: auto;
+    border: 1px solid var(--mos-color-surface-border);
+    border-radius: var(--mos-radius-md);
+    background: var(--mos-color-frost-strong);
+    -webkit-backdrop-filter: var(--mos-frost-filter-strong);
+    backdrop-filter: var(--mos-frost-filter-strong);
+    box-shadow: var(--mos-shadow-strong);
+  }
+
+  .suite-dialog-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--mos-space-4);
+  }
+
+  .suite-icon-button {
+    display: inline-grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    flex: 0 0 auto;
+    padding: 0;
+    border: 1px solid var(--mos-color-surface-border);
+    border-radius: var(--mos-radius-sm);
+    background: var(--mos-color-surface);
+    color: var(--mos-color-text);
+    cursor: pointer;
+  }
+
+  .suite-icon-button:hover {
+    border-color: var(--mos-color-accent-border);
+  }
+
+  .suite-icon-button svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .suite-privacy-dialog { width: min(100%, 580px); }
+
+  .suite-privacy-dialog-heading {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--mos-space-4);
+  }
+
+  .suite-privacy-dialog-heading > div {
+    display: grid;
+    gap: 0.3rem;
+  }
+
+  .suite-privacy-dialog-heading h2 {
+    margin: 0;
+    color: var(--mos-color-text-strong);
+    font-size: 1.5rem;
+    line-height: 1.2;
+  }
+
+  .suite-privacy-pill {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    min-height: 1.8rem;
+    padding: 0.22rem 0.6rem;
+    border: 1px solid var(--mos-color-surface-border);
+    border-radius: var(--mos-radius-pill);
+    color: var(--mos-color-text-strong);
+    font-size: var(--mos-text-label);
+    font-weight: 800;
+    letter-spacing: var(--mos-letter-spacing-label);
+    text-transform: uppercase;
+  }
+
+  .suite-privacy-sentence {
+    margin: 0;
+    color: var(--mos-color-text-muted);
+    line-height: 1.6;
+  }
+
+  .suite-privacy-rows { display: grid; }
+
+  .suite-privacy-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--mos-space-3);
+    padding: var(--mos-space-3) 0;
+    border-bottom: var(--mos-border-hairline);
+  }
+
+  .suite-privacy-row-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2.4rem;
+    height: 2.4rem;
+    border: 1px solid var(--mos-color-surface-border);
+    border-radius: var(--mos-radius-sm);
+    background: var(--mos-color-surface-strong);
+    color: var(--mos-color-text-muted);
+  }
+
+  .suite-privacy-row-icon svg {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+
+  .suite-privacy-row-text {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+
+  .suite-privacy-row-text strong {
+    color: var(--mos-color-text-strong);
+    font-weight: 700;
+  }
+
+  .suite-privacy-row-text span {
+    color: var(--mos-color-text-muted);
+    font-size: var(--mos-text-small);
+  }
+
+  .suite-privacy-verdict {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.7rem;
+    padding: 0.18rem 0.55rem;
+    border: 1px solid var(--mos-color-surface-border);
+    border-radius: var(--mos-radius-pill);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: var(--mos-letter-spacing-label);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .suite-privacy-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mos-space-3);
+    padding-top: var(--mos-space-4);
+    border-top: var(--mos-border-subtle);
+  }
+
+  .suite-privacy-footer-meta {
+    display: grid;
+    gap: 0.3rem;
+  }
+
+  .suite-privacy-footer-meta > span {
+    color: var(--mos-color-text-muted);
+    font-size: var(--mos-text-small);
+  }
+
+  .suite-privacy-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--mos-color-accent);
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .suite-privacy-link:hover { text-decoration: underline; }
+
+  .suite-privacy-link svg {
+    width: 1rem;
+    height: 1rem;
+  }
+</style>

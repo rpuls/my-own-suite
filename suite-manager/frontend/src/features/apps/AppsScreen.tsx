@@ -1,6 +1,8 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 
 import { Dialog, Icon, Notice, TextInput } from '../../components/ui';
+import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
+import type { PrivacyReviewSummary } from './privacy-posture';
 import type { Owner } from '../setup/types';
 
 type CatalogFeature = { body: string; title: string };
@@ -23,10 +25,10 @@ type CatalogUpdate = {
   status: 'current' | 'installable' | 'installed-newer' | 'integrity-error' | 'not-in-catalog' | 'unavailable' | 'update-available';
 };
 type UpdateComparison = {
-  candidate: { packageVersion: string; privacy: { posture: string; status: string } };
+  candidate: { packageVersion: string; privacy: PrivacyReviewSummary };
   changes: Array<{ area: string; classification: string; summary: string }>;
   compatibility: 'compatible' | 'owner-action-required' | 'unsupported' | 'unresolved';
-  installed: { packageVersion: string; privacy: { posture: string; status: string } };
+  installed: { packageVersion: string; privacy: PrivacyReviewSummary };
   metadata: { backupRequired: boolean; downtime: string; migrations: string[]; ownerActions: string[]; rollback: string };
   requiredInput: Array<{ id: string; label: string; secret: boolean; type: string }>;
   validation: { agentCapability: string; errors: string[] };
@@ -65,6 +67,7 @@ type AppPackageSummary = {
     id: string;
     installedAt: string;
     packageId: string;
+    packageVersion: string;
     projections: Array<{ appliedDigest: string | null; content: unknown; digest: string; kind: string; status: string; updatedAt?: string }>;
     status: string;
     updateRecovery?: { errorCode: string; state: 'retry-safe' | 'rollback-required' | 'commit-required' } | null;
@@ -73,6 +76,7 @@ type AppPackageSummary = {
   id: string;
   installStatus: string;
   name: string;
+  privacy: PrivacyReviewSummary;
   onboarding?: {
     sections?: Array<{
       actionLabel?: string;
@@ -196,13 +200,6 @@ function statusFor(app: AppPackageSummary) {
   if (runtimeApplied(app)) return { className: 'is-ready', label: 'Running', tone: 'success' };
   if (app.installStatus === 'installed') return { className: 'is-progress', label: 'Finishing setup', tone: 'info' };
   return { className: 'is-available', label: 'Available', tone: 'info' };
-}
-
-function setupLabel(app: AppPackageSummary) {
-  if (app.setup.fieldCount === 0) return 'No setup needed';
-  if (app.setup.fields.every((field) => field.generated)) return 'MOS generates setup';
-  if (app.setup.fields.some((field) => field.required && !field.generated)) return 'Needs your input';
-  return `${app.setup.fieldCount} setup field${app.setup.fieldCount === 1 ? '' : 's'}`;
 }
 
 function setupFieldsNeedInput(app: AppPackageSummary) {
@@ -521,6 +518,7 @@ function AppDetail({
   const [guideOpen, setGuideOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app, owner.email));
+  const [privacyOpen, setPrivacyOpen] = useState(false);
   const [comparison, setComparison] = useState<UpdateComparison | null>(null);
   const [comparisonError, setComparisonError] = useState('');
   const [comparisonLoading, setComparisonLoading] = useState(false);
@@ -549,6 +547,7 @@ function AppDetail({
     setGuideOpen(false);
     setActionsOpen(false);
     setSetupConfig(initialSetupConfig(app, owner.email));
+    setPrivacyOpen(false);
     setComparison(null);
     setComparisonError('');
     setUpdateInput({});
@@ -659,7 +658,7 @@ function AppDetail({
 
         <section className="suite-app-facts" aria-label="App facts">
           <div><span>Category</span><strong>{categoryLabel(primaryCategory(app))}</strong></div>
-          <div><span>Setup</span><strong>{setupLabel(app)}</strong></div>
+          <PrivacyFactsTile onOpen={() => setPrivacyOpen(true)} privacy={app.privacy} />
           <div><span>Complexity</span><strong>{complexityLabel(app)}</strong></div>
           <div><span>Resources</span><strong>{resourceLabel(app)}</strong></div>
         </section>
@@ -722,11 +721,13 @@ function AppDetail({
         <AdvancedDetails app={app} />
       </div>
     </aside>
+    {privacyOpen ? <PrivacyPostureDialog appName={app.name} onClose={() => setPrivacyOpen(false)} packageVersion={app.instance?.packageVersion || app.version} privacy={app.privacy} /> : null}
     {comparison ? <Dialog footer={<button className="mos-btn mos-btn-secondary" onClick={() => setComparison(null)} type="button">Close</button>} onClose={() => setComparison(null)} title={`Review ${app.name} update`}>
       <div className="suite-app-update-dialog">
         <Notice title={comparison.compatibility === 'unsupported' ? 'This update cannot be applied safely' : comparison.compatibility === 'owner-action-required' ? 'Your input is required' : 'Ready for confirmation'} variant={comparison.compatibility === 'unsupported' ? 'warning' : 'info'}>
-          <p>Version {comparison.installed.packageVersion} to {comparison.candidate.packageVersion}. Privacy posture: {comparison.installed.privacy.posture} to {comparison.candidate.privacy.posture}.</p>
+          <p>Version {comparison.installed.packageVersion} to {comparison.candidate.packageVersion}.</p>
         </Notice>
+        <PrivacyChangeRow candidate={comparison.candidate.privacy} candidateVersion={comparison.candidate.packageVersion} installed={comparison.installed.privacy} installedVersion={comparison.installed.packageVersion} />
         <dl><dt>Backup</dt><dd>{comparison.metadata.backupRequired ? 'Required' : 'Not declared as required'}</dd><dt>Downtime</dt><dd>{comparison.metadata.downtime}</dd><dt>Rollback</dt><dd>{comparison.metadata.rollback}</dd></dl>
         {comparison.changes.length ? <ul>{comparison.changes.map((change, index) => <li key={`${change.area}-${index}`}><strong>{change.area}</strong>: {change.summary}</li>)}</ul> : <p>No structural changes detected.</p>}
         {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} key={field.id} label={field.label} onChange={(event) => setUpdateInput((current) => ({ ...current, [field.id]: event.currentTarget.value }))} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}

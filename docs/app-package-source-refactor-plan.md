@@ -323,7 +323,7 @@ Acceptance:
 - [ ] Define a small official advisory index with affected package-version ranges, severity, type, evidence link, and remediation.
 - [ ] Validate advisory signatures/trust with the catalog source.
 - [ ] Show installed assessment provenance and current advisory status separately.
-- [ ] Show candidate assessment and posture changes in update preview.
+- [x] Show candidate assessment and posture changes in update preview.
 - [ ] Allow a corrected assessment/advisory to update display metadata without pretending the installed runtime changed.
 - [ ] Add stale-review and changed-policy monitoring to the review workflow/CI.
 

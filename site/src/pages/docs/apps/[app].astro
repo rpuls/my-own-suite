@@ -5,6 +5,7 @@
 // the page; the package README renders verbatim as the technical
 // reference, so there is no docs copy to keep in sync.
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import PrivacyPosture from '../../../components/PrivacyPosture.astro'
 import { catalogApps, appReadmes, LINK_LABELS } from '../../../lib/app-catalog'
 
 export function getStaticPaths() {
@@ -66,6 +67,7 @@ const headings = [
   )}
 
   <h2 id="good-to-know">Good to know</h2>
+  <PrivacyPosture appName={app.name} packageVersion={app.version} privacy={app.privacyReview} />
   <ul>
     {app.setup && (
       <li>

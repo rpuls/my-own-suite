@@ -109,6 +109,68 @@ test('installed package details and icons remain bound to the snapshot when the 
   store.close();
 });
 
+test('listPackages exposes privacy from the installed snapshot rather than the moving repo candidate', async () => {
+  const root = await tempStateDir();
+  const appsDir = path.join(root, 'apps');
+  const candidateDir = path.join(appsDir, 'stirling-pdf');
+  const snapshotDir = path.join(root, 'snapshots', 'stirling-pdf');
+  await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
+  const manifest = JSON.parse(await fsp.readFile(path.join(candidateDir, 'manifest.json'), 'utf8'));
+  // Two-pass authoring: the review participates in the package digest with
+  // its scope.packageDigest normalized to a placeholder, so write the review
+  // first, digest the package, then bind the real digest without changing it.
+  const review = {
+    appId: manifest.id,
+    dimensions: { accountDependency: 'local-only', confidence: 'verified', dataProcessing: 'local', externalServices: 'none-required', policyExposure: 'self-hosted-software-only', telemetry: 'none-observed' },
+    evidence: [],
+    openQuestions: [],
+    policies: [],
+    posture: 'private-by-default',
+    provenance: { humanReviewed: true, method: 'human', model: 'manual-review', modelIdentifierSource: 'user-supplied', repositoryCommit: 'test-commit', skill: 'assess-app-privacy', skillRevision: '1' },
+    reviewedAt: '2026-07-01T00:00:00.000Z',
+    schemaVersion: 1,
+    scope: {
+      components: [{ artifact: 'docker.io/stirling-tools/stirling-pdf:test', name: 'stirling-pdf', version: manifest.version }],
+      packageDigest: 'sha256:<package-digest>',
+      packageVersion: manifest.version,
+      source: { kind: 'official-git', path: `apps/${manifest.id}`, repository: 'https://github.com/rpuls/my-own-suite', revision: 'test-commit', trust: 'mos-reviewed' },
+    },
+  };
+  const reviewPath = path.join(candidateDir, 'privacy-review.json');
+  await fsp.writeFile(reviewPath, `${JSON.stringify(review, null, 2)}\n`);
+  review.scope.packageDigest = digestAppPackage(candidateDir);
+  await fsp.writeFile(reviewPath, `${JSON.stringify(review, null, 2)}\n`);
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({
+    agent: {
+      async snapshotPackage() {
+        await fsp.cp(candidateDir, snapshotDir, { recursive: true });
+        return { snapshotPath: snapshotDir };
+      },
+    },
+    appsDir,
+    store,
+  });
+
+  const available = service.listPackages().find((item) => item.id === 'stirling-pdf');
+  assert.equal(available.privacy.status, 'reviewed');
+  assert.equal(available.privacy.posture, 'private-by-default');
+  assert.equal(available.privacy.dimensions.telemetry, 'none-observed');
+
+  await service.installPackage('stirling-pdf');
+  const installed = service.listPackages().find((item) => item.id === 'stirling-pdf');
+  assert.equal(installed.privacy.status, 'reviewed');
+  assert.equal(installed.privacy.dimensions.dataProcessing, 'local');
+
+  await fsp.rm(candidateDir, { recursive: true });
+  const afterRemoval = service.listPackages().find((item) => item.id === 'stirling-pdf');
+  assert.equal(afterRemoval.privacy.status, 'reviewed');
+  assert.equal(afterRemoval.privacy.posture, 'private-by-default');
+  assert.equal(afterRemoval.privacy.dimensions.telemetry, 'none-observed');
+
+  store.close();
+});
+
 test('confirmed app updates are re-compared and durably staged against exact identities', async () => {
   const root = await tempStateDir();
   const candidateDir = path.join(root, 'candidate');

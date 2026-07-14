@@ -26,6 +26,26 @@ function appPackage(version, mutate = (manifest) => manifest) {
   return { manifest, packageDigest: digestAppPackage(packageDir), packageDir, source: { kind: 'local', path: 'apps/example', repository: 'local', revision: version, trust: 'unverified' } };
 }
 
+function writePrivacyReview(appPkg, posture, dimensions) {
+  fs.writeFileSync(path.join(appPkg.packageDir, 'privacy-review.json'), `${JSON.stringify({
+    appId: appPkg.manifest.id,
+    dimensions,
+    evidence: [],
+    openQuestions: [],
+    policies: [],
+    posture,
+    provenance: { humanReviewed: true, method: 'human', model: 'manual-review', modelIdentifierSource: 'user-supplied', repositoryCommit: 'test', skill: 'assess-app-privacy', skillRevision: '1' },
+    reviewedAt: '2026-07-01T00:00:00.000Z',
+    schemaVersion: 1,
+    scope: {
+      components: [{ artifact: 'docker.io/example/example:1.0.0', name: 'example', version: '1.0.0' }],
+      packageDigest: appPkg.packageDigest,
+      packageVersion: appPkg.manifest.version,
+      source: appPkg.source,
+    },
+  }, null, 2)}\n`);
+}
+
 test('comparison is deterministic and refuses undeclared required-field and volume breaks', (t) => {
   const installed = appPackage('1.0.0');
   const candidate = appPackage('2.0.0', (manifest) => {
@@ -55,4 +75,20 @@ test('declared breaking changes remain owner-visible and require confirmation ra
   assert.equal(comparison.compatibility, 'owner-action-required');
   assert.equal(comparison.metadata.backupRequired, true);
   assert.equal(comparison.metadata.rollback, 'unsupported');
+});
+
+test('privacy assessments carry their dimensions into both sides of the comparison', (t) => {
+  const installed = appPackage('1.0.0');
+  const candidate = appPackage('1.1.0');
+  writePrivacyReview(installed, 'private-by-default', { accountDependency: 'local-only', confidence: 'verified', dataProcessing: 'local', externalServices: 'none-required', policyExposure: 'self-hosted-software-only', telemetry: 'none-observed' });
+  writePrivacyReview(candidate, 'external-dependency', { accountDependency: 'local-only', confidence: 'verified', dataProcessing: 'optional-external', externalServices: 'required', policyExposure: 'upstream-services-involved', telemetry: 'optional' });
+  t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
+  const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
+  assert.equal(comparison.installed.privacy.status, 'reviewed');
+  assert.equal(comparison.installed.privacy.posture, 'private-by-default');
+  assert.equal(comparison.installed.privacy.dimensions.telemetry, 'none-observed');
+  assert.equal(comparison.candidate.privacy.status, 'reviewed');
+  assert.equal(comparison.candidate.privacy.dimensions.externalServices, 'required');
+  const change = comparison.changes.find((item) => item.area === 'privacy');
+  assert.match(change.summary, /from private-by-default to external-dependency/u);
 });

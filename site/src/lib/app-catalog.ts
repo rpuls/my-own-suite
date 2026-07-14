@@ -4,10 +4,13 @@
 // Manager uses — so adding a new app package to the repo adds it to the
 // site automatically on the next build.
 
+import type { PrivacyReviewSummary } from './privacy-posture'
+
 export type CatalogFeature = { title: string; body: string }
 export type CatalogApp = {
   id: string
   name: string
+  version: string
   category: string
   categorySlug: string
   summary: string
@@ -19,6 +22,7 @@ export type CatalogApp = {
   resourcesDetail: string
   privacy: string
   privacyNotes: string[]
+  privacyReview: PrivacyReviewSummary
   features: CatalogFeature[]
   links: Record<string, string>
   tags: string[]
@@ -39,6 +43,41 @@ const iconModules = import.meta.glob('../../../apps/*/icon.png', {
 const readmeModules = import.meta.glob('../../../apps/*/README.md', {
   eager: true
 }) as Record<string, any>
+// Structured privacy assessments (privacy-review.json) for the posture
+// badge/dialog. The site shows the current repo package's review — the same
+// candidate a fresh install would get. Apps without a review render the
+// truthful "Review required / not yet rated" state.
+const privacyReviewModules = import.meta.glob('../../../apps/*/privacy-review.json', {
+  eager: true,
+  import: 'default'
+}) as Record<string, any>
+
+const UNRATED: PrivacyReviewSummary = {
+  dimensions: null,
+  posture: 'review-required',
+  reviewedAt: null,
+  status: 'review-required'
+}
+
+// Light presentation check only (id + version binding). Full validation of
+// the review binding happens in Suite Manager at install/update time.
+function privacyReviewFor(manifestPath: string, manifest: any): PrivacyReviewSummary {
+  const review = privacyReviewModules[manifestPath.replace(/manifest\.json$/, 'privacy-review.json')]
+  if (
+    !review ||
+    review.schemaVersion !== 1 ||
+    review.appId !== manifest.id ||
+    review.scope?.packageVersion !== manifest.version
+  ) {
+    return UNRATED
+  }
+  return {
+    dimensions: review.dimensions ?? null,
+    posture: String(review.posture ?? 'review-required'),
+    reviewedAt: review.reviewedAt ?? null,
+    status: 'reviewed'
+  }
+}
 
 // Friendly labels for manifest category slugs; unknown slugs fall back
 // to a capitalized form so new categories never break the site.
@@ -70,6 +109,7 @@ export const catalogApps: CatalogApp[] = Object.entries(manifestModules)
     return {
       id: String(manifest.id ?? ''),
       name: String(manifest.name ?? ''),
+      version: String(manifest.version ?? ''),
       category: categoryLabel(String(manifest.category ?? '')),
       categorySlug: String(manifest.category ?? ''),
       summary: String(manifest.summary ?? ''),
@@ -81,6 +121,7 @@ export const catalogApps: CatalogApp[] = Object.entries(manifestModules)
       resourcesDetail: String(catalog.resourceHint?.description ?? ''),
       privacy: String(catalog.privacy?.summary ?? ''),
       privacyNotes: Array.isArray(catalog.privacy?.notes) ? catalog.privacy.notes.map(String) : [],
+      privacyReview: privacyReviewFor(path, manifest),
       features,
       links: catalog.links && typeof catalog.links === 'object' ? catalog.links : {},
       tags: Array.isArray(catalog.tags) ? catalog.tags.map(String) : [],

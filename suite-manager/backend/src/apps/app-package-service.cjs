@@ -203,6 +203,18 @@ function publicInstance(instance, projections = [], configRows = []) {
   };
 }
 
+function privacyReviewPresentation(packageDir, { id, version }) {
+  const reviewPath = path.join(packageDir, 'privacy-review.json');
+  if (!fs.existsSync(reviewPath)) return null;
+  try {
+    const review = JSON.parse(fs.readFileSync(reviewPath, 'utf8'));
+    if (review?.schemaVersion !== 1 || review.appId !== id || review.scope?.packageVersion !== version) return null;
+    return { dimensions: review.dimensions || null, posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
+  } catch {
+    return null;
+  }
+}
+
 function resolveInsideSecretDir(secretDir, target) {
   const root = path.resolve(secretDir);
   const resolved = path.resolve(target);
@@ -536,6 +548,11 @@ class AppPackageService {
       const privacyReviewPath = path.join(packageDir, 'privacy-review.json');
       if (fs.existsSync(privacyReviewPath)) {
         const review = JSON.parse(fs.readFileSync(privacyReviewPath, 'utf8'));
+        // Same revision rule as installPackage: the legacy migration path has
+        // no resolved git revision, so adopt the review's declared revision.
+        if (typeof review?.scope?.source?.revision === 'string' && review.scope.source.revision.trim()) {
+          source.revision = review.scope.source.revision;
+        }
         const errors = validatePrivacyBinding(review, { manifest, packageDigest, source });
         if (errors.length) {
           this.store.markAppPackageRecoveryRequired({ at: this.now().toISOString(), instanceId: instance.id });
@@ -919,6 +936,24 @@ class AppPackageService {
     };
   }
 
+  packagePrivacyFor(instance, packageId, candidateVersion) {
+    // Presentation for the Apps UI: installed apps read the review stored in
+    // their installed snapshot; not-yet-installed apps read the current repo
+    // candidate. Full privacy binding validation still gates install/update.
+    if (!instance) {
+      return (candidateVersion && privacyReviewPresentation(path.join(this.appsDir, packageId), { id: packageId, version: candidateVersion }))
+        || { dimensions: null, posture: 'review-required', reviewedAt: null, status: 'review-required' };
+    }
+    const stored = {
+      dimensions: null,
+      posture: instance.privacyPosture || 'review-required',
+      reviewedAt: instance.privacyReviewedAt || null,
+      status: instance.privacyStatus || 'review-required',
+    };
+    if (instance.snapshotState !== 'installed' || !instance.snapshotPath) return stored;
+    return privacyReviewPresentation(instance.snapshotPath, { id: instance.packageId, version: instance.packageVersion }) || stored;
+  }
+
   listPackages() {
     const instancesByPackage = new Map(this.store.getAppInstances().map((instance) => [instance.packageId, instance]));
     const integrations = this.store.getAppIntegrations();
@@ -946,6 +981,7 @@ class AppPackageService {
         catalogUpdate: this.catalogService?.updateFor(packageId, instance) || null,
         installStatus: instance?.status || 'not-installed',
         instance: publicInstance(instance ? { ...instance, guideState } : null, projections, config),
+        privacy: this.packagePrivacyFor(instance, packageId, candidatesByPackage.get(packageId)?.version),
       };
     });
     return this.withCompatibility(packages, integrations);
@@ -1054,6 +1090,15 @@ class AppPackageService {
     const privacyReviewPath = path.join(packageDir, 'privacy-review.json');
     if (fs.existsSync(privacyReviewPath)) {
       const review = JSON.parse(fs.readFileSync(privacyReviewPath, 'utf8'));
+      // The direct repo install path has no resolved git revision of its own
+      // (packageDigest above is a stand-in). A review's declared revision is
+      // part of the hashed package contents, so it can never equal the
+      // package digest; adopt the commit the review was authored against,
+      // matching scripts/app-privacy-check.cjs. Every other binding field is
+      // still validated below.
+      if (typeof review?.scope?.source?.revision === 'string' && review.scope.source.revision.trim()) {
+        source.revision = review.scope.source.revision;
+      }
       const errors = validatePrivacyBinding(review, { manifest, packageDigest, source });
       if (errors.length) {
         throw new AppPackageServiceError('APP_PRIVACY_REVIEW_INVALID', `The app privacy review is not valid: ${errors.join(' ')}`, 409);
