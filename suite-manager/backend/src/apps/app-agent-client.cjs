@@ -53,6 +53,7 @@ class AppAgentClient {
   checkHealth(input) { return this.request('POST', '/v1/apps/check-health', input); }
   connectNetwork(input) { return this.request('POST', '/v1/apps/connect-network', input); }
   snapshotPackage(input) { return this.request('POST', '/v1/apps/snapshot', input); }
+  stagePackageUpdate(input) { return this.request('POST', '/v1/apps/update/stage', input); }
   stop(input) { return this.request('POST', '/v1/apps/stop', input); }
   remove(input) { return this.request('POST', '/v1/apps/remove', input); }
 }

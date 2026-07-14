@@ -66,6 +66,46 @@ test('system adapter never replaces an existing installed snapshot', async () =>
   assert.equal(await fsp.readFile(path.join(installed, 'sentinel'), 'utf8'), 'keep');
 });
 
+test('system adapter stages a verified update without changing installed files', async () => {
+  const root = await tempDir();
+  const appsRoot = path.join(root, 'apps');
+  const candidateRoot = path.join(root, 'candidates');
+  const appPackageRoot = path.join(root, 'state');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const { packageDigest: installedDigest } = await writePackage(appsRoot);
+  const installed = path.join(appPackageRoot, instanceId, 'installed');
+  await fsp.mkdir(path.dirname(installed), { recursive: true });
+  await fsp.cp(path.join(appsRoot, 'example-tool'), installed, { recursive: true });
+  const { packageDir: candidatePath } = await writePackage(candidateRoot);
+  await fsp.writeFile(path.join(candidatePath, 'Dockerfile'), 'FROM scratch\n# updated\n');
+  const candidateDigest = digestAppPackage(candidatePath);
+  const adapter = new SystemAppAdapter({ appCandidateRoot: candidateRoot, appPackageRoot, appsRoot });
+
+  const result = await adapter.stageAppPackageUpdate({ candidateDigest, candidatePath, expectedInstalledDigest: installedDigest, instanceId, packageId: 'example-tool' });
+
+  assert.equal(result.snapshotPath, path.join(appPackageRoot, instanceId, 'candidate'));
+  assert.equal(digestAppPackage(result.snapshotPath), candidateDigest);
+  assert.equal(digestAppPackage(installed), installedDigest);
+});
+
+test('system adapter rejects stale identities and candidate paths outside its private root', async () => {
+  const root = await tempDir();
+  const appsRoot = path.join(root, 'apps');
+  const candidateRoot = path.join(root, 'candidates');
+  const appPackageRoot = path.join(root, 'state');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const { packageDir, packageDigest } = await writePackage(appsRoot);
+  const installed = path.join(appPackageRoot, instanceId, 'installed');
+  await fsp.mkdir(path.dirname(installed), { recursive: true });
+  await fsp.cp(packageDir, installed, { recursive: true });
+  const { packageDir: candidatePath, packageDigest: candidateDigest } = await writePackage(candidateRoot);
+  const adapter = new SystemAppAdapter({ appCandidateRoot: candidateRoot, appPackageRoot, appsRoot });
+
+  await assert.rejects(() => adapter.stageAppPackageUpdate({ candidateDigest, candidatePath, expectedInstalledDigest: `sha256:${'0'.repeat(64)}`, instanceId, packageId: 'example-tool' }), (error) => error.code === 'APP_UPDATE_IDENTITY_CHANGED');
+  await assert.rejects(() => adapter.stageAppPackageUpdate({ candidateDigest: packageDigest, candidatePath: packageDir, expectedInstalledDigest: packageDigest, instanceId, packageId: 'example-tool' }), (error) => error.details.includes('CANDIDATE_PATH_OUTSIDE_ROOT'));
+  assert.equal(fs.existsSync(path.join(appPackageRoot, instanceId, 'candidate')), false);
+});
+
 test('system adapter builds, runs, health-checks, writes routes, and reloads Caddy', async () => {
   const root = await tempDir();
   const routesPath = path.join(root, 'routes.caddy');

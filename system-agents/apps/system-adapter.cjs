@@ -8,6 +8,7 @@ const { collectPackageFiles, digestAppPackage } = require('../../suite-manager/b
 
 const APPS_ROOT = process.env.MOS_V2_APPS_ROOT || path.resolve(process.cwd(), 'apps');
 const APP_PACKAGE_ROOT = process.env.MOS_V2_APP_PACKAGE_ROOT || '/var/lib/mos-v2/app-packages';
+const APP_CANDIDATE_ROOT = process.env.MOS_V2_APP_CANDIDATE_ROOT || '/var/lib/mos-v2/suite-manager/app-candidates';
 const APP_ROUTES_PATH = process.env.MOS_V2_APP_ROUTES_PATH || '/etc/caddy/mos-v2-app-routes.caddy';
 const CADDY_BINARY = process.env.MOS_V2_CADDY_BINARY || '/usr/local/libexec/mos-v2/caddy';
 const DOCKER_BINARY = process.env.MOS_V2_DOCKER_BINARY || '/usr/bin/docker';
@@ -143,6 +144,7 @@ function waitForHttp(url, { deadlineMs = HEALTH_TIMEOUT_MS } = {}) {
 class SystemAppAdapter {
   constructor({
     appsRoot = APPS_ROOT,
+    appCandidateRoot = APP_CANDIDATE_ROOT,
     appPackageRoot = APP_PACKAGE_ROOT,
     caddyBinary = CADDY_BINARY,
     dockerBinary = DOCKER_BINARY,
@@ -151,6 +153,7 @@ class SystemAppAdapter {
     waitForReady = waitForHttp,
   } = {}) {
     this.appsRoot = appsRoot;
+    this.appCandidateRoot = appCandidateRoot;
     this.appPackageRoot = appPackageRoot;
     this.caddyBinary = caddyBinary;
     this.dockerBinary = dockerBinary;
@@ -192,6 +195,42 @@ class SystemAppAdapter {
       await fsp.rm(temporary, { force: true, recursive: true }).catch(() => {});
       const failure = new AppApplyError('snapshot');
       failure.details = error?.details || [String(error?.message || 'snapshot failed')];
+      throw failure;
+    }
+  }
+
+  async stageAppPackageUpdate({ candidateDigest, candidatePath, expectedInstalledDigest, instanceId, packageId }) {
+    const candidateRoot = path.resolve(this.appCandidateRoot);
+    const source = path.resolve(candidatePath);
+    const relativeSource = path.relative(candidateRoot, source);
+    const instanceRoot = path.join(this.appPackageRoot, instanceId);
+    const installed = path.join(instanceRoot, 'installed');
+    const staged = path.join(instanceRoot, 'candidate');
+    const temporary = path.join(instanceRoot, `.candidate-${crypto.randomUUID()}`);
+    try {
+      if (!relativeSource || relativeSource.startsWith('..') || path.isAbsolute(relativeSource)) throw new Error('CANDIDATE_PATH_OUTSIDE_ROOT');
+      const installedManifest = JSON.parse(await fsp.readFile(path.join(installed, 'manifest.json'), 'utf8'));
+      if (installedManifest.id !== packageId || digestAppPackage(installed, { manifest: installedManifest }) !== expectedInstalledDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
+      const candidateManifest = JSON.parse(await fsp.readFile(path.join(source, 'manifest.json'), 'utf8'));
+      if (candidateManifest.id !== packageId || digestAppPackage(source, { manifest: candidateManifest }) !== candidateDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
+      await fsp.rm(staged, { force: true, recursive: true });
+      await fsp.mkdir(temporary, { recursive: true, mode: 0o750 });
+      for (const file of collectPackageFiles(source, { manifest: candidateManifest })) {
+        const target = path.join(temporary, ...file.relativePath.split('/'));
+        await fsp.mkdir(path.dirname(target), { recursive: true, mode: 0o750 });
+        await fsp.copyFile(file.absolutePath, target);
+        const sourceMode = (await fsp.stat(file.absolutePath)).mode;
+        await fsp.chmod(target, sourceMode & 0o111 ? 0o750 : 0o640);
+      }
+      if (digestAppPackage(temporary, { manifest: candidateManifest }) !== candidateDigest) throw new Error('COPIED_CANDIDATE_DIGEST_MISMATCH');
+      await fsp.rename(temporary, staged);
+      return { snapshotPath: staged, steps: ['installed-identity-verified', 'candidate-identity-verified', 'copied', 'verified', 'staged'] };
+    } catch (error) {
+      await fsp.rm(temporary, { force: true, recursive: true }).catch(() => {});
+      const failure = new AppApplyError('snapshot');
+      failure.code = ['INSTALLED_PACKAGE_CHANGED', 'CANDIDATE_PACKAGE_CHANGED'].includes(error?.message) ? 'APP_UPDATE_IDENTITY_CHANGED' : failure.code;
+      failure.statusCode = failure.code === 'APP_UPDATE_IDENTITY_CHANGED' ? 409 : failure.statusCode;
+      failure.details = [String(error?.message || 'update staging failed')];
       throw failure;
     }
   }
@@ -407,6 +446,7 @@ class SystemAppAdapter {
 
 module.exports = {
   APP_PACKAGE_ROOT,
+  APP_CANDIDATE_ROOT,
   APP_ROUTES_PATH,
   AppApplyError,
   HEALTH_REFRESH_TIMEOUT_MS,

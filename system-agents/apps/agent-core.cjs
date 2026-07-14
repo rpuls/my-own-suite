@@ -192,6 +192,18 @@ function assertPackageSnapshotRequest(input) {
   return input;
 }
 
+function assertPackageUpdateStageRequest(input) {
+  if (!exactKeys(input, ['candidateDigest', 'candidatePath', 'expectedInstalledDigest', 'instanceId', 'packageId'])) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app package update staging fields are accepted.');
+  }
+  assertString(input.instanceId, 'instanceId', /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+  assertString(input.packageId, 'packageId', PACKAGE_ID_PATTERN);
+  assertString(input.candidateDigest, 'candidateDigest', PACKAGE_DIGEST_PATTERN);
+  assertString(input.expectedInstalledDigest, 'expectedInstalledDigest', PACKAGE_DIGEST_PATTERN);
+  assertString(input.candidatePath, 'candidatePath');
+  return input;
+}
+
 function resolveEnvironment(environment, context) {
   const source = environment === undefined ? {} : environment;
   if (!source || typeof source !== 'object' || Array.isArray(source)) {
@@ -247,8 +259,8 @@ class AppAgentCore {
 
   async status() {
     return {
-      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot'],
-      contractVersion: 1,
+      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage'],
+      contractVersion: 2,
       service: 'mos-v2-app-agent',
     };
   }
@@ -257,6 +269,12 @@ class AppAgentCore {
     const request = assertPackageSnapshotRequest(input);
     const result = await this.adapter.snapshotAppPackage(request);
     return { ...result, instanceId: request.instanceId, packageDigest: request.packageDigest, packageId: request.packageId, status: 'snapshotted' };
+  }
+
+  async stagePackageUpdate(input) {
+    const request = assertPackageUpdateStageRequest(input);
+    const result = await this.adapter.stageAppPackageUpdate(request);
+    return { ...result, candidateDigest: request.candidateDigest, instanceId: request.instanceId, packageId: request.packageId, status: 'staged' };
   }
 
   async apply(input) {

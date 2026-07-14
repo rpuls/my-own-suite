@@ -29,7 +29,24 @@ const request = {
 test('app agent exposes only narrow app runtime capabilities', async () => {
   const core = new AppAgentCore({ applyAppServices: async () => ({ steps: [] }), checkAppHealth: async () => ({}) });
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot']);
+  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage']);
+  assert.equal(status.contractVersion, 2);
+});
+
+test('app update staging binds candidate and installed identities', async () => {
+  const calls = [];
+  const core = new AppAgentCore({ async stageAppPackageUpdate(input) { calls.push(input); return { snapshotPath: '/state/candidate', steps: ['staged'] }; } });
+  const input = {
+    candidateDigest: `sha256:${'b'.repeat(64)}`,
+    candidatePath: '/var/lib/mos-v2/suite-manager/app-candidates/example-123',
+    expectedInstalledDigest: request.packageDigest,
+    instanceId: request.instanceId,
+    packageId: request.packageId,
+  };
+  assert.equal((await core.stagePackageUpdate(input)).status, 'staged');
+  assert.deepEqual(calls, [input]);
+  await assert.rejects(() => core.stagePackageUpdate({ ...input, unexpected: true }), AppRuntimeError);
+  await assert.rejects(() => core.stagePackageUpdate({ ...input, candidateDigest: 'latest' }), AppRuntimeError);
 });
 
 test('app package snapshot accepts only identity and expected digest', async () => {
