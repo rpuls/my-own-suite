@@ -20,6 +20,7 @@ const CATALOG_LINK_KEYS = new Set(['docs', 'repository', 'website']);
 const RAW_CADDY_PATTERN = /(?:caddyfile|directive|handle|respond|reverse_proxy|route|snippet|tls\s|transport)/iu;
 const SAFE_INTERNAL_PATH_PATTERN = /^\/__[A-Za-z0-9/_${}.-]{8,220}$/u;
 const SAFE_TARGET_PATH_PATTERN = /^\/[A-Za-z0-9._~!$&'()*+,;=:@%/?${}.-]{1,220}$/u;
+const UPDATE_BREAKING_AREAS = new Set(['capabilities', 'health', 'integrations', 'resources', 'routes', 'setup', 'volumes']);
 
 class AppPackageManifestError extends Error {
   constructor(message, details = []) {
@@ -39,6 +40,21 @@ function hasText(value) {
 
 function isStringArray(value) {
   return Array.isArray(value) && value.every((item) => hasText(item));
+}
+
+function validateUpdateMetadata(manifest, errors) {
+  if (manifest.update === undefined) return;
+  const update = manifest.update;
+  if (!isRecord(update)) { errors.push('update must be an object when present.'); return; }
+  const allowed = new Set(['backupRequired', 'breakingChanges', 'downtime', 'migrations', 'minimumAppAgentVersion', 'ownerActions', 'rollback']);
+  for (const key of Object.keys(update)) if (!allowed.has(key)) errors.push(`update.${key} is unsupported.`);
+  if (update.backupRequired !== undefined && typeof update.backupRequired !== 'boolean') errors.push('update.backupRequired must be boolean.');
+  if (update.breakingChanges !== undefined && (!isStringArray(update.breakingChanges) || update.breakingChanges.some((area) => !UPDATE_BREAKING_AREAS.has(area)))) errors.push('update.breakingChanges contains an unsupported area.');
+  if (update.migrations !== undefined && !isStringArray(update.migrations)) errors.push('update.migrations must be an array of descriptions.');
+  if (update.minimumAppAgentVersion !== undefined && (!Number.isInteger(update.minimumAppAgentVersion) || update.minimumAppAgentVersion < 1)) errors.push('update.minimumAppAgentVersion must be a positive integer.');
+  if (update.ownerActions !== undefined && !isStringArray(update.ownerActions)) errors.push('update.ownerActions must be an array of descriptions.');
+  if (update.downtime !== undefined && !['brief', 'extended', 'none', 'unknown'].includes(update.downtime)) errors.push('update.downtime is unsupported.');
+  if (update.rollback !== undefined && !['not-guaranteed', 'safe', 'unsupported'].includes(update.rollback)) errors.push('update.rollback is unsupported.');
 }
 
 function safeUrl(value) {
@@ -727,6 +743,7 @@ function validateAppPackageManifest(manifest, { packageDir = null } = {}) {
   validateConfigTargets(manifest, errors);
   validateIntegrations(manifest, errors);
   validateUsefulness(manifest, errors);
+  validateUpdateMetadata(manifest, errors);
   assertNoRawCaddy(manifest, errors);
   return errors;
 }

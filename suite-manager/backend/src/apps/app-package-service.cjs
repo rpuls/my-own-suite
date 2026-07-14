@@ -8,6 +8,7 @@ const {
   readAppPackageManifest,
 } = require('./package-manifest.cjs');
 const { digestAppPackage, validatePrivacyBinding } = require('./package-contracts.cjs');
+const { compareAppPackages } = require('./app-update-comparison.cjs');
 
 const APP_LOOPBACK_PORT_BASE = 18000;
 const APP_LOOPBACK_PORT_SPAN = 1000;
@@ -1082,6 +1083,34 @@ class AppPackageService {
       this.store.getAppProjections(instance.id),
       this.store.getAppConfig(instance.id),
     );
+  }
+
+  async preparePackageUpdate(packageId) {
+    const instance = this.store.getAppInstanceByPackageId(packageId);
+    if (!instance || instance.status === 'uninstalled') throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before preparing an update.', 409);
+    if (!this.catalogService?.downloadCandidate) throw new AppPackageServiceError('APP_CANDIDATE_UNAVAILABLE', 'The verified app catalog cannot prepare this update.', 503);
+    const installedPackage = this.installedPackageFor(instance);
+    let candidate;
+    try {
+      candidate = await this.catalogService.downloadCandidate(packageId);
+      const agentStatus = await this.agent?.status().catch(() => ({ capabilities: [] })) || { capabilities: [] };
+      return compareAppPackages({
+        agentCapabilities: Array.isArray(agentStatus.capabilities) ? agentStatus.capabilities : [],
+        agentContractVersion: Number.isInteger(agentStatus.contractVersion) ? agentStatus.contractVersion : 0,
+        candidate,
+        installed: { ...installedPackage, packageDigest: instance.packageDigest, source: {
+          kind: instance.sourceKind,
+          path: instance.sourcePath,
+          repository: instance.sourceRepository,
+          revision: instance.sourceRevision,
+          trust: instance.sourceTrust,
+        } },
+        platformVersion: this.catalogService.platformVersion,
+      });
+    } catch (error) {
+      if (error instanceof AppPackageServiceError) throw error;
+      throw new AppPackageServiceError(error.code || 'APP_CANDIDATE_INVALID', error.message || 'The app update candidate is invalid.', 409);
+    } finally { candidate?.cleanup?.(); }
   }
 
   withGuideState(instance) {

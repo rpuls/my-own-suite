@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 
-import { Icon, Notice } from '../../components/ui';
+import { Dialog, Icon, Notice, TextInput } from '../../components/ui';
 import type { Owner } from '../setup/types';
 
 type CatalogFeature = { body: string; title: string };
@@ -21,6 +21,15 @@ type CatalogUpdate = {
   available: { compatibility: 'compatible' | 'requires-platform-update'; minimumMosVersion: string; packageDigest: string; packageVersion: string; privacy: { status: string }; sourceRevision: string } | null;
   installed: { packageDigest: string; packageVersion: string } | null;
   status: 'current' | 'installable' | 'installed-newer' | 'integrity-error' | 'not-in-catalog' | 'unavailable' | 'update-available';
+};
+type UpdateComparison = {
+  candidate: { packageVersion: string; privacy: { posture: string; status: string } };
+  changes: Array<{ area: string; classification: string; summary: string }>;
+  compatibility: 'compatible' | 'owner-action-required' | 'unsupported' | 'unresolved';
+  installed: { packageVersion: string; privacy: { posture: string; status: string } };
+  metadata: { backupRequired: boolean; downtime: string; migrations: string[]; ownerActions: string[]; rollback: string };
+  requiredInput: Array<{ id: string; label: string; secret: boolean; type: string }>;
+  validation: { agentCapability: string; errors: string[] };
 };
 
 type AppPackageSummary = {
@@ -511,6 +520,10 @@ function AppDetail({
   const [guideOpen, setGuideOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app, owner.email));
+  const [comparison, setComparison] = useState<UpdateComparison | null>(null);
+  const [comparisonError, setComparisonError] = useState('');
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [updateInput, setUpdateInput] = useState<Record<string, string>>({});
   const ready = runtimeApplied(app);
   const homepageAvailable = hasHomepageContribution(app);
   const primaryDestination = hasPrimaryAppDestination(app);
@@ -535,7 +548,21 @@ function AppDetail({
     setGuideOpen(false);
     setActionsOpen(false);
     setSetupConfig(initialSetupConfig(app, owner.email));
+    setComparison(null);
+    setComparisonError('');
+    setUpdateInput({});
   }, [app.id, owner.email]);
+
+  async function prepareUpdate() {
+    setComparisonLoading(true);
+    setComparisonError('');
+    try {
+      const result = await jsonResponse<{ comparison: UpdateComparison }>(await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/prepare-update`, { method: 'POST' }), `Unable to prepare the ${app.name} update.`);
+      setComparison(result.comparison);
+      setUpdateInput({});
+    } catch (caught) { setComparisonError(caught instanceof Error ? caught.message : 'Unable to prepare this update.'); }
+    finally { setComparisonLoading(false); }
+  }
 
   function submitInstall() {
     const config = { ...setupConfig };
@@ -624,6 +651,8 @@ function AppDetail({
           <div><span>Available</span><strong>{app.catalogUpdate.available.packageVersion}</strong></div>
           <div><span>Compatibility</span><strong>{app.catalogUpdate.available.compatibility === 'compatible' ? 'Ready for this MOS version' : `Requires MOS ${app.catalogUpdate.available.minimumMosVersion}`}</strong></div>
           <p>This candidate is visible for comparison only. Applying app updates will be added in the next implementation phase.</p>
+          <button className="mos-btn mos-btn-secondary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking update...' : 'Review update'}</button>
+          {comparisonError ? <p role="alert">{comparisonError}</p> : null}
         </section> : null}
 
         <section className="suite-app-facts" aria-label="App facts">
@@ -691,6 +720,18 @@ function AppDetail({
         <AdvancedDetails app={app} />
       </div>
     </aside>
+    {comparison ? <Dialog footer={<button className="mos-btn mos-btn-secondary" onClick={() => setComparison(null)} type="button">Close</button>} onClose={() => setComparison(null)} title={`Review ${app.name} update`}>
+      <div className="suite-app-update-dialog">
+        <Notice title={comparison.compatibility === 'unsupported' ? 'This update cannot be applied safely' : comparison.compatibility === 'owner-action-required' ? 'Your input is required' : 'Ready for confirmation'} variant={comparison.compatibility === 'unsupported' ? 'warning' : 'info'}>
+          <p>Version {comparison.installed.packageVersion} to {comparison.candidate.packageVersion}. Privacy posture: {comparison.installed.privacy.posture} to {comparison.candidate.privacy.posture}.</p>
+        </Notice>
+        <dl><dt>Backup</dt><dd>{comparison.metadata.backupRequired ? 'Required' : 'Not declared as required'}</dd><dt>Downtime</dt><dd>{comparison.metadata.downtime}</dd><dt>Rollback</dt><dd>{comparison.metadata.rollback}</dd></dl>
+        {comparison.changes.length ? <ul>{comparison.changes.map((change, index) => <li key={`${change.area}-${index}`}><strong>{change.area}</strong>: {change.summary}</li>)}</ul> : <p>No structural changes detected.</p>}
+        {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} key={field.id} label={field.label} onChange={(event) => setUpdateInput((current) => ({ ...current, [field.id]: event.currentTarget.value }))} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}
+        {comparison.requiredInput.length ? <p className="suite-meta">These values remain in this dialog and are not sent until a future confirmed apply flow is implemented.</p> : null}
+        <details className="suite-advanced"><summary>Advanced details</summary><pre>{JSON.stringify(comparison, null, 2)}</pre></details>
+      </div>
+    </Dialog> : null}
   </div>;
 }
 

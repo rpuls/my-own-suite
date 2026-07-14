@@ -517,6 +517,11 @@
 .suite-app-update-summary span,
 .suite-app-update-summary p { color: var(--mos-color-text-muted); }
 .suite-app-update-summary p { grid-column: 1 / -1; margin: 0; }
+.suite-app-update-summary > button { justify-self: start; }
+.suite-app-update-dialog { display: grid; gap: var(--mos-space-4); }
+.suite-app-update-dialog dl { display: grid; grid-template-columns: auto 1fr; gap: var(--mos-space-2) var(--mos-space-4); margin: 0; }
+.suite-app-update-dialog dd { margin: 0; }
+.suite-app-update-dialog pre { overflow: auto; max-height: 18rem; white-space: pre-wrap; }
 
 .suite-app-card-copy > span {
   max-width: 56rem;

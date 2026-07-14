@@ -1,9 +1,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { CATALOG_REFRESH_POLICY, compareSemver, validateCatalog } = require('./package-contracts.cjs');
+const { CATALOG_REFRESH_POLICY, DEFAULT_PACKAGE_LIMITS, canonicalPackagePath, compareSemver, digestAppPackage, validateCatalog } = require('./package-contracts.cjs');
+const { readAppPackageManifest } = require('./package-manifest.cjs');
 
-const DEFAULT_LIMITS = Object.freeze({ catalogBytes: 1024 * 1024, timeoutMs: 10_000 });
+const DEFAULT_LIMITS = Object.freeze({ catalogBytes: 1024 * 1024, timeoutMs: 10_000, ...DEFAULT_PACKAGE_LIMITS });
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
 
 class OfficialCatalogError extends Error {
@@ -91,6 +92,60 @@ class OfficialCatalogService {
   }
 
   catalog() { return this.cache?.catalog || null; }
+
+  async downloadCandidate(packageId) {
+    const entry = this.catalog()?.packages?.[packageId];
+    if (!entry || !this.cache?.revision) throw new OfficialCatalogError('CANDIDATE_UNAVAILABLE', 'That package is not available in the verified catalog cache.');
+    const revision = this.cache.revision;
+    const candidateRoot = path.join(path.dirname(this.cachePath), 'app-candidates');
+    fs.mkdirSync(candidateRoot, { recursive: true, mode: 0o700 });
+    const candidateDir = fs.mkdtempSync(path.join(candidateRoot, `${packageId}-`));
+    let fileCount = 0;
+    let packageBytes = 0;
+    const visit = async (repositoryPath) => {
+      const apiUrl = `https://api.github.com/repos/${this.github.owner}/${this.github.repo}/contents/${repositoryPath}?ref=${revision}`;
+      const listing = JSON.parse((await boundedResponse(await this.request(apiUrl), this.limits.catalogBytes)).toString('utf8'));
+      if (!Array.isArray(listing)) throw new OfficialCatalogError('CANDIDATE_CONTENTS_INVALID', 'GitHub returned invalid candidate directory metadata.');
+      for (const item of listing) {
+        const relativePath = String(item.path || '').slice(`${entry.path}/`.length);
+        const canonical = canonicalPackagePath(relativePath);
+        if (!canonical || item.path !== `${entry.path}/${canonical}`) throw new OfficialCatalogError('CANDIDATE_PATH_INVALID', 'Candidate contains a non-canonical path.');
+        if (item.type === 'dir') {
+          await visit(item.path);
+          continue;
+        }
+        if (item.type !== 'file') throw new OfficialCatalogError('CANDIDATE_CONTENTS_INVALID', 'Candidate contains an unsupported repository entry.');
+        fileCount += 1;
+        if (fileCount > this.limits.maxFiles) throw new OfficialCatalogError('CANDIDATE_TOO_LARGE', 'Candidate exceeds the file-count limit.');
+        if (!Number.isInteger(item.size) || item.size < 0 || item.size > this.limits.maxFileBytes) throw new OfficialCatalogError('CANDIDATE_TOO_LARGE', 'Candidate file exceeds the byte limit.');
+        packageBytes += item.size;
+        if (packageBytes > this.limits.maxPackageBytes) throw new OfficialCatalogError('CANDIDATE_TOO_LARGE', 'Candidate exceeds the package byte limit.');
+        const expectedUrl = `https://raw.githubusercontent.com/${this.github.owner}/${this.github.repo}/${revision}/${item.path}`;
+        if (item.download_url !== expectedUrl) throw new OfficialCatalogError('CANDIDATE_SOURCE_INVALID', 'Candidate file URL is not bound to the resolved source revision.');
+        const bytes = await boundedResponse(await this.request(expectedUrl), this.limits.maxFileBytes);
+        const destination = path.join(candidateDir, ...canonical.split('/'));
+        fs.mkdirSync(path.dirname(destination), { recursive: true });
+        fs.writeFileSync(destination, bytes, { mode: 0o600 });
+      }
+    };
+    try {
+      await visit(entry.path);
+      const packageDigest = digestAppPackage(candidateDir);
+      if (packageDigest !== entry.packageDigest) throw new OfficialCatalogError('CANDIDATE_DIGEST_MISMATCH', 'Downloaded candidate does not match the verified catalog digest.');
+      const appPackage = readAppPackageManifest(candidateDir);
+      if (appPackage.manifest.id !== packageId || appPackage.manifest.version !== entry.packageVersion) throw new OfficialCatalogError('CANDIDATE_IDENTITY_MISMATCH', 'Downloaded candidate identity does not match the verified catalog.');
+      return {
+        ...appPackage,
+        cleanup: () => fs.rmSync(candidateDir, { force: true, recursive: true }),
+        packageDigest,
+        source: { kind: 'official-git', path: entry.path, repository: this.repository, revision, trust: 'mos-reviewed' },
+      };
+    } catch (error) {
+      fs.rmSync(candidateDir, { force: true, recursive: true });
+      if (error instanceof OfficialCatalogError) throw error;
+      throw new OfficialCatalogError('CANDIDATE_INVALID', 'Downloaded candidate failed package validation.');
+    }
+  }
 
   async request(url, headers = {}) {
     const controller = new AbortController();

@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { OfficialCatalogService, githubRepository } = require('../src/apps/official-catalog-service.cjs');
+const { digestAppPackage } = require('../src/apps/package-contracts.cjs');
 
 const revision = 'a'.repeat(40);
 const digest = `sha256:${'1'.repeat(64)}`;
@@ -67,4 +68,29 @@ test('update classification distinguishes upgrades and same-version digest confl
   assert.equal(service.updateFor('immich', { packageDigest: `sha256:${'2'.repeat(64)}`, packageVersion: '1.1.0' }).status, 'update-available');
   assert.equal(service.updateFor('immich', { packageDigest: `sha256:${'2'.repeat(64)}`, packageVersion: '1.2.0' }).status, 'integrity-error');
   assert.equal(service.updateFor('immich', { packageDigest: digest, packageVersion: '1.2.0' }).status, 'current');
+});
+
+test('candidate download is revision-bound and verifies the complete digest before returning package inputs', async (t) => {
+  const fixture = tempDir();
+  const manifest = { category: 'test', health: { type: 'http', url: 'http://example:8080/health' }, id: 'example', minimumMosVersion: '0.1.0', name: 'Example', resources: { services: { example: { dockerfile: 'Dockerfile', internalPort: 8080 } } }, routes: [{ host: 'example', port: 8080, service: 'example' }], setup: { fields: [] }, summary: 'Example.', version: '1.1.0' };
+  fs.writeFileSync(path.join(fixture, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  fs.writeFileSync(path.join(fixture, 'Dockerfile'), 'FROM scratch\n');
+  const candidateDigest = digestAppPackage(fixture);
+  const stateDir = tempDir();
+  fs.writeFileSync(path.join(stateDir, 'official-app-catalog.json'), JSON.stringify({ catalog: { packages: { example: { minimumMosVersion: '0.1.0', packageDigest: candidateDigest, packageVersion: '1.1.0', path: 'apps/example', privacy: { status: 'review-required' } } }, schemaVersion: 1 }, fetchedAt: new Date().toISOString(), revision, schemaVersion: 1 }));
+  const raw = Object.fromEntries(['Dockerfile', 'manifest.json'].map((name) => [name, fs.readFileSync(path.join(fixture, name))]));
+  const service = new OfficialCatalogService({
+    fetchImpl: async (url) => {
+      if (url.includes('/contents/apps/example?')) return jsonResponse(Object.entries(raw).map(([name, bytes]) => ({ download_url: `https://raw.githubusercontent.com/rpuls/my-own-suite/${revision}/apps/example/${name}`, path: `apps/example/${name}`, size: bytes.length, type: 'file' })));
+      const name = url.split('/').at(-1);
+      return new Response(raw[name]);
+    },
+    platformVersion: '0.11.0',
+    stateDir,
+  });
+  const candidate = await service.downloadCandidate('example');
+  t.after(() => { candidate.cleanup(); fs.rmSync(fixture, { force: true, recursive: true }); });
+  assert.equal(candidate.packageDigest, candidateDigest);
+  assert.equal(candidate.manifest.version, '1.1.0');
+  assert.equal(candidate.source.revision, revision);
 });

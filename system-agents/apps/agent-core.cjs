@@ -248,6 +248,7 @@ class AppAgentCore {
   async status() {
     return {
       capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot'],
+      contractVersion: 1,
       service: 'mos-v2-app-agent',
     };
   }

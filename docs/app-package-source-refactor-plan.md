@@ -283,20 +283,20 @@ Acceptance:
 
 ### Phase 4 — candidate comparison and preparation
 
-- [ ] Download candidates into isolated temporary directories and verify package digests before parsing executable/build inputs.
-- [ ] Validate minimum platform version and app-agent capability version.
-- [ ] Compare setup fields, secrets, services, volumes, routes, health, capabilities, integrations, resources, and privacy posture.
-- [ ] Define manifest update metadata for migrations, required owner actions, backup requirement, downtime, and rollback support.
-- [ ] Refuse undeclared breaking changes discovered by structural comparison.
-- [ ] Add a preparation API that never stops or mutates the installed app.
-- [ ] Show a plain-language update dialog with Advanced details for raw comparison/evidence.
-- [ ] Collect newly required non-secret/secret values before apply and keep them out of logs.
+- [x] Download candidates into isolated temporary directories and verify package digests before parsing executable/build inputs.
+- [x] Validate minimum platform version and app-agent capability version.
+- [x] Compare setup fields, secrets, services, volumes, routes, health, capabilities, integrations, resources, and privacy posture.
+- [x] Define manifest update metadata for migrations, required owner actions, backup requirement, downtime, and rollback support.
+- [x] Refuse undeclared breaking changes discovered by structural comparison.
+- [x] Add a preparation API that never stops or mutates the installed app.
+- [x] Show a plain-language update dialog with Advanced details for raw comparison/evidence.
+- [x] Collect newly required non-secret/secret values before apply and keep them out of logs.
 
 Acceptance:
 
-- [ ] Candidate preview is deterministic and has no runtime side effects.
-- [ ] Removed/renamed required fields or volumes cannot pass as a routine update.
-- [ ] Privacy regression and human-review status are visible before confirmation.
+- [x] Candidate preview is deterministic and has no runtime side effects.
+- [x] Removed/renamed required fields or volumes cannot pass as a routine update.
+- [x] Privacy regression and human-review status are visible before confirmation.
 
 ### Phase 5 — transactional per-app apply
 
