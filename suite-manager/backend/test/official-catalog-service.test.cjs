@@ -50,6 +50,57 @@ test('refresh resolves the branch once and downloads catalog content from that i
   assert.equal(result.status.freshness, 'fresh');
 });
 
+test('refresh fetches the advisory feed from the same revision and exposes applicable advisories', async () => {
+  const advisories = {
+    advisories: [
+      { affectedVersions: '>=1.0.0 <2.0.0', id: 'MOS-1', packageId: 'immich', publishedAt: '2026-07-01T00:00:00Z', remediation: 'Update.', schemaVersion: 1, severity: 'high', summary: 'Review invalidated.', type: 'privacy-review-invalidated' },
+    ],
+    schemaVersion: 1,
+  };
+  const calls = [];
+  const service = new OfficialCatalogService({
+    fetchImpl: async (url) => {
+      calls.push(url);
+      if (url.includes('/commits/')) return jsonResponse({ sha: revision });
+      if (url.endsWith('/apps/catalog.json')) return jsonResponse(catalog);
+      if (url.endsWith('/apps/advisories.json')) return jsonResponse(advisories);
+      throw new Error('unexpected url');
+    },
+    stateDir: tempDir(),
+  });
+  await service.refresh();
+  assert.ok(calls.some((url) => url === `https://raw.githubusercontent.com/rpuls/my-own-suite/${revision}/apps/advisories.json`));
+  assert.equal(service.status().advisories.count, 1);
+  assert.deepEqual(service.advisoriesFor('immich', '1.2.0').map((advisory) => advisory.id), ['MOS-1']);
+  assert.deepEqual(service.advisoriesFor('immich', '2.0.0'), []);
+  assert.deepEqual(service.advisoriesFor('unknown', '1.2.0'), []);
+});
+
+test('a missing or malformed advisory feed never fails the catalog refresh', async () => {
+  const missing = new OfficialCatalogService({
+    fetchImpl: async (url) => {
+      if (url.includes('/commits/')) return jsonResponse({ sha: revision });
+      if (url.endsWith('/apps/catalog.json')) return jsonResponse(catalog);
+      return new Response('Not Found', { status: 404 });
+    },
+    stateDir: tempDir(),
+  });
+  const result = await missing.refresh();
+  assert.equal(result.status.freshness, 'fresh');
+  assert.deepEqual(missing.advisoriesFor('immich', '1.2.0'), []);
+
+  const malformed = new OfficialCatalogService({
+    fetchImpl: async (url) => {
+      if (url.includes('/commits/')) return jsonResponse({ sha: revision });
+      if (url.endsWith('/apps/catalog.json')) return jsonResponse(catalog);
+      return jsonResponse({ advisories: [{ id: '' }], schemaVersion: 1 });
+    },
+    stateDir: tempDir(),
+  });
+  assert.equal((await malformed.refresh()).status.revision, revision);
+  assert.deepEqual(malformed.advisoriesFor('immich', '1.2.0'), []);
+});
+
 test('failed refresh preserves last-known-good catalog and records a secret-free status error', async () => {
   const stateDir = tempDir();
   const good = new OfficialCatalogService({ fetchImpl: async (url) => url.includes('/commits/') ? jsonResponse({ sha: revision }) : jsonResponse(catalog), stateDir });

@@ -16,15 +16,21 @@
 // suite-modal-backdrop/suite-dialog frame, which the site does not have).
 // If you change look, copy, or logic here, mirror it in the siblings.
 import {
+  ADVISORY_SEVERITY_STYLE,
+  ADVISORY_TYPE_LABEL,
   ASSESSMENT_DOCS_URL,
   GLYPHS,
   SHIELD_PATH,
+  advisoryMarkerLabel,
   badgeTextFor,
   dimensionRowsFor,
   isRated,
   postureFor,
   provenanceLine,
+  provenanceMethodLabel,
+  sortedAdvisories,
   tileMetaLine,
+  type PrivacyAdvisory,
   type PrivacyReviewSummary
 } from '../lib/privacy-posture'
 
@@ -32,14 +38,19 @@ interface Props {
   appName: string
   packageVersion?: string | null
   privacy: PrivacyReviewSummary
+  advisories?: PrivacyAdvisory[]
   assessmentUrl?: string
 }
 
-const { appName, packageVersion = null, privacy, assessmentUrl = ASSESSMENT_DOCS_URL } = Astro.props
+const { appName, packageVersion = null, privacy, advisories = [], assessmentUrl = ASSESSMENT_DOCS_URL } = Astro.props
 const posture = postureFor(privacy)
 const badge = badgeTextFor(privacy)
 const rows = dimensionRowsFor(privacy)
-const provenance = provenanceLine(privacy, isRated(privacy) ? packageVersion : null)
+const method = provenanceMethodLabel(privacy)
+const provenance = [provenanceLine(privacy, isRated(privacy) ? packageVersion : null), method].filter(Boolean).join(' · ')
+const sortedAdvisoryList = sortedAdvisories(advisories)
+const advisoryMarker = advisoryMarkerLabel(advisories)
+const topSeverity = sortedAdvisoryList[0]?.severity
 ---
 
 <div class="privacy-posture" data-privacy-posture>
@@ -53,7 +64,9 @@ const provenance = provenanceLine(privacy, isRated(privacy) ? packageVersion : n
       <strong>{posture.label}</strong>
     </span>
     <span class="suite-privacy-tile-meta">
-      {tileMetaLine(privacy)}
+      {advisoryMarker && topSeverity
+        ? <span class="suite-privacy-advisory-flag" style={`background: ${ADVISORY_SEVERITY_STYLE[topSeverity].soft}; border-color: ${ADVISORY_SEVERITY_STYLE[topSeverity].border}; color: ${ADVISORY_SEVERITY_STYLE[topSeverity].color}`}>{advisoryMarker}</span>
+        : tileMetaLine(privacy)}
       <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d={GLYPHS.chevronRight}></path></svg>
     </span>
   </button>
@@ -90,6 +103,27 @@ const provenance = provenanceLine(privacy, isRated(privacy) ? packageVersion : n
           </div>
         ))}
       </div>
+      {sortedAdvisoryList.length ? (
+        <div class="suite-privacy-advisories">
+          <span class="suite-privacy-advisories-label">Current advisories</span>
+          {sortedAdvisoryList.map((advisory) => (
+            <div class="suite-privacy-advisory" style={`background: ${ADVISORY_SEVERITY_STYLE[advisory.severity].soft}; border-color: ${ADVISORY_SEVERITY_STYLE[advisory.severity].border}`}>
+              <span class="suite-privacy-advisory-head">
+                <strong style={`color: ${ADVISORY_SEVERITY_STYLE[advisory.severity].color}`}>{ADVISORY_TYPE_LABEL[advisory.type]}</strong>
+                <span class="suite-privacy-advisory-severity" style={`color: ${ADVISORY_SEVERITY_STYLE[advisory.severity].color}`}>{advisory.severity}</span>
+              </span>
+              <p class="suite-privacy-advisory-summary">{advisory.summary}</p>
+              <p class="suite-privacy-advisory-remediation">{advisory.remediation}</p>
+              {advisory.evidenceUrl ? (
+                <a class="suite-privacy-link" href={advisory.evidenceUrl} rel="noreferrer" target="_blank">
+                  Evidence
+                  <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d={GLYPHS.externalLink}></path></svg>
+                </a>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div class="suite-privacy-footer">
         <div class="suite-privacy-footer-meta">
           <span>{provenance}</span>
@@ -382,6 +416,60 @@ const provenance = provenanceLine(privacy, isRated(privacy) ? packageVersion : n
     letter-spacing: var(--mos-letter-spacing-label);
     text-transform: uppercase;
     white-space: nowrap;
+  }
+
+  .suite-privacy-advisory-flag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.05rem 0.45rem;
+    border: 1px solid;
+    border-radius: var(--mos-radius-pill);
+    font-size: var(--mos-text-small);
+    font-weight: 700;
+  }
+
+  .suite-privacy-advisories {
+    display: grid;
+    gap: var(--mos-space-2);
+    padding-top: var(--mos-space-4);
+    border-top: var(--mos-border-subtle);
+  }
+
+  .suite-privacy-advisories-label {
+    color: var(--mos-color-text-muted);
+    font-size: var(--mos-text-small);
+    font-weight: 700;
+    letter-spacing: var(--mos-letter-spacing-label);
+    text-transform: uppercase;
+  }
+
+  .suite-privacy-advisory {
+    display: grid;
+    gap: 0.3rem;
+    padding: var(--mos-space-3);
+    border: 1px solid;
+    border-radius: var(--mos-radius-sm);
+  }
+
+  .suite-privacy-advisory-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mos-space-2);
+  }
+
+  .suite-privacy-advisory-severity {
+    font-size: var(--mos-text-small);
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .suite-privacy-advisory-summary { margin: 0; }
+
+  .suite-privacy-advisory-remediation {
+    margin: 0;
+    color: var(--mos-color-text-muted);
+    font-size: var(--mos-text-small);
   }
 
   .suite-privacy-footer {

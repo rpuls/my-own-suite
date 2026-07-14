@@ -7,10 +7,12 @@ const test = require('node:test');
 const {
   AppPackageContractError,
   CATALOG_REFRESH_POLICY,
+  advisoriesForVersion,
   advisoryAffectsVersion,
   canonicalPackagePath,
   digestAppPackage,
   validateAdvisory,
+  validateAdvisoryIndex,
   validateCatalog,
   validatePlatformCompatibility,
   validatePrivacyBinding,
@@ -128,6 +130,38 @@ test('privacy-invalidated advisories apply only to their bounded package version
   assert.deepEqual(validateAdvisory(advisory), []);
   assert.equal(advisoryAffectsVersion(advisory, '1.4.0'), true);
   assert.equal(advisoryAffectsVersion(advisory, '2.0.0'), false);
+});
+
+test('advisory validation requires an id, a valid publishedAt, and an HTTPS evidence URL', () => {
+  const base = contractFixtures.privacyInvalidatedAdvisory;
+  assert.deepEqual(validateAdvisory({ ...base, evidenceUrl: 'https://example.com/e' }), []);
+  assert.ok(validateAdvisory({ ...base, id: '' }).some((error) => error.includes('advisory.id')));
+  assert.ok(validateAdvisory({ ...base, publishedAt: 'not-a-date' }).some((error) => error.includes('publishedAt')));
+  assert.ok(validateAdvisory({ ...base, evidenceUrl: 'http://example.com/e' }).some((error) => error.includes('evidenceUrl')));
+});
+
+test('advisory index validation rejects malformed entries and duplicate ids', () => {
+  const advisory = contractFixtures.privacyInvalidatedAdvisory;
+  assert.deepEqual(validateAdvisoryIndex({ advisories: [advisory], schemaVersion: 1 }), []);
+  assert.deepEqual(validateAdvisoryIndex({ advisories: [], schemaVersion: 1 }), []);
+  assert.ok(validateAdvisoryIndex({ advisories: advisory, schemaVersion: 1 }).some((error) => error.includes('must be an array')));
+  assert.ok(validateAdvisoryIndex({ advisories: [advisory, advisory], schemaVersion: 1 }).some((error) => error.includes('duplicates advisory id')));
+  assert.ok(validateAdvisoryIndex({ advisories: [{ ...advisory, severity: 'nope' }], schemaVersion: 1 }).some((error) => error.startsWith('advisories[0]')));
+});
+
+test('advisoriesForVersion returns applicable advisories most severe first', () => {
+  const index = {
+    advisories: [
+      { affectedVersions: '*', id: 'A', packageId: 'example-app', publishedAt: '2026-01-01T00:00:00Z', remediation: 'x', schemaVersion: 1, severity: 'low', summary: 's', type: 'policy-change' },
+      { affectedVersions: '>=1.0.0 <2.0.0', id: 'B', packageId: 'example-app', publishedAt: '2026-02-01T00:00:00Z', remediation: 'x', schemaVersion: 1, severity: 'critical', summary: 's', type: 'security' },
+      { affectedVersions: '*', id: 'C', packageId: 'other-app', publishedAt: '2026-01-01T00:00:00Z', remediation: 'x', schemaVersion: 1, severity: 'high', summary: 's', type: 'security' },
+    ],
+    schemaVersion: 1,
+  };
+  const applicable = advisoriesForVersion(index, 'example-app', '1.4.0');
+  assert.deepEqual(applicable.map((advisory) => advisory.id), ['B', 'A']);
+  assert.deepEqual(advisoriesForVersion(index, 'example-app', '2.5.0').map((advisory) => advisory.id), ['A']);
+  assert.deepEqual(advisoriesForVersion(null, 'example-app', '1.4.0'), []);
 });
 
 test('catalog refresh policy keeps a bounded retry cadence and last-known-good cache window', () => {

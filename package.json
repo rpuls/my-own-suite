@@ -8,6 +8,7 @@
     "apps:catalog": "node scripts/app-package-catalog.cjs",
     "apps:catalog:check": "node scripts/app-package-catalog.cjs --check",
     "apps:privacy:check": "node scripts/app-privacy-check.cjs",
+    "apps:privacy:monitor": "node scripts/app-privacy-monitor.cjs",
     "build": "cd site-mos1-reference && npm install --no-audit --progress=false && npm run build",
     "build:client": "npm run branding:sync && vite build --config suite-manager/vite.config.mjs",
     "branding:sync": "node scripts/sync-branding.cjs",

@@ -67,7 +67,7 @@ const headings = [
   )}
 
   <h2 id="good-to-know">Good to know</h2>
-  <PrivacyPosture appName={app.name} packageVersion={app.version} privacy={app.privacyReview} />
+  <PrivacyPosture advisories={app.advisories} appName={app.name} packageVersion={app.version} privacy={app.privacyReview} />
   <ul>
     {app.setup && (
       <li>

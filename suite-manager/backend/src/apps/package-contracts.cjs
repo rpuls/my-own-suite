@@ -205,10 +205,13 @@ function advisoryAffectsVersion(advisory, packageVersion) {
   });
 }
 
+const ADVISORY_SEVERITY_RANK = Object.freeze({ info: 0, low: 1, medium: 2, high: 3, critical: 4 });
+
 function validateAdvisory(advisory) {
   const errors = [];
   if (!advisory || typeof advisory !== 'object' || Array.isArray(advisory)) return ['advisory must be an object.'];
   if (advisory.schemaVersion !== 1) errors.push('advisory.schemaVersion must be 1.');
+  if (typeof advisory.id !== 'string' || !advisory.id.trim()) errors.push('advisory.id is required.');
   if (!PACKAGE_ID_PATTERN.test(String(advisory.packageId || ''))) errors.push('advisory.packageId is invalid.');
   if (!['info', 'low', 'medium', 'high', 'critical'].includes(advisory.severity)) errors.push('advisory.severity is invalid.');
   if (!['package-withdrawn', 'policy-change', 'privacy-review-invalidated', 'security'].includes(advisory.type)) errors.push('advisory.type is invalid.');
@@ -217,13 +220,50 @@ function validateAdvisory(advisory) {
   if (!supportedRange) errors.push('advisory.affectedVersions is unsupported.');
   if (typeof advisory.summary !== 'string' || !advisory.summary.trim()) errors.push('advisory.summary is required.');
   if (typeof advisory.remediation !== 'string' || !advisory.remediation.trim()) errors.push('advisory.remediation is required.');
+  if (advisory.publishedAt === undefined || Number.isNaN(Date.parse(String(advisory.publishedAt)))) errors.push('advisory.publishedAt must be an ISO date-time.');
+  if (advisory.evidenceUrl !== undefined) {
+    let url = null;
+    try { url = new URL(String(advisory.evidenceUrl)); } catch {}
+    if (!url || url.protocol !== 'https:') errors.push('advisory.evidenceUrl must be an HTTPS URL.');
+  }
   return errors;
 }
 
+// The official advisory feed is a small authored index fetched from the same
+// trusted catalog source revision. Trust is derived from the source (see
+// validateSourceIdentity); this only enforces structural validity and unique ids.
+function validateAdvisoryIndex(index) {
+  if (!index || typeof index !== 'object' || Array.isArray(index)) return ['advisory index must be an object.'];
+  const errors = [];
+  if (index.schemaVersion !== 1) errors.push('advisory index schemaVersion must be 1.');
+  if (!Array.isArray(index.advisories)) return [...errors, 'advisory index advisories must be an array.'];
+  const seen = new Set();
+  index.advisories.forEach((advisory, position) => {
+    for (const error of validateAdvisory(advisory)) errors.push(`advisories[${position}] ${error}`);
+    const id = String(advisory?.id || '');
+    if (id && seen.has(id)) errors.push(`advisories[${position}] duplicates advisory id ${id}.`);
+    seen.add(id);
+  });
+  return errors;
+}
+
+// Applicable advisories for an installed/candidate version, most severe first.
+// Advisories are current metadata about a version; they never mutate the
+// installed package snapshot or its stored assessment.
+function advisoriesForVersion(index, packageId, packageVersion) {
+  const advisories = Array.isArray(index?.advisories) ? index.advisories : [];
+  return advisories
+    .filter((advisory) => advisory?.packageId === packageId && advisoryAffectsVersion(advisory, packageVersion))
+    .sort((left, right) => (ADVISORY_SEVERITY_RANK[right.severity] || 0) - (ADVISORY_SEVERITY_RANK[left.severity] || 0)
+      || String(right.publishedAt || '').localeCompare(String(left.publishedAt || '')));
+}
+
 module.exports = {
+  ADVISORY_SEVERITY_RANK,
   AppPackageContractError,
   CATALOG_REFRESH_POLICY,
   DEFAULT_PACKAGE_LIMITS,
+  advisoriesForVersion,
   advisoryAffectsVersion,
   canonicalPackagePath,
   compareSemver,
@@ -231,6 +271,7 @@ module.exports = {
   digestAppPackage,
   validateCatalog,
   validateAdvisory,
+  validateAdvisoryIndex,
   validatePlatformCompatibility,
   validatePrivacyBinding,
   validateSourceIdentity,

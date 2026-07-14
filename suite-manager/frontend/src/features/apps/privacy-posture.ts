@@ -21,11 +21,35 @@ export type PrivacyPostureId = 'private-by-default' | 'privacy-configured' | 'ex
 
 export type PrivacyDimensionKey = 'telemetry' | 'externalServices' | 'accountDependency' | 'dataProcessing' | 'policyExposure';
 
+export type PrivacyProvenance = {
+  humanReviewed: boolean;
+  method: string | null;
+  model: string | null;
+  sourceRevision: string | null;
+};
+
 export type PrivacyReviewSummary = {
   dimensions: Record<string, string> | null;
   posture: string;
+  provenance?: PrivacyProvenance | null;
   reviewedAt: string | null;
   status: string;
+};
+
+export type PrivacyAdvisorySeverity = 'info' | 'low' | 'medium' | 'high' | 'critical';
+
+export type PrivacyAdvisoryType = 'security' | 'privacy-review-invalidated' | 'policy-change' | 'package-withdrawn';
+
+export type PrivacyAdvisory = {
+  affectedVersions: string;
+  evidenceUrl?: string;
+  id: string;
+  packageId: string;
+  publishedAt: string;
+  remediation: string;
+  severity: PrivacyAdvisorySeverity;
+  summary: string;
+  type: PrivacyAdvisoryType;
 };
 
 export type PrivacyVerdict = { border: string; color: string; soft: string; word: string };
@@ -195,6 +219,53 @@ export function provenanceLine(privacy: PrivacyReviewSummary | null | undefined,
 
 export function privacyChanged(installed: PrivacyReviewSummary, candidate: PrivacyReviewSummary): boolean {
   return installed.posture !== candidate.posture || privacyScore(installed) !== privacyScore(candidate);
+}
+
+// Advisories are current, source-trusted notices about the installed version.
+// They are presented separately from the installed assessment so a corrected
+// advisory changes what the owner sees without implying the runtime changed.
+const ADVISORY_SEVERITY_ORDER: Record<PrivacyAdvisorySeverity, number> = { info: 0, low: 1, medium: 2, high: 3, critical: 4 };
+
+export const ADVISORY_SEVERITY_STYLE: Record<PrivacyAdvisorySeverity, { border: string; color: string; soft: string }> = {
+  info: { border: 'var(--mos-color-info-border)', color: 'var(--mos-color-info)', soft: 'var(--mos-color-info-soft)' },
+  low: { border: 'var(--mos-color-info-border)', color: 'var(--mos-color-info)', soft: 'var(--mos-color-info-soft)' },
+  medium: { border: 'var(--mos-color-warning-border)', color: 'var(--mos-color-warning)', soft: 'var(--mos-color-warning-soft)' },
+  high: { border: 'var(--mos-color-danger-border)', color: 'var(--mos-color-danger)', soft: 'var(--mos-color-danger-soft)' },
+  critical: { border: 'var(--mos-color-danger-border)', color: 'var(--mos-color-danger)', soft: 'var(--mos-color-danger-soft)' },
+};
+
+export const ADVISORY_TYPE_LABEL: Record<PrivacyAdvisoryType, string> = {
+  'package-withdrawn': 'Package withdrawn',
+  'policy-change': 'Policy change',
+  'privacy-review-invalidated': 'Review invalidated',
+  security: 'Security',
+};
+
+export function sortedAdvisories(advisories: PrivacyAdvisory[] | null | undefined): PrivacyAdvisory[] {
+  return [...(advisories || [])].sort((left, right) => ADVISORY_SEVERITY_ORDER[right.severity] - ADVISORY_SEVERITY_ORDER[left.severity]
+    || String(right.publishedAt).localeCompare(String(left.publishedAt)));
+}
+
+export function highestAdvisory(advisories: PrivacyAdvisory[] | null | undefined): PrivacyAdvisory | null {
+  return sortedAdvisories(advisories)[0] || null;
+}
+
+export function reviewInvalidated(advisories: PrivacyAdvisory[] | null | undefined): boolean {
+  return (advisories || []).some((advisory) => advisory.type === 'privacy-review-invalidated' || advisory.type === 'package-withdrawn');
+}
+
+export function advisoryMarkerLabel(advisories: PrivacyAdvisory[] | null | undefined): string | null {
+  const count = advisories?.length || 0;
+  if (!count) return null;
+  return count === 1 ? '1 advisory' : `${count} advisories`;
+}
+
+export function provenanceMethodLabel(privacy: PrivacyReviewSummary | null | undefined): string | null {
+  if (!isRated(privacy) || !privacy?.provenance) return null;
+  const { humanReviewed, method } = privacy.provenance;
+  const base = method === 'human' ? 'Human review' : method === 'ai-assisted' ? 'AI-assisted review' : null;
+  if (!base) return humanReviewed ? 'Human-checked' : null;
+  return method === 'ai-assisted' && humanReviewed ? `${base}, human-checked` : base;
 }
 
 export function privacyChangeSentence(installed: PrivacyReviewSummary, candidate: PrivacyReviewSummary): string {

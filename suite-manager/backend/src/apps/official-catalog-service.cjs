@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { CATALOG_REFRESH_POLICY, DEFAULT_PACKAGE_LIMITS, canonicalPackagePath, compareSemver, digestAppPackage, validateCatalog } = require('./package-contracts.cjs');
+const { CATALOG_REFRESH_POLICY, DEFAULT_PACKAGE_LIMITS, advisoriesForVersion, canonicalPackagePath, compareSemver, digestAppPackage, validateAdvisoryIndex, validateCatalog } = require('./package-contracts.cjs');
 const { readAppPackageManifest } = require('./package-manifest.cjs');
 
 const DEFAULT_LIMITS = Object.freeze({ catalogBytes: 1024 * 1024, timeoutMs: 10_000, ...DEFAULT_PACKAGE_LIMITS });
@@ -67,7 +67,15 @@ class OfficialCatalogService {
   readCache() {
     try {
       const cache = JSON.parse(fs.readFileSync(this.cachePath, 'utf8'));
-      if (cache.schemaVersion === 1 && COMMIT_PATTERN.test(cache.revision) && validateCatalog(cache.catalog).length === 0) return cache;
+      if (cache.schemaVersion === 1 && COMMIT_PATTERN.test(cache.revision) && validateCatalog(cache.catalog).length === 0) {
+        // Advisories ride alongside the catalog but must never make a valid
+        // catalog cache unusable; drop them if they no longer validate.
+        if (cache.advisories && validateAdvisoryIndex(cache.advisories).length) {
+          delete cache.advisories;
+          delete cache.advisoriesRevision;
+        }
+        return cache;
+      }
     } catch {}
     return null;
   }
@@ -83,6 +91,7 @@ class OfficialCatalogService {
     const fetchedAt = this.cache?.fetchedAt || null;
     const ageMs = fetchedAt ? Math.max(0, this.now().getTime() - Date.parse(fetchedAt)) : null;
     return {
+      advisories: { count: this.cache?.advisories?.advisories?.length ?? null, revision: this.cache?.advisoriesRevision || null },
       error: this.lastError,
       fetchedAt,
       freshness: !fetchedAt ? 'unavailable' : ageMs > CATALOG_REFRESH_POLICY.cacheStaleAfterMs ? 'stale' : 'fresh',
@@ -92,6 +101,23 @@ class OfficialCatalogService {
   }
 
   catalog() { return this.cache?.catalog || null; }
+
+  // Applicable official advisories for an installed/candidate version. Advisories
+  // are current source-trusted metadata; they never mutate installed snapshots.
+  advisoriesFor(packageId, packageVersion) {
+    if (!packageId || !packageVersion) return [];
+    return advisoriesForVersion(this.cache?.advisories, packageId, packageVersion);
+  }
+
+  async fetchAdvisories(revision) {
+    const url = `https://raw.githubusercontent.com/${this.github.owner}/${this.github.repo}/${revision}/apps/advisories.json`;
+    const response = await this.request(url);
+    if (response.status === 404) return { advisories: [], schemaVersion: 1 };
+    const index = JSON.parse((await boundedResponse(response, this.limits.catalogBytes)).toString('utf8'));
+    const errors = validateAdvisoryIndex(index);
+    if (errors.length) throw new OfficialCatalogError('ADVISORIES_INVALID', `Official advisory feed is invalid: ${errors.join(' ')}`);
+    return index;
+  }
 
   async downloadCandidate(packageId) {
     const entry = this.catalog()?.packages?.[packageId];
@@ -189,6 +215,14 @@ class OfficialCatalogService {
       }
       this.failures = 0;
       this.lastError = null;
+      // Advisories are fetched from the same immutable revision, so they only
+      // change when the revision does. A malformed or unreachable feed keeps the
+      // last-known-good advisories and never fails the catalog refresh.
+      if (this.cache.advisoriesRevision !== revision) {
+        try {
+          this.cache = { ...this.cache, advisories: await this.fetchAdvisories(revision), advisoriesRevision: revision };
+        } catch {}
+      }
       this.writeCache(this.cache);
       return { catalog: this.catalog(), status: this.status() };
     } catch (error) {

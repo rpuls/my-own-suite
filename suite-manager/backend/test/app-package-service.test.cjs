@@ -161,12 +161,54 @@ test('listPackages exposes privacy from the installed snapshot rather than the m
   const installed = service.listPackages().find((item) => item.id === 'stirling-pdf');
   assert.equal(installed.privacy.status, 'reviewed');
   assert.equal(installed.privacy.dimensions.dataProcessing, 'local');
+  // Installed assessment provenance travels from the snapshot review.
+  assert.equal(installed.privacy.provenance.method, 'human');
+  assert.equal(installed.privacy.provenance.humanReviewed, true);
+  assert.equal(installed.privacy.provenance.sourceRevision, 'test-commit');
+  // No catalog service wired in this test, so there are no current advisories.
+  assert.deepEqual(installed.advisories, []);
 
   await fsp.rm(candidateDir, { recursive: true });
   const afterRemoval = service.listPackages().find((item) => item.id === 'stirling-pdf');
   assert.equal(afterRemoval.privacy.status, 'reviewed');
   assert.equal(afterRemoval.privacy.posture, 'private-by-default');
   assert.equal(afterRemoval.privacy.dimensions.telemetry, 'none-observed');
+
+  store.close();
+});
+
+test('listPackages surfaces current advisories for the installed version separately from the stored review', async () => {
+  const root = await tempStateDir();
+  const appsDir = path.join(root, 'apps');
+  const candidateDir = path.join(appsDir, 'stirling-pdf');
+  const snapshotDir = path.join(root, 'snapshots', 'stirling-pdf');
+  await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
+  const manifest = JSON.parse(await fsp.readFile(path.join(candidateDir, 'manifest.json'), 'utf8'));
+  const advisory = { affectedVersions: '*', id: 'MOS-PRIV-1', packageId: 'stirling-pdf', publishedAt: '2026-07-10T00:00:00Z', remediation: 'Update the app.', schemaVersion: 1, severity: 'medium', summary: 'New evidence invalidates the installed review.', type: 'privacy-review-invalidated' };
+  // Advisories are keyed to the version an owner actually runs, so the stub
+  // only returns the advisory for the installed manifest version.
+  const catalogService = {
+    advisoriesFor: (packageId, version) => (packageId === 'stirling-pdf' && version === manifest.version ? [advisory] : []),
+    updateFor: () => null,
+  };
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({
+    agent: {
+      async snapshotPackage() {
+        await fsp.cp(candidateDir, snapshotDir, { recursive: true });
+        return { snapshotPath: snapshotDir };
+      },
+    },
+    appsDir,
+    catalogService,
+    store,
+  });
+
+  await service.installPackage('stirling-pdf');
+  const installed = service.listPackages().find((item) => item.id === 'stirling-pdf');
+  assert.deepEqual(installed.advisories.map((entry) => entry.id), ['MOS-PRIV-1']);
+  // The advisory does not mutate the stored installed review state.
+  assert.equal(installed.privacy.status, 'review-required');
 
   store.close();
 });

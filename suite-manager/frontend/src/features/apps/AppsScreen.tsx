@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useState } from 'react';
 
 import { Dialog, Icon, Notice, TextInput } from '../../components/ui';
 import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
-import type { PrivacyReviewSummary } from './privacy-posture';
+import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture';
 import type { Owner } from '../setup/types';
 
 type CatalogFeature = { body: string; title: string };
@@ -73,6 +73,7 @@ type AppPackageSummary = {
     updateRecovery?: { errorCode: string; state: 'retry-safe' | 'rollback-required' | 'commit-required' } | null;
     updatedAt?: string;
   } | null;
+  advisories?: PrivacyAdvisory[];
   id: string;
   installStatus: string;
   name: string;
@@ -658,7 +659,7 @@ function AppDetail({
 
         <section className="suite-app-facts" aria-label="App facts">
           <div><span>Category</span><strong>{categoryLabel(primaryCategory(app))}</strong></div>
-          <PrivacyFactsTile onOpen={() => setPrivacyOpen(true)} privacy={app.privacy} />
+          <PrivacyFactsTile advisories={app.advisories} onOpen={() => setPrivacyOpen(true)} privacy={app.privacy} />
           <div><span>Complexity</span><strong>{complexityLabel(app)}</strong></div>
           <div><span>Resources</span><strong>{resourceLabel(app)}</strong></div>
         </section>
@@ -721,7 +722,7 @@ function AppDetail({
         <AdvancedDetails app={app} />
       </div>
     </aside>
-    {privacyOpen ? <PrivacyPostureDialog appName={app.name} onClose={() => setPrivacyOpen(false)} packageVersion={app.instance?.packageVersion || app.version} privacy={app.privacy} /> : null}
+    {privacyOpen ? <PrivacyPostureDialog advisories={app.advisories} appName={app.name} onClose={() => setPrivacyOpen(false)} packageVersion={app.instance?.packageVersion || app.version} privacy={app.privacy} /> : null}
     {comparison ? <Dialog footer={<button className="mos-btn mos-btn-secondary" onClick={() => setComparison(null)} type="button">Close</button>} onClose={() => setComparison(null)} title={`Review ${app.name} update`}>
       <div className="suite-app-update-dialog">
         <Notice title={comparison.compatibility === 'unsupported' ? 'This update cannot be applied safely' : comparison.compatibility === 'owner-action-required' ? 'Your input is required' : 'Ready for confirmation'} variant={comparison.compatibility === 'unsupported' ? 'warning' : 'info'}>

@@ -34,6 +34,15 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      - name: Check app catalog and advisory feed
+        run: npm run apps:catalog:check
+
+      - name: Validate app privacy reviews
+        run: npm run apps:privacy:check
+
+      - name: Monitor stale reviews and advisories
+        run: npm run apps:privacy:monitor
+
       - name: Typecheck Suite Manager
         run: npm run typecheck
 

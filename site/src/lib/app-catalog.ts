@@ -4,7 +4,7 @@
 // Manager uses — so adding a new app package to the repo adds it to the
 // site automatically on the next build.
 
-import type { PrivacyReviewSummary } from './privacy-posture'
+import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture'
 
 export type CatalogFeature = { title: string; body: string }
 export type CatalogApp = {
@@ -23,6 +23,7 @@ export type CatalogApp = {
   privacy: string
   privacyNotes: string[]
   privacyReview: PrivacyReviewSummary
+  advisories: PrivacyAdvisory[]
   features: CatalogFeature[]
   links: Record<string, string>
   tags: string[]
@@ -55,6 +56,7 @@ const privacyReviewModules = import.meta.glob('../../../apps/*/privacy-review.js
 const UNRATED: PrivacyReviewSummary = {
   dimensions: null,
   posture: 'review-required',
+  provenance: null,
   reviewedAt: null,
   status: 'review-required'
 }
@@ -71,12 +73,65 @@ function privacyReviewFor(manifestPath: string, manifest: any): PrivacyReviewSum
   ) {
     return UNRATED
   }
+  const provenance = review.provenance ?? {}
   return {
     dimensions: review.dimensions ?? null,
     posture: String(review.posture ?? 'review-required'),
+    provenance: {
+      humanReviewed: provenance.humanReviewed === true,
+      method: provenance.method ?? null,
+      model: provenance.model ?? null,
+      sourceRevision: review.scope?.source?.revision ?? null
+    },
     reviewedAt: review.reviewedAt ?? null,
     status: 'reviewed'
   }
+}
+
+// The official advisory feed (apps/advisories.json) is authored, source-trusted
+// metadata about published package versions. The site shows advisories that
+// apply to the current repo package version — the same candidate a fresh
+// install would get — kept separate from the installed assessment.
+const advisoryIndex = import.meta.glob('../../../apps/advisories.json', {
+  eager: true,
+  import: 'default'
+}) as Record<string, any>
+const allAdvisories: PrivacyAdvisory[] = (
+  Object.values(advisoryIndex)[0]?.advisories ?? []
+) as PrivacyAdvisory[]
+
+function semverParts(value: string): number[] | null {
+  const match = String(value).match(/^(\d+)\.(\d+)\.(\d+)/)
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null
+}
+function compareSemver(left: string, right: string): number | null {
+  const a = semverParts(left)
+  const b = semverParts(right)
+  if (!a || !b) return null
+  for (let i = 0; i < 3; i += 1) if (a[i] !== b[i]) return Math.sign(a[i] - b[i])
+  return 0
+}
+function advisoryAppliesToVersion(range: string, version: string): boolean {
+  const trimmed = String(range).trim()
+  if (trimmed === '*') return semverParts(version) !== null
+  if (/^\d+\.\d+\.\d+/.test(trimmed)) return compareSemver(version, trimmed) === 0
+  const comparators = trimmed.split(/\s+/).filter(Boolean)
+  if (!comparators.length) return false
+  return comparators.every((comparator) => {
+    const match = comparator.match(/^(<=|>=|<|>)(.+)$/)
+    if (!match) return false
+    const comparison = compareSemver(version, match[2])
+    if (comparison === null) return false
+    return match[1] === '<' ? comparison < 0
+      : match[1] === '<=' ? comparison <= 0
+        : match[1] === '>' ? comparison > 0
+          : comparison >= 0
+  })
+}
+function advisoriesFor(manifest: any): PrivacyAdvisory[] {
+  return allAdvisories.filter(
+    (advisory) => advisory.packageId === manifest.id && advisoryAppliesToVersion(advisory.affectedVersions, manifest.version)
+  )
 }
 
 // Friendly labels for manifest category slugs; unknown slugs fall back
@@ -122,6 +177,7 @@ export const catalogApps: CatalogApp[] = Object.entries(manifestModules)
       privacy: String(catalog.privacy?.summary ?? ''),
       privacyNotes: Array.isArray(catalog.privacy?.notes) ? catalog.privacy.notes.map(String) : [],
       privacyReview: privacyReviewFor(path, manifest),
+      advisories: advisoriesFor(manifest),
       features,
       links: catalog.links && typeof catalog.links === 'object' ? catalog.links : {},
       tags: Array.isArray(catalog.tags) ? catalog.tags.map(String) : [],

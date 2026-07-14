@@ -320,17 +320,17 @@ Acceptance:
 
 ### Phase 6 — advisories and version-aware privacy UI
 
-- [ ] Define a small official advisory index with affected package-version ranges, severity, type, evidence link, and remediation.
-- [ ] Validate advisory signatures/trust with the catalog source.
-- [ ] Show installed assessment provenance and current advisory status separately.
+- [x] Define a small official advisory index with affected package-version ranges, severity, type, evidence link, and remediation.
+- [x] Validate advisory signatures/trust with the catalog source. (Trust is bound to the immutable official catalog revision the feed is fetched from, plus structural/unique-id validation; cryptographic signing remains Phase 8.)
+- [x] Show installed assessment provenance and current advisory status separately.
 - [x] Show candidate assessment and posture changes in update preview.
-- [ ] Allow a corrected assessment/advisory to update display metadata without pretending the installed runtime changed.
-- [ ] Add stale-review and changed-policy monitoring to the review workflow/CI.
+- [x] Allow a corrected assessment/advisory to update display metadata without pretending the installed runtime changed.
+- [x] Add stale-review and changed-policy monitoring to the review workflow/CI.
 
 Acceptance:
 
-- [ ] Owners on an older package see its installed review plus any current applicable advisory.
-- [ ] Owners do not see the newest package's rating presented as their installed rating.
+- [x] Owners on an older package see its installed review plus any current applicable advisory.
+- [x] Owners do not see the newest package's rating presented as their installed rating.
 
 ### Phase 7 — external package sources
 

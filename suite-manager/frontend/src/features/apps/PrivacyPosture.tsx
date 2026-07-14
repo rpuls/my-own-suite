@@ -13,9 +13,12 @@
 
 import { Dialog } from '../../components/ui';
 import {
+  ADVISORY_SEVERITY_STYLE,
+  ADVISORY_TYPE_LABEL,
   ASSESSMENT_DOCS_URL,
   GLYPHS,
   SHIELD_PATH,
+  advisoryMarkerLabel,
   badgeTextFor,
   dimensionRowsFor,
   isRated,
@@ -23,7 +26,10 @@ import {
   privacyChangeSentence,
   privacyChanged,
   provenanceLine,
+  provenanceMethodLabel,
+  sortedAdvisories,
   tileMetaLine,
+  type PrivacyAdvisory,
   type PrivacyReviewSummary,
 } from './privacy-posture';
 
@@ -40,8 +46,10 @@ export function PrivacyShieldBadge({ privacy, size }: { privacy: PrivacyReviewSu
   </span>;
 }
 
-export function PrivacyFactsTile({ onOpen, privacy }: { onOpen: () => void; privacy: PrivacyReviewSummary | null | undefined }) {
+export function PrivacyFactsTile({ advisories, onOpen, privacy }: { advisories?: PrivacyAdvisory[] | null; onOpen: () => void; privacy: PrivacyReviewSummary | null | undefined }) {
   const posture = postureFor(privacy);
+  const marker = advisoryMarkerLabel(advisories);
+  const topSeverity = sortedAdvisories(advisories)[0]?.severity;
   return <button className="suite-privacy-tile" onClick={onOpen} type="button">
     <span className="suite-privacy-tile-label">Privacy</span>
     <span className="suite-privacy-tile-posture">
@@ -49,13 +57,38 @@ export function PrivacyFactsTile({ onOpen, privacy }: { onOpen: () => void; priv
       <strong>{posture.label}</strong>
     </span>
     <span className="suite-privacy-tile-meta">
-      {tileMetaLine(privacy)}
+      {marker && topSeverity
+        ? <span className="suite-privacy-advisory-flag" style={{ background: ADVISORY_SEVERITY_STYLE[topSeverity].soft, borderColor: ADVISORY_SEVERITY_STYLE[topSeverity].border, color: ADVISORY_SEVERITY_STYLE[topSeverity].color }}>{marker}</span>
+        : tileMetaLine(privacy)}
       <Glyph path={GLYPHS.chevronRight} />
     </span>
   </button>;
 }
 
-export function PrivacyPostureDialog({ appName, assessmentUrl = ASSESSMENT_DOCS_URL, onClose, packageVersion, privacy }: {
+function AdvisoryNotices({ advisories }: { advisories: PrivacyAdvisory[] }) {
+  if (!advisories.length) return null;
+  return <div className="suite-privacy-advisories">
+    <span className="suite-privacy-advisories-label">Current advisories</span>
+    {sortedAdvisories(advisories).map((advisory) => {
+      const style = ADVISORY_SEVERITY_STYLE[advisory.severity];
+      return <div className="suite-privacy-advisory" key={advisory.id} style={{ background: style.soft, borderColor: style.border }}>
+        <span className="suite-privacy-advisory-head">
+          <strong style={{ color: style.color }}>{ADVISORY_TYPE_LABEL[advisory.type]}</strong>
+          <span className="suite-privacy-advisory-severity" style={{ color: style.color }}>{advisory.severity}</span>
+        </span>
+        <p className="suite-privacy-advisory-summary">{advisory.summary}</p>
+        <p className="suite-privacy-advisory-remediation">{advisory.remediation}</p>
+        {advisory.evidenceUrl ? <a className="suite-privacy-link" href={advisory.evidenceUrl} rel="noreferrer" target="_blank">
+          Evidence
+          <Glyph path={GLYPHS.externalLink} />
+        </a> : null}
+      </div>;
+    })}
+  </div>;
+}
+
+export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSESSMENT_DOCS_URL, onClose, packageVersion, privacy }: {
+  advisories?: PrivacyAdvisory[] | null;
   appName: string;
   assessmentUrl?: string;
   onClose: () => void;
@@ -63,6 +96,7 @@ export function PrivacyPostureDialog({ appName, assessmentUrl = ASSESSMENT_DOCS_
   privacy: PrivacyReviewSummary | null | undefined;
 }) {
   const posture = postureFor(privacy);
+  const method = provenanceMethodLabel(privacy);
   return <Dialog
     className="suite-privacy-dialog"
     closeOnBackdrop
@@ -87,9 +121,10 @@ export function PrivacyPostureDialog({ appName, assessmentUrl = ASSESSMENT_DOCS_
         <span className="suite-privacy-verdict" style={{ background: row.verdict.soft, borderColor: row.verdict.border, color: row.verdict.color }}>{row.verdict.word}</span>
       </div>)}
     </div>
+    <AdvisoryNotices advisories={advisories || []} />
     <div className="suite-privacy-footer">
       <div className="suite-privacy-footer-meta">
-        <span>{provenanceLine(privacy, isRated(privacy) ? packageVersion : null)}</span>
+        <span>{[provenanceLine(privacy, isRated(privacy) ? packageVersion : null), method].filter(Boolean).join(' · ')}</span>
         <a className="suite-privacy-link" href={assessmentUrl} rel="noreferrer" target="_blank">
           How MOS assesses app privacy
           <Glyph path={GLYPHS.externalLink} />

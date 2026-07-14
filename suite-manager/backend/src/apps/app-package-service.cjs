@@ -203,13 +203,23 @@ function publicInstance(instance, projections = [], configRows = []) {
   };
 }
 
+function reviewProvenance(review) {
+  const provenance = review?.provenance || {};
+  return {
+    humanReviewed: provenance.humanReviewed === true,
+    method: provenance.method || null,
+    model: provenance.model || null,
+    sourceRevision: review?.scope?.source?.revision || null,
+  };
+}
+
 function privacyReviewPresentation(packageDir, { id, version }) {
   const reviewPath = path.join(packageDir, 'privacy-review.json');
   if (!fs.existsSync(reviewPath)) return null;
   try {
     const review = JSON.parse(fs.readFileSync(reviewPath, 'utf8'));
     if (review?.schemaVersion !== 1 || review.appId !== id || review.scope?.packageVersion !== version) return null;
-    return { dimensions: review.dimensions || null, posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
+    return { dimensions: review.dimensions || null, posture: review.posture, provenance: reviewProvenance(review), reviewedAt: review.reviewedAt, status: 'reviewed' };
   } catch {
     return null;
   }
@@ -954,6 +964,16 @@ class AppPackageService {
     return privacyReviewPresentation(instance.snapshotPath, { id: instance.packageId, version: instance.packageVersion }) || stored;
   }
 
+  // Current official advisories for the version an owner actually runs (or the
+  // catalog candidate for not-yet-installed apps). Kept separate from the
+  // installed assessment so a corrected advisory changes what the owner sees
+  // without pretending the installed runtime or its stored review changed.
+  packageAdvisoriesFor(instance, packageId, candidateVersion) {
+    const version = instance?.packageVersion || candidateVersion;
+    if (!version) return [];
+    return this.catalogService?.advisoriesFor(packageId, version) || [];
+  }
+
   listPackages() {
     const instancesByPackage = new Map(this.store.getAppInstances().map((instance) => [instance.packageId, instance]));
     const integrations = this.store.getAppIntegrations();
@@ -978,6 +998,7 @@ class AppPackageService {
       const guideState = instance ? this.store.getAppGuideState(instance.id) : null;
       return {
         ...summary,
+        advisories: this.packageAdvisoriesFor(instance, packageId, candidatesByPackage.get(packageId)?.version),
         catalogUpdate: this.catalogService?.updateFor(packageId, instance) || null,
         installStatus: instance?.status || 'not-installed',
         instance: publicInstance(instance ? { ...instance, guideState } : null, projections, config),
