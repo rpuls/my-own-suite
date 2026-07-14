@@ -337,18 +337,18 @@ Acceptance:
 - [ ] Add an owner-only flow for a catalog/package URL with explicit risk explanation. (Contract/registry foundations landed; owner-facing API/UI flow is pending.)
 - [x] Require HTTPS initially; define whether local/file sources are development-only. (`validateSourceUrl`/`buildSourceRecord`: uncredentialed HTTPS only; `local`/`file` sources are opt-in development-only.)
 - [x] Store source URL, immutable revision, publisher identity/signature when present, and trust separately from package metadata. (New `app_sources` table plus registry record model; revision is bound separately via `withRevision` after resolution.)
-- [ ] Enforce the constrained capability profile for non-official packages. (`validateConstrainedCapabilities` and the `validateExternalCandidate` gate exist and fail closed; still to be wired into a real external install path.)
-- [ ] Display requested permissions before install and permission increases before update. (`describeRequestedPermissions`/`diffRequestedPermissions` primitives exist; UI display is pending.)
-- [ ] Prevent external packages from claiming MOS review or using official identifiers/icons deceptively. (`validateExternalIdentity` blocks id/prefix/self-asserted-trust claims in the gate; install-path wiring and icon/UI labeling are pending.)
+- [x] Enforce the constrained capability profile for non-official packages. (`ExternalSourceClient.downloadCandidate` runs every external candidate through the `validateExternalCandidate` gate and fails closed before any build/apply can consume it; the candidate cannot be produced unless the constrained profile passes.)
+- [ ] Display requested permissions before install and permission increases before update. (`describeRequestedPermissions`/`diffRequestedPermissions` primitives exist and the external candidate now returns its `permissions` surface; UI display is pending.)
+- [ ] Prevent external packages from claiming MOS review or using official identifiers/icons deceptively. (`validateExternalIdentity` now blocks id-collision/reserved-prefix/self-asserted-trust in the download path before a candidate is returned; icon/UI labeling remains pending.)
 - [x] Namespace package/source identity to handle id collisions. (`namespacedPackageId`/`instanceNamespaceId`: official ids stay bare, other sources are isolated by a repository+path digest.)
 - [x] Define source removal, ownership change, signing-key rotation, compromise, and unavailable-source behavior. (Registry status model with gated transitions: `unavailable`/`key-rotated` are recoverable and block new installs; `compromised`/`removed` are terminal.)
 - [x] Provide Remove source without uninstalling already-installed snapshots. (`app_sources` has no cascade to `app_instances`; `removalPlan` marks matching installs source-orphaned while their snapshots stay installed and manageable.)
 
 Acceptance:
 
-- [ ] A valid unverified example installs through the same snapshot/app-agent pipeline with visible unverified status.
-- [ ] Malicious path, host mount, privilege, raw proxy, and cross-secret fixtures fail before build/apply.
-- [ ] Removing an external source does not break lifecycle management for its installed apps.
+- [ ] A valid unverified example installs through the same snapshot/app-agent pipeline with visible unverified status. (`ExternalSourceClient` produces a validated unverified candidate through the shared package pipeline; snapshot persistence, app-agent apply, and the UI unverified status remain pending.)
+- [x] Malicious path, host mount, privilege, raw proxy, and cross-secret fixtures fail before build/apply. (`external-source-client.test.cjs` proves impersonation, host-path/docker-socket mounts, privileged manifests, path traversal, and platform-incompatible candidates are all rejected by the download+gate path before any build/apply.)
+- [ ] Removing an external source does not break lifecycle management for its installed apps. (Registry/store already prove removal keeps snapshots installed; full lifecycle management for external installs lands with the external install path.)
 
 ### Phase 8 — signing and operational hardening
 
