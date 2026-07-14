@@ -334,6 +334,7 @@ Consequences:
 - A valid package snapshot preserves MOS configuration and build instructions, not third-party registry availability. If an immutable upstream base image has disappeared, restore keeps the recovered state and restarts the control plane but reports the app-runtime reconciliation failure; MOS does not silently substitute a newer artifact.
 - Package source trust is derived by MOS from the configured source and verification path. Package-controlled metadata cannot promote an external source to `mos-reviewed`.
 - Official catalog refresh defaults to every six hours with 10% jitter; advisories refresh hourly. Failures use exponential backoff from five minutes to six hours and preserve the last-known-good cache, which is labelled stale after 24 hours rather than deleted. Manual Refresh may bypass freshness/backoff but is rate-limited to one attempt per 30 seconds and never clears usable cached data on failure.
+- Official catalog reads resolve the configured GitHub branch through the GitHub API, validate its full commit SHA, and fetch `apps/catalog.json` from the raw-content URL for that exact commit. Redirects, credentials in source URLs, non-GitHub official origins, oversized responses, invalid catalogs, and same-version/different-digest candidates fail closed. Cache and API status may report fetch failure while continuing to serve the last verified catalog and all installed snapshots.
 
 ## 2026-07-12: Public Installer Uses Stable And Development Channels
 

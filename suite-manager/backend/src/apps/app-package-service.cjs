@@ -454,6 +454,7 @@ class AppPackageService {
   constructor({
     agent = null,
     appsDir,
+    catalogService = null,
     now = () => new Date(),
     officialRepository = 'https://github.com/rpuls/my-own-suite',
     secretDir = null,
@@ -461,6 +462,7 @@ class AppPackageService {
   }) {
     this.agent = agent;
     this.appsDir = appsDir;
+    this.catalogService = catalogService;
     this.now = now;
     this.officialRepository = officialRepository;
     this.secretDir = secretDir || path.join(store.stateDir, 'app-secrets');
@@ -912,6 +914,7 @@ class AppPackageService {
       const guideState = instance ? this.store.getAppGuideState(instance.id) : null;
       return {
         ...summary,
+        catalogUpdate: this.catalogService?.updateFor(packageId, instance) || null,
         installStatus: instance?.status || 'not-installed',
         instance: publicInstance(instance ? { ...instance, guideState } : null, projections, config),
       };

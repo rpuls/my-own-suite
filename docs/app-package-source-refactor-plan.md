@@ -263,23 +263,23 @@ Acceptance:
 
 ### Phase 3 — read-only official catalog refresh
 
-- [ ] Add the deterministic official `apps/catalog.json` projection.
-- [ ] Implement a source client with strict HTTPS/GitHub URL handling, timeouts, byte/file limits, redirects policy, and secret-free logs.
-- [ ] Resolve the configured branch to an immutable commit before downloading catalog/package content.
-- [ ] Cache last-known-good catalog data in bounded state with fetched time, revision, ETag where useful, and error status.
-- [ ] Refresh periodically with jitter/backoff and expose manual Refresh.
-- [ ] Keep install/manage UI functional from cache while offline.
-- [ ] Compare candidate package semver and digest against installed identity.
-- [ ] Represent same-version/different-digest as a catalog integrity error, not a silent update.
-- [ ] Add API fields for installed, available, update status, compatibility, and catalog freshness.
-- [ ] Add Apps UI update badges and read-only candidate details.
+- [x] Add the deterministic official `apps/catalog.json` projection.
+- [x] Implement a source client with strict HTTPS/GitHub URL handling, timeouts, byte/file limits, redirects policy, and secret-free logs.
+- [x] Resolve the configured branch to an immutable commit before downloading catalog/package content.
+- [x] Cache last-known-good catalog data in bounded state with fetched time, revision, ETag where useful, and error status.
+- [x] Refresh periodically with jitter/backoff and expose manual Refresh.
+- [x] Keep install/manage UI functional from cache while offline.
+- [x] Compare candidate package semver and digest against installed identity.
+- [x] Represent same-version/different-digest as a catalog integrity error, not a silent update.
+- [x] Add API fields for installed, available, update status, compatibility, and catalog freshness.
+- [x] Add Apps UI update badges and read-only candidate details.
 
 Acceptance:
 
-- [ ] A repo package bump appears as available without a MOS platform update.
-- [ ] Existing app UI remains shaped by installed data.
-- [ ] Moving branches cannot mix files from different commits.
-- [ ] Network or GitHub failure retains last-known-good behavior and never removes installed apps.
+- [x] A repo package bump appears as available without a MOS platform update.
+- [x] Existing app UI remains shaped by installed data.
+- [x] Moving branches cannot mix files from different commits.
+- [x] Network or GitHub failure retains last-known-good behavior and never removes installed apps.
 
 ### Phase 4 — candidate comparison and preparation
 

@@ -488,6 +488,36 @@
   text-transform: uppercase;
 }
 
+.suite-app-update-pill {
+  display: inline-flex;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-success-soft);
+  color: var(--mos-color-success);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.suite-app-update-pill.is-warning {
+  background: var(--mos-color-warning-soft);
+  color: var(--mos-color-warning);
+}
+
+.suite-app-update-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--mos-space-3);
+  padding: var(--mos-space-4);
+  border: var(--mos-border-subtle);
+  border-radius: var(--mos-radius-lg);
+  background: var(--mos-color-surface-muted);
+}
+
+.suite-app-update-summary div { display: grid; gap: var(--mos-space-1); }
+.suite-app-update-summary span,
+.suite-app-update-summary p { color: var(--mos-color-text-muted); }
+.suite-app-update-summary p { grid-column: 1 / -1; margin: 0; }
+
 .suite-app-card-copy > span {
   max-width: 56rem;
   color: var(--mos-color-text-muted);
@@ -1874,4 +1904,3 @@
 .suite-empty-state p {
   margin: 0;
 }
-

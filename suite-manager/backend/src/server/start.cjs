@@ -16,6 +16,7 @@ const server = createV2Server({ frontendDistDir, homeHost, stateDir });
 async function start() {
   const migrations = await server.migrateAppPackages();
   for (const migration of migrations) console.log(`[mos-v2-suite-manager] App package migration ${migration.packageId}: ${migration.status}`);
+  void server.startCatalogRefresh();
   server.listen(port, host, () => {
     console.log(`[mos-v2-suite-manager] Listening on http://${host}:${port}`);
     console.log(`[mos-v2-suite-manager] Open http://${homeHost}:${port}/suite-manager/`);

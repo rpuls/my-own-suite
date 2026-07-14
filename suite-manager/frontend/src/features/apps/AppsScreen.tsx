@@ -16,6 +16,12 @@ type CatalogMetadata = {
   screenshots: Array<{ alt: string; caption: string; src: string }>;
   tags: string[];
 };
+type CatalogStatus = { error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; repository: string; revision: string | null };
+type CatalogUpdate = {
+  available: { compatibility: 'compatible' | 'requires-platform-update'; minimumMosVersion: string; packageDigest: string; packageVersion: string; privacy: { status: string }; sourceRevision: string } | null;
+  installed: { packageDigest: string; packageVersion: string } | null;
+  status: 'current' | 'installable' | 'installed-newer' | 'integrity-error' | 'not-in-catalog' | 'unavailable' | 'update-available';
+};
 
 type AppPackageSummary = {
   capabilities: {
@@ -24,6 +30,7 @@ type AppPackageSummary = {
     usefulness: { emptyState: string; requiresOneOf: string[] };
   };
   catalog: CatalogMetadata;
+  catalogUpdate: CatalogUpdate | null;
   category: string | string[];
   compatibility?: {
     connections: Array<{
@@ -455,6 +462,8 @@ function AppCard({ app, onOpen }: { app: AppPackageSummary; onOpen: (app: AppPac
         <span className="suite-app-title-row">
           <strong>{app.name}</strong>
           <span className="suite-app-category-pill">{categoryLabel(primaryCategory(app))}</span>
+          {app.catalogUpdate?.status === 'update-available' ? <span className="suite-app-update-pill">Update available</span> : null}
+          {app.catalogUpdate?.status === 'integrity-error' ? <span className="suite-app-update-pill is-warning">Catalog conflict</span> : null}
         </span>
         <span>{descriptionFor(app)}</span>
       </span>
@@ -608,6 +617,14 @@ function AppDetail({
         {!app.validation.valid ? <Notice title="This package cannot be installed yet" variant="warning"><ul>{app.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}
         {missingUsefulPeers.length ? <Notice title="Needs a compatible app" variant="info"><p>{missingUsefulPeers[0]!.message}</p></Notice> : null}
         {ready && isCompanionApp(app) && !installedCompatiblePeers.length ? <Notice title="Companion app" variant="info"><p>{app.capabilities.usefulness.emptyState || 'Install a compatible app to use this service.'}</p></Notice> : null}
+        {app.catalogUpdate?.status === 'integrity-error' ? <Notice title="Catalog integrity conflict" variant="warning"><p>The catalog advertises different package contents under the installed version number. MOS will not treat this as an update.</p></Notice> : null}
+
+        {app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available ? <section className="suite-app-update-summary">
+          <div><span>Installed</span><strong>{app.catalogUpdate.installed?.packageVersion}</strong></div>
+          <div><span>Available</span><strong>{app.catalogUpdate.available.packageVersion}</strong></div>
+          <div><span>Compatibility</span><strong>{app.catalogUpdate.available.compatibility === 'compatible' ? 'Ready for this MOS version' : `Requires MOS ${app.catalogUpdate.available.minimumMosVersion}`}</strong></div>
+          <p>This candidate is visible for comparison only. Applying app updates will be added in the next implementation phase.</p>
+        </section> : null}
 
         <section className="suite-app-facts" aria-label="App facts">
           <div><span>Category</span><strong>{categoryLabel(primaryCategory(app))}</strong></div>
@@ -679,6 +696,8 @@ function AppDetail({
 
 export function AppsScreen({ owner }: { owner: Owner }) {
   const [packages, setPackages] = useState<AppPackageSummary[]>([]);
+  const [catalogStatus, setCatalogStatus] = useState<CatalogStatus | null>(null);
+  const [refreshingCatalog, setRefreshingCatalog] = useState(false);
   const [connectingId, setConnectingId] = useState('');
   const [error, setError] = useState('');
   const [installError, setInstallError] = useState('');
@@ -693,11 +712,12 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     setLoading(true);
     setError('');
     try {
-      const result = await jsonResponse<{ packages: AppPackageSummary[] }>(
+      const result = await jsonResponse<{ catalog: CatalogStatus; packages: AppPackageSummary[] }>(
         await fetch('/suite-manager/api/apps/packages'),
         'Unable to load app packages.',
       );
       setPackages(result.packages);
+      setCatalogStatus(result.catalog);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load app packages.');
     } finally {
@@ -706,6 +726,17 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   }
 
   useEffect(() => { void load(); }, []);
+
+  async function refreshCatalog() {
+    setRefreshingCatalog(true);
+    setError('');
+    try {
+      await jsonResponse(await fetch('/suite-manager/api/apps/catalog/refresh', { method: 'POST' }), 'Unable to refresh the app catalog.');
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to refresh the app catalog.');
+    } finally { setRefreshingCatalog(false); }
+  }
 
   const selected = packages.find((app) => app.id === selectedId) || null;
   const hostsRepairCommand = useMemo(() => hypervHostsRepairCommand(packages), [packages]);
@@ -901,6 +932,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   return <section className="mos-shell mos-page">
     <div className="suite-app-simple-header">
       <h1>Apps</h1>
+      <button className="mos-btn mos-btn-secondary" disabled={refreshingCatalog} onClick={() => void refreshCatalog()} type="button">{refreshingCatalog ? 'Refreshing...' : 'Refresh catalog'}</button>
     </div>
 
     <div className="suite-app-search">
@@ -908,6 +940,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     </div>
 
     {error ? <Notice title="Apps unavailable" variant="error"><p>{error}</p></Notice> : null}
+    {catalogStatus?.freshness === 'stale' || catalogStatus?.error ? <Notice title="Using the saved app catalog" variant="warning"><p>MOS could not confirm the latest official catalog. Installed apps and the last verified catalog remain available.</p></Notice> : null}
     {loading ? <p className="suite-meta">Loading app catalog...</p> : null}
 
     {!loading && !error && filtered.length === 0 ? <div className="suite-app-empty">

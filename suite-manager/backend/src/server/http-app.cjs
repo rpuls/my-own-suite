@@ -14,6 +14,7 @@ const { LabResetAgentClient } = require('../lab/lab-reset-agent-client.cjs');
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
 const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
+const { OfficialCatalogError, OfficialCatalogService } = require('../apps/official-catalog-service.cjs');
 const { BackupAgentClient } = require('../backups/backup-agent-client.cjs');
 const { BackupInventoryService } = require('../backups/backup-inventory-service.cjs');
 const { UpdateAgentClient } = require('../updates/update-agent-client.cjs');
@@ -265,6 +266,7 @@ function createV2Server({
   securityEventRecorder = null,
   ownerClaimToken = process.env.MOS_V2_OWNER_CLAIM_TOKEN || '',
   stateDir = path.join(process.cwd(), '.state'),
+  officialCatalog = null,
 } = {}) {
   const setup = new SetupService({ stateDir });
   const httpsSettings = new HttpsSettingsService({
@@ -279,9 +281,16 @@ function createV2Server({
     bootstrapHost: homeHost,
     store: setup.store,
   });
+  const catalogService = officialCatalog || new OfficialCatalogService({
+    branch: process.env.MOS_V2_APP_CATALOG_BRANCH || 'main',
+    repository: process.env.MOS_V2_APP_CATALOG_REPOSITORY || 'https://github.com/rpuls/my-own-suite',
+    stateDir,
+    platformVersion: fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'VERSION'), 'utf8').trim(),
+  });
   const appPackages = new AppPackageService({
     agent: appAgent,
     appsDir,
+    catalogService,
     store: setup.store,
   });
   const backupInventory = new BackupInventoryService({
@@ -593,7 +602,26 @@ function createV2Server({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review app packages.' });
           return;
         }
-        jsonResponse(response, 200, { packages: appPackages.listPackages() });
+        jsonResponse(response, 200, { catalog: catalogService.status(), packages: appPackages.listPackages() });
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/catalog/refresh`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to refresh the app catalog.' });
+          return;
+        }
+        try {
+          const result = await catalogService.refresh({ manual: true });
+          jsonResponse(response, 200, result);
+        } catch (error) {
+          if (!(error instanceof OfficialCatalogError)) throw error;
+          jsonResponse(response, error.code === 'CATALOG_REFRESH_THROTTLED' ? 429 : 502, {
+            catalog: error.catalogStatus || catalogService.status(),
+            code: error.code,
+            error: error.message,
+          });
+        }
         return;
       }
 
@@ -811,8 +839,15 @@ function createV2Server({
     homepage.proxyUpgrade(request, socket, head);
   });
 
-  server.on('close', () => setup.close());
+  server.on('close', () => { catalogService.stop(); setup.close(); });
   server.migrateAppPackages = () => appPackages.migrateLegacyPackages();
+  server.startCatalogRefresh = async () => {
+    let result;
+    try { result = await catalogService.refresh(); }
+    catch { result = { status: catalogService.status() }; }
+    catalogService.schedule();
+    return result;
+  };
 
   return server;
 }
