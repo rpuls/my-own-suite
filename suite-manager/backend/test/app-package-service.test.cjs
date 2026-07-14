@@ -15,7 +15,7 @@ const v2Root = path.resolve(__dirname, '..', '..', '..');
 const v2AppsDir = path.join(v2Root, 'apps');
 
 function snapshotResult(input) {
-  return { snapshotPath: path.join('/var/lib/mos-v2/app-packages', input.instanceId, 'installed') };
+  return { snapshotPath: path.join(v2AppsDir, input.packageId) };
 }
 
 async function tempStateDir() {
@@ -65,7 +65,7 @@ test('new installs snapshot package contents before persisting configuration and
   assert.equal(installed.sourcePath, 'apps/stirling-pdf');
   assert.equal(installed.sourceRevision, installed.packageDigest);
   assert.equal(installed.sourceTrust, 'mos-reviewed');
-  assert.equal(installed.snapshotPath, path.join('/var/lib/mos-v2/app-packages', installed.id, 'installed'));
+  assert.equal(installed.snapshotPath, path.join(v2AppsDir, 'stirling-pdf'));
   assert.equal(installed.snapshotState, 'installed');
   assert.equal(installed.privacyStatus, 'review-required');
   assert.equal(installed.privacyPosture, 'review-required');

@@ -31,10 +31,11 @@ function escapeRegExp(value) {
 }
 
 function assertRuntimeRequest(input) {
-  if (!exactKeys(input, ['appHost', 'caddy', 'compose', 'health', 'instanceId', 'packageId', 'packageVersion', 'publicUrl'])) {
+  if (!exactKeys(input, ['appHost', 'caddy', 'compose', 'health', 'instanceId', 'packageDigest', 'packageId', 'packageVersion', 'publicUrl'])) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app runtime fields are accepted.');
   }
   assertString(input.instanceId, 'instanceId', /^[0-9a-f-]{36}$/u);
+  assertString(input.packageDigest, 'packageDigest', PACKAGE_DIGEST_PATTERN);
   assertString(input.packageId, 'packageId', PACKAGE_ID_PATTERN);
   assertString(input.packageVersion, 'packageVersion', SEMVERISH_PATTERN);
 
@@ -258,6 +259,8 @@ class AppAgentCore {
     const result = await this.adapter.applyAppServices({
       caddyRoutes: renderAppRoutes({ appHost: input.appHost, routes, scheme }),
       healthTarget: input.health.target,
+      instanceId: input.instanceId,
+      packageDigest: input.packageDigest,
       packageId: input.packageId,
       publicUrl: input.publicUrl,
       services: services.map((service) => ({

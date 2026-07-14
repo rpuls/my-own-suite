@@ -232,8 +232,8 @@ Acceptance:
 - [x] Add SQLite source identity, package digest, snapshot path/state, and installed assessment summary through a migration.
 - [x] Add a narrow host-agent snapshot capability that copies only validated package files into the host-owned root.
 - [x] During new install, validate and persist the snapshot before creating configuration or runtime projections.
-- [ ] Change projection rendering and runtime apply to load the installed snapshot.
-- [ ] Pass an explicit validated build context/snapshot identity to the app agent; stop deriving it from `appsRoot/<packageId>`.
+- [x] Change projection rendering and runtime apply to load the installed snapshot.
+- [x] Pass an explicit validated build context/snapshot identity to the app agent; stop deriving it from `appsRoot/<packageId>`.
 - [ ] Tag and label images/containers with package version, package digest, and source revision.
 - [ ] Change restart, enable, Stop, Uninstall, integration reconciliation, icon serving, and setup guides to use installed package data where an instance exists.
 - [ ] Preserve repo discovery only for not-yet-installed catalog candidates.

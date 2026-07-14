@@ -10,6 +10,7 @@ const { loopbackPortFor } = require('../src/apps/app-package-service.cjs');
 const { LoginThrottle } = require('../src/auth/login-throttle.cjs');
 
 const { createV2Server } = require('../src/server/http-app.cjs');
+const appsDir = path.resolve(__dirname, '..', '..', '..', 'apps');
 
 async function tempStateDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), 'mos-v2-http-'));
@@ -40,7 +41,7 @@ function listen(server) {
 async function withServer(fn, options = {}) {
   const appAgent = {
     async snapshotPackage(input) {
-      return { snapshotPath: path.join('/var/lib/mos-v2/app-packages', input.instanceId, 'installed') };
+      return { snapshotPath: path.join(appsDir, input.packageId) };
     },
     ...(options.appAgent || {}),
   };

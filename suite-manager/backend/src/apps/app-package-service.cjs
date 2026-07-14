@@ -488,14 +488,20 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_RUNTIME_PROJECTION_MISSING', 'This app is missing runtime projections.', 409);
     }
 
-    const packageDir = path.join(this.appsDir, packageId);
-    const { manifest } = readAppPackageManifest(packageDir);
+    if (instance.snapshotState !== 'installed' || !instance.snapshotPath || !instance.packageDigest) {
+      throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_UNAVAILABLE', 'This app does not have a verified installed package snapshot.', 409);
+    }
+    const { manifest } = readAppPackageManifest(instance.snapshotPath);
+    if (manifest.id !== instance.packageId || digestAppPackage(instance.snapshotPath) !== instance.packageDigest) {
+      throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The installed app package snapshot no longer matches its recorded identity.', 409);
+    }
     const result = await this.agent.apply({
       appHost: requestContext.appHost,
       caddy: materializeRuntimeCaddy(caddyProjection.content, configRows),
       compose: materializeRuntimeCompose(composeProjection.content, configRows),
       health: healthProjection.content,
       instanceId: instance.id,
+      packageDigest: instance.packageDigest,
       packageId: instance.packageId,
       packageVersion: instance.packageVersion,
       publicUrl: requestContext.publicUrl,
@@ -959,8 +965,12 @@ class AppPackageService {
     }
     instance.snapshotPath = snapshot.snapshotPath;
     instance.snapshotState = 'installed';
-    const config = createConfigRows({ input, instanceId: instance.id, manifest, secretDir: this.secretDir });
-    const projections = renderDryRunProjections(manifest, config);
+    const { manifest: installedManifest } = readAppPackageManifest(instance.snapshotPath);
+    if (installedManifest.id !== manifest.id || digestAppPackage(instance.snapshotPath) !== packageDigest) {
+      throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The installed app package snapshot does not match the validated source package.', 502);
+    }
+    const config = createConfigRows({ input, instanceId: instance.id, manifest: installedManifest, secretDir: this.secretDir });
+    const projections = renderDryRunProjections(installedManifest, config);
     try {
       this.store.installAppInstance({
         at,

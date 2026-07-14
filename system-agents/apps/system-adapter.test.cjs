@@ -69,12 +69,18 @@ test('system adapter never replaces an existing installed snapshot', async () =>
 test('system adapter builds, runs, health-checks, writes routes, and reloads Caddy', async () => {
   const root = await tempDir();
   const routesPath = path.join(root, 'routes.caddy');
-  const packageDir = path.join(root, 'example-tool');
+  const appPackageRoot = path.join(root, 'packages');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const packageDir = path.join(appPackageRoot, instanceId, 'installed');
   const commands = [];
-  await fsp.mkdir(packageDir);
+  await fsp.mkdir(packageDir, { recursive: true });
+  await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify({ id: 'example-tool', packageFiles: [] })}\n`);
+  await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
+  const packageDigest = digestAppPackage(packageDir);
 
   const adapter = new SystemAppAdapter({
     appsRoot: root,
+    appPackageRoot,
     caddyBinary: 'caddy',
     dockerBinary: 'docker',
     routesPath,
@@ -91,9 +97,11 @@ test('system adapter builds, runs, health-checks, writes routes, and reloads Cad
     dockerfile: 'Dockerfile',
     healthTarget: 'http://127.0.0.1:18123/health',
     imageTag: 'mos-v2-app-example-tool:0.1.0',
+    instanceId,
     environment: { SERVER_HOST: 'http://example-tool.mos.home/' },
     internalPort: 3000,
     loopbackPort: 18123,
+    packageDigest,
     packageId: 'example-tool',
     volumes: ['configs:/configs'],
   });
@@ -231,12 +239,18 @@ http://second-app.mos.home {
 test('system adapter runs multi-service packages on a private package network', async () => {
   const root = await tempDir();
   const routesPath = path.join(root, 'routes.caddy');
-  const packageDir = path.join(root, 'seafile');
+  const appPackageRoot = path.join(root, 'packages');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const packageDir = path.join(appPackageRoot, instanceId, 'installed');
   const commands = [];
-  await fsp.mkdir(packageDir);
+  await fsp.mkdir(packageDir, { recursive: true });
+  await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify({ id: 'seafile', packageFiles: [] })}\n`);
+  await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
+  const packageDigest = digestAppPackage(packageDir);
 
   const adapter = new SystemAppAdapter({
     appsRoot: root,
+    appPackageRoot,
     caddyBinary: 'caddy',
     dockerBinary: 'docker',
     routesPath,
@@ -251,6 +265,8 @@ test('system adapter runs multi-service packages on a private package network', 
   await adapter.applyAppServices({
     caddyRoutes: 'http://seafile.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n',
     healthTarget: 'http://127.0.0.1:18123/api2/ping/',
+    instanceId,
+    packageDigest,
     packageId: 'seafile',
     services: [
       {

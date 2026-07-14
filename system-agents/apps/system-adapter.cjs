@@ -196,10 +196,12 @@ class SystemAppAdapter {
     }
   }
 
-  async applyAppService({ caddyRoutes, dockerfile, environment = {}, healthTarget, imageTag, internalPort, loopbackPort, packageId, volumes }) {
+  async applyAppService({ caddyRoutes, dockerfile, environment = {}, healthTarget, imageTag, instanceId, internalPort, loopbackPort, packageDigest, packageId, volumes }) {
     return this.applyAppServices({
       caddyRoutes,
       healthTarget,
+      instanceId,
+      packageDigest,
       packageId,
       services: [{
         dockerfile,
@@ -214,13 +216,15 @@ class SystemAppAdapter {
     });
   }
 
-  async applyAppServices({ caddyRoutes, healthTarget, packageId, services }) {
-    const packageDir = path.join(this.appsRoot, packageId);
+  async applyAppServices({ caddyRoutes, healthTarget, instanceId, packageDigest, packageId, services }) {
+    const packageDir = path.join(this.appPackageRoot, instanceId, 'installed');
     const routeSnapshot = `${this.routesPath}.before-${process.pid}`;
     let routesChanged = false;
     let stage = 'build';
 
     try {
+      const installedManifest = JSON.parse(await fsp.readFile(path.join(packageDir, 'manifest.json'), 'utf8'));
+      if (installedManifest.id !== packageId || digestAppPackage(packageDir) !== packageDigest) throw new Error('PACKAGE_SNAPSHOT_MISMATCH');
       const serviceCount = services.length;
       for (const service of services) {
         await this.execute(this.dockerBinary, ['build', '--file', service.dockerfile, '--tag', service.imageTag, '.'], { cwd: packageDir, timeoutMs: 300000 });

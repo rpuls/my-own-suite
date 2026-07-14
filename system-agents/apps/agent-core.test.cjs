@@ -19,6 +19,7 @@ const request = {
   },
   health: { target: 'http://127.0.0.1:18123/health', type: 'http' },
   instanceId: '12345678-1234-4123-8123-123456789abc',
+  packageDigest: `sha256:${'a'.repeat(64)}`,
   packageId: 'example-tool',
   packageVersion: '0.1.0',
   publicUrl: 'http://example-tool.mos.home/',
