@@ -654,7 +654,10 @@ function createV2Server({
         }
         const body = await readJsonBody(request, 4 * 1024);
         const packageId = decodeURIComponent(appStageUpdateMatch[1]);
-        jsonResponse(response, 200, await appPackages.stagePackageUpdate(packageId, body, appPublicUrlResolver(request, httpsSettings)(packageId)));
+        jsonResponse(response, 200, await appPackages.stagePackageUpdate(packageId, body, {
+          ...appPublicUrlResolver(request, httpsSettings)(packageId),
+          homepageService: homepageConfig,
+        }));
         return;
       }
 

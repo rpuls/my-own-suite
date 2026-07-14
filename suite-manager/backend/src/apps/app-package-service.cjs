@@ -1146,6 +1146,7 @@ class AppPackageService {
     let candidate;
     let operationId = null;
     let lastDurableStage = null;
+    let homepageRollback = null;
     try {
       candidate = await this.catalogService.downloadCandidate(packageId);
       const agentStatus = await this.agent.status();
@@ -1236,6 +1237,7 @@ class AppPackageService {
 
       const installedConfig = candidateConfig;
       const installedProjections = this.store.getAppProjections(instance.id);
+      const homepageWasApplied = homepageProjectionApplied(installedProjections);
       const installedRuntime = updateRuntimeRequest({
         config: installedConfig,
         instance,
@@ -1265,6 +1267,30 @@ class AppPackageService {
       }
       operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'integrations-reconciled' });
       lastDurableStage = 'integrations-reconciled';
+      let homepage = { skipped: true };
+      if (homepageWasApplied) {
+        if (!requestContext.homepageService) {
+          throw new AppPackageServiceError('APP_UPDATE_HOMEPAGE_UNAVAILABLE', 'The candidate is healthy, but its existing Homepage entry cannot be reconciled. Recovery is required.', 503);
+        }
+        const current = await requestContext.homepageService.read({ file: 'services.template.yaml' });
+        const candidateInstance = {
+          ...instance,
+          categorySnapshot: candidate.manifest.category,
+          displayNameSnapshot: candidate.manifest.name,
+          packageVersion: candidate.manifest.version,
+        };
+        homepageRollback = {
+          entry: homepageEntryForHomepage(instance, installedProjections, installedConfig, requestContext),
+          homepageService: requestContext.homepageService,
+        };
+        homepage = await requestContext.homepageService.add({
+          entry: homepageEntryForHomepage(candidateInstance, candidateProjections, candidateConfig, requestContext),
+          expectedRevision: current.revision,
+          requestId: instance.id,
+        }, false);
+        operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'homepage-reconciled' });
+        lastDurableStage = 'homepage-reconciled';
+      }
       const rollbackSafe = candidate.manifest.update?.rollback === 'safe';
       const promoted = await this.agent.promotePackageUpdate({
         candidateDigest: candidate.packageDigest,
@@ -1290,9 +1316,28 @@ class AppPackageService {
         operationId,
         projections: candidateProjections,
         snapshotPath: promoted.snapshotPath,
+        homepageApplied: homepageWasApplied,
       });
-      return { activated, built, comparison, integrations, operation, promoted, staged };
+      homepageRollback = null;
+      return { activated, built, comparison, homepage, integrations, operation, promoted, staged };
     } catch (error) {
+      if (homepageRollback) {
+        try {
+          const current = await homepageRollback.homepageService.read({ file: 'services.template.yaml' });
+          await homepageRollback.homepageService.add({
+            entry: homepageRollback.entry,
+            expectedRevision: current.revision,
+            requestId: instance.id,
+          }, false);
+        } catch (rollbackError) {
+          error = new AppPackageServiceError(
+            'APP_UPDATE_HOMEPAGE_ROLLBACK_FAILED',
+            'The app update failed and its previous Homepage entry could not be restored. Recovery is required.',
+            502,
+          );
+          error.cause = rollbackError;
+        }
+      }
       if (operationId) {
         this.store.failAppUpdate({
           at: this.now().toISOString(),

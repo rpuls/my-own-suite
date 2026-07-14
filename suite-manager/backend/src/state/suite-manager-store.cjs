@@ -867,7 +867,7 @@ class SuiteManagerStore {
     return this.getAppOperation(operationId);
   }
 
-  completeAppUpdate({ at, instanceId, operationId, instance, projections, snapshotPath }) {
+  completeAppUpdate({ at, homepageApplied = false, instanceId, operationId, instance, projections, snapshotPath }) {
     this.transaction(() => {
       const operation = this.database.prepare(`
         SELECT candidate_digest AS candidateDigest FROM app_operations
@@ -887,7 +887,7 @@ class SuiteManagerStore {
       );
       this.database.prepare('DELETE FROM app_instance_projections WHERE instance_id = ?').run(instanceId);
       for (const projection of projections) {
-        const applied = ['compose', 'caddy', 'health'].includes(projection.kind);
+        const applied = ['compose', 'caddy', 'health'].includes(projection.kind) || (homepageApplied && projection.kind === 'homepage');
         this.database.prepare(`
           INSERT INTO app_instance_projections (instance_id, kind, content_json, digest, applied_digest, status, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?)

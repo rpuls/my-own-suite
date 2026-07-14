@@ -306,7 +306,7 @@ Acceptance:
 - [ ] Preserve volumes and integration state according to the declared migration.
 - [ ] Record update operation stages durably for restart recovery.
 - [x] Health-check the candidate before committing snapshot/database identity.
-- [ ] Reconcile Caddy, Homepage, and cross-app networks as one reported transaction.
+- [x] Reconcile Caddy, Homepage, and cross-app networks as one reported transaction.
 - [x] Retain one previous snapshot/image reference only where rollback is declared safe.
 - [ ] On failure, restore old containers/routes and leave an explicit recovery state when full rollback is impossible.
 - [ ] Remove the core updater's manual app-reapply warning only after installed apps are completely decoupled from repo-owned package files.

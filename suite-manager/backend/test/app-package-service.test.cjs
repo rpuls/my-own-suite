@@ -188,6 +188,56 @@ test('contract v5 app updates activate, promote, and commit candidate identity a
   store.close();
 });
 
+test('app updates replace an applied Homepage entry and retain its applied projection state', async () => {
+  const root = await tempStateDir();
+  const candidateDir = path.join(root, 'candidate');
+  await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
+  const manifestPath = path.join(candidateDir, 'manifest.json');
+  const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
+  await fsp.writeFile(manifestPath, `${JSON.stringify({
+    ...manifest,
+    homepage: { ...manifest.homepage, name: 'Updated PDF' },
+    name: 'Updated PDF',
+    version: '0.2.0',
+  }, null, 2)}\n`);
+  const candidatePackage = readAppPackageManifest(candidateDir);
+  const candidateDigest = digestAppPackage(candidateDir);
+  const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({
+    agent: {
+      async activatePackageUpdate() { return { status: 'candidate-healthy' }; },
+      async buildPackageUpdate() { return { status: 'built' }; },
+      async promotePackageUpdate() { return { snapshotPath: candidateDir, status: 'snapshot-promoted' }; },
+      async snapshotPackage(input) { return snapshotResult(input); },
+      async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
+      async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.promote'], contractVersion: 5 }; },
+    },
+    appsDir: v2AppsDir,
+    catalogService: { platformVersion: '0.1.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    store,
+  });
+  await service.installPackage('stirling-pdf');
+  const installed = store.getAppInstanceByPackageId('stirling-pdf');
+  store.applyAppProjection({ at: new Date().toISOString(), instanceId: installed.id, kind: 'homepage', operationId: 'homepage-applied' });
+  const entries = [];
+  const homepageService = {
+    async add(body) { entries.push(body.entry); return { revision: `revision-${entries.length}` }; },
+    async read() { return { revision: `revision-${entries.length}` }; },
+  };
+  const comparison = await service.preparePackageUpdate('stirling-pdf');
+  const result = await service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, {
+    ...requestContext().publicUrlFor('stirling-pdf'), homepageService,
+  });
+
+  assert.equal(result.homepage.revision, 'revision-1');
+  assert.equal(entries[0].name, 'Updated PDF');
+  const homepageProjection = store.getAppProjections(installed.id).find((projection) => projection.kind === 'homepage');
+  assert.equal(homepageProjection.status, 'applied');
+  assert.equal(homepageProjection.appliedDigest, homepageProjection.digest);
+  store.close();
+});
+
 test('legacy instances migrate only from an exactly matching validated package', async () => {
   const root = await tempStateDir();
   const store = new SuiteManagerStore(path.join(root, 'state'));
