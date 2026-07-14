@@ -184,6 +184,18 @@ function assertNetworkConnectRequest(input) {
   };
 }
 
+function assertPackageUpdatePromoteRequest(input) {
+  if (!exactKeys(input, ['candidateDigest', 'expectedInstalledDigest', 'instanceId', 'packageId', 'rollbackSafe'])) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app update promotion fields are accepted.');
+  }
+  assertString(input.instanceId, 'instanceId', /^[0-9a-f-]{36}$/u);
+  assertString(input.packageId, 'packageId', PACKAGE_ID_PATTERN);
+  assertString(input.candidateDigest, 'candidateDigest', PACKAGE_DIGEST_PATTERN);
+  assertString(input.expectedInstalledDigest, 'expectedInstalledDigest', PACKAGE_DIGEST_PATTERN);
+  if (typeof input.rollbackSafe !== 'boolean') throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'rollbackSafe must be a boolean.');
+  return input;
+}
+
 function assertPackageSnapshotRequest(input) {
   if (!exactKeys(input, ['instanceId', 'packageDigest', 'packageId'])) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app package snapshot fields are accepted.');
@@ -302,8 +314,8 @@ class AppAgentCore {
 
   async status() {
     return {
-      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate'],
-      contractVersion: 4,
+      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.promote'],
+      contractVersion: 5,
       service: 'mos-v2-app-agent',
     };
   }
@@ -341,6 +353,12 @@ class AppAgentCore {
       installed: runtimeAdapterInput(input.installed, installed.routes),
     });
     return { ...result, candidateDigest: input.candidate.packageDigest, instanceId: input.candidate.instanceId, packageId: input.candidate.packageId, status: 'candidate-healthy' };
+  }
+
+  async promotePackageUpdate(input) {
+    const request = assertPackageUpdatePromoteRequest(input);
+    const result = await this.adapter.promoteAppPackageUpdate(request);
+    return { ...result, candidateDigest: request.candidateDigest, instanceId: request.instanceId, packageId: request.packageId, status: 'snapshot-promoted' };
   }
 
   async apply(input) {

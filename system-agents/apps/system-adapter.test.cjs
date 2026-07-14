@@ -428,6 +428,25 @@ test('system adapter restores the installed runtime when an update candidate fai
   assert.ok(runs.every((command) => command.args.includes('mos-v2-app-example-tool-data:/data')));
 });
 
+test('system adapter promotes a verified snapshot and retains only one rollback-safe previous snapshot', async () => {
+  const root = await tempDir();
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const instanceRoot = path.join(root, 'packages', instanceId);
+  for (const [name, version] of [['installed', 'old'], ['candidate', 'new'], ['previous', 'older']]) {
+    const directory = path.join(instanceRoot, name);
+    await fsp.mkdir(directory, { recursive: true });
+    await fsp.writeFile(path.join(directory, 'manifest.json'), `${JSON.stringify({ id: 'example-tool', packageFiles: [], version })}\n`);
+  }
+  const installedDigest = digestAppPackage(path.join(instanceRoot, 'installed'));
+  const candidateDigest = digestAppPackage(path.join(instanceRoot, 'candidate'));
+  const adapter = new SystemAppAdapter({ appPackageRoot: path.join(root, 'packages') });
+  const result = await adapter.promoteAppPackageUpdate({ candidateDigest, expectedInstalledDigest: installedDigest, instanceId, packageId: 'example-tool', rollbackSafe: true });
+  assert.equal(result.previousRetained, true);
+  assert.equal(digestAppPackage(path.join(instanceRoot, 'installed')), candidateDigest);
+  assert.equal(digestAppPackage(path.join(instanceRoot, 'previous')), installedDigest);
+  assert.equal(await fsp.stat(path.join(instanceRoot, 'candidate')).then(() => true, () => false), false);
+});
+
 test('system adapter checks app health with a short refresh budget', async () => {
   const calls = [];
   const adapter = new SystemAppAdapter({

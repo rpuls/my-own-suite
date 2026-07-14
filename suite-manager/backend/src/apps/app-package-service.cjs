@@ -451,6 +451,26 @@ function requestContextForPackage(packageId, requestContext = {}) {
   return requestContext;
 }
 
+function updateRuntimeRequest({ config, expectedInstalledDigest, instance, manifest, packageDigest, projections, requestContext, sourceRevision }) {
+  const compose = projections.find((item) => item.kind === 'compose');
+  const caddy = projections.find((item) => item.kind === 'caddy');
+  const health = projections.find((item) => item.kind === 'health');
+  if (!compose || !caddy || !health) throw new AppPackageServiceError('APP_RUNTIME_PROJECTION_MISSING', 'The app update is missing runtime projections.', 409);
+  return {
+    appHost: requestContext.appHost,
+    caddy: materializeRuntimeCaddy(caddy.content, config),
+    compose: materializeRuntimeCompose(compose.content, config),
+    ...(expectedInstalledDigest ? { expectedInstalledDigest } : {}),
+    health: health.content,
+    instanceId: instance.id,
+    packageDigest,
+    packageId: manifest.id,
+    packageVersion: manifest.version,
+    publicUrl: requestContext.publicUrl,
+    sourceRevision,
+  };
+}
+
 class AppPackageService {
   constructor({
     agent = null,
@@ -1178,6 +1198,14 @@ class AppPackageService {
       const candidateConfig = this.store.getAppConfig(instance.id).map((row) => (
         row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
       ));
+      let candidatePrivacy = { posture: 'review-required', reviewedAt: null, status: 'review-required' };
+      const candidateReviewPath = path.join(candidate.packageDir, 'privacy-review.json');
+      if (fs.existsSync(candidateReviewPath)) {
+        const review = JSON.parse(fs.readFileSync(candidateReviewPath, 'utf8'));
+        const errors = validatePrivacyBinding(review, { manifest: candidate.manifest, packageDigest: candidate.packageDigest, source: candidate.source });
+        if (errors.length) throw new AppPackageServiceError('APP_PRIVACY_REVIEW_INVALID', `The candidate privacy review is invalid: ${errors.join(' ')}`, 409);
+        candidatePrivacy = { posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
+      }
       const candidateProjections = renderDryRunProjections(candidate.manifest, candidateConfig);
       const composeProjection = candidateProjections.find((projection) => projection.kind === 'compose');
       const caddyProjection = candidateProjections.find((projection) => projection.kind === 'caddy');
@@ -1198,8 +1226,72 @@ class AppPackageService {
         publicUrl: requestContext.publicUrl,
         sourceRevision: candidate.source.revision,
       });
-      const operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'candidate-built' });
-      return { built, comparison, operation, staged };
+      let operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'candidate-built' });
+      lastDurableStage = 'candidate-built';
+      const canApply = agentStatus.contractVersion >= 5
+        && agentStatus.capabilities?.includes('apps.package.update.activate')
+        && agentStatus.capabilities?.includes('apps.package.update.promote')
+        && this.agent.activatePackageUpdate && this.agent.promotePackageUpdate;
+      if (!canApply) return { built, comparison, operation, staged };
+
+      const installedConfig = candidateConfig;
+      const installedProjections = this.store.getAppProjections(instance.id);
+      const installedRuntime = updateRuntimeRequest({
+        config: installedConfig,
+        instance,
+        manifest: installedPackage.manifest,
+        packageDigest: instance.packageDigest,
+        projections: installedProjections,
+        requestContext,
+        sourceRevision: instance.sourceRevision,
+      });
+      const candidateRuntime = updateRuntimeRequest({
+        config: candidateConfig,
+        expectedInstalledDigest: instance.packageDigest,
+        instance,
+        manifest: candidate.manifest,
+        packageDigest: candidate.packageDigest,
+        projections: candidateProjections,
+        requestContext,
+        sourceRevision: candidate.source.revision,
+      });
+      const activated = await this.agent.activatePackageUpdate({ candidate: candidateRuntime, installed: installedRuntime });
+      operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'candidate-healthy' });
+      lastDurableStage = 'candidate-healthy';
+
+      const integrations = await this.reconcilePackageIntegrations(packageId, requestContext);
+      if (integrations.some((item) => item.status === 'failed')) {
+        throw new AppPackageServiceError('APP_UPDATE_INTEGRATION_FAILED', 'The candidate is healthy, but a cross-app integration could not be restored. Recovery is required.', 502);
+      }
+      operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'integrations-reconciled' });
+      lastDurableStage = 'integrations-reconciled';
+      const rollbackSafe = candidate.manifest.update?.rollback === 'safe';
+      const promoted = await this.agent.promotePackageUpdate({
+        candidateDigest: candidate.packageDigest,
+        expectedInstalledDigest: instance.packageDigest,
+        instanceId: instance.id,
+        packageId,
+        rollbackSafe,
+      });
+      operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'snapshot-promoted' });
+      lastDurableStage = 'snapshot-promoted';
+      operation = this.store.completeAppUpdate({
+        at: this.now().toISOString(),
+        instance: {
+          categorySnapshot: candidate.manifest.category,
+          displayNameSnapshot: candidate.manifest.name,
+          manifestDigest: digestFor(candidate.manifest),
+          packageDigest: candidate.packageDigest,
+          packageVersion: candidate.manifest.version,
+          privacy: candidatePrivacy,
+          source: candidate.source,
+        },
+        instanceId: instance.id,
+        operationId,
+        projections: candidateProjections,
+        snapshotPath: promoted.snapshotPath,
+      });
+      return { activated, built, comparison, integrations, operation, promoted, staged };
     } catch (error) {
       if (operationId) {
         this.store.failAppUpdate({
@@ -1207,7 +1299,7 @@ class AppPackageService {
           errorCode: error.code || 'APP_UPDATE_STAGE_FAILED',
           instanceId: instance.id,
           operationId,
-          stage: lastDurableStage === 'candidate-staged' ? 'candidate-build-failed' : 'candidate-stage-failed',
+          stage: lastDurableStage ? `${lastDurableStage}-failed` : 'candidate-stage-failed',
         });
       }
       if (error instanceof AppPackageServiceError) throw error;

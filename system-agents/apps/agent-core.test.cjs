@@ -29,8 +29,18 @@ const request = {
 test('app agent exposes only narrow app runtime capabilities', async () => {
   const core = new AppAgentCore({ applyAppServices: async () => ({ steps: [] }), checkAppHealth: async () => ({}) });
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate']);
-  assert.equal(status.contractVersion, 4);
+  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.promote']);
+  assert.equal(status.contractVersion, 5);
+});
+
+test('app update promotion accepts only digest-bound snapshot identity', async () => {
+  const calls = [];
+  const core = new AppAgentCore({ async promoteAppPackageUpdate(input) { calls.push(input); return { snapshotPath: '/state/installed' }; } });
+  const input = { candidateDigest: `sha256:${'b'.repeat(64)}`, expectedInstalledDigest: request.packageDigest, instanceId: request.instanceId, packageId: request.packageId, rollbackSafe: true };
+  assert.equal((await core.promotePackageUpdate(input)).status, 'snapshot-promoted');
+  assert.deepEqual(calls, [input]);
+  await assert.rejects(() => core.promotePackageUpdate({ ...input, rollbackSafe: 'yes' }), AppRuntimeError);
+  await assert.rejects(() => core.promotePackageUpdate({ ...input, path: '/tmp/app' }), AppRuntimeError);
 });
 
 test('app update activation binds candidate and installed runtime identities', async () => {

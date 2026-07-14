@@ -867,6 +867,41 @@ class SuiteManagerStore {
     return this.getAppOperation(operationId);
   }
 
+  completeAppUpdate({ at, instanceId, operationId, instance, projections, snapshotPath }) {
+    this.transaction(() => {
+      const operation = this.database.prepare(`
+        SELECT candidate_digest AS candidateDigest FROM app_operations
+        WHERE id = ? AND instance_id = ? AND kind = 'update' AND status = 'running'
+      `).get(operationId, instanceId);
+      if (!operation || operation.candidateDigest !== instance.packageDigest) throw new Error('APP_UPDATE_OPERATION_NOT_RUNNING');
+      this.database.prepare(`
+        UPDATE app_instances SET
+          package_version = ?, manifest_digest = ?, display_name_snapshot = ?, category_snapshot = ?,
+          package_digest = ?, source_kind = ?, source_repository = ?, source_path = ?, source_revision = ?, source_trust = ?,
+          snapshot_path = ?, snapshot_state = 'installed', privacy_status = ?, privacy_posture = ?, privacy_reviewed_at = ?, updated_at = ?
+        WHERE id = ?
+      `).run(
+        instance.packageVersion, instance.manifestDigest, instance.displayNameSnapshot, instance.categorySnapshot,
+        instance.packageDigest, instance.source.kind, instance.source.repository, instance.source.path, instance.source.revision, instance.source.trust,
+        snapshotPath, instance.privacy.status, instance.privacy.posture, instance.privacy.reviewedAt, at, instanceId,
+      );
+      this.database.prepare('DELETE FROM app_instance_projections WHERE instance_id = ?').run(instanceId);
+      for (const projection of projections) {
+        const applied = ['compose', 'caddy', 'health'].includes(projection.kind);
+        this.database.prepare(`
+          INSERT INTO app_instance_projections (instance_id, kind, content_json, digest, applied_digest, status, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(instanceId, projection.kind, projection.contentJson, projection.digest, applied ? projection.digest : null, applied ? 'applied' : 'rendered', at);
+      }
+      this.database.prepare('DELETE FROM app_instance_guides WHERE instance_id = ?').run(instanceId);
+      this.database.prepare(`
+        UPDATE app_operations SET status = 'succeeded', stage = 'completed', completed_at = ?
+        WHERE id = ? AND instance_id = ? AND kind = 'update' AND status = 'running'
+      `).run(at, operationId, instanceId);
+    });
+    return this.getAppOperation(operationId);
+  }
+
   getAppOperation(operationId) {
     const row = this.database.prepare(`
       SELECT id, instance_id AS instanceId, kind, status, stage,

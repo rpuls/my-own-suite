@@ -358,6 +358,34 @@ class SystemAppAdapter {
     }
   }
 
+  async promoteAppPackageUpdate({ candidateDigest, expectedInstalledDigest, instanceId, packageId, rollbackSafe }) {
+    const instanceRoot = path.join(this.appPackageRoot, instanceId);
+    const installed = path.join(instanceRoot, 'installed');
+    const candidate = path.join(instanceRoot, 'candidate');
+    const previous = path.join(instanceRoot, 'previous');
+    const displaced = path.join(instanceRoot, `.installed-before-update-${process.pid}`);
+    try {
+      const installedManifest = JSON.parse(await fsp.readFile(path.join(installed, 'manifest.json'), 'utf8'));
+      const candidateManifest = JSON.parse(await fsp.readFile(path.join(candidate, 'manifest.json'), 'utf8'));
+      if (installedManifest.id !== packageId || digestAppPackage(installed, { manifest: installedManifest }) !== expectedInstalledDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
+      if (candidateManifest.id !== packageId || digestAppPackage(candidate, { manifest: candidateManifest }) !== candidateDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
+      await fsp.rm(displaced, { force: true, recursive: true });
+      await fsp.rename(installed, displaced);
+      try { await fsp.rename(candidate, installed); }
+      catch (error) { await fsp.rename(displaced, installed).catch(() => {}); throw error; }
+      await fsp.rm(previous, { force: true, recursive: true });
+      if (rollbackSafe) await fsp.rename(displaced, previous);
+      else await fsp.rm(displaced, { force: true, recursive: true });
+      return { previousRetained: rollbackSafe, snapshotPath: installed, steps: ['installed-identity-verified', 'candidate-identity-verified', 'snapshot-promoted', ...(rollbackSafe ? ['previous-retained'] : [])] };
+    } catch (error) {
+      const failure = new AppApplyError('snapshot');
+      failure.code = ['INSTALLED_PACKAGE_CHANGED', 'CANDIDATE_PACKAGE_CHANGED'].includes(error?.message) ? 'APP_UPDATE_IDENTITY_CHANGED' : 'APP_UPDATE_PROMOTION_FAILED';
+      failure.statusCode = failure.code === 'APP_UPDATE_IDENTITY_CHANGED' ? 409 : 502;
+      failure.details = [String(error?.message || 'snapshot promotion failed')];
+      throw failure;
+    }
+  }
+
   async applyAppService({ caddyRoutes, dockerfile, environment = {}, healthTarget, imageTag, instanceId, internalPort, loopbackPort, packageDigest, packageId, packageVersion, sourceRevision, volumes }) {
     return this.applyAppServices({
       caddyRoutes,
