@@ -35,8 +35,9 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
-function assertRuntimeRequest(input) {
-  if (!exactKeys(input, ['appHost', 'caddy', 'compose', 'health', 'instanceId', 'packageDigest', 'packageId', 'packageVersion', 'publicUrl', 'sourceRevision'])) {
+function assertRuntimeRequest(input, { allowExpectedInstalledDigest = false } = {}) {
+  const runtimeKeys = ['appHost', 'caddy', 'compose', 'health', 'instanceId', 'packageDigest', 'packageId', 'packageVersion', 'publicUrl', 'sourceRevision'];
+  if (!exactKeys(input, allowExpectedInstalledDigest ? [...runtimeKeys, 'expectedInstalledDigest'] : runtimeKeys)) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app runtime fields are accepted.');
   }
   assertString(input.instanceId, 'instanceId', /^[0-9a-f-]{36}$/u);
@@ -44,6 +45,7 @@ function assertRuntimeRequest(input) {
   assertString(input.packageId, 'packageId', PACKAGE_ID_PATTERN);
   assertString(input.packageVersion, 'packageVersion', SEMVERISH_PATTERN);
   assertString(input.sourceRevision, 'sourceRevision', SOURCE_REVISION_PATTERN);
+  if (allowExpectedInstalledDigest) assertString(input.expectedInstalledDigest, 'expectedInstalledDigest', PACKAGE_DIGEST_PATTERN);
 
   const services = input.compose?.services;
   const routes = input.caddy?.routes;
@@ -204,6 +206,19 @@ function assertPackageUpdateStageRequest(input) {
   return input;
 }
 
+function runtimeServices(input, routes) {
+  return input.compose.services.map((service) => ({
+    dockerfile: service.build.dockerfile,
+    environment: resolveEnvironment(service.environment, { publicUrl: input.publicUrl }),
+    id: service.id,
+    imageTag: `mos-v2-app-${input.packageId}-${service.id}:${input.packageVersion}-pkg-${dockerIdentityFragment(input.packageDigest)}-src-${dockerIdentityFragment(input.sourceRevision)}`,
+    internalPort: service.internalPort,
+    loopbackPort: service.loopbackPort,
+    public: routes.some((route) => route.service === service.id),
+    volumes: service.volumes,
+  }));
+}
+
 function resolveEnvironment(environment, context) {
   const source = environment === undefined ? {} : environment;
   if (!source || typeof source !== 'object' || Array.isArray(source)) {
@@ -259,8 +274,8 @@ class AppAgentCore {
 
   async status() {
     return {
-      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage'],
-      contractVersion: 2,
+      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build'],
+      contractVersion: 3,
       service: 'mos-v2-app-agent',
     };
   }
@@ -277,6 +292,20 @@ class AppAgentCore {
     return { ...result, candidateDigest: request.candidateDigest, instanceId: request.instanceId, packageId: request.packageId, status: 'staged' };
   }
 
+  async buildPackageUpdate(input) {
+    const { routes } = assertRuntimeRequest(input, { allowExpectedInstalledDigest: true });
+    const result = await this.adapter.buildAppPackageUpdate({
+      candidateDigest: input.packageDigest,
+      expectedInstalledDigest: input.expectedInstalledDigest,
+      instanceId: input.instanceId,
+      packageId: input.packageId,
+      packageVersion: input.packageVersion,
+      services: runtimeServices(input, routes),
+      sourceRevision: input.sourceRevision,
+    });
+    return { ...result, candidateDigest: input.packageDigest, instanceId: input.instanceId, packageId: input.packageId, status: 'built' };
+  }
+
   async apply(input) {
     const { routes, services } = assertRuntimeRequest(input);
     const publicUrl = new URL(input.publicUrl);
@@ -290,16 +319,7 @@ class AppAgentCore {
       packageVersion: input.packageVersion,
       publicUrl: input.publicUrl,
       sourceRevision: input.sourceRevision,
-      services: services.map((service) => ({
-        dockerfile: service.build.dockerfile,
-        environment: resolveEnvironment(service.environment, { publicUrl: input.publicUrl }),
-        id: service.id,
-        imageTag: `mos-v2-app-${input.packageId}-${service.id}:${input.packageVersion}-pkg-${dockerIdentityFragment(input.packageDigest)}-src-${dockerIdentityFragment(input.sourceRevision)}`,
-        internalPort: service.internalPort,
-        loopbackPort: service.loopbackPort,
-        public: routes.some((route) => route.service === service.id),
-        volumes: service.volumes,
-      })),
+      services: runtimeServices(input, routes),
     });
     return {
       ...result,

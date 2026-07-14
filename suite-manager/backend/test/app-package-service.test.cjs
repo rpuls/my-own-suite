@@ -120,10 +120,12 @@ test('confirmed app updates are re-compared and durably staged against exact ide
   const candidateDigest = digestAppPackage(candidateDir);
   const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'b'.repeat(40), trust: 'mos-reviewed' };
   const stagedCalls = [];
+  const builtCalls = [];
   const agent = {
+    async buildPackageUpdate(input) { builtCalls.push(input); return { steps: ['candidate-built'] }; },
     async snapshotPackage(input) { return snapshotResult(input); },
     async stagePackageUpdate(input) { stagedCalls.push(input); return { snapshotPath: '/state/candidate', steps: ['staged'] }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage'], contractVersion: 2 }; },
+    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build'], contractVersion: 3 }; },
   };
   const catalogService = {
     platformVersion: '0.1.0',
@@ -135,14 +137,18 @@ test('confirmed app updates are re-compared and durably staged against exact ide
   const comparison = await service.preparePackageUpdate('stirling-pdf');
 
   await assert.rejects(() => service.stagePackageUpdate('stirling-pdf', { confirmationToken: '0'.repeat(64) }), (error) => error.code === 'APP_UPDATE_IDENTITY_CHANGED');
-  const result = await service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken });
+  const result = await service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf'));
 
-  assert.equal(result.operation.stage, 'candidate-staged');
+  assert.equal(result.operation.stage, 'candidate-built');
   assert.equal(result.operation.status, 'running');
   assert.equal(result.operation.candidateDigest, candidateDigest);
   assert.equal(stagedCalls.length, 1);
   assert.equal(stagedCalls[0].candidatePath, candidateDir);
   assert.equal(stagedCalls[0].expectedInstalledDigest, store.getAppInstanceByPackageId('stirling-pdf').packageDigest);
+  assert.equal(builtCalls.length, 1);
+  assert.equal(builtCalls[0].packageDigest, candidateDigest);
+  assert.equal(builtCalls[0].expectedInstalledDigest, store.getAppInstanceByPackageId('stirling-pdf').packageDigest);
+  assert.equal(builtCalls[0].publicUrl, 'https://stirling-pdf.example.test/');
   await assert.rejects(() => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }), (error) => error.code === 'APP_UPDATE_ALREADY_RUNNING');
   store.close();
 });

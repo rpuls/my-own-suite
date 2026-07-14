@@ -1,6 +1,7 @@
 const http = require('node:http');
 
 const APP_AGENT_TIMEOUT_MS = 180_000;
+const APP_AGENT_UPDATE_BUILD_TIMEOUT_MS = 30 * 60_000;
 
 class AppAgentClient {
   constructor({ socketPath = process.env.MOS_V2_APP_AGENT_SOCKET || '/run/mos-v2-app-agent/agent.sock', timeoutMs = APP_AGENT_TIMEOUT_MS } = {}) {
@@ -8,7 +9,7 @@ class AppAgentClient {
     this.timeoutMs = timeoutMs;
   }
 
-  request(method, requestPath, body) {
+  request(method, requestPath, body, { timeoutMs = this.timeoutMs } = {}) {
     return new Promise((resolve, reject) => {
       const payload = body ? JSON.stringify(body) : '';
       const request = http.request({
@@ -16,7 +17,7 @@ class AppAgentClient {
         method,
         path: requestPath,
         socketPath: this.socketPath,
-        timeout: this.timeoutMs,
+        timeout: timeoutMs,
       }, (response) => {
         let raw = '';
         response.setEncoding('utf8');
@@ -54,8 +55,9 @@ class AppAgentClient {
   connectNetwork(input) { return this.request('POST', '/v1/apps/connect-network', input); }
   snapshotPackage(input) { return this.request('POST', '/v1/apps/snapshot', input); }
   stagePackageUpdate(input) { return this.request('POST', '/v1/apps/update/stage', input); }
+  buildPackageUpdate(input) { return this.request('POST', '/v1/apps/update/build', input, { timeoutMs: APP_AGENT_UPDATE_BUILD_TIMEOUT_MS }); }
   stop(input) { return this.request('POST', '/v1/apps/stop', input); }
   remove(input) { return this.request('POST', '/v1/apps/remove', input); }
 }
 
-module.exports = { APP_AGENT_TIMEOUT_MS, AppAgentClient };
+module.exports = { APP_AGENT_TIMEOUT_MS, APP_AGENT_UPDATE_BUILD_TIMEOUT_MS, AppAgentClient };

@@ -235,6 +235,35 @@ class SystemAppAdapter {
     }
   }
 
+  async buildAppPackageUpdate({ candidateDigest, expectedInstalledDigest, instanceId, packageId, packageVersion, services, sourceRevision }) {
+    const instanceRoot = path.join(this.appPackageRoot, instanceId);
+    const installed = path.join(instanceRoot, 'installed');
+    const candidate = path.join(instanceRoot, 'candidate');
+    try {
+      const installedManifest = JSON.parse(await fsp.readFile(path.join(installed, 'manifest.json'), 'utf8'));
+      if (installedManifest.id !== packageId || digestAppPackage(installed, { manifest: installedManifest }) !== expectedInstalledDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
+      const candidateManifest = JSON.parse(await fsp.readFile(path.join(candidate, 'manifest.json'), 'utf8'));
+      if (candidateManifest.id !== packageId || digestAppPackage(candidate, { manifest: candidateManifest }) !== candidateDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
+      for (const service of services) {
+        await this.execute(this.dockerBinary, [
+          'build', '--file', service.dockerfile, '--tag', service.imageTag,
+          '--label', `mos-v2.package=${packageId}`,
+          '--label', `mos-v2.package-version=${packageVersion}`,
+          '--label', `mos-v2.package-digest=${candidateDigest}`,
+          '--label', `mos-v2.source-revision=${sourceRevision}`,
+          '.',
+        ], { cwd: candidate, timeoutMs: 300000 });
+      }
+      return { steps: ['installed-identity-verified', 'candidate-identity-verified', 'candidate-built'] };
+    } catch (error) {
+      const failure = new AppApplyError('build');
+      failure.code = ['INSTALLED_PACKAGE_CHANGED', 'CANDIDATE_PACKAGE_CHANGED'].includes(error?.message) ? 'APP_UPDATE_IDENTITY_CHANGED' : failure.code;
+      failure.statusCode = failure.code === 'APP_UPDATE_IDENTITY_CHANGED' ? 409 : failure.statusCode;
+      failure.details = [String(error?.message || 'candidate build failed')];
+      throw failure;
+    }
+  }
+
   async applyAppService({ caddyRoutes, dockerfile, environment = {}, healthTarget, imageTag, instanceId, internalPort, loopbackPort, packageDigest, packageId, packageVersion, sourceRevision, volumes }) {
     return this.applyAppServices({
       caddyRoutes,

@@ -29,8 +29,19 @@ const request = {
 test('app agent exposes only narrow app runtime capabilities', async () => {
   const core = new AppAgentCore({ applyAppServices: async () => ({ steps: [] }), checkAppHealth: async () => ({}) });
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage']);
-  assert.equal(status.contractVersion, 2);
+  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build']);
+  assert.equal(status.contractVersion, 3);
+});
+
+test('app update build uses a validated candidate runtime without applying it', async () => {
+  const calls = [];
+  const core = new AppAgentCore({ async buildAppPackageUpdate(input) { calls.push(input); return { steps: ['candidate-built'] }; } });
+  const result = await core.buildPackageUpdate({ ...request, expectedInstalledDigest: `sha256:${'c'.repeat(64)}` });
+  assert.equal(result.status, 'built');
+  assert.equal(calls[0].candidateDigest, request.packageDigest);
+  assert.equal(calls[0].expectedInstalledDigest, `sha256:${'c'.repeat(64)}`);
+  await assert.rejects(() => core.buildPackageUpdate(request), AppRuntimeError);
+  await assert.rejects(() => core.apply({ ...request, expectedInstalledDigest: `sha256:${'c'.repeat(64)}` }), AppRuntimeError);
 });
 
 test('app update staging binds candidate and installed identities', async () => {

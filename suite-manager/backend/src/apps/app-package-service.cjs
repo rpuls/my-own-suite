@@ -1113,18 +1113,19 @@ class AppPackageService {
     } finally { candidate?.cleanup?.(); }
   }
 
-  async stagePackageUpdate(packageId, input = {}) {
+  async stagePackageUpdate(packageId, input = {}, requestContext = {}) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance || instance.status === 'uninstalled') throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before staging an update.', 409);
     if (typeof input.confirmationToken !== 'string' || !/^[a-f0-9]{64}$/u.test(input.confirmationToken)) {
       throw new AppPackageServiceError('APP_UPDATE_CONFIRMATION_INVALID', 'Prepare and confirm this exact app update before staging it.', 400);
     }
-    if (!this.catalogService?.downloadCandidate || !this.agent?.stagePackageUpdate) {
+    if (!this.catalogService?.downloadCandidate || !this.agent?.stagePackageUpdate || !this.agent?.buildPackageUpdate) {
       throw new AppPackageServiceError('APP_UPDATE_STAGING_UNAVAILABLE', 'App update staging is unavailable.', 503);
     }
     const installedPackage = this.installedPackageFor(instance);
     let candidate;
     let operationId = null;
+    let lastDurableStage = null;
     try {
       candidate = await this.catalogService.downloadCandidate(packageId);
       const agentStatus = await this.agent.status();
@@ -1147,8 +1148,8 @@ class AppPackageService {
       if (comparison.compatibility === 'unsupported') {
         throw new AppPackageServiceError('APP_UPDATE_UNSUPPORTED', 'This update is not compatible with the current MOS installation.', 409);
       }
-      if (!agentStatus.capabilities?.includes('apps.package.update.stage') || agentStatus.contractVersion < 2) {
-        throw new AppPackageServiceError('APP_UPDATE_STAGING_UNAVAILABLE', 'The installed app agent cannot stage package updates.', 503);
+      if (!agentStatus.capabilities?.includes('apps.package.update.stage') || !agentStatus.capabilities?.includes('apps.package.update.build') || agentStatus.contractVersion < 3) {
+        throw new AppPackageServiceError('APP_UPDATE_STAGING_UNAVAILABLE', 'The installed app agent cannot stage and build package updates.', 503);
       }
       operationId = crypto.randomUUID();
       const at = this.now().toISOString();
@@ -1172,8 +1173,33 @@ class AppPackageService {
         instanceId: instance.id,
         packageId,
       });
-      const operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'candidate-staged' });
-      return { comparison, operation, staged };
+      this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'candidate-staged' });
+      lastDurableStage = 'candidate-staged';
+      const candidateConfig = this.store.getAppConfig(instance.id).map((row) => (
+        row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
+      ));
+      const candidateProjections = renderDryRunProjections(candidate.manifest, candidateConfig);
+      const composeProjection = candidateProjections.find((projection) => projection.kind === 'compose');
+      const caddyProjection = candidateProjections.find((projection) => projection.kind === 'caddy');
+      const healthProjection = candidateProjections.find((projection) => projection.kind === 'health');
+      if (!composeProjection || !caddyProjection || !healthProjection) {
+        throw new AppPackageServiceError('APP_RUNTIME_PROJECTION_MISSING', 'The update candidate is missing runtime projections.', 409);
+      }
+      const built = await this.agent.buildPackageUpdate({
+        appHost: requestContext.appHost,
+        caddy: materializeRuntimeCaddy(caddyProjection.content, candidateConfig),
+        compose: materializeRuntimeCompose(composeProjection.content, candidateConfig),
+        expectedInstalledDigest: instance.packageDigest,
+        health: healthProjection.content,
+        instanceId: instance.id,
+        packageDigest: candidate.packageDigest,
+        packageId,
+        packageVersion: candidate.manifest.version,
+        publicUrl: requestContext.publicUrl,
+        sourceRevision: candidate.source.revision,
+      });
+      const operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'candidate-built' });
+      return { built, comparison, operation, staged };
     } catch (error) {
       if (operationId) {
         this.store.failAppUpdate({
@@ -1181,7 +1207,7 @@ class AppPackageService {
           errorCode: error.code || 'APP_UPDATE_STAGE_FAILED',
           instanceId: instance.id,
           operationId,
-          stage: 'candidate-stage-failed',
+          stage: lastDurableStage === 'candidate-staged' ? 'candidate-build-failed' : 'candidate-stage-failed',
         });
       }
       if (error instanceof AppPackageServiceError) throw error;

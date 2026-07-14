@@ -351,6 +351,40 @@ test('system adapter runs multi-service packages on a private package network', 
   assert.ok(dockerRuns[1].args.includes('mos-v2-app-seafile-data:/shared'));
 });
 
+test('system adapter builds an identity-bound update candidate without touching runtime state', async () => {
+  const root = await tempDir();
+  const appPackageRoot = path.join(root, 'packages');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const installed = path.join(appPackageRoot, instanceId, 'installed');
+  const candidate = path.join(appPackageRoot, instanceId, 'candidate');
+  await fsp.mkdir(installed, { recursive: true });
+  await fsp.mkdir(candidate, { recursive: true });
+  for (const directory of [installed, candidate]) {
+    await fsp.writeFile(path.join(directory, 'manifest.json'), `${JSON.stringify({ id: 'example-tool', packageFiles: [] })}\n`);
+    await fsp.writeFile(path.join(directory, 'Dockerfile'), 'FROM scratch\n');
+  }
+  const commands = [];
+  const adapter = new SystemAppAdapter({
+    appPackageRoot,
+    dockerBinary: 'docker',
+    async execute(file, args, options = {}) { commands.push({ args, cwd: options.cwd, file }); },
+  });
+  const result = await adapter.buildAppPackageUpdate({
+    candidateDigest: digestAppPackage(candidate),
+    expectedInstalledDigest: digestAppPackage(installed),
+    instanceId,
+    packageId: 'example-tool',
+    packageVersion: '0.2.0',
+    services: [{ dockerfile: 'Dockerfile', id: 'web', imageTag: 'candidate:test' }],
+    sourceRevision: 'b'.repeat(40),
+  });
+  assert.deepEqual(result.steps, ['installed-identity-verified', 'candidate-identity-verified', 'candidate-built']);
+  assert.equal(commands.length, 1);
+  assert.equal(commands[0].cwd, candidate);
+  assert.equal(commands[0].args[0], 'build');
+  assert.equal(commands.some((command) => command.args.includes('rm') || command.args.includes('run')), false);
+});
+
 test('system adapter checks app health with a short refresh budget', async () => {
   const calls = [];
   const adapter = new SystemAppAdapter({

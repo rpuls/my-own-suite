@@ -302,7 +302,7 @@ Acceptance:
 
 - [x] Add app-agent update capability with explicit candidate snapshot path/digest and expected installed digest.
 - [x] Reject stale apply requests when installed or candidate identity changed after preview.
-- [ ] Build candidate images before stopping current containers when resources permit.
+- [x] Build candidate images before stopping current containers when resources permit.
 - [ ] Preserve volumes and integration state according to the declared migration.
 - [ ] Record update operation stages durably for restart recovery.
 - [ ] Health-check the candidate before committing snapshot/database identity.
