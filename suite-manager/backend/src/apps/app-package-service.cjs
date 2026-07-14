@@ -505,6 +505,7 @@ class AppPackageService {
       packageId: instance.packageId,
       packageVersion: instance.packageVersion,
       publicUrl: requestContext.publicUrl,
+      sourceRevision: instance.sourceRevision,
     });
 
     const at = this.now().toISOString();

@@ -25,19 +25,25 @@ const SAFE_DOCKERFILE_PATTERN = /^(?:Dockerfile|Dockerfile\.[a-z0-9][a-z0-9-]*)$
 const SAFE_INTERNAL_PATH_PATTERN = /^\/__[A-Za-z0-9/_-]{8,220}$/u;
 const SAFE_TARGET_PATH_PATTERN = /^\/[A-Za-z0-9._~!$&'()*+,;=:@%/?-]{1,220}$/u;
 const PACKAGE_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
+const SOURCE_REVISION_PATTERN = /^(?:sha256:[a-f0-9]{64}|[a-f0-9]{40,64})$/u;
+
+function dockerIdentityFragment(value) {
+  return String(value).replace(/^sha256:/u, '').slice(0, 12);
+}
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 function assertRuntimeRequest(input) {
-  if (!exactKeys(input, ['appHost', 'caddy', 'compose', 'health', 'instanceId', 'packageDigest', 'packageId', 'packageVersion', 'publicUrl'])) {
+  if (!exactKeys(input, ['appHost', 'caddy', 'compose', 'health', 'instanceId', 'packageDigest', 'packageId', 'packageVersion', 'publicUrl', 'sourceRevision'])) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app runtime fields are accepted.');
   }
   assertString(input.instanceId, 'instanceId', /^[0-9a-f-]{36}$/u);
   assertString(input.packageDigest, 'packageDigest', PACKAGE_DIGEST_PATTERN);
   assertString(input.packageId, 'packageId', PACKAGE_ID_PATTERN);
   assertString(input.packageVersion, 'packageVersion', SEMVERISH_PATTERN);
+  assertString(input.sourceRevision, 'sourceRevision', SOURCE_REVISION_PATTERN);
 
   const services = input.compose?.services;
   const routes = input.caddy?.routes;
@@ -262,12 +268,14 @@ class AppAgentCore {
       instanceId: input.instanceId,
       packageDigest: input.packageDigest,
       packageId: input.packageId,
+      packageVersion: input.packageVersion,
       publicUrl: input.publicUrl,
+      sourceRevision: input.sourceRevision,
       services: services.map((service) => ({
         dockerfile: service.build.dockerfile,
         environment: resolveEnvironment(service.environment, { publicUrl: input.publicUrl }),
         id: service.id,
-        imageTag: `mos-v2-app-${input.packageId}-${service.id}:${input.packageVersion}`,
+        imageTag: `mos-v2-app-${input.packageId}-${service.id}:${input.packageVersion}-pkg-${dockerIdentityFragment(input.packageDigest)}-src-${dockerIdentityFragment(input.sourceRevision)}`,
         internalPort: service.internalPort,
         loopbackPort: service.loopbackPort,
         public: routes.some((route) => route.service === service.id),

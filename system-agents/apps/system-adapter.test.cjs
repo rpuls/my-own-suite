@@ -103,14 +103,22 @@ test('system adapter builds, runs, health-checks, writes routes, and reloads Cad
     loopbackPort: 18123,
     packageDigest,
     packageId: 'example-tool',
+    packageVersion: '0.1.0',
+    sourceRevision: '0123456789abcdef0123456789abcdef01234567',
     volumes: ['configs:/configs'],
   });
 
   assert.deepEqual(result.steps, ['built', 'started', 'healthy', 'route-written', 'caddy-reloaded']);
   assert.deepEqual(commands.map((command) => command.file), ['docker', 'docker', 'docker', 'health', 'caddy', '/usr/bin/systemctl']);
   assert.equal(commands[0].cwd, packageDir);
+  assert.ok(commands[0].args.includes('mos-v2.package-version=0.1.0'));
+  assert.ok(commands[0].args.includes(`mos-v2.package-digest=${packageDigest}`));
+  assert.ok(commands[0].args.includes('mos-v2.source-revision=0123456789abcdef0123456789abcdef01234567'));
   assert.deepEqual(commands[2].args.slice(0, 8), ['run', '--detach', '--name', 'mos-v2-app-example-tool', '--restart', 'unless-stopped', '--publish', '127.0.0.1:18123:3000']);
   assert.ok(commands[2].args.includes('SERVER_HOST=http://example-tool.mos.home/'));
+  assert.ok(commands[2].args.includes('mos-v2.package-version=0.1.0'));
+  assert.ok(commands[2].args.includes(`mos-v2.package-digest=${packageDigest}`));
+  assert.ok(commands[2].args.includes('mos-v2.source-revision=0123456789abcdef0123456789abcdef01234567'));
   assert.ok(commands[2].args.includes('mos-v2-app-example-tool-configs:/configs'));
   assert.match(await fsp.readFile(routesPath, 'utf8'), /mos-v2-app-route:start example-tool/u);
   assert.match(await fsp.readFile(routesPath, 'utf8'), /reverse_proxy http:\/\/127\.0\.0\.1:18123/u);
@@ -268,6 +276,8 @@ test('system adapter runs multi-service packages on a private package network', 
     instanceId,
     packageDigest,
     packageId: 'seafile',
+    packageVersion: '0.1.0',
+    sourceRevision: '0123456789abcdef0123456789abcdef01234567',
     services: [
       {
         dockerfile: 'Dockerfile.mysql',

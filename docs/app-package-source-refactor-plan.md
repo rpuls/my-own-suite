@@ -234,7 +234,7 @@ Acceptance:
 - [x] During new install, validate and persist the snapshot before creating configuration or runtime projections.
 - [x] Change projection rendering and runtime apply to load the installed snapshot.
 - [x] Pass an explicit validated build context/snapshot identity to the app agent; stop deriving it from `appsRoot/<packageId>`.
-- [ ] Tag and label images/containers with package version, package digest, and source revision.
+- [x] Tag and label images/containers with package version, package digest, and source revision.
 - [ ] Change restart, enable, Stop, Uninstall, integration reconciliation, icon serving, and setup guides to use installed package data where an instance exists.
 - [ ] Preserve repo discovery only for not-yet-installed catalog candidates.
 - [ ] Migrate existing installed instances by snapshotting the current matching repo package only when manifest version/digest agrees; otherwise mark `needs-package-recovery` instead of guessing.

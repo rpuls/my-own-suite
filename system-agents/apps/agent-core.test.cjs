@@ -23,6 +23,7 @@ const request = {
   packageId: 'example-tool',
   packageVersion: '0.1.0',
   publicUrl: 'http://example-tool.mos.home/',
+  sourceRevision: '0123456789abcdef0123456789abcdef01234567',
 };
 
 test('app agent exposes only narrow app runtime capabilities', async () => {
@@ -112,6 +113,9 @@ test('app apply validates exact shape and delegates sanitized runtime fields', a
   assert.equal(result.publicUrl, 'http://example-tool.mos.home/');
   assert.equal(calls[0].packageId, 'example-tool');
   assert.equal(calls[0].healthTarget, 'http://127.0.0.1:18123/health');
+  assert.equal(calls[0].packageVersion, '0.1.0');
+  assert.equal(calls[0].sourceRevision, request.sourceRevision);
+  assert.equal(calls[0].services[0].imageTag, `mos-v2-app-example-tool-web:0.1.0-pkg-${'a'.repeat(12)}-src-0123456789ab`);
   assert.equal(calls[0].services[0].loopbackPort, 18123);
   assert.deepEqual(calls[0].services[0].environment, {
     APP_HOST: 'example-tool.mos.home',

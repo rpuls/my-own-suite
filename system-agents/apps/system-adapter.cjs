@@ -196,13 +196,15 @@ class SystemAppAdapter {
     }
   }
 
-  async applyAppService({ caddyRoutes, dockerfile, environment = {}, healthTarget, imageTag, instanceId, internalPort, loopbackPort, packageDigest, packageId, volumes }) {
+  async applyAppService({ caddyRoutes, dockerfile, environment = {}, healthTarget, imageTag, instanceId, internalPort, loopbackPort, packageDigest, packageId, packageVersion, sourceRevision, volumes }) {
     return this.applyAppServices({
       caddyRoutes,
       healthTarget,
       instanceId,
       packageDigest,
       packageId,
+      packageVersion,
+      sourceRevision,
       services: [{
         dockerfile,
         environment,
@@ -216,7 +218,7 @@ class SystemAppAdapter {
     });
   }
 
-  async applyAppServices({ caddyRoutes, healthTarget, instanceId, packageDigest, packageId, services }) {
+  async applyAppServices({ caddyRoutes, healthTarget, instanceId, packageDigest, packageId, packageVersion, services, sourceRevision }) {
     const packageDir = path.join(this.appPackageRoot, instanceId, 'installed');
     const routeSnapshot = `${this.routesPath}.before-${process.pid}`;
     let routesChanged = false;
@@ -227,7 +229,16 @@ class SystemAppAdapter {
       if (installedManifest.id !== packageId || digestAppPackage(packageDir) !== packageDigest) throw new Error('PACKAGE_SNAPSHOT_MISMATCH');
       const serviceCount = services.length;
       for (const service of services) {
-        await this.execute(this.dockerBinary, ['build', '--file', service.dockerfile, '--tag', service.imageTag, '.'], { cwd: packageDir, timeoutMs: 300000 });
+        await this.execute(this.dockerBinary, [
+          'build',
+          '--file', service.dockerfile,
+          '--tag', service.imageTag,
+          '--label', `mos-v2.package=${packageId}`,
+          '--label', `mos-v2.package-version=${packageVersion}`,
+          '--label', `mos-v2.package-digest=${packageDigest}`,
+          '--label', `mos-v2.source-revision=${sourceRevision}`,
+          '.',
+        ], { cwd: packageDir, timeoutMs: 300000 });
       }
 
       stage = 'run';
@@ -255,6 +266,9 @@ class SystemAppAdapter {
           ...(service.public ? ['--publish', `127.0.0.1:${service.loopbackPort}:${service.internalPort}`] : []),
           '--label', `mos-v2.package=${packageId}`,
           '--label', `mos-v2.service=${service.id}`,
+          '--label', `mos-v2.package-version=${packageVersion}`,
+          '--label', `mos-v2.package-digest=${packageDigest}`,
+          '--label', `mos-v2.source-revision=${sourceRevision}`,
           ...Object.entries(service.environment || {}).sort(([left], [right]) => left.localeCompare(right)).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
           ...volumeArgs,
           service.imageTag,
