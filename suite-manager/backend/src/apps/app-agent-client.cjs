@@ -56,6 +56,7 @@ class AppAgentClient {
   snapshotPackage(input) { return this.request('POST', '/v1/apps/snapshot', input); }
   stagePackageUpdate(input) { return this.request('POST', '/v1/apps/update/stage', input); }
   buildPackageUpdate(input) { return this.request('POST', '/v1/apps/update/build', input, { timeoutMs: APP_AGENT_UPDATE_BUILD_TIMEOUT_MS }); }
+  activatePackageUpdate(input) { return this.request('POST', '/v1/apps/update/activate', input); }
   stop(input) { return this.request('POST', '/v1/apps/stop', input); }
   remove(input) { return this.request('POST', '/v1/apps/remove', input); }
 }

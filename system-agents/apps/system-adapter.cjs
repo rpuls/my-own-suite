@@ -264,6 +264,100 @@ class SystemAppAdapter {
     }
   }
 
+  async startPackageContainers({ packageDigest, packageId, packageVersion, services, sourceRevision }) {
+    const serviceCount = services.length;
+    const networkName = this.networkName(packageId);
+    if (serviceCount > 1) {
+      await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
+    }
+    for (const service of services) {
+      const volumeArgs = [];
+      for (const volume of service.volumes || []) {
+        const separator = String(volume).indexOf(':');
+        if (separator > 0) volumeArgs.push('--volume', `mos-v2-app-${packageId}-${String(volume).slice(0, separator)}:${String(volume).slice(separator + 1)}`);
+      }
+      await this.execute(this.dockerBinary, [
+        'run', '--detach', '--name', this.containerName(packageId, service.id, serviceCount), '--restart', 'unless-stopped',
+        ...(serviceCount > 1 ? ['--network', networkName, '--network-alias', service.id] : []),
+        ...(service.public ? ['--publish', `127.0.0.1:${service.loopbackPort}:${service.internalPort}`] : []),
+        '--label', `mos-v2.package=${packageId}`,
+        '--label', `mos-v2.service=${service.id}`,
+        '--label', `mos-v2.package-version=${packageVersion}`,
+        '--label', `mos-v2.package-digest=${packageDigest}`,
+        '--label', `mos-v2.source-revision=${sourceRevision}`,
+        ...Object.entries(service.environment || {}).sort(([left], [right]) => left.localeCompare(right)).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
+        ...volumeArgs,
+        service.imageTag,
+      ], { timeoutMs: 60000 });
+    }
+  }
+
+  async activateAppPackageUpdate({ candidate, installed }) {
+    const instanceRoot = path.join(this.appPackageRoot, candidate.instanceId);
+    const installedDir = path.join(instanceRoot, 'installed');
+    const candidateDir = path.join(instanceRoot, 'candidate');
+    const routeSnapshot = `${this.routesPath}.before-update-${process.pid}`;
+    let routesChanged = false;
+    let candidateStarted = false;
+    let oldRuntimeStopped = false;
+    try {
+      const installedManifest = JSON.parse(await fsp.readFile(path.join(installedDir, 'manifest.json'), 'utf8'));
+      const candidateManifest = JSON.parse(await fsp.readFile(path.join(candidateDir, 'manifest.json'), 'utf8'));
+      if (installedManifest.id !== installed.packageId || digestAppPackage(installedDir, { manifest: installedManifest }) !== installed.packageDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
+      if (candidateManifest.id !== candidate.packageId || digestAppPackage(candidateDir, { manifest: candidateManifest }) !== candidate.packageDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
+
+      await this.removePackageContainers({ packageId: installed.packageId, serviceIds: installed.services.map((service) => service.id), serviceCount: installed.services.length });
+      oldRuntimeStopped = true;
+      candidateStarted = true;
+      await this.startPackageContainers(candidate);
+      await this.waitForReady(candidate.healthTarget);
+
+      const currentRoutes = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
+      const nextRoutes = upsertAppRouteBlock(currentRoutes, { caddyRoutes: candidate.caddyRoutes, packageId: candidate.packageId });
+      routesChanged = currentRoutes !== nextRoutes;
+      if (routesChanged) {
+        const routeCandidate = `${this.routesPath}.candidate-${process.pid}`;
+        await fsp.writeFile(routeCandidate, nextRoutes);
+        await this.execute(this.caddyBinary, ['validate', '--adapter', 'caddyfile', '--config', routeCandidate], { timeoutMs: 20000 });
+        await fsp.rm(routeCandidate, { force: true }).catch(() => {});
+        await snapshot(this.routesPath, routeSnapshot);
+        await atomicWrite(this.routesPath, nextRoutes);
+        await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 20000 });
+      }
+      return { steps: ['installed-identity-verified', 'candidate-identity-verified', 'old-runtime-stopped', 'candidate-started', 'candidate-healthy', ...(routesChanged ? ['route-written', 'caddy-reloaded'] : [])] };
+    } catch (error) {
+      if (routesChanged) {
+        await restore(routeSnapshot, this.routesPath).catch(() => {});
+        await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 10000 }).catch(() => {});
+      }
+      if (!oldRuntimeStopped) {
+        const failure = new AppApplyError('snapshot');
+        failure.code = 'APP_UPDATE_IDENTITY_CHANGED';
+        failure.statusCode = 409;
+        failure.details = [String(error?.message || 'update identity changed')];
+        throw failure;
+      }
+      if (candidateStarted) await this.removePackageContainers({ packageId: candidate.packageId, serviceIds: candidate.services.map((service) => service.id), serviceCount: candidate.services.length }).catch(() => {});
+      try {
+        await this.startPackageContainers(installed);
+        await this.waitForReady(installed.healthTarget);
+      } catch (rollbackError) {
+        const failure = new AppApplyError('run');
+        failure.code = 'APP_UPDATE_ROLLBACK_FAILED';
+        failure.details = [String(error?.message || 'candidate activation failed'), String(rollbackError?.message || 'old runtime restart failed')];
+        throw failure;
+      }
+      const failure = new AppApplyError(error?.message === 'INSTALLED_PACKAGE_CHANGED' || error?.message === 'CANDIDATE_PACKAGE_CHANGED' ? 'snapshot' : 'run');
+      failure.code = ['INSTALLED_PACKAGE_CHANGED', 'CANDIDATE_PACKAGE_CHANGED'].includes(error?.message) ? 'APP_UPDATE_IDENTITY_CHANGED' : 'APP_UPDATE_ACTIVATION_FAILED';
+      failure.statusCode = failure.code === 'APP_UPDATE_IDENTITY_CHANGED' ? 409 : 502;
+      failure.details = [String(error?.message || 'candidate activation failed'), 'old-runtime-restored'];
+      throw failure;
+    } finally {
+      await fsp.rm(routeSnapshot, { force: true }).catch(() => {});
+      await fsp.rm(`${routeSnapshot}.missing`, { force: true }).catch(() => {});
+    }
+  }
+
   async applyAppService({ caddyRoutes, dockerfile, environment = {}, healthTarget, imageTag, instanceId, internalPort, loopbackPort, packageDigest, packageId, packageVersion, sourceRevision, volumes }) {
     return this.applyAppServices({
       caddyRoutes,

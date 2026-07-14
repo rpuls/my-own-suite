@@ -385,6 +385,49 @@ test('system adapter builds an identity-bound update candidate without touching 
   assert.equal(commands.some((command) => command.args.includes('rm') || command.args.includes('run')), false);
 });
 
+test('system adapter restores the installed runtime when an update candidate fails health', async () => {
+  const root = await tempDir();
+  const appPackageRoot = path.join(root, 'packages');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const installedDir = path.join(appPackageRoot, instanceId, 'installed');
+  const candidateDir = path.join(appPackageRoot, instanceId, 'candidate');
+  for (const directory of [installedDir, candidateDir]) {
+    await fsp.mkdir(directory, { recursive: true });
+    await fsp.writeFile(path.join(directory, 'manifest.json'), `${JSON.stringify({ id: 'example-tool', packageFiles: [] })}\n`);
+    await fsp.writeFile(path.join(directory, 'Dockerfile'), 'FROM scratch\n');
+  }
+  const commands = [];
+  let healthCalls = 0;
+  const service = (imageTag) => ({ dockerfile: 'Dockerfile', environment: {}, id: 'web', imageTag, internalPort: 3000, loopbackPort: 18123, public: true, volumes: ['data:/data'] });
+  const runtime = (directory, imageTag, version) => ({
+    caddyRoutes: 'http://example-tool.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n',
+    healthTarget: `http://127.0.0.1:18123/${version}`,
+    instanceId,
+    packageDigest: digestAppPackage(directory),
+    packageId: 'example-tool',
+    packageVersion: version,
+    services: [service(imageTag)],
+    sourceRevision: version === '0.2.0' ? 'b'.repeat(40) : 'a'.repeat(40),
+  });
+  const adapter = new SystemAppAdapter({
+    appPackageRoot,
+    dockerBinary: 'docker',
+    routesPath: path.join(root, 'routes.caddy'),
+    async execute(file, args) { commands.push({ args, file }); },
+    async waitForReady() { healthCalls += 1; if (healthCalls === 1) throw new Error('candidate unhealthy'); },
+  });
+  await assert.rejects(
+    () => adapter.activateAppPackageUpdate({ candidate: runtime(candidateDir, 'candidate:test', '0.2.0'), installed: runtime(installedDir, 'installed:test', '0.1.0') }),
+    (error) => error.code === 'APP_UPDATE_ACTIVATION_FAILED' && error.details.includes('old-runtime-restored'),
+  );
+  const runs = commands.filter((command) => command.args[0] === 'run');
+  assert.equal(runs.length, 2);
+  assert.equal(runs[0].args.at(-1), 'candidate:test');
+  assert.equal(runs[1].args.at(-1), 'installed:test');
+  assert.equal(healthCalls, 2);
+  assert.ok(runs.every((command) => command.args.includes('mos-v2-app-example-tool-data:/data')));
+});
+
 test('system adapter checks app health with a short refresh budget', async () => {
   const calls = [];
   const adapter = new SystemAppAdapter({

@@ -219,6 +219,34 @@ function runtimeServices(input, routes) {
   }));
 }
 
+function runtimeAdapterInput(input, routes) {
+  const publicUrl = new URL(input.publicUrl);
+  return {
+    caddyRoutes: renderAppRoutes({ appHost: input.appHost, routes, scheme: publicUrl.protocol.replace(/:$/u, '') }),
+    healthTarget: input.health.target,
+    instanceId: input.instanceId,
+    packageDigest: input.packageDigest,
+    packageId: input.packageId,
+    packageVersion: input.packageVersion,
+    services: runtimeServices(input, routes),
+    sourceRevision: input.sourceRevision,
+  };
+}
+
+function assertPackageUpdateActivateRequest(input) {
+  if (!exactKeys(input, ['candidate', 'installed'])) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only installed and candidate update runtimes are accepted.');
+  }
+  const candidate = assertRuntimeRequest(input.candidate, { allowExpectedInstalledDigest: true });
+  const installed = assertRuntimeRequest(input.installed);
+  if (input.candidate.instanceId !== input.installed.instanceId
+      || input.candidate.packageId !== input.installed.packageId
+      || input.candidate.expectedInstalledDigest !== input.installed.packageDigest) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The update runtimes do not describe one identity-bound app instance.');
+  }
+  return { candidate, installed };
+}
+
 function resolveEnvironment(environment, context) {
   const source = environment === undefined ? {} : environment;
   if (!source || typeof source !== 'object' || Array.isArray(source)) {
@@ -274,8 +302,8 @@ class AppAgentCore {
 
   async status() {
     return {
-      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build'],
-      contractVersion: 3,
+      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate'],
+      contractVersion: 4,
       service: 'mos-v2-app-agent',
     };
   }
@@ -304,6 +332,15 @@ class AppAgentCore {
       sourceRevision: input.sourceRevision,
     });
     return { ...result, candidateDigest: input.packageDigest, instanceId: input.instanceId, packageId: input.packageId, status: 'built' };
+  }
+
+  async activatePackageUpdate(input) {
+    const { candidate, installed } = assertPackageUpdateActivateRequest(input);
+    const result = await this.adapter.activateAppPackageUpdate({
+      candidate: runtimeAdapterInput(input.candidate, candidate.routes),
+      installed: runtimeAdapterInput(input.installed, installed.routes),
+    });
+    return { ...result, candidateDigest: input.candidate.packageDigest, instanceId: input.candidate.instanceId, packageId: input.candidate.packageId, status: 'candidate-healthy' };
   }
 
   async apply(input) {

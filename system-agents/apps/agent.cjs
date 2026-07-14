@@ -32,6 +32,7 @@ const routes = new Map([
   ['POST /v1/apps/snapshot', (body) => core.snapshotPackage(body)],
   ['POST /v1/apps/update/stage', (body) => core.stagePackageUpdate(body)],
   ['POST /v1/apps/update/build', (body) => core.buildPackageUpdate(body)],
+  ['POST /v1/apps/update/activate', (body) => core.activatePackageUpdate(body)],
   ['POST /v1/apps/stop', (body) => core.stop(body)],
   ['POST /v1/apps/remove', (body) => core.remove(body)],
 ]);
