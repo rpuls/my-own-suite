@@ -15,6 +15,7 @@ const { createHomepageProxy } = require('./homepage-proxy.cjs');
 const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
 const { OfficialCatalogError, OfficialCatalogService } = require('../apps/official-catalog-service.cjs');
+const { ExternalSourceClient } = require('../apps/external-source-client.cjs');
 const { ExternalSourceService } = require('../apps/external-source-service.cjs');
 const { ExternalSourceError } = require('../apps/external-source-registry.cjs');
 const { inspectAppPackages } = require('../apps/package-manifest.cjs');
@@ -315,16 +316,28 @@ function createV2Server({
     stateDir,
     platformVersion: fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'VERSION'), 'utf8').trim(),
   });
+  const officialPackageIds = inspectAppPackages(appsDir).map((pkg) => pkg.id);
+  // One client serves both directions of the external flow: the source service
+  // resolves and previews a pasted repository through it, and the package service
+  // re-downloads an installed external app's own source through it when the owner
+  // checks that app for an update. Both go through the same constrained gate.
+  const externalSourceClient = new ExternalSourceClient({
+    officialPackageIds,
+    platformVersion: catalogService.platformVersion,
+    stateDir: setup.store.stateDir,
+  });
   const appPackages = new AppPackageService({
     agent: appAgent,
     appsDir,
     catalogService,
+    externalClient: externalSourceClient,
     store: setup.store,
   });
   const externalSourceService = externalSources || new ExternalSourceService({
     allowLocalSources: process.env.MOS_V2_ALLOW_LOCAL_APP_SOURCES === '1',
     appPackages,
-    officialPackageIds: inspectAppPackages(appsDir).map((pkg) => pkg.id),
+    client: externalSourceClient,
+    officialPackageIds,
     platformVersion: catalogService.platformVersion,
     store: setup.store,
   });

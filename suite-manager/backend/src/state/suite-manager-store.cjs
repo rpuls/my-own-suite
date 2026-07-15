@@ -1012,7 +1012,10 @@ class SuiteManagerStore {
     });
   }
 
-  completeAppUpdate({ at, homepageApplied = false, instanceId, operationId, instance, projections, snapshotPath }) {
+  // `config` carries only the setup values the candidate newly requires; values
+  // the instance already holds are left alone, so committing an update never
+  // rewrites or rotates them.
+  completeAppUpdate({ at, config = [], homepageApplied = false, instanceId, operationId, instance, projections, snapshotPath }) {
     this.transaction(() => {
       const operation = this.database.prepare(`
         SELECT candidate_digest AS candidateDigest FROM app_operations
@@ -1031,6 +1034,23 @@ class SuiteManagerStore {
         instance.packageDigest, instance.source.kind, instance.source.repository, instance.source.path, instance.source.revision, instance.source.trust,
         snapshotPath, instance.privacy.status, instance.privacy.posture, instance.privacy.reviewedAt, at, instanceId,
       );
+      for (const item of config) {
+        this.database.prepare(`
+          INSERT INTO app_instance_config (
+            instance_id, key, value_json, source, secret_ref, redacted_label, fingerprint, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          instanceId,
+          item.key,
+          item.valueJson ?? null,
+          item.source,
+          item.secretRef ?? null,
+          item.redactedLabel ?? null,
+          item.fingerprint ?? null,
+          at,
+        );
+      }
       this.database.prepare('DELETE FROM app_instance_projections WHERE instance_id = ?').run(instanceId);
       for (const projection of projections) {
         const applied = ['compose', 'caddy', 'health'].includes(projection.kind) || (homepageApplied && projection.kind === 'homepage');

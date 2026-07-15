@@ -7,7 +7,13 @@ const test = require('node:test');
 const { compareAppPackages } = require('../src/apps/app-update-comparison.cjs');
 const { digestAppPackage } = require('../src/apps/package-contracts.cjs');
 
-function appPackage(version, mutate = (manifest) => manifest) {
+// A package is only as trusted as the source it resolved from, and only a
+// MOS-reviewed source has had its shipped privacy review reviewed by MOS. The
+// fixture defaults to that source; external packages pass EXTERNAL_SOURCE.
+const OFFICIAL_SOURCE = Object.freeze({ kind: 'official-git', path: 'apps/example', repository: 'https://github.com/rpuls/my-own-suite', revision: 'a'.repeat(40), trust: 'mos-reviewed' });
+const EXTERNAL_SOURCE = Object.freeze({ kind: 'external-git', path: '.mos', repository: 'https://github.com/someone/example', revision: 'b'.repeat(40), trust: 'unverified' });
+
+function appPackage(version, mutate = (manifest) => manifest, source = OFFICIAL_SOURCE) {
   const packageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-compare-'));
   const manifest = mutate({
     category: 'test',
@@ -23,7 +29,7 @@ function appPackage(version, mutate = (manifest) => manifest) {
   });
   fs.writeFileSync(path.join(packageDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   fs.writeFileSync(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
-  return { manifest, packageDigest: digestAppPackage(packageDir), packageDir, source: { kind: 'local', path: 'apps/example', repository: 'local', revision: version, trust: 'unverified' } };
+  return { manifest, packageDigest: digestAppPackage(packageDir), packageDir, source };
 }
 
 function writePrivacyReview(appPkg, posture, dimensions) {
@@ -91,4 +97,77 @@ test('privacy assessments carry their dimensions into both sides of the comparis
   assert.equal(comparison.candidate.privacy.dimensions.externalServices, 'required');
   const change = comparison.changes.find((item) => item.area === 'privacy');
   assert.match(change.summary, /from private-by-default to external-dependency/u);
+});
+
+test('an unverified package cannot present its own privacy review as a MOS review', (t) => {
+  const dimensions = { accountDependency: 'local-only', confidence: 'verified', dataProcessing: 'local', externalServices: 'none-required', policyExposure: 'self-hosted-software-only', telemetry: 'none-observed' };
+  const installed = appPackage('1.0.0', (manifest) => manifest, EXTERNAL_SOURCE);
+  const candidate = appPackage('1.1.0', (manifest) => manifest, EXTERNAL_SOURCE);
+  // Both sides ship a review that binds correctly to their own contents and
+  // source. The binding is honest; what it is not is a MOS review.
+  writePrivacyReview(installed, 'private-by-default', dimensions);
+  writePrivacyReview(candidate, 'private-by-default', dimensions);
+  t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
+  const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
+  for (const side of [comparison.installed.privacy, comparison.candidate.privacy]) {
+    assert.equal(side.status, 'review-required');
+    assert.equal(side.posture, 'review-required');
+    assert.equal(side.dimensions, null);
+  }
+  assert.equal(comparison.changes.find((item) => item.area === 'privacy'), undefined);
+});
+
+test('an unverified update that widens the access it asks for needs explicit consent', (t) => {
+  const installed = appPackage('1.0.0', (manifest) => manifest, EXTERNAL_SOURCE);
+  const candidate = appPackage('1.1.0', (manifest) => {
+    manifest.routes.push({ host: 'example-admin', port: 8081, service: 'example' });
+    manifest.resources.services.example.volumes = ['data:/data', 'extra:/extra'];
+    return manifest;
+  }, EXTERNAL_SOURCE);
+  t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
+  const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
+  assert.equal(comparison.updateStatus, 'update-available');
+  assert.deepEqual(comparison.permissions.installed, ['route:example', 'volume:data']);
+  assert.deepEqual(comparison.permissions.added, ['route:example-admin', 'volume:extra']);
+  assert.deepEqual(comparison.permissions.removed, []);
+  assert.equal(comparison.compatibility, 'owner-action-required');
+  const change = comparison.changes.find((item) => item.area === 'permissions');
+  assert.equal(change.classification, 'operator-action-required');
+  assert.match(change.summary, /route:example-admin/u);
+});
+
+test('the same access increase from the reviewed catalog is reported without demanding consent', (t) => {
+  const installed = appPackage('1.0.0');
+  const candidate = appPackage('1.1.0', (manifest) => {
+    manifest.routes.push({ host: 'example-admin', port: 8081, service: 'example' });
+    return manifest;
+  });
+  t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
+  const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
+  assert.deepEqual(comparison.permissions.added, ['route:example-admin']);
+  assert.equal(comparison.changes.find((item) => item.area === 'permissions').classification, 'automatically-handled');
+  assert.equal(comparison.compatibility, 'compatible');
+});
+
+test('a candidate that reuses the installed version number with different contents is an integrity error, not an update', (t) => {
+  const installed = appPackage('1.0.0');
+  const candidate = appPackage('1.0.0', (manifest) => {
+    manifest.summary = 'Same version number, different package.';
+    return manifest;
+  });
+  t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
+  const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
+  assert.equal(comparison.updateStatus, 'integrity-error');
+  assert.equal(comparison.compatibility, 'unsupported');
+  assert.match(comparison.validation.errors.join(' '), /version number with different package contents/u);
+});
+
+test('an unchanged candidate reports as current rather than as an update', (t) => {
+  const installed = appPackage('1.0.0');
+  const candidate = appPackage('1.0.0');
+  t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
+  const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
+  assert.equal(comparison.updateStatus, 'current');
+  assert.deepEqual(comparison.permissions.added, []);
+  assert.equal(comparison.compatibility, 'compatible');
 });

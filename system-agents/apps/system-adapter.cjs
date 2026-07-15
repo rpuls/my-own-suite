@@ -16,6 +16,16 @@ const HEALTH_TIMEOUT_MS = 90_000;
 const HEALTH_REFRESH_TIMEOUT_MS = 5_000;
 const EMPTY_APP_ROUTES = '# No app runtime routes.\n';
 
+// The manifest id a package managed under `packageId` must declare. An official
+// package is managed under its bare manifest id; a package from any other source
+// is managed under `x-<namespace>-<manifest id>` while its manifest keeps
+// declaring the bare id. Resolving the expected id this way keeps every identity
+// check exact, and a namespaced package still cannot pass as the official package
+// of the same name, because a bare id only ever resolves to itself.
+function expectedManifestId(packageId) {
+  return parseNamespacedPackageId(packageId).packageId;
+}
+
 const FAILURE_MESSAGES = {
   build: ['APP_BUILD_FAILED', 'The app image could not be built.'],
   'caddy-reload': ['APP_CADDY_RELOAD_FAILED', 'Caddy could not reload the app route.'],
@@ -255,9 +265,9 @@ class SystemAppAdapter {
     try {
       if (!relativeSource || relativeSource.startsWith('..') || path.isAbsolute(relativeSource)) throw new Error('CANDIDATE_PATH_OUTSIDE_ROOT');
       const installedManifest = JSON.parse(await fsp.readFile(path.join(installed, 'manifest.json'), 'utf8'));
-      if (installedManifest.id !== packageId || digestAppPackage(installed, { manifest: installedManifest }) !== expectedInstalledDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
+      if (installedManifest.id !== expectedManifestId(packageId) || digestAppPackage(installed, { manifest: installedManifest }) !== expectedInstalledDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
       const candidateManifest = JSON.parse(await fsp.readFile(path.join(source, 'manifest.json'), 'utf8'));
-      if (candidateManifest.id !== packageId || digestAppPackage(source, { manifest: candidateManifest }) !== candidateDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
+      if (candidateManifest.id !== expectedManifestId(packageId) || digestAppPackage(source, { manifest: candidateManifest }) !== candidateDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
       await fsp.rm(staged, { force: true, recursive: true });
       await fsp.mkdir(temporary, { recursive: true, mode: 0o750 });
       for (const file of collectPackageFiles(source, { manifest: candidateManifest })) {
@@ -286,9 +296,9 @@ class SystemAppAdapter {
     const candidate = path.join(instanceRoot, 'candidate');
     try {
       const installedManifest = JSON.parse(await fsp.readFile(path.join(installed, 'manifest.json'), 'utf8'));
-      if (installedManifest.id !== packageId || digestAppPackage(installed, { manifest: installedManifest }) !== expectedInstalledDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
+      if (installedManifest.id !== expectedManifestId(packageId) || digestAppPackage(installed, { manifest: installedManifest }) !== expectedInstalledDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
       const candidateManifest = JSON.parse(await fsp.readFile(path.join(candidate, 'manifest.json'), 'utf8'));
-      if (candidateManifest.id !== packageId || digestAppPackage(candidate, { manifest: candidateManifest }) !== candidateDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
+      if (candidateManifest.id !== expectedManifestId(packageId) || digestAppPackage(candidate, { manifest: candidateManifest }) !== candidateDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
       for (const service of services) {
         await this.execute(this.dockerBinary, [
           'build', '--file', service.dockerfile, '--tag', service.imageTag,
@@ -348,8 +358,8 @@ class SystemAppAdapter {
     try {
       const installedManifest = JSON.parse(await fsp.readFile(path.join(installedDir, 'manifest.json'), 'utf8'));
       const candidateManifest = JSON.parse(await fsp.readFile(path.join(candidateDir, 'manifest.json'), 'utf8'));
-      if (installedManifest.id !== installed.packageId || digestAppPackage(installedDir, { manifest: installedManifest }) !== installed.packageDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
-      if (candidateManifest.id !== candidate.packageId || digestAppPackage(candidateDir, { manifest: candidateManifest }) !== candidate.packageDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
+      if (installedManifest.id !== expectedManifestId(installed.packageId) || digestAppPackage(installedDir, { manifest: installedManifest }) !== installed.packageDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
+      if (candidateManifest.id !== expectedManifestId(candidate.packageId) || digestAppPackage(candidateDir, { manifest: candidateManifest }) !== candidate.packageDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
 
       await this.removePackageContainers({ packageId: installed.packageId, serviceIds: installed.services.map((service) => service.id), serviceCount: installed.services.length });
       oldRuntimeStopped = true;
@@ -412,8 +422,8 @@ class SystemAppAdapter {
     try {
       const installedManifest = JSON.parse(await fsp.readFile(path.join(installed, 'manifest.json'), 'utf8'));
       const candidateManifest = JSON.parse(await fsp.readFile(path.join(candidate, 'manifest.json'), 'utf8'));
-      if (installedManifest.id !== packageId || digestAppPackage(installed, { manifest: installedManifest }) !== expectedInstalledDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
-      if (candidateManifest.id !== packageId || digestAppPackage(candidate, { manifest: candidateManifest }) !== candidateDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
+      if (installedManifest.id !== expectedManifestId(packageId) || digestAppPackage(installed, { manifest: installedManifest }) !== expectedInstalledDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
+      if (candidateManifest.id !== expectedManifestId(packageId) || digestAppPackage(candidate, { manifest: candidateManifest }) !== candidateDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
       await fsp.rm(displaced, { force: true, recursive: true });
       await fsp.rename(installed, displaced);
       try { await fsp.rename(candidate, installed); }
@@ -438,8 +448,8 @@ class SystemAppAdapter {
     try {
       const installedManifest = JSON.parse(await fsp.readFile(path.join(installedDir, 'manifest.json'), 'utf8'));
       const candidateManifest = JSON.parse(await fsp.readFile(path.join(candidateDir, 'manifest.json'), 'utf8'));
-      if (installedManifest.id !== installed.packageId || digestAppPackage(installedDir, { manifest: installedManifest }) !== installed.packageDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
-      if (candidateManifest.id !== candidate.packageId || digestAppPackage(candidateDir, { manifest: candidateManifest }) !== candidate.packageDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
+      if (installedManifest.id !== expectedManifestId(installed.packageId) || digestAppPackage(installedDir, { manifest: installedManifest }) !== installed.packageDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
+      if (candidateManifest.id !== expectedManifestId(candidate.packageId) || digestAppPackage(candidateDir, { manifest: candidateManifest }) !== candidate.packageDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
       await this.removePackageContainers({ packageId: candidate.packageId, serviceIds: candidate.services.map((service) => service.id), serviceCount: candidate.services.length });
       await this.startPackageContainers(installed);
       await this.waitForReady(installed.healthTarget);

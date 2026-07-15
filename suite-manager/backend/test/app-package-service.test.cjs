@@ -11,6 +11,7 @@ const {
 } = require('../src/apps/app-package-service.cjs');
 const { readAppPackageManifest } = require('../src/apps/package-manifest.cjs');
 const { digestAppPackage } = require('../src/apps/package-contracts.cjs');
+const { buildSourceRecord, withRevision, withStatus } = require('../src/apps/external-source-registry.cjs');
 const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
 
 const v2Root = path.resolve(__dirname, '..', '..', '..');
@@ -39,8 +40,8 @@ function requestContext() {
 
 // A downloaded external candidate shaped the way ExternalSourceClient returns
 // one: a real package folder plus the namespaced identity and recorded source.
-async function externalCandidate(root, overrides = {}) {
-  const packageDir = path.join(root, 'app-candidates', 'ext-abc');
+async function externalCandidate(root, overrides = {}, dirName = 'ext-abc') {
+  const packageDir = path.join(root, 'app-candidates', dirName);
   await fsp.mkdir(packageDir, { recursive: true });
   const manifest = {
     category: 'test', health: { type: 'http', url: 'http://notes:8080/health' }, id: 'community-notes',
@@ -76,6 +77,43 @@ function externalAgent(root, calls = []) {
       return { capabilities: ['apps.package.snapshot', 'apps.package.snapshot.external'], contractVersion: 7 };
     },
   };
+}
+
+// An app agent that can run the whole update transaction for an external app:
+// the external snapshot its install needed, plus the same update capabilities
+// official packages go through.
+function externalUpdateAgent(root, calls = [], promotedSnapshotPath = null) {
+  return {
+    ...externalAgent(root),
+    async activatePackageUpdate(input) { calls.push(['activate', input]); return { status: 'candidate-healthy' }; },
+    async buildPackageUpdate(input) { calls.push(['build', input]); return { status: 'built' }; },
+    async promotePackageUpdate(input) { calls.push(['promote', input]); return { snapshotPath: promotedSnapshotPath, status: 'snapshot-promoted' }; },
+    async rollbackPackageUpdate(input) { calls.push(['rollback', input]); return { status: 'installed-restored' }; },
+    async stagePackageUpdate(input) { calls.push(['stage', input]); return { snapshotPath: '/state/candidate', status: 'staged' }; },
+    async status() {
+      return {
+        capabilities: [
+          'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build',
+          'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote',
+        ],
+        contractVersion: 7,
+      };
+    },
+  };
+}
+
+// The external client as the package service uses it for updates: re-resolve the
+// source's commit, then hand back the candidate that commit publishes.
+function externalClientStub(candidate) {
+  return {
+    platformVersion: '0.1.0',
+    async downloadCandidate() { return { ...candidate, cleanup() {} }; },
+    async resolveRevision(source) { return withRevision(source, candidate.source.revision); },
+  };
+}
+
+function registerSource(store, repository = 'https://github.com/community/notes', revision = 'b'.repeat(40)) {
+  return store.insertAppSource(withRevision(buildSourceRecord({ repository }), revision));
 }
 
 test('an external package installs through the shared snapshot pipeline under its namespaced, unverified identity', async () => {
@@ -171,6 +209,139 @@ test('an external install is refused when the app agent cannot snapshot external
 
   await assert.rejects(() => service.installExternalPackage({ candidate }), { code: 'APP_EXTERNAL_INSTALL_UNAVAILABLE' });
   assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes'), null);
+  store.close();
+});
+
+test('an external app updates from its own source through the same update transaction, and its access increase needs consent', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const installedPackage = await externalCandidate(root);
+  // The published update wants a second web address it does not have today.
+  const next = await externalCandidate(root, {
+    routes: [{ host: 'notes', port: 8080, service: 'notes' }, { host: 'notes-admin', port: 8081, service: 'notes' }],
+    version: '1.1.0',
+  }, 'ext-next');
+  const calls = [];
+  const service = new AppPackageService({
+    // Promotion leaves the candidate's contents as the installed snapshot.
+    agent: externalUpdateAgent(root, calls, next.packageDir),
+    appsDir: v2AppsDir,
+    externalClient: externalClientStub(next),
+    store,
+  });
+  await service.installExternalPackage({ candidate: installedPackage });
+  registerSource(store);
+
+  const comparison = await service.preparePackageUpdate('x-abcdef01-community-notes');
+
+  assert.equal(comparison.updateStatus, 'update-available');
+  assert.deepEqual(comparison.permissions.installed, ['route:notes', 'volume:notes-data']);
+  assert.deepEqual(comparison.permissions.added, ['route:notes-admin']);
+  // MOS did not review this widening, so it cannot be applied as routine.
+  assert.equal(comparison.compatibility, 'owner-action-required');
+  assert.equal(comparison.changes.find((change) => change.area === 'permissions').classification, 'operator-action-required');
+  // Previewing an external update stays side-effect-free.
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes').packageVersion, '1.0.0');
+
+  const result = await service.stagePackageUpdate(
+    'x-abcdef01-community-notes',
+    { confirmationToken: comparison.confirmationToken },
+    requestContext().publicUrlFor('notes'),
+  );
+
+  assert.equal(result.operation.status, 'succeeded');
+  const updated = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
+  assert.equal(updated.packageVersion, '1.1.0');
+  assert.equal(updated.packageDigest, next.packageDigest);
+  // Updating never launders trust: the app stays external and unreviewed.
+  assert.equal(updated.sourceTrust, 'unverified');
+  assert.equal(updated.sourceRevision, 'b'.repeat(40));
+  assert.equal(updated.privacyStatus, 'review-required');
+  assert.equal(service.listPackages().find((item) => item.id === 'x-abcdef01-community-notes').mosReviewed, false);
+  // Every agent stage addresses the app by its namespaced identity, never by the
+  // bare id the package's manifest declares.
+  const addressed = calls.filter(([kind]) => ['stage', 'build', 'promote'].includes(kind)).map(([, input]) => input.packageId);
+  assert.deepEqual([...new Set(addressed)], ['x-abcdef01-community-notes']);
+  assert.equal(addressed.length, 3);
+  store.close();
+});
+
+test('an external app whose source is gone or compromised keeps running and refuses to update', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const installedPackage = await externalCandidate(root);
+  const next = await externalCandidate(root, { version: '1.1.0' }, 'ext-next');
+  const service = new AppPackageService({
+    agent: externalUpdateAgent(root),
+    appsDir: v2AppsDir,
+    externalClient: externalClientStub(next),
+    store,
+  });
+  await service.installExternalPackage({ candidate: installedPackage });
+
+  // No source record at all: the app was installed, then the source was removed.
+  await assert.rejects(() => service.preparePackageUpdate('x-abcdef01-community-notes'), { code: 'APP_SOURCE_UNAVAILABLE' });
+
+  const record = registerSource(store);
+  store.updateAppSourceStatus({ at: new Date().toISOString(), id: record.id, ...withStatus(record, 'compromised', 'Reported compromised.') });
+  await assert.rejects(() => service.preparePackageUpdate('x-abcdef01-community-notes'), { code: 'APP_SOURCE_NOT_INSTALLABLE' });
+
+  // Neither refusal touches the installed app.
+  const instance = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
+  assert.equal(instance.status, 'installed');
+  assert.equal(instance.packageVersion, '1.0.0');
+  assert.equal(instance.snapshotState, 'installed');
+  store.close();
+});
+
+test('an external repository that starts publishing a different package cannot update the installed app', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const installedPackage = await externalCandidate(root);
+  // Same repository, same source record, but the package it publishes is now a
+  // different app entirely.
+  const impostor = await externalCandidate(root, { id: 'community-tasks', name: 'Community Tasks', version: '2.0.0' }, 'ext-next');
+  const service = new AppPackageService({
+    agent: externalUpdateAgent(root),
+    appsDir: v2AppsDir,
+    externalClient: externalClientStub({ ...impostor, namespacedPackageId: 'x-abcdef01-community-tasks' }),
+    store,
+  });
+  await service.installExternalPackage({ candidate: installedPackage });
+  registerSource(store);
+
+  await assert.rejects(() => service.preparePackageUpdate('x-abcdef01-community-notes'), { code: 'APP_SOURCE_PACKAGE_CHANGED' });
+
+  const instance = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
+  assert.equal(instance.packageVersion, '1.0.0');
+  assert.equal(instance.status, 'installed');
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-tasks'), null);
+  store.close();
+});
+
+test('an external update cannot take a web address another installed app already serves', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const installedPackage = await externalCandidate(root);
+  const service = new AppPackageService({
+    agent: { ...externalUpdateAgent(root), async snapshotPackage(input) { return snapshotResult(input); } },
+    appsDir: v2AppsDir,
+    store,
+  });
+  await service.installExternalPackage({ candidate: installedPackage });
+  await service.installPackage('stirling-pdf');
+  registerSource(store);
+  const takenHost = store.getAppProjections(store.getAppInstanceByPackageId('stirling-pdf').id)
+    .find((projection) => projection.kind === 'caddy').content.routes[0].host;
+  const next = await externalCandidate(root, { routes: [{ host: takenHost, port: 8080, service: 'notes' }], version: '1.1.0' }, 'ext-next');
+  service.externalClient = externalClientStub(next);
+
+  const comparison = await service.preparePackageUpdate('x-abcdef01-community-notes');
+  await assert.rejects(
+    () => service.stagePackageUpdate('x-abcdef01-community-notes', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('notes')),
+    { code: 'APP_ROUTE_HOST_TAKEN' },
+  );
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes').packageVersion, '1.0.0');
   store.close();
 });
 

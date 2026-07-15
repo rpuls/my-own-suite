@@ -8,6 +8,7 @@ const {
   readAppPackageManifest,
 } = require('./package-manifest.cjs');
 const { digestAppPackage, parseNamespacedPackageId, validatePrivacyBinding } = require('./package-contracts.cjs');
+const { sourceId, sourceInstallable } = require('./external-source-registry.cjs');
 const { compareAppPackages } = require('./app-update-comparison.cjs');
 
 const APP_LOOPBACK_PORT_BASE = 18000;
@@ -507,6 +508,7 @@ class AppPackageService {
     agent = null,
     appsDir,
     catalogService = null,
+    externalClient = null,
     now = () => new Date(),
     officialRepository = 'https://github.com/rpuls/my-own-suite',
     secretDir = null,
@@ -515,10 +517,56 @@ class AppPackageService {
     this.agent = agent;
     this.appsDir = appsDir;
     this.catalogService = catalogService;
+    this.externalClient = externalClient;
     this.now = now;
     this.officialRepository = officialRepository;
     this.secretDir = secretDir || path.join(store.stateDir, 'app-secrets');
     this.store = store;
+  }
+
+  // The MOS version an update candidate is checked against. Both candidate
+  // sources carry it, so an update can still be compatibility-checked when only
+  // one of them is configured; without either, nothing passes.
+  get platformVersion() {
+    return this.catalogService?.platformVersion || this.externalClient?.platformVersion || '0.0.0';
+  }
+
+  // Where an update candidate comes from is decided by the source the instance
+  // was installed from, never by the caller. Official instances take the reviewed
+  // catalog; an external instance re-downloads from its own recorded source,
+  // through the same constrained gate its install passed. Everything after this
+  // point is the one update transaction.
+  //
+  // The revision is re-resolved on every call and nothing is persisted here, so a
+  // preview stays side-effect-free and an apply always acts on the source as it
+  // is right now rather than on a revision cached at preview time.
+  async downloadUpdateCandidate(instance) {
+    if (instance.sourceKind !== 'external-git') {
+      if (!this.catalogService?.downloadCandidate) {
+        throw new AppPackageServiceError('APP_CANDIDATE_UNAVAILABLE', 'The verified app catalog cannot prepare this update.', 503);
+      }
+      return this.catalogService.downloadCandidate(instance.packageId);
+    }
+    if (!this.externalClient?.downloadCandidate) {
+      throw new AppPackageServiceError('APP_CANDIDATE_UNAVAILABLE', 'External package sources are unavailable.', 503);
+    }
+    const source = this.store.getAppSource(sourceId(instance.sourceRepository, instance.sourcePath));
+    if (!source) {
+      throw new AppPackageServiceError('APP_SOURCE_UNAVAILABLE', 'The package source for this app is no longer registered, so it cannot be updated. The installed version keeps running.', 409);
+    }
+    if (!sourceInstallable(source)) {
+      throw new AppPackageServiceError('APP_SOURCE_NOT_INSTALLABLE', 'This app package source is not active, so updates from it are blocked. The installed version keeps running.', 409);
+    }
+    const candidate = await this.externalClient.downloadCandidate(await this.externalClient.resolveRevision(source));
+    // The repository must still publish the same package. If it now publishes a
+    // different one, that is not an update to this app, whatever the repository
+    // calls it. The app agent would refuse the identity anyway; refusing here
+    // keeps a repository takeover from ever reaching an update operation.
+    if (candidate.namespacedPackageId !== instance.packageId) {
+      candidate.cleanup?.();
+      throw new AppPackageServiceError('APP_SOURCE_PACKAGE_CHANGED', 'This repository no longer publishes the app package that was installed from it, so it cannot be updated. The installed version keeps running.', 409);
+    }
+    return candidate;
   }
 
   installedPackageFor(instance) {
@@ -988,6 +1036,23 @@ class AppPackageService {
     return this.catalogService?.advisoriesFor(packageId, version) || [];
   }
 
+  // How an installed package compares to what its source offers. An external app
+  // is not in the reviewed catalog and cached catalog metadata can say nothing
+  // about it: only its own repository knows whether a newer package exists, and
+  // finding out costs a network round trip. Report that honestly instead of
+  // "not in catalog", which reads as a fault, and let the owner check on demand
+  // through the ordinary update preview.
+  packageUpdateStatusFor(instance, packageId) {
+    if (instance?.sourceKind === 'external-git') {
+      return {
+        available: null,
+        installed: { packageDigest: instance.packageDigest, packageVersion: instance.packageVersion },
+        status: 'external-source',
+      };
+    }
+    return this.catalogService?.updateFor(packageId, instance) || null;
+  }
+
   listPackages() {
     const instancesByPackage = new Map(this.store.getAppInstances().map((instance) => [instance.packageId, instance]));
     const integrations = this.store.getAppIntegrations();
@@ -1013,7 +1078,7 @@ class AppPackageService {
       return {
         ...summary,
         advisories: this.packageAdvisoriesFor(instance, packageId, candidatesByPackage.get(packageId)?.version),
-        catalogUpdate: this.catalogService?.updateFor(packageId, instance) || null,
+        catalogUpdate: this.packageUpdateStatusFor(instance, packageId),
         external: instance?.sourceKind === 'external-git',
         // The installed identity wins over the id the manifest claims: an
         // external package is managed under its source-namespaced id, and every
@@ -1202,6 +1267,15 @@ class AppPackageService {
     );
   }
 
+  // Secret files for values an update collected are written before the update can
+  // commit them. When it does not commit, nothing references them, so they are
+  // removed instead of being left on disk.
+  discardCollectedSecrets(instanceId, configRows = []) {
+    for (const row of configRows) {
+      if (row.secretRef) fs.rmSync(secretFilePath(this.secretDir, instanceId, row.key), { force: true });
+    }
+  }
+
   // Route hosts are global to the MOS installation: two installed apps cannot
   // both serve `notes.<host>`. Refuse up front rather than let a package take a
   // web address another installed app already answers on.
@@ -1311,11 +1385,10 @@ class AppPackageService {
   async preparePackageUpdate(packageId) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance || instance.status === 'uninstalled') throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before preparing an update.', 409);
-    if (!this.catalogService?.downloadCandidate) throw new AppPackageServiceError('APP_CANDIDATE_UNAVAILABLE', 'The verified app catalog cannot prepare this update.', 503);
     const installedPackage = this.installedPackageFor(instance);
     let candidate;
     try {
-      candidate = await this.catalogService.downloadCandidate(packageId);
+      candidate = await this.downloadUpdateCandidate(instance);
       const agentStatus = await this.agent?.status().catch(() => ({ capabilities: [] })) || { capabilities: [] };
       return compareAppPackages({
         agentCapabilities: Array.isArray(agentStatus.capabilities) ? agentStatus.capabilities : [],
@@ -1328,7 +1401,7 @@ class AppPackageService {
           revision: instance.sourceRevision,
           trust: instance.sourceTrust,
         } },
-        platformVersion: this.catalogService.platformVersion,
+        platformVersion: this.platformVersion,
       });
     } catch (error) {
       if (error instanceof AppPackageServiceError) throw error;
@@ -1342,7 +1415,7 @@ class AppPackageService {
     if (typeof input.confirmationToken !== 'string' || !/^[a-f0-9]{64}$/u.test(input.confirmationToken)) {
       throw new AppPackageServiceError('APP_UPDATE_CONFIRMATION_INVALID', 'Prepare and confirm this exact app update before staging it.', 400);
     }
-    if (!this.catalogService?.downloadCandidate || !this.agent?.stagePackageUpdate || !this.agent?.buildPackageUpdate) {
+    if (!this.agent?.stagePackageUpdate || !this.agent?.buildPackageUpdate) {
       throw new AppPackageServiceError('APP_UPDATE_STAGING_UNAVAILABLE', 'App update staging is unavailable.', 503);
     }
     const installedPackage = this.installedPackageFor(instance);
@@ -1352,8 +1425,9 @@ class AppPackageService {
     let homepageRollback = null;
     let activatedRuntimes = null;
     let snapshotPromoted = false;
+    let addedConfig = [];
     try {
-      candidate = await this.catalogService.downloadCandidate(packageId);
+      candidate = await this.downloadUpdateCandidate(instance);
       const agentStatus = await this.agent.status();
       const comparison = compareAppPackages({
         agentCapabilities: Array.isArray(agentStatus.capabilities) ? agentStatus.capabilities : [],
@@ -1366,7 +1440,7 @@ class AppPackageService {
           revision: instance.sourceRevision,
           trust: instance.sourceTrust,
         } },
-        platformVersion: this.catalogService.platformVersion,
+        platformVersion: this.platformVersion,
       });
       if (comparison.confirmationToken !== input.confirmationToken) {
         throw new AppPackageServiceError('APP_UPDATE_IDENTITY_CHANGED', 'The installed app or update candidate changed after preview. Review the update again.', 409);
@@ -1374,6 +1448,11 @@ class AppPackageService {
       if (comparison.compatibility === 'unsupported') {
         throw new AppPackageServiceError('APP_UPDATE_UNSUPPORTED', 'This update is not compatible with the current MOS installation.', 409);
       }
+      // A candidate MOS has not reviewed may not quietly widen what it reaches
+      // for. Its route hosts are re-checked against every other installed app, the
+      // same way its install was, so an update cannot take over a web address
+      // another app already answers on.
+      if (candidate.source?.trust !== 'mos-reviewed') this.assertRouteHostsAvailable(candidate.manifest, instance.packageId);
       if (!agentStatus.capabilities?.includes('apps.package.update.stage') || !agentStatus.capabilities?.includes('apps.package.update.build') || agentStatus.contractVersion < 3) {
         throw new AppPackageServiceError('APP_UPDATE_STAGING_UNAVAILABLE', 'The installed app agent cannot stage and build package updates.', 503);
       }
@@ -1401,12 +1480,27 @@ class AppPackageService {
       });
       this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'candidate-staged' });
       lastDurableStage = 'candidate-staged';
-      const candidateConfig = this.store.getAppConfig(instance.id).map((row) => (
+      const installedConfigRows = this.store.getAppConfig(instance.id).map((row) => (
         row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
       ));
+      // Setup values the candidate newly requires are collected in the update
+      // dialog and become config rows here. Only fields the instance does not
+      // already hold are created, so an update never rotates a generated secret or
+      // overwrites a value the owner set.
+      const heldKeys = new Set(installedConfigRows.map((row) => row.key));
+      addedConfig = createConfigRows({
+        input: { config: isRecord(input.config) ? input.config : {} },
+        instanceId: instance.id,
+        manifest: { ...candidate.manifest, setup: { ...candidate.manifest.setup, fields: setupFields(candidate.manifest).filter((field) => !heldKeys.has(field.id)) } },
+        secretDir: this.secretDir,
+      });
+      const candidateConfig = [...installedConfigRows, ...addedConfig];
       let candidatePrivacy = { posture: 'review-required', reviewedAt: null, status: 'review-required' };
       const candidateReviewPath = path.join(candidate.packageDir, 'privacy-review.json');
-      if (fs.existsSync(candidateReviewPath)) {
+      // A package-shipped review counts as a review only from a MOS-reviewed
+      // source. An external candidate can ship a `privacy-review.json` claiming
+      // any posture it likes, so it stays review-required however it updates.
+      if (candidate.source?.trust === 'mos-reviewed' && fs.existsSync(candidateReviewPath)) {
         const review = JSON.parse(fs.readFileSync(candidateReviewPath, 'utf8'));
         const errors = validatePrivacyBinding(review, { manifest: candidate.manifest, packageDigest: candidate.packageDigest, source: candidate.source });
         if (errors.length) throw new AppPackageServiceError('APP_PRIVACY_REVIEW_INVALID', `The candidate privacy review is invalid: ${errors.join(' ')}`, 409);
@@ -1439,9 +1533,15 @@ class AppPackageService {
         && agentStatus.capabilities?.includes('apps.package.update.rollback')
         && agentStatus.capabilities?.includes('apps.package.update.promote')
         && this.agent.activatePackageUpdate && this.agent.rollbackPackageUpdate && this.agent.promotePackageUpdate;
-      if (!canApply) return { built, comparison, operation, staged };
+      if (!canApply) {
+        this.discardCollectedSecrets(instance.id, addedConfig);
+        return { built, comparison, operation, staged };
+      }
 
-      const installedConfig = candidateConfig;
+      // The runtime that has to come back if this update fails is the installed
+      // one, so it is rebuilt from the values it actually runs with rather than
+      // from the candidate's.
+      const installedConfig = installedConfigRows;
       const installedProjections = this.store.getAppProjections(instance.id);
       const homepageWasApplied = homepageProjectionApplied(installedProjections);
       const installedRuntime = updateRuntimeRequest({
@@ -1511,6 +1611,7 @@ class AppPackageService {
       lastDurableStage = 'snapshot-promoted';
       operation = this.store.completeAppUpdate({
         at: this.now().toISOString(),
+        config: addedConfig,
         instance: {
           categorySnapshot: candidate.manifest.category,
           displayNameSnapshot: candidate.manifest.name,
@@ -1529,6 +1630,7 @@ class AppPackageService {
       homepageRollback = null;
       return { activated, built, comparison, homepage, integrations, operation, promoted, staged };
     } catch (error) {
+      this.discardCollectedSecrets(instance.id, addedConfig);
       if (activatedRuntimes && !snapshotPromoted) {
         try {
           await this.agent.rollbackPackageUpdate(activatedRuntimes);

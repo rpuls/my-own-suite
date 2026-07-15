@@ -170,6 +170,39 @@ test('system adapter rejects stale identities and candidate paths outside its pr
   assert.equal(fs.existsSync(path.join(appPackageRoot, instanceId, 'candidate')), false);
 });
 
+// An external app is managed under `x-<namespace>-<manifest id>` while its
+// package keeps declaring the bare id, so its update stages under the namespaced
+// identity. The agent still resolves that identity to exactly one manifest id, so
+// a package can never be staged into an app identity that is not its own.
+test('system adapter stages an external app update under its namespaced identity and refuses a foreign one', async () => {
+  const root = await tempDir();
+  const candidateRoot = path.join(root, 'candidates');
+  const appPackageRoot = path.join(root, 'state');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const packageId = 'x-abcdef01-community-notes';
+  const { packageDir: installedSource, packageDigest: installedDigest } = await writePackage(path.join(root, 'origin'), 'community-notes');
+  const installed = path.join(appPackageRoot, instanceId, 'installed');
+  await fsp.mkdir(path.dirname(installed), { recursive: true });
+  await fsp.cp(installedSource, installed, { recursive: true });
+  const { packageDir: candidatePath } = await writePackage(candidateRoot, 'community-notes');
+  await fsp.writeFile(path.join(candidatePath, 'Dockerfile'), 'FROM scratch\n# updated\n');
+  const candidateDigest = digestAppPackage(candidatePath);
+  const adapter = new SystemAppAdapter({ appCandidateRoot: candidateRoot, appPackageRoot, appsRoot: path.join(root, 'apps') });
+
+  const result = await adapter.stageAppPackageUpdate({ candidateDigest, candidatePath, expectedInstalledDigest: installedDigest, instanceId, packageId });
+
+  assert.equal(result.snapshotPath, path.join(appPackageRoot, instanceId, 'candidate'));
+  assert.equal(digestAppPackage(result.snapshotPath), candidateDigest);
+  assert.equal(digestAppPackage(installed), installedDigest);
+
+  for (const foreignId of ['community-notes-editor', 'x-abcdef01-other-notes']) {
+    await assert.rejects(
+      () => adapter.stageAppPackageUpdate({ candidateDigest, candidatePath, expectedInstalledDigest: installedDigest, instanceId, packageId: foreignId }),
+      (error) => error.code === 'APP_UPDATE_IDENTITY_CHANGED',
+    );
+  }
+});
+
 test('system adapter builds, runs, health-checks, writes routes, and reloads Caddy', async () => {
   const root = await tempDir();
   const routesPath = path.join(root, 'routes.caddy');

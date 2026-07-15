@@ -22,15 +22,25 @@ type CatalogStatus = { error: { code: string; message: string } | null; fetchedA
 type CatalogUpdate = {
   available: { compatibility: 'compatible' | 'requires-platform-update'; minimumMosVersion: string; packageDigest: string; packageVersion: string; privacy: { status: string }; sourceRevision: string } | null;
   installed: { packageDigest: string; packageVersion: string } | null;
-  status: 'current' | 'installable' | 'installed-newer' | 'integrity-error' | 'not-in-catalog' | 'unavailable' | 'update-available';
+  // `external-source` means the app came from a pasted repository rather than the
+  // reviewed catalog, so only that repository knows whether a newer package
+  // exists and the owner checks on demand.
+  status: 'current' | 'external-source' | 'installable' | 'installed-newer' | 'integrity-error' | 'not-in-catalog' | 'unavailable' | 'update-available';
 };
 type UpdateComparison = {
   candidate: { packageVersion: string; privacy: PrivacyReviewSummary };
   changes: Array<{ area: string; classification: string; summary: string }>;
   compatibility: 'compatible' | 'owner-action-required' | 'unsupported' | 'unresolved';
+  // Binds an apply to the exact pair of packages that were compared here. The
+  // backend re-compares and refuses the apply if either side moved since.
+  confirmationToken: string;
   installed: { packageVersion: string; privacy: PrivacyReviewSummary };
   metadata: { backupRequired: boolean; downtime: string; migrations: string[]; ownerActions: string[]; rollback: string };
+  // What the candidate asks MOS for, and what it asks for that the installed
+  // version does not already have.
+  permissions: { added: string[]; candidate: string[]; installed: string[]; removed: string[] };
   requiredInput: Array<{ id: string; label: string; secret: boolean; type: string }>;
+  updateStatus: 'current' | 'installed-newer' | 'integrity-error' | 'update-available';
   validation: { agentCapability: string; errors: string[] };
 };
 
@@ -546,6 +556,7 @@ function AppDetail({
   onConnect,
   onGuideStatus,
   onSelect,
+  onUpdated,
   packages,
   guideUpdating,
   owner,
@@ -561,6 +572,7 @@ function AppDetail({
   onConnect: (connection: NonNullable<AppPackageSummary['compatibility']>['connections'][number]) => void;
   onGuideStatus: (app: AppPackageSummary, status: 'viewed' | 'completed' | 'skipped') => void;
   onSelect: (app: AppPackageSummary) => void;
+  onUpdated: () => Promise<void>;
   packages: AppPackageSummary[];
   guideUpdating: boolean;
   owner: Owner;
@@ -575,6 +587,8 @@ function AppDetail({
   const [comparisonError, setComparisonError] = useState('');
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [updateInput, setUpdateInput] = useState<Record<string, string>>({});
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState('');
   const ready = runtimeApplied(app);
   const homepageAvailable = hasHomepageContribution(app);
   const primaryDestination = hasPrimaryAppDestination(app);
@@ -589,6 +603,13 @@ function AppDetail({
     : packages.filter((item) => primaryCategory(item) === primaryCategory(app) && item.id !== app.id).slice(0, 3).map((item) => item.id);
   const related = relatedIds.map((id) => packages.find((item) => item.id === id)).filter(Boolean) as AppPackageSummary[];
   const canInstall = app.validation.valid && !requiredSetupMissing(app, setupConfig) && !installing;
+  // An update applies only when there is a newer package to apply, MOS can apply
+  // it safely, and every value the new version newly requires has been given.
+  const canApplyUpdate = Boolean(comparison)
+    && comparison!.updateStatus === 'update-available'
+    && comparison!.compatibility !== 'unsupported'
+    && comparison!.requiredInput.every((field) => (updateInput[field.id] || '').trim())
+    && !applying;
   const connections = app.compatibility?.connections || [];
   const missingUsefulPeers = app.compatibility?.missingUsefulPeers || [];
   const installedCompatiblePeers = packages.filter((item) => item.id !== app.id && item.instance && item.capabilities.exports.some((capability) => app.capabilities.usefulness.requiresOneOf.includes(capability.type)));
@@ -603,6 +624,7 @@ function AppDetail({
     setComparison(null);
     setComparisonError('');
     setUpdateInput({});
+    setApplyError('');
   }, [app.id, owner.email]);
 
   async function prepareUpdate() {
@@ -612,8 +634,33 @@ function AppDetail({
       const result = await jsonResponse<{ comparison: UpdateComparison }>(await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/prepare-update`, { method: 'POST' }), `Unable to prepare the ${app.name} update.`);
       setComparison(result.comparison);
       setUpdateInput({});
+      setApplyError('');
     } catch (caught) { setComparisonError(caught instanceof Error ? caught.message : 'Unable to prepare this update.'); }
     finally { setComparisonLoading(false); }
+  }
+
+  // Applying is bound to the exact pair of packages this dialog compared. The
+  // backend re-downloads and re-compares both sides and refuses the token if
+  // either moved, so an update can only ever apply what the owner just reviewed.
+  async function applyUpdate() {
+    if (!comparison) return;
+    setApplying(true);
+    setApplyError('');
+    try {
+      await jsonResponse(
+        await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/stage-update`, {
+          body: JSON.stringify({ config: updateInput, confirmationToken: comparison.confirmationToken }),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        }),
+        `Unable to update ${app.name}.`,
+      );
+      setComparison(null);
+      setUpdateInput({});
+      await onUpdated();
+    } catch (caught) {
+      setApplyError(caught instanceof Error ? caught.message : `Unable to update ${app.name}.`);
+    } finally { setApplying(false); }
   }
 
   function submitInstall() {
@@ -698,8 +745,15 @@ function AppDetail({
           <div><span>Installed</span><strong>{app.catalogUpdate.installed?.packageVersion}</strong></div>
           <div><span>Available</span><strong>{app.catalogUpdate.available.packageVersion}</strong></div>
           <div><span>Compatibility</span><strong>{app.catalogUpdate.available.compatibility === 'compatible' ? 'Ready for this MOS version' : `Requires MOS ${app.catalogUpdate.available.minimumMosVersion}`}</strong></div>
-          <p>This candidate is visible for comparison only. Applying app updates will be added in the next implementation phase.</p>
           <button className="mos-btn mos-btn-secondary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking update...' : 'Review update'}</button>
+          {comparisonError ? <p role="alert">{comparisonError}</p> : null}
+        </section> : null}
+
+        {app.catalogUpdate?.status === 'external-source' ? <section className="suite-app-update-summary">
+          <div><span>Installed</span><strong>{app.catalogUpdate.installed?.packageVersion}</strong></div>
+          <div><span>Source</span><strong>The repository you pasted</strong></div>
+          <p>This app did not come from the verified MOS catalog, so MOS does not track its versions. Checking asks its repository directly what it publishes now.</p>
+          <button className="mos-btn mos-btn-secondary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking...' : 'Check for updates'}</button>
           {comparisonError ? <p role="alert">{comparisonError}</p> : null}
         </section> : null}
 
@@ -769,16 +823,40 @@ function AppDetail({
       </div>
     </aside>
     {privacyOpen ? <PrivacyPostureDialog advisories={app.advisories} appName={app.name} onClose={() => setPrivacyOpen(false)} packageVersion={app.instance?.packageVersion || app.version} privacy={app.privacy} /> : null}
-    {comparison ? <Dialog footer={<button className="mos-btn mos-btn-secondary" onClick={() => setComparison(null)} type="button">Close</button>} onClose={() => setComparison(null)} title={`Review ${app.name} update`}>
+    {comparison ? <Dialog
+      footer={<>
+        <button className="mos-btn mos-btn-secondary" disabled={applying} onClick={() => setComparison(null)} type="button">{comparison.updateStatus === 'update-available' ? 'Cancel' : 'Close'}</button>
+        {comparison.updateStatus === 'update-available' ? <button className="mos-btn mos-btn-primary" disabled={!canApplyUpdate} onClick={() => void applyUpdate()} type="button">{applying ? 'Updating...' : 'Update'}</button> : null}
+      </>}
+      onClose={() => { if (!applying) setComparison(null); }}
+      title={`Review ${app.name} update`}
+    >
       <div className="suite-app-update-dialog">
-        <Notice title={comparison.compatibility === 'unsupported' ? 'This update cannot be applied safely' : comparison.compatibility === 'owner-action-required' ? 'Your input is required' : 'Ready for confirmation'} variant={comparison.compatibility === 'unsupported' ? 'warning' : 'info'}>
-          <p>Version {comparison.installed.packageVersion} to {comparison.candidate.packageVersion}.</p>
+        <Notice title={updateNoticeTitle(comparison)} variant={comparison.compatibility === 'unsupported' ? 'warning' : 'info'}>
+          <p>{comparison.updateStatus === 'current'
+            ? `${app.name} is already running the newest package its source offers.`
+            : comparison.updateStatus === 'installed-newer'
+              ? `The source offers version ${comparison.candidate.packageVersion}, which is older than the installed ${comparison.installed.packageVersion}. MOS does not downgrade apps.`
+              : `Version ${comparison.installed.packageVersion} to ${comparison.candidate.packageVersion}.`}</p>
         </Notice>
+        {comparison.validation.errors.length ? <Notice title="This update cannot be applied" variant="warning">
+          <ul>{comparison.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul>
+        </Notice> : null}
+        {comparison.permissions.added.length ? <Notice title="This update asks for more access" variant="warning">
+          <p>The installed version does not have this access today. Updating grants it.</p>
+          <ul className="suite-app-permission-list">
+            {comparison.permissions.added.map((permission) => {
+              const described = permissionLabel(permission);
+              return <li key={permission}><strong>{described.label}</strong>{described.detail ? <small>{described.detail}</small> : null}</li>;
+            })}
+          </ul>
+        </Notice> : null}
         <PrivacyChangeRow candidate={comparison.candidate.privacy} candidateVersion={comparison.candidate.packageVersion} installed={comparison.installed.privacy} installedVersion={comparison.installed.packageVersion} />
         <dl><dt>Backup</dt><dd>{comparison.metadata.backupRequired ? 'Required' : 'Not declared as required'}</dd><dt>Downtime</dt><dd>{comparison.metadata.downtime}</dd><dt>Rollback</dt><dd>{comparison.metadata.rollback}</dd></dl>
         {comparison.changes.length ? <ul>{comparison.changes.map((change, index) => <li key={`${change.area}-${index}`}><strong>{change.area}</strong>: {change.summary}</li>)}</ul> : <p>No structural changes detected.</p>}
-        {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} key={field.id} label={field.label} onChange={(event) => setUpdateInput((current) => ({ ...current, [field.id]: event.currentTarget.value }))} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}
-        {comparison.requiredInput.length ? <p className="suite-meta">These values remain in this dialog and are not sent until a future confirmed apply flow is implemented.</p> : null}
+        {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} disabled={applying} key={field.id} label={field.label} onChange={(event) => setUpdateInput((current) => ({ ...current, [field.id]: event.currentTarget.value }))} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}
+        {comparison.requiredInput.length ? <p className="suite-meta">{app.name} needs these values before it can start on the new version. They are stored with this app the same way its other settings are.</p> : null}
+        {applyError ? <Notice title="The update did not finish" variant="warning"><p>{applyError}</p></Notice> : null}
         <details className="suite-advanced"><summary>Advanced details</summary><pre>{JSON.stringify(comparison, null, 2)}</pre></details>
       </div>
     </Dialog> : null}
@@ -803,8 +881,16 @@ function externalDescription(card: ExternalCard) {
   return card.summary || card.homepage?.description || card.catalog.description || 'External MOS app package.';
 }
 
-// Plain-language explanation of one requested permission key so an owner can see
-// exactly what an unverified package would be granted before installing it.
+function updateNoticeTitle(comparison: UpdateComparison): string {
+  if (comparison.updateStatus === 'current') return 'No update available';
+  if (comparison.updateStatus === 'installed-newer') return 'The source offers an older version';
+  if (comparison.compatibility === 'unsupported') return 'This update cannot be applied safely';
+  return comparison.compatibility === 'owner-action-required' ? 'Review this before updating' : 'Ready to update';
+}
+
+// Plain-language explanation of one requested permission key, so an owner can see
+// exactly what a package would be granted before installing it and exactly what
+// an update would add to that.
 function permissionLabel(permission: string): { detail: string; label: string } {
   const separator = permission.indexOf(':');
   const kind = separator === -1 ? permission : permission.slice(0, separator);
@@ -1298,6 +1384,6 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       resolved={externalResolved}
     /> : null}
 
-    {selected ? <AppDetail app={selected} connectingId={connectingId} guideUpdating={guideUpdatingId === selected.id} installing={installingId === selected.id || connectingId.startsWith(`${selected.id}:`)} installError={installError} installSteps={installingId === selected.id || connectingId.startsWith(`${selected.id}:`) || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onConnect={(connection) => void connectPackages(connection)} onGuideStatus={(target, status) => void updateGuideStatus(target, status)} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} owner={owner} packages={packages} /> : null}
+    {selected ? <AppDetail app={selected} connectingId={connectingId} guideUpdating={guideUpdatingId === selected.id} installing={installingId === selected.id || connectingId.startsWith(`${selected.id}:`)} installError={installError} installSteps={installingId === selected.id || connectingId.startsWith(`${selected.id}:`) || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onConnect={(connection) => void connectPackages(connection)} onGuideStatus={(target, status) => void updateGuideStatus(target, status)} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} onUpdated={() => load()} owner={owner} packages={packages} /> : null}
   </section>;
 }

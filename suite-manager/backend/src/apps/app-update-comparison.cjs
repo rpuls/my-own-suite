@@ -2,7 +2,13 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { validatePlatformCompatibility, validatePrivacyBinding } = require('./package-contracts.cjs');
+const {
+  compareSemver,
+  describeRequestedPermissions,
+  diffRequestedPermissions,
+  validatePlatformCompatibility,
+  validatePrivacyBinding,
+} = require('./package-contracts.cjs');
 
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
@@ -15,8 +21,13 @@ function fields(manifest) { return new Map((manifest.setup?.fields || []).map((f
 function volumes(manifest) { return new Set(Object.values(manifest.resources?.services || {}).flatMap((service) => service.volumes || [])); }
 
 function privacyFor(packageDir, manifest, packageDigest, source) {
+  const unreviewed = { dimensions: null, posture: 'review-required', reviewedAt: null, status: 'review-required' };
+  // Only a MOS-reviewed source may have its shipped review presented as a
+  // review. Any other package can put whatever posture it likes in its own
+  // `privacy-review.json`, so the file is not read for it at all.
+  if (source?.trust !== 'mos-reviewed') return unreviewed;
   const reviewPath = path.join(packageDir, 'privacy-review.json');
-  if (!fs.existsSync(reviewPath)) return { dimensions: null, posture: 'review-required', reviewedAt: null, status: 'review-required' };
+  if (!fs.existsSync(reviewPath)) return unreviewed;
   const review = JSON.parse(fs.readFileSync(reviewPath, 'utf8'));
   const errors = validatePrivacyBinding(review, { manifest, packageDigest, source });
   return errors.length
@@ -55,10 +66,32 @@ function compareAppPackages({ candidate, installed, platformVersion, agentCapabi
   const platformErrors = validatePlatformCompatibility(candidate.manifest, platformVersion);
   const requiredAgentVersion = candidate.manifest.update?.minimumAppAgentVersion || 1;
   const agentReady = agentCapabilities.includes('apps.package.snapshot') && agentContractVersion >= requiredAgentVersion;
+  // What the package asks MOS for: web addresses, named storage, integration
+  // slots, capability provision. An update that widens that surface is never
+  // routine. A MOS-reviewed candidate had the increase reviewed, so it is only
+  // reported; anything else needs the owner to consent to the wider access.
+  const installedPermissions = describeRequestedPermissions(installed.manifest);
+  const candidatePermissions = describeRequestedPermissions(candidate.manifest);
+  const addedPermissions = diffRequestedPermissions(installedPermissions, candidatePermissions);
+  const removedPermissions = diffRequestedPermissions(candidatePermissions, installedPermissions);
+  if (addedPermissions.length) {
+    changes.push({
+      area: 'permissions',
+      classification: candidate.source?.trust === 'mos-reviewed' ? 'automatically-handled' : 'operator-action-required',
+      summary: `The update asks for access the installed version does not have: ${addedPermissions.join(', ')}.`,
+    });
+  }
+  // The candidate declaring the installed version number with different contents
+  // is an integrity problem, never a silent update.
+  const versionOrder = compareSemver(candidate.manifest.version, installed.manifest.version);
+  const updateStatus = installed.packageDigest === candidate.packageDigest ? 'current'
+    : versionOrder > 0 ? 'update-available'
+      : versionOrder < 0 ? 'installed-newer'
+        : 'integrity-error';
   const installedPrivacy = privacyFor(installed.packageDir, installed.manifest, installed.packageDigest, installed.source);
   const candidatePrivacy = privacyFor(candidate.packageDir, candidate.manifest, candidate.packageDigest, candidate.source);
   if (!equal(installedPrivacy, candidatePrivacy)) changes.push({ area: 'privacy', classification: candidatePrivacy.status === 'reviewed' ? 'automatically-handled' : 'operator-action-required', summary: installedPrivacy.posture === candidatePrivacy.posture ? 'The privacy assessment changes without changing the overall posture.' : `Privacy posture changes from ${installedPrivacy.posture} to ${candidatePrivacy.posture}.` });
-  const unsupported = platformErrors.length || !agentReady || undeclaredBreaking.length;
+  const unsupported = platformErrors.length || !agentReady || undeclaredBreaking.length || updateStatus === 'integrity-error';
   const ownerAction = requiredInput.length || changes.some((change) => ['migration-required', 'operator-action-required'].includes(change.classification));
   const compatibility = unsupported ? 'unsupported' : ownerAction ? 'owner-action-required' : 'compatible';
   const identity = `${installed.packageDigest}:${candidate.packageDigest}`;
@@ -76,9 +109,19 @@ function compareAppPackages({ candidate, installed, platformVersion, agentCapabi
       rollback: candidate.manifest.update?.rollback || 'not-guaranteed',
     },
     packageId: candidate.manifest.id,
+    permissions: { added: addedPermissions, candidate: candidatePermissions, installed: installedPermissions, removed: removedPermissions },
     requiredInput,
     schemaVersion: 1,
-    validation: { agentCapability: agentReady ? 'compatible' : 'unsupported', errors: [...platformErrors, ...(agentReady ? [] : [`App agent contract ${requiredAgentVersion} is required.`]), ...undeclaredBreaking.map((area) => `Undeclared breaking change: ${area}.`)] },
+    updateStatus,
+    validation: {
+      agentCapability: agentReady ? 'compatible' : 'unsupported',
+      errors: [
+        ...platformErrors,
+        ...(agentReady ? [] : [`App agent contract ${requiredAgentVersion} is required.`]),
+        ...undeclaredBreaking.map((area) => `Undeclared breaking change: ${area}.`),
+        ...(updateStatus === 'integrity-error' ? ['The candidate declares the installed version number with different package contents.'] : []),
+      ],
+    },
   };
 }
 
