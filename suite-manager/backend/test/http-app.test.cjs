@@ -10,6 +10,9 @@ const { loopbackPortFor } = require('../src/apps/app-package-service.cjs');
 const { LoginThrottle } = require('../src/auth/login-throttle.cjs');
 
 const { createV2Server } = require('../src/server/http-app.cjs');
+const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
+const { ExternalSourceService } = require('../src/apps/external-source-service.cjs');
+const { ExternalSourceError } = require('../src/apps/external-source-registry.cjs');
 const appsDir = path.resolve(__dirname, '..', '..', '..', 'apps');
 
 async function tempStateDir() {
@@ -1887,6 +1890,129 @@ test('HTTPS input validation is sanitized and leaves the bootstrap host active',
     const bootstrap = await hostRequest(baseUrl, '/suite-manager/', { headers: { Host: 'home.test' } });
     assert.equal(bootstrap.status, 200);
   }, { homeHost: 'home.test', httpsAgent });
+});
+
+// An external source service backed by an isolated temp store and a fake
+// download client, so the owner-only source routes are exercised without
+// network access. A repository ending in `/hostile` makes the fake client reject
+// the candidate the way the real constrained gate would.
+async function externalSourcesFixture() {
+  const revision = 'b'.repeat(40);
+  const store = new SuiteManagerStore(await tempStateDir());
+  const client = {
+    async resolveRevision(record) { return { ...record, revision }; },
+    async downloadCandidate(record) {
+      if (record.repository.endsWith('/hostile')) throw new ExternalSourceError('CANDIDATE_REJECTED', 'External candidate failed validation: manifest.privileged is not permitted.');
+      const packageId = 'community-notes';
+      return {
+        cleanup: () => {},
+        instanceId: `x-abcdef01-${packageId}`,
+        manifest: { id: packageId, version: '1.0.0' },
+        packageId,
+        permissions: ['route:notes', 'volume:notes-data'],
+        source: { kind: 'external-git', path: '.mos', repository: record.repository, revision, trust: record.trust },
+        trust: record.trust,
+      };
+    },
+  };
+  const service = new ExternalSourceService({ client, now: () => new Date('2026-07-15T10:00:00.000Z'), officialPackageIds: ['immich'], platformVersion: '0.11.0', store });
+  return { service, store };
+}
+
+test('owner-only external source routes require authentication', async () => {
+  const { service, store } = await externalSourcesFixture();
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', { headers: { Host: 'home.test' } });
+    assert.equal(denied.status, 401);
+    assert.equal(denied.json().code, 'AUTH_REQUIRED');
+  }, { externalSources: service, homeHost: 'home.test' });
+  store.close();
+});
+
+test('an owner adds, previews, lists, and removes an external package source', async () => {
+  const { service, store } = await externalSourcesFixture();
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const headers = { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' };
+
+    const added = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', {
+      body: JSON.stringify({ catalogPath: 'apps', publisher: 'community', repository: 'https://github.com/community/apps', trust: 'unverified' }),
+      headers, method: 'POST',
+    });
+    assert.equal(added.status, 201);
+    const source = added.json().source;
+    assert.equal(source.trust, 'unverified');
+    assert.equal(source.mosReviewed, false);
+    assert.equal(source.official, false);
+    assert.equal(source.revision, 'b'.repeat(40));
+
+    const listed = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', { headers: { Cookie: cookie, Host: 'home.test' } });
+    assert.deepEqual(listed.json().sources.map((item) => item.id), [source.id]);
+
+    const preview = await hostRequest(baseUrl, `/suite-manager/api/apps/sources/${source.id}/preview`, { headers, method: 'POST' });
+    assert.equal(preview.status, 200);
+    assert.deepEqual(preview.json().candidate.permissions, ['route:notes', 'volume:notes-data']);
+    assert.equal(preview.json().candidate.mosReviewed, false);
+
+    const removed = await hostRequest(baseUrl, `/suite-manager/api/apps/sources/${source.id}/remove`, { headers, method: 'POST' });
+    assert.equal(removed.status, 200);
+    assert.equal(removed.json().keepsSnapshots, true);
+    assert.equal(removed.json().source.status, 'removed');
+  }, { externalSources: service, homeHost: 'home.test' });
+  store.close();
+});
+
+test('pasting a package URL resolves an external card without persisting a source', async () => {
+  const { service, store } = await externalSourcesFixture();
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const headers = { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' };
+    const resolved = await hostRequest(baseUrl, '/suite-manager/api/apps/sources/resolve', {
+      body: JSON.stringify({ url: 'https://github.com/community/community-notes' }), headers, method: 'POST',
+    });
+    assert.equal(resolved.status, 200);
+    const payload = resolved.json();
+    assert.equal(payload.card.external, true);
+    assert.equal(payload.card.trust, 'unverified');
+    assert.equal(payload.card.mosReviewed, false);
+    assert.equal(payload.source.packageId, 'community-notes');
+
+    const listed = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', { headers: { Cookie: cookie, Host: 'home.test' } });
+    assert.deepEqual(listed.json().sources, []); // preview persists nothing
+
+    const badUrl = await hostRequest(baseUrl, '/suite-manager/api/apps/sources/resolve', {
+      body: JSON.stringify({ url: 'https://gitlab.com/community/notes' }), headers, method: 'POST',
+    });
+    assert.equal(badUrl.status, 400);
+    assert.equal(badUrl.json().code, 'SOURCE_URL_INVALID');
+  }, { externalSources: service, homeHost: 'home.test' });
+  store.close();
+});
+
+test('external source routes reject a bad URL as 400 and a hostile candidate as 422', async () => {
+  const { service, store } = await externalSourcesFixture();
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const headers = { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' };
+
+    const badUrl = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', {
+      body: JSON.stringify({ repository: 'http://github.com/community/apps', trust: 'unverified' }), headers, method: 'POST',
+    });
+    assert.equal(badUrl.status, 400);
+    assert.equal(badUrl.json().code, 'SOURCE_URL_INVALID');
+
+    const added = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', {
+      body: JSON.stringify({ repository: 'https://github.com/community/hostile', trust: 'unverified' }), headers, method: 'POST',
+    });
+    const hostile = await hostRequest(baseUrl, `/suite-manager/api/apps/sources/${added.json().source.id}/preview`, { headers, method: 'POST' });
+    assert.equal(hostile.status, 422);
+    assert.equal(hostile.json().code, 'CANDIDATE_REJECTED');
+
+    const missing = await hostRequest(baseUrl, '/suite-manager/api/apps/sources/src-does-not-exist/remove', { headers, method: 'POST' });
+    assert.equal(missing.status, 404);
+    assert.equal(missing.json().code, 'SOURCE_NOT_FOUND');
+  }, { externalSources: service, homeHost: 'home.test' });
+  store.close();
 });
 
 test('session cookies become Secure only for HTTPS forwarded requests', async () => {

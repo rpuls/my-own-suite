@@ -15,6 +15,9 @@ const { createHomepageProxy } = require('./homepage-proxy.cjs');
 const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
 const { OfficialCatalogError, OfficialCatalogService } = require('../apps/official-catalog-service.cjs');
+const { ExternalSourceService } = require('../apps/external-source-service.cjs');
+const { ExternalSourceError } = require('../apps/external-source-registry.cjs');
+const { inspectAppPackages } = require('../apps/package-manifest.cjs');
 const { BackupAgentClient } = require('../backups/backup-agent-client.cjs');
 const { BackupInventoryService } = require('../backups/backup-inventory-service.cjs');
 const { UpdateAgentClient } = require('../updates/update-agent-client.cjs');
@@ -139,12 +142,35 @@ function readJsonBody(request, maxBytes = 1_000_000) {
   });
 }
 
+// Non-default HTTP statuses for owner-only external source operations. Anything
+// not listed (validation failures such as a bad URL or trust claim) falls back
+// to 400; rejected/malicious candidates surface as 422 so a hostile package is
+// clearly unprocessable rather than a generic bad request.
+const EXTERNAL_SOURCE_STATUS = Object.freeze({
+  CANDIDATE_CONTENTS_INVALID: 422,
+  CANDIDATE_INVALID: 422,
+  CANDIDATE_PATH_INVALID: 422,
+  CANDIDATE_REJECTED: 422,
+  CANDIDATE_SOURCE_INVALID: 422,
+  CANDIDATE_TOO_LARGE: 422,
+  SOURCE_ALREADY_ADDED: 409,
+  SOURCE_FETCH_FAILED: 502,
+  SOURCE_NOT_FOUND: 404,
+  SOURCE_NOT_INSTALLABLE: 409,
+  SOURCE_REDIRECT_REJECTED: 502,
+  SOURCE_STATUS_TRANSITION_INVALID: 409,
+  SOURCE_TOO_LARGE: 502,
+});
+
 function errorStatus(error) {
   if (Number.isInteger(error.statusCode)) {
     return error.statusCode;
   }
   if (error instanceof AppPackageServiceError) {
     return error.statusCode;
+  }
+  if (error instanceof ExternalSourceError) {
+    return EXTERNAL_SOURCE_STATUS[error.code] || 400;
   }
   if (error instanceof HttpsSettingsError) {
     return error.statusCode;
@@ -267,6 +293,7 @@ function createV2Server({
   ownerClaimToken = process.env.MOS_V2_OWNER_CLAIM_TOKEN || '',
   stateDir = path.join(process.cwd(), '.state'),
   officialCatalog = null,
+  externalSources = null,
 } = {}) {
   const setup = new SetupService({ stateDir });
   const httpsSettings = new HttpsSettingsService({
@@ -291,6 +318,12 @@ function createV2Server({
     agent: appAgent,
     appsDir,
     catalogService,
+    store: setup.store,
+  });
+  const externalSourceService = externalSources || new ExternalSourceService({
+    allowLocalSources: process.env.MOS_V2_ALLOW_LOCAL_APP_SOURCES === '1',
+    officialPackageIds: inspectAppPackages(appsDir).map((pkg) => pkg.id),
+    platformVersion: catalogService.platformVersion,
     store: setup.store,
   });
   const backupInventory = new BackupInventoryService({
@@ -623,6 +656,56 @@ function createV2Server({
           });
         }
         return;
+      }
+
+      if (url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources` || url.pathname.startsWith(`${SUITE_MANAGER_API_PREFIX}/apps/sources/`)) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage app package sources.' });
+          return;
+        }
+        if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources`) {
+          jsonResponse(response, 200, { sources: externalSourceService.listSources() });
+          return;
+        }
+        if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources`) {
+          const body = await readJsonBody(request, 8 * 1024);
+          jsonResponse(response, 201, {
+            source: await externalSourceService.addSource({
+              catalogPath: body.catalogPath,
+              kind: body.kind,
+              publisher: body.publisher,
+              repository: body.repository,
+              signature: body.signature,
+              trust: body.trust,
+            }, { ref: typeof body.ref === 'string' && body.ref ? body.ref : 'main' }),
+          });
+          return;
+        }
+        if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources/resolve`) {
+          const body = await readJsonBody(request, 4 * 1024);
+          jsonResponse(response, 200, await externalSourceService.resolveUrl(String(body.url || '')));
+          return;
+        }
+        const sourceStatusMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/sources\/([^/]+)\/status$/u);
+        const sourcePreviewMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/sources\/([^/]+)\/preview$/u);
+        const sourceRemoveMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/sources\/([^/]+)\/remove$/u);
+        if (request.method === 'POST' && sourceStatusMatch) {
+          const body = await readJsonBody(request, 4 * 1024);
+          jsonResponse(response, 200, {
+            source: externalSourceService.setSourceStatus(decodeURIComponent(sourceStatusMatch[1]), String(body.status || ''), typeof body.reason === 'string' ? body.reason : null),
+          });
+          return;
+        }
+        if (request.method === 'POST' && sourcePreviewMatch) {
+          jsonResponse(response, 200, {
+            candidate: await externalSourceService.previewCandidate(decodeURIComponent(sourcePreviewMatch[1])),
+          });
+          return;
+        }
+        if (request.method === 'POST' && sourceRemoveMatch) {
+          jsonResponse(response, 200, await externalSourceService.removeSource(decodeURIComponent(sourceRemoveMatch[1])));
+          return;
+        }
       }
 
       const appIconMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/icon$/u);

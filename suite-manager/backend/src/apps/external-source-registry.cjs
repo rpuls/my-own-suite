@@ -72,7 +72,9 @@ function buildSourceRecord(input, { allowLocalSources = false, now = () => new D
   if (!repository) throw new ExternalSourceError('SOURCE_URL_INVALID', 'A source repository URL is required.');
   const urlErrors = validateSourceUrl(repository, { allowLocalSources });
   if (urlErrors.length) throw new ExternalSourceError('SOURCE_URL_INVALID', urlErrors.join(' '));
-  const catalogPath = String(input?.catalogPath || 'apps').trim();
+  // External packages live in a `.mos/` folder at the repository root, so the
+  // catalog path is fixed by convention rather than supplied by the owner.
+  const catalogPath = String(input?.catalogPath || '.mos').trim();
   if (catalogPath.includes('..') || catalogPath.startsWith('/')) throw new ExternalSourceError('SOURCE_PATH_INVALID', 'Source catalog path must be repository-local.');
   const trust = input?.trust || 'unverified';
   if (!SOURCE_TRUST.has(trust)) throw new ExternalSourceError('SOURCE_TRUST_INVALID', 'External sources may only be publisher-signed or unverified.');

@@ -354,3 +354,16 @@ Consequences:
 - The public repository requires no GitHub credential for branch resolution and no Cloudflare token at installer request time.
 - A branch may move between requests, but every individual installation is pinned to and verifies one exact resolved commit.
 - Stable installer validation remains a release gate after changes reach `main`; development harnesses continuously exercise the same installer contract beforehand.
+
+## 2026-07-15: External App Packages Are Published Via A `.mos/` Folder
+
+Decision: A third party publishes an app package to MOS by committing a `.mos/` folder (manifest, icon, Dockerfiles, declared runtime assets) to the root of a public git repository. MOS identifies an external package by its repository URL alone — one repository is one app — and the package id is read from the downloaded manifest, never from the URL. Git hosts are restricted to an allowlist; only `github.com` is enabled to begin with, with `gitlab.com` and `codeberg.org` reserved as future descriptor entries. Package content is fetched provider-neutrally: MOS resolves the repository ref (or default branch) to an immutable commit, downloads a gzip repo archive at that commit, and extracts only `.mos/` through a hardened tar reader before the existing digest, constrained-capability, and non-impersonation gate runs.
+
+Reason: Publishers should not have to fit a MOS-specific catalog layout or hand MOS a fragile deep link into a subfolder; a conventional root `.mos/` folder mirrors `.github/` and makes the shareable identifier just the repository URL. A host allowlist plus revision-pinned archive download removes arbitrary/credentialed URL surface, and a single archive path keeps multi-host support to a small per-host descriptor rather than three content-API integrations.
+
+Consequences:
+
+- Owners preview an external app by pasting a repository URL into the Apps search; MOS resolves and validates it into an external, unverified app card (with the package's own icon) and persists nothing until the owner installs. Clearing the URL removes the card.
+- External sources use the fixed `.mos` catalog path and `unverified`/`publisher-signed` trust; they can never be `mos-reviewed`, and the impersonation guard still blocks reuse of official ids, reserved prefixes, or self-asserted review.
+- Archive extraction fails closed on symlinks, hard links, devices, extended headers, path traversal, absolute paths, multiple roots, missing manifests, and file/byte-count overruns, and materializes only `.mos/` as the package directory.
+- The download/extract pipeline is host-agnostic; enabling GitLab or Codeberg later is one `HOST_DESCRIPTORS` entry (repo-info, ref→commit, and direct archive URL) plus tests. Nested GitLab subgroups and non-allowlisted hosts are rejected at URL parse time.
