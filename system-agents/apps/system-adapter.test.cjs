@@ -697,6 +697,106 @@ test('a rolled-back update reclaims the images of the candidate it abandoned', a
   assert.deepEqual(removedImages(commands), [candidateImage]);
 });
 
+const fragment = (value) => String(value).replace(/^sha256:/u, '').slice(0, 12);
+const imageFor = (serviceId, packageDigest, revision) => `mos-v2-app-example-tool-${serviceId}:1.0.0-pkg-${fragment(packageDigest)}-src-${fragment(revision)}`;
+
+// An app being uninstalled: its installed snapshot on disk, a route to drop, and
+// an agent that records what it asked docker to do.
+async function uninstallableInstance(root, { instanceId, previousImageTags = null } = {}) {
+  const routesPath = path.join(root, 'routes.caddy');
+  await fsp.writeFile(routesPath, `# mos-v2-app-route:start example-tool
+http://example-tool.mos.home {
+  reverse_proxy http://127.0.0.1:18123
+}
+# mos-v2-app-route:end example-tool
+`);
+  const commands = [];
+  const { installedDigest, instanceRoot } = await updatableInstance(root, { instanceId, previousImageTags });
+  const adapter = new SystemAppAdapter({
+    appPackageRoot: path.join(root, 'packages'),
+    caddyBinary: 'caddy',
+    dockerBinary: 'docker',
+    routesPath,
+    async execute(file, args) { commands.push({ args, file }); },
+  });
+  return { adapter, commands, installedDigest, instanceRoot };
+}
+
+test('an uninstall reclaims its app images and the snapshot directory that outlives the instance', async () => {
+  const root = await tempDir();
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const revision = 'e'.repeat(40);
+  const { adapter, commands, installedDigest, instanceRoot } = await uninstallableInstance(root, { instanceId });
+
+  const result = await adapter.removeAppService({ installedSourceRevision: revision, instanceId, packageId: 'example-tool', serviceIds: ['app', 'db'], volumes: ['data'] });
+
+  assert.equal(result.imagesReclaimed, 2);
+  assert.deepEqual(removedImages(commands), [imageFor('app', installedDigest, revision), imageFor('db', installedDigest, revision)]);
+  assert.ok(result.steps.includes('snapshot-removed'));
+  // The instance row is deleted the moment this returns, so a directory left
+  // here would be unreachable for the rest of the host's life.
+  assert.equal(fs.existsSync(instanceRoot), false);
+});
+
+test('an uninstall reclaims the generation its app kept for rollback', async () => {
+  const root = await tempDir();
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const revision = 'e'.repeat(40);
+  const retained = `mos-v2-app-example-tool-app:0.9.0-pkg-${'a'.repeat(12)}-src-${'b'.repeat(12)}`;
+  const { adapter, commands, installedDigest } = await uninstallableInstance(root, { instanceId, previousImageTags: [retained] });
+
+  const result = await adapter.removeAppService({ installedSourceRevision: revision, instanceId, packageId: 'example-tool', serviceIds: ['app', 'db'] });
+
+  // Nothing is rolling back to a package that is being uninstalled.
+  assert.equal(result.imagesReclaimed, 3);
+  assert.deepEqual(removedImages(commands), [imageFor('app', installedDigest, revision), imageFor('db', installedDigest, revision), retained]);
+});
+
+test('an uninstall from a Suite Manager that cannot name the snapshot still uninstalls', async () => {
+  const root = await tempDir();
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const { adapter, commands, instanceRoot } = await uninstallableInstance(root, { instanceId });
+
+  const result = await adapter.removeAppService({ packageId: 'example-tool', serviceIds: ['app', 'db'], volumes: ['data'] });
+
+  // Leaking a snapshot and its images is the price of an older Suite Manager,
+  // and a far better one than an uninstall that refuses to run at all.
+  assert.equal(result.imagesReclaimed, 0);
+  assert.deepEqual(removedImages(commands), []);
+  assert.ok(result.steps.includes('stopped'));
+  assert.equal(fs.existsSync(instanceRoot), true);
+});
+
+test('an uninstall never reclaims images for a package its snapshot is not', async () => {
+  const root = await tempDir();
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const retained = `mos-v2-app-other-app-app:0.9.0-pkg-${'a'.repeat(12)}-src-${'b'.repeat(12)}`;
+  const { adapter, commands, instanceRoot } = await uninstallableInstance(root, { instanceId, previousImageTags: [retained] });
+
+  const result = await adapter.removeAppService({ installedSourceRevision: 'e'.repeat(40), instanceId, packageId: 'other-app', serviceIds: ['app'] });
+
+  // The snapshot holds example-tool, so nothing here can name an image of the
+  // app the caller claims to be uninstalling except the tags it recorded itself.
+  assert.deepEqual(removedImages(commands), [retained]);
+  assert.equal(result.imagesReclaimed, 1);
+  assert.equal(fs.existsSync(instanceRoot), false);
+});
+
+test('an uninstall survives an image docker will not remove', async () => {
+  const root = await tempDir();
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const { adapter, instanceRoot } = await uninstallableInstance(root, { instanceId });
+  adapter.execute = async (file, args) => {
+    if (args[0] === 'image' && args[1] === 'rm') throw new Error('image is being used by running container');
+  };
+
+  const result = await adapter.removeAppService({ installedSourceRevision: 'e'.repeat(40), instanceId, packageId: 'example-tool', serviceIds: ['app'] });
+
+  assert.equal(result.imagesReclaimed, 0);
+  assert.ok(result.steps.includes('stopped'));
+  assert.equal(fs.existsSync(instanceRoot), false);
+});
+
 test('system adapter checks app health with a short refresh budget', async () => {
   const calls = [];
   const adapter = new SystemAppAdapter({

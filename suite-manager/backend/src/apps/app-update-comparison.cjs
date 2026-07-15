@@ -6,6 +6,7 @@ const {
   compareSemver,
   describeRequestedPermissions,
   diffRequestedPermissions,
+  validateArchitectureCompatibility,
   validatePlatformCompatibility,
   validatePrivacyBinding,
 } = require('./package-contracts.cjs');
@@ -35,7 +36,7 @@ function privacyFor(packageDir, manifest, packageDigest, source) {
     : { dimensions: review.dimensions || null, posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
 }
 
-function compareAppPackages({ candidate, installed, platformVersion, agentCapabilities = [], agentContractVersion = 0 }) {
+function compareAppPackages({ candidate, installed, platformVersion, agentCapabilities = [], agentContractVersion = 0, hostArchitecture = null }) {
   const changes = [];
   const breakingAreas = new Set();
   const installedFields = fields(installed.manifest);
@@ -63,7 +64,13 @@ function compareAppPackages({ candidate, installed, platformVersion, agentCapabi
   const declaredBreaking = new Set(candidate.manifest.update?.breakingChanges || []);
   const undeclaredBreaking = [...breakingAreas].filter((area) => !declaredBreaking.has(area));
   if (undeclaredBreaking.length) changes.push({ area: 'manifest', classification: 'unsupported', summary: `Breaking changes are not declared for: ${undeclaredBreaking.join(', ')}.` });
-  const platformErrors = validatePlatformCompatibility(candidate.manifest, platformVersion);
+  // An update may narrow the architectures it runs on, and the host it is
+  // running on is not one the owner can change. Refusing here keeps that
+  // discovery in the preview instead of in a build that cannot pull its images.
+  const platformErrors = [
+    ...validatePlatformCompatibility(candidate.manifest, platformVersion),
+    ...validateArchitectureCompatibility(candidate.manifest, hostArchitecture),
+  ];
   const requiredAgentVersion = candidate.manifest.update?.minimumAppAgentVersion || 1;
   const agentReady = agentCapabilities.includes('apps.package.snapshot') && agentContractVersion >= requiredAgentVersion;
   // What the package asks MOS for: web addresses, named storage, integration

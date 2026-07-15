@@ -1,8 +1,9 @@
 {
   "id": "immich",
   "name": "Immich",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "minimumMosVersion": "0.1.0",
+  "architectures": ["amd64"],
   "summary": "High performance self-hosted photo and video backup solution.",
   "category": "media",
   "icon": "icon.png",

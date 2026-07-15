@@ -17,6 +17,7 @@ const {
   parseNamespacedPackageId,
   validateAdvisory,
   validateAdvisoryIndex,
+  validateArchitectureCompatibility,
   validateCatalog,
   validateConstrainedCapabilities,
   validateExternalIdentity,
@@ -98,6 +99,35 @@ test('platform minimum version rejects incompatible candidates', () => {
     'Package requires MOS 99.0.0 or newer; current version is 0.11.0.',
   ]);
   assert.deepEqual(validatePlatformCompatibility({ minimumMosVersion: '0.10.0' }, '0.11.0'), []);
+});
+
+test('a package is refused on a host it says it does not run on', () => {
+  assert.deepEqual(validateArchitectureCompatibility({ architectures: ['amd64'] }, 'arm64'), [
+    'Package runs on amd64; this host is arm64.',
+  ]);
+  assert.deepEqual(validateArchitectureCompatibility({ architectures: ['amd64'] }, 'amd64'), []);
+  assert.deepEqual(validateArchitectureCompatibility({ architectures: ['amd64', 'arm64'] }, 'arm64'), []);
+});
+
+// The check explains a build failure that was already coming. Neither unknown is
+// evidence of one, so neither may invent a refusal: an undeclared package is
+// every package written before the field existed, and an unidentified host would
+// otherwise have every declaring package blocked on it.
+test('nothing is refused for an architecture no one has named', () => {
+  assert.deepEqual(validateArchitectureCompatibility({ id: 'example' }, 'arm64'), []);
+  assert.deepEqual(validateArchitectureCompatibility({ architectures: ['amd64'] }, null), []);
+  assert.deepEqual(validateArchitectureCompatibility({ architectures: ['amd64'] }, 'riscv64'), []);
+});
+
+// A declaration MOS cannot read is not a declaration it may ignore: ignoring it
+// would silently drop the constraint the package meant to state.
+test('an unreadable architecture declaration is refused rather than skipped', () => {
+  const expected = ['Package architectures must be a non-empty list of amd64, arm64.'];
+  assert.deepEqual(validateArchitectureCompatibility({ architectures: [] }, 'amd64'), expected);
+  assert.deepEqual(validateArchitectureCompatibility({ architectures: 'amd64' }, 'amd64'), expected);
+  assert.deepEqual(validateArchitectureCompatibility({ architectures: ['amd64', 'sparc'] }, 'amd64'), expected);
+  // Refused even when the host is unknown: the declaration is broken either way.
+  assert.deepEqual(validateArchitectureCompatibility({ architectures: ['sparc'] }, null), expected);
 });
 
 test('catalog validation fails closed on malformed identity and privacy metadata', () => {

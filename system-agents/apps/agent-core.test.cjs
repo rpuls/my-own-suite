@@ -29,8 +29,17 @@ const request = {
 test('app agent exposes only narrow app runtime capabilities', async () => {
   const core = new AppAgentCore({ applyAppServices: async () => ({ steps: [] }), checkAppHealth: async () => ({}) });
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote', 'apps.package.update.reclaim']);
-  assert.equal(status.contractVersion, 8);
+  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote', 'apps.package.update.reclaim', 'apps.package.remove.reclaim']);
+  assert.equal(status.contractVersion, 9);
+});
+
+// The agent runs on the host and is what invokes `docker build`, so it answers
+// for the host rather than letting Suite Manager infer one from its own
+// container. A host it has no name for is reported as unknown, never guessed.
+test('app agent answers for the architecture of the host it builds on', async () => {
+  const status = await new AppAgentCore({}).status();
+  assert.equal(status.hostArchitecture, { arm64: 'arm64', x64: 'amd64' }[process.arch] || null);
+  assert.ok(status.hostArchitecture === null || ['amd64', 'arm64'].includes(status.hostArchitecture));
 });
 
 test('app update promotion accepts only digest-bound snapshot identity', async () => {
@@ -348,6 +357,46 @@ test('app remove accepts only package-scoped removal fields and delegates volume
   await assert.rejects(() => core.remove({ packageId: 'example-tool', volumes: ['../bad'] }), AppRuntimeError);
   await assert.rejects(() => core.remove({ packageId: '../example-tool' }), AppRuntimeError);
   await assert.rejects(() => core.remove({ packageId: 'example-tool', services: ['../bad'] }), AppRuntimeError);
+});
+
+test('app remove takes the instance and revision that name what an uninstall leaves behind', async () => {
+  const calls = [];
+  const core = new AppAgentCore({
+    async removeAppService(input) {
+      calls.push(input);
+      return { imagesReclaimed: 2, steps: ['stopped', 'images-reclaimed', 'snapshot-removed'] };
+    },
+  });
+
+  const result = await core.remove({
+    installedSourceRevision: request.sourceRevision,
+    instanceId: request.instanceId,
+    packageId: 'example-tool',
+    services: ['web'],
+    volumes: ['data'],
+  });
+
+  assert.equal(result.status, 'removed');
+  assert.equal(result.imagesReclaimed, 2);
+  assert.deepEqual(calls[0], {
+    installedSourceRevision: request.sourceRevision,
+    instanceId: request.instanceId,
+    packageId: 'example-tool',
+    serviceIds: ['web'],
+    volumes: ['data'],
+  });
+  await assert.rejects(() => core.remove({ instanceId: 'not-a-uuid', packageId: 'example-tool' }), AppRuntimeError);
+  await assert.rejects(() => core.remove({ installedSourceRevision: 'HEAD', instanceId: request.instanceId, packageId: 'example-tool' }), AppRuntimeError);
+  await assert.rejects(() => core.remove({ instanceId: request.instanceId, packageId: 'example-tool', unexpected: 'x' }), AppRuntimeError);
+});
+
+// A stop is reversible and an uninstall is not, so the fields that discard a
+// snapshot must not be reachable through the one that only halts a runtime.
+test('app stop cannot name an instance snapshot to discard', async () => {
+  const core = new AppAgentCore({ async stopAppService() { return { steps: ['stopped'] }; } });
+
+  await assert.rejects(() => core.stop({ instanceId: request.instanceId, packageId: 'example-tool' }), AppRuntimeError);
+  await assert.rejects(() => core.stop({ installedSourceRevision: request.sourceRevision, packageId: 'example-tool' }), AppRuntimeError);
 });
 
 test('app stop accepts only package service ids and leaves route removal to uninstall', async () => {

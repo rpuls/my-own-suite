@@ -1,6 +1,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { SUPPORTED_ARCHITECTURES } = require('./package-contracts.cjs');
+
 const MANIFEST_FILENAME = 'manifest.json';
 const APP_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const ENV_KEY_PATTERN = /^[A-Z_][A-Z0-9_]*$/u;
@@ -703,7 +705,14 @@ function validateAppPackageManifest(manifest, { packageDir = null } = {}) {
   if (!hasText(manifest.name)) errors.push('name is required.');
   if (!SEMVERISH_PATTERN.test(String(manifest.version || ''))) errors.push('version must be semver-like.');
   if (!SEMVERISH_PATTERN.test(String(manifest.minimumMosVersion || ''))) errors.push('minimumMosVersion must be semver-like.');
-  if (!SEMVERISH_PATTERN.test(String(manifest.minimumMosVersion || ''))) errors.push('minimumMosVersion must be semver-like.');
+  // Optional: a package that names no architectures is taken to run on all of
+  // them, which is what every package predating this field was assumed to do.
+  if (manifest.architectures !== undefined
+    && (!isStringArray(manifest.architectures)
+      || manifest.architectures.length === 0
+      || manifest.architectures.some((architecture) => !SUPPORTED_ARCHITECTURES.includes(architecture)))) {
+    errors.push(`architectures must be a non-empty array of ${SUPPORTED_ARCHITECTURES.join(', ')} when present.`);
+  }
   if (!hasText(manifest.summary)) errors.push('summary is required.');
   if (!hasText(manifest.category)) errors.push('category is required.');
   if (manifest.packageFiles !== undefined) {

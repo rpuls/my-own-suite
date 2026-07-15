@@ -169,7 +169,10 @@ test('Immich package is discoverable and declares its heavy multi-service stack 
 
   assert.ok(immich);
   assert.equal(immich.manifest.name, 'Immich');
-  assert.equal(immich.manifest.version, '0.2.0');
+  assert.equal(immich.manifest.version, '0.3.0');
+  // Every base image here is pinned to an amd64 manifest, so this package cannot
+  // build anywhere else. Declaring it is what lets MOS say so before the build.
+  assert.deepEqual(immich.manifest.architectures, ['amd64']);
   assert.equal(immich.manifest.catalog.complexity.level, 'advanced');
   assert.deepEqual(Object.keys(immich.manifest.resources.services).sort(), [
     'immich-machine-learning',
@@ -205,6 +208,19 @@ test('manifest validation accepts companion packages without Homepage metadata',
   });
 
   assert.deepEqual(validateAppPackageManifest(manifest), []);
+});
+
+// A package names the architectures its pinned base images actually publish.
+// Naming none is how every package predating the field reads, and means MOS
+// constrains nothing; naming one MOS has no builder for is an authoring mistake
+// worth catching here rather than at install on somebody else's host.
+test('manifest validation accepts declared architectures and rejects unbuildable ones', () => {
+  assert.deepEqual(validateAppPackageManifest(validManifest({ architectures: ['amd64', 'arm64'] })), []);
+  assert.deepEqual(validateAppPackageManifest(validManifest({ architectures: undefined })), []);
+  const expected = ['architectures must be a non-empty array of amd64, arm64 when present.'];
+  assert.deepEqual(validateAppPackageManifest(validManifest({ architectures: [] })), expected);
+  assert.deepEqual(validateAppPackageManifest(validManifest({ architectures: 'amd64' })), expected);
+  assert.deepEqual(validateAppPackageManifest(validManifest({ architectures: ['x86_64'] })), expected);
 });
 
 test('manifest validation accepts structured optional catalog presentation metadata', () => {

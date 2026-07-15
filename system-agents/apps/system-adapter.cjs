@@ -709,7 +709,36 @@ class SystemAppAdapter {
     }
   }
 
-  async removeAppService({ packageId, serviceIds = [], volumes = [] }) {
+  // Everything an uninstalled app leaves behind on disk. The instance row is
+  // deleted as soon as this returns, taking with it the only reference to this
+  // directory and to the revision that names the images built from it, so
+  // whatever is not reclaimed here is unreachable for good. An older Suite
+  // Manager names no instance, and then this is skipped entirely.
+  async discardInstanceSnapshot({ installedSourceRevision, instanceId, packageId }) {
+    if (!instanceId) return { imagesReclaimed: 0, snapshotRemoved: false };
+    const instanceRoot = path.join(this.appPackageRoot, instanceId);
+    const installed = path.join(instanceRoot, 'installed');
+    let superseded = [];
+    if (installedSourceRevision) {
+      try {
+        // Named from the snapshot on disk and digested here rather than taken
+        // from the caller: a package that is not the one this instance installed
+        // yields tags that name nothing, and nothing is reclaimed.
+        const manifest = JSON.parse(await fsp.readFile(path.join(installed, 'manifest.json'), 'utf8'));
+        if (manifest.id === expectedManifestId(packageId)) {
+          superseded = packageImageTags({ manifest, packageDigest: digestAppPackage(installed, { manifest }), packageId, sourceRevision: installedSourceRevision });
+        }
+      } catch {
+        superseded = [];
+      }
+    }
+    const retained = await readRetainedImageTags(path.join(instanceRoot, 'previous-images.json'));
+    const imagesReclaimed = await this.reclaimImages([...superseded, ...retained]);
+    const snapshotRemoved = await fsp.rm(instanceRoot, { force: true, recursive: true }).then(() => true, () => false);
+    return { imagesReclaimed, snapshotRemoved };
+  }
+
+  async removeAppService({ installedSourceRevision, instanceId, packageId, serviceIds = [], volumes = [] }) {
     const routeSnapshot = `${this.routesPath}.before-${process.pid}`;
     let routesChanged = false;
     try {
@@ -741,7 +770,21 @@ class SystemAppAdapter {
         await fsp.rm(`${routeSnapshot}.missing`, { force: true }).catch(() => {});
       }
 
-      return { steps: ['stopped', ...(volumes.length ? ['volumes-removed'] : []), ...(routesChanged ? ['route-removed', 'caddy-reloaded'] : [])] };
+      // Last, and unable to fail the uninstall: the containers, volumes, and
+      // route are already gone by this point, so reporting a failure here would
+      // describe an app that no longer exists as still installed.
+      const { imagesReclaimed, snapshotRemoved } = await this.discardInstanceSnapshot({ installedSourceRevision, instanceId, packageId })
+        .catch(() => ({ imagesReclaimed: 0, snapshotRemoved: false }));
+      return {
+        imagesReclaimed,
+        steps: [
+          'stopped',
+          ...(volumes.length ? ['volumes-removed'] : []),
+          ...(routesChanged ? ['route-removed', 'caddy-reloaded'] : []),
+          ...(imagesReclaimed ? ['images-reclaimed'] : []),
+          ...(snapshotRemoved ? ['snapshot-removed'] : []),
+        ],
+      };
     } catch {
       if (routesChanged) {
         await restore(routeSnapshot, this.routesPath).catch(() => {});

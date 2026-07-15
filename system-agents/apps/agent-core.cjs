@@ -11,6 +11,15 @@ function exactKeys(value, expected) {
   return keys.join(',') === [...expected].sort().join(',');
 }
 
+// `exactKeys` for requests where some documented fields are optional: every key
+// present must be one the request allows, and the required ones must all be
+// there. Spelling the combinations out instead takes 2^n key lists.
+function allowedKeys(value, { optional = [], required = [] }) {
+  const keys = Object.keys(value && typeof value === 'object' && !Array.isArray(value) ? value : {});
+  const allowed = new Set([...required, ...optional]);
+  return keys.every((key) => allowed.has(key)) && required.every((key) => keys.includes(key));
+}
+
 function assertString(value, label, pattern = /^.+$/u) {
   if (typeof value !== 'string' || !pattern.test(value)) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', `${label} is invalid.`);
@@ -19,6 +28,12 @@ function assertString(value, label, pattern = /^.+$/u) {
 
 const DNS_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const ENV_KEY_PATTERN = /^[A-Z_][A-Z0-9_]*$/u;
+// This agent is the process that runs `docker build`, so it is the only thing
+// that knows what this host is; Suite Manager may well be a container built for
+// something else. A host outside this map reports null rather than a guess: not
+// knowing is what an older agent already reports, and both mean the same thing
+// to the caller, so neither can block a package.
+const HOST_ARCHITECTURES = Object.freeze({ arm64: 'arm64', x64: 'amd64' });
 const PACKAGE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const SEMVERISH_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u;
 const SAFE_DOCKERFILE_PATTERN = /^(?:Dockerfile|Dockerfile\.[a-z0-9][a-z0-9-]*)$/u;
@@ -145,16 +160,21 @@ function assertHealthCheckRequest(input) {
   return input.health;
 }
 
-function assertRuntimeRemoveRequest(input, { allowVolumes = false } = {}) {
-  const accepted = [
-    ['packageId'],
-    ['packageId', 'services'],
-    ...(allowVolumes ? [['packageId', 'volumes'], ['packageId', 'services', 'volumes']] : []),
+// `allowInstance` is what separates an uninstall from a stop: only an uninstall
+// may name the instance whose snapshot and images are to be discarded, so a stop
+// cannot reach either.
+function assertRuntimeRemoveRequest(input, { allowInstance = false, allowVolumes = false } = {}) {
+  const optional = [
+    'services',
+    ...(allowVolumes ? ['volumes'] : []),
+    ...(allowInstance ? ['installedSourceRevision', 'instanceId'] : []),
   ];
-  if (!accepted.some((keys) => exactKeys(input, keys))) {
+  if (!allowedKeys(input, { optional, required: ['packageId'] })) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app runtime removal fields are accepted.');
   }
   assertString(input.packageId, 'packageId', PACKAGE_ID_PATTERN);
+  if (input.instanceId !== undefined) assertString(input.instanceId, 'instanceId', /^[0-9a-f-]{36}$/u);
+  if (input.installedSourceRevision !== undefined) assertString(input.installedSourceRevision, 'installedSourceRevision', SOURCE_REVISION_PATTERN);
   const services = input.services === undefined ? [] : input.services;
   if (!Array.isArray(services) || services.length > 8 || services.some((service) => !DNS_LABEL_PATTERN.test(String(service)))) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The app runtime removal service list is invalid.');
@@ -163,7 +183,7 @@ function assertRuntimeRemoveRequest(input, { allowVolumes = false } = {}) {
   if (!Array.isArray(volumes) || volumes.length > 16 || volumes.some((volume) => !DNS_LABEL_PATTERN.test(String(volume)))) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The app runtime removal volume list is invalid.');
   }
-  return { packageId: input.packageId, services, volumes };
+  return { installedSourceRevision: input.installedSourceRevision, instanceId: input.instanceId, packageId: input.packageId, services, volumes };
 }
 
 function assertNetworkConnectRequest(input) {
@@ -346,8 +366,9 @@ class AppAgentCore {
 
   async status() {
     return {
-      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote', 'apps.package.update.reclaim'],
-      contractVersion: 8,
+      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote', 'apps.package.update.reclaim', 'apps.package.remove.reclaim'],
+      contractVersion: 9,
+      hostArchitecture: HOST_ARCHITECTURES[process.arch] || null,
       service: 'mos-v2-app-agent',
     };
   }
@@ -445,8 +466,14 @@ class AppAgentCore {
   }
 
   async remove(input) {
-    const { packageId, services, volumes } = assertRuntimeRemoveRequest(input, { allowVolumes: true });
-    const result = await this.adapter.removeAppService({ packageId, serviceIds: services, volumes });
+    const { installedSourceRevision, instanceId, packageId, services, volumes } = assertRuntimeRemoveRequest(input, { allowInstance: true, allowVolumes: true });
+    const result = await this.adapter.removeAppService({
+      ...(instanceId ? { instanceId } : {}),
+      ...(installedSourceRevision ? { installedSourceRevision } : {}),
+      packageId,
+      serviceIds: services,
+      volumes,
+    });
     return {
       ...result,
       packageId,

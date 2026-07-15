@@ -52,6 +52,23 @@ function writePrivacyReview(appPkg, posture, dimensions) {
   }, null, 2)}\n`);
 }
 
+// An update is free to drop an architecture, and the host is not something the
+// owner can change in response. The preview has to say so, because the only
+// other place it surfaces is a build that cannot pull its images.
+test('an update that drops this host architecture is unsupported before it is staged', (t) => {
+  const installed = appPackage('1.0.0');
+  const candidate = appPackage('2.0.0', (manifest) => ({ ...manifest, architectures: ['amd64'] }));
+  t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
+  const input = { agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' };
+  const refused = compareAppPackages({ ...input, hostArchitecture: 'arm64' });
+  assert.equal(refused.compatibility, 'unsupported');
+  assert.deepEqual(refused.validation.errors, ['Package runs on amd64; this host is arm64.']);
+  assert.equal(compareAppPackages({ ...input, hostArchitecture: 'amd64' }).compatibility, 'compatible');
+  // An agent too old to report a host leaves the update exactly as it was before
+  // this check existed, rather than blocking every declaring package.
+  assert.equal(compareAppPackages(input).compatibility, 'compatible');
+});
+
 test('comparison is deterministic and refuses undeclared required-field and volume breaks', (t) => {
   const installed = appPackage('1.0.0');
   const candidate = appPackage('2.0.0', (manifest) => {

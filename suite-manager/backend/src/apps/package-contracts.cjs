@@ -14,6 +14,9 @@ const PACKAGE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const SEMVER_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$/u;
 const SOURCE_KINDS = new Set(['external-git', 'local', 'official-git']);
 const TRUST_LEVELS = new Set(['mos-reviewed', 'publisher-signed', 'unverified']);
+// The architectures MOS runs on. A package names the ones its pinned base images
+// actually publish, which is knowable only to whoever pinned them.
+const SUPPORTED_ARCHITECTURES = Object.freeze(['amd64', 'arm64']);
 const CATALOG_REFRESH_POLICY = Object.freeze({
   advisoryIntervalMs: 60 * 60 * 1000,
   backoffInitialMs: 5 * 60 * 1000,
@@ -167,6 +170,30 @@ function validatePlatformCompatibility(manifest, platformVersion) {
   const comparison = compareSemver(platformVersion, manifest?.minimumMosVersion);
   if (comparison === null) return ['Platform and minimum MOS versions must be semver-like.'];
   return comparison < 0 ? [`Package requires MOS ${manifest.minimumMosVersion} or newer; current version is ${platformVersion}.`] : [];
+}
+
+// A package's base images are pinned by digest, and a digest resolves to one
+// architecture's image or to none at all. Nothing here can inspect a registry to
+// find out which, so `architectures` is the publisher's declaration of what they
+// pinned, checked against the host before MOS builds rather than after docker
+// fails on it. It is a compatibility check, not a trust control: a package that
+// cannot run here cannot harm the host either, and a wrong declaration only
+// produces the same build failure it would have produced anyway.
+//
+// Both unknowns mean "no constraint", because neither is evidence of a mismatch:
+// a package that declares nothing is every package written before this field
+// existed, and a host MOS cannot identify would otherwise have every package
+// blocked on it.
+function validateArchitectureCompatibility(manifest, hostArchitecture) {
+  const declared = manifest?.architectures;
+  if (declared === undefined) return [];
+  if (!Array.isArray(declared) || declared.length === 0 || declared.some((architecture) => !SUPPORTED_ARCHITECTURES.includes(architecture))) {
+    return [`Package architectures must be a non-empty list of ${SUPPORTED_ARCHITECTURES.join(', ')}.`];
+  }
+  if (!SUPPORTED_ARCHITECTURES.includes(hostArchitecture)) return [];
+  return declared.includes(hostArchitecture)
+    ? []
+    : [`Package runs on ${declared.join(', ')}; this host is ${hostArchitecture}.`];
 }
 
 function validatePrivacyBinding(review, { manifest, packageDigest, source }) {
@@ -409,6 +436,7 @@ module.exports = {
   CATALOG_REFRESH_POLICY,
   CONSTRAINED_CAPABILITY_PROFILE,
   DEFAULT_PACKAGE_LIMITS,
+  SUPPORTED_ARCHITECTURES,
   advisoriesForVersion,
   advisoryAffectsVersion,
   canonicalPackagePath,
@@ -421,6 +449,7 @@ module.exports = {
   parseNamespacedPackageId,
   validateAdvisory,
   validateAdvisoryIndex,
+  validateArchitectureCompatibility,
   validateCatalog,
   validateConstrainedCapabilities,
   validateExternalIdentity,

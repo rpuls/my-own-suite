@@ -7,7 +7,13 @@ const {
   publicPackageSummary,
   readAppPackageManifest,
 } = require('./package-manifest.cjs');
-const { digestAppPackage, parseNamespacedPackageId, validatePrivacyBinding } = require('./package-contracts.cjs');
+const {
+  SUPPORTED_ARCHITECTURES,
+  digestAppPackage,
+  parseNamespacedPackageId,
+  validateArchitectureCompatibility,
+  validatePrivacyBinding,
+} = require('./package-contracts.cjs');
 const { sourceId, sourceInstallable } = require('./external-source-registry.cjs');
 const { AppOperationLimiter } = require('./app-operation-limits.cjs');
 const { compareAppPackages } = require('./app-update-comparison.cjs');
@@ -21,6 +27,16 @@ class AppPackageServiceError extends Error {
     this.code = code;
     this.statusCode = statusCode;
   }
+}
+
+// What the app agent says this host is, or null when it is too old to say, could
+// not be asked, or does not recognise its own host. Validated rather than
+// trusted: this value decides whether packages are refused, so an agent that
+// answers with something MOS has no vocabulary for is treated as having said
+// nothing, which enforces no declaration at all.
+function hostArchitectureOf(agentStatus) {
+  const reported = agentStatus?.hostArchitecture;
+  return SUPPORTED_ARCHITECTURES.includes(reported) ? reported : null;
 }
 
 function stableJson(value) {
@@ -525,6 +541,22 @@ class AppPackageService {
     this.officialRepository = officialRepository;
     this.secretDir = secretDir || path.join(store.stateDir, 'app-secrets');
     this.store = store;
+  }
+
+  // A package's base images are pinned by digest, so one that names an
+  // architecture this host is not cannot pull them and will fail in the middle
+  // of `docker build`, after the download, the gate, and the snapshot have all
+  // passed. Refusing up front turns that into an answer the owner can act on.
+  //
+  // An agent that cannot be asked, or is too old to answer, leaves the host
+  // unknown, and an unknown host enforces nothing: this check exists to explain
+  // a failure that was already coming, so it must never invent one.
+  async assertArchitectureSupported(manifest, agentStatus = null) {
+    const status = agentStatus || await Promise.resolve(this.agent?.status?.()).catch(() => null);
+    const errors = validateArchitectureCompatibility(manifest, hostArchitectureOf(status));
+    if (errors.length) {
+      throw new AppPackageServiceError('APP_ARCHITECTURE_UNSUPPORTED', `This app cannot be installed on this server. ${errors.join(' ')}`, 409);
+    }
   }
 
   // The MOS version an update candidate is checked against. Both candidate
@@ -1188,6 +1220,7 @@ class AppPackageService {
     if (!this.agent?.snapshotPackage) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App package snapshot system agent is unavailable.', 503);
     }
+    await this.assertArchitectureSupported(manifest);
     const at = this.now().toISOString();
     const manifestDigest = digestFor(manifest);
     const packageDigest = digestAppPackage(packageDir);
@@ -1324,6 +1357,7 @@ class AppPackageService {
     if (!agentStatus.capabilities?.includes('apps.package.snapshot.external')) {
       throw new AppPackageServiceError('APP_EXTERNAL_INSTALL_UNAVAILABLE', 'The installed app agent cannot snapshot external app packages.', 503);
     }
+    await this.assertArchitectureSupported(manifest, agentStatus);
     this.assertRouteHostsAvailable(manifest, packageId);
 
     const at = this.now().toISOString();
@@ -1397,6 +1431,7 @@ class AppPackageService {
         agentCapabilities: Array.isArray(agentStatus.capabilities) ? agentStatus.capabilities : [],
         agentContractVersion: Number.isInteger(agentStatus.contractVersion) ? agentStatus.contractVersion : 0,
         candidate,
+        hostArchitecture: hostArchitectureOf(agentStatus),
         installed: { ...installedPackage, packageDigest: instance.packageDigest, source: {
           kind: instance.sourceKind,
           path: instance.sourcePath,
@@ -1443,6 +1478,7 @@ class AppPackageService {
         agentCapabilities: Array.isArray(agentStatus.capabilities) ? agentStatus.capabilities : [],
         agentContractVersion: Number.isInteger(agentStatus.contractVersion) ? agentStatus.contractVersion : 0,
         candidate,
+        hostArchitecture: hostArchitectureOf(agentStatus),
         installed: { ...installedPackage, packageDigest: instance.packageDigest, source: {
           kind: instance.sourceKind,
           path: instance.sourcePath,
@@ -1974,7 +2010,18 @@ class AppPackageService {
     const services = composeProjection?.content?.services || [];
     const volumes = composeProjection?.content?.volumes || [];
     const homepage = await this.removePackageFromHomepage(instance, homepageService);
+    // An agent that cannot be asked what it supports is treated as one that
+    // supports nothing here, because uninstalling is worth more than reclaiming.
+    const agentStatus = await Promise.resolve(this.agent.status?.()).catch(() => null) || { capabilities: [] };
+    // Deleting the instance row below drops the last reference to this app's
+    // snapshot directory and to the revision naming its images, so an agent that
+    // can reclaim them has to be told before that happens. Sent only to an agent
+    // that asked for it: an older one rejects unknown removal fields outright,
+    // and an uninstall it used to handle must not start failing.
     const agent = await this.agent.remove({
+      ...(agentStatus.capabilities?.includes('apps.package.remove.reclaim')
+        ? { instanceId: instance.id, ...(instance.sourceRevision ? { installedSourceRevision: instance.sourceRevision } : {}) }
+        : {}),
       packageId: instance.packageId,
       services: services.map((service) => service.id),
       volumes,

@@ -88,6 +88,7 @@ function externalUpdateAgent(root, calls = [], promotedSnapshotPath = null, { re
     async activatePackageUpdate(input) { calls.push(['activate', input]); return { status: 'candidate-healthy' }; },
     async buildPackageUpdate(input) { calls.push(['build', input]); return { status: 'built' }; },
     async promotePackageUpdate(input) { calls.push(['promote', input]); return { snapshotPath: promotedSnapshotPath, status: 'snapshot-promoted' }; },
+    async remove(input) { calls.push(['remove', input]); return { status: 'removed' }; },
     async rollbackPackageUpdate(input) { calls.push(['rollback', input]); return { status: 'installed-restored' }; },
     async stagePackageUpdate(input) { calls.push(['stage', input]); return { snapshotPath: '/state/candidate', status: 'staged' }; },
     async status() {
@@ -95,9 +96,9 @@ function externalUpdateAgent(root, calls = [], promotedSnapshotPath = null, { re
         capabilities: [
           'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build',
           'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote',
-          ...(reclaims ? ['apps.package.update.reclaim'] : []),
+          ...(reclaims ? ['apps.package.update.reclaim', 'apps.package.remove.reclaim'] : []),
         ],
-        contractVersion: reclaims ? 8 : 7,
+        contractVersion: reclaims ? 9 : 7,
       };
     },
   };
@@ -229,6 +230,75 @@ test('an external install is refused when the app agent cannot snapshot external
 
   await assert.rejects(() => service.installExternalPackage({ candidate }), { code: 'APP_EXTERNAL_INSTALL_UNAVAILABLE' });
   assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes'), null);
+  store.close();
+});
+
+// A package's base images are pinned by digest, so one that names an
+// architecture this host is not cannot pull them: the install would get as far
+// as `docker build` and die there, having already snapshotted and taken an
+// instance row. Nothing is left behind because nothing was started.
+test('an app that does not run on this host is refused before anything is installed', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const candidate = await externalCandidate(root, { architectures: ['amd64'] });
+  const service = new AppPackageService({
+    agent: {
+      ...externalAgent(root),
+      async snapshotExternalPackage() { throw new Error('should not be called'); },
+      async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.snapshot.external'], contractVersion: 9, hostArchitecture: 'arm64' }; },
+    },
+    appsDir: v2AppsDir,
+    store,
+  });
+
+  await assert.rejects(() => service.installExternalPackage({ candidate }), (error) => error.code === 'APP_ARCHITECTURE_UNSUPPORTED'
+    && error.statusCode === 409
+    && /amd64.*arm64/u.test(error.message));
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes'), null);
+  store.close();
+});
+
+// This check exists to explain a build failure that was already coming, so it
+// must never invent one. An agent too old to name its host, one that does not
+// recognise the host it is on, and one that cannot be asked at all are the same
+// answer: no constraint is enforced and the install behaves as it always did.
+test('an app is installed as before when nothing can say what this host is', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const agent = externalAgent(root);
+  const service = new AppPackageService({ agent, appsDir: v2AppsDir, store });
+
+  await service.installExternalPackage({ candidate: await externalCandidate(root, { architectures: ['amd64'] }) });
+  assert.ok(store.getAppInstanceByPackageId('x-abcdef01-community-notes'));
+
+  const unrecognised = new AppPackageService({
+    agent: { ...agent, async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.snapshot.external'], contractVersion: 9, hostArchitecture: 'sparc' }; } },
+    appsDir: v2AppsDir,
+    store: new SuiteManagerStore(path.join(root, 'state-2')),
+  });
+  await unrecognised.installExternalPackage({ candidate: await externalCandidate(root, { architectures: ['amd64'] }, 'ext-two') });
+  assert.ok(unrecognised.store.getAppInstanceByPackageId('x-abcdef01-community-notes'));
+  unrecognised.store.close();
+  store.close();
+});
+
+// The one package in the repo that actually declares this. Its base images are
+// pinned to amd64 manifests, so an arm64 host could never have built it; before
+// the declaration the only thing that said so was a sentence in its README.
+test('the amd64-only package in the catalog is refused on an arm64 host', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({
+    agent: {
+      async snapshotPackage() { throw new Error('should not be called'); },
+      async status() { return { capabilities: ['apps.package.snapshot'], contractVersion: 9, hostArchitecture: 'arm64' }; },
+    },
+    appsDir: v2AppsDir,
+    store,
+  });
+
+  await assert.rejects(() => service.installPackage('immich'), { code: 'APP_ARCHITECTURE_UNSUPPORTED' });
+  assert.equal(store.getAppInstanceByPackageId('immich'), null);
   store.close();
 });
 
@@ -419,6 +489,40 @@ test('an update tells an agent that can reclaim which images the outgoing packag
   assert.equal(promote.installedSourceRevision, outgoing.sourceRevision);
   assert.equal(promote.expectedInstalledDigest, outgoing.packageDigest);
   assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes').sourceRevision, 'c'.repeat(40));
+  store.close();
+});
+
+test('an uninstall tells an agent that can reclaim what the app leaves behind before the row naming it is gone', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const calls = [];
+  const { service } = await updatableExternalApp(root, store, calls, { reclaims: true });
+  const installed = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
+
+  const result = await service.uninstallPackage('x-abcdef01-community-notes');
+
+  assert.equal(result.instance, null);
+  const [, remove] = calls.find(([kind]) => kind === 'remove');
+  // Both halves of the only reference to this app's disk footprint: the instance
+  // directory, and the revision naming the images built from it.
+  assert.equal(remove.instanceId, installed.id);
+  assert.equal(remove.installedSourceRevision, installed.sourceRevision);
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes'), null);
+  store.close();
+});
+
+test('an uninstall never sends a removal field an older agent would refuse', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const calls = [];
+  const { service } = await updatableExternalApp(root, store, calls);
+
+  const result = await service.uninstallPackage('x-abcdef01-community-notes');
+
+  assert.equal(result.instance, null);
+  const [, remove] = calls.find(([kind]) => kind === 'remove');
+  assert.equal(Object.hasOwn(remove, 'instanceId'), false);
+  assert.equal(Object.hasOwn(remove, 'installedSourceRevision'), false);
   store.close();
 });
 
