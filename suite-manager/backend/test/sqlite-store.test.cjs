@@ -95,20 +95,20 @@ test('security events aggregate, persist, expire, and stay hard-capped', async (
   let store = new SuiteManagerStore(stateDir);
   store.recordSecurityEvent({
     at: '2026-07-13T10:05:00.000Z',
-    clientFingerprint: 'client-a',
     eventType: 'login-throttled',
     retryAfterSeconds: 2,
+    subject: 'client-a',
   });
   store.recordSecurityEvent({
     at: '2026-07-13T10:55:00.000Z',
-    clientFingerprint: 'client-a',
     eventType: 'login-throttled',
     retryAfterSeconds: 8,
+    subject: 'client-a',
   });
   assert.deepEqual(store.getSecurityEventSummary({ since: '2026-07-13T00:00:00.000Z' }), {
+    byType: [{ eventCount: 2, eventType: 'login-throttled', lastSeenAt: '2026-07-13T10:55:00.000Z', subjectCount: 1 }],
     eventCount: 2,
     lastSeenAt: '2026-07-13T10:55:00.000Z',
-    sourceCount: 1,
   });
   let rows = store.database.prepare('SELECT * FROM security_events').all();
   assert.equal(rows.length, 1);
@@ -120,27 +120,90 @@ test('security events aggregate, persist, expire, and stay hard-capped', async (
   assert.equal(store.getSecurityEventSummary({ since: '2026-07-13T00:00:00.000Z' }).eventCount, 2);
   store.recordSecurityEvent({
     at: '2026-05-01T10:00:00.000Z',
-    clientFingerprint: 'expired-client',
     eventType: 'login-throttled',
     retryAfterSeconds: 1,
+    subject: 'expired-client',
   });
   store.recordSecurityEvent({
     at: '2026-07-13T11:00:00.000Z',
-    clientFingerprint: 'client-b',
     eventType: 'login-throttled',
     maxRows: 2,
     retryAfterSeconds: 1,
+    subject: 'client-b',
   });
   store.recordSecurityEvent({
     at: '2026-07-13T12:00:00.000Z',
-    clientFingerprint: 'client-c',
     eventType: 'login-throttled',
     maxRows: 2,
     retryAfterSeconds: 1,
+    subject: 'client-c',
   });
-  rows = store.database.prepare('SELECT client_fingerprint FROM security_events ORDER BY last_seen_at').all();
-  assert.deepEqual(rows.map((row) => row.client_fingerprint), ['client-b', 'client-c']);
+  rows = store.database.prepare('SELECT subject FROM security_events ORDER BY last_seen_at').all();
+  assert.deepEqual(rows.map((row) => row.subject), ['client-b', 'client-c']);
   store.close();
+});
+
+// A package source has no client and no retry delay, and a summary that added it
+// to a throttled sign-in would report a number that means nothing.
+test('app source events count alongside sign-in throttling without borrowing its shape', async () => {
+  const stateDir = await tempStateDir();
+  const store = new SuiteManagerStore(stateDir);
+  store.recordSecurityEvent({ at: '2026-07-13T10:05:00.000Z', eventType: 'login-throttled', retryAfterSeconds: 2, subject: 'client-a' });
+  store.recordSecurityEvent({ at: '2026-07-13T10:10:00.000Z', eventType: 'app-source-candidate-rejected', subject: 'src-abcdef012345' });
+  store.recordSecurityEvent({ at: '2026-07-13T10:40:00.000Z', eventType: 'app-source-candidate-rejected', subject: 'src-abcdef012345' });
+  store.recordSecurityEvent({ at: '2026-07-13T10:45:00.000Z', eventType: 'app-catalog-refresh-failed', subject: 'fedcba098765' });
+
+  assert.deepEqual(store.getSecurityEventSummary({ since: '2026-07-13T00:00:00.000Z' }), {
+    byType: [
+      { eventCount: 1, eventType: 'app-catalog-refresh-failed', lastSeenAt: '2026-07-13T10:45:00.000Z', subjectCount: 1 },
+      { eventCount: 2, eventType: 'app-source-candidate-rejected', lastSeenAt: '2026-07-13T10:40:00.000Z', subjectCount: 1 },
+      { eventCount: 1, eventType: 'login-throttled', lastSeenAt: '2026-07-13T10:05:00.000Z', subjectCount: 1 },
+    ],
+    eventCount: 4,
+    lastSeenAt: '2026-07-13T10:45:00.000Z',
+  });
+  const rejected = store.database.prepare("SELECT * FROM security_events WHERE event_type = 'app-source-candidate-rejected'").all();
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0].event_count, 2);
+  assert.equal(rejected[0].max_retry_seconds, null);
+  store.close();
+});
+
+// The enum could only grow by rebuilding the table, and a rebuild that loses the
+// rows it was widening for would quietly discard the record of every sign-in
+// anyone was throttled on.
+test('rebuilding the security event table keeps the events recorded before it', async () => {
+  const stateDir = await tempStateDir();
+  const database = new DatabaseSync(path.join(stateDir, DATABASE_FILENAME));
+  database.exec(`
+    CREATE TABLE schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    ) STRICT;
+  `);
+  for (const migration of MIGRATIONS.filter(({ version }) => version < 12)) {
+    database.exec(migration.sql);
+    database.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)')
+      .run(migration.version, migration.name, '2026-07-13T00:00:00.000Z');
+  }
+  database.prepare(`
+    INSERT INTO security_events (
+      bucket_start, event_type, client_fingerprint, event_count, max_retry_seconds, first_seen_at, last_seen_at
+    ) VALUES ('2026-07-13T10:00:00.000Z', 'login-throttled', 'client-a', 4, 8, '2026-07-13T10:05:00.000Z', '2026-07-13T10:55:00.000Z')
+  `).run();
+  database.close();
+
+  const upgraded = new SuiteManagerStore(stateDir);
+  const rows = upgraded.database.prepare('SELECT * FROM security_events').all();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].subject, 'client-a');
+  assert.equal(rows[0].event_count, 4);
+  assert.equal(rows[0].max_retry_seconds, 8);
+  // The counter keeps counting into the row the rebuild carried over.
+  upgraded.recordSecurityEvent({ at: '2026-07-13T10:58:00.000Z', eventType: 'login-throttled', retryAfterSeconds: 2, subject: 'client-a' });
+  assert.equal(upgraded.database.prepare('SELECT event_count FROM security_events').get().event_count, 5);
+  upgraded.close();
 });
 
 test('an existing version-one database receives the named HTTPS migration', async () => {
@@ -174,6 +237,7 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'app-update-operation-stages',
     'app-update-recovery-state',
     'external-app-sources',
+    'security-event-subjects',
   ]);
   upgraded.close();
 });

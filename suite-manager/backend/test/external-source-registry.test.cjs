@@ -43,12 +43,24 @@ test('a source record stores URL, publisher, trust, and revision separately and 
   assert.throws(() => withRevision(record, 'main'), (error) => error instanceof ExternalSourceError && error.code === 'SOURCE_REVISION_INVALID');
 });
 
-test('source records reject non-HTTPS URLs, mos-reviewed trust, and unsigned publisher-signed claims', () => {
+test('source records reject non-HTTPS URLs, mos-reviewed trust, and unverifiable publisher-signed claims', () => {
   assert.throws(() => buildSourceRecord(externalInput({ repository: 'http://code.example/apps' }), { now }), { code: 'SOURCE_URL_INVALID' });
   assert.throws(() => buildSourceRecord(externalInput({ trust: 'mos-reviewed' }), { now }), { code: 'SOURCE_TRUST_INVALID' });
-  assert.throws(() => buildSourceRecord(externalInput({ trust: 'publisher-signed' }), { now }), { code: 'SOURCE_SIGNATURE_MISSING' });
-  assert.equal(buildSourceRecord(externalInput({ signature: 'sig', trust: 'publisher-signed' }), { now }).trust, 'publisher-signed');
   assert.throws(() => buildSourceRecord(externalInput({ kind: 'local' }), { now }), { code: 'SOURCE_KIND_INVALID' });
+});
+
+// There is no publisher key to check a signature against, so any string bought
+// the "signed by the publisher" label an owner reads before deciding to install.
+// A label nothing stands behind is worse than the unverified one it replaced, so
+// the claim is refused until there is something to check it with. The signature
+// is still kept: it is what a publisher-key check would compare against, and
+// storing it buys no trust while nothing has verified it.
+test('an external source cannot buy a publisher-signed label with a signature nobody can check', () => {
+  assert.throws(() => buildSourceRecord(externalInput({ trust: 'publisher-signed' }), { now }), { code: 'SOURCE_TRUST_INVALID' });
+  assert.throws(() => buildSourceRecord(externalInput({ signature: 'sig', trust: 'publisher-signed' }), { now }), { code: 'SOURCE_TRUST_INVALID' });
+  const record = buildSourceRecord(externalInput({ signature: 'sig' }), { now });
+  assert.equal(record.trust, 'unverified');
+  assert.equal(record.signature, 'sig');
 });
 
 test('source status transitions gate new installs and keep compromise and removal terminal', () => {

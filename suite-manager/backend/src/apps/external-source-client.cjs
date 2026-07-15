@@ -16,13 +16,30 @@ const EXTERNAL_PACKAGE_DIR = '.mos';
 // mos-reviewed and must pass the constrained capability profile and
 // non-impersonation checks to be returned.
 class ExternalSourceClient {
-  constructor({ fetchImpl = globalThis.fetch, limiter = new AppOperationLimiter(), limits = DEFAULT_LIMITS, officialPackageIds = [], platformVersion = '0.0.0', stateDir }) {
+  constructor({ fetchImpl = globalThis.fetch, limiter = new AppOperationLimiter(), limits = DEFAULT_LIMITS, now = () => new Date(), officialPackageIds = [], platformVersion = '0.0.0', recordSecurityEvent = () => {}, stateDir }) {
     this.fetch = fetchImpl;
     this.limiter = limiter;
     this.limits = limits;
+    this.now = now;
     this.officialPackageIds = officialPackageIds;
     this.platformVersion = platformVersion;
+    this.recordSecurityEvent = recordSecurityEvent;
     this.stateDir = stateDir;
+  }
+
+  // A source serving a package the gate refuses is worth counting: one rejection
+  // is an owner pasting the wrong repository, but the same source doing it over
+  // and over is the shape of a repository that has been taken over or force-
+  // pushed, and every rejection today is only an error shown to whoever asked.
+  //
+  // The source is identified by its id, which is a digest of the normalized
+  // repository, so no URL — and therefore no credential and no query string —
+  // reaches the record even though this holds a URL while it runs. Recording is
+  // never allowed to turn a refusal into a different failure.
+  noteSourceEvent(eventType, source) {
+    try {
+      if (source?.id) this.recordSecurityEvent({ at: this.now().toISOString(), eventType, subject: source.id });
+    } catch {}
   }
 
   // Resolve the source repository's branch/tag (or default branch) to an
@@ -44,7 +61,18 @@ class ExternalSourceClient {
     if (!COMMIT_PATTERN.test(String(source?.revision || ''))) throw new ExternalSourceError('SOURCE_REVISION_INVALID', 'Resolve the source revision before downloading a candidate.');
     // Bounded per repository: a pasted URL is owner-supplied and every preview,
     // install, and update check downloads a fresh archive from it.
-    return this.limiter.runDownload(source.repository, () => this.performDownload(source));
+    try {
+      return await this.limiter.runDownload(source.repository, () => this.performDownload(source));
+    } catch (error) {
+      // Both are things this source did. `APP_DOWNLOAD_BUSY` is deliberately not
+      // counted: that bound is host-wide, so tripping it says only that MOS was
+      // busy with other sources, which is not this one's behaviour.
+      if (error?.code === 'APP_DOWNLOAD_THROTTLED') this.noteSourceEvent('app-source-download-throttled', source);
+      if (error?.code === 'CANDIDATE_REJECTED' || error?.code === 'CANDIDATE_INVALID') {
+        this.noteSourceEvent('app-source-candidate-rejected', source);
+      }
+      throw error;
+    }
   }
 
   async performDownload(source) {

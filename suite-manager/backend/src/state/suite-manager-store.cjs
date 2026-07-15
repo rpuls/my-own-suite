@@ -254,6 +254,45 @@ const MIGRATIONS = [
     `,
     version: 11,
   },
+  {
+    // The table was shaped around the only event that existed: a throttled
+    // sign-in, which always has a client and always has a retry delay. A package
+    // source serving something the gate refused has neither, so the columns are
+    // generalised rather than bent — `subject` is whatever the event is about,
+    // and a retry delay is now optional. SQLite cannot widen a CHECK in place,
+    // so the enum can only grow by rebuilding the table around the existing rows.
+    name: 'security-event-subjects',
+    sql: `
+      CREATE TABLE security_events_rebuilt (
+        bucket_start TEXT NOT NULL,
+        event_type TEXT NOT NULL CHECK (event_type IN (
+          'login-throttled',
+          'app-source-candidate-rejected',
+          'app-source-download-throttled',
+          'app-catalog-refresh-failed',
+          'app-catalog-signature-invalid'
+        )),
+        subject TEXT NOT NULL,
+        event_count INTEGER NOT NULL CHECK (event_count > 0),
+        max_retry_seconds INTEGER CHECK (max_retry_seconds IS NULL OR max_retry_seconds > 0),
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        PRIMARY KEY (bucket_start, event_type, subject)
+      ) STRICT;
+
+      INSERT INTO security_events_rebuilt (
+        bucket_start, event_type, subject, event_count, max_retry_seconds, first_seen_at, last_seen_at
+      )
+      SELECT bucket_start, event_type, client_fingerprint, event_count, max_retry_seconds, first_seen_at, last_seen_at
+      FROM security_events;
+
+      DROP TABLE security_events;
+      ALTER TABLE security_events_rebuilt RENAME TO security_events;
+
+      CREATE INDEX security_events_last_seen_idx ON security_events(last_seen_at);
+    `,
+    version: 12,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -462,13 +501,19 @@ class SuiteManagerStore {
     `).run(errorCode, at, id);
   }
 
+  // Hour-bucketed counters, not a log: the question these answer is "is this
+  // happening, and how often", and a row per occurrence would be an unbounded
+  // record an attacker controls the size of. `subject` is whatever the event is
+  // about and is always an opaque identifier — a client fingerprint, a package
+  // source id — never a URL, so a credential or a query parameter has nowhere to
+  // land here even if a caller has one in hand.
   recordSecurityEvent({
     at,
-    clientFingerprint,
     eventType,
     maxRows = 5_000,
     retentionDays = 30,
-    retryAfterSeconds,
+    retryAfterSeconds = null,
+    subject,
   }) {
     const occurredAt = new Date(at);
     if (Number.isNaN(occurredAt.getTime())) {
@@ -481,18 +526,18 @@ class SuiteManagerStore {
     this.transaction(() => {
       this.database.prepare(`
         INSERT INTO security_events (
-          bucket_start, event_type, client_fingerprint, event_count,
+          bucket_start, event_type, subject, event_count,
           max_retry_seconds, first_seen_at, last_seen_at
         )
         VALUES (?, ?, ?, 1, ?, ?, ?)
-        ON CONFLICT(bucket_start, event_type, client_fingerprint) DO UPDATE SET
+        ON CONFLICT(bucket_start, event_type, subject) DO UPDATE SET
           event_count = security_events.event_count + 1,
           max_retry_seconds = MAX(security_events.max_retry_seconds, excluded.max_retry_seconds),
           last_seen_at = excluded.last_seen_at
       `).run(
         bucketStart.toISOString(),
         eventType,
-        clientFingerprint,
+        subject,
         retryAfterSeconds,
         occurredAt.toISOString(),
         occurredAt.toISOString(),
@@ -511,19 +556,31 @@ class SuiteManagerStore {
     });
   }
 
+  // Broken out by type, because these do not add up to anything: a throttled
+  // sign-in and a source serving a package the gate refused are different facts
+  // about different things, and a single total would report seven of one as
+  // indistinguishable from seven of the other.
   getSecurityEventSummary({ since }) {
-    const summary = this.database.prepare(`
+    const byType = this.database.prepare(`
       SELECT
+        event_type AS eventType,
         COALESCE(SUM(event_count), 0) AS eventCount,
-        COUNT(DISTINCT client_fingerprint) AS sourceCount,
+        COUNT(DISTINCT subject) AS subjectCount,
         MAX(last_seen_at) AS lastSeenAt
       FROM security_events
       WHERE last_seen_at >= ?
-    `).get(since);
+      GROUP BY event_type
+      ORDER BY event_type
+    `).all(since).map((row) => ({
+      eventCount: Number(row.eventCount),
+      eventType: row.eventType,
+      lastSeenAt: row.lastSeenAt || null,
+      subjectCount: Number(row.subjectCount),
+    }));
     return {
-      eventCount: Number(summary.eventCount),
-      lastSeenAt: summary.lastSeenAt || null,
-      sourceCount: Number(summary.sourceCount),
+      byType,
+      eventCount: byType.reduce((total, row) => total + row.eventCount, 0),
+      lastSeenAt: byType.reduce((latest, row) => (!latest || row.lastSeenAt > latest ? row.lastSeenAt : latest), null),
     };
   }
 

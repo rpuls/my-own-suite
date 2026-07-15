@@ -11,12 +11,18 @@ const {
 
 // Owner-added package sources are always non-official and therefore never
 // mos-reviewed. Trust is recorded independently of the package's own metadata
-// (a package cannot promote its own trust). Signing verification that would
-// justify `publisher-signed` is Phase 8; until then a source that supplies a
-// signature is still only structurally accepted here.
+// (a package cannot promote its own trust).
+//
+// `publisher-signed` is a claim MOS cannot yet check: there is no publisher key
+// to check a signature against, because nothing registers or pins one. Accepting
+// it on the strength of a signature nobody verified would put a "signed by the
+// publisher" label on a source whose signature could be any string at all, which
+// is worse than the unverified label it replaces — an owner reads that label and
+// decides to install. Until publisher keys exist, the claim is refused rather
+// than displayed, and every external source is unverified.
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
 const SOURCE_KINDS = new Set(['external-git', 'local']);
-const SOURCE_TRUST = new Set(['publisher-signed', 'unverified']);
+const SOURCE_TRUST = new Set(['unverified']);
 const SOURCE_STATUSES = new Set(['active', 'unavailable', 'key-rotated', 'compromised', 'removed']);
 // New installs are only allowed from an active source. Every other status keeps
 // existing installs manageable from their snapshots but blocks new installs.
@@ -77,9 +83,11 @@ function buildSourceRecord(input, { allowLocalSources = false, now = () => new D
   const catalogPath = String(input?.catalogPath || '.mos').trim();
   if (catalogPath.includes('..') || catalogPath.startsWith('/')) throw new ExternalSourceError('SOURCE_PATH_INVALID', 'Source catalog path must be repository-local.');
   const trust = input?.trust || 'unverified';
-  if (!SOURCE_TRUST.has(trust)) throw new ExternalSourceError('SOURCE_TRUST_INVALID', 'External sources may only be publisher-signed or unverified.');
+  if (!SOURCE_TRUST.has(trust)) throw new ExternalSourceError('SOURCE_TRUST_INVALID', 'External package sources are recorded as unverified; MOS cannot yet verify a publisher signature.');
+  // Kept, because a source that offers one has said something about itself worth
+  // storing, and pinning it is what a later publisher-key check would compare
+  // against. It buys no trust in the meantime: nothing has verified it.
   const signature = input?.signature ? String(input.signature) : null;
-  if (trust === 'publisher-signed' && !signature) throw new ExternalSourceError('SOURCE_SIGNATURE_MISSING', 'A publisher-signed source must provide a signature.');
   const at = now().toISOString();
   return {
     addedAt: at,

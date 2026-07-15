@@ -61,6 +61,27 @@ if (errors.length === 0) {
   }
 }
 
+// A release carries the public key every installed MOS checks the catalog
+// against, so a release whose catalog signature does not verify is one that every
+// box will refuse to refresh from — and it would fail on their machines, not on
+// the machine that cut it. Checked here because that is the last point where it
+// is still cheap to fix.
+try {
+  const { readSigningPublicKey, verifyCatalogSignature } = require('../suite-manager/backend/src/apps/catalog-signature.cjs');
+  const publicKey = readSigningPublicKey(readText(path.join(rootDir, 'trust', 'official-catalog.pub')));
+  for (const name of ['catalog.json', 'advisories.json']) {
+    const signed = path.join(rootDir, 'apps', name);
+    const signature = path.join(rootDir, 'apps', `${name}.sig`);
+    if (!fs.existsSync(signature)) {
+      errors.push(`apps/${name}.sig is missing. Sign the catalog: MOS_CATALOG_SIGNING_KEY=<key path> npm run apps:catalog:sign`);
+    } else if (!verifyCatalogSignature({ bytes: fs.readFileSync(signed), publicKey, signature: readText(signature) })) {
+      errors.push(`apps/${name} is not signed by trust/official-catalog.pub. Re-sign it: MOS_CATALOG_SIGNING_KEY=<key path> npm run apps:catalog:sign`);
+    }
+  }
+} catch (error) {
+  errors.push(`Official catalog signing key is unusable: ${error instanceof Error ? error.message : String(error)}`);
+}
+
 // When MOS2 gains stable release-track managed updates, a Suite Manager
 // release metadata file should be added back here so packaged installs can
 // report their installed version without the repo root. See RELEASING.md.

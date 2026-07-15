@@ -68,6 +68,10 @@ function main(args = process.argv.slice(2)) {
   }
   fs.writeFileSync(catalogPath, expected);
   process.stdout.write(`Wrote ${path.relative(repoRoot, catalogPath)}.\n`);
+  // Rewriting the catalog invalidates the signature every installed MOS checks
+  // it against, and a catalog that no longer verifies is one they all refuse. The
+  // failure would otherwise surface on their boxes rather than on this one.
+  process.stdout.write('The catalog signature is now stale. Re-sign before committing:\n  MOS_CATALOG_SIGNING_KEY=<key path> npm run apps:catalog:sign\n');
 }
 
 if (require.main === module) main();

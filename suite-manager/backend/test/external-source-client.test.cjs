@@ -6,6 +6,7 @@ const test = require('node:test');
 const zlib = require('node:zlib');
 
 const { ExternalSourceClient } = require('../src/apps/external-source-client.cjs');
+const { AppOperationLimiter } = require('../src/apps/app-operation-limits.cjs');
 const { buildSourceRecord, withRevision } = require('../src/apps/external-source-registry.cjs');
 
 const revision = 'b'.repeat(40);
@@ -100,4 +101,83 @@ test('impersonation, host escalation, and platform incompatibility fail before b
 
   const future = new ExternalSourceClient({ fetchImpl: serveRepo(baseManifest({ minimumMosVersion: '9.9.9' })), platformVersion: '0.11.0', stateDir });
   await assert.rejects(() => future.downloadCandidate(activeSource()), (error) => error.code === 'CANDIDATE_REJECTED' && /requires MOS/u.test(error.message));
+});
+
+// One rejection is an owner pasting the wrong repository. The same source doing
+// it repeatedly is what a taken-over or force-pushed repository looks like, and
+// until this was counted the only trace was an error shown to whoever asked.
+test('a source serving a package the gate refuses is counted against that source', async () => {
+  const events = [];
+  const client = new ExternalSourceClient({
+    fetchImpl: serveRepo(baseManifest({ id: 'immich' })),
+    now: () => new Date('2026-07-15T10:00:00.000Z'),
+    officialPackageIds: ['immich'],
+    platformVersion: '0.11.0',
+    recordSecurityEvent: (event) => events.push(event),
+    stateDir: tempDir(),
+  });
+
+  await assert.rejects(() => client.downloadCandidate(activeSource()), { code: 'CANDIDATE_REJECTED' });
+  assert.deepEqual(events, [{
+    at: '2026-07-15T10:00:00.000Z',
+    eventType: 'app-source-candidate-rejected',
+    subject: activeSource().id,
+  }]);
+  assert.match(events[0].subject, /^src-[a-f0-9]{12}$/u);
+});
+
+// The bound that fires per source says something about that source. The
+// host-wide one says only that MOS was busy with other sources, so counting it
+// against this one would be a false accusation.
+test('a throttled source is counted but a busy host is not blamed on it', async () => {
+  const events = [];
+  const options = {
+    fetchImpl: serveRepo(baseManifest()),
+    now: () => new Date('2026-07-15T10:00:00.000Z'),
+    platformVersion: '0.11.0',
+    recordSecurityEvent: (event) => events.push(event),
+    stateDir: tempDir(),
+  };
+  const throttled = new ExternalSourceClient({ ...options, limiter: new AppOperationLimiter({ policy: { download: { maxPerWindow: 0 } } }) });
+  await assert.rejects(() => throttled.downloadCandidate(activeSource()), { code: 'APP_DOWNLOAD_THROTTLED' });
+  assert.deepEqual(events.map((event) => event.eventType), ['app-source-download-throttled']);
+
+  const busy = new ExternalSourceClient({ ...options, limiter: new AppOperationLimiter({ policy: { download: { maxConcurrent: 0 } } }) });
+  await assert.rejects(() => busy.downloadCandidate(activeSource()), { code: 'APP_DOWNLOAD_BUSY' });
+  assert.equal(events.length, 1);
+});
+
+// The whole point of counting these is that the record can be kept and read
+// later, so it must not become the place the owner's pasted URL comes to rest.
+// Nothing is scrubbed here: the id is a digest of the repository, so there is
+// never a URL in hand to leak.
+test('a counted source event carries an opaque id and never the repository URL', async () => {
+  const events = [];
+  const client = new ExternalSourceClient({
+    fetchImpl: serveRepo(baseManifest({ id: 'immich' })),
+    officialPackageIds: ['immich'],
+    platformVersion: '0.11.0',
+    recordSecurityEvent: (event) => events.push(event),
+    stateDir: tempDir(),
+  });
+
+  await assert.rejects(() => client.downloadCandidate(activeSource()), { code: 'CANDIDATE_REJECTED' });
+  const recorded = JSON.stringify(events);
+  assert.doesNotMatch(recorded, /https?:|github\.com|community|notes|@/u);
+  assert.deepEqual(Object.keys(events[0]).sort(), ['at', 'eventType', 'subject']);
+});
+
+// Recording is an observation of a refusal, not part of it. A store that cannot
+// take the event must not turn a rejected candidate into a different error, or
+// hide that the candidate was rejected at all.
+test('a failing event recorder cannot change how a refused candidate fails', async () => {
+  const client = new ExternalSourceClient({
+    fetchImpl: serveRepo(baseManifest({ id: 'immich' })),
+    officialPackageIds: ['immich'],
+    platformVersion: '0.11.0',
+    recordSecurityEvent: () => { throw new Error('database is gone'); },
+    stateDir: tempDir(),
+  });
+
+  await assert.rejects(() => client.downloadCandidate(activeSource()), (error) => error.code === 'CANDIDATE_REJECTED' && /official package id/u.test(error.message));
 });

@@ -1612,7 +1612,7 @@ test('repeated login failures return a retry contract without logging secrets', 
     assert.match(securityEvents[0].clientFingerprint, /^[a-f0-9]{12}$/u);
     assert.doesNotMatch(JSON.stringify(securityEvents), /owner@example|definitely-wrong/u);
     assert.equal(recordedEvents.length, 1);
-    assert.equal(recordedEvents[0].clientFingerprint, securityEvents[0].clientFingerprint);
+    assert.equal(recordedEvents[0].subject, securityEvents[0].clientFingerprint);
     assert.equal(recordedEvents[0].eventType, 'login-throttled');
     assert.equal(recordedEvents[0].retryAfterSeconds, 5);
     assert.equal(Number.isNaN(Date.parse(recordedEvents[0].at)), false);

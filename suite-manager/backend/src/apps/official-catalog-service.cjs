@@ -1,3 +1,4 @@
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -5,6 +6,7 @@ const { CATALOG_REFRESH_POLICY, DEFAULT_PACKAGE_LIMITS, advisoriesForVersion, ca
 const { readAppPackageManifest } = require('./package-manifest.cjs');
 const { AppOperationLimiter } = require('./app-operation-limits.cjs');
 const { createCandidateDir, releaseCandidateDir } = require('./candidate-storage.cjs');
+const { readSigningPublicKey, verifyCatalogSignature } = require('./catalog-signature.cjs');
 
 const DEFAULT_LIMITS = Object.freeze({ catalogBytes: 1024 * 1024, timeoutMs: 10_000, ...DEFAULT_PACKAGE_LIMITS });
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
@@ -47,19 +49,29 @@ class OfficialCatalogService {
     now = () => new Date(),
     platformVersion = '0.0.0',
     random = Math.random,
+    recordSecurityEvent = () => {},
     repository = 'https://github.com/rpuls/my-own-suite',
+    signingPublicKey,
     stateDir,
   }) {
     this.branch = branch;
     this.fetch = fetchImpl;
     this.limiter = limiter;
     this.limits = limits;
+    this.recordSecurityEvent = recordSecurityEvent;
     this.stateDir = stateDir;
     this.now = now;
     this.platformVersion = platformVersion;
     this.random = random;
     this.repository = repository;
     this.github = githubRepository(repository);
+    // A MOS with no publisher key has no way to tell a catalog its publisher
+    // produced from one anybody else did, and this catalog decides which
+    // packages are treated as reviewed. There is no safe way to carry on
+    // without it, so a release missing its key fails here rather than quietly
+    // trusting whatever it is handed.
+    if (!signingPublicKey) throw new OfficialCatalogError('CATALOG_SIGNING_KEY_MISSING', 'This MOS release is missing the official catalog signing key.');
+    this.signingPublicKey = readSigningPublicKey(signingPublicKey);
     this.cachePath = path.join(stateDir, 'official-app-catalog.json');
     this.timer = null;
     this.failures = 0;
@@ -69,27 +81,67 @@ class OfficialCatalogService {
     this.cache = this.readCache();
   }
 
+  // Signed bytes in, parsed result out. A parsed catalog cannot be re-verified —
+  // re-serializing it does not reproduce what was signed — so the cache keeps the
+  // text and the signature and derives everything else from them.
+  verifiedText(text, signature, validate) {
+    if (!verifyCatalogSignature({ bytes: text, publicKey: this.signingPublicKey, signature })) return null;
+    try {
+      const value = JSON.parse(text);
+      return validate(value).length === 0 ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // This cache is what an offline MOS decides trust from for as long as it stays
+  // offline, and it sits in state rather than in the release, so it is verified
+  // on the way in exactly as it was on the way out. A cache that no longer
+  // verifies — tampered with, or signed by a key this release no longer carries —
+  // is discarded rather than served.
   readCache() {
     try {
       const cache = JSON.parse(fs.readFileSync(this.cachePath, 'utf8'));
-      if (cache.schemaVersion === 1 && COMMIT_PATTERN.test(cache.revision) && validateCatalog(cache.catalog).length === 0) {
-        // Advisories ride alongside the catalog but must never make a valid
-        // catalog cache unusable; drop them if they no longer validate.
-        if (cache.advisories && validateAdvisoryIndex(cache.advisories).length) {
-          delete cache.advisories;
-          delete cache.advisoriesRevision;
-        }
-        return cache;
-      }
+      if (cache.schemaVersion !== 2 || !COMMIT_PATTERN.test(cache.revision)) return null;
+      const catalog = this.verifiedText(cache.catalogText, cache.signature, validateCatalog);
+      if (!catalog) return null;
+      // Advisories ride alongside the catalog but must never make a valid catalog
+      // cache unusable; drop them if they no longer verify or validate.
+      const advisories = cache.advisoriesText
+        ? this.verifiedText(cache.advisoriesText, cache.advisoriesSignature, validateAdvisoryIndex)
+        : null;
+      if (advisories) return { ...cache, advisories, catalog };
+      const { advisoriesRevision, advisoriesSignature, advisoriesText, ...rest } = cache;
+      return { ...rest, catalog };
     } catch {}
     return null;
   }
 
+  // The parsed catalog and advisories are derived from the signed text, so only
+  // the text and its signature are persisted: writing the parsed copy too would
+  // let the two disagree, and the copy nobody verified would be the convenient
+  // one to read.
   writeCache(cache) {
+    const { advisories, catalog, ...persistable } = cache;
     fs.mkdirSync(path.dirname(this.cachePath), { recursive: true });
     const temporary = `${this.cachePath}.${process.pid}.tmp`;
-    fs.writeFileSync(temporary, `${JSON.stringify(cache, null, 2)}\n`, { mode: 0o600 });
+    fs.writeFileSync(temporary, `${JSON.stringify(persistable, null, 2)}\n`, { mode: 0o600 });
     fs.renameSync(temporary, this.cachePath);
+  }
+
+  async fetchSignature(revision, name) {
+    const url = `https://raw.githubusercontent.com/${this.github.owner}/${this.github.repo}/${revision}/apps/${name}.sig`;
+    return (await boundedResponse(await this.request(url), 1024)).toString('utf8');
+  }
+
+  noteSecurityEvent(eventType, at) {
+    try {
+      this.recordSecurityEvent({
+        at,
+        eventType,
+        subject: crypto.createHash('sha256').update(this.repository).digest('hex').slice(0, 12),
+      });
+    } catch {}
   }
 
   status() {
@@ -114,14 +166,23 @@ class OfficialCatalogService {
     return advisoriesForVersion(this.cache?.advisories, packageId, packageVersion);
   }
 
+  // A revision that publishes no feed at all still means "nothing to warn about",
+  // as it did before this was signed. That is the honest limit of a signature: it
+  // proves who wrote what MOS was given, never that MOS was given everything, and
+  // withholding a feed cannot be told apart from never having published one.
   async fetchAdvisories(revision) {
     const url = `https://raw.githubusercontent.com/${this.github.owner}/${this.github.repo}/${revision}/apps/advisories.json`;
     const response = await this.request(url);
-    if (response.status === 404) return { advisories: [], schemaVersion: 1 };
-    const index = JSON.parse((await boundedResponse(response, this.limits.catalogBytes)).toString('utf8'));
+    if (response.status === 404) return { advisories: { advisories: [], schemaVersion: 1 }, advisoriesSignature: null, advisoriesText: null };
+    const advisoriesText = (await boundedResponse(response, this.limits.catalogBytes)).toString('utf8');
+    const advisoriesSignature = await this.fetchSignature(revision, 'advisories.json');
+    if (!verifyCatalogSignature({ bytes: advisoriesText, publicKey: this.signingPublicKey, signature: advisoriesSignature })) {
+      throw new OfficialCatalogError('ADVISORIES_SIGNATURE_INVALID', 'Official advisory feed is not signed by the key this MOS release trusts.');
+    }
+    const index = JSON.parse(advisoriesText);
     const errors = validateAdvisoryIndex(index);
     if (errors.length) throw new OfficialCatalogError('ADVISORIES_INVALID', `Official advisory feed is invalid: ${errors.join(' ')}`);
-    return index;
+    return { advisories: index, advisoriesSignature, advisoriesText };
   }
 
   async downloadCandidate(packageId) {
@@ -217,10 +278,19 @@ class OfficialCatalogService {
       if (response.status === 304 && this.cache) {
         this.cache = { ...this.cache, attemptedAt, error: null, fetchedAt: attemptedAt, revision };
       } else {
-        const catalog = JSON.parse((await boundedResponse(response, this.limits.catalogBytes)).toString('utf8'));
+        const catalogText = (await boundedResponse(response, this.limits.catalogBytes)).toString('utf8');
+        // Before it is parsed, let alone believed. Whoever served these bytes had
+        // to hold the publisher's key to have MOS act on them, so being able to
+        // push to the repository, or to convince this box that you are GitHub, is
+        // no longer enough to decide what it treats as reviewed.
+        const signature = await this.fetchSignature(revision, 'catalog.json');
+        if (!verifyCatalogSignature({ bytes: catalogText, publicKey: this.signingPublicKey, signature })) {
+          throw new OfficialCatalogError('CATALOG_SIGNATURE_INVALID', 'Official catalog is not signed by the key this MOS release trusts.');
+        }
+        const catalog = JSON.parse(catalogText);
         const errors = validateCatalog(catalog);
         if (errors.length) throw new OfficialCatalogError('CATALOG_INVALID', `Official catalog is invalid: ${errors.join(' ')}`);
-        this.cache = { attemptedAt, catalog, error: null, etag: response.headers.get('etag') || null, fetchedAt: attemptedAt, revision, schemaVersion: 1 };
+        this.cache = { attemptedAt, catalog, catalogText, error: null, etag: response.headers.get('etag') || null, fetchedAt: attemptedAt, revision, schemaVersion: 2, signature };
       }
       this.failures = 0;
       this.lastError = null;
@@ -229,8 +299,13 @@ class OfficialCatalogService {
       // last-known-good advisories and never fails the catalog refresh.
       if (this.cache.advisoriesRevision !== revision) {
         try {
-          this.cache = { ...this.cache, advisories: await this.fetchAdvisories(revision), advisoriesRevision: revision };
-        } catch {}
+          this.cache = { ...this.cache, ...await this.fetchAdvisories(revision), advisoriesRevision: revision };
+        } catch (error) {
+          // An advisory feed that does not verify is not a feed MOS may act on,
+          // but withholding advisories is exactly what suppressing them looks
+          // like, so it is counted rather than only swallowed.
+          if (error?.code === 'ADVISORIES_SIGNATURE_INVALID') this.noteSecurityEvent('app-catalog-signature-invalid', attemptedAt);
+        }
       }
       this.writeCache(this.cache);
       return { catalog: this.catalog(), status: this.status() };
@@ -238,6 +313,18 @@ class OfficialCatalogService {
       this.failures += 1;
       const safeError = { code: error.code || 'CATALOG_FETCH_FAILED', message: error.message || 'Official catalog refresh failed.' };
       this.lastError = safeError;
+      // A catalog that cannot refresh is a MOS that has stopped learning which
+      // installed packages have advisories against them. That is quiet by
+      // nature: the last-known-good cache keeps serving and nothing looks wrong,
+      // so it is worth a durable count rather than only a status field the owner
+      // has to think to look at. Counted per configured catalog repository by
+      // digest, not by URL, and never allowed to replace the refresh failure.
+      //
+      // A signature that does not verify is kept apart from a refresh that did
+      // not happen: one says the network is down, the other says something served
+      // this box a catalog its publisher did not sign, and reading them as the
+      // same number would bury the second under the first.
+      this.noteSecurityEvent(error?.code === 'CATALOG_SIGNATURE_INVALID' ? 'app-catalog-signature-invalid' : 'app-catalog-refresh-failed', attemptedAt);
       if (this.cache) {
         this.cache = { ...this.cache, attemptedAt, error: safeError };
         this.writeCache(this.cache);

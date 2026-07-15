@@ -300,6 +300,10 @@ function createV2Server({
   externalSources = null,
 } = {}) {
   const setup = new SetupService({ stateDir });
+  // Defined before the services that report into it: a throttled sign-in, a
+  // source serving a package the gate refused, and a catalog that cannot refresh
+  // are all counted in the same durable place.
+  const recordSecurityEvent = securityEventRecorder || ((event) => setup.store.recordSecurityEvent(event));
   const httpsSettings = new HttpsSettingsService({
     agent: httpsAgent,
     bootstrapHost: homeHost,
@@ -319,7 +323,12 @@ function createV2Server({
   const catalogService = officialCatalog || new OfficialCatalogService({
     branch: process.env.MOS_V2_APP_CATALOG_BRANCH || 'main',
     limiter: appOperationLimiter,
+    recordSecurityEvent,
     repository: process.env.MOS_V2_APP_CATALOG_REPOSITORY || 'https://github.com/rpuls/my-own-suite',
+    // Read from the installed release, never from the network the catalog comes
+    // over: a key fetched from whoever served the catalog would only prove they
+    // are consistent with themselves.
+    signingPublicKey: fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'trust', 'official-catalog.pub'), 'utf8'),
     stateDir,
     platformVersion: fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'VERSION'), 'utf8').trim(),
   });
@@ -332,6 +341,7 @@ function createV2Server({
     limiter: appOperationLimiter,
     officialPackageIds,
     platformVersion: catalogService.platformVersion,
+    recordSecurityEvent,
     stateDir: setup.store.stateDir,
   });
   const appPackages = new AppPackageService({
@@ -356,7 +366,6 @@ function createV2Server({
     store: setup.store,
   });
   const updates = new UpdateService({ agent: updateAgent });
-  const recordSecurityEvent = securityEventRecorder || ((event) => setup.store.recordSecurityEvent(event));
 
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://localhost');
@@ -438,9 +447,9 @@ function createV2Server({
           try {
             recordSecurityEvent({
               at: new Date().toISOString(),
-              clientFingerprint: securityEvent.clientFingerprint,
               eventType: securityEvent.event,
               retryAfterSeconds,
+              subject: securityEvent.clientFingerprint,
             });
           } catch {
             securityLogger({ event: 'security-event-persistence-failed' });
