@@ -29,8 +29,8 @@ const request = {
 test('app agent exposes only narrow app runtime capabilities', async () => {
   const core = new AppAgentCore({ applyAppServices: async () => ({ steps: [] }), checkAppHealth: async () => ({}) });
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote']);
-  assert.equal(status.contractVersion, 6);
+  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote']);
+  assert.equal(status.contractVersion, 7);
 });
 
 test('app update promotion accepts only digest-bound snapshot identity', async () => {
@@ -102,6 +102,24 @@ test('app package snapshot accepts only identity and expected digest', async () 
   assert.deepEqual(calls, [input]);
   await assert.rejects(() => core.snapshotPackage({ ...input, sourcePath: '/tmp/escape' }), AppRuntimeError);
   await assert.rejects(() => core.snapshotPackage({ ...input, instanceId: '../escape' }), AppRuntimeError);
+});
+
+test('external app package snapshot accepts only identity, expected digest, and a candidate path', async () => {
+  const calls = [];
+  const core = new AppAgentCore({ async snapshotExternalAppPackage(input) { calls.push(input); return { snapshotPath: '/state/installed', steps: ['promoted'] }; } });
+  const input = {
+    candidateDigest: `sha256:${'a'.repeat(64)}`,
+    candidatePath: '/state/app-candidates/ext-abc',
+    instanceId: request.instanceId,
+    packageId: 'x-abcdef01-community-notes',
+  };
+  const result = await core.snapshotExternalPackage(input);
+  assert.equal(result.status, 'snapshotted');
+  assert.equal(result.packageDigest, input.candidateDigest);
+  assert.deepEqual(calls, [input]);
+  await assert.rejects(() => core.snapshotExternalPackage({ ...input, packageDigest: `sha256:${'b'.repeat(64)}` }), AppRuntimeError);
+  await assert.rejects(() => core.snapshotExternalPackage({ ...input, candidateDigest: 'latest' }), AppRuntimeError);
+  await assert.rejects(() => core.snapshotExternalPackage({ ...input, instanceId: '../escape' }), AppRuntimeError);
 });
 
 test('app route rendering uses structured host and loopback upstream only', () => {

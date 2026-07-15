@@ -51,8 +51,8 @@ function fakeClient(overrides = {}) {
       const packageId = 'community-notes';
       return {
         cleanup: () => {},
-        instanceId: `x-abcdef01-${packageId}`,
         manifest: { id: packageId, version: '1.0.0' },
+        namespacedPackageId: `x-abcdef01-${packageId}`,
         packageId,
         permissions: ['route:notes', 'volume:notes-data'],
         source: { kind: 'external-git', path: '.mos', repository: record.repository, revision, trust: record.trust },
@@ -106,6 +106,75 @@ test('resolving a pasted repository URL returns an external, unverified card wit
   store.close();
 });
 
+// The install path is the only external flow that persists anything, so it must
+// register the source, hand the freshly re-validated candidate to the shared
+// install pipeline, and keep unverified trust all the way through.
+test('installing a pasted URL registers the source and installs the revalidated candidate as unverified', async () => {
+  const store = await tempStore();
+  const installs = [];
+  const svc = new ExternalSourceService({
+    appPackages: {
+      async installExternalPackage(input) {
+        installs.push(input);
+        return { id: 'instance-1', packageId: input.candidate.namespacedPackageId, status: 'installed' };
+      },
+    },
+    client: fakeClient(),
+    now,
+    officialPackageIds: ['immich'],
+    platformVersion: '0.11.0',
+    store,
+  });
+
+  const result = await svc.installUrl('https://github.com/community/community-notes', { config: { adminEmail: 'owner@example.com' } });
+
+  assert.equal(result.trust, 'unverified');
+  assert.equal(result.mosReviewed, false);
+  assert.match(result.packageId, /^x-[a-f0-9]{8}-community-notes$/u);
+  assert.deepEqual(result.permissions, ['route:notes', 'volume:notes-data']);
+  assert.equal(result.instance.packageId, result.packageId);
+  assert.equal(result.source.revision, revision);
+  assert.equal(result.source.trust, 'unverified');
+  assert.equal(result.source.mosReviewed, false);
+  assert.deepEqual(installs.map((item) => item.input), [{ adminEmail: 'owner@example.com' }]);
+  assert.equal(installs[0].candidate.source.trust, 'unverified');
+  assert.deepEqual(svc.listSources().map((source) => [source.repository, source.status]), [['https://github.com/community/community-notes', 'active']]);
+  store.close();
+});
+
+test('installing from a compromised source is blocked and installs nothing', async () => {
+  const store = await tempStore();
+  const svc = new ExternalSourceService({
+    appPackages: { async installExternalPackage() { throw new Error('should not be called'); } },
+    client: fakeClient(),
+    now,
+    officialPackageIds: ['immich'],
+    platformVersion: '0.11.0',
+    store,
+  });
+  const added = await svc.addSource({ catalogPath: '.mos', repository: 'https://github.com/community/community-notes', trust: 'unverified' });
+  svc.setSourceStatus(added.id, 'compromised', 'Publisher account takeover.');
+
+  await assert.rejects(() => svc.installUrl('https://github.com/community/community-notes'), { code: 'SOURCE_NOT_INSTALLABLE' });
+  assert.equal(svc.listSources()[0].status, 'compromised');
+  store.close();
+});
+
+test('installing a URL from an unsupported host fails before any network access or persistence', async () => {
+  const store = await tempStore();
+  const svc = new ExternalSourceService({
+    appPackages: { async installExternalPackage() { throw new Error('should not be called'); } },
+    client: { resolveRevision() { throw new Error('should not be called'); }, downloadCandidate() { throw new Error('should not be called'); } },
+    now,
+    officialPackageIds: ['immich'],
+    platformVersion: '0.11.0',
+    store,
+  });
+  await assert.rejects(() => svc.installUrl('https://gitlab.com/community/notes'), { code: 'SOURCE_URL_INVALID' });
+  assert.deepEqual(svc.listSources(), []);
+  store.close();
+});
+
 test('resolving a URL from an unsupported host fails before any network access', async () => {
   const store = await tempStore();
   const svc = service(store, { resolveRevision() { throw new Error('should not be called'); }, downloadCandidate() { throw new Error('should not be called'); } });
@@ -145,7 +214,7 @@ test('previewing a candidate returns its permission surface and unverified trust
   assert.equal(preview.trust, 'unverified');
   assert.equal(preview.mosReviewed, false);
   assert.deepEqual(preview.permissions, ['route:notes', 'volume:notes-data']);
-  assert.match(preview.instanceId, /^x-[a-f0-9]{8}-community-notes$/u);
+  assert.match(preview.namespacedPackageId, /^x-[a-f0-9]{8}-community-notes$/u);
   store.close();
 });
 

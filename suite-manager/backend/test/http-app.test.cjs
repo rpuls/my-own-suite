@@ -1896,7 +1896,7 @@ test('HTTPS input validation is sanitized and leaves the bootstrap host active',
 // download client, so the owner-only source routes are exercised without
 // network access. A repository ending in `/hostile` makes the fake client reject
 // the candidate the way the real constrained gate would.
-async function externalSourcesFixture() {
+async function externalSourcesFixture({ appPackages = null } = {}) {
   const revision = 'b'.repeat(40);
   const store = new SuiteManagerStore(await tempStateDir());
   const client = {
@@ -1906,8 +1906,8 @@ async function externalSourcesFixture() {
       const packageId = 'community-notes';
       return {
         cleanup: () => {},
-        instanceId: `x-abcdef01-${packageId}`,
         manifest: { id: packageId, version: '1.0.0' },
+        namespacedPackageId: `x-abcdef01-${packageId}`,
         packageId,
         permissions: ['route:notes', 'volume:notes-data'],
         source: { kind: 'external-git', path: '.mos', repository: record.repository, revision, trust: record.trust },
@@ -1915,7 +1915,7 @@ async function externalSourcesFixture() {
       };
     },
   };
-  const service = new ExternalSourceService({ client, now: () => new Date('2026-07-15T10:00:00.000Z'), officialPackageIds: ['immich'], platformVersion: '0.11.0', store });
+  const service = new ExternalSourceService({ appPackages, client, now: () => new Date('2026-07-15T10:00:00.000Z'), officialPackageIds: ['immich'], platformVersion: '0.11.0', store });
   return { service, store };
 }
 
@@ -1985,6 +1985,54 @@ test('pasting a package URL resolves an external card without persisting a sourc
     });
     assert.equal(badUrl.status, 400);
     assert.equal(badUrl.json().code, 'SOURCE_URL_INVALID');
+  }, { externalSources: service, homeHost: 'home.test' });
+  store.close();
+});
+
+test('an owner installs a pasted package URL, and only then is the source recorded', async () => {
+  const installs = [];
+  const { service, store } = await externalSourcesFixture({
+    appPackages: {
+      async installExternalPackage(input) {
+        installs.push(input);
+        return { id: 'instance-1', packageId: input.candidate.namespacedPackageId, status: 'installed' };
+      },
+    },
+  });
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const headers = { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' };
+
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/apps/sources/install', {
+      body: JSON.stringify({ url: 'https://github.com/community/community-notes' }),
+      headers: { 'Content-Type': 'application/json', Host: 'home.test' }, method: 'POST',
+    });
+    assert.equal(denied.status, 401);
+    assert.deepEqual(installs, []);
+
+    const installed = await hostRequest(baseUrl, '/suite-manager/api/apps/sources/install', {
+      body: JSON.stringify({ config: { adminEmail: 'owner@example.com' }, url: 'https://github.com/community/community-notes' }),
+      headers, method: 'POST',
+    });
+    assert.equal(installed.status, 201);
+    const payload = installed.json();
+    assert.equal(payload.mosReviewed, false);
+    assert.equal(payload.trust, 'unverified');
+    assert.match(payload.packageId, /^x-[a-f0-9]{8}-community-notes$/u);
+    assert.equal(payload.instance.packageId, payload.packageId);
+    assert.deepEqual(installs.map((item) => item.input), [{ adminEmail: 'owner@example.com' }]);
+
+    const listed = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', { headers: { Cookie: cookie, Host: 'home.test' } });
+    assert.deepEqual(listed.json().sources.map((item) => [item.repository, item.trust, item.mosReviewed]), [['https://github.com/community/community-notes', 'unverified', false]]);
+
+    // A candidate the gate rejects installs nothing and registers no source.
+    const hostile = await hostRequest(baseUrl, '/suite-manager/api/apps/sources/install', {
+      body: JSON.stringify({ url: 'https://github.com/community/hostile' }), headers, method: 'POST',
+    });
+    assert.equal(hostile.status, 422);
+    assert.equal(installs.length, 1);
+    const stillListed = await hostRequest(baseUrl, '/suite-manager/api/apps/sources', { headers: { Cookie: cookie, Host: 'home.test' } });
+    assert.equal(stillListed.json().sources.length, 1);
   }, { externalSources: service, homeHost: 'home.test' });
   store.close();
 });

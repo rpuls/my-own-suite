@@ -30,6 +30,7 @@ const routes = new Map([
   ['POST /v1/apps/check-health', (body) => core.checkHealth(body)],
   ['POST /v1/apps/connect-network', (body) => core.connectNetwork(body)],
   ['POST /v1/apps/snapshot', (body) => core.snapshotPackage(body)],
+  ['POST /v1/apps/snapshot-external', (body) => core.snapshotExternalPackage(body)],
   ['POST /v1/apps/update/stage', (body) => core.stagePackageUpdate(body)],
   ['POST /v1/apps/update/build', (body) => core.buildPackageUpdate(body)],
   ['POST /v1/apps/update/activate', (body) => core.activatePackageUpdate(body)],

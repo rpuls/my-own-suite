@@ -43,8 +43,9 @@ function publicSource(record) {
 // registry rules together. Every source it produces is non-official and
 // unverified/publisher-signed; nothing here can grant MOS-reviewed trust.
 class ExternalSourceService {
-  constructor({ allowLocalSources = false, client = null, now = () => new Date(), officialPackageIds = [], platformVersion = '0.0.0', store }) {
+  constructor({ allowLocalSources = false, appPackages = null, client = null, now = () => new Date(), officialPackageIds = [], platformVersion = '0.0.0', store }) {
     this.allowLocalSources = allowLocalSources;
+    this.appPackages = appPackages;
     this.now = now;
     this.officialPackageIds = officialPackageIds;
     this.platformVersion = platformVersion;
@@ -81,7 +82,7 @@ class ExternalSourceService {
           mosReviewed: false,
           trust: candidate.trust,
         },
-        instanceId: candidate.instanceId,
+        namespacedPackageId: candidate.namespacedPackageId,
         packageDigest: candidate.packageDigest,
         permissions: candidate.permissions,
         source: {
@@ -92,6 +93,47 @@ class ExternalSourceService {
           revision: resolved.revision,
           trust: candidate.trust,
         },
+      };
+    } finally {
+      candidate.cleanup?.();
+    }
+  }
+
+  // Install the package a pasted repository URL publishes. This is the only
+  // external flow that persists anything, and it is always an explicit owner
+  // action on a URL the owner just reviewed.
+  //
+  // Resolution, download, and the constrained gate all re-run here instead of
+  // trusting the earlier preview, so an install can only ever apply a package
+  // that passed validation moments ago at a commit resolved right now. The
+  // source record is persisted first so the install is attributable, and trust
+  // stays unverified regardless of anything the package claims.
+  async installUrl(input, { config = {} } = {}) {
+    if (!this.appPackages?.installExternalPackage) {
+      throw new ExternalSourceError('SOURCE_INSTALL_UNAVAILABLE', 'Installing external packages is unavailable.');
+    }
+    const parsed = parseGitPackageUrl(input);
+    const record = buildSourceRecord(
+      { repository: parsed.repository, trust: 'unverified' },
+      { allowLocalSources: this.allowLocalSources, now: this.now },
+    );
+    const existing = this.store.getAppSource(record.id);
+    if (existing && !sourceInstallable(existing)) {
+      throw new ExternalSourceError('SOURCE_NOT_INSTALLABLE', 'This source is not active, so new installs are blocked.');
+    }
+    const resolved = await this.client.resolveRevision(existing || record, parsed.ref);
+    const candidate = await this.client.downloadCandidate(resolved);
+    try {
+      const stored = existing
+        ? this.store.updateAppSourceRevision({ at: this.now().toISOString(), id: resolved.id, revision: resolved.revision })
+        : this.store.insertAppSource(resolved);
+      return {
+        instance: await this.appPackages.installExternalPackage({ candidate, input: config }),
+        mosReviewed: false,
+        packageId: candidate.namespacedPackageId,
+        permissions: candidate.permissions,
+        source: publicSource(stored),
+        trust: candidate.trust,
       };
     } finally {
       candidate.cleanup?.();
@@ -165,8 +207,8 @@ class ExternalSourceService {
     const candidate = await this.client.downloadCandidate(record);
     try {
       return {
-        instanceId: candidate.instanceId,
         mosReviewed: false,
+        namespacedPackageId: candidate.namespacedPackageId,
         packageId: candidate.packageId,
         packageVersion: candidate.manifest.version,
         permissions: candidate.permissions,

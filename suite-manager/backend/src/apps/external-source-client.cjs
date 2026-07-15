@@ -43,9 +43,11 @@ class ExternalSourceClient {
     if (!sourceInstallable(source)) throw new ExternalSourceError('SOURCE_NOT_INSTALLABLE', 'New installs are only allowed from an active source.');
     if (!COMMIT_PATTERN.test(String(source?.revision || ''))) throw new ExternalSourceError('SOURCE_REVISION_INVALID', 'Resolve the source revision before downloading a candidate.');
     const coordinates = parseGitPackageUrl(source.repository);
-    const candidateRoot = path.join(this.stateDir, 'external-app-candidates');
+    // Download into the same host-owned candidate root the official update flow
+    // uses, because the app agent only accepts snapshot sources confined to it.
+    const candidateRoot = path.join(this.stateDir, 'app-candidates');
     fs.mkdirSync(candidateRoot, { recursive: true, mode: 0o700 });
-    const candidateDir = fs.mkdtempSync(path.join(candidateRoot, 'pkg-'));
+    const candidateDir = fs.mkdtempSync(path.join(candidateRoot, 'ext-'));
     try {
       await downloadMosPackage(this.fetch, { ...coordinates, sha: source.revision }, candidateDir, this.limits);
       const packageDigest = digestAppPackage(candidateDir);
@@ -54,10 +56,15 @@ class ExternalSourceClient {
       const candidateSource = { kind: 'external-git', path: EXTERNAL_PACKAGE_DIR, repository: source.repository, revision: source.revision, trust: source.trust };
       const gate = validateExternalCandidate({ manifest: appPackage.manifest, officialPackageIds: this.officialPackageIds, platformVersion: this.platformVersion, source: candidateSource });
       if (gate.errors.length) throw new ExternalSourceError('CANDIDATE_REJECTED', `External candidate failed validation: ${gate.errors.join(' ')}`);
+      // The collision-safe id every MOS-side identity (instance row, containers,
+      // volumes, routes, build context) uses for this package. Without it the
+      // package could not be isolated from an official id, so fail closed.
+      const namespaced = instanceNamespaceId(source, packageId);
+      if (!namespaced) throw new ExternalSourceError('CANDIDATE_REJECTED', 'External candidate failed validation: the package id cannot be namespaced for this source.');
       return {
         ...appPackage,
         cleanup: () => fs.rmSync(candidateDir, { force: true, recursive: true }),
-        instanceId: instanceNamespaceId(source, packageId),
+        namespacedPackageId: namespaced,
         packageDigest,
         packageId,
         permissions: gate.permissions,

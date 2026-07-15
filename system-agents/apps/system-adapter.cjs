@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const http = require('node:http');
 const path = require('node:path');
-const { collectPackageFiles, digestAppPackage } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
+const { collectPackageFiles, digestAppPackage, parseNamespacedPackageId } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 
 const APPS_ROOT = process.env.MOS_V2_APPS_ROOT || path.resolve(process.cwd(), 'apps');
 const APP_PACKAGE_ROOT = process.env.MOS_V2_APP_PACKAGE_ROOT || '/var/lib/mos-v2/app-packages';
@@ -191,6 +191,51 @@ class SystemAppAdapter {
       if (digestAppPackage(temporary, { manifest }) !== packageDigest) throw new Error('COPIED_PACKAGE_DIGEST_MISMATCH');
       await fsp.rename(temporary, installed);
       return { snapshotPath: installed, steps: ['validated', 'copied', 'verified', 'promoted'] };
+    } catch (error) {
+      await fsp.rm(temporary, { force: true, recursive: true }).catch(() => {});
+      const failure = new AppApplyError('snapshot');
+      failure.details = error?.details || [String(error?.message || 'snapshot failed')];
+      throw failure;
+    }
+  }
+
+  // Install-time snapshot for a package that does not live in the repository
+  // checkout. The source is a downloaded candidate rather than `appsRoot`, so it
+  // is only trusted when it is confined to the host-owned candidate root and its
+  // contents hash to the digest Suite Manager already validated.
+  //
+  // The agent independently enforces the namespacing rule: a candidate snapshot
+  // must be installed under an `x-<namespace>-<manifest id>` package id whose
+  // suffix is the package's own manifest id. A non-repository package therefore
+  // cannot occupy an official package's identity even if Suite Manager asked it
+  // to, because every runtime name derives from this package id.
+  async snapshotExternalAppPackage({ candidateDigest, candidatePath, instanceId, packageId }) {
+    const candidateRoot = path.resolve(this.appCandidateRoot);
+    const source = path.resolve(candidatePath);
+    const relativeSource = path.relative(candidateRoot, source);
+    const instanceRoot = path.join(this.appPackageRoot, instanceId);
+    const installed = path.join(instanceRoot, 'installed');
+    const temporary = path.join(instanceRoot, `.snapshot-${crypto.randomUUID()}`);
+    try {
+      if (!relativeSource || relativeSource.startsWith('..') || path.isAbsolute(relativeSource)) throw new Error('CANDIDATE_PATH_OUTSIDE_ROOT');
+      const identity = parseNamespacedPackageId(packageId);
+      if (!identity.namespaced) throw new Error('EXTERNAL_PACKAGE_ID_NOT_NAMESPACED');
+      const manifest = JSON.parse(await fsp.readFile(path.join(source, 'manifest.json'), 'utf8'));
+      if (manifest.id !== identity.packageId) throw new Error('EXTERNAL_PACKAGE_ID_MISMATCH');
+      if (digestAppPackage(source, { manifest }) !== candidateDigest) throw new Error('PACKAGE_DIGEST_MISMATCH');
+      if (fs.existsSync(installed)) throw new Error('INSTALLED_SNAPSHOT_EXISTS');
+
+      await fsp.mkdir(temporary, { recursive: true, mode: 0o750 });
+      for (const file of collectPackageFiles(source, { manifest })) {
+        const target = path.join(temporary, ...file.relativePath.split('/'));
+        await fsp.mkdir(path.dirname(target), { recursive: true, mode: 0o750 });
+        await fsp.copyFile(file.absolutePath, target);
+        const sourceMode = (await fsp.stat(file.absolutePath)).mode;
+        await fsp.chmod(target, sourceMode & 0o111 ? 0o750 : 0o640);
+      }
+      if (digestAppPackage(temporary, { manifest }) !== candidateDigest) throw new Error('COPIED_PACKAGE_DIGEST_MISMATCH');
+      await fsp.rename(temporary, installed);
+      return { snapshotPath: installed, steps: ['candidate-confined', 'identity-verified', 'validated', 'copied', 'verified', 'promoted'] };
     } catch (error) {
       await fsp.rm(temporary, { force: true, recursive: true }).catch(() => {});
       const failure = new AppApplyError('snapshot');

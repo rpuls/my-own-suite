@@ -78,7 +78,7 @@ test('a valid unverified candidate downloads with a manifest id, namespaced iden
   assert.equal(candidate.trust, 'unverified');
   assert.equal(candidate.packageId, 'community-notes');
   assert.equal(candidate.source.path, '.mos');
-  assert.match(candidate.instanceId, /^x-[a-f0-9]{8}-community-notes$/u);
+  assert.match(candidate.namespacedPackageId, /^x-[a-f0-9]{8}-community-notes$/u);
   assert.deepEqual(candidate.permissions, ['route:notes', 'volume:notes-data']);
 });
 

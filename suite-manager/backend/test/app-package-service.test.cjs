@@ -37,6 +37,143 @@ function requestContext() {
   };
 }
 
+// A downloaded external candidate shaped the way ExternalSourceClient returns
+// one: a real package folder plus the namespaced identity and recorded source.
+async function externalCandidate(root, overrides = {}) {
+  const packageDir = path.join(root, 'app-candidates', 'ext-abc');
+  await fsp.mkdir(packageDir, { recursive: true });
+  const manifest = {
+    category: 'test', health: { type: 'http', url: 'http://notes:8080/health' }, id: 'community-notes',
+    minimumMosVersion: '0.1.0', name: 'Community Notes',
+    resources: { services: { notes: { dockerfile: 'Dockerfile', internalPort: 8080, volumes: ['notes-data:/data'] } } },
+    routes: [{ host: 'notes', port: 8080, service: 'notes' }], setup: { fields: [] }, summary: 'Notes.', version: '1.0.0',
+    ...overrides,
+  };
+  await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
+  const source = { kind: 'external-git', path: '.mos', repository: 'https://github.com/community/notes', revision: 'b'.repeat(40), trust: 'unverified' };
+  return {
+    manifest: readAppPackageManifest(packageDir).manifest,
+    namespacedPackageId: `x-abcdef01-${manifest.id}`,
+    packageDigest: digestAppPackage(packageDir),
+    packageDir,
+    packageId: manifest.id,
+    permissions: ['route:notes', 'volume:notes-data'],
+    source,
+    trust: 'unverified',
+  };
+}
+
+function externalAgent(root, calls = []) {
+  return {
+    async snapshotExternalPackage(input) {
+      calls.push(input);
+      const snapshotPath = path.join(root, 'snapshots', input.instanceId, 'installed');
+      await fsp.cp(input.candidatePath, snapshotPath, { recursive: true });
+      return { snapshotPath };
+    },
+    async status() {
+      return { capabilities: ['apps.package.snapshot', 'apps.package.snapshot.external'], contractVersion: 7 };
+    },
+  };
+}
+
+test('an external package installs through the shared snapshot pipeline under its namespaced, unverified identity', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const calls = [];
+  const candidate = await externalCandidate(root);
+  const service = new AppPackageService({ agent: externalAgent(root, calls), appsDir: v2AppsDir, store });
+
+  const instance = await service.installExternalPackage({ candidate });
+
+  const installed = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
+  assert.equal(instance.packageId, 'x-abcdef01-community-notes');
+  assert.equal(installed.status, 'installed');
+  assert.equal(installed.packageDigest, candidate.packageDigest);
+  assert.equal(installed.sourceKind, 'external-git');
+  assert.equal(installed.sourceRepository, 'https://github.com/community/notes');
+  assert.equal(installed.sourceRevision, 'b'.repeat(40));
+  assert.equal(installed.sourceTrust, 'unverified');
+  assert.equal(installed.snapshotState, 'installed');
+  // MOS has not reviewed it, and the package cannot talk itself into a review.
+  assert.equal(installed.privacyStatus, 'review-required');
+
+  // The agent is asked to snapshot from the confined candidate path, never a repo folder.
+  assert.deepEqual(calls.map((call) => [call.candidatePath, call.packageId]), [[candidate.packageDir, 'x-abcdef01-community-notes']]);
+
+  // Runtime identity is namespaced, so it cannot collide with an official package.
+  const compose = store.getAppProjections(installed.id).find((projection) => projection.kind === 'compose');
+  assert.deepEqual(compose.content.services.map((item) => item.build.context), ['apps/x-abcdef01-community-notes']);
+
+  const listed = service.listPackages().find((item) => item.id === 'x-abcdef01-community-notes');
+  assert.equal(listed.external, true);
+  assert.equal(listed.mosReviewed, false);
+  assert.equal(listed.trust, 'unverified');
+  assert.equal(listed.name, 'Community Notes');
+  assert.equal(listed.privacy.status, 'review-required');
+  store.close();
+});
+
+test('an external package cannot present its own privacy review as a MOS review', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const candidate = await externalCandidate(root);
+  await fsp.writeFile(path.join(candidate.packageDir, 'privacy-review.json'), `${JSON.stringify({
+    appId: 'community-notes', posture: 'excellent', reviewedAt: '2026-07-01T00:00:00.000Z',
+    provenance: { humanReviewed: true, method: 'self' }, schemaVersion: 1, scope: { packageVersion: '1.0.0' },
+  }, null, 2)}\n`);
+  const republished = { ...candidate, manifest: readAppPackageManifest(candidate.packageDir).manifest, packageDigest: digestAppPackage(candidate.packageDir) };
+  const service = new AppPackageService({ agent: externalAgent(root), appsDir: v2AppsDir, store });
+
+  await service.installExternalPackage({ candidate: republished });
+
+  const listed = service.listPackages().find((item) => item.id === 'x-abcdef01-community-notes');
+  assert.equal(listed.privacy.status, 'review-required');
+  assert.equal(listed.privacy.posture, 'review-required');
+  assert.equal(listed.mosReviewed, false);
+  store.close();
+});
+
+test('an external package cannot take a web address an installed app already serves', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({
+    agent: {
+      ...externalAgent(root),
+      async snapshotPackage(input) { return snapshotResult(input); },
+    },
+    appsDir: v2AppsDir,
+    store,
+  });
+  await service.installPackage('stirling-pdf');
+  const installedHost = store.getAppProjections(store.getAppInstanceByPackageId('stirling-pdf').id)
+    .find((projection) => projection.kind === 'caddy').content.routes[0].host;
+  const candidate = await externalCandidate(root, { routes: [{ host: installedHost, port: 8080, service: 'notes' }] });
+
+  await assert.rejects(() => service.installExternalPackage({ candidate }), { code: 'APP_ROUTE_HOST_TAKEN' });
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes'), null);
+  store.close();
+});
+
+test('an external install is refused when the app agent cannot snapshot external packages', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const candidate = await externalCandidate(root);
+  const service = new AppPackageService({
+    agent: {
+      async snapshotExternalPackage() { throw new Error('should not be called'); },
+      async status() { return { capabilities: ['apps.package.snapshot'], contractVersion: 6 }; },
+    },
+    appsDir: v2AppsDir,
+    store,
+  });
+
+  await assert.rejects(() => service.installExternalPackage({ candidate }), { code: 'APP_EXTERNAL_INSTALL_UNAVAILABLE' });
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes'), null);
+  store.close();
+});
+
 test('packages without Homepage metadata render no Homepage projection', () => {
   const { manifest } = readAppPackageManifest(path.join(v2AppsDir, 'onlyoffice'));
   const projections = renderDryRunProjections(manifest, []);

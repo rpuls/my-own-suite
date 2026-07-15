@@ -66,6 +66,70 @@ test('system adapter never replaces an existing installed snapshot', async () =>
   assert.equal(await fsp.readFile(path.join(installed, 'sentinel'), 'utf8'), 'keep');
 });
 
+test('system adapter snapshots an external candidate under its namespaced identity', async () => {
+  const root = await tempDir();
+  const candidateRoot = path.join(root, 'candidates');
+  const appPackageRoot = path.join(root, 'state');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const { packageDir: candidatePath, packageDigest: candidateDigest } = await writePackage(candidateRoot, 'community-notes');
+  const adapter = new SystemAppAdapter({ appCandidateRoot: candidateRoot, appPackageRoot, appsRoot: path.join(root, 'apps') });
+
+  const result = await adapter.snapshotExternalAppPackage({ candidateDigest, candidatePath, instanceId, packageId: 'x-abcdef01-community-notes' });
+
+  assert.deepEqual(result.steps, ['candidate-confined', 'identity-verified', 'validated', 'copied', 'verified', 'promoted']);
+  assert.equal(result.snapshotPath, path.join(appPackageRoot, instanceId, 'installed'));
+  assert.equal(digestAppPackage(result.snapshotPath), candidateDigest);
+});
+
+test('system adapter refuses an external snapshot outside its candidate root, with a changed digest, or over an existing snapshot', async () => {
+  const root = await tempDir();
+  const candidateRoot = path.join(root, 'candidates');
+  const appPackageRoot = path.join(root, 'state');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const { packageDir: candidatePath, packageDigest: candidateDigest } = await writePackage(candidateRoot, 'community-notes');
+  const { packageDir: outsidePath, packageDigest: outsideDigest } = await writePackage(path.join(root, 'elsewhere'), 'community-notes');
+  const adapter = new SystemAppAdapter({ appCandidateRoot: candidateRoot, appPackageRoot, appsRoot: path.join(root, 'apps') });
+  const packageId = 'x-abcdef01-community-notes';
+
+  await assert.rejects(
+    () => adapter.snapshotExternalAppPackage({ candidateDigest: outsideDigest, candidatePath: outsidePath, instanceId, packageId }),
+    /validated app package could not be snapshotted/u,
+  );
+  await assert.rejects(
+    () => adapter.snapshotExternalAppPackage({ candidateDigest: `sha256:${'0'.repeat(64)}`, candidatePath, instanceId, packageId }),
+    /validated app package could not be snapshotted/u,
+  );
+  assert.equal(fs.existsSync(path.join(appPackageRoot, instanceId, 'installed')), false);
+
+  await adapter.snapshotExternalAppPackage({ candidateDigest, candidatePath, instanceId, packageId });
+  await assert.rejects(
+    () => adapter.snapshotExternalAppPackage({ candidateDigest, candidatePath, instanceId, packageId }),
+    /validated app package could not be snapshotted/u,
+  );
+});
+
+// The agent enforces namespacing itself: every container, volume, network, and
+// route name derives from this package id, so an external package that could be
+// snapshotted under a bare id would occupy an official app's runtime identity.
+test('system adapter refuses to snapshot an external candidate under a bare or mismatched package id', async () => {
+  const root = await tempDir();
+  const candidateRoot = path.join(root, 'candidates');
+  const appPackageRoot = path.join(root, 'state');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const { packageDir: candidatePath, packageDigest: candidateDigest } = await writePackage(candidateRoot, 'immich');
+  const adapter = new SystemAppAdapter({ appCandidateRoot: candidateRoot, appPackageRoot, appsRoot: path.join(root, 'apps') });
+
+  await assert.rejects(
+    () => adapter.snapshotExternalAppPackage({ candidateDigest, candidatePath, instanceId, packageId: 'immich' }),
+    /validated app package could not be snapshotted/u,
+  );
+  await assert.rejects(
+    () => adapter.snapshotExternalAppPackage({ candidateDigest, candidatePath, instanceId, packageId: 'x-abcdef01-community-notes' }),
+    /validated app package could not be snapshotted/u,
+  );
+  assert.equal(fs.existsSync(path.join(appPackageRoot, instanceId, 'installed')), false);
+});
+
 test('system adapter stages a verified update without changing installed files', async () => {
   const root = await tempDir();
   const appsRoot = path.join(root, 'apps');

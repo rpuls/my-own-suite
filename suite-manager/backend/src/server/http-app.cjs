@@ -155,6 +155,7 @@ const EXTERNAL_SOURCE_STATUS = Object.freeze({
   CANDIDATE_TOO_LARGE: 422,
   SOURCE_ALREADY_ADDED: 409,
   SOURCE_FETCH_FAILED: 502,
+  SOURCE_INSTALL_UNAVAILABLE: 503,
   SOURCE_NOT_FOUND: 404,
   SOURCE_NOT_INSTALLABLE: 409,
   SOURCE_REDIRECT_REJECTED: 502,
@@ -322,6 +323,7 @@ function createV2Server({
   });
   const externalSourceService = externalSources || new ExternalSourceService({
     allowLocalSources: process.env.MOS_V2_ALLOW_LOCAL_APP_SOURCES === '1',
+    appPackages,
     officialPackageIds: inspectAppPackages(appsDir).map((pkg) => pkg.id),
     platformVersion: catalogService.platformVersion,
     store: setup.store,
@@ -684,6 +686,11 @@ function createV2Server({
         if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources/resolve`) {
           const body = await readJsonBody(request, 4 * 1024);
           jsonResponse(response, 200, await externalSourceService.resolveUrl(String(body.url || '')));
+          return;
+        }
+        if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/apps/sources/install`) {
+          const body = await readJsonBody(request, 16 * 1024);
+          jsonResponse(response, 201, await externalSourceService.installUrl(String(body.url || ''), { config: body.config }));
           return;
         }
         const sourceStatusMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/sources\/([^/]+)\/status$/u);

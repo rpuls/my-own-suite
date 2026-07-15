@@ -54,6 +54,7 @@ class AppAgentClient {
   checkHealth(input) { return this.request('POST', '/v1/apps/check-health', input); }
   connectNetwork(input) { return this.request('POST', '/v1/apps/connect-network', input); }
   snapshotPackage(input) { return this.request('POST', '/v1/apps/snapshot', input); }
+  snapshotExternalPackage(input) { return this.request('POST', '/v1/apps/snapshot-external', input); }
   stagePackageUpdate(input) { return this.request('POST', '/v1/apps/update/stage', input); }
   buildPackageUpdate(input) { return this.request('POST', '/v1/apps/update/build', input, { timeoutMs: APP_AGENT_UPDATE_BUILD_TIMEOUT_MS }); }
   activatePackageUpdate(input) { return this.request('POST', '/v1/apps/update/activate', input); }

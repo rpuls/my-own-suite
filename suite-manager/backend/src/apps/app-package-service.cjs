@@ -7,7 +7,7 @@ const {
   publicPackageSummary,
   readAppPackageManifest,
 } = require('./package-manifest.cjs');
-const { digestAppPackage, validatePrivacyBinding } = require('./package-contracts.cjs');
+const { digestAppPackage, parseNamespacedPackageId, validatePrivacyBinding } = require('./package-contracts.cjs');
 const { compareAppPackages } = require('./app-update-comparison.cjs');
 
 const APP_LOOPBACK_PORT_BASE = 18000;
@@ -110,13 +110,18 @@ function resolveTemplatesDeep(value, configRows, options = {}) {
   return value;
 }
 
-function renderDryRunProjections(manifest, configRows = []) {
+// `packageId` is the identity MOS installed the package under, which is the
+// manifest id for official packages and a source-namespaced id for external
+// ones. Every derived runtime name (build context, loopback ports, and through
+// the agent the container/volume/network names) keys off it, so two packages
+// that ship the same manifest id from different sources stay isolated.
+function renderDryRunProjections(manifest, configRows = [], { packageId = manifest.id } = {}) {
   const services = Object.entries(manifest.resources.services).map(([id, service]) => ({
-    build: { context: `apps/${manifest.id}`, dockerfile: service.dockerfile },
+    build: { context: `apps/${packageId}`, dockerfile: service.dockerfile },
     environment: renderEnvironment(service.env, configRows),
     id,
     internalPort: service.internalPort,
-    loopbackPort: loopbackPortFor(manifest, id),
+    loopbackPort: loopbackPortFor(packageId, id),
     volumes: service.volumes || [],
   }));
   const servicePorts = new Map(services.map((service) => [service.id, service.loopbackPort]));
@@ -490,7 +495,7 @@ function updateRuntimeRequest({ config, expectedInstalledDigest, instance, manif
     health: health.content,
     instanceId: instance.id,
     packageDigest,
-    packageId: manifest.id,
+    packageId: instance.packageId,
     packageVersion: manifest.version,
     publicUrl: requestContext.publicUrl,
     sourceRevision,
@@ -521,7 +526,12 @@ class AppPackageService {
       throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_UNAVAILABLE', 'This app does not have a verified installed package snapshot.', 409);
     }
     const appPackage = readAppPackageManifest(instance.snapshotPath);
-    if (appPackage.manifest.id !== instance.packageId || digestAppPackage(instance.snapshotPath) !== instance.packageDigest) {
+    // An instance is managed under its installed id, which is the manifest id
+    // for official packages and `x-<namespace>-<manifest id>` for external ones.
+    // Compare against the manifest id the installed id resolves to, so the check
+    // stays exact for both without letting a snapshot claim a different package.
+    if (appPackage.manifest.id !== parseNamespacedPackageId(instance.packageId).packageId
+        || digestAppPackage(instance.snapshotPath) !== instance.packageDigest) {
       throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The installed app package snapshot no longer matches its recorded identity.', 409);
     }
     return appPackage;
@@ -961,6 +971,10 @@ class AppPackageService {
       status: instance.privacyStatus || 'review-required',
     };
     if (instance.snapshotState !== 'installed' || !instance.snapshotPath) return stored;
+    // Only a MOS-reviewed source may present a package-shipped review as a
+    // review. An external package can ship a `privacy-review.json` claiming any
+    // posture it likes, so its stored review-required status stands instead.
+    if (instance.sourceTrust !== 'mos-reviewed') return stored;
     return privacyReviewPresentation(instance.snapshotPath, { id: instance.packageId, version: instance.packageVersion }) || stored;
   }
 
@@ -1000,9 +1014,18 @@ class AppPackageService {
         ...summary,
         advisories: this.packageAdvisoriesFor(instance, packageId, candidatesByPackage.get(packageId)?.version),
         catalogUpdate: this.catalogService?.updateFor(packageId, instance) || null,
+        external: instance?.sourceKind === 'external-git',
+        // The installed identity wins over the id the manifest claims: an
+        // external package is managed under its source-namespaced id, and every
+        // API path the UI calls back on must address it by that id.
+        id: packageId,
         installStatus: instance?.status || 'not-installed',
         instance: publicInstance(instance ? { ...instance, guideState } : null, projections, config),
+        // Trust comes from the recorded source, never from package metadata, so
+        // an installed external app keeps visible unverified status.
+        mosReviewed: (instance?.sourceTrust || 'mos-reviewed') === 'mos-reviewed',
         privacy: this.packagePrivacyFor(instance, packageId, candidatesByPackage.get(packageId)?.version),
+        trust: instance?.sourceTrust || 'mos-reviewed',
       };
     });
     return this.withCompatibility(packages, integrations);
@@ -1179,6 +1202,112 @@ class AppPackageService {
     );
   }
 
+  // Route hosts are global to the MOS installation: two installed apps cannot
+  // both serve `notes.<host>`. Refuse up front rather than let a package take a
+  // web address another installed app already answers on.
+  assertRouteHostsAvailable(manifest, packageId) {
+    const requested = new Set((manifest.routes || []).map((route) => route.host));
+    for (const other of this.store.getAppInstances()) {
+      if (other.packageId === packageId || other.status === 'uninstalled') continue;
+      const caddy = this.store.getAppProjections(other.id).find((projection) => projection.kind === 'caddy')?.content;
+      for (const route of Array.isArray(caddy?.routes) ? caddy.routes : []) {
+        if (requested.has(route.host)) {
+          throw new AppPackageServiceError('APP_ROUTE_HOST_TAKEN', `Another installed app already serves the web address "${route.host}".`, 409);
+        }
+      }
+    }
+  }
+
+  // Install a downloaded external package that already passed the constrained
+  // external-candidate gate. Deliberately separate from installPackage: the
+  // package has no repository folder, so it is snapshotted from the confined
+  // candidate root; its identity is the source-namespaced id rather than the id
+  // it claims; and its trust and privacy status come from the recorded source,
+  // never from package metadata. Everything from the snapshot onward is the same
+  // pipeline official packages use.
+  async installExternalPackage({ candidate, input = {} }) {
+    const packageId = candidate?.namespacedPackageId;
+    const manifest = candidate?.manifest;
+    if (!packageId || !manifest || !candidate.packageDir || !candidate.packageDigest || candidate.source?.trust === 'mos-reviewed') {
+      throw new AppPackageServiceError('APP_EXTERNAL_CANDIDATE_INVALID', 'This external app package cannot be installed.', 409);
+    }
+    const current = this.store.getAppInstanceByPackageId(packageId);
+    if (current) {
+      if (current.status === 'uninstalled') {
+        fs.rmSync(path.join(this.secretDir, current.id), { recursive: true, force: true });
+        this.store.deleteAppInstance({ instanceId: current.id });
+      } else {
+        return publicInstance(this.withGuideState(current), this.store.getAppProjections(current.id), this.store.getAppConfig(current.id));
+      }
+    }
+    if (!this.agent?.snapshotExternalPackage) {
+      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App package snapshot system agent is unavailable.', 503);
+    }
+    const agentStatus = await this.agent.status().catch(() => ({ capabilities: [] }));
+    if (!agentStatus.capabilities?.includes('apps.package.snapshot.external')) {
+      throw new AppPackageServiceError('APP_EXTERNAL_INSTALL_UNAVAILABLE', 'The installed app agent cannot snapshot external app packages.', 503);
+    }
+    this.assertRouteHostsAvailable(manifest, packageId);
+
+    const at = this.now().toISOString();
+    const instance = {
+      categorySnapshot: manifest.category,
+      displayNameSnapshot: manifest.name,
+      id: crypto.randomUUID(),
+      manifestDigest: digestFor(manifest),
+      packageDigest: candidate.packageDigest,
+      packageId,
+      packageVersion: manifest.version,
+      // MOS has not reviewed this package. A `privacy-review.json` the package
+      // ships is not a MOS review, so the instance records review-required and
+      // the Apps UI keeps showing it as unverified.
+      privacy: { posture: 'review-required', reviewedAt: null, status: 'review-required' },
+      source: candidate.source,
+    };
+    const snapshot = await this.agent.snapshotExternalPackage({
+      candidateDigest: candidate.packageDigest,
+      candidatePath: candidate.packageDir,
+      instanceId: instance.id,
+      packageId,
+    });
+    if (!snapshot?.snapshotPath) {
+      throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The app package snapshot agent did not return an installed snapshot path.', 502);
+    }
+    instance.snapshotPath = snapshot.snapshotPath;
+    instance.snapshotState = 'installed';
+    const { manifest: installedManifest } = readAppPackageManifest(instance.snapshotPath);
+    if (installedManifest.id !== manifest.id || digestAppPackage(instance.snapshotPath) !== candidate.packageDigest) {
+      throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The installed app package snapshot does not match the validated source package.', 502);
+    }
+    const config = createConfigRows({ input, instanceId: instance.id, manifest: installedManifest, secretDir: this.secretDir });
+    const projections = renderDryRunProjections(installedManifest, config, { packageId });
+    try {
+      this.store.installAppInstance({
+        at,
+        config,
+        instance,
+        operationId: crypto.randomUUID(),
+        projections,
+        request: {
+          config: config.map((item) => ({ generated: item.source === 'generated', key: item.key, secret: item.secret === true, source: item.source })),
+          dryRunOnly: true,
+          packageId,
+          packageVersion: manifest.version,
+          source: { kind: instance.source.kind, repository: instance.source.repository, revision: instance.source.revision, trust: instance.source.trust },
+        },
+      });
+    } catch (error) {
+      fs.rmSync(path.join(this.secretDir, instance.id), { recursive: true, force: true });
+      throw error;
+    }
+
+    return publicInstance(
+      this.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
+      this.store.getAppProjections(instance.id),
+      this.store.getAppConfig(instance.id),
+    );
+  }
+
   async preparePackageUpdate(packageId) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance || instance.status === 'uninstalled') throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before preparing an update.', 409);
@@ -1283,7 +1412,7 @@ class AppPackageService {
         if (errors.length) throw new AppPackageServiceError('APP_PRIVACY_REVIEW_INVALID', `The candidate privacy review is invalid: ${errors.join(' ')}`, 409);
         candidatePrivacy = { posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
       }
-      const candidateProjections = renderDryRunProjections(candidate.manifest, candidateConfig);
+      const candidateProjections = renderDryRunProjections(candidate.manifest, candidateConfig, { packageId: instance.packageId });
       const composeProjection = candidateProjections.find((projection) => projection.kind === 'compose');
       const caddyProjection = candidateProjections.find((projection) => projection.kind === 'caddy');
       const healthProjection = candidateProjections.find((projection) => projection.kind === 'health');

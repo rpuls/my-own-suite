@@ -74,8 +74,12 @@ type AppPackageSummary = {
     updatedAt?: string;
   } | null;
   advisories?: PrivacyAdvisory[];
+  // Trust of the source this instance was installed from, reported by the
+  // backend and never derived from package metadata.
+  external?: boolean;
   id: string;
   installStatus: string;
+  mosReviewed?: boolean;
   name: string;
   privacy: PrivacyReviewSummary;
   onboarding?: {
@@ -225,11 +229,15 @@ function statusFor(app: AppPackageSummary) {
   return { className: 'is-available', label: 'Available', tone: 'info' };
 }
 
-function setupFieldsNeedInput(app: AppPackageSummary) {
+// Setup fields read the same way for a catalog package and a pasted external
+// one, so these take anything carrying a setup schema.
+type SetupSource = Pick<AppPackageSummary, 'setup'>;
+
+function setupFieldsNeedInput(app: SetupSource) {
   return app.setup.fields.filter((field) => !field.generated);
 }
 
-function initialSetupConfig(app: AppPackageSummary, ownerEmail: string) {
+function initialSetupConfig(app: SetupSource, ownerEmail: string) {
   return Object.fromEntries(
     setupFieldsNeedInput(app).map((field) => [
       field.id,
@@ -238,8 +246,28 @@ function initialSetupConfig(app: AppPackageSummary, ownerEmail: string) {
   );
 }
 
-function requiredSetupMissing(app: AppPackageSummary, setupConfig: Record<string, string>) {
+function requiredSetupMissing(app: SetupSource, setupConfig: Record<string, string>) {
   return setupFieldsNeedInput(app).some((field) => field.required && !String(setupConfig[field.id] || '').trim());
+}
+
+function AppSetupPanel({ disabled, fields, onChange, values }: {
+  disabled: boolean;
+  fields: AppPackageSummary['setup']['fields'];
+  onChange: (id: string, value: string) => void;
+  values: Record<string, string>;
+}) {
+  return <div className="suite-app-setup-panel">
+    {fields.map((field) => <label key={field.id}>
+      <span>{field.label}{field.required ? ' *' : ''}</span>
+      <input
+        autoComplete={field.secret ? 'new-password' : 'off'}
+        disabled={disabled}
+        onChange={(event) => onChange(field.id, event.currentTarget.value)}
+        type={field.secret ? 'password' : field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : 'text'}
+        value={values[field.id] || ''}
+      />
+    </label>)}
+  </div>;
 }
 
 function AppHealthIndicator({ app, ledVariant = false }: { app: AppPackageSummary; ledVariant?: boolean }) {
@@ -485,13 +513,14 @@ function AppIcon({ app, large = false }: { app: AppPackageSummary; large?: boole
 }
 
 function AppCard({ app, onOpen }: { app: AppPackageSummary; onOpen: (app: AppPackageSummary) => void }) {
-  return <article className="suite-app-card">
+  return <article className={`suite-app-card${app.external ? ' is-external' : ''}`}>
     <button className="suite-app-card-main" onClick={() => onOpen(app)} type="button">
       <AppIcon app={app} />
       <span className="suite-app-card-copy">
         <span className="suite-app-title-row">
           <strong>{app.name}</strong>
           <span className="suite-app-category-pill">{categoryLabel(primaryCategory(app))}</span>
+          {app.external ? <span className="suite-app-external-pill">External &middot; Unverified</span> : null}
           {app.catalogUpdate?.status === 'update-available' ? <span className="suite-app-update-pill">Update available</span> : null}
           {app.catalogUpdate?.status === 'integrity-error' ? <span className="suite-app-update-pill is-warning">Catalog conflict</span> : null}
         </span>
@@ -622,6 +651,7 @@ function AppDetail({
         <div className="suite-app-detail-heading">
           <div className="suite-app-detail-title-row">
             <h2>{app.name}</h2>
+            {app.external ? <span className="suite-app-external-pill">External &middot; Unverified</span> : null}
             <AppHealthIndicator app={app} />
           </div>
           <p>{descriptionFor(app)}</p>
@@ -643,21 +673,12 @@ function AppDetail({
             <input checked={showOnHomepage} disabled={installing} onChange={(event) => setShowOnHomepage(event.currentTarget.checked)} type="checkbox" />
             <span>Add shortcut to Homepage</span>
           </label> : null}
-          {setupOpen && needsPreparation ? <div className="suite-app-setup-panel">
-            {inputFields.map((field) => <label key={field.id}>
-              <span>{field.label}{field.required ? ' *' : ''}</span>
-              <input
-                autoComplete={field.secret ? 'new-password' : 'off'}
-                disabled={installing}
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  setSetupConfig((current) => ({ ...current, [field.id]: value }));
-                }}
-                type={field.secret ? 'password' : field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : 'text'}
-                value={setupConfig[field.id] || ''}
-              />
-            </label>)}
-          </div> : null}
+          {setupOpen && needsPreparation ? <AppSetupPanel
+            disabled={installing}
+            fields={inputFields}
+            onChange={(id, value) => setSetupConfig((current) => ({ ...current, [id]: value }))}
+            values={setupConfig}
+          /> : null}
         </div>
       </header>
       {app.instance?.updateRecovery ? <Notice title="App update needs attention" variant="warning"><p>{app.instance.updateRecovery.state === 'retry-safe' ? 'The update stopped before changing the running app. Review the latest candidate and try again.' : app.instance.updateRecovery.state === 'rollback-required' ? 'The update stopped after changing runtime state. Restore the installed app runtime before retrying.' : 'The package snapshot was promoted before Suite Manager committed its identity. Complete package recovery before another update.'}</p><details className="suite-advanced"><summary>Advanced details</summary><code>{app.instance.updateRecovery.errorCode}</code></details></Notice> : null}
@@ -669,6 +690,9 @@ function AppDetail({
         {missingUsefulPeers.length ? <Notice title="Needs a compatible app" variant="info"><p>{missingUsefulPeers[0]!.message}</p></Notice> : null}
         {ready && isCompanionApp(app) && !installedCompatiblePeers.length ? <Notice title="Companion app" variant="info"><p>{app.capabilities.usefulness.emptyState || 'Install a compatible app to use this service.'}</p></Notice> : null}
         {app.catalogUpdate?.status === 'integrity-error' ? <Notice title="Catalog integrity conflict" variant="warning"><p>The catalog advertises different package contents under the installed version number. MOS will not treat this as an update.</p></Notice> : null}
+        {app.external ? <Notice title="Unverified external package" variant="warning">
+          <p>You installed this app from a repository you pasted, not the verified MOS catalog. MOS has not reviewed its code and cannot vouch for any privacy claims it makes. It runs with a restricted profile: only its own named storage and its own web addresses.</p>
+        </Notice> : null}
 
         {app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available ? <section className="suite-app-update-summary">
           <div><span>Installed</span><strong>{app.catalogUpdate.installed?.packageVersion}</strong></div>
@@ -816,8 +840,18 @@ function ExternalAppCard({ card, onOpen }: { card: ExternalCard; onOpen: () => v
   </article>;
 }
 
-function ExternalAppDetail({ onClose, resolved }: { onClose: () => void; resolved: ExternalResolveResponse }) {
+function ExternalAppDetail({ installError, installing, onClose, onInstall, owner, resolved }: {
+  installError: string;
+  installing: boolean;
+  onClose: () => void;
+  onInstall: (resolved: ExternalResolveResponse, config: Record<string, string>) => void;
+  owner: Owner;
+  resolved: ExternalResolveResponse;
+}) {
   const { card, permissions, source } = resolved;
+  const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(card, owner.email));
+  const inputFields = setupFieldsNeedInput(card);
+  const canInstall = card.validation.valid && !requiredSetupMissing(card, setupConfig) && !installing;
   return <div className="suite-app-detail-layer">
     <button aria-label="Close package details" className="suite-app-detail-backdrop" onClick={onClose} tabIndex={-1} type="button" />
     <aside aria-label={`${card.name} details`} aria-modal="true" className="suite-app-detail" role="dialog">
@@ -832,14 +866,21 @@ function ExternalAppDetail({ onClose, resolved }: { onClose: () => void; resolve
           <p>{externalDescription(card)}</p>
         </div>
         <div className="suite-app-primary-actions">
-          <button className="mos-btn mos-btn-primary" disabled type="button">Install</button>
-          <p className="suite-meta">Installing external packages arrives in the next MOS update. You can review what this package would request below.</p>
+          <button className="mos-btn mos-btn-primary" disabled={!canInstall} onClick={() => onInstall(resolved, { ...setupConfig })} type="button">{installing ? 'Installing...' : 'Install'}</button>
+          {inputFields.length ? <AppSetupPanel
+            disabled={installing}
+            fields={inputFields}
+            onChange={(id, value) => setSetupConfig((current) => ({ ...current, [id]: value }))}
+            values={setupConfig}
+          /> : null}
         </div>
       </header>
 
       <div className="suite-app-detail-scroll">
+        {installError ? <Notice title="This package could not be installed" variant="warning"><p>{installError}</p></Notice> : null}
+
         <Notice title="Unverified external package" variant="warning">
-          <p>This package comes from a repository you pasted, not the verified MOS catalog. MOS has not reviewed its code or checked any privacy claims. If you install it later, it runs with a restricted profile: only its own named storage and the web addresses listed below &mdash; no privileged access, host folders, or Docker socket.</p>
+          <p>This package comes from a repository you pasted, not the verified MOS catalog. MOS has not reviewed its code or checked any privacy claims. Install it only if you trust whoever publishes that repository. If you do, it runs with a restricted profile: only its own named storage and the web addresses listed below &mdash; no privileged access, host folders, or Docker socket.</p>
         </Notice>
 
         {!card.validation.valid ? <Notice title="This package cannot be installed" variant="warning"><ul>{card.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}
@@ -894,6 +935,8 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   const [externalLoading, setExternalLoading] = useState(false);
   const [externalError, setExternalError] = useState('');
   const [externalOpen, setExternalOpen] = useState(false);
+  const [externalInstalling, setExternalInstalling] = useState(false);
+  const [externalInstallError, setExternalInstallError] = useState('');
 
   async function load() {
     setLoading(true);
@@ -989,6 +1032,41 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       return haystack.includes(normalizedQuery);
     });
   }, [packages, query]);
+
+  // Installing a pasted repository is the only point where an external package
+  // is persisted. The backend re-resolves and re-validates the URL, so what is
+  // installed is whatever passes the gate right now rather than the previewed
+  // card. Once it is installed it is an ordinary app instance under its
+  // namespaced id, so the normal install flow finishes runtime and Homepage.
+  async function performExternalInstall(resolved: ExternalResolveResponse, config: Record<string, string> = {}) {
+    if (!resolved.card.validation.valid) return;
+    setExternalInstalling(true);
+    setExternalInstallError('');
+    try {
+      const installed = await jsonResponse<{ packageId: string }>(
+        await fetch('/suite-manager/api/apps/sources/install', {
+          body: JSON.stringify({ config, url: resolved.source.repository }),
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+        }),
+        `Unable to install ${resolved.card.name}.`,
+      );
+      const refreshed = await jsonResponse<{ catalog: CatalogStatus; packages: AppPackageSummary[] }>(
+        await fetch('/suite-manager/api/apps/packages'),
+        'Unable to load app packages.',
+      );
+      setPackages(refreshed.packages);
+      setCatalogStatus(refreshed.catalog);
+      const app = refreshed.packages.find((item) => item.id === installed.packageId);
+      setExternalOpen(false);
+      setQuery('');
+      if (app) await performInstall(app);
+    } catch (caught) {
+      setExternalInstallError(caught instanceof Error ? caught.message : `Unable to install ${resolved.card.name}.`);
+    } finally {
+      setExternalInstalling(false);
+    }
+  }
 
   async function performInstall(app: AppPackageSummary, options: { config?: Record<string, string>; showOnHomepage?: boolean } = {}) {
     const setupConfig = options.config || {};
@@ -1211,7 +1289,14 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       </dl>
     </details> : null}
 
-    {externalOpen && externalResolved ? <ExternalAppDetail onClose={() => setExternalOpen(false)} resolved={externalResolved} /> : null}
+    {externalOpen && externalResolved ? <ExternalAppDetail
+      installError={externalInstallError}
+      installing={externalInstalling}
+      onClose={() => setExternalOpen(false)}
+      onInstall={(resolved, config) => { void performExternalInstall(resolved, config); }}
+      owner={owner}
+      resolved={externalResolved}
+    /> : null}
 
     {selected ? <AppDetail app={selected} connectingId={connectingId} guideUpdating={guideUpdatingId === selected.id} installing={installingId === selected.id || connectingId.startsWith(`${selected.id}:`)} installError={installError} installSteps={installingId === selected.id || connectingId.startsWith(`${selected.id}:`) || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onConnect={(connection) => void connectPackages(connection)} onGuideStatus={(target, status) => void updateGuideStatus(target, status)} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} owner={owner} packages={packages} /> : null}
   </section>;

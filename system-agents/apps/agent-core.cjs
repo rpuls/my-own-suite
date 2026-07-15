@@ -206,6 +206,17 @@ function assertPackageSnapshotRequest(input) {
   return input;
 }
 
+function assertPackageSnapshotExternalRequest(input) {
+  if (!exactKeys(input, ['candidateDigest', 'candidatePath', 'instanceId', 'packageId'])) {
+    throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented external app package snapshot fields are accepted.');
+  }
+  assertString(input.instanceId, 'instanceId', /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+  assertString(input.packageId, 'packageId', PACKAGE_ID_PATTERN);
+  assertString(input.candidateDigest, 'candidateDigest', PACKAGE_DIGEST_PATTERN);
+  assertString(input.candidatePath, 'candidatePath');
+  return input;
+}
+
 function assertPackageUpdateStageRequest(input) {
   if (!exactKeys(input, ['candidateDigest', 'candidatePath', 'expectedInstalledDigest', 'instanceId', 'packageId'])) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app package update staging fields are accepted.');
@@ -316,8 +327,8 @@ class AppAgentCore {
 
   async status() {
     return {
-      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'],
-      contractVersion: 6,
+      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'],
+      contractVersion: 7,
       service: 'mos-v2-app-agent',
     };
   }
@@ -326,6 +337,12 @@ class AppAgentCore {
     const request = assertPackageSnapshotRequest(input);
     const result = await this.adapter.snapshotAppPackage(request);
     return { ...result, instanceId: request.instanceId, packageDigest: request.packageDigest, packageId: request.packageId, status: 'snapshotted' };
+  }
+
+  async snapshotExternalPackage(input) {
+    const request = assertPackageSnapshotExternalRequest(input);
+    const result = await this.adapter.snapshotExternalAppPackage(request);
+    return { ...result, instanceId: request.instanceId, packageDigest: request.candidateDigest, packageId: request.packageId, status: 'snapshotted' };
   }
 
   async stagePackageUpdate(input) {
@@ -438,4 +455,4 @@ class AppAgentCore {
   }
 }
 
-module.exports = { AppAgentCore, AppRuntimeError, assertHealthCheckRequest, assertNetworkConnectRequest, assertPackageSnapshotRequest, assertRuntimeRemoveRequest, assertRuntimeRequest, exactKeys, renderAppRoutes, resolveEnvironment };
+module.exports = { AppAgentCore, AppRuntimeError, assertHealthCheckRequest, assertNetworkConnectRequest, assertPackageSnapshotExternalRequest, assertPackageSnapshotRequest, assertRuntimeRemoveRequest, assertRuntimeRequest, exactKeys, renderAppRoutes, resolveEnvironment };
