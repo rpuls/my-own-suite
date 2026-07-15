@@ -503,6 +503,46 @@
   color: var(--mos-color-warning);
 }
 
+.suite-app-external-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-warning-soft);
+  color: var(--mos-color-warning);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.suite-app-card.is-external {
+  border-color: var(--mos-color-warning-border);
+}
+
+.suite-app-permission-list {
+  display: grid;
+  gap: var(--mos-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suite-app-permission-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: var(--mos-space-3);
+  border: var(--mos-border-subtle);
+  border-radius: var(--mos-radius-md);
+  background: var(--mos-color-surface-muted);
+}
+
+.suite-app-permission-list small {
+  color: var(--mos-color-text-muted);
+}
+
 .suite-app-update-summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

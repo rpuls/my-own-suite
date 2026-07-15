@@ -102,6 +102,28 @@ type AppPackageSummary = {
   version: string;
 };
 
+// A pasted repository URL resolves to an unverified external package preview.
+// The card reuses the public package summary shape, plus explicit external/trust
+// flags and the package's own inlined icon; nothing is persisted by resolving.
+type ExternalCard = Pick<AppPackageSummary,
+  'capabilities' | 'catalog' | 'category' | 'health' | 'homepage' | 'icon' | 'id' | 'name' | 'role' | 'routes' | 'services' | 'setup' | 'summary' | 'validation' | 'version'> & {
+  external: true;
+  iconDataUrl: string | null;
+  iconUrl: string;
+  installStatus: string;
+  minimumMosVersion: string;
+  mosReviewed: false;
+  trust: string;
+};
+type ExternalSourceCoordinates = { catalogPath: string; kind: string; packageId: string; repository: string; revision: string; trust: string };
+type ExternalResolveResponse = {
+  card: ExternalCard;
+  instanceId: string;
+  packageDigest: string;
+  permissions: string[];
+  source: ExternalSourceCoordinates;
+};
+
 type InstallStep = {
   detail: string;
   id: 'prepare' | 'runtime' | 'homepage' | 'ready';
@@ -739,6 +761,122 @@ function AppDetail({
   </div>;
 }
 
+// A search query is treated as an external package source only when it is a full
+// HTTPS repository URL (host plus at least owner/repo). The backend enforces the
+// real host allowlist; this only avoids resolving on every ordinary keystroke.
+function repoUrlFromQuery(raw: string): string | null {
+  const value = raw.trim();
+  if (!/^https:\/\//iu.test(value)) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || !url.hostname.includes('.')) return null;
+    if (url.pathname.split('/').filter(Boolean).length < 2) return null;
+    return value;
+  } catch { return null; }
+}
+
+function externalDescription(card: ExternalCard) {
+  return card.summary || card.homepage?.description || card.catalog.description || 'External MOS app package.';
+}
+
+// Plain-language explanation of one requested permission key so an owner can see
+// exactly what an unverified package would be granted before installing it.
+function permissionLabel(permission: string): { detail: string; label: string } {
+  const separator = permission.indexOf(':');
+  const kind = separator === -1 ? permission : permission.slice(0, separator);
+  const value = separator === -1 ? '' : permission.slice(separator + 1);
+  if (kind === 'route') return { detail: `Serves a web app at ${value}.${baseHost()} on your MOS.`, label: `Web address: ${value}` };
+  if (kind === 'volume') return { detail: 'Reads and writes its own private, named storage volume.', label: `Storage: ${value}` };
+  if (kind === 'integration') return { detail: 'Can connect to a compatible app you choose. Nothing connects automatically.', label: `Integration: ${value}` };
+  if (permission === 'provides-capability') return { detail: 'Other installed apps can connect to this one.', label: 'Provides a capability to other apps' };
+  return { detail: '', label: permission };
+}
+
+function ExternalAppIcon({ card, large = false }: { card: ExternalCard; large?: boolean }) {
+  return <span className={`suite-app-icon${large ? ' suite-app-icon-large' : ''}`} aria-hidden="true">
+    {card.iconDataUrl ? <img alt="" src={card.iconDataUrl} /> : <span>{initialsFor(card.name)}</span>}
+  </span>;
+}
+
+function ExternalAppCard({ card, onOpen }: { card: ExternalCard; onOpen: () => void }) {
+  return <article className="suite-app-card is-external">
+    <button className="suite-app-card-main" onClick={onOpen} type="button">
+      <ExternalAppIcon card={card} />
+      <span className="suite-app-card-copy">
+        <span className="suite-app-title-row">
+          <strong>{card.name}</strong>
+          <span className="suite-app-external-pill">External &middot; Unverified</span>
+        </span>
+        <span>{externalDescription(card)}</span>
+      </span>
+    </button>
+    <div className="suite-app-card-actions">
+      <button className="mos-btn mos-btn-primary" onClick={onOpen} type="button">View</button>
+    </div>
+  </article>;
+}
+
+function ExternalAppDetail({ onClose, resolved }: { onClose: () => void; resolved: ExternalResolveResponse }) {
+  const { card, permissions, source } = resolved;
+  return <div className="suite-app-detail-layer">
+    <button aria-label="Close package details" className="suite-app-detail-backdrop" onClick={onClose} tabIndex={-1} type="button" />
+    <aside aria-label={`${card.name} details`} aria-modal="true" className="suite-app-detail" role="dialog">
+      <header className="suite-app-detail-hero">
+        <button aria-label="Close package details" className="suite-icon-button suite-app-detail-close" onClick={onClose} type="button"><Icon name="x" /></button>
+        <ExternalAppIcon card={card} large />
+        <div className="suite-app-detail-heading">
+          <div className="suite-app-detail-title-row">
+            <h2>{card.name}</h2>
+            <span className="suite-app-external-pill">External &middot; Unverified</span>
+          </div>
+          <p>{externalDescription(card)}</p>
+        </div>
+        <div className="suite-app-primary-actions">
+          <button className="mos-btn mos-btn-primary" disabled type="button">Install</button>
+          <p className="suite-meta">Installing external packages arrives in the next MOS update. You can review what this package would request below.</p>
+        </div>
+      </header>
+
+      <div className="suite-app-detail-scroll">
+        <Notice title="Unverified external package" variant="warning">
+          <p>This package comes from a repository you pasted, not the verified MOS catalog. MOS has not reviewed its code or checked any privacy claims. If you install it later, it runs with a restricted profile: only its own named storage and the web addresses listed below &mdash; no privileged access, host folders, or Docker socket.</p>
+        </Notice>
+
+        {!card.validation.valid ? <Notice title="This package cannot be installed" variant="warning"><ul>{card.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}
+
+        <section className="suite-app-detail-section">
+          <h3>Requested access</h3>
+          {permissions.length ? <ul className="suite-app-permission-list">
+            {permissions.map((permission) => {
+              const described = permissionLabel(permission);
+              return <li key={permission}><strong>{described.label}</strong>{described.detail ? <small>{described.detail}</small> : null}</li>;
+            })}
+          </ul> : <p className="suite-meta">This package does not request any web addresses, storage, or integrations.</p>}
+        </section>
+
+        <section className="suite-app-facts" aria-label="Package facts">
+          <div><span>Trust</span><strong>Unverified</strong></div>
+          <div><span>Review</span><strong>Not reviewed by MOS</strong></div>
+          <div><span>Version</span><strong>{card.version || 'Unknown'}</strong></div>
+          <div><span>Source</span><strong>GitHub</strong></div>
+        </section>
+
+        <details className="suite-advanced suite-app-advanced">
+          <summary>Advanced details</summary>
+          <dl>
+            <dt>Repository</dt><dd>{source.repository}</dd>
+            <dt>Revision</dt><dd><code>{source.revision.slice(0, 12)}</code></dd>
+            <dt>Package id</dt><dd>{source.packageId}</dd>
+            <dt>Package digest</dt><dd><code>{resolved.packageDigest}</code></dd>
+            <dt>Services</dt><dd>{card.services.map((service) => `${service.id}:${service.internalPort ?? '?'}`).join(', ') || 'None'}</dd>
+            <dt>Routes</dt><dd>{card.routes.map((route) => `${route.host} -> ${route.service}:${route.port ?? '?'}`).join(', ') || 'None'}</dd>
+          </dl>
+        </details>
+      </div>
+    </aside>
+  </div>;
+}
+
 export function AppsScreen({ owner }: { owner: Owner }) {
   const [packages, setPackages] = useState<AppPackageSummary[]>([]);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus | null>(null);
@@ -752,6 +890,10 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState('');
+  const [externalResolved, setExternalResolved] = useState<ExternalResolveResponse | null>(null);
+  const [externalLoading, setExternalLoading] = useState(false);
+  const [externalError, setExternalError] = useState('');
+  const [externalOpen, setExternalOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -771,6 +913,47 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   }
 
   useEffect(() => { void load(); }, []);
+
+  const externalUrl = useMemo(() => repoUrlFromQuery(query), [query]);
+
+  // Paste-a-URL flow: when the search box holds a repository URL, resolve it into
+  // an unverified external preview card. Debounced, cancel-safe, and never
+  // persists anything; clearing the URL removes the card entirely.
+  useEffect(() => {
+    if (!externalUrl) {
+      setExternalResolved(null);
+      setExternalError('');
+      setExternalLoading(false);
+      setExternalOpen(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setExternalLoading(true);
+    setExternalError('');
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const result = await jsonResponse<ExternalResolveResponse>(
+            await fetch('/suite-manager/api/apps/sources/resolve', {
+              body: JSON.stringify({ url: externalUrl }),
+              headers: { 'Content-Type': 'application/json' },
+              method: 'POST',
+            }),
+            'That URL does not point to a valid MOS app package.',
+          );
+          if (!cancelled) setExternalResolved(result);
+        } catch (caught) {
+          if (!cancelled) {
+            setExternalResolved(null);
+            setExternalError(caught instanceof Error ? caught.message : 'That URL does not point to a valid MOS app package.');
+          }
+        } finally {
+          if (!cancelled) setExternalLoading(false);
+        }
+      })();
+    }, 450);
+    return () => { cancelled = true; window.clearTimeout(handle); };
+  }, [externalUrl]);
 
   async function refreshCatalog() {
     setRefreshingCatalog(true);
@@ -981,19 +1164,31 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     </div>
 
     <div className="suite-app-search">
-      <input aria-label="Search apps" onChange={(event) => setQuery(event.target.value)} placeholder="Search apps..." value={query} />
+      <input aria-label="Search apps" onChange={(event) => setQuery(event.target.value)} placeholder="Search apps, or paste a GitHub repo URL..." value={query} />
     </div>
 
     {error ? <Notice title="Apps unavailable" variant="error"><p>{error}</p></Notice> : null}
     {catalogStatus?.freshness === 'stale' || catalogStatus?.error ? <Notice title="Using the saved app catalog" variant="warning"><p>MOS could not confirm the latest official catalog. Installed apps and the last verified catalog remain available.</p></Notice> : null}
-    {loading ? <p className="suite-meta">Loading app catalog...</p> : null}
+    {loading && !externalUrl ? <p className="suite-meta">Loading app catalog...</p> : null}
 
-    {!loading && !error && filtered.length === 0 ? <div className="suite-app-empty">
+    {externalUrl ? <div className="suite-app-catalog-sections">
+      <section className="suite-app-catalog-section">
+        <div className="suite-app-section-heading"><h2>External package</h2></div>
+        {externalLoading ? <p className="suite-meta">Checking that repository for a MOS app package...</p> : null}
+        {externalError && !externalLoading ? <Notice title="No app package found at that URL" variant="warning"><p>{externalError}</p></Notice> : null}
+        {externalResolved && !externalLoading ? <div className="suite-app-grid">
+          <ExternalAppCard card={externalResolved.card} onOpen={() => setExternalOpen(true)} />
+        </div> : null}
+        {!externalLoading && !externalError && !externalResolved ? <p className="suite-meta">Paste a public GitHub repository that publishes a MOS app package in a <code>.mos</code> folder at its root.</p> : null}
+      </section>
+    </div> : null}
+
+    {!externalUrl && !loading && !error && filtered.length === 0 ? <div className="suite-app-empty">
       <h2>No apps match that search</h2>
       <p>Try the app name or the thing you want to solve, like passwords, PDFs, files, photos, security, or office documents.</p>
     </div> : null}
 
-    {!loading && !error && filtered.length ? <div className="suite-app-catalog-sections">
+    {!externalUrl && !loading && !error && filtered.length ? <div className="suite-app-catalog-sections">
       {standaloneApps.length ? <section className="suite-app-catalog-section">
         <div className="suite-app-section-heading"><h2>Apps</h2></div>
         <div className="suite-app-grid">
@@ -1015,6 +1210,8 @@ export function AppsScreen({ owner }: { owner: Owner }) {
         <dd><pre>{hostsRepairCommand}</pre></dd>
       </dl>
     </details> : null}
+
+    {externalOpen && externalResolved ? <ExternalAppDetail onClose={() => setExternalOpen(false)} resolved={externalResolved} /> : null}
 
     {selected ? <AppDetail app={selected} connectingId={connectingId} guideUpdating={guideUpdatingId === selected.id} installing={installingId === selected.id || connectingId.startsWith(`${selected.id}:`)} installError={installError} installSteps={installingId === selected.id || connectingId.startsWith(`${selected.id}:`) || installError ? installSteps : []} onClose={() => { setSelectedId(''); setInstallError(''); setInstallSteps([]); }} onConnect={(connection) => void connectPackages(connection)} onGuideStatus={(target, status) => void updateGuideStatus(target, status)} onInstall={(target, options) => void performInstall(target, options)} onLifecycle={(target, action) => void performLifecycle(target, action)} onSelect={(target) => { setSelectedId(target.id); setInstallError(''); setInstallSteps([]); }} owner={owner} packages={packages} /> : null}
   </section>;
