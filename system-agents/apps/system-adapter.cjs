@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const http = require('node:http');
 const path = require('node:path');
+const { packageImageTag } = require('./agent-core.cjs');
 const { collectPackageFiles, digestAppPackage, parseNamespacedPackageId } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 
 const APPS_ROOT = process.env.MOS_V2_APPS_ROOT || path.resolve(process.cwd(), 'apps');
@@ -91,6 +92,38 @@ async function snapshot(source, target) {
 async function restore(source, target) {
   if (fs.existsSync(`${source}.missing`)) await fsp.rm(target, { force: true });
   else await atomicWrite(target, await fsp.readFile(source, 'utf8'));
+}
+
+// The only image names this agent will ever hand to `docker image rm`. Both the
+// names it derives and the names it reads back from disk go through here, so a
+// tampered sidecar or an odd manifest version cannot widen a reclamation into
+// some unrelated image on the host.
+const RECLAIMABLE_IMAGE_PATTERN = /^mos-v2-app-[a-z0-9][a-z0-9-]{0,80}:[0-9A-Za-z.+-]{1,40}-pkg-[a-f0-9]{12}-src-[a-f0-9]{12}$/u;
+
+// Name every image built for a package snapshot. The manifest must be one this
+// caller has already verified against its digest, because it is what decides
+// which images are claimed to be superseded.
+function packageImageTags({ manifest, packageDigest, packageId, sourceRevision }) {
+  const services = manifest?.resources?.services;
+  if (!services || typeof services !== 'object' || Array.isArray(services)) return [];
+  return Object.keys(services)
+    .map((serviceId) => packageImageTag({ packageDigest, packageId, packageVersion: String(manifest.version), serviceId, sourceRevision }))
+    .filter((imageTag) => RECLAIMABLE_IMAGE_PATTERN.test(imageTag));
+}
+
+// Image tags belonging to the snapshot currently kept in `previous`. A snapshot
+// alone cannot name its own images once the instance row has moved on: the tag
+// needs the source revision, which is deliberately not part of the digested
+// package. Recording them at promote is what keeps a rollback-safe app's images
+// bounded to the one retained generation instead of one per update forever.
+async function readRetainedImageTags(file) {
+  try {
+    const parsed = JSON.parse(await fsp.readFile(file, 'utf8'));
+    if (!Array.isArray(parsed?.imageTags)) return [];
+    return parsed.imageTags.filter((imageTag) => RECLAIMABLE_IMAGE_PATTERN.test(String(imageTag)));
+  } catch {
+    return [];
+  }
 }
 
 function renderAppRouteBlock(packageId, caddyRoutes) {
@@ -413,25 +446,44 @@ class SystemAppAdapter {
     }
   }
 
-  async promoteAppPackageUpdate({ candidateDigest, expectedInstalledDigest, instanceId, packageId, rollbackSafe }) {
+  async promoteAppPackageUpdate({ candidateDigest, expectedInstalledDigest, installedSourceRevision, instanceId, packageId, rollbackSafe }) {
     const instanceRoot = path.join(this.appPackageRoot, instanceId);
     const installed = path.join(instanceRoot, 'installed');
     const candidate = path.join(instanceRoot, 'candidate');
     const previous = path.join(instanceRoot, 'previous');
+    const previousImages = path.join(instanceRoot, 'previous-images.json');
     const displaced = path.join(instanceRoot, `.installed-before-update-${process.pid}`);
     try {
       const installedManifest = JSON.parse(await fsp.readFile(path.join(installed, 'manifest.json'), 'utf8'));
       const candidateManifest = JSON.parse(await fsp.readFile(path.join(candidate, 'manifest.json'), 'utf8'));
       if (installedManifest.id !== expectedManifestId(packageId) || digestAppPackage(installed, { manifest: installedManifest }) !== expectedInstalledDigest) throw new Error('INSTALLED_PACKAGE_CHANGED');
       if (candidateManifest.id !== expectedManifestId(packageId) || digestAppPackage(candidate, { manifest: candidateManifest }) !== candidateDigest) throw new Error('CANDIDATE_PACKAGE_CHANGED');
+      // Named from the manifest the digest check above just proved, so the caller
+      // cannot widen a reclamation by describing the outgoing package as
+      // something other than what is actually on disk. An older Suite Manager
+      // sends no revision, and then nothing is reclaimed.
+      const superseded = installedSourceRevision
+        ? packageImageTags({ manifest: installedManifest, packageDigest: expectedInstalledDigest, packageId, sourceRevision: installedSourceRevision })
+        : [];
+      const evicted = await readRetainedImageTags(previousImages);
       await fsp.rm(displaced, { force: true, recursive: true });
       await fsp.rename(installed, displaced);
       try { await fsp.rename(candidate, installed); }
       catch (error) { await fsp.rename(displaced, installed).catch(() => {}); throw error; }
       await fsp.rm(previous, { force: true, recursive: true });
-      if (rollbackSafe) await fsp.rename(displaced, previous);
-      else await fsp.rm(displaced, { force: true, recursive: true });
-      return { previousRetained: rollbackSafe, snapshotPath: installed, steps: ['installed-identity-verified', 'candidate-identity-verified', 'snapshot-promoted', ...(rollbackSafe ? ['previous-retained'] : [])] };
+      await fsp.rm(previousImages, { force: true });
+      if (rollbackSafe) {
+        await fsp.rename(displaced, previous);
+        if (superseded.length) await atomicWrite(previousImages, `${JSON.stringify({ imageTags: superseded })}\n`, 0o640);
+      } else {
+        await fsp.rm(displaced, { force: true, recursive: true });
+      }
+      // Reclaim the images of every snapshot no longer reachable: the one just
+      // evicted from `previous`, plus the outgoing one unless it is being kept
+      // for rollback. This runs after the swap because the update is already
+      // committed by then, and freeing disk must never be able to undo it.
+      const imagesReclaimed = await this.reclaimImages([...evicted, ...(rollbackSafe ? [] : superseded)]);
+      return { imagesReclaimed, previousRetained: rollbackSafe, snapshotPath: installed, steps: ['installed-identity-verified', 'candidate-identity-verified', 'snapshot-promoted', ...(rollbackSafe ? ['previous-retained'] : []), ...(imagesReclaimed ? ['superseded-images-reclaimed'] : [])] };
     } catch (error) {
       const failure = new AppApplyError('snapshot');
       failure.code = ['INSTALLED_PACKAGE_CHANGED', 'CANDIDATE_PACKAGE_CHANGED'].includes(error?.message) ? 'APP_UPDATE_IDENTITY_CHANGED' : 'APP_UPDATE_PROMOTION_FAILED';
@@ -439,6 +491,21 @@ class SystemAppAdapter {
       failure.details = [String(error?.message || 'snapshot promotion failed')];
       throw failure;
     }
+  }
+
+  // Remove images no snapshot refers to any more. Deliberately without --force:
+  // an image a container still references must stay, and docker refusing is a
+  // better check than one this agent would have to make for itself. Every
+  // failure is ignored for the same reason — an image that cannot be removed is
+  // wasted disk, never a reason to fail an update that already succeeded.
+  async reclaimImages(imageTags) {
+    let reclaimed = 0;
+    for (const imageTag of imageTags) {
+      if (!RECLAIMABLE_IMAGE_PATTERN.test(String(imageTag))) continue;
+      const removed = await this.execute(this.dockerBinary, ['image', 'rm', imageTag], { timeoutMs: 60000 }).then(() => true, () => false);
+      if (removed) reclaimed += 1;
+    }
+    return reclaimed;
   }
 
   async rollbackAppPackageUpdate({ candidate, installed }) {
@@ -463,7 +530,11 @@ class SystemAppAdapter {
         await atomicWrite(this.routesPath, nextRoutes);
         await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 20000 });
       }
-      return { steps: ['candidate-runtime-stopped', 'installed-runtime-started', 'installed-runtime-healthy', 'installed-route-restored'] };
+      // The candidate this rollback abandoned never became installed, and the
+      // old runtime is serving again, so nothing refers to the images built for
+      // it. A retry rebuilds them from the same cached layers.
+      const imagesReclaimed = await this.reclaimImages(candidate.services.map((service) => service.imageTag));
+      return { imagesReclaimed, steps: ['candidate-runtime-stopped', 'installed-runtime-started', 'installed-runtime-healthy', 'installed-route-restored', ...(imagesReclaimed ? ['candidate-images-reclaimed'] : [])] };
     } catch (error) {
       const failure = new AppApplyError('run');
       failure.code = 'APP_UPDATE_ROLLBACK_FAILED';

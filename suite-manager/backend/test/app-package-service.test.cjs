@@ -82,7 +82,7 @@ function externalAgent(root, calls = []) {
 // An app agent that can run the whole update transaction for an external app:
 // the external snapshot its install needed, plus the same update capabilities
 // official packages go through.
-function externalUpdateAgent(root, calls = [], promotedSnapshotPath = null) {
+function externalUpdateAgent(root, calls = [], promotedSnapshotPath = null, { reclaims = false } = {}) {
   return {
     ...externalAgent(root),
     async activatePackageUpdate(input) { calls.push(['activate', input]); return { status: 'candidate-healthy' }; },
@@ -95,11 +95,31 @@ function externalUpdateAgent(root, calls = [], promotedSnapshotPath = null) {
         capabilities: [
           'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build',
           'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote',
+          ...(reclaims ? ['apps.package.update.reclaim'] : []),
         ],
-        contractVersion: 7,
+        contractVersion: reclaims ? 8 : 7,
       };
     },
   };
+}
+
+// An installed external app and the newer package its source now offers, with
+// the update ready to apply.
+async function updatableExternalApp(root, store, calls, { reclaims = false } = {}) {
+  const installedPackage = await externalCandidate(root);
+  const next = await externalCandidate(root, { version: '1.1.0' }, 'ext-next');
+  // The update is published from a later commit than the one running, so a
+  // promotion told the candidate's revision cannot pass as telling the truth.
+  next.source = { ...next.source, revision: 'c'.repeat(40) };
+  const service = new AppPackageService({
+    agent: externalUpdateAgent(root, calls, next.packageDir, { reclaims }),
+    appsDir: v2AppsDir,
+    externalClient: externalClientStub(next),
+    store,
+  });
+  await service.installExternalPackage({ candidate: installedPackage });
+  registerSource(store);
+  return { comparison: await service.preparePackageUpdate('x-abcdef01-community-notes'), service };
 }
 
 // The external client as the package service uses it for updates: re-resolve the
@@ -342,6 +362,194 @@ test('an external update cannot take a web address another installed app already
     { code: 'APP_ROUTE_HOST_TAKEN' },
   );
   assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes').packageVersion, '1.0.0');
+  store.close();
+});
+
+// An app running a newer package than its source now offers, which is what a
+// force-push, a reverted tag, or a repository takeover looks like from here.
+async function rolledBackSource(root, store, calls = []) {
+  const installedPackage = await externalCandidate(root, { version: '2.0.0' }, 'ext-installed');
+  const older = await externalCandidate(root, { version: '1.0.0' }, 'ext-older');
+  const service = new AppPackageService({
+    agent: externalUpdateAgent(root, calls, older.packageDir),
+    appsDir: v2AppsDir,
+    externalClient: externalClientStub(older),
+    store,
+  });
+  await service.installExternalPackage({ candidate: installedPackage });
+  registerSource(store);
+  return { comparison: await service.preparePackageUpdate('x-abcdef01-community-notes'), older, service };
+}
+
+test('a source that offers an older package than the one running cannot update it', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const calls = [];
+  const { comparison, service } = await rolledBackSource(root, store, calls);
+
+  assert.equal(comparison.updateStatus, 'installed-newer');
+  await assert.rejects(
+    () => service.stagePackageUpdate('x-abcdef01-community-notes', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('notes')),
+    (error) => error.code === 'APP_UPDATE_DOWNGRADE_BLOCKED' && error.statusCode === 409,
+  );
+  // The installed version keeps running, and the downgrade never reached the
+  // agent: nothing was staged, built, or promoted.
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes').packageVersion, '2.0.0');
+  assert.deepEqual(calls.filter(([kind]) => ['stage', 'build', 'promote'].includes(kind)), []);
+  store.close();
+});
+
+test('an update tells an agent that can reclaim which images the outgoing package was built into', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const calls = [];
+  const { comparison, service } = await updatableExternalApp(root, store, calls, { reclaims: true });
+  const outgoing = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
+
+  const result = await service.stagePackageUpdate(
+    'x-abcdef01-community-notes',
+    { confirmationToken: comparison.confirmationToken },
+    requestContext().publicUrlFor('notes'),
+  );
+
+  assert.equal(result.operation.status, 'succeeded');
+  const [, promote] = calls.find(([kind]) => kind === 'promote');
+  // The revision of the package being replaced, not the one replacing it: it is
+  // what names the images that are now unreachable.
+  assert.equal(promote.installedSourceRevision, outgoing.sourceRevision);
+  assert.equal(promote.expectedInstalledDigest, outgoing.packageDigest);
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes').sourceRevision, 'c'.repeat(40));
+  store.close();
+});
+
+test('an update never sends a promotion field an older agent would refuse', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const calls = [];
+  const { comparison, service } = await updatableExternalApp(root, store, calls);
+
+  const result = await service.stagePackageUpdate(
+    'x-abcdef01-community-notes',
+    { confirmationToken: comparison.confirmationToken },
+    requestContext().publicUrlFor('notes'),
+  );
+
+  // An agent without the capability rejects unknown promotion fields outright,
+  // and a promotion refused here would strand an update whose candidate is
+  // already serving traffic. Leaving an image behind is the lesser outcome.
+  assert.equal(result.operation.status, 'succeeded');
+  const [, promote] = calls.find(([kind]) => kind === 'promote');
+  assert.equal(Object.hasOwn(promote, 'installedSourceRevision'), false);
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes').packageVersion, '1.1.0');
+  store.close();
+});
+
+test('an owner can still recover deliberately by confirming an explicit downgrade', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const { comparison, older, service } = await rolledBackSource(root, store);
+
+  const result = await service.stagePackageUpdate(
+    'x-abcdef01-community-notes',
+    { allowDowngrade: true, confirmationToken: comparison.confirmationToken },
+    requestContext().publicUrlFor('notes'),
+  );
+
+  assert.equal(result.operation.status, 'succeeded');
+  const updated = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
+  assert.equal(updated.packageVersion, '1.0.0');
+  assert.equal(updated.packageDigest, older.packageDigest);
+  store.close();
+});
+
+test('consenting to a downgrade does not consent to whatever the source offers next', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const { comparison, service } = await rolledBackSource(root, store);
+  // The owner reviewed one downgrade; the source then swaps in a different
+  // older package. The token is bound to the exact pair that was reviewed, so
+  // consent cannot carry over to a package nobody looked at.
+  const swapped = await externalCandidate(root, { summary: 'Different notes.', version: '1.0.0' }, 'ext-swapped');
+  service.externalClient = externalClientStub(swapped);
+
+  await assert.rejects(
+    () => service.stagePackageUpdate(
+      'x-abcdef01-community-notes',
+      { allowDowngrade: true, confirmationToken: comparison.confirmationToken },
+      requestContext().publicUrlFor('notes'),
+    ),
+    { code: 'APP_UPDATE_IDENTITY_CHANGED' },
+  );
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes').packageVersion, '2.0.0');
+  store.close();
+});
+
+test('an app whose source offers exactly what it already runs has nothing to update', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const installedPackage = await externalCandidate(root);
+  const calls = [];
+  const service = new AppPackageService({
+    agent: externalUpdateAgent(root, calls, installedPackage.packageDir),
+    appsDir: v2AppsDir,
+    externalClient: externalClientStub(installedPackage),
+    store,
+  });
+  await service.installExternalPackage({ candidate: installedPackage });
+  registerSource(store);
+
+  const comparison = await service.preparePackageUpdate('x-abcdef01-community-notes');
+  assert.equal(comparison.updateStatus, 'current');
+  // Re-running the whole transaction to arrive back where it started is a
+  // needless swap of a healthy runtime, so it is refused rather than performed.
+  await assert.rejects(
+    () => service.stagePackageUpdate('x-abcdef01-community-notes', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('notes')),
+    (error) => error.code === 'APP_UPDATE_NOT_AVAILABLE' && error.statusCode === 409,
+  );
+  assert.deepEqual(calls.filter(([kind]) => ['stage', 'build', 'promote'].includes(kind)), []);
+  store.close();
+});
+
+test('an app cannot run two update transactions at once', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const installedPackage = await externalCandidate(root);
+  const next = await externalCandidate(root, { version: '1.1.0' }, 'ext-next');
+  const calls = [];
+  let releaseStage;
+  const staging = new Promise((resolve) => { releaseStage = resolve; });
+  const agent = externalUpdateAgent(root, calls, next.packageDir);
+  const service = new AppPackageService({
+    agent: {
+      ...agent,
+      // Hold the first update inside the agent, where a real one spends its time.
+      async stagePackageUpdate(input) { calls.push(['stage', input]); await staging; return { snapshotPath: '/state/candidate', status: 'staged' }; },
+    },
+    appsDir: v2AppsDir,
+    externalClient: externalClientStub(next),
+    store,
+  });
+  await service.installExternalPackage({ candidate: installedPackage });
+  registerSource(store);
+  const comparison = await service.preparePackageUpdate('x-abcdef01-community-notes');
+
+  const first = service.stagePackageUpdate('x-abcdef01-community-notes', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('notes'));
+  // The owner double-clicks Update. The second attempt must not download and
+  // build the same candidate again alongside the first.
+  await assert.rejects(
+    () => service.stagePackageUpdate('x-abcdef01-community-notes', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('notes')),
+    (error) => error.code === 'APP_OPERATION_IN_PROGRESS' && error.statusCode === 409,
+  );
+
+  releaseStage();
+  assert.equal((await first).operation.status, 'succeeded');
+  assert.equal(calls.filter(([kind]) => kind === 'stage').length, 1);
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes').packageVersion, '1.1.0');
+  // The app is updatable again once the first transaction has finished.
+  await assert.rejects(
+    () => service.stagePackageUpdate('x-abcdef01-community-notes', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('notes')),
+    (error) => error.code !== 'APP_OPERATION_IN_PROGRESS',
+  );
   store.close();
 });
 

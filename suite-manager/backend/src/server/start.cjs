@@ -18,6 +18,8 @@ async function start() {
   for (const migration of migrations) console.log(`[mos-v2-suite-manager] App package migration ${migration.packageId}: ${migration.status}`);
   const recoveries = server.recoverAppPackageUpdates();
   for (const recovery of recoveries) console.log(`[mos-v2-suite-manager] App update recovery ${recovery.instanceId}: ${recovery.recoveryState}`);
+  const sweptCandidates = server.sweepAppCandidates();
+  if (sweptCandidates.length) console.log(`[mos-v2-suite-manager] Reclaimed ${sweptCandidates.length} abandoned app package candidate download(s).`);
   void server.startCatalogRefresh();
   server.listen(port, host, () => {
     console.log(`[mos-v2-suite-manager] Listening on http://${host}:${port}`);

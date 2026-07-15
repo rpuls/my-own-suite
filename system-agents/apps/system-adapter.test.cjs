@@ -544,6 +544,159 @@ test('system adapter promotes a verified snapshot and retains only one rollback-
   assert.equal(await fsp.stat(path.join(instanceRoot, 'candidate')).then(() => true, () => false), false);
 });
 
+// An instance mid-update: an installed snapshot about to be superseded by a
+// candidate, both declaring the services whose images carry their identity.
+async function updatableInstance(root, { instanceId, previousImageTags = null } = {}) {
+  const instanceRoot = path.join(root, 'packages', instanceId);
+  for (const [name, version] of [['installed', '1.0.0'], ['candidate', '2.0.0']]) {
+    const directory = path.join(instanceRoot, name);
+    await fsp.mkdir(directory, { recursive: true });
+    await fsp.writeFile(path.join(directory, 'manifest.json'), `${JSON.stringify({ id: 'example-tool', packageFiles: [], resources: { services: { app: {}, db: {} } }, version })}\n`);
+  }
+  if (previousImageTags) {
+    await fsp.mkdir(path.join(instanceRoot, 'previous'), { recursive: true });
+    await fsp.writeFile(path.join(instanceRoot, 'previous-images.json'), `${JSON.stringify({ imageTags: previousImageTags })}\n`);
+  }
+  return {
+    candidateDigest: digestAppPackage(path.join(instanceRoot, 'candidate')),
+    installedDigest: digestAppPackage(path.join(instanceRoot, 'installed')),
+    instanceRoot,
+  };
+}
+
+function removedImages(commands) {
+  return commands.filter((command) => command.args[0] === 'image' && command.args[1] === 'rm').map((command) => command.args[2]);
+}
+
+test('system adapter reclaims the images of a package no snapshot refers to any more', async () => {
+  const root = await tempDir();
+  const commands = [];
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const { candidateDigest, installedDigest } = await updatableInstance(root, { instanceId });
+  const adapter = new SystemAppAdapter({ appPackageRoot: path.join(root, 'packages'), dockerBinary: 'docker', async execute(file, args) { commands.push({ args, file }); } });
+  const revision = 'c'.repeat(40);
+  const result = await adapter.promoteAppPackageUpdate({ candidateDigest, expectedInstalledDigest: installedDigest, installedSourceRevision: revision, instanceId, packageId: 'example-tool', rollbackSafe: false });
+  const fragment = (value) => value.replace(/^sha256:/u, '').slice(0, 12);
+  assert.equal(result.imagesReclaimed, 2);
+  assert.ok(result.steps.includes('superseded-images-reclaimed'));
+  // Every service of the outgoing package, and nothing belonging to the
+  // candidate that now serves traffic.
+  assert.deepEqual(removedImages(commands).sort(), [
+    `mos-v2-app-example-tool-app:1.0.0-pkg-${fragment(installedDigest)}-src-${fragment(revision)}`,
+    `mos-v2-app-example-tool-db:1.0.0-pkg-${fragment(installedDigest)}-src-${fragment(revision)}`,
+  ].sort());
+  assert.equal(removedImages(commands).some((tag) => tag.includes(fragment(candidateDigest))), false);
+});
+
+test('system adapter never forces out an image a container still uses', async () => {
+  const root = await tempDir();
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const { candidateDigest, installedDigest, instanceRoot } = await updatableInstance(root, { instanceId });
+  const adapter = new SystemAppAdapter({
+    appPackageRoot: path.join(root, 'packages'),
+    dockerBinary: 'docker',
+    // What docker does when an image is still referenced. Reclamation is
+    // caretaking after a committed update, so it must not undo the promotion.
+    async execute(file, args) { if (args[1] === 'rm') throw new Error('image is being used by running container'); },
+  });
+  const result = await adapter.promoteAppPackageUpdate({ candidateDigest, expectedInstalledDigest: installedDigest, installedSourceRevision: 'c'.repeat(40), instanceId, packageId: 'example-tool', rollbackSafe: false });
+  assert.equal(result.imagesReclaimed, 0);
+  assert.equal(result.steps.includes('superseded-images-reclaimed'), false);
+  assert.equal(digestAppPackage(path.join(instanceRoot, 'installed')), candidateDigest);
+});
+
+test('a rollback-safe update keeps its predecessor images and reclaims the generation it evicts', async () => {
+  const root = await tempDir();
+  const commands = [];
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const evicted = `mos-v2-app-example-tool-app:0.9.0-pkg-${'9'.repeat(12)}-src-${'8'.repeat(12)}`;
+  const { candidateDigest, installedDigest, instanceRoot } = await updatableInstance(root, { instanceId, previousImageTags: [evicted] });
+  const adapter = new SystemAppAdapter({ appPackageRoot: path.join(root, 'packages'), dockerBinary: 'docker', async execute(file, args) { commands.push({ args, file }); } });
+  const revision = 'c'.repeat(40);
+  const result = await adapter.promoteAppPackageUpdate({ candidateDigest, expectedInstalledDigest: installedDigest, installedSourceRevision: revision, instanceId, packageId: 'example-tool', rollbackSafe: true });
+  assert.equal(result.previousRetained, true);
+  // The retained snapshot's images have to survive for it to be worth retaining;
+  // only the generation it displaced is reclaimed.
+  assert.deepEqual(removedImages(commands), [evicted]);
+  const fragment = (value) => value.replace(/^sha256:/u, '').slice(0, 12);
+  const recorded = JSON.parse(await fsp.readFile(path.join(instanceRoot, 'previous-images.json'), 'utf8'));
+  assert.deepEqual(recorded.imageTags, [
+    `mos-v2-app-example-tool-app:1.0.0-pkg-${fragment(installedDigest)}-src-${fragment(revision)}`,
+    `mos-v2-app-example-tool-db:1.0.0-pkg-${fragment(installedDigest)}-src-${fragment(revision)}`,
+  ]);
+});
+
+test('a promotion from a Suite Manager that cannot name superseded images reclaims nothing', async () => {
+  const root = await tempDir();
+  const commands = [];
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const { candidateDigest, installedDigest, instanceRoot } = await updatableInstance(root, { instanceId });
+  const adapter = new SystemAppAdapter({ appPackageRoot: path.join(root, 'packages'), dockerBinary: 'docker', async execute(file, args) { commands.push({ args, file }); } });
+  const result = await adapter.promoteAppPackageUpdate({ candidateDigest, expectedInstalledDigest: installedDigest, instanceId, packageId: 'example-tool', rollbackSafe: false });
+  // Leaking an image is the acceptable outcome here; refusing the promotion
+  // after the candidate is already serving traffic is not.
+  assert.equal(result.imagesReclaimed, 0);
+  assert.deepEqual(removedImages(commands), []);
+  assert.equal(digestAppPackage(path.join(instanceRoot, 'installed')), candidateDigest);
+});
+
+test('a tampered retained-image record cannot reclaim images outside the package namespace', async () => {
+  const root = await tempDir();
+  const commands = [];
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const mine = `mos-v2-app-example-tool-app:0.9.0-pkg-${'9'.repeat(12)}-src-${'8'.repeat(12)}`;
+  const { candidateDigest, installedDigest } = await updatableInstance(root, {
+    instanceId,
+    previousImageTags: ['postgres:16', 'mos-v2-suite-manager:latest', '--force', mine],
+  });
+  const adapter = new SystemAppAdapter({ appPackageRoot: path.join(root, 'packages'), dockerBinary: 'docker', async execute(file, args) { commands.push({ args, file }); } });
+  await adapter.promoteAppPackageUpdate({ candidateDigest, expectedInstalledDigest: installedDigest, installedSourceRevision: 'c'.repeat(40), instanceId, packageId: 'example-tool', rollbackSafe: true });
+  // Only names this agent could have produced itself are ever handed to docker.
+  assert.deepEqual(removedImages(commands), [mine]);
+});
+
+test('a rolled-back update reclaims the images of the candidate it abandoned', async () => {
+  const root = await tempDir();
+  const appPackageRoot = path.join(root, 'packages');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const installedDir = path.join(appPackageRoot, instanceId, 'installed');
+  const candidateDir = path.join(appPackageRoot, instanceId, 'candidate');
+  for (const [directory, version] of [[installedDir, '1.0.0'], [candidateDir, '2.0.0']]) {
+    await fsp.mkdir(directory, { recursive: true });
+    await fsp.writeFile(path.join(directory, 'manifest.json'), `${JSON.stringify({ id: 'example-tool', packageFiles: [], version })}\n`);
+  }
+  const commands = [];
+  const candidateImage = `mos-v2-app-example-tool-web:2.0.0-pkg-${'a'.repeat(12)}-src-${'b'.repeat(12)}`;
+  const installedImage = `mos-v2-app-example-tool-web:1.0.0-pkg-${'c'.repeat(12)}-src-${'d'.repeat(12)}`;
+  const runtime = (directory, imageTag, version) => ({
+    caddyRoutes: 'http://example-tool.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n',
+    healthTarget: `http://127.0.0.1:18123/${version}`,
+    instanceId,
+    packageDigest: digestAppPackage(directory),
+    packageId: 'example-tool',
+    packageVersion: version,
+    services: [{ dockerfile: 'Dockerfile', environment: {}, id: 'web', imageTag, internalPort: 3000, loopbackPort: 18123, public: true, volumes: ['data:/data'] }],
+    sourceRevision: 'b'.repeat(40),
+  });
+  const adapter = new SystemAppAdapter({
+    appPackageRoot,
+    dockerBinary: 'docker',
+    routesPath: path.join(root, 'routes.caddy'),
+    async execute(file, args) { commands.push({ args, file }); },
+    async waitForReady() {},
+  });
+
+  const result = await adapter.rollbackAppPackageUpdate({
+    candidate: runtime(candidateDir, candidateImage, '2.0.0'),
+    installed: runtime(installedDir, installedImage, '1.0.0'),
+  });
+
+  assert.ok(result.steps.includes('candidate-images-reclaimed'));
+  // The candidate never became installed and is not coming back, but the
+  // runtime that just came back keeps the image it is running from.
+  assert.deepEqual(removedImages(commands), [candidateImage]);
+});
+
 test('system adapter checks app health with a short refresh budget', async () => {
   const calls = [];
   const adapter = new SystemAppAdapter({

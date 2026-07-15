@@ -3,6 +3,8 @@ const path = require('node:path');
 
 const { CATALOG_REFRESH_POLICY, DEFAULT_PACKAGE_LIMITS, advisoriesForVersion, canonicalPackagePath, compareSemver, digestAppPackage, validateAdvisoryIndex, validateCatalog } = require('./package-contracts.cjs');
 const { readAppPackageManifest } = require('./package-manifest.cjs');
+const { AppOperationLimiter } = require('./app-operation-limits.cjs');
+const { createCandidateDir, releaseCandidateDir } = require('./candidate-storage.cjs');
 
 const DEFAULT_LIMITS = Object.freeze({ catalogBytes: 1024 * 1024, timeoutMs: 10_000, ...DEFAULT_PACKAGE_LIMITS });
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
@@ -40,6 +42,7 @@ class OfficialCatalogService {
   constructor({
     branch = 'main',
     fetchImpl = globalThis.fetch,
+    limiter = new AppOperationLimiter(),
     limits = DEFAULT_LIMITS,
     now = () => new Date(),
     platformVersion = '0.0.0',
@@ -49,7 +52,9 @@ class OfficialCatalogService {
   }) {
     this.branch = branch;
     this.fetch = fetchImpl;
+    this.limiter = limiter;
     this.limits = limits;
+    this.stateDir = stateDir;
     this.now = now;
     this.platformVersion = platformVersion;
     this.random = random;
@@ -122,10 +127,14 @@ class OfficialCatalogService {
   async downloadCandidate(packageId) {
     const entry = this.catalog()?.packages?.[packageId];
     if (!entry || !this.cache?.revision) throw new OfficialCatalogError('CANDIDATE_UNAVAILABLE', 'That package is not available in the verified catalog cache.');
+    // Bounded per package: reviewed or not, a candidate download is still one
+    // file-by-file walk of a GitHub tree and a package written to disk.
+    return this.limiter.runDownload(`${this.repository}#${packageId}`, () => this.performDownload(packageId, entry));
+  }
+
+  async performDownload(packageId, entry) {
     const revision = this.cache.revision;
-    const candidateRoot = path.join(path.dirname(this.cachePath), 'app-candidates');
-    fs.mkdirSync(candidateRoot, { recursive: true, mode: 0o700 });
-    const candidateDir = fs.mkdtempSync(path.join(candidateRoot, `${packageId}-`));
+    const candidateDir = createCandidateDir(this.stateDir, `${packageId}-`);
     let fileCount = 0;
     let packageBytes = 0;
     const visit = async (repositoryPath) => {
@@ -162,12 +171,12 @@ class OfficialCatalogService {
       if (appPackage.manifest.id !== packageId || appPackage.manifest.version !== entry.packageVersion) throw new OfficialCatalogError('CANDIDATE_IDENTITY_MISMATCH', 'Downloaded candidate identity does not match the verified catalog.');
       return {
         ...appPackage,
-        cleanup: () => fs.rmSync(candidateDir, { force: true, recursive: true }),
+        cleanup: () => releaseCandidateDir(candidateDir),
         packageDigest,
         source: { kind: 'official-git', path: entry.path, repository: this.repository, revision, trust: 'mos-reviewed' },
       };
     } catch (error) {
-      fs.rmSync(candidateDir, { force: true, recursive: true });
+      releaseCandidateDir(candidateDir);
       if (error instanceof OfficialCatalogError) throw error;
       throw new OfficialCatalogError('CANDIDATE_INVALID', 'Downloaded candidate failed package validation.');
     }

@@ -1,8 +1,7 @@
-const fs = require('node:fs');
-const path = require('node:path');
-
 const { digestAppPackage } = require('./package-contracts.cjs');
 const { readAppPackageManifest } = require('./package-manifest.cjs');
+const { AppOperationLimiter } = require('./app-operation-limits.cjs');
+const { createCandidateDir, releaseCandidateDir } = require('./candidate-storage.cjs');
 const { COMMIT_PATTERN, DEFAULT_LIMITS, downloadMosPackage, parseGitPackageUrl, resolveCommit } = require('./git-archive-source.cjs');
 const { ExternalSourceError, instanceNamespaceId, sourceInstallable, validateExternalCandidate, withRevision } = require('./external-source-registry.cjs');
 
@@ -17,8 +16,9 @@ const EXTERNAL_PACKAGE_DIR = '.mos';
 // mos-reviewed and must pass the constrained capability profile and
 // non-impersonation checks to be returned.
 class ExternalSourceClient {
-  constructor({ fetchImpl = globalThis.fetch, limits = DEFAULT_LIMITS, officialPackageIds = [], platformVersion = '0.0.0', stateDir }) {
+  constructor({ fetchImpl = globalThis.fetch, limiter = new AppOperationLimiter(), limits = DEFAULT_LIMITS, officialPackageIds = [], platformVersion = '0.0.0', stateDir }) {
     this.fetch = fetchImpl;
+    this.limiter = limiter;
     this.limits = limits;
     this.officialPackageIds = officialPackageIds;
     this.platformVersion = platformVersion;
@@ -42,12 +42,16 @@ class ExternalSourceClient {
   async downloadCandidate(source) {
     if (!sourceInstallable(source)) throw new ExternalSourceError('SOURCE_NOT_INSTALLABLE', 'New installs are only allowed from an active source.');
     if (!COMMIT_PATTERN.test(String(source?.revision || ''))) throw new ExternalSourceError('SOURCE_REVISION_INVALID', 'Resolve the source revision before downloading a candidate.');
+    // Bounded per repository: a pasted URL is owner-supplied and every preview,
+    // install, and update check downloads a fresh archive from it.
+    return this.limiter.runDownload(source.repository, () => this.performDownload(source));
+  }
+
+  async performDownload(source) {
     const coordinates = parseGitPackageUrl(source.repository);
     // Download into the same host-owned candidate root the official update flow
     // uses, because the app agent only accepts snapshot sources confined to it.
-    const candidateRoot = path.join(this.stateDir, 'app-candidates');
-    fs.mkdirSync(candidateRoot, { recursive: true, mode: 0o700 });
-    const candidateDir = fs.mkdtempSync(path.join(candidateRoot, 'ext-'));
+    const candidateDir = createCandidateDir(this.stateDir, 'ext-');
     try {
       await downloadMosPackage(this.fetch, { ...coordinates, sha: source.revision }, candidateDir, this.limits);
       const packageDigest = digestAppPackage(candidateDir);
@@ -63,7 +67,7 @@ class ExternalSourceClient {
       if (!namespaced) throw new ExternalSourceError('CANDIDATE_REJECTED', 'External candidate failed validation: the package id cannot be namespaced for this source.');
       return {
         ...appPackage,
-        cleanup: () => fs.rmSync(candidateDir, { force: true, recursive: true }),
+        cleanup: () => releaseCandidateDir(candidateDir),
         namespacedPackageId: namespaced,
         packageDigest,
         packageId,
@@ -72,7 +76,7 @@ class ExternalSourceClient {
         trust: source.trust,
       };
     } catch (error) {
-      fs.rmSync(candidateDir, { force: true, recursive: true });
+      releaseCandidateDir(candidateDir);
       throw error instanceof ExternalSourceError ? error : new ExternalSourceError('CANDIDATE_INVALID', 'Downloaded external candidate failed package validation.');
     }
   }

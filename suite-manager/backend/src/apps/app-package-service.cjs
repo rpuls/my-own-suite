@@ -9,6 +9,7 @@ const {
 } = require('./package-manifest.cjs');
 const { digestAppPackage, parseNamespacedPackageId, validatePrivacyBinding } = require('./package-contracts.cjs');
 const { sourceId, sourceInstallable } = require('./external-source-registry.cjs');
+const { AppOperationLimiter } = require('./app-operation-limits.cjs');
 const { compareAppPackages } = require('./app-update-comparison.cjs');
 
 const APP_LOOPBACK_PORT_BASE = 18000;
@@ -509,6 +510,7 @@ class AppPackageService {
     appsDir,
     catalogService = null,
     externalClient = null,
+    limiter = new AppOperationLimiter(),
     now = () => new Date(),
     officialRepository = 'https://github.com/rpuls/my-own-suite',
     secretDir = null,
@@ -518,6 +520,7 @@ class AppPackageService {
     this.appsDir = appsDir;
     this.catalogService = catalogService;
     this.externalClient = externalClient;
+    this.limiter = limiter;
     this.now = now;
     this.officialRepository = officialRepository;
     this.secretDir = secretDir || path.join(store.stateDir, 'app-secrets');
@@ -1409,7 +1412,14 @@ class AppPackageService {
     } finally { candidate?.cleanup?.(); }
   }
 
+  // The whole update transaction is held under the app's key, not just its
+  // durable part: the download, build, and runtime swap all happen before the
+  // store has a record it could refuse a second update against.
   async stagePackageUpdate(packageId, input = {}, requestContext = {}) {
+    return this.limiter.runExclusive(packageId, () => this.performStageUpdate(packageId, input, requestContext));
+  }
+
+  async performStageUpdate(packageId, input = {}, requestContext = {}) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance || instance.status === 'uninstalled') throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before staging an update.', 409);
     if (typeof input.confirmationToken !== 'string' || !/^[a-f0-9]{64}$/u.test(input.confirmationToken)) {
@@ -1447,6 +1457,22 @@ class AppPackageService {
       }
       if (comparison.compatibility === 'unsupported') {
         throw new AppPackageServiceError('APP_UPDATE_UNSUPPORTED', 'This update is not compatible with the current MOS installation.', 409);
+      }
+      // Only a newer package is an ordinary update. Serving an older one is how a
+      // compromised or force-pushed source walks an app back to a version whose
+      // holes are already published, and because the source is re-resolved on
+      // every apply, nothing but this refuses it. Recovering from a bad update is
+      // a different act with a different risk, so it takes an explicit decision
+      // rather than the same button that installs an update.
+      if (comparison.updateStatus === 'current') {
+        throw new AppPackageServiceError('APP_UPDATE_NOT_AVAILABLE', 'This app already runs the package its source offers, so there is nothing to update.', 409);
+      }
+      if (comparison.updateStatus === 'installed-newer' && input.allowDowngrade !== true) {
+        throw new AppPackageServiceError(
+          'APP_UPDATE_DOWNGRADE_BLOCKED',
+          `The source offers version ${comparison.candidate.packageVersion}, which is older than the installed version ${comparison.installed.packageVersion}. Confirm an explicit downgrade to install it anyway.`,
+          409,
+        );
       }
       // A candidate MOS has not reviewed may not quietly widen what it reaches
       // for. Its route hosts are re-checked against every other installed app, the
@@ -1599,9 +1625,18 @@ class AppPackageService {
         lastDurableStage = 'homepage-reconciled';
       }
       const rollbackSafe = candidate.manifest.update?.rollback === 'safe';
+      // The revision names the images the outgoing package was built into, which
+      // is the only thing standing between an updated app and a copy of every
+      // image it has ever run. It is sent only to an agent that asked for it: an
+      // older agent rejects unknown promotion fields outright, and refusing a
+      // promotion at this point would strand an update whose candidate is
+      // already serving traffic.
       const promoted = await this.agent.promotePackageUpdate({
         candidateDigest: candidate.packageDigest,
         expectedInstalledDigest: instance.packageDigest,
+        ...(agentStatus.capabilities?.includes('apps.package.update.reclaim') && instance.sourceRevision
+          ? { installedSourceRevision: instance.sourceRevision }
+          : {}),
         instanceId: instance.id,
         packageId,
         rollbackSafe,

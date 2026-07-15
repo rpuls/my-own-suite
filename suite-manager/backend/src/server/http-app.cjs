@@ -16,6 +16,8 @@ const { AppPackageService, AppPackageServiceError } = require('../apps/app-packa
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
 const { OfficialCatalogError, OfficialCatalogService } = require('../apps/official-catalog-service.cjs');
 const { ExternalSourceClient } = require('../apps/external-source-client.cjs');
+const { AppOperationLimiter } = require('../apps/app-operation-limits.cjs');
+const { sweepCandidateRoot } = require('../apps/candidate-storage.cjs');
 const { ExternalSourceService } = require('../apps/external-source-service.cjs');
 const { ExternalSourceError } = require('../apps/external-source-registry.cjs');
 const { inspectAppPackages } = require('../apps/package-manifest.cjs');
@@ -310,8 +312,13 @@ function createV2Server({
     bootstrapHost: homeHost,
     store: setup.store,
   });
+  // One limiter for every app package operation on this host. The bounds are only
+  // meaningful shared: two services each allowing their own three concurrent
+  // downloads allow six, which is what the cap exists to prevent.
+  const appOperationLimiter = new AppOperationLimiter();
   const catalogService = officialCatalog || new OfficialCatalogService({
     branch: process.env.MOS_V2_APP_CATALOG_BRANCH || 'main',
+    limiter: appOperationLimiter,
     repository: process.env.MOS_V2_APP_CATALOG_REPOSITORY || 'https://github.com/rpuls/my-own-suite',
     stateDir,
     platformVersion: fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '..', 'VERSION'), 'utf8').trim(),
@@ -322,6 +329,7 @@ function createV2Server({
   // re-downloads an installed external app's own source through it when the owner
   // checks that app for an update. Both go through the same constrained gate.
   const externalSourceClient = new ExternalSourceClient({
+    limiter: appOperationLimiter,
     officialPackageIds,
     platformVersion: catalogService.platformVersion,
     stateDir: setup.store.stateDir,
@@ -331,6 +339,7 @@ function createV2Server({
     appsDir,
     catalogService,
     externalClient: externalSourceClient,
+    limiter: appOperationLimiter,
     store: setup.store,
   });
   const externalSourceService = externalSources || new ExternalSourceService({
@@ -970,6 +979,11 @@ function createV2Server({
   server.on('close', () => { catalogService.stop(); setup.close(); });
   server.migrateAppPackages = () => appPackages.migrateLegacyPackages();
   server.recoverAppPackageUpdates = () => appPackages.recoverInterruptedUpdates();
+  // Candidate downloads from a Suite Manager that was killed mid-operation are
+  // owned by nobody once it restarts. Downloads sweep before they run, so this is
+  // about reclaiming the disk now rather than at whatever point someone next
+  // checks an app for an update.
+  server.sweepAppCandidates = () => sweepCandidateRoot(setup.store.stateDir);
   server.startCatalogRefresh = async () => {
     let result;
     try { result = await catalogService.refresh(); }

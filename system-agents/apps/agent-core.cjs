@@ -31,6 +31,13 @@ function dockerIdentityFragment(value) {
   return String(value).replace(/^sha256:/u, '').slice(0, 12);
 }
 
+// The one place an app service image is named. Reclaiming a superseded image
+// means naming it again from a different direction, and a tag this function did
+// not build is a tag `docker image rm` would silently miss.
+function packageImageTag({ packageDigest, packageId, packageVersion, serviceId, sourceRevision }) {
+  return `mos-v2-app-${packageId}-${serviceId}:${packageVersion}-pkg-${dockerIdentityFragment(packageDigest)}-src-${dockerIdentityFragment(sourceRevision)}`;
+}
+
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
@@ -185,13 +192,19 @@ function assertNetworkConnectRequest(input) {
 }
 
 function assertPackageUpdatePromoteRequest(input) {
-  if (!exactKeys(input, ['candidateDigest', 'expectedInstalledDigest', 'instanceId', 'packageId', 'rollbackSafe'])) {
+  // `installedSourceRevision` is optional so that a Suite Manager talking to an
+  // agent from before `apps.package.update.reclaim` keeps promoting normally: an
+  // unreclaimed image wastes disk, but a promotion refused here after the
+  // candidate is already serving traffic would strand a committed update.
+  const promoteKeys = ['candidateDigest', 'expectedInstalledDigest', 'instanceId', 'packageId', 'rollbackSafe'];
+  if (!exactKeys(input, promoteKeys) && !exactKeys(input, [...promoteKeys, 'installedSourceRevision'])) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app update promotion fields are accepted.');
   }
   assertString(input.instanceId, 'instanceId', /^[0-9a-f-]{36}$/u);
   assertString(input.packageId, 'packageId', PACKAGE_ID_PATTERN);
   assertString(input.candidateDigest, 'candidateDigest', PACKAGE_DIGEST_PATTERN);
   assertString(input.expectedInstalledDigest, 'expectedInstalledDigest', PACKAGE_DIGEST_PATTERN);
+  if (input.installedSourceRevision !== undefined) assertString(input.installedSourceRevision, 'installedSourceRevision', SOURCE_REVISION_PATTERN);
   if (typeof input.rollbackSafe !== 'boolean') throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'rollbackSafe must be a boolean.');
   return input;
 }
@@ -234,7 +247,13 @@ function runtimeServices(input, routes) {
     dockerfile: service.build.dockerfile,
     environment: resolveEnvironment(service.environment, { publicUrl: input.publicUrl }),
     id: service.id,
-    imageTag: `mos-v2-app-${input.packageId}-${service.id}:${input.packageVersion}-pkg-${dockerIdentityFragment(input.packageDigest)}-src-${dockerIdentityFragment(input.sourceRevision)}`,
+    imageTag: packageImageTag({
+      packageDigest: input.packageDigest,
+      packageId: input.packageId,
+      packageVersion: input.packageVersion,
+      serviceId: service.id,
+      sourceRevision: input.sourceRevision,
+    }),
     internalPort: service.internalPort,
     loopbackPort: service.loopbackPort,
     public: routes.some((route) => route.service === service.id),
@@ -327,8 +346,8 @@ class AppAgentCore {
 
   async status() {
     return {
-      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'],
-      contractVersion: 7,
+      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote', 'apps.package.update.reclaim'],
+      contractVersion: 8,
       service: 'mos-v2-app-agent',
     };
   }
@@ -455,4 +474,4 @@ class AppAgentCore {
   }
 }
 
-module.exports = { AppAgentCore, AppRuntimeError, assertHealthCheckRequest, assertNetworkConnectRequest, assertPackageSnapshotExternalRequest, assertPackageSnapshotRequest, assertRuntimeRemoveRequest, assertRuntimeRequest, exactKeys, renderAppRoutes, resolveEnvironment };
+module.exports = { AppAgentCore, AppRuntimeError, assertHealthCheckRequest, assertNetworkConnectRequest, assertPackageSnapshotExternalRequest, assertPackageSnapshotRequest, assertRuntimeRemoveRequest, assertRuntimeRequest, exactKeys, packageImageTag, renderAppRoutes, resolveEnvironment };
