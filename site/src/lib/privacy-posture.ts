@@ -62,7 +62,7 @@ export type PrivacyDimensionRow = {
   verdict: PrivacyVerdict;
 };
 
-export const ASSESSMENT_DOCS_URL = 'https://docs.myownsuite.org/privacy/how-we-assess';
+export const ASSESSMENT_DOCS_URL = 'https://myownsuite.org/docs/privacy/how-we-assess/';
 
 export const SHIELD_PATH = 'M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5l8-3z';
 
@@ -99,7 +99,7 @@ export const POSTURES: Record<PrivacyPostureId, { border: string; color: string;
   'review-required': {
     border: 'var(--mos-color-danger-border)',
     color: 'var(--mos-color-danger)',
-    label: 'Review required',
+    label: 'Not yet reviewed',
     sentence: 'We have not finished reviewing this app. Treat it as unverified until we have.',
     soft: 'var(--mos-color-danger-soft)',
   },

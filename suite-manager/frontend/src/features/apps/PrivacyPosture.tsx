@@ -52,7 +52,7 @@ export function PrivacyFactsTile({ advisories, onOpen, privacy }: { advisories?:
   const marker = advisoryMarkerLabel(advisories);
   const topSeverity = sortedAdvisories(advisories)[0]?.severity;
   return <button className="suite-privacy-tile" onClick={onOpen} type="button">
-    <span className="suite-privacy-tile-label">Privacy</span>
+    <span className="suite-privacy-tile-label">Posture score</span>
     <span className="suite-privacy-tile-posture">
       <PrivacyShieldBadge privacy={privacy} size="tile" />
       <strong>{posture.label}</strong>

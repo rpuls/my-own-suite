@@ -57,7 +57,7 @@ const topSeverity = sortedAdvisoryList[0]?.severity
 
 <div class="privacy-posture" data-privacy-posture>
   <button class="suite-privacy-tile" data-open type="button">
-    <span class="suite-privacy-tile-label">Privacy</span>
+    <span class="suite-privacy-tile-label">Posture score</span>
     <span class="suite-privacy-tile-posture">
       <span class={`suite-privacy-shield is-tile${badge.length > 1 ? ' is-wide' : ''}`} aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d={SHIELD_PATH} fill={posture.soft} stroke={posture.color} stroke-linejoin="round" stroke-width="1.6"></path></svg>
@@ -148,15 +148,20 @@ const topSeverity = sortedAdvisoryList[0]?.severity
     const onKeydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') close()
     }
+    // The landing page's app drawer already holds the body scroll lock while
+    // it is open, so restore whatever overflow value we found rather than
+    // unconditionally clearing it.
+    let previousOverflow = ''
     const open = () => {
       backdrop.hidden = false
+      previousOverflow = document.body.style.overflow
       document.body.style.overflow = 'hidden'
       document.addEventListener('keydown', onKeydown)
       backdrop.querySelector<HTMLButtonElement>('[data-close]')?.focus()
     }
     const close = () => {
       backdrop.hidden = true
-      document.body.style.overflow = ''
+      document.body.style.overflow = previousOverflow
       document.removeEventListener('keydown', onKeydown)
       opener.focus()
     }
@@ -276,6 +281,20 @@ const topSeverity = sortedAdvisoryList[0]?.severity
     place-items: center;
     padding: var(--mos-space-4);
     background: var(--mos-color-backdrop);
+  }
+
+  /* The display: grid above outspecifies the browser's [hidden] default,
+     so restate it — without this the dialog renders open as soon as it
+     leaves a hidden ancestor (e.g. the landing drawer's tile store). */
+  .suite-modal-backdrop[hidden] {
+    display: none;
+  }
+
+  /* The landing page's app drawer relocates this dialog to <body> (the
+     drawer's transform would otherwise trap the fixed backdrop) — raise it
+     above the drawer, which sits at z-index 95. */
+  :global(body) > .suite-modal-backdrop {
+    z-index: 120;
   }
 
   .suite-dialog {

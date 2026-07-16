@@ -47,7 +47,7 @@ const readmeModules = import.meta.glob('../../../apps/*/README.md', {
 // Structured privacy assessments (privacy-review.json) for the posture
 // badge/dialog. The site shows the current repo package's review — the same
 // candidate a fresh install would get. Apps without a review render the
-// truthful "Review required / not yet rated" state.
+// truthful "Not yet reviewed / not yet rated" state.
 const privacyReviewModules = import.meta.glob('../../../apps/*/privacy-review.json', {
   eager: true,
   import: 'default'

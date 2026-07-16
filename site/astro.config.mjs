@@ -78,7 +78,8 @@ export default defineConfig({
           items: [
             'docs/reference/architecture',
             'docs/reference/host-agents',
-            'docs/reference/app-packages'
+            'docs/reference/app-packages',
+            'docs/privacy/how-we-assess'
           ]
         },
         {

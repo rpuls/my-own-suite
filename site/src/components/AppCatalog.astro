@@ -1,5 +1,6 @@
 ---
 import AppConnect from './AppConnect.astro'
+import PrivacyPosture from './PrivacyPosture.astro'
 import { catalogApps as apps } from '../lib/app-catalog'
 
 // The app catalog is generated at build time from each package's
@@ -47,6 +48,19 @@ const appsJson = JSON.stringify(apps).replace(/</g, '\\u003c')
 <div class="app-drawer-backdrop" id="appDrawerBackdrop"></div>
 <aside class="app-drawer" id="appDrawer" role="dialog" aria-modal="true" aria-label="App details"></aside>
 
+{/* Server-rendered privacy posture tile + score dialog per app (the same
+    PrivacyPosture component the docs app pages use). The drawer script
+    moves the open app's tile into the drawer facts grid and relocates its
+    dialog to <body> — the drawer's transform would otherwise trap and clip
+    the dialog's fixed-position backdrop. */}
+<div id="appPrivacyStore" hidden>
+  {apps.map((app) => (
+    <div data-privacy-home={app.id}>
+      <PrivacyPosture advisories={app.advisories} appName={app.name} assessmentUrl="/docs/privacy/how-we-assess/" packageVersion={app.version} privacy={app.privacyReview} />
+    </div>
+  ))}
+</div>
+
 <script is:inline type="application/json" id="mos-apps-data" set:html={appsJson} />
 
 <script>
@@ -87,6 +101,28 @@ const appsJson = JSON.stringify(apps).replace(/</g, '\\u003c')
 
   let page = 0
   let lastOpener: HTMLElement | null = null
+
+  // The open app's server-rendered privacy tile (see #appPrivacyStore) is
+  // borrowed into the drawer facts grid and returned before the next
+  // drawer render wipes it away with innerHTML.
+  let placedPrivacyTile: { home: HTMLElement; tile: HTMLElement } | null = null
+
+  function returnPrivacyTile() {
+    if (!placedPrivacyTile) return
+    placedPrivacyTile.home.prepend(placedPrivacyTile.tile)
+    placedPrivacyTile = null
+  }
+
+  function placePrivacyTile(appId: string, slot: HTMLElement) {
+    const home = document.querySelector<HTMLElement>(`[data-privacy-home="${CSS.escape(appId)}"] [data-privacy-posture]`)
+    if (!home) return
+    const dialog = home.querySelector<HTMLElement>('[data-dialog]')
+    if (dialog) document.body.appendChild(dialog)
+    const tile = home.querySelector<HTMLElement>('[data-open]')
+    if (!tile) return
+    slot.appendChild(tile)
+    placedPrivacyTile = { home, tile }
+  }
 
   const esc = (value: string) =>
     value.replace(/[&<>"']/g, (char) =>
@@ -138,10 +174,12 @@ const appsJson = JSON.stringify(apps).replace(/</g, '\\u003c')
 
   function openDrawer(app: AppData, opener: HTMLElement | null) {
     lastOpener = opener
+    returnPrivacyTile()
     const facts = [
-      app.replaces ? `<div><span class="k">Replaces</span><strong>${esc(app.replaces)}</strong></div>` : '',
-      app.setup ? `<div><span class="k">Setup</span><strong>${esc(app.setup)}</strong></div>` : '',
+      '<span id="appDrawerPrivacy" style="display:contents"></span>',
+      app.setup ? `<div><span class="k">Complexity</span><strong>${esc(app.setup)}</strong></div>` : '',
       app.resources ? `<div><span class="k">Resources</span><strong>${esc(app.resources)}</strong></div>` : '',
+      app.replaces ? `<div><span class="k">Replaces</span><strong>${esc(app.replaces)}</strong></div>` : '',
       '<div><span class="k">Cost</span><strong>Free &amp; open source</strong></div>'
     ].join('')
     const features = app.features.length
@@ -170,6 +208,8 @@ ${privacy}
 ${links ? `<div class="app-drawer-section"><span class="mos-eyebrow">Links</span><div class="app-drawer-links">${links}</div></div>` : ''}
 <a class="mos-btn mos-btn-primary" href="#install" id="appDrawerCta" style="width:100%">Get MOS and install ${esc(app.name)}</a>`
 
+    placePrivacyTile(app.id, document.getElementById('appDrawerPrivacy')!)
+
     drawer.classList.add('open')
     backdrop.classList.add('open')
     document.body.style.overflow = 'hidden'
@@ -196,7 +236,10 @@ ${links ? `<div class="app-drawer-section"><span class="mos-eyebrow">Links</span
   })
   backdrop.addEventListener('click', closeDrawer)
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && drawer.classList.contains('open')) closeDrawer()
+    if (event.key !== 'Escape' || !drawer.classList.contains('open')) return
+    // An open privacy dialog consumes Escape before the drawer does.
+    if (document.querySelector('[data-dialog]:not([hidden])')) return
+    closeDrawer()
   })
   search.addEventListener('input', () => {
     page = 0
