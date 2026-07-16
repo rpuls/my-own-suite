@@ -1146,7 +1146,11 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       const app = refreshed.packages.find((item) => item.id === installed.packageId);
       setExternalOpen(false);
       setQuery('');
-      if (app) await performInstall(app);
+      // Forward the collected setup values: the package is installed by now, but
+      // performInstall still needs them to pass its required-field check before
+      // it applies the runtime. Without them it returns silently and the app
+      // never starts.
+      if (app) await performInstall(app, { config });
     } catch (caught) {
       setExternalInstallError(caught instanceof Error ? caught.message : `Unable to install ${resolved.card.name}.`);
     } finally {

@@ -639,7 +639,18 @@ class AppPackageService {
         continue;
       }
 
-      const packageDigest = digestAppPackage(packageDir);
+      // Digesting parses privacy-review.json, so invalid package contents must
+      // degrade this one instance to recovery rather than abort the whole
+      // migration — migrateLegacyPackages runs at startup, and an unfenced
+      // throw here prevents Suite Manager from booting.
+      let packageDigest;
+      try {
+        packageDigest = digestAppPackage(packageDir);
+      } catch {
+        this.store.markAppPackageRecoveryRequired({ at: this.now().toISOString(), instanceId: instance.id });
+        results.push({ packageId: instance.packageId, status: 'needs-package-recovery' });
+        continue;
+      }
       const source = {
         kind: 'official-git',
         path: `apps/${manifest.id}`,
@@ -650,7 +661,17 @@ class AppPackageService {
       let privacy = { posture: 'review-required', reviewedAt: null, status: 'review-required' };
       const privacyReviewPath = path.join(packageDir, 'privacy-review.json');
       if (fs.existsSync(privacyReviewPath)) {
-        const review = JSON.parse(fs.readFileSync(privacyReviewPath, 'utf8'));
+        // A malformed review must degrade the one instance to recovery, exactly
+        // like a malformed manifest above — an unguarded parse here aborts the
+        // migration and prevents Suite Manager from booting at all.
+        let review;
+        try {
+          review = JSON.parse(fs.readFileSync(privacyReviewPath, 'utf8'));
+        } catch {
+          this.store.markAppPackageRecoveryRequired({ at: this.now().toISOString(), instanceId: instance.id });
+          results.push({ packageId: instance.packageId, status: 'needs-package-recovery' });
+          continue;
+        }
         // Same revision rule as installPackage: the legacy migration path has
         // no resolved git revision, so adopt the review's declared revision.
         if (typeof review?.scope?.source?.revision === 'string' && review.scope.source.revision.trim()) {
@@ -1223,7 +1244,15 @@ class AppPackageService {
     await this.assertArchitectureSupported(manifest);
     const at = this.now().toISOString();
     const manifestDigest = digestFor(manifest);
-    const packageDigest = digestAppPackage(packageDir);
+    // Digesting parses privacy-review.json and validates package contents, so
+    // a malformed file must surface as a classified conflict, not an
+    // unclassified 500 from a raw parse error.
+    let packageDigest;
+    try {
+      packageDigest = digestAppPackage(packageDir);
+    } catch (error) {
+      throw new AppPackageServiceError('APP_PACKAGE_INVALID', `The app package contents are not valid: ${error.message}`, 409);
+    }
     const source = {
       kind: 'official-git',
       path: `apps/${manifest.id}`,
@@ -1234,7 +1263,12 @@ class AppPackageService {
     let privacy = { posture: 'review-required', reviewedAt: null, status: 'review-required' };
     const privacyReviewPath = path.join(packageDir, 'privacy-review.json');
     if (fs.existsSync(privacyReviewPath)) {
-      const review = JSON.parse(fs.readFileSync(privacyReviewPath, 'utf8'));
+      let review;
+      try {
+        review = JSON.parse(fs.readFileSync(privacyReviewPath, 'utf8'));
+      } catch {
+        throw new AppPackageServiceError('APP_PRIVACY_REVIEW_INVALID', 'The app privacy review is not valid JSON.', 409);
+      }
       // The direct repo install path has no resolved git revision of its own
       // (packageDigest above is a stand-in). A review's declared revision is
       // part of the hashed package contents, so it can never equal the

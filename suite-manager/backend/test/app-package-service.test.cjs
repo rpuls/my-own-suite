@@ -1042,6 +1042,46 @@ test('legacy instances migrate only from an exactly matching validated package',
   store.close();
 });
 
+// Regression: an unguarded privacy-review.json parse in the startup migration
+// aborted migrateLegacyPackages, and start.cjs exits on that — one malformed
+// file in one package prevented Suite Manager from booting at all.
+test('a malformed privacy review degrades to recovery at migration and a 409 at install', async (t) => {
+  const root = await tempStateDir();
+  const appsDir = path.join(root, 'apps');
+  await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), path.join(appsDir, 'stirling-pdf'), { recursive: true });
+  await fsp.writeFile(path.join(appsDir, 'stirling-pdf', 'privacy-review.json'), '{ not json');
+  const manifest = readAppPackageManifest(path.join(appsDir, 'stirling-pdf')).manifest;
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  t.after(() => store.close());
+  store.installAppInstance({
+    at: '2026-07-14T00:00:00.000Z',
+    config: [],
+    instance: {
+      categorySnapshot: manifest.category,
+      displayNameSnapshot: manifest.name,
+      id: 'legacy-malformed-review',
+      manifestDigest: digestFor(manifest),
+      packageId: manifest.id,
+      packageVersion: manifest.version,
+    },
+    operationId: 'legacy-malformed-review-operation',
+    projections: renderDryRunProjections(manifest, []),
+  });
+  const service = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); } }, appsDir, store });
+
+  const results = await service.migrateLegacyPackages();
+  assert.deepEqual(results, [{ packageId: 'stirling-pdf', status: 'needs-package-recovery' }]);
+  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').snapshotState, 'needs-package-recovery');
+
+  const freshStore = new SuiteManagerStore(path.join(root, 'fresh-state'));
+  t.after(() => freshStore.close());
+  const freshService = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); } }, appsDir, store: freshStore });
+  await assert.rejects(
+    () => freshService.installPackage('stirling-pdf'),
+    (error) => error.code === 'APP_PACKAGE_INVALID' && error.statusCode === 409,
+  );
+});
+
 test('snapshot failure leaves no app configuration or install record', async () => {
   const stateDir = await tempStateDir();
   const store = new SuiteManagerStore(stateDir);

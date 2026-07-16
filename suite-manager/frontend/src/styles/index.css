@@ -2089,6 +2089,11 @@
   text-transform: uppercase;
 }
 
+.suite-privacy-score-scale {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+}
+
 .suite-privacy-sentence {
   margin: 0;
   color: var(--mos-color-text-muted);

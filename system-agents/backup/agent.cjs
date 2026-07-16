@@ -7,7 +7,7 @@ const path = require('node:path');
 const { execFile, execFileSync, spawn } = require('node:child_process');
 const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-agent-client.cjs');
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
-const { collectPackageFiles, digestAppPackage } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
+const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
 const { SuiteManagerStore } = require('../../suite-manager/backend/src/state/suite-manager-store.cjs');
 
@@ -191,14 +191,27 @@ function updateJob(file, mutator) {
 }
 function log(file, message) { updateJob(file, (job) => { job.logs.push({ at: new Date().toISOString(), message }); }); }
 function stage(file, name) { updateJob(file, (job) => { job.stage = name; job.status = 'running'; }); log(file, name); }
-function sha256(file) { return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); }
+// Hash in fixed-size chunks: volume archives are multi-gigabyte, and reading
+// one into a single Buffer exhausts RAM or trips ERR_FS_FILE_TOO_LARGE.
+function sha256(file) {
+  const hash = crypto.createHash('sha256');
+  const descriptor = fs.openSync(file, 'r');
+  try {
+    const buffer = Buffer.alloc(8 * 1024 * 1024);
+    let bytesRead;
+    while ((bytesRead = fs.readSync(descriptor, buffer, 0, buffer.length)) > 0) hash.update(buffer.subarray(0, bytesRead));
+  } finally {
+    fs.closeSync(descriptor);
+  }
+  return hash.digest('hex');
+}
 function packageBackupInventory() {
   const store = new SuiteManagerStore(stateDir);
   try {
     return store.getAppInstances().filter((instance) => instance.status !== 'uninstalled').map((instance) => {
       if (instance.snapshotState !== 'installed' || !instance.snapshotPath || !instance.packageDigest) throw new Error(`Installed package snapshot is unavailable for ${instance.packageId}.`);
-      const { manifest } = readAppPackageManifest(instance.snapshotPath);
-      if (manifest.id !== instance.packageId || digestAppPackage(instance.snapshotPath) !== instance.packageDigest) throw new Error(`Installed package snapshot is invalid for ${instance.packageId}.`);
+      readAppPackageManifest(instance.snapshotPath);
+      const manifest = verifySnapshotIdentity(instance.snapshotPath, { errorMessage: `Installed package snapshot is invalid for ${instance.packageId}.`, expectedDigest: instance.packageDigest, packageId: instance.packageId });
       const expected = path.join(stateRoot, 'app-packages', instance.id, 'installed');
       if (path.resolve(instance.snapshotPath) !== path.resolve(expected)) throw new Error(`Installed package snapshot path is invalid for ${instance.packageId}.`);
       return {
@@ -218,8 +231,9 @@ function packageBackupInventory() {
 function validatePackagePayloads(root, packages) {
   for (const item of packages || []) {
     const packageDir = path.join(root, 'var-lib-mos-v2', 'app-packages', item.instanceId, 'installed');
-    const { manifest } = readAppPackageManifest(packageDir);
-    if (manifest.id !== item.packageId || manifest.version !== item.packageVersion || digestAppPackage(packageDir) !== item.packageDigest) throw new Error(`Backup package identity is invalid for ${item.packageId}.`);
+    readAppPackageManifest(packageDir);
+    const manifest = verifySnapshotIdentity(packageDir, { errorMessage: `Backup package identity is invalid for ${item.packageId}.`, expectedDigest: item.packageDigest, packageId: item.packageId });
+    if (manifest.version !== item.packageVersion) throw new Error(`Backup package identity is invalid for ${item.packageId}.`);
     const files = collectPackageFiles(packageDir, { manifest });
     if (files.length !== item.payload?.length) throw new Error(`Backup package payload is incomplete for ${item.packageId}.`);
     for (const file of files) {

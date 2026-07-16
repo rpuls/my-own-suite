@@ -261,6 +261,65 @@ test('system adapter builds, runs, health-checks, writes routes, and reloads Cad
   assert.match(await fsp.readFile(routesPath, 'utf8'), /reverse_proxy http:\/\/127\.0\.0\.1:18123/u);
 });
 
+// Regression: applyAppServices compared the bare manifest id to the namespaced
+// package id, so every external install/enable/restart failed with
+// PACKAGE_SNAPSHOT_MISMATCH after its snapshot had already been accepted.
+test('system adapter applies runtime for an external app under its namespaced identity', async () => {
+  const root = await tempDir();
+  const routesPath = path.join(root, 'routes.caddy');
+  const appPackageRoot = path.join(root, 'packages');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const packageId = 'x-abcdef01-community-notes';
+  const packageDir = path.join(appPackageRoot, instanceId, 'installed');
+  const commands = [];
+  await fsp.mkdir(packageDir, { recursive: true });
+  await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify({ id: 'community-notes', packageFiles: [] })}\n`);
+  await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
+  const packageDigest = digestAppPackage(packageDir);
+
+  const adapter = new SystemAppAdapter({
+    appsRoot: root,
+    appPackageRoot,
+    caddyBinary: 'caddy',
+    dockerBinary: 'docker',
+    routesPath,
+    async execute(file, args, options = {}) {
+      commands.push({ args, cwd: options.cwd, file });
+    },
+    async waitForReady(url) {
+      commands.push({ args: [url], file: 'health' });
+    },
+  });
+
+  const request = {
+    caddyRoutes: `http://community-notes.mos.home {\n  reverse_proxy http://127.0.0.1:18124\n}\n`,
+    dockerfile: 'Dockerfile',
+    environment: {},
+    healthTarget: 'http://127.0.0.1:18124/health',
+    imageTag: `mos-v2-app-${packageId}:0.1.0`,
+    instanceId,
+    internalPort: 3000,
+    loopbackPort: 18124,
+    packageDigest,
+    packageId,
+    packageVersion: '0.1.0',
+    sourceRevision: '0123456789abcdef0123456789abcdef01234567',
+    volumes: [],
+  };
+  const result = await adapter.applyAppService(request);
+
+  assert.deepEqual(result.steps, ['built', 'started', 'healthy', 'route-written', 'caddy-reloaded']);
+  assert.deepEqual(commands[2].args.slice(0, 4), ['run', '--detach', '--name', `mos-v2-app-${packageId}`]);
+  assert.match(await fsp.readFile(routesPath, 'utf8'), new RegExp(`mos-v2-app-route:start ${packageId}`, 'u'));
+
+  // The identity check still refuses a snapshot that is not the package the
+  // namespaced id claims to manage.
+  await assert.rejects(
+    () => adapter.applyAppService({ ...request, packageId: 'x-abcdef01-other-notes' }),
+    (error) => error.code === 'APP_BUILD_FAILED',
+  );
+});
+
 test('route updates replace only the matching package block', () => {
   const existing = `# mos-v2-app-route:start first-app
 http://first-app.mos.home {

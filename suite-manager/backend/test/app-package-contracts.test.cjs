@@ -24,6 +24,7 @@ const {
   validatePlatformCompatibility,
   validatePrivacyBinding,
   validateSourceIdentity,
+  verifySnapshotIdentity,
 } = require('../src/apps/package-contracts.cjs');
 
 const contractFixtures = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'app-package-contracts.json'), 'utf8'));
@@ -63,6 +64,21 @@ test('package digest binds file paths and contents', (t) => {
   const before = digestAppPackage(packageDir);
   fs.appendFileSync(path.join(packageDir, 'Dockerfile'), '# changed\n');
   assert.notEqual(digestAppPackage(packageDir), before);
+});
+
+test('snapshot identity verification resolves bare and namespaced package ids to the manifest id', (t) => {
+  const packageDir = packageFixture();
+  t.after(() => fs.rmSync(packageDir, { force: true, recursive: true }));
+  const expectedDigest = digestAppPackage(packageDir);
+
+  assert.equal(verifySnapshotIdentity(packageDir, { expectedDigest, packageId: 'example' }).id, 'example');
+  assert.equal(verifySnapshotIdentity(packageDir, { expectedDigest, packageId: 'x-abcdef01-example' }).id, 'example');
+  assert.throws(() => verifySnapshotIdentity(packageDir, { expectedDigest, packageId: 'other' }), /PACKAGE_SNAPSHOT_MISMATCH/u);
+  assert.throws(() => verifySnapshotIdentity(packageDir, { expectedDigest, packageId: 'x-abcdef01-other' }), /PACKAGE_SNAPSHOT_MISMATCH/u);
+  assert.throws(
+    () => verifySnapshotIdentity(packageDir, { errorMessage: 'INSTALLED_PACKAGE_CHANGED', expectedDigest: `sha256:${'0'.repeat(64)}`, packageId: 'example' }),
+    /INSTALLED_PACKAGE_CHANGED/u,
+  );
 });
 
 test('package validation rejects undeclared files and symlinks', (t) => {

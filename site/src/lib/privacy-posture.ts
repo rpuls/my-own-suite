@@ -174,14 +174,16 @@ export function privacyScore(privacy: PrivacyReviewSummary | null | undefined): 
   return total;
 }
 
-export function privacyGrade(score: number): string {
-  return score >= 9 ? 'A' : score >= 7 ? 'B' : score >= 4 ? 'C' : 'D';
+export function badgeTextFor(privacy: PrivacyReviewSummary | null | undefined): string {
+  const score = privacyScore(privacy);
+  return score === null ? '?' : String(score);
 }
 
-export function badgeTextFor(privacy: PrivacyReviewSummary | null | undefined, style: 'grade' | 'score' = 'score'): string {
+// The visible scale for the shield number: a bare "7" means nothing without
+// "out of 10" somewhere on the surface that shows it.
+export function scoreScaleLabel(privacy: PrivacyReviewSummary | null | undefined): string | null {
   const score = privacyScore(privacy);
-  if (score === null) return '?';
-  return style === 'grade' ? privacyGrade(score) : String(score);
+  return score === null ? null : `Privacy score ${score} out of 10`;
 }
 
 export function dimensionRowsFor(privacy: PrivacyReviewSummary | null | undefined): PrivacyDimensionRow[] {
@@ -244,14 +246,6 @@ export const ADVISORY_TYPE_LABEL: Record<PrivacyAdvisoryType, string> = {
 export function sortedAdvisories(advisories: PrivacyAdvisory[] | null | undefined): PrivacyAdvisory[] {
   return [...(advisories || [])].sort((left, right) => ADVISORY_SEVERITY_ORDER[right.severity] - ADVISORY_SEVERITY_ORDER[left.severity]
     || String(right.publishedAt).localeCompare(String(left.publishedAt)));
-}
-
-export function highestAdvisory(advisories: PrivacyAdvisory[] | null | undefined): PrivacyAdvisory | null {
-  return sortedAdvisories(advisories)[0] || null;
-}
-
-export function reviewInvalidated(advisories: PrivacyAdvisory[] | null | undefined): boolean {
-  return (advisories || []).some((advisory) => advisory.type === 'privacy-review-invalidated' || advisory.type === 'package-withdrawn');
 }
 
 export function advisoryMarkerLabel(advisories: PrivacyAdvisory[] | null | undefined): string | null {

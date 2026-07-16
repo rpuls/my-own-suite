@@ -27,6 +27,7 @@ import {
   privacyChanged,
   provenanceLine,
   provenanceMethodLabel,
+  scoreScaleLabel,
   sortedAdvisories,
   tileMetaLine,
   type PrivacyAdvisory,
@@ -97,6 +98,7 @@ export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSE
 }) {
   const posture = postureFor(privacy);
   const method = provenanceMethodLabel(privacy);
+  const scoreScale = scoreScaleLabel(privacy);
   return <Dialog
     className="suite-privacy-dialog"
     closeOnBackdrop
@@ -105,6 +107,7 @@ export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSE
       <div>
         <h2>{appName}</h2>
         <span className="suite-privacy-pill" style={{ background: posture.soft, borderColor: posture.border }}>{posture.label}</span>
+        {scoreScale ? <span className="suite-privacy-score-scale">{scoreScale}</span> : null}
       </div>
     </div>}
     onClose={onClose}

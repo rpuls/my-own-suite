@@ -57,7 +57,16 @@ function canonicalFileBytes(relativePath, bytes) {
     throw new AppPackageContractError(`Text package file is not valid UTF-8: ${relativePath}.`);
   }
   if (relativePath === 'privacy-review.json') {
-    const review = JSON.parse(text);
+    let review;
+    try {
+      review = JSON.parse(text);
+    } catch {
+      // Classified rather than a raw SyntaxError: digesting is the first thing
+      // every install/migration/backup path does to a package, so an unfenced
+      // parse here turns one malformed review into an unclassified failure of
+      // whatever operation touched the package first.
+      throw new AppPackageContractError('Package privacy-review.json is not valid JSON.');
+    }
     if (review?.scope) review.scope.packageDigest = 'sha256:<package-digest>';
     return Buffer.from(`${JSON.stringify(review, null, 2)}\n`, 'utf8');
   }
@@ -115,6 +124,20 @@ function digestAppPackage(packageDir, options = {}) {
     hash.update(bytes);
   }
   return `sha256:${hash.digest('hex')}`;
+}
+
+// Verify a snapshot directory against the identity a caller claims for it:
+// the manifest must declare the id `packageId` resolves to (the bare id for an
+// official package, the suffix of `x-<namespace>-<id>` for an external one)
+// and the on-disk bytes must hash to the expected digest. Every consumer of a
+// snapshot must verify through here rather than comparing `manifest.id` to the
+// package id by hand, because a hand-rolled comparison misses the namespacing
+// rule and rejects every external package.
+function verifySnapshotIdentity(packageDir, { errorMessage = 'PACKAGE_SNAPSHOT_MISMATCH', expectedDigest, packageId }) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'manifest.json'), 'utf8'));
+  if (manifest.id !== parseNamespacedPackageId(packageId).packageId) throw new Error(errorMessage);
+  if (digestAppPackage(packageDir, { manifest }) !== expectedDigest) throw new Error(errorMessage);
+  return manifest;
 }
 
 function compareSemver(left, right) {
@@ -456,4 +479,5 @@ module.exports = {
   validatePlatformCompatibility,
   validatePrivacyBinding,
   validateSourceIdentity,
+  verifySnapshotIdentity,
 };
