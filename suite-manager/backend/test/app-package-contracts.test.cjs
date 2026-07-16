@@ -12,6 +12,7 @@ const {
   canonicalPackagePath,
   describeRequestedPermissions,
   diffRequestedPermissions,
+  derivePrivacyPosture,
   digestAppPackage,
   namespacedPackageId,
   parseNamespacedPackageId,
@@ -22,6 +23,7 @@ const {
   validateConstrainedCapabilities,
   validateExternalIdentity,
   validatePlatformCompatibility,
+  validatePrivacyAssessment,
   validatePrivacyBinding,
   validateSourceIdentity,
   verifySnapshotIdentity,
@@ -175,6 +177,51 @@ test('privacy binding rejects review metadata from a different package source', 
     scope: { components: [{ name: 'Example', version: '1.0.0' }], packageDigest, packageVersion: '1.0.0', source: contractFixtures.externalUnverifiedSource },
   };
   assert.ok(validatePrivacyBinding(review, { manifest, packageDigest, source }).some((error) => error.includes('does not match the resolved source')));
+});
+
+test('posture derivation never turns an unknown dimension into a favorable result', () => {
+  const local = {
+    accountDependency: 'local-only',
+    confidence: 'verified',
+    dataProcessing: 'local',
+    externalServices: 'none-required',
+    policyExposure: 'self-hosted-software-only',
+    telemetry: 'none-observed',
+  };
+  assert.equal(derivePrivacyPosture(local), 'private-by-default');
+  assert.equal(derivePrivacyPosture({ ...local, telemetry: 'disabled-by-mos' }), 'privacy-configured');
+  assert.equal(derivePrivacyPosture({ ...local, externalServices: 'optional' }), 'privacy-configured');
+  assert.equal(derivePrivacyPosture({ ...local, externalServices: 'required' }), 'external-dependency');
+  assert.equal(derivePrivacyPosture({ ...local, accountDependency: 'required-upstream-account' }), 'external-dependency');
+  assert.equal(derivePrivacyPosture({ ...local, dataProcessing: 'required-external' }), 'external-dependency');
+  assert.equal(derivePrivacyPosture({ ...local, telemetry: 'unavoidable' }), 'external-dependency');
+  // Optional telemetry MOS did not disable supports no favorable posture.
+  assert.equal(derivePrivacyPosture({ ...local, telemetry: 'optional' }), 'review-required');
+  for (const dimension of Object.keys(local)) {
+    assert.equal(derivePrivacyPosture({ ...local, [dimension]: 'unknown' }), 'review-required');
+  }
+  assert.equal(derivePrivacyPosture({ ...local, policyExposure: 'unclear' }), 'review-required');
+  assert.equal(derivePrivacyPosture(undefined), 'review-required');
+});
+
+test('assessment validation rejects postures its dimensions do not derive and favorable postures without evidence', () => {
+  const dimensions = {
+    accountDependency: 'local-only',
+    confidence: 'verified',
+    dataProcessing: 'local',
+    externalServices: 'none-required',
+    policyExposure: 'self-hosted-software-only',
+    telemetry: 'none-observed',
+  };
+  const evidence = [{ claim: 'No outbound requests observed at runtime.', source: 'apps/example/Dockerfile', type: 'observed' }];
+  assert.deepEqual(validatePrivacyAssessment({ dimensions, evidence, posture: 'private-by-default' }), []);
+  assert.ok(validatePrivacyAssessment({ dimensions: { ...dimensions, telemetry: 'unknown' }, evidence, posture: 'private-by-default' })
+    .some((error) => error.includes('expected review-required')));
+  assert.ok(validatePrivacyAssessment({ dimensions, evidence: [], posture: 'private-by-default' })
+    .some((error) => error.includes('at least one evidence entry')));
+  assert.ok(validatePrivacyAssessment({ dimensions, evidence: [{ claim: ' ', source: '' }], posture: 'private-by-default' })
+    .some((error) => error.includes('at least one evidence entry')));
+  assert.deepEqual(validatePrivacyAssessment({ dimensions: {}, evidence: [], posture: 'review-required' }), []);
 });
 
 test('privacy-invalidated advisories apply only to their bounded package versions', () => {

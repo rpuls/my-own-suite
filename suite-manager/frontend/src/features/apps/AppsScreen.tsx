@@ -842,6 +842,9 @@ function AppDetail({
         {comparison.validation.errors.length ? <Notice title="This update cannot be applied" variant="warning">
           <ul>{comparison.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul>
         </Notice> : null}
+        {app.external && comparison.updateStatus === 'update-available' ? <Notice title="Updating runs the publisher's build" variant="warning">
+          <p>Updating rebuilds this package&apos;s Dockerfiles on your server, which runs commands the publisher wrote &mdash; with network access &mdash; before MOS&apos;s runtime restrictions apply. Update only if you still trust the repository this app came from.</p>
+        </Notice> : null}
         {comparison.permissions.added.length ? <Notice title="This update asks for more access" variant="warning">
           <p>The installed version does not have this access today. Updating grants it.</p>
           <ul className="suite-app-permission-list">
@@ -966,7 +969,7 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
         {installError ? <Notice title="This package could not be installed" variant="warning"><p>{installError}</p></Notice> : null}
 
         <Notice title="Unverified external package" variant="warning">
-          <p>This package comes from a repository you pasted, not the verified MOS catalog. MOS has not reviewed its code or checked any privacy claims. Install it only if you trust whoever publishes that repository. If you do, it runs with a restricted profile: only its own named storage and the web addresses listed below &mdash; no privileged access, host folders, or Docker socket.</p>
+          <p>This package comes from a repository you pasted, not the verified MOS catalog. MOS has not reviewed its code or checked any privacy claims. Installing it builds its Dockerfiles on your server, which runs commands the publisher wrote &mdash; with network access &mdash; before any of MOS&apos;s runtime restrictions apply. Install it only if you trust whoever publishes that repository. Once running, it is restricted to its own named storage and the web addresses listed below &mdash; no privileged access, host folders, or Docker socket.</p>
         </Notice>
 
         {!card.validation.valid ? <Notice title="This package cannot be installed" variant="warning"><ul>{card.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}

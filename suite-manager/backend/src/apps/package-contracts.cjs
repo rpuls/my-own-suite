@@ -237,6 +237,53 @@ function validatePrivacyBinding(review, { manifest, packageDigest, source }) {
   return errors;
 }
 
+// The mechanical posture derivation promised by apps/README.md: postures are
+// derived from their dimensions, never selected by intuition, and an unknown
+// fact is never turned into a favorable result.
+const PRIVACY_DIMENSIONS = Object.freeze([
+  'telemetry', 'externalServices', 'accountDependency', 'dataProcessing', 'policyExposure', 'confidence',
+]);
+
+function derivePrivacyPosture(dimensions) {
+  const d = dimensions && typeof dimensions === 'object' && !Array.isArray(dimensions) ? dimensions : {};
+  if (PRIVACY_DIMENSIONS.some((name) => d[name] === undefined || d[name] === 'unknown' || d[name] === 'unclear')) {
+    return 'review-required';
+  }
+  if (d.telemetry === 'unavoidable' || d.externalServices === 'required'
+    || d.accountDependency === 'required-upstream-account' || d.dataProcessing === 'required-external') {
+    return 'external-dependency';
+  }
+  if (d.telemetry === 'none-observed' && d.externalServices === 'none-required'
+    && d.accountDependency === 'local-only' && d.dataProcessing === 'local') {
+    return 'private-by-default';
+  }
+  // Optional external touchpoints with no enabled telemetry. Telemetry that
+  // exists but was not disabled ('optional') supports no favorable posture.
+  if (d.telemetry === 'none-observed' || d.telemetry === 'disabled-by-mos') {
+    return 'privacy-configured';
+  }
+  return 'review-required';
+}
+
+// Semantic validity of the assessment itself, independent of which package it
+// binds to: the stated posture must be the one its dimensions derive, and a
+// favorable posture must rest on at least one concrete piece of evidence.
+function validatePrivacyAssessment(review) {
+  if (!review || typeof review !== 'object' || Array.isArray(review)) return ['privacy review must be an object.'];
+  const errors = [];
+  const derived = derivePrivacyPosture(review.dimensions);
+  if (review.posture !== derived) {
+    errors.push(`privacy review posture must be derived from its dimensions: expected ${derived}, found ${String(review.posture)}.`);
+  }
+  if (review.posture !== 'review-required') {
+    const evidence = Array.isArray(review.evidence) ? review.evidence : [];
+    const concrete = evidence.filter((entry) => entry && typeof entry === 'object'
+      && String(entry.claim || '').trim() && String(entry.source || '').trim());
+    if (concrete.length === 0) errors.push('privacy review must cite at least one evidence entry with a claim and source for its posture.');
+  }
+  return errors;
+}
+
 function advisoryAffectsVersion(advisory, packageVersion) {
   const range = String(advisory?.affectedVersions || '').trim();
   if (range === '*') return SEMVER_PATTERN.test(String(packageVersion));
@@ -465,6 +512,7 @@ module.exports = {
   canonicalPackagePath,
   compareSemver,
   collectPackageFiles,
+  derivePrivacyPosture,
   describeRequestedPermissions,
   diffRequestedPermissions,
   digestAppPackage,
@@ -477,6 +525,7 @@ module.exports = {
   validateConstrainedCapabilities,
   validateExternalIdentity,
   validatePlatformCompatibility,
+  validatePrivacyAssessment,
   validatePrivacyBinding,
   validateSourceIdentity,
   verifySnapshotIdentity,

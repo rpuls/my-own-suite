@@ -93,14 +93,14 @@ export const POSTURES: Record<PrivacyPostureId, { border: string; color: string;
     border: 'var(--mos-color-warning-border)',
     color: 'var(--mos-color-warning)',
     label: 'External dependency',
-    sentence: 'Some features only work through an outside service. You choose whether to use them.',
+    sentence: 'Normal use relies on an outside service or account, so some traffic or data leaves your server.',
     soft: 'var(--mos-color-warning-soft)',
   },
   'review-required': {
     border: 'var(--mos-color-danger-border)',
     color: 'var(--mos-color-danger)',
     label: 'Not yet reviewed',
-    sentence: 'We have not finished reviewing this app. Treat it as unverified until we have.',
+    sentence: 'MOS has not reviewed this app. Treat it as unverified.',
     soft: 'var(--mos-color-danger-soft)',
   },
 };
@@ -208,13 +208,20 @@ export function reviewDateLabel(reviewedAt: string | null | undefined): string |
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
+// A review authored by an AI without a human sign-off must say so everywhere
+// "reviewed" appears — tile included — not only in dialog fine print.
+function reviewerLabel(privacy: PrivacyReviewSummary | null | undefined): string {
+  const provenance = privacy?.provenance;
+  return provenance?.method === 'ai-assisted' && !provenance.humanReviewed ? 'AI-reviewed for MOS' : 'Reviewed by MOS';
+}
+
 export function tileMetaLine(privacy: PrivacyReviewSummary | null | undefined): string {
-  return isRated(privacy) ? 'Reviewed by MOS' : 'Not yet rated';
+  return isRated(privacy) ? reviewerLabel(privacy) : 'Not yet rated';
 }
 
 export function provenanceLine(privacy: PrivacyReviewSummary | null | undefined, packageVersion?: string | null): string {
-  if (!isRated(privacy)) return 'Review in progress — not yet rated by MOS';
-  return ['Reviewed by MOS', reviewDateLabel(privacy?.reviewedAt), packageVersion ? `package ${packageVersion}` : null]
+  if (!isRated(privacy)) return 'Not yet rated by MOS';
+  return [reviewerLabel(privacy), reviewDateLabel(privacy?.reviewedAt), packageVersion ? `package ${packageVersion}` : null]
     .filter(Boolean)
     .join(' · ');
 }
@@ -263,7 +270,12 @@ export function provenanceMethodLabel(privacy: PrivacyReviewSummary | null | und
 }
 
 export function privacyChangeSentence(installed: PrivacyReviewSummary, candidate: PrivacyReviewSummary): string {
-  if (!privacyChanged(installed, candidate)) return 'This update keeps the same privacy score as the version you run today.';
+  if (!privacyChanged(installed, candidate)) {
+    // Two unrated packages share no score to "keep".
+    return privacyScore(installed) === null
+      ? 'Neither the version you run today nor this update has been rated by MOS yet.'
+      : 'This update keeps the same privacy score as the version you run today.';
+  }
   const before = privacyScore(installed);
   const after = privacyScore(candidate);
   if (after === null) return 'The new version has not been rated yet. Treat it as unverified until MOS finishes reviewing it.';

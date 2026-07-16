@@ -100,6 +100,13 @@ const allAdvisories: PrivacyAdvisory[] = (
   Object.values(advisoryIndex)[0]?.advisories ?? []
 ) as PrivacyAdvisory[]
 
+// COUSIN LOGIC — this advisory range matching intentionally mirrors
+// advisoryAffectsVersion/compareSemver in
+// suite-manager/backend/src/apps/package-contracts.cjs; the site build does
+// not import backend modules, so the semantics are duplicated here. If range
+// semantics change there, change them here too. (This copy compares only the
+// numeric semver core; the backend pattern also anchors prerelease/build
+// suffixes.)
 function semverParts(value: string): number[] | null {
   const match = String(value).match(/^(\d+)\.(\d+)\.(\d+)/)
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null

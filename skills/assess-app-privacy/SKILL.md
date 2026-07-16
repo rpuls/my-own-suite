@@ -25,6 +25,10 @@ Prefer observed package/runtime evidence over upstream marketing. Label every co
 8. Write the candidate package's `apps/<app>/privacy-review.json`, update its compact manifest `privacy` block, and document package-owned telemetry controls. This review travels with the package snapshot when installed.
 9. Run `npm run apps:privacy:check`, `npm run apps:catalog` after changing a review, `npm run apps:catalog:check`, and relevant manifest tests.
 
+## Catalog signing
+
+Regenerating the catalog after any review or manifest change invalidates the committed Ed25519 catalog signature, so the signature half of `apps:catalog:check` fails until the key holder runs `MOS_CATALOG_SIGNING_KEY=<key path> npm run apps:catalog:sign`. If you do not hold the signing key, that specific failure is expected: report re-signing as a required step before merge. Never work around it by editing `.sig` files or leaving the regenerated catalog uncommitted.
+
 ## Change monitoring
 
 Treat a policy content or effective-date change, upstream ownership change, app update, telemetry-setting change, new outbound dependency, or expired review as a reassessment trigger. A changed page hash signals review; it does not prove improvement or regression.
