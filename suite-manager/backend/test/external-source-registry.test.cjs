@@ -78,9 +78,14 @@ test('source status transitions gate new installs and keep compromise and remova
 
 test('removing a source orphans matching installs without uninstalling them', () => {
   const record = buildSourceRecord(externalInput(), { now });
+  // Production-shaped rows: an external instance records the source's catalog
+  // path itself as its sourcePath (see external-source-client), never a
+  // per-package subpath. The bug this pins down was a prefix filter that only
+  // matched a path shape production never writes.
   const instances = [
-    { id: 'x-abc-notes', sourcePath: 'apps/notes', sourceRepository: 'https://code.example/community/apps' },
-    { id: 'immich', sourcePath: 'apps/immich', sourceRepository: 'https://github.com/rpuls/my-own-suite' },
+    { id: 'x-abc-notes', sourceKind: 'external-git', sourcePath: record.catalogPath, sourceRepository: record.repository },
+    { id: 'x-def-todo', sourceKind: 'external-git', sourcePath: record.catalogPath, sourceRepository: 'https://other.example/apps' },
+    { id: 'immich', sourceKind: 'official-git', sourcePath: 'apps/immich', sourceRepository: 'https://github.com/rpuls/my-own-suite' },
   ];
   const plan = removalPlan(record, instances);
   assert.equal(plan.keepsSnapshots, true);

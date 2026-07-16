@@ -126,12 +126,23 @@ function withStatus(record, status, reason = null) {
   return { ...record, status, statusReason: reason };
 }
 
+// The one mapping from an installed instance's recorded source fields back to
+// the identity of the source that installed it. Production installs record the
+// source's catalog path (`.mos`) as the instance's sourcePath — not a
+// per-package subpath — so a source and its instances are tied together by this
+// identity, never by path prefixing. Shared by removalPlan below and the
+// update-candidate lookup in app-package-service so the two cannot drift.
+function instanceSourceId(instance) {
+  return sourceId(instance?.sourceRepository, instance?.sourcePath);
+}
+
 // Removing a source is metadata-only: it never uninstalls a snapshot. Installed
 // instances whose source matches the removed record become source-orphaned but
 // remain fully manageable from their preserved snapshots.
 function removalPlan(record, instances = []) {
+  const removedSourceId = sourceId(record?.repository, record?.catalogPath);
   const orphanedInstanceIds = (Array.isArray(instances) ? instances : [])
-    .filter((instance) => instance?.sourceRepository === record?.repository && instance?.sourcePath?.startsWith(`${record?.catalogPath}/`))
+    .filter((instance) => instance?.sourceKind === 'external-git' && instanceSourceId(instance) === removedSourceId)
     .map((instance) => instance.id);
   return { keepsSnapshots: true, orphanedInstanceIds, removedRecord: withStatus(record, 'removed', 'Removed by owner.') };
 }
@@ -161,6 +172,7 @@ module.exports = {
   SOURCE_STATUSES,
   buildSourceRecord,
   instanceNamespaceId,
+  instanceSourceId,
   removalPlan,
   sourceId,
   sourceInstallable,

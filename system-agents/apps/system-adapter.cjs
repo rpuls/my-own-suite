@@ -16,6 +16,11 @@ const DOCKER_BINARY = process.env.MOS_V2_DOCKER_BINARY || '/usr/bin/docker';
 const HEALTH_TIMEOUT_MS = 90_000;
 const HEALTH_REFRESH_TIMEOUT_MS = 5_000;
 const EMPTY_APP_ROUTES = '# No app runtime routes.\n';
+// Where a promotion parks the outgoing installed snapshot between its two
+// renames. Deterministic on purpose: a process killed between the renames is
+// gone, and only a name every later process can re-derive lets any of them
+// find the parked snapshot and finish or undo the swap.
+const DISPLACED_INSTALLED_DIR = '.installed-before-update';
 
 // The manifest id a package managed under `packageId` must declare. An official
 // package is managed under its bare manifest id; a package from any other source
@@ -440,14 +445,50 @@ class SystemAppAdapter {
     }
   }
 
+  // Undo a promotion a crash interrupted between its two renames. The displaced
+  // snapshot still sitting under its deterministic name means the promotion
+  // never returned, so Suite Manager still records the old digest; reverting
+  // the swap is the only repair that makes disk match that record again, and it
+  // is what lets a retried promote or a rollback verify and proceed. Each
+  // branch is itself crash-safe: every intermediate state maps back onto one of
+  // these branches on the next run.
+  async repairInterruptedPromotion(instanceRoot) {
+    const displaced = path.join(instanceRoot, DISPLACED_INSTALLED_DIR);
+    if (!fs.existsSync(displaced)) return false;
+    const installed = path.join(instanceRoot, 'installed');
+    const candidate = path.join(instanceRoot, 'candidate');
+    if (fs.existsSync(installed)) {
+      // All three directories at once is not a state the promotion sequence can
+      // produce; repair nothing rather than guess which snapshot to discard.
+      if (fs.existsSync(candidate)) return false;
+      await fsp.rename(installed, candidate);
+    }
+    await fsp.rename(displaced, installed);
+    return true;
+  }
+
+  // Startup sweep: repair every instance a crash left mid-promotion, so a
+  // half-swapped app is already whole again before any request can reach it.
+  async sweepInterruptedPromotions() {
+    let entries = [];
+    try { entries = await fsp.readdir(this.appPackageRoot, { withFileTypes: true }); } catch { return 0; }
+    let repaired = 0;
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (await this.repairInterruptedPromotion(path.join(this.appPackageRoot, entry.name)).catch(() => false)) repaired += 1;
+    }
+    return repaired;
+  }
+
   async promoteAppPackageUpdate({ candidateDigest, expectedInstalledDigest, installedSourceRevision, instanceId, packageId, rollbackSafe }) {
     const instanceRoot = path.join(this.appPackageRoot, instanceId);
     const installed = path.join(instanceRoot, 'installed');
     const candidate = path.join(instanceRoot, 'candidate');
     const previous = path.join(instanceRoot, 'previous');
     const previousImages = path.join(instanceRoot, 'previous-images.json');
-    const displaced = path.join(instanceRoot, `.installed-before-update-${process.pid}`);
+    const displaced = path.join(instanceRoot, DISPLACED_INSTALLED_DIR);
     try {
+      await this.repairInterruptedPromotion(instanceRoot).catch(() => {});
       const installedManifest = verifySnapshotIdentity(installed, { errorMessage: 'INSTALLED_PACKAGE_CHANGED', expectedDigest: expectedInstalledDigest, packageId });
       verifySnapshotIdentity(candidate, { errorMessage: 'CANDIDATE_PACKAGE_CHANGED', expectedDigest: candidateDigest, packageId });
       // Named from the manifest the digest check above just proved, so the caller
@@ -505,6 +546,7 @@ class SystemAppAdapter {
     const installedDir = path.join(instanceRoot, 'installed');
     const candidateDir = path.join(instanceRoot, 'candidate');
     try {
+      await this.repairInterruptedPromotion(instanceRoot).catch(() => {});
       verifySnapshotIdentity(installedDir, { errorMessage: 'INSTALLED_PACKAGE_CHANGED', expectedDigest: installed.packageDigest, packageId: installed.packageId });
       verifySnapshotIdentity(candidateDir, { errorMessage: 'CANDIDATE_PACKAGE_CHANGED', expectedDigest: candidate.packageDigest, packageId: candidate.packageId });
       await this.removePackageContainers({ packageId: candidate.packageId, serviceIds: candidate.services.map((service) => service.id), serviceCount: candidate.services.length });
@@ -789,6 +831,7 @@ module.exports = {
   APP_CANDIDATE_ROOT,
   APP_ROUTES_PATH,
   AppApplyError,
+  DISPLACED_INSTALLED_DIR,
   HEALTH_REFRESH_TIMEOUT_MS,
   HEALTH_TIMEOUT_MS,
   SystemAppAdapter,

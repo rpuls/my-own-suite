@@ -7,7 +7,8 @@ const { AppAgentCore, AppRuntimeError } = require('./agent-core.cjs');
 const { AppApplyError, SystemAppAdapter } = require('./system-adapter.cjs');
 
 const socketPath = process.env.MOS_V2_APP_AGENT_SOCKET || '/run/mos-v2-app-agent/agent.sock';
-const core = new AppAgentCore(new SystemAppAdapter());
+const adapter = new SystemAppAdapter();
+const core = new AppAgentCore(adapter);
 
 function respond(response, status, payload) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -58,7 +59,12 @@ const server = http.createServer(async (request, response) => {
 
 fs.mkdirSync(path.dirname(socketPath), { recursive: true });
 fs.rmSync(socketPath, { force: true });
-server.listen(socketPath, () => { fs.chmodSync(socketPath, 0o660); process.stdout.write('[mos-v2-app-agent] ready\n'); });
+// Repair any promotion a crash interrupted before accepting requests, so no
+// operation can ever observe an instance with its installed snapshot missing.
+adapter.sweepInterruptedPromotions()
+  .then((repaired) => { if (repaired) process.stdout.write(`[mos-v2-app-agent] repaired ${repaired} interrupted snapshot promotion(s)\n`); })
+  .catch(() => {})
+  .then(() => server.listen(socketPath, () => { fs.chmodSync(socketPath, 0o660); process.stdout.write('[mos-v2-app-agent] ready\n'); }));
 function shutdown() { server.close(() => { fs.rmSync(socketPath, { force: true }); process.exit(0); }); }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

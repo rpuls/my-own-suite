@@ -14,7 +14,7 @@ const {
   validateArchitectureCompatibility,
   validatePrivacyBinding,
 } = require('./package-contracts.cjs');
-const { sourceId, sourceInstallable } = require('./external-source-registry.cjs');
+const { instanceSourceId, sourceInstallable } = require('./external-source-registry.cjs');
 const { AppOperationLimiter } = require('./app-operation-limits.cjs');
 const { compareAppPackages } = require('./app-update-comparison.cjs');
 
@@ -585,7 +585,7 @@ class AppPackageService {
     if (!this.externalClient?.downloadCandidate) {
       throw new AppPackageServiceError('APP_CANDIDATE_UNAVAILABLE', 'External package sources are unavailable.', 503);
     }
-    const source = this.store.getAppSource(sourceId(instance.sourceRepository, instance.sourcePath));
+    const source = this.store.getAppSource(instanceSourceId(instance));
     if (!source) {
       throw new AppPackageServiceError('APP_SOURCE_UNAVAILABLE', 'The package source for this app is no longer registered, so it cannot be updated. The installed version keeps running.', 409);
     }
@@ -1043,7 +1043,16 @@ class AppPackageService {
     }
   }
 
+  // Lifecycle operations hold the same per-app key as the update transaction.
+  // A restart that lands in an update's activate→commit window re-applies the
+  // old stored projections over the candidate runtime, and an uninstall deletes
+  // the instance row out from under the transaction — the key makes those
+  // orderings impossible instead of merely unlikely.
   async restartPackageRuntime(packageId, requestContext = {}) {
+    return this.limiter.runExclusive(packageId, () => this.performRestartPackageRuntime(packageId, requestContext));
+  }
+
+  async performRestartPackageRuntime(packageId, requestContext = {}) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance || instance.status !== 'installed') {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Start this app before restarting it.', 409);
@@ -1491,10 +1500,15 @@ class AppPackageService {
   async performStageUpdate(packageId, input = {}, requestContext = {}) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance || instance.status === 'uninstalled') throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before staging an update.', 409);
+    // Activation starts the candidate's containers, so updating a disabled app
+    // would end with containers running while the store says disabled.
+    if (instance.status !== 'installed') {
+      throw new AppPackageServiceError('APP_UPDATE_APP_DISABLED', 'Start this app before updating it. Updating a stopped app would start it.', 409);
+    }
     if (typeof input.confirmationToken !== 'string' || !/^[a-f0-9]{64}$/u.test(input.confirmationToken)) {
       throw new AppPackageServiceError('APP_UPDATE_CONFIRMATION_INVALID', 'Prepare and confirm this exact app update before staging it.', 400);
     }
-    if (!this.agent?.stagePackageUpdate || !this.agent?.buildPackageUpdate) {
+    if (!this.agent?.stagePackageUpdate || !this.agent?.buildPackageUpdate || !this.agent?.activatePackageUpdate || !this.agent?.rollbackPackageUpdate || !this.agent?.promotePackageUpdate) {
       throw new AppPackageServiceError('APP_UPDATE_STAGING_UNAVAILABLE', 'App update staging is unavailable.', 503);
     }
     const installedPackage = this.installedPackageFor(instance);
@@ -1549,8 +1563,15 @@ class AppPackageService {
       // same way its install was, so an update cannot take over a web address
       // another app already answers on.
       if (candidate.source?.trust !== 'mos-reviewed') this.assertRouteHostsAvailable(candidate.manifest, instance.packageId);
-      if (!agentStatus.capabilities?.includes('apps.package.update.stage') || !agentStatus.capabilities?.includes('apps.package.update.build') || agentStatus.contractVersion < 3) {
-        throw new AppPackageServiceError('APP_UPDATE_STAGING_UNAVAILABLE', 'The installed app agent cannot stage and build package updates.', 503);
+      // An update is one transaction through promote. An agent that could stage
+      // and build but not activate/rollback/promote used to be accepted and then
+      // abandoned mid-transaction, leaving the operation row running forever and
+      // every later update refused until restart. Under the repo's managed-update
+      // rule that tier cannot legitimately exist, so it is refused here — before
+      // any durable operation record is created — instead of half-served.
+      const requiredUpdateCapabilities = ['apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'];
+      if (agentStatus.contractVersion < 6 || requiredUpdateCapabilities.some((capability) => !agentStatus.capabilities?.includes(capability))) {
+        throw new AppPackageServiceError('APP_UPDATE_STAGING_UNAVAILABLE', 'The installed app agent cannot apply package updates end to end. Update MOS so its app agent is current, then retry this app update.', 503);
       }
       operationId = crypto.randomUUID();
       const at = this.now().toISOString();
@@ -1624,15 +1645,6 @@ class AppPackageService {
       });
       let operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'candidate-built' });
       lastDurableStage = 'candidate-built';
-      const canApply = agentStatus.contractVersion >= 6
-        && agentStatus.capabilities?.includes('apps.package.update.activate')
-        && agentStatus.capabilities?.includes('apps.package.update.rollback')
-        && agentStatus.capabilities?.includes('apps.package.update.promote')
-        && this.agent.activatePackageUpdate && this.agent.rollbackPackageUpdate && this.agent.promotePackageUpdate;
-      if (!canApply) {
-        this.discardCollectedSecrets(instance.id, addedConfig);
-        return { built, comparison, operation, staged };
-      }
 
       // The runtime that has to come back if this update fails is the installed
       // one, so it is rebuilt from the values it actually runs with rather than
@@ -1944,7 +1956,14 @@ class AppPackageService {
     });
   }
 
-  async disablePackage(packageId, _homepageService) {
+  // Serialized against updates under the same per-app key (see
+  // restartPackageRuntime). stopPackageRuntime delegates here, so it must not
+  // take the key itself.
+  async disablePackage(packageId, homepageService) {
+    return this.limiter.runExclusive(packageId, () => this.performDisablePackage(packageId, homepageService));
+  }
+
+  async performDisablePackage(packageId, _homepageService) {
     if (!this.agent) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
     }
@@ -1994,7 +2013,13 @@ class AppPackageService {
     return this.disablePackage(packageId, null);
   }
 
+  // Serialized against updates under the same per-app key (see
+  // restartPackageRuntime).
   async enablePackage(packageId, requestContext = {}) {
+    return this.limiter.runExclusive(packageId, () => this.performEnablePackage(packageId, requestContext));
+  }
+
+  async performEnablePackage(packageId, requestContext = {}) {
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance || instance.status === 'uninstalled') {
       throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before enabling it.', 409);
@@ -2027,7 +2052,13 @@ class AppPackageService {
     };
   }
 
+  // Serialized against updates under the same per-app key (see
+  // restartPackageRuntime).
   async uninstallPackage(packageId, homepageService) {
+    return this.limiter.runExclusive(packageId, () => this.performUninstallPackage(packageId, homepageService));
+  }
+
+  async performUninstallPackage(packageId, homepageService) {
     if (!this.agent) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
     }

@@ -657,6 +657,126 @@ test('an app cannot run two update transactions at once', async () => {
   store.close();
 });
 
+test('lifecycle operations are refused while an update transaction holds the app', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const installedPackage = await externalCandidate(root);
+  const next = await externalCandidate(root, { version: '1.1.0' }, 'ext-next');
+  const calls = [];
+  let releaseStage;
+  const staging = new Promise((resolve) => { releaseStage = resolve; });
+  const agent = externalUpdateAgent(root, calls, next.packageDir);
+  const service = new AppPackageService({
+    agent: {
+      ...agent,
+      async stagePackageUpdate(input) { calls.push(['stage', input]); await staging; return { snapshotPath: '/state/candidate', status: 'staged' }; },
+    },
+    appsDir: v2AppsDir,
+    externalClient: externalClientStub(next),
+    store,
+  });
+  await service.installExternalPackage({ candidate: installedPackage });
+  registerSource(store);
+  const comparison = await service.preparePackageUpdate('x-abcdef01-community-notes');
+
+  const update = service.stagePackageUpdate('x-abcdef01-community-notes', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('notes'));
+  // A restart mid-update would re-apply the old stored projections over the
+  // candidate runtime; an uninstall would delete the instance row out from
+  // under the transaction. They hold the same per-app key as the update, so
+  // they are refused instead of interleaved.
+  for (const blocked of [
+    () => service.restartPackageRuntime('x-abcdef01-community-notes', requestContext().publicUrlFor('notes')),
+    () => service.enablePackage('x-abcdef01-community-notes', requestContext().publicUrlFor('notes')),
+    () => service.disablePackage('x-abcdef01-community-notes', null),
+    () => service.uninstallPackage('x-abcdef01-community-notes', null),
+  ]) {
+    await assert.rejects(blocked, (error) => error.code === 'APP_OPERATION_IN_PROGRESS' && error.statusCode === 409);
+  }
+
+  releaseStage();
+  assert.equal((await update).operation.status, 'succeeded');
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes').status, 'installed');
+  store.close();
+});
+
+test('a stopped app refuses updates instead of being started by one', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const installedPackage = await externalCandidate(root);
+  const next = await externalCandidate(root, { version: '1.1.0' }, 'ext-next');
+  const calls = [];
+  const service = new AppPackageService({
+    agent: { ...externalUpdateAgent(root, calls, next.packageDir), async stop() { return { status: 'stopped', steps: [] }; } },
+    appsDir: v2AppsDir,
+    externalClient: externalClientStub(next),
+    store,
+  });
+  await service.installExternalPackage({ candidate: installedPackage });
+  registerSource(store);
+  const comparison = await service.preparePackageUpdate('x-abcdef01-community-notes');
+  await service.disablePackage('x-abcdef01-community-notes', null);
+
+  // Activation starts the candidate's containers, so updating a disabled app
+  // would end with containers running while the store says disabled.
+  await assert.rejects(
+    () => service.stagePackageUpdate('x-abcdef01-community-notes', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('notes')),
+    (error) => error.code === 'APP_UPDATE_APP_DISABLED' && error.statusCode === 409,
+  );
+  assert.deepEqual(calls.filter(([kind]) => ['stage', 'build', 'activate', 'promote'].includes(kind)), []);
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes').status, 'disabled');
+  store.close();
+});
+
+// A failure while the candidate is already serving traffic (activation itself
+// rolls back inside the agent; this is the window after `candidate-healthy`).
+test('a failure after activation rolls the old runtime back and closes the update operation', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const installedPackage = await externalCandidate(root);
+  const next = await externalCandidate(root, { version: '1.1.0' }, 'ext-next');
+  const calls = [];
+  const service = new AppPackageService({
+    agent: {
+      ...externalUpdateAgent(root, calls, next.packageDir),
+      async promotePackageUpdate(input) {
+        calls.push(['promote', input]);
+        throw Object.assign(new Error('The app package snapshot could not be promoted.'), { code: 'APP_UPDATE_PROMOTION_FAILED', statusCode: 502 });
+      },
+    },
+    appsDir: v2AppsDir,
+    externalClient: externalClientStub(next),
+    store,
+  });
+  await service.installExternalPackage({ candidate: installedPackage });
+  registerSource(store);
+  const installed = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
+  const comparison = await service.preparePackageUpdate('x-abcdef01-community-notes');
+
+  await assert.rejects(
+    () => service.stagePackageUpdate('x-abcdef01-community-notes', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('notes')),
+    (error) => error.code === 'APP_UPDATE_PROMOTION_FAILED',
+  );
+
+  // The agent was asked to restore exactly the runtime that was serving before.
+  const [, rollback] = calls.find(([kind]) => kind === 'rollback');
+  assert.equal(rollback.installed.packageDigest, installed.packageDigest);
+  assert.equal(rollback.candidate.packageDigest, next.packageDigest);
+  // Identity never moved to the candidate, and no recovery flag is left behind
+  // because the rollback restored the old runtime.
+  const after = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
+  assert.equal(after.packageVersion, '1.0.0');
+  assert.equal(after.packageDigest, installed.packageDigest);
+  assert.ok(!after.updateRecoveryState || after.updateRecoveryState === 'none');
+  // The failed operation is closed: a retry runs a fresh transaction instead of
+  // hitting "already running".
+  await assert.rejects(
+    () => service.stagePackageUpdate('x-abcdef01-community-notes', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('notes')),
+    (error) => error.code === 'APP_UPDATE_PROMOTION_FAILED',
+  );
+  assert.equal(calls.filter(([kind]) => kind === 'stage').length, 2);
+  store.close();
+});
+
 test('packages without Homepage metadata render no Homepage projection', () => {
   const { manifest } = readAppPackageManifest(path.join(v2AppsDir, 'onlyoffice'));
   const projections = renderDryRunProjections(manifest, []);
@@ -846,7 +966,63 @@ test('confirmed app updates are re-compared and durably staged against exact ide
   const stagedCalls = [];
   const builtCalls = [];
   const agent = {
+    async activatePackageUpdate() { return { status: 'candidate-healthy' }; },
     async buildPackageUpdate(input) { builtCalls.push(input); return { steps: ['candidate-built'] }; },
+    async promotePackageUpdate() { return { snapshotPath: candidateDir, status: 'snapshot-promoted' }; },
+    async rollbackPackageUpdate() { return { status: 'installed-restored' }; },
+    async snapshotPackage(input) { return snapshotResult(input); },
+    async stagePackageUpdate(input) { stagedCalls.push(input); return { snapshotPath: '/state/candidate', steps: ['staged'] }; },
+    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+  };
+  const catalogService = {
+    platformVersion: '0.1.0',
+    async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; },
+  };
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({ agent, appsDir: v2AppsDir, catalogService, store });
+  await service.installPackage('stirling-pdf');
+  const installedDigest = store.getAppInstanceByPackageId('stirling-pdf').packageDigest;
+  const comparison = await service.preparePackageUpdate('stirling-pdf');
+
+  await assert.rejects(() => service.stagePackageUpdate('stirling-pdf', { confirmationToken: '0'.repeat(64) }), (error) => error.code === 'APP_UPDATE_IDENTITY_CHANGED');
+  const result = await service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf'));
+
+  assert.equal(result.operation.stage, 'completed');
+  assert.equal(result.operation.status, 'succeeded');
+  assert.equal(result.operation.candidateDigest, candidateDigest);
+  assert.equal(stagedCalls.length, 1);
+  assert.equal(stagedCalls[0].candidatePath, candidateDir);
+  assert.equal(stagedCalls[0].expectedInstalledDigest, installedDigest);
+  assert.equal(builtCalls.length, 1);
+  assert.equal(builtCalls[0].packageDigest, candidateDigest);
+  assert.equal(builtCalls[0].expectedInstalledDigest, installedDigest);
+  assert.equal(builtCalls[0].publicUrl, 'https://stirling-pdf.example.test/');
+  store.close();
+});
+
+// An agent that could stage and build but not activate/rollback/promote used to
+// be accepted and then abandoned mid-transaction, leaving the operation row
+// running forever and every later update refused until restart. That tier
+// cannot legitimately exist under the managed-update rule, so it is refused
+// before any durable update work begins.
+test('an agent that cannot apply updates end to end is refused before any update work begins', async () => {
+  const root = await tempStateDir();
+  const candidateDir = path.join(root, 'candidate');
+  await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
+  const manifestPath = path.join(candidateDir, 'manifest.json');
+  const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  const candidatePackage = readAppPackageManifest(candidateDir);
+  const candidateDigest = digestAppPackage(candidateDir);
+  const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'b'.repeat(40), trust: 'mos-reviewed' };
+  const stagedCalls = [];
+  // The client methods exist (a current Suite Manager), but the agent on the
+  // host only declares the stage/build half of the update contract.
+  const agent = {
+    async activatePackageUpdate() { throw new Error('should not be called'); },
+    async buildPackageUpdate() { throw new Error('should not be called'); },
+    async promotePackageUpdate() { throw new Error('should not be called'); },
+    async rollbackPackageUpdate() { throw new Error('should not be called'); },
     async snapshotPackage(input) { return snapshotResult(input); },
     async stagePackageUpdate(input) { stagedCalls.push(input); return { snapshotPath: '/state/candidate', steps: ['staged'] }; },
     async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build'], contractVersion: 3 }; },
@@ -860,20 +1036,18 @@ test('confirmed app updates are re-compared and durably staged against exact ide
   await service.installPackage('stirling-pdf');
   const comparison = await service.preparePackageUpdate('stirling-pdf');
 
-  await assert.rejects(() => service.stagePackageUpdate('stirling-pdf', { confirmationToken: '0'.repeat(64) }), (error) => error.code === 'APP_UPDATE_IDENTITY_CHANGED');
-  const result = await service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf'));
-
-  assert.equal(result.operation.stage, 'candidate-built');
-  assert.equal(result.operation.status, 'running');
-  assert.equal(result.operation.candidateDigest, candidateDigest);
-  assert.equal(stagedCalls.length, 1);
-  assert.equal(stagedCalls[0].candidatePath, candidateDir);
-  assert.equal(stagedCalls[0].expectedInstalledDigest, store.getAppInstanceByPackageId('stirling-pdf').packageDigest);
-  assert.equal(builtCalls.length, 1);
-  assert.equal(builtCalls[0].packageDigest, candidateDigest);
-  assert.equal(builtCalls[0].expectedInstalledDigest, store.getAppInstanceByPackageId('stirling-pdf').packageDigest);
-  assert.equal(builtCalls[0].publicUrl, 'https://stirling-pdf.example.test/');
-  await assert.rejects(() => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }), (error) => error.code === 'APP_UPDATE_ALREADY_RUNNING');
+  await assert.rejects(
+    () => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf')),
+    (error) => error.code === 'APP_UPDATE_STAGING_UNAVAILABLE' && error.statusCode === 503,
+  );
+  assert.equal(stagedCalls.length, 0);
+  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').packageVersion, manifest.version);
+  // No operation row was left running: retrying reports the same refusal, not a
+  // permanently "already running" update.
+  await assert.rejects(
+    () => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf')),
+    (error) => error.code === 'APP_UPDATE_STAGING_UNAVAILABLE',
+  );
   store.close();
 });
 

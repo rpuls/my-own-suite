@@ -6,7 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { digestAppPackage } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 
-const { HEALTH_REFRESH_TIMEOUT_MS, SystemAppAdapter, removeAppRouteBlock, upsertAppRouteBlock } = require('./system-adapter.cjs');
+const { DISPLACED_INSTALLED_DIR, HEALTH_REFRESH_TIMEOUT_MS, SystemAppAdapter, removeAppRouteBlock, upsertAppRouteBlock } = require('./system-adapter.cjs');
 
 async function tempDir() {
   return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-v2-app-agent-'));
@@ -626,6 +626,44 @@ async function updatableInstance(root, { instanceId, previousImageTags = null } 
 function removedImages(commands) {
   return commands.filter((command) => command.args[0] === 'image' && command.args[1] === 'rm').map((command) => command.args[2]);
 }
+
+test('the startup sweep restores an installed snapshot a crash left displaced mid-promotion', async () => {
+  const root = await tempDir();
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const { candidateDigest, installedDigest, instanceRoot } = await updatableInstance(root, { instanceId });
+  // A kill between the promotion's two renames: the outgoing snapshot is parked
+  // under the deterministic displaced name and `installed/` is gone.
+  await fsp.rename(path.join(instanceRoot, 'installed'), path.join(instanceRoot, DISPLACED_INSTALLED_DIR));
+  const adapter = new SystemAppAdapter({ appPackageRoot: path.join(root, 'packages') });
+
+  assert.equal(await adapter.sweepInterruptedPromotions(), 1);
+  assert.equal(digestAppPackage(path.join(instanceRoot, 'installed')), installedDigest);
+  assert.equal(fs.existsSync(path.join(instanceRoot, DISPLACED_INSTALLED_DIR)), false);
+
+  // The repaired instance promotes normally on retry.
+  await adapter.promoteAppPackageUpdate({ candidateDigest, expectedInstalledDigest: installedDigest, instanceId, packageId: 'example-tool', rollbackSafe: false });
+  assert.equal(digestAppPackage(path.join(instanceRoot, 'installed')), candidateDigest);
+  assert.equal(fs.existsSync(path.join(instanceRoot, DISPLACED_INSTALLED_DIR)), false);
+});
+
+test('a retried promotion reverts and redoes a swap a crash interrupted before snapshot retirement', async () => {
+  const root = await tempDir();
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const { candidateDigest, installedDigest, instanceRoot } = await updatableInstance(root, { instanceId });
+  // A kill after both renames but before the displaced snapshot was retired:
+  // the candidate already sits under `installed/`, the old snapshot is still
+  // parked, and Suite Manager never saw the promotion return.
+  await fsp.rename(path.join(instanceRoot, 'installed'), path.join(instanceRoot, DISPLACED_INSTALLED_DIR));
+  await fsp.rename(path.join(instanceRoot, 'candidate'), path.join(instanceRoot, 'installed'));
+  const adapter = new SystemAppAdapter({ appPackageRoot: path.join(root, 'packages') });
+
+  const result = await adapter.promoteAppPackageUpdate({ candidateDigest, expectedInstalledDigest: installedDigest, instanceId, packageId: 'example-tool', rollbackSafe: false });
+
+  assert.ok(result.steps.includes('snapshot-promoted'));
+  assert.equal(digestAppPackage(path.join(instanceRoot, 'installed')), candidateDigest);
+  assert.equal(fs.existsSync(path.join(instanceRoot, DISPLACED_INSTALLED_DIR)), false);
+  assert.equal(fs.existsSync(path.join(instanceRoot, 'candidate')), false);
+});
 
 test('system adapter reclaims the images of a package no snapshot refers to any more', async () => {
   const root = await tempDir();

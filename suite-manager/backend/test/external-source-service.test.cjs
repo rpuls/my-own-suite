@@ -241,7 +241,9 @@ test('removing a source orphans its installs but never uninstalls them or breaks
       categorySnapshot: 'tools', displayNameSnapshot: 'Community Notes', id: 'x-abcdef01-community-notes',
       manifestDigest: 'sha256:manifest', packageDigest: `sha256:${'c'.repeat(64)}`, packageId: 'community-notes', packageVersion: '1.0.0',
       snapshotPath: '/var/lib/mos-v2/app-packages/x-abcdef01-community-notes/installed', snapshotState: 'installed',
-      source: { kind: 'external-git', path: 'apps/community-notes', repository, revision, trust: 'unverified' },
+      // Production shape: the instance records the source's catalog path itself
+      // (external-source-client), which is what ties it back to its source.
+      source: { kind: 'external-git', path: 'apps', repository, revision, trust: 'unverified' },
     },
     operationId: 'op-external', projections: [{ contentJson: '{"services":[]}', digest: 'sha256:compose', kind: 'compose' }], request: { dryRunOnly: true },
   });
