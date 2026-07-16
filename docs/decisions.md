@@ -364,7 +364,7 @@ Reason: Publishers should not have to fit a MOS-specific catalog layout or hand 
 Consequences:
 
 - Owners preview an external app by pasting a repository URL into the Apps search; MOS resolves and validates it into an external, unverified app card (with the package's own icon) and persists nothing until the owner installs. Clearing the URL removes the card.
-- External sources use the fixed `.mos` catalog path and `unverified`/`publisher-signed` trust; they can never be `mos-reviewed`, and the impersonation guard still blocks reuse of official ids, reserved prefixes, or self-asserted review.
+- External sources use the fixed `.mos` catalog path and are `unverified`; they can never be `mos-reviewed`, and the impersonation guard still blocks reuse of official ids, reserved prefixes, or self-asserted review. `publisher-signed` remains a reserved storage/schema value for a future publisher-key design but is refused until MOS can verify it.
 - Archive extraction fails closed on symlinks, hard links, devices, extended headers, path traversal, absolute paths, multiple roots, missing manifests, and file/byte-count overruns, and materializes only `.mos/` as the package directory.
 - The download/extract pipeline is host-agnostic; enabling GitLab or Codeberg later is one `HOST_DESCRIPTORS` entry (repo-info, ref→commit, and direct archive URL) plus tests. Nested GitLab subgroups and non-allowlisted hosts are rejected at URL parse time.
 

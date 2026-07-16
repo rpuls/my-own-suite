@@ -3,28 +3,58 @@ title: How MOS assesses app privacy
 description: How the MOS privacy posture score and per-dimension verdicts are produced.
 ---
 
-:::note
-Documentation TBD — this page is a placeholder. It is linked from the posture
-score dialog in Suite Manager and on the app pages, and will be filled in
-before the first published app reviews.
-:::
+MOS Privacy Posture is a bounded, evidence-backed assessment of one exact app
+package. It is not a legal audit, certification, guarantee, or claim that an app
+never makes a network request. Apps without a completed assessment show **Not
+yet rated by MOS** instead of receiving a favorable score.
 
-Every app in the catalog gets a structured privacy review before it can show a
-posture score. The review looks at five dimensions of the packaged app as MOS
-ships it:
+## What the assessment covers
 
-- **Telemetry** — whether the app reports usage or diagnostics anywhere.
-- **External services** — whether features depend on outside services.
-- **Accounts** — whether an outside account is needed to use the app.
-- **Data processing** — whether your data is processed off your machine.
-- **Policies** — which terms and policies apply beyond the software license.
+The assessment is bound to the package version and digest, immutable source
+revision, upstream component versions, and available artifact digests. It covers
+the server package MOS ships. Desktop and mobile clients, cloud editions, and
+third-party API clients are excluded unless the assessment names them explicitly.
 
-Each dimension is scored 0–2, adding up to the **0–10 posture score** shown on
-the shield. Anything the review could not establish counts as 0 — unknowns are
-never scored in an app's favor. An app without a completed review shows
-**Not yet reviewed** rather than a score.
+We review five dimensions:
 
-The full methodology — evidence requirements, how reviews are bound to the
-exact package version you install, review provenance (AI-assisted versus
-human-checked), and how advisories can flag a published review — will be
-documented here.
+- **Telemetry** - whether the app reports usage or diagnostics anywhere.
+- **External services** - whether features depend on outside services.
+- **Accounts** - whether an outside account is needed to use the app.
+- **Data processing** - whether your data is processed off your machine.
+- **Policies** - which terms and policies apply beyond the software license.
+
+Each dimension contributes 0-2 points to the **0-10 posture score** shown on the
+shield. The overall label is derived from the dimension verdicts rather than
+chosen independently. Any unknown or unclear dimension forces **Review
+required**; missing evidence is never scored in an app's favor.
+
+## Evidence and confidence
+
+Every favorable assessment includes concrete evidence. Claims are labeled as
+**observed**, **configured**, **documented**, or **inferred**. We prefer package
+and runtime evidence over marketing language. A supported setting that disables
+known analytics is evidence for that control, but is not proof of complete
+network silence. Open questions and untested boundaries stay visible.
+
+## Review provenance
+
+The posture dialog says whether an assessment was AI-assisted or human-authored
+and whether a human reviewed it. AI assistance is not presented as human sign-off.
+Stored provenance also records the workflow revision and repository commit.
+
+## Updates, expiry, and advisories
+
+The assessment installed with an app stays attached to that exact package
+snapshot. A newer repository review does not silently replace it. Package,
+policy, ownership, telemetry, or outbound-dependency changes and review expiry
+trigger reassessment.
+
+MOS may publish a signed advisory when new evidence affects reviews already
+installed on servers. If Suite Manager cannot confirm a fresh signed advisory
+feed, it warns that the absence of an advisory should be treated as unknown.
+
+## Package-provided claims
+
+Manifest privacy notes are labeled as package-provided and not independently
+verified. Only the structured Privacy Posture assessment receives the MOS
+evidence-backed score.
