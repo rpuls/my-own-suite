@@ -589,6 +589,8 @@ function AppDetail({
   const [updateInput, setUpdateInput] = useState<Record<string, string>>({});
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState('');
+  const [recovering, setRecovering] = useState(false);
+  const [recoverError, setRecoverError] = useState('');
   const ready = runtimeApplied(app);
   const homepageAvailable = hasHomepageContribution(app);
   const primaryDestination = hasPrimaryAppDestination(app);
@@ -625,6 +627,7 @@ function AppDetail({
     setComparisonError('');
     setUpdateInput({});
     setApplyError('');
+    setRecoverError('');
   }, [app.id, owner.email]);
 
   async function prepareUpdate() {
@@ -661,6 +664,23 @@ function AppDetail({
     } catch (caught) {
       setApplyError(caught instanceof Error ? caught.message : `Unable to update ${app.name}.`);
     } finally { setApplying(false); }
+  }
+
+  // One action for both recovery states: the backend inspects what the failed
+  // update actually left behind and either finishes the pending commit or
+  // restores the previous runtime.
+  async function recoverUpdate() {
+    setRecovering(true);
+    setRecoverError('');
+    try {
+      await jsonResponse(
+        await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/recover-update`, { method: 'POST' }),
+        `Unable to recover ${app.name}.`,
+      );
+      await onUpdated();
+    } catch (caught) {
+      setRecoverError(caught instanceof Error ? caught.message : `Unable to recover ${app.name}.`);
+    } finally { setRecovering(false); }
   }
 
   function submitInstall() {
@@ -728,7 +748,20 @@ function AppDetail({
           /> : null}
         </div>
       </header>
-      {app.instance?.updateRecovery ? <Notice title="App update needs attention" variant="warning"><p>{app.instance.updateRecovery.state === 'retry-safe' ? 'The update stopped before changing the running app. Review the latest candidate and try again.' : app.instance.updateRecovery.state === 'rollback-required' ? 'The update stopped after changing runtime state. Restore the installed app runtime before retrying.' : 'The package snapshot was promoted before Suite Manager committed its identity. Complete package recovery before another update.'}</p><details className="suite-advanced"><summary>Advanced details</summary><code>{app.instance.updateRecovery.errorCode}</code></details></Notice> : null}
+      {app.instance?.updateRecovery ? <Notice title="App update needs attention" variant="warning">
+        <p>{app.instance.updateRecovery.state === 'retry-safe'
+          ? 'The update stopped before changing the running app. Review the latest update and try again.'
+          : app.instance.updateRecovery.state === 'rollback-required'
+            ? 'The update stopped after changing the running app. Restore the previous version, then update again when ready.'
+            : 'The update installed its new version but stopped before recording it. Finish the update to bring this record in line with what is running.'}</p>
+        {app.instance.updateRecovery.state !== 'retry-safe' ? <p>
+          <button className="mos-btn mos-btn-secondary" disabled={recovering} onClick={() => void recoverUpdate()} type="button">
+            {recovering ? 'Recovering...' : app.instance.updateRecovery.state === 'rollback-required' ? 'Restore previous version' : 'Finish update'}
+          </button>
+        </p> : null}
+        {recoverError ? <p role="alert">{recoverError}</p> : null}
+        <details className="suite-advanced"><summary>Advanced details</summary><code>{app.instance.updateRecovery.errorCode}</code></details>
+      </Notice> : null}
 
       <div className="suite-app-detail-scroll">
         <InstallProgress error={installError} steps={installSteps} />

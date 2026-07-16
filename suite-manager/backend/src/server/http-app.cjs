@@ -778,6 +778,22 @@ function createV2Server({
         jsonResponse(response, 200, await appPackages.stagePackageUpdate(packageId, body, {
           ...appPublicUrlResolver(request, httpsSettings)(packageId),
           homepageService: homepageConfig,
+          publicUrlFor: appPublicUrlResolver(request, httpsSettings),
+        }));
+        return;
+      }
+
+      const appRecoverUpdateMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/recover-update$/u);
+      if (request.method === 'POST' && appRecoverUpdateMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to recover app updates.' });
+          return;
+        }
+        const packageId = decodeURIComponent(appRecoverUpdateMatch[1]);
+        jsonResponse(response, 200, await appPackages.recoverPackageUpdate(packageId, {
+          ...appPublicUrlResolver(request, httpsSettings)(packageId),
+          homepageService: homepageConfig,
+          publicUrlFor: appPublicUrlResolver(request, httpsSettings),
         }));
         return;
       }

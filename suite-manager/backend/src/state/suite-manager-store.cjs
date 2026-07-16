@@ -1052,9 +1052,17 @@ class SuiteManagerStore {
       WHERE kind = 'update' AND status = 'running' ORDER BY started_at
     `).all();
     return operations.map((operation) => {
+      // `candidate-built` is classified rollback-required, not retry-safe: the
+      // runtime swap happens between the `candidate-built` and
+      // `candidate-healthy` writes, so a crash in that window may have left the
+      // candidate serving with the old containers gone. Restoring the recorded
+      // runtime is safe in either case — re-applying a runtime that is already
+      // running changes nothing — while "retry-safe" was a lie half the time.
+      // (`integrations-reconciled` is no longer written; kept for rows begun by
+      // an earlier build.)
       const recoveryState = operation.stage === 'snapshot-promoted'
         ? 'commit-required'
-        : ['candidate-healthy', 'integrations-reconciled', 'homepage-reconciled'].includes(operation.stage)
+        : ['candidate-built', 'candidate-healthy', 'integrations-reconciled', 'homepage-reconciled'].includes(operation.stage)
           ? 'rollback-required'
           : 'retry-safe';
       this.failAppUpdate({
@@ -1072,12 +1080,19 @@ class SuiteManagerStore {
   // `config` carries only the setup values the candidate newly requires; values
   // the instance already holds are left alone, so committing an update never
   // rewrites or rotates them.
-  completeAppUpdate({ at, config = [], homepageApplied = false, instanceId, operationId, instance, projections, snapshotPath }) {
+  //
+  // `fromRecovery` commits the same way against an update that already failed
+  // after its snapshot was promoted: the disk swap happened, only this record
+  // is missing, and re-running the failed operation is not possible. It still
+  // demands the exact candidate digest, so recovery can only ever commit the
+  // update that actually promoted.
+  completeAppUpdate({ at, config = [], fromRecovery = false, homepageApplied = false, instanceId, operationId, instance, projections, snapshotPath }) {
+    const expectedStatus = fromRecovery ? 'failed' : 'running';
     this.transaction(() => {
       const operation = this.database.prepare(`
         SELECT candidate_digest AS candidateDigest FROM app_operations
-        WHERE id = ? AND instance_id = ? AND kind = 'update' AND status = 'running'
-      `).get(operationId, instanceId);
+        WHERE id = ? AND instance_id = ? AND kind = 'update' AND status = ?
+      `).get(operationId, instanceId, expectedStatus);
       if (!operation || operation.candidateDigest !== instance.packageDigest) throw new Error('APP_UPDATE_OPERATION_NOT_RUNNING');
       this.database.prepare(`
         UPDATE app_instances SET
@@ -1118,11 +1133,38 @@ class SuiteManagerStore {
       }
       this.database.prepare('DELETE FROM app_instance_guides WHERE instance_id = ?').run(instanceId);
       this.database.prepare(`
-        UPDATE app_operations SET status = 'succeeded', stage = 'completed', completed_at = ?
-        WHERE id = ? AND instance_id = ? AND kind = 'update' AND status = 'running'
-      `).run(at, operationId, instanceId);
+        UPDATE app_operations SET status = 'succeeded', stage = 'completed', error_code = NULL, completed_at = ?
+        WHERE id = ? AND instance_id = ? AND kind = 'update' AND status = ?
+      `).run(at, operationId, instanceId, expectedStatus);
     });
     return this.getAppOperation(operationId);
+  }
+
+  // The most recent update operation for an instance, with its recorded request.
+  // Recovery reads this to learn what the interrupted update was doing and what
+  // it stashed for exactly this situation.
+  latestAppUpdateOperation(instanceId) {
+    const row = this.database.prepare(`
+      SELECT id, instance_id AS instanceId, kind, status, stage,
+             expected_installed_digest AS expectedInstalledDigest,
+             candidate_digest AS candidateDigest, error_code AS errorCode,
+             request_json AS requestJson,
+             started_at AS startedAt, completed_at AS completedAt
+      FROM app_operations
+      WHERE instance_id = ? AND kind = 'update'
+      ORDER BY started_at DESC, rowid DESC
+      LIMIT 1
+    `).get(instanceId);
+    if (!row) return null;
+    let request = {};
+    try { request = JSON.parse(row.requestJson || '{}'); } catch {}
+    return { ...row, request, requestJson: undefined };
+  }
+
+  clearAppUpdateRecovery({ at, instanceId }) {
+    this.database.prepare(`
+      UPDATE app_instances SET update_recovery_state = 'none', update_recovery_error = NULL, updated_at = ? WHERE id = ?
+    `).run(at, instanceId);
   }
 
   getAppOperation(operationId) {

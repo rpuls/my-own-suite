@@ -777,6 +777,264 @@ test('a failure after activation rolls the old runtime back and closes the updat
   store.close();
 });
 
+// The S1 regression pin: integration env is rendered into projections, never
+// patched into them, so an update of the consumer activates a candidate that
+// already carries the env, and the post-commit reconcile re-applies the NEW
+// runtime instead of painting the old compose back over it.
+test('updating an integration consumer keeps its integration env and reconciles the new runtime', async () => {
+  const root = await tempStateDir();
+  const candidateDir = path.join(root, 'candidate');
+  await fsp.cp(path.join(v2AppsDir, 'seafile'), candidateDir, { recursive: true });
+  const manifestPath = path.join(candidateDir, 'manifest.json');
+  const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  const candidatePackage = readAppPackageManifest(candidateDir);
+  const candidateDigest = digestAppPackage(candidateDir);
+  const source = { kind: 'official-git', path: 'apps/seafile', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
+  const calls = [];
+  const agent = {
+    async activatePackageUpdate(input) { calls.push(['activate', input]); return { status: 'candidate-healthy' }; },
+    async apply(input) { calls.push(['apply', input]); return { status: 'applied', steps: [] }; },
+    async buildPackageUpdate(input) { calls.push(['build', input]); return { status: 'built' }; },
+    async checkHealth() { return { status: 'healthy' }; },
+    async connectNetwork(input) { calls.push(['connectNetwork', input]); return { status: 'connected' }; },
+    async promotePackageUpdate(input) { calls.push(['promote', input]); return { snapshotPath: candidateDir, status: 'snapshot-promoted' }; },
+    async rollbackPackageUpdate(input) { calls.push(['rollback', input]); return { status: 'installed-restored' }; },
+    async snapshotPackage(input) { return snapshotResult(input); },
+    async stagePackageUpdate(input) { calls.push(['stage', input]); return { snapshotPath: '/state/candidate', status: 'staged' }; },
+    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+  };
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({
+    agent,
+    appsDir: v2AppsDir,
+    catalogService: { platformVersion: '0.1.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    store,
+  });
+  await service.installPackage('seafile', { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' });
+  await service.installPackage('onlyoffice');
+  await service.applyPackageRuntime('seafile', requestContext().publicUrlFor('seafile'));
+  await service.applyPackageRuntime('onlyoffice', requestContext().publicUrlFor('onlyoffice'));
+  await service.connectPackages({
+    consumerPackageId: 'seafile',
+    providerCapabilityId: 'documentEditor',
+    providerPackageId: 'onlyoffice',
+    requestContext: requestContext(),
+    slotId: 'documentEditor',
+  });
+  const seafile = store.getAppInstanceByPackageId('seafile');
+  const envReference = '${config.integrationDocumentEditorOnlyofficeApijsUrl}';
+  const composeEnv = (projections) => projections.find((projection) => projection.kind === 'compose')
+    .content.services.find((item) => item.id === 'seafile').environment;
+  assert.equal(composeEnv(store.getAppProjections(seafile.id)).ONLYOFFICE_APIJS_URL, envReference);
+
+  const comparison = await service.preparePackageUpdate('seafile');
+  const result = await service.stagePackageUpdate('seafile', { confirmationToken: comparison.confirmationToken }, {
+    ...requestContext().publicUrlFor('seafile'),
+    publicUrlFor: requestContext().publicUrlFor,
+  });
+
+  assert.equal(result.operation.status, 'succeeded');
+  // The candidate the agent activated already carried the integration env,
+  // resolved against the provider the app is actually connected to.
+  const [, activate] = calls.find(([kind]) => kind === 'activate');
+  const activatedEnv = activate.candidate.compose.services.find((item) => item.id === 'seafile').environment;
+  assert.match(String(activatedEnv.ONLYOFFICE_APIJS_URL), /onlyoffice\.example\.test/u);
+  assert.equal(activatedEnv.ONLYOFFICE_FORCE_SAVE, 'true');
+  // The committed projections still render the env as config references, so
+  // any later restart re-applies it.
+  assert.equal(composeEnv(store.getAppProjections(seafile.id)).ONLYOFFICE_APIJS_URL, envReference);
+  // The relationship was reconciled after the commit against the new runtime,
+  // not before it against the old one.
+  assert.equal(store.getAppIntegrations()[0].status, 'active');
+  assert.equal(result.integrations.every((item) => item.status === 'active'), true);
+  const applyCalls = calls.filter(([kind]) => kind === 'apply');
+  const [, reconciledApply] = applyCalls[applyCalls.length - 1];
+  assert.equal(reconciledApply.packageId, 'seafile');
+  assert.equal(reconciledApply.packageVersion, '0.2.0');
+  assert.equal(reconciledApply.packageDigest, candidateDigest);
+  assert.ok(calls.findIndex(([kind]) => kind === 'promote') < calls.lastIndexOf(applyCalls[applyCalls.length - 1]));
+  assert.match(String(reconciledApply.compose.services.find((item) => item.id === 'seafile').environment.ONLYOFFICE_APIJS_URL), /onlyoffice\.example\.test/u);
+  store.close();
+});
+
+// The S2 pin: a snapshot promotion whose durable commit never happened is
+// finished by startup recovery — the disk proves the promote, the operation row
+// carries what the commit needs — and one wedged app never takes the Apps API
+// down while it waits.
+test('a crash between snapshot promotion and the durable commit is committed by startup recovery', async () => {
+  const root = await tempStateDir();
+  const candidateDir = path.join(root, 'candidate');
+  await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
+  const manifestPath = path.join(candidateDir, 'manifest.json');
+  const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  const candidatePackage = readAppPackageManifest(candidateDir);
+  const candidateDigest = digestAppPackage(candidateDir);
+  const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
+  // Production-shaped snapshots: install snapshots into a stable installed
+  // directory whose CONTENT the promote swaps, exactly like the system adapter.
+  const snapshotDir = path.join(root, 'snapshots', 'installed');
+  const agent = {
+    async activatePackageUpdate() { return { status: 'candidate-healthy' }; },
+    async buildPackageUpdate() { return { status: 'built' }; },
+    async promotePackageUpdate() {
+      await fsp.rm(snapshotDir, { force: true, recursive: true });
+      await fsp.cp(candidateDir, snapshotDir, { recursive: true });
+      return { snapshotPath: snapshotDir, status: 'snapshot-promoted' };
+    },
+    async rollbackPackageUpdate() { throw new Error('rollback must never run for a promoted snapshot'); },
+    async snapshotPackage() {
+      await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), snapshotDir, { recursive: true });
+      return { snapshotPath: snapshotDir };
+    },
+    async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
+    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+  };
+  const entries = [];
+  const homepageService = {
+    async add(body) { entries.push(body.entry); return { revision: `revision-${entries.length}` }; },
+    async read() { return { revision: `revision-${entries.length}` }; },
+  };
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({
+    agent,
+    appsDir: v2AppsDir,
+    catalogService: { advisoriesFor: () => [], platformVersion: '0.1.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    store,
+  });
+  await service.installPackage('stirling-pdf');
+  const installed = store.getAppInstanceByPackageId('stirling-pdf');
+  store.applyAppProjection({ at: new Date().toISOString(), instanceId: installed.id, kind: 'homepage', operationId: 'homepage-applied' });
+  const comparison = await service.preparePackageUpdate('stirling-pdf');
+
+  // Suite Manager "dies" at the durable commit: the promote has happened on
+  // disk, the store write never does.
+  const realComplete = store.completeAppUpdate.bind(store);
+  store.completeAppUpdate = () => { throw new Error('suite manager terminated'); };
+  await assert.rejects(
+    () => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, { ...requestContext().publicUrlFor('stirling-pdf'), homepageService }),
+    (error) => error.code === 'APP_UPDATE_STAGE_FAILED',
+  );
+  store.completeAppUpdate = realComplete;
+
+  const wedged = store.getAppInstanceByPackageId('stirling-pdf');
+  assert.equal(wedged.updateRecoveryState, 'commit-required');
+  assert.equal(wedged.packageVersion, manifest.version);
+  // The promoted candidate keeps its Homepage entry: no rollback re-add ran.
+  assert.equal(entries.length, 1);
+  // One wedged app degrades to its own recovery card instead of failing the list.
+  const listed = service.listPackages().find((item) => item.id === 'stirling-pdf');
+  assert.equal(listed.instance.updateRecovery.state, 'commit-required');
+  assert.equal(listed.validation.valid, false);
+  // A new update is refused while the pending commit exists.
+  await assert.rejects(
+    () => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf')),
+    (error) => error.code === 'APP_UPDATE_RECOVERY_REQUIRED',
+  );
+
+  // Startup recovery finishes the commit from the operation row and the disk.
+  const recoveries = service.recoverInterruptedUpdates();
+  assert.deepEqual(recoveries, [{ instanceId: installed.id, recoveryState: 'none', status: 'committed' }]);
+  const committed = store.getAppInstanceByPackageId('stirling-pdf');
+  assert.equal(committed.packageVersion, '0.2.0');
+  assert.equal(committed.packageDigest, candidateDigest);
+  assert.equal(committed.sourceRevision, 'c'.repeat(40));
+  assert.equal(committed.updateRecoveryState, 'none');
+  assert.equal(committed.snapshotPath, snapshotDir);
+  assert.equal(store.latestAppUpdateOperation(installed.id).status, 'succeeded');
+  const healthy = service.listPackages().find((item) => item.id === 'stirling-pdf');
+  assert.equal(healthy.instance.updateRecovery, null);
+  assert.equal(healthy.version, '0.2.0');
+  store.close();
+});
+
+// The M1 pin: rollback-required is an action, not a badge. The recovery action
+// rebuilds the candidate runtime from what the failed operation stashed, asks
+// the agent to restore the recorded runtime, and reopens the road to a retry.
+test('the recovery action restores the recorded runtime after a failed rollback', async () => {
+  const root = await tempStateDir();
+  const candidateDir = path.join(root, 'candidate');
+  await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
+  const manifestPath = path.join(candidateDir, 'manifest.json');
+  const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  const candidatePackage = readAppPackageManifest(candidateDir);
+  const candidateDigest = digestAppPackage(candidateDir);
+  const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
+  const calls = [];
+  let promoteAttempts = 0;
+  let rollbackAttempts = 0;
+  const agent = {
+    async activatePackageUpdate(input) { calls.push(['activate', input]); return { status: 'candidate-healthy' }; },
+    async apply(input) { calls.push(['apply', input]); return { status: 'applied', steps: [] }; },
+    async buildPackageUpdate() { return { status: 'built' }; },
+    async promotePackageUpdate() {
+      promoteAttempts += 1;
+      if (promoteAttempts === 1) throw Object.assign(new Error('The app package snapshot could not be promoted.'), { code: 'APP_UPDATE_PROMOTION_FAILED', statusCode: 502 });
+      return { snapshotPath: candidateDir, status: 'snapshot-promoted' };
+    },
+    async rollbackPackageUpdate(input) {
+      rollbackAttempts += 1;
+      calls.push(['rollback', input]);
+      if (rollbackAttempts === 1) throw Object.assign(new Error('The previous runtime could not be restored.'), { code: 'APP_UPDATE_ROLLBACK_FAILED', statusCode: 502 });
+      return { status: 'installed-restored' };
+    },
+    async snapshotPackage(input) { return snapshotResult(input); },
+    async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
+    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+  };
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({
+    agent,
+    appsDir: v2AppsDir,
+    catalogService: { platformVersion: '0.1.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    store,
+  });
+  await service.installPackage('stirling-pdf');
+  const installed = store.getAppInstanceByPackageId('stirling-pdf');
+  const comparison = await service.preparePackageUpdate('stirling-pdf');
+
+  await assert.rejects(
+    () => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf')),
+    (error) => error.code === 'APP_UPDATE_ROLLBACK_FAILED',
+  );
+  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').updateRecoveryState, 'rollback-required');
+  await assert.rejects(
+    () => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf')),
+    (error) => error.code === 'APP_UPDATE_RECOVERY_REQUIRED',
+  );
+  // Startup does not restart containers on its own; the snapshot on disk is
+  // still the recorded one, so this stays an owner action.
+  assert.deepEqual(service.recoverInterruptedUpdates(), []);
+  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').updateRecoveryState, 'rollback-required');
+
+  const recovered = await service.recoverPackageUpdate('stirling-pdf', {
+    ...requestContext().publicUrlFor('stirling-pdf'),
+    publicUrlFor: requestContext().publicUrlFor,
+  });
+
+  assert.equal(recovered.action, 'rolled-back');
+  // The runtimes the agent was asked to swap carry the exact recorded
+  // identities, with the candidate rebuilt from the operation's stash.
+  const [, rollback] = calls.filter(([kind]) => kind === 'rollback')[1];
+  assert.equal(rollback.installed.packageDigest, installed.packageDigest);
+  assert.equal(rollback.installed.packageVersion, manifest.version);
+  assert.equal(rollback.candidate.packageDigest, candidateDigest);
+  assert.equal(rollback.candidate.packageVersion, '0.2.0');
+  assert.ok(rollback.candidate.compose.services.length >= 1);
+  const after = store.getAppInstanceByPackageId('stirling-pdf');
+  assert.equal(after.updateRecoveryState, 'none');
+  assert.equal(after.packageVersion, manifest.version);
+  assert.equal(after.packageDigest, installed.packageDigest);
+
+  // The road is open again: the same update now runs to completion.
+  const retried = await service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf'));
+  assert.equal(retried.operation.status, 'succeeded');
+  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').packageVersion, '0.2.0');
+  store.close();
+});
+
 test('packages without Homepage metadata render no Homepage projection', () => {
   const { manifest } = readAppPackageManifest(path.join(v2AppsDir, 'onlyoffice'));
   const projections = renderDryRunProjections(manifest, []);
@@ -1142,7 +1400,11 @@ test('startup classifies every interrupted update boundary into an actionable re
   const cases = [
     ['candidate-verified', 'retry-safe'],
     ['candidate-staged', 'retry-safe'],
-    ['candidate-built', 'retry-safe'],
+    // The runtime swap happens between the candidate-built and candidate-healthy
+    // writes, so a crash at candidate-built may already have the candidate
+    // serving. Restoring the recorded runtime is safe in either case; calling it
+    // retry-safe was only sometimes true.
+    ['candidate-built', 'rollback-required'],
     ['candidate-healthy', 'rollback-required'],
     ['integrations-reconciled', 'rollback-required'],
     ['homepage-reconciled', 'rollback-required'],
