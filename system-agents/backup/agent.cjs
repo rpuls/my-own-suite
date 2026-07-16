@@ -286,6 +286,17 @@ function restoreStateOwnership() {
   for (const target of [stateDir, path.join(stateRoot, 'homepage', 'config')]) {
     if (fs.existsSync(target)) optionalCommand('chown', ['-R', `${user}:${user}`, target], { timeout: 300_000 });
   }
+  // Restoring app-packages recreates it from the bundle, which carries modes but
+  // no ownership, so the root agent's snapshots come back owned root:root and
+  // Suite Manager can no longer read the packages it must re-verify on every
+  // read — every restored app would report an unreadable snapshot. Put the
+  // provisioned identity back: root owns the writes, mos-v2-agent reads them,
+  // and the setgid root keeps that true for snapshots written after the restore.
+  const packageRoot = path.join(stateRoot, 'app-packages');
+  if (fs.existsSync(packageRoot)) {
+    optionalCommand('chown', ['-R', 'root:mos-v2-agent', packageRoot], { timeout: 300_000 });
+    optionalCommand('chmod', ['2750', packageRoot], { timeout: 60_000 });
+  }
 }
 async function reconcileRestoredApps(jobFile) {
   const store = new SuiteManagerStore(stateDir);

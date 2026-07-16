@@ -36,6 +36,40 @@ test('system adapter atomically snapshots only validated package files', async (
   assert.deepEqual((await fsp.readdir(path.join(appPackageRoot, instanceId))).sort(), ['installed']);
 });
 
+// Suite Manager runs as a different user than this root agent and reads the
+// snapshot to re-verify it, so it reaches these files only through the package
+// root's group. A same-user test cannot see that boundary: every file it writes
+// is already its own. Standing the root up under a group the test process has
+// but does not create files with by default reproduces it without root.
+const secondaryGid = typeof process.getgroups === 'function'
+  ? process.getgroups().find((gid) => gid !== process.getgid())
+  : undefined;
+
+test('system adapter gives snapshots the package root group so Suite Manager can read them', {
+  skip: secondaryGid === undefined ? 'needs a POSIX host where the test user has a secondary group' : false,
+}, async () => {
+  const root = await tempDir();
+  const appsRoot = path.join(root, 'apps');
+  const appPackageRoot = path.join(root, 'state');
+  const { packageDigest } = await writePackage(appsRoot);
+  await fsp.mkdir(appPackageRoot, { recursive: true });
+  await fsp.chown(appPackageRoot, process.getuid(), secondaryGid);
+  const adapter = new SystemAppAdapter({ appPackageRoot, appsRoot });
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+
+  const result = await adapter.snapshotAppPackage({ instanceId, packageDigest, packageId: 'example-tool' });
+
+  // The instance root too: a readable snapshot under an unreachable parent is
+  // still unreadable.
+  const instanceRoot = path.join(appPackageRoot, instanceId);
+  for (const entry of [instanceRoot, result.snapshotPath, path.join(result.snapshotPath, 'manifest.json'), path.join(result.snapshotPath, 'Dockerfile')]) {
+    const stats = await fsp.stat(entry);
+    assert.equal(stats.gid, secondaryGid, `${path.relative(appPackageRoot, entry)} must carry the package root group`);
+    assert.equal(Boolean(stats.mode & 0o040), true, `${path.relative(appPackageRoot, entry)} must stay group readable`);
+    assert.equal(Boolean(stats.mode & 0o020), false, `${path.relative(appPackageRoot, entry)} must not be group writable`);
+  }
+});
+
 test('system adapter leaves no snapshot after digest or package validation failure', async () => {
   const root = await tempDir();
   const appsRoot = path.join(root, 'apps');

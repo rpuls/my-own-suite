@@ -54,6 +54,27 @@ class AppApplyError extends Error {
   }
 }
 
+// Suite Manager re-verifies snapshot identity and digest on every read, so it
+// reads these files directly and needs group read on everything the root agent
+// writes here. The package root is provisioned `root:mos-v2-agent` mode 0750
+// and the modes below grant the group read without write, but a directory root
+// creates does not inherit that group unless its parent carries the setgid bit
+// — and a root recreated by a restore may have lost the bit and the group
+// entirely. Take the group from the package root itself rather than a hardcoded
+// name, and apply it explicitly so a snapshot is readable whatever state the
+// parent was left in. Owner is preserved: only the group moves.
+async function applyAgentGroup(root, gid) {
+  const pending = [root];
+  while (pending.length) {
+    const entry = pending.pop();
+    const stats = await fsp.lstat(entry);
+    if (stats.isDirectory()) {
+      for (const child of await fsp.readdir(entry)) pending.push(path.join(entry, child));
+    }
+    if (stats.gid !== gid) await fsp.chown(entry, stats.uid, gid);
+  }
+}
+
 function exec(file, args, { cwd = undefined, timeoutMs = 120000 } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(file, args, { cwd, stdio: 'ignore' });
@@ -210,6 +231,21 @@ class SystemAppAdapter {
     this.waitForReady = waitForReady;
   }
 
+  // Called with the instance root rather than the snapshot itself, so the
+  // directory the snapshot sits in is reachable too: a readable snapshot under
+  // a root-only parent is still unreadable. Never fails an operation — a
+  // package root left without the agent group is a provisioning fault that
+  // Suite Manager reports as a snapshot it cannot read, which is the truth, and
+  // is worth more than refusing an otherwise-complete install here.
+  async applySnapshotGroup(instanceRoot) {
+    try {
+      const { gid } = await fsp.stat(this.appPackageRoot);
+      await applyAgentGroup(instanceRoot, gid);
+    } catch {
+      // Intentionally ignored; see above.
+    }
+  }
+
   containerName(packageId, serviceId, serviceCount) {
     return serviceCount === 1 ? `mos-v2-app-${packageId}` : `mos-v2-app-${packageId}-${serviceId}`;
   }
@@ -237,6 +273,7 @@ class SystemAppAdapter {
         await fsp.chmod(target, sourceMode & 0o111 ? 0o750 : 0o640);
       }
       if (digestAppPackage(temporary, { manifest }) !== packageDigest) throw new Error('COPIED_PACKAGE_DIGEST_MISMATCH');
+      await this.applySnapshotGroup(instanceRoot);
       await fsp.rename(temporary, installed);
       return { snapshotPath: installed, steps: ['validated', 'copied', 'verified', 'promoted'] };
     } catch (error) {
@@ -285,6 +322,7 @@ class SystemAppAdapter {
         await fsp.chmod(target, sourceMode & 0o111 ? 0o750 : 0o640);
       }
       if (digestAppPackage(temporary, { manifest }) !== candidateDigest) throw new Error('COPIED_PACKAGE_DIGEST_MISMATCH');
+      await this.applySnapshotGroup(instanceRoot);
       await fsp.rename(temporary, installed);
       return { snapshotPath: installed, steps: ['candidate-confined', 'identity-verified', 'validated', 'copied', 'verified', 'promoted'] };
     } catch (error) {
@@ -317,6 +355,7 @@ class SystemAppAdapter {
         await fsp.chmod(target, sourceMode & 0o111 ? 0o750 : 0o640);
       }
       if (digestAppPackage(temporary, { manifest: candidateManifest }) !== candidateDigest) throw new Error('COPIED_CANDIDATE_DIGEST_MISMATCH');
+      await this.applySnapshotGroup(instanceRoot);
       await fsp.rename(temporary, staged);
       return { snapshotPath: staged, steps: ['installed-identity-verified', 'candidate-identity-verified', 'copied', 'verified', 'staged'] };
     } catch (error) {

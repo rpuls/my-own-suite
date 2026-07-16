@@ -49,6 +49,10 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.match(plan.cloudInit, /MOS_V2_HOMEPAGE_AGENT_SOCKET=\/run\/mos-v2-homepage-agent\/agent\.sock/);
   assert.match(plan.cloudInit, /install -d -m 0750 .*"\$MOS_V2_STATE_ROOT\/app-packages"/);
   assert.match(plan.cloudInit, /chown root:mos-v2-agent "\$MOS_V2_STATE_ROOT\/app-packages"/);
+  // Setgid, so snapshots the root app agent writes below inherit mos-v2-agent
+  // and stay readable by Suite Manager, which re-verifies each one on read.
+  // Without it a bootstrap provisions a root no installed app can be read from.
+  assert.match(plan.cloudInit, /chmod 2750 "\$MOS_V2_STATE_ROOT\/app-packages"/);
   assert.match(plan.cloudInit, /Environment=MOS_V2_APP_PACKAGE_ROOT=\$MOS_V2_STATE_ROOT\/app-packages/);
   assert.match(plan.cloudInit, /mos-v2-backup-agent\.service/);
   assert.match(plan.cloudInit, /MOS_V2_BACKUP_AGENT_SOCKET=\/run\/mos-v2-backup-agent\/agent\.sock/);

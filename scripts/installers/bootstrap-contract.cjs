@@ -295,7 +295,9 @@ chown -R "$MOS_V2_RUNTIME_USER:$MOS_V2_RUNTIME_USER" "$MOS_V2_STATE_ROOT"
 chown -R 1000:1000 "$MOS_V2_STATE_ROOT/homepage/config"
 chown -R root:root "$MOS_V2_STATE_ROOT/https-agent"
 chown root:mos-v2-agent "$MOS_V2_STATE_ROOT/app-packages"
-chmod 0750 "$MOS_V2_STATE_ROOT/app-packages"
+# Setgid: snapshots the root app agent writes here must inherit mos-v2-agent so
+# Suite Manager can read them back. Applied after chown, which can clear it.
+chmod 2750 "$MOS_V2_STATE_ROOT/app-packages"
 chmod 0700 "$MOS_V2_STATE_ROOT/https-agent" "$MOS_V2_STATE_ROOT/https-agent/transactions"
 
 cat > /etc/systemd/system/mos-v2-homepage.service <<MOS_V2_HOMEPAGE_UNIT

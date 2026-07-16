@@ -233,8 +233,15 @@ function main() {
   installDir(`${stateRoot}/homepage-agent/transactions`, 0o700);
   installDir(`${stateRoot}/homepage-agent/history`, 0o700);
   installDir(`${stateRoot}/backup-agent`, 0o700);
-  installDir(`${stateRoot}/app-packages`, 0o750);
-  if (!dryRun) run('chown', ['root:mos-v2-agent', `${stateRoot}/app-packages`]);
+  // Setgid so every snapshot the root app agent writes below inherits
+  // mos-v2-agent and stays readable by Suite Manager, which re-verifies
+  // snapshot identity on each read. The agent sets the group explicitly too;
+  // this keeps a directory created by anything else from losing it.
+  installDir(`${stateRoot}/app-packages`, 0o2750);
+  if (!dryRun) {
+    run('chown', ['root:mos-v2-agent', `${stateRoot}/app-packages`]);
+    fs.chmodSync(`${stateRoot}/app-packages`, 0o2750);
+  }
   installDir(`${stateRoot}/update-agent/jobs`, 0o700);
 
   for (const socketDir of ['https', 'homepage', 'app', 'backup', 'update', 'lab-reset']) {
