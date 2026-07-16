@@ -50,7 +50,10 @@ function dockerIdentityFragment(value) {
 // means naming it again from a different direction, and a tag this function did
 // not build is a tag `docker image rm` would silently miss.
 function packageImageTag({ packageDigest, packageId, packageVersion, serviceId, sourceRevision }) {
-  return `mos-v2-app-${packageId}-${serviceId}:${packageVersion}-pkg-${dockerIdentityFragment(packageDigest)}-src-${dockerIdentityFragment(sourceRevision)}`;
+  // SemVer build metadata uses `+`, which Docker repository tags reject.
+  // Keep the label value exact, but encode the tag's build separator.
+  const dockerVersion = String(packageVersion).replace('+', '-build-');
+  return `mos-v2-app-${packageId}-${serviceId}:${dockerVersion}-pkg-${dockerIdentityFragment(packageDigest)}-src-${dockerIdentityFragment(sourceRevision)}`;
 }
 
 function escapeRegExp(value) {

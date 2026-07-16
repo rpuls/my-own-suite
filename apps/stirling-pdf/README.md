@@ -25,3 +25,7 @@ Disable preserves these volumes so the app can be started again. Uninstall remov
 ## Setup
 
 No user inputs are required for the first package version. `SERVER_HOST` is projected from the app public URL when the lifecycle engine exists.
+
+## Privacy controls
+
+MOS sets `SYSTEM_ENABLEANALYTICS=false`, the upstream-supported system-wide control for disabling Stirling PDF analytics and suppressing its analytics consent prompt. This disables known optional PostHog and Scarf telemetry in the assessed 2.10.0 image; it is not evidence that the container makes no outbound requests. User-invoked features such as trusted timestamping can still contact an external service.

@@ -233,6 +233,22 @@ test('an advisory feed signed by anyone else is dropped without failing the refr
   assert.deepEqual(events.map((event) => event.eventType), ['app-catalog-signature-invalid']);
 });
 
+test('a served advisory feed with a missing signature is visible and counted', async () => {
+  const events = [];
+  const serve = serveRepo({ advisories: { advisories: [], schemaVersion: 1 } });
+  const service = catalogService({
+    fetchImpl: async (url) => (url.endsWith('/apps/advisories.json.sig') ? new Response('', { status: 404 }) : serve(url)),
+    recordSecurityEvent: (event) => events.push(event),
+    stateDir: tempDir(),
+  });
+
+  const result = await service.refresh();
+  assert.equal(result.status.revision, revision);
+  assert.equal(result.status.advisories.error.code, 'ADVISORIES_SIGNATURE_MISSING');
+  assert.equal(result.status.advisories.freshness, 'unavailable');
+  assert.deepEqual(events.map((event) => event.eventType), ['app-catalog-signature-invalid']);
+});
+
 // The cache decides trust for as long as a box stays offline, and it lives in
 // state rather than in the release, so it is verified on the way in too.
 test('a cache edited on disk is discarded rather than served', async () => {

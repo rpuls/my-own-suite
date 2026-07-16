@@ -10,6 +10,7 @@ const {
   advisoriesForVersion,
   advisoryAffectsVersion,
   canonicalPackagePath,
+  compareSemver,
   describeRequestedPermissions,
   diffRequestedPermissions,
   derivePrivacyPosture,
@@ -28,6 +29,13 @@ const {
   validateSourceIdentity,
   verifySnapshotIdentity,
 } = require('../src/apps/package-contracts.cjs');
+
+test('semver comparison orders prereleases and ignores build metadata', () => {
+  assert.equal(compareSemver('1.4.0-rc.1', '1.4.0'), -1);
+  assert.equal(compareSemver('1.4.0-rc.2', '1.4.0-rc.10'), -1);
+  assert.equal(compareSemver('1.4.0-alpha', '1.4.0-beta'), -1);
+  assert.equal(compareSemver('1.4.0+build.1', '1.4.0+build.2'), 0);
+});
 
 const contractFixtures = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'app-package-contracts.json'), 'utf8'));
 

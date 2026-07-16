@@ -11,7 +11,7 @@ const ALLOWED_ROOT_FILES = /^(?:Dockerfile(?:\.[a-z0-9][a-z0-9-]*)?|README\.md|e
 const TEXT_FILE = /(?:^Dockerfile(?:\.|$)|\.(?:cjs|css|html|js|json|md|mjs|sh|svg|txt|yaml|yml)$)/iu;
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 const PACKAGE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
-const SEMVER_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$/u;
+const SEMVER_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/u;
 const SOURCE_KINDS = new Set(['external-git', 'local', 'official-git']);
 const TRUST_LEVELS = new Set(['mos-reviewed', 'publisher-signed', 'unverified']);
 // The architectures MOS runs on. A package names the ones its pinned base images
@@ -147,6 +147,27 @@ function compareSemver(left, right) {
   for (let index = 1; index <= 3; index += 1) {
     const difference = Number(leftMatch[index]) - Number(rightMatch[index]);
     if (difference) return Math.sign(difference);
+  }
+  const leftPrerelease = leftMatch[4];
+  const rightPrerelease = rightMatch[4];
+  if (leftPrerelease === undefined && rightPrerelease === undefined) return 0;
+  if (leftPrerelease === undefined) return 1;
+  if (rightPrerelease === undefined) return -1;
+  const leftIdentifiers = leftPrerelease.split('.');
+  const rightIdentifiers = rightPrerelease.split('.');
+  for (let index = 0; index < Math.max(leftIdentifiers.length, rightIdentifiers.length); index += 1) {
+    if (leftIdentifiers[index] === undefined) return -1;
+    if (rightIdentifiers[index] === undefined) return 1;
+    const leftNumeric = /^\d+$/u.test(leftIdentifiers[index]);
+    const rightNumeric = /^\d+$/u.test(rightIdentifiers[index]);
+    if (leftNumeric && rightNumeric) {
+      const difference = Number(leftIdentifiers[index]) - Number(rightIdentifiers[index]);
+      if (difference) return Math.sign(difference);
+    } else if (leftNumeric !== rightNumeric) {
+      return leftNumeric ? -1 : 1;
+    } else if (leftIdentifiers[index] !== rightIdentifiers[index]) {
+      return leftIdentifiers[index] < rightIdentifiers[index] ? -1 : 1;
+    }
   }
   return 0;
 }
@@ -389,6 +410,10 @@ function volumeTarget(spec) {
   return String(spec).split(':')[1] || '';
 }
 
+// This denylist is defense in depth around the actual execution boundary:
+// renderDryRunProjections only projects explicitly supported manifest fields
+// into the agent request. Any new projection field must be reviewed here too,
+// or an external package could gain a capability this list never considered.
 function validateConstrainedCapabilities(manifest, { trust } = {}) {
   const errors = [];
   if (!isConstrainedTrust(trust)) return errors;

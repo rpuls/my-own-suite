@@ -131,7 +131,14 @@ class OfficialCatalogService {
 
   async fetchSignature(revision, name) {
     const url = `https://raw.githubusercontent.com/${this.github.owner}/${this.github.repo}/${revision}/apps/${name}.sig`;
-    return (await boundedResponse(await this.request(url), 1024)).toString('utf8');
+    const response = await this.request(url);
+    if (response.status === 404) {
+      throw new OfficialCatalogError(
+        name === 'advisories.json' ? 'ADVISORIES_SIGNATURE_MISSING' : 'CATALOG_SIGNATURE_MISSING',
+        `Official ${name} signature is missing.`,
+      );
+    }
+    return (await boundedResponse(response, 1024)).toString('utf8');
   }
 
   noteSecurityEvent(eventType, at) {
@@ -147,8 +154,16 @@ class OfficialCatalogService {
   status() {
     const fetchedAt = this.cache?.fetchedAt || null;
     const ageMs = fetchedAt ? Math.max(0, this.now().getTime() - Date.parse(fetchedAt)) : null;
+    const advisoriesFetchedAt = this.cache?.advisoriesFetchedAt || null;
+    const advisoriesAgeMs = advisoriesFetchedAt ? Math.max(0, this.now().getTime() - Date.parse(advisoriesFetchedAt)) : null;
     return {
-      advisories: { count: this.cache?.advisories?.advisories?.length ?? null, revision: this.cache?.advisoriesRevision || null },
+      advisories: {
+        count: this.cache?.advisories?.advisories?.length ?? null,
+        error: this.cache?.advisoriesError || null,
+        fetchedAt: advisoriesFetchedAt,
+        freshness: !advisoriesFetchedAt ? 'unavailable' : advisoriesAgeMs > CATALOG_REFRESH_POLICY.cacheStaleAfterMs ? 'stale' : 'fresh',
+        revision: this.cache?.advisoriesRevision || null,
+      },
       error: this.lastError,
       fetchedAt,
       freshness: !fetchedAt ? 'unavailable' : ageMs > CATALOG_REFRESH_POLICY.cacheStaleAfterMs ? 'stale' : 'fresh',
@@ -299,12 +314,16 @@ class OfficialCatalogService {
       // last-known-good advisories and never fails the catalog refresh.
       if (this.cache.advisoriesRevision !== revision) {
         try {
-          this.cache = { ...this.cache, ...await this.fetchAdvisories(revision), advisoriesRevision: revision };
+          this.cache = { ...this.cache, ...await this.fetchAdvisories(revision), advisoriesError: null, advisoriesFetchedAt: attemptedAt, advisoriesRevision: revision };
         } catch (error) {
           // An advisory feed that does not verify is not a feed MOS may act on,
           // but withholding advisories is exactly what suppressing them looks
           // like, so it is counted rather than only swallowed.
-          if (error?.code === 'ADVISORIES_SIGNATURE_INVALID') this.noteSecurityEvent('app-catalog-signature-invalid', attemptedAt);
+          const safeError = { code: error.code || 'ADVISORIES_FETCH_FAILED', message: error.message || 'Official advisory refresh failed.' };
+          this.cache = { ...this.cache, advisoriesError: safeError };
+          if (['ADVISORIES_SIGNATURE_INVALID', 'ADVISORIES_SIGNATURE_MISSING'].includes(error?.code)) {
+            this.noteSecurityEvent('app-catalog-signature-invalid', attemptedAt);
+          }
         }
       }
       this.writeCache(this.cache);

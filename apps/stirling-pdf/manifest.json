@@ -1,7 +1,7 @@
 {
   "id": "stirling-pdf",
   "name": "Stirling PDF",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minimumMosVersion": "0.1.0",
   "summary": "Private PDF tools for everyday document tasks.",
   "category": "office",
@@ -42,10 +42,11 @@
       "description": "A good first app for testing the catalog because it runs as one straightforward web service."
     },
     "privacy": {
-      "summary": "PDF processing happens in your own MOS runtime instead of a public upload service.",
+      "summary": "MOS configures the self-hosted server to process ordinary PDF tasks locally and disable known optional analytics.",
       "notes": [
         "Persistent app data is kept in package-owned volumes.",
-        "Files you process are not intentionally sent to external PDF services by MOS."
+        "User-invoked features such as trusted timestamping can contact an external service.",
+        "The assessment is configuration- and documentation-based; it does not prove complete network silence."
       ]
     },
     "links": {
@@ -63,7 +64,8 @@
         "dockerfile": "Dockerfile",
         "internalPort": 8080,
         "env": {
-          "SERVER_HOST": "${app.publicUrl}"
+          "SERVER_HOST": "${app.publicUrl}",
+          "SYSTEM_ENABLEANALYTICS": "false"
         },
         "volumes": [
           "training-data:/usr/share/tessdata",

@@ -299,36 +299,46 @@ function readSecretValue(secretDir, secretRef) {
 function createConfigRows({ input = {}, instanceId, manifest, secretDir }) {
   const supplied = isRecord(input.config) ? input.config : isRecord(input) ? input : {};
   const rows = [];
-  for (const field of setupFields(manifest)) {
-    const hasUserValue = Object.hasOwn(supplied, field.id) && supplied[field.id] !== undefined && supplied[field.id] !== null && supplied[field.id] !== '';
-    const generated = generateValue(field);
-    const value = hasUserValue ? supplied[field.id] : generated ?? field.default;
-    if ((value === undefined || value === null || value === '') && field.required === true) {
-      throw new AppPackageServiceError('APP_SETUP_REQUIRED', `${field.label || field.id} is required.`, 400);
+  try {
+    for (const field of setupFields(manifest)) {
+      const hasUserValue = Object.hasOwn(supplied, field.id) && supplied[field.id] !== undefined && supplied[field.id] !== null && supplied[field.id] !== '';
+      const generated = generateValue(field);
+      const value = hasUserValue ? supplied[field.id] : generated ?? field.default;
+      if ((value === undefined || value === null || value === '') && field.required === true) {
+        throw new AppPackageServiceError('APP_SETUP_REQUIRED', `${field.label || field.id} is required.`, 400);
+      }
+      if (value === undefined || value === null || value === '') continue;
+      if (field.secret === true) {
+        const rawValue = String(value);
+        rows.push({
+          fingerprint: fingerprintFor(rawValue),
+          key: field.id,
+          rawValue,
+          redactedLabel: field.redactedLabel || field.label || 'Secret value',
+          secret: true,
+          secretRef: writeSecretFile(secretDir, instanceId, field.id, rawValue),
+          source: generated !== undefined && !hasUserValue ? 'generated' : 'user',
+        });
+      } else {
+        rows.push({
+          key: field.id,
+          secret: false,
+          source: generated !== undefined && !hasUserValue ? 'generated' : hasUserValue ? 'user' : 'default',
+          value,
+          valueJson: stableJson(value),
+        });
+      }
     }
-    if (value === undefined || value === null || value === '') continue;
-    if (field.secret === true) {
-      const rawValue = String(value);
-      rows.push({
-        fingerprint: fingerprintFor(rawValue),
-        key: field.id,
-        rawValue,
-        redactedLabel: field.redactedLabel || field.label || 'Secret value',
-        secret: true,
-        secretRef: writeSecretFile(secretDir, instanceId, field.id, rawValue),
-        source: generated !== undefined && !hasUserValue ? 'generated' : 'user',
-      });
-    } else {
-      rows.push({
-        key: field.id,
-        secret: false,
-        source: generated !== undefined && !hasUserValue ? 'generated' : hasUserValue ? 'user' : 'default',
-        value,
-        valueJson: stableJson(value),
-      });
+    return rows;
+  } catch (error) {
+    // A later required/invalid field can fail after an earlier secret was
+    // already written. Remove only files created by this attempt: update
+    // collection may share the instance directory with installed secrets.
+    for (const row of rows) {
+      if (row.secretRef) fs.rmSync(secretFilePath(secretDir, instanceId, row.key), { force: true });
     }
+    throw error;
   }
-  return rows;
 }
 
 function materializeRuntimeCompose(compose, configRows) {
@@ -1577,13 +1587,13 @@ class AppPackageService {
     }
     instance.snapshotPath = snapshot.snapshotPath;
     instance.snapshotState = 'installed';
-    const { manifest: installedManifest } = readAppPackageManifest(instance.snapshotPath);
-    if (installedManifest.id !== manifest.id || digestAppPackage(instance.snapshotPath) !== packageDigest) {
-      throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The installed app package snapshot does not match the validated source package.', 502);
-    }
-    const config = createConfigRows({ input, instanceId: instance.id, manifest: installedManifest, secretDir: this.secretDir });
-    const projections = renderDryRunProjections(installedManifest, config);
     try {
+      const { manifest: installedManifest } = readAppPackageManifest(instance.snapshotPath);
+      if (installedManifest.id !== manifest.id || digestAppPackage(instance.snapshotPath) !== packageDigest) {
+        throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The installed app package snapshot does not match the validated source package.', 502);
+      }
+      const config = createConfigRows({ input, instanceId: instance.id, manifest: installedManifest, secretDir: this.secretDir });
+      const projections = renderDryRunProjections(installedManifest, config);
       this.store.installAppInstance({
         at,
         config,
@@ -1599,6 +1609,17 @@ class AppPackageService {
       });
     } catch (error) {
       fs.rmSync(path.join(this.secretDir, instance.id), { recursive: true, force: true });
+      // No instance row references this successfully created snapshot yet.
+      // Ask the owning root agent to discard it before surfacing the failure.
+      if (typeof this.agent.remove === 'function') {
+        await this.agent.remove({
+          installedSourceRevision: source.revision,
+          instanceId: instance.id,
+          packageId: manifest.id,
+          services: [],
+          volumes: [],
+        }).catch(() => {});
+      }
       throw error;
     }
 

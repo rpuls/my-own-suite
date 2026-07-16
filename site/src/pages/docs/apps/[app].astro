@@ -81,14 +81,17 @@ const headings = [
         {app.resourcesDetail && <> — {app.resourcesDetail}</>}
       </li>
     )}
-    {app.privacy && (
+    {(app.privacy || app.privacyNotes.length > 0) && (
       <li>
-        <strong>Privacy:</strong> {app.privacy}
+        <strong>Package-provided privacy notes (not independently verified by MOS):</strong>
+        {app.privacy && <> {app.privacy}</>}
+        {app.privacyNotes.length > 0 && (
+          <ul>
+            {app.privacyNotes.map((note) => <li>{note}</li>)}
+          </ul>
+        )}
       </li>
     )}
-    {app.privacyNotes.map((note) => (
-      <li>{note}</li>
-    ))}
   </ul>
 
   {Readme && (

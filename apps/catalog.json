@@ -38,11 +38,12 @@
     },
     "stirling-pdf": {
       "minimumMosVersion": "0.1.0",
-      "packageDigest": "sha256:10090fa550471a029e8b72af8d830ad843c1b6ffcea724a16e45d3dca5ee2bc6",
-      "packageVersion": "0.1.0",
+      "packageDigest": "sha256:56f3cef37b286aa09097f419437a71434ae6e060250511cdb3d0526d55c05235",
+      "packageVersion": "0.1.1",
       "path": "apps/stirling-pdf",
       "privacy": {
-        "status": "review-required"
+        "posture": "privacy-configured",
+        "status": "reviewed"
       }
     },
     "vaultwarden": {

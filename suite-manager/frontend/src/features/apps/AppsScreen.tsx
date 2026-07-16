@@ -18,7 +18,7 @@ type CatalogMetadata = {
   screenshots: Array<{ alt: string; caption: string; src: string }>;
   tags: string[];
 };
-type CatalogStatus = { error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; repository: string; revision: string | null };
+type CatalogStatus = { advisories?: { error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; revision: string | null }; error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; repository: string; revision: string | null };
 type CatalogUpdate = {
   available: { compatibility: 'compatible' | 'requires-platform-update'; minimumMosVersion: string; packageDigest: string; packageVersion: string; privacy: { status: string }; sourceRevision: string } | null;
   installed: { packageDigest: string; packageVersion: string } | null;
@@ -267,16 +267,15 @@ function AppSetupPanel({ disabled, fields, onChange, values }: {
   values: Record<string, string>;
 }) {
   return <div className="suite-app-setup-panel">
-    {fields.map((field) => <label key={field.id}>
-      <span>{field.label}{field.required ? ' *' : ''}</span>
-      <input
+    {fields.map((field) => <TextInput
         autoComplete={field.secret ? 'new-password' : 'off'}
         disabled={disabled}
+        key={field.id}
+        label={`${field.label}${field.required ? ' *' : ''}`}
         onChange={(event) => onChange(field.id, event.currentTarget.value)}
         type={field.secret ? 'password' : field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : 'text'}
         value={values[field.id] || ''}
-      />
-    </label>)}
+      />)}
   </div>;
 }
 
@@ -825,7 +824,8 @@ function AppDetail({
         </section>
 
         {app.catalog.privacy.summary || app.catalog.privacy.notes.length ? <section className="suite-app-detail-section suite-app-privacy">
-          <h3>Privacy Notes</h3>
+          <h3>Package-provided privacy notes</h3>
+          <p className="suite-app-help">These claims come from the package metadata and have not been independently verified by MOS. See the Privacy Posture above for the evidence-backed MOS assessment.</p>
           {app.catalog.privacy.summary ? <p>{app.catalog.privacy.summary}</p> : null}
           {app.catalog.privacy.notes.length ? <ul>{app.catalog.privacy.notes.map((note) => <li key={note}>{note}</li>)}</ul> : null}
         </section> : null}
@@ -1373,6 +1373,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
 
     {error ? <Notice title="Apps unavailable" variant="error"><p>{error}</p></Notice> : null}
     {catalogStatus?.freshness === 'stale' || catalogStatus?.error ? <Notice title="Using the saved app catalog" variant="warning"><p>MOS could not confirm the latest official catalog. Installed apps and the last verified catalog remain available.</p></Notice> : null}
+    {catalogStatus && (catalogStatus.advisories?.freshness !== 'fresh' || catalogStatus.advisories?.error) ? <Notice title="Privacy advisories may be out of date" variant="warning"><p>MOS could not confirm the latest signed privacy advisories. Treat a missing advisory as unknown until refresh succeeds.</p></Notice> : null}
     {loading && !externalUrl ? <p className="suite-meta">Loading app catalog...</p> : null}
 
     {externalUrl ? <div className="suite-app-catalog-sections">

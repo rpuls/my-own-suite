@@ -974,10 +974,12 @@ function createV2Server({
 
       homepage.proxyHttp(request, response);
     } catch (error) {
-      jsonResponse(response, errorStatus(error), {
+      const statusCode = errorStatus(error);
+      const internal = statusCode >= 500 && !Number.isInteger(error.statusCode);
+      jsonResponse(response, statusCode, {
         code: error.code || 'INTERNAL_ERROR',
-        ...(Array.isArray(error.details) && error.details.length ? { details: error.details } : {}),
-        error: error.message || 'Internal server error.',
+        ...(!internal && Array.isArray(error.details) && error.details.length ? { details: error.details } : {}),
+        error: internal ? 'Internal server error.' : error.message || 'Internal server error.',
       });
     }
   });

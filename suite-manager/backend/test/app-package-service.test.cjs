@@ -869,6 +869,7 @@ test('a crash between snapshot promotion and the durable commit is committed by 
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
   await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
   const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
@@ -959,6 +960,7 @@ test('the recovery action restores the recorded runtime after a failed rollback'
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
   await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
   const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
@@ -1063,12 +1065,12 @@ test('new installs snapshot package contents before persisting configuration and
   assert.match(installed.packageDigest, /^sha256:[a-f0-9]{64}$/u);
   assert.equal(installed.sourceKind, 'official-git');
   assert.equal(installed.sourcePath, 'apps/stirling-pdf');
-  assert.equal(installed.sourceRevision, installed.packageDigest);
+  assert.equal(installed.sourceRevision, 'ef5027cc1528b516edbd03c6a7e65349adbcc4b4');
   assert.equal(installed.sourceTrust, 'mos-reviewed');
   assert.equal(installed.snapshotPath, path.join(v2AppsDir, 'stirling-pdf'));
   assert.equal(installed.snapshotState, 'installed');
-  assert.equal(installed.privacyStatus, 'review-required');
-  assert.equal(installed.privacyPosture, 'review-required');
+  assert.equal(installed.privacyStatus, 'reviewed');
+  assert.equal(installed.privacyPosture, 'privacy-configured');
 
   store.close();
 });
@@ -1206,7 +1208,7 @@ test('listPackages surfaces current advisories for the installed version separat
   const installed = service.listPackages().find((item) => item.id === 'stirling-pdf');
   assert.deepEqual(installed.advisories.map((entry) => entry.id), ['MOS-PRIV-1']);
   // The advisory does not mutate the stored installed review state.
-  assert.equal(installed.privacy.status, 'review-required');
+  assert.equal(installed.privacy.status, 'reviewed');
 
   store.close();
 });
@@ -1218,6 +1220,7 @@ test('confirmed app updates are re-compared and durably staged against exact ide
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
   await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
   const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'b'.repeat(40), trust: 'mos-reviewed' };
@@ -1316,6 +1319,7 @@ test('contract v6 app updates activate, promote, and commit candidate identity a
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
   await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, update: { ...manifest.update, rollback: 'safe' }, version: '0.2.0' }, null, 2)}\n`);
+  await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
   const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'b'.repeat(40), trust: 'mos-reviewed' };
@@ -1357,6 +1361,7 @@ test('app updates replace an applied Homepage entry and retain its applied proje
     name: 'Updated PDF',
     version: '0.2.0',
   }, null, 2)}\n`);
+  await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
   const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };

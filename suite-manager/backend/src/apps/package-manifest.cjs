@@ -832,7 +832,6 @@ function publicPackageSummary(manifest, validationErrors = []) {
     },
     version: manifest.version || '',
     minimumMosVersion: manifest.minimumMosVersion || '',
-    minimumMosVersion: manifest.minimumMosVersion || '',
   };
 }
 

@@ -103,7 +103,7 @@ async function restore(source, target) {
 // names it derives and the names it reads back from disk go through here, so a
 // tampered sidecar or an odd manifest version cannot widen a reclamation into
 // some unrelated image on the host.
-const RECLAIMABLE_IMAGE_PATTERN = /^mos-v2-app-[a-z0-9][a-z0-9-]{0,80}:[0-9A-Za-z.+-]{1,40}-pkg-[a-f0-9]{12}-src-[a-f0-9]{12}$/u;
+const RECLAIMABLE_IMAGE_PATTERN = /^mos-v2-app-[a-z0-9][a-z0-9-]{0,130}:[0-9A-Za-z.-]{1,48}-pkg-[a-f0-9]{12}-src-[a-f0-9]{12}$/u;
 
 // Name every image built for a package snapshot. The manifest must be one this
 // caller has already verified against its digest, because it is what decides
@@ -258,8 +258,11 @@ class SystemAppAdapter {
   // cannot occupy an official package's identity even if Suite Manager asked it
   // to, because every runtime name derives from this package id.
   async snapshotExternalAppPackage({ candidateDigest, candidatePath, instanceId, packageId }) {
-    const candidateRoot = path.resolve(this.appCandidateRoot);
-    const source = path.resolve(candidatePath);
+    // Lexical confinement alone can be bypassed by a symlink placed beneath
+    // the Suite-Manager-writable candidate root. Compare canonical filesystem
+    // paths before the privileged agent reads any package-controlled file.
+    const candidateRoot = await fsp.realpath(path.resolve(this.appCandidateRoot));
+    const source = await fsp.realpath(path.resolve(candidatePath));
     const relativeSource = path.relative(candidateRoot, source);
     const instanceRoot = path.join(this.appPackageRoot, instanceId);
     const installed = path.join(instanceRoot, 'installed');
@@ -404,9 +407,12 @@ class SystemAppAdapter {
       routesChanged = currentRoutes !== nextRoutes;
       if (routesChanged) {
         const routeCandidate = `${this.routesPath}.candidate-${process.pid}`;
-        await fsp.writeFile(routeCandidate, nextRoutes);
-        await this.execute(this.caddyBinary, ['validate', '--adapter', 'caddyfile', '--config', routeCandidate], { timeoutMs: 20000 });
-        await fsp.rm(routeCandidate, { force: true }).catch(() => {});
+        try {
+          await fsp.writeFile(routeCandidate, nextRoutes);
+          await this.execute(this.caddyBinary, ['validate', '--adapter', 'caddyfile', '--config', routeCandidate], { timeoutMs: 20000 });
+        } finally {
+          await fsp.rm(routeCandidate, { force: true }).catch(() => {});
+        }
         await snapshot(this.routesPath, routeSnapshot);
         await atomicWrite(this.routesPath, nextRoutes);
         await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 20000 });
@@ -662,9 +668,12 @@ class SystemAppAdapter {
       if (routesChanged) {
         stage = 'caddy-validation';
         const candidate = `${this.routesPath}.candidate-${process.pid}`;
-        await fsp.writeFile(candidate, nextRoutes);
-        await this.execute(this.caddyBinary, ['validate', '--adapter', 'caddyfile', '--config', candidate], { timeoutMs: 20000 });
-        await fsp.rm(candidate, { force: true }).catch(() => {});
+        try {
+          await fsp.writeFile(candidate, nextRoutes);
+          await this.execute(this.caddyBinary, ['validate', '--adapter', 'caddyfile', '--config', candidate], { timeoutMs: 20000 });
+        } finally {
+          await fsp.rm(candidate, { force: true }).catch(() => {});
+        }
         await snapshot(this.routesPath, routeSnapshot);
 
         stage = 'writing';
@@ -791,9 +800,12 @@ class SystemAppAdapter {
       routesChanged = currentRoutes !== nextRoutes;
       if (routesChanged) {
         const candidate = `${this.routesPath}.candidate-${process.pid}`;
-        await fsp.writeFile(candidate, nextRoutes);
-        await this.execute(this.caddyBinary, ['validate', '--adapter', 'caddyfile', '--config', candidate], { timeoutMs: 20000 });
-        await fsp.rm(candidate, { force: true }).catch(() => {});
+        try {
+          await fsp.writeFile(candidate, nextRoutes);
+          await this.execute(this.caddyBinary, ['validate', '--adapter', 'caddyfile', '--config', candidate], { timeoutMs: 20000 });
+        } finally {
+          await fsp.rm(candidate, { force: true }).catch(() => {});
+        }
         await snapshot(this.routesPath, routeSnapshot);
         await atomicWrite(this.routesPath, nextRoutes);
         await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 20000 });

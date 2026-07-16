@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "appId": "stirling-pdf",
+  "reviewedAt": "2026-07-16T00:00:00.000Z",
+  "expiresAt": "2027-01-16T00:00:00.000Z",
+  "scope": {
+    "packageVersion": "0.1.1",
+    "packageDigest": "sha256:56f3cef37b286aa09097f419437a71434ae6e060250511cdb3d0526d55c05235",
+    "source": {
+      "kind": "official-git",
+      "repository": "https://github.com/rpuls/my-own-suite",
+      "path": "apps/stirling-pdf",
+      "revision": "ef5027cc1528b516edbd03c6a7e65349adbcc4b4",
+      "trust": "mos-reviewed"
+    },
+    "components": [{
+      "name": "Stirling PDF",
+      "version": "2.10.0",
+      "artifact": "docker.io/stirlingtools/stirling-pdf",
+      "digest": "sha256:4d9abedcd57a9aa4d36ffb8fc9a4801aea2d295bf6ad349e23dd4b45661a5e42"
+    }],
+    "clientsExcluded": ["Stirling PDF desktop applications", "Stirling Cloud", "Third-party API clients"]
+  },
+  "posture": "privacy-configured",
+  "dimensions": {
+    "telemetry": "disabled-by-mos",
+    "externalServices": "optional",
+    "accountDependency": "local-only",
+    "dataProcessing": "optional-external",
+    "policyExposure": "upstream-services-involved",
+    "confidence": "documented"
+  },
+  "evidence": [
+    {
+      "type": "configured",
+      "claim": "MOS sets SYSTEM_ENABLEANALYTICS=false for the packaged service.",
+      "source": "apps/stirling-pdf/manifest.json"
+    },
+    {
+      "type": "documented",
+      "claim": "Upstream documents SYSTEM_ENABLEANALYTICS=false as the system-wide control that disables PostHog and Scarf analytics.",
+      "source": "Stirling PDF Analytics and Telemetry documentation",
+      "url": "https://docs.stirlingpdf.com/analytics-telemetry/",
+      "retrievedAt": "2026-07-16"
+    },
+    {
+      "type": "documented",
+      "claim": "The self-hosted server processes ordinary PDF operations locally without requiring an upstream account.",
+      "source": "Stirling PDF documentation",
+      "url": "https://docs.stirlingpdf.com/",
+      "retrievedAt": "2026-07-16"
+    },
+    {
+      "type": "documented",
+      "claim": "Some user-invoked features can contact external services; trusted timestamping sends a document hash to a time-stamp authority.",
+      "source": "Stirling PDF Security feature documentation",
+      "url": "https://docs.stirlingpdf.com/Functionality/Security/",
+      "retrievedAt": "2026-07-16"
+    }
+  ],
+  "telemetryControls": [{
+    "type": "configured",
+    "claim": "Known optional analytics are disabled through the upstream-supported SYSTEM_ENABLEANALYTICS setting.",
+    "source": "apps/stirling-pdf/manifest.json",
+    "url": "https://docs.stirlingpdf.com/analytics-telemetry/",
+    "retrievedAt": "2026-07-16"
+  }],
+  "policies": [{
+    "kind": "license",
+    "url": "https://github.com/Stirling-Tools/Stirling-PDF/blob/v2.10.0/LICENSE",
+    "retrievedAt": "2026-07-16",
+    "publisher": "Stirling Tools"
+  }],
+  "provenance": {
+    "method": "ai-assisted",
+    "provider": "OpenAI",
+    "model": "GPT-5",
+    "modelIdentifierSource": "runtime-reported",
+    "skill": "assess-app-privacy",
+    "skillRevision": "7b1c74a74a2bcdee2c2015c7b8e6414c5aedecbb",
+    "repositoryCommit": "ef5027cc1528b516edbd03c6a7e65349adbcc4b4",
+    "humanReviewed": false
+  },
+  "openQuestions": [
+    "No runtime network capture was performed for the pinned image; the assessment relies on package configuration and upstream documentation.",
+    "Optional tools may contact services beyond the documented timestamp-authority example when explicitly invoked."
+  ]
+}
