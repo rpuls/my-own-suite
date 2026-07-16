@@ -1429,7 +1429,7 @@ test('startup classifies every interrupted update boundary into an actionable re
       instanceId: instance.id,
       operationId,
     });
-    if (stage !== 'candidate-verified') store.advanceAppUpdate({ at: '2026-07-14T00:00:01.000Z', instanceId: instance.id, operationId, stage });
+    if (stage !== 'candidate-verified') store.advanceAppUpdate({ instanceId: instance.id, operationId, stage });
 
     const [recovery] = service.recoverInterruptedUpdates();
     assert.equal(recovery.recoveryState, expectedState);

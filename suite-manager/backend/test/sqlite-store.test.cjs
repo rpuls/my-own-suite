@@ -374,7 +374,7 @@ test('app update operations persist digest-bound stages and reject overlap', asy
   });
   store.beginAppUpdate({ at, candidateDigest: `sha256:${'b'.repeat(64)}`, expectedInstalledDigest: `sha256:${'a'.repeat(64)}`, instanceId: 'update-instance', operationId: 'update-one' });
   assert.throws(() => store.beginAppUpdate({ at, candidateDigest: `sha256:${'c'.repeat(64)}`, expectedInstalledDigest: `sha256:${'a'.repeat(64)}`, instanceId: 'update-instance', operationId: 'update-two' }), /APP_UPDATE_ALREADY_RUNNING/u);
-  assert.equal(store.advanceAppUpdate({ at, instanceId: 'update-instance', operationId: 'update-one', stage: 'candidate-staged' }).stage, 'candidate-staged');
+  assert.equal(store.advanceAppUpdate({ instanceId: 'update-instance', operationId: 'update-one', stage: 'candidate-staged' }).stage, 'candidate-staged');
   store.close();
 
   const reopened = new SuiteManagerStore(store.stateDir);

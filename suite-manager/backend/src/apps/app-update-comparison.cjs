@@ -6,18 +6,13 @@ const {
   compareSemver,
   describeRequestedPermissions,
   diffRequestedPermissions,
+  stableJson,
   validateArchitectureCompatibility,
   validatePlatformCompatibility,
   validatePrivacyBinding,
 } = require('./package-contracts.cjs');
 
-function stable(value) {
-  if (Array.isArray(value)) return value.map(stable);
-  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
-  return value;
-}
-
-function equal(left, right) { return JSON.stringify(stable(left)) === JSON.stringify(stable(right)); }
+function equal(left, right) { return stableJson(left) === stableJson(right); }
 function fields(manifest) { return new Map((manifest.setup?.fields || []).map((field) => [field.id, field])); }
 function volumes(manifest) { return new Set(Object.values(manifest.resources?.services || {}).flatMap((service) => service.volumes || [])); }
 

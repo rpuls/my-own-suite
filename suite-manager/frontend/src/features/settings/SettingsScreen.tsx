@@ -17,6 +17,13 @@ type HttpsStatus = {
   tokenConfigured: boolean;
 };
 
+type SecurityEventSummary = {
+  byType: Array<{ eventCount: number; eventType: string; lastSeenAt: string | null; subjectCount: number }>;
+  eventCount: number;
+  lastSeenAt: string | null;
+  since: string;
+};
+
 type AppReconciliationResult = {
   errorCode?: string;
   homepage?: { errorCode?: string; status?: string };
@@ -70,6 +77,30 @@ function AppReconciliationNotice({ reconciliation }: { reconciliation?: AppRecon
   </Notice>;
 }
 
+const securityEventLabels: Record<string, { description: string; label: string }> = {
+  'app-catalog-refresh-failed': { description: 'MOS could not refresh the verified app catalog.', label: 'Catalog refresh failures' },
+  'app-catalog-signature-invalid': { description: 'Catalog data was refused because its publisher signature was missing or invalid.', label: 'Invalid catalog signatures' },
+  'app-source-candidate-rejected': { description: 'An external package candidate failed MOS safety or validation checks.', label: 'Rejected external packages' },
+  'app-source-download-throttled': { description: 'An external package source exceeded its bounded download rate.', label: 'Throttled package sources' },
+  'login-throttled': { description: 'Repeated failed sign-in attempts were temporarily slowed down.', label: 'Throttled sign-in attempts' },
+};
+
+function SecurityActivity({ error, summary }: { error: string; summary: SecurityEventSummary | null }) {
+  return <div className="mos-panel suite-card suite-settings-panel">
+    <div><h2 className="mos-card-title">Recent security activity</h2><p className="suite-meta">Bounded security signals recorded during the last 30 days. Counts identify patterns without showing IP addresses, repository URLs, or internal subject identifiers.</p></div>
+    {error ? <Notice title="Security activity unavailable" variant="warning"><p>{error}</p></Notice> : null}
+    {!error && !summary ? <p className="suite-meta">Loading security activity...</p> : null}
+    {summary && summary.eventCount === 0 ? <Notice title="No recorded security events" variant="success"><p>MOS has not recorded any of the monitored events during this period.</p></Notice> : null}
+    {summary && summary.eventCount > 0 ? <Notice title={`${summary.eventCount} security event${summary.eventCount === 1 ? '' : 's'} recorded`} variant="warning">
+      <p>Review repeated or recent entries. These signals mean MOS slowed or refused an action; they do not by themselves prove that the server was compromised.</p>
+      <dl>{summary.byType.map((event) => {
+        const copy = securityEventLabels[event.eventType] || { description: 'MOS recorded a security-relevant refusal.', label: event.eventType };
+        return <div key={event.eventType}><dt>{copy.label}</dt><dd>{event.eventCount} event{event.eventCount === 1 ? '' : 's'} across {event.subjectCount} subject{event.subjectCount === 1 ? '' : 's'}; last seen {event.lastSeenAt ? new Date(event.lastSeenAt).toLocaleString() : 'unknown'}. {copy.description}</dd></div>;
+      })}</dl>
+    </Notice> : null}
+  </div>;
+}
+
 export function SettingsScreen() {
   const [status, setStatus] = useState<HttpsStatus | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -79,6 +110,8 @@ export function SettingsScreen() {
   const [formError, setFormError] = useState('');
   const [applying, setApplying] = useState(false);
   const [result, setResult] = useState<ApplyResult | null>(null);
+  const [securitySummary, setSecuritySummary] = useState<SecurityEventSummary | null>(null);
+  const [securityError, setSecurityError] = useState('');
 
   async function load(): Promise<HttpsStatus | null> {
     try {
@@ -103,7 +136,13 @@ export function SettingsScreen() {
     return null;
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+    void fetch('/suite-manager/api/settings/security-events')
+      .then((response) => jsonResponse<SecurityEventSummary>(response, 'Unable to load recent security activity.'))
+      .then((summary) => { setSecuritySummary(summary); setSecurityError(''); })
+      .catch((error) => setSecurityError(error instanceof Error ? error.message : 'Unable to load recent security activity.'));
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -183,5 +222,6 @@ export function SettingsScreen() {
       {!result && status.lastApply.status === 'applied' && activeHomeHost ? <Notice title="HTTPS is configured" variant="success"><p>Active Home URL: <a href={status.activeHomeUrl}>{status.activeHomeUrl}</a>.</p><LocalDnsInstructions homeHost={activeHomeHost} serverAddress={dnsAddress} /></Notice> : null}
       <AdvancedDetails status={status} />
     </div> : <p className="suite-meta">Loading HTTPS settings...</p>}
+    <SecurityActivity error={securityError} summary={securitySummary} />
   </section>;
 }

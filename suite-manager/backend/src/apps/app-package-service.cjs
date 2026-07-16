@@ -11,6 +11,7 @@ const {
   SUPPORTED_ARCHITECTURES,
   digestAppPackage,
   parseNamespacedPackageId,
+  stableJson,
   validateArchitectureCompatibility,
   validatePrivacyBinding,
 } = require('./package-contracts.cjs');
@@ -37,14 +38,6 @@ class AppPackageServiceError extends Error {
 function hostArchitectureOf(agentStatus) {
   const reported = agentStatus?.hostArchitecture;
   return SUPPORTED_ARCHITECTURES.includes(reported) ? reported : null;
-}
-
-function stableJson(value) {
-  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function digestFor(value) {
@@ -1953,7 +1946,7 @@ class AppPackageService {
         instanceId: instance.id,
         packageId,
       });
-      this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'candidate-staged' });
+      this.store.advanceAppUpdate({ instanceId: instance.id, operationId, stage: 'candidate-staged' });
       lastDurableStage = 'candidate-staged';
       const built = await this.agent.buildPackageUpdate({
         appHost: requestContext.appHost,
@@ -1968,7 +1961,7 @@ class AppPackageService {
         publicUrl: requestContext.publicUrl,
         sourceRevision: candidate.source.revision,
       });
-      let operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'candidate-built' });
+      let operation = this.store.advanceAppUpdate({ instanceId: instance.id, operationId, stage: 'candidate-built' });
       lastDurableStage = 'candidate-built';
 
       // The runtime that has to come back if this update fails is the installed
@@ -1998,7 +1991,7 @@ class AppPackageService {
       });
       const activated = await this.agent.activatePackageUpdate({ candidate: candidateRuntime, installed: installedRuntime });
       activatedRuntimes = { candidate: candidateRuntime, installed: installedRuntime };
-      operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'candidate-healthy' });
+      operation = this.store.advanceAppUpdate({ instanceId: instance.id, operationId, stage: 'candidate-healthy' });
       lastDurableStage = 'candidate-healthy';
 
       let homepage = { skipped: true };
@@ -2022,7 +2015,7 @@ class AppPackageService {
           expectedRevision: current.revision,
           requestId: instance.id,
         }, false);
-        operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'homepage-reconciled' });
+        operation = this.store.advanceAppUpdate({ instanceId: instance.id, operationId, stage: 'homepage-reconciled' });
         lastDurableStage = 'homepage-reconciled';
       }
       const rollbackSafe = candidate.manifest.update?.rollback === 'safe';
@@ -2043,7 +2036,7 @@ class AppPackageService {
         rollbackSafe,
       });
       snapshotPromoted = true;
-      operation = this.store.advanceAppUpdate({ at: this.now().toISOString(), instanceId: instance.id, operationId, stage: 'snapshot-promoted' });
+      operation = this.store.advanceAppUpdate({ instanceId: instance.id, operationId, stage: 'snapshot-promoted' });
       lastDurableStage = 'snapshot-promoted';
       operation = this.store.completeAppUpdate({
         at: this.now().toISOString(),

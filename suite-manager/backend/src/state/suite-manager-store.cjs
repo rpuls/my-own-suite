@@ -1023,7 +1023,7 @@ class SuiteManagerStore {
     });
   }
 
-  advanceAppUpdate({ at, instanceId, operationId, stage }) {
+  advanceAppUpdate({ instanceId, operationId, stage }) {
     const result = this.database.prepare(`
       UPDATE app_operations SET stage = ?
       WHERE id = ? AND instance_id = ? AND kind = 'update' AND status = 'running'

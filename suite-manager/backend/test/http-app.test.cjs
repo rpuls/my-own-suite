@@ -427,6 +427,31 @@ test('App package install API creates a logical instance with dry-run projection
   }, { homeHost: 'home.test' });
 });
 
+test('Security activity API is owner-only and returns a bounded summary without subjects', async () => {
+  const stateDir = await tempStateDir();
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/security-events', { headers: { Host: 'home.test' } });
+    assert.equal(denied.status, 401);
+
+    const cookie = await createOwner(baseUrl);
+    const store = new SuiteManagerStore(stateDir);
+    const at = new Date().toISOString();
+    store.recordSecurityEvent({ at, eventType: 'login-throttled', retryAfterSeconds: 2, subject: 'private-client-fingerprint' });
+    store.recordSecurityEvent({ at, eventType: 'app-source-candidate-rejected', subject: 'private-source-id' });
+    store.close();
+
+    const response = await hostRequest(baseUrl, '/suite-manager/api/settings/security-events', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    const summary = response.json();
+    assert.equal(response.status, 200);
+    assert.equal(summary.eventCount, 2);
+    assert.equal(summary.byType.length, 2);
+    assert.match(summary.since, /^\d{4}-\d{2}-\d{2}T/u);
+    assert.doesNotMatch(JSON.stringify(summary), /private-client-fingerprint|private-source-id/u);
+  }, { homeHost: 'home.test', stateDir });
+});
+
 test('Backup inventory API requires auth and reports V2 protected state', async () => {
   const stateDir = await tempStateDir();
   await withServer(async (baseUrl) => {

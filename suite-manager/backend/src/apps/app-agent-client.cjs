@@ -1,7 +1,10 @@
 const http = require('node:http');
 
 const APP_AGENT_TIMEOUT_MS = 180_000;
-const APP_AGENT_UPDATE_BUILD_TIMEOUT_MS = 30 * 60_000;
+// The agent can build up to eight services sequentially, with five minutes
+// allowed for each build. Keep the caller alive for that full worst case plus
+// a small allowance for request and agent bookkeeping.
+const APP_AGENT_UPDATE_BUILD_TIMEOUT_MS = 45 * 60_000;
 
 class AppAgentClient {
   constructor({ socketPath = process.env.MOS_V2_APP_AGENT_SOCKET || '/run/mos-v2-app-agent/agent.sock', timeoutMs = APP_AGENT_TIMEOUT_MS } = {}) {

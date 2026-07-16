@@ -488,6 +488,16 @@ function createV2Server({
         return;
       }
 
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/security-events`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review security activity.' });
+          return;
+        }
+        const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1_000).toISOString();
+        jsonResponse(response, 200, { since, ...setup.store.getSecurityEventSummary({ since }) });
+        return;
+      }
+
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/https`) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage HTTPS settings.' });

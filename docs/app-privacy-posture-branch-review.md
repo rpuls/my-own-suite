@@ -69,15 +69,15 @@ The landing page (`site/src/components/ValuePromise.astro`, `Hero.astro`, `Safet
 - [x] External candidate roots and paths are confined using canonical `realpath` values, preventing symlink escape into root-agent reads.
 - [x] Unexpected 500 responses are generic; only classified errors retain controlled client-facing messages.
 - [x] Caddy's default `reverse_proxy` behavior ignores incoming `X-Forwarded-*` values unless trusted proxies are configured, so the loopback hop supplies the client value used here; this deployment does not enable trusted inbound proxy ranges.
-- [ ] `getSecurityEventSummary` has no route/UI (disclosed in the plan; three sources now record events nobody can view).
-- [ ] Client build timeout (30 min) can undercut the agent's worst case (5 min x 8 services). *(The image-name length and SemVer build-metadata tag issues were fixed 2026-07-16.)*
-- [ ] One unhealthy app snapshot (`needs-package-recovery`) blocks whole-suite backup entirely (`backup/agent.cjs:198-203`) — fail-closed is defensible but deserves a deliberate decision + changelog note.
-- [ ] Remaining cleanup: `advanceAppUpdate` accepts `at` and never persists it; two stable-JSON canonicalizers exist in one slice; the external detail hardcodes "Source: GitHub" rather than deriving it from the source record; committed `dist/index.html` references ignored hashed bundles (pre-existing convention, still churn). *(Caddy candidate cleanup, duplicate `minimumMosVersion`, shared `TextInput`, and neutral unknown-dimension fallback were fixed or already correct 2026-07-16.)*
+- [x] *(fixed 2026-07-16: owner-only Settings API and Recent security activity panel show a plain-language 30-day summary by event type without exposing stored subject identifiers)* `getSecurityEventSummary` had no route/UI, so recorded events were not owner-visible.
+- [x] *(fixed 2026-07-16: the update-build client now allows 45 minutes, covering eight sequential five-minute service builds plus request/agent overhead)* Client build timeout could undercut the agent's worst case (5 min x 8 services). *(The image-name length and SemVer build-metadata tag issues were also fixed.)*
+- [x] *(decided 2026-07-16 and documented in the changelog: keep this fail-closed)* One unhealthy app snapshot (`needs-package-recovery`) blocks whole-suite backup. A partial bundle would violate the whole-suite restore promise because it could not reproduce that installed app's package/runtime identity; the owner must repair or remove the unhealthy app before creating a new bundle.
+- [x] *(fixed 2026-07-16: one shared stable-JSON canonicalizer now serves package comparison and persistence/digests; the tracked generated `dist/index.html` was removed so the existing ignored-dist convention is consistent)* Remaining cleanup included duplicate stable-JSON canonicalizers and a committed generated index that referenced ignored hashed bundles. *(Caddy candidate cleanup, duplicate `minimumMosVersion`, shared `TextInput`, source-derived external provider labels, and neutral unknown-dimension fallback were also fixed or already correct.)*
 - Note (by design, keep in mind): the `confirmationToken` is a derivable digest checksum, not a server-issued capability — it enforces identity, not "the owner saw the dialog".
 
 ## 7. Docs/process before merge
 
-- [ ] **CHANGELOG.md violates the repo's own rules**: one ~2,500-word bullet; the login-hardening entry is spliced mid-sentence into an unrelated bullet ("…(`npm run apps:privacy:monitor`). with bounded, expiring progressive backoff…"). Rewrite release-shaped: Added / Changed / Security / Compatibility / Known limitations.
+- [x] *(fixed 2026-07-16: replaced the app-package implementation diary with concise Added / Changed / Security / Compatibility / Known limitations notes, including deliberate backup and pre-release limitations)* **CHANGELOG.md violated the repo's own rules** with multi-thousand-word bullets and a spliced login-hardening sentence.
 - [x] *(fixed 2026-07-16: the README now documents snapshot/candidate roots, canonical external paths, transactional update/recovery behavior, image/snapshot reclamation, architecture reporting, and the removal of manual reapply semantics)* **`system-agents/README.md` contradicted the branch in both directions.**
 - [ ] Remove `docs/app-package-source-refactor-plan.md` (and this file) before merge, per their own headers; correct the plan-doc boxes listed in §8 first so the record is truthful.
 - [x] The constrained-capability denylist now points maintainers at the projection allowlist that must be reviewed whenever the manifest projection surface grows.
@@ -95,7 +95,5 @@ The remaining unchecked plan gates are intentionally human-run or pre-merge proc
 
 ## 9. Suggested next order
 
-1. Rewrite the oversized Unreleased changelog entry into release-shaped Added / Changed / Security / Compatibility / Known limitations notes.
-2. Resolve the small code/product decisions still open in section 6, prioritizing the build-timeout mismatch and whole-suite backup behavior over cosmetic cleanup.
-3. Run the human platform pass described above, using only Stirling PDF for the Privacy Posture workflow and one representative multi-service app for update/restore behavior.
-4. Have the key holder re-sign the catalog, run the final checks, reconcile the temporary plan boxes, and remove both temporary branch documents before merge.
+1. Run the human platform pass described above; the timeout and whole-suite backup decisions are now resolved.
+2. Have the key holder re-sign the catalog, run the final checks, reconcile the temporary plan boxes, and remove both temporary branch documents before merge.

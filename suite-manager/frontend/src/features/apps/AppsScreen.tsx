@@ -913,6 +913,10 @@ function repoUrlFromQuery(raw: string): string | null {
   } catch { return null; }
 }
 
+function externalSourceLabel(repository: string) {
+  try { return new URL(repository).hostname; } catch { return 'External repository'; }
+}
+
 function externalDescription(card: ExternalCard) {
   return card.summary || card.homepage?.description || card.catalog.description || 'External MOS app package.';
 }
@@ -1021,7 +1025,7 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
           <div><span>Trust</span><strong>Unverified</strong></div>
           <div><span>Review</span><strong>Not reviewed by MOS</strong></div>
           <div><span>Version</span><strong>{card.version || 'Unknown'}</strong></div>
-          <div><span>Source</span><strong>GitHub</strong></div>
+          <div><span>Source</span><strong>{externalSourceLabel(source.repository)}</strong></div>
         </section>
 
         <details className="suite-advanced suite-app-advanced">
