@@ -23,19 +23,18 @@ const {
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/u;
 const SOURCE_KINDS = new Set(['external-git', 'local']);
 const SOURCE_TRUST = new Set(['unverified']);
-const SOURCE_STATUSES = new Set(['active', 'unavailable', 'key-rotated', 'compromised', 'removed']);
+const SOURCE_STATUSES = new Set(['active', 'unavailable', 'compromised', 'removed']);
 // New installs are only allowed from an active source. Every other status keeps
 // existing installs manageable from their snapshots but blocks new installs.
-const INSTALL_BLOCKING_STATUSES = new Set(['unavailable', 'key-rotated', 'compromised', 'removed']);
+const INSTALL_BLOCKING_STATUSES = new Set(['unavailable', 'compromised', 'removed']);
 // A source that is confirmed compromised or removed is terminal; it must not be
-// silently re-activated. Unavailability and key rotation are recoverable once
-// the owner re-confirms the source.
+// silently re-activated. Unavailability is recoverable once the owner
+// re-confirms the source.
 const STATUS_TRANSITIONS = Object.freeze({
-  active: new Set(['unavailable', 'key-rotated', 'compromised', 'removed']),
+  active: new Set(['unavailable', 'compromised', 'removed']),
   compromised: new Set(['removed']),
-  'key-rotated': new Set(['active', 'compromised', 'removed']),
   removed: new Set([]),
-  unavailable: new Set(['active', 'key-rotated', 'compromised', 'removed']),
+  unavailable: new Set(['active', 'compromised', 'removed']),
 });
 
 class ExternalSourceError extends Error {

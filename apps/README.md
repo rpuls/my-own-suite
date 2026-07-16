@@ -14,7 +14,7 @@ Every installed package records its source repository, path, immutable source re
 
 ## MOS Privacy Posture
 
-Each reviewed candidate package owns a `privacy-review.json` validated against `schemas/app-privacy-assessment.schema.json` and a compact manifest summary. The assessment binds to the package version, digest, immutable source revision, component versions, and artifact digests. It travels into the installed package snapshot, so an owner sees the review for the package actually running rather than the latest repository wording. The assessment records provenance, including the AI model only when runtime-reported and whether a human reviewed it. It is not a legal audit or guarantee.
+Each reviewed candidate package owns a `privacy-review.json` and a compact manifest summary. Reviews are validated by `npm run apps:privacy:check` against the contracts in `suite-manager/backend/src/apps/package-contracts.cjs`, which enforce the document's shape, its binding to the package it ships with, and the derivation of its posture. The assessment binds to the package version, digest, immutable source revision, component versions, and artifact digests. It travels into the installed package snapshot, so an owner sees the review for the package actually running rather than the latest repository wording. The assessment records provenance, including the AI model only when runtime-reported and whether a human reviewed it. It is not a legal audit or guarantee.
 
 Postures are derived from their dimensions:
 

@@ -253,6 +253,17 @@ function appPublicUrlResolverForBase(baseHost, scheme = 'http') {
   };
 }
 
+// The same resolver for work that runs without a request to derive a host from
+// — startup recovery. The configured home host stands in for the Host header,
+// and the scheme comes from the stored HTTPS settings exactly as it does for a
+// real request, so a reconcile at boot cannot rewrite a public URL back to http
+// on an HTTPS install.
+function appPublicUrlResolverAtBoot(homeHost, httpsSettings = null) {
+  const normalizedHome = String(homeHost || '').toLowerCase().replace(/:\d+$/u, '');
+  const baseHost = normalizedHome.startsWith('home.') ? normalizedHome.slice(5) : normalizedHome;
+  return appPublicUrlResolverForBase(baseHost, httpsSettings?.publicUrlSchemeForHost(normalizedHome, 'http') || 'http');
+}
+
 function isSignedIn(setup, sessionToken) {
   return setup.status(sessionToken).status === 'signed-in';
 }
@@ -1015,7 +1026,9 @@ function createV2Server({
 
   server.on('close', () => { catalogService.stop(); setup.close(); });
   server.migrateAppPackages = () => appPackages.migrateLegacyPackages();
-  server.recoverAppPackageUpdates = () => appPackages.recoverInterruptedUpdates();
+  server.recoverAppPackageUpdates = () => appPackages.recoverInterruptedUpdates({
+    publicUrlFor: appPublicUrlResolverAtBoot(homeHost, httpsSettings),
+  });
   // Candidate downloads from a Suite Manager that was killed mid-operation are
   // owned by nobody once it restarts. Downloads sweep before they run, so this is
   // about reclaiming the disk now rather than at whatever point someone next

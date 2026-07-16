@@ -16,7 +16,7 @@ const server = createV2Server({ frontendDistDir, homeHost, stateDir });
 async function start() {
   const migrations = await server.migrateAppPackages();
   for (const migration of migrations) console.log(`[mos-v2-suite-manager] App package migration ${migration.packageId}: ${migration.status}`);
-  const recoveries = server.recoverAppPackageUpdates();
+  const recoveries = await server.recoverAppPackageUpdates();
   for (const recovery of recoveries) console.log(`[mos-v2-suite-manager] App update recovery ${recovery.instanceId}: ${recovery.recoveryState}`);
   const sweptCandidates = server.sweepAppCandidates();
   if (sweptCandidates.length) console.log(`[mos-v2-suite-manager] Reclaimed ${sweptCandidates.length} abandoned app package candidate download(s).`);

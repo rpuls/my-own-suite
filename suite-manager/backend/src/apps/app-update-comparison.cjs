@@ -24,7 +24,17 @@ function privacyFor(packageDir, manifest, packageDigest, source) {
   if (source?.trust !== 'mos-reviewed') return unreviewed;
   const reviewPath = path.join(packageDir, 'privacy-review.json');
   if (!fs.existsSync(reviewPath)) return unreviewed;
-  const review = JSON.parse(fs.readFileSync(reviewPath, 'utf8'));
+  // A comparison is a read-only preview of an update, so an unreadable review
+  // degrades to the same `invalid` result a review that fails its binding
+  // produces. Parsing raw here would instead abort the whole preview with an
+  // unclassified error, and this is the first thing that reads either package's
+  // review — so nothing downstream would ever get to classify it.
+  let review;
+  try {
+    review = JSON.parse(fs.readFileSync(reviewPath, 'utf8'));
+  } catch {
+    return { dimensions: null, errors: ['privacy review is not valid JSON.'], posture: 'review-required', reviewedAt: null, status: 'invalid' };
+  }
   const errors = validatePrivacyBinding(review, { manifest, packageDigest, source });
   return errors.length
     ? { dimensions: null, errors, posture: 'review-required', reviewedAt: null, status: 'invalid' }

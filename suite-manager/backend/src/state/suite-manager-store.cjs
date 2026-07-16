@@ -195,6 +195,14 @@ const MIGRATIONS = [
     `,
     version: 7,
   },
+  // The CHECK constraints below (and in `external-app-sources`) admit values the
+  // code no longer produces: source kind `local`, trust `publisher-signed`,
+  // privacy_status `invalidated`, source status `key-rotated`. They are
+  // intentionally left permissive. A CHECK only constrains what is written, the
+  // validators in package-contracts/external-source-registry are what actually
+  // decide that, and none of them can emit these values — so a permissive CHECK
+  // admits nothing. Tightening one means rebuilding the table in a new
+  // migration, which is real risk bought for no enforcement.
   {
     name: 'installed-app-package-identity',
     sql: `
@@ -1046,35 +1054,15 @@ class SuiteManagerStore {
     return this.getAppOperation(operationId);
   }
 
-  recoverInterruptedAppUpdates({ at }) {
-    const operations = this.database.prepare(`
+  // The update operations a previous process left running, oldest first. What
+  // each interrupted stage means for recovery is update-saga policy, so it is
+  // decided by the update domain and handed back to failAppUpdate; this only
+  // reports what is on record.
+  interruptedAppUpdates() {
+    return this.database.prepare(`
       SELECT id, instance_id AS instanceId, stage FROM app_operations
       WHERE kind = 'update' AND status = 'running' ORDER BY started_at
     `).all();
-    return operations.map((operation) => {
-      // `candidate-built` is classified rollback-required, not retry-safe: the
-      // runtime swap happens between the `candidate-built` and
-      // `candidate-healthy` writes, so a crash in that window may have left the
-      // candidate serving with the old containers gone. Restoring the recorded
-      // runtime is safe in either case — re-applying a runtime that is already
-      // running changes nothing — while "retry-safe" was a lie half the time.
-      // (`integrations-reconciled` is no longer written; kept for rows begun by
-      // an earlier build.)
-      const recoveryState = operation.stage === 'snapshot-promoted'
-        ? 'commit-required'
-        : ['candidate-built', 'candidate-healthy', 'integrations-reconciled', 'homepage-reconciled'].includes(operation.stage)
-          ? 'rollback-required'
-          : 'retry-safe';
-      this.failAppUpdate({
-        at,
-        errorCode: 'APP_UPDATE_INTERRUPTED',
-        instanceId: operation.instanceId,
-        operationId: operation.id,
-        recoveryState,
-        stage: `${operation.stage || 'unknown'}-interrupted`,
-      });
-      return { ...operation, recoveryState, status: 'recovery-required' };
-    });
   }
 
   // `config` carries only the setup values the candidate newly requires; values

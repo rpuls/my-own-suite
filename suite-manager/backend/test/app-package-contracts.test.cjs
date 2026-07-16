@@ -25,6 +25,7 @@ const {
   validateExternalIdentity,
   validatePlatformCompatibility,
   validatePrivacyAssessment,
+  validatePrivacyAssessmentDocument,
   validatePrivacyBinding,
   validateSourceIdentity,
   verifySnapshotIdentity,
@@ -172,6 +173,38 @@ test('catalog validation fails closed on malformed identity and privacy metadata
     'catalog.packages.Bad_App.packageDigest must be a SHA-256 digest.',
     'catalog.packages.Bad_App.privacy.status is invalid.',
   ]);
+});
+
+// The rules below were previously expressed in a committed JSON Schema file
+// interpreted by a partial evaluator that silently passed any keyword it did
+// not implement. Each case here is a defect that evaluator could wave through,
+// so the suite fails if the replacement ever stops enforcing one.
+test('privacy assessment document validation accepts an authored review', () => {
+  assert.deepEqual(validatePrivacyAssessmentDocument(contractFixtures.validPrivacyReview), []);
+});
+
+test('privacy assessment document validation rejects every class of authoring defect', () => {
+  const cases = [
+    ['a misspelled top-level property', (review) => { review.postrue = review.posture; }, 'review.postrue is not a known property.'],
+    ['an unknown dimension value', (review) => { review.dimensions.telemetry = 'sorta'; }, 'review.dimensions.telemetry must be one of none-observed, disabled-by-mos, optional, unavoidable, unknown.'],
+    ['a missing review date', (review) => { delete review.reviewedAt; }, 'review.reviewedAt is required.'],
+    ['an unparseable review date', (review) => { review.reviewedAt = 'last tuesday'; }, 'review.reviewedAt must be an ISO date-time.'],
+    ['incomplete provenance', (review) => { delete review.provenance.skillRevision; }, 'review.provenance.skillRevision is required.'],
+    ['a provenance flag of the wrong type', (review) => { review.provenance.humanReviewed = 'no'; }, 'review.provenance.humanReviewed must be a boolean.'],
+    ['a posture outside the vocabulary', (review) => { review.posture = 'totally-private'; }, 'review.posture must be one of private-by-default, privacy-configured, external-dependency, review-required.'],
+    ['an assessment scoped to no components', (review) => { review.scope.components = []; }, 'review.scope.components must contain at least 1 item(s).'],
+    ['a malformed package digest', (review) => { review.scope.packageDigest = 'sha256:nope'; }, 'review.scope.packageDigest must be a SHA-256 digest.'],
+    ['evidence with no source', (review) => { delete review.evidence[0].source; }, 'review.evidence[0].source is required.'],
+    ['a trust level MOS cannot verify', (review) => { review.scope.source.trust = 'publisher-signed'; }, 'review.scope.source.trust must be one of mos-reviewed, unverified.'],
+  ];
+  for (const [description, mutate, expected] of cases) {
+    const review = structuredClone(contractFixtures.validPrivacyReview);
+    mutate(review);
+    assert.ok(
+      validatePrivacyAssessmentDocument(review).includes(expected),
+      `expected ${description} to be rejected with: ${expected}`,
+    );
+  }
 });
 
 test('privacy binding rejects review metadata from a different package source', () => {

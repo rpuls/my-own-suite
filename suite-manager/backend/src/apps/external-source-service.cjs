@@ -171,7 +171,7 @@ class ExternalSourceService {
     return publicSource(this.store.insertAppSource(resolved));
   }
 
-  // Transition a source's status (unavailable, key-rotated, compromised). The
+  // Transition a source's status (unavailable, compromised). The
   // registry enforces which transitions are allowed and keeps compromise and
   // removal terminal. Status changes never touch installed instances.
   setSourceStatus(id, status, reason = null) {

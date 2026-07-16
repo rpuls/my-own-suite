@@ -3,564 +3,53 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const {
-  inspectAppPackages,
-  publicPackageSummary,
-  readAppPackageManifest,
-} = require('./package-manifest.cjs');
+  APP_LOOPBACK_PORT_BASE,
+  APP_LOOPBACK_PORT_SPAN,
+  AppPackageServiceError,
+  appRouteForHomepage,
+  capabilityMatches,
+  createConfigRows,
+  digestFor,
+  exportEntries,
+  fingerprintFor,
+  healthTargetFor,
+  homepageEntryForHomepage,
+  homepageProjectionApplied,
+  hostArchitectureOf,
+  integrationConfigKey,
+  integrationSlots,
+  linkEntryForHomepage,
+  loopbackPortFor,
+  materializeRuntimeCaddy,
+  materializeRuntimeCompose,
+  privacyReviewPresentation,
+  publicInstance,
+  readSecretValue,
+  renderDryRunProjections,
+  renderInstanceProjections,
+  requestContextForPackage,
+  resolveCapabilityValue,
+  resolveConfigTemplate,
+  resolveTemplatesDeep,
+  runtimeApplied,
+  runtimeConnectionState,
+  runtimeRouteApplied,
+  secretFilePath,
+} = require('./app-package-internals.cjs');
+const { AppOperationLimiter } = require('./app-operation-limits.cjs');
+const { AppUpdateService } = require('./app-update-service.cjs');
 const {
-  SUPPORTED_ARCHITECTURES,
   digestAppPackage,
   parseNamespacedPackageId,
   stableJson,
   validateArchitectureCompatibility,
   validatePrivacyBinding,
 } = require('./package-contracts.cjs');
-const { instanceSourceId, sourceInstallable } = require('./external-source-registry.cjs');
-const { AppOperationLimiter } = require('./app-operation-limits.cjs');
-const { compareAppPackages } = require('./app-update-comparison.cjs');
-
-const APP_LOOPBACK_PORT_BASE = 18000;
-const APP_LOOPBACK_PORT_SPAN = 1000;
-
-class AppPackageServiceError extends Error {
-  constructor(code, message, statusCode = 400) {
-    super(message);
-    this.code = code;
-    this.statusCode = statusCode;
-  }
-}
-
-// What the app agent says this host is, or null when it is too old to say, could
-// not be asked, or does not recognise its own host. Validated rather than
-// trusted: this value decides whether packages are refused, so an agent that
-// answers with something MOS has no vocabulary for is treated as having said
-// nothing, which enforces no declaration at all.
-function hostArchitectureOf(agentStatus) {
-  const reported = agentStatus?.hostArchitecture;
-  return SUPPORTED_ARCHITECTURES.includes(reported) ? reported : null;
-}
-
-function digestFor(value) {
-  return `sha256:${crypto.createHash('sha256').update(stableJson(value)).digest('hex')}`;
-}
-
-function fingerprintFor(value) {
-  return digestFor(String(value));
-}
-
-function loopbackPortFor(manifestOrPackageId, serviceId = null) {
-  const packageId = typeof manifestOrPackageId === 'string' ? manifestOrPackageId : manifestOrPackageId.id;
-  const digest = crypto.createHash('sha256').update(`${packageId}:${serviceId || packageId}`).digest();
-  return APP_LOOPBACK_PORT_BASE + digest.readUInt16BE(0) % APP_LOOPBACK_PORT_SPAN;
-}
-
-function serviceForHealth(manifest) {
-  const parsed = new URL(manifest.health.url);
-  const serviceIds = new Set(Object.keys(manifest.resources.services || {}));
-  return serviceIds.has(parsed.hostname) ? parsed.hostname : manifest.routes[0]?.service;
-}
-
-function healthTargetFor(manifest, port) {
-  const parsed = new URL(manifest.health.url);
-  return `http://127.0.0.1:${port}${parsed.pathname}${parsed.search}`;
-}
-
-function isRecord(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function setupFields(manifest) {
-  return Array.isArray(manifest.setup?.fields) ? manifest.setup.fields : [];
-}
-
-function generateValue(field) {
-  if (!isRecord(field.generated)) return undefined;
-  const bytes = field.generated.bytes;
-  const value = crypto.randomBytes(bytes);
-  if (field.generated.encoding === 'hex') return value.toString('hex');
-  return value.toString('base64url');
-}
-
-function configValueMap(configRows, { includeSecrets = false } = {}) {
-  const map = new Map();
-  for (const row of configRows || []) {
-    if (row.secret) {
-      if (includeSecrets && typeof row.rawValue === 'string') {
-        map.set(row.key, row.rawValue);
-      }
-      continue;
-    }
-    if (row.value !== undefined) map.set(row.key, row.value);
-  }
-  return map;
-}
-
-function resolveConfigTemplate(value, configRows, { app = {}, includeSecrets = false } = {}) {
-  if (typeof value !== 'string') return value;
-  const values = configValueMap(configRows, { includeSecrets });
-  return value
-    .replace(/\$\{app\.publicUrl\}/gu, () => (typeof app.publicUrl === 'string' ? app.publicUrl : '${app.publicUrl}'))
-    .replace(/\$\{app\.host\}/gu, () => (typeof app.host === 'string' ? app.host : '${app.host}'))
-    .replace(/\$\{app\.scheme\}/gu, () => (typeof app.scheme === 'string' ? app.scheme : '${app.scheme}'))
-    .replace(/\$\{config\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (values.has(key) ? String(values.get(key)) : match))
-    .replace(/\$\{secret\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (values.has(key) ? String(values.get(key)) : match));
-}
-
-function renderEnvironment(environment, configRows, options = {}) {
-  return Object.fromEntries(
-    Object.entries(environment || {}).map(([key, value]) => [key, resolveConfigTemplate(value, configRows, options)]),
-  );
-}
-
-function resolveTemplatesDeep(value, configRows, options = {}) {
-  if (typeof value === 'string') return resolveConfigTemplate(value, configRows, options);
-  if (Array.isArray(value)) return value.map((item) => resolveTemplatesDeep(item, configRows, options));
-  if (isRecord(value)) {
-    return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, resolveTemplatesDeep(child, configRows, options)]));
-  }
-  return value;
-}
-
-// `packageId` is the identity MOS installed the package under, which is the
-// manifest id for official packages and a source-namespaced id for external
-// ones. Every derived runtime name (build context, loopback ports, and through
-// the agent the container/volume/network names) keys off it, so two packages
-// that ship the same manifest id from different sources stay isolated.
-function renderDryRunProjections(manifest, configRows = [], { packageId = manifest.id } = {}) {
-  const services = Object.entries(manifest.resources.services).map(([id, service]) => ({
-    build: { context: `apps/${packageId}`, dockerfile: service.dockerfile },
-    environment: renderEnvironment(service.env, configRows),
-    id,
-    internalPort: service.internalPort,
-    loopbackPort: loopbackPortFor(packageId, id),
-    volumes: service.volumes || [],
-  }));
-  const servicePorts = new Map(services.map((service) => [service.id, service.loopbackPort]));
-  const healthService = serviceForHealth(manifest);
-  const volumes = [...new Set(services.flatMap((service) => service.volumes.map((volume) => volume.split(':')[0])))].sort();
-  const projections = [
-    {
-      content: {
-        services,
-        volumes,
-      },
-      kind: 'compose',
-    },
-    {
-      content: {
-        routes: manifest.routes.map((route) => ({
-          host: route.host,
-          ...(isRecord(route.internalIcalBridge) ? { internalIcalBridge: resolveTemplatesDeep(route.internalIcalBridge, configRows) } : {}),
-          reverseProxy: `127.0.0.1:${servicePorts.get(route.service)}`,
-          service: route.service,
-        })),
-      },
-      kind: 'caddy',
-    },
-    {
-      content: {
-        target: healthTargetFor(manifest, servicePorts.get(healthService)),
-        type: manifest.health.type,
-      },
-      kind: 'health',
-    },
-  ];
-  if (isRecord(manifest.homepage)) {
-    projections.splice(2, 0, {
-      content: manifest.homepage,
-      kind: 'homepage',
-    });
-  }
-  return projections.map((projection) => ({
-    ...projection,
-    contentJson: stableJson(projection.content),
-    digest: digestFor(projection.content),
-  }));
-}
-
-function publicConfig(configRows = []) {
-  return configRows.map((row) => ({
-    fingerprint: row.fingerprint || null,
-    generated: row.source === 'generated',
-    key: row.key,
-    redactedLabel: row.redactedLabel || null,
-    secret: row.secret === true,
-    source: row.source,
-    updatedAt: row.updatedAt,
-    ...(row.secret ? {} : { value: row.value }),
-  }));
-}
-
-function publicInstance(instance, projections = [], configRows = []) {
-  if (!instance) return null;
-  return {
-    config: publicConfig(configRows),
-    enabled: instance.enabled,
-    id: instance.id,
-    installedAt: instance.installedAt,
-    manifestDigest: instance.manifestDigest,
-    packageId: instance.packageId,
-    packageVersion: instance.packageVersion,
-    guideState: instance.guideState || null,
-    projections: projections.map((projection) => ({
-      appliedDigest: projection.appliedDigest,
-      content: projection.content,
-      digest: projection.digest,
-      kind: projection.kind,
-      status: projection.status,
-      updatedAt: projection.updatedAt,
-    })),
-    status: instance.status,
-    updateRecovery: instance.updateRecoveryState && instance.updateRecoveryState !== 'none' ? {
-      errorCode: instance.updateRecoveryError,
-      state: instance.updateRecoveryState,
-    } : null,
-    updatedAt: instance.updatedAt,
-  };
-}
-
-function reviewProvenance(review) {
-  const provenance = review?.provenance || {};
-  return {
-    humanReviewed: provenance.humanReviewed === true,
-    method: provenance.method || null,
-    model: provenance.model || null,
-    sourceRevision: review?.scope?.source?.revision || null,
-  };
-}
-
-function privacyReviewPresentation(packageDir, { id, version }) {
-  const reviewPath = path.join(packageDir, 'privacy-review.json');
-  if (!fs.existsSync(reviewPath)) return null;
-  try {
-    const review = JSON.parse(fs.readFileSync(reviewPath, 'utf8'));
-    if (review?.schemaVersion !== 1 || review.appId !== id || review.scope?.packageVersion !== version) return null;
-    return { dimensions: review.dimensions || null, posture: review.posture, provenance: reviewProvenance(review), reviewedAt: review.reviewedAt, status: 'reviewed' };
-  } catch {
-    return null;
-  }
-}
-
-function resolveInsideSecretDir(secretDir, target) {
-  const root = path.resolve(secretDir);
-  const resolved = path.resolve(target);
-  const relative = path.relative(root, resolved);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new AppPackageServiceError(
-      'APP_SECRET_UNAVAILABLE',
-      'A required app secret is unavailable. Restore the app secret before applying this runtime.',
-      409,
-    );
-  }
-  return resolved;
-}
-
-function secretFilePath(secretDir, instanceId, key) {
-  return resolveInsideSecretDir(secretDir, path.join(secretDir, instanceId, `${key}.secret`));
-}
-
-function writeSecretFile(secretDir, instanceId, key, value) {
-  const dir = path.join(secretDir, instanceId);
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const target = secretFilePath(secretDir, instanceId, key);
-  fs.writeFileSync(target, value, { encoding: 'utf8', mode: 0o600 });
-  try {
-    fs.chmodSync(dir, 0o700);
-    fs.chmodSync(target, 0o600);
-  } catch {}
-  return target;
-}
-
-function readSecretValue(secretDir, secretRef) {
-  try {
-    const resolved = resolveInsideSecretDir(secretDir, secretRef);
-    const stat = fs.statSync(resolved);
-    if (!stat.isFile()) {
-      throw new Error('APP_SECRET_NOT_FILE');
-    }
-    return fs.readFileSync(resolved, 'utf8');
-  } catch (error) {
-    if (error instanceof AppPackageServiceError) throw error;
-    throw new AppPackageServiceError(
-      'APP_SECRET_UNAVAILABLE',
-      'A required app secret is unavailable. Restore the app secret before applying this runtime.',
-      409,
-    );
-  }
-}
-
-function createConfigRows({ input = {}, instanceId, manifest, secretDir }) {
-  const supplied = isRecord(input.config) ? input.config : isRecord(input) ? input : {};
-  const rows = [];
-  try {
-    for (const field of setupFields(manifest)) {
-      const hasUserValue = Object.hasOwn(supplied, field.id) && supplied[field.id] !== undefined && supplied[field.id] !== null && supplied[field.id] !== '';
-      const generated = generateValue(field);
-      const value = hasUserValue ? supplied[field.id] : generated ?? field.default;
-      if ((value === undefined || value === null || value === '') && field.required === true) {
-        throw new AppPackageServiceError('APP_SETUP_REQUIRED', `${field.label || field.id} is required.`, 400);
-      }
-      if (value === undefined || value === null || value === '') continue;
-      if (field.secret === true) {
-        const rawValue = String(value);
-        rows.push({
-          fingerprint: fingerprintFor(rawValue),
-          key: field.id,
-          rawValue,
-          redactedLabel: field.redactedLabel || field.label || 'Secret value',
-          secret: true,
-          secretRef: writeSecretFile(secretDir, instanceId, field.id, rawValue),
-          source: generated !== undefined && !hasUserValue ? 'generated' : 'user',
-        });
-      } else {
-        rows.push({
-          key: field.id,
-          secret: false,
-          source: generated !== undefined && !hasUserValue ? 'generated' : hasUserValue ? 'user' : 'default',
-          value,
-          valueJson: stableJson(value),
-        });
-      }
-    }
-    return rows;
-  } catch (error) {
-    // A later required/invalid field can fail after an earlier secret was
-    // already written. Remove only files created by this attempt: update
-    // collection may share the instance directory with installed secrets.
-    for (const row of rows) {
-      if (row.secretRef) fs.rmSync(secretFilePath(secretDir, instanceId, row.key), { force: true });
-    }
-    throw error;
-  }
-}
-
-function materializeRuntimeCompose(compose, configRows) {
-  return {
-    ...compose,
-    services: compose.services.map((service) => ({
-      ...service,
-      environment: renderEnvironment(service.environment, configRows, { includeSecrets: true }),
-    })),
-  };
-}
-
-function materializeRuntimeCaddy(caddy, configRows) {
-  return resolveTemplatesDeep(caddy, configRows, { includeSecrets: true });
-}
-
-function appRouteForHomepage(projections) {
-  const caddy = projections.find((projection) => projection.kind === 'caddy')?.content;
-  const route = Array.isArray(caddy?.routes) ? caddy.routes[0] : null;
-  if (!route || typeof route.host !== 'string' || !route.host) {
-    throw new AppPackageServiceError('APP_HOMEPAGE_PROJECTION_INVALID', 'This app does not have enough route data for a Homepage entry.', 409);
-  }
-  return route;
-}
-
-function linkEntryForHomepage(instance, projections, requestContext = {}) {
-  const homepage = projections.find((projection) => projection.kind === 'homepage')?.content;
-  const route = appRouteForHomepage(projections);
-  const baseHost = String(requestContext.baseHost || '').trim().toLowerCase();
-  const scheme = requestContext.scheme === 'https' ? 'https' : 'http';
-
-  if (!homepage || !baseHost) {
-    throw new AppPackageServiceError('APP_HOMEPAGE_PROJECTION_INVALID', 'This app does not have enough projection data for a Homepage entry.', 409);
-  }
-
-  return {
-    description: homepage.description || instance.displayNameSnapshot,
-    group: homepage.group || instance.categorySnapshot,
-    icon: homepage.icon || instance.packageId,
-    name: homepage.name || instance.displayNameSnapshot,
-    url: `${scheme}://${route.host}.${baseHost}/`,
-  };
-}
-
-function homepageEntryForHomepage(instance, projections, configRows, requestContext = {}) {
-  const base = linkEntryForHomepage(instance, projections, requestContext);
-  const homepage = projections.find((projection) => projection.kind === 'homepage')?.content;
-  if (!isRecord(homepage?.widget)) return base;
-  return {
-    ...base,
-    widget: resolveTemplatesDeep(homepage.widget, configRows, {
-      app: { publicUrl: base.url },
-      includeSecrets: true,
-    }),
-  };
-}
-
-function runtimeApplied(projections) {
-  return ['compose', 'caddy', 'health'].every((kind) => {
-    const projection = projections.find((item) => item.kind === kind);
-    return projection?.status === 'applied' && projection.appliedDigest === projection.digest;
-  });
-}
-
-function runtimeRouteApplied(projections) {
-  return ['compose', 'caddy'].every((kind) => {
-    const projection = projections.find((item) => item.kind === kind);
-    return projection?.status === 'applied' && projection.appliedDigest === projection.digest;
-  });
-}
-
-function homepageProjectionApplied(projections) {
-  const projection = projections.find((item) => item.kind === 'homepage');
-  return projection?.status === 'applied' && projection.appliedDigest === projection.digest;
-}
-
-function capabilityMatches(exported, matcher) {
-  if (!isRecord(exported) || !isRecord(matcher)) return false;
-  if (exported.type !== matcher.type) return false;
-  if (matcher.protocol !== undefined && matcher.protocol !== exported.protocol) return false;
-  if (Number.isInteger(matcher.interfaceVersion) && Number.isInteger(exported.interfaceVersion) && matcher.interfaceVersion !== exported.interfaceVersion) return false;
-  return true;
-}
-
-function integrationSlots(manifest) {
-  return Object.entries(isRecord(manifest.integrations) ? manifest.integrations : {});
-}
-
-function exportEntries(manifest) {
-  return Object.entries(isRecord(manifest.exports) ? manifest.exports : {});
-}
-
-function integrationConfigKey(slotId, envKey) {
-  const pascal = String(envKey).toLowerCase().replace(/_([a-z0-9])/gu, (_match, letter) => letter.toUpperCase());
-  return `integration${slotId.slice(0, 1).toUpperCase()}${slotId.slice(1)}${pascal.slice(0, 1).toUpperCase()}${pascal.slice(1)}`;
-}
-
-function templateSecretRef(value) {
-  const match = typeof value === 'string' ? value.match(/^\$\{secret\.([a-z][A-Za-z0-9]*)\}$/u) : null;
-  return match ? match[1] : null;
-}
-
-function providerSecretRows(providerConfig) {
-  return new Map((providerConfig || []).filter((row) => row.secretRef).map((row) => [row.key, row]));
-}
-
-function resolveCapabilityValue(value, { consumerExport, providerCapability, providerConfig, providerPublicUrl }) {
-  if (typeof value !== 'string') return value;
-  const secretRows = providerSecretRows(providerConfig);
-  return value
-    .replace(/\$\{app\.publicUrl\}/gu, providerPublicUrl.publicUrl)
-    .replace(/\$\{app\.host\}/gu, providerPublicUrl.appHost)
-    .replace(/\$\{app\.scheme\}/gu, providerPublicUrl.scheme)
-    .replace(/\$\{export\.([a-z][A-Za-z0-9]*)\.([a-zA-Z][A-Za-z0-9]*)\}/gu, (match, exportId, key) => {
-      if (!consumerExport || exportId !== consumerExport.id) return match;
-      return typeof consumerExport.capability[key] === 'string' ? consumerExport.capability[key] : match;
-    })
-    .replace(/\$\{import\.([a-z][A-Za-z0-9]*)\.([a-zA-Z][A-Za-z0-9]*)\}/gu, (match, _slot, key) => {
-      const raw = providerCapability[key];
-      if (typeof raw !== 'string') return match;
-      return resolveCapabilityValue(raw, { consumerExport, providerCapability, providerConfig, providerPublicUrl });
-    })
-    .replace(/\$\{import\.([a-z][A-Za-z0-9]*)\.secrets\.([a-z][A-Za-z0-9]*)\}/gu, (match, _slot, secretId) => {
-      const secretTemplate = providerCapability.secrets?.[secretId]?.ref;
-      const key = templateSecretRef(secretTemplate);
-      const row = key ? secretRows.get(key) : null;
-      return row ? `__secret_ref__:${row.secretRef}` : match;
-    });
-}
-
-function cloneProjectionWithIntegrationEnv(projections, targetService, values) {
-  return projections.map((projection) => {
-    if (projection.kind !== 'compose') {
-      return {
-        content: projection.content,
-        contentJson: stableJson(projection.content),
-        digest: digestFor(projection.content),
-        kind: projection.kind,
-      };
-    }
-    const content = {
-      ...projection.content,
-      services: projection.content.services.map((service) => (
-        service.id === targetService
-          ? { ...service, environment: { ...(service.environment || {}), ...values } }
-          : service
-      )),
-    };
-    return {
-      content,
-      contentJson: stableJson(content),
-      digest: digestFor(content),
-      kind: projection.kind,
-    };
-  });
-}
-
-// The integration env an instance's compose must carry is a pure function of
-// its manifest, its config rows, and its integration relationships — never a
-// patch left behind in stored projections. Values stay `${config.*}` and
-// `${secret.*}` references (the config rows hold the resolved values), so the
-// rendered projection is reproducible and secret-free. A relationship whose
-// slot the manifest no longer declares contributes nothing, which is how an
-// update that drops a slot sheds its env without special-casing.
-function integrationEnvPatches(manifest, configRows, integrations, instanceId) {
-  const patches = [];
-  for (const relationship of integrations || []) {
-    if (relationship.consumerInstanceId !== instanceId || relationship.status === 'removed') continue;
-    const [slotId, slot] = integrationSlots(manifest).find(([id]) => id === relationship.consumerIntegrationSlot) || [];
-    const target = slot?.apply?.kind === 'service-env' ? manifest.configTargets?.[slot.apply.target] : null;
-    if (!target || target.kind !== 'service-env') continue;
-    const values = {};
-    for (const envKey of Object.keys(slot.apply.values || {})) {
-      const configKey = integrationConfigKey(slotId, envKey);
-      const row = configRows.find((item) => item.key === configKey);
-      if (!row) continue;
-      values[envKey] = row.secretRef ? `\${secret.${configKey}}` : `\${config.${configKey}}`;
-    }
-    if (Object.keys(values).length) patches.push({ service: target.service, values });
-  }
-  return patches;
-}
-
-// The one way an instance's projections are produced. Everything that persists
-// projections for an instance with integration relationships must render
-// through here, so that stored projections are always reproducible from their
-// inputs and an update rendered from the candidate manifest cannot lose the
-// integration env a connect once carried.
-function renderInstanceProjections(manifest, configRows = [], { instanceId, integrations = [], packageId = manifest.id } = {}) {
-  let projections = renderDryRunProjections(manifest, configRows, { packageId });
-  for (const patch of integrationEnvPatches(manifest, configRows, integrations, instanceId)) {
-    projections = cloneProjectionWithIntegrationEnv(projections, patch.service, patch.values);
-  }
-  return projections;
-}
-
-function runtimeConnectionState(app) {
-  if (!app.instance) return 'available';
-  if (app.instance.status === 'uninstalled') return 'available';
-  if (app.instance.status === 'disabled' || app.instance.enabled === false) return 'disabled';
-  if (runtimeApplied(app.instance.projections || [])) return 'running';
-  if (app.instance.status === 'installed') return 'installed';
-  return app.instance.status || 'available';
-}
-
-function requestContextForPackage(packageId, requestContext = {}) {
-  if (typeof requestContext.publicUrlFor === 'function') return requestContext.publicUrlFor(packageId);
-  return requestContext;
-}
-
-function updateRuntimeRequest({ config, expectedInstalledDigest, instance, manifest, packageDigest, projections, requestContext, sourceRevision }) {
-  const compose = projections.find((item) => item.kind === 'compose');
-  const caddy = projections.find((item) => item.kind === 'caddy');
-  const health = projections.find((item) => item.kind === 'health');
-  if (!compose || !caddy || !health) throw new AppPackageServiceError('APP_RUNTIME_PROJECTION_MISSING', 'The app update is missing runtime projections.', 409);
-  return {
-    appHost: requestContext.appHost,
-    caddy: materializeRuntimeCaddy(caddy.content, config),
-    compose: materializeRuntimeCompose(compose.content, config),
-    ...(expectedInstalledDigest ? { expectedInstalledDigest } : {}),
-    health: health.content,
-    instanceId: instance.id,
-    packageDigest,
-    packageId: instance.packageId,
-    packageVersion: manifest.version,
-    publicUrl: requestContext.publicUrl,
-    sourceRevision,
-  };
-}
+const {
+  inspectAppPackages,
+  publicPackageSummary,
+  readAppPackageManifest,
+} = require('./package-manifest.cjs');
 
 class AppPackageService {
   constructor({
@@ -583,7 +72,28 @@ class AppPackageService {
     this.officialRepository = officialRepository;
     this.secretDir = secretDir || path.join(store.stateDir, 'app-secrets');
     this.store = store;
+    // The update saga is its own service (see app-update-service.cjs). It needs
+    // this instance for install-side work it must not own — runtime apply,
+    // integrations, lifecycle — so it is built here with `this` rather than at
+    // the composition root: only one of the two can exist first, and an update
+    // service is useless without the packages it updates. The dependency runs
+    // one way, so neither module imports the other.
+    this.updates = new AppUpdateService({ apps: this });
   }
+
+  // The update saga, delegated verbatim. AppUpdateService owns the sequencing;
+  // these keep the one entry point every route, agent and test already calls.
+  downloadUpdateCandidate(instance) { return this.updates.downloadUpdateCandidate(instance); }
+
+  recoverInterruptedUpdates(requestContext = {}) { return this.updates.recoverInterruptedUpdates(requestContext); }
+
+  commitPromotedPackageUpdate(instance, operation) { return this.updates.commitPromotedPackageUpdate(instance, operation); }
+
+  recoverPackageUpdate(packageId, requestContext = {}) { return this.updates.recoverPackageUpdate(packageId, requestContext); }
+
+  preparePackageUpdate(packageId) { return this.updates.preparePackageUpdate(packageId); }
+
+  stagePackageUpdate(packageId, input = {}, requestContext = {}) { return this.updates.stagePackageUpdate(packageId, input, requestContext); }
 
   // A package's base images are pinned by digest, so one that names an
   // architecture this host is not cannot pull them and will fail in the middle
@@ -606,44 +116,6 @@ class AppPackageService {
   // one of them is configured; without either, nothing passes.
   get platformVersion() {
     return this.catalogService?.platformVersion || this.externalClient?.platformVersion || '0.0.0';
-  }
-
-  // Where an update candidate comes from is decided by the source the instance
-  // was installed from, never by the caller. Official instances take the reviewed
-  // catalog; an external instance re-downloads from its own recorded source,
-  // through the same constrained gate its install passed. Everything after this
-  // point is the one update transaction.
-  //
-  // The revision is re-resolved on every call and nothing is persisted here, so a
-  // preview stays side-effect-free and an apply always acts on the source as it
-  // is right now rather than on a revision cached at preview time.
-  async downloadUpdateCandidate(instance) {
-    if (instance.sourceKind !== 'external-git') {
-      if (!this.catalogService?.downloadCandidate) {
-        throw new AppPackageServiceError('APP_CANDIDATE_UNAVAILABLE', 'The verified app catalog cannot prepare this update.', 503);
-      }
-      return this.catalogService.downloadCandidate(instance.packageId);
-    }
-    if (!this.externalClient?.downloadCandidate) {
-      throw new AppPackageServiceError('APP_CANDIDATE_UNAVAILABLE', 'External package sources are unavailable.', 503);
-    }
-    const source = this.store.getAppSource(instanceSourceId(instance));
-    if (!source) {
-      throw new AppPackageServiceError('APP_SOURCE_UNAVAILABLE', 'The package source for this app is no longer registered, so it cannot be updated. The installed version keeps running.', 409);
-    }
-    if (!sourceInstallable(source)) {
-      throw new AppPackageServiceError('APP_SOURCE_NOT_INSTALLABLE', 'This app package source is not active, so updates from it are blocked. The installed version keeps running.', 409);
-    }
-    const candidate = await this.externalClient.downloadCandidate(await this.externalClient.resolveRevision(source));
-    // The repository must still publish the same package. If it now publishes a
-    // different one, that is not an update to this app, whatever the repository
-    // calls it. The app agent would refuse the identity anyway; refusing here
-    // keeps a repository takeover from ever reaching an update operation.
-    if (candidate.namespacedPackageId !== instance.packageId) {
-      candidate.cleanup?.();
-      throw new AppPackageServiceError('APP_SOURCE_PACKAGE_CHANGED', 'This repository no longer publishes the app package that was installed from it, so it cannot be updated. The installed version keeps running.', 409);
-    }
-    return candidate;
   }
 
   installedPackageFor(instance) {
@@ -746,218 +218,6 @@ class AppPackageService {
       }
     }
     return results;
-  }
-
-  recoverInterruptedUpdates() {
-    const results = this.store.recoverInterruptedAppUpdates({ at: this.now().toISOString() });
-    // Finish every pending commit before anything can list or touch the wedged
-    // instance. The disk decides: an installed snapshot that carries the
-    // candidate's digest proves the promotion happened, whatever stage the
-    // crashed process managed to write — including a crash between the agent's
-    // promote returning and the `snapshot-promoted` write, which the
-    // stage-based labeling above can only call rollback-required.
-    for (const instance of this.store.getAppInstances()) {
-      if (instance.status === 'uninstalled') continue;
-      if (!['commit-required', 'rollback-required'].includes(instance.updateRecoveryState)) continue;
-      const operation = this.store.latestAppUpdateOperation(instance.id);
-      if (!operation || operation.status !== 'failed') continue;
-      let promoted = false;
-      try { promoted = digestAppPackage(instance.snapshotPath) === operation.candidateDigest; } catch {}
-      if (!promoted) {
-        // rollback-required with the old snapshot still installed is labeled
-        // truthfully; restoring the runtime restarts containers, so it stays an
-        // owner action instead of something a reboot does on its own.
-        if (instance.updateRecoveryState === 'rollback-required') continue;
-        results.push({ errorCode: 'APP_PACKAGE_SNAPSHOT_INVALID', instanceId: instance.id, recoveryState: 'commit-required', status: 'commit-blocked' });
-        continue;
-      }
-      try {
-        this.commitPromotedPackageUpdate(instance, operation);
-        results.push({ instanceId: instance.id, recoveryState: 'none', status: 'committed' });
-      } catch (error) {
-        results.push({ errorCode: error.code || 'APP_UPDATE_COMMIT_FAILED', instanceId: instance.id, recoveryState: instance.updateRecoveryState, status: 'commit-blocked' });
-      }
-    }
-    return results;
-  }
-
-  // Durably commit an update whose snapshot promotion already happened. Pure
-  // bookkeeping by design — the candidate is installed on disk and its
-  // containers are serving; nothing here touches the runtime, which is what
-  // makes it safe to run unattended at startup. Every input is re-proved
-  // against the disk before anything is written.
-  commitPromotedPackageUpdate(instance, operation = this.store.latestAppUpdateOperation(instance.id)) {
-    if (!operation || operation.status !== 'failed' || !operation.candidateDigest) {
-      throw new AppPackageServiceError('APP_UPDATE_COMMIT_UNAVAILABLE', 'No interrupted app update is waiting to be committed for this app.', 409);
-    }
-    const recovery = operation.request?.recovery;
-    if (!recovery?.manifestDigest || !recovery.candidateSource || !recovery.privacy) {
-      throw new AppPackageServiceError('APP_UPDATE_COMMIT_UNAVAILABLE', 'The interrupted app update did not record what a commit needs, so it cannot be finished.', 409);
-    }
-    let manifest;
-    let diskDigest;
-    try {
-      ({ manifest } = readAppPackageManifest(instance.snapshotPath));
-      diskDigest = digestAppPackage(instance.snapshotPath);
-    } catch {
-      throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The installed app package snapshot cannot be read, so the interrupted update cannot be committed.', 409);
-    }
-    if (diskDigest !== operation.candidateDigest
-        || manifest.id !== parseNamespacedPackageId(instance.packageId).packageId
-        || digestFor(manifest) !== recovery.manifestDigest) {
-      throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The installed snapshot is not the promoted update candidate, so the interrupted update cannot be committed.', 409);
-    }
-    const heldKeys = new Set(this.store.getAppConfig(instance.id).map((row) => row.key));
-    const addedConfig = (recovery.addedConfig || [])
-      .filter((row) => !heldKeys.has(row.key))
-      .map((row) => ({
-        ...row,
-        secret: Boolean(row.secretRef),
-        value: row.valueJson === null || row.valueJson === undefined ? undefined : JSON.parse(row.valueJson),
-      }));
-    const projections = renderInstanceProjections(manifest, [...this.store.getAppConfig(instance.id), ...addedConfig], {
-      instanceId: instance.id,
-      integrations: this.store.getAppIntegrations(),
-      packageId: instance.packageId,
-    });
-    const homepageApplied = homepageProjectionApplied(this.store.getAppProjections(instance.id));
-    return this.store.completeAppUpdate({
-      at: this.now().toISOString(),
-      config: addedConfig,
-      fromRecovery: true,
-      homepageApplied,
-      instance: {
-        categorySnapshot: recovery.categorySnapshot,
-        displayNameSnapshot: recovery.displayNameSnapshot,
-        manifestDigest: recovery.manifestDigest,
-        packageDigest: diskDigest,
-        packageVersion: manifest.version,
-        privacy: recovery.privacy,
-        source: recovery.candidateSource,
-      },
-      instanceId: instance.id,
-      operationId: operation.id,
-      projections,
-      snapshotPath: instance.snapshotPath,
-    });
-  }
-
-  // The owner-facing recovery action behind the "needs attention" notice. It
-  // resolves whichever state the failed update actually left: a promoted
-  // snapshot gets its commit finished, an un-promoted one gets the recorded
-  // runtime restored through the agent's rollback. Held under the app's
-  // operation key like every other mutation of the instance.
-  async recoverPackageUpdate(packageId, requestContext = {}) {
-    return this.limiter.runExclusive(packageId, () => this.performRecoverPackageUpdate(packageId, requestContext));
-  }
-
-  async performRecoverPackageUpdate(packageId, requestContext = {}) {
-    const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (!instance || instance.status === 'uninstalled') {
-      throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before recovering it.', 409);
-    }
-    if (!['commit-required', 'rollback-required'].includes(instance.updateRecoveryState)) {
-      throw new AppPackageServiceError('APP_UPDATE_RECOVERY_NOT_REQUIRED', 'This app has no update recovery to perform. If its last update stopped before changing anything, simply run the update again.', 409);
-    }
-    const operation = this.store.latestAppUpdateOperation(instance.id);
-    if (!operation || operation.status !== 'failed') {
-      throw new AppPackageServiceError('APP_UPDATE_RECOVERY_UNAVAILABLE', 'The interrupted app update could not be found, so it cannot be recovered.', 409);
-    }
-    let promoted = false;
-    try { promoted = digestAppPackage(instance.snapshotPath) === operation.candidateDigest; } catch {}
-
-    if (promoted) {
-      const committed = this.commitPromotedPackageUpdate(instance, operation);
-      let integrations = [];
-      try { integrations = await this.reconcilePackageIntegrations(packageId, requestContext); } catch {}
-      return {
-        action: 'committed',
-        instance: publicInstance(
-          this.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
-          this.store.getAppProjections(instance.id),
-          this.store.getAppConfig(instance.id),
-        ),
-        integrations,
-        operation: committed,
-      };
-    }
-
-    // The snapshot on disk is still the recorded one, so recovery means putting
-    // the recorded runtime back in charge. The candidate runtime the agent must
-    // tear down is rebuilt from what the update stashed for exactly this:
-    // secret-free candidate projections plus the collected config rows.
-    const recovery = operation.request?.recovery;
-    if (!Array.isArray(recovery?.candidateProjections) || !recovery.candidateProjections.length) {
-      throw new AppPackageServiceError('APP_UPDATE_RECOVERY_UNAVAILABLE', 'The interrupted app update did not record what a runtime restore needs.', 409);
-    }
-    if (!this.agent?.rollbackPackageUpdate) {
-      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
-    }
-    const installedPackage = this.installedPackageFor(instance);
-    const configRows = this.store.getAppConfig(instance.id).map((row) => (
-      row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
-    ));
-    const heldKeys = new Set(configRows.map((row) => row.key));
-    // A missing collected secret is tolerated: the rollback only needs the
-    // candidate's service identities to tear it down, never its secret values.
-    const addedConfig = (recovery.addedConfig || []).filter((row) => !heldKeys.has(row.key)).map((row) => {
-      const base = {
-        ...row,
-        secret: Boolean(row.secretRef),
-        value: row.valueJson === null || row.valueJson === undefined ? undefined : JSON.parse(row.valueJson),
-      };
-      if (!row.secretRef) return base;
-      try { return { ...base, rawValue: readSecretValue(this.secretDir, row.secretRef) }; } catch { return base; }
-    });
-    const installedProjections = this.store.getAppProjections(instance.id);
-    const installedRuntime = updateRuntimeRequest({
-      config: configRows,
-      instance,
-      manifest: installedPackage.manifest,
-      packageDigest: instance.packageDigest,
-      projections: installedProjections,
-      requestContext,
-      sourceRevision: instance.sourceRevision,
-    });
-    const candidateRuntime = updateRuntimeRequest({
-      config: [...configRows, ...addedConfig],
-      expectedInstalledDigest: instance.packageDigest,
-      instance,
-      manifest: { version: operation.request.packageVersion },
-      packageDigest: operation.candidateDigest,
-      projections: recovery.candidateProjections.map((projection) => ({ ...projection, content: JSON.parse(projection.contentJson) })),
-      requestContext,
-      sourceRevision: recovery.candidateSource?.revision,
-    });
-    await this.agent.rollbackPackageUpdate({ candidate: candidateRuntime, installed: installedRuntime });
-    this.discardCollectedSecrets(instance.id, addedConfig);
-
-    let homepage = { skipped: true };
-    if (operation.stage?.startsWith('homepage-reconciled') && homepageProjectionApplied(installedProjections) && requestContext.homepageService) {
-      try {
-        const current = await requestContext.homepageService.read({ file: 'services.template.yaml' });
-        homepage = await requestContext.homepageService.add({
-          entry: homepageEntryForHomepage(instance, installedProjections, configRows, requestContext),
-          expectedRevision: current.revision,
-          requestId: instance.id,
-        }, false);
-      } catch (error) {
-        homepage = { errorCode: error.code || 'APP_UPDATE_HOMEPAGE_ROLLBACK_FAILED', status: 'failed' };
-      }
-    }
-    this.store.clearAppUpdateRecovery({ at: this.now().toISOString(), instanceId: instance.id });
-    let integrations = [];
-    try { integrations = await this.reconcilePackageIntegrations(packageId, requestContext); } catch {}
-    return {
-      action: 'rolled-back',
-      homepage,
-      instance: publicInstance(
-        this.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
-        this.store.getAppProjections(instance.id),
-        this.store.getAppConfig(instance.id),
-      ),
-      integrations,
-    };
   }
 
   async applyPackageRuntime(packageId, requestContext = {}, options = {}) {
@@ -1580,13 +840,45 @@ class AppPackageService {
     }
     instance.snapshotPath = snapshot.snapshotPath;
     instance.snapshotState = 'installed';
+    return this.completeInstall({
+      at,
+      // No instance row references this successfully created snapshot yet, so
+      // ask the owning root agent to discard it before surfacing the failure.
+      discardSnapshot: typeof this.agent.remove === 'function'
+        ? () => this.agent.remove({
+          installedSourceRevision: source.revision,
+          instanceId: instance.id,
+          packageId: manifest.id,
+          services: [],
+          volumes: [],
+        })
+        : null,
+      input,
+      instance,
+      manifestId: manifest.id,
+      packageId,
+    });
+  }
+
+  // The tail every install shares once its snapshot exists on disk. Official and
+  // external packages reach this point by different routes — different agent
+  // calls, different identities, different trust — but from the snapshot onward
+  // they are one pipeline: prove the snapshot is the package that was validated,
+  // turn owner input into config rows, project the runtime, record the instance.
+  // Kept in one place because a divergence here is a package installed against
+  // an identity nothing checked, and the two callers would drift silently.
+  //
+  // `discardSnapshot` is the caller's way to disown a snapshot the store never
+  // came to reference: nothing points at it, so the agent that created it is
+  // asked to drop it before the failure surfaces.
+  async completeInstall({ at, discardSnapshot = null, input, instance, manifestId, packageId, requestSource = null }) {
     try {
       const { manifest: installedManifest } = readAppPackageManifest(instance.snapshotPath);
-      if (installedManifest.id !== manifest.id || digestAppPackage(instance.snapshotPath) !== packageDigest) {
+      if (installedManifest.id !== manifestId || digestAppPackage(instance.snapshotPath) !== instance.packageDigest) {
         throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The installed app package snapshot does not match the validated source package.', 502);
       }
       const config = createConfigRows({ input, instanceId: instance.id, manifest: installedManifest, secretDir: this.secretDir });
-      const projections = renderDryRunProjections(installedManifest, config);
+      const projections = renderDryRunProjections(installedManifest, config, { packageId });
       this.store.installAppInstance({
         at,
         config,
@@ -1596,26 +888,16 @@ class AppPackageService {
         request: {
           config: config.map((item) => ({ generated: item.source === 'generated', key: item.key, secret: item.secret === true, source: item.source })),
           dryRunOnly: true,
-          packageId: manifest.id,
-          packageVersion: manifest.version,
+          packageId,
+          packageVersion: instance.packageVersion,
+          ...(requestSource ? { source: requestSource } : {}),
         },
       });
     } catch (error) {
       fs.rmSync(path.join(this.secretDir, instance.id), { recursive: true, force: true });
-      // No instance row references this successfully created snapshot yet.
-      // Ask the owning root agent to discard it before surfacing the failure.
-      if (typeof this.agent.remove === 'function') {
-        await this.agent.remove({
-          installedSourceRevision: source.revision,
-          instanceId: instance.id,
-          packageId: manifest.id,
-          services: [],
-          volumes: [],
-        }).catch(() => {});
-      }
+      await discardSnapshot?.().catch(() => {});
       throw error;
     }
-
     return publicInstance(
       this.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
       this.store.getAppProjections(instance.id),
@@ -1706,428 +988,14 @@ class AppPackageService {
     }
     instance.snapshotPath = snapshot.snapshotPath;
     instance.snapshotState = 'installed';
-    const { manifest: installedManifest } = readAppPackageManifest(instance.snapshotPath);
-    if (installedManifest.id !== manifest.id || digestAppPackage(instance.snapshotPath) !== candidate.packageDigest) {
-      throw new AppPackageServiceError('APP_PACKAGE_SNAPSHOT_INVALID', 'The installed app package snapshot does not match the validated source package.', 502);
-    }
-    const config = createConfigRows({ input, instanceId: instance.id, manifest: installedManifest, secretDir: this.secretDir });
-    const projections = renderDryRunProjections(installedManifest, config, { packageId });
-    try {
-      this.store.installAppInstance({
-        at,
-        config,
-        instance,
-        operationId: crypto.randomUUID(),
-        projections,
-        request: {
-          config: config.map((item) => ({ generated: item.source === 'generated', key: item.key, secret: item.secret === true, source: item.source })),
-          dryRunOnly: true,
-          packageId,
-          packageVersion: manifest.version,
-          source: { kind: instance.source.kind, repository: instance.source.repository, revision: instance.source.revision, trust: instance.source.trust },
-        },
-      });
-    } catch (error) {
-      fs.rmSync(path.join(this.secretDir, instance.id), { recursive: true, force: true });
-      throw error;
-    }
-
-    return publicInstance(
-      this.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
-      this.store.getAppProjections(instance.id),
-      this.store.getAppConfig(instance.id),
-    );
-  }
-
-  async preparePackageUpdate(packageId) {
-    const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (!instance || instance.status === 'uninstalled') throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before preparing an update.', 409);
-    const installedPackage = this.installedPackageFor(instance);
-    let candidate;
-    try {
-      candidate = await this.downloadUpdateCandidate(instance);
-      const agentStatus = await this.agent?.status().catch(() => ({ capabilities: [] })) || { capabilities: [] };
-      return compareAppPackages({
-        agentCapabilities: Array.isArray(agentStatus.capabilities) ? agentStatus.capabilities : [],
-        agentContractVersion: Number.isInteger(agentStatus.contractVersion) ? agentStatus.contractVersion : 0,
-        candidate,
-        hostArchitecture: hostArchitectureOf(agentStatus),
-        installed: { ...installedPackage, packageDigest: instance.packageDigest, source: {
-          kind: instance.sourceKind,
-          path: instance.sourcePath,
-          repository: instance.sourceRepository,
-          revision: instance.sourceRevision,
-          trust: instance.sourceTrust,
-        } },
-        platformVersion: this.platformVersion,
-      });
-    } catch (error) {
-      if (error instanceof AppPackageServiceError) throw error;
-      throw new AppPackageServiceError(error.code || 'APP_CANDIDATE_INVALID', error.message || 'The app update candidate is invalid.', 409);
-    } finally { candidate?.cleanup?.(); }
-  }
-
-  // The whole update transaction is held under the app's key, not just its
-  // durable part: the download, build, and runtime swap all happen before the
-  // store has a record it could refuse a second update against.
-  async stagePackageUpdate(packageId, input = {}, requestContext = {}) {
-    return this.limiter.runExclusive(packageId, () => this.performStageUpdate(packageId, input, requestContext));
-  }
-
-  async performStageUpdate(packageId, input = {}, requestContext = {}) {
-    const instance = this.store.getAppInstanceByPackageId(packageId);
-    if (!instance || instance.status === 'uninstalled') throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Install this app before staging an update.', 409);
-    // Activation starts the candidate's containers, so updating a disabled app
-    // would end with containers running while the store says disabled.
-    if (instance.status !== 'installed') {
-      throw new AppPackageServiceError('APP_UPDATE_APP_DISABLED', 'Start this app before updating it. Updating a stopped app would start it.', 409);
-    }
-    // rollback-required and commit-required mean the runtime or snapshot no
-    // longer matches what the store records, and beginning a new update would
-    // start by wiping that flag and verifying against the stale record.
-    // retry-safe deliberately passes: retrying the update is its recovery.
-    if (['commit-required', 'rollback-required'].includes(instance.updateRecoveryState)) {
-      throw new AppPackageServiceError('APP_UPDATE_RECOVERY_REQUIRED', 'This app needs recovery from its last update before a new update can start.', 409);
-    }
-    if (typeof input.confirmationToken !== 'string' || !/^[a-f0-9]{64}$/u.test(input.confirmationToken)) {
-      throw new AppPackageServiceError('APP_UPDATE_CONFIRMATION_INVALID', 'Prepare and confirm this exact app update before staging it.', 400);
-    }
-    if (!this.agent?.stagePackageUpdate || !this.agent?.buildPackageUpdate || !this.agent?.activatePackageUpdate || !this.agent?.rollbackPackageUpdate || !this.agent?.promotePackageUpdate) {
-      throw new AppPackageServiceError('APP_UPDATE_STAGING_UNAVAILABLE', 'App update staging is unavailable.', 503);
-    }
-    const installedPackage = this.installedPackageFor(instance);
-    let candidate;
-    let operationId = null;
-    let lastDurableStage = null;
-    let homepageRollback = null;
-    let activatedRuntimes = null;
-    let snapshotPromoted = false;
-    let addedConfig = [];
-    try {
-      candidate = await this.downloadUpdateCandidate(instance);
-      const agentStatus = await this.agent.status();
-      const comparison = compareAppPackages({
-        agentCapabilities: Array.isArray(agentStatus.capabilities) ? agentStatus.capabilities : [],
-        agentContractVersion: Number.isInteger(agentStatus.contractVersion) ? agentStatus.contractVersion : 0,
-        candidate,
-        hostArchitecture: hostArchitectureOf(agentStatus),
-        installed: { ...installedPackage, packageDigest: instance.packageDigest, source: {
-          kind: instance.sourceKind,
-          path: instance.sourcePath,
-          repository: instance.sourceRepository,
-          revision: instance.sourceRevision,
-          trust: instance.sourceTrust,
-        } },
-        platformVersion: this.platformVersion,
-      });
-      if (comparison.confirmationToken !== input.confirmationToken) {
-        throw new AppPackageServiceError('APP_UPDATE_IDENTITY_CHANGED', 'The installed app or update candidate changed after preview. Review the update again.', 409);
-      }
-      if (comparison.compatibility === 'unsupported') {
-        throw new AppPackageServiceError('APP_UPDATE_UNSUPPORTED', 'This update is not compatible with the current MOS installation.', 409);
-      }
-      // Only a newer package is an ordinary update. Serving an older one is how a
-      // compromised or force-pushed source walks an app back to a version whose
-      // holes are already published, and because the source is re-resolved on
-      // every apply, nothing but this refuses it. Recovering from a bad update is
-      // a different act with a different risk, so it takes an explicit decision
-      // rather than the same button that installs an update.
-      if (comparison.updateStatus === 'current') {
-        throw new AppPackageServiceError('APP_UPDATE_NOT_AVAILABLE', 'This app already runs the package its source offers, so there is nothing to update.', 409);
-      }
-      if (comparison.updateStatus === 'installed-newer' && input.allowDowngrade !== true) {
-        throw new AppPackageServiceError(
-          'APP_UPDATE_DOWNGRADE_BLOCKED',
-          `The source offers version ${comparison.candidate.packageVersion}, which is older than the installed version ${comparison.installed.packageVersion}. Confirm an explicit downgrade to install it anyway.`,
-          409,
-        );
-      }
-      // A candidate MOS has not reviewed may not quietly widen what it reaches
-      // for. Its route hosts are re-checked against every other installed app, the
-      // same way its install was, so an update cannot take over a web address
-      // another app already answers on.
-      if (candidate.source?.trust !== 'mos-reviewed') this.assertRouteHostsAvailable(candidate.manifest, instance.packageId);
-      // An update is one transaction through promote. An agent that could stage
-      // and build but not activate/rollback/promote used to be accepted and then
-      // abandoned mid-transaction, leaving the operation row running forever and
-      // every later update refused until restart. Under the repo's managed-update
-      // rule that tier cannot legitimately exist, so it is refused here — before
-      // any durable operation record is created — instead of half-served.
-      const requiredUpdateCapabilities = ['apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'];
-      if (agentStatus.contractVersion < 6 || requiredUpdateCapabilities.some((capability) => !agentStatus.capabilities?.includes(capability))) {
-        throw new AppPackageServiceError('APP_UPDATE_STAGING_UNAVAILABLE', 'The installed app agent cannot apply package updates end to end. Update MOS so its app agent is current, then retry this app update.', 503);
-      }
-      const installedConfigRows = this.store.getAppConfig(instance.id).map((row) => (
-        row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
-      ));
-      // Setup values the candidate newly requires are collected in the update
-      // dialog and become config rows here. Only fields the instance does not
-      // already hold are created, so an update never rotates a generated secret or
-      // overwrites a value the owner set.
-      const heldKeys = new Set(installedConfigRows.map((row) => row.key));
-      addedConfig = createConfigRows({
-        input: { config: isRecord(input.config) ? input.config : {} },
-        instanceId: instance.id,
-        manifest: { ...candidate.manifest, setup: { ...candidate.manifest.setup, fields: setupFields(candidate.manifest).filter((field) => !heldKeys.has(field.id)) } },
-        secretDir: this.secretDir,
-      });
-      const candidateConfig = [...installedConfigRows, ...addedConfig];
-      let candidatePrivacy = { posture: 'review-required', reviewedAt: null, status: 'review-required' };
-      const candidateReviewPath = path.join(candidate.packageDir, 'privacy-review.json');
-      // A package-shipped review counts as a review only from a MOS-reviewed
-      // source. An external candidate can ship a `privacy-review.json` claiming
-      // any posture it likes, so it stays review-required however it updates.
-      if (candidate.source?.trust === 'mos-reviewed' && fs.existsSync(candidateReviewPath)) {
-        const review = JSON.parse(fs.readFileSync(candidateReviewPath, 'utf8'));
-        const errors = validatePrivacyBinding(review, { manifest: candidate.manifest, packageDigest: candidate.packageDigest, source: candidate.source });
-        if (errors.length) throw new AppPackageServiceError('APP_PRIVACY_REVIEW_INVALID', `The candidate privacy review is invalid: ${errors.join(' ')}`, 409);
-        candidatePrivacy = { posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
-      }
-      const candidateProjections = renderInstanceProjections(candidate.manifest, candidateConfig, {
-        instanceId: instance.id,
-        integrations: this.store.getAppIntegrations(),
-        packageId: instance.packageId,
-      });
-      const composeProjection = candidateProjections.find((projection) => projection.kind === 'compose');
-      const caddyProjection = candidateProjections.find((projection) => projection.kind === 'caddy');
-      const healthProjection = candidateProjections.find((projection) => projection.kind === 'health');
-      if (!composeProjection || !caddyProjection || !healthProjection) {
-        throw new AppPackageServiceError('APP_RUNTIME_PROJECTION_MISSING', 'The update candidate is missing runtime projections.', 409);
-      }
-      const at = this.now().toISOString();
-      const newOperationId = crypto.randomUUID();
-      try {
-        this.store.beginAppUpdate({
-          at,
-          candidateDigest: candidate.packageDigest,
-          expectedInstalledDigest: instance.packageDigest,
-          instanceId: instance.id,
-          operationId: newOperationId,
-          // `recovery` is everything a later process needs to finish this update
-          // when this one dies after the point of no return: commit inputs the
-          // candidate download no longer exists to provide, the secret-free
-          // candidate projections a recovery rollback rebuilds the runtime
-          // request from, and the collected config rows (values for plain
-          // fields, file references for secrets — never secret material).
-          request: {
-            packageId,
-            packageVersion: candidate.manifest.version,
-            recovery: {
-              addedConfig: addedConfig.map((row) => ({
-                fingerprint: row.fingerprint ?? null,
-                key: row.key,
-                redactedLabel: row.redactedLabel ?? null,
-                secretRef: row.secretRef ?? null,
-                source: row.source,
-                valueJson: row.valueJson ?? null,
-              })),
-              candidateProjections: candidateProjections.map((projection) => ({
-                contentJson: projection.contentJson,
-                digest: projection.digest,
-                kind: projection.kind,
-              })),
-              candidateSource: candidate.source,
-              categorySnapshot: candidate.manifest.category,
-              displayNameSnapshot: candidate.manifest.name,
-              manifestDigest: digestFor(candidate.manifest),
-              privacy: candidatePrivacy,
-            },
-          },
-        });
-      } catch (error) {
-        if (error.message === 'APP_UPDATE_ALREADY_RUNNING') throw new AppPackageServiceError('APP_UPDATE_ALREADY_RUNNING', 'An update operation is already active for this app.', 409);
-        throw error;
-      }
-      operationId = newOperationId;
-      const staged = await this.agent.stagePackageUpdate({
-        candidateDigest: candidate.packageDigest,
-        candidatePath: candidate.packageDir,
-        expectedInstalledDigest: instance.packageDigest,
-        instanceId: instance.id,
-        packageId,
-      });
-      this.store.advanceAppUpdate({ instanceId: instance.id, operationId, stage: 'candidate-staged' });
-      lastDurableStage = 'candidate-staged';
-      const built = await this.agent.buildPackageUpdate({
-        appHost: requestContext.appHost,
-        caddy: materializeRuntimeCaddy(caddyProjection.content, candidateConfig),
-        compose: materializeRuntimeCompose(composeProjection.content, candidateConfig),
-        expectedInstalledDigest: instance.packageDigest,
-        health: healthProjection.content,
-        instanceId: instance.id,
-        packageDigest: candidate.packageDigest,
-        packageId,
-        packageVersion: candidate.manifest.version,
-        publicUrl: requestContext.publicUrl,
-        sourceRevision: candidate.source.revision,
-      });
-      let operation = this.store.advanceAppUpdate({ instanceId: instance.id, operationId, stage: 'candidate-built' });
-      lastDurableStage = 'candidate-built';
-
-      // The runtime that has to come back if this update fails is the installed
-      // one, so it is rebuilt from the values it actually runs with rather than
-      // from the candidate's.
-      const installedConfig = installedConfigRows;
-      const installedProjections = this.store.getAppProjections(instance.id);
-      const homepageWasApplied = homepageProjectionApplied(installedProjections);
-      const installedRuntime = updateRuntimeRequest({
-        config: installedConfig,
-        instance,
-        manifest: installedPackage.manifest,
-        packageDigest: instance.packageDigest,
-        projections: installedProjections,
-        requestContext,
-        sourceRevision: instance.sourceRevision,
-      });
-      const candidateRuntime = updateRuntimeRequest({
-        config: candidateConfig,
-        expectedInstalledDigest: instance.packageDigest,
-        instance,
-        manifest: candidate.manifest,
-        packageDigest: candidate.packageDigest,
-        projections: candidateProjections,
-        requestContext,
-        sourceRevision: candidate.source.revision,
-      });
-      const activated = await this.agent.activatePackageUpdate({ candidate: candidateRuntime, installed: installedRuntime });
-      activatedRuntimes = { candidate: candidateRuntime, installed: installedRuntime };
-      operation = this.store.advanceAppUpdate({ instanceId: instance.id, operationId, stage: 'candidate-healthy' });
-      lastDurableStage = 'candidate-healthy';
-
-      let homepage = { skipped: true };
-      if (homepageWasApplied) {
-        if (!requestContext.homepageService) {
-          throw new AppPackageServiceError('APP_UPDATE_HOMEPAGE_UNAVAILABLE', 'The candidate is healthy, but its existing Homepage entry cannot be reconciled. Recovery is required.', 503);
-        }
-        const current = await requestContext.homepageService.read({ file: 'services.template.yaml' });
-        const candidateInstance = {
-          ...instance,
-          categorySnapshot: candidate.manifest.category,
-          displayNameSnapshot: candidate.manifest.name,
-          packageVersion: candidate.manifest.version,
-        };
-        homepageRollback = {
-          entry: homepageEntryForHomepage(instance, installedProjections, installedConfig, requestContext),
-          homepageService: requestContext.homepageService,
-        };
-        homepage = await requestContext.homepageService.add({
-          entry: homepageEntryForHomepage(candidateInstance, candidateProjections, candidateConfig, requestContext),
-          expectedRevision: current.revision,
-          requestId: instance.id,
-        }, false);
-        operation = this.store.advanceAppUpdate({ instanceId: instance.id, operationId, stage: 'homepage-reconciled' });
-        lastDurableStage = 'homepage-reconciled';
-      }
-      const rollbackSafe = candidate.manifest.update?.rollback === 'safe';
-      // The revision names the images the outgoing package was built into, which
-      // is the only thing standing between an updated app and a copy of every
-      // image it has ever run. It is sent only to an agent that asked for it: an
-      // older agent rejects unknown promotion fields outright, and refusing a
-      // promotion at this point would strand an update whose candidate is
-      // already serving traffic.
-      const promoted = await this.agent.promotePackageUpdate({
-        candidateDigest: candidate.packageDigest,
-        expectedInstalledDigest: instance.packageDigest,
-        ...(agentStatus.capabilities?.includes('apps.package.update.reclaim') && instance.sourceRevision
-          ? { installedSourceRevision: instance.sourceRevision }
-          : {}),
-        instanceId: instance.id,
-        packageId,
-        rollbackSafe,
-      });
-      snapshotPromoted = true;
-      operation = this.store.advanceAppUpdate({ instanceId: instance.id, operationId, stage: 'snapshot-promoted' });
-      lastDurableStage = 'snapshot-promoted';
-      operation = this.store.completeAppUpdate({
-        at: this.now().toISOString(),
-        config: addedConfig,
-        instance: {
-          categorySnapshot: candidate.manifest.category,
-          displayNameSnapshot: candidate.manifest.name,
-          manifestDigest: digestFor(candidate.manifest),
-          packageDigest: candidate.packageDigest,
-          packageVersion: candidate.manifest.version,
-          privacy: candidatePrivacy,
-          source: candidate.source,
-        },
-        instanceId: instance.id,
-        operationId,
-        projections: candidateProjections,
-        snapshotPath: promoted.snapshotPath,
-        homepageApplied: homepageWasApplied,
-      });
-      homepageRollback = null;
-      // Reconciled after the commit on purpose: reapplying a consumer re-applies
-      // its stored projections, and only after completeAppUpdate do those
-      // describe the runtime that is actually serving. Run before the commit,
-      // this call painted the outgoing compose back over the just-activated
-      // candidate. A relationship that fails here is reported on its
-      // integration row and in this result; it never un-happens the committed
-      // update, so failures must not reach the catch below.
-      let integrations = [];
-      try {
-        integrations = await this.reconcilePackageIntegrations(packageId, requestContext);
-      } catch (reconcileError) {
-        integrations = [{ errorCode: reconcileError.code || 'APP_INTEGRATION_REAPPLY_FAILED', status: 'failed' }];
-      }
-      return { activated, built, comparison, homepage, integrations, operation, promoted, staged };
-    } catch (error) {
-      if (activatedRuntimes && !snapshotPromoted) {
-        try {
-          await this.agent.rollbackPackageUpdate(activatedRuntimes);
-        } catch (rollbackError) {
-          error = new AppPackageServiceError(
-            'APP_UPDATE_ROLLBACK_FAILED',
-            'The app update failed and the previous runtime could not be restored. Recovery is required.',
-            502,
-          );
-          error.cause = rollbackError;
-        }
-      }
-      // Once the snapshot is promoted the candidate is the installed package;
-      // restoring the pre-update Homepage entry would advertise a runtime that
-      // no longer exists. The pending commit keeps the candidate's entry.
-      if (homepageRollback && !snapshotPromoted) {
-        try {
-          const current = await homepageRollback.homepageService.read({ file: 'services.template.yaml' });
-          await homepageRollback.homepageService.add({
-            entry: homepageRollback.entry,
-            expectedRevision: current.revision,
-            requestId: instance.id,
-          }, false);
-        } catch (rollbackError) {
-          error = new AppPackageServiceError(
-            'APP_UPDATE_HOMEPAGE_ROLLBACK_FAILED',
-            'The app update failed and its previous Homepage entry could not be restored. Recovery is required.',
-            502,
-          );
-          error.cause = rollbackError;
-        }
-      }
-      let recoveryState = 'none';
-      if (operationId) {
-        recoveryState = snapshotPromoted
-          ? 'commit-required'
-          : String(error.code || '').endsWith('ROLLBACK_FAILED')
-            ? 'rollback-required'
-            : 'none';
-        this.store.failAppUpdate({
-          at: this.now().toISOString(),
-          errorCode: error.code || 'APP_UPDATE_STAGE_FAILED',
-          instanceId: instance.id,
-          operationId,
-          recoveryState,
-          stage: lastDurableStage ? `${lastDurableStage}-failed` : 'candidate-stage-failed',
-        });
-      }
-      // Collected secret files are deleted only when nothing can still need
-      // them: a promoted-but-uncommitted candidate runs against them right now,
-      // and a pending rollback rebuilds the candidate runtime it must tear down
-      // from them. Recovery discards them itself once it resolves the state.
-      if (recoveryState === 'none') this.discardCollectedSecrets(instance.id, addedConfig);
-      if (error instanceof AppPackageServiceError) throw error;
-      throw new AppPackageServiceError(error.code || 'APP_UPDATE_STAGE_FAILED', error.message || 'The app update could not be staged.', error.statusCode || 502);
-    } finally { candidate?.cleanup?.(); }
+    return this.completeInstall({
+      at,
+      input,
+      instance,
+      manifestId: manifest.id,
+      packageId,
+      requestSource: { kind: instance.source.kind, repository: instance.source.repository, revision: instance.source.revision, trust: instance.source.trust },
+    });
   }
 
   withGuideState(instance) {

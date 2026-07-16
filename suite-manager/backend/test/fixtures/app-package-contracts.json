@@ -40,13 +40,21 @@
     "id": "community-notes",
     "version": "1.0.0",
     "role": "standalone",
-    "routes": [{ "host": "notes", "port": 8080, "service": "notes" }],
+    "routes": [
+      {
+        "host": "notes",
+        "port": 8080,
+        "service": "notes"
+      }
+    ],
     "resources": {
       "services": {
         "notes": {
           "dockerfile": "Dockerfile",
           "internalPort": 8080,
-          "volumes": ["notes-data:/data"]
+          "volumes": [
+            "notes-data:/data"
+          ]
         }
       }
     }
@@ -55,15 +63,82 @@
     "id": "community-notes",
     "version": "1.0.0",
     "privileged": true,
-    "routes": [{ "host": "notes", "port": 8080, "service": "notes" }],
+    "routes": [
+      {
+        "host": "notes",
+        "port": 8080,
+        "service": "notes"
+      }
+    ],
     "resources": {
       "services": {
         "notes": {
           "dockerfile": "Dockerfile",
           "internalPort": 8080,
           "networkMode": "host",
-          "volumes": ["/var/run/docker.sock:/var/run/docker.sock", "/etc:/host-etc", "notes-data:/data"]
+          "volumes": [
+            "/var/run/docker.sock:/var/run/docker.sock",
+            "/etc:/host-etc",
+            "notes-data:/data"
+          ]
         }
+      }
+    }
+  },
+  "validPrivacyReview": {
+    "appId": "example-app",
+    "dimensions": {
+      "accountDependency": "local-only",
+      "confidence": "verified",
+      "dataProcessing": "local",
+      "externalServices": "none-required",
+      "policyExposure": "self-hosted-software-only",
+      "telemetry": "none-observed"
+    },
+    "evidence": [
+      {
+        "claim": "No telemetry endpoints are contacted at rest.",
+        "source": "observed traffic capture",
+        "type": "observed"
+      }
+    ],
+    "openQuestions": [],
+    "policies": [
+      {
+        "kind": "privacy",
+        "retrievedAt": "2026-01-05T00:00:00Z",
+        "url": "https://example.com/privacy"
+      }
+    ],
+    "posture": "private-by-default",
+    "provenance": {
+      "humanReviewed": true,
+      "method": "ai-assisted",
+      "model": "example-model",
+      "modelIdentifierSource": "runtime-reported",
+      "provider": "example",
+      "repositoryCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "skill": "assess-app-privacy",
+      "skillRevision": "1"
+    },
+    "reviewedAt": "2026-01-05T00:00:00Z",
+    "schemaVersion": 1,
+    "scope": {
+      "components": [
+        {
+          "artifact": "ghcr.io/example/app",
+          "name": "Example",
+          "version": "1.0.0"
+        }
+      ],
+      "packageDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "packageVersion": "1.0.0",
+      "source": {
+        "kind": "official-git",
+        "repository": "https://github.com/rpuls/my-own-suite",
+        "path": "apps/example-app",
+        "revision": "0123456789abcdef0123456789abcdef01234567",
+        "trust": "mos-reviewed"
       }
     }
   }

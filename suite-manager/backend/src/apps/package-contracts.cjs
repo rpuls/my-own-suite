@@ -12,8 +12,14 @@ const TEXT_FILE = /(?:^Dockerfile(?:\.|$)|\.(?:cjs|css|html|js|json|md|mjs|sh|sv
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/u;
 const PACKAGE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const SEMVER_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/u;
-const SOURCE_KINDS = new Set(['external-git', 'local', 'official-git']);
-const TRUST_LEVELS = new Set(['mos-reviewed', 'publisher-signed', 'unverified']);
+// The source kinds and trust levels a package identity can actually carry.
+// `publisher-signed` is deliberately absent: MOS pins no publisher keys, so
+// nothing can verify such a claim and the registry refuses it outright. A
+// development-only `local` source kind exists in external-source-registry, but
+// it never reaches here — a downloaded candidate's identity is always resolved
+// as `external-git` (see external-source-client performDownload).
+const SOURCE_KINDS = new Set(['external-git', 'official-git']);
+const TRUST_LEVELS = new Set(['mos-reviewed', 'unverified']);
 // The architectures MOS runs on. A package names the ones its pinned base images
 // actually publish, which is knowable only to whoever pinned them.
 const SUPPORTED_ARCHITECTURES = Object.freeze(['amd64', 'arm64']);
@@ -269,9 +275,20 @@ function validatePrivacyBinding(review, { manifest, packageDigest, source }) {
 // The mechanical posture derivation promised by apps/README.md: postures are
 // derived from their dimensions, never selected by intuition, and an unknown
 // fact is never turned into a favorable result.
-const PRIVACY_DIMENSIONS = Object.freeze([
-  'telemetry', 'externalServices', 'accountDependency', 'dataProcessing', 'policyExposure', 'confidence',
-]);
+//
+// The permitted value of every dimension, which is also the vocabulary
+// derivePrivacyPosture reasons over. Declared once so the derivation and the
+// document validator below cannot disagree about what a dimension may say.
+const PRIVACY_DIMENSION_VALUES = Object.freeze({
+  accountDependency: ['local-only', 'optional-upstream-account', 'required-upstream-account', 'unknown'],
+  confidence: ['verified', 'documented', 'inferred', 'unknown'],
+  dataProcessing: ['local', 'optional-external', 'required-external', 'unknown'],
+  externalServices: ['none-required', 'optional', 'required', 'unknown'],
+  policyExposure: ['self-hosted-software-only', 'upstream-services-involved', 'unclear'],
+  telemetry: ['none-observed', 'disabled-by-mos', 'optional', 'unavoidable', 'unknown'],
+});
+const PRIVACY_POSTURES = Object.freeze(['private-by-default', 'privacy-configured', 'external-dependency', 'review-required']);
+const PRIVACY_DIMENSIONS = Object.freeze(Object.keys(PRIVACY_DIMENSION_VALUES));
 
 function derivePrivacyPosture(dimensions) {
   const d = dimensions && typeof dimensions === 'object' && !Array.isArray(dimensions) ? dimensions : {};
@@ -311,6 +328,129 @@ function validatePrivacyAssessment(review) {
     if (concrete.length === 0) errors.push('privacy review must cite at least one evidence entry with a claim and source for its posture.');
   }
   return errors;
+}
+
+// --- Privacy assessment document shape -----------------------------------
+//
+// The authored shape of a `privacy-review.json`, enforced when the repository's
+// own reviews are checked (`npm run apps:privacy:check`). This is deliberately
+// the only encoding of that shape. It previously lived in a committed JSON
+// Schema file interpreted at check time by a hand-written partial evaluator,
+// which silently passed every keyword the evaluator had not implemented — a
+// validator that quietly declines to validate is worse than none, because it
+// reports success. Plain code cannot skip a rule it does not recognise.
+//
+// Runtime install/update paths deliberately do NOT call this: they enforce
+// binding (validatePrivacyBinding) and semantics (validatePrivacyAssessment)
+// against packages that may predate any given authoring rule.
+
+const ISO_DATE_TIME = (value) => typeof value === 'string' && !Number.isNaN(Date.parse(value));
+const NON_EMPTY_STRING = (value) => typeof value === 'string' && value.trim() !== '';
+
+function checkRecord(value, pointer, { optional = {}, required = {}, sealed = true }) {
+  const errors = [];
+  if (!isPlainRecord(value)) return [`${pointer} must be an object.`];
+  for (const [name, check] of Object.entries(required)) {
+    if (value[name] === undefined) errors.push(`${pointer}.${name} is required.`);
+    else errors.push(...check(value[name], `${pointer}.${name}`));
+  }
+  for (const [name, check] of Object.entries(optional)) {
+    if (value[name] !== undefined) errors.push(...check(value[name], `${pointer}.${name}`));
+  }
+  if (sealed) {
+    for (const name of Object.keys(value)) {
+      if (!(name in required) && !(name in optional)) errors.push(`${pointer}.${name} is not a known property.`);
+    }
+  }
+  return errors;
+}
+
+const isString = (value, pointer) => (typeof value === 'string' ? [] : [`${pointer} must be a string.`]);
+const isBoolean = (value, pointer) => (typeof value === 'boolean' ? [] : [`${pointer} must be a boolean.`]);
+const isDateTime = (value, pointer) => (ISO_DATE_TIME(value) ? [] : [`${pointer} must be an ISO date-time.`]);
+const isOneOf = (values) => (value, pointer) => (values.includes(value) ? [] : [`${pointer} must be one of ${values.join(', ')}.`]);
+const matches = (pattern, description) => (value, pointer) => (typeof value === 'string' && pattern.test(value) ? [] : [`${pointer} must be ${description}.`]);
+
+function isListOf(check, { minItems = 0 } = {}) {
+  return (value, pointer) => {
+    if (!Array.isArray(value)) return [`${pointer} must be an array.`];
+    const errors = value.flatMap((item, index) => check(item, `${pointer}[${index}]`));
+    if (value.length < minItems) errors.push(`${pointer} must contain at least ${minItems} item(s).`);
+    return errors;
+  };
+}
+
+const isEvidence = (value, pointer) => checkRecord(value, pointer, {
+  optional: { retrievedAt: isString, url: isString },
+  required: {
+    claim: isString,
+    source: isString,
+    type: isOneOf(['observed', 'configured', 'documented', 'inferred']),
+  },
+  sealed: false,
+});
+
+function validatePrivacyAssessmentDocument(review) {
+  return checkRecord(review, 'review', {
+    optional: {
+      expiresAt: isDateTime,
+      telemetryControls: isListOf(isEvidence),
+    },
+    required: {
+      appId: matches(PACKAGE_ID_PATTERN, 'a valid package id'),
+      dimensions: (value, pointer) => checkRecord(value, pointer, {
+        required: Object.fromEntries(PRIVACY_DIMENSIONS.map((name) => [name, isOneOf(PRIVACY_DIMENSION_VALUES[name])])),
+        sealed: false,
+      }),
+      evidence: isListOf(isEvidence),
+      openQuestions: isListOf(isString),
+      policies: isListOf((value, pointer) => checkRecord(value, pointer, {
+        optional: { contentHash: isString, effectiveDate: isString, publisher: isString },
+        required: { kind: isOneOf(['terms', 'privacy', 'license']), retrievedAt: isString, url: isString },
+        sealed: false,
+      })),
+      posture: isOneOf(PRIVACY_POSTURES),
+      provenance: (value, pointer) => checkRecord(value, pointer, {
+        optional: { humanReviewer: isString },
+        required: {
+          humanReviewed: isBoolean,
+          method: isOneOf(['ai-assisted', 'human']),
+          model: isString,
+          modelIdentifierSource: isOneOf(['runtime-reported', 'user-supplied', 'unknown']),
+          provider: isString,
+          repositoryCommit: isString,
+          skill: isOneOf(['assess-app-privacy']),
+          skillRevision: isString,
+        },
+        sealed: false,
+      }),
+      reviewedAt: isDateTime,
+      schemaVersion: (value, pointer) => (value === 1 ? [] : [`${pointer} must be 1.`]),
+      scope: (value, pointer) => checkRecord(value, pointer, {
+        optional: { clientsExcluded: isListOf(isString) },
+        required: {
+          components: isListOf((component, componentPointer) => checkRecord(component, componentPointer, {
+            optional: { digest: isString },
+            required: { artifact: isString, name: isString, version: isString },
+          }), { minItems: 1 }),
+          packageDigest: matches(DIGEST_PATTERN, 'a SHA-256 digest'),
+          packageVersion: isString,
+          source: (source, sourcePointer) => checkRecord(source, sourcePointer, {
+            required: {
+              kind: isOneOf([...SOURCE_KINDS]),
+              path: isString,
+              repository: (repository, repositoryPointer) => {
+                if (!NON_EMPTY_STRING(repository)) return [`${repositoryPointer} must be a string.`];
+                try { new URL(repository); return []; } catch { return [`${repositoryPointer} must be a URI.`]; }
+              },
+              revision: isString,
+              trust: isOneOf([...TRUST_LEVELS]),
+            },
+          }),
+        },
+      }),
+    },
+  });
 }
 
 function advisoryAffectsVersion(advisory, packageVersion) {
@@ -560,6 +700,7 @@ module.exports = {
   validateExternalIdentity,
   validatePlatformCompatibility,
   validatePrivacyAssessment,
+  validatePrivacyAssessmentDocument,
   validatePrivacyBinding,
   validateSourceIdentity,
   verifySnapshotIdentity,
