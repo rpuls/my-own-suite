@@ -569,6 +569,16 @@ function validateConstrainedCapabilities(manifest, { trust } = {}) {
   for (const key of FORBIDDEN_MANIFEST_KEYS) {
     if (manifest[key] !== undefined) errors.push(`manifest.${key} is not permitted for a non-official package.`);
   }
+  // An external route host is served under the reserved `ext-` prefix, so it has
+  // fewer characters to spend than the DNS label limit suggests. Rejected here,
+  // where the package is still a candidate, rather than at apply time when the
+  // name has already been promised to the owner.
+  for (const route of Array.isArray(manifest.routes) ? manifest.routes : []) {
+    const host = String(route?.host || '');
+    if (host.length > EXTERNAL_ROUTE_HOST_MAX_LENGTH) {
+      errors.push(`routes.host must be at most ${EXTERNAL_ROUTE_HOST_MAX_LENGTH} characters for a non-official package, because it is served as ${EXTERNAL_ROUTE_HOST_PREFIX}${host}.`);
+    }
+  }
   const services = isPlainRecord(manifest.resources?.services) ? manifest.resources.services : {};
   for (const [serviceId, service] of Object.entries(services)) {
     const prefix = `resources.services.${serviceId}`;
@@ -613,6 +623,43 @@ function parseNamespacedPackageId(id) {
   return { namespace: match[1], namespaced: true, packageId: match[2] };
 }
 
+// --- The app host namespace ----------------------------------------------
+//
+// An app's public web address is its route host, not its package id: the id is
+// an internal identity that is namespaced for external packages, while the
+// route host is what Caddy actually serves and what assertRouteHostsAvailable
+// reserves installation-wide. Deriving a host from a package id produces a name
+// the app agent refuses, because the agent rebuilds every site from the route
+// host and checks appHost agrees with it.
+//
+// External route hosts live under a reserved prefix. MOS cannot know the names
+// of its own future apps, so it cannot maintain a denylist of them; instead it
+// promises never to ship an official app under `ext-`, which is enforced
+// mechanically by `npm run apps:catalog:check`. That inverts the problem: an
+// external package cannot name a host MOS might later want, including `home`.
+//
+// The prefix does not make two external apps unique to each other. Two packages
+// both claiming `notes` still contend for `ext-notes`, and the second install
+// fails with APP_ROUTE_HOST_TAKEN, which is the documented meaning of a route
+// host being global to the installation.
+const EXTERNAL_ROUTE_HOST_PREFIX = 'ext-';
+const DNS_LABEL_MAX_LENGTH = 63;
+const EXTERNAL_ROUTE_HOST_MAX_LENGTH = DNS_LABEL_MAX_LENGTH - EXTERNAL_ROUTE_HOST_PREFIX.length;
+
+// External-ness is read back off the namespaced package id rather than taken as
+// a separate argument. namespacedPackageId returns a bare id only for a
+// MOS-reviewed official source, so the namespace marker and "is external" are
+// the same fact, and a caller cannot forget to pass it or pass it wrongly —
+// which for a host prefix would mean silently renaming every official app.
+function isExternalPackageId(packageId) {
+  return parseNamespacedPackageId(packageId).namespaced;
+}
+
+// The host an app actually answers on, given the id MOS installed it under.
+function effectiveRouteHost(host, packageId) {
+  return isExternalPackageId(packageId) ? `${EXTERNAL_ROUTE_HOST_PREFIX}${host}` : String(host);
+}
+
 // Prevent an external package from impersonating an official one: it may not
 // reuse an official package id, sit under a reserved id prefix, or self-assert
 // review/verification the platform has not granted.
@@ -635,10 +682,15 @@ function validateExternalIdentity(manifest, source, { officialPackageIds = [] } 
 // The security-relevant permission surface a package requests, as stable keys.
 // Used to show owners what they are granting before install and to detect
 // permission increases before an update.
-function describeRequestedPermissions(manifest) {
+// `external` names the host namespace the package will be placed in, so the
+// address an owner is asked to consent to is the one that will actually be
+// served. It is a property of the source, so both sides of an update comparison
+// must pass the same value: a route that only appears to change because one side
+// was namespaced and the other was not would read as an app widening its access.
+function describeRequestedPermissions(manifest, { external = false } = {}) {
   const permissions = new Set();
   for (const route of Array.isArray(manifest?.routes) ? manifest.routes : []) {
-    if (route?.host) permissions.add(`route:${route.host}`);
+    if (route?.host) permissions.add(`route:${external ? `${EXTERNAL_ROUTE_HOST_PREFIX}${route.host}` : route.host}`);
   }
   const services = isPlainRecord(manifest?.resources?.services) ? manifest.resources.services : {};
   for (const service of Object.values(services)) {
@@ -679,6 +731,8 @@ module.exports = {
   CATALOG_REFRESH_POLICY,
   CONSTRAINED_CAPABILITY_PROFILE,
   DEFAULT_PACKAGE_LIMITS,
+  EXTERNAL_ROUTE_HOST_MAX_LENGTH,
+  EXTERNAL_ROUTE_HOST_PREFIX,
   SUPPORTED_ARCHITECTURES,
   advisoriesForVersion,
   advisoryAffectsVersion,
@@ -689,6 +743,8 @@ module.exports = {
   describeRequestedPermissions,
   diffRequestedPermissions,
   digestAppPackage,
+  effectiveRouteHost,
+  isExternalPackageId,
   namespacedPackageId,
   parseNamespacedPackageId,
   stableJson,

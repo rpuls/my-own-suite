@@ -144,13 +144,13 @@ test('an unverified update that widens the access it asks for needs explicit con
   t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
   const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
   assert.equal(comparison.updateStatus, 'update-available');
-  assert.deepEqual(comparison.permissions.installed, ['route:example', 'volume:data']);
-  assert.deepEqual(comparison.permissions.added, ['route:example-admin', 'volume:extra']);
+  assert.deepEqual(comparison.permissions.installed, ['route:ext-example', 'volume:data']);
+  assert.deepEqual(comparison.permissions.added, ['route:ext-example-admin', 'volume:extra']);
   assert.deepEqual(comparison.permissions.removed, []);
   assert.equal(comparison.compatibility, 'owner-action-required');
   const change = comparison.changes.find((item) => item.area === 'permissions');
   assert.equal(change.classification, 'operator-action-required');
-  assert.match(change.summary, /route:example-admin/u);
+  assert.match(change.summary, /route:ext-example-admin/u);
 });
 
 test('the same access increase from the reviewed catalog is reported without demanding consent', (t) => {

@@ -2,7 +2,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { digestAppPackage, validateAdvisoryIndex, validateCatalog } = require('../suite-manager/backend/src/apps/package-contracts.cjs');
+const {
+  EXTERNAL_ROUTE_HOST_PREFIX,
+  digestAppPackage,
+  parseNamespacedPackageId,
+  validateAdvisoryIndex,
+  validateCatalog,
+} = require('../suite-manager/backend/src/apps/package-contracts.cjs');
 const { discoverAppPackages } = require('../suite-manager/backend/src/apps/package-manifest.cjs');
 
 const repoRoot = path.resolve(__dirname, '..');
@@ -51,7 +57,37 @@ function validateAdvisoriesFile(catalog) {
   return errors;
 }
 
+// MOS reserves two shapes for itself and must never ship an official package
+// that occupies either.
+//
+// `ext-` is the route host namespace every external package is placed under. It
+// exists because MOS cannot enumerate the names of its own future apps, and so
+// cannot maintain a denylist protecting them: instead external hosts are confined
+// to a prefix MOS promises not to use. An official app taking an `ext-` host would
+// break that promise and could be shadowed by an external package. The promise is
+// only worth anything if it is mechanical, which is what this is.
+//
+// `x-<8 hex>-` is the namespaced-id shape that marks a package as external, and
+// which decides whether the `ext-` prefix is applied. An official id of that shape
+// would be treated as external and silently renamed.
+function validateReservedNames(entries) {
+  const errors = [];
+  for (const { manifest } of entries) {
+    if (parseNamespacedPackageId(manifest.id).namespaced) {
+      errors.push(`official package ${manifest.id} uses the reserved external id shape x-<8 hex>-<id>.`);
+    }
+    for (const route of Array.isArray(manifest.routes) ? manifest.routes : []) {
+      if (String(route?.host || '').startsWith(EXTERNAL_ROUTE_HOST_PREFIX)) {
+        errors.push(`official package ${manifest.id} claims route host ${route.host}, which is reserved for external packages by the ${EXTERNAL_ROUTE_HOST_PREFIX} prefix.`);
+      }
+    }
+  }
+  return errors;
+}
+
 function main(args = process.argv.slice(2)) {
+  const reservedErrors = validateReservedNames(discoverAppPackages(appsDir));
+  if (reservedErrors.length) throw new Error(`Official packages use reserved names:\n${reservedErrors.join('\n')}`);
   const generated = generateCatalog();
   const validationErrors = validateCatalog(generated);
   if (validationErrors.length) throw new Error(`Generated catalog is invalid:\n${validationErrors.join('\n')}`);

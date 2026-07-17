@@ -112,7 +112,7 @@ test('the external candidate gate fails closed on impersonation and host escalat
   };
   const clean = validateExternalCandidate({ manifest, officialPackageIds: ['immich'], platformVersion: '0.11.0', source });
   assert.deepEqual(clean.errors, []);
-  assert.deepEqual(clean.permissions, ['route:notes', 'volume:notes-data']);
+  assert.deepEqual(clean.permissions, ['route:ext-notes', 'volume:notes-data']);
 
   const hostile = validateExternalCandidate({
     manifest: { ...manifest, id: 'immich', privileged: true, resources: { services: { notes: { volumes: ['/etc:/host-etc'] } } } },

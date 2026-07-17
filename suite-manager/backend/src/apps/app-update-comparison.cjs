@@ -82,8 +82,11 @@ function compareAppPackages({ candidate, installed, platformVersion, agentCapabi
   // slots, capability provision. An update that widens that surface is never
   // routine. A MOS-reviewed candidate had the increase reviewed, so it is only
   // reported; anything else needs the owner to consent to the wider access.
-  const installedPermissions = describeRequestedPermissions(installed.manifest);
-  const candidatePermissions = describeRequestedPermissions(candidate.manifest);
+  // An update never moves a package between sources, so one namespace applies to
+  // both sides. Computed once so the diff can only report a real change.
+  const externalHosts = candidate.source?.trust !== 'mos-reviewed';
+  const installedPermissions = describeRequestedPermissions(installed.manifest, { external: externalHosts });
+  const candidatePermissions = describeRequestedPermissions(candidate.manifest, { external: externalHosts });
   const addedPermissions = diffRequestedPermissions(installedPermissions, candidatePermissions);
   const removedPermissions = diffRequestedPermissions(candidatePermissions, installedPermissions);
   if (addedPermissions.length) {

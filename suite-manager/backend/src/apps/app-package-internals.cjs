@@ -13,6 +13,7 @@ const path = require('node:path');
 
 const {
   SUPPORTED_ARCHITECTURES,
+  effectiveRouteHost,
   stableJson,
 } = require('./package-contracts.cjs');
 
@@ -145,8 +146,13 @@ function renderDryRunProjections(manifest, configRows = [], { packageId = manife
     },
     {
       content: {
+        // The projected host is the app's real web address: the agent renders
+        // every Caddy site from it, and appHost is derived from it. External
+        // packages are placed under the reserved `ext-` prefix here, at the one
+        // point a host enters the runtime, so every consumer downstream sees the
+        // address that is actually served without having to know the rule.
         routes: manifest.routes.map((route) => ({
-          host: route.host,
+          host: effectiveRouteHost(route.host, packageId),
           ...(isRecord(route.internalIcalBridge) ? { internalIcalBridge: resolveTemplatesDeep(route.internalIcalBridge, configRows) } : {}),
           reverseProxy: `127.0.0.1:${servicePorts.get(route.service)}`,
           service: route.service,
@@ -345,10 +351,37 @@ function materializeRuntimeCaddy(caddy, configRows) {
   return resolveTemplatesDeep(caddy, configRows, { includeSecrets: true });
 }
 
-function appRouteForHomepage(projections) {
+// The address an installed app answers on, as projected. This is the only
+// correct basis for an app's public identity.
+//
+// It must never be rebuilt from the package id. The app agent renders every
+// Caddy site from the projected route host and asserts that appHost's first
+// label agrees with it, so an appHost derived from the id is accepted only when
+// the id happens to equal the route host. That holds for official packages by
+// naming convention and is impossible for external ones, whose id is namespaced
+// (`x-<hash>-<id>`) — which made every external install fail the agent's
+// contract with "appHost is invalid" once the runtime was applied.
+function primaryProjectedRoute(projections) {
   const caddy = projections.find((projection) => projection.kind === 'caddy')?.content;
   const route = Array.isArray(caddy?.routes) ? caddy.routes[0] : null;
-  if (!route || typeof route.host !== 'string' || !route.host) {
+  if (!route || typeof route.host !== 'string' || !route.host) return null;
+  return route;
+}
+
+function appPublicIdentity(projections, requestContext = {}) {
+  const route = primaryProjectedRoute(projections);
+  const baseHost = String(requestContext.baseHost || '').trim().toLowerCase();
+  if (!route || !baseHost) {
+    throw new AppPackageServiceError('APP_RUNTIME_PROJECTION_INVALID', 'This app does not have enough route data to derive its web address.', 409);
+  }
+  const scheme = requestContext.scheme === 'https' ? 'https' : 'http';
+  const appHost = `${route.host}.${baseHost}`;
+  return { appHost, baseHost, publicUrl: `${scheme}://${appHost}/`, scheme };
+}
+
+function appRouteForHomepage(projections) {
+  const route = primaryProjectedRoute(projections);
+  if (!route) {
     throw new AppPackageServiceError('APP_HOMEPAGE_PROJECTION_INVALID', 'This app does not have enough route data for a Homepage entry.', 409);
   }
   return route;
@@ -543,7 +576,9 @@ module.exports = {
   APP_LOOPBACK_PORT_BASE,
   APP_LOOPBACK_PORT_SPAN,
   AppPackageServiceError,
+  appPublicIdentity,
   appRouteForHomepage,
+  primaryProjectedRoute,
   capabilityMatches,
   createConfigRows,
   digestFor,

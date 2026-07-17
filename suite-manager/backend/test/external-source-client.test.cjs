@@ -80,7 +80,7 @@ test('a valid unverified candidate downloads with a manifest id, namespaced iden
   assert.equal(candidate.packageId, 'community-notes');
   assert.equal(candidate.source.path, '.mos');
   assert.match(candidate.namespacedPackageId, /^x-[a-f0-9]{8}-community-notes$/u);
-  assert.deepEqual(candidate.permissions, ['route:notes', 'volume:notes-data']);
+  assert.deepEqual(candidate.permissions, ['route:ext-notes', 'volume:notes-data']);
 });
 
 test('a candidate download is refused from a non-active source and before the revision is resolved', async () => {

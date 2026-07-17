@@ -6,6 +6,7 @@ const {
   APP_LOOPBACK_PORT_BASE,
   APP_LOOPBACK_PORT_SPAN,
   AppPackageServiceError,
+  appPublicIdentity,
   appRouteForHomepage,
   capabilityMatches,
   createConfigRows,
@@ -22,6 +23,7 @@ const {
   loopbackPortFor,
   materializeRuntimeCaddy,
   materializeRuntimeCompose,
+  primaryProjectedRoute,
   privacyReviewPresentation,
   publicInstance,
   readSecretValue,
@@ -40,6 +42,7 @@ const { AppOperationLimiter } = require('./app-operation-limits.cjs');
 const { AppUpdateService } = require('./app-update-service.cjs');
 const {
   digestAppPackage,
+  effectiveRouteHost,
   parseNamespacedPackageId,
   stableJson,
   validateArchitectureCompatibility,
@@ -220,6 +223,16 @@ class AppPackageService {
     return results;
   }
 
+  // The host label an installed app answers on, for callers that hold only a
+  // package id and need to build its public URL. Null when the package is not
+  // installed or has no projected route: there is no address to report, and
+  // inventing one from the id is what this whole derivation exists to prevent.
+  publicRouteHostFor(packageId) {
+    const instance = this.store.getAppInstanceByPackageId(packageId);
+    if (!instance || instance.status === 'uninstalled') return null;
+    return primaryProjectedRoute(this.store.getAppProjections(instance.id))?.host || null;
+  }
+
   async applyPackageRuntime(packageId, requestContext = {}, options = {}) {
     if (!this.agent) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
@@ -242,8 +255,14 @@ class AppPackageService {
     }
 
     const { manifest } = this.installedPackageFor(instance);
+    // Derived here rather than taken from the caller. The caller only knows the
+    // package id, and an app's web address comes from its projected route host;
+    // deriving from the projection is what keeps appHost in agreement with the
+    // sites the agent renders, for every caller (request, boot reconcile, HTTPS
+    // re-apply, restore) at once.
+    const { appHost, publicUrl } = appPublicIdentity(projections, requestContextForPackage(packageId, requestContext));
     const result = await this.agent.apply({
-      appHost: requestContext.appHost,
+      appHost,
       caddy: materializeRuntimeCaddy(caddyProjection.content, configRows),
       compose: materializeRuntimeCompose(composeProjection.content, configRows),
       health: healthProjection.content,
@@ -251,7 +270,7 @@ class AppPackageService {
       packageDigest: instance.packageDigest,
       packageId: instance.packageId,
       packageVersion: instance.packageVersion,
-      publicUrl: requestContext.publicUrl,
+      publicUrl,
       sourceRevision: instance.sourceRevision,
     });
 
@@ -918,7 +937,12 @@ class AppPackageService {
   // both serve `notes.<host>`. Refuse up front rather than let a package take a
   // web address another installed app already answers on.
   assertRouteHostsAvailable(manifest, packageId) {
-    const requested = new Set((manifest.routes || []).map((route) => route.host));
+    // Compared as effective hosts, which is what the stored projections hold and
+    // what Caddy serves. Comparing the manifest's raw host against a projected
+    // one would compare `notes` to `ext-notes` and find no clash, so two
+    // external packages claiming the same address would both install and only
+    // collide later, in the proxy.
+    const requested = new Set((manifest.routes || []).map((route) => effectiveRouteHost(route.host, packageId)));
     for (const other of this.store.getAppInstances()) {
       if (other.packageId === packageId || other.status === 'uninstalled') continue;
       const caddy = this.store.getAppProjections(other.id).find((projection) => projection.kind === 'caddy')?.content;

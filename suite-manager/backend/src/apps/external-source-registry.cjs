@@ -162,7 +162,9 @@ function validateExternalCandidate({ manifest, officialPackageIds = [], platform
     ...validateConstrainedCapabilities(manifest, { trust: source?.trust }),
     ...validatePlatformCompatibility(manifest, platformVersion),
   ];
-  return { errors: [...new Set(errors)], permissions: describeRequestedPermissions(manifest) };
+  // Every candidate reaching this gate is external by construction, so the
+  // permissions an owner is shown name the `ext-` addresses it will really serve.
+  return { errors: [...new Set(errors)], permissions: describeRequestedPermissions(manifest, { external: true }) };
 }
 
 module.exports = {

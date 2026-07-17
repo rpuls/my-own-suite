@@ -221,10 +221,22 @@ function normalizedHost(request) {
   return String(request.headers.host || '').toLowerCase().replace(/:\d+$/, '');
 }
 
-function appPublicUrlFor(request, packageId, httpsSettings = null) {
+// An app's public host is the address it serves, which is its projected route
+// host — never its package id. `hostFor` resolves that from installed state;
+// when it cannot (the package is not installed, so nothing answers on any
+// address yet), the id stands in only to keep a well-formed URL for callers
+// that merely echo it. Runtime application never relies on this: applyPackageRuntime
+// derives appHost from the projection itself, so a stand-in can never reach the
+// app agent or a Caddy site.
+function appHostLabelFor(packageId, hostFor) {
+  const host = typeof hostFor === 'function' ? hostFor(packageId) : null;
+  return typeof host === 'string' && host ? host : packageId;
+}
+
+function appPublicUrlFor(request, packageId, httpsSettings = null, hostFor = null) {
   const homeHost = normalizedHost(request);
   const baseHost = homeHost.startsWith('home.') ? homeHost.slice(5) : homeHost;
-  const appHost = `${packageId}.${baseHost}`;
+  const appHost = `${appHostLabelFor(packageId, hostFor)}.${baseHost}`;
   const fallbackScheme = isHttpsRequest(request) ? 'https' : 'http';
   const scheme = httpsSettings?.publicUrlSchemeForHost(homeHost, fallbackScheme) || fallbackScheme;
   return {
@@ -235,15 +247,15 @@ function appPublicUrlFor(request, packageId, httpsSettings = null) {
   };
 }
 
-function appPublicUrlResolver(request, httpsSettings = null) {
-  return (packageId) => appPublicUrlFor(request, packageId, httpsSettings);
+function appPublicUrlResolver(request, httpsSettings = null, hostFor = null) {
+  return (packageId) => appPublicUrlFor(request, packageId, httpsSettings, hostFor);
 }
 
-function appPublicUrlResolverForBase(baseHost, scheme = 'http') {
+function appPublicUrlResolverForBase(baseHost, scheme = 'http', hostFor = null) {
   const normalizedBase = String(baseHost || '').trim().toLowerCase();
   const normalizedScheme = scheme === 'https' ? 'https' : 'http';
   return (packageId) => {
-    const appHost = `${packageId}.${normalizedBase}`;
+    const appHost = `${appHostLabelFor(packageId, hostFor)}.${normalizedBase}`;
     return {
       appHost,
       baseHost: normalizedBase,
@@ -363,6 +375,9 @@ function createV2Server({
     limiter: appOperationLimiter,
     store: setup.store,
   });
+  // Resolves an installed app's real host label, so every public URL this layer
+  // builds names the address the app actually serves rather than its package id.
+  const appHostFor = (packageId) => appPackages.publicRouteHostFor(packageId);
   const externalSourceService = externalSources || new ExternalSourceService({
     allowLocalSources: process.env.MOS_V2_ALLOW_LOCAL_APP_SOURCES === '1',
     appPackages,
@@ -529,7 +544,7 @@ function createV2Server({
         try {
           const baseDomain = new URL(applied.homeUrl).hostname.replace(/^home\./u, '');
           appReconciliation = await appPackages.reconcilePublicUrls(homepageConfig, {
-            publicUrlFor: appPublicUrlResolverForBase(baseDomain, 'https'),
+            publicUrlFor: appPublicUrlResolverForBase(baseDomain, 'https', appHostFor),
           });
         } catch (error) {
           appReconciliation = {
@@ -797,9 +812,9 @@ function createV2Server({
         const body = await readJsonBody(request, 4 * 1024);
         const packageId = decodeURIComponent(appStageUpdateMatch[1]);
         jsonResponse(response, 200, await appPackages.stagePackageUpdate(packageId, body, {
-          ...appPublicUrlResolver(request, httpsSettings)(packageId),
+          ...appPublicUrlResolver(request, httpsSettings, appHostFor)(packageId),
           homepageService: homepageConfig,
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings),
+          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
         }));
         return;
       }
@@ -812,9 +827,9 @@ function createV2Server({
         }
         const packageId = decodeURIComponent(appRecoverUpdateMatch[1]);
         jsonResponse(response, 200, await appPackages.recoverPackageUpdate(packageId, {
-          ...appPublicUrlResolver(request, httpsSettings)(packageId),
+          ...appPublicUrlResolver(request, httpsSettings, appHostFor)(packageId),
           homepageService: homepageConfig,
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings),
+          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
         }));
         return;
       }
@@ -836,7 +851,7 @@ function createV2Server({
           return;
         }
         const packageId = decodeURIComponent(appHomepageMatch[1]);
-        jsonResponse(response, 200, await appPackages.addPackageToHomepage(packageId, homepageConfig, appPublicUrlFor(request, packageId, httpsSettings)));
+        jsonResponse(response, 200, await appPackages.addPackageToHomepage(packageId, homepageConfig, appPublicUrlFor(request, packageId, httpsSettings, appHostFor)));
         return;
       }
 
@@ -848,8 +863,8 @@ function createV2Server({
         }
         const packageId = decodeURIComponent(appRuntimeMatch[1]);
         jsonResponse(response, 200, await appPackages.applyPackageRuntime(packageId, {
-          ...appPublicUrlFor(request, packageId, httpsSettings),
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings),
+          ...appPublicUrlFor(request, packageId, httpsSettings, appHostFor),
+          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
         }));
         return;
       }
@@ -864,7 +879,7 @@ function createV2Server({
           consumerPackageId: String(body.consumerPackageId || ''),
           providerCapabilityId: String(body.providerCapabilityId || ''),
           providerPackageId: String(body.providerPackageId || ''),
-          requestContext: { publicUrlFor: appPublicUrlResolver(request, httpsSettings) },
+          requestContext: { publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor) },
           slotId: String(body.slotId || ''),
         }));
         return;
@@ -900,8 +915,8 @@ function createV2Server({
         }
         const packageId = decodeURIComponent(appEnableMatch[1]);
         jsonResponse(response, 200, await appPackages.enablePackage(packageId, {
-          ...appPublicUrlFor(request, packageId, httpsSettings),
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings),
+          ...appPublicUrlFor(request, packageId, httpsSettings, appHostFor),
+          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
         }));
         return;
       }
@@ -914,8 +929,8 @@ function createV2Server({
         }
         const packageId = decodeURIComponent(appRestartMatch[1]);
         jsonResponse(response, 200, await appPackages.restartPackageRuntime(packageId, {
-          ...appPublicUrlFor(request, packageId, httpsSettings),
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings),
+          ...appPublicUrlFor(request, packageId, httpsSettings, appHostFor),
+          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
         }));
         return;
       }

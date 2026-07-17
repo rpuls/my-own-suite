@@ -194,7 +194,7 @@ test('an external package cannot present its own privacy review as a MOS review'
   store.close();
 });
 
-test('an external package cannot take a web address an installed app already serves', async () => {
+test('an external package asking for an official app web address is served under the reserved prefix instead', async () => {
   const root = await tempStateDir();
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({
@@ -210,8 +210,36 @@ test('an external package cannot take a web address an installed app already ser
     .find((projection) => projection.kind === 'caddy').content.routes[0].host;
   const candidate = await externalCandidate(root, { routes: [{ host: installedHost, port: 8080, service: 'notes' }] });
 
-  await assert.rejects(() => service.installExternalPackage({ candidate }), { code: 'APP_ROUTE_HOST_TAKEN' });
-  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes'), null);
+  // The package asks for the exact address an official app answers on. It does
+  // not need to be refused, because it cannot be given it: external route hosts
+  // are placed under `ext-`, which no official app may use.
+  await service.installExternalPackage({ candidate });
+
+  const hostFor = (packageId) => store.getAppProjections(store.getAppInstanceByPackageId(packageId).id)
+    .find((projection) => projection.kind === 'caddy').content.routes[0].host;
+  assert.equal(hostFor('x-abcdef01-community-notes'), `ext-${installedHost}`);
+  assert.equal(hostFor('stirling-pdf'), installedHost);
+  store.close();
+});
+
+test('two external packages cannot serve the same web address', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({
+    agent: {
+      ...externalAgent(root),
+      async snapshotPackage(input) { return snapshotResult(input); },
+    },
+    appsDir: v2AppsDir,
+    store,
+  });
+  await service.installExternalPackage({ candidate: await externalCandidate(root) });
+
+  // The reserved prefix keeps external packages away from official addresses; it
+  // does not hand out the same one twice. Route hosts stay global.
+  const rival = await externalCandidate(root, { id: 'rival-notes' }, 'ext-rival');
+  await assert.rejects(() => service.installExternalPackage({ candidate: rival }), { code: 'APP_ROUTE_HOST_TAKEN' });
+  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-rival-notes'), null);
   store.close();
 });
 
@@ -325,8 +353,8 @@ test('an external app updates from its own source through the same update transa
   const comparison = await service.preparePackageUpdate('x-abcdef01-community-notes');
 
   assert.equal(comparison.updateStatus, 'update-available');
-  assert.deepEqual(comparison.permissions.installed, ['route:notes', 'volume:notes-data']);
-  assert.deepEqual(comparison.permissions.added, ['route:notes-admin']);
+  assert.deepEqual(comparison.permissions.installed, ['route:ext-notes', 'volume:notes-data']);
+  assert.deepEqual(comparison.permissions.added, ['route:ext-notes-admin']);
   // MOS did not review this widening, so it cannot be applied as routine.
   assert.equal(comparison.compatibility, 'owner-action-required');
   assert.equal(comparison.changes.find((change) => change.area === 'permissions').classification, 'operator-action-required');
@@ -419,10 +447,13 @@ test('an external update cannot take a web address another installed app already
     store,
   });
   await service.installExternalPackage({ candidate: installedPackage });
-  await service.installPackage('stirling-pdf');
+  // Another external app, because an external package can only ever contend for
+  // an address with something else under the `ext-` prefix.
+  await service.installExternalPackage({
+    candidate: await externalCandidate(root, { id: 'rival-notes', routes: [{ host: 'rival', port: 8080, service: 'notes' }] }, 'ext-rival'),
+  });
   registerSource(store);
-  const takenHost = store.getAppProjections(store.getAppInstanceByPackageId('stirling-pdf').id)
-    .find((projection) => projection.kind === 'caddy').content.routes[0].host;
+  const takenHost = 'rival';
   const next = await externalCandidate(root, { routes: [{ host: takenHost, port: 8080, service: 'notes' }], version: '1.1.0' }, 'ext-next');
   service.externalClient = externalClientStub(next);
 
