@@ -11,7 +11,9 @@ It is free, open source, and built entirely from respected open-source applicati
 
 - **One installer** sets up the whole platform on a fresh machine — no Linux experience required.
 - **One dashboard** (your Homepage) gives you and your family a single front door to all your apps.
-- **One control room** (Suite Manager) lets you install apps from a catalog, connect them to each other, back everything up, and update — all from the browser, in plain language.
+- **One control room** (Suite Manager) lets you install apps from a catalog, connect them to each other, back everything up, and keep both the platform and each app updated — all from the browser, in plain language.
+
+Apps update independently of MOS itself, so a fix for one app never waits on a MOS release, and each app runs from a verified copy of the exact package it was installed with — nothing changes under you. Where we've assessed an app's privacy, you get the score and the evidence; where we haven't, the app says so.
 
 You should not need to understand Docker, YAML, reverse proxies, or certificates just to own your data. And if you *do* understand those things, everything underneath is inspectable, pinned, and documented — see [Under the hood](/docs/reference/architecture/).
 
@@ -20,7 +22,7 @@ You should not need to understand Docker, YAML, reverse proxies, or certificates
 My Own Suite is built for two kinds of people at once:
 
 - **You want out of Big Tech, but you're not technical.** The guides in these docs assume nothing. Every step is written out, defaults are safe, and the suite explains itself in plain language as you use it.
-- **You love self-hosting and homelabs.** MOS gives you a curated, reproducible platform: digest-pinned images, a strict privilege boundary between the web UI and the host, manifest-driven app packages, and honest documentation of how it all works.
+- **You love self-hosting and homelabs.** MOS gives you a curated, reproducible platform: digest-pinned images, a strict privilege boundary between the web UI and the host, manifest-driven app packages, a signed app catalog your server verifies against a key it already holds, immutable installed snapshots, transactional per-app updates, and honest documentation of how it all works. Bring your own package from a repository if the catalog doesn't have it — MOS will tell you exactly what you're trusting.
 
 ## Where to go next
 

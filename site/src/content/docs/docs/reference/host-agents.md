@@ -11,12 +11,24 @@ Host agents are the privileged half of the [MOS privilege boundary](/docs/refere
 | --- | --- | --- |
 | HTTPS | `mos-v2-https-agent` | The [Cloudflare DNS-01 flow](/docs/guides/https-domain/): verifies the token against the zone, stores it root-only, rewrites the Caddyfile atomically with checkpoint/rollback, restarts Caddy. |
 | Homepage | `mos-v2-homepage-agent` | Validates and applies allowlisted [dashboard YAML](/docs/guides/customize-homepage/) and the MOS-owned home route snippet; keeps a 10-checkpoint history; restarts/reloads only when content actually changed. |
-| App runtime | `mos-v2-app-agent` | The Docker side of [app management](/docs/guides/apps/): builds package Dockerfiles, runs containers on loopback ports, writes app Caddy routes, probes health, connects app networks, stops/removes. |
+| App runtime | `mos-v2-app-agent` | The Docker side of [app management](/docs/guides/apps/) — the largest agent, at contract version 9 with 14 capabilities. See below. |
 | Backup | `mos-v2-backup-agent` | Drive discovery and mounting, whole-suite [backup and restore](/docs/guides/backup-restore/) jobs (one at a time). |
 | Update | `mos-v2-update-agent` | [Managed updates](/docs/guides/updates/): track configuration and update jobs, each run as a transient systemd unit so an update survives the agent restarting itself. An orphaned job is marked failed after a timeout instead of blocking updates forever. |
 | Lab reset | `mos-v2-lab-reset-agent` | **Lab installs only** (USB/Hyper-V with `MOS_V2_LAB_RESET_ENABLED=1`): clears disposable lab state for repeatable testing. Absent on normal installs. |
 
 Sockets live at `/run/mos-v2-<name>-agent/agent.sock`.
+
+## The app runtime agent
+
+The app agent is where the boundary is under the most pressure, so it's worth spelling out. It accepts bounded structured projections and host-owned snapshot identities — never repository-relative build paths — across fourteen named capabilities:
+
+- **Runtime** — `apps.multi-service.apply`, `apps.multi-service.stop`, `apps.multi-service.remove`, `apps.network.connect`, `apps.health.check`.
+- **Snapshots** — `apps.package.snapshot` and `apps.package.snapshot.external`, which copy only validated package files into the host-owned root.
+- **Updates** — `apps.package.update.stage`, `.build`, `.activate`, `.rollback`, `.promote`, `.reclaim`, plus `apps.package.remove.reclaim`.
+
+It owns two storage roots. Installed [package snapshots](/docs/reference/app-packages/) live under `MOS_V2_APP_PACKAGE_ROOT` (`/var/lib/mos-v2/app-packages`, `root:mos-v2-agent`, mode `2750`, so Suite Manager can read but not write them); candidate downloads land under the private `MOS_V2_APP_CANDIDATE_ROOT` (`/var/lib/mos-v2/suite-manager/app-candidates`), the only place an unvalidated package may ever sit.
+
+Three behaviors matter more than the list. The agent re-verifies the expected snapshot digest before it builds anything, so a candidate that changed after you previewed it is refused rather than built. Update stages are separate operations — build the candidate, activate it, then promote or roll back — so an interruption leaves a state that can be recovered or reported rather than a half-applied app. And promotion reclaims the images its own package digest names, using `docker image rm` without `--force`, so an image a container still needs simply stays. The agent also reports its host architecture, which is how Suite Manager refuses an incompatible package before a build fails halfway. Stop preserves routes, volumes, config, secrets, and snapshots; only the explicitly destructive remove deletes them.
 
 ## How they're installed and updated
 

@@ -11,7 +11,7 @@ Self-hosting means the machine is yours — and so is the responsibility for run
 
 - **Your data and your backups.** The platform gives you a [one-button backup system](/docs/guides/backup-restore/); using it is up to you. Data that was never backed up cannot be recovered by anyone.
 - **The security of your installation.** Choosing strong passwords, deciding who can reach your server, keeping the owner account safe, and being careful about what you expose to the internet.
-- **Keeping your suite updated**, using the built-in [managed updates](/docs/guides/updates/).
+- **Keeping your suite updated** — both the platform and your installed apps — using the built-in [managed updates](/docs/guides/updates/). MOS tells you when an update is available; applying it is your call.
 - **Any costs you take on** — hosting bills, hardware, domain names, and anything else you purchase from third parties.
 - **Using the software lawfully** and in compliance with the laws that apply to you and to wherever your server runs.
 
@@ -27,7 +27,13 @@ We don't say this to be cold. It is the honest shape of self-hosting: the whole 
 
 ## Third-party apps
 
-The apps in the catalog are developed by other teams and organizations. Each one comes with its own license, terms, and privacy policy, and your use of an app is governed by *its* terms, not these. My Own Suite packages, configures, and reviews these apps but does not develop them and is not responsible for their behavior. See the [privacy policy](/docs/privacy/) for what we do — and honestly cannot do — about that.
+The apps in the catalog are developed by other teams and organizations. Each one comes with its own license, terms, and privacy policy, and your use of an app is governed by *its* terms, not these. My Own Suite packages and configures these apps, and publishes a privacy assessment for those we have reviewed, but does not develop them and is not responsible for their behavior. See the [privacy policy](/docs/privacy/) for what we do — and honestly cannot do — about that.
+
+## Apps from sources you choose
+
+My Own Suite can install app packages from a source you supply yourself, such as a repository URL you paste in. These are **unverified**: we have not reviewed them, we make no representation about their safety, licensing, or privacy, and they are not covered by any assessment we publish.
+
+Installing one builds it from the publisher's own instructions, which execute on your server. You are choosing to trust that publisher — not My Own Suite — and the decision, along with anything that follows from it, is yours. MOS shows you what a package asks for before you install it and constrains what it may request; that is a safeguard, not a guarantee, and not a substitute for your own judgment.
 
 ## Changes to these terms
 

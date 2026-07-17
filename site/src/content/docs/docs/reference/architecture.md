@@ -22,20 +22,25 @@ The core security decision in MOS: **the web application never performs privileg
 
 | Path | Contents |
 | --- | --- |
-| `/opt/mos-v2/repo` | The MOS checkout the machine runs from |
+| `/opt/mos-v2/repo` | The MOS checkout the *control plane* runs from — Suite Manager, the agents, the units |
 | `/var/lib/mos-v2/suite-manager` | Suite Manager state — transactional SQLite (owner, sessions, app instances, operations) and app secrets |
+| `/var/lib/mos-v2/app-packages` | Installed app snapshots, root-owned (`root:mos-v2-agent`, mode `2750`) — the definition each app actually runs from |
+| `/var/lib/mos-v2/suite-manager/app-candidates` | Scratch space for one package download at a time; swept back inside its bounds before each download |
 | `/var/lib/mos-v2/homepage/config` | Your dashboard's YAML configuration |
 | `/etc/caddy/` | The base Caddyfile plus MOS-owned route snippets for Homepage and apps |
 | `/etc/mos-v2/secrets/` | Root-only secrets (e.g. the Cloudflare API token as a Caddy env file, mode 0600) |
+
+The split between the last two matters: the checkout is the control plane's code, but an installed app runs from its own snapshot under `/var/lib/mos-v2/app-packages`. An app stays inspectable and manageable even if the repo checkout is gone, and editing a repo package after install changes nothing that's running.
 
 Secrets follow a redaction discipline end to end: generated app secrets live in Suite Manager's state and are materialized for an agent only per apply-request; the Cloudflare token is written once to its root-only file and is never returned by any API.
 
 ## Install front doors
 
-Every install records how it arrived — its *front door*: `usb-autoinstall`, `ssh-bootstrap`, `cloud-init`, or the DigitalOcean validation harness. All front doors render from **one shared bootstrap contract** (`scripts/installers/bootstrap-contract.cjs`), so a USB install and a cloud install produce the same machine. The front door then gates context-dependent features: the private-LAN [DNS-01 HTTPS flow](/docs/guides/https-domain/) is offered on self-host front doors and blocked on cloud ones, and the disposable lab-reset agent exists only on USB lab installs.
+Every install records how it arrived — its *front door*: `usb-autoinstall`, `ssh-bootstrap`, `cloud-init`, `public-vps`, or the DigitalOcean validation harness. All five render from **one shared bootstrap contract** (`scripts/installers/bootstrap-contract.cjs`), so a USB install and a cloud install produce the same machine. The front door then gates context-dependent features: the private-LAN [DNS-01 HTTPS flow](/docs/guides/https-domain/) is offered on self-host front doors and blocked on cloud ones, and the disposable lab-reset agent exists only on USB lab installs.
 
 ## Determinism and supply chain
 
-- App containers are built from repo-owned Dockerfiles whose base images are pinned by immutable digest — never floating tags.
+- App containers are built from a digest-verified [package snapshot](/docs/reference/app-packages/) — never a repository-relative build path — and the base images in those Dockerfiles are pinned by immutable digest, never floating tags.
 - The Homepage runtime image is digest-pinned; the Caddy build is version-pinned and module-verified.
-- [Managed updates](/docs/guides/updates/) re-apply the whole repo-owned surface (units, agents, Caddy wiring) via a single reconciliation script, so an updated machine converges on the same state a fresh install would.
+- [Managed updates](/docs/guides/updates/) re-apply the whole repo-owned surface (units, agents, Caddy wiring) via a single reconciliation script, so an updated control plane converges on the same state a fresh install would.
+- Installed apps are deliberately outside that convergence: each keeps its snapshot, and a core update never silently rebuilds an app from newer repo files. Apps update on their own, one transaction at a time.
