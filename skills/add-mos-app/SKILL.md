@@ -13,7 +13,7 @@ Follow `AGENTS.md`, `apps/README.md`, and existing packages. Keep core runtime c
 2. Assign an app-package version independent of the MOS platform and upstream app versions. Declare the package source, minimum compatible MOS platform version, and trust level.
 3. Pin every base image by immutable digest in root-level package Dockerfiles. Preserve public compatibility paths.
 4. Design setup fields, secrets, services, volumes, routes, health checks, declared capabilities, integrations, onboarding, lifecycle behavior, and backup consistency requirements.
-5. Use `$assess-app-privacy` to create `privacy-review.json` and the manifest privacy posture. Never give an unreviewed app a favorable placeholder.
+5. Follow the `assess-app-privacy` skill to create `privacy-review.json` and the manifest privacy posture. Never give an unreviewed app a favorable placeholder.
 6. Ensure installation can preserve a self-contained package snapshot used for later settings, lifecycle, backup, and update comparisons.
 7. Put technical facts in `apps/<app>/README.md`; keep end-user description and official links in the active site app page.
 8. Add the app-root Dependabot Docker entry and focused generic contract tests. Do not hardcode the app id in core production code.

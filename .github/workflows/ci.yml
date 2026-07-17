@@ -4,11 +4,14 @@ on:
   pull_request:
   push:
     branches:
-      - main
-      - staging
+      - '**'
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   workspace:
