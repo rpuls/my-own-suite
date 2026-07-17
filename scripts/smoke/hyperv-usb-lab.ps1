@@ -83,11 +83,34 @@ function Get-SmokeHostDomains {
   return $domains | Select-Object -Unique
 }
 
+# External packages are installed at runtime from a GitHub repository, so they have
+# no folder under `apps/` for the scan below to find. Their hostnames come from the
+# declaration in `scripts/smoke/external-lab-apps.cjs`, which applies the same
+# `ext-` prefix the Suite Manager uses, so the lab and the runtime cannot disagree.
+$script:ExternalLabRouteHostsCache = $null
+function Get-ExternalLabRouteHosts {
+  if ($null -ne $script:ExternalLabRouteHostsCache) { return $script:ExternalLabRouteHostsCache }
+  $helper = Join-Path $V2Root 'scripts\smoke\external-lab-apps.cjs'
+  if (-not (Test-Path -LiteralPath $helper)) { Fail "External lab app declaration '$helper' is missing." }
+  $output = & node $helper
+  if ($LASTEXITCODE -ne 0) { Fail 'Could not resolve external lab app hostnames.' }
+  $script:ExternalLabRouteHostsCache = @($output | ForEach-Object { "$_".Trim().ToLowerInvariant() } | Where-Object { $_ })
+  return $script:ExternalLabRouteHostsCache
+}
+
 function Get-SmokeHostNamesForDomain {
   param([string]$Domain)
 
   $names = [System.Collections.Generic.List[string]]::new()
   $names.Add("home.$Domain")
+  foreach ($externalHost in @(Get-ExternalLabRouteHosts)) {
+    if ($externalHost -match '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$') {
+      $names.Add("$externalHost.$Domain")
+    }
+    else {
+      Write-Warning "[mos-v2-smoke:hyperv-usb] Skipping invalid external lab hostname '$externalHost'."
+    }
+  }
   $appsRoot = Join-Path $V2Root 'apps'
   if (Test-Path -LiteralPath $appsRoot) {
     Get-ChildItem -LiteralPath $appsRoot -Directory | ForEach-Object {

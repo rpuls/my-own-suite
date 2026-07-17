@@ -115,13 +115,16 @@ Readiness and access:
 - The command discovers the guest IPv4 from Hyper-V integration data or, when Hyper-V does not report it, from the Windows neighbor table using the VM MAC address.
 - It probes both `http://home.<domain>/suite-manager/api/setup/status` and `http://home.<domain>/` with per-request `curl --resolve`, so readiness requires Suite Manager and Homepage without depending on Windows DNS being configured yet.
 - After readiness succeeds, it writes this marked block to `C:\Windows\System32\drivers\etc\hosts` and flushes DNS. The block includes `home.<domain>` plus route hosts discovered from local V2 app package manifests for both the bootstrap domain and the DNS-01 E2E domain, so packaged-app smoke and post-HTTPS browser checks do not require a separate hosts edit. The DNS-01 host domain defaults to `hyperv.diemernet.uk`; set `MOS_V2_HYPERV_EXTRA_HOST_DOMAINS` to a comma-separated list to override or add domains for another lab.
+- External packages are not discoverable this way. They are installed at runtime from a GitHub repository and have no folder under `apps/`, so the scan above cannot see them and their hostnames would not resolve. They are declared in `scripts/smoke/external-lab-apps.cjs` instead, which applies the same `ext-` prefix the Suite Manager serves them under. Add an entry there when a new external package needs to be reachable in the lab.
 
 ```text
 # BEGIN MOS V2 HYPERV USB SMOKE
 <guest-ip> home.<domain>
+<guest-ip> ext-notes.<domain>
 <guest-ip> stirling-pdf.<domain>
 <guest-ip> vaultwarden.<domain>
 <guest-ip> home.hyperv.diemernet.uk
+<guest-ip> ext-notes.hyperv.diemernet.uk
 <guest-ip> stirling-pdf.hyperv.diemernet.uk
 <guest-ip> vaultwarden.hyperv.diemernet.uk
 # END MOS V2 HYPERV USB SMOKE
