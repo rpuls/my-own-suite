@@ -280,17 +280,22 @@ test('system adapter builds, runs, health-checks, writes routes, and reloads Cad
   });
 
   assert.deepEqual(result.steps, ['built', 'started', 'healthy', 'route-written', 'caddy-reloaded']);
-  assert.deepEqual(commands.map((command) => command.file), ['docker', 'docker', 'docker', 'health', 'caddy', '/usr/bin/systemctl']);
+  // build, container rm, labeled volume create, run.
+  assert.deepEqual(commands.map((command) => command.file), ['docker', 'docker', 'docker', 'docker', 'health', 'caddy', '/usr/bin/systemctl']);
   assert.equal(commands[0].cwd, packageDir);
   assert.ok(commands[0].args.includes('mos.package-version=0.1.0'));
   assert.ok(commands[0].args.includes(`mos.package-digest=${packageDigest}`));
   assert.ok(commands[0].args.includes('mos.source-revision=0123456789abcdef0123456789abcdef01234567'));
-  assert.deepEqual(commands[2].args.slice(0, 8), ['run', '--detach', '--name', 'mos-app-example-tool', '--restart', 'unless-stopped', '--publish', '127.0.0.1:18123:3000']);
-  assert.ok(commands[2].args.includes('SERVER_HOST=http://example-tool.mos.home/'));
-  assert.ok(commands[2].args.includes('mos.package-version=0.1.0'));
-  assert.ok(commands[2].args.includes(`mos.package-digest=${packageDigest}`));
-  assert.ok(commands[2].args.includes('mos.source-revision=0123456789abcdef0123456789abcdef01234567'));
-  assert.ok(commands[2].args.includes('mos-app-example-tool-configs:/configs'));
+  assert.deepEqual(commands[2].args.slice(0, 2), ['volume', 'create']);
+  assert.equal(commands[2].args.at(-1), 'mos-app-example-tool-configs');
+  assert.ok(commands[2].args.includes('mos.owned=true'));
+  assert.ok(commands[2].args.includes(`mos.instance=${instanceId}`));
+  assert.deepEqual(commands[3].args.slice(0, 8), ['run', '--detach', '--name', 'mos-app-example-tool', '--restart', 'unless-stopped', '--publish', '127.0.0.1:18123:3000']);
+  assert.ok(commands[3].args.includes('SERVER_HOST=http://example-tool.mos.home/'));
+  assert.ok(commands[3].args.includes('mos.package-version=0.1.0'));
+  assert.ok(commands[3].args.includes(`mos.package-digest=${packageDigest}`));
+  assert.ok(commands[3].args.includes('mos.source-revision=0123456789abcdef0123456789abcdef01234567'));
+  assert.ok(commands[3].args.includes('mos-app-example-tool-configs:/configs'));
   assert.match(await fsp.readFile(routesPath, 'utf8'), /mos-app-route:start example-tool/u);
   assert.match(await fsp.readFile(routesPath, 'utf8'), /reverse_proxy http:\/\/127\.0\.0\.1:18123/u);
 });
@@ -970,4 +975,47 @@ test('system adapter connects a provider container to a consumer package network
     ['network', 'disconnect', 'mos-app-seafile', 'mos-app-onlyoffice'],
     ['network', 'connect', '--alias', 'onlyoffice', 'mos-app-seafile', 'mos-app-onlyoffice'],
   ]);
+});
+
+// Ownership from birth: volumes are created explicitly with MOS labels before
+// `docker run` can create them unlabeled as a side effect, and a volume still
+// bound to a different installation refuses the install instead of silently
+// pairing fresh credentials with another installation's data.
+test('system adapter creates labeled app volumes and refuses stale data from another installation', async () => {
+  const commands = [];
+  const adapter = new SystemAppAdapter({
+    dockerBinary: 'docker',
+    async execute(file, args) { commands.push({ args, file }); },
+    async executeCapture(file, args) {
+      commands.push({ args, file });
+      if (args[1] === 'inspect' && args.at(-1) === 'mos-app-example-tool-data') {
+        return JSON.stringify({ 'mos.instance': 'other-installation', 'mos.owned': 'true', 'mos.package': 'example-tool' });
+      }
+      throw new Error('COMMAND_FAILED');
+    },
+  });
+
+  await adapter.ensureAppVolumes({ instanceId: 'aaaa-1111', packageId: 'fresh-app', services: [{ volumes: ['data:/data', 'cache:/cache'] }] });
+  const creates = commands.filter((command) => command.args[0] === 'volume' && command.args[1] === 'create');
+  assert.deepEqual(creates.map((command) => command.args.at(-1)), ['mos-app-fresh-app-data', 'mos-app-fresh-app-cache']);
+  assert.ok(creates[0].args.includes('mos.owned=true'));
+  assert.ok(creates[0].args.includes('mos.instance=aaaa-1111'));
+  assert.ok(creates[0].args.includes('mos.package=fresh-app'));
+  assert.ok(creates[0].args.includes('mos.resource=docker-volume:mos-app-fresh-app-data'));
+
+  await assert.rejects(
+    () => adapter.ensureAppVolumes({ instanceId: 'bbbb-2222', packageId: 'example-tool', services: [{ volumes: ['data:/data'] }] }),
+    (error) => error.code === 'APP_VOLUME_STALE',
+  );
+
+  // An unlabeled volume (created before ownership labels existed) stays
+  // accepted: no binding, no refusal, no create.
+  const before = commands.length;
+  const legacyAdapter = new SystemAppAdapter({
+    dockerBinary: 'docker',
+    async execute(file, args) { commands.push({ args, file }); },
+    async executeCapture() { return 'null'; },
+  });
+  await legacyAdapter.ensureAppVolumes({ instanceId: 'cccc-3333', packageId: 'legacy-app', services: [{ volumes: ['data:/data'] }] });
+  assert.equal(commands.slice(before).some((command) => command.args[1] === 'create'), false);
 });

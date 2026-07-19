@@ -15,6 +15,15 @@ type BackupDestination = {
   writable: boolean;
 };
 
+type BackupValidation = {
+  apps: Array<{ instanceId: string; packageId: string; packageVersion: string | null }>;
+  bundlePath: string;
+  checkedAt: string;
+  software: { bundleVersion: string | null; currentVersion: string | null; matched: boolean };
+  volumes: Array<{ name: string; rawBytes: number | null }>;
+  warnings: string[];
+};
+
 type BackupJob = {
   error: string | null;
   id: string;
@@ -25,6 +34,7 @@ type BackupJob = {
   stage: string | null;
   status: string | null;
   updatedAt: string | null;
+  validation?: BackupValidation | null;
 };
 
 type BackupBundle = {
@@ -39,16 +49,26 @@ type BackupBundle = {
   volumeCount: number;
 };
 
+type InterruptedRestore = {
+  backupPath: string | null;
+  jobId: string | null;
+  phase: string;
+  rescuePath: string | null;
+  startedAt: string | null;
+};
+
 type BackupStatus = {
   backups: BackupBundle[];
   currentJob: BackupJob | null;
   destinations: BackupDestination[];
   error?: string | null;
+  interruptedRestore?: InterruptedRestore | null;
   inventory?: {
     summary: { appCount: number; declaredVolumeCount: number; relationshipCount: number; warningCount: number };
     warnings: Array<{ message: string; packageId: string }>;
   };
   lastJob: BackupJob | null;
+  restoreGuarantee?: string;
   serviceAvailable: boolean;
 };
 
@@ -85,18 +105,28 @@ function driveIconName(kind: string | null | undefined) {
 
 function jobMessage(job: BackupJob | null) {
   if (!job) return '';
-  if (job.status === 'succeeded') return job.kind === 'restore' ? 'Restore completed.' : 'Backup completed.';
-  if (job.status === 'failed') return job.kind === 'restore' ? 'Restore failed.' : 'Backup failed.';
-  return job.stage || (job.kind === 'restore' ? 'Restore in progress' : 'Backup in progress');
+  if (job.status === 'succeeded') {
+    if (job.kind === 'restore') return 'Restore completed.';
+    if (job.kind === 'validate') return 'Backup check passed. Every checksum, archive, and app package in the bundle is valid, so it can be restored.';
+    return 'Backup completed.';
+  }
+  if (job.status === 'failed') {
+    if (job.kind === 'restore') return 'Restore failed.';
+    if (job.kind === 'validate') return 'Backup check failed. Do not rely on this bundle for recovery.';
+    return 'Backup failed.';
+  }
+  return job.stage || (job.kind === 'restore' ? 'Restore in progress' : job.kind === 'validate' ? 'Backup check in progress' : 'Backup in progress');
 }
 
 function operationTitle(job: BackupJob | null, restoreStarted: boolean) {
   if (restoreStarted || job?.kind === 'restore') return 'Restoring your backup';
+  if (job?.kind === 'validate') return 'Checking your backup';
   return 'Backing up your suite';
 }
 
 function operationMessage(job: BackupJob | null, restoreStarted: boolean) {
   if (restoreStarted || job?.kind === 'restore') return 'MOS is replacing the current install with the selected backup. Suite Manager may briefly reconnect while services restart.';
+  if (job?.kind === 'validate') return 'MOS is reading the backup and verifying every checksum and app package without changing anything. Apps keep running.';
   return 'MOS is pausing apps, saving their data, and then starting them again. Please wait until the backup finishes.';
 }
 
@@ -212,6 +242,26 @@ export function BackupsScreen() {
     });
   }
 
+  async function acknowledgeInterrupted() {
+    await runAction('acknowledge', async () => {
+      await jsonResponse(await fetch('/suite-manager/api/backups/restore/acknowledge', {
+        body: JSON.stringify({ confirmation: 'ACKNOWLEDGE' }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Unable to dismiss the interrupted restore record.');
+    });
+  }
+
+  async function checkBackup(backup: BackupBundle) {
+    await runAction(`validate:${backup.path}`, async () => {
+      await jsonResponse(await fetch('/suite-manager/api/backups/validate', {
+        body: JSON.stringify({ backupPath: backup.path }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Unable to check this backup.');
+    });
+  }
+
   async function startRestore() {
     if (!selectedRestore) return;
     setBusy('restore');
@@ -242,6 +292,10 @@ export function BackupsScreen() {
       </div>
 
       {error ? <Notice title="Backup needs attention" variant="error"><p>{error}</p></Notice> : null}
+      {status?.interruptedRestore && !running ? <Notice title="A restore did not finish" variant="error">
+        <p>A restore stopped during "{status.interruptedRestore.phase}", so this system may not match the backup it was restoring. A complete rescue copy of the pre-restore state was kept on the server{status.interruptedRestore.rescuePath ? ` at ${status.interruptedRestore.rescuePath}` : ''}. New backups and restores stay blocked until you dismiss this record; the rescue copy stays on disk either way.</p>
+        <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => void acknowledgeInterrupted()} type="button">{busy === 'acknowledge' ? 'Dismissing...' : 'I understand, unblock backups'}</button>
+      </Notice> : null}
       {restoreStarted ? <Notice title="Restore started" variant="info"><p>MOS is restoring the selected backup and may be unavailable for a short moment. This page will reconnect when Suite Manager starts again.</p></Notice> : null}
       {status && !status.serviceAvailable ? <Notice title="Backup is not available yet" variant="warning"><p>The host backup service is not running on this install. Update or restart the MOS host services, then come back here.</p></Notice> : null}
 
@@ -334,16 +388,19 @@ export function BackupsScreen() {
           <h2 className="mos-card-title">{running ? 'Working on it' : 'Latest activity'}</h2>
           <p>{jobMessage(status.currentJob || status.lastJob)}</p>
           {(status.currentJob || status.lastJob)?.error ? <p className="suite-error">{(status.currentJob || status.lastJob)?.error}</p> : null}
+          {((status.currentJob || status.lastJob)?.validation?.warnings || []).map((warning) => <p className="suite-meta" key={warning}>{warning}</p>)}
         </section> : null}
 
         <section className="mos-panel suite-card suite-backup-panel">
           <h2 className="mos-card-title">Restore from a backup</h2>
+          {status.restoreGuarantee === 'experimental' ? <p className="suite-meta"><strong>Full restore is experimental.</strong> It replaces the current install with the backup, verifies the result, and keeps a complete rescue copy of the previous state, but it has not yet passed recovery drills on replacement hardware. Keep an independent copy of important data.</p> : null}
           <p className="suite-meta"><strong>Before downloading:</strong> this unencrypted bundle contains the suite's data and reusable secrets. Save it only to encrypted, access-controlled storage and remove unneeded browser copies.</p>
           {status.backups.length ? <div className="suite-backup-bundle-list">
             {status.backups.map((backup) => <article key={backup.path}>
               <div><strong>{backup.createdAt ? formatDate(backup.createdAt) : 'MOS backup'}</strong><span>{backupDescription(backup)} · {backup.destinationLabel || 'Backup drive'}</span></div>
               <div className="suite-backup-action-row">
                 {running ? <button className="mos-btn mos-btn-secondary" disabled type="button">Download</button> : <a className="mos-btn mos-btn-secondary" href={`/suite-manager/api/backups/download?path=${encodeURIComponent(backup.path)}`}>Download</a>}
+                <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => void checkBackup(backup)} type="button">{busy === `validate:${backup.path}` ? 'Starting check...' : 'Check'}</button>
                 <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => { setSelectedRestore(backup); setRestoreConfirmation(''); }} type="button">Restore</button>
               </div>
             </article>)}
@@ -369,7 +426,7 @@ export function BackupsScreen() {
         onClose={() => { if (!busy) setSelectedRestore(null); }}
         title="Restore this backup?"
       >
-        <Notice title="This will replace the current install" variant="warning"><p>MOS will stop, restore the selected backup, and start again. Current app data will be replaced. A small rescue copy is saved first.</p></Notice>
+        <Notice title="This will replace the current install" variant="warning"><p>MOS will stop, restore the selected backup, verify it, and start again. Apps and app data added after this backup are removed so the system matches the backup exactly. A complete rescue copy of the current state is saved on the server first.</p></Notice>
         <p className="suite-meta">{formatDate(selectedRestore.createdAt)} · {backupDescription(selectedRestore)} · {selectedRestore.destinationLabel || 'backup storage'}</p>
         <label className="suite-auth-field">
           <span>Type RESTORE to continue</span>

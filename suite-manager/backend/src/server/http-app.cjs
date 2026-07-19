@@ -607,6 +607,11 @@ function createMOSServer({
           jsonResponse(response, 200, {
             ...(await backupAgent.status()),
             inventory: backupInventory.inventory(),
+            // Restore is exact for control-plane state and reconciled app
+            // volumes, but the guarantee has not yet passed the Phase 4
+            // replacement-machine and interruption drills, so the API says
+            // experimental until demonstrated behavior catches up.
+            restoreGuarantee: 'experimental',
             serviceAvailable: true,
           });
         } catch (error) {
@@ -615,8 +620,10 @@ function createMOSServer({
             currentJob: null,
             destinations: [],
             error: error.message || 'Backup agent is unavailable.',
+            interruptedRestore: null,
             inventory: backupInventory.inventory(),
             lastJob: null,
+            restoreGuarantee: 'experimental',
             serviceAvailable: false,
           });
         }
@@ -643,6 +650,16 @@ function createMOSServer({
         return;
       }
 
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/validate`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 202, await backupAgent.validateBackup({ backupPath: String(body.backupPath || '') }));
+        return;
+      }
+
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/restore`) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to restore backups.' });
@@ -651,6 +668,18 @@ function createMOSServer({
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 202, await backupAgent.startRestore({
           backupPath: String(body.backupPath || ''),
+          confirmation: String(body.confirmation || ''),
+        }));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/restore/acknowledge`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.acknowledgeInterruptedRestore({
           confirmation: String(body.confirmation || ''),
         }));
         return;

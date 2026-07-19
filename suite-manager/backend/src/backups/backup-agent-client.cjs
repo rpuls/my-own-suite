@@ -49,7 +49,9 @@ class BackupAgentClient {
   status() { return this.request('GET', '/v1/status'); }
   mount(destinationId) { return this.request('POST', '/v1/destinations/mount', { destinationId }); }
   startBackup(input) { return this.request('POST', '/v1/backups', input); }
+  validateBackup(input) { return this.request('POST', '/v1/backups/validate', input); }
   startRestore(input) { return this.request('POST', '/v1/restores', input); }
+  acknowledgeInterruptedRestore(input) { return this.request('POST', '/v1/restores/acknowledge-interruption', input); }
 }
 
 module.exports = { BACKUP_AGENT_TIMEOUT_MS, BackupAgentClient };

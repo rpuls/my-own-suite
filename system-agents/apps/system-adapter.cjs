@@ -5,6 +5,7 @@ const fsp = require('node:fs/promises');
 const http = require('node:http');
 const path = require('node:path');
 const { packageImageTag } = require('./agent-core.cjs');
+const { appVolumeLabels, appVolumeName, OWNERSHIP_LABELS } = require('../../infrastructure/persistent-state.cjs');
 const { collectPackageFiles, digestAppPackage, parseNamespacedPackageId, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 
 const APPS_ROOT = process.env.MOS_APPS_ROOT || path.resolve(process.cwd(), 'apps');
@@ -41,6 +42,7 @@ const FAILURE_MESSAGES = {
   remove: ['APP_RUNTIME_REMOVE_FAILED', 'The app runtime could not be removed.'],
   run: ['APP_RUN_FAILED', 'The app container could not be started.'],
   snapshot: ['APP_PACKAGE_SNAPSHOT_FAILED', 'The validated app package could not be snapshotted.'],
+  'stale-volume': ['APP_VOLUME_STALE', 'Persistent data from a different installation of this app is still present. Remove or restore it before installing.'],
   stop: ['APP_RUNTIME_STOP_FAILED', 'The app runtime could not be stopped.'],
   writing: ['APP_ROUTE_WRITE_FAILED', 'The app route could not be installed.'],
 };
@@ -73,6 +75,37 @@ async function applyAgentGroup(root, gid) {
     }
     if (stats.gid !== gid) await fsp.chown(entry, stats.uid, gid);
   }
+}
+
+// `exec` ignores output on purpose; volume-label inspection is the one place
+// the adapter needs a command's stdout, so it gets its own injectable runner.
+function execCapture(file, args, { cwd = undefined, timeoutMs = 120000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(file, args, { cwd, stdio: ['ignore', 'pipe', 'ignore'] });
+    let settled = false;
+    let output = '';
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      callback(value);
+    };
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      finish(reject, new Error('COMMAND_TIMEOUT'));
+    }, timeoutMs);
+    child.stdout.on('data', (chunk) => { output += chunk; });
+    child.on('error', (error) => {
+      finish(reject, error);
+    });
+    child.on('exit', (code) => {
+      if (code === 0) {
+        finish(resolve, output);
+        return;
+      }
+      finish(reject, new Error('COMMAND_FAILED'));
+    });
+  });
 }
 
 function exec(file, args, { cwd = undefined, timeoutMs = 120000 } = {}) {
@@ -218,6 +251,7 @@ class SystemAppAdapter {
     caddyBinary = CADDY_BINARY,
     dockerBinary = DOCKER_BINARY,
     execute = exec,
+    executeCapture = undefined,
     routesPath = APP_ROUTES_PATH,
     waitForReady = waitForHttp,
   } = {}) {
@@ -227,8 +261,55 @@ class SystemAppAdapter {
     this.caddyBinary = caddyBinary;
     this.dockerBinary = dockerBinary;
     this.execute = execute;
+    // A capture runner is only defaulted to the real system when the plain
+    // runner is the real system too. An injected runner without a matching
+    // capture runner reports every volume as absent, so a harness that stubs
+    // only `execute` still sees the explicit labeled `volume create` instead
+    // of this adapter reaching around the stub to the machine it runs on.
+    this.executeCapture = executeCapture || (execute === exec ? execCapture : async () => { throw new Error('COMMAND_FAILED'); });
     this.routesPath = routesPath;
     this.waitForReady = waitForReady;
+  }
+
+  async appVolumeState(name) {
+    try {
+      const output = await this.executeCapture(this.dockerBinary, ['volume', 'inspect', '--format', '{{json .Labels}}', name], { timeoutMs: 30000 });
+      return { exists: true, labels: JSON.parse(String(output || '').trim() || 'null') || {} };
+    } catch {
+      return { exists: false, labels: {} };
+    }
+  }
+
+  // Volumes are created explicitly before `docker run` can create them as a
+  // side effect, so every MOS-owned volume carries its ownership labels from
+  // birth. An existing volume bound to a different installation is the false-
+  // restore failure mode — fresh credentials over another installation's data
+  // — and must refuse loudly instead of silently adopting that data. Volumes
+  // created before labeling existed carry no binding and stay accepted.
+  async ensureAppVolumes({ instanceId, packageId, services }) {
+    const names = new Set();
+    for (const service of services) {
+      for (const volume of service.volumes || []) {
+        const separator = String(volume).indexOf(':');
+        if (separator > 0) names.add(appVolumeName(packageId, String(volume).slice(0, separator)));
+      }
+    }
+    for (const name of names) {
+      const state = await this.appVolumeState(name);
+      if (!state.exists) {
+        const labels = appVolumeLabels({ instanceId, name, packageId });
+        await this.execute(this.dockerBinary, [
+          'volume', 'create',
+          ...Object.entries(labels).sort(([left], [right]) => left.localeCompare(right)).flatMap(([key, value]) => ['--label', `${key}=${value}`]),
+          name,
+        ], { timeoutMs: 30000 });
+        continue;
+      }
+      const boundInstance = state.labels[OWNERSHIP_LABELS.instance];
+      if (boundInstance && instanceId && boundInstance !== instanceId) {
+        throw new AppApplyError('stale-volume');
+      }
+    }
   }
 
   // Called with the instance root rather than the snapshot itself, so the
@@ -395,17 +476,18 @@ class SystemAppAdapter {
     }
   }
 
-  async startPackageContainers({ packageDigest, packageId, packageVersion, services, sourceRevision }) {
+  async startPackageContainers({ instanceId, packageDigest, packageId, packageVersion, services, sourceRevision }) {
     const serviceCount = services.length;
     const networkName = this.networkName(packageId);
     if (serviceCount > 1) {
       await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
     }
+    await this.ensureAppVolumes({ instanceId, packageId, services });
     for (const service of services) {
       const volumeArgs = [];
       for (const volume of service.volumes || []) {
         const separator = String(volume).indexOf(':');
-        if (separator > 0) volumeArgs.push('--volume', `mos-app-${packageId}-${String(volume).slice(0, separator)}:${String(volume).slice(separator + 1)}`);
+        if (separator > 0) volumeArgs.push('--volume', `${appVolumeName(packageId, String(volume).slice(0, separator))}:${String(volume).slice(separator + 1)}`);
       }
       await this.execute(this.dockerBinary, [
         'run', '--detach', '--name', this.containerName(packageId, service.id, serviceCount), '--restart', 'unless-stopped',
@@ -671,12 +753,13 @@ class SystemAppAdapter {
         await this.execute(this.dockerBinary, ['network', 'create', networkName], { timeoutMs: 30000 }).catch(() => {});
       }
 
+      await this.ensureAppVolumes({ instanceId, packageId, services });
       for (const service of services) {
         const volumeArgs = [];
         for (const volume of service.volumes || []) {
           const separator = String(volume).indexOf(':');
           if (separator > 0) {
-            volumeArgs.push('--volume', `mos-app-${packageId}-${String(volume).slice(0, separator)}:${String(volume).slice(separator + 1)}`);
+            volumeArgs.push('--volume', `${appVolumeName(packageId, String(volume).slice(0, separator))}:${String(volume).slice(separator + 1)}`);
           }
         }
         const containerName = this.containerName(packageId, service.id, serviceCount);
@@ -827,7 +910,7 @@ class SystemAppAdapter {
       }
       await this.execute(this.dockerBinary, ['network', 'rm', this.networkName(packageId)], { timeoutMs: 30000 }).catch(() => {});
       for (const volume of volumes) {
-        const volumeName = `mos-app-${packageId}-${volume}`;
+        const volumeName = appVolumeName(packageId, volume);
         const exists = await this.execute(this.dockerBinary, ['volume', 'inspect', volumeName], { timeoutMs: 30000 }).then(() => true, () => false);
         if (exists) {
           await this.execute(this.dockerBinary, ['volume', 'rm', volumeName], { timeoutMs: 120000 });

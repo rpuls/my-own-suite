@@ -42,6 +42,22 @@ export async function restoreBackupIfAvailable(page, env, backup) {
 
   await openSuiteManager(page, 'Backup');
 
+  // Read-only bundle check first: the same integrity/compatibility checks the
+  // restore preflight runs, proven to pass without touching the running suite.
+  await apiJson(page, '/suite-manager/api/backups/validate', {
+    body: JSON.stringify({ backupPath: backup.path }),
+    method: 'POST',
+  });
+  const validateDeadline = Date.now() + 10 * 60 * 1000;
+  let validated = null;
+  while (Date.now() < validateDeadline) {
+    validated = await apiJson(page, '/suite-manager/api/backups/status');
+    if (!backupRunning(validated.currentJob)) break;
+    await page.waitForTimeout(5000);
+  }
+  expect(validated?.lastJob?.kind, 'The bundle check job should be the latest job').toBe('validate');
+  expect(validated?.lastJob?.status, 'The read-only bundle check should pass before restoring').toBe('succeeded');
+
   await apiJson(page, '/suite-manager/api/backups/restore', {
     body: JSON.stringify({ backupPath: backup.path, confirmation: 'RESTORE' }),
     method: 'POST',
@@ -60,5 +76,11 @@ export async function restoreBackupIfAvailable(page, env, backup) {
   }
 
   expect(current?.lastJob?.status, 'Restore job should succeed').toBe('succeeded');
+  // A restore that merely finishes is not evidence: the agent must have
+  // compared the restored app inventory and owned volumes against the bundle
+  // and found an exact match, presence and absence.
+  expect(current?.lastJob?.verification?.apps?.matched, 'Restore must verify the restored app inventory against the bundle').toBe(true);
+  expect(current?.lastJob?.verification?.volumes?.matched, 'Restore must verify restored volumes against the bundle, including absence of later volumes').toBe(true);
+  expect(current?.interruptedRestore, 'No interrupted-restore record should remain after a verified restore').toBeFalsy();
   return true;
 }

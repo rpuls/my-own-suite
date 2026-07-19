@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { DATABASE_FILENAME } = require('../state/suite-manager-store.cjs');
+const { appVolumeName } = require('../../../../infrastructure/persistent-state.cjs');
 const { readAppPackageManifest } = require('../apps/package-manifest.cjs');
 const { digestAppPackage } = require('../apps/package-contracts.cjs');
 
@@ -43,7 +44,7 @@ function declaredVolumeName(packageId, volumeDeclaration) {
   if (!source) return null;
   return {
     declaredName: source,
-    dockerVolume: `mos-app-${packageId}-${source}`,
+    dockerVolume: appVolumeName(packageId, source),
     backupClass: 'data',
     requiredOnRestore: true,
   };
