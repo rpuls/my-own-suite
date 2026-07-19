@@ -25,6 +25,7 @@ The two decisions are intentionally separate:
 
 #### Beta truthfulness and security
 
+- [x] Remove the temporary generation label from MOS-owned filenames, identifiers, runtime paths, configuration, and active documentation while retaining genuine upstream API and dependency versions.
 - [x] Narrow absolute privacy claims to behavior MOS can actually guarantee.
 - [x] State clearly which backup destinations work on own hardware and cloud servers.
 - [x] Add login throttling/progressive delay for an internet-reachable control plane.
@@ -174,6 +175,15 @@ The two decisions are intentionally separate:
 - **Resolution evidence:** Root, documentation-ownership, public-site, script, infrastructure, app-package, and Suite Manager READMEs now describe the implemented MOS layout and current ownership. Placeholder/future implementation statements and V1-era product framing were removed. References to the previous site or root layout remain only to identify isolated rollback/history sources or an explicit compatibility boundary.
 - **Regression check:** Active documentation must describe current root paths. Historical names belong only in archive, migration, rollback, or compatibility context.
 - **Acceptance:** Root README, site README, app/system-agent/script references, docs ownership map, and current public docs all describe the same MOS layout and deployment status.
+
+#### 13a. Remove the temporary development-generation label — completed, retain as a regression check
+
+- **Severity:** Low
+- **Area:** Repository maintenance and naming
+- **Original evidence:** MOS was developed in an isolated prototype workspace whose filenames, identifiers, runtime paths, configuration, and documentation used a numbered generation label even though the repository does not maintain two MOS generations in parallel.
+- **Resolution evidence:** MOS-owned source and active documentation now use durable product or capability names instead of encoding the prototype generation. Genuine upstream versions, including dependency releases and third-party API paths, retain their published identifiers.
+- **Regression check:** Do not introduce a numbered MOS generation label unless the project deliberately adopts parallel product generations. Upstream API and dependency version strings are not MOS generation labels and must not be rewritten.
+- **Acceptance:** Repository scans find no numbered generation label in MOS-owned filenames, functions, variables, runtime contracts, or active documentation; any matching version string is demonstrably owned by an upstream dependency or API.
 
 #### 14. Make the changelog release-shaped — completed, retain as a regression check
 
