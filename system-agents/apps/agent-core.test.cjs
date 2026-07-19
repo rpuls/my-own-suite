@@ -111,7 +111,7 @@ test('app update staging binds candidate and installed identities', async () => 
   const core = new AppAgentCore({ async stageAppPackageUpdate(input) { calls.push(input); return { snapshotPath: '/state/candidate', steps: ['staged'] }; } });
   const input = {
     candidateDigest: `sha256:${'b'.repeat(64)}`,
-    candidatePath: '/var/lib/mos-v2/suite-manager/app-candidates/example-123',
+    candidatePath: '/var/lib/mos/suite-manager/app-candidates/example-123',
     expectedInstalledDigest: request.packageDigest,
     instanceId: request.instanceId,
     packageId: request.packageId,
@@ -168,13 +168,13 @@ test('app route rendering supports a structured tokenized iCal bridge', () => {
     appHost: 'calendar.mos.home',
     internalIcalBridge: {
       basicAuth: { password: 'secret-pass', username: 'calendar-admin' },
-      path: '/__mos-v2/ical/token-value',
+      path: '/__mos/ical/token-value',
       targetPath: '/calendar-admin/default-calendar/?export',
     },
     reverseProxy: '127.0.0.1:18124',
   });
 
-  assert.match(routes, /handle \/__mos-v2\/ical\/token-value/u);
+  assert.match(routes, /handle \/__mos\/ical\/token-value/u);
   assert.match(routes, /rewrite \* \/calendar-admin\/default-calendar\/\?export/u);
   assert.match(routes, /header_up Authorization "Basic Y2FsZW5kYXItYWRtaW46c2VjcmV0LXBhc3M="/u);
   assert.match(routes, /handle \{\n    reverse_proxy http:\/\/127\.0\.0\.1:18124/u);
@@ -189,7 +189,7 @@ test('app apply validates internal iCal bridge shape', async () => {
         ...request.caddy.routes[0],
         internalIcalBridge: {
           basicAuth: { password: 'secret-pass', username: 'calendar-admin' },
-          path: '/__mos-v2/ical/token-value',
+          path: '/__mos/ical/token-value',
           targetPath: '/calendar-admin/default-calendar/?export',
         },
       }],
@@ -223,7 +223,7 @@ test('app apply validates exact shape and delegates sanitized runtime fields', a
   assert.equal(calls[0].healthTarget, 'http://127.0.0.1:18123/health');
   assert.equal(calls[0].packageVersion, '0.1.0');
   assert.equal(calls[0].sourceRevision, request.sourceRevision);
-  assert.equal(calls[0].services[0].imageTag, `mos-v2-app-example-tool-web:0.1.0-pkg-${'a'.repeat(12)}-src-0123456789ab`);
+  assert.equal(calls[0].services[0].imageTag, `mos-app-example-tool-web:0.1.0-pkg-${'a'.repeat(12)}-src-0123456789ab`);
   assert.equal(calls[0].services[0].loopbackPort, 18123);
   assert.deepEqual(calls[0].services[0].environment, {
     APP_HOST: 'example-tool.mos.home',

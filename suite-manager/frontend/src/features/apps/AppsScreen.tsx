@@ -321,8 +321,8 @@ function hypervHostsRepairCommand(packages: AppPackageSummary[]) {
 
   return `$ErrorActionPreference='Stop'
 $hostsPath="$env:SystemRoot\\System32\\drivers\\etc\\hosts"
-$start='# BEGIN MOS V2 HYPERV USB SMOKE'
-$end='# END MOS V2 HYPERV USB SMOKE'
+$start='# BEGIN MOS HYPERV USB SMOKE'
+$end='# END MOS HYPERV USB SMOKE'
 $names=${hostsLiteral}
 $home=${homeHost}
 $ip=(Resolve-DnsName $home -Type A | Select-Object -First 1 -ExpandProperty IPAddress)

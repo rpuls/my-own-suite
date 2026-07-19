@@ -7,8 +7,8 @@ const path = require('node:path');
 const { HomepageConfigError } = require('../../../shared/homepage-contract.cjs');
 const { HomepageAgentCore } = require('../../../system-agents/homepage/agent-core.cjs');
 
-const socketPath = process.env.MOS_V2_HOMEPAGE_AGENT_SOCKET;
-const configRoot = process.env.MOS_V2_HOMEPAGE_CONFIG_ROOT;
+const socketPath = process.env.MOS_HOMEPAGE_AGENT_SOCKET;
+const configRoot = process.env.MOS_HOMEPAGE_CONFIG_ROOT;
 
 class LocalAdapter {
   readHomepageFile(file) { return fsp.readFile(path.join(configRoot, file), 'utf8'); }
@@ -54,7 +54,7 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-if (!socketPath) throw new Error('MOS_V2_HOMEPAGE_AGENT_SOCKET is required.');
+if (!socketPath) throw new Error('MOS_HOMEPAGE_AGENT_SOCKET is required.');
 if (process.platform !== 'win32') { fs.mkdirSync(path.dirname(socketPath), { recursive: true }); fs.rmSync(socketPath, { force: true }); }
 server.listen(socketPath, () => process.stdout.write('ready\n'));
 function shutdown() { server.close(() => process.exit(0)); }

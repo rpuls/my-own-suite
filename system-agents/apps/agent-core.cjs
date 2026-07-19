@@ -53,7 +53,7 @@ function packageImageTag({ packageDigest, packageId, packageVersion, serviceId, 
   // SemVer build metadata uses `+`, which Docker repository tags reject.
   // Keep the label value exact, but encode the tag's build separator.
   const dockerVersion = String(packageVersion).replace('+', '-build-');
-  return `mos-v2-app-${packageId}-${serviceId}:${dockerVersion}-pkg-${dockerIdentityFragment(packageDigest)}-src-${dockerIdentityFragment(sourceRevision)}`;
+  return `mos-app-${packageId}-${serviceId}:${dockerVersion}-pkg-${dockerIdentityFragment(packageDigest)}-src-${dockerIdentityFragment(sourceRevision)}`;
 }
 
 function escapeRegExp(value) {
@@ -372,7 +372,7 @@ class AppAgentCore {
       capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote', 'apps.package.update.reclaim', 'apps.package.remove.reclaim'],
       contractVersion: 9,
       hostArchitecture: HOST_ARCHITECTURES[process.arch] || null,
-      service: 'mos-v2-app-agent',
+      service: 'mos-app-agent',
     };
   }
 

@@ -56,11 +56,11 @@ function envListIfSet(name) {
 }
 
 function vaultwardenPassword() {
-  const password = envString('MOS_V2_E2E_VAULTWARDEN_PASSWORD', 'MOS-E2E-Master-Password-2026!');
+  const password = envString('MOS_E2E_VAULTWARDEN_PASSWORD', 'MOS-E2E-Master-Password-2026!');
   if (password.length >= 12 && /[a-z]/u.test(password) && /[A-Z]/u.test(password) && /\d/u.test(password) && /[^A-Za-z0-9]/u.test(password)) {
     return password;
   }
-  throw new Error('MOS_V2_E2E_VAULTWARDEN_PASSWORD must be at least 12 chars and include lowercase, uppercase, number, and symbol, for example MOS-E2E-Master-Password-2026!');
+  throw new Error('MOS_E2E_VAULTWARDEN_PASSWORD must be at least 12 chars and include lowercase, uppercase, number, and symbol, for example MOS-E2E-Master-Password-2026!');
 }
 
 function normalizeBaseURL(value) {
@@ -75,44 +75,44 @@ export function loadHypervEnv() {
   loadLocalEnv();
   const defaultPreDnsAppIds = ['stirling-pdf', 'radicale'];
   const defaultPostDnsAppIds = ['vaultwarden', 'seafile', 'onlyoffice'];
-  const appIds = envList('MOS_V2_E2E_APP_IDS', [...defaultPreDnsAppIds, ...defaultPostDnsAppIds].join(','));
-  const preDnsAppIds = envListIfSet('MOS_V2_E2E_PRE_DNS_APP_IDS') || defaultPreDnsAppIds.filter((id) => appIds.includes(id));
-  const postDnsAppIds = envListIfSet('MOS_V2_E2E_POST_DNS_APP_IDS') || defaultPostDnsAppIds.filter((id) => appIds.includes(id));
+  const appIds = envList('MOS_E2E_APP_IDS', [...defaultPreDnsAppIds, ...defaultPostDnsAppIds].join(','));
+  const preDnsAppIds = envListIfSet('MOS_E2E_PRE_DNS_APP_IDS') || defaultPreDnsAppIds.filter((id) => appIds.includes(id));
+  const postDnsAppIds = envListIfSet('MOS_E2E_POST_DNS_APP_IDS') || defaultPostDnsAppIds.filter((id) => appIds.includes(id));
   const cloudflareApiToken = envString('CLOUDFLARE_API_TOKEN');
-  const dns01BaseDomain = envString('MOS_V2_E2E_DNS01_BASE_DOMAIN');
+  const dns01BaseDomain = envString('MOS_E2E_DNS01_BASE_DOMAIN');
   const dns01Configured = Boolean(cloudflareApiToken && dns01BaseDomain);
 
   return {
     appIds,
-    baseURL: normalizeBaseURL(envString('MOS_V2_E2E_BASE_URL', 'http://home.mos.home')),
+    baseURL: normalizeBaseURL(envString('MOS_E2E_BASE_URL', 'http://home.mos.home')),
     cloudflareApiToken,
-    dns01AcmeEmail: envString('MOS_V2_E2E_DNS01_ACME_EMAIL', envString('MOS_V2_E2E_OWNER_EMAIL', 'owner@example.com')),
+    dns01AcmeEmail: envString('MOS_E2E_DNS01_ACME_EMAIL', envString('MOS_E2E_OWNER_EMAIL', 'owner@example.com')),
     dns01BaseDomain,
-    enableBackup: envFlag('MOS_V2_E2E_ENABLE_BACKUP', true),
-    enableDns01: dns01Configured || envFlag('MOS_V2_E2E_ENABLE_DNS01', false),
-    enableLifecycle: envFlag('MOS_V2_E2E_ENABLE_LIFECYCLE', false),
-    enableLabReset: envFlag('MOS_V2_E2E_RESET_BEFORE_RUN', true),
-    enableRestore: envFlag('MOS_V2_E2E_ENABLE_RESTORE', true),
-    enableUpdate: envFlag('MOS_V2_E2E_ENABLE_UPDATE', false),
+    enableBackup: envFlag('MOS_E2E_ENABLE_BACKUP', true),
+    enableDns01: dns01Configured || envFlag('MOS_E2E_ENABLE_DNS01', false),
+    enableLifecycle: envFlag('MOS_E2E_ENABLE_LIFECYCLE', false),
+    enableLabReset: envFlag('MOS_E2E_RESET_BEFORE_RUN', true),
+    enableRestore: envFlag('MOS_E2E_ENABLE_RESTORE', true),
+    enableUpdate: envFlag('MOS_E2E_ENABLE_UPDATE', false),
     owner: {
-      email: envString('MOS_V2_E2E_OWNER_EMAIL', 'owner@example.com'),
-      name: envString('MOS_V2_E2E_OWNER_NAME', 'MOS Owner'),
-      password: envString('MOS_V2_E2E_OWNER_PASSWORD', 'correct horse battery'),
+      email: envString('MOS_E2E_OWNER_EMAIL', 'owner@example.com'),
+      name: envString('MOS_E2E_OWNER_NAME', 'MOS Owner'),
+      password: envString('MOS_E2E_OWNER_PASSWORD', 'correct horse battery'),
     },
     postDnsAppIds,
     preDnsAppIds,
     radicale: {
-      password: envString('MOS_V2_E2E_RADICALE_PASSWORD', 'radicale-test-password'),
-      username: envString('MOS_V2_E2E_RADICALE_USERNAME', 'admin'),
+      password: envString('MOS_E2E_RADICALE_PASSWORD', 'radicale-test-password'),
+      username: envString('MOS_E2E_RADICALE_USERNAME', 'admin'),
     },
     vaultwarden: {
-      email: envString('MOS_V2_E2E_VAULTWARDEN_EMAIL', envString('MOS_V2_E2E_OWNER_EMAIL', 'owner@example.com')),
-      name: envString('MOS_V2_E2E_VAULTWARDEN_NAME', envString('MOS_V2_E2E_OWNER_NAME', 'MOS Owner')),
+      email: envString('MOS_E2E_VAULTWARDEN_EMAIL', envString('MOS_E2E_OWNER_EMAIL', 'owner@example.com')),
+      name: envString('MOS_E2E_VAULTWARDEN_NAME', envString('MOS_E2E_OWNER_NAME', 'MOS Owner')),
       password: vaultwardenPassword(),
     },
     seafile: {
-      adminEmail: envString('MOS_V2_E2E_SEAFILE_ADMIN_EMAIL', envString('MOS_V2_E2E_OWNER_EMAIL', 'owner@example.com')),
-      adminPassword: envString('MOS_V2_E2E_SEAFILE_ADMIN_PASSWORD', 'seafile-test-password'),
+      adminEmail: envString('MOS_E2E_SEAFILE_ADMIN_EMAIL', envString('MOS_E2E_OWNER_EMAIL', 'owner@example.com')),
+      adminPassword: envString('MOS_E2E_SEAFILE_ADMIN_PASSWORD', 'seafile-test-password'),
     },
   };
 }

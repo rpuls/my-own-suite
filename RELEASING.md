@@ -58,7 +58,7 @@ Each release includes:
 
 These files must agree with each other and with the release tag.
 
-The MOS1 layout also shipped an `apps/suite-manager/release.json` so packaged installs could report their version without the repo root. The MOS2 root layout has no equivalent yet; add one back (and extend `scripts/release-check.cjs`) when MOS2 stable release-track managed updates land.
+The MOS1 layout also shipped an `apps/suite-manager/release.json` so packaged installs could report their version without the repo root. The MOS root layout has no equivalent yet; add one back (and extend `scripts/release-check.cjs`) when MOS stable release-track managed updates land.
 
 ## Safety Guardrails (Recommended)
 

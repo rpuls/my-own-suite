@@ -3,7 +3,7 @@ const http = require('node:http');
 const UPDATE_AGENT_TIMEOUT_MS = 30_000;
 
 class UpdateAgentClient {
-  constructor({ socketPath = process.env.MOS_V2_UPDATE_AGENT_SOCKET || '/run/mos-v2-update-agent/agent.sock', timeoutMs = UPDATE_AGENT_TIMEOUT_MS } = {}) {
+  constructor({ socketPath = process.env.MOS_UPDATE_AGENT_SOCKET || '/run/mos-update-agent/agent.sock', timeoutMs = UPDATE_AGENT_TIMEOUT_MS } = {}) {
     this.socketPath = socketPath;
     this.timeoutMs = timeoutMs;
   }

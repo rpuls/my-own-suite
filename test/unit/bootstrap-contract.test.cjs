@@ -9,7 +9,7 @@ const {
   validateBootstrapInput,
 } = require('../../scripts/installers/bootstrap-contract.cjs');
 const { parseArgs, selectOutput } = require('../../scripts/installers/render-bootstrap.cjs');
-const { DEFAULT_READY_TIMEOUT_MS, bootstrapPlanFor, ownerClaimUrl, renderPublicInstallerCloudInit, smokeConfigFromEnv } = require('../../scripts/smoke/digitalocean-v2.cjs');
+const { DEFAULT_READY_TIMEOUT_MS, bootstrapPlanFor, ownerClaimUrl, renderPublicInstallerCloudInit, smokeConfigFromEnv } = require('../../scripts/smoke/digitalocean.cjs');
 
 test('bootstrap contract defaults to a no-preconfig control-plane install', () => {
   const plan = renderBootstrapPlan({});
@@ -21,46 +21,46 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.equal(plan.config.publicUrls.home, 'http://home.localhost/');
   assert.equal(plan.config.publicUrls.setup, 'http://home.localhost/suite-manager/');
   assert.equal(plan.config.publicUrls.suiteManager, 'http://home.localhost/suite-manager/');
-  assert.doesNotMatch(plan.env, /OWNER_EMAIL|OWNER_PASSWORD|MOS_OWNER/);
+  assert.doesNotMatch(plan.env, /OWNER_EMAIL|OWNER_PASSWORD|MOS_OWNER_(?:EMAIL|PASSWORD)/);
   assert.doesNotMatch(plan.env, /SELECTED_APPS|MOS_APPS|STIRLING|VAULTWARDEN/);
-  assert.match(plan.env, /MOS_V2_OWNER_SETUP='suite-manager-browser'/);
-  assert.match(plan.env, /MOS_V2_APP_SELECTION='suite-manager-after-install'/);
-  assert.match(plan.env, /MOS_V2_LAB_RESET_ENABLED='0'/);
+  assert.match(plan.env, /MOS_OWNER_SETUP='suite-manager-browser'/);
+  assert.match(plan.env, /MOS_APP_SELECTION='suite-manager-after-install'/);
+  assert.match(plan.env, /MOS_LAB_RESET_ENABLED='0'/);
   assert.match(plan.cloudInit, /ExecStart=\/usr\/bin\/node .*suite-manager\/backend\/src\/server\/start\.cjs/);
-  assert.match(plan.cloudInit, /reverse_proxy 127\.0\.0\.1:\$MOS_V2_SUITE_MANAGER_PORT/);
-  assert.match(plan.cloudInit, /mos-v2-homepage\.service/);
+  assert.match(plan.cloudInit, /reverse_proxy 127\.0\.0\.1:\$MOS_SUITE_MANAGER_PORT/);
+  assert.match(plan.cloudInit, /mos-homepage\.service/);
   assert.match(plan.cloudInit, /--publish 127\.0\.0\.1:3200:3000/);
   assert.match(plan.cloudInit, /docker pull 'ghcr\.io\/gethomepage\/homepage@sha256:[a-f0-9]+' &/);
   assert.match(plan.cloudInit, /if ! wait "\$homepage_pull_pid"; then/);
-  assert.match(plan.cloudInit, /\.mos-v2-defaults-v2/);
+  assert.match(plan.cloudInit, /\.mos-defaults/);
   assert.match(plan.cloudInit, /if \[ ! -e "\$homepage_seed_marker" \] \|\| \[ ! -e "\$target_file" \]; then/);
-  assert.match(plan.cloudInit, /systemctl restart mos-v2-homepage\.service/);
-  assert.match(plan.cloudInit, /curl -fsS -H "Host: \$MOS_V2_HOME_HOST" "\$MOS_V2_HOMEPAGE_UPSTREAM"/);
-  assert.match(plan.cloudInit, /systemctl restart mos-v2-suite-manager\.service/);
-  assert.match(plan.cloudInit, /Wants=mos-v2-homepage\.service network-online\.target/);
-  assert.doesNotMatch(plan.cloudInit, /Requires=mos-v2-homepage\.service/);
+  assert.match(plan.cloudInit, /systemctl restart mos-homepage\.service/);
+  assert.match(plan.cloudInit, /curl -fsS -H "Host: \$MOS_HOME_HOST" "\$MOS_HOMEPAGE_UPSTREAM"/);
+  assert.match(plan.cloudInit, /systemctl restart mos-suite-manager\.service/);
+  assert.match(plan.cloudInit, /Wants=mos-homepage\.service network-online\.target/);
+  assert.doesNotMatch(plan.cloudInit, /Requires=mos-homepage\.service/);
   assert.match(plan.cloudInit, /systemctl restart caddy\.service/);
   assert.doesNotMatch(plan.cloudInit, /caddy run --environ/);
   assert.match(plan.cloudInit, /infrastructure\/caddy\/Dockerfile/);
   assert.match(plan.cloudInit, /dns\.providers\.cloudflare/);
-  assert.match(plan.cloudInit, /mos-v2-https-agent\.service/);
-  assert.match(plan.cloudInit, /Environment=MOS_V2_SUITE_MANAGER_PORT=\$MOS_V2_SUITE_MANAGER_PORT/);
-  assert.match(plan.cloudInit, /mos-v2-homepage-agent\.service/);
-  assert.match(plan.cloudInit, /MOS_V2_HOMEPAGE_AGENT_SOCKET=\/run\/mos-v2-homepage-agent\/agent\.sock/);
-  assert.match(plan.cloudInit, /install -d -m 0750 .*"\$MOS_V2_STATE_ROOT\/app-packages"/);
-  assert.match(plan.cloudInit, /chown root:mos-v2-agent "\$MOS_V2_STATE_ROOT\/app-packages"/);
-  // Setgid, so snapshots the root app agent writes below inherit mos-v2-agent
+  assert.match(plan.cloudInit, /mos-https-agent\.service/);
+  assert.match(plan.cloudInit, /Environment=MOS_SUITE_MANAGER_PORT=\$MOS_SUITE_MANAGER_PORT/);
+  assert.match(plan.cloudInit, /mos-homepage-agent\.service/);
+  assert.match(plan.cloudInit, /MOS_HOMEPAGE_AGENT_SOCKET=\/run\/mos-homepage-agent\/agent\.sock/);
+  assert.match(plan.cloudInit, /install -d -m 0750 .*"\$MOS_STATE_ROOT\/app-packages"/);
+  assert.match(plan.cloudInit, /chown root:mos-agent "\$MOS_STATE_ROOT\/app-packages"/);
+  // Setgid, so snapshots the root app agent writes below inherit mos-agent
   // and stay readable by Suite Manager, which re-verifies each one on read.
   // Without it a bootstrap provisions a root no installed app can be read from.
-  assert.match(plan.cloudInit, /chmod 2750 "\$MOS_V2_STATE_ROOT\/app-packages"/);
-  assert.match(plan.cloudInit, /Environment=MOS_V2_APP_PACKAGE_ROOT=\$MOS_V2_STATE_ROOT\/app-packages/);
-  assert.match(plan.cloudInit, /mos-v2-backup-agent\.service/);
-  assert.match(plan.cloudInit, /MOS_V2_BACKUP_AGENT_SOCKET=\/run\/mos-v2-backup-agent\/agent\.sock/);
-  assert.match(plan.cloudInit, /mos-v2-lab-reset-agent\.service/);
-  assert.match(plan.cloudInit, /MOS_V2_LAB_RESET_AGENT_SOCKET=\/run\/mos-v2-lab-reset-agent\/agent\.sock/);
-  assert.match(plan.cloudInit, /if \[ "\$MOS_V2_LAB_RESET_ENABLED" = '1' \]; then/);
-  assert.match(plan.cloudInit, /mos-v2-homepage-routes\.caddy/);
-  assert.match(plan.cloudInit, /MOS_V2_HTTPS_AGENT_SOCKET/);
+  assert.match(plan.cloudInit, /chmod 2750 "\$MOS_STATE_ROOT\/app-packages"/);
+  assert.match(plan.cloudInit, /Environment=MOS_APP_PACKAGE_ROOT=\$MOS_STATE_ROOT\/app-packages/);
+  assert.match(plan.cloudInit, /mos-backup-agent\.service/);
+  assert.match(plan.cloudInit, /MOS_BACKUP_AGENT_SOCKET=\/run\/mos-backup-agent\/agent\.sock/);
+  assert.match(plan.cloudInit, /mos-lab-reset-agent\.service/);
+  assert.match(plan.cloudInit, /MOS_LAB_RESET_AGENT_SOCKET=\/run\/mos-lab-reset-agent\/agent\.sock/);
+  assert.match(plan.cloudInit, /if \[ "\$MOS_LAB_RESET_ENABLED" = '1' \]; then/);
+  assert.match(plan.cloudInit, /mos-homepage-routes\.caddy/);
+  assert.match(plan.cloudInit, /MOS_HTTPS_AGENT_SOCKET/);
   assert.match(plan.cloudInit, /caddy-cloudflare\.env/);
   assert.ok(
     plan.cloudInit.indexOf('docker pull')
@@ -68,15 +68,15 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   );
   assert.ok(
     plan.cloudInit.indexOf('if ! wait "$homepage_pull_pid"; then')
-      < plan.cloudInit.indexOf('systemctl restart mos-v2-homepage.service'),
+      < plan.cloudInit.indexOf('systemctl restart mos-homepage.service'),
   );
   assert.ok(
-    plan.cloudInit.indexOf('systemctl restart mos-v2-homepage.service')
-      < plan.cloudInit.indexOf('systemctl restart mos-v2-suite-manager.service'),
+    plan.cloudInit.indexOf('systemctl restart mos-homepage.service')
+      < plan.cloudInit.indexOf('systemctl restart mos-suite-manager.service'),
   );
   assert.match(plan.cloudInit, /\/usr\/share\/keyrings\/caddy-stable-archive-keyring\.gpg/);
-  assert.match(plan.cloudInit, /http:\/\/\$MOS_V2_HOME_HOST/);
-  assert.doesNotMatch(plan.cloudInit, /MOS_V2_SUITE_MANAGER_HOSTNAME|suite-manager\.\$MOS_V2_DOMAIN/);
+  assert.match(plan.cloudInit, /http:\/\/\$MOS_HOME_HOST/);
+  assert.doesNotMatch(plan.cloudInit, /MOS_SUITE_MANAGER_HOSTNAME|suite-manager\.\$MOS_DOMAIN/);
   assert.doesNotMatch(plan.cloudInit, /reverse_proxy 127\.0\.0\.1:3200/);
   assert.ok(
     plan.cloudInit.indexOf('rm -f /etc/apt/sources.list.d/caddy-stable.list')
@@ -109,9 +109,9 @@ test('public VPS installs use the protected HTTPS cloud contract', () => {
   });
 
   assert.equal(plan.config.publicUrls.setup, 'https://home.159.65.197.98.sslip.io/suite-manager/');
-  assert.match(plan.shell, /MOS_V2_FRONT_DOOR='public-vps'/);
+  assert.match(plan.shell, /MOS_FRONT_DOOR='public-vps'/);
   assert.match(plan.shell, /OWNER_CLAIM_TOKEN=/);
-  assert.match(plan.shell, /https:\/\/\$MOS_V2_HOME_HOST/);
+  assert.match(plan.shell, /https:\/\/\$MOS_HOME_HOST/);
 });
 
 test('DigitalOcean smoke allows slow first-machine builds to reach readiness', () => {
@@ -137,26 +137,26 @@ test('bootstrap contract rejects owner credentials and app config at installer t
 test('rendered cloud, SSH, and USB payloads share the same bootstrap contract', () => {
   const plan = renderBootstrapPlan({
     domain: 'mos.example.test',
-    repoRef: 'refs/heads/v2-smoke',
+    repoRef: 'refs/heads/smoke',
     repoUrl: 'https://example.test/mos.git',
   });
 
   for (const rendered of [plan.cloudInit, plan.sshBootstrap]) {
-    assert.match(rendered, /MOS_V2_REPO_URL='https:\/\/example.test\/mos.git'/);
-    assert.match(rendered, /MOS_V2_REPO_REF='refs\/heads\/v2-smoke'/);
-    assert.match(rendered, /MOS_V2_DOMAIN='mos.example.test'/);
-    assert.match(rendered, /MOS_V2_HOME_HOST="home\.\$MOS_V2_DOMAIN"/);
-    assert.match(rendered, /MOS_V2_HOME_URL="http:\/\/\$MOS_V2_HOME_HOST\/"/);
-    assert.match(rendered, /MOS_V2_SETUP_URL="http:\/\/\$MOS_V2_HOME_HOST\/suite-manager\/"/);
-    assert.match(rendered, /MOS_V2_SUITE_MANAGER_URL="\$MOS_V2_SETUP_URL"/);
+    assert.match(rendered, /MOS_REPO_URL='https:\/\/example.test\/mos.git'/);
+    assert.match(rendered, /MOS_REPO_REF='refs\/heads\/smoke'/);
+    assert.match(rendered, /MOS_DOMAIN='mos.example.test'/);
+    assert.match(rendered, /MOS_HOME_HOST="home\.\$MOS_DOMAIN"/);
+    assert.match(rendered, /MOS_HOME_URL="http:\/\/\$MOS_HOME_HOST\/"/);
+    assert.match(rendered, /MOS_SETUP_URL="http:\/\/\$MOS_HOME_HOST\/suite-manager\/"/);
+    assert.match(rendered, /MOS_SUITE_MANAGER_URL="\$MOS_SETUP_URL"/);
     assert.doesNotMatch(rendered, /MOS_OWNER_PASSWORD|MOS_SMOKE_OWNER_PASSWORD|MOS_SELECTED_APPS/);
   }
 
-  assert.match(plan.usbSeed, /MOS_V2_REPO_URL='https:\/\/example.test\/mos.git'/);
-  assert.match(plan.usbSeed, /MOS_V2_FRONT_DOOR='usb-autoinstall'/);
-  assert.match(plan.usbSeed, /MOS_V2_LAB_RESET_ENABLED='1'/);
-  assert.match(plan.usbSeed, /MOS_V2_SUITE_MANAGER_URL='http:\/\/home.mos.example.test\/suite-manager\/'/);
-  assert.match(plan.usbSeed, /MOS_V2_HOMEPAGE_URL='http:\/\/home.mos.example.test\/'/);
+  assert.match(plan.usbSeed, /MOS_REPO_URL='https:\/\/example.test\/mos.git'/);
+  assert.match(plan.usbSeed, /MOS_FRONT_DOOR='usb-autoinstall'/);
+  assert.match(plan.usbSeed, /MOS_LAB_RESET_ENABLED='1'/);
+  assert.match(plan.usbSeed, /MOS_SUITE_MANAGER_URL='http:\/\/home.mos.example.test\/suite-manager\/'/);
+  assert.match(plan.usbSeed, /MOS_HOMEPAGE_URL='http:\/\/home.mos.example.test\/'/);
   assert.doesNotMatch(plan.usbSeed, /MOS_OWNER_PASSWORD|MOS_SMOKE_OWNER_PASSWORD|MOS_SELECTED_APPS/);
 });
 
@@ -183,15 +183,15 @@ test('render CLI parses dry-run target inputs without requiring an env file', ()
 
 test('DigitalOcean smoke defaults to the public installer without owner inputs', () => {
   const previous = {
-    MOS_V2_SMOKE_REPO_REF: process.env.MOS_V2_SMOKE_REPO_REF,
-    MOS_V2_SMOKE_REPO_URL: process.env.MOS_V2_SMOKE_REPO_URL,
+    MOS_SMOKE_REPO_REF: process.env.MOS_SMOKE_REPO_REF,
+    MOS_SMOKE_REPO_URL: process.env.MOS_SMOKE_REPO_URL,
     MOS_SMOKE_OWNER_EMAIL: process.env.MOS_SMOKE_OWNER_EMAIL,
     MOS_SMOKE_OWNER_PASSWORD: process.env.MOS_SMOKE_OWNER_PASSWORD,
   };
 
   try {
-    delete process.env.MOS_V2_SMOKE_REPO_REF;
-    delete process.env.MOS_V2_SMOKE_REPO_URL;
+    delete process.env.MOS_SMOKE_REPO_REF;
+    delete process.env.MOS_SMOKE_REPO_URL;
     process.env.MOS_SMOKE_OWNER_EMAIL = 'old-owner@example.com';
     process.env.MOS_SMOKE_OWNER_PASSWORD = 'old-password';
 
@@ -202,7 +202,7 @@ test('DigitalOcean smoke defaults to the public installer without owner inputs',
     const cloudInit = renderPublicInstallerCloudInit(config.installerUrl);
     assert.match(cloudInit, /curl -fsSL --proto '=https'.*get-dev\.myownsuite\.org\/install\.sh.*\| bash/);
     assert.doesNotMatch(cloudInit, /render-bootstrap\.cjs|git clone/);
-    assert.match(plan.cloudInit, /MOS_V2_FRONT_DOOR='public-vps'/);
+    assert.match(plan.cloudInit, /MOS_FRONT_DOOR='public-vps'/);
     assert.doesNotMatch(plan.cloudInit, /old-owner@example.com|old-password|MOS_SMOKE_OWNER/);
   } finally {
     for (const [key, value] of Object.entries(previous)) {

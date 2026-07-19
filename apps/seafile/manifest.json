@@ -39,7 +39,7 @@
     "resourceHint": {
       "level": "medium",
       "label": "Medium resources",
-      "description": "This package starts Seafile plus MySQL and Valkey, so it is heavier than the first single-service V2 packages."
+      "description": "This package starts Seafile plus MySQL and Valkey, so it is heavier than the first single-service MOS packages."
     },
     "privacy": {
       "summary": "Files, metadata, and generated credentials are stored in your MOS runtime.",

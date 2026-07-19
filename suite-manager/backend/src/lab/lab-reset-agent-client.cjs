@@ -3,7 +3,7 @@ const http = require('node:http');
 const LAB_RESET_AGENT_TIMEOUT_MS = 10_000;
 
 class LabResetAgentClient {
-  constructor({ socketPath = process.env.MOS_V2_LAB_RESET_AGENT_SOCKET || '/run/mos-v2-lab-reset-agent/agent.sock', timeoutMs = LAB_RESET_AGENT_TIMEOUT_MS } = {}) {
+  constructor({ socketPath = process.env.MOS_LAB_RESET_AGENT_SOCKET || '/run/mos-lab-reset-agent/agent.sock', timeoutMs = LAB_RESET_AGENT_TIMEOUT_MS } = {}) {
     this.socketPath = socketPath;
     this.timeoutMs = timeoutMs;
   }

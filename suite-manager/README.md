@@ -1,6 +1,6 @@
-# V2 Suite Manager
+# MOS Suite Manager
 
-Suite Manager is the V2 control-plane app.
+Suite Manager is the MOS control-plane app.
 
 It owns the web UI, backend API, first-run owner setup, platform state, app lifecycle orchestration, and communication with system agents.
 
@@ -8,7 +8,7 @@ It is self-contained and does not import archived control-plane code.
 
 ## Frontend
 
-The V2 Suite Manager frontend starts as a small React + Vite app under `frontend/`.
+The MOS Suite Manager frontend starts as a small React + Vite app under `frontend/`.
 
 The first app surface is intentionally narrow:
 
@@ -32,7 +32,7 @@ cmd /c npm test
 
 ## Persistence
 
-SQLite is Suite Manager's durable source of truth. The database is `suite-manager.sqlite` under the configurable `MOS_V2_STATE_DIR`; installed control planes use `/var/lib/mos-v2/suite-manager/suite-manager.sqlite`, while local development defaults to `.state/suite-manager.sqlite` relative to the working directory.
+SQLite is Suite Manager's durable source of truth. The database is `suite-manager.sqlite` under the configurable `MOS_STATE_DIR`; installed control planes use `/var/lib/mos/suite-manager/suite-manager.sqlite`, while local development defaults to `.state/suite-manager.sqlite` relative to the working directory.
 
 The `https-settings` migration stores only non-secret configuration and status: active/pending base domain, TLS mode, ACME email, provider, timestamps, and sanitized apply outcome. The Cloudflare token is never stored in SQLite or returned by an API. Pending fields keep a candidate host allowlisted during apply without replacing a previously working configuration.
 
@@ -50,7 +50,7 @@ Back up the database with a SQLite-aware backup tool or while Suite Manager is s
 
 ## HTTPS Settings Boundary
 
-Authenticated owners use `/suite-manager/settings`. Suite Manager validates the exact three-field request and sends it over a restricted Unix socket to the V2 HTTPS agent. Successful configuration reports `https://home.<base-domain>/`; because sessions are host-only, the owner signs in again on that new origin.
+Authenticated owners use `/suite-manager/settings`. Suite Manager validates the exact three-field request and sends it over a restricted Unix socket to the MOS HTTPS agent. Successful configuration reports `https://home.<base-domain>/`; because sessions are host-only, the owner signs in again on that new origin.
 
 The original installer-created HTTP Home host remains an authenticated recovery URL. The configured HTTP host redirects to HTTPS. Suite Manager accepts only the bootstrap host plus pending or active Home hosts from SQLite, trusts forwarded protocol at its loopback deployment boundary, and marks session cookies `Secure` on HTTPS.
 
@@ -58,7 +58,7 @@ Cloud-init installs additionally require HTTPS and an installer-generated one-ti
 
 ## Homepage Authentication Boundary
 
-Suite Manager accepts only the configured `home.<domain>` host and rejects unknown hosts. It owns `/suite-manager/` for onboarding, login, account controls, static assets, and API routes. All other requests require a valid `mos_v2_session` before they are streamed to `MOS_V2_HOMEPAGE_UPSTREAM`.
+Suite Manager accepts only the configured `home.<domain>` host and rejects unknown hosts. It owns `/suite-manager/` for onboarding, login, account controls, static assets, and API routes. All other requests require a valid `mos_session` before they are streamed to `MOS_HOMEPAGE_UPSTREAM`.
 
 The proxy preserves request paths, query strings, request/response streaming, redirects, forwarded origin information, and WebSocket upgrades. It removes the MOS cookie before contacting Homepage and ignores upstream cookies. Homepage receives the stable bootstrap host for its private allowlist while `X-Forwarded-Host` retains the browser origin. Unauthenticated browser traffic is redirected to `/suite-manager/`, unauthenticated upgrades are rejected, and an unavailable upstream returns `502`.
 
@@ -68,7 +68,7 @@ The cookie remains host-only. Because dashboard and Suite Manager share the Home
 
 Authenticated owners use `/suite-manager/customize` to edit only `bookmarks.yaml`, `services.template.yaml`, `settings.yaml`, and `widgets.yaml`. Reads return a content revision; saves require that revision and validate through the structured YAML parser before the narrow Homepage agent writes anything. Guided links remain dashboard-only. Guided home services accept only name, description, icon, group, HTTP/HTTPS upstream host and port, and public subdomain; they store stable user-managed metadata without credentials or arbitrary Caddy text.
 
-Customize follows the established MOS Homepage workflow: an always-visible file list, a syntax-aware YAML editor, explicit validation before save/apply, reload protection for dirty content, and a shared two-step Add-to-Homepage dialog. The home-network helper derives protocol, host, port, and a friendly subdomain from the address users already know, then previews the V2-owned public route before applying the same structured agent request.
+Customize follows the established MOS Homepage workflow: an always-visible file list, a syntax-aware YAML editor, explicit validation before save/apply, reload protection for dirty content, and a shared two-step Add-to-Homepage dialog. The home-network helper derives protocol, host, port, and a friendly subdomain from the address users already know, then previews the MOS-owned public route before applying the same structured agent request.
 
 SQLite records owner, operation, revision, app installation/configuration, package identity, integration, and guide state. Durable Homepage files remain the dashboard source and `services.yaml` is generated; package snapshots and narrow host agents own runtime, volume, backup, and lifecycle boundaries.
 

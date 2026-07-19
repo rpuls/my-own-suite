@@ -1,6 +1,6 @@
-# Stirling PDF V2 Package
+# Stirling PDF MOS Package
 
-This is the first intentionally boring V2 app package. It exists to prove package discovery, manifest validation, projection inputs, and the eventual install lifecycle before MOS grows a catalog.
+This is an intentionally boring MOS app package. It exists to prove package discovery, manifest validation, projection inputs, and the eventual install lifecycle before MOS grows a catalog.
 
 ## Runtime Shape
 

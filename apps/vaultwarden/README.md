@@ -1,6 +1,6 @@
-# Vaultwarden V2 Package
+# Vaultwarden MOS Package
 
-This package is the second V2 app package and exists to pressure-test generic package setup, generated secrets, persistence, routes, and onboarding metadata.
+This package pressure-tests generic package setup, generated secrets, persistence, routes, and onboarding metadata.
 
 ## Runtime Shape
 
@@ -16,7 +16,7 @@ The package declares one persistent mount:
 
 - `/data`
 
-The first V2 Vaultwarden package uses Vaultwarden's built-in SQLite storage to stay inside the current one-service lifecycle slice. A future richer package can introduce PostgreSQL once package dependencies and companion services are generic.
+The MOS Vaultwarden package uses Vaultwarden's built-in SQLite storage to stay inside the current one-service lifecycle slice. A future richer package can introduce PostgreSQL once package dependencies and companion services are generic.
 
 ## Setup
 
@@ -35,6 +35,6 @@ Suite Manager must not return the raw admin token in package listings, install r
 
 ## Secret Management Caveat
 
-The current file-backed secret storage is a V2 package-contract proving step, not the final MOS secret management system. Vaultwarden needs a recoverable admin token so the runtime can be reapplied, restarted, or updated with the same value, but this first slice only separates raw secret material from broad SQLite state and public APIs, then fails closed when the secret cannot be materialized.
+The current file-backed secret storage is a MOS package-contract proving step, not the final MOS secret management system. Vaultwarden needs a recoverable admin token so the runtime can be reapplied, restarted, or updated with the same value, but this package only separates raw secret material from broad SQLite state and public APIs, then fails closed when the secret cannot be materialized.
 
 After Vaultwarden is verified to install and run in Hyper-V, a later package-platform task should harden this into an explicit secret-management subsystem before adding more secret-bearing app packages. That follow-up should cover encrypted-at-rest storage or a local secret-store agent, rotation/reveal rules, backup/restore behavior, permission ownership, operator recovery, and expanded redaction tests.

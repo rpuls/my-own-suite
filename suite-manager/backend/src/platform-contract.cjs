@@ -22,12 +22,12 @@ function createInitialPlatformContract() {
       storesPasswordHash: true,
     },
     testing: {
-      digitalOceanHarness: 'v2-owned-smoke-harness',
+      digitalOceanHarness: 'mos-owned-smoke-harness',
       e2e: 'owner-creation-flow-before-merge',
       smokeCommandsAreUserRun: true,
     },
     ui: {
-      designFramework: 'suite-manager-v2-shared-primitives',
+      designFramework: 'suite-manager-shared-primitives',
       referencePrimitiveSource: 'suite-manager/frontend/src/components/ui.tsx',
     },
     version: 1,
@@ -42,7 +42,7 @@ function validateInitialPlatformContract(contract) {
   }
 
   if (contract.installer?.requiresOwnerCredentials !== false) {
-    errors.push('Installer must not require owner credentials for the V2 first slice.');
+    errors.push('Installer must not require owner credentials for the MOS first slice.');
   }
 
   if (contract.ownerSetup?.location !== 'suite-manager-browser') {
@@ -54,7 +54,7 @@ function validateInitialPlatformContract(contract) {
   }
 
   if (contract.oldSystemPolicy?.runtimeImportsFromOldSuiteManager !== false) {
-    errors.push('V2 must not import the old Suite Manager at runtime.');
+    errors.push('MOS must not import the old Suite Manager at runtime.');
   }
 
   if (Array.isArray(contract.optionalApps) && contract.optionalApps.length > 0) {
@@ -79,17 +79,17 @@ function plannedValidationCommands() {
     {
       command: 'npm test',
       owner: 'agent',
-      purpose: 'Validate the clean-slate V2 workspace contract.',
+      purpose: 'Validate the clean-slate MOS workspace contract.',
     },
     {
       command: 'npm run smoke:do:reset',
       owner: 'user',
-      purpose: 'Run paid DigitalOcean fresh-install validation once V2 has an install path.',
+      purpose: 'Run paid DigitalOcean fresh-install validation once MOS has an install path.',
     },
     {
       command: 'npm run e2e:onboarding',
       owner: 'user',
-      purpose: 'Run noisy browser validation once the V2 first-run owner flow is implemented.',
+      purpose: 'Run noisy browser validation once the MOS first-run owner flow is implemented.',
     },
   ];
 }

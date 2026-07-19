@@ -1,6 +1,6 @@
-# Seafile V2 package
+# Seafile MOS package
 
-This package runs Seafile core as a MOS V2 multi-service app package. It installs independently from ONLYOFFICE, SMTP wiring, backup automation, and app-specific Suite Manager code.
+This package runs Seafile core as a MOS multi-service app package. It installs independently from ONLYOFFICE, SMTP wiring, backup automation, and app-specific Suite Manager code.
 
 ## Services
 
@@ -37,6 +37,6 @@ Disable stops/removes containers while keeping routes, volumes, and stored secre
 
 MOS checks `http://seafile:80/api2/ping/` through the generated loopback projection for the public Seafile service.
 
-## V2 scope notes
+## MOS scope notes
 
 The entrypoint patches proxy-facing Seahub settings so Seafile knows the generated MOS app host and forwarded scheme. It also contains the package-owned Seahub patching needed when Suite Manager connects a compatible ONLYOFFICE provider: Seahub settings receive the allowlisted integration values and ONLYOFFICE server-side downloads/callbacks can use Seafile's package network.

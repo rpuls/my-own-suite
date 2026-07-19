@@ -14,7 +14,7 @@ export default defineConfig({
   reporter: process.env.CI ? 'line' : [['list'], ['html', { open: 'never', outputFolder: 'playwright-report-hyperv' }]],
   use: {
     baseURL: env.baseURL,
-    headless: process.env.MOS_V2_E2E_HEADED !== '1',
+    headless: process.env.MOS_E2E_HEADED !== '1',
     ignoreHTTPSErrors: true,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',

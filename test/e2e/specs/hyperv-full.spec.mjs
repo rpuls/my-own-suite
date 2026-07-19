@@ -21,7 +21,7 @@ const env = loadHypervEnv();
 
 test.describe.configure({ mode: 'serial' });
 
-test('Hyper-V MOS V2 full platform regression', async ({ browser, page }) => {
+test('Hyper-V MOS full platform regression', async ({ browser, page }) => {
   test.skip(env.enableUpdate, 'Update validation is intentionally not part of the default full suite yet.');
   let homepageCheckpoint = null;
   let earlyBackup = null;
@@ -65,7 +65,7 @@ test('Hyper-V MOS V2 full platform regression', async ({ browser, page }) => {
 
   const dns01 = await test.step('apply DNS-01 HTTPS before post-DNS apps', async () => {
     const result = await applyDns01IfConfigured(page, env);
-    if (!result?.homeUrl) throw new Error('Hyper-V full E2E requires DNS-01 before post-DNS app installs. Set MOS_V2_E2E_DNS01_BASE_DOMAIN and CLOUDFLARE_API_TOKEN in test/e2e/.env.');
+    if (!result?.homeUrl) throw new Error('Hyper-V full E2E requires DNS-01 before post-DNS app installs. Set MOS_E2E_DNS01_BASE_DOMAIN and CLOUDFLARE_API_TOKEN in test/e2e/.env.');
     if (result?.homeUrl) {
       await ensureOwnerSession(page, env, `${result.homeUrl.replace(/\/$/u, '')}/suite-manager/`);
     }

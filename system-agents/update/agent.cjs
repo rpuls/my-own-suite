@@ -8,9 +8,9 @@ const { spawn, spawnSync } = require('node:child_process');
 
 const { buildPaths, collectStatus, readJson, repoRootFrom, writeJson, writeUpdateTrack } = require('./lib.cjs');
 
-const repoRoot = process.env.MOS_V2_REPO_DIR || repoRootFrom(process.cwd());
-const stateRoot = process.env.MOS_V2_STATE_ROOT || '/var/lib/mos-v2';
-const socketPath = process.env.MOS_V2_UPDATE_AGENT_SOCKET || '/run/mos-v2-update-agent/agent.sock';
+const repoRoot = process.env.MOS_REPO_DIR || repoRootFrom(process.cwd());
+const stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos';
+const socketPath = process.env.MOS_UPDATE_AGENT_SOCKET || '/run/mos-update-agent/agent.sock';
 const paths = buildPaths(repoRoot, stateRoot);
 
 function respond(response, statusCode, payload) {
@@ -53,7 +53,7 @@ function summarizeJob(job) {
 }
 
 function jobUnitName(jobId) {
-  return `mos-v2-update-job-${String(jobId || '').replace(/[^A-Za-z0-9:-]/gu, '-')}`;
+  return `mos-update-job-${String(jobId || '').replace(/[^A-Za-z0-9:-]/gu, '-')}`;
 }
 
 function systemdUnitActive(unitName) {
@@ -116,15 +116,15 @@ function createJob(payload) {
 function startWorker(job) {
   const workerArgs = [path.join(__dirname, 'worker.cjs'), '--job-file', path.join(paths.jobsDir, `${job.id}.json`)];
   const workerCwd = repoRoot;
-  const workerEnv = { ...process.env, MOS_V2_REPO_DIR: repoRoot, MOS_V2_STATE_ROOT: stateRoot };
+  const workerEnv = { ...process.env, MOS_REPO_DIR: repoRoot, MOS_STATE_ROOT: stateRoot };
   if (process.platform === 'linux') {
     const unitName = jobUnitName(job.id);
     const systemdRun = spawnSync('systemd-run', [
       '--collect',
       `--unit=${unitName}`,
       `--working-directory=${workerCwd}`,
-      `--setenv=MOS_V2_REPO_DIR=${repoRoot}`,
-      `--setenv=MOS_V2_STATE_ROOT=${stateRoot}`,
+      `--setenv=MOS_REPO_DIR=${repoRoot}`,
+      `--setenv=MOS_STATE_ROOT=${stateRoot}`,
       `--setenv=NODE_ENV=${workerEnv.NODE_ENV || 'production'}`,
       process.execPath,
       ...workerArgs,
@@ -148,7 +148,7 @@ const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || '/', 'http://localhost');
   try {
     if (request.method === 'GET' && url.pathname === '/healthz') {
-      respond(response, 200, { ok: true, service: 'mos-v2-update-agent' });
+      respond(response, 200, { ok: true, service: 'mos-update-agent' });
       return;
     }
     if (request.method === 'GET' && url.pathname === '/v1/status') {
@@ -157,7 +157,7 @@ const server = http.createServer(async (request, response) => {
         currentJob: summarizeJob(readCurrentJob()),
         lastJob: summarizeJob(readLatestJob()),
         repoDir: repoRoot,
-        service: 'mos-v2-update-agent',
+        service: 'mos-update-agent',
         socketPath,
         updaterStatus: await collectStatus(paths).catch((error) => ({
           checkedAt: new Date().toISOString(),
@@ -206,7 +206,7 @@ const server = http.createServer(async (request, response) => {
 
 server.listen(socketPath, () => {
   fs.chmodSync(socketPath, 0o660);
-  process.stdout.write('[mos-v2-update-agent] ready\n');
+  process.stdout.write('[mos-update-agent] ready\n');
 });
 
 function shutdown() {

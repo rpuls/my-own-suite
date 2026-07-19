@@ -9,10 +9,10 @@ const { resolveSmokeRepoRef } = require('../installers/render-hyperv-usb-seed.cj
 const labRoot = path.join(repoRoot, '.mos-smoke', 'hyperv-usb');
 const outputIso = path.join(labRoot, 'my-own-suite-installer.iso');
 const buildRoot = path.join(labRoot, 'iso-build');
-const seedDir = path.join(labRoot, 'v2-seed');
+const seedDir = path.join(labRoot, 'seed');
 
 function fail(message) {
-  throw new Error(`[mos-v2-smoke:hyperv-usb] ${message}`);
+  throw new Error(`[mos-smoke:hyperv-usb] ${message}`);
 }
 
 function verifyIso(isoPath) {
@@ -44,7 +44,7 @@ function main(extraArgs = process.argv.slice(2)) {
     env: process.env,
     stdio: 'inherit',
   });
-  if (seedResult.error) fail(`Unable to start the V2 USB seed renderer: ${seedResult.error.message}`);
+  if (seedResult.error) fail(`Unable to start the MOS USB seed renderer: ${seedResult.error.message}`);
   if (seedResult.status !== 0) process.exit(seedResult.status || 1);
 
   const builder = path.join(repoRoot, 'scripts', 'selfhost-build-installer-iso.cjs');
@@ -74,7 +74,7 @@ function main(extraArgs = process.argv.slice(2)) {
 
   const size = verifyIso(outputIso);
   console.log('');
-  console.log('[mos-v2-smoke:hyperv-usb] Installer ISO generated and verified.');
+  console.log('[mos-smoke:hyperv-usb] Installer ISO generated and verified.');
   console.log(`  ISO:  ${outputIso}`);
   console.log(`  Size: ${(size / (1024 ** 3)).toFixed(2)} GB`);
   console.log(`  Ref:  ${smokeRepoRef}`);

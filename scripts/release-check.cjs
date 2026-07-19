@@ -82,7 +82,7 @@ try {
   errors.push(`Official catalog signing key is unusable: ${error instanceof Error ? error.message : String(error)}`);
 }
 
-// When MOS2 gains stable release-track managed updates, a Suite Manager
+// When MOS gains stable release-track managed updates, a Suite Manager
 // release metadata file should be added back here so packaged installs can
 // report their installed version without the repo root. See RELEASING.md.
 

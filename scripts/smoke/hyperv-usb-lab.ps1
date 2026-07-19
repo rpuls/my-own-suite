@@ -6,21 +6,21 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$V2Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$LabRoot = Join-Path $V2Root '.mos-smoke\hyperv-usb'
-$VmName = 'mos-v2-usb-smoke'
+$MOSRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$LabRoot = Join-Path $MOSRoot '.mos-smoke\hyperv-usb'
+$VmName = 'mos-usb-smoke'
 $DiskPath = Join-Path $LabRoot 'os.vhdx'
 $BackupDiskPath = Join-Path $LabRoot 'backup.vhdx'
 $IsoPath = Join-Path $LabRoot 'my-own-suite-installer.iso'
-$InstallerConfigPath = Join-Path $V2Root 'infrastructure\self-host\autoinstall\installer-config\selfhost-installer.env'
-$InstallerConfigTemplatePath = Join-Path $V2Root 'infrastructure\self-host\autoinstall\installer-config\selfhost-installer.env.template'
+$InstallerConfigPath = Join-Path $MOSRoot 'infrastructure\self-host\autoinstall\installer-config\selfhost-installer.env'
+$InstallerConfigTemplatePath = Join-Path $MOSRoot 'infrastructure\self-host\autoinstall\installer-config\selfhost-installer.env.template'
 $HostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
-$HostsStartMarker = '# BEGIN MOS V2 HYPERV USB SMOKE'
-$HostsEndMarker = '# END MOS V2 HYPERV USB SMOKE'
+$HostsStartMarker = '# BEGIN MOS HYPERV USB SMOKE'
+$HostsEndMarker = '# END MOS HYPERV USB SMOKE'
 $DefaultDns01SmokeDomain = 'hyperv.diemernet.uk'
 
 function Fail([string]$Message) {
-  throw "[mos-v2-smoke:hyperv-usb] $Message"
+  throw "[mos-smoke:hyperv-usb] $Message"
 }
 
 function Assert-HyperV {
@@ -35,16 +35,16 @@ function Assert-HyperV {
 }
 
 function Get-LabSwitch {
-  if ($env:MOS_V2_HYPERV_SWITCH) {
-    $switch = Get-VMSwitch -Name $env:MOS_V2_HYPERV_SWITCH -ErrorAction SilentlyContinue
-    if (-not $switch) { Fail "Hyper-V switch '$env:MOS_V2_HYPERV_SWITCH' does not exist." }
+  if ($env:MOS_HYPERV_SWITCH) {
+    $switch = Get-VMSwitch -Name $env:MOS_HYPERV_SWITCH -ErrorAction SilentlyContinue
+    if (-not $switch) { Fail "Hyper-V switch '$env:MOS_HYPERV_SWITCH' does not exist." }
     return $switch
   }
   $switch = Get-VMSwitch -Name 'Default Switch' -ErrorAction SilentlyContinue
   if ($switch) { return $switch }
   $switch = Get-VMSwitch | Where-Object SwitchType -eq 'External' | Select-Object -First 1
   if ($switch) { return $switch }
-  Fail 'No Default Switch or external Hyper-V switch is available. Set MOS_V2_HYPERV_SWITCH to an existing switch.'
+  Fail 'No Default Switch or external Hyper-V switch is available. Set MOS_HYPERV_SWITCH to an existing switch.'
 }
 
 function Remove-LabVm {
@@ -66,8 +66,8 @@ function Get-SmokeHostDomains {
   $domains = [System.Collections.Generic.List[string]]::new()
   $domains.Add($StackDomain)
 
-  $extraDomains = if ($env:MOS_V2_HYPERV_EXTRA_HOST_DOMAINS) {
-    $env:MOS_V2_HYPERV_EXTRA_HOST_DOMAINS
+  $extraDomains = if ($env:MOS_HYPERV_EXTRA_HOST_DOMAINS) {
+    $env:MOS_HYPERV_EXTRA_HOST_DOMAINS
   }
   else {
     $DefaultDns01SmokeDomain
@@ -90,7 +90,7 @@ function Get-SmokeHostDomains {
 $script:ExternalLabRouteHostsCache = $null
 function Get-ExternalLabRouteHosts {
   if ($null -ne $script:ExternalLabRouteHostsCache) { return $script:ExternalLabRouteHostsCache }
-  $helper = Join-Path $V2Root 'scripts\smoke\external-lab-apps.cjs'
+  $helper = Join-Path $MOSRoot 'scripts\smoke\external-lab-apps.cjs'
   if (-not (Test-Path -LiteralPath $helper)) { Fail "External lab app declaration '$helper' is missing." }
   $output = & node $helper
   if ($LASTEXITCODE -ne 0) { Fail 'Could not resolve external lab app hostnames.' }
@@ -108,10 +108,10 @@ function Get-SmokeHostNamesForDomain {
       $names.Add("$externalHost.$Domain")
     }
     else {
-      Write-Warning "[mos-v2-smoke:hyperv-usb] Skipping invalid external lab hostname '$externalHost'."
+      Write-Warning "[mos-smoke:hyperv-usb] Skipping invalid external lab hostname '$externalHost'."
     }
   }
-  $appsRoot = Join-Path $V2Root 'apps'
+  $appsRoot = Join-Path $MOSRoot 'apps'
   if (Test-Path -LiteralPath $appsRoot) {
     Get-ChildItem -LiteralPath $appsRoot -Directory | ForEach-Object {
       $manifestPath = Join-Path $_.FullName 'manifest.json'
@@ -125,7 +125,7 @@ function Get-SmokeHostNamesForDomain {
         }
       }
       catch {
-        Write-Warning "[mos-v2-smoke:hyperv-usb] Could not inspect app package manifest '$manifestPath'."
+        Write-Warning "[mos-smoke:hyperv-usb] Could not inspect app package manifest '$manifestPath'."
       }
     }
   }
@@ -171,7 +171,7 @@ function Set-SmokeHostsEntries {
 }
 
 function Build-InstallerIso {
-  $builder = Join-Path $V2Root 'scripts\smoke\build-hyperv-usb-iso.cjs'
+  $builder = Join-Path $MOSRoot 'scripts\smoke\build-hyperv-usb-iso.cjs'
   & node $builder
   if ($LASTEXITCODE -ne 0) { Fail 'USB installer ISO generation failed.' }
   if (-not (Test-Path -LiteralPath $IsoPath)) { Fail "USB installer ISO was not created at '$IsoPath'." }
@@ -179,9 +179,9 @@ function Build-InstallerIso {
 
 function Get-BackupDiskSizeBytes {
   $sizeGb = 16
-  if ($env:MOS_V2_HYPERV_BACKUP_DISK_GB) {
-    if (-not [int]::TryParse($env:MOS_V2_HYPERV_BACKUP_DISK_GB, [ref]$sizeGb) -or $sizeGb -lt 4 -or $sizeGb -gt 256) {
-      Fail 'MOS_V2_HYPERV_BACKUP_DISK_GB must be a whole number from 4 to 256.'
+  if ($env:MOS_HYPERV_BACKUP_DISK_GB) {
+    if (-not [int]::TryParse($env:MOS_HYPERV_BACKUP_DISK_GB, [ref]$sizeGb) -or $sizeGb -lt 4 -or $sizeGb -gt 256) {
+      Fail 'MOS_HYPERV_BACKUP_DISK_GB must be a whole number from 4 to 256.'
     }
   }
   return $sizeGb * 1GB
@@ -231,9 +231,9 @@ function Wait-ForSuiteManager {
   param([string]$StackDomain)
 
   $timeoutMinutes = 90
-  if ($env:MOS_V2_HYPERV_READY_TIMEOUT_MINUTES) {
-    if (-not [int]::TryParse($env:MOS_V2_HYPERV_READY_TIMEOUT_MINUTES, [ref]$timeoutMinutes) -or $timeoutMinutes -lt 1) {
-      Fail 'MOS_V2_HYPERV_READY_TIMEOUT_MINUTES must be a positive whole number.'
+  if ($env:MOS_HYPERV_READY_TIMEOUT_MINUTES) {
+    if (-not [int]::TryParse($env:MOS_HYPERV_READY_TIMEOUT_MINUTES, [ref]$timeoutMinutes) -or $timeoutMinutes -lt 1) {
+      Fail 'MOS_HYPERV_READY_TIMEOUT_MINUTES must be a positive whole number.'
     }
   }
 
@@ -273,7 +273,7 @@ function Wait-ForSuiteManager {
 
     if ($detail -ne $lastDetail -or (Get-Date) -ge $nextReportAt) {
       $elapsed = [math]::Floor(((Get-Date) - $startedAt).TotalMinutes)
-      Write-Host "[mos-v2-smoke:hyperv-usb] Installing ($elapsed/$timeoutMinutes min): $detail"
+      Write-Host "[mos-smoke:hyperv-usb] Installing ($elapsed/$timeoutMinutes min): $detail"
       $lastDetail = $detail
       $nextReportAt = (Get-Date).AddSeconds(30)
     }
@@ -294,7 +294,7 @@ function Show-Summary {
   $backupDisk = Get-VMHardDiskDrive -VMName $VmName | Where-Object Path -eq $BackupDiskPath
   $dvd = Get-VMDvdDrive -VMName $VmName | Where-Object Path -eq $IsoPath
   Write-Host ''
-  Write-Host '[mos-v2-smoke:hyperv-usb] USB installer smoke VM is ready.'
+  Write-Host '[mos-smoke:hyperv-usb] USB installer smoke VM is ready.'
   Write-Host "  VM:         $($vm.Name) ($($vm.State))"
   Write-Host "  Generation: $($vm.Generation)"
   Write-Host "  Switch:     $($adapter.SwitchName)"
@@ -314,16 +314,16 @@ if ($Command -eq 'destroy') {
   Remove-LabVm
   Remove-LabArtifacts
   Remove-SmokeHostsEntries
-  Write-Host "[mos-v2-smoke:hyperv-usb] Removed VM '$VmName' and its disposable lab artifacts."
+  Write-Host "[mos-smoke:hyperv-usb] Removed VM '$VmName' and its disposable lab artifacts."
   exit 0
 }
 
-Write-Host "[mos-v2-smoke:hyperv-usb] Removing any existing '$VmName' VM and lab artifacts..."
+Write-Host "[mos-smoke:hyperv-usb] Removing any existing '$VmName' VM and lab artifacts..."
 Remove-LabVm
 Remove-LabArtifacts
 Remove-SmokeHostsEntries
 
-Write-Host '[mos-v2-smoke:hyperv-usb] Building the canonical single-USB installer ISO...'
+Write-Host '[mos-smoke:hyperv-usb] Building the canonical single-USB installer ISO...'
 Build-InstallerIso
 
 $switch = Get-LabSwitch
@@ -360,7 +360,7 @@ if ($vm.State -ne 'Running' -or -not $dvd) {
 }
 
 $stackDomain = Get-StackDomain
-Write-Host "[mos-v2-smoke:hyperv-usb] Waiting for Ubuntu installation and Suite Manager readiness on *.$stackDomain..."
+Write-Host "[mos-smoke:hyperv-usb] Waiting for Ubuntu installation and Suite Manager readiness on *.$stackDomain..."
 $ip = Wait-ForSuiteManager -StackDomain $stackDomain
 Set-SmokeHostsEntries -Ip $ip -StackDomain $stackDomain
 Show-Summary -Ip $ip -StackDomain $stackDomain

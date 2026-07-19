@@ -4,11 +4,11 @@ const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 
-const stateRoot = process.env.MOS_V2_STATE_ROOT || '/var/lib/mos-v2';
-const installRoot = process.env.MOS_V2_INSTALL_ROOT || '/opt/mos-v2';
-const repoRoot = process.env.MOS_V2_REPO_DIR || path.join(installRoot, 'repo');
-const resetId = process.env.MOS_V2_LAB_RESET_ID || '';
-const statusDir = process.env.MOS_V2_LAB_RESET_STATUS_DIR || '/run/mos-v2-lab-reset-agent/jobs';
+const stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos';
+const installRoot = process.env.MOS_INSTALL_ROOT || '/opt/mos';
+const repoRoot = process.env.MOS_REPO_DIR || path.join(installRoot, 'repo');
+const resetId = process.env.MOS_LAB_RESET_ID || '';
+const statusDir = process.env.MOS_LAB_RESET_STATUS_DIR || '/run/mos-lab-reset-agent/jobs';
 const homepageSource = path.join(repoRoot, 'infrastructure', 'homepage');
 const homepageConfig = path.join(stateRoot, 'homepage', 'config');
 const bootstrapContract = path.join(stateRoot, 'bootstrap-contract.env');
@@ -43,26 +43,26 @@ function parseEnvFile(filePath) {
 }
 
 function homeHostFromContract(contract) {
-  if (contract.MOS_V2_HOME_HOST) return contract.MOS_V2_HOME_HOST;
-  if (contract.MOS_V2_HOME_URL) {
+  if (contract.MOS_HOME_HOST) return contract.MOS_HOME_HOST;
+  if (contract.MOS_HOME_URL) {
     try {
-      return new URL(contract.MOS_V2_HOME_URL).hostname;
+      return new URL(contract.MOS_HOME_URL).hostname;
     } catch {}
   }
-  if (contract.MOS_V2_DOMAIN) return contract.MOS_V2_DOMAIN === 'localhost' ? 'home.localhost' : `home.${contract.MOS_V2_DOMAIN}`;
+  if (contract.MOS_DOMAIN) return contract.MOS_DOMAIN === 'localhost' ? 'home.localhost' : `home.${contract.MOS_DOMAIN}`;
   return 'home.localhost';
 }
 
 function renderBootstrapCaddyfile() {
   const contract = parseEnvFile(bootstrapContract);
-  const homeHost = process.env.MOS_V2_HOME_HOST || homeHostFromContract(contract);
-  const suiteManagerPort = process.env.MOS_V2_SUITE_MANAGER_PORT || contract.MOS_V2_SUITE_MANAGER_PORT || '3100';
+  const homeHost = process.env.MOS_HOME_HOST || homeHostFromContract(contract);
+  const suiteManagerPort = process.env.MOS_SUITE_MANAGER_PORT || contract.MOS_SUITE_MANAGER_PORT || '3100';
   return `http://${homeHost} {
   reverse_proxy 127.0.0.1:${suiteManagerPort}
 }
 
-import /etc/caddy/mos-v2-homepage-routes.caddy
-import /etc/caddy/mos-v2-app-routes.caddy
+import /etc/caddy/mos-homepage-routes.caddy
+import /etc/caddy/mos-app-routes.caddy
 `;
 }
 
@@ -95,15 +95,15 @@ function unique(values) {
 
 function resetDockerRuntime() {
   const appContainers = unique([
-    ...dockerList(['ps', '-aq', '--filter', 'label=mos-v2.package']),
-    ...dockerList(['ps', '-a', '--format', '{{.Names}}']).filter((name) => name.startsWith('mos-v2-app-')),
+    ...dockerList(['ps', '-aq', '--filter', 'label=mos.package']),
+    ...dockerList(['ps', '-a', '--format', '{{.Names}}']).filter((name) => name.startsWith('mos-app-')),
   ]);
   for (const container of appContainers) tryRun('/usr/bin/docker', ['rm', '-f', container], { timeoutMs: 120_000 });
 
-  const appNetworks = dockerList(['network', 'ls', '--format', '{{.Name}}']).filter((name) => name.startsWith('mos-v2-app-'));
+  const appNetworks = dockerList(['network', 'ls', '--format', '{{.Name}}']).filter((name) => name.startsWith('mos-app-'));
   for (const network of appNetworks) tryRun('/usr/bin/docker', ['network', 'rm', network]);
 
-  const appVolumes = dockerList(['volume', 'ls', '-q']).filter((name) => name.startsWith('mos-v2-app-'));
+  const appVolumes = dockerList(['volume', 'ls', '-q']).filter((name) => name.startsWith('mos-app-'));
   for (const volume of appVolumes) tryRun('/usr/bin/docker', ['volume', 'rm', volume], { timeoutMs: 120_000 });
 }
 
@@ -115,23 +115,23 @@ function copyDirectory(source, target) {
 
 function main() {
   const stoppedServices = [
-    'mos-v2-suite-manager.service',
-    'mos-v2-app-agent.service',
-    'mos-v2-homepage-agent.service',
-    'mos-v2-https-agent.service',
-    'mos-v2-backup-agent.service',
-    'mos-v2-update-agent.service',
-    'mos-v2-homepage.service',
+    'mos-suite-manager.service',
+    'mos-app-agent.service',
+    'mos-homepage-agent.service',
+    'mos-https-agent.service',
+    'mos-backup-agent.service',
+    'mos-update-agent.service',
+    'mos-homepage.service',
   ];
   const startedServices = [
     'caddy.service',
-    'mos-v2-homepage.service',
-    'mos-v2-homepage-agent.service',
-    'mos-v2-suite-manager.service',
-    'mos-v2-https-agent.service',
-    'mos-v2-app-agent.service',
-    'mos-v2-backup-agent.service',
-    'mos-v2-update-agent.service',
+    'mos-homepage.service',
+    'mos-homepage-agent.service',
+    'mos-suite-manager.service',
+    'mos-https-agent.service',
+    'mos-app-agent.service',
+    'mos-backup-agent.service',
+    'mos-update-agent.service',
   ];
 
   writeJob('running');
@@ -142,8 +142,8 @@ function main() {
     copyDirectory(homepageSource, homepageConfig);
     tryRun('/usr/bin/chown', ['-R', '1000:1000', homepageConfig]);
     fs.writeFileSync('/etc/caddy/Caddyfile', renderBootstrapCaddyfile());
-    fs.writeFileSync('/etc/caddy/mos-v2-homepage-routes.caddy', '# No user-managed Homepage routes.\n');
-    fs.writeFileSync('/etc/caddy/mos-v2-app-routes.caddy', '# No app runtime routes.\n');
+    fs.writeFileSync('/etc/caddy/mos-homepage-routes.caddy', '# No user-managed Homepage routes.\n');
+    fs.writeFileSync('/etc/caddy/mos-app-routes.caddy', '# No app runtime routes.\n');
     tryRun('/usr/bin/systemctl', ['restart', ...startedServices], { timeoutMs: 120_000 });
     writeJob('completed');
   } catch (error) {

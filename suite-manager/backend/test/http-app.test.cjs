@@ -9,25 +9,25 @@ const { HOMEPAGE_AGENT_TIMEOUT_MS } = require('../src/homepage/homepage-agent-cl
 const { loopbackPortFor } = require('../src/apps/app-package-service.cjs');
 const { LoginThrottle } = require('../src/auth/login-throttle.cjs');
 
-const { createV2Server } = require('../src/server/http-app.cjs');
+const { createMOSServer } = require('../src/server/http-app.cjs');
 const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
 const { ExternalSourceService } = require('../src/apps/external-source-service.cjs');
 const { ExternalSourceError } = require('../src/apps/external-source-registry.cjs');
 const appsDir = path.resolve(__dirname, '..', '..', '..', 'apps');
 
 async function tempStateDir() {
-  return fs.mkdtemp(path.join(os.tmpdir(), 'mos-v2-http-'));
+  return fs.mkdtemp(path.join(os.tmpdir(), 'mos-http-'));
 }
 
 async function tempFrontendDistDir() {
-  const distDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-v2-frontend-'));
+  const distDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-frontend-'));
   await fs.mkdir(path.join(distDir, 'assets'), { recursive: true });
   await fs.mkdir(path.join(distDir, 'brand'), { recursive: true });
   await fs.writeFile(
     path.join(distDir, 'index.html'),
     '<!doctype html><html><head><title>Suite Manager | My Own Suite</title><script type="module" src="./assets/index.js"></script></head><body><div id="root"></div></body></html>',
   );
-  await fs.writeFile(path.join(distDir, 'assets', 'index.js'), 'console.log("mos v2 app");\n');
+  await fs.writeFile(path.join(distDir, 'assets', 'index.js'), 'console.log("mos app");\n');
   await fs.writeFile(path.join(distDir, 'brand', 'my-own-suite-mark.png'), 'fake image');
   return distDir;
 }
@@ -48,7 +48,7 @@ async function withServer(fn, options = {}) {
     },
     ...(options.appAgent || {}),
   };
-  const server = createV2Server({
+  const server = createMOSServer({
     frontendDistDir: await tempFrontendDistDir(),
     homeHost: '127.0.0.1',
     stateDir: await tempStateDir(),
@@ -112,7 +112,7 @@ test('static frontend assets are served from the reserved asset namespace', asyn
     const brandResponse = await fetch(`${baseUrl}/suite-manager/assets/brand/my-own-suite-mark.png`);
 
     assert.equal(scriptResponse.status, 200);
-    assert.match(script, /mos v2 app/);
+    assert.match(script, /mos app/);
     assert.equal(scriptResponse.headers.get('content-type'), 'text/javascript; charset=utf-8');
     assert.equal(brandResponse.status, 200);
     assert.equal(brandResponse.headers.get('content-type'), 'image/png');
@@ -336,7 +336,7 @@ test('App package catalog API requires authentication and exposes safe manifest 
       },
     ]);
     assert.equal(radicale.homepage.widget.type, 'calendar');
-    assert.equal(radicale.homepage.widget.integrations[0].url, '${app.publicUrl}__mos-v2/ical/${secret.icalToken}');
+    assert.equal(radicale.homepage.widget.integrations[0].url, '${app.publicUrl}__mos/ical/${secret.icalToken}');
     assert.ok(stirling);
     assert.equal(stirling.name, 'Stirling PDF');
     assert.equal(stirling.installStatus, 'not-installed');
@@ -452,7 +452,7 @@ test('Security activity API is owner-only and returns a bounded summary without 
   }, { homeHost: 'home.test', stateDir });
 });
 
-test('Backup inventory API requires auth and reports V2 protected state', async () => {
+test('Backup inventory API requires auth and reports MOS protected state', async () => {
   const stateDir = await tempStateDir();
   await withServer(async (baseUrl) => {
     const denied = await hostRequest(baseUrl, '/suite-manager/api/backups/inventory', {
@@ -480,7 +480,7 @@ test('Backup inventory API requires auth and reports V2 protected state', async 
     assert.equal(inventory.summary.appCount, 1);
     assert.ok(vaultwarden);
     assert.equal(vaultwarden.manifestPresent, true);
-    assert.deepEqual(vaultwarden.declaredVolumes.map((volume) => volume.dockerVolume), ['mos-v2-app-vaultwarden-data']);
+    assert.deepEqual(vaultwarden.declaredVolumes.map((volume) => volume.dockerVolume), ['mos-app-vaultwarden-data']);
     assert.match(vaultwarden.manifestDigest, /^sha256:[a-f0-9]{64}$/u);
     assert.ok(inventory.warnings.some((warning) => warning.packageId === 'vaultwarden' && /no explicit backup metadata/u.test(warning.message)));
     assert.ok(inventory.packageManifestDigests.some((entry) => entry.packageId === 'vaultwarden'));
@@ -549,7 +549,7 @@ test('Updates API requires auth and proxies narrow update-agent actions', async 
 });
 
 test('Backup API proxies simple owner backup, restore, and download actions', async () => {
-  const backupDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-v2-backup-bundle-'));
+  const backupDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-backup-bundle-'));
   const archivePath = path.join(backupDir, 'bundle.tar.gz');
   await fs.writeFile(archivePath, 'fake backup archive');
   const calls = [];
@@ -853,9 +853,9 @@ test('Radicale install stores user-supplied credentials with secret redaction an
     assert.equal(tokenConfig.value, undefined);
     assert.equal(compose.services[0].environment.RADICALE_ADMIN_USERNAME, 'calendar-admin');
     assert.equal(compose.services[0].environment.RADICALE_ADMIN_PASSWORD, '${secret.adminPassword}');
-    assert.equal(caddy.routes[0].internalIcalBridge.path, '/__mos-v2/ical/${secret.icalToken}');
+    assert.equal(caddy.routes[0].internalIcalBridge.path, '/__mos/ical/${secret.icalToken}');
     assert.equal(caddy.routes[0].internalIcalBridge.basicAuth.password, '${secret.adminPassword}');
-    assert.equal(homepage.widget.integrations[0].url, '${app.publicUrl}__mos-v2/ical/${secret.icalToken}');
+    assert.equal(homepage.widget.integrations[0].url, '${app.publicUrl}__mos/ical/${secret.icalToken}');
     assert.equal(compose.services[0].internalPort, 5232);
     assert.equal(compose.services[0].loopbackPort, radicalePort);
     assert.deepEqual(compose.services[0].volumes, ['data:/data']);
@@ -872,7 +872,7 @@ test('Radicale install stores user-supplied credentials with secret redaction an
     assert.equal(calls[0].publicUrl, 'https://radicale.test/');
     assert.equal(calls[0].compose.services[0].environment.RADICALE_ADMIN_USERNAME, 'calendar-admin');
     assert.equal(calls[0].compose.services[0].environment.RADICALE_ADMIN_PASSWORD, password);
-    assert.match(calls[0].caddy.routes[0].internalIcalBridge.path, /^\/__mos-v2\/ical\/[A-Za-z0-9_-]{40,}$/u);
+    assert.match(calls[0].caddy.routes[0].internalIcalBridge.path, /^\/__mos\/ical\/[A-Za-z0-9_-]{40,}$/u);
     assert.equal(calls[0].caddy.routes[0].internalIcalBridge.basicAuth.password, password);
     assert.equal(calls[0].health.target, `http://127.0.0.1:${radicalePort}/`);
     assert.doesNotMatch(applied.body, new RegExp(password, 'u'));
@@ -1140,7 +1140,7 @@ test('Radicale Homepage projection adds a calendar widget without exposing crede
     assert.equal(add.entry.name, 'Radicale');
     assert.equal(add.entry.widget.type, 'calendar');
     assert.equal(add.entry.widget.integrations[0].type, 'ical');
-    assert.match(add.entry.widget.integrations[0].url, /^https:\/\/radicale\.test\/__mos-v2\/ical\/[A-Za-z0-9_-]{40,}$/u);
+    assert.match(add.entry.widget.integrations[0].url, /^https:\/\/radicale\.test\/__mos\/ical\/[A-Za-z0-9_-]{40,}$/u);
     assert.doesNotMatch(JSON.stringify(add.entry), new RegExp(password, 'u'));
     assert.doesNotMatch(applied.body, new RegExp(add.entry.widget.integrations[0].url.split('/').at(-1), 'u'));
   }, { appAgent, homeHost: 'home.test', homepageAgent });
@@ -1474,7 +1474,7 @@ test('owner creation API signs in and changes setup status', async () => {
 
     assert.equal(createResponse.status, 201);
     assert.equal(created.status, 'signed-in');
-    assert.match(cookie, /mos_v2_session=/);
+    assert.match(cookie, /mos_session=/);
 
     const statusResponse = await fetch(`${baseUrl}/suite-manager/api/setup/status`, {
       headers: { Cookie: cookie },
@@ -1503,7 +1503,7 @@ test('lab reset endpoint schedules the narrow lab agent when enabled', async () 
     assert.equal(response.status, 202);
     assert.deepEqual(response.json(), { resetId: 'reset-one', scheduled: true });
     assert.deepEqual(calls, [{ reason: 'hyperv-e2e' }]);
-    assert.match(String(response.headers['set-cookie']), /mos_v2_session=/u);
+    assert.match(String(response.headers['set-cookie']), /mos_session=/u);
   }, {
     labResetEnabled: true,
     labResetAgent: {
@@ -1581,7 +1581,7 @@ test('login and logout transition session state', async () => {
 
     assert.equal(loginResponse.status, 200);
     assert.equal(login.status, 'signed-in');
-    assert.match(cookie, /mos_v2_session=/);
+    assert.match(cookie, /mos_session=/);
 
     const signedInResponse = await fetch(`${baseUrl}/suite-manager/api/setup/status`, {
       headers: { Cookie: cookie },

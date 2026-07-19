@@ -12,8 +12,8 @@ const {
   validateAppPackageManifest,
 } = require('../src/apps/package-manifest.cjs');
 
-const v2Root = path.resolve(__dirname, '..', '..', '..');
-const v2AppsDir = path.join(v2Root, 'apps');
+const repoRoot = path.resolve(__dirname, '..', '..', '..');
+const v2AppsDir = path.join(repoRoot, 'apps');
 
 function validManifest(overrides = {}) {
   return {
@@ -99,8 +99,8 @@ test('Radicale package is discoverable and declares user-supplied credentials ge
     { generated: true, id: 'icalToken', required: true, secret: true, type: 'password' },
   ]);
   assert.equal(radicale.manifest.homepage.widget.type, 'calendar');
-  assert.equal(radicale.manifest.homepage.widget.integrations[0].url, '${app.publicUrl}__mos-v2/ical/${secret.icalToken}');
-  assert.equal(radicale.manifest.routes[0].internalIcalBridge.path, '/__mos-v2/ical/${secret.icalToken}');
+  assert.equal(radicale.manifest.homepage.widget.integrations[0].url, '${app.publicUrl}__mos/ical/${secret.icalToken}');
+  assert.equal(radicale.manifest.routes[0].internalIcalBridge.path, '/__mos/ical/${secret.icalToken}');
   assert.equal(radicale.manifest.resources.services.radicale.internalPort, 5232);
   assert.deepEqual(radicale.manifest.resources.services.radicale.volumes, ['data:/data']);
   assert.equal(radicale.manifest.onboarding.title, 'Connect your calendar');
@@ -388,10 +388,10 @@ test('manifest validation rejects unsafe generated setup declarations', () => {
 
 test('production app package engine code does not hardcode package ids', () => {
   const roots = [
-    path.join(v2Root, 'suite-manager', 'backend', 'src'),
-    path.join(v2Root, 'suite-manager', 'frontend', 'src'),
-    path.join(v2Root, 'system-agents', 'apps'),
-    path.join(v2Root, 'scripts', 'smoke'),
+    path.join(repoRoot, 'suite-manager', 'backend', 'src'),
+    path.join(repoRoot, 'suite-manager', 'frontend', 'src'),
+    path.join(repoRoot, 'system-agents', 'apps'),
+    path.join(repoRoot, 'scripts', 'smoke'),
   ];
   const offenders = [];
   const visit = (target) => {
@@ -404,7 +404,7 @@ test('production app package engine code does not hardcode package ids', () => {
       if (!/\.(?:cjs|js|ps1|ts|tsx)$/u.test(entry.name) || /\.test\./u.test(entry.name)) continue;
       const content = fs.readFileSync(fullPath, 'utf8');
       if (/\b(?:immich|stirling|vaultwarden|radicale|seafile|Immich|Stirling|Vaultwarden|Radicale|Seafile)\b/u.test(content)) {
-        offenders.push(path.relative(v2Root, fullPath));
+        offenders.push(path.relative(repoRoot, fullPath));
       }
     }
   };
@@ -414,7 +414,7 @@ test('production app package engine code does not hardcode package ids', () => {
 });
 
 test('readAppPackageManifest reports all validation details', async () => {
-  const packageDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-v2-package-'));
+  const packageDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-package-'));
   await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify(validManifest({
     id: 'Bad_App',
     resources: { services: {} },

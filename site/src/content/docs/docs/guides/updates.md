@@ -53,7 +53,7 @@ The **Updates** screen shows your update **track**, the version you're running, 
 ### Tracks
 
 - **Stable releases** — tagged, release-noted versions. The right choice once you depend on your suite.
-- **V2 lab branch** — the active development branch, with changes arriving continuously. Fresh installs currently default to this track while MOS is pre-1.0; it's the version these docs describe, but it moves fast.
+- **MOS lab branch** — the active development branch, with changes arriving continuously. Fresh installs currently default to this track while MOS is pre-1.0; it's the version these docs describe, but it moves fast.
 
 You can switch tracks from the same screen.
 

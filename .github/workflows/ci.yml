@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   workspace:
-    name: MOS2 Workspace
+    name: MOS Workspace
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

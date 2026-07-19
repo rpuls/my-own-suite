@@ -17,7 +17,7 @@ function write(filePath, content) {
 }
 
 function makeRepo() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-v2-update-repo-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-repo-'));
   fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
   write(path.join(root, 'package.json'), JSON.stringify({ name: 'my-own-suite', repository: { url: 'https://github.com/rpuls/my-own-suite.git' }, scripts: { 'build:client': 'node -e "process.exit(0)"' } }));
   write(path.join(root, 'package-lock.json'), JSON.stringify({ name: 'my-own-suite', lockfileVersion: 3, packages: { '': { name: 'my-own-suite' } }, requires: true }));
@@ -34,7 +34,7 @@ function makeRepo() {
 
 test('update track config validates branch refs and writes persisted track state', () => {
   const repo = makeRepo();
-  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-v2-update-state-'));
+  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-state-'));
   const paths = buildPaths(repo, stateRoot);
 
   const track = writeUpdateTrack(paths, { ref: 'staging', track: 'branch' });
@@ -45,10 +45,10 @@ test('update track config validates branch refs and writes persisted track state
 
 test('status reports branch target without a manual app runtime reconciliation warning', async () => {
   const repo = makeRepo();
-  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-v2-update-state-'));
+  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-state-'));
   const paths = buildPaths(repo, stateRoot);
 
-  process.env.MOS_V2_UPDATE_SKIP_RELEASE_LOOKUP = '1';
+  process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP = '1';
   try {
     const status = await collectStatus(paths);
     assert.equal(status.track.type, 'branch');
@@ -57,13 +57,13 @@ test('status reports branch target without a manual app runtime reconciliation w
     assert.equal(status.appRuntimeReconciliation, undefined);
     assert.equal(status.updateAvailable, false);
   } finally {
-    delete process.env.MOS_V2_UPDATE_SKIP_RELEASE_LOOKUP;
+    delete process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP;
   }
 });
 
 test('apply refuses dirty working trees before running host reconciliation', async () => {
   const repo = makeRepo();
-  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-v2-update-state-'));
+  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-state-'));
   const paths = buildPaths(repo, stateRoot);
   write(path.join(repo, 'dirty.txt'), 'dirty');
 
@@ -72,15 +72,15 @@ test('apply refuses dirty working trees before running host reconciliation', asy
 
 test('apply recovers the known npm package-lock metadata dirtiness', async () => {
   const repo = makeRepo();
-  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-v2-update-state-'));
+  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-state-'));
   const paths = buildPaths(repo, stateRoot);
   write(path.join(repo, 'package-lock.json'), '{"name":"dirty"}\n');
 
-  process.env.MOS_V2_UPDATE_SKIP_RELEASE_LOOKUP = '1';
+  process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP = '1';
   try {
     await assert.rejects(() => runApply(paths, { log() {} }), /already up to date/u);
   } finally {
-    delete process.env.MOS_V2_UPDATE_SKIP_RELEASE_LOOKUP;
+    delete process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP;
   }
 
   assert.equal(run(repo, ['status', '--porcelain']), '');
@@ -88,22 +88,22 @@ test('apply recovers the known npm package-lock metadata dirtiness', async () =>
 
 test('apply installs dependencies from lockfile without dirtying package-lock', async () => {
   const repo = makeRepo();
-  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-v2-update-state-'));
+  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-state-'));
   const paths = buildPaths(repo, stateRoot);
   const logs = [];
   write(path.join(repo, 'scripts', 'reconcile-system.cjs'), 'process.exit(0);\n');
   run(repo, ['add', '.']);
   run(repo, ['commit', '-m', 'add reconcile stub']);
-  const remote = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mos-v2-update-remote-')), 'origin.git');
+  const remote = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-remote-')), 'origin.git');
   execFileSync('git', ['clone', '--bare', repo, remote], { encoding: 'utf8' });
   run(repo, ['remote', 'set-url', 'origin', remote]);
   run(repo, ['reset', '--hard', 'HEAD~1']);
 
-  process.env.MOS_V2_UPDATE_SKIP_RELEASE_LOOKUP = '1';
+  process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP = '1';
   try {
     await runApply(paths, { log(message) { logs.push(message); } });
   } finally {
-    delete process.env.MOS_V2_UPDATE_SKIP_RELEASE_LOOKUP;
+    delete process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP;
   }
 
   assert(logs.some((message) => /npm ci --include=dev/u.test(message)));

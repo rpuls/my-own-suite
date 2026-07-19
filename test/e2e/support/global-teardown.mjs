@@ -4,8 +4,8 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const v2Root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const statePath = path.join(v2Root, '.state', 'e2e-runtime.json');
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const statePath = path.join(repoRoot, '.state', 'e2e-runtime.json');
 
 async function stopAndWait(pid) {
   try { process.kill(pid, 'SIGTERM'); } catch { return; }
@@ -23,5 +23,5 @@ export default async function globalTeardown() {
     await fsp.rm(state.runtimeDir, { force: true, maxRetries: 20, recursive: true, retryDelay: 100 });
     await fsp.rm(statePath, { force: true });
   }
-  spawnSync('docker', ['rm', '-f', 'mos-v2-e2e-homepage'], { stdio: 'ignore', shell: process.platform === 'win32' });
+  spawnSync('docker', ['rm', '-f', 'mos-e2e-homepage'], { stdio: 'ignore', shell: process.platform === 'win32' });
 }

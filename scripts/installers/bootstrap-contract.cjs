@@ -1,8 +1,8 @@
 const DEFAULT_REPO_URL = 'https://github.com/rpuls/my-own-suite.git';
 const DEFAULT_REPO_REF = 'staging';
 const DEFAULT_LOCAL_DOMAIN = 'localhost';
-const DEFAULT_INSTALL_ROOT = '/opt/mos-v2';
-const DEFAULT_STATE_ROOT = '/var/lib/mos-v2';
+const DEFAULT_INSTALL_ROOT = '/opt/mos';
+const DEFAULT_STATE_ROOT = '/var/lib/mos';
 const DEFAULT_RUNTIME_USER = 'mos';
 const DEFAULT_SUITE_MANAGER_PORT = 3100;
 const CONTROL_PLANE_COMPONENTS = ['suite-manager', 'caddy', 'homepage', 'https-agent', 'homepage-agent', 'app-agent', 'backup-agent', 'update-agent', 'lab-reset-agent'];
@@ -104,7 +104,7 @@ function validateBootstrapInput(input = {}) {
   }
 
   if (input.frontDoor && !FRONT_DOORS.includes(input.frontDoor)) {
-    errors.push(`Unknown V2 installer front door: ${input.frontDoor}.`);
+    errors.push(`Unknown MOS installer front door: ${input.frontDoor}.`);
   }
 
   return errors;
@@ -125,19 +125,19 @@ function shellQuote(value) {
 
 function renderBootstrapEnv(config) {
   return [
-    ['MOS_V2_REPO_URL', config.repoUrl],
-    ['MOS_V2_REPO_REF', config.repoRef],
-    ['MOS_V2_FRONT_DOOR', config.frontDoor],
-    ['MOS_V2_DOMAIN', config.domain],
-    ['MOS_V2_INSTALL_ROOT', config.installRoot],
-    ['MOS_V2_STATE_ROOT', config.stateRoot],
-    ['MOS_V2_RUNTIME_USER', config.runtimeUser],
-    ['MOS_V2_SUITE_MANAGER_PORT', String(config.suiteManagerPort)],
-    ['MOS_V2_HOMEPAGE_PORT', String(config.homepagePort)],
-    ['MOS_V2_COMPONENTS', config.components.join(',')],
-    ['MOS_V2_LAB_RESET_ENABLED', config.frontDoor === 'usb-autoinstall' ? '1' : '0'],
-    ['MOS_V2_OWNER_SETUP', 'suite-manager-browser'],
-    ['MOS_V2_APP_SELECTION', 'suite-manager-after-install'],
+    ['MOS_REPO_URL', config.repoUrl],
+    ['MOS_REPO_REF', config.repoRef],
+    ['MOS_FRONT_DOOR', config.frontDoor],
+    ['MOS_DOMAIN', config.domain],
+    ['MOS_INSTALL_ROOT', config.installRoot],
+    ['MOS_STATE_ROOT', config.stateRoot],
+    ['MOS_RUNTIME_USER', config.runtimeUser],
+    ['MOS_SUITE_MANAGER_PORT', String(config.suiteManagerPort)],
+    ['MOS_HOMEPAGE_PORT', String(config.homepagePort)],
+    ['MOS_COMPONENTS', config.components.join(',')],
+    ['MOS_LAB_RESET_ENABLED', config.frontDoor === 'usb-autoinstall' ? '1' : '0'],
+    ['MOS_OWNER_SETUP', 'suite-manager-browser'],
+    ['MOS_APP_SELECTION', 'suite-manager-after-install'],
   ]
     .map(([key, value]) => `${key}=${shellQuote(value)}`)
     .join('\n');
@@ -151,34 +151,34 @@ function renderBootstrapShell(config) {
 set -euo pipefail
 
 ${renderBootstrapEnv(config)}
-export MOS_V2_REPO_URL MOS_V2_REPO_REF MOS_V2_FRONT_DOOR MOS_V2_DOMAIN MOS_V2_INSTALL_ROOT MOS_V2_STATE_ROOT MOS_V2_RUNTIME_USER MOS_V2_SUITE_MANAGER_PORT MOS_V2_HOMEPAGE_PORT MOS_V2_COMPONENTS MOS_V2_LAB_RESET_ENABLED MOS_V2_OWNER_SETUP MOS_V2_APP_SELECTION
+export MOS_REPO_URL MOS_REPO_REF MOS_FRONT_DOOR MOS_DOMAIN MOS_INSTALL_ROOT MOS_STATE_ROOT MOS_RUNTIME_USER MOS_SUITE_MANAGER_PORT MOS_HOMEPAGE_PORT MOS_COMPONENTS MOS_LAB_RESET_ENABLED MOS_OWNER_SETUP MOS_APP_SELECTION
 
-if [ "$MOS_V2_DOMAIN" = "localhost" ] && [ "$MOS_V2_FRONT_DOOR" = "digitalocean-smoke" ]; then
+if [ "$MOS_DOMAIN" = "localhost" ] && [ "$MOS_FRONT_DOOR" = "digitalocean-smoke" ]; then
   metadata_ip="$(curl -fsS --max-time 5 http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address 2>/dev/null || true)"
   if [ -n "$metadata_ip" ]; then
-    MOS_V2_DOMAIN="$metadata_ip.sslip.io"
-    export MOS_V2_DOMAIN
+    MOS_DOMAIN="$metadata_ip.sslip.io"
+    export MOS_DOMAIN
   fi
 fi
 
-if [ "$MOS_V2_DOMAIN" = "localhost" ]; then
-  MOS_V2_HOME_HOST="home.localhost"
+if [ "$MOS_DOMAIN" = "localhost" ]; then
+  MOS_HOME_HOST="home.localhost"
 else
-  MOS_V2_HOME_HOST="home.$MOS_V2_DOMAIN"
+  MOS_HOME_HOST="home.$MOS_DOMAIN"
 fi
 
-MOS_V2_HOME_URL="${initialScheme}://$MOS_V2_HOME_HOST/"
-MOS_V2_SETUP_URL="${initialScheme}://$MOS_V2_HOME_HOST/suite-manager/"
-MOS_V2_SUITE_MANAGER_URL="$MOS_V2_SETUP_URL"
-MOS_V2_HOMEPAGE_UPSTREAM="http://127.0.0.1:$MOS_V2_HOMEPAGE_PORT"
-export MOS_V2_HOME_HOST MOS_V2_HOME_URL MOS_V2_SETUP_URL MOS_V2_SUITE_MANAGER_URL MOS_V2_HOMEPAGE_UPSTREAM
+MOS_HOME_URL="${initialScheme}://$MOS_HOME_HOST/"
+MOS_SETUP_URL="${initialScheme}://$MOS_HOME_HOST/suite-manager/"
+MOS_SUITE_MANAGER_URL="$MOS_SETUP_URL"
+MOS_HOMEPAGE_UPSTREAM="http://127.0.0.1:$MOS_HOMEPAGE_PORT"
+export MOS_HOME_HOST MOS_HOME_URL MOS_SETUP_URL MOS_SUITE_MANAGER_URL MOS_HOMEPAGE_UPSTREAM
 
-echo "[mos-v2] Bootstrapping MOS V2 control plane from ${config.repoUrl}#${config.repoRef}"
-echo "[mos-v2] Components: ${config.components.join(', ')}"
-echo "[mos-v2] MOS first-run URL: $MOS_V2_HOME_URL"
-echo "[mos-v2] Suite Manager URL: $MOS_V2_SUITE_MANAGER_URL"
-echo "[mos-v2] Owner setup happens in Suite Manager after first boot."
-echo "[mos-v2] App choices happen in Suite Manager after install."
+echo "[mos] Bootstrapping MOS control plane from ${config.repoUrl}#${config.repoRef}"
+echo "[mos] Components: ${config.components.join(', ')}"
+echo "[mos] MOS first-run URL: $MOS_HOME_URL"
+echo "[mos] Suite Manager URL: $MOS_SUITE_MANAGER_URL"
+echo "[mos] Owner setup happens in Suite Manager after first boot."
+echo "[mos] App choices happen in Suite Manager after install."
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -189,7 +189,7 @@ fi
 apt-get update
 apt-get install -y ca-certificates curl docker.io git gnupg ufw
 systemctl enable --now docker.service
-echo '[mos-v2] Pulling the pinned Homepage image while the control plane builds.'
+echo '[mos] Pulling the pinned Homepage image while the control plane builds.'
 docker pull ${shellQuote(HOMEPAGE_IMAGE)} &
 homepage_pull_pid="$!"
 
@@ -206,191 +206,191 @@ if ! command -v caddy >/dev/null 2>&1; then
   apt-get install -y caddy
 fi
 
-if ! id -u "$MOS_V2_RUNTIME_USER" >/dev/null 2>&1; then
-  useradd --system --create-home --shell /usr/sbin/nologin "$MOS_V2_RUNTIME_USER"
+if ! id -u "$MOS_RUNTIME_USER" >/dev/null 2>&1; then
+  useradd --system --create-home --shell /usr/sbin/nologin "$MOS_RUNTIME_USER"
 fi
 
-install -d -m 0755 "$MOS_V2_INSTALL_ROOT" "$MOS_V2_STATE_ROOT" "$MOS_V2_STATE_ROOT/suite-manager" "$MOS_V2_STATE_ROOT/homepage/config"
-cat > "$MOS_V2_STATE_ROOT/bootstrap-contract.env" <<MOS_V2_BOOTSTRAP_ENV
+install -d -m 0755 "$MOS_INSTALL_ROOT" "$MOS_STATE_ROOT" "$MOS_STATE_ROOT/suite-manager" "$MOS_STATE_ROOT/homepage/config"
+cat > "$MOS_STATE_ROOT/bootstrap-contract.env" <<MOS_BOOTSTRAP_ENV
 ${renderBootstrapEnv(config)}
-MOS_V2_HOME_URL="$MOS_V2_HOME_URL"
-MOS_V2_SETUP_URL="$MOS_V2_SETUP_URL"
-MOS_V2_SUITE_MANAGER_URL="$MOS_V2_SUITE_MANAGER_URL"
-MOS_V2_BOOTSTRAP_STATUS='installing-control-plane'
-MOS_V2_BOOTSTRAP_NOTE='Install Suite Manager, Caddy, Homepage, and host-agent placeholder only; create owner in browser.'
-MOS_V2_BOOTSTRAP_ENV
+MOS_HOME_URL="$MOS_HOME_URL"
+MOS_SETUP_URL="$MOS_SETUP_URL"
+MOS_SUITE_MANAGER_URL="$MOS_SUITE_MANAGER_URL"
+MOS_BOOTSTRAP_STATUS='installing-control-plane'
+MOS_BOOTSTRAP_NOTE='Install Suite Manager, Caddy, Homepage, and host-agent placeholder only; create owner in browser.'
+MOS_BOOTSTRAP_ENV
 
-if [ -d "$MOS_V2_INSTALL_ROOT/repo/.git" ]; then
-  git -C "$MOS_V2_INSTALL_ROOT/repo" fetch --prune origin
+if [ -d "$MOS_INSTALL_ROOT/repo/.git" ]; then
+  git -C "$MOS_INSTALL_ROOT/repo" fetch --prune origin
 else
-  rm -rf "$MOS_V2_INSTALL_ROOT/repo"
-  git clone "$MOS_V2_REPO_URL" "$MOS_V2_INSTALL_ROOT/repo"
+  rm -rf "$MOS_INSTALL_ROOT/repo"
+  git clone "$MOS_REPO_URL" "$MOS_INSTALL_ROOT/repo"
 fi
 
-git -C "$MOS_V2_INSTALL_ROOT/repo" checkout "$MOS_V2_REPO_REF"
-git -C "$MOS_V2_INSTALL_ROOT/repo" reset --hard "$MOS_V2_REPO_REF"
+git -C "$MOS_INSTALL_ROOT/repo" checkout "$MOS_REPO_REF"
+git -C "$MOS_INSTALL_ROOT/repo" reset --hard "$MOS_REPO_REF"
 
-npm --prefix "$MOS_V2_INSTALL_ROOT/repo" install
-npm --prefix "$MOS_V2_INSTALL_ROOT/repo" run build:client
+npm --prefix "$MOS_INSTALL_ROOT/repo" install
+npm --prefix "$MOS_INSTALL_ROOT/repo" run build:client
 
-docker build --file "$MOS_V2_INSTALL_ROOT/repo/infrastructure/caddy/Dockerfile" --tag mos-v2-caddy-builder "$MOS_V2_INSTALL_ROOT/repo"
-caddy_builder_container="$(docker create mos-v2-caddy-builder)"
-install -d -m 0755 /usr/local/libexec/mos-v2
-docker cp "$caddy_builder_container:/caddy" /usr/local/libexec/mos-v2/caddy.next
+docker build --file "$MOS_INSTALL_ROOT/repo/infrastructure/caddy/Dockerfile" --tag mos-caddy-builder "$MOS_INSTALL_ROOT/repo"
+caddy_builder_container="$(docker create mos-caddy-builder)"
+install -d -m 0755 /usr/local/libexec/mos
+docker cp "$caddy_builder_container:/caddy" /usr/local/libexec/mos/caddy.next
 docker rm "$caddy_builder_container"
-chmod 0755 /usr/local/libexec/mos-v2/caddy.next
-mv /usr/local/libexec/mos-v2/caddy.next /usr/local/libexec/mos-v2/caddy
-if ! /usr/local/libexec/mos-v2/caddy list-modules | grep -q '^dns.providers.cloudflare$'; then
-  echo '[mos-v2] The repo-built Caddy binary is missing dns.providers.cloudflare.' >&2
+chmod 0755 /usr/local/libexec/mos/caddy.next
+mv /usr/local/libexec/mos/caddy.next /usr/local/libexec/mos/caddy
+if ! /usr/local/libexec/mos/caddy list-modules | grep -q '^dns.providers.cloudflare$'; then
+  echo '[mos] The repo-built Caddy binary is missing dns.providers.cloudflare.' >&2
   exit 1
 fi
 
-if ! getent group mos-v2-agent >/dev/null; then
-  groupadd --system mos-v2-agent
+if ! getent group mos-agent >/dev/null; then
+  groupadd --system mos-agent
 fi
-usermod -a -G mos-v2-agent "$MOS_V2_RUNTIME_USER"
-install -d -m 0750 /etc/mos-v2 /etc/mos-v2/secrets /var/lib/mos-v2/https-agent /var/lib/mos-v2/homepage-agent "$MOS_V2_STATE_ROOT/app-packages"
-if [ "$MOS_V2_FRONT_DOOR" = 'cloud-init' ] || [ "$MOS_V2_FRONT_DOOR" = 'digitalocean-smoke' ] || [ "$MOS_V2_FRONT_DOOR" = 'public-vps' ]; then
-  MOS_V2_OWNER_CLAIM_TOKEN="$(openssl rand -hex 32)"
-  cat > /etc/mos-v2/secrets/owner-claim.env <<MOS_V2_OWNER_CLAIM
-MOS_V2_OWNER_CLAIM_TOKEN=$MOS_V2_OWNER_CLAIM_TOKEN
-MOS_V2_OWNER_CLAIM
-  chown root:mos-v2-agent /etc/mos-v2/secrets/owner-claim.env
-  chmod 0640 /etc/mos-v2/secrets/owner-claim.env
+usermod -a -G mos-agent "$MOS_RUNTIME_USER"
+install -d -m 0750 /etc/mos /etc/mos/secrets /var/lib/mos/https-agent /var/lib/mos/homepage-agent "$MOS_STATE_ROOT/app-packages"
+if [ "$MOS_FRONT_DOOR" = 'cloud-init' ] || [ "$MOS_FRONT_DOOR" = 'digitalocean-smoke' ] || [ "$MOS_FRONT_DOOR" = 'public-vps' ]; then
+  MOS_OWNER_CLAIM_TOKEN="$(openssl rand -hex 32)"
+  cat > /etc/mos/secrets/owner-claim.env <<MOS_OWNER_CLAIM
+MOS_OWNER_CLAIM_TOKEN=$MOS_OWNER_CLAIM_TOKEN
+MOS_OWNER_CLAIM
+  chown root:mos-agent /etc/mos/secrets/owner-claim.env
+  chmod 0640 /etc/mos/secrets/owner-claim.env
   ufw allow OpenSSH >/dev/null
   ufw allow 80/tcp >/dev/null
   ufw allow 443/tcp >/dev/null
   ufw --force enable >/dev/null
 fi
-install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-https-agent
-install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-homepage-agent
-install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-app-agent
-install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-backup-agent
-install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-update-agent
-install -d -m 2770 -o root -g mos-v2-agent /run/mos-v2-lab-reset-agent
-install -d -m 0700 /var/lib/mos-v2/https-agent/transactions
-install -d -m 0700 /var/lib/mos-v2/homepage-agent/transactions /var/lib/mos-v2/homepage-agent/history
-install -d -m 0700 /var/lib/mos-v2/backup-agent
-install -d -m 0700 /var/lib/mos-v2/update-agent /var/lib/mos-v2/update-agent/jobs
+install -d -m 2770 -o root -g mos-agent /run/mos-https-agent
+install -d -m 2770 -o root -g mos-agent /run/mos-homepage-agent
+install -d -m 2770 -o root -g mos-agent /run/mos-app-agent
+install -d -m 2770 -o root -g mos-agent /run/mos-backup-agent
+install -d -m 2770 -o root -g mos-agent /run/mos-update-agent
+install -d -m 2770 -o root -g mos-agent /run/mos-lab-reset-agent
+install -d -m 0700 /var/lib/mos/https-agent/transactions
+install -d -m 0700 /var/lib/mos/homepage-agent/transactions /var/lib/mos/homepage-agent/history
+install -d -m 0700 /var/lib/mos/backup-agent
+install -d -m 0700 /var/lib/mos/update-agent /var/lib/mos/update-agent/jobs
 
 install -d -m 0755 /etc/systemd/system/caddy.service.d
-cat > /etc/systemd/system/caddy.service.d/mos-v2.conf <<'MOS_V2_CADDY_OVERRIDE'
+cat > /etc/systemd/system/caddy.service.d/mos.conf <<'MOS_CADDY_OVERRIDE'
 [Service]
-EnvironmentFile=-/etc/mos-v2/secrets/caddy-cloudflare.env
+EnvironmentFile=-/etc/mos/secrets/caddy-cloudflare.env
 ExecStart=
-ExecStart=/usr/local/libexec/mos-v2/caddy run --config /etc/caddy/Caddyfile
+ExecStart=/usr/local/libexec/mos/caddy run --config /etc/caddy/Caddyfile
 ExecReload=
-ExecReload=/usr/local/libexec/mos-v2/caddy reload --config /etc/caddy/Caddyfile --force
-MOS_V2_CADDY_OVERRIDE
+ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --force
+MOS_CADDY_OVERRIDE
 
-homepage_seed_marker="$MOS_V2_STATE_ROOT/homepage/config/.mos-v2-defaults-v2"
-for source_file in "$MOS_V2_INSTALL_ROOT/repo/infrastructure/homepage/"*; do
-  target_file="$MOS_V2_STATE_ROOT/homepage/config/$(basename "$source_file")"
+homepage_seed_marker="$MOS_STATE_ROOT/homepage/config/.mos-defaults"
+for source_file in "$MOS_INSTALL_ROOT/repo/infrastructure/homepage/"*; do
+  target_file="$MOS_STATE_ROOT/homepage/config/$(basename "$source_file")"
   if [ ! -e "$homepage_seed_marker" ] || [ ! -e "$target_file" ]; then
     cp -a "$source_file" "$target_file"
   fi
 done
 touch "$homepage_seed_marker"
-chown -R "$MOS_V2_RUNTIME_USER:$MOS_V2_RUNTIME_USER" "$MOS_V2_STATE_ROOT"
-chown -R 1000:1000 "$MOS_V2_STATE_ROOT/homepage/config"
-chown -R root:root "$MOS_V2_STATE_ROOT/https-agent"
-chown root:mos-v2-agent "$MOS_V2_STATE_ROOT/app-packages"
-# Setgid: snapshots the root app agent writes here must inherit mos-v2-agent so
+chown -R "$MOS_RUNTIME_USER:$MOS_RUNTIME_USER" "$MOS_STATE_ROOT"
+chown -R 1000:1000 "$MOS_STATE_ROOT/homepage/config"
+chown -R root:root "$MOS_STATE_ROOT/https-agent"
+chown root:mos-agent "$MOS_STATE_ROOT/app-packages"
+# Setgid: snapshots the root app agent writes here must inherit mos-agent so
 # Suite Manager can read them back. Applied after chown, which can clear it.
-chmod 2750 "$MOS_V2_STATE_ROOT/app-packages"
-chmod 0700 "$MOS_V2_STATE_ROOT/https-agent" "$MOS_V2_STATE_ROOT/https-agent/transactions"
+chmod 2750 "$MOS_STATE_ROOT/app-packages"
+chmod 0700 "$MOS_STATE_ROOT/https-agent" "$MOS_STATE_ROOT/https-agent/transactions"
 
-cat > /etc/systemd/system/mos-v2-homepage.service <<MOS_V2_HOMEPAGE_UNIT
+cat > /etc/systemd/system/mos-homepage.service <<MOS_HOMEPAGE_UNIT
 ${renderHomepageSystemdUnit()}
-MOS_V2_HOMEPAGE_UNIT
+MOS_HOMEPAGE_UNIT
 
-cat > /etc/systemd/system/mos-v2-suite-manager.service <<MOS_V2_SUITE_MANAGER_UNIT
+cat > /etc/systemd/system/mos-suite-manager.service <<MOS_SUITE_MANAGER_UNIT
 [Unit]
-Description=MOS V2 Suite Manager
-After=mos-v2-homepage.service network-online.target
-Wants=mos-v2-homepage.service network-online.target
+Description=MOS Suite Manager
+After=mos-homepage.service network-online.target
+Wants=mos-homepage.service network-online.target
 
 [Service]
 Type=simple
-User=$MOS_V2_RUNTIME_USER
-WorkingDirectory=$MOS_V2_INSTALL_ROOT/repo
+User=$MOS_RUNTIME_USER
+WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
-Environment=MOS_V2_STATE_DIR=$MOS_V2_STATE_ROOT/suite-manager
-Environment=MOS_V2_FRONTEND_DIST_DIR=$MOS_V2_INSTALL_ROOT/repo/suite-manager/frontend/dist
-Environment=MOS_V2_SUITE_MANAGER_HOST=127.0.0.1
-Environment=MOS_V2_SUITE_MANAGER_PORT=$MOS_V2_SUITE_MANAGER_PORT
-Environment=MOS_V2_FRONT_DOOR=$MOS_V2_FRONT_DOOR
-Environment=MOS_V2_HOME_HOST=$MOS_V2_HOME_HOST
-Environment=MOS_V2_HOMEPAGE_UPSTREAM=$MOS_V2_HOMEPAGE_UPSTREAM
-Environment=MOS_V2_HTTPS_AGENT_SOCKET=/run/mos-v2-https-agent/agent.sock
-Environment=MOS_V2_HOMEPAGE_AGENT_SOCKET=/run/mos-v2-homepage-agent/agent.sock
-Environment=MOS_V2_APP_AGENT_SOCKET=/run/mos-v2-app-agent/agent.sock
-Environment=MOS_V2_APP_PACKAGE_ROOT=$MOS_V2_STATE_ROOT/app-packages
-Environment=MOS_V2_BACKUP_AGENT_SOCKET=/run/mos-v2-backup-agent/agent.sock
-Environment=MOS_V2_UPDATE_AGENT_SOCKET=/run/mos-v2-update-agent/agent.sock
-Environment=MOS_V2_LAB_RESET_ENABLED=$MOS_V2_LAB_RESET_ENABLED
-Environment=MOS_V2_LAB_RESET_AGENT_SOCKET=/run/mos-v2-lab-reset-agent/agent.sock
-EnvironmentFile=-/etc/mos-v2/secrets/owner-claim.env
-ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/suite-manager/backend/src/server/start.cjs
+Environment=MOS_STATE_DIR=$MOS_STATE_ROOT/suite-manager
+Environment=MOS_FRONTEND_DIST_DIR=$MOS_INSTALL_ROOT/repo/suite-manager/frontend/dist
+Environment=MOS_SUITE_MANAGER_HOST=127.0.0.1
+Environment=MOS_SUITE_MANAGER_PORT=$MOS_SUITE_MANAGER_PORT
+Environment=MOS_FRONT_DOOR=$MOS_FRONT_DOOR
+Environment=MOS_HOME_HOST=$MOS_HOME_HOST
+Environment=MOS_HOMEPAGE_UPSTREAM=$MOS_HOMEPAGE_UPSTREAM
+Environment=MOS_HTTPS_AGENT_SOCKET=/run/mos-https-agent/agent.sock
+Environment=MOS_HOMEPAGE_AGENT_SOCKET=/run/mos-homepage-agent/agent.sock
+Environment=MOS_APP_AGENT_SOCKET=/run/mos-app-agent/agent.sock
+Environment=MOS_APP_PACKAGE_ROOT=$MOS_STATE_ROOT/app-packages
+Environment=MOS_BACKUP_AGENT_SOCKET=/run/mos-backup-agent/agent.sock
+Environment=MOS_UPDATE_AGENT_SOCKET=/run/mos-update-agent/agent.sock
+Environment=MOS_LAB_RESET_ENABLED=$MOS_LAB_RESET_ENABLED
+Environment=MOS_LAB_RESET_AGENT_SOCKET=/run/mos-lab-reset-agent/agent.sock
+EnvironmentFile=-/etc/mos/secrets/owner-claim.env
+ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/suite-manager/backend/src/server/start.cjs
 Restart=always
 RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
-MOS_V2_SUITE_MANAGER_UNIT
+MOS_SUITE_MANAGER_UNIT
 
-cat > /etc/systemd/system/mos-v2-https-agent.service <<MOS_V2_HTTPS_AGENT_UNIT
+cat > /etc/systemd/system/mos-https-agent.service <<MOS_HTTPS_AGENT_UNIT
 [Unit]
-Description=MOS V2 narrow HTTPS configuration agent
+Description=MOS narrow HTTPS configuration agent
 After=network-online.target caddy.service
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
-Group=mos-v2-agent
+Group=mos-agent
 UMask=0007
-WorkingDirectory=$MOS_V2_INSTALL_ROOT/repo
+WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
-Environment=MOS_V2_HTTPS_AGENT_SOCKET=/run/mos-v2-https-agent/agent.sock
-Environment=MOS_V2_HTTPS_TRANSACTION_ROOT=$MOS_V2_STATE_ROOT/https-agent/transactions
-Environment=MOS_V2_SUITE_MANAGER_PORT=$MOS_V2_SUITE_MANAGER_PORT
-ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/system-agents/https/agent.cjs
+Environment=MOS_HTTPS_AGENT_SOCKET=/run/mos-https-agent/agent.sock
+Environment=MOS_HTTPS_TRANSACTION_ROOT=$MOS_STATE_ROOT/https-agent/transactions
+Environment=MOS_SUITE_MANAGER_PORT=$MOS_SUITE_MANAGER_PORT
+ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/https/agent.cjs
 Restart=always
 RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
-MOS_V2_HTTPS_AGENT_UNIT
+MOS_HTTPS_AGENT_UNIT
 
-cat > /etc/systemd/system/mos-v2-homepage-agent.service <<MOS_V2_HOMEPAGE_AGENT_UNIT
+cat > /etc/systemd/system/mos-homepage-agent.service <<MOS_HOMEPAGE_AGENT_UNIT
 [Unit]
-Description=MOS V2 narrow Homepage configuration agent
-After=network-online.target caddy.service mos-v2-homepage.service
+Description=MOS narrow Homepage configuration agent
+After=network-online.target caddy.service mos-homepage.service
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
-Group=mos-v2-agent
+Group=mos-agent
 UMask=0007
-WorkingDirectory=$MOS_V2_INSTALL_ROOT/repo
+WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
-Environment=MOS_V2_HOMEPAGE_AGENT_SOCKET=/run/mos-v2-homepage-agent/agent.sock
-Environment=MOS_V2_HOMEPAGE_CONFIG_ROOT=$MOS_V2_STATE_ROOT/homepage/config
-Environment=MOS_V2_HOMEPAGE_TRANSACTION_ROOT=$MOS_V2_STATE_ROOT/homepage-agent/transactions
-Environment=MOS_V2_HOMEPAGE_HISTORY_ROOT=$MOS_V2_STATE_ROOT/homepage-agent/history
-ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/system-agents/homepage/agent.cjs
+Environment=MOS_HOMEPAGE_AGENT_SOCKET=/run/mos-homepage-agent/agent.sock
+Environment=MOS_HOMEPAGE_CONFIG_ROOT=$MOS_STATE_ROOT/homepage/config
+Environment=MOS_HOMEPAGE_TRANSACTION_ROOT=$MOS_STATE_ROOT/homepage-agent/transactions
+Environment=MOS_HOMEPAGE_HISTORY_ROOT=$MOS_STATE_ROOT/homepage-agent/history
+ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/homepage/agent.cjs
 Restart=always
 RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
-MOS_V2_HOMEPAGE_AGENT_UNIT
+MOS_HOMEPAGE_AGENT_UNIT
 
-cat > /etc/systemd/system/mos-v2-app-agent.service <<MOS_V2_APP_AGENT_UNIT
+cat > /etc/systemd/system/mos-app-agent.service <<MOS_APP_AGENT_UNIT
 [Unit]
-Description=MOS V2 narrow app runtime agent
+Description=MOS narrow app runtime agent
 After=network-online.target docker.service caddy.service
 Requires=docker.service
 Wants=network-online.target
@@ -398,24 +398,24 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-Group=mos-v2-agent
+Group=mos-agent
 UMask=0007
-WorkingDirectory=$MOS_V2_INSTALL_ROOT/repo
+WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
-Environment=MOS_V2_APP_AGENT_SOCKET=/run/mos-v2-app-agent/agent.sock
-Environment=MOS_V2_APP_PACKAGE_ROOT=$MOS_V2_STATE_ROOT/app-packages
-Environment=MOS_V2_APPS_ROOT=$MOS_V2_INSTALL_ROOT/repo/apps
-ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/system-agents/apps/agent.cjs
+Environment=MOS_APP_AGENT_SOCKET=/run/mos-app-agent/agent.sock
+Environment=MOS_APP_PACKAGE_ROOT=$MOS_STATE_ROOT/app-packages
+Environment=MOS_APPS_ROOT=$MOS_INSTALL_ROOT/repo/apps
+ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/apps/agent.cjs
 Restart=always
 RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
-MOS_V2_APP_AGENT_UNIT
+MOS_APP_AGENT_UNIT
 
-cat > /etc/systemd/system/mos-v2-backup-agent.service <<MOS_V2_BACKUP_AGENT_UNIT
+cat > /etc/systemd/system/mos-backup-agent.service <<MOS_BACKUP_AGENT_UNIT
 [Unit]
-Description=MOS V2 backup and restore agent
+Description=MOS backup and restore agent
 After=network-online.target docker.service
 Requires=docker.service
 Wants=network-online.target
@@ -423,26 +423,26 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-Group=mos-v2-agent
+Group=mos-agent
 UMask=0007
-WorkingDirectory=$MOS_V2_INSTALL_ROOT/repo
+WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
-Environment=MOS_V2_BACKUP_AGENT_SOCKET=/run/mos-v2-backup-agent/agent.sock
-Environment=MOS_V2_BACKUP_AGENT_STATE_DIR=$MOS_V2_STATE_ROOT/backup-agent
-Environment=MOS_V2_STATE_ROOT=$MOS_V2_STATE_ROOT
-Environment=MOS_V2_STATE_DIR=$MOS_V2_STATE_ROOT/suite-manager
-Environment=MOS_V2_REPO_DIR=$MOS_V2_INSTALL_ROOT/repo
-ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/system-agents/backup/agent.cjs
+Environment=MOS_BACKUP_AGENT_SOCKET=/run/mos-backup-agent/agent.sock
+Environment=MOS_BACKUP_AGENT_STATE_DIR=$MOS_STATE_ROOT/backup-agent
+Environment=MOS_STATE_ROOT=$MOS_STATE_ROOT
+Environment=MOS_STATE_DIR=$MOS_STATE_ROOT/suite-manager
+Environment=MOS_REPO_DIR=$MOS_INSTALL_ROOT/repo
+ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/backup/agent.cjs
 Restart=always
 RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
-MOS_V2_BACKUP_AGENT_UNIT
+MOS_BACKUP_AGENT_UNIT
 
-cat > /etc/systemd/system/mos-v2-update-agent.service <<MOS_V2_UPDATE_AGENT_UNIT
+cat > /etc/systemd/system/mos-update-agent.service <<MOS_UPDATE_AGENT_UNIT
 [Unit]
-Description=MOS V2 managed update agent
+Description=MOS managed update agent
 After=network-online.target docker.service
 Requires=docker.service
 Wants=network-online.target
@@ -450,24 +450,24 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-Group=mos-v2-agent
+Group=mos-agent
 UMask=0007
-WorkingDirectory=$MOS_V2_INSTALL_ROOT/repo
+WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
-Environment=MOS_V2_UPDATE_AGENT_SOCKET=/run/mos-v2-update-agent/agent.sock
-Environment=MOS_V2_REPO_DIR=$MOS_V2_INSTALL_ROOT/repo
-Environment=MOS_V2_STATE_ROOT=$MOS_V2_STATE_ROOT
-ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/system-agents/update/agent.cjs
+Environment=MOS_UPDATE_AGENT_SOCKET=/run/mos-update-agent/agent.sock
+Environment=MOS_REPO_DIR=$MOS_INSTALL_ROOT/repo
+Environment=MOS_STATE_ROOT=$MOS_STATE_ROOT
+ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/update/agent.cjs
 Restart=always
 RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
-MOS_V2_UPDATE_AGENT_UNIT
+MOS_UPDATE_AGENT_UNIT
 
-cat > /etc/systemd/system/mos-v2-lab-reset-agent.service <<MOS_V2_LAB_RESET_AGENT_UNIT
+cat > /etc/systemd/system/mos-lab-reset-agent.service <<MOS_LAB_RESET_AGENT_UNIT
 [Unit]
-Description=MOS V2 lab reset agent
+Description=MOS lab reset agent
 After=network-online.target docker.service
 Requires=docker.service
 Wants=network-online.target
@@ -475,79 +475,79 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-Group=mos-v2-agent
+Group=mos-agent
 UMask=0007
-WorkingDirectory=$MOS_V2_INSTALL_ROOT/repo
+WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
-Environment=MOS_V2_LAB_RESET_AGENT_SOCKET=/run/mos-v2-lab-reset-agent/agent.sock
-Environment=MOS_V2_INSTALL_ROOT=$MOS_V2_INSTALL_ROOT
-Environment=MOS_V2_REPO_DIR=$MOS_V2_INSTALL_ROOT/repo
-Environment=MOS_V2_STATE_ROOT=$MOS_V2_STATE_ROOT
-ExecStart=/usr/bin/node $MOS_V2_INSTALL_ROOT/repo/system-agents/lab-reset/agent.cjs
+Environment=MOS_LAB_RESET_AGENT_SOCKET=/run/mos-lab-reset-agent/agent.sock
+Environment=MOS_INSTALL_ROOT=$MOS_INSTALL_ROOT
+Environment=MOS_REPO_DIR=$MOS_INSTALL_ROOT/repo
+Environment=MOS_STATE_ROOT=$MOS_STATE_ROOT
+ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/lab-reset/agent.cjs
 Restart=always
 RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
-MOS_V2_LAB_RESET_AGENT_UNIT
+MOS_LAB_RESET_AGENT_UNIT
 
-cat > /etc/caddy/Caddyfile <<MOS_V2_CADDY
+cat > /etc/caddy/Caddyfile <<MOS_CADDY
 ${caddyfile}
-MOS_V2_CADDY
-cat > /etc/caddy/mos-v2-homepage-routes.caddy <<'MOS_V2_HOMEPAGE_ROUTES'
+MOS_CADDY
+cat > /etc/caddy/mos-homepage-routes.caddy <<'MOS_HOMEPAGE_ROUTES'
 # No user-managed Homepage routes.
-MOS_V2_HOMEPAGE_ROUTES
-cat > /etc/caddy/mos-v2-app-routes.caddy <<'MOS_V2_APP_ROUTES'
+MOS_HOMEPAGE_ROUTES
+cat > /etc/caddy/mos-app-routes.caddy <<'MOS_APP_ROUTES'
 # No app runtime routes.
-MOS_V2_APP_ROUTES
+MOS_APP_ROUTES
 
 systemctl daemon-reload
 if ! wait "$homepage_pull_pid"; then
-  echo '[mos-v2] Pulling the pinned Homepage image failed.' >&2
+  echo '[mos] Pulling the pinned Homepage image failed.' >&2
   exit 1
 fi
-systemctl enable mos-v2-homepage.service
-systemctl restart mos-v2-homepage.service
+systemctl enable mos-homepage.service
+systemctl restart mos-homepage.service
 
 homepage_ready='0'
 for attempt in $(seq 1 90); do
-  if curl -fsS -H "Host: $MOS_V2_HOME_HOST" "$MOS_V2_HOMEPAGE_UPSTREAM" >/dev/null; then
+  if curl -fsS -H "Host: $MOS_HOME_HOST" "$MOS_HOMEPAGE_UPSTREAM" >/dev/null; then
     homepage_ready='1'
     break
   fi
   sleep 2
 done
 if [ "$homepage_ready" != '1' ]; then
-  echo "[mos-v2] Homepage did not become ready on its private loopback endpoint." >&2
+  echo "[mos] Homepage did not become ready on its private loopback endpoint." >&2
   exit 1
 fi
 
-systemctl enable mos-v2-suite-manager.service
-systemctl restart mos-v2-suite-manager.service
+systemctl enable mos-suite-manager.service
+systemctl restart mos-suite-manager.service
 systemctl enable caddy.service
 systemctl restart caddy.service
-systemctl enable mos-v2-https-agent.service
-systemctl restart mos-v2-https-agent.service
-systemctl enable mos-v2-homepage-agent.service
-systemctl restart mos-v2-homepage-agent.service
-systemctl enable mos-v2-app-agent.service
-systemctl restart mos-v2-app-agent.service
-systemctl enable mos-v2-backup-agent.service
-systemctl restart mos-v2-backup-agent.service
-systemctl enable mos-v2-update-agent.service
-systemctl restart mos-v2-update-agent.service
-if [ "$MOS_V2_LAB_RESET_ENABLED" = '1' ]; then
-  systemctl enable mos-v2-lab-reset-agent.service
-  systemctl restart mos-v2-lab-reset-agent.service
+systemctl enable mos-https-agent.service
+systemctl restart mos-https-agent.service
+systemctl enable mos-homepage-agent.service
+systemctl restart mos-homepage-agent.service
+systemctl enable mos-app-agent.service
+systemctl restart mos-app-agent.service
+systemctl enable mos-backup-agent.service
+systemctl restart mos-backup-agent.service
+systemctl enable mos-update-agent.service
+systemctl restart mos-update-agent.service
+if [ "$MOS_LAB_RESET_ENABLED" = '1' ]; then
+  systemctl enable mos-lab-reset-agent.service
+  systemctl restart mos-lab-reset-agent.service
 fi
 
-cat >> "$MOS_V2_STATE_ROOT/bootstrap-contract.env" <<'MOS_V2_BOOTSTRAP_DONE'
-MOS_V2_BOOTSTRAP_STATUS='ready-for-owner-setup'
-MOS_V2_BOOTSTRAP_DONE
+cat >> "$MOS_STATE_ROOT/bootstrap-contract.env" <<'MOS_BOOTSTRAP_DONE'
+MOS_BOOTSTRAP_STATUS='ready-for-owner-setup'
+MOS_BOOTSTRAP_DONE
 
-echo "[mos-v2] Wrote bootstrap contract to $MOS_V2_STATE_ROOT/bootstrap-contract.env"
-echo "[mos-v2] MOS is ready for first-run owner setup at $MOS_V2_SETUP_URL"
-${cloudBootstrap ? 'echo "[mos-v2] Secure one-time owner setup URL: $MOS_V2_SETUP_URL?claim=$MOS_V2_OWNER_CLAIM_TOKEN"' : ''}
+echo "[mos] Wrote bootstrap contract to $MOS_STATE_ROOT/bootstrap-contract.env"
+echo "[mos] MOS is ready for first-run owner setup at $MOS_SETUP_URL"
+${cloudBootstrap ? 'echo "[mos] Secure one-time owner setup URL: $MOS_SETUP_URL?claim=$MOS_OWNER_CLAIM_TOKEN"' : ''}
 `;
 
   return script.replace(/\r\n/g, '\n');
@@ -566,26 +566,26 @@ packages:
   - curl
   - git
 write_files:
-  - path: /usr/local/sbin/mos-v2-bootstrap-control-plane
+  - path: /usr/local/sbin/mos-bootstrap-control-plane
     permissions: '0755'
     content: |
 ${indented}
 runcmd:
-  - [ bash, /usr/local/sbin/mos-v2-bootstrap-control-plane ]
+  - [ bash, /usr/local/sbin/mos-bootstrap-control-plane ]
 `;
 }
 
 function renderSshBootstrapCommand(config) {
-  return `sudo bash -s <<'MOS_V2_BOOTSTRAP'
+  return `sudo bash -s <<'MOS_BOOTSTRAP'
 ${renderBootstrapShell(config)}
-MOS_V2_BOOTSTRAP`;
+MOS_BOOTSTRAP`;
 }
 
 function renderUsbSeedConfig(config) {
   const usbConfig = { ...config, frontDoor: 'usb-autoinstall' };
   return `${renderBootstrapEnv(usbConfig)}
-MOS_V2_SUITE_MANAGER_URL=${shellQuote(config.publicUrls.suiteManager)}
-MOS_V2_HOMEPAGE_URL=${shellQuote(config.publicUrls.homepage)}
+MOS_SUITE_MANAGER_URL=${shellQuote(config.publicUrls.suiteManager)}
+MOS_HOMEPAGE_URL=${shellQuote(config.publicUrls.homepage)}
 `;
 }
 

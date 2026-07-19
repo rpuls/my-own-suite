@@ -1,6 +1,6 @@
-# V2 Branding
+# MOS Branding
 
-This is the canonical V2 branding source.
+This is the canonical MOS branding source.
 
 Change shared colors, fonts, spacing, radii, and shared MOS CSS tokens here first. Then run:
 

@@ -262,7 +262,7 @@ class OfficialCatalogService {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.limits.timeoutMs);
     try {
-      const response = await this.fetch(url, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'mos-v2-catalog', ...headers }, redirect: 'manual', signal: controller.signal });
+      const response = await this.fetch(url, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'mos-catalog', ...headers }, redirect: 'manual', signal: controller.signal });
       if (response.status >= 300 && response.status < 400) throw new OfficialCatalogError('CATALOG_REDIRECT_REJECTED', 'Official catalog requests must not redirect.');
       return response;
     } catch (error) {

@@ -4,7 +4,7 @@ const { renderHttpsCaddyfile } = require('../../infrastructure/control-plane-run
 const { validateHttpsInput } = require('../../shared/https-contract.cjs');
 
 function suiteManagerPort() {
-  const port = String(process.env.MOS_V2_SUITE_MANAGER_PORT || '3100').trim();
+  const port = String(process.env.MOS_SUITE_MANAGER_PORT || '3100').trim();
   if (!/^[1-9][0-9]{0,4}$/u.test(port) || Number(port) > 65535) {
     throw new Error('INVALID_SUITE_MANAGER_PORT');
   }
@@ -21,7 +21,7 @@ class HttpsAgentCore {
     return {
       capabilities: moduleAvailable ? ['cloudflare-dns01.apply'] : [],
       moduleAvailable,
-      service: 'mos-v2-https-agent',
+      service: 'mos-https-agent',
     };
   }
 

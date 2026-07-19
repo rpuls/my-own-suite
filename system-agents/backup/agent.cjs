@@ -11,19 +11,19 @@ const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-man
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
 const { SuiteManagerStore } = require('../../suite-manager/backend/src/state/suite-manager-store.cjs');
 
-const socketPath = process.env.MOS_V2_BACKUP_AGENT_SOCKET || '/run/mos-v2-backup-agent/agent.sock';
-const stateRoot = process.env.MOS_V2_STATE_ROOT || '/var/lib/mos-v2';
-const stateDir = process.env.MOS_V2_STATE_DIR || path.join(stateRoot, 'suite-manager');
-const repoDir = process.env.MOS_V2_REPO_DIR || path.resolve(__dirname, '..', '..');
-const agentStateDir = process.env.MOS_V2_BACKUP_AGENT_STATE_DIR || path.join(stateRoot, 'backup-agent');
+const socketPath = process.env.MOS_BACKUP_AGENT_SOCKET || '/run/mos-backup-agent/agent.sock';
+const stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos';
+const stateDir = process.env.MOS_STATE_DIR || path.join(stateRoot, 'suite-manager');
+const repoDir = process.env.MOS_REPO_DIR || path.resolve(__dirname, '..', '..');
+const agentStateDir = process.env.MOS_BACKUP_AGENT_STATE_DIR || path.join(stateRoot, 'backup-agent');
 const bootstrapContractPath = path.join(stateRoot, 'bootstrap-contract.env');
 const jobsDir = path.join(agentStateDir, 'jobs');
 const currentJobPath = path.join(agentStateDir, 'current-job.json');
-const managedMountRoot = '/media/mos-v2-backup';
+const managedMountRoot = '/media/mos-backup';
 const destinationRoots = ['/media', '/mnt', '/run/media'];
 const mountableFileSystems = new Set(['exfat', 'ext2', 'ext3', 'ext4', 'ntfs', 'ntfs3', 'vfat', 'xfs', 'btrfs']);
-const caddyFiles = ['/etc/caddy/Caddyfile', '/etc/caddy/mos-v2-homepage-routes.caddy', '/etc/caddy/mos-v2-app-routes.caddy'];
-const httpsSecret = '/etc/mos-v2/secrets/caddy-cloudflare.env';
+const caddyFiles = ['/etc/caddy/Caddyfile', '/etc/caddy/mos-homepage-routes.caddy', '/etc/caddy/mos-app-routes.caddy'];
+const httpsSecret = '/etc/mos/secrets/caddy-cloudflare.env';
 const completeMarker = 'COMPLETE';
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
@@ -166,7 +166,7 @@ function listBundles(destinations) {
   const bundles = [];
   for (const destination of destinations) {
     if (!destination.mountPath) continue;
-    const root = path.join(destination.mountPath, 'MOS-v2-backups');
+    const root = path.join(destination.mountPath, 'MOS-backups');
     if (!fs.existsSync(root)) continue;
     for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
@@ -230,7 +230,7 @@ function packageBackupInventory() {
 }
 function validatePackagePayloads(root, packages) {
   for (const item of packages || []) {
-    const packageDir = path.join(root, 'var-lib-mos-v2', 'app-packages', item.instanceId, 'installed');
+    const packageDir = path.join(root, 'var-lib-mos', 'app-packages', item.instanceId, 'installed');
     readAppPackageManifest(packageDir);
     const manifest = verifySnapshotIdentity(packageDir, { errorMessage: `Backup package identity is invalid for ${item.packageId}.`, expectedDigest: item.packageDigest, packageId: item.packageId });
     if (manifest.version !== item.packageVersion) throw new Error(`Backup package identity is invalid for ${item.packageId}.`);
@@ -255,18 +255,18 @@ function readBootstrapContract() {
   }).filter(Boolean));
 }
 function runtimeUser() {
-  return process.env.MOS_V2_RUNTIME_USER || readBootstrapContract().MOS_V2_RUNTIME_USER || 'mos';
+  return process.env.MOS_RUNTIME_USER || readBootstrapContract().MOS_RUNTIME_USER || 'mos';
 }
 function restoreBaseUrl() {
   const contract = readBootstrapContract();
-  if (process.env.MOS_V2_HOME_HOST) return { homeHost: process.env.MOS_V2_HOME_HOST, scheme: 'http' };
-  if (contract.MOS_V2_HOME_URL) {
+  if (process.env.MOS_HOME_HOST) return { homeHost: process.env.MOS_HOME_HOST, scheme: 'http' };
+  if (contract.MOS_HOME_URL) {
     try {
-      const parsed = new URL(contract.MOS_V2_HOME_URL);
+      const parsed = new URL(contract.MOS_HOME_URL);
       return { homeHost: parsed.hostname, scheme: parsed.protocol === 'https:' ? 'https' : 'http' };
     } catch {}
   }
-  if (contract.MOS_V2_DOMAIN) return { homeHost: `home.${contract.MOS_V2_DOMAIN}`, scheme: 'http' };
+  if (contract.MOS_DOMAIN) return { homeHost: `home.${contract.MOS_DOMAIN}`, scheme: 'http' };
   return { homeHost: 'home.mos.home', scheme: 'http' };
 }
 function restoreRequestContext(packageId) {
@@ -290,11 +290,11 @@ function restoreStateOwnership() {
   // no ownership, so the root agent's snapshots come back owned root:root and
   // Suite Manager can no longer read the packages it must re-verify on every
   // read — every restored app would report an unreadable snapshot. Put the
-  // provisioned identity back: root owns the writes, mos-v2-agent reads them,
+  // provisioned identity back: root owns the writes, mos-agent reads them,
   // and the setgid root keeps that true for snapshots written after the restore.
   const packageRoot = path.join(stateRoot, 'app-packages');
   if (fs.existsSync(packageRoot)) {
-    optionalCommand('chown', ['-R', 'root:mos-v2-agent', packageRoot], { timeout: 300_000 });
+    optionalCommand('chown', ['-R', 'root:mos-agent', packageRoot], { timeout: 300_000 });
     optionalCommand('chmod', ['2750', packageRoot], { timeout: 60_000 });
   }
 }
@@ -321,14 +321,14 @@ async function reconcileRestoredApps(jobFile) {
 }
 function dockerVolumes() {
   const output = optionalCommand('docker', ['volume', 'ls', '--format', '{{.Name}}']) || '';
-  return output.split(/\r?\n/u).map((line) => line.trim()).filter((name) => name.startsWith('mos-v2-app-')).sort();
+  return output.split(/\r?\n/u).map((line) => line.trim()).filter((name) => name.startsWith('mos-app-')).sort();
 }
 function inspectVolume(name) {
   const parsed = JSON.parse(command('docker', ['volume', 'inspect', name]));
   return { mountpoint: parsed[0].Mountpoint, name };
 }
 function runningAppContainers() {
-  const output = optionalCommand('docker', ['ps', '--filter', 'name=mos-v2-app-', '--format', '{{.Names}}']) || '';
+  const output = optionalCommand('docker', ['ps', '--filter', 'name=mos-app-', '--format', '{{.Names}}']) || '';
   return output.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean).sort();
 }
 function systemctl(action, service) { optionalCommand('systemctl', [action, service], { timeout: 120_000 }); }
@@ -342,7 +342,7 @@ function archiveVolume(volume, targetDir) {
 function backup(jobFile) {
   const started = updateJob(jobFile, (job) => { job.status = 'running'; job.stage = 'starting'; });
   const stamp = new Date().toISOString().replace(/[:.]/gu, '-');
-  const bundleDir = path.join(started.destinationId, 'MOS-v2-backups', `mos-v2-backup-${stamp}-${started.id.slice(0, 8)}`);
+  const bundleDir = path.join(started.destinationId, 'MOS-backups', `mos-backup-${stamp}-${started.id.slice(0, 8)}`);
   const stateStage = path.join(bundleDir, 'state');
   const volumesDir = path.join(bundleDir, 'volumes');
   ensureDir(bundleDir);
@@ -354,14 +354,14 @@ function backup(jobFile) {
     stage(jobFile, 'Preparing backup bundle');
     stage(jobFile, 'Stopping app runtime for volume snapshot');
     for (const container of stoppedContainers) optionalCommand('docker', ['stop', container], { timeout: 120_000 });
-    systemctl('stop', 'mos-v2-homepage.service');
+    systemctl('stop', 'mos-homepage.service');
 
     stage(jobFile, 'Copying suite state');
-    copyIfExists(stateDir, path.join(stateStage, 'var-lib-mos-v2', 'suite-manager'));
-    copyIfExists(path.join(stateRoot, 'app-packages'), path.join(stateStage, 'var-lib-mos-v2', 'app-packages'));
-    copyIfExists(path.join(stateRoot, 'homepage', 'config'), path.join(stateStage, 'var-lib-mos-v2', 'homepage', 'config'));
+    copyIfExists(stateDir, path.join(stateStage, 'var-lib-mos', 'suite-manager'));
+    copyIfExists(path.join(stateRoot, 'app-packages'), path.join(stateStage, 'var-lib-mos', 'app-packages'));
+    copyIfExists(path.join(stateRoot, 'homepage', 'config'), path.join(stateStage, 'var-lib-mos', 'homepage', 'config'));
     for (const file of caddyFiles) copyIfExists(file, path.join(stateStage, 'etc', 'caddy', path.basename(file)));
-    copyIfExists(httpsSecret, path.join(stateStage, 'etc', 'mos-v2', 'secrets', path.basename(httpsSecret)));
+    copyIfExists(httpsSecret, path.join(stateStage, 'etc', 'mos', 'secrets', path.basename(httpsSecret)));
     command('tar', ['-czf', path.join(bundleDir, 'state.tar.gz'), '-C', stateStage, '.'], { timeout: 300_000 });
 
     stage(jobFile, 'Archiving app volumes');
@@ -372,7 +372,7 @@ function backup(jobFile) {
 
     stage(jobFile, 'Writing manifest');
     const manifest = {
-      backup: { createdAt: new Date().toISOString(), id: started.id, kind: 'mos-v2-whole-suite', schemaVersion: 2 },
+      backup: { createdAt: new Date().toISOString(), id: started.id, kind: 'mos-whole-suite', schemaVersion: 2 },
       contents: {
         apps: packageInventory,
         stateArchive: 'state.tar.gz',
@@ -388,7 +388,7 @@ function backup(jobFile) {
     fs.writeFileSync(path.join(bundleDir, completeMarker), `${new Date().toISOString()}\n`, 'utf8');
   } finally {
     stage(jobFile, 'Restarting runtime');
-    systemctl('start', 'mos-v2-homepage.service');
+    systemctl('start', 'mos-homepage.service');
     for (const container of stoppedContainers) optionalCommand('docker', ['start', container], { timeout: 120_000 });
   }
   updateJob(jobFile, (job) => { job.stage = 'completed'; job.status = 'succeeded'; });
@@ -399,7 +399,7 @@ async function restore(jobFile) {
   let runtimeStopped = false;
   stage(jobFile, 'Validating backup bundle');
   const manifest = readJson(path.join(bundleDir, 'manifest.json'));
-  if (manifest.backup?.kind !== 'mos-v2-whole-suite') throw new Error('Backup bundle is not a MOS V2 whole-suite backup.');
+  if (manifest.backup?.kind !== 'mos-whole-suite') throw new Error('Backup bundle is not a MOS whole-suite backup.');
   if (manifest.backup?.schemaVersion !== 2) throw new Error('Backup bundle schema is not supported by package-aware restore.');
   if (sha256(path.join(bundleDir, 'manifest.json')) !== fs.readFileSync(path.join(bundleDir, 'MANIFEST.sha256'), 'utf8').trim().split(/\s+/u)[0]) throw new Error('Backup manifest checksum is invalid.');
   if (sha256(path.join(bundleDir, 'state.tar.gz')) !== manifest.contents?.stateArchiveSha256) throw new Error('Backup state archive checksum is invalid.');
@@ -418,16 +418,16 @@ async function restore(jobFile) {
   const rescueDir = path.join(agentStateDir, 'pre-restore-rescue', started.id);
   ensureDir(rescueDir);
   const rescueState = path.join(rescueDir, 'state');
-  copyIfExists(stateDir, path.join(rescueState, 'var-lib-mos-v2', 'suite-manager'));
-  copyIfExists(path.join(stateRoot, 'homepage', 'config'), path.join(rescueState, 'var-lib-mos-v2', 'homepage', 'config'));
+  copyIfExists(stateDir, path.join(rescueState, 'var-lib-mos', 'suite-manager'));
+  copyIfExists(path.join(stateRoot, 'homepage', 'config'), path.join(rescueState, 'var-lib-mos', 'homepage', 'config'));
   command('tar', ['-czf', path.join(rescueDir, 'state-before-restore.tar.gz'), '-C', rescueState, '.'], { timeout: 300_000 });
   updateJob(jobFile, (job) => { job.rescuePath = rescueDir; });
 
   stage(jobFile, 'Stopping current runtime');
   const containers = runningAppContainers();
   for (const container of containers) optionalCommand('docker', ['rm', '-f', container], { timeout: 120_000 });
-  systemctl('stop', 'mos-v2-suite-manager.service');
-  systemctl('stop', 'mos-v2-homepage.service');
+  systemctl('stop', 'mos-suite-manager.service');
+  systemctl('stop', 'mos-homepage.service');
   runtimeStopped = true;
 
   try {
@@ -435,13 +435,13 @@ async function restore(jobFile) {
     const temp = fs.mkdtempSync(path.join(agentStateDir, 'restore-'));
     command('tar', ['-xzf', path.join(bundleDir, 'state.tar.gz'), '-C', temp], { timeout: 300_000 });
     fs.rmSync(stateDir, { force: true, recursive: true });
-    copyIfExists(path.join(temp, 'var-lib-mos-v2', 'suite-manager'), stateDir);
+    copyIfExists(path.join(temp, 'var-lib-mos', 'suite-manager'), stateDir);
     fs.rmSync(path.join(stateRoot, 'app-packages'), { force: true, recursive: true });
-    copyIfExists(path.join(temp, 'var-lib-mos-v2', 'app-packages'), path.join(stateRoot, 'app-packages'));
+    copyIfExists(path.join(temp, 'var-lib-mos', 'app-packages'), path.join(stateRoot, 'app-packages'));
     fs.rmSync(path.join(stateRoot, 'homepage', 'config'), { force: true, recursive: true });
-    copyIfExists(path.join(temp, 'var-lib-mos-v2', 'homepage', 'config'), path.join(stateRoot, 'homepage', 'config'));
+    copyIfExists(path.join(temp, 'var-lib-mos', 'homepage', 'config'), path.join(stateRoot, 'homepage', 'config'));
     copyIfExists(path.join(temp, 'etc', 'caddy'), '/etc/caddy');
-    copyIfExists(path.join(temp, 'etc', 'mos-v2', 'secrets'), '/etc/mos-v2/secrets');
+    copyIfExists(path.join(temp, 'etc', 'mos', 'secrets'), '/etc/mos/secrets');
 
     stage(jobFile, 'Restoring app volumes');
     for (const volume of manifest.contents?.volumes || []) {
@@ -458,8 +458,8 @@ async function restore(jobFile) {
     if (runtimeStopped) {
       restoreStateOwnership();
       stage(jobFile, 'Starting restored control plane');
-      systemctl('start', 'mos-v2-homepage.service');
-      systemctl('start', 'mos-v2-suite-manager.service');
+      systemctl('start', 'mos-homepage.service');
+      systemctl('start', 'mos-suite-manager.service');
       systemctl('reload', 'caddy.service');
     }
   }
@@ -490,7 +490,7 @@ if (require.main === module && process.argv[2] === '--worker') {
       const url = new URL(request.url || '/', 'http://localhost');
       if (request.method === 'GET' && url.pathname === '/v1/status') {
         const destinations = await listDestinations();
-        respond(response, 200, { backups: listBundles(destinations), capabilities: { backups: ['create', 'download', 'list'], destinations: ['list', 'mount'], restores: ['apply', 'list'] }, currentJob: summarizeJob(readCurrentJob()), destinations, lastJob: summarizeJob(latestJob()), service: 'mos-v2-backup-agent' });
+        respond(response, 200, { backups: listBundles(destinations), capabilities: { backups: ['create', 'download', 'list'], destinations: ['list', 'mount'], restores: ['apply', 'list'] }, currentJob: summarizeJob(readCurrentJob()), destinations, lastJob: summarizeJob(latestJob()), service: 'mos-backup-agent' });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/destinations/mount') { respond(response, 200, { destination: await mountDestination((await readBody(request)).destinationId) }); return; }
@@ -501,7 +501,7 @@ if (require.main === module && process.argv[2] === '--worker') {
       respond(response, 409, { code: 'BACKUP_AGENT_ERROR', error: error instanceof Error ? error.message : 'Backup agent operation failed.' });
     }
   });
-  server.listen(socketPath, () => { fs.chmodSync(socketPath, 0o660); process.stdout.write('[mos-v2-backup-agent] ready\n'); });
+  server.listen(socketPath, () => { fs.chmodSync(socketPath, 0o660); process.stdout.write('[mos-backup-agent] ready\n'); });
   function shutdown() { server.close(() => { fs.rmSync(socketPath, { force: true }); process.exit(0); }); }
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);

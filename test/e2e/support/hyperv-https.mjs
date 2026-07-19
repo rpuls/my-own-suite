@@ -70,7 +70,7 @@ async function gotoAppliedHome(page, result) {
 export async function applyDns01IfConfigured(page, env) {
   if (!env.enableDns01) return null;
   if (!env.cloudflareApiToken || !env.dns01BaseDomain) {
-    throw new Error('DNS-01 E2E is enabled, but CLOUDFLARE_API_TOKEN or MOS_V2_E2E_DNS01_BASE_DOMAIN is missing.');
+    throw new Error('DNS-01 E2E is enabled, but CLOUDFLARE_API_TOKEN or MOS_E2E_DNS01_BASE_DOMAIN is missing.');
   }
   await openSuiteManager(page, 'Settings');
   const status = await apiJson(page, '/suite-manager/api/settings/https');

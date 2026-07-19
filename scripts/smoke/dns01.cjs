@@ -3,8 +3,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const v2Root = path.resolve(__dirname, '..', '..');
-const smokeStatePath = path.join(v2Root, '.mos-smoke', 'v2-digitalocean.json');
+const repoRoot = path.resolve(__dirname, '..', '..');
+const smokeStatePath = path.join(repoRoot, '.mos-smoke', 'digitalocean.json');
 
 function required(name) {
   const value = String(process.env[name] || '').trim();
@@ -20,16 +20,16 @@ async function request(url, options) {
 }
 
 async function main() {
-  if (process.env.MOS_V2_DNS01_CONFIRM !== 'APPLY_REAL_DNS01') {
-    throw new Error('Refusing real DNS-01 validation. Set MOS_V2_DNS01_CONFIRM=APPLY_REAL_DNS01 explicitly.');
+  if (process.env.MOS_DNS01_CONFIRM !== 'APPLY_REAL_DNS01') {
+    throw new Error('Refusing real DNS-01 validation. Set MOS_DNS01_CONFIRM=APPLY_REAL_DNS01 explicitly.');
   }
   required('DIGITALOCEAN_ACCESS_TOKEN');
-  const baseDomain = required('MOS_V2_DNS01_BASE_DOMAIN');
-  const acmeEmail = required('MOS_V2_DNS01_ACME_EMAIL');
+  const baseDomain = required('MOS_DNS01_BASE_DOMAIN');
+  const acmeEmail = required('MOS_DNS01_ACME_EMAIL');
   const cloudflareApiToken = required('CLOUDFLARE_API_TOKEN');
-  const ownerEmail = required('MOS_V2_DNS01_OWNER_EMAIL');
-  const ownerPassword = required('MOS_V2_DNS01_OWNER_PASSWORD');
-  if (!fs.existsSync(smokeStatePath)) throw new Error('No V2 DigitalOcean smoke state exists. Run smoke:do:reset first.');
+  const ownerEmail = required('MOS_DNS01_OWNER_EMAIL');
+  const ownerPassword = required('MOS_DNS01_OWNER_PASSWORD');
+  if (!fs.existsSync(smokeStatePath)) throw new Error('No MOS DigitalOcean smoke state exists. Run smoke:do:reset first.');
   const state = JSON.parse(fs.readFileSync(smokeStatePath, 'utf8'));
   const suiteUrl = new URL('/suite-manager/', state.homepageUrl);
   const login = await request(new URL('api/auth/login', suiteUrl), {
@@ -44,13 +44,13 @@ async function main() {
     headers: { 'Content-Type': 'application/json', Cookie: cookie },
     method: 'POST',
   });
-  process.stdout.write(`[mos-v2-dns01] Configuration applied. Waiting for ${applied.body.homeUrl}\n`);
+  process.stdout.write(`[mos-dns01] Configuration applied. Waiting for ${applied.body.homeUrl}\n`);
   const deadline = Date.now() + 180000;
   while (Date.now() < deadline) {
     try {
       const response = await fetch(new URL('/suite-manager/api/setup/status', applied.body.homeUrl));
       if (response.ok) {
-        process.stdout.write(`[mos-v2-dns01] HTTPS is reachable at ${applied.body.homeUrl}\n`);
+        process.stdout.write(`[mos-dns01] HTTPS is reachable at ${applied.body.homeUrl}\n`);
         return;
       }
     } catch {}
@@ -60,6 +60,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  process.stderr.write(`[mos-v2-dns01] ERROR: ${error.message}\n`);
+  process.stderr.write(`[mos-dns01] ERROR: ${error.message}\n`);
   process.exitCode = 1;
 });

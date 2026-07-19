@@ -11,7 +11,7 @@ const { SetupError, SetupService } = require('../src/setup/setup-service.cjs');
 const { DATABASE_FILENAME } = require('../src/state/suite-manager-store.cjs');
 
 async function tempStateDir() {
-  return fs.mkdtemp(path.join(os.tmpdir(), 'mos-v2-state-'));
+  return fs.mkdtemp(path.join(os.tmpdir(), 'mos-state-'));
 }
 
 test('empty state requires owner creation', async () => {

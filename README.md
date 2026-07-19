@@ -7,11 +7,11 @@ My Own Suite is a self-hosted control plane for installing and managing private 
 
 | Path | Purpose |
 | --- | --- |
-| `suite-manager/` | MOS2 web UI, backend API, owner setup, app catalog, settings, backups, and updates. |
-| `apps/` | Self-contained MOS2 app packages with manifests, Dockerfiles, icons, setup guides, and technical notes. |
+| `suite-manager/` | MOS web UI, backend API, owner setup, app catalog, settings, backups, and updates. |
+| `apps/` | Self-contained MOS app packages with manifests, Dockerfiles, icons, setup guides, and technical notes. |
 | `system-agents/` | Narrow host-owned agents for app runtime, Homepage, HTTPS, backups, updates, and lab reset. |
 | `infrastructure/` | Shared runtime substrate for Caddy, Homepage defaults, installer support, and control-plane contracts. |
-| `scripts/` | MOS2 installer renderers, smoke harnesses, reconciliation, branding sync, and developer commands. |
+| `scripts/` | MOS installer renderers, smoke harnesses, reconciliation, branding sync, and developer commands. |
 | `skills/` | Public, versioned workflows for adding apps, updating apps, and assessing app privacy. |
 | `shared/` | Cross-process contracts used by Suite Manager and host agents. |
 | `test/` | Deterministic unit tests and browser/E2E harnesses. |

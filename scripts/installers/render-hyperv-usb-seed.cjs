@@ -12,7 +12,7 @@ const repoRoot = path.resolve(__dirname, '..', '..');
 const configDir = path.join(repoRoot, 'infrastructure', 'self-host', 'autoinstall', 'installer-config');
 const defaultConfigPath = path.join(configDir, 'selfhost-installer.env');
 const defaultConfigTemplatePath = path.join(configDir, 'selfhost-installer.env.template');
-const defaultOutputDir = path.join(repoRoot, '.mos-smoke', 'hyperv-usb', 'v2-seed');
+const defaultOutputDir = path.join(repoRoot, '.mos-smoke', 'hyperv-usb', 'seed');
 const defaultSmokeRepoRef = 'staging';
 const configEnvOverrides = {
   HOSTNAME: 'HOSTNAME',
@@ -20,7 +20,7 @@ const configEnvOverrides = {
   REALNAME: 'REALNAME',
   STACK_DOMAIN: 'STACK_DOMAIN',
   TIMEZONE: 'TIMEZONE',
-  USERNAME: 'MOS_V2_HYPERV_USERNAME',
+  USERNAME: 'MOS_HYPERV_USERNAME',
 };
 const placeholderLinuxPassword = 'change-me-before-build';
 // No 0/1/l/o characters: the password may need to be typed on a physical console.
@@ -52,7 +52,7 @@ function git(args, options = {}) {
 }
 
 function resolveSmokeRepoRef(env = process.env) {
-  const explicit = String(env.MOS_V2_SMOKE_REPO_REF || '').trim();
+  const explicit = String(env.MOS_SMOKE_REPO_REF || '').trim();
   if (explicit) return explicit;
 
   const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
@@ -76,8 +76,8 @@ function assertSmokeRepoRefContainsRootLayout(repoRef) {
     });
     if (exists.status !== 0) {
       throw new Error(
-        `MOS_V2_SMOKE_REPO_REF=${repoRef} does not contain '${requiredPath}'. ` +
-        'Commit and push the root-layout branch, or set MOS_V2_SMOKE_REPO_REF to a branch/tag that contains it.',
+        `MOS_SMOKE_REPO_REF=${repoRef} does not contain '${requiredPath}'. ` +
+        'Commit and push the root-layout branch, or set MOS_SMOKE_REPO_REF to a branch/tag that contains it.',
       );
     }
   }
@@ -105,7 +105,7 @@ function loadSmokeConfig() {
   if (fs.existsSync(defaultConfigPath)) {
     Object.assign(values, parseEnvFile(defaultConfigPath));
   } else {
-    console.log('[mos-v2-smoke:hyperv-usb] No local installer config found; using defaults (no configuration is required).');
+    console.log('[mos-smoke:hyperv-usb] No local installer config found; using defaults (no configuration is required).');
   }
   for (const [key, envKey] of Object.entries(configEnvOverrides)) {
     if (process.env[envKey]) values[key] = process.env[envKey];
@@ -133,10 +133,10 @@ while read -r disk type; do
   break
 done < <(lsblk -dnpo NAME,TYPE)
 if [ -z "$candidate" ]; then
-  echo "[mos-v2-smoke:hyperv-usb] No empty second disk found for backup storage."
+  echo "[mos-smoke:hyperv-usb] No empty second disk found for backup storage."
   exit 0
 fi
-mkfs.ext4 -F -L MOS_V2_BACKUP "$candidate"
+mkfs.ext4 -F -L MOS_BACKUP "$candidate"
 mkdir -p /media/mos-backup
 uuid="$(blkid -s UUID -o value "$candidate")"
 if [ -n "$uuid" ] && ! grep -q "$uuid" /etc/fstab; then
@@ -144,7 +144,7 @@ if [ -n "$uuid" ] && ! grep -q "$uuid" /etc/fstab; then
 fi
 mount /media/mos-backup
 chmod 0777 /media/mos-backup
-echo "[mos-v2-smoke:hyperv-usb] Mounted disposable backup disk at /media/mos-backup."'
+echo "[mos-smoke:hyperv-usb] Mounted disposable backup disk at /media/mos-backup."'
 `;
 }
 
@@ -198,7 +198,7 @@ function renderSeed(config, options = {}) {
     linuxPassword,
     linuxPasswordGenerated,
     linuxUsername: username,
-    metaData: `instance-id: mos-v2-hyperv-usb\nlocal-hostname: ${hostname}\n`,
+    metaData: `instance-id: mos-hyperv-usb\nlocal-hostname: ${hostname}\n`,
     plan,
     userData: `#cloud-config\n${YAML.stringify(userData, { lineWidth: 0 })}`,
   };
@@ -226,7 +226,7 @@ function main() {
     )}\n`,
     'utf8',
   );
-  console.log(`[mos-v2-smoke:hyperv-usb] Rendered V2 Ubuntu autoinstall seed for ${smokeRepoRef}.`);
+  console.log(`[mos-smoke:hyperv-usb] Rendered MOS Ubuntu autoinstall seed for ${smokeRepoRef}.`);
   console.log(`  Home: ${rendered.plan.config.publicUrls.home}`);
   console.log(`  Seed: ${defaultOutputDir}`);
   if (rendered.linuxPasswordGenerated) {
@@ -238,7 +238,7 @@ if (require.main === module) {
   try {
     main();
   } catch (error) {
-    console.error(`[mos-v2-smoke:hyperv-usb] ${error.message || String(error)}`);
+    console.error(`[mos-smoke:hyperv-usb] ${error.message || String(error)}`);
     process.exit(1);
   }
 }

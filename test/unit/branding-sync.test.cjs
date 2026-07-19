@@ -5,25 +5,25 @@ const test = require('node:test');
 
 const { syncBranding } = require('../../scripts/sync-branding.cjs');
 
-const v2Root = path.resolve(__dirname, '..', '..');
+const repoRoot = path.resolve(__dirname, '..', '..');
 
-test('branding sync writes shared CSS to V2 targets from the canonical source', () => {
+test('branding sync writes shared CSS to MOS targets from the canonical source', () => {
   syncBranding();
 
-  const canonical = fs.readFileSync(path.join(v2Root, 'branding', 'styles', 'mos.css'), 'utf8');
-  const siteCss = fs.readFileSync(path.join(v2Root, 'site', 'generated', 'branding', 'mos.css'), 'utf8');
-  const suiteCss = fs.readFileSync(path.join(v2Root, 'suite-manager', 'frontend', 'src', 'styles', 'mos.css'), 'utf8');
-  const homepageCss = fs.readFileSync(path.join(v2Root, 'infrastructure', 'homepage', 'custom.css'), 'utf8');
-  const canonicalMark = fs.readFileSync(path.join(v2Root, 'branding', 'my-own-suite-mark.png'));
+  const canonical = fs.readFileSync(path.join(repoRoot, 'branding', 'styles', 'mos.css'), 'utf8');
+  const siteCss = fs.readFileSync(path.join(repoRoot, 'site', 'generated', 'branding', 'mos.css'), 'utf8');
+  const suiteCss = fs.readFileSync(path.join(repoRoot, 'suite-manager', 'frontend', 'src', 'styles', 'mos.css'), 'utf8');
+  const homepageCss = fs.readFileSync(path.join(repoRoot, 'infrastructure', 'homepage', 'custom.css'), 'utf8');
+  const canonicalMark = fs.readFileSync(path.join(repoRoot, 'branding', 'my-own-suite-mark.png'));
   const homepageMark = fs.readFileSync(
-    path.join(v2Root, 'infrastructure', 'homepage', 'images', 'my-own-suite-mark.png'),
+    path.join(repoRoot, 'infrastructure', 'homepage', 'images', 'my-own-suite-mark.png'),
   );
   const ownerSetupSource = fs.readFileSync(
-    path.join(v2Root, 'suite-manager', 'frontend', 'src', 'features', 'setup', 'OwnerSetupScreen.tsx'),
+    path.join(repoRoot, 'suite-manager', 'frontend', 'src', 'features', 'setup', 'OwnerSetupScreen.tsx'),
     'utf8',
   );
   const loginSource = fs.readFileSync(
-    path.join(v2Root, 'suite-manager', 'frontend', 'src', 'features', 'auth', 'LoginScreen.tsx'),
+    path.join(repoRoot, 'suite-manager', 'frontend', 'src', 'features', 'auth', 'LoginScreen.tsx'),
     'utf8',
   );
 

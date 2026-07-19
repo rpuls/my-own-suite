@@ -2,30 +2,30 @@ const HOMEPAGE_IMAGE = 'ghcr.io/gethomepage/homepage@sha256:cc84f2f5eb3c77343537
 const HOMEPAGE_PORT = 3200;
 
 function renderCaddyfile() {
-  return `http://$MOS_V2_HOME_HOST {
-  reverse_proxy 127.0.0.1:$MOS_V2_SUITE_MANAGER_PORT
+  return `http://$MOS_HOME_HOST {
+  reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
 }
 
-import /etc/caddy/mos-v2-homepage-routes.caddy
-import /etc/caddy/mos-v2-app-routes.caddy
+import /etc/caddy/mos-homepage-routes.caddy
+import /etc/caddy/mos-app-routes.caddy
 `;
 }
 
 function renderPublicCloudCaddyfile() {
-  return `http://$MOS_V2_HOME_HOST {
-  reverse_proxy 127.0.0.1:$MOS_V2_SUITE_MANAGER_PORT
+  return `http://$MOS_HOME_HOST {
+  reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
 }
 
-https://$MOS_V2_HOME_HOST {
-  reverse_proxy 127.0.0.1:$MOS_V2_SUITE_MANAGER_PORT
+https://$MOS_HOME_HOST {
+  reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
 }
 
-import /etc/caddy/mos-v2-homepage-routes.caddy
-import /etc/caddy/mos-v2-app-routes.caddy
+import /etc/caddy/mos-homepage-routes.caddy
+import /etc/caddy/mos-app-routes.caddy
 `;
 }
 
-function renderHttpsCaddyfile({ acmeEmail, baseDomain, bootstrapHost, suiteManagerPort = '$MOS_V2_SUITE_MANAGER_PORT' }) {
+function renderHttpsCaddyfile({ acmeEmail, baseDomain, bootstrapHost, suiteManagerPort = '$MOS_SUITE_MANAGER_PORT' }) {
   const homeHost = `home.${baseDomain}`;
   return `{
   email ${acmeEmail}
@@ -44,18 +44,18 @@ https://${homeHost} {
   reverse_proxy 127.0.0.1:${suiteManagerPort}
 }
 
-import /etc/caddy/mos-v2-homepage-routes.caddy
-import /etc/caddy/mos-v2-app-routes.caddy
+import /etc/caddy/mos-homepage-routes.caddy
+import /etc/caddy/mos-app-routes.caddy
 `;
 }
 
 function renderHomepageSystemdUnit({
-  homeHost = '$MOS_V2_HOME_HOST',
+  homeHost = '$MOS_HOME_HOST',
   homepagePort = HOMEPAGE_PORT,
-  stateRoot = '$MOS_V2_STATE_ROOT',
+  stateRoot = '$MOS_STATE_ROOT',
 } = {}) {
   return `[Unit]
-Description=MOS V2 Homepage dashboard
+Description=MOS Homepage dashboard
 After=docker.service network-online.target
 Requires=docker.service
 Wants=network-online.target
@@ -64,9 +64,9 @@ Wants=network-online.target
 Type=simple
 Restart=always
 RestartSec=3
-ExecStartPre=-/usr/bin/docker rm -f mos-v2-homepage
-ExecStart=/usr/bin/docker run --rm --name mos-v2-homepage --publish 127.0.0.1:${homepagePort}:3000 --env HOMEPAGE_ALLOWED_HOSTS=${homeHost} --volume ${stateRoot}/homepage/config:/app/config --volume ${stateRoot}/homepage/config/images:/app/public/images ${HOMEPAGE_IMAGE}
-ExecStop=/usr/bin/docker stop -t 10 mos-v2-homepage
+ExecStartPre=-/usr/bin/docker rm -f mos-homepage
+ExecStart=/usr/bin/docker run --rm --name mos-homepage --publish 127.0.0.1:${homepagePort}:3000 --env HOMEPAGE_ALLOWED_HOSTS=${homeHost} --volume ${stateRoot}/homepage/config:/app/config --volume ${stateRoot}/homepage/config/images:/app/public/images ${HOMEPAGE_IMAGE}
+ExecStop=/usr/bin/docker stop -t 10 mos-homepage
 
 [Install]
 WantedBy=multi-user.target

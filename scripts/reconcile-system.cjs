@@ -27,33 +27,33 @@ function parseEnvFile(filePath) {
 }
 
 function homeHostFromContract(contract) {
-  if (contract.MOS_V2_HOME_HOST) return contract.MOS_V2_HOME_HOST;
-  if (contract.MOS_V2_HOME_URL) {
+  if (contract.MOS_HOME_HOST) return contract.MOS_HOME_HOST;
+  if (contract.MOS_HOME_URL) {
     try {
-      return new URL(contract.MOS_V2_HOME_URL).hostname;
+      return new URL(contract.MOS_HOME_URL).hostname;
     } catch {}
   }
-  if (contract.MOS_V2_DOMAIN) {
-    return contract.MOS_V2_DOMAIN === 'localhost' ? 'home.localhost' : `home.${contract.MOS_V2_DOMAIN}`;
+  if (contract.MOS_DOMAIN) {
+    return contract.MOS_DOMAIN === 'localhost' ? 'home.localhost' : `home.${contract.MOS_DOMAIN}`;
   }
   return 'home.localhost';
 }
 
 function resolveRuntimeConfig(env = process.env) {
-  const repoRoot = env.MOS_V2_REPO_DIR || path.resolve(__dirname, '..');
+  const repoRoot = env.MOS_REPO_DIR || path.resolve(__dirname, '..');
   const mosRoot = repoRoot;
-  const stateRoot = env.MOS_V2_STATE_ROOT || '/var/lib/mos-v2';
+  const stateRoot = env.MOS_STATE_ROOT || '/var/lib/mos';
   const bootstrapContract = parseEnvFile(path.join(stateRoot, 'bootstrap-contract.env'));
 
   return {
-    frontDoor: env.MOS_V2_FRONT_DOOR || bootstrapContract.MOS_V2_FRONT_DOOR || 'ssh-bootstrap',
-    homeHost: env.MOS_V2_HOME_HOST || homeHostFromContract(bootstrapContract),
-    homepagePort: env.MOS_V2_HOMEPAGE_PORT || bootstrapContract.MOS_V2_HOMEPAGE_PORT || '3200',
-    labResetEnabled: env.MOS_V2_LAB_RESET_ENABLED || bootstrapContract.MOS_V2_LAB_RESET_ENABLED || (bootstrapContract.MOS_V2_FRONT_DOOR === 'usb-autoinstall' ? '1' : '0'),
+    frontDoor: env.MOS_FRONT_DOOR || bootstrapContract.MOS_FRONT_DOOR || 'ssh-bootstrap',
+    homeHost: env.MOS_HOME_HOST || homeHostFromContract(bootstrapContract),
+    homepagePort: env.MOS_HOMEPAGE_PORT || bootstrapContract.MOS_HOMEPAGE_PORT || '3200',
+    labResetEnabled: env.MOS_LAB_RESET_ENABLED || bootstrapContract.MOS_LAB_RESET_ENABLED || (bootstrapContract.MOS_FRONT_DOOR === 'usb-autoinstall' ? '1' : '0'),
     repoRoot,
-    runtimeUser: env.MOS_V2_RUNTIME_USER || bootstrapContract.MOS_V2_RUNTIME_USER || 'mos',
+    runtimeUser: env.MOS_RUNTIME_USER || bootstrapContract.MOS_RUNTIME_USER || 'mos',
     stateRoot,
-    suiteManagerPort: env.MOS_V2_SUITE_MANAGER_PORT || bootstrapContract.MOS_V2_SUITE_MANAGER_PORT || '3100',
+    suiteManagerPort: env.MOS_SUITE_MANAGER_PORT || bootstrapContract.MOS_SUITE_MANAGER_PORT || '3100',
     mosRoot,
   };
 }
@@ -73,7 +73,7 @@ const {
 const dryRun = process.argv.includes('--dry-run');
 
 function log(message) {
-  process.stdout.write(`[mos-v2:reconcile] ${message}\n`);
+  process.stdout.write(`[mos:reconcile] ${message}\n`);
 }
 
 function writeFile(filePath, content, mode) {
@@ -112,18 +112,18 @@ function installDir(dirPath, mode) {
 
 function ensureAgentGroup() {
   if (dryRun) {
-    log('would ensure mos-v2-agent group');
+    log('would ensure mos-agent group');
     return;
   }
-  if (!canRun('getent', ['group', 'mos-v2-agent'])) {
-    run('groupadd', ['--system', 'mos-v2-agent']);
+  if (!canRun('getent', ['group', 'mos-agent'])) {
+    run('groupadd', ['--system', 'mos-agent']);
   }
 }
 
 function installSocketDir(dirPath) {
   installDir(dirPath, 0o2770);
   if (!dryRun) {
-    run('chown', ['root:mos-v2-agent', dirPath]);
+    run('chown', ['root:mos-agent', dirPath]);
     fs.chmodSync(dirPath, 0o2770);
   }
 }
@@ -142,7 +142,7 @@ Wants=${wants}
 [Service]
 Type=simple
 User=root
-Group=mos-v2-agent
+Group=mos-agent
 UMask=0007
 WorkingDirectory=${mosRoot}
 Environment=NODE_ENV=production
@@ -158,31 +158,31 @@ WantedBy=multi-user.target
 
 function suiteManagerUnit(config = runtimeConfig) {
   return `[Unit]
-Description=MOS V2 Suite Manager
-After=mos-v2-homepage.service network-online.target
-Wants=mos-v2-homepage.service network-online.target
+Description=MOS Suite Manager
+After=mos-homepage.service network-online.target
+Wants=mos-homepage.service network-online.target
 
 [Service]
 Type=simple
 User=${config.runtimeUser}
 WorkingDirectory=${config.mosRoot}
 Environment=NODE_ENV=production
-Environment=MOS_V2_STATE_DIR=${config.stateRoot}/suite-manager
-Environment=MOS_V2_FRONTEND_DIST_DIR=${config.mosRoot}/suite-manager/frontend/dist
-Environment=MOS_V2_SUITE_MANAGER_HOST=127.0.0.1
-Environment=MOS_V2_SUITE_MANAGER_PORT=${config.suiteManagerPort}
-Environment=MOS_V2_FRONT_DOOR=${config.frontDoor}
-Environment=MOS_V2_HOME_HOST=${config.homeHost}
-Environment=MOS_V2_HOMEPAGE_UPSTREAM=http://127.0.0.1:${config.homepagePort}
-Environment=MOS_V2_HTTPS_AGENT_SOCKET=/run/mos-v2-https-agent/agent.sock
-Environment=MOS_V2_HOMEPAGE_AGENT_SOCKET=/run/mos-v2-homepage-agent/agent.sock
-Environment=MOS_V2_APP_AGENT_SOCKET=/run/mos-v2-app-agent/agent.sock
-Environment=MOS_V2_APP_PACKAGE_ROOT=${config.stateRoot}/app-packages
-Environment=MOS_V2_BACKUP_AGENT_SOCKET=/run/mos-v2-backup-agent/agent.sock
-Environment=MOS_V2_UPDATE_AGENT_SOCKET=/run/mos-v2-update-agent/agent.sock
-Environment=MOS_V2_LAB_RESET_ENABLED=${config.labResetEnabled}
-Environment=MOS_V2_LAB_RESET_AGENT_SOCKET=/run/mos-v2-lab-reset-agent/agent.sock
-EnvironmentFile=-/etc/mos-v2/secrets/owner-claim.env
+Environment=MOS_STATE_DIR=${config.stateRoot}/suite-manager
+Environment=MOS_FRONTEND_DIST_DIR=${config.mosRoot}/suite-manager/frontend/dist
+Environment=MOS_SUITE_MANAGER_HOST=127.0.0.1
+Environment=MOS_SUITE_MANAGER_PORT=${config.suiteManagerPort}
+Environment=MOS_FRONT_DOOR=${config.frontDoor}
+Environment=MOS_HOME_HOST=${config.homeHost}
+Environment=MOS_HOMEPAGE_UPSTREAM=http://127.0.0.1:${config.homepagePort}
+Environment=MOS_HTTPS_AGENT_SOCKET=/run/mos-https-agent/agent.sock
+Environment=MOS_HOMEPAGE_AGENT_SOCKET=/run/mos-homepage-agent/agent.sock
+Environment=MOS_APP_AGENT_SOCKET=/run/mos-app-agent/agent.sock
+Environment=MOS_APP_PACKAGE_ROOT=${config.stateRoot}/app-packages
+Environment=MOS_BACKUP_AGENT_SOCKET=/run/mos-backup-agent/agent.sock
+Environment=MOS_UPDATE_AGENT_SOCKET=/run/mos-update-agent/agent.sock
+Environment=MOS_LAB_RESET_ENABLED=${config.labResetEnabled}
+Environment=MOS_LAB_RESET_AGENT_SOCKET=/run/mos-lab-reset-agent/agent.sock
+EnvironmentFile=-/etc/mos/secrets/owner-claim.env
 ExecStart=/usr/bin/node ${config.mosRoot}/suite-manager/backend/src/server/start.cjs
 Restart=always
 RestartSec=3
@@ -201,14 +201,14 @@ function homepageUnit(config = runtimeConfig) {
 }
 
 function refreshCaddyBinary() {
-  run('docker', ['build', '--file', path.join(mosRoot, 'infrastructure/caddy/Dockerfile'), '--tag', 'mos-v2-caddy-builder', mosRoot]);
-  const container = dryRun ? 'dry-run-container' : run('docker', ['create', 'mos-v2-caddy-builder'], { stdio: ['ignore', 'pipe', 'inherit'] }).trim();
-  installDir('/usr/local/libexec/mos-v2', 0o755);
-  run('docker', ['cp', `${container}:/caddy`, '/usr/local/libexec/mos-v2/caddy.next']);
+  run('docker', ['build', '--file', path.join(mosRoot, 'infrastructure/caddy/Dockerfile'), '--tag', 'mos-caddy-builder', mosRoot]);
+  const container = dryRun ? 'dry-run-container' : run('docker', ['create', 'mos-caddy-builder'], { stdio: ['ignore', 'pipe', 'inherit'] }).trim();
+  installDir('/usr/local/libexec/mos', 0o755);
+  run('docker', ['cp', `${container}:/caddy`, '/usr/local/libexec/mos/caddy.next']);
   run('docker', ['rm', container]);
   if (!dryRun) {
-    fs.chmodSync('/usr/local/libexec/mos-v2/caddy.next', 0o755);
-    fs.renameSync('/usr/local/libexec/mos-v2/caddy.next', '/usr/local/libexec/mos-v2/caddy');
+    fs.chmodSync('/usr/local/libexec/mos/caddy.next', 0o755);
+    fs.renameSync('/usr/local/libexec/mos/caddy.next', '/usr/local/libexec/mos/caddy');
   }
 }
 
@@ -217,16 +217,16 @@ function main() {
     throw new Error(`${mosRoot} does not look like a MOS checkout.`);
   }
   if (process.platform !== 'linux' && !dryRun) {
-    throw new Error('V2 system reconciliation is supported on Linux installs only.');
+    throw new Error('MOS system reconciliation is supported on Linux installs only.');
   }
   if (typeof process.getuid === 'function' && process.getuid() !== 0 && !dryRun) {
-    throw new Error('V2 system reconciliation must run as root.');
+    throw new Error('MOS system reconciliation must run as root.');
   }
 
   log(`reconciling ${mosRoot}`);
   ensureAgentGroup();
-  installDir('/etc/mos-v2', 0o750);
-  installDir('/etc/mos-v2/secrets', 0o750);
+  installDir('/etc/mos', 0o750);
+  installDir('/etc/mos/secrets', 0o750);
   installDir(`${stateRoot}/suite-manager`, 0o755);
   installDir(`${stateRoot}/homepage/config`, 0o755);
   installDir(`${stateRoot}/https-agent/transactions`, 0o700);
@@ -234,30 +234,30 @@ function main() {
   installDir(`${stateRoot}/homepage-agent/history`, 0o700);
   installDir(`${stateRoot}/backup-agent`, 0o700);
   // Setgid so every snapshot the root app agent writes below inherits
-  // mos-v2-agent and stays readable by Suite Manager, which re-verifies
+  // mos-agent and stays readable by Suite Manager, which re-verifies
   // snapshot identity on each read. The agent sets the group explicitly too;
   // this keeps a directory created by anything else from losing it.
   installDir(`${stateRoot}/app-packages`, 0o2750);
   if (!dryRun) {
-    run('chown', ['root:mos-v2-agent', `${stateRoot}/app-packages`]);
+    run('chown', ['root:mos-agent', `${stateRoot}/app-packages`]);
     fs.chmodSync(`${stateRoot}/app-packages`, 0o2750);
   }
   installDir(`${stateRoot}/update-agent/jobs`, 0o700);
 
   for (const socketDir of ['https', 'homepage', 'app', 'backup', 'update', 'lab-reset']) {
-    installSocketDir(`/run/mos-v2-${socketDir}-agent`);
+    installSocketDir(`/run/mos-${socketDir}-agent`);
   }
 
   refreshCaddyBinary();
-  writeFile('/etc/systemd/system/caddy.service.d/mos-v2.conf', `[Service]
-EnvironmentFile=-/etc/mos-v2/secrets/caddy-cloudflare.env
+  writeFile('/etc/systemd/system/caddy.service.d/mos.conf', `[Service]
+EnvironmentFile=-/etc/mos/secrets/caddy-cloudflare.env
 ExecStart=
-ExecStart=/usr/local/libexec/mos-v2/caddy run --config /etc/caddy/Caddyfile
+ExecStart=/usr/local/libexec/mos/caddy run --config /etc/caddy/Caddyfile
 ExecReload=
-ExecReload=/usr/local/libexec/mos-v2/caddy reload --config /etc/caddy/Caddyfile --force
+ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --force
 `, 0o644);
 
-  const homepageSeedMarker = path.join(stateRoot, 'homepage/config/.mos-v2-defaults-v2');
+  const homepageSeedMarker = path.join(stateRoot, 'homepage/config/.mos-defaults');
   if (!fs.existsSync(homepageSeedMarker) || dryRun) {
     for (const name of fs.readdirSync(path.join(mosRoot, 'infrastructure/homepage'))) {
       const source = path.join(mosRoot, 'infrastructure/homepage', name);
@@ -270,67 +270,67 @@ ExecReload=/usr/local/libexec/mos-v2/caddy reload --config /etc/caddy/Caddyfile 
     if (!dryRun) fs.writeFileSync(homepageSeedMarker, '');
   }
 
-  unit('mos-v2-homepage.service', homepageUnit());
-  unit('mos-v2-suite-manager.service', suiteManagerUnit());
-  unit('mos-v2-https-agent.service', agentUnit({
+  unit('mos-homepage.service', homepageUnit());
+  unit('mos-suite-manager.service', suiteManagerUnit());
+  unit('mos-https-agent.service', agentUnit({
     after: 'network-online.target caddy.service',
-    description: 'MOS V2 narrow HTTPS configuration agent',
-    env: { MOS_V2_HTTPS_AGENT_SOCKET: '/run/mos-v2-https-agent/agent.sock', MOS_V2_HTTPS_TRANSACTION_ROOT: `${stateRoot}/https-agent/transactions`, MOS_V2_SUITE_MANAGER_PORT: suiteManagerPort },
-    name: 'mos-v2-https-agent.service',
+    description: 'MOS narrow HTTPS configuration agent',
+    env: { MOS_HTTPS_AGENT_SOCKET: '/run/mos-https-agent/agent.sock', MOS_HTTPS_TRANSACTION_ROOT: `${stateRoot}/https-agent/transactions`, MOS_SUITE_MANAGER_PORT: suiteManagerPort },
+    name: 'mos-https-agent.service',
     script: 'system-agents/https/agent.cjs',
   }));
-  unit('mos-v2-homepage-agent.service', agentUnit({
-    after: 'network-online.target caddy.service mos-v2-homepage.service',
-    description: 'MOS V2 narrow Homepage configuration agent',
-    env: { MOS_V2_HOMEPAGE_AGENT_SOCKET: '/run/mos-v2-homepage-agent/agent.sock', MOS_V2_HOMEPAGE_CONFIG_ROOT: `${stateRoot}/homepage/config`, MOS_V2_HOMEPAGE_TRANSACTION_ROOT: `${stateRoot}/homepage-agent/transactions`, MOS_V2_HOMEPAGE_HISTORY_ROOT: `${stateRoot}/homepage-agent/history` },
-    name: 'mos-v2-homepage-agent.service',
+  unit('mos-homepage-agent.service', agentUnit({
+    after: 'network-online.target caddy.service mos-homepage.service',
+    description: 'MOS narrow Homepage configuration agent',
+    env: { MOS_HOMEPAGE_AGENT_SOCKET: '/run/mos-homepage-agent/agent.sock', MOS_HOMEPAGE_CONFIG_ROOT: `${stateRoot}/homepage/config`, MOS_HOMEPAGE_TRANSACTION_ROOT: `${stateRoot}/homepage-agent/transactions`, MOS_HOMEPAGE_HISTORY_ROOT: `${stateRoot}/homepage-agent/history` },
+    name: 'mos-homepage-agent.service',
     script: 'system-agents/homepage/agent.cjs',
   }));
-  unit('mos-v2-app-agent.service', agentUnit({
+  unit('mos-app-agent.service', agentUnit({
     after: 'network-online.target docker.service caddy.service',
-    description: 'MOS V2 narrow app runtime agent',
-    env: { MOS_V2_APP_AGENT_SOCKET: '/run/mos-v2-app-agent/agent.sock', MOS_V2_APP_PACKAGE_ROOT: `${stateRoot}/app-packages`, MOS_V2_APPS_ROOT: `${mosRoot}/apps` },
-    name: 'mos-v2-app-agent.service',
+    description: 'MOS narrow app runtime agent',
+    env: { MOS_APP_AGENT_SOCKET: '/run/mos-app-agent/agent.sock', MOS_APP_PACKAGE_ROOT: `${stateRoot}/app-packages`, MOS_APPS_ROOT: `${mosRoot}/apps` },
+    name: 'mos-app-agent.service',
     script: 'system-agents/apps/agent.cjs',
     wants: 'network-online.target docker.service',
   }));
-  unit('mos-v2-backup-agent.service', agentUnit({
+  unit('mos-backup-agent.service', agentUnit({
     after: 'network-online.target docker.service',
-    description: 'MOS V2 backup and restore agent',
-    env: { MOS_V2_BACKUP_AGENT_SOCKET: '/run/mos-v2-backup-agent/agent.sock', MOS_V2_BACKUP_AGENT_STATE_DIR: `${stateRoot}/backup-agent`, MOS_V2_REPO_DIR: repoRoot, MOS_V2_STATE_DIR: `${stateRoot}/suite-manager`, MOS_V2_STATE_ROOT: stateRoot },
-    name: 'mos-v2-backup-agent.service',
+    description: 'MOS backup and restore agent',
+    env: { MOS_BACKUP_AGENT_SOCKET: '/run/mos-backup-agent/agent.sock', MOS_BACKUP_AGENT_STATE_DIR: `${stateRoot}/backup-agent`, MOS_REPO_DIR: repoRoot, MOS_STATE_DIR: `${stateRoot}/suite-manager`, MOS_STATE_ROOT: stateRoot },
+    name: 'mos-backup-agent.service',
     script: 'system-agents/backup/agent.cjs',
     wants: 'network-online.target docker.service',
   }));
-  unit('mos-v2-update-agent.service', agentUnit({
+  unit('mos-update-agent.service', agentUnit({
     after: 'network-online.target docker.service',
-    description: 'MOS V2 managed update agent',
-    env: { MOS_V2_REPO_DIR: repoRoot, MOS_V2_STATE_ROOT: stateRoot, MOS_V2_UPDATE_AGENT_SOCKET: '/run/mos-v2-update-agent/agent.sock' },
-    name: 'mos-v2-update-agent.service',
+    description: 'MOS managed update agent',
+    env: { MOS_REPO_DIR: repoRoot, MOS_STATE_ROOT: stateRoot, MOS_UPDATE_AGENT_SOCKET: '/run/mos-update-agent/agent.sock' },
+    name: 'mos-update-agent.service',
     script: 'system-agents/update/agent.cjs',
     wants: 'network-online.target docker.service',
   }));
-  unit('mos-v2-lab-reset-agent.service', agentUnit({
+  unit('mos-lab-reset-agent.service', agentUnit({
     after: 'network-online.target docker.service',
-    description: 'MOS V2 lab reset agent',
-    env: { MOS_V2_INSTALL_ROOT: path.dirname(repoRoot), MOS_V2_LAB_RESET_AGENT_SOCKET: '/run/mos-v2-lab-reset-agent/agent.sock', MOS_V2_REPO_DIR: repoRoot, MOS_V2_STATE_ROOT: stateRoot },
-    name: 'mos-v2-lab-reset-agent.service',
+    description: 'MOS lab reset agent',
+    env: { MOS_INSTALL_ROOT: path.dirname(repoRoot), MOS_LAB_RESET_AGENT_SOCKET: '/run/mos-lab-reset-agent/agent.sock', MOS_REPO_DIR: repoRoot, MOS_STATE_ROOT: stateRoot },
+    name: 'mos-lab-reset-agent.service',
     script: 'system-agents/lab-reset/agent.cjs',
     wants: 'network-online.target docker.service',
   }));
 
   if (!fs.existsSync('/etc/caddy/Caddyfile') || dryRun) writeFile('/etc/caddy/Caddyfile', renderCaddyfile(), 0o644);
-  if (!fs.existsSync('/etc/caddy/mos-v2-homepage-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-v2-homepage-routes.caddy', '# No user-managed Homepage routes.\n', 0o644);
-  if (!fs.existsSync('/etc/caddy/mos-v2-app-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-v2-app-routes.caddy', '# No app runtime routes.\n', 0o644);
+  if (!fs.existsSync('/etc/caddy/mos-homepage-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-homepage-routes.caddy', '# No user-managed Homepage routes.\n', 0o644);
+  if (!fs.existsSync('/etc/caddy/mos-app-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-app-routes.caddy', '# No app runtime routes.\n', 0o644);
 
   run('systemctl', ['daemon-reload']);
-  for (const service of ['mos-v2-homepage.service', 'mos-v2-suite-manager.service', 'caddy.service', 'mos-v2-https-agent.service', 'mos-v2-homepage-agent.service', 'mos-v2-app-agent.service', 'mos-v2-backup-agent.service', 'mos-v2-update-agent.service']) {
+  for (const service of ['mos-homepage.service', 'mos-suite-manager.service', 'caddy.service', 'mos-https-agent.service', 'mos-homepage-agent.service', 'mos-app-agent.service', 'mos-backup-agent.service', 'mos-update-agent.service']) {
     run('systemctl', ['enable', service]);
     run('systemctl', ['restart', service]);
   }
   if (labResetEnabled === '1') {
-    run('systemctl', ['enable', 'mos-v2-lab-reset-agent.service']);
-    run('systemctl', ['restart', 'mos-v2-lab-reset-agent.service']);
+    run('systemctl', ['enable', 'mos-lab-reset-agent.service']);
+    run('systemctl', ['restart', 'mos-lab-reset-agent.service']);
   }
   log('system reconciliation complete');
 }
@@ -339,7 +339,7 @@ if (require.main === module) {
   try {
     main();
   } catch (error) {
-    console.error(`[mos-v2:reconcile] ERROR: ${error.message}`);
+    console.error(`[mos:reconcile] ERROR: ${error.message}`);
     process.exit(1);
   }
 }

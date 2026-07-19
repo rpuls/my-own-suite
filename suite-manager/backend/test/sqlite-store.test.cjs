@@ -14,7 +14,7 @@ const {
 } = require('../src/state/suite-manager-store.cjs');
 
 async function tempStateDir() {
-  return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-v2-sqlite-'));
+  return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-sqlite-'));
 }
 
 function owner() {
@@ -291,7 +291,7 @@ test('app instance state stays package-generic and stores projection digests', a
       packageId: 'example-app',
       packageVersion: '0.1.0',
       privacy: { posture: 'privacy-configured', reviewedAt: '2026-06-26T10:00:00.000Z', status: 'reviewed' },
-      snapshotPath: '/var/lib/mos-v2/app-packages/instance-one/installed',
+      snapshotPath: '/var/lib/mos/app-packages/instance-one/installed',
       snapshotState: 'installed',
       source: {
         kind: 'official-git',
@@ -324,7 +324,7 @@ test('app instance state stays package-generic and stores projection digests', a
   assert.equal(instance.packageDigest, `sha256:${'a'.repeat(64)}`);
   assert.equal(instance.packageVersion, '0.1.0');
   assert.equal(instance.snapshotState, 'installed');
-  assert.equal(instance.snapshotPath, '/var/lib/mos-v2/app-packages/instance-one/installed');
+  assert.equal(instance.snapshotPath, '/var/lib/mos/app-packages/instance-one/installed');
   assert.equal(instance.sourceKind, 'official-git');
   assert.equal(instance.sourceTrust, 'mos-reviewed');
   assert.equal(instance.sourceRevision, '0123456789abcdef0123456789abcdef01234567');
@@ -367,7 +367,7 @@ test('app update operations persist digest-bound stages and reject overlap', asy
       categorySnapshot: 'tools', displayNameSnapshot: 'Example', id: 'update-instance',
       manifestDigest: 'sha256:manifest', packageDigest: `sha256:${'a'.repeat(64)}`,
       packageId: 'update-example', packageVersion: '1.0.0', privacy: { posture: 'review-required', reviewedAt: null, status: 'review-required' },
-      snapshotPath: '/var/lib/mos-v2/app-packages/update-instance/installed', snapshotState: 'installed',
+      snapshotPath: '/var/lib/mos/app-packages/update-instance/installed', snapshotState: 'installed',
       source: { kind: 'official-git', path: 'apps/update-example', repository: 'https://github.com/rpuls/my-own-suite', revision: 'a'.repeat(40), trust: 'mos-reviewed' },
     },
     operationId: 'install-update-instance', projections: [],
@@ -682,7 +682,7 @@ test('external sources persist separately and removing one never uninstalls its 
       packageDigest: `sha256:${'c'.repeat(64)}`,
       packageId: 'community-notes',
       packageVersion: '1.0.0',
-      snapshotPath: '/var/lib/mos-v2/app-packages/x-abc123de-community-notes/installed',
+      snapshotPath: '/var/lib/mos/app-packages/x-abc123de-community-notes/installed',
       snapshotState: 'installed',
       source: { kind: 'external-git', path: 'apps/community-notes', repository: 'https://code.example/community/apps', revision: '89abcdef0123456789abcdef0123456789abcdef', trust: 'unverified' },
     },

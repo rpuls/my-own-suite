@@ -22,7 +22,7 @@ export async function resetLabIfConfigured(page, env) {
   } catch (error) {
     if (error.status === 404 || error.message === 'LAB_RESET_DISABLED') {
       throw new Error(
-        'Lab reset endpoint is not available on the Hyper-V VM. Run one fresh Hyper-V reset/update with the current branch so mos-v2-lab-reset-agent is installed, or set MOS_V2_E2E_RESET_BEFORE_RUN=0 to skip automatic reset.'
+        'Lab reset endpoint is not available on the Hyper-V VM. Run one fresh Hyper-V reset/update with the current branch so mos-lab-reset-agent is installed, or set MOS_E2E_RESET_BEFORE_RUN=0 to skip automatic reset.'
       );
     }
     throw error;

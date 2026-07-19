@@ -3,10 +3,10 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 
-const CADDY_BINARY = process.env.MOS_V2_CADDY_BINARY || '/usr/local/libexec/mos-v2/caddy';
-const CADDYFILE_PATH = process.env.MOS_V2_CADDYFILE_PATH || '/etc/caddy/Caddyfile';
-const SECRET_ENV_PATH = process.env.MOS_V2_CADDY_SECRET_ENV || '/etc/mos-v2/secrets/caddy-cloudflare.env';
-const TRANSACTION_ROOT = process.env.MOS_V2_HTTPS_TRANSACTION_ROOT || '/var/lib/mos-v2/https-agent/transactions';
+const CADDY_BINARY = process.env.MOS_CADDY_BINARY || '/usr/local/libexec/mos/caddy';
+const CADDYFILE_PATH = process.env.MOS_CADDYFILE_PATH || '/etc/caddy/Caddyfile';
+const SECRET_ENV_PATH = process.env.MOS_CADDY_SECRET_ENV || '/etc/mos/secrets/caddy-cloudflare.env';
+const TRANSACTION_ROOT = process.env.MOS_HTTPS_TRANSACTION_ROOT || '/var/lib/mos/https-agent/transactions';
 
 function execFilePromise(file, args, options = {}) {
   return new Promise((resolve, reject) => {

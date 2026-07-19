@@ -38,7 +38,7 @@
     "resourceHint": {
       "level": "low",
       "label": "Light resources",
-      "description": "This first V2 package runs Vaultwarden as one service using its built-in SQLite storage."
+      "description": "This MOS package runs Vaultwarden as one service using its built-in SQLite storage."
     },
     "privacy": {
       "summary": "Vaultwarden stores encrypted vault data on your own server, while your master password remains your responsibility.",

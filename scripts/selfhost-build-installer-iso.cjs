@@ -242,7 +242,7 @@ async function main() {
     run(process.execPath, [path.join(repoRoot, 'scripts', 'installers', 'render-hyperv-usb-seed.cjs')], {
       stdio: 'inherit',
     });
-    seedDir = path.join(repoRoot, '.mos-smoke', 'hyperv-usb', 'v2-seed');
+    seedDir = path.join(repoRoot, '.mos-smoke', 'hyperv-usb', 'seed');
   }
   const outputIso = path.resolve(
     repoRoot,

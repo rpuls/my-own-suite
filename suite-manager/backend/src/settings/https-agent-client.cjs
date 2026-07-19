@@ -1,7 +1,7 @@
 const http = require('node:http');
 
 class HttpsAgentClient {
-  constructor({ socketPath = process.env.MOS_V2_HTTPS_AGENT_SOCKET || '/run/mos-v2-https-agent/agent.sock', timeoutMs = 120000 } = {}) {
+  constructor({ socketPath = process.env.MOS_HTTPS_AGENT_SOCKET || '/run/mos-https-agent/agent.sock', timeoutMs = 120000 } = {}) {
     this.socketPath = socketPath;
     this.timeoutMs = timeoutMs;
   }

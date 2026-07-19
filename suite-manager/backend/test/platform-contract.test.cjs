@@ -7,7 +7,7 @@ const {
   validateInitialPlatformContract,
 } = require('../src/platform-contract.cjs');
 
-test('initial V2 contract is clean-slate, Suite Manager-first, and app-free', () => {
+test('initial MOS contract is clean-slate, Suite Manager-first, and app-free', () => {
   const contract = createInitialPlatformContract();
 
   assert.equal(contract.version, 1);
@@ -35,26 +35,26 @@ test('contract rejects runtime dependence on the old Suite Manager', () => {
   contract.oldSystemPolicy.runtimeImportsFromOldSuiteManager = true;
 
   assert.deepEqual(validateInitialPlatformContract(contract), [
-    'V2 must not import the old Suite Manager at runtime.',
+    'MOS must not import the old Suite Manager at runtime.',
   ]);
 });
 
-test('validation is scoped to V2 and leaves smoke/E2E user-run', () => {
+test('validation is scoped to MOS and leaves smoke/E2E user-run', () => {
   assert.deepEqual(plannedValidationCommands(), [
     {
       command: 'npm test',
       owner: 'agent',
-      purpose: 'Validate the clean-slate V2 workspace contract.',
+      purpose: 'Validate the clean-slate MOS workspace contract.',
     },
     {
       command: 'npm run smoke:do:reset',
       owner: 'user',
-      purpose: 'Run paid DigitalOcean fresh-install validation once V2 has an install path.',
+      purpose: 'Run paid DigitalOcean fresh-install validation once MOS has an install path.',
     },
     {
       command: 'npm run e2e:onboarding',
       owner: 'user',
-      purpose: 'Run noisy browser validation once the V2 first-run owner flow is implemented.',
+      purpose: 'Run noisy browser validation once the MOS first-run owner flow is implemented.',
     },
   ]);
 });

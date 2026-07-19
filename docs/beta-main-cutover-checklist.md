@@ -1,11 +1,11 @@
-# MOS2 Beta Main-Cutover Release Checklist
+# MOS Beta Main-Cutover Release Checklist
 
-This temporary, release-specific document tracks the MOS2 beta main cutover and its separate public announcement. It records the July 2026 helicopter review and should be removed or replaced with release notes after this release is complete. A checked item means the repository evidence has been updated and the relevant validation has passed; wording changes alone do not close an implementation or security item.
+This temporary, release-specific document tracks the MOS beta main cutover and its separate public announcement. It records the July 2026 helicopter review and should be removed or replaced with release notes after this release is complete. A checked item means the repository evidence has been updated and the relevant validation has passed; wording changes alone do not close an implementation or security item.
 
 The two decisions are intentionally separate:
 
-- **Main cutover:** MOS2 becomes the repository default, clearly labeled beta.
-- **Public launch:** the MOS2 site and installation paths are promoted to new users.
+- **Main cutover:** MOS becomes the repository default, clearly labeled beta.
+- **Public launch:** the MOS site and installation paths are promoted to new users.
 
 ### At-a-glance gate
 
@@ -20,7 +20,7 @@ The two decisions are intentionally separate:
 
 - [x] Remove obsolete USB-installer owner fields and make browser owner creation the only owner bootstrap path.
 - [ ] Make backup integrity and replacement-machine restore claims match verified behavior.
-- [ ] Build the MOS2 `site/` from a clean install in required CI before deployment cutover.
+- [ ] Build the MOS `site/` from a clean install in required CI before deployment cutover.
 - [x] Publish a real, tested cloud HTTPS procedure or clearly classify cloud TLS as operator-owned and advanced.
 
 #### Beta truthfulness and security
@@ -29,8 +29,8 @@ The two decisions are intentionally separate:
 - [x] State clearly which backup destinations work on own hardware and cloud servers.
 - [x] Add login throttling/progressive delay for an internet-reachable control plane.
 - [x] Keep the unencrypted-backup warning prominent and avoid suggesting casual storage of downloaded bundles.
-- [x] Remove stale scaffold/MOS1 wording from active MOS2 documentation.
-- [x] Condense `CHANGELOG.md` into release-shaped MOS2 outcomes and explicit known limitations.
+- [x] Remove stale scaffold/MOS1 wording from active MOS documentation.
+- [x] Condense `CHANGELOG.md` into release-shaped MOS outcomes and explicit known limitations.
 
 #### Required validation before approval
 
@@ -38,7 +38,7 @@ The two decisions are intentionally separate:
 - [ ] `npm test`
 - [x] `npm run typecheck`
 - [x] `npm run build:client`
-- [ ] Clean MOS2 `site/` install and build in CI
+- [ ] Clean MOS `site/` install and build in CI
 - [x] Installer contract/render checks
 - [x] Human-run Hyper-V full-platform E2E after blocker fixes — owner-confirmed on July 18, 2026, including the app catalog, external-package installation, and the broader platform E2E flow
 - [ ] Real backup/restore drill with representative multi-service and large-data apps
@@ -61,7 +61,7 @@ The two decisions are intentionally separate:
 
 - **Severity:** Blocker
 - **Area:** Updates and releases
-- **Evidence:** The Updates guide and UI present Stable releases as a selectable track. `system-agents/update/lib.cjs` rejects apply unless the selected track is `branch`. `RELEASING.md` also notes that MOS2 stable release-track metadata is not complete.
+- **Evidence:** The Updates guide and UI present Stable releases as a selectable track. `system-agents/update/lib.cjs` rejects apply unless the selected track is `branch`. `RELEASING.md` also notes that MOS stable release-track metadata is not complete.
 - **Why it matters:** Selecting the supposedly safer update channel disables the principal update operation and can leave users without a dependable security-update path.
 - **Required action:** Implement tagged stable release discovery, checkout, version reporting, and apply, or make Stable visibly unavailable/read-only until it exists.
 - **Acceptance:** A released tag can be discovered and applied end to end on a representative install, including full runtime reconciliation, with installed-version metadata updated truthfully.
@@ -88,7 +88,7 @@ The two decisions are intentionally separate:
 
 - **Severity:** High — completed, retain as a regression check
 - **Area:** Installation, documentation, and secret handling
-- **Original evidence:** The ISO builder and `selfhost-installer.env.template` required `OWNER_NAME`, `OWNER_EMAIL`, and `OWNER_PASSWORD`, even though MOS2 creates the owner only in the browser.
+- **Original evidence:** The ISO builder and `selfhost-installer.env.template` required `OWNER_NAME`, `OWNER_EMAIL`, and `OWNER_PASSWORD`, even though MOS creates the owner only in the browser.
 - **Resolution evidence:** The `Unreleased` changelog records removal of the V1 owner fields and dead validation, a zero-configuration USB build, and updated own-hardware guidance.
 - **Regression check:** Installer input and generated seed must never contain Suite Manager owner credentials. Only the machine login and legitimate host settings may be installer inputs.
 - **Acceptance:** Static installer tests reject owner credential inputs, and a fresh USB install reaches browser owner creation without placeholder secrets.
@@ -102,13 +102,13 @@ The two decisions are intentionally separate:
 - **Required action:** Hash every payload archive, verify all checksums before stopping services, validate/enforce compatible versions, and describe replacement-machine prerequisites precisely.
 - **Acceptance:** A deliberately corrupted state or volume archive is rejected before destructive restore begins, incompatible versions are blocked or explicitly migrated, and a documented replacement-machine recovery drill succeeds.
 
-#### 7. MOS2 public site must be CI-validated before cutover
+#### 7. MOS public site must be CI-validated before cutover
 
 - **Severity:** High before announcement; Medium before code-only main cutover
 - **Area:** Repository, CI, and deployment
 - **Evidence:** At review time, root `npm run build`, CI, and `wrangler.toml` still targeted `site-mos1-reference`, while `site/` had no required clean-build job. Active README wording also called the rebuilt site a placeholder.
 - **Why it matters:** The launch surface can fail only after deployment, while the live site may continue telling the MOS1 story.
-- **Required action:** Add a clean dependency install and MOS2 site build to required CI, verify links/assets/routes, explicitly switch deployment configuration, and update active documentation.
+- **Required action:** Add a clean dependency install and MOS site build to required CI, verify links/assets/routes, explicitly switch deployment configuration, and update active documentation.
 - **Acceptance:** Required CI builds `site/` from a clean checkout on Linux, and the deployment cutover is a reviewed change with a rollback path.
 
 #### 8. Cloud HTTPS guidance must describe a real supported path — completed, retain as a regression check
@@ -164,31 +164,31 @@ The two decisions are intentionally separate:
 - **Regression check:** Any new create, export, or download surface must warn before the bundle leaves MOS-managed storage and must not imply that an unencrypted browser or cloud copy is safe.
 - **Acceptance:** UI and docs explain the full-secret nature before creation/download, and the roadmap issue defines encryption, integrity, and key-recovery requirements together.
 
-#### 13. Remove stale scaffold and MOS1 wording from active MOS2 docs — completed, retain as a regression check
+#### 13. Remove stale scaffold and MOS1 wording from active MOS docs — completed, retain as a regression check
 
 - **Severity:** Low
 - **Area:** Repository maintenance and documentation
-- **Evidence:** The review found active files calling `site/` a future placeholder, app packages future work, and host agents placeholders despite all being implemented. Historical `version-2` and MOS1 references also remained in release-shaped material.
+- **Evidence:** The review found active files calling `site/` a future placeholder, app packages future work, and host agents placeholders despite all being implemented. Historical generation labels and MOS1 references also remained in release-shaped material.
 - **Why it matters:** Contributors, users, and future agents can follow obsolete architecture assumptions.
-- **Required action:** Sweep active docs for `future`, `placeholder`, `version-2`, `V1`, and `MOS1`; retain references only where they explain archives, migrations, or compatibility.
-- **Resolution evidence:** Root, documentation-ownership, public-site, script, infrastructure, app-package, and Suite Manager READMEs now describe the implemented MOS2 layout and current ownership. Placeholder/future implementation statements and V1-era product framing were removed. References to the previous site or root layout remain only to identify isolated rollback/history sources or an explicit compatibility boundary.
+- **Required action:** Sweep active docs for `future`, `placeholder`, stale generation labels, `V1`, and `MOS1`; retain references only where they explain archives, migrations, or compatibility.
+- **Resolution evidence:** Root, documentation-ownership, public-site, script, infrastructure, app-package, and Suite Manager READMEs now describe the implemented MOS layout and current ownership. Placeholder/future implementation statements and V1-era product framing were removed. References to the previous site or root layout remain only to identify isolated rollback/history sources or an explicit compatibility boundary.
 - **Regression check:** Active documentation must describe current root paths. Historical names belong only in archive, migration, rollback, or compatibility context.
-- **Acceptance:** Root README, site README, app/system-agent/script references, docs ownership map, and current public docs all describe the same MOS2 layout and deployment status.
+- **Acceptance:** Root README, site README, app/system-agent/script references, docs ownership map, and current public docs all describe the same MOS layout and deployment status.
 
 #### 14. Make the changelog release-shaped — completed, retain as a regression check
 
 - **Severity:** Low
 - **Area:** Release documentation
-- **Evidence:** `Unreleased` contains long iterative V2 implementation history, follow-up fixes, and intermediate architecture states.
+- **Evidence:** `Unreleased` contains long iterative MOS implementation history, follow-up fixes, and intermediate architecture states.
 - **Why it matters:** Users cannot quickly identify final outcomes, compatibility changes, security implications, and known beta limits.
 - **Required action:** Consolidate into broad `Added`, `Changed`, `Fixed`, `Security`, `Compatibility`, and `Known limitations` sections. Preserve material user/operations facts, not the branch work log.
-- **Resolution evidence:** `Unreleased` is now organized into `Added`, `Changed`, `Fixed`, `Security`, `Compatibility`, and `Known limitations`, with broad MOS2 outcomes and explicit beta/release gates replacing the chronological implementation diary.
+- **Resolution evidence:** `Unreleased` is now organized into `Added`, `Changed`, `Fixed`, `Security`, `Compatibility`, and `Known limitations`, with broad MOS outcomes and explicit beta/release gates replacing the chronological implementation diary.
 - **Regression check:** Follow-up fixes in the same release area must update an existing outcome bullet unless they add a distinct user-visible, operational, security, or compatibility result.
 - **Acceptance:** Release notes can be derived directly from the changelog without reconstructing which later bullets supersede earlier ones.
 
 ### What is already strong and must not regress
 
-- [x] The previous site and pre-MOS2 root layout remain clearly isolated in `site-mos1-reference/` and the archive branch rather than mixed into the MOS2 runtime.
+- [x] The previous site and previous root layout remain clearly isolated in `site-mos1-reference/` and the archive branch rather than mixed into the MOS runtime.
 - [ ] App packages remain manifest-driven with digest-pinned base images and root-level Dockerfile paths.
 - [ ] ONLYOFFICE remains an independent capability provider/Seafile companion rather than being presented as a standalone file cloud.
 - [ ] Stop remains non-destructive; uninstall remains explicitly destructive and removes declared containers, routes, Homepage entries, state, secrets, integrations, and volumes.
@@ -201,7 +201,7 @@ The two decisions are intentionally separate:
 
 ### Beta caveats required in public documentation and release notes
 
-- [ ] MOS2 is pre-1.0 and intended for evaluation or non-critical use with independent backups.
+- [ ] MOS is pre-1.0 and intended for evaluation or non-critical use with independent backups.
 - [ ] Cloud security/TLS and remote-access responsibilities are stated without implying provider tooling automatically supplies HTTPS.
 - [x] Backups are manual, unencrypted, whole-suite only, destination-limited, and version-sensitive.
 - [x] Replacement-machine restore prerequisites are explicit.
@@ -233,11 +233,11 @@ The two decisions are intentionally separate:
 
 Prefer wording at this level of confidence:
 
-> My Own Suite is an open-source, self-hosted app launcher for running private apps on hardware you control. MOS2 is currently beta: installation and recovery still require some technical comfort, but everyday app management happens in one browser interface.
+> My Own Suite is an open-source, self-hosted app launcher for running private apps on hardware you control. MOS is currently beta: installation and recovery still require some technical comfort, but everyday app management happens in one browser interface.
 
 For the main-cutover announcement:
 
-> MOS2 is now the project's default codebase. This is a beta milestone, not a production-appliance declaration. It introduces browser owner setup, an authenticated dashboard, manifest-driven app installation, private LAN HTTPS, manual whole-suite backups, and early managed updates. Review the known limitations before storing irreplaceable data.
+> MOS is now the project's default codebase. This is a beta milestone, not a production-appliance declaration. It introduces browser owner setup, an authenticated dashboard, manifest-driven app installation, private LAN HTTPS, manual whole-suite backups, and early managed updates. Review the known limitations before storing irreplaceable data.
 
 Avoid until the corresponding acceptance criteria above are met:
 

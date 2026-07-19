@@ -7,7 +7,7 @@ const APP_AGENT_TIMEOUT_MS = 180_000;
 const APP_AGENT_UPDATE_BUILD_TIMEOUT_MS = 45 * 60_000;
 
 class AppAgentClient {
-  constructor({ socketPath = process.env.MOS_V2_APP_AGENT_SOCKET || '/run/mos-v2-app-agent/agent.sock', timeoutMs = APP_AGENT_TIMEOUT_MS } = {}) {
+  constructor({ socketPath = process.env.MOS_APP_AGENT_SOCKET || '/run/mos-app-agent/agent.sock', timeoutMs = APP_AGENT_TIMEOUT_MS } = {}) {
     this.socketPath = socketPath;
     this.timeoutMs = timeoutMs;
   }

@@ -9,7 +9,7 @@ This section is for readers who want to see the machinery. Nothing here is requi
 
 A MOS install is a single Ubuntu 24.04 machine running a small set of systemd services:
 
-- **Caddy** is the only public entry point, on ports 80/443. It is not distro Caddy: MOS builds a version-pinned Caddy (currently 2.10.2) with the Cloudflare DNS module compiled in, installs it to `/usr/local/libexec/mos-v2/`, and verifies the module list at install time.
+- **Caddy** is the only public entry point, on ports 80/443. It is not distro Caddy: MOS builds a version-pinned Caddy (currently 2.10.2) with the Cloudflare DNS module compiled in, installs it to `/usr/local/libexec/mos/`, and verifies the module list at install time.
 - **Suite Manager** (Node.js) listens only on loopback `127.0.0.1:3100`. It owns the `home.<domain>` origin: it serves the control room under `/suite-manager/`, authenticates every request to the origin, and reverse-proxies everything else to Homepage.
 - **Homepage** (the dashboard) runs as a digest-pinned container on loopback `127.0.0.1:3200`, with no route of its own — it is only reachable through Suite Manager's session check. An unauthenticated visitor never sees your dashboard.
 - **Installed apps** get their own hosts (`<app>.<domain>`) routed by Caddy to loopback ports, declared by each [app package](/docs/reference/app-packages/).
@@ -22,15 +22,15 @@ The core security decision in MOS: **the web application never performs privileg
 
 | Path | Contents |
 | --- | --- |
-| `/opt/mos-v2/repo` | The MOS checkout the *control plane* runs from — Suite Manager, the agents, the units |
-| `/var/lib/mos-v2/suite-manager` | Suite Manager state — transactional SQLite (owner, sessions, app instances, operations) and app secrets |
-| `/var/lib/mos-v2/app-packages` | Installed app snapshots, root-owned (`root:mos-v2-agent`, mode `2750`) — the definition each app actually runs from |
-| `/var/lib/mos-v2/suite-manager/app-candidates` | Scratch space for one package download at a time; swept back inside its bounds before each download |
-| `/var/lib/mos-v2/homepage/config` | Your dashboard's YAML configuration |
+| `/opt/mos/repo` | The MOS checkout the *control plane* runs from — Suite Manager, the agents, the units |
+| `/var/lib/mos/suite-manager` | Suite Manager state — transactional SQLite (owner, sessions, app instances, operations) and app secrets |
+| `/var/lib/mos/app-packages` | Installed app snapshots, root-owned (`root:mos-agent`, mode `2750`) — the definition each app actually runs from |
+| `/var/lib/mos/suite-manager/app-candidates` | Scratch space for one package download at a time; swept back inside its bounds before each download |
+| `/var/lib/mos/homepage/config` | Your dashboard's YAML configuration |
 | `/etc/caddy/` | The base Caddyfile plus MOS-owned route snippets for Homepage and apps |
-| `/etc/mos-v2/secrets/` | Root-only secrets (e.g. the Cloudflare API token as a Caddy env file, mode 0600) |
+| `/etc/mos/secrets/` | Root-only secrets (e.g. the Cloudflare API token as a Caddy env file, mode 0600) |
 
-The split between the last two matters: the checkout is the control plane's code, but an installed app runs from its own snapshot under `/var/lib/mos-v2/app-packages`. An app stays inspectable and manageable even if the repo checkout is gone, and editing a repo package after install changes nothing that's running.
+The split between the last two matters: the checkout is the control plane's code, but an installed app runs from its own snapshot under `/var/lib/mos/app-packages`. An app stays inspectable and manageable even if the repo checkout is gone, and editing a repo package after install changes nothing that's running.
 
 Secrets follow a redaction discipline end to end: generated app secrets live in Suite Manager's state and are materialized for an agent only per apply-request; the Cloudflare token is written once to its root-only file and is never returned by any API.
 

@@ -9,9 +9,9 @@ const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps
 const { sha256, validatePackagePayloads } = require('./agent.cjs');
 
 test('backup package preflight accepts exact snapshots and rejects corrupt payloads', async () => {
-  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-v2-backup-packages-'));
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-backup-packages-'));
   const instanceId = '12345678-1234-4123-8123-123456789abc';
-  const packageDir = path.join(root, 'var-lib-mos-v2', 'app-packages', instanceId, 'installed');
+  const packageDir = path.join(root, 'var-lib-mos', 'app-packages', instanceId, 'installed');
   const source = path.resolve(__dirname, '..', '..', 'apps', 'stirling-pdf');
   await fsp.cp(source, packageDir, { recursive: true });
   const { manifest } = readAppPackageManifest(packageDir);
@@ -32,9 +32,9 @@ test('backup package preflight accepts exact snapshots and rejects corrupt paylo
 // instance package id, so any external app (managed under a namespaced id)
 // made its own backup unrestorable.
 test('backup package preflight accepts an external app under its namespaced package id', async () => {
-  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-v2-backup-packages-'));
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-backup-packages-'));
   const instanceId = '12345678-1234-4123-8123-123456789abc';
-  const packageDir = path.join(root, 'var-lib-mos-v2', 'app-packages', instanceId, 'installed');
+  const packageDir = path.join(root, 'var-lib-mos', 'app-packages', instanceId, 'installed');
   const source = path.resolve(__dirname, '..', '..', 'apps', 'stirling-pdf');
   await fsp.cp(source, packageDir, { recursive: true });
   const { manifest } = readAppPackageManifest(packageDir);
@@ -55,7 +55,7 @@ test('backup package preflight accepts an external app under its namespaced pack
 // implementation must match a one-shot hash across chunk boundaries.
 test('backup sha256 hashes files larger than one read chunk correctly', async () => {
   const crypto = require('node:crypto');
-  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-v2-backup-hash-'));
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-backup-hash-'));
   const file = path.join(root, 'archive.bin');
   const chunk = Buffer.alloc(3 * 1024 * 1024, 7);
   const handle = await fsp.open(file, 'w');

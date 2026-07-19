@@ -6,8 +6,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 
-const socketPath = process.env.MOS_V2_LAB_RESET_AGENT_SOCKET || '/run/mos-v2-lab-reset-agent/agent.sock';
-const statusDir = process.env.MOS_V2_LAB_RESET_STATUS_DIR || '/run/mos-v2-lab-reset-agent/jobs';
+const socketPath = process.env.MOS_LAB_RESET_AGENT_SOCKET || '/run/mos-lab-reset-agent/agent.sock';
+const statusDir = process.env.MOS_LAB_RESET_STATUS_DIR || '/run/mos-lab-reset-agent/jobs';
 const workerPath = path.join(__dirname, 'worker.cjs');
 
 function respond(response, status, payload) {
@@ -84,8 +84,8 @@ function scheduleReset(input = {}) {
     detached: true,
     env: {
       ...process.env,
-      MOS_V2_LAB_RESET_ID: resetId,
-      MOS_V2_LAB_RESET_STATUS_DIR: statusDir,
+      MOS_LAB_RESET_ID: resetId,
+      MOS_LAB_RESET_STATUS_DIR: statusDir,
     },
     stdio: 'ignore',
   });
@@ -97,7 +97,7 @@ const server = http.createServer(async (request, response) => {
   try {
     const key = `${request.method} ${new URL(request.url || '/', 'http://localhost').pathname}`;
     if (key === 'GET /v1/status') {
-      respond(response, 200, { capabilities: ['lab.reset'], service: 'mos-v2-lab-reset-agent' });
+      respond(response, 200, { capabilities: ['lab.reset'], service: 'mos-lab-reset-agent' });
       return;
     }
     const jobMatch = key.match(/^GET \/v1\/lab\/reset\/([^/]+)$/u);
@@ -120,7 +120,7 @@ const server = http.createServer(async (request, response) => {
 
 fs.mkdirSync(path.dirname(socketPath), { recursive: true });
 fs.rmSync(socketPath, { force: true });
-server.listen(socketPath, () => { fs.chmodSync(socketPath, 0o660); process.stdout.write('[mos-v2-lab-reset-agent] ready\n'); });
+server.listen(socketPath, () => { fs.chmodSync(socketPath, 0o660); process.stdout.write('[mos-lab-reset-agent] ready\n'); });
 function shutdown() { server.close(() => { fs.rmSync(socketPath, { force: true }); process.exit(0); }); }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

@@ -70,7 +70,7 @@ async function request(fetchImpl, url, { timeoutMs }, headers = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetchImpl(url, { headers: { Accept: 'application/json', 'User-Agent': 'mos-v2-external-source', ...headers }, redirect: 'manual', signal: controller.signal });
+    const response = await fetchImpl(url, { headers: { Accept: 'application/json', 'User-Agent': 'mos-external-source', ...headers }, redirect: 'manual', signal: controller.signal });
     if (response.status >= 300 && response.status < 400) throw new ExternalSourceError('SOURCE_REDIRECT_REJECTED', 'External source requests must not redirect.');
     if (!response.ok) throw new ExternalSourceError('SOURCE_FETCH_FAILED', `External source request failed with HTTP ${response.status}.`);
     return response;

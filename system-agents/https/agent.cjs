@@ -7,7 +7,7 @@ const path = require('node:path');
 const { HttpsAgentCore } = require('./agent-core.cjs');
 const { SystemHttpsAdapter } = require('./system-adapter.cjs');
 
-const socketPath = process.env.MOS_V2_HTTPS_AGENT_SOCKET || '/run/mos-v2-https-agent/agent.sock';
+const socketPath = process.env.MOS_HTTPS_AGENT_SOCKET || '/run/mos-https-agent/agent.sock';
 const core = new HttpsAgentCore(new SystemHttpsAdapter());
 
 function respond(response, statusCode, payload) {
@@ -62,7 +62,7 @@ fs.mkdirSync(path.dirname(socketPath), { recursive: true });
 fs.rmSync(socketPath, { force: true });
 server.listen(socketPath, () => {
   fs.chmodSync(socketPath, 0o660);
-  process.stdout.write('[mos-v2-https-agent] ready\n');
+  process.stdout.write('[mos-https-agent] ready\n');
 });
 
 function shutdown() {

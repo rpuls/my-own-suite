@@ -7,7 +7,7 @@ const test = require('node:test');
 const { verifyIso } = require('../../scripts/smoke/build-hyperv-usb-iso.cjs');
 
 test('Hyper-V USB lab accepts only a substantial ISO-9660 image', (context) => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-v2-iso-'));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-iso-'));
   context.after(() => fs.rmSync(tempDir, { force: true, recursive: true }));
 
   const validIso = path.join(tempDir, 'valid.iso');

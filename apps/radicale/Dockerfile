@@ -1,4 +1,4 @@
-# Radicale V2 app package.
+# Radicale MOS app package.
 
 FROM tomsquest/docker-radicale@sha256:454e7def1324f6f05a3786854346a035b7ad84b47eee15bc155b2fbc17cafb9d
 

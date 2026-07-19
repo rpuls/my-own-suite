@@ -23,7 +23,7 @@ test('Hyper-V focused Vaultwarden DNS-01 signup regression', async ({ page }) =>
 
   const dns01 = await test.step('apply DNS-01 HTTPS', async () => {
     const result = await applyDns01IfConfigured(page, env);
-    if (!result?.homeUrl) throw new Error('Focused Vaultwarden E2E requires DNS-01. Set MOS_V2_E2E_DNS01_BASE_DOMAIN and CLOUDFLARE_API_TOKEN.');
+    if (!result?.homeUrl) throw new Error('Focused Vaultwarden E2E requires DNS-01. Set MOS_E2E_DNS01_BASE_DOMAIN and CLOUDFLARE_API_TOKEN.');
     await ensureOwnerSession(page, env, `${result.homeUrl.replace(/\/$/u, '')}/suite-manager/`);
     return result;
   });

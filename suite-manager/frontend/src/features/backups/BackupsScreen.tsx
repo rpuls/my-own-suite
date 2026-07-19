@@ -243,7 +243,7 @@ export function BackupsScreen() {
 
       {error ? <Notice title="Backup needs attention" variant="error"><p>{error}</p></Notice> : null}
       {restoreStarted ? <Notice title="Restore started" variant="info"><p>MOS is restoring the selected backup and may be unavailable for a short moment. This page will reconnect when Suite Manager starts again.</p></Notice> : null}
-      {status && !status.serviceAvailable ? <Notice title="Backup is not available yet" variant="warning"><p>The host backup service is not running on this install. Update or restart the MOS V2 host services, then come back here.</p></Notice> : null}
+      {status && !status.serviceAvailable ? <Notice title="Backup is not available yet" variant="warning"><p>The host backup service is not running on this install. Update or restart the MOS host services, then come back here.</p></Notice> : null}
 
       {status?.serviceAvailable ? <div className="suite-backup-layout" aria-busy={running}>
         {running ? <div className="suite-backup-busy" aria-live="polite" role="status">

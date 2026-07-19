@@ -49,7 +49,7 @@ function publicStatus(settings, bootstrapHost, agentAvailable, {
 }
 
 class HttpsSettingsService {
-  constructor({ agent, bootstrapHost, frontDoor = process.env.MOS_V2_FRONT_DOOR || 'ssh-bootstrap', now = () => new Date(), store }) {
+  constructor({ agent, bootstrapHost, frontDoor = process.env.MOS_FRONT_DOOR || 'ssh-bootstrap', now = () => new Date(), store }) {
     this.agent = agent;
     this.bootstrapHost = bootstrapHost;
     this.frontDoor = frontDoor;

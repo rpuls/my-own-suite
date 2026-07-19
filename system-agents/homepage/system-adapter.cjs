@@ -3,11 +3,11 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 
-const CONFIG_ROOT = process.env.MOS_V2_HOMEPAGE_CONFIG_ROOT || '/var/lib/mos-v2/homepage/config';
-const ROUTES_PATH = process.env.MOS_V2_HOMEPAGE_ROUTES_PATH || '/etc/caddy/mos-v2-homepage-routes.caddy';
-const TRANSACTION_ROOT = process.env.MOS_V2_HOMEPAGE_TRANSACTION_ROOT || '/var/lib/mos-v2/homepage-agent/transactions';
-const HISTORY_ROOT = process.env.MOS_V2_HOMEPAGE_HISTORY_ROOT || '/var/lib/mos-v2/homepage-agent/history';
-const CADDY_BINARY = process.env.MOS_V2_CADDY_BINARY || '/usr/local/libexec/mos-v2/caddy';
+const CONFIG_ROOT = process.env.MOS_HOMEPAGE_CONFIG_ROOT || '/var/lib/mos/homepage/config';
+const ROUTES_PATH = process.env.MOS_HOMEPAGE_ROUTES_PATH || '/etc/caddy/mos-homepage-routes.caddy';
+const TRANSACTION_ROOT = process.env.MOS_HOMEPAGE_TRANSACTION_ROOT || '/var/lib/mos/homepage-agent/transactions';
+const HISTORY_ROOT = process.env.MOS_HOMEPAGE_HISTORY_ROOT || '/var/lib/mos/homepage-agent/history';
+const CADDY_BINARY = process.env.MOS_CADDY_BINARY || '/usr/local/libexec/mos/caddy';
 const HOMEPAGE_RESTART_TIMEOUT_MS = 60_000;
 
 const FAILURE_MESSAGES = {
@@ -109,7 +109,7 @@ class SystemHomepageAdapter {
         stage = 'homepage-restart';
         await this.execute(
           '/usr/bin/systemctl',
-          ['restart', 'mos-v2-homepage.service'],
+          ['restart', 'mos-homepage.service'],
           { timeoutMs: HOMEPAGE_RESTART_TIMEOUT_MS },
         );
       }
@@ -129,7 +129,7 @@ class SystemHomepageAdapter {
     } catch {
       for (const file of changedFiles) await restore(path.join(beforeDir, file), path.join(this.configRoot, file)).catch(() => {});
       if (routesChanged) await restore(path.join(beforeDir, 'routes.caddy'), this.routesPath).catch(() => {});
-      if (restartHomepage && changedFiles.length) await this.execute('/usr/bin/systemctl', ['restart', 'mos-v2-homepage.service'], { timeoutMs: 10000 }).catch(() => {});
+      if (restartHomepage && changedFiles.length) await this.execute('/usr/bin/systemctl', ['restart', 'mos-homepage.service'], { timeoutMs: 10000 }).catch(() => {});
       if (routesChanged) await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 10000 }).catch(() => {});
       await fsp.rm(transactionDir, { recursive: true, force: true }).catch(() => {});
       throw new HomepageApplyError(stage);

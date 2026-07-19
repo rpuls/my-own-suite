@@ -10,8 +10,8 @@ function argValue(name) {
 }
 
 const jobFile = argValue('--job-file');
-const repoRoot = process.env.MOS_V2_REPO_DIR || path.resolve(__dirname, '..', '..', '..');
-const stateRoot = process.env.MOS_V2_STATE_ROOT || '/var/lib/mos-v2';
+const repoRoot = process.env.MOS_REPO_DIR || path.resolve(__dirname, '..', '..', '..');
+const stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos';
 const paths = buildPaths(repoRoot, stateRoot);
 
 function updateJob(patch) {

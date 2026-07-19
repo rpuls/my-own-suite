@@ -7,7 +7,7 @@ const { HomepageConfigError } = require('../../shared/homepage-contract.cjs');
 const { HomepageAgentCore } = require('./agent-core.cjs');
 const { HomepageApplyError, SystemHomepageAdapter } = require('./system-adapter.cjs');
 
-const socketPath = process.env.MOS_V2_HOMEPAGE_AGENT_SOCKET || '/run/mos-v2-homepage-agent/agent.sock';
+const socketPath = process.env.MOS_HOMEPAGE_AGENT_SOCKET || '/run/mos-homepage-agent/agent.sock';
 const core = new HomepageAgentCore(new SystemHomepageAdapter());
 
 function respond(response, status, payload) {
@@ -54,7 +54,7 @@ const server = http.createServer(async (request, response) => {
 
 fs.mkdirSync(path.dirname(socketPath), { recursive: true });
 fs.rmSync(socketPath, { force: true });
-server.listen(socketPath, () => { fs.chmodSync(socketPath, 0o660); process.stdout.write('[mos-v2-homepage-agent] ready\n'); });
+server.listen(socketPath, () => { fs.chmodSync(socketPath, 0o660); process.stdout.write('[mos-homepage-agent] ready\n'); });
 function shutdown() { server.close(() => { fs.rmSync(socketPath, { force: true }); process.exit(0); }); }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

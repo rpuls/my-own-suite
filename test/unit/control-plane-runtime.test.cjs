@@ -14,18 +14,18 @@ const {
 test('Caddy exposes the single Home origin only through Suite Manager', () => {
   const caddyfile = renderCaddyfile();
 
-  assert.match(caddyfile, /http:\/\/\$MOS_V2_HOME_HOST/);
-  assert.doesNotMatch(caddyfile, /MOS_V2_SUITE_MANAGER_HOST/);
-  assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:\$MOS_V2_SUITE_MANAGER_PORT/);
-  assert.match(caddyfile, /import \/etc\/caddy\/mos-v2-homepage-routes\.caddy/);
+  assert.match(caddyfile, /http:\/\/\$MOS_HOME_HOST/);
+  assert.doesNotMatch(caddyfile, /MOS_SUITE_MANAGER_HOST/);
+  assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:\$MOS_SUITE_MANAGER_PORT/);
+  assert.match(caddyfile, /import \/etc\/caddy\/mos-homepage-routes\.caddy/);
   assert.doesNotMatch(caddyfile, /3200|homepage:3000|reverse_proxy\s+homepage/);
 });
 
 test('public-cloud Caddy serves diagnostics on HTTP and owner setup on automatic HTTPS', () => {
   const caddyfile = renderPublicCloudCaddyfile();
-  assert.match(caddyfile, /http:\/\/\$MOS_V2_HOME_HOST/u);
-  assert.match(caddyfile, /https:\/\/\$MOS_V2_HOME_HOST/u);
-  assert.equal((caddyfile.match(/reverse_proxy 127\.0\.0\.1:\$MOS_V2_SUITE_MANAGER_PORT/gu) || []).length, 2);
+  assert.match(caddyfile, /http:\/\/\$MOS_HOME_HOST/u);
+  assert.match(caddyfile, /https:\/\/\$MOS_HOME_HOST/u);
+  assert.equal((caddyfile.match(/reverse_proxy 127\.0\.0\.1:\$MOS_SUITE_MANAGER_PORT/gu) || []).length, 2);
   assert.doesNotMatch(caddyfile, /redir/u);
 });
 
@@ -42,7 +42,7 @@ test('HTTPS Caddy rendering preserves bootstrap recovery and has no Homepage byp
   assert.match(caddyfile, /redir https:\/\/home\.mos\.example\.com\{uri\} permanent/);
   assert.match(caddyfile, /https:\/\/home\.mos\.example\.com/);
   assert.match(caddyfile, /acme_dns cloudflare \{env\.CLOUDFLARE_API_TOKEN\}/);
-  assert.match(caddyfile, /import \/etc\/caddy\/mos-v2-homepage-routes\.caddy/);
+  assert.match(caddyfile, /import \/etc\/caddy\/mos-homepage-routes\.caddy/);
   assert.doesNotMatch(caddyfile, /3200|very-secret/u);
 });
 
@@ -60,7 +60,7 @@ test('Homepage runtime is pinned and reachable only through loopback', () => {
 
   assert.match(HOMEPAGE_IMAGE, /^ghcr\.io\/gethomepage\/homepage@sha256:[a-f0-9]{64}$/);
   assert.match(unit, /--publish 127\.0\.0\.1:3200:3000/);
-  assert.match(unit, /HOMEPAGE_ALLOWED_HOSTS=\$MOS_V2_HOME_HOST/);
+  assert.match(unit, /HOMEPAGE_ALLOWED_HOSTS=\$MOS_HOME_HOST/);
   assert.match(unit, /\/homepage\/config:\/app\/config/);
   assert.match(unit, /\/homepage\/config\/images:\/app\/public\/images/);
   assert.doesNotMatch(unit, /0\.0\.0\.0:3200|--network host/);
@@ -70,13 +70,13 @@ test('Homepage runtime can render concrete update reconciliation paths', () => {
   const unit = renderHomepageSystemdUnit({
     homeHost: 'home.mos.home',
     homepagePort: '3200',
-    stateRoot: '/var/lib/mos-v2',
+    stateRoot: '/var/lib/mos',
   });
 
   assert.match(unit, /HOMEPAGE_ALLOWED_HOSTS=home\.mos\.home/);
-  assert.match(unit, /--volume \/var\/lib\/mos-v2\/homepage\/config:\/app\/config/);
-  assert.match(unit, /--volume \/var\/lib\/mos-v2\/homepage\/config\/images:\/app\/public\/images/);
-  assert.doesNotMatch(unit, /\$MOS_V2_(HOME_HOST|STATE_ROOT|HOMEPAGE_PORT)/u);
+  assert.match(unit, /--volume \/var\/lib\/mos\/homepage\/config:\/app\/config/);
+  assert.match(unit, /--volume \/var\/lib\/mos\/homepage\/config\/images:\/app\/public\/images/);
+  assert.doesNotMatch(unit, /\$MOS_(HOME_HOST|STATE_ROOT|HOMEPAGE_PORT)/u);
 });
 
 test('Homepage ships useful defaults and an editable source template without overlay account controls', () => {

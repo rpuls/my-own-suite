@@ -1,6 +1,6 @@
-# V2 App Packages
+# MOS App Packages
 
-MOS2 app packages live here, one app per folder.
+MOS app packages live here, one app per folder.
 
 Each app package should own its app-specific manifest, Dockerfiles, setup helpers, runtime assets, Caddy snippets, optional Homepage contributions, backup metadata, and technical notes.
 

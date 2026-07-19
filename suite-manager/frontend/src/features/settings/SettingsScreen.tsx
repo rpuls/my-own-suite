@@ -159,7 +159,7 @@ export function SettingsScreen() {
       setFormError('A valid Cloudflare API token is required.'); return;
     }
     if (!status?.agentAvailable) {
-      setFormError('The HTTPS system agent is unavailable. Update or repair the V2 control plane, then try again.'); return;
+      setFormError('The HTTPS system agent is unavailable. Update or repair the MOS control plane, then try again.'); return;
     }
 
     const submittedToken = token.trim();
@@ -209,7 +209,7 @@ export function SettingsScreen() {
       <AdvancedDetails status={status} />
     </div> : <div className="mos-panel suite-card suite-settings-panel">
       <div><h2 className="mos-card-title">Private LAN HTTPS with Cloudflare DNS</h2><p className="suite-meta">Use DNS-01 to get a trusted certificate for private local access to <strong>home.&lt;your-domain&gt;</strong>. This does not publish MOS to the internet or configure public access.</p></div>
-      {!status.agentAvailable ? <Notice title="HTTPS agent unavailable" variant="warning"><p>You can review and validate the form, but applying requires the installed V2 HTTPS agent and Cloudflare-capable Caddy build.</p></Notice> : null}
+      {!status.agentAvailable ? <Notice title="HTTPS agent unavailable" variant="warning"><p>You can review and validate the form, but applying requires the installed MOS HTTPS agent and Cloudflare-capable Caddy build.</p></Notice> : null}
       <form className="suite-settings-form" onSubmit={(event) => void submit(event)}>
         <TextInput autoComplete="url" helperText="Example: mos.example.com. Your Home URL becomes home.mos.example.com." label="MOS base domain" onChange={(event) => setBaseDomain(event.target.value)} placeholder="mos.example.com" value={baseDomain} />
         <TextInput autoComplete="email" helperText="Used by the ACME certificate authority for account notices." label="ACME contact email" onChange={(event) => setAcmeEmail(event.target.value)} placeholder="you@example.com" type="email" value={acmeEmail} />

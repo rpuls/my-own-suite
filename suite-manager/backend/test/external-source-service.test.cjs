@@ -240,7 +240,7 @@ test('removing a source orphans its installs but never uninstalls them or breaks
     instance: {
       categorySnapshot: 'tools', displayNameSnapshot: 'Community Notes', id: 'x-abcdef01-community-notes',
       manifestDigest: 'sha256:manifest', packageDigest: `sha256:${'c'.repeat(64)}`, packageId: 'community-notes', packageVersion: '1.0.0',
-      snapshotPath: '/var/lib/mos-v2/app-packages/x-abcdef01-community-notes/installed', snapshotState: 'installed',
+      snapshotPath: '/var/lib/mos/app-packages/x-abcdef01-community-notes/installed', snapshotState: 'installed',
       // Production shape: the instance records the source's catalog path itself
       // (external-source-client), which is what ties it back to its source.
       source: { kind: 'external-git', path: 'apps', repository, revision, trust: 'unverified' },
@@ -252,7 +252,7 @@ test('removing a source orphans its installs but never uninstalls them or breaks
     instance: {
       categorySnapshot: 'media', displayNameSnapshot: 'Immich', id: 'immich',
       manifestDigest: 'sha256:immich', packageDigest: `sha256:${'d'.repeat(64)}`, packageId: 'immich', packageVersion: '2.0.0',
-      snapshotPath: '/var/lib/mos-v2/app-packages/immich/installed', snapshotState: 'installed',
+      snapshotPath: '/var/lib/mos/app-packages/immich/installed', snapshotState: 'installed',
       source: { kind: 'official-git', path: 'apps/immich', repository: 'https://github.com/rpuls/my-own-suite', revision: 'a'.repeat(40), trust: 'mos-reviewed' },
     },
     operationId: 'op-official', projections: [{ contentJson: '{"services":[]}', digest: 'sha256:compose', kind: 'compose' }], request: { dryRunOnly: true },
@@ -268,7 +268,7 @@ test('removing a source orphans its installs but never uninstalls them or breaks
   const orphaned = store.getAppInstanceByPackageId('community-notes');
   assert.equal(orphaned.status, 'installed');
   assert.equal(orphaned.snapshotState, 'installed');
-  assert.equal(orphaned.snapshotPath, '/var/lib/mos-v2/app-packages/x-abcdef01-community-notes/installed');
+  assert.equal(orphaned.snapshotPath, '/var/lib/mos/app-packages/x-abcdef01-community-notes/installed');
   assert.equal(store.getAppProjections(orphaned.id).length, 1);
   // The unrelated official install is completely unaffected.
   assert.equal(store.getAppInstanceByPackageId('immich').status, 'installed');

@@ -8,7 +8,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Added
 
-- Made MOS2 the default repository layout, with browser owner setup, an authenticated Home/Suite Manager control plane, manifest-driven app installation and lifecycle management, Homepage customization, private-LAN and public-VPS HTTPS paths, manual whole-suite backup/restore, and early managed platform updates.
+- Made MOS the default repository layout, with browser owner setup, an authenticated Home/Suite Manager control plane, manifest-driven app installation and lifecycle management, Homepage customization, private-LAN and public-VPS HTTPS paths, manual whole-suite backup/restore, and early managed platform updates.
 - Added independently versioned, source-addressed app packages. Official and constrained external Git sources use the same snapshot, preview, build, health-check, activation, rollback/recovery, and lifecycle pipeline; external packages remain visibly **External · Unverified**.
 - Added MOS Privacy Posture to Suite Manager and the public catalog, with evidence, provenance, freshness, per-dimension findings, and an explicit unrated state. Stirling PDF is the first and currently only assessed package; all other apps say **Not yet rated by MOS**.
 - Added hosted stable and development installer endpoints, a zero-configuration USB installer, DigitalOcean and generic Ubuntu VPS installation, and disposable Hyper-V/DigitalOcean validation harnesses built from the shared installer contract.
@@ -20,7 +20,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Public documentation and landing copy now scope privacy claims to MOS-controlled behavior, distinguish assessed, unrated, and external packages, document outbound dependencies, and describe the cloud-provider trust boundary.
 - Backup documentation and Suite Manager now distinguish own-hardware external drives from cloud-server block-storage volumes. Backup bundles are described at creation and download as unencrypted full-secret exports requiring encrypted, access-controlled storage; direct object-storage destinations are not supported.
 - Managed reconciliation refreshes Suite Manager, Caddy wiring, Homepage, systemd units, and repo-owned host agents without terminating the active updater. The Updates UI separates branch targets from unavailable/incomplete stable-release behavior.
-- Shared MOS branding, Suite Manager UI primitives, active documentation ownership, and the MOS2 public site/docs source are consolidated under their canonical root-level locations.
+- Shared MOS branding, Suite Manager UI primitives, active documentation ownership, and the MOS public site/docs source are consolidated under their canonical root-level locations.
 
 ### Fixed
 
@@ -36,16 +36,17 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Compatibility
 
-- MOS2 paths now live at the repository root; pre-release paths under `version-2/` and the former `suite-manager.<domain>/setup/` control-plane URL are replaced by root paths and `home.<domain>/suite-manager/`. The previous site and root layout remain isolated as rollback/reference material.
+- Removed the temporary generation label from MOS-owned environment variables, runtime paths, services, sockets, containers, backup folders, smoke tooling, and documentation. Local prototype environments should be reset before validation.
+- MOS paths now live at the repository root, and the former `suite-manager.<domain>/setup/` control-plane URL is replaced by `home.<domain>/suite-manager/`. The previous site and root layout remain isolated as rollback/reference material.
 - The app-agent contract is version 9. App manifests may constrain `amd64`/`arm64`; package-aware backup schema 2 rejects pre-snapshot bundles; external routes use the reserved `ext-<host>` namespace; and releases must ship `trust/official-catalog.pub` with matching catalog/advisory signatures.
 - USB installer owner fields were removed. Owner creation happens in the browser, and an unpinned machine login password is generated uniquely for each installer build.
 
 ### Known limitations
 
-- MOS2 is beta. Stable tagged-release apply and complete managed reconciliation of every changed app runtime must be proven before main cutover.
+- MOS is beta. Stable tagged-release apply and complete managed reconciliation of every changed app runtime must be proven before main cutover.
 - Backups are manual, whole-suite, unencrypted, destination-limited, and version-sensitive. Restore requires an already-installed compatible MOS version; the representative large-data replacement-machine drill remains outstanding, and rollback is not guaranteed across data migrations.
 - External packages remain unverified; publisher-key verification is not implemented; replay of a still-valid signed catalog revision is not cryptographically prevented; and a registry may stop serving a digest-pinned artifact retained by a package snapshot.
-- Owner-run Hyper-V validation passed for the app catalog, external-package installation, and the broader platform E2E flow. Final publisher signing, release checks, MOS2 clean-site CI/deployment cutover, and the dedicated backup/restore drill remain pre-release gates.
+- Owner-run Hyper-V validation passed for the app catalog, external-package installation, and the broader platform E2E flow. Final publisher signing, release checks, MOS clean-site CI/deployment cutover, and the dedicated backup/restore drill remain pre-release gates.
 ## [0.11.0] - 2026-06-07
 
 ### Changed

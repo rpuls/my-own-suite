@@ -2,7 +2,7 @@ const http = require('node:http');
 const HOMEPAGE_AGENT_TIMEOUT_MS = 75_000;
 
 class HomepageAgentClient {
-  constructor({ socketPath = process.env.MOS_V2_HOMEPAGE_AGENT_SOCKET || '/run/mos-v2-homepage-agent/agent.sock', timeoutMs = HOMEPAGE_AGENT_TIMEOUT_MS } = {}) {
+  constructor({ socketPath = process.env.MOS_HOMEPAGE_AGENT_SOCKET || '/run/mos-homepage-agent/agent.sock', timeoutMs = HOMEPAGE_AGENT_TIMEOUT_MS } = {}) {
     this.socketPath = socketPath;
     this.timeoutMs = timeoutMs;
   }

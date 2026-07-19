@@ -26,7 +26,7 @@ const { BackupInventoryService } = require('../backups/backup-inventory-service.
 const { UpdateAgentClient } = require('../updates/update-agent-client.cjs');
 const { UpdateService } = require('../updates/update-service.cjs');
 
-const SESSION_COOKIE = 'mos_v2_session';
+const SESSION_COOKIE = 'mos_session';
 const DEFAULT_FRONTEND_DIST_DIR = path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
 const DEFAULT_APPS_DIR = path.resolve(__dirname, '..', '..', '..', '..', 'apps');
 const SUITE_MANAGER_BASE_PATH = '/suite-manager/';
@@ -301,7 +301,7 @@ function serveFrontend(response, frontendDistDir) {
   textResponse(response, 503, 'Suite Manager frontend is not built yet. Run npm run build:client.');
 }
 
-function createV2Server({
+function createMOSServer({
   appAgent = new AppAgentClient(),
   backupAgent = new BackupAgentClient(),
   appsDir = DEFAULT_APPS_DIR,
@@ -310,14 +310,14 @@ function createV2Server({
   labResetAgent = new LabResetAgentClient(),
   updateAgent = new UpdateAgentClient(),
   frontendDistDir = DEFAULT_FRONTEND_DIST_DIR,
-  frontDoor = process.env.MOS_V2_FRONT_DOOR || 'ssh-bootstrap',
-  homeHost = process.env.MOS_V2_HOME_HOST || 'home.localhost',
-  homepageUpstream = process.env.MOS_V2_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
-  labResetEnabled = process.env.MOS_V2_LAB_RESET_ENABLED === '1',
+  frontDoor = process.env.MOS_FRONT_DOOR || 'ssh-bootstrap',
+  homeHost = process.env.MOS_HOME_HOST || 'home.localhost',
+  homepageUpstream = process.env.MOS_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
+  labResetEnabled = process.env.MOS_LAB_RESET_ENABLED === '1',
   loginThrottle = new LoginThrottle(),
   securityLogger = (event) => console.warn(JSON.stringify(event)),
   securityEventRecorder = null,
-  ownerClaimToken = process.env.MOS_V2_OWNER_CLAIM_TOKEN || '',
+  ownerClaimToken = process.env.MOS_OWNER_CLAIM_TOKEN || '',
   stateDir = path.join(process.cwd(), '.state'),
   officialCatalog = null,
   externalSources = null,
@@ -344,10 +344,10 @@ function createV2Server({
   // downloads allow six, which is what the cap exists to prevent.
   const appOperationLimiter = new AppOperationLimiter();
   const catalogService = officialCatalog || new OfficialCatalogService({
-    branch: process.env.MOS_V2_APP_CATALOG_BRANCH || 'main',
+    branch: process.env.MOS_APP_CATALOG_BRANCH || 'main',
     limiter: appOperationLimiter,
     recordSecurityEvent,
-    repository: process.env.MOS_V2_APP_CATALOG_REPOSITORY || 'https://github.com/rpuls/my-own-suite',
+    repository: process.env.MOS_APP_CATALOG_REPOSITORY || 'https://github.com/rpuls/my-own-suite',
     // Read from the installed release, never from the network the catalog comes
     // over: a key fetched from whoever served the catalog would only prove they
     // are consistent with themselves.
@@ -379,7 +379,7 @@ function createV2Server({
   // builds names the address the app actually serves rather than its package id.
   const appHostFor = (packageId) => appPackages.publicRouteHostFor(packageId);
   const externalSourceService = externalSources || new ExternalSourceService({
-    allowLocalSources: process.env.MOS_V2_ALLOW_LOCAL_APP_SOURCES === '1',
+    allowLocalSources: process.env.MOS_ALLOW_LOCAL_APP_SOURCES === '1',
     appPackages,
     client: externalSourceClient,
     officialPackageIds,
@@ -668,7 +668,7 @@ function createV2Server({
           jsonResponse(response, 404, { error: 'Backup bundle is no longer available.' });
           return;
         }
-        downloadResponse(response, backup.archivePath, `${backup.id || 'mos-v2-backup'}.tar.gz`);
+        downloadResponse(response, backup.archivePath, `${backup.id || 'mos-backup'}.tar.gz`);
         return;
       }
 
@@ -1062,5 +1062,5 @@ function createV2Server({
 
 module.exports = {
   SESSION_COOKIE,
-  createV2Server,
+  createMOSServer,
 };

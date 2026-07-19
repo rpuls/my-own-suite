@@ -32,7 +32,7 @@ test('transaction restarts Homepage and reloads Caddy only when their outputs ch
   const result = await value.adapter.applyTransaction({
     caddyRoutes: 'new routes\n', files: { 'services.template.yaml': 'new template\n', 'services.yaml': 'new projection\n' }, restartHomepage: true,
   });
-  assert.deepEqual(value.calls, ['validate', 'restart-mos-v2-homepage.service', 'reload-caddy.service']);
+  assert.deepEqual(value.calls, ['validate', 'restart-mos-homepage.service', 'reload-caddy.service']);
   assert.deepEqual(value.invocations[0].args.slice(0, 3), ['validate', '--adapter', 'caddyfile']);
   assert.equal(value.invocations[1].options.timeoutMs, HOMEPAGE_RESTART_TIMEOUT_MS);
   assert.ok(HOMEPAGE_RESTART_TIMEOUT_MS > 30_000, 'restart budget must exceed the observed rollback deadline');
@@ -47,7 +47,7 @@ test('transaction restarts Homepage and reloads Caddy only when their outputs ch
 
 for (const [failure, errorCode] of [
   ['validate', 'HOMEPAGE_CADDY_VALIDATION_FAILED'],
-  ['restart-mos-v2-homepage.service', 'HOMEPAGE_RESTART_FAILED'],
+  ['restart-mos-homepage.service', 'HOMEPAGE_RESTART_FAILED'],
   ['reload-caddy.service', 'HOMEPAGE_CADDY_RELOAD_FAILED'],
 ]) {
   test(`transaction restores Homepage and Caddy after ${failure} failure`, async () => {

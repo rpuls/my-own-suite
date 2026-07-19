@@ -9,7 +9,7 @@ const { digestAppPackage } = require('../../suite-manager/backend/src/apps/packa
 const { DISPLACED_INSTALLED_DIR, HEALTH_REFRESH_TIMEOUT_MS, SystemAppAdapter, removeAppRouteBlock, upsertAppRouteBlock } = require('./system-adapter.cjs');
 
 async function tempDir() {
-  return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-v2-app-agent-'));
+  return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-app-agent-'));
 }
 
 async function writePackage(root, packageId = 'example-tool') {
@@ -267,7 +267,7 @@ test('system adapter builds, runs, health-checks, writes routes, and reloads Cad
     caddyRoutes: 'http://example-tool.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n',
     dockerfile: 'Dockerfile',
     healthTarget: 'http://127.0.0.1:18123/health',
-    imageTag: 'mos-v2-app-example-tool:0.1.0',
+    imageTag: 'mos-app-example-tool:0.1.0',
     instanceId,
     environment: { SERVER_HOST: 'http://example-tool.mos.home/' },
     internalPort: 3000,
@@ -282,16 +282,16 @@ test('system adapter builds, runs, health-checks, writes routes, and reloads Cad
   assert.deepEqual(result.steps, ['built', 'started', 'healthy', 'route-written', 'caddy-reloaded']);
   assert.deepEqual(commands.map((command) => command.file), ['docker', 'docker', 'docker', 'health', 'caddy', '/usr/bin/systemctl']);
   assert.equal(commands[0].cwd, packageDir);
-  assert.ok(commands[0].args.includes('mos-v2.package-version=0.1.0'));
-  assert.ok(commands[0].args.includes(`mos-v2.package-digest=${packageDigest}`));
-  assert.ok(commands[0].args.includes('mos-v2.source-revision=0123456789abcdef0123456789abcdef01234567'));
-  assert.deepEqual(commands[2].args.slice(0, 8), ['run', '--detach', '--name', 'mos-v2-app-example-tool', '--restart', 'unless-stopped', '--publish', '127.0.0.1:18123:3000']);
+  assert.ok(commands[0].args.includes('mos.package-version=0.1.0'));
+  assert.ok(commands[0].args.includes(`mos.package-digest=${packageDigest}`));
+  assert.ok(commands[0].args.includes('mos.source-revision=0123456789abcdef0123456789abcdef01234567'));
+  assert.deepEqual(commands[2].args.slice(0, 8), ['run', '--detach', '--name', 'mos-app-example-tool', '--restart', 'unless-stopped', '--publish', '127.0.0.1:18123:3000']);
   assert.ok(commands[2].args.includes('SERVER_HOST=http://example-tool.mos.home/'));
-  assert.ok(commands[2].args.includes('mos-v2.package-version=0.1.0'));
-  assert.ok(commands[2].args.includes(`mos-v2.package-digest=${packageDigest}`));
-  assert.ok(commands[2].args.includes('mos-v2.source-revision=0123456789abcdef0123456789abcdef01234567'));
-  assert.ok(commands[2].args.includes('mos-v2-app-example-tool-configs:/configs'));
-  assert.match(await fsp.readFile(routesPath, 'utf8'), /mos-v2-app-route:start example-tool/u);
+  assert.ok(commands[2].args.includes('mos.package-version=0.1.0'));
+  assert.ok(commands[2].args.includes(`mos.package-digest=${packageDigest}`));
+  assert.ok(commands[2].args.includes('mos.source-revision=0123456789abcdef0123456789abcdef01234567'));
+  assert.ok(commands[2].args.includes('mos-app-example-tool-configs:/configs'));
+  assert.match(await fsp.readFile(routesPath, 'utf8'), /mos-app-route:start example-tool/u);
   assert.match(await fsp.readFile(routesPath, 'utf8'), /reverse_proxy http:\/\/127\.0\.0\.1:18123/u);
 });
 
@@ -330,7 +330,7 @@ test('system adapter applies runtime for an external app under its namespaced id
     dockerfile: 'Dockerfile',
     environment: {},
     healthTarget: 'http://127.0.0.1:18124/health',
-    imageTag: `mos-v2-app-${packageId}:0.1.0`,
+    imageTag: `mos-app-${packageId}:0.1.0`,
     instanceId,
     internalPort: 3000,
     loopbackPort: 18124,
@@ -343,8 +343,8 @@ test('system adapter applies runtime for an external app under its namespaced id
   const result = await adapter.applyAppService(request);
 
   assert.deepEqual(result.steps, ['built', 'started', 'healthy', 'route-written', 'caddy-reloaded']);
-  assert.deepEqual(commands[2].args.slice(0, 4), ['run', '--detach', '--name', `mos-v2-app-${packageId}`]);
-  assert.match(await fsp.readFile(routesPath, 'utf8'), new RegExp(`mos-v2-app-route:start ${packageId}`, 'u'));
+  assert.deepEqual(commands[2].args.slice(0, 4), ['run', '--detach', '--name', `mos-app-${packageId}`]);
+  assert.match(await fsp.readFile(routesPath, 'utf8'), new RegExp(`mos-app-route:start ${packageId}`, 'u'));
 
   // The identity check still refuses a snapshot that is not the package the
   // namespaced id claims to manage.
@@ -355,11 +355,11 @@ test('system adapter applies runtime for an external app under its namespaced id
 });
 
 test('route updates replace only the matching package block', () => {
-  const existing = `# mos-v2-app-route:start first-app
+  const existing = `# mos-app-route:start first-app
 http://first-app.mos.home {
   reverse_proxy http://127.0.0.1:18101
 }
-# mos-v2-app-route:end first-app
+# mos-app-route:end first-app
 `;
 
   const next = upsertAppRouteBlock(existing, {
@@ -370,30 +370,30 @@ http://first-app.mos.home {
     packageId: 'second-app',
   });
 
-  assert.match(next, /mos-v2-app-route:start first-app/u);
-  assert.match(next, /mos-v2-app-route:start second-app/u);
+  assert.match(next, /mos-app-route:start first-app/u);
+  assert.match(next, /mos-app-route:start second-app/u);
   assert.match(next, /127\.0\.0\.1:18101/u);
   assert.match(next, /127\.0\.0\.1:18102/u);
 });
 
 test('route removal deletes only the matching package block', () => {
-  const existing = `# mos-v2-app-route:start first-app
+  const existing = `# mos-app-route:start first-app
 http://first-app.mos.home {
   reverse_proxy http://127.0.0.1:18101
 }
-# mos-v2-app-route:end first-app
+# mos-app-route:end first-app
 
-# mos-v2-app-route:start second-app
+# mos-app-route:start second-app
 http://second-app.mos.home {
   reverse_proxy http://127.0.0.1:18102
 }
-# mos-v2-app-route:end second-app
+# mos-app-route:end second-app
 `;
 
   const next = removeAppRouteBlock(existing, 'second-app');
 
-  assert.match(next, /mos-v2-app-route:start first-app/u);
-  assert.doesNotMatch(next, /mos-v2-app-route:start second-app/u);
+  assert.match(next, /mos-app-route:start first-app/u);
+  assert.doesNotMatch(next, /mos-app-route:start second-app/u);
   assert.match(next, /127\.0\.0\.1:18101/u);
   assert.doesNotMatch(next, /127\.0\.0\.1:18102/u);
 });
@@ -402,17 +402,17 @@ test('system adapter removes runtime, app route, and app volumes on uninstall', 
   const root = await tempDir();
   const routesPath = path.join(root, 'routes.caddy');
   const commands = [];
-  await fsp.writeFile(routesPath, `# mos-v2-app-route:start first-app
+  await fsp.writeFile(routesPath, `# mos-app-route:start first-app
 http://first-app.mos.home {
   reverse_proxy http://127.0.0.1:18101
 }
-# mos-v2-app-route:end first-app
+# mos-app-route:end first-app
 
-# mos-v2-app-route:start second-app
+# mos-app-route:start second-app
 http://second-app.mos.home {
   reverse_proxy http://127.0.0.1:18102
 }
-# mos-v2-app-route:end second-app
+# mos-app-route:end second-app
 `);
 
   const adapter = new SystemAppAdapter({
@@ -428,12 +428,12 @@ http://second-app.mos.home {
 
   assert.deepEqual(result.steps, ['stopped', 'volumes-removed', 'route-removed', 'caddy-reloaded']);
   assert.deepEqual(commands.map((command) => [command.file, command.args.slice(0, 3)]), [
-    ['docker', ['rm', '-f', 'mos-v2-app-second-app']],
-    ['docker', ['network', 'rm', 'mos-v2-app-second-app']],
-    ['docker', ['volume', 'inspect', 'mos-v2-app-second-app-data']],
-    ['docker', ['volume', 'rm', 'mos-v2-app-second-app-data']],
-    ['docker', ['volume', 'inspect', 'mos-v2-app-second-app-cache']],
-    ['docker', ['volume', 'rm', 'mos-v2-app-second-app-cache']],
+    ['docker', ['rm', '-f', 'mos-app-second-app']],
+    ['docker', ['network', 'rm', 'mos-app-second-app']],
+    ['docker', ['volume', 'inspect', 'mos-app-second-app-data']],
+    ['docker', ['volume', 'rm', 'mos-app-second-app-data']],
+    ['docker', ['volume', 'inspect', 'mos-app-second-app-cache']],
+    ['docker', ['volume', 'rm', 'mos-app-second-app-cache']],
     ['caddy', ['validate', '--adapter', 'caddyfile']],
     ['/usr/bin/systemctl', ['reload', 'caddy.service']],
   ]);
@@ -447,11 +447,11 @@ test('system adapter stops runtime without removing app routes or volumes', asyn
   const root = await tempDir();
   const routesPath = path.join(root, 'routes.caddy');
   const commands = [];
-  await fsp.writeFile(routesPath, `# mos-v2-app-route:start second-app
+  await fsp.writeFile(routesPath, `# mos-app-route:start second-app
 http://second-app.mos.home {
   reverse_proxy http://127.0.0.1:18102
 }
-# mos-v2-app-route:end second-app
+# mos-app-route:end second-app
 `);
 
   const adapter = new SystemAppAdapter({
@@ -466,12 +466,12 @@ http://second-app.mos.home {
 
   assert.deepEqual(result.steps, ['stopped']);
   assert.deepEqual(commands.map((command) => command.args), [
-    ['rm', '-f', 'mos-v2-app-second-app'],
-    ['rm', '-f', 'mos-v2-app-second-app-web'],
-    ['network', 'rm', 'mos-v2-app-second-app'],
+    ['rm', '-f', 'mos-app-second-app'],
+    ['rm', '-f', 'mos-app-second-app-web'],
+    ['network', 'rm', 'mos-app-second-app'],
   ]);
   assert.equal(commands.some((command) => command.args.includes('volume') || command.args.includes('rmi')), false);
-  assert.match(await fsp.readFile(routesPath, 'utf8'), /mos-v2-app-route:start second-app/u);
+  assert.match(await fsp.readFile(routesPath, 'utf8'), /mos-app-route:start second-app/u);
 });
 
 test('system adapter runs multi-service packages on a private package network', async () => {
@@ -513,7 +513,7 @@ test('system adapter runs multi-service packages on a private package network', 
         dockerfile: 'Dockerfile.mysql',
         environment: { MYSQL_ROOT_PASSWORD: 'root-secret' },
         id: 'seafile-mysql',
-        imageTag: 'mos-v2-app-seafile-seafile-mysql:0.1.0',
+        imageTag: 'mos-app-seafile-seafile-mysql:0.1.0',
         internalPort: 3306,
         loopbackPort: 18124,
         public: false,
@@ -523,7 +523,7 @@ test('system adapter runs multi-service packages on a private package network', 
         dockerfile: 'Dockerfile',
         environment: { SEAFILE_SERVER_HOSTNAME: 'seafile.mos.home' },
         id: 'seafile',
-        imageTag: 'mos-v2-app-seafile-seafile:0.1.0',
+        imageTag: 'mos-app-seafile-seafile:0.1.0',
         internalPort: 80,
         loopbackPort: 18123,
         public: true,
@@ -533,12 +533,12 @@ test('system adapter runs multi-service packages on a private package network', 
   });
 
   const dockerRuns = commands.filter((command) => command.file === 'docker' && command.args[0] === 'run');
-  assert.equal(commands.some((command) => command.file === 'docker' && command.args.join(' ') === 'network create mos-v2-app-seafile'), true);
+  assert.equal(commands.some((command) => command.file === 'docker' && command.args.join(' ') === 'network create mos-app-seafile'), true);
   assert.equal(dockerRuns.length, 2);
   assert.ok(dockerRuns[0].args.includes('--network-alias'));
   assert.equal(dockerRuns[0].args.includes('--publish'), false);
   assert.ok(dockerRuns[1].args.includes('127.0.0.1:18123:80'));
-  assert.ok(dockerRuns[1].args.includes('mos-v2-app-seafile-data:/shared'));
+  assert.ok(dockerRuns[1].args.includes('mos-app-seafile-data:/shared'));
 });
 
 test('system adapter builds an identity-bound update candidate without touching runtime state', async () => {
@@ -615,7 +615,7 @@ test('system adapter restores the installed runtime when an update candidate fai
   assert.equal(runs[0].args.at(-1), 'candidate:test');
   assert.equal(runs[1].args.at(-1), 'installed:test');
   assert.equal(healthCalls, 2);
-  assert.ok(runs.every((command) => command.args.includes('mos-v2-app-example-tool-data:/data')));
+  assert.ok(runs.every((command) => command.args.includes('mos-app-example-tool-data:/data')));
 });
 
 test('system adapter promotes a verified snapshot and retains only one rollback-safe previous snapshot', async () => {
@@ -713,8 +713,8 @@ test('system adapter reclaims the images of a package no snapshot refers to any 
   // Every service of the outgoing package, and nothing belonging to the
   // candidate that now serves traffic.
   assert.deepEqual(removedImages(commands).sort(), [
-    `mos-v2-app-example-tool-app:1.0.0-pkg-${fragment(installedDigest)}-src-${fragment(revision)}`,
-    `mos-v2-app-example-tool-db:1.0.0-pkg-${fragment(installedDigest)}-src-${fragment(revision)}`,
+    `mos-app-example-tool-app:1.0.0-pkg-${fragment(installedDigest)}-src-${fragment(revision)}`,
+    `mos-app-example-tool-db:1.0.0-pkg-${fragment(installedDigest)}-src-${fragment(revision)}`,
   ].sort());
   assert.equal(removedImages(commands).some((tag) => tag.includes(fragment(candidateDigest))), false);
 });
@@ -740,7 +740,7 @@ test('a rollback-safe update keeps its predecessor images and reclaims the gener
   const root = await tempDir();
   const commands = [];
   const instanceId = '12345678-1234-4123-8123-123456789abc';
-  const evicted = `mos-v2-app-example-tool-app:0.9.0-pkg-${'9'.repeat(12)}-src-${'8'.repeat(12)}`;
+  const evicted = `mos-app-example-tool-app:0.9.0-pkg-${'9'.repeat(12)}-src-${'8'.repeat(12)}`;
   const { candidateDigest, installedDigest, instanceRoot } = await updatableInstance(root, { instanceId, previousImageTags: [evicted] });
   const adapter = new SystemAppAdapter({ appPackageRoot: path.join(root, 'packages'), dockerBinary: 'docker', async execute(file, args) { commands.push({ args, file }); } });
   const revision = 'c'.repeat(40);
@@ -752,8 +752,8 @@ test('a rollback-safe update keeps its predecessor images and reclaims the gener
   const fragment = (value) => value.replace(/^sha256:/u, '').slice(0, 12);
   const recorded = JSON.parse(await fsp.readFile(path.join(instanceRoot, 'previous-images.json'), 'utf8'));
   assert.deepEqual(recorded.imageTags, [
-    `mos-v2-app-example-tool-app:1.0.0-pkg-${fragment(installedDigest)}-src-${fragment(revision)}`,
-    `mos-v2-app-example-tool-db:1.0.0-pkg-${fragment(installedDigest)}-src-${fragment(revision)}`,
+    `mos-app-example-tool-app:1.0.0-pkg-${fragment(installedDigest)}-src-${fragment(revision)}`,
+    `mos-app-example-tool-db:1.0.0-pkg-${fragment(installedDigest)}-src-${fragment(revision)}`,
   ]);
 });
 
@@ -775,10 +775,10 @@ test('a tampered retained-image record cannot reclaim images outside the package
   const root = await tempDir();
   const commands = [];
   const instanceId = '12345678-1234-4123-8123-123456789abc';
-  const mine = `mos-v2-app-example-tool-app:0.9.0-pkg-${'9'.repeat(12)}-src-${'8'.repeat(12)}`;
+  const mine = `mos-app-example-tool-app:0.9.0-pkg-${'9'.repeat(12)}-src-${'8'.repeat(12)}`;
   const { candidateDigest, installedDigest } = await updatableInstance(root, {
     instanceId,
-    previousImageTags: ['postgres:16', 'mos-v2-suite-manager:latest', '--force', mine],
+    previousImageTags: ['postgres:16', 'mos-suite-manager:latest', '--force', mine],
   });
   const adapter = new SystemAppAdapter({ appPackageRoot: path.join(root, 'packages'), dockerBinary: 'docker', async execute(file, args) { commands.push({ args, file }); } });
   await adapter.promoteAppPackageUpdate({ candidateDigest, expectedInstalledDigest: installedDigest, installedSourceRevision: 'c'.repeat(40), instanceId, packageId: 'example-tool', rollbackSafe: true });
@@ -797,8 +797,8 @@ test('a rolled-back update reclaims the images of the candidate it abandoned', a
     await fsp.writeFile(path.join(directory, 'manifest.json'), `${JSON.stringify({ id: 'example-tool', packageFiles: [], version })}\n`);
   }
   const commands = [];
-  const candidateImage = `mos-v2-app-example-tool-web:2.0.0-pkg-${'a'.repeat(12)}-src-${'b'.repeat(12)}`;
-  const installedImage = `mos-v2-app-example-tool-web:1.0.0-pkg-${'c'.repeat(12)}-src-${'d'.repeat(12)}`;
+  const candidateImage = `mos-app-example-tool-web:2.0.0-pkg-${'a'.repeat(12)}-src-${'b'.repeat(12)}`;
+  const installedImage = `mos-app-example-tool-web:1.0.0-pkg-${'c'.repeat(12)}-src-${'d'.repeat(12)}`;
   const runtime = (directory, imageTag, version) => ({
     caddyRoutes: 'http://example-tool.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n',
     healthTarget: `http://127.0.0.1:18123/${version}`,
@@ -829,17 +829,17 @@ test('a rolled-back update reclaims the images of the candidate it abandoned', a
 });
 
 const fragment = (value) => String(value).replace(/^sha256:/u, '').slice(0, 12);
-const imageFor = (serviceId, packageDigest, revision) => `mos-v2-app-example-tool-${serviceId}:1.0.0-pkg-${fragment(packageDigest)}-src-${fragment(revision)}`;
+const imageFor = (serviceId, packageDigest, revision) => `mos-app-example-tool-${serviceId}:1.0.0-pkg-${fragment(packageDigest)}-src-${fragment(revision)}`;
 
 // An app being uninstalled: its installed snapshot on disk, a route to drop, and
 // an agent that records what it asked docker to do.
 async function uninstallableInstance(root, { instanceId, previousImageTags = null } = {}) {
   const routesPath = path.join(root, 'routes.caddy');
-  await fsp.writeFile(routesPath, `# mos-v2-app-route:start example-tool
+  await fsp.writeFile(routesPath, `# mos-app-route:start example-tool
 http://example-tool.mos.home {
   reverse_proxy http://127.0.0.1:18123
 }
-# mos-v2-app-route:end example-tool
+# mos-app-route:end example-tool
 `);
   const commands = [];
   const { installedDigest, instanceRoot } = await updatableInstance(root, { instanceId, previousImageTags });
@@ -873,7 +873,7 @@ test('an uninstall reclaims the generation its app kept for rollback', async () 
   const root = await tempDir();
   const instanceId = '12345678-1234-4123-8123-123456789abc';
   const revision = 'e'.repeat(40);
-  const retained = `mos-v2-app-example-tool-app:0.9.0-pkg-${'a'.repeat(12)}-src-${'b'.repeat(12)}`;
+  const retained = `mos-app-example-tool-app:0.9.0-pkg-${'a'.repeat(12)}-src-${'b'.repeat(12)}`;
   const { adapter, commands, installedDigest } = await uninstallableInstance(root, { instanceId, previousImageTags: [retained] });
 
   const result = await adapter.removeAppService({ installedSourceRevision: revision, instanceId, packageId: 'example-tool', serviceIds: ['app', 'db'] });
@@ -901,7 +901,7 @@ test('an uninstall from a Suite Manager that cannot name the snapshot still unin
 test('an uninstall never reclaims images for a package its snapshot is not', async () => {
   const root = await tempDir();
   const instanceId = '12345678-1234-4123-8123-123456789abc';
-  const retained = `mos-v2-app-other-app-app:0.9.0-pkg-${'a'.repeat(12)}-src-${'b'.repeat(12)}`;
+  const retained = `mos-app-other-app-app:0.9.0-pkg-${'a'.repeat(12)}-src-${'b'.repeat(12)}`;
   const { adapter, commands, instanceRoot } = await uninstallableInstance(root, { instanceId, previousImageTags: [retained] });
 
   const result = await adapter.removeAppService({ installedSourceRevision: 'e'.repeat(40), instanceId, packageId: 'other-app', serviceIds: ['app'] });
@@ -966,8 +966,8 @@ test('system adapter connects a provider container to a consumer package network
 
   assert.deepEqual(result.steps, ['network-connected']);
   assert.deepEqual(commands.map((command) => command.args), [
-    ['network', 'inspect', 'mos-v2-app-seafile'],
-    ['network', 'disconnect', 'mos-v2-app-seafile', 'mos-v2-app-onlyoffice'],
-    ['network', 'connect', '--alias', 'onlyoffice', 'mos-v2-app-seafile', 'mos-v2-app-onlyoffice'],
+    ['network', 'inspect', 'mos-app-seafile'],
+    ['network', 'disconnect', 'mos-app-seafile', 'mos-app-onlyoffice'],
+    ['network', 'connect', '--alias', 'onlyoffice', 'mos-app-seafile', 'mos-app-onlyoffice'],
   ]);
 });

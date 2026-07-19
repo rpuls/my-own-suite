@@ -6,35 +6,35 @@ For documentation ownership rules, see [docs/README.md](./README.md).
 
 ## 2026-07-11: Post-Cutover Repo Hygiene And Public Site Continuity
 
-Decision: `AGENTS.md` is the single tool-agnostic agent instruction file; `CLAUDE.md` exists only as a loader pointer for Claude Code, and tool-specific rule folders (`.codex/`, `.agents/`, `.clinerules/`) are removed. The deployed public site keeps building from the preserved MOS1 source: `site-mos1-reference/` embeds frozen MOS1 technical reference copies under `src/reference/` (taken from `archive/mos1-main-snapshot`) instead of reading live `apps/` packages, root `npm run build` builds it, and Cloudflare Pages output is `site-mos1-reference/dist`. Release metadata guardrails (`npm run release:check`) cover root `VERSION` and `releases/stable.json` only until MOS2 gains stable release-track managed updates.
+Decision: `AGENTS.md` is the single tool-agnostic agent instruction file; `CLAUDE.md` exists only as a loader pointer for Claude Code, and tool-specific rule folders (`.codex/`, `.agents/`, `.clinerules/`) are removed. The deployed public site keeps building from the preserved MOS1 source: `site-mos1-reference/` embeds frozen MOS1 technical reference copies under `src/reference/` (taken from `archive/mos1-main-snapshot`) instead of reading live `apps/` packages, root `npm run build` builds it, and Cloudflare Pages output is `site-mos1-reference/dist`. Release metadata guardrails (`npm run release:check`) cover root `VERSION` and `releases/stable.json` only until MOS gains stable release-track managed updates.
 
-Reason: The cutover left agent rules split across tool-specific folders, silently broke the public site build by making MOS1 docs import MOS2 package READMEs (or removed paths), and dropped the `hooks:install`/`release:check` guardrails that root docs still referenced. The public site documents the latest published release, which is still MOS1, so it must stay buildable and deployable without depending on removed MOS1 runtime paths.
+Reason: The cutover left agent rules split across tool-specific folders, silently broke the public site build by making MOS1 docs import MOS package READMEs (or removed paths), and dropped the `hooks:install`/`release:check` guardrails that root docs still referenced. The public site documents the latest published release, which is still MOS1, so it must stay buildable and deployable without depending on removed MOS1 runtime paths.
 
 Consequences:
 
 - New hard agent rules go to `AGENTS.md`; durable working context goes to `docs/codex-notes.md`; no new tool-specific rule folders.
-- The MOS1 site is content-frozen: factual fixes only, no new product docs; the MOS2 public site rebuild happens under `site/`.
-- CI runs the MOS2 workspace checks, the release metadata check, and the preserved public site build; paid/destructive smoke and full E2E remain human-run.
-- A Suite Manager release metadata file returns, with `release:check` coverage, when MOS2 stable-track managed updates land.
+- The MOS1 site is content-frozen: factual fixes only, no new product docs; the MOS public site rebuild happens under `site/`.
+- CI runs the MOS workspace checks, the release metadata check, and the preserved public site build; paid/destructive smoke and full E2E remain human-run.
+- A Suite Manager release metadata file returns, with `release:check` coverage, when MOS stable-track managed updates land.
 
-## 2026-07-10: MOS2 Replaces MOS1 As The Default Repository Layout
+## 2026-07-10: MOS Replaces MOS1 As The Default Repository Layout
 
-Decision: MOS2 is the default root layout. The former `version-2/` workspace has moved to root-level `suite-manager/`, `apps/`, `system-agents/`, `infrastructure/`, `scripts/`, `shared/`, and `test/` paths. The old MOS1 root shape is preserved on `archive/mos1-main-snapshot`; the old public site source remains in `site-mos1-reference/` only as reference while the MOS2 public site/docs are rebuilt later.
+Decision: MOS is the default root layout. The former isolated workspace has moved to root-level `suite-manager/`, `apps/`, `system-agents/`, `infrastructure/`, `scripts/`, `shared/`, and `test/` paths. The old MOS1 root shape is preserved on `archive/mos1-main-snapshot`; the old public site source remains in `site-mos1-reference/` only as reference while the MOS public site/docs are rebuilt later.
 
-Reason: MOS2 is now validated enough to replace the isolated lab shape, and there are no external MOS1 users whose migration blocks the repo default. Keeping MOS2 under `version-2/` would make installers, managed updates, docs, package paths, and contributor behavior keep carrying a temporary architecture.
+Reason: MOS is now validated enough to replace the isolated lab shape, and there are no external MOS1 users whose migration blocks the repo default. Keeping MOS in a nested workspace would make installers, managed updates, docs, package paths, and contributor behavior keep carrying a temporary architecture.
 
 Consequences:
 
-- New development should target the root MOS2 layout and `staging` integration branch.
-- Installed bootstrap/update/reconciliation paths use `/opt/mos-v2/repo/...`, not `/opt/mos-v2/repo/version-2/...`.
+- New development should target the root MOS layout and `staging` integration branch.
+- Installed bootstrap/update/reconciliation paths use `/opt/mos/repo/...`.
 - App runtime build contexts use `apps/<app-id>`.
-- Root npm commands such as `npm test`, `npm run build:client`, and `npm run install:render` replace `npm --prefix version-2 ...`.
+- Root npm commands such as `npm test`, `npm run build:client`, and `npm run install:render` operate directly on the active workspace.
 - MOS1 runtime code is not kept in the active root layout; use the archive branch for recovery or reference.
 - Public landing page and end-user docs cleanup is deliberately deferred from the functional cutover.
 
-## 2026-07-08: V2 Homepage URL Reconciliation Is Metadata-Scoped
+## 2026-07-08: MOS Homepage URL Reconciliation Is Metadata-Scoped
 
-Decision: V2 Homepage URL reconciliation is driven by MOS metadata, not by blind URL search/replace. Plain user-authored links remain untouched. MOS catalog app tiles are updated only when their stable Homepage entry ID matches an installed app instance. Non-catalog LAN/home-service tiles are updated only when they carry structured `mos.proxy` metadata, which regenerates the public URL and Caddy route from the current domain state.
+Decision: MOS Homepage URL reconciliation is driven by MOS metadata, not by blind URL search/replace. Plain user-authored links remain untouched. MOS catalog app tiles are updated only when their stable Homepage entry ID matches an installed app instance. Non-catalog LAN/home-service tiles are updated only when they carry structured `mos.proxy` metadata, which regenerates the public URL and Caddy route from the current domain state.
 
 Reason: Homepage can intentionally contain unrelated internet shortcuts, MOS-owned app package shortcuts, and user-managed LAN apps exposed through MOS HTTPS. DNS/domain changes should repair the two MOS-managed classes without corrupting arbitrary links that happen to use old domains or HTTP.
 
@@ -45,9 +45,9 @@ Consequences:
 - Catalog app widget URLs follow the app's current public URL when the tile is MOS-owned by app instance ID.
 - Home-service proxy routes follow `mos.proxy` metadata and current domain state; the source Homepage template remains the user-facing ownership document.
 
-## 2026-07-04: V2 App Integrations Use Capability Relationships
+## 2026-07-04: MOS App Integrations Use Capability Relationships
 
-Decision: V2 models optional app-to-app integrations as capability relationships between independently installable packages. A provider package exports a capability, a consumer package imports a compatible capability, and Suite Manager records an explicit relationship with its own lifecycle, projections, and redacted secret grants. ONLYOFFICE is an independent document-editor provider; Seafile is one compatible document-platform consumer, not the parent package.
+Decision: MOS models optional app-to-app integrations as capability relationships between independently installable packages. A provider package exports a capability, a consumer package imports a compatible capability, and Suite Manager records an explicit relationship with its own lifecycle, projections, and redacted secret grants. ONLYOFFICE is an independent document-editor provider; Seafile is one compatible document-platform consumer, not the parent package.
 
 Reason: Seafile plus ONLYOFFICE is the first concrete case, but the architecture should also fit future file platforms, SSO providers, SMTP providers, object storage, backup targets, databases, caches, and media helpers. Bundling ONLYOFFICE into Seafile would make Seafile heavier and would hardcode one app pair into the product model.
 
@@ -61,11 +61,11 @@ Consequences:
 - Capability-provider and companion packages may omit Homepage contributions; Suite Manager should present them as integration services rather than ordinary app destinations.
 - Complex pair-specific glue may be introduced later only through a reviewed package-owned contract, not arbitrary frontend code or broad shell hooks.
 
-## 2026-07-05: V2 Managed Updates Use A Narrow Host Agent And Reconciliation Script
+## 2026-07-05: MOS Managed Updates Use A Narrow Host Agent And Reconciliation Script
 
-Decision: V2 managed updates are requested from Suite Manager but applied by a root-owned `mos-v2-update-agent` over a local Unix socket. The first supported apply path is branch-track updates for V2 lab and Hyper-V validation. The update worker fetches and fast-forwards the configured branch, installs V2 dependencies, rebuilds Suite Manager frontend assets, and runs `version-2/scripts/reconcile-system.cjs` to refresh repo-owned systemd units, host agents, Caddy override/binary wiring, socket directories, and control-plane service restarts.
+Decision: MOS managed updates are requested from Suite Manager but applied by a root-owned `mos-update-agent` over a local Unix socket. The first supported apply path is branch-track updates for MOS lab and Hyper-V validation. The update worker fetches and fast-forwards the configured branch, installs MOS dependencies, rebuilds Suite Manager frontend assets, and runs `scripts/reconcile-system.cjs` to refresh repo-owned systemd units, host agents, Caddy override/binary wiring, socket directories, and control-plane service restarts.
 
-Reason: This preserves the successful V1 model where the web app communicates intent while a host-owned updater applies infrastructure changes. V2 has more separated agents than V1, so the refresh path must reconcile all repo-owned host services instead of only recreating a Compose stack.
+Reason: This preserves the successful V1 model where the web app communicates intent while a host-owned updater applies infrastructure changes. MOS has more separated agents than V1, so the refresh path must reconcile all repo-owned host services instead of only recreating a Compose stack.
 
 Consequences:
 
@@ -73,13 +73,13 @@ Consequences:
 - The update agent API stays narrow: status, start update job, read job state, and configure track.
 - The update result may report core reconciliation success while installed app runtimes are preserved and marked for manual reapply/restart after package Dockerfile or manifest changes.
 - A later updater slice should add package-aware runtime reconciliation so changed installed app packages can be rebuilt/reapplied automatically without weakening app data that still belongs to installed or stopped apps.
-- Stable release-track polish can reuse the same agent boundary, but branch-track updates remain the practical validation path until V2 release metadata is finalized.
+- Stable release-track polish can reuse the same agent boundary, but branch-track updates remain the practical validation path until MOS release metadata is finalized.
 
-## 2026-07-03: V2 App Packages Own Runtime Shape And Lifecycle
+## 2026-07-03: MOS App Packages Own Runtime Shape And Lifecycle
 
-Decision: V2 app packages are self-contained folders under `version-2/apps/<app-id>/` that declare metadata, setup fields, services, routes, Homepage projections, health checks, widgets, onboarding, and capabilities. Suite Manager persists app instance/config/projection/operation state in SQLite and asks a narrow app agent to apply Docker, Caddy, and health changes. Runtime state supports health refresh, disable, re-enable, restart, and destructive uninstall.
+Decision: MOS app packages are self-contained folders under `apps/<app-id>/` that declare metadata, setup fields, services, routes, Homepage projections, health checks, widgets, onboarding, and capabilities. Suite Manager persists app instance/config/projection/operation state in SQLite and asks a narrow app agent to apply Docker, Caddy, and health changes. Runtime state supports health refresh, disable, re-enable, restart, and destructive uninstall.
 
-Reason: V1 scattered app-specific behavior across Compose files, env generation, Caddy generation, onboarding, doctor scripts, and Suite Manager UI. V2 needs adding an app to mostly mean adding a package folder, while keeping privileged host actions out of the web process.
+Reason: V1 scattered app-specific behavior across Compose files, env generation, Caddy generation, onboarding, doctor scripts, and Suite Manager UI. MOS needs adding an app to mostly mean adding a package folder, while keeping privileged host actions out of the web process.
 
 Consequences:
 
@@ -91,9 +91,9 @@ Consequences:
 - Uninstall is the destructive removal action: it removes runtime containers, package routes, MOS-owned Homepage shortcuts, package Docker volumes, Suite Manager app instance/config/projection state, app secrets, and app integration rows so the catalog returns to a fresh installable state.
 - If MOS later needs an archive-data workflow, it should be a separately named action instead of overloading uninstall.
 
-## 2026-07-02: V2 App Setup Guides Are Declarative And App-Scoped
+## 2026-07-02: MOS App Setup Guides Are Declarative And App-Scoped
 
-Decision: V2 app packages may declare post-install setup guides in their manifest `onboarding` metadata. Suite Manager renders those guides generically from declarative sections such as copyable non-secret values, notes/warnings, device/client choice guides, ordered steps, and manual completion actions. Guide state is stored per app instance in SQLite as viewed, completed, or skipped, and completed/skipped guides stay quiet while remaining available from the app detail view.
+Decision: MOS app packages may declare post-install setup guides in their manifest `onboarding` metadata. Suite Manager renders those guides generically from declarative sections such as copyable non-secret values, notes/warnings, device/client choice guides, ordered steps, and manual completion actions. Guide state is stored per app instance in SQLite as viewed, completed, or skipped, and completed/skipped guides stay quiet while remaining available from the app detail view.
 
 Reason: Some apps are technically running after install but still need human setup in an external client or device. Radicale is the proving case: Suite Manager can show CalDAV/CardDAV server details and device instructions without hardcoding a Radicale React page or trying to automate each client. This keeps app-specific help attached to the installed app instead of polluting global owner onboarding.
 
@@ -105,9 +105,9 @@ Consequences:
 - App-native onboarding remains app-owned when it is good enough. Suite Manager should guide the owner only where MOS can add clear contextual value.
 - Richer guide capabilities such as per-section progress, secret reveal, app-specific observers, or custom components require a separate reviewed contract.
 
-## 2026-06-20: V2 HTTPS Is Applied By A Narrow Host Agent
+## 2026-06-20: MOS HTTPS Is Applied By A Narrow Host Agent
 
-Decision: V2 configures post-install HTTPS from authenticated Suite Manager Settings, but a dedicated root system agent owns Cloudflare token storage and Caddy mutation. V2 builds a pinned Caddy binary with `caddy-dns/cloudflare`, stores only non-secret HTTPS state in SQLite, retains the installer-created HTTP Home host for recovery, and uses `home.<base-domain>` as the configured HTTPS origin.
+Decision: MOS configures post-install HTTPS from authenticated Suite Manager Settings, but a dedicated root system agent owns Cloudflare token storage and Caddy mutation. MOS builds a pinned Caddy binary with `caddy-dns/cloudflare`, stores only non-secret HTTPS state in SQLite, retains the installer-created HTTP Home host for recovery, and uses `home.<base-domain>` as the configured HTTPS origin.
 
 Reason: Stock Caddy packages do not contain the external Cloudflare DNS provider, while the web process must not gain general host privileges or persist DNS credentials in ordinary application state. Keeping the existing origin live during a transactional apply also lets Suite Manager report the new URL without restarting itself mid-request.
 
@@ -120,9 +120,9 @@ Consequences:
 - The configured HTTP Home host redirects to HTTPS, while the original authenticated HTTP bootstrap host remains available for transition and recovery.
 - Host-only sessions are not transferred between origins; users sign in again and HTTPS responses set `Secure` cookies.
 
-## 2026-06-19: V2 Homepage Is Authenticated Through Suite Manager
+## 2026-06-19: MOS Homepage Is Authenticated Through Suite Manager
 
-Decision: V2 exposes one `home.<domain>` control-plane origin through Caddy. Suite Manager owns `/suite-manager/`, authenticates the shared origin, and proxies all other authenticated paths to the private loopback Homepage service. Sessions remain host-only; V2 does not share a parent-domain session cookie across app subdomains.
+Decision: MOS exposes one `home.<domain>` control-plane origin through Caddy. Suite Manager owns `/suite-manager/`, authenticates the shared origin, and proxies all other authenticated paths to the private loopback Homepage service. Sessions remain host-only; MOS does not share a parent-domain session cookie across app subdomains.
 
 Reason: Suite Manager already owns owner identity and sessions. Keeping Homepage behind it avoids duplicating session validation in Caddy and prevents a direct public bypass, while host-only cookies keep MOS credentials away from future independently authenticated apps.
 
@@ -134,9 +134,9 @@ Consequences:
 - Suite Manager must preserve streaming, redirects, forwarded headers, and WebSocket upgrades while removing its session cookie before proxying Homepage.
 - Homepage runtime files are seeded into durable state; `services.template.yaml` is the future editor-owned source and `services.yaml` is its generated stock-Homepage projection.
 
-## 2026-06-18: V2 Restarts From A Suite Manager-First Lab
+## 2026-06-18: MOS Restarts From A Suite Manager-First Lab
 
-Decision: The V2 app platform work restarts from a clean branch based on `staging`, with new implementation isolated under a root-level `version-2/` workspace. The first milestone is not app catalog expansion; it is a reliable control-plane install and Suite Manager browser-based owner creation flow. The existing repo code and the previous app catalog prototype branch remain reference material for lessons and selective future extraction, not code to run through or merge wholesale.
+Decision: The MOS app platform work restarts from a clean branch based on `staging`, with new implementation isolated in a temporary workspace. The first milestone is not app catalog expansion; it is a reliable control-plane install and Suite Manager browser-based owner creation flow. The existing repo code and the previous app catalog prototype branch remain reference material for lessons and selective future extraction, not code to run through or merge wholesale.
 
 Reason: The prototype proved important concepts, but it also mixed old preloaded-suite assumptions with new launch-platform behavior across many files. Starting with a narrow Suite Manager-first lab lets MOS design the new platform around first-run ownership, testability, and clean package boundaries before optional app lifecycle code biases the foundation.
 
@@ -145,8 +145,8 @@ Consequences:
 - Installer and DigitalOcean validation work should prove that owner credentials can move from installer input to browser setup.
 - Optional app package work waits until the Suite Manager install and first-run owner flow are trustworthy.
 - Existing Suite Manager UI primitives should be reused for the owner setup experience.
-- `version-2/` is the home for new platform code until V2 is proven; existing `apps/`, `scripts/`, `deploy/`, and `agents/` code should be treated as old-system reference material unless explicitly copied or rebuilt into V2.
-- The V2 workspace may keep temporary planning docs while active, but durable architecture belongs here and task state should move to GitHub Issues before merge.
+- The temporary workspace is the home for new platform code until MOS is proven; existing `apps/`, `scripts/`, `deploy/`, and `agents/` code should be treated as old-system reference material unless explicitly copied or rebuilt into MOS.
+- The MOS workspace may keep temporary planning docs while active, but durable architecture belongs here and task state should move to GitHub Issues before merge.
 
 ## 2026-06-11: Alpha Moves Toward Control-Plane-First App Catalog Installs
 
@@ -161,7 +161,7 @@ Consequences:
 - Existing onboarding logic should be split into suite-level owner setup and app-specific install/setup helpers.
 - Fresh installs can become lean by default, while existing installs should be migrated conservatively and never have apps removed automatically.
 - The catalog needs a repo-owned manifest/contract for app metadata, Compose participation, routes, Homepage defaults, volumes, provisioning mode, backup behavior, and lifecycle actions.
-- The old alpha plan has been superseded by the compact V2 lab plan and durable V2 decisions in this file; task state should move to GitHub Issues before merge or release.
+- The old alpha plan has been superseded by the compact MOS lab plan and durable MOS decisions in this file; task state should move to GitHub Issues before merge or release.
 
 ## 2026-06-08: Own-Infra Is One Self-Hosted Runtime
 
@@ -322,7 +322,7 @@ Consequences:
 - Unknown or stale privacy evidence yields `review-required`; assessments bind to exact package/component identities and configuration is not described as proof of network silence.
 - A lightweight advisory can invalidate installed assessments without retaining complete historical packages in the source repository.
 - Unverified packages must remain visibly unverified and operate under a constrained capability contract because installing package code is a privileged action.
-- Installed, candidate, and bounded previous package snapshots live under `/var/lib/mos-v2/app-packages` (or `<MOS_V2_STATE_ROOT>/app-packages`). The root app agent owns writes; Suite Manager receives read access through `mos-v2-agent`. The root is provisioned as `root:mos-v2-agent` mode `2750`, while snapshot transaction directories may be stricter. Group read is load-bearing rather than incidental: Suite Manager re-verifies snapshot identity and digest on every read, so it reads these files directly and a snapshot it cannot read is an unusable app. The group is therefore established twice — the root carries setgid so anything created below inherits it, and the agent sets it explicitly on each snapshot tree rather than relying on inherited state, because a root recreated by a restore carries neither the bit nor the group. Directories a privileged process creates do not otherwise inherit the parent's group, so provisioning only the root leaves every snapshot below it unreadable.
+- Installed, candidate, and bounded previous package snapshots live under `/var/lib/mos/app-packages` (or `<MOS_STATE_ROOT>/app-packages`). The root app agent owns writes; Suite Manager receives read access through `mos-agent`. The root is provisioned as `root:mos-agent` mode `2750`, while snapshot transaction directories may be stricter. Group read is load-bearing rather than incidental: Suite Manager re-verifies snapshot identity and digest on every read, so it reads these files directly and a snapshot it cannot read is an unusable app. The group is therefore established twice — the root carries setgid so anything created below inherits it, and the agent sets it explicitly on each snapshot tree rather than relying on inherited state, because a root recreated by a restore carries neither the bit nor the group. Directories a privileged process creates do not otherwise inherit the parent's group, so provisioning only the root leaves every snapshot below it unreadable.
 - Initial snapshot creation accepts only an instance UUID, package id, and expected digest. The app agent derives the official source and destination from configured roots, copies only contract-approved regular files into a sibling transaction directory, verifies the copied digest, and atomically promotes it without replacing an existing installed snapshot. Update staging additionally accepts Suite Manager's candidate path, but only beneath the agent's separately configured private candidate root; it binds the expected installed digest and candidate digest, independently re-verifies both trees, then copies the candidate into the agent-owned instance directory. Arbitrary host paths remain outside the capability.
 - New installs must complete that validated snapshot operation before writing setup secrets, configuration rows, or runtime projections. Until catalog fetching supplies a resolved Git commit, the canonical package digest is also stored as the immutable content revision; later fetches may store the verified Git commit while retaining the package digest as the content identity.
 - Runtime apply identifies the installed package only by instance UUID, package id, and package digest. Suite Manager validates and renders from its recorded snapshot, while the root agent independently derives the snapshot directory beneath its configured root and re-verifies the manifest id and digest before building. Runtime requests never provide a host build-context path.

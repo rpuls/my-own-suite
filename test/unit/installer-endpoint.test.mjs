@@ -21,10 +21,10 @@ test('branch resolver defaults to main and accepts a configured development bran
     return Response.json({ sha: commit });
   };
   assert.deepEqual(await resolveInstallRef('main', fakeFetch), { branch: 'main', ref: commit });
-  assert.deepEqual(await resolveInstallRef('feat/app-platform-v2-lab', fakeFetch), {
-    branch: 'feat/app-platform-v2-lab', ref: commit,
+  assert.deepEqual(await resolveInstallRef('feat/app-platform-lab', fakeFetch), {
+    branch: 'feat/app-platform-lab', ref: commit,
   });
-  assert.match(requests[1].url, /feat\/app-platform-v2-lab$/);
+  assert.match(requests[1].url, /feat\/app-platform-lab$/);
   assert.equal(requests[0].options.headers['User-Agent'], 'my-own-suite-installer');
 });
 
@@ -33,10 +33,10 @@ test('endpoint serves an exact commit resolved from its configured branch', asyn
   globalThis.fetch = async () => Response.json({ sha: commit });
   try {
     const response = await worker.fetch(new Request('https://get-dev.myownsuite.org/install.sh'), {
-      INSTALL_BRANCH: 'feat/app-platform-v2-lab',
+      INSTALL_BRANCH: 'feat/app-platform-lab',
     });
     assert.equal(response.status, 200);
-    assert.equal(response.headers.get('x-mos-install-branch'), 'feat/app-platform-v2-lab');
+    assert.equal(response.headers.get('x-mos-install-branch'), 'feat/app-platform-lab');
     assert.equal(response.headers.get('x-mos-install-ref'), commit);
   } finally {
     globalThis.fetch = originalFetch;

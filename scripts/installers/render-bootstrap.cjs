@@ -5,7 +5,7 @@ const { renderBootstrapPlan } = require('./bootstrap-contract.cjs');
 function usage() {
   console.log(`Usage: node scripts/installers/render-bootstrap.cjs [options]
 
-Render a no-preconfig MOS V2 control-plane bootstrap contract.
+Render a no-preconfig MOS control-plane bootstrap contract.
 
 Options:
   --target <json|env|cloud-init|shell|ssh|usb>  Output format. Default: json.
@@ -95,7 +95,7 @@ if (require.main === module) {
   try {
     main();
   } catch (error) {
-    console.error(`[mos-v2:bootstrap] ERROR: ${error.message}`);
+    console.error(`[mos:bootstrap] ERROR: ${error.message}`);
     process.exit(1);
   }
 }

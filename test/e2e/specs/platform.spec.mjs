@@ -28,7 +28,7 @@ test('owner onboarding, Homepage customization, Settings validation, and logout 
   await page.getByRole('button', { name: 'Add to Homepage' }).click();
   await page.getByRole('button', { name: /Website/ }).click();
   await page.getByLabel('Name', { exact: true }).fill('MOS Test Link');
-  await page.getByRole('textbox', { name: /^Description/ }).fill('Added by the V2 browser flow');
+  await page.getByRole('textbox', { name: /^Description/ }).fill('Added by the MOS browser flow');
   await page.getByRole('textbox', { name: /^Icon/ }).fill('mdi:link');
   await page.getByRole('combobox', { name: 'Placement' }).selectOption('My Own Suite');
   await page.getByLabel('Website address', { exact: true }).fill('https://example.com/');

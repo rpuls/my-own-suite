@@ -2,29 +2,29 @@
 
 const path = require('node:path');
 
-const { createV2Server } = require('./http-app.cjs');
+const { createMOSServer } = require('./http-app.cjs');
 
-const port = Number(process.env.PORT || process.env.MOS_V2_SUITE_MANAGER_PORT || '3100');
-const host = process.env.HOST || process.env.MOS_V2_SUITE_MANAGER_HOST || '127.0.0.1';
-const homeHost = process.env.MOS_V2_HOME_HOST || 'home.localhost';
-const stateDir = process.env.MOS_V2_STATE_DIR || path.resolve(process.cwd(), '.state');
-const frontendDistDir = process.env.MOS_V2_FRONTEND_DIST_DIR
+const port = Number(process.env.PORT || process.env.MOS_SUITE_MANAGER_PORT || '3100');
+const host = process.env.HOST || process.env.MOS_SUITE_MANAGER_HOST || '127.0.0.1';
+const homeHost = process.env.MOS_HOME_HOST || 'home.localhost';
+const stateDir = process.env.MOS_STATE_DIR || path.resolve(process.cwd(), '.state');
+const frontendDistDir = process.env.MOS_FRONTEND_DIST_DIR
   || path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
 
-const server = createV2Server({ frontendDistDir, homeHost, stateDir });
+const server = createMOSServer({ frontendDistDir, homeHost, stateDir });
 
 async function start() {
   const migrations = await server.migrateAppPackages();
-  for (const migration of migrations) console.log(`[mos-v2-suite-manager] App package migration ${migration.packageId}: ${migration.status}`);
+  for (const migration of migrations) console.log(`[mos-suite-manager] App package migration ${migration.packageId}: ${migration.status}`);
   const recoveries = await server.recoverAppPackageUpdates();
-  for (const recovery of recoveries) console.log(`[mos-v2-suite-manager] App update recovery ${recovery.instanceId}: ${recovery.recoveryState}`);
+  for (const recovery of recoveries) console.log(`[mos-suite-manager] App update recovery ${recovery.instanceId}: ${recovery.recoveryState}`);
   const sweptCandidates = server.sweepAppCandidates();
-  if (sweptCandidates.length) console.log(`[mos-v2-suite-manager] Reclaimed ${sweptCandidates.length} abandoned app package candidate download(s).`);
+  if (sweptCandidates.length) console.log(`[mos-suite-manager] Reclaimed ${sweptCandidates.length} abandoned app package candidate download(s).`);
   void server.startCatalogRefresh();
   server.listen(port, host, () => {
-    console.log(`[mos-v2-suite-manager] Listening on http://${host}:${port}`);
-    console.log(`[mos-v2-suite-manager] Open http://${homeHost}:${port}/suite-manager/`);
-    console.log(`[mos-v2-suite-manager] State directory: ${stateDir}`);
+    console.log(`[mos-suite-manager] Listening on http://${host}:${port}`);
+    console.log(`[mos-suite-manager] Open http://${homeHost}:${port}/suite-manager/`);
+    console.log(`[mos-suite-manager] State directory: ${stateDir}`);
   });
 }
 
@@ -35,7 +35,7 @@ start().catch((error) => {
 
 server.on('error', (error) => {
   if (error.code === 'EADDRINUSE') {
-    console.error(`[mos-v2-suite-manager] Port ${port} is already in use. Set MOS_V2_SUITE_MANAGER_PORT to choose another port.`);
+    console.error(`[mos-suite-manager] Port ${port} is already in use. Set MOS_SUITE_MANAGER_PORT to choose another port.`);
     process.exit(1);
   }
 
@@ -44,7 +44,7 @@ server.on('error', (error) => {
 });
 
 function shutdown(signal) {
-  console.log(`[mos-v2-suite-manager] Received ${signal}; shutting down.`);
+  console.log(`[mos-suite-manager] Received ${signal}; shutting down.`);
   server.close(() => {
     process.exit(0);
   });

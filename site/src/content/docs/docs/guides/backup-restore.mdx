@@ -51,7 +51,7 @@ MOS does not currently upload bundles directly to S3-compatible/object storage, 
 
 </Steps>
 
-Bundles are written under `MOS-v2-backups/` on the selected destination. MOS records and verifies checksums for the bundle payloads before a restore changes running services.
+Bundles are written under `MOS-backups/` on the selected destination. MOS records and verifies checksums for the bundle payloads before a restore changes running services.
 
 :::tip[A workable routine]
 Backups are manual; there is no scheduler or retention policy yet. Take one before updates or uninstalling an app, keep more than one generation, and periodically test that the destination is still readable.

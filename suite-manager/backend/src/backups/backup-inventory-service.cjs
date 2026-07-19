@@ -7,10 +7,10 @@ const { digestAppPackage } = require('../apps/package-contracts.cjs');
 
 const DEFAULT_CADDY_FILES = [
   '/etc/caddy/Caddyfile',
-  '/etc/caddy/mos-v2-homepage-routes.caddy',
-  '/etc/caddy/mos-v2-app-routes.caddy',
+  '/etc/caddy/mos-homepage-routes.caddy',
+  '/etc/caddy/mos-app-routes.caddy',
 ];
-const DEFAULT_HTTPS_SECRET_PATH = '/etc/mos-v2/secrets/caddy-cloudflare.env';
+const DEFAULT_HTTPS_SECRET_PATH = '/etc/mos/secrets/caddy-cloudflare.env';
 const HOMEPAGE_CONFIG_FILES = [
   'services.template.yaml',
   'bookmarks.yaml',
@@ -43,7 +43,7 @@ function declaredVolumeName(packageId, volumeDeclaration) {
   if (!source) return null;
   return {
     declaredName: source,
-    dockerVolume: `mos-v2-app-${packageId}-${source}`,
+    dockerVolume: `mos-app-${packageId}-${source}`,
     backupClass: 'data',
     requiredOnRestore: true,
   };
@@ -61,7 +61,7 @@ function uniqueVolumesFor(manifest) {
 }
 
 function defaultStateRoot(stateDir) {
-  if (process.env.MOS_V2_STATE_ROOT) return process.env.MOS_V2_STATE_ROOT;
+  if (process.env.MOS_STATE_ROOT) return process.env.MOS_STATE_ROOT;
   if (path.basename(stateDir) === 'suite-manager') return path.dirname(stateDir);
   return path.resolve(stateDir, '..');
 }
@@ -131,7 +131,7 @@ class BackupInventoryService {
       actions: {
         backupEnabled: false,
         backupLabel: 'Back up everything',
-        backupReason: 'V2 backup inventory is ready, but archive and restore jobs wait for a V2 backup agent.',
+        backupReason: 'MOS backup inventory is ready, but archive and restore jobs wait for a MOS backup agent.',
         restoreEnabled: false,
       },
       checkedAt: new Date().toISOString(),
@@ -153,7 +153,7 @@ class BackupInventoryService {
       destinationModel: {
         preferred: ['Connected USB or external drive', 'Local disk path reserved for MOS backups'],
         status: 'planned',
-        summary: 'The V2 backup agent will discover mounted storage and mountable USB drives before archive jobs are enabled.',
+        summary: 'The MOS backup agent will discover mounted storage and mountable USB drives before archive jobs are enabled.',
       },
       packages,
       relationships: {

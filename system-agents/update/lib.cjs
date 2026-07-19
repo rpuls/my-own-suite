@@ -29,8 +29,8 @@ function repoRootFrom(startDir = process.cwd()) {
   return resolved;
 }
 
-function buildPaths(repoRoot = repoRootFrom(process.cwd()), stateRoot = process.env.MOS_V2_STATE_ROOT || '/var/lib/mos-v2') {
-  const updateStateDir = process.env.MOS_V2_UPDATE_AGENT_STATE_DIR || path.join(stateRoot, 'update-agent');
+function buildPaths(repoRoot = repoRootFrom(process.cwd()), stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos') {
+  const updateStateDir = process.env.MOS_UPDATE_AGENT_STATE_DIR || path.join(stateRoot, 'update-agent');
   return {
     changelogPath: path.join(repoRoot, 'CHANGELOG.md'),
     configPath: path.join(updateStateDir, 'config.json'),
@@ -114,8 +114,8 @@ function readConfig(paths) {
 function resolveTrack(paths) {
   const gitState = currentGitState(paths.repoRoot);
   const config = readConfig(paths);
-  const track = normalizeTrack(process.env.MOS_V2_UPDATE_TRACK) || normalizeTrack(config?.track) || 'branch';
-  const ref = String(process.env.MOS_V2_UPDATE_REF || '').trim() || normalizeRef(track, config?.ref || gitState.branch);
+  const track = normalizeTrack(process.env.MOS_UPDATE_TRACK) || normalizeTrack(config?.track) || 'branch';
+  const ref = String(process.env.MOS_UPDATE_REF || '').trim() || normalizeRef(track, config?.ref || gitState.branch);
   return {
     currentBranch: gitState.branch,
     currentCommit: gitState.commit,
@@ -163,7 +163,7 @@ function parsePackageRepo(paths) {
 function fetchLatestRelease(repo) {
   return new Promise((resolve, reject) => {
     const request = https.get({
-      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'mos-v2-update-agent' },
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'mos-update-agent' },
       hostname: 'api.github.com',
       path: `/repos/${repo}/releases/latest`,
     }, (response) => {
@@ -259,11 +259,11 @@ async function collectStatus(paths = buildPaths()) {
     const refreshed = refreshRemoteBranch(paths.repoRoot, track.ref);
     latestRevision = refreshed.latestCommit || cached;
     if (refreshed.error) errors.push(refreshed.error);
-    if (process.env.MOS_V2_UPDATE_SKIP_RELEASE_LOOKUP !== '1') {
+    if (process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP !== '1') {
       try { latestRelease = await fetchLatestRelease(githubRepo); } catch (error) { errors.push(`Stable release lookup: ${error.message}`); }
     }
   } else {
-    if (process.env.MOS_V2_UPDATE_SKIP_RELEASE_LOOKUP !== '1') {
+    if (process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP !== '1') {
       try { latestRelease = await fetchLatestRelease(githubRepo); } catch (error) { errors.push(error.message); }
     }
   }
@@ -275,7 +275,7 @@ async function collectStatus(paths = buildPaths()) {
     githubRepo,
     latestRelease,
     latestRevision,
-    service: 'mos-v2-update-agent',
+    service: 'mos-update-agent',
     track,
     updateAvailable: track.type === 'branch'
       ? Boolean(track.currentCommit && latestRevision && track.currentCommit !== latestRevision)
@@ -302,7 +302,7 @@ async function runApply(paths, { log = () => {} } = {}) {
   ensureCleanWorkingTree(paths);
   const status = await collectStatus(paths);
   if (!status.updateAvailable) throw new Error('This machine is already up to date on its current track.');
-  if (status.track.type !== 'branch') throw new Error('The first V2 managed-update slice supports branch-track updates only.');
+  if (status.track.type !== 'branch') throw new Error('The first MOS managed-update slice supports branch-track updates only.');
 
   log(`Repository before update: ${shortCommit(status.track.currentCommit) || 'unknown'}`);
   checkoutBranch(paths, status.track.ref, log);

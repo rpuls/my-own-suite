@@ -106,11 +106,11 @@ export function UpdatesScreen() {
   return <section aria-busy={updating} className="mos-shell mos-page">
     <div className="suite-hero">
       <h1>Updates</h1>
-      <p className="suite-lead mos-body-lg">Update the V2 control plane through a host-owned agent, with live progress, restart-safe feedback, and diagnostics kept visible.</p>
+      <p className="suite-lead mos-body-lg">Update the MOS control plane through a host-owned agent, with live progress, restart-safe feedback, and diagnostics kept visible.</p>
     </div>
 
     {error ? <Notice title="Updates need attention" variant="error"><p>{error}</p></Notice> : null}
-    {status && !status.serviceAvailable ? <Notice title="Update agent unavailable" variant="warning"><p>This install does not expose the V2 update agent to Suite Manager yet. Install or repair the host services before using in-app updates.</p></Notice> : null}
+    {status && !status.serviceAvailable ? <Notice title="Update agent unavailable" variant="warning"><p>This install does not expose the MOS update agent to Suite Manager yet. Install or repair the host services before using in-app updates.</p></Notice> : null}
     {updating ? <Notice title={<span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Spinner />{busy === 'update' && !running ? 'Starting update' : 'Update in progress'}</span>} variant="info"><p>Suite Manager may briefly reconnect while the host refreshes repo-owned services and agents.</p></Notice> : null}
     {updating ? <div className="suite-updates-progress" role="status" aria-live="polite">
       <div className="suite-updates-progress-bar" aria-hidden="true" />
@@ -138,8 +138,8 @@ export function UpdatesScreen() {
         </dl>
 
         {status.trackConfigurationAvailable ? <div className="suite-updates-track">
-          <Select disabled={Boolean(busy) || running} helperText="Stable follows releases; staging follows the V2 lab branch for hardware validation." label="Update track" onChange={(event) => setTrack(event.currentTarget.value === 'stable' ? 'stable' : 'staging')} value={track}>
-            <option value="staging">V2 lab branch</option>
+          <Select disabled={Boolean(busy) || running} helperText="Stable follows releases; staging follows the MOS lab branch for hardware validation." label="Update track" onChange={(event) => setTrack(event.currentTarget.value === 'stable' ? 'stable' : 'staging')} value={track}>
+            <option value="staging">MOS lab branch</option>
             <option value="stable">Stable releases</option>
           </Select>
           <button className="mos-btn mos-btn-secondary" disabled={busy === 'track' || updating || track === selectedTrack(status)} onClick={() => void switchTrack()} type="button">{busy === 'track' ? 'Switching...' : 'Switch track'}</button>

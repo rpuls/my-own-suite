@@ -10,10 +10,10 @@ test('Hyper-V USB smoke exposes a guarded two-command lifecycle', () => {
 
   const script = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'smoke', 'hyperv-usb-lab.ps1'), 'utf8');
   assert.match(script, /\[ValidateSet\('reset', 'destroy'\)\]/u);
-  assert.match(script, /\$VmName = 'mos-v2-usb-smoke'/u);
+  assert.match(script, /\$VmName = 'mos-usb-smoke'/u);
   assert.match(script, /New-VHD .* -Dynamic -SizeBytes 64GB/u);
   assert.match(script, /\$BackupDiskPath = Join-Path \$LabRoot 'backup\.vhdx'/u);
-  assert.match(script, /MOS_V2_HYPERV_BACKUP_DISK_GB/u);
+  assert.match(script, /MOS_HYPERV_BACKUP_DISK_GB/u);
   assert.match(script, /New-VHD -Path \$BackupDiskPath -Dynamic -SizeBytes \(Get-BackupDiskSizeBytes\)/u);
   assert.match(script, /New-VM .* -Generation 2/u);
   assert.match(script, /Add-VMHardDiskDrive -VMName \$VmName -Path \$BackupDiskPath/u);
@@ -25,10 +25,10 @@ test('Hyper-V USB smoke exposes a guarded two-command lifecycle', () => {
   assert.match(script, /Get-NetNeighbor -AddressFamily IPv4/u);
   assert.match(script, /LinkLayerAddress/u);
   assert.match(script, /\$adapter\.MacAddress/u);
-  assert.match(script, /# BEGIN MOS V2 HYPERV USB SMOKE/u);
+  assert.match(script, /# BEGIN MOS HYPERV USB SMOKE/u);
   assert.match(script, /\$DefaultDns01SmokeDomain = 'hyperv\.diemernet\.uk'/u);
   assert.match(script, /\$InstallerConfigTemplatePath/u);
-  assert.match(script, /MOS_V2_HYPERV_EXTRA_HOST_DOMAINS/u);
+  assert.match(script, /MOS_HYPERV_EXTRA_HOST_DOMAINS/u);
   assert.match(script, /\$env:STACK_DOMAIN/u);
   assert.match(script, /Get-SmokeHostDomains/u);
   assert.match(script, /Get-SmokeHostNames/u);

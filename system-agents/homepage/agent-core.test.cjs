@@ -27,7 +27,7 @@ const calendarLink = {
   ...link,
   name: 'Calendar',
   widget: {
-    integrations: [{ color: 'cyan', name: 'My Calendar', type: 'ical', url: 'https://radicale.mos.example.com/__mos-v2/ical/token-value' }],
+    integrations: [{ color: 'cyan', name: 'My Calendar', type: 'ical', url: 'https://radicale.mos.example.com/__mos/ical/token-value' }],
     maxEvents: 8,
     showTime: true,
     type: 'calendar',
@@ -66,7 +66,7 @@ test('guided package links can include a constrained calendar widget', () => {
 
   assert.match(projection, /widget:/u);
   assert.match(projection, /type: calendar/u);
-  assert.match(projection, /url: https:\/\/radicale\.mos\.example\.com\/__mos-v2\/ical\/token-value/u);
+  assert.match(projection, /url: https:\/\/radicale\.mos\.example\.com\/__mos\/ical\/token-value/u);
   assert.throws(() => addEntry(seed, {
     ...calendarLink,
     widget: {

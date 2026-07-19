@@ -7,12 +7,12 @@ const path = require('node:path');
 const { packageImageTag } = require('./agent-core.cjs');
 const { collectPackageFiles, digestAppPackage, parseNamespacedPackageId, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 
-const APPS_ROOT = process.env.MOS_V2_APPS_ROOT || path.resolve(process.cwd(), 'apps');
-const APP_PACKAGE_ROOT = process.env.MOS_V2_APP_PACKAGE_ROOT || '/var/lib/mos-v2/app-packages';
-const APP_CANDIDATE_ROOT = process.env.MOS_V2_APP_CANDIDATE_ROOT || '/var/lib/mos-v2/suite-manager/app-candidates';
-const APP_ROUTES_PATH = process.env.MOS_V2_APP_ROUTES_PATH || '/etc/caddy/mos-v2-app-routes.caddy';
-const CADDY_BINARY = process.env.MOS_V2_CADDY_BINARY || '/usr/local/libexec/mos-v2/caddy';
-const DOCKER_BINARY = process.env.MOS_V2_DOCKER_BINARY || '/usr/bin/docker';
+const APPS_ROOT = process.env.MOS_APPS_ROOT || path.resolve(process.cwd(), 'apps');
+const APP_PACKAGE_ROOT = process.env.MOS_APP_PACKAGE_ROOT || '/var/lib/mos/app-packages';
+const APP_CANDIDATE_ROOT = process.env.MOS_APP_CANDIDATE_ROOT || '/var/lib/mos/suite-manager/app-candidates';
+const APP_ROUTES_PATH = process.env.MOS_APP_ROUTES_PATH || '/etc/caddy/mos-app-routes.caddy';
+const CADDY_BINARY = process.env.MOS_CADDY_BINARY || '/usr/local/libexec/mos/caddy';
+const DOCKER_BINARY = process.env.MOS_DOCKER_BINARY || '/usr/bin/docker';
 const HEALTH_TIMEOUT_MS = 90_000;
 const HEALTH_REFRESH_TIMEOUT_MS = 5_000;
 const EMPTY_APP_ROUTES = '# No app runtime routes.\n';
@@ -56,7 +56,7 @@ class AppApplyError extends Error {
 
 // Suite Manager re-verifies snapshot identity and digest on every read, so it
 // reads these files directly and needs group read on everything the root agent
-// writes here. The package root is provisioned `root:mos-v2-agent` mode 0750
+// writes here. The package root is provisioned `root:mos-agent` mode 0750
 // and the modes below grant the group read without write, but a directory root
 // creates does not inherit that group unless its parent carries the setgid bit
 // — and a root recreated by a restore may have lost the bit and the group
@@ -124,7 +124,7 @@ async function restore(source, target) {
 // names it derives and the names it reads back from disk go through here, so a
 // tampered sidecar or an odd manifest version cannot widen a reclamation into
 // some unrelated image on the host.
-const RECLAIMABLE_IMAGE_PATTERN = /^mos-v2-app-[a-z0-9][a-z0-9-]{0,130}:[0-9A-Za-z.-]{1,48}-pkg-[a-f0-9]{12}-src-[a-f0-9]{12}$/u;
+const RECLAIMABLE_IMAGE_PATTERN = /^mos-app-[a-z0-9][a-z0-9-]{0,130}:[0-9A-Za-z.-]{1,48}-pkg-[a-f0-9]{12}-src-[a-f0-9]{12}$/u;
 
 // Name every image built for a package snapshot. The manifest must be one this
 // caller has already verified against its digest, because it is what decides
@@ -153,14 +153,14 @@ async function readRetainedImageTags(file) {
 }
 
 function renderAppRouteBlock(packageId, caddyRoutes) {
-  return `# mos-v2-app-route:start ${packageId}\n${String(caddyRoutes).trimEnd()}\n# mos-v2-app-route:end ${packageId}\n`;
+  return `# mos-app-route:start ${packageId}\n${String(caddyRoutes).trimEnd()}\n# mos-app-route:end ${packageId}\n`;
 }
 
 function upsertAppRouteBlock(currentRoutes, { caddyRoutes, packageId }) {
   const block = renderAppRouteBlock(packageId, caddyRoutes);
   const current = typeof currentRoutes === 'string' ? currentRoutes : EMPTY_APP_ROUTES;
   const markerPattern = new RegExp(
-    `# mos-v2-app-route:start ${packageId}\\n[\\s\\S]*?# mos-v2-app-route:end ${packageId}\\n?`,
+    `# mos-app-route:start ${packageId}\\n[\\s\\S]*?# mos-app-route:end ${packageId}\\n?`,
     'u',
   );
   if (markerPattern.test(current)) {
@@ -177,7 +177,7 @@ function upsertAppRouteBlock(currentRoutes, { caddyRoutes, packageId }) {
 function removeAppRouteBlock(currentRoutes, packageId) {
   const current = typeof currentRoutes === 'string' ? currentRoutes : EMPTY_APP_ROUTES;
   const markerPattern = new RegExp(
-    `# mos-v2-app-route:start ${packageId}\\n[\\s\\S]*?# mos-v2-app-route:end ${packageId}\\n?`,
+    `# mos-app-route:start ${packageId}\\n[\\s\\S]*?# mos-app-route:end ${packageId}\\n?`,
     'u',
   );
   const next = current.replace(markerPattern, '').trim();
@@ -247,11 +247,11 @@ class SystemAppAdapter {
   }
 
   containerName(packageId, serviceId, serviceCount) {
-    return serviceCount === 1 ? `mos-v2-app-${packageId}` : `mos-v2-app-${packageId}-${serviceId}`;
+    return serviceCount === 1 ? `mos-app-${packageId}` : `mos-app-${packageId}-${serviceId}`;
   }
 
   networkName(packageId) {
-    return `mos-v2-app-${packageId}`;
+    return `mos-app-${packageId}`;
   }
 
   async snapshotAppPackage({ instanceId, packageDigest, packageId }) {
@@ -378,10 +378,10 @@ class SystemAppAdapter {
       for (const service of services) {
         await this.execute(this.dockerBinary, [
           'build', '--file', service.dockerfile, '--tag', service.imageTag,
-          '--label', `mos-v2.package=${packageId}`,
-          '--label', `mos-v2.package-version=${packageVersion}`,
-          '--label', `mos-v2.package-digest=${candidateDigest}`,
-          '--label', `mos-v2.source-revision=${sourceRevision}`,
+          '--label', `mos.package=${packageId}`,
+          '--label', `mos.package-version=${packageVersion}`,
+          '--label', `mos.package-digest=${candidateDigest}`,
+          '--label', `mos.source-revision=${sourceRevision}`,
           '.',
         ], { cwd: candidate, timeoutMs: 300000 });
       }
@@ -405,17 +405,17 @@ class SystemAppAdapter {
       const volumeArgs = [];
       for (const volume of service.volumes || []) {
         const separator = String(volume).indexOf(':');
-        if (separator > 0) volumeArgs.push('--volume', `mos-v2-app-${packageId}-${String(volume).slice(0, separator)}:${String(volume).slice(separator + 1)}`);
+        if (separator > 0) volumeArgs.push('--volume', `mos-app-${packageId}-${String(volume).slice(0, separator)}:${String(volume).slice(separator + 1)}`);
       }
       await this.execute(this.dockerBinary, [
         'run', '--detach', '--name', this.containerName(packageId, service.id, serviceCount), '--restart', 'unless-stopped',
         ...(serviceCount > 1 ? ['--network', networkName, '--network-alias', service.id] : []),
         ...(service.public ? ['--publish', `127.0.0.1:${service.loopbackPort}:${service.internalPort}`] : []),
-        '--label', `mos-v2.package=${packageId}`,
-        '--label', `mos-v2.service=${service.id}`,
-        '--label', `mos-v2.package-version=${packageVersion}`,
-        '--label', `mos-v2.package-digest=${packageDigest}`,
-        '--label', `mos-v2.source-revision=${sourceRevision}`,
+        '--label', `mos.package=${packageId}`,
+        '--label', `mos.service=${service.id}`,
+        '--label', `mos.package-version=${packageVersion}`,
+        '--label', `mos.package-digest=${packageDigest}`,
+        '--label', `mos.source-revision=${sourceRevision}`,
         ...Object.entries(service.environment || {}).sort(([left], [right]) => left.localeCompare(right)).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
         ...volumeArgs,
         service.imageTag,
@@ -656,10 +656,10 @@ class SystemAppAdapter {
           'build',
           '--file', service.dockerfile,
           '--tag', service.imageTag,
-          '--label', `mos-v2.package=${packageId}`,
-          '--label', `mos-v2.package-version=${packageVersion}`,
-          '--label', `mos-v2.package-digest=${packageDigest}`,
-          '--label', `mos-v2.source-revision=${sourceRevision}`,
+          '--label', `mos.package=${packageId}`,
+          '--label', `mos.package-version=${packageVersion}`,
+          '--label', `mos.package-digest=${packageDigest}`,
+          '--label', `mos.source-revision=${sourceRevision}`,
           '.',
         ], { cwd: packageDir, timeoutMs: 300000 });
       }
@@ -676,7 +676,7 @@ class SystemAppAdapter {
         for (const volume of service.volumes || []) {
           const separator = String(volume).indexOf(':');
           if (separator > 0) {
-            volumeArgs.push('--volume', `mos-v2-app-${packageId}-${String(volume).slice(0, separator)}:${String(volume).slice(separator + 1)}`);
+            volumeArgs.push('--volume', `mos-app-${packageId}-${String(volume).slice(0, separator)}:${String(volume).slice(separator + 1)}`);
           }
         }
         const containerName = this.containerName(packageId, service.id, serviceCount);
@@ -687,11 +687,11 @@ class SystemAppAdapter {
           '--restart', 'unless-stopped',
           ...(serviceCount > 1 ? ['--network', networkName, '--network-alias', service.id] : []),
           ...(service.public ? ['--publish', `127.0.0.1:${service.loopbackPort}:${service.internalPort}`] : []),
-          '--label', `mos-v2.package=${packageId}`,
-          '--label', `mos-v2.service=${service.id}`,
-          '--label', `mos-v2.package-version=${packageVersion}`,
-          '--label', `mos-v2.package-digest=${packageDigest}`,
-          '--label', `mos-v2.source-revision=${sourceRevision}`,
+          '--label', `mos.package=${packageId}`,
+          '--label', `mos.service=${service.id}`,
+          '--label', `mos.package-version=${packageVersion}`,
+          '--label', `mos.package-digest=${packageDigest}`,
+          '--label', `mos.source-revision=${sourceRevision}`,
           ...Object.entries(service.environment || {}).sort(([left], [right]) => left.localeCompare(right)).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
           ...volumeArgs,
           service.imageTag,
@@ -777,9 +777,9 @@ class SystemAppAdapter {
 
   async stopAppService({ packageId, serviceIds = [] }) {
     try {
-      await this.execute(this.dockerBinary, ['rm', '-f', `mos-v2-app-${packageId}`], { timeoutMs: 30000 }).catch(() => {});
+      await this.execute(this.dockerBinary, ['rm', '-f', `mos-app-${packageId}`], { timeoutMs: 30000 }).catch(() => {});
       for (const serviceId of serviceIds) {
-        await this.execute(this.dockerBinary, ['rm', '-f', `mos-v2-app-${packageId}-${serviceId}`], { timeoutMs: 30000 }).catch(() => {});
+        await this.execute(this.dockerBinary, ['rm', '-f', `mos-app-${packageId}-${serviceId}`], { timeoutMs: 30000 }).catch(() => {});
       }
       await this.execute(this.dockerBinary, ['network', 'rm', this.networkName(packageId)], { timeoutMs: 30000 }).catch(() => {});
       return { steps: ['stopped'] };
@@ -821,13 +821,13 @@ class SystemAppAdapter {
     const routeSnapshot = `${this.routesPath}.before-${process.pid}`;
     let routesChanged = false;
     try {
-      await this.execute(this.dockerBinary, ['rm', '-f', `mos-v2-app-${packageId}`], { timeoutMs: 30000 }).catch(() => {});
+      await this.execute(this.dockerBinary, ['rm', '-f', `mos-app-${packageId}`], { timeoutMs: 30000 }).catch(() => {});
       for (const serviceId of serviceIds) {
-        await this.execute(this.dockerBinary, ['rm', '-f', `mos-v2-app-${packageId}-${serviceId}`], { timeoutMs: 30000 }).catch(() => {});
+        await this.execute(this.dockerBinary, ['rm', '-f', `mos-app-${packageId}-${serviceId}`], { timeoutMs: 30000 }).catch(() => {});
       }
       await this.execute(this.dockerBinary, ['network', 'rm', this.networkName(packageId)], { timeoutMs: 30000 }).catch(() => {});
       for (const volume of volumes) {
-        const volumeName = `mos-v2-app-${packageId}-${volume}`;
+        const volumeName = `mos-app-${packageId}-${volume}`;
         const exists = await this.execute(this.dockerBinary, ['volume', 'inspect', volumeName], { timeoutMs: 30000 }).then(() => true, () => false);
         if (exists) {
           await this.execute(this.dockerBinary, ['volume', 'rm', volumeName], { timeoutMs: 120000 });

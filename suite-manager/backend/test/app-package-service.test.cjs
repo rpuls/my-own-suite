@@ -14,15 +14,15 @@ const { digestAppPackage } = require('../src/apps/package-contracts.cjs');
 const { buildSourceRecord, withRevision, withStatus } = require('../src/apps/external-source-registry.cjs');
 const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
 
-const v2Root = path.resolve(__dirname, '..', '..', '..');
-const v2AppsDir = path.join(v2Root, 'apps');
+const repoRoot = path.resolve(__dirname, '..', '..', '..');
+const v2AppsDir = path.join(repoRoot, 'apps');
 
 function snapshotResult(input) {
   return { snapshotPath: path.join(v2AppsDir, input.packageId) };
 }
 
 async function tempStateDir() {
-  return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-v2-app-service-'));
+  return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-app-service-'));
 }
 
 function requestContext() {

@@ -1,4 +1,4 @@
-# MOS2 Public Site
+# MOS Public Site
 
 Astro + Starlight source for the MOS `myownsuite.org` website. The landing page and end-user documentation are implemented here and share the generated app catalog and canonical branding.
 

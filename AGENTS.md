@@ -67,12 +67,12 @@ Use these locations:
 - `docs/decisions.md`: durable architecture decisions and their consequences.
 - `docs/codex-notes.md`: durable Codex/project working context.
 - `.github/ISSUE_TEMPLATE/codex-task.yml`: task template source of truth.
-- `site/`: MOS2 public/end-user documentation source after the public docs rebuild.
-- `site-mos1-reference/`: preserved MOS1 public site source; still the deployed public site (`npm run build`) until the MOS2 docs rebuild. Frozen content only; no new product docs.
+- `site/`: MOS public/end-user documentation source after the public docs rebuild.
+- `site-mos1-reference/`: preserved MOS1 public site source; still the deployed public site (`npm run build`) until the MOS docs rebuild. Frozen content only; no new product docs.
 - `apps/<app>/README.md`: app-level technical reference.
-- `scripts/README.md`: MOS2 operator/developer script and smoke-harness guidance.
-- `infrastructure/`: shared MOS2 runtime and installer substrate.
-- `system-agents/`: MOS2 host-agent implementation.
+- `scripts/README.md`: MOS operator/developer script and smoke-harness guidance.
+- `infrastructure/`: shared MOS runtime and installer substrate.
+- `system-agents/`: MOS host-agent implementation.
 
 Maintenance rules:
 
@@ -120,7 +120,7 @@ Suite Manager UI must stay cohesive and predictable. Agents must treat shared UI
 
 ## Goal
 
-Use a strict split after the MOS2 public docs rebuild:
+Use a strict split after the MOS public docs rebuild:
 - End-user content lives in the active `site/` docs source
 - Technical/operational content lives in `apps/*/README.md`
 
@@ -233,7 +233,7 @@ For each app page:
 
 ## E2E Testing Workflow
 
-The repo includes real black-box Playwright tests for MOS2 flows without test-only application bypasses.
+The repo includes real black-box Playwright tests for MOS flows without test-only application bypasses.
 
 - Do not run E2E tests automatically as an agent. Ask the user to run the relevant E2E command and paste only the relevant failure output, because full Playwright/Docker logs are noisy and quickly pollute the context window.
 - Do not run `npm run smoke:do:reset` automatically as an agent. It creates or replaces a paid smoke Droplet, destructively removes MOS containers, Docker volumes, and the remote checkout before reinstalling, and produces noisy logs. Ask the user to run it and paste only the relevant failure output or final readiness summary.
@@ -246,8 +246,8 @@ The repo includes real black-box Playwright tests for MOS2 flows without test-on
 Useful commands:
 
 - `npm run e2e:install` installs Playwright browser dependencies.
-- `npm run e2e:local` runs the local MOS2 browser suite.
-- `npm run e2e:local:headed` runs the local MOS2 browser suite in a visible browser.
+- `npm run e2e:local` runs the local MOS browser suite.
+- `npm run e2e:local:headed` runs the local MOS browser suite in a visible browser.
 - `npm run e2e:full` runs the Hyper-V full-platform suite against an already-running VM.
 - `npm run e2e:full:headed` runs the Hyper-V suite in a visible browser.
 
@@ -258,7 +258,7 @@ These rules are mandatory for app/service onboarding and version updates.
 ### Single source of truth for container versions
 
 - Do not write runtime image tags/digests directly into generated runtime projections.
-- MOS2 app package services must use package-owned Dockerfiles in `apps/`.
+- MOS app package services must use package-owned Dockerfiles in `apps/`.
 - Pin base images in Dockerfiles with immutable digests (`FROM image@sha256:...`).
 - Never use floating tags like `latest` or `release` in runtime Dockerfiles.
 

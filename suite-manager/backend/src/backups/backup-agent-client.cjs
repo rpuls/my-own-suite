@@ -3,7 +3,7 @@ const http = require('node:http');
 const BACKUP_AGENT_TIMEOUT_MS = 180_000;
 
 class BackupAgentClient {
-  constructor({ socketPath = process.env.MOS_V2_BACKUP_AGENT_SOCKET || '/run/mos-v2-backup-agent/agent.sock', timeoutMs = BACKUP_AGENT_TIMEOUT_MS } = {}) {
+  constructor({ socketPath = process.env.MOS_BACKUP_AGENT_SOCKET || '/run/mos-backup-agent/agent.sock', timeoutMs = BACKUP_AGENT_TIMEOUT_MS } = {}) {
     this.socketPath = socketPath;
     this.timeoutMs = timeoutMs;
   }

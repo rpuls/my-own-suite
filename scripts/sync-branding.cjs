@@ -3,21 +3,21 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const v2Root = path.resolve(__dirname, '..');
-const canonicalDir = path.join(v2Root, 'branding');
+const repoRoot = path.resolve(__dirname, '..');
+const canonicalDir = path.join(repoRoot, 'branding');
 const canonicalMarkPath = path.join(canonicalDir, 'my-own-suite-mark.png');
 const canonicalMarkSvgPath = path.join(canonicalDir, 'my-own-suite-mark.svg');
 const canonicalFaviconsDir = path.join(canonicalDir, 'favicons');
 const canonicalFontsDir = path.join(canonicalDir, 'fonts');
 const canonicalStylesPath = path.join(canonicalDir, 'styles', 'mos.css');
-const homepageCustomCssPath = path.join(v2Root, 'infrastructure', 'homepage', 'custom.css');
+const homepageCustomCssPath = path.join(repoRoot, 'infrastructure', 'homepage', 'custom.css');
 
 const destinations = {
-  siteGeneratedCss: path.join(v2Root, 'site', 'generated', 'branding', 'mos.css'),
-  sitePublicBrand: path.join(v2Root, 'site', 'public', 'brand'),
-  suitePublicBrand: path.join(v2Root, 'suite-manager', 'frontend', 'public', 'brand'),
-  suiteStylesCss: path.join(v2Root, 'suite-manager', 'frontend', 'src', 'styles', 'mos.css'),
-  homepageImages: path.join(v2Root, 'infrastructure', 'homepage', 'images'),
+  siteGeneratedCss: path.join(repoRoot, 'site', 'generated', 'branding', 'mos.css'),
+  sitePublicBrand: path.join(repoRoot, 'site', 'public', 'brand'),
+  suitePublicBrand: path.join(repoRoot, 'suite-manager', 'frontend', 'public', 'brand'),
+  suiteStylesCss: path.join(repoRoot, 'suite-manager', 'frontend', 'src', 'styles', 'mos.css'),
+  homepageImages: path.join(repoRoot, 'infrastructure', 'homepage', 'images'),
 };
 
 function assertExists(targetPath) {
@@ -207,7 +207,7 @@ function syncBranding() {
 
 if (require.main === module) {
   syncBranding();
-  process.stdout.write('V2 branding assets and styles synchronized.\n');
+  process.stdout.write('MOS branding assets and styles synchronized.\n');
 }
 
 module.exports = {

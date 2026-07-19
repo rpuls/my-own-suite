@@ -29,7 +29,7 @@
       },
       {
         "title": "Start with one private account",
-        "body": "This first V2 slice creates one htpasswd-backed Radicale user and a default calendar collection."
+        "body": "This package creates one htpasswd-backed Radicale user and a default calendar collection."
       }
     ],
     "complexity": {
@@ -109,7 +109,7 @@
       "service": "radicale",
       "port": 5232,
       "internalIcalBridge": {
-        "path": "/__mos-v2/ical/${secret.icalToken}",
+        "path": "/__mos/ical/${secret.icalToken}",
         "targetPath": "/${config.adminUsername}/default-calendar/?export",
         "basicAuth": {
           "username": "${config.adminUsername}",
@@ -132,7 +132,7 @@
         {
           "type": "ical",
           "name": "My Calendar",
-          "url": "${app.publicUrl}__mos-v2/ical/${secret.icalToken}",
+          "url": "${app.publicUrl}__mos/ical/${secret.icalToken}",
           "color": "cyan"
         }
       ]

@@ -23,7 +23,7 @@ class HomepageAgentCore {
     return {
       capabilities: ['homepage.read', 'homepage.apply', 'homepage.add-link', 'homepage.add-home-service', 'homepage.remove-link', 'homepage.reconcile-urls'],
       files: HOMEPAGE_FILES,
-      service: 'mos-v2-homepage-agent',
+      service: 'mos-homepage-agent',
     };
   }
 

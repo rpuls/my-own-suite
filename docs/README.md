@@ -8,7 +8,7 @@ This folder holds durable project memory: architectural decisions, documentation
 | --- | --- |
 | Product and end-user documentation | `site/` |
 | App technical reference | `apps/<app>/README.md` |
-| MOS2 operator/developer scripts | `scripts/README.md` |
+| MOS operator/developer scripts | `scripts/README.md` |
 | Test harness guidance | `test/README.md` |
 | USB/self-host installer support | `infrastructure/self-host/` and `scripts/README.md` |
 | Host-agent implementation | `system-agents/` |

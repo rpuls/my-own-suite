@@ -1,4 +1,4 @@
-# Radicale V2 Package
+# Radicale MOS Package
 
 ## Environment Variables
 
@@ -16,7 +16,7 @@ Disable removes the running container while leaving the route, config, secrets, 
 
 - `http://radicale:5232/`
 
-The V2 app agent maps this to the package loopback port and treats an HTTP response below 500 as healthy.
+The MOS app agent maps this to the package loopback port and treats an HTTP response below 500 as healthy.
 
 ## Package Behavior
 
@@ -28,5 +28,5 @@ The V2 app agent maps this to the package loopback port and treats an HTTP respo
 
 ## Current Limits
 
-- This first V2 package slice creates one bootstrap Radicale user.
+- This package creates one bootstrap Radicale user.
 - MOS owner identity reuse, password rotation, show-once secret reveal, DAV auto-discovery, and multi-user client onboarding are future package-contract work.
