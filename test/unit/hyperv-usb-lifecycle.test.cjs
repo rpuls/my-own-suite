@@ -13,6 +13,8 @@ test('Hyper-V USB smoke exposes a guarded two-command lifecycle', () => {
   assert.match(script, /\$VmName = 'mos-usb-smoke'/u);
   assert.match(script, /New-VHD .* -Dynamic -SizeBytes 64GB/u);
   assert.match(script, /\$BackupDiskPath = Join-Path \$LabRoot 'backup\.vhdx'/u);
+  assert.match(script, /Get-VMHardDiskDrive -VMName \$vm\.Name/u);
+  assert.match(script, /StartsWith\("\$LabRoot\\", \[StringComparison\]::OrdinalIgnoreCase\)/u);
   assert.match(script, /MOS_HYPERV_BACKUP_DISK_GB/u);
   assert.match(script, /New-VHD -Path \$BackupDiskPath -Dynamic -SizeBytes \(Get-BackupDiskSizeBytes\)/u);
   assert.match(script, /New-VM .* -Generation 2/u);
