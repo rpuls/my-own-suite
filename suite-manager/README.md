@@ -4,7 +4,7 @@ Suite Manager is the V2 control-plane app.
 
 It owns the web UI, backend API, first-run owner setup, platform state, app lifecycle orchestration, and communication with system agents.
 
-It should not import the old Suite Manager runtime from MOS1.
+It is self-contained and does not import archived control-plane code.
 
 ## Frontend
 
@@ -19,7 +19,7 @@ The first app surface is intentionally narrow:
 - Cloudflare DNS-01 HTTPS configuration
 - authenticated access to the private Homepage dashboard
 
-The old Suite Manager frontend is useful reference material through `site-mos1-reference/` and the `archive/mos1-main-snapshot` branch, but MOS2 code now lives in this root-level `suite-manager/` tree.
+The active control-plane code lives in this root-level `suite-manager/` tree; historical implementations remain isolated in the archive branch.
 
 Useful commands from the repo root:
 
@@ -70,6 +70,6 @@ Authenticated owners use `/suite-manager/customize` to edit only `bookmarks.yaml
 
 Customize follows the established MOS Homepage workflow: an always-visible file list, a syntax-aware YAML editor, explicit validation before save/apply, reload protection for dirty content, and a shared two-step Add-to-Homepage dialog. The home-network helper derives protocol, host, port, and a friendly subdomain from the address users already know, then previews the V2-owned public route before applying the same structured agent request.
 
-SQLite records operation and revision metadata, not dashboard layout or app installation inputs. Durable Homepage files remain the dashboard source, `services.yaml` is generated, and app packages will separately own future installation state, secrets, dependencies, volumes, backup, and lifecycle.
+SQLite records owner, operation, revision, app installation/configuration, package identity, integration, and guide state. Durable Homepage files remain the dashboard source and `services.yaml` is generated; package snapshots and narrow host agents own runtime, volume, backup, and lifecycle boundaries.
 
 Homepage apply may include a bounded service restart. The Homepage agent allows 60 seconds for that host operation and Suite Manager allows 75 seconds for the agent response. Suite Manager orders startup after Homepage and wants the service available, but is not stopped when Homepage restarts, so the authenticated apply request can complete normally.

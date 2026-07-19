@@ -31,9 +31,9 @@ The first package is `stirling-pdf`, intentionally chosen as a boring app to pro
 
 The second package is `vaultwarden`, intentionally chosen to pressure-test generated setup values, secret redaction, persistent storage, package onboarding metadata, and app-specific runtime environment projection without adding app-specific logic to Suite Manager core.
 
-The third package is `radicale`, intentionally chosen to validate a V1-era calendar/contact sync app against the V2 package model. It uses generic package setup fields for user-supplied credentials, one persistent data volume, one app route with a structured tokenized iCal bridge, and one Homepage tile with a calendar widget.
+The third package is `radicale`, validating calendar/contact sync against the current package model. It uses generic package setup fields for user-supplied credentials, one persistent data volume, one app route with a structured tokenized iCal bridge, and one Homepage tile with a calendar widget.
 
-The fourth package is `seafile`, intentionally chosen as the first serious multi-service V1-era pillar app in V2. It uses package-owned Seafile, MySQL, and Valkey services, generated internal database/JWT secrets, user-supplied initial Seafile admin credentials, one public app route, internal-only dependency services, and persistent Seafile/MySQL volumes.
+The fourth package is `seafile`, the first substantial multi-service package in MOS. It uses package-owned Seafile, MySQL, and Valkey services, generated internal database/JWT secrets, user-supplied initial Seafile admin credentials, one public app route, internal-only dependency services, and persistent Seafile/MySQL volumes.
 
 The fifth package is `onlyoffice`, intentionally chosen as the first capability provider package. It installs independently, exports a document-editor capability, has no normal Homepage shortcut, and becomes useful after a compatible document platform such as Seafile is installed and connected through the app integration flow.
 

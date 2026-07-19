@@ -44,6 +44,9 @@ npm run install:render -- --target cloud-init --public-ipv4 <your-server-ip> > m
 
 Paste the file's contents into the provider's user-data box when creating the server. The catch: most providers only assign the IP *after* creation, so this option fits providers that let you reserve a static IP first (or re-provision an existing server with known IP).
 
+## Backup destination
+
+Attach a separate persistent block-storage volume through your provider, format and mount it on this server, then select that mounted volume in Suite Manager. A USB disk attached to your own computer is not visible to a rented server. MOS has no direct object-storage destination today; provider snapshots are an additional provider-managed recovery layer, not a consistency-checked MOS backup. Use encrypted storage and read [Back up and restore](/docs/guides/backup-restore/) before storing data.
 ## Good to know
 
 - **Own domain instead of sslip.io:** if you already have a domain with an A record pointing at the server, render with `--domain yourdomain.example` instead of `--public-ipv4`. Your suite then lives at `home.yourdomain.example`.

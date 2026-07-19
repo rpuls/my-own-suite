@@ -24,7 +24,7 @@ Self-hosting is not magic, and these docs won't pretend otherwise. When you run 
 My Own Suite exists to shrink that trade to something anyone can accept:
 
 - Installation is a guided flow, not a weekend of terminal sessions.
-- Backups are one button and an external USB drive.
+- Backups are manual whole-suite bundles written to an attached drive at home or a mounted block-storage volume on a cloud server.
 - Updates are managed from the browser.
 - The apps are chosen because they are mature, actively maintained, and loved by their communities — not because they are fashionable.
 

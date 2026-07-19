@@ -2,7 +2,6 @@
 
 My Own Suite is a self-hosted control plane for installing and managing private open-source apps from one owner UI.
 
-MOS2 is now the default repo layout. The old MOS1 root shape is preserved on the `archive/mos1-main-snapshot` branch, and the old public site source remains in `site-mos1-reference/` for reference while the MOS2 public docs are rebuilt later.
 
 ## Current Shape
 
@@ -16,8 +15,8 @@ MOS2 is now the default repo layout. The old MOS1 root shape is preserved on the
 | `skills/` | Public, versioned workflows for adding apps, updating apps, and assessing app privacy. |
 | `shared/` | Cross-process contracts used by Suite Manager and host agents. |
 | `test/` | Deterministic unit tests and browser/E2E harnesses. |
-| `site/` | Future MOS2 public site placeholder. |
-| `site-mos1-reference/` | Preserved MOS1 public site source; still builds and deploys as the live public site (`npm run build`) until the MOS2 docs rebuild. |
+| `site/` | MOS public landing page and end-user documentation source. |
+| `site-mos1-reference/` | Isolated previous-site source retained only for rollback/reference until deployment cutover. |
 
 ## Local Development
 
@@ -41,7 +40,7 @@ npm run typecheck
 npm run build:client
 npm run install:render -- --target json
 npm run release:check
-npm run build   # preserved MOS1 public site (Cloudflare Pages)
+npm run build   # currently configured deployment build; see the cutover checklist
 ```
 
 Browser and infrastructure smoke commands are intentionally human-run because they are noisy or can create paid/destructive resources. See [scripts/README.md](./scripts/README.md) and [test/README.md](./test/README.md).

@@ -25,23 +25,22 @@ The two decisions are intentionally separate:
 
 #### Beta truthfulness and security
 
-- [ ] Narrow absolute privacy claims to behavior MOS can actually guarantee.
-- [ ] Replace "no sysadmin required" and optimistic install-time promises with beta-appropriate expectations.
-- [ ] State clearly which backup destinations work on own hardware and cloud servers.
+- [x] Narrow absolute privacy claims to behavior MOS can actually guarantee.
+- [x] State clearly which backup destinations work on own hardware and cloud servers.
 - [x] Add login throttling/progressive delay for an internet-reachable control plane.
-- [ ] Keep the unencrypted-backup warning prominent and avoid suggesting casual storage of downloaded bundles.
-- [ ] Remove stale scaffold/MOS1 wording from active MOS2 documentation.
-- [ ] Condense `CHANGELOG.md` into release-shaped MOS2 outcomes and explicit known limitations.
+- [x] Keep the unencrypted-backup warning prominent and avoid suggesting casual storage of downloaded bundles.
+- [x] Remove stale scaffold/MOS1 wording from active MOS2 documentation.
+- [x] Condense `CHANGELOG.md` into release-shaped MOS2 outcomes and explicit known limitations.
 
 #### Required validation before approval
 
 - [ ] `npm run release:check`
 - [ ] `npm test`
-- [ ] `npm run typecheck`
-- [ ] `npm run build:client`
+- [x] `npm run typecheck`
+- [x] `npm run build:client`
 - [ ] Clean MOS2 `site/` install and build in CI
 - [x] Installer contract/render checks
-- [ ] Human-run Hyper-V full-platform E2E after blocker fixes
+- [x] Human-run Hyper-V full-platform E2E after blocker fixes — owner-confirmed on July 18, 2026, including the app catalog, external-package installation, and the broader platform E2E flow
 - [ ] Real backup/restore drill with representative multi-service and large-data apps
 - [x] Explicitly approved DigitalOcean validation if cloud install remains a supported launch path
 - [ ] Branch protection requires PRs and passing CI for `main`
@@ -121,34 +120,30 @@ The two decisions are intentionally separate:
 - **Regression check:** Keep the hosted installer, DigitalOcean harness, generic cloud guide, and HTTPS failure diagnostic aligned. Providers that block required ingress must receive a clear diagnostic and must not fall back to owner creation over HTTP.
 - **Acceptance:** A user following only the supported guide reaches a trusted HTTPS Home URL without undocumented infrastructure steps.
 
-#### 9. Narrow privacy claims to guarantees MOS controls
+#### 9. Narrow privacy claims to guarantees MOS controls — completed, retain as a regression check
 
 - **Severity:** Medium
 - **Area:** Product positioning and privacy
 - **Evidence:** Landing copy claimed MOS strips third-party fonts, remote icons, and app analytics, and implied only the owner holds the keys. MOS can control its UI and package defaults but cannot make an evergreen guarantee for every upstream app; cloud providers also retain infrastructure control unless owner-held encryption is used.
 - **Why it matters:** Privacy is the core trust proposition, so absolute but unverifiable claims create disproportionate reputational risk.
 - **Required action:** Say that MOS itself sends no telemetry by default and self-hosts its own assets. Make upstream app behavior package/version-specific and describe the cloud-provider trust tradeoff.
+- **Resolution evidence:** The landing page now limits its platform claim to MOS-owned telemetry and self-hosted assets, and no longer claims that MOS universally strips upstream analytics. App privacy is package/version/digest-specific: Stirling PDF is the first and currently only assessed app, its supported analytics setting is disabled in the package, and every other catalog app is visibly marked **Not yet rated by MOS** rather than inheriting a favorable claim. The public privacy policy, terms, assessment methodology, catalog, app guide, and Suite Manager distinguish evidence-backed MOS assessments from unverified package-authored statements and external packages, disclose outbound connections and cloud-provider trust boundaries, and label AI-assisted review provenance. Schema and repository checks derive posture from recorded dimensions, require evidence for favorable ratings, and reject unknown findings presented as a favorable posture.
+- **Regression check:** Keep platform behavior, upstream-package assessments, external-package claims, and public-site analytics described separately. A new or updated app must remain unrated until an assessment bound to its exact package identity passes the repository checks.
 - **Acceptance:** Every privacy claim maps to a testable MOS behavior or a clearly scoped upstream-package statement.
 
-#### 10. Set honest technical-skill and installation-time expectations
 
-- **Severity:** Medium
-- **Area:** Product and user experience
-- **Evidence:** Landing copy used "no sysadmin required" and short install-time estimates, while own-hardware setup requires ISO creation, disk erasure, router discovery, stable addressing, and local DNS/hosts work. Cold installs also build components and may take longer than optimistic estimates.
-- **Why it matters:** The current language creates a consumer-appliance expectation that the beta does not consistently meet.
-- **Required action:** Prefer "designed to reduce routine administration," separate installation complexity from everyday browser management, and publish conservative ranges with troubleshooting expectations.
-- **Acceptance:** A non-expert usability pass confirms the public copy predicts the real install work and recovery responsibilities.
-
-#### 11. Clarify backup availability by installation type
+#### 10. Clarify backup availability by installation type — completed, retain as a regression check
 
 - **Severity:** Medium
 - **Area:** Backup and product positioning
 - **Evidence:** Top-level messaging presents backup as a platform capability across deployment paths, while the documented implementation is manual and local/mounted-drive oriented. Plugging a USB disk into a rented VPS is generally impossible.
 - **Why it matters:** Cloud users may discover after storing data that the promoted backup flow has no practical supported destination for them.
 - **Required action:** Mark whole-suite backup as own-hardware/local-mount oriented until cloud/object destinations exist. If provider snapshots are suggested, document their external nature and consistency/restore limitations.
+- **Resolution evidence:** The backup guide, own-hardware guide, DigitalOcean guide, generic cloud guide, first-start guidance, landing copy, FAQ, and Suite Manager now distinguish the supported destinations. Own hardware uses an encrypted USB/external drive attached to the MOS machine; cloud servers use a separately attached and mounted provider block-storage volume. Direct object-storage destinations are explicitly unsupported, and provider snapshots are described as an external, provider-managed supplement whose consistency and restore behavior MOS cannot verify.
+- **Regression check:** Every supported installation path must name a destination that the server can actually mount, and new destination types must not be advertised before backup and restore support exists.
 - **Acceptance:** Each supported install guide states exactly which backup destinations and restore procedure apply to that install type.
 
-#### 12. Harden internet-facing login against brute force — completed, retain as a regression check
+#### 11. Harden internet-facing login against brute force — completed, retain as a regression check
 
 - **Severity:** Medium
 - **Area:** Authentication security
@@ -158,36 +153,42 @@ The two decisions are intentionally separate:
 - **Resolution evidence:** Suite Manager applies bounded, expiring progressive backoff per client address and a looser account-wide limit, returns `429` with `Retry-After`, clears applicable state after successful authentication, and emits security events containing only a one-way client fingerprint and retry duration. Events persist as hourly SQLite aggregates with 30-day retention and a 5,000-row hard cap so later owner-facing monitoring cannot become an attacker-controlled raw log. Forwarded addresses are accepted only from the loopback Caddy boundary. Focused tests cover progressive caps, distributed attempts, recovery, bounded memory and database storage, forwarding-header trust, persistence across restart, retention, the HTTP retry contract, and secret-free events. Public Suite Manager guidance states that MFA and passkeys are not yet available.
 - **Acceptance:** Automated repeated failures are throttled without enabling trivial permanent denial of service, with focused tests covering reset and proxy-address handling.
 
-#### 13. Treat unencrypted backup bundles as full-secret exports
+#### 12. Treat unencrypted backup bundles as full-secret exports — completed, retain as a regression check
 
 - **Severity:** Medium
 - **Area:** Backup security
 - **Evidence:** Bundles include Suite Manager state, app data/secrets, and HTTPS-related secret state. The guide correctly warns they are unencrypted but also suggests downloading a bundle to store elsewhere.
 - **Why it matters:** Loss of removable media, browser downloads, or casual copying to cloud storage can expose essentially the entire suite and provider credentials.
 - **Required action:** Keep the warning adjacent to every create/download action, recommend encrypted media/storage, avoid casual "stash elsewhere" wording, and prioritise authenticated encryption with a recoverable key workflow.
+- **Resolution evidence:** Suite Manager now presents the full-secret warning above backup creation and again beside browser download actions. The backup guide identifies app data, owner/app credentials, Suite Manager state, and HTTPS/provider secrets; recommends encrypted, access-controlled destinations; removes the casual download-and-stash instruction; and tells owners to remove unneeded browser copies. The post-cutover encryption item now groups payload integrity, authenticated encryption, key export, recovery, loss, and rotation as one design problem.
+- **Regression check:** Any new create, export, or download surface must warn before the bundle leaves MOS-managed storage and must not imply that an unencrypted browser or cloud copy is safe.
 - **Acceptance:** UI and docs explain the full-secret nature before creation/download, and the roadmap issue defines encryption, integrity, and key-recovery requirements together.
 
-#### 14. Remove stale scaffold and MOS1 wording from active MOS2 docs
+#### 13. Remove stale scaffold and MOS1 wording from active MOS2 docs — completed, retain as a regression check
 
 - **Severity:** Low
 - **Area:** Repository maintenance and documentation
 - **Evidence:** The review found active files calling `site/` a future placeholder, app packages future work, and host agents placeholders despite all being implemented. Historical `version-2` and MOS1 references also remained in release-shaped material.
 - **Why it matters:** Contributors, users, and future agents can follow obsolete architecture assumptions.
 - **Required action:** Sweep active docs for `future`, `placeholder`, `version-2`, `V1`, and `MOS1`; retain references only where they explain archives, migrations, or compatibility.
+- **Resolution evidence:** Root, documentation-ownership, public-site, script, infrastructure, app-package, and Suite Manager READMEs now describe the implemented MOS2 layout and current ownership. Placeholder/future implementation statements and V1-era product framing were removed. References to the previous site or root layout remain only to identify isolated rollback/history sources or an explicit compatibility boundary.
+- **Regression check:** Active documentation must describe current root paths. Historical names belong only in archive, migration, rollback, or compatibility context.
 - **Acceptance:** Root README, site README, app/system-agent/script references, docs ownership map, and current public docs all describe the same MOS2 layout and deployment status.
 
-#### 15. Make the changelog release-shaped
+#### 14. Make the changelog release-shaped — completed, retain as a regression check
 
 - **Severity:** Low
 - **Area:** Release documentation
 - **Evidence:** `Unreleased` contains long iterative V2 implementation history, follow-up fixes, and intermediate architecture states.
 - **Why it matters:** Users cannot quickly identify final outcomes, compatibility changes, security implications, and known beta limits.
 - **Required action:** Consolidate into broad `Added`, `Changed`, `Fixed`, `Security`, `Compatibility`, and `Known limitations` sections. Preserve material user/operations facts, not the branch work log.
+- **Resolution evidence:** `Unreleased` is now organized into `Added`, `Changed`, `Fixed`, `Security`, `Compatibility`, and `Known limitations`, with broad MOS2 outcomes and explicit beta/release gates replacing the chronological implementation diary.
+- **Regression check:** Follow-up fixes in the same release area must update an existing outcome bullet unless they add a distinct user-visible, operational, security, or compatibility result.
 - **Acceptance:** Release notes can be derived directly from the changelog without reconstructing which later bullets supersede earlier ones.
 
 ### What is already strong and must not regress
 
-- [ ] MOS1 remains clearly isolated in `site-mos1-reference/` and the archive branch rather than mixed into the MOS2 runtime.
+- [x] The previous site and pre-MOS2 root layout remain clearly isolated in `site-mos1-reference/` and the archive branch rather than mixed into the MOS2 runtime.
 - [ ] App packages remain manifest-driven with digest-pinned base images and root-level Dockerfile paths.
 - [ ] ONLYOFFICE remains an independent capability provider/Seafile companion rather than being presented as a standalone file cloud.
 - [ ] Stop remains non-destructive; uninstall remains explicitly destructive and removes declared containers, routes, Homepage entries, state, secrets, integrations, and volumes.
@@ -202,8 +203,8 @@ The two decisions are intentionally separate:
 
 - [ ] MOS2 is pre-1.0 and intended for evaluation or non-critical use with independent backups.
 - [ ] Cloud security/TLS and remote-access responsibilities are stated without implying provider tooling automatically supplies HTTPS.
-- [ ] Backups are manual, unencrypted, whole-suite only, destination-limited, and version-sensitive.
-- [ ] Replacement-machine restore prerequisites are explicit.
+- [x] Backups are manual, unencrypted, whole-suite only, destination-limited, and version-sensitive.
+- [x] Replacement-machine restore prerequisites are explicit.
 - [ ] Stable-track managed apply status is stated accurately.
 - [ ] App package changes that are not automatically reconciled are stated before an update starts.
 - [x] MFA availability and login-hardening status are explicit.
@@ -214,7 +215,7 @@ The two decisions are intentionally separate:
 
 ### Suggested post-cutover issues
 
-- [ ] Authenticated-encryption backup format with checksummed payloads and recoverable keys.
+- [ ] Authenticated-encryption backup format covering payload integrity, encryption at rest, authentication, key export, and recoverable-key loss/rotation workflows.
 - [ ] Scheduled backups, retention policy, and object/object-storage destinations.
 - [ ] Package-aware transactional updates and rollback.
 - [ ] Stable tagged-release updates and installed-version metadata.
@@ -240,7 +241,6 @@ For the main-cutover announcement:
 
 Avoid until the corresponding acceptance criteria above are met:
 
-- "No sysadmin required."
 - "One-click updates" without precise runtime-reconciliation scope.
 - "Everything included" backups without recovery prerequisites.
 - "Only you hold the keys" for rented cloud servers.

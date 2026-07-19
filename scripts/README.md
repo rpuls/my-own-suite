@@ -2,7 +2,7 @@
 
 V2 operator, installer, smoke, and developer scripts live here.
 
-Future DigitalOcean smoke wrappers and USB/cloud/SSH installer entry points should be rebuilt here instead of importing the old script surface by default.
+The DigitalOcean, USB/Hyper-V, cloud-init, and SSH installer and smoke entry points are implemented here and share the repository bootstrap contract.
 
 ## No-Preconfig Bootstrap Contract
 
@@ -11,7 +11,7 @@ The first V2 installer surface bootstraps only the control plane:
 - Suite Manager
 - Caddy
 - Homepage
-- future system-agent placeholder
+- the installed MOS system agents
 
 Owner credentials are not installer inputs. The owner creates the first account in Suite Manager after first boot. App selections and app-specific environment values are also not installer inputs; those belong to later Suite Manager install flows.
 
@@ -108,7 +108,7 @@ Inputs are optional and come from `infrastructure/self-host/autoinstall/installe
 - `HOSTNAME` defaults to `mos`.
 - `STACK_DOMAIN` defaults to `mos.home`.
 
-The V2 Hyper-V seed does not embed the old v1 self-host bootstrap or its preconfigured Suite Manager owner. Owner setup should happen in Suite Manager after first boot.
+The Hyper-V seed uses the current bootstrap contract and never embeds a preconfigured Suite Manager owner. Owner setup happens in Suite Manager after first boot.
 
 Readiness and access:
 
@@ -130,7 +130,7 @@ Readiness and access:
 # END MOS V2 HYPERV USB SMOKE
 ```
 
-- Browser access is through `http://home.<domain>/suite-manager/`, for example `http://home.mos.home/suite-manager/`. Do not use the old v1 `suite-manager.<domain>/setup/` host.
+- Browser access is through `http://home.<domain>/suite-manager/`, for example `http://home.mos.home/suite-manager/`. The supported control-plane path is `home.<domain>/suite-manager/`.
 - The final summary prints the VM name, switch, OS disk, backup disk, installer ISO, IPv4, MOS Home URL, and Suite Manager URL.
 - `reset` writes the Home host and known package route hosts into the same marked Windows hosts block for `STACK_DOMAIN` plus the configured DNS-01 test domain, and removes stale copies from earlier VM resets. The temporary Apps page still shows a repair command for app hosts, but the normal Stirling smoke path should not need it. For lower-friction repeated testing across arbitrary domains, a local wildcard DNS override such as `*.test.example.com -> <guest-ip>` in the user's router, AdGuard Home, Unbound, Pi-hole, or other local DNS service is still the cleanest option.
 

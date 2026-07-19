@@ -56,6 +56,9 @@ This is the fastest way to get a running suite: a small DigitalOcean droplet tha
 
 </Steps>
 
+## Backup destination
+
+Attach a separate persistent block-storage volume through your provider, format and mount it on this server, then select that mounted volume in Suite Manager. A USB disk attached to your own computer is not visible to a rented server. MOS has no direct object-storage destination today; provider snapshots are an additional provider-managed recovery layer, not a consistency-checked MOS backup. Use encrypted storage and read [Back up and restore](/docs/guides/backup-restore/) before storing data.
 ## Good to know
 
 - **Billing:** a powered-off droplet still bills. To stop paying, destroy the droplet (backups first — see [Back up and restore](/docs/guides/backup-restore/)).

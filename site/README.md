@@ -1,6 +1,6 @@
 # MOS2 Public Site
 
-Astro + Starlight source for the V2 `myownsuite.org` website. The landing page is implemented; the documentation rebuild is still pending (only a placeholder page exists under `/docs`).
+Astro + Starlight source for the MOS `myownsuite.org` website. The landing page and end-user documentation are implemented here and share the generated app catalog and canonical branding.
 
 The visual design comes from the "My Own Suite Design System" project on claude.ai/design (`ui_kits/marketing/index.html`). That project is the design source of truth; shared brand tokens and utilities flow through the canonical branding workflow (`branding/styles/mos.css` → `npm run branding:sync` → `generated/branding/mos.css`), never through hand-edited copies. Only page-specific layout lives in `src/styles/landing.css`.
 

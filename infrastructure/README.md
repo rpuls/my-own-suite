@@ -2,7 +2,7 @@
 
 Shared runtime substrate lives here when it is not owned by one app.
 
-Use this area for Caddy base config, the narrow control-plane runtime, future Compose assembly/templates, Docker build conventions, projection contracts, and generated-output schemas.
+This area owns Caddy base configuration, the narrow control-plane runtime, Homepage assets, installer substrate, Docker build conventions, projection contracts, and generated-output schemas.
 
 Placement rule:
 

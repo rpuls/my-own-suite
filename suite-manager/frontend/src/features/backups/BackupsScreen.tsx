@@ -237,7 +237,8 @@ export function BackupsScreen() {
     <div className="mos-page">
       <div className="suite-hero">
         <h1>Backup & Restore</h1>
-        <p className="suite-lead mos-body-lg">Save a copy of My Own Suite to an external drive, then restore it if you ever need to recover your system.</p>
+        <p className="suite-lead mos-body-lg">Save a whole-suite copy to storage mounted on this server, then restore it if you need to recover the system.</p>
+        <Notice title="Backups are unencrypted full-secret exports" variant="warning"><p>Each bundle contains app data, owner and app credentials, Suite Manager state, and HTTPS/provider secrets. Use an encrypted, access-controlled destination. Do not leave downloaded bundles in Downloads or upload them to ordinary cloud storage.</p></Notice>
       </div>
 
       {error ? <Notice title="Backup needs attention" variant="error"><p>{error}</p></Notice> : null}
@@ -258,7 +259,7 @@ export function BackupsScreen() {
           <div className="suite-backup-header-row">
             <div>
               <h2 className="mos-card-title">Backup destination</h2>
-              <p className="suite-meta">Select an external drive to store your backup.</p>
+              <p className="suite-meta">On own hardware, select an encrypted external drive. On a cloud server, select an encrypted block-storage volume mounted on this server.</p>
             </div>
             <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => void load()} type="button">
               {busy === 'refresh' ? <span className="suite-spinner" /> : <Icon name="refresh" />}
@@ -317,7 +318,7 @@ export function BackupsScreen() {
           </div> :
             <div className="suite-empty-state">
               <p className="suite-meta">No backup drives detected.</p>
-              <p className="suite-meta">Plug in an external USB drive on the server machine, then click Refresh drives.</p>
+              <p className="suite-meta">Own hardware: connect an external drive to this machine. Cloud server: attach and mount a provider block-storage volume. Then click Refresh drives.</p>
             </div>
           }
 
@@ -337,6 +338,7 @@ export function BackupsScreen() {
 
         <section className="mos-panel suite-card suite-backup-panel">
           <h2 className="mos-card-title">Restore from a backup</h2>
+          <p className="suite-meta"><strong>Before downloading:</strong> this unencrypted bundle contains the suite's data and reusable secrets. Save it only to encrypted, access-controlled storage and remove unneeded browser copies.</p>
           {status.backups.length ? <div className="suite-backup-bundle-list">
             {status.backups.map((backup) => <article key={backup.path}>
               <div><strong>{backup.createdAt ? formatDate(backup.createdAt) : 'MOS backup'}</strong><span>{backupDescription(backup)} · {backup.destinationLabel || 'Backup drive'}</span></div>
