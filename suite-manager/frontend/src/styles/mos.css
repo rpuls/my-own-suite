@@ -446,6 +446,26 @@ summary:focus-visible {
   /* No backdrop-filter here. Blur is applied only on the actual overlay content, not the full scrim */
 }
 
+/* Floating overlay chrome: menus, popovers, dropdowns, tooltips.
+   THE FROST RULE — backdrop-filter blurs only what lies behind the element's
+   backdrop root. Any ancestor with backdrop-filter, filter, or opacity
+   (which includes every .mos-panel) becomes that root, so a frosted element
+   nested inside a panel silently loses its blur and renders as translucent
+   text-on-text. Overlays must therefore live in a top-level layer:
+   position fixed, rendered via a portal to <body> — exactly like the shared
+   Dialog and Drawer. Use this class for the surface and add layout
+   (padding, grid, width) in the consuming stylesheet. */
+.mos-overlay {
+  position: fixed;
+  z-index: 70;
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-frost-strong);
+  -webkit-backdrop-filter: var(--mos-frost-filter-strong);
+  backdrop-filter: var(--mos-frost-filter-strong);
+  box-shadow: var(--mos-shadow-strong);
+}
+
 .mos-badge,
 .mos-pill,
 .mos-label {

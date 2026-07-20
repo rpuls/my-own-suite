@@ -15,7 +15,7 @@ This folder holds durable project memory: architectural decisions, documentation
 | Previous-site rollback/reference source | `site-mos1-reference/` |
 | Durable architecture decisions | `docs/decisions.md` |
 | Codex/project workflow notes | `docs/codex-notes.md` |
-| Temporary branch development notes explicitly requested for an active epic | `docs/<topic>-plan.md`, removed or converted to GitHub Issues before merge |
+| Temporary branch development notes explicitly requested for an active epic | `docs/<topic>-plan.md`, removed or converted to GitHub Issues before merge unless the owner explicitly designates the file as a kept durable record (so marked in its status line) |
 | GitHub task shape | `.github/ISSUE_TEMPLATE/codex-task.yml` |
 | Release workflow | `RELEASING.md` |
 | Release notes | `CHANGELOG.md` |

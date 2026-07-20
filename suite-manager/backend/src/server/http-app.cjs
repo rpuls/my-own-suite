@@ -607,11 +607,12 @@ function createMOSServer({
           jsonResponse(response, 200, {
             ...(await backupAgent.status()),
             inventory: backupInventory.inventory(),
-            // Restore is exact for control-plane state and reconciled app
-            // volumes, but the guarantee has not yet passed the Phase 4
-            // replacement-machine and interruption drills, so the API says
-            // experimental until demonstrated behavior catches up.
-            restoreGuarantee: 'experimental',
+            // Exact full restore passed the Phase 4 recovery drills on
+            // 2026-07-20/21: same-machine and replacement-machine restores,
+            // database-backed and multi-GiB workloads, corruption/version/
+            // disk/disconnected-destination refusals, and mid-mutation
+            // power-loss interruption with journaled recovery.
+            restoreGuarantee: 'verified',
             serviceAvailable: true,
           });
         } catch (error) {
@@ -623,7 +624,7 @@ function createMOSServer({
             interruptedRestore: null,
             inventory: backupInventory.inventory(),
             lastJob: null,
-            restoreGuarantee: 'experimental',
+            restoreGuarantee: 'verified',
             serviceAvailable: false,
           });
         }

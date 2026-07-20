@@ -1,6 +1,6 @@
 # Backup And Restore Reliability Plan
 
-Status: active temporary epic plan. Use this checklist across agent sessions. Before merge, move unfinished work to GitHub Issues and remove or replace this file according to `docs/README.md`.
+Status: durable epic record and backlog, kept in-repo by owner decision (2026-07-21) instead of being converted to GitHub Issues. Phases 1-4 are complete with drill evidence recorded inline; the Phase 5 hardening list and the deferred follow-ups below are the backlog to pick from when this work is next prioritized.
 
 ## Goal
 
@@ -161,11 +161,11 @@ Exit gate: the Seafile regression passes, later persistent resources cannot be r
 
 - [x] Restore a representative multi-service backup on the original machine. — 2026-07-20 Hyper-V drill: three restore points (Stirling-only, Stirling+Seafile+Immich with data, +Radicale) restored in both directions; apps, users, files, and credentials intact; absence and presence reconciled each time.
 - [x] Restore it onto a clean compatible replacement VM using documented recovery material. — 2026-07-20: fresh Hyper-V VM, same MOS version; recovery material was the downloaded bundle file plus the owner password. Uploaded through the Backups screen, validated, restored: 3 apps / 11 volumes verified matched, Immich, Seafile, and Stirling reappeared with data. Operator-facing gap found and mitigated: the ~4-minute control-plane outage mid-restore reads as a crash (raw 502 on refresh); the Backups screen now warns before leaving, sets long-duration expectations, and a static Caddy "restoring" page remains as a follow-up idea for GitHub Issues.
-- [ ] Test corruption, wrong version, insufficient disk, disconnected destination, and interruption at major boundaries. — interruption tested 2026-07-20: hard power-off before validation completed behaves as if the restore never started; power-off during bundle validation left the suite intact but exposed a stale job bug: a job whose detached worker died pre-journal was reported as running forever and blocked new jobs. Fixed by reconciling the current job against the live worker process (`reconcileCurrentJob` in `system-agents/backup/agent.cjs`); needs a re-drill after a managed update. Corruption (stream-level and checksum-level), wrong schema version, and insufficient destination space were all refused correctly on 2026-07-20/21. The disconnected-destination drill found the worst bug of the epic: the mountpoint directory outlives the mount, so a backup to a detached drive wrote 13 GiB onto the system disk and reported success, invisible in the bundle list. Fixed 2026-07-21 at both layers — jobs refuse a destination that is not a live mount at start (`assertMountedDestination`), and the engine refuses to mark a backup succeeded if the destination is no longer mounted at completion (`destinationMounted` adapter check before the COMPLETE marker; regression in `agent-core.test.cjs`). Disconnect re-drill passed 2026-07-21: with the drive unmounted, the UI honestly reported no destination, and a direct agent-socket backup request — the stale-page worst case — was refused with the reconnect message, no job created, system disk untouched. Remaining: post-mutation interruption (journal → blocked agent → ACKNOWLEDGE) on the VM.
+- [x] Test corruption, wrong version, insufficient disk, disconnected destination, and interruption at major boundaries. — all passed; post-mutation interruption completed 2026-07-21: an SSH-armed watcher fired a sysrq hard reset during app reconciliation mid-restore; on boot the journal survived, the interrupted restore blocked new jobs, the dead worker's job was reconciled to failed, the UI notice named the phase and rescue path, typed ACKNOWLEDGE unblocked, and re-restoring the same bundle converged to a verified state. Earlier detail: interruption tested 2026-07-20: hard power-off before validation completed behaves as if the restore never started; power-off during bundle validation left the suite intact but exposed a stale job bug: a job whose detached worker died pre-journal was reported as running forever and blocked new jobs. Fixed by reconciling the current job against the live worker process (`reconcileCurrentJob` in `system-agents/backup/agent.cjs`); needs a re-drill after a managed update. Corruption (stream-level and checksum-level), wrong schema version, and insufficient destination space were all refused correctly on 2026-07-20/21. The disconnected-destination drill found the worst bug of the epic: the mountpoint directory outlives the mount, so a backup to a detached drive wrote 13 GiB onto the system disk and reported success, invisible in the bundle list. Fixed 2026-07-21 at both layers — jobs refuse a destination that is not a live mount at start (`assertMountedDestination`), and the engine refuses to mark a backup succeeded if the destination is no longer mounted at completion (`destinationMounted` adapter check before the COMPLETE marker; regression in `agent-core.test.cjs`). Disconnect re-drill passed 2026-07-21: with the drive unmounted, the UI honestly reported no destination, and a direct agent-socket backup request — the stale-page worst case — was refused with the reconnect message, no job created, system disk untouched. Remaining: post-mutation interruption (journal → blocked agent → ACKNOWLEDGE) on the VM.
 - [x] Test a database-backed multi-service app and a large-data workload. — database-backed multi-service proven 2026-07-20 (Seafile/MySQL and Immich/Postgres restored with working logins and files); ~6 GiB Seafile workload backed up and restored the same day with large files confirmed intact. Backup-agent cgroup memory peaked at 3.2 G during the large backup, but that figure includes page cache from writing multi-GiB archives (RSS stayed small); watch it, no evidence of unbounded buffering.
 - [x] Confirm stale generated runtime is removed and regenerated. — verified on the VM 2026-07-20: after each restore only manifest-matching containers/volumes remained (`docker volume ls` showed exact owned-volume sets), Homepage tiles and routes regenerated.
 - [x] Ask the owner to run the relevant Hyper-V E2E and provide the concise summary. — owner ran `npm run e2e:full` 2026-07-20 with backup/restore enabled; passed including restore verification assertions.
-- [ ] Align UI and documentation claims with demonstrated behavior.
+- [x] Align UI and documentation claims with demonstrated behavior. — 2026-07-21: `restoreGuarantee` moved from `experimental` to `verified` with the drill evidence recorded at the API, and the Backups screen now states what was demonstrated (verified replacement-hardware recovery, rescue copy, power-loss handling) while still flagging what is not built (encryption, scheduling).
 
 Exit gate: no tested path reports success without meeting the core contract, and same-machine and replacement-machine drills succeed.
 
@@ -185,13 +185,25 @@ Prioritize these only after Phase 4 unless security review makes one a release b
 
 Exit gate: each capability has a demonstrated need and does not weaken portable full restore.
 
+## Deferred Follow-Ups (Drill Findings)
+
+Small items surfaced by the Phase 4 drills, none blocking the verified guarantee:
+
+- [ ] Serve a static "MOS is restoring a backup" page from Caddy while Suite Manager is stopped mid-restore, so a refresh does not show a raw 502.
+- [ ] Map restore journal phase IDs (`reconciling-apps`, …) to plain language in the interrupted-restore notice.
+- [ ] Decide a cleanup story for anonymous (unlabeled, hash-named) Docker volumes left behind by removed app containers.
+- [ ] Hyper-V E2E: re-authenticate after creating the checkpoint backup so the restore invalidates the test session too (currently the pre-backup cookie survives restore and masks the human sign-out path).
+- [ ] Offer the Mount button for unmounted whole-disk filesystems, not only partitions (the lab backup VHD is a whole-disk ext4 and shows as "no drives detected" when unmounted).
+- [ ] Migrate AppsScreen's inline kebab menu to the shared `ActionMenu` primitive.
+- [ ] Upload failure messages should say "the uploaded file" instead of leaking the internal temp filename.
+
 ## Session Handoff
 
 1. Check an item only when code, tests, and evidence exist.
 2. Record the next item and blockers in the active GitHub issue.
 3. Keep the changelog release-shaped.
 4. Update `docs/decisions.md` only when a durable contract changes.
-5. Move unfinished tasks to GitHub Issues and remove this temporary plan before merge.
+5. This file stays in-repo as the epic's durable record and backlog (owner decision, 2026-07-21); do not delete it or move its tasks to GitHub Issues without being asked.
 6. Do not run Hyper-V E2E automatically; ask the owner for the relevant summary.
 
 ## Definition Of Trustworthy

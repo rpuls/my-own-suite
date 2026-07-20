@@ -480,7 +480,7 @@ export function BackupsScreen() {
 
         <section className="mos-panel suite-card suite-backup-panel">
           <h2 className="mos-card-title">Restore from a backup</h2>
-          {status.restoreGuarantee === 'experimental' ? <p className="suite-meta"><strong>Full restore is experimental.</strong> It replaces the current install with the backup, verifies the result, and keeps a complete rescue copy of the previous state, but it has not yet passed recovery drills on replacement hardware. Keep an independent copy of important data.</p> : null}
+          {status.restoreGuarantee === 'experimental' ? <p className="suite-meta"><strong>Full restore is experimental.</strong> It replaces the current install with the backup, verifies the result, and keeps a complete rescue copy of the previous state, but it has not yet passed recovery drills on replacement hardware. Keep an independent copy of important data.</p> : <p className="suite-meta">Restore replaces the current install with the backup, verifies the result against it, and keeps a complete rescue copy of the previous state on the server. It has passed recovery drills on this and replacement hardware, including power-loss interruption. Backups are not yet encrypted or scheduled, so keep bundles on protected storage.</p>}
           <p className="suite-meta"><strong>Before downloading:</strong> this unencrypted bundle contains the suite's data and reusable secrets. Save it only to encrypted, access-controlled storage and remove unneeded browser copies.</p>
           {status.backups.length ? <div className="suite-backup-bundle-list">
             {status.backups.slice(0, visibleBundles).map((backup) => <article key={backup.path}>

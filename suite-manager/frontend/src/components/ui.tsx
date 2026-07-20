@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { createPortal } from 'react-dom';
 
 export type IconName = 'apps' | 'backup' | 'customize' | 'dashboard' | 'hard-drive' | 'menu' | 'more' | 'network-drive' | 'refresh' | 'settings' | 'sign-out' | 'upload' | 'usb-drive' | 'x';
 
@@ -77,26 +78,48 @@ export function Dialog({ children, className, closeOnBackdrop = false, footer, h
   return <div className="suite-modal-backdrop" onClick={closeOnBackdrop ? (event) => { if (event.target === event.currentTarget) onCloseRef.current(); } : undefined} role="presentation"><section ref={dialogRef} aria-label={title} aria-modal="true" className={`suite-dialog mos-panel${className ? ` ${className}` : ''}`} role="dialog"><div className="suite-dialog-header">{header ?? <h2>{title}</h2>}<button ref={closeRef} aria-label={`Close ${title}`} className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button></div>{children}{footer ? <div className="suite-dialog-footer">{footer}</div> : null}</section></div>;
 }
 
-// Shared kebab ("...") action menu. Styling reuses the popover classes
-// introduced for app maintenance actions; AppsScreen still renders its own
-// inline copy and should migrate here when next touched.
+// Shared kebab ("...") action menu. The menu renders through a portal at
+// body level like Dialog/Drawer: nested inside a frosted panel, an ancestor
+// backdrop-filter becomes the popover's backdrop root and the frost blur
+// never reaches the page, leaving unreadable text-on-text. AppsScreen still
+// renders its own inline copy and should migrate here when next touched.
 export function ActionMenu({ ariaLabel = 'More actions', disabled, items }: { ariaLabel?: string; disabled?: boolean; items: Array<{ label: string; onSelect: () => void }> }) {
-  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<{ right: number; top: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  function toggle() {
+    if (anchor) { setAnchor(null); return; }
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) setAnchor({ right: Math.max(8, window.innerWidth - rect.right), top: rect.bottom + 8 });
+  }
   useEffect(() => {
-    if (!open) return undefined;
-    const onPointerDown = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node)) setOpen(false); };
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    if (!anchor) return undefined;
+    const close = () => setAnchor(null);
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!menuRef.current?.contains(target) && !buttonRef.current?.contains(target)) close();
+    };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') close(); };
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
-    return () => { document.removeEventListener('pointerdown', onPointerDown); document.removeEventListener('keydown', onKeyDown); };
-  }, [open]);
-  return <div className="suite-app-actions-menu" ref={menuRef}>
-    <button aria-expanded={open} aria-haspopup="menu" aria-label={ariaLabel} className="suite-icon-button" disabled={disabled} onClick={() => setOpen((current) => !current)} title={ariaLabel} type="button"><Icon name="more" /></button>
-    {open ? <div className="suite-app-actions-popover" role="menu">
-      {items.map((item) => <button key={item.label} onClick={() => { setOpen(false); item.onSelect(); }} role="menuitem" type="button">{item.label}</button>)}
-    </div> : null}
-  </div>;
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [anchor]);
+  return <>
+    <button aria-expanded={Boolean(anchor)} aria-haspopup="menu" aria-label={ariaLabel} className="suite-icon-button" disabled={disabled} onClick={toggle} ref={buttonRef} title={ariaLabel} type="button"><Icon name="more" /></button>
+    {anchor ? createPortal(
+      <div className="mos-overlay suite-actions-popover" ref={menuRef} role="menu" style={{ right: anchor.right, top: anchor.top }}>
+        {items.map((item) => <button key={item.label} onClick={() => { setAnchor(null); item.onSelect(); }} role="menuitem" type="button">{item.label}</button>)}
+      </div>,
+      document.body,
+    ) : null}
+  </>;
 }
 
 export function Stepper({ currentStepIndex, steps }: { currentStepIndex: number; steps: string[] }) {
