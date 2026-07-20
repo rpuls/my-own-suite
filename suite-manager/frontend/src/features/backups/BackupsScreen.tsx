@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Dialog, Icon, Notice } from '../../components/ui';
 
@@ -108,25 +108,29 @@ function jobMessage(job: BackupJob | null) {
   if (job.status === 'succeeded') {
     if (job.kind === 'restore') return 'Restore completed.';
     if (job.kind === 'validate') return 'Backup check passed. Every checksum, archive, and app package in the bundle is valid, so it can be restored.';
+    if (job.kind === 'upload') return 'Backup upload completed. The bundle passed the same checks as a restore preflight and is listed below.';
     return 'Backup completed.';
   }
   if (job.status === 'failed') {
     if (job.kind === 'restore') return 'Restore failed.';
     if (job.kind === 'validate') return 'Backup check failed. Do not rely on this bundle for recovery.';
+    if (job.kind === 'upload') return 'Backup upload failed. Nothing was added to the destination.';
     return 'Backup failed.';
   }
-  return job.stage || (job.kind === 'restore' ? 'Restore in progress' : job.kind === 'validate' ? 'Backup check in progress' : 'Backup in progress');
+  return job.stage || (job.kind === 'restore' ? 'Restore in progress' : job.kind === 'validate' ? 'Backup check in progress' : job.kind === 'upload' ? 'Backup upload in progress' : 'Backup in progress');
 }
 
 function operationTitle(job: BackupJob | null, restoreStarted: boolean) {
   if (restoreStarted || job?.kind === 'restore') return 'Restoring your backup';
   if (job?.kind === 'validate') return 'Checking your backup';
+  if (job?.kind === 'upload') return 'Adding your uploaded backup';
   return 'Backing up your suite';
 }
 
 function operationMessage(job: BackupJob | null, restoreStarted: boolean) {
   if (restoreStarted || job?.kind === 'restore') return 'MOS is replacing the current install with the selected backup. Suite Manager may briefly reconnect while services restart.';
   if (job?.kind === 'validate') return 'MOS is reading the backup and verifying every checksum and app package without changing anything. Apps keep running.';
+  if (job?.kind === 'upload') return 'MOS is unpacking the uploaded backup file and verifying every checksum and app package. Apps keep running.';
   return 'MOS is pausing apps, saving their data, and then starting them again. Please wait until the backup finishes.';
 }
 
@@ -180,8 +184,10 @@ export function BackupsScreen() {
   const [selectedRestore, setSelectedRestore] = useState<BackupBundle | null>(null);
   const [restoreConfirmation, setRestoreConfirmation] = useState('');
   const [restoreStarted, setRestoreStarted] = useState(false);
+  const [sessionEnded, setSessionEnded] = useState<'restore' | 'expired' | ''>('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const activeJob = status?.currentJob || null;
   const running = restoreStarted || isRunning(activeJob);
   const selectedDestination = status?.destinations.find((destination) => destination.id === selectedDestinationId);
@@ -190,7 +196,17 @@ export function BackupsScreen() {
   async function load() {
     setError('');
     setBusy('refresh');
-    const next = await jsonResponse<BackupStatus>(await fetch('/suite-manager/api/backups/status'), 'Unable to load backups.');
+    const response = await fetch('/suite-manager/api/backups/status');
+    if (response.status === 401) {
+      // A restore replaces Suite Manager state, so the session that started it
+      // no longer exists once the restored control plane comes back.
+      setSessionEnded(restoreStarted || (activeJob?.kind === 'restore' && isRunning(activeJob)) ? 'restore' : 'expired');
+      setStatus(null);
+      setRestoreStarted(false);
+      setBusy('');
+      return;
+    }
+    const next = await jsonResponse<BackupStatus>(response, 'Unable to load backups.');
     setStatus(next);
     setBusy('');
     if (!isRunning(next.currentJob) && restoreStarted) setRestoreStarted(false);
@@ -262,6 +278,17 @@ export function BackupsScreen() {
     });
   }
 
+  async function uploadBackup(file: File) {
+    if (!selectedDestination) return;
+    await runAction('upload', async () => {
+      await jsonResponse(await fetch(`/suite-manager/api/backups/upload?destinationId=${encodeURIComponent(selectedDestination.id)}`, {
+        body: file,
+        headers: { 'Content-Type': 'application/octet-stream' },
+        method: 'POST',
+      }), 'Unable to upload this backup file.');
+    });
+  }
+
   async function startRestore() {
     if (!selectedRestore) return;
     setBusy('restore');
@@ -292,11 +319,17 @@ export function BackupsScreen() {
       </div>
 
       {error ? <Notice title="Backup needs attention" variant="error"><p>{error}</p></Notice> : null}
+      {sessionEnded ? <Notice title={sessionEnded === 'restore' ? 'The restore signed you out' : 'Your session ended'} variant="info">
+        <p>{sessionEnded === 'restore'
+          ? 'Suite Manager restarted with the restored state, which ended this session. Sign in with the owner account saved in that backup — accounts and passwords now match the backup, not what was set just before the restore. After signing in, check the restore result here under Latest activity.'
+          : 'Sign in again to manage backups.'}</p>
+        <button className="mos-btn mos-btn-primary" onClick={() => window.location.reload()} type="button">Go to sign-in</button>
+      </Notice> : null}
       {status?.interruptedRestore && !running ? <Notice title="A restore did not finish" variant="error">
         <p>A restore stopped during "{status.interruptedRestore.phase}", so this system may not match the backup it was restoring. A complete rescue copy of the pre-restore state was kept on the server{status.interruptedRestore.rescuePath ? ` at ${status.interruptedRestore.rescuePath}` : ''}. New backups and restores stay blocked until you dismiss this record; the rescue copy stays on disk either way.</p>
         <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => void acknowledgeInterrupted()} type="button">{busy === 'acknowledge' ? 'Dismissing...' : 'I understand, unblock backups'}</button>
       </Notice> : null}
-      {restoreStarted ? <Notice title="Restore started" variant="info"><p>MOS is restoring the selected backup and may be unavailable for a short moment. This page will reconnect when Suite Manager starts again.</p></Notice> : null}
+      {restoreStarted ? <Notice title="Restore started" variant="info"><p>MOS is restoring the selected backup and may be unavailable for a short moment. When Suite Manager starts again you will be asked to sign in with the owner account saved in the backup.</p></Notice> : null}
       {status && !status.serviceAvailable ? <Notice title="Backup is not available yet" variant="warning"><p>The host backup service is not running on this install. Update or restart the MOS host services, then come back here.</p></Notice> : null}
 
       {status?.serviceAvailable ? <div className="suite-backup-layout" aria-busy={running}>
@@ -405,6 +438,19 @@ export function BackupsScreen() {
               </div>
             </article>)}
           </div> : <p className="suite-meta">Backups found on connected drives will appear here.</p>}
+          <div className="suite-backup-action-footer">
+            <p className="suite-backup-status-message">Have a downloaded backup file? Upload it to the selected backup drive and it becomes restorable here after passing the same checks.</p>
+            <input
+              accept=".tar.gz,.tgz,application/gzip"
+              hidden
+              onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void uploadBackup(file); }}
+              ref={uploadInputRef}
+              type="file"
+            />
+            <button className="mos-btn mos-btn-secondary" disabled={!buttonState.enabled || Boolean(busy) || running} onClick={() => uploadInputRef.current?.click()} type="button">
+              {busy === 'upload' ? 'Uploading...' : 'Upload backup file'}
+            </button>
+          </div>
         </section>
 
         <details className="suite-advanced suite-backup-advanced">
@@ -426,7 +472,7 @@ export function BackupsScreen() {
         onClose={() => { if (!busy) setSelectedRestore(null); }}
         title="Restore this backup?"
       >
-        <Notice title="This will replace the current install" variant="warning"><p>MOS will stop, restore the selected backup, verify it, and start again. Apps and app data added after this backup are removed so the system matches the backup exactly. A complete rescue copy of the current state is saved on the server first.</p></Notice>
+        <Notice title="This will replace the current install" variant="warning"><p>MOS will stop, restore the selected backup, verify it, and start again. Apps and app data added after this backup are removed so the system matches the backup exactly. A complete rescue copy of the current state is saved on the server first. When the restore finishes you will be signed out; sign back in with the owner account saved in this backup, which may differ from the current one.</p></Notice>
         <p className="suite-meta">{formatDate(selectedRestore.createdAt)} · {backupDescription(selectedRestore)} · {selectedRestore.destinationLabel || 'backup storage'}</p>
         <label className="suite-auth-field">
           <span>Type RESTORE to continue</span>

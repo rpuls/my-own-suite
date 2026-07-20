@@ -356,6 +356,62 @@ class BackupAgentCore {
     });
   }
 
+  // --- Import (upload) -----------------------------------------------------
+
+  // The inverse of download: a downloaded `bundle.tar.gz` contains the whole
+  // bundle (manifest, checksums, state, volumes), so importing means
+  // unpacking it beside locally created bundles and proving it passes the
+  // same read-only validation a restore preflight runs. The COMPLETE marker
+  // is written last, so a failed or interrupted import is never listed as a
+  // restorable bundle. Nothing about the running suite is touched.
+  async importBundle(jobFile) {
+    const { jobs, system } = this;
+    const started = jobs.update(jobFile, (job) => { job.status = 'running'; job.stage = 'starting'; });
+    const uploadPath = started.uploadPath;
+    const backupsRoot = path.join(started.destinationId, 'MOS-backups');
+    const stagingDir = path.join(backupsRoot, `.import-${started.id.slice(0, 8)}`);
+    try {
+      jobs.stage(jobFile, 'Reading the uploaded file');
+      await system.assertArchiveReadable(uploadPath);
+      const uploadBytes = (await system.pathBytes(uploadPath)) || 0;
+      const freeBytes = await system.availableBytes(started.destinationId);
+      if (freeBytes !== null && freeBytes < uploadBytes) {
+        throw new Error(`Unpacking the uploaded backup needs about ${formatBytes(uploadBytes)} free on the destination, but only ${formatBytes(freeBytes)} is available.`);
+      }
+      jobs.stage(jobFile, 'Unpacking the uploaded backup');
+      await system.extractArchive(uploadPath, stagingDir);
+      const manifestPath = path.join(stagingDir, 'manifest.json');
+      if (!fs.existsSync(manifestPath)) throw new Error('The uploaded file is not a MOS backup bundle.');
+      const manifest = readJson(manifestPath);
+      const backupId = String(manifest.backup?.id || '');
+      for (const entry of fs.existsSync(backupsRoot) ? fs.readdirSync(backupsRoot, { withFileTypes: true }) : []) {
+        if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+        let existingId = null;
+        try { existingId = readJson(path.join(backupsRoot, entry.name, 'manifest.json')).backup?.id; } catch {}
+        if (backupId && existingId === backupId) throw new Error('This backup already exists on the selected destination.');
+      }
+      const stamp = String(manifest.backup?.createdAt || '').replace(/[:.]/gu, '-');
+      const bundleDir = path.join(backupsRoot, `mos-backup-${stamp || 'imported'}-${(backupId || started.id).slice(0, 8)}`);
+      if (fs.existsSync(bundleDir)) throw new Error('This backup already exists on the selected destination.');
+      jobs.stage(jobFile, 'Checking the uploaded backup');
+      const { report } = await this.validateBundle(stagingDir);
+      for (const warning of report.warnings) jobs.log(jobFile, warning);
+      fs.renameSync(uploadPath, path.join(stagingDir, 'bundle.tar.gz'));
+      fs.writeFileSync(path.join(stagingDir, COMPLETE_MARKER), `${new Date().toISOString()}\n`, 'utf8');
+      fs.renameSync(stagingDir, bundleDir);
+      jobs.update(jobFile, (job) => {
+        job.outputPath = bundleDir;
+        job.stage = 'completed';
+        job.status = 'succeeded';
+        job.summary = { appCount: report.apps.length, volumeCount: report.volumes.length };
+        job.validation = { ...report, bundlePath: bundleDir };
+      });
+    } finally {
+      fs.rmSync(stagingDir, { force: true, recursive: true });
+      fs.rmSync(uploadPath, { force: true });
+    }
+  }
+
   // --- Restore -------------------------------------------------------------
 
   async restore(jobFile) {

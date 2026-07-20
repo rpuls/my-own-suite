@@ -8,6 +8,24 @@ class BackupAgentClient {
     this.timeoutMs = timeoutMs;
   }
 
+  settleResponse(response, resolve, reject) {
+    let raw = '';
+    response.setEncoding('utf8');
+    response.on('data', (chunk) => { raw += chunk; });
+    response.on('end', () => {
+      let parsed = {};
+      try { parsed = raw.trim() ? JSON.parse(raw) : {}; } catch {}
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        resolve(parsed);
+        return;
+      }
+      const error = new Error(parsed.error || 'Backup agent rejected the operation.');
+      error.code = parsed.code || 'BACKUP_AGENT_REJECTED';
+      error.statusCode = response.statusCode;
+      reject(error);
+    });
+  }
+
   request(method, requestPath, body) {
     return new Promise((resolve, reject) => {
       const payload = body ? JSON.stringify(body) : '';
@@ -17,23 +35,7 @@ class BackupAgentClient {
         path: requestPath,
         socketPath: this.socketPath,
         timeout: this.timeoutMs,
-      }, (response) => {
-        let raw = '';
-        response.setEncoding('utf8');
-        response.on('data', (chunk) => { raw += chunk; });
-        response.on('end', () => {
-          let parsed = {};
-          try { parsed = raw.trim() ? JSON.parse(raw) : {}; } catch {}
-          if (response.statusCode >= 200 && response.statusCode < 300) {
-            resolve(parsed);
-            return;
-          }
-          const error = new Error(parsed.error || 'Backup agent rejected the operation.');
-          error.code = parsed.code || 'BACKUP_AGENT_REJECTED';
-          error.statusCode = response.statusCode;
-          reject(error);
-        });
-      });
+      }, (response) => this.settleResponse(response, resolve, reject));
       request.on('error', () => {
         const error = new Error('Backup system agent is unavailable.');
         error.code = 'BACKUP_AGENT_UNAVAILABLE';
@@ -43,6 +45,30 @@ class BackupAgentClient {
       request.on('timeout', () => request.destroy(new Error('BACKUP_AGENT_TIMEOUT')));
       if (payload) request.write(payload);
       request.end();
+    });
+  }
+
+  // Streams an uploaded bundle archive through to the agent unchanged. The
+  // long timeout is deliberate: a multi-gigabyte upload over the LAN is a
+  // normal recovery flow, not a hung request.
+  uploadBackup(sourceStream, { contentLength, destinationId }) {
+    return new Promise((resolve, reject) => {
+      const request = http.request({
+        headers: { 'Content-Length': contentLength, 'Content-Type': 'application/octet-stream' },
+        method: 'POST',
+        path: `/v1/backups/upload?destinationId=${encodeURIComponent(destinationId)}`,
+        socketPath: this.socketPath,
+        timeout: 3_600_000,
+      }, (response) => this.settleResponse(response, resolve, reject));
+      request.on('error', () => {
+        const error = new Error('Backup system agent is unavailable.');
+        error.code = 'BACKUP_AGENT_UNAVAILABLE';
+        error.statusCode = 503;
+        reject(error);
+      });
+      request.on('timeout', () => request.destroy(new Error('BACKUP_AGENT_TIMEOUT')));
+      sourceStream.on('error', () => request.destroy(new Error('UPLOAD_STREAM_ERROR')));
+      sourceStream.pipe(request);
     });
   }
 

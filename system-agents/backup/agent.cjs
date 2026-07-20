@@ -132,6 +132,34 @@ function listJobFiles() {
   return fs.readdirSync(jobsDir).filter((name) => name.endsWith('.json')).map((name) => path.join(jobsDir, name));
 }
 function readCurrentJob() { try { return fs.existsSync(currentJobPath) ? readJson(currentJobPath) : null; } catch { return null; } }
+function workerAlive(jobFile) {
+  try {
+    for (const entry of fs.readdirSync('/proc')) {
+      if (!/^\d+$/u.test(entry) || Number(entry) === process.pid) continue;
+      try {
+        const cmdline = fs.readFileSync(`/proc/${entry}/cmdline`, 'utf8');
+        if (cmdline.includes('--worker') && cmdline.includes(jobFile)) return true;
+      } catch {}
+    }
+  } catch {}
+  return false;
+}
+// A job's worker is a detached process, so a power loss or kill can leave
+// current-job.json claiming an active job forever. Reconcile against the
+// actual worker process before trusting it; the grace period covers the
+// window between job creation and the worker's exec.
+function reconcileCurrentJob() {
+  const job = readCurrentJob();
+  if (!isActive(job)) return job;
+  const startedMs = new Date(job.createdAt || 0).getTime();
+  if (Date.now() - startedMs < 15_000) return job;
+  if (workerAlive(jobPath(job.id))) return job;
+  return updateJob(jobPath(job.id), (entry) => {
+    entry.error = `The ${entry.kind || 'backup'} stopped during "${entry.stage || 'an unknown step'}" because the backup worker is no longer running (for example after a power loss or restart).`;
+    entry.stage = 'failed';
+    entry.status = 'failed';
+  });
+}
 function latestJob() {
   return listJobFiles().map((file) => { try { const job = readJson(file); return { job, time: new Date(job.updatedAt || job.createdAt || 0).getTime() }; } catch { return null; } })
     .filter(Boolean).sort((left, right) => right.time - left.time)[0]?.job || null;
@@ -143,19 +171,22 @@ function summarizeJob(job) {
 function isActive(job) { return job && (job.status === 'queued' || job.status === 'running'); }
 function jobPath(id) { return path.join(jobsDir, `${id}.json`); }
 function createJob(kind, payload) {
-  if (isActive(readCurrentJob())) throw new Error('A backup or restore job is already running.');
+  if (isActive(reconcileCurrentJob())) throw new Error('A backup or restore job is already running.');
   const interrupted = core.interruptedRestore();
-  // Validation is read-only, so it stays available while an interrupted
-  // restore blocks destructive work — checking a bundle is part of recovery.
-  if (interrupted && kind !== 'validate') throw new Error(`A restore did not complete (stopped during "${interrupted.phase}"). Acknowledge it before starting new backup or restore work; the pre-restore rescue copy is at ${interrupted.rescuePath || 'the backup agent state directory'}.`);
+  // Validation and upload never touch the running suite, so they stay
+  // available while an interrupted restore blocks destructive work — checking
+  // or bringing in a bundle is part of recovery.
+  if (interrupted && kind !== 'validate' && kind !== 'upload') throw new Error(`A restore did not complete (stopped during "${interrupted.phase}"). Acknowledge it before starting new backup or restore work; the pre-restore rescue copy is at ${interrupted.rescuePath || 'the backup agent state directory'}.`);
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
-  const destinationId = kind === 'backup' ? normalizeDestination(payload.destinationId) : null;
+  const destinationId = kind === 'backup' || kind === 'upload' ? normalizeDestination(payload.destinationId) : null;
   const backupPath = kind === 'restore' || kind === 'validate' ? normalizeBundlePath(payload.backupPath) : null;
-  if (kind === 'backup' && !destinationId) throw new Error('Choose a mounted destination under /media, /mnt, or /run/media.');
+  const uploadPath = kind === 'upload' ? path.resolve(String(payload.uploadPath || '')) : null;
+  if ((kind === 'backup' || kind === 'upload') && !destinationId) throw new Error('Choose a mounted destination under /media, /mnt, or /run/media.');
   if ((kind === 'restore' || kind === 'validate') && !backupPath) throw new Error('Choose a detected backup bundle from mounted storage.');
+  if (kind === 'upload' && (!uploadPath.startsWith(`${destinationId}${path.sep}`) || !fs.existsSync(uploadPath))) throw new Error('The uploaded file is no longer available on the destination.');
   if (kind === 'restore' && payload.confirmation !== 'RESTORE') throw new Error('Type RESTORE to confirm this destructive restore.');
-  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator: payload.initiator || 'owner', kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now };
+  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator: payload.initiator || 'owner', kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(uploadPath ? { uploadPath } : {}) };
   writeJson(jobPath(id), job);
   writeJson(currentJobPath, job);
   spawn(process.execPath, [__filename, '--worker', jobPath(id)], { cwd: repoDir, detached: true, env: process.env, stdio: 'ignore' }).unref();
@@ -297,6 +328,7 @@ if (require.main === module && process.argv[2] === '--worker') {
       const job = readJson(file);
       if (job.kind === 'restore') await core.restore(file);
       else if (job.kind === 'validate') await core.validateBackup(file);
+      else if (job.kind === 'upload') await core.importBundle(file);
       else await core.backup(file);
     } catch (error) {
       const file = process.argv[3];
@@ -317,8 +349,8 @@ if (require.main === module && process.argv[2] === '--worker') {
         const destinations = await listDestinations();
         respond(response, 200, {
           backups: listBundles(destinations),
-          capabilities: { backups: ['create', 'download', 'list', 'validate'], destinations: ['list', 'mount'], restores: ['acknowledge-interruption', 'apply', 'list'] },
-          currentJob: summarizeJob(readCurrentJob()),
+          capabilities: { backups: ['create', 'download', 'list', 'upload', 'validate'], destinations: ['list', 'mount'], restores: ['acknowledge-interruption', 'apply', 'list'] },
+          currentJob: summarizeJob(reconcileCurrentJob()),
           destinations,
           interruptedRestore: core.interruptedRestore(),
           lastJob: summarizeJob(latestJob()),
@@ -328,6 +360,36 @@ if (require.main === module && process.argv[2] === '--worker') {
       }
       if (request.method === 'POST' && url.pathname === '/v1/destinations/mount') { respond(response, 200, { destination: await mountDestination((await readBody(request)).destinationId) }); return; }
       if (request.method === 'POST' && url.pathname === '/v1/backups') { respond(response, 202, { job: createJob('backup', await readBody(request)) }); return; }
+      if (request.method === 'POST' && url.pathname === '/v1/backups/upload') {
+        // Raw octet stream, not JSON: the body is the downloaded bundle
+        // archive itself, saved onto the destination before an `upload` job
+        // unpacks and validates it.
+        const destinationId = normalizeDestination(url.searchParams.get('destinationId'));
+        if (!destinationId || !isWritable(destinationId)) { respond(response, 400, { code: 'INVALID_DESTINATION', error: 'Choose a mounted, writable destination under /media, /mnt, or /run/media.' }); return; }
+        if (isActive(reconcileCurrentJob())) { respond(response, 409, { code: 'JOB_ACTIVE', error: 'A backup or restore job is already running.' }); return; }
+        const contentLength = Number.parseInt(request.headers['content-length'] || '', 10);
+        if (!Number.isFinite(contentLength) || contentLength <= 0) { respond(response, 411, { code: 'LENGTH_REQUIRED', error: 'The upload needs a known file size.' }); return; }
+        // The stored file and its unpacked copy both land on the destination.
+        const free = availableBytes(destinationId);
+        if (free !== null && free < contentLength * 2) { respond(response, 409, { code: 'NO_SPACE', error: 'The destination does not have enough free space to store and unpack this upload.' }); return; }
+        const uploadRoot = path.join(destinationId, 'MOS-backups');
+        ensureDir(uploadRoot);
+        const uploadPath = path.join(uploadRoot, `.upload-${crypto.randomUUID().slice(0, 8)}.tar.gz`);
+        try {
+          await new Promise((resolve, reject) => {
+            const sink = fs.createWriteStream(uploadPath, { flags: 'wx' });
+            request.on('error', reject);
+            sink.on('error', reject);
+            sink.on('finish', resolve);
+            request.pipe(sink);
+          });
+          respond(response, 202, { job: createJob('upload', { destinationId, uploadPath }) });
+        } catch (error) {
+          fs.rmSync(uploadPath, { force: true });
+          throw error;
+        }
+        return;
+      }
       if (request.method === 'POST' && url.pathname === '/v1/backups/validate') { respond(response, 202, { job: createJob('validate', await readBody(request)) }); return; }
       if (request.method === 'POST' && url.pathname === '/v1/restores') { respond(response, 202, { job: createJob('restore', await readBody(request)) }); return; }
       if (request.method === 'POST' && url.pathname === '/v1/restores/acknowledge-interruption') {

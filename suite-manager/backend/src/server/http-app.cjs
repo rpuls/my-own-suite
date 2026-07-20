@@ -685,6 +685,23 @@ function createMOSServer({
         return;
       }
 
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/upload`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const contentLength = Number.parseInt(request.headers['content-length'] || '', 10);
+        if (!Number.isFinite(contentLength) || contentLength <= 0) {
+          jsonResponse(response, 411, { code: 'LENGTH_REQUIRED', error: 'The upload needs a known file size.' });
+          return;
+        }
+        jsonResponse(response, 202, await backupAgent.uploadBackup(request, {
+          contentLength,
+          destinationId: String(url.searchParams.get('destinationId') || ''),
+        }));
+        return;
+      }
+
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/download`) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to download backups.' });

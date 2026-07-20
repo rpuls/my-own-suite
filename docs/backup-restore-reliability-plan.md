@@ -137,6 +137,7 @@ Exit gate: the failure is reproducible, the state boundary is explicit, and the 
 - [x] Stream archives in bounded memory. — tar subprocesses stream; hashing is chunked; archive readability checks discard listings instead of buffering them.
 - [x] Reject unsafe paths, corrupt payloads, incompatible versions, and insufficient destination space. — destination/bundle path allowlists, digest checks, schema window, and two-stage space preflight (before stopping anything, and before the downloadable bundle copy).
 - [x] Provide read-only bundle validation. — a `validate` job runs the full restore preflight (schema window, checksums, archive readability, package payloads) without mutating anything: agent `/v1/backups/validate`, Suite Manager `/backups/validate`, and a per-bundle "Check" button. It stays available while an interrupted restore blocks destructive work, and reports a recorded-vs-current MOS version mismatch as a warning.
+- [x] Provide an owner-facing upload path for downloaded bundles. — added 2026-07-20 during the Phase 4 drills: a downloaded `bundle.tar.gz` is the complete bundle, so an `upload` job (agent `/v1/backups/upload` raw stream, Suite Manager `/backups/upload`, "Upload backup file" button) streams it onto a mounted destination, unpacks it, runs the full read-only validation, and writes the COMPLETE marker only on success — a failed or duplicate upload leaves nothing visible. Motivated by the replacement-machine drill: without it, recovery onto new hardware required shell access to copy bundles, which contradicts the plain-language operator story. Available while an interrupted restore blocks destructive work, since bringing a bundle in is part of recovery.
 
 Exit gate: a generic backup captures current and synthetic future apps without app-specific backup code, and corruption fails validation.
 
@@ -157,12 +158,12 @@ Exit gate: the Seafile regression passes, later persistent resources cannot be r
 
 ### Phase 4 — Prove Recovery
 
-- [ ] Restore a representative multi-service backup on the original machine.
+- [x] Restore a representative multi-service backup on the original machine. — 2026-07-20 Hyper-V drill: three restore points (Stirling-only, Stirling+Seafile+Immich with data, +Radicale) restored in both directions; apps, users, files, and credentials intact; absence and presence reconciled each time.
 - [ ] Restore it onto a clean compatible replacement VM using documented recovery material.
-- [ ] Test corruption, wrong version, insufficient disk, disconnected destination, and interruption at major boundaries.
-- [ ] Test a database-backed multi-service app and a large-data workload.
-- [ ] Confirm stale generated runtime is removed and regenerated.
-- [ ] Ask the owner to run the relevant Hyper-V E2E and provide the concise summary.
+- [ ] Test corruption, wrong version, insufficient disk, disconnected destination, and interruption at major boundaries. — interruption tested 2026-07-20: hard power-off before validation completed behaves as if the restore never started; power-off during bundle validation left the suite intact but exposed a stale job bug: a job whose detached worker died pre-journal was reported as running forever and blocked new jobs. Fixed by reconciling the current job against the live worker process (`reconcileCurrentJob` in `system-agents/backup/agent.cjs`); needs a re-drill after a managed update. Corruption, wrong version, insufficient disk, and disconnected destination remain.
+- [ ] Test a database-backed multi-service app and a large-data workload. — database-backed multi-service proven 2026-07-20 (Seafile/MySQL and Immich/Postgres restored with working logins and files); multi-GB large-data workload remains, including watching backup-agent memory against the bounded-streaming claim.
+- [x] Confirm stale generated runtime is removed and regenerated. — verified on the VM 2026-07-20: after each restore only manifest-matching containers/volumes remained (`docker volume ls` showed exact owned-volume sets), Homepage tiles and routes regenerated.
+- [x] Ask the owner to run the relevant Hyper-V E2E and provide the concise summary. — owner ran `npm run e2e:full` 2026-07-20 with backup/restore enabled; passed including restore verification assertions.
 - [ ] Align UI and documentation claims with demonstrated behavior.
 
 Exit gate: no tested path reports success without meeting the core contract, and same-machine and replacement-machine drills succeed.

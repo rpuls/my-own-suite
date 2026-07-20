@@ -543,3 +543,54 @@ test('classifyVolumes trusts labels first, per-package derivation second, and no
   ]);
   assert.deepEqual(ambiguous, ['mos-app-unknown-thing']);
 });
+
+// Upload is the inverse of download: the bundle's own bundle.tar.gz, brought
+// back to a destination, must become a restorable bundle only after passing
+// the full read-only validation — and a broken or duplicate upload must leave
+// nothing visible behind.
+test('importBundle turns a downloaded archive back into a restorable bundle and refuses duplicates and corruption', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const core = w.core();
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await core.backup(backupJob);
+  const bundle = bundleDirOf(backupJob);
+  const originalManifest = readJson(path.join(bundle, 'manifest.json'));
+
+  // Uploading onto a destination that already holds the same backup refuses.
+  const duplicateUpload = path.join(w.destination(), 'MOS-backups', '.upload-dup.tar.gz');
+  fs.cpSync(path.join(bundle, 'bundle.tar.gz'), duplicateUpload);
+  const duplicateJob = w.createJob('upload', { destinationId: w.destination(), uploadPath: duplicateUpload });
+  await assert.rejects(core.importBundle(duplicateJob), /already exists/u);
+  assert.equal(fs.existsSync(duplicateUpload), false);
+
+  // Importing onto an empty destination (the replacement-machine flow).
+  const second = path.join(w.root, 'destination-2');
+  ensureDir(path.join(second, 'MOS-backups'));
+  const upload = path.join(second, 'MOS-backups', '.upload-ok.tar.gz');
+  fs.cpSync(path.join(bundle, 'bundle.tar.gz'), upload);
+  const importJob = w.createJob('upload', { destinationId: second, uploadPath: upload });
+  await core.importBundle(importJob);
+  const finished = readJson(importJob);
+  assert.equal(finished.status, 'succeeded');
+  assert.equal(finished.validation.checks.checksums, true);
+  const imported = finished.outputPath;
+  assert.ok(fs.existsSync(path.join(imported, 'COMPLETE')));
+  assert.ok(fs.existsSync(path.join(imported, 'bundle.tar.gz')));
+  assert.equal(readJson(path.join(imported, 'manifest.json')).backup.id, originalManifest.backup.id);
+  assert.equal(fs.existsSync(upload), false);
+
+  // The imported bundle actually restores.
+  const restoreJob = w.createJob('restore', { backupPath: imported });
+  await core.restore(restoreJob);
+  assert.equal(readJson(restoreJob).status, 'succeeded');
+
+  // A corrupt upload fails validation and leaves no visible bundle or litter.
+  const corrupt = path.join(second, 'MOS-backups', '.upload-bad.tar.gz');
+  fs.writeFileSync(corrupt, 'not-a-bundle');
+  const corruptJob = w.createJob('upload', { destinationId: second, uploadPath: corrupt });
+  await assert.rejects(core.importBundle(corruptJob));
+  assert.equal(fs.existsSync(corrupt), false);
+  const leftovers = fs.readdirSync(path.join(second, 'MOS-backups')).filter((name) => name.startsWith('.'));
+  assert.deepEqual(leftovers, []);
+});
