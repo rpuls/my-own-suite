@@ -1460,10 +1460,9 @@
   gap: var(--mos-space-3);
 }
 
-.suite-backup-action-row {
+.suite-backup-show-more {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--mos-space-2);
+  justify-content: center;
 }
 
 .suite-backup-destination-card,

@@ -199,6 +199,17 @@ function normalizeBundlePath(candidate) {
   if (!fs.existsSync(path.join(resolved, COMPLETE_MARKER))) return null;
   return resolved;
 }
+function treeBytes(root) {
+  let total = 0;
+  try {
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      const absolute = path.join(root, entry.name);
+      if (entry.isDirectory()) total += treeBytes(absolute);
+      else if (entry.isFile()) total += fs.statSync(absolute).size;
+    }
+  } catch {}
+  return total;
+}
 function listBundles(destinations) {
   const bundles = [];
   for (const destination of destinations) {
@@ -212,7 +223,7 @@ function listBundles(destinations) {
         if (!fs.existsSync(path.join(bundlePath, COMPLETE_MARKER))) continue;
         if (!fs.existsSync(path.join(bundlePath, 'bundle.tar.gz'))) continue;
         const manifest = readJson(path.join(bundlePath, 'manifest.json'));
-        bundles.push({ appCount: manifest.contents?.apps?.length || 0, archivePath: path.join(bundlePath, 'bundle.tar.gz'), createdAt: manifest.backup?.createdAt || null, destinationId: destination.id, destinationLabel: destination.label, id: manifest.backup?.id || entry.name, path: bundlePath, schemaVersion: manifest.backup?.schemaVersion || null, sourceCommit: manifest.source?.commit || null, sourceVersion: manifest.source?.version || null, volumeCount: manifest.contents?.volumes?.length || 0 });
+        bundles.push({ appCount: manifest.contents?.apps?.length || 0, archivePath: path.join(bundlePath, 'bundle.tar.gz'), createdAt: manifest.backup?.createdAt || null, destinationId: destination.id, destinationLabel: destination.label, id: manifest.backup?.id || entry.name, path: bundlePath, schemaVersion: manifest.backup?.schemaVersion || null, sizeBytes: treeBytes(bundlePath), sourceCommit: manifest.source?.commit || null, sourceVersion: manifest.source?.version || null, volumeCount: manifest.contents?.volumes?.length || 0 });
       } catch {}
     }
   }
@@ -349,7 +360,7 @@ if (require.main === module && process.argv[2] === '--worker') {
         const destinations = await listDestinations();
         respond(response, 200, {
           backups: listBundles(destinations),
-          capabilities: { backups: ['create', 'download', 'list', 'upload', 'validate'], destinations: ['list', 'mount'], restores: ['acknowledge-interruption', 'apply', 'list'] },
+          capabilities: { backups: ['create', 'delete', 'download', 'list', 'upload', 'validate'], destinations: ['list', 'mount'], restores: ['acknowledge-interruption', 'apply', 'list'] },
           currentJob: summarizeJob(reconcileCurrentJob()),
           destinations,
           interruptedRestore: core.interruptedRestore(),
@@ -391,6 +402,18 @@ if (require.main === module && process.argv[2] === '--worker') {
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/backups/validate') { respond(response, 202, { job: createJob('validate', await readBody(request)) }); return; }
+      if (request.method === 'POST' && url.pathname === '/v1/backups/delete') {
+        const backupPath = normalizeBundlePath((await readBody(request)).backupPath);
+        if (!backupPath) { respond(response, 400, { code: 'INVALID_BUNDLE', error: 'Choose a detected backup bundle from mounted storage.' }); return; }
+        if (isActive(reconcileCurrentJob())) { respond(response, 409, { code: 'JOB_ACTIVE', error: 'A backup or restore job is already running. Wait for it to finish before deleting backups.' }); return; }
+        // While a restore sits interrupted, its bundle and every other bundle
+        // may be the only recovery material there is — refuse to delete any.
+        const interrupted = core.interruptedRestore();
+        if (interrupted) { respond(response, 409, { code: 'RESTORE_INTERRUPTED', error: 'A restore did not complete. Acknowledge it before deleting backups.' }); return; }
+        fs.rmSync(backupPath, { force: true, recursive: true });
+        respond(response, 200, { deleted: true, path: backupPath });
+        return;
+      }
       if (request.method === 'POST' && url.pathname === '/v1/restores') { respond(response, 202, { job: createJob('restore', await readBody(request)) }); return; }
       if (request.method === 'POST' && url.pathname === '/v1/restores/acknowledge-interruption') {
         respond(response, 200, { acknowledged: core.acknowledgeInterruptedRestore(await readBody(request)) });

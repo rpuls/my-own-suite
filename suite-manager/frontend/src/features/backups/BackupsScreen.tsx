@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { Dialog, Icon, Notice } from '../../components/ui';
+import { ActionMenu, Dialog, Icon, Notice } from '../../components/ui';
 
 type BackupDestination = {
   availableBytes: number | null;
@@ -45,6 +45,7 @@ type BackupBundle = {
   destinationLabel: string;
   id: string;
   path: string;
+  sizeBytes?: number | null;
   sourceVersion: string | null;
   volumeCount: number;
 };
@@ -128,7 +129,7 @@ function operationTitle(job: BackupJob | null, restoreStarted: boolean) {
 }
 
 function operationMessage(job: BackupJob | null, restoreStarted: boolean) {
-  if (restoreStarted || job?.kind === 'restore') return 'MOS is replacing the current install with the selected backup. Suite Manager may briefly reconnect while services restart.';
+  if (restoreStarted || job?.kind === 'restore') return 'MOS is replacing the current install with the selected backup. A large backup can take a long time — leave this page open and it will reconnect by itself. While services restart the suite may briefly look offline, and refreshing can show a temporary server error page even though the restore is running fine.';
   if (job?.kind === 'validate') return 'MOS is reading the backup and verifying every checksum and app package without changing anything. Apps keep running.';
   if (job?.kind === 'upload') return 'MOS is unpacking the uploaded backup file and verifying every checksum and app package. Apps keep running.';
   return 'MOS is pausing apps, saving their data, and then starting them again. Please wait until the backup finishes.';
@@ -140,8 +141,8 @@ function operationStage(job: BackupJob | null, restoreStarted: boolean) {
 }
 
 function backupDescription(backup: BackupBundle) {
-  if (backup.appCount > 0) return `${backup.appCount} app${backup.appCount === 1 ? '' : 's'} and ${backup.volumeCount} data store${backup.volumeCount === 1 ? '' : 's'}`;
-  return 'No apps in this backup';
+  const contents = backup.appCount > 0 ? `${backup.appCount} app${backup.appCount === 1 ? '' : 's'} and ${backup.volumeCount} data store${backup.volumeCount === 1 ? '' : 's'}` : 'No apps in this backup';
+  return Number.isFinite(backup.sizeBytes ?? NaN) ? `${contents} · ${formatBytes(backup.sizeBytes as number)}` : contents;
 }
 
 function usagePercent(used: number, total: number) {
@@ -182,6 +183,8 @@ export function BackupsScreen() {
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [selectedDestinationId, setSelectedDestinationId] = useState('');
   const [selectedRestore, setSelectedRestore] = useState<BackupBundle | null>(null);
+  const [selectedDelete, setSelectedDelete] = useState<BackupBundle | null>(null);
+  const [visibleBundles, setVisibleBundles] = useState(3);
   const [restoreConfirmation, setRestoreConfirmation] = useState('');
   const [restoreStarted, setRestoreStarted] = useState(false);
   const [sessionEnded, setSessionEnded] = useState<'restore' | 'expired' | ''>('');
@@ -190,6 +193,7 @@ export function BackupsScreen() {
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const activeJob = status?.currentJob || null;
   const running = restoreStarted || isRunning(activeJob);
+  const restoreInFlight = restoreStarted || (activeJob?.kind === 'restore' && isRunning(activeJob));
   const selectedDestination = status?.destinations.find((destination) => destination.id === selectedDestinationId);
   const buttonState = status ? getBackupButtonState(status.destinations, selectedDestinationId) : { enabled: false, message: '' };
 
@@ -222,6 +226,16 @@ export function BackupsScreen() {
     const timer = window.setInterval(() => { void load().catch(() => undefined); }, 4000);
     return () => window.clearInterval(timer);
   }, [running]);
+  // Leaving or refreshing mid-restore drops the operator onto a raw server
+  // error page while the control plane is intentionally down; browsers only
+  // show a generic confirmation, so the patient-waiting guidance lives in the
+  // visible restore panel instead.
+  useEffect(() => {
+    if (!restoreInFlight) return undefined;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [restoreInFlight]);
 
   async function runAction(name: string, action: () => Promise<void>) {
     setBusy(name);
@@ -275,6 +289,17 @@ export function BackupsScreen() {
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
       }), 'Unable to check this backup.');
+    });
+  }
+
+  async function deleteBackup(backup: BackupBundle) {
+    setSelectedDelete(null);
+    await runAction(`delete:${backup.path}`, async () => {
+      await jsonResponse(await fetch('/suite-manager/api/backups/delete', {
+        body: JSON.stringify({ backupPath: backup.path }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Unable to delete this backup.');
     });
   }
 
@@ -429,14 +454,20 @@ export function BackupsScreen() {
           {status.restoreGuarantee === 'experimental' ? <p className="suite-meta"><strong>Full restore is experimental.</strong> It replaces the current install with the backup, verifies the result, and keeps a complete rescue copy of the previous state, but it has not yet passed recovery drills on replacement hardware. Keep an independent copy of important data.</p> : null}
           <p className="suite-meta"><strong>Before downloading:</strong> this unencrypted bundle contains the suite's data and reusable secrets. Save it only to encrypted, access-controlled storage and remove unneeded browser copies.</p>
           {status.backups.length ? <div className="suite-backup-bundle-list">
-            {status.backups.map((backup) => <article key={backup.path}>
+            {status.backups.slice(0, visibleBundles).map((backup) => <article key={backup.path}>
               <div><strong>{backup.createdAt ? formatDate(backup.createdAt) : 'MOS backup'}</strong><span>{backupDescription(backup)} · {backup.destinationLabel || 'Backup drive'}</span></div>
-              <div className="suite-backup-action-row">
-                {running ? <button className="mos-btn mos-btn-secondary" disabled type="button">Download</button> : <a className="mos-btn mos-btn-secondary" href={`/suite-manager/api/backups/download?path=${encodeURIComponent(backup.path)}`}>Download</a>}
-                <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => void checkBackup(backup)} type="button">{busy === `validate:${backup.path}` ? 'Starting check...' : 'Check'}</button>
-                <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => { setSelectedRestore(backup); setRestoreConfirmation(''); }} type="button">Restore</button>
-              </div>
+              <ActionMenu ariaLabel="Backup actions" disabled={Boolean(busy) || running} items={[
+                { label: 'Restore', onSelect: () => { setSelectedRestore(backup); setRestoreConfirmation(''); } },
+                { label: 'Check', onSelect: () => void checkBackup(backup) },
+                { label: 'Download', onSelect: () => window.location.assign(`/suite-manager/api/backups/download?path=${encodeURIComponent(backup.path)}`) },
+                { label: 'Delete', onSelect: () => setSelectedDelete(backup) },
+              ]} />
             </article>)}
+            {status.backups.length > visibleBundles ? <div className="suite-backup-show-more">
+              <button className="mos-btn mos-btn-secondary" onClick={() => setVisibleBundles((current) => current + 10)} type="button">
+                Show {Math.min(10, status.backups.length - visibleBundles)} more
+              </button>
+            </div> : null}
           </div> : <p className="suite-meta">Backups found on connected drives will appear here.</p>}
           <div className="suite-backup-action-footer">
             <p className="suite-backup-status-message">Have a downloaded backup file? Upload it to the selected backup drive and it becomes restorable here after passing the same checks.</p>
@@ -448,6 +479,7 @@ export function BackupsScreen() {
               type="file"
             />
             <button className="mos-btn mos-btn-secondary" disabled={!buttonState.enabled || Boolean(busy) || running} onClick={() => uploadInputRef.current?.click()} type="button">
+              {busy === 'upload' ? <span className="suite-spinner" /> : <Icon name="upload" />}
               {busy === 'upload' ? 'Uploading...' : 'Upload backup file'}
             </button>
           </div>
@@ -464,6 +496,18 @@ export function BackupsScreen() {
         </details>
       </div> : null}
 
+      {selectedDelete ? <Dialog
+        footer={<>
+          <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={() => void deleteBackup(selectedDelete)} type="button">{busy === `delete:${selectedDelete.path}` ? 'Deleting...' : 'Delete backup'}</button>
+          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => setSelectedDelete(null)} type="button">Cancel</button>
+        </>}
+        onClose={() => { if (!busy) setSelectedDelete(null); }}
+        title="Delete this backup?"
+      >
+        <Notice title="This cannot be undone" variant="warning"><p>The backup bundle is permanently removed from the drive. If you need it later, only a copy you downloaded or stored elsewhere can bring it back.</p></Notice>
+        <p className="suite-meta">{formatDate(selectedDelete.createdAt)} · {backupDescription(selectedDelete)} · {selectedDelete.destinationLabel || 'backup storage'}</p>
+      </Dialog> : null}
+
       {selectedRestore ? <Dialog
         footer={<>
           <button className="mos-btn mos-btn-primary" disabled={restoreConfirmation !== 'RESTORE' || Boolean(busy)} onClick={() => void startRestore()} type="button">{busy === 'restore' ? 'Starting restore...' : 'Restore backup'}</button>
@@ -472,7 +516,7 @@ export function BackupsScreen() {
         onClose={() => { if (!busy) setSelectedRestore(null); }}
         title="Restore this backup?"
       >
-        <Notice title="This will replace the current install" variant="warning"><p>MOS will stop, restore the selected backup, verify it, and start again. Apps and app data added after this backup are removed so the system matches the backup exactly. A complete rescue copy of the current state is saved on the server first. When the restore finishes you will be signed out; sign back in with the owner account saved in this backup, which may differ from the current one.</p></Notice>
+        <Notice title="This will replace the current install" variant="warning"><p>MOS will stop, restore the selected backup, verify it, and start again. Apps and app data added after this backup are removed so the system matches the backup exactly. A complete rescue copy of the current state is saved on the server first. When the restore finishes you will be signed out; sign back in with the owner account saved in this backup, which may differ from the current one. A large backup can take a long time to restore — keep this page open and let it finish.</p></Notice>
         <p className="suite-meta">{formatDate(selectedRestore.createdAt)} · {backupDescription(selectedRestore)} · {selectedRestore.destinationLabel || 'backup storage'}</p>
         <label className="suite-auth-field">
           <span>Type RESTORE to continue</span>

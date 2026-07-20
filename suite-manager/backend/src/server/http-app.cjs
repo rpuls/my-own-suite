@@ -685,6 +685,16 @@ function createMOSServer({
         return;
       }
 
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/delete`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.deleteBackup({ backupPath: String(body.backupPath || '') }));
+        return;
+      }
+
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/upload`) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });

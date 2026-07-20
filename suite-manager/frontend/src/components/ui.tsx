@@ -1,6 +1,6 @@
-import { useEffect, useRef, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { useEffect, useRef, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 
-export type IconName = 'apps' | 'backup' | 'customize' | 'dashboard' | 'hard-drive' | 'menu' | 'more' | 'network-drive' | 'refresh' | 'settings' | 'sign-out' | 'usb-drive' | 'x';
+export type IconName = 'apps' | 'backup' | 'customize' | 'dashboard' | 'hard-drive' | 'menu' | 'more' | 'network-drive' | 'refresh' | 'settings' | 'sign-out' | 'upload' | 'usb-drive' | 'x';
 
 export function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -15,6 +15,7 @@ export function Icon({ name }: { name: IconName }) {
     refresh: <><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M3 21v-5h5" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4MOS1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></>,
     'sign-out': <><path d="M10 17l5-5-5-5M15 12H3" /><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" /></>,
+    upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m17 8-5-5-5 5" /><path d="M12 3v12" /></>,
     'usb-drive': <><rect width="16" height="10" x="4" y="12" rx="2" /><path d="M2 8h20" /><path d="M6 8V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3" /></>,
     x: <path d="m6 6 12 12M18 6 6 18" />,
   };
@@ -74,6 +75,28 @@ export function Dialog({ children, className, closeOnBackdrop = false, footer, h
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
   return <div className="suite-modal-backdrop" onClick={closeOnBackdrop ? (event) => { if (event.target === event.currentTarget) onCloseRef.current(); } : undefined} role="presentation"><section ref={dialogRef} aria-label={title} aria-modal="true" className={`suite-dialog mos-panel${className ? ` ${className}` : ''}`} role="dialog"><div className="suite-dialog-header">{header ?? <h2>{title}</h2>}<button ref={closeRef} aria-label={`Close ${title}`} className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button></div>{children}{footer ? <div className="suite-dialog-footer">{footer}</div> : null}</section></div>;
+}
+
+// Shared kebab ("...") action menu. Styling reuses the popover classes
+// introduced for app maintenance actions; AppsScreen still renders its own
+// inline copy and should migrate here when next touched.
+export function ActionMenu({ ariaLabel = 'More actions', disabled, items }: { ariaLabel?: string; disabled?: boolean; items: Array<{ label: string; onSelect: () => void }> }) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node)) setOpen(false); };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => { document.removeEventListener('pointerdown', onPointerDown); document.removeEventListener('keydown', onKeyDown); };
+  }, [open]);
+  return <div className="suite-app-actions-menu" ref={menuRef}>
+    <button aria-expanded={open} aria-haspopup="menu" aria-label={ariaLabel} className="suite-icon-button" disabled={disabled} onClick={() => setOpen((current) => !current)} title={ariaLabel} type="button"><Icon name="more" /></button>
+    {open ? <div className="suite-app-actions-popover" role="menu">
+      {items.map((item) => <button key={item.label} onClick={() => { setOpen(false); item.onSelect(); }} role="menuitem" type="button">{item.label}</button>)}
+    </div> : null}
+  </div>;
 }
 
 export function Stepper({ currentStepIndex, steps }: { currentStepIndex: number; steps: string[] }) {

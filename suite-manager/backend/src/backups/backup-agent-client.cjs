@@ -76,6 +76,7 @@ class BackupAgentClient {
   mount(destinationId) { return this.request('POST', '/v1/destinations/mount', { destinationId }); }
   startBackup(input) { return this.request('POST', '/v1/backups', input); }
   validateBackup(input) { return this.request('POST', '/v1/backups/validate', input); }
+  deleteBackup(input) { return this.request('POST', '/v1/backups/delete', input); }
   startRestore(input) { return this.request('POST', '/v1/restores', input); }
   acknowledgeInterruptedRestore(input) { return this.request('POST', '/v1/restores/acknowledge-interruption', input); }
 }
