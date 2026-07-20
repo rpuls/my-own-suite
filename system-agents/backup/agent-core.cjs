@@ -223,6 +223,9 @@ class BackupAgentCore {
 
     ensureDir(bundleDir);
     ensureDir(volumesDir);
+    // The operator's note travels with the bundle from birth; it stays a
+    // sidecar outside the checksummed manifest and downloadable archive.
+    if (started.note) fs.writeFileSync(path.join(bundleDir, 'note.txt'), `${started.note}\n`, 'utf8');
     jobs.update(jobFile, (job) => { job.outputPath = bundleDir; });
     const stoppedContainers = await system.listAppContainers({ runningOnly: true });
     try {

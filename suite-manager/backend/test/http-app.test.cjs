@@ -627,7 +627,7 @@ test('Backup API proxies simple owner backup, restore, and download actions', as
     assert.equal(download.body, 'fake backup archive');
     assert.match(download.headers['content-disposition'], /backup-one\.tar\.gz/);
     assert.deepEqual(calls.filter((call) => call[0] !== 'status'), [
-      ['backup', { destinationId: '/media/backup' }],
+      ['backup', { destinationId: '/media/backup', note: '' }],
       ['restore', { backupPath: backupDir, confirmation: 'RESTORE' }],
     ]);
   }, { backupAgent, homeHost: 'home.test' });

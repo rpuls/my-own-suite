@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { ActionMenu, Dialog, Icon, Notice } from '../../components/ui';
+import { ActionMenu, Dialog, Icon, Notice, TextInput } from '../../components/ui';
 
 type BackupDestination = {
   availableBytes: number | null;
@@ -44,6 +44,7 @@ type BackupBundle = {
   destinationId: string;
   destinationLabel: string;
   id: string;
+  note?: string | null;
   path: string;
   sizeBytes?: number | null;
   sourceVersion: string | null;
@@ -184,6 +185,8 @@ export function BackupsScreen() {
   const [selectedDestinationId, setSelectedDestinationId] = useState('');
   const [selectedRestore, setSelectedRestore] = useState<BackupBundle | null>(null);
   const [selectedDelete, setSelectedDelete] = useState<BackupBundle | null>(null);
+  const [noteEditor, setNoteEditor] = useState<{ backup: BackupBundle; value: string } | null>(null);
+  const [backupNote, setBackupNote] = useState('');
   const [visibleBundles, setVisibleBundles] = useState(3);
   const [restoreConfirmation, setRestoreConfirmation] = useState('');
   const [restoreStarted, setRestoreStarted] = useState(false);
@@ -244,6 +247,10 @@ export function BackupsScreen() {
       await action();
       await load();
     } catch (caught) {
+      // Refresh first so the page reflects reality (a vanished drive, a
+      // finished job) before the error shows — load() clears the banner, so
+      // the order matters.
+      await load().catch(() => undefined);
       setError(caught instanceof Error ? caught.message : 'Something went wrong.');
     } finally {
       setBusy('');
@@ -265,10 +272,11 @@ export function BackupsScreen() {
     if (!selectedDestination) return;
     await runAction('backup', async () => {
       await jsonResponse(await fetch('/suite-manager/api/backups/start', {
-        body: JSON.stringify({ destinationId: selectedDestination.id }),
+        body: JSON.stringify({ destinationId: selectedDestination.id, note: backupNote }),
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
       }), 'Unable to start backup.');
+      setBackupNote('');
     });
   }
 
@@ -289,6 +297,17 @@ export function BackupsScreen() {
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
       }), 'Unable to check this backup.');
+    });
+  }
+
+  async function saveNote(backup: BackupBundle, note: string) {
+    setNoteEditor(null);
+    await runAction(`note:${backup.path}`, async () => {
+      await jsonResponse(await fetch('/suite-manager/api/backups/note', {
+        body: JSON.stringify({ backupPath: backup.path, note }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Unable to save the backup note.');
     });
   }
 
@@ -329,6 +348,7 @@ export function BackupsScreen() {
       setRestoreStarted(true);
       await load().catch(() => undefined);
     } catch (caught) {
+      await load().catch(() => undefined);
       setError(caught instanceof Error ? caught.message : 'Something went wrong.');
     } finally {
       setBusy('');
@@ -395,7 +415,7 @@ export function BackupsScreen() {
                       <strong>{destination.label}</strong>
                         <span className="suite-drive-badges">
                         <span className="suite-category-pill">{kindLabel}</span>
-                        {destination.writable && mounted ? <span className="suite-category-pill is-success">Writable</span> : null}
+                        {destination.writable && mounted ? <span className="suite-category-pill">Writable</span> : null}
                       </span>
                     </div>
 
@@ -434,6 +454,15 @@ export function BackupsScreen() {
             </div>
           }
 
+          <TextInput
+            disabled={Boolean(busy) || running}
+            helperText="Shown next to the backup so you can tell restore points apart later."
+            label="Note for this backup (optional)"
+            maxLength={200}
+            onChange={(event) => setBackupNote(event.currentTarget.value)}
+            placeholder="e.g. Before installing Immich"
+            value={backupNote}
+          />
           <div className="suite-backup-action-footer">
             <p className="suite-backup-status-message">{buttonState.message}</p>
             <button className="mos-btn mos-btn-primary" disabled={!buttonState.enabled || Boolean(busy) || running} onClick={() => void startBackup()} type="button">
@@ -455,16 +484,21 @@ export function BackupsScreen() {
           <p className="suite-meta"><strong>Before downloading:</strong> this unencrypted bundle contains the suite's data and reusable secrets. Save it only to encrypted, access-controlled storage and remove unneeded browser copies.</p>
           {status.backups.length ? <div className="suite-backup-bundle-list">
             {status.backups.slice(0, visibleBundles).map((backup) => <article key={backup.path}>
-              <div><strong>{backup.createdAt ? formatDate(backup.createdAt) : 'MOS backup'}</strong><span>{backupDescription(backup)} · {backup.destinationLabel || 'Backup drive'}</span></div>
+              <div>
+                <strong>{backup.createdAt ? formatDate(backup.createdAt) : 'MOS backup'}</strong>
+                {backup.note ? <span className="suite-backup-note">{backup.note}</span> : null}
+                <span>{backupDescription(backup)} · {backup.destinationLabel || 'Backup drive'}</span>
+              </div>
               <ActionMenu ariaLabel="Backup actions" disabled={Boolean(busy) || running} items={[
                 { label: 'Restore', onSelect: () => { setSelectedRestore(backup); setRestoreConfirmation(''); } },
                 { label: 'Check', onSelect: () => void checkBackup(backup) },
                 { label: 'Download', onSelect: () => window.location.assign(`/suite-manager/api/backups/download?path=${encodeURIComponent(backup.path)}`) },
+                { label: backup.note ? 'Edit note' : 'Add note', onSelect: () => setNoteEditor({ backup, value: backup.note || '' }) },
                 { label: 'Delete', onSelect: () => setSelectedDelete(backup) },
               ]} />
             </article>)}
             {status.backups.length > visibleBundles ? <div className="suite-backup-show-more">
-              <button className="mos-btn mos-btn-secondary" onClick={() => setVisibleBundles((current) => current + 10)} type="button">
+              <button className="suite-subtle-button" onClick={() => setVisibleBundles((current) => current + 10)} type="button">
                 Show {Math.min(10, status.backups.length - visibleBundles)} more
               </button>
             </div> : null}
@@ -495,6 +529,25 @@ export function BackupsScreen() {
           </dl>
         </details>
       </div> : null}
+
+      {noteEditor ? <Dialog
+        footer={<>
+          <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={() => void saveNote(noteEditor.backup, noteEditor.value)} type="button">Save note</button>
+          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => setNoteEditor(null)} type="button">Cancel</button>
+        </>}
+        onClose={() => { if (!busy) setNoteEditor(null); }}
+        title="Backup note"
+      >
+        <p className="suite-meta">{formatDate(noteEditor.backup.createdAt)} · {backupDescription(noteEditor.backup)}</p>
+        <TextInput
+          helperText="Stored beside the backup on its drive. Leave empty to remove the note."
+          label="What is this restore point about?"
+          maxLength={200}
+          onChange={(event) => setNoteEditor({ backup: noteEditor.backup, value: event.currentTarget.value })}
+          placeholder="e.g. Before Immich install"
+          value={noteEditor.value}
+        />
+      </Dialog> : null}
 
       {selectedDelete ? <Dialog
         footer={<>

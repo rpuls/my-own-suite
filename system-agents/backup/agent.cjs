@@ -191,11 +191,12 @@ function createJob(kind, payload) {
   const destinationId = kind === 'backup' || kind === 'upload' ? normalizeDestination(payload.destinationId) : null;
   const backupPath = kind === 'restore' || kind === 'validate' ? normalizeBundlePath(payload.backupPath) : null;
   const uploadPath = kind === 'upload' ? path.resolve(String(payload.uploadPath || '')) : null;
+  const note = kind === 'backup' ? String(payload.note || '').trim().slice(0, 500) : '';
   if ((kind === 'backup' || kind === 'upload') && !destinationId) throw new Error('Choose a mounted destination under /media, /mnt, or /run/media.');
   if ((kind === 'restore' || kind === 'validate') && !backupPath) throw new Error('Choose a detected backup bundle from mounted storage.');
   if (kind === 'upload' && (!uploadPath.startsWith(`${destinationId}${path.sep}`) || !fs.existsSync(uploadPath))) throw new Error('The uploaded file is no longer available on the destination.');
   if (kind === 'restore' && payload.confirmation !== 'RESTORE') throw new Error('Type RESTORE to confirm this destructive restore.');
-  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator: payload.initiator || 'owner', kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(uploadPath ? { uploadPath } : {}) };
+  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator: payload.initiator || 'owner', kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(uploadPath ? { uploadPath } : {}), ...(note ? { note } : {}) };
   writeJson(jobPath(id), job);
   writeJson(currentJobPath, job);
   spawn(process.execPath, [__filename, '--worker', jobPath(id)], { cwd: repoDir, detached: true, env: process.env, stdio: 'ignore' }).unref();
@@ -207,6 +208,15 @@ function normalizeBundlePath(candidate) {
   if (!fs.existsSync(path.join(resolved, 'manifest.json'))) return null;
   if (!fs.existsSync(path.join(resolved, COMPLETE_MARKER))) return null;
   return resolved;
+}
+// A bundle's operator note is a sidecar file, never part of the checksummed
+// manifest or the downloadable archive — it annotates this destination's
+// copy without touching backup integrity.
+function readNote(bundlePath) {
+  try {
+    const note = fs.readFileSync(path.join(bundlePath, 'note.txt'), 'utf8').trim();
+    return note || null;
+  } catch { return null; }
 }
 function treeBytes(root) {
   let total = 0;
@@ -232,7 +242,7 @@ function listBundles(destinations) {
         if (!fs.existsSync(path.join(bundlePath, COMPLETE_MARKER))) continue;
         if (!fs.existsSync(path.join(bundlePath, 'bundle.tar.gz'))) continue;
         const manifest = readJson(path.join(bundlePath, 'manifest.json'));
-        bundles.push({ appCount: manifest.contents?.apps?.length || 0, archivePath: path.join(bundlePath, 'bundle.tar.gz'), createdAt: manifest.backup?.createdAt || null, destinationId: destination.id, destinationLabel: destination.label, id: manifest.backup?.id || entry.name, path: bundlePath, schemaVersion: manifest.backup?.schemaVersion || null, sizeBytes: treeBytes(bundlePath), sourceCommit: manifest.source?.commit || null, sourceVersion: manifest.source?.version || null, volumeCount: manifest.contents?.volumes?.length || 0 });
+        bundles.push({ appCount: manifest.contents?.apps?.length || 0, archivePath: path.join(bundlePath, 'bundle.tar.gz'), createdAt: manifest.backup?.createdAt || null, destinationId: destination.id, destinationLabel: destination.label, id: manifest.backup?.id || entry.name, note: readNote(bundlePath), path: bundlePath, schemaVersion: manifest.backup?.schemaVersion || null, sizeBytes: treeBytes(bundlePath), sourceCommit: manifest.source?.commit || null, sourceVersion: manifest.source?.version || null, volumeCount: manifest.contents?.volumes?.length || 0 });
       } catch {}
     }
   }
@@ -418,6 +428,17 @@ if (require.main === module && process.argv[2] === '--worker') {
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/backups/validate') { respond(response, 202, { job: createJob('validate', await readBody(request)) }); return; }
+      if (request.method === 'POST' && url.pathname === '/v1/backups/note') {
+        const body = await readBody(request);
+        const backupPath = normalizeBundlePath(body.backupPath);
+        if (!backupPath) { respond(response, 400, { code: 'INVALID_BUNDLE', error: 'Choose a detected backup bundle from mounted storage.' }); return; }
+        const note = String(body.note || '').trim().slice(0, 500);
+        const notePath = path.join(backupPath, 'note.txt');
+        if (note) fs.writeFileSync(notePath, `${note}\n`, 'utf8');
+        else fs.rmSync(notePath, { force: true });
+        respond(response, 200, { note: note || null });
+        return;
+      }
       if (request.method === 'POST' && url.pathname === '/v1/backups/delete') {
         const backupPath = normalizeBundlePath((await readBody(request)).backupPath);
         if (!backupPath) { respond(response, 400, { code: 'INVALID_BUNDLE', error: 'Choose a detected backup bundle from mounted storage.' }); return; }

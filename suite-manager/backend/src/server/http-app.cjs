@@ -646,7 +646,7 @@ function createMOSServer({
           return;
         }
         const body = await readJsonBody(request, 8 * 1024);
-        jsonResponse(response, 202, await backupAgent.startBackup({ destinationId: String(body.destinationId || '') }));
+        jsonResponse(response, 202, await backupAgent.startBackup({ destinationId: String(body.destinationId || ''), note: String(body.note || '') }));
         return;
       }
 
@@ -682,6 +682,16 @@ function createMOSServer({
         jsonResponse(response, 200, await backupAgent.acknowledgeInterruptedRestore({
           confirmation: String(body.confirmation || ''),
         }));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/note`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.setBackupNote({ backupPath: String(body.backupPath || ''), note: String(body.note || '') }));
         return;
       }
 

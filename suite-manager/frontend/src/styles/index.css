@@ -599,7 +599,10 @@
   padding: var(--mos-space-2);
   border: 1px solid var(--mos-color-surface-border);
   border-radius: var(--mos-radius-sm);
-  background: var(--mos-color-frost-strong);
+  /* Opaque surface, not frost: an ancestor with its own backdrop-filter
+     becomes the popover's backdrop root, so the blur never reaches the page
+     content underneath and frost renders as unreadable text-on-text. */
+  background: var(--mos-color-surface-elevated);
   -webkit-backdrop-filter: var(--mos-frost-filter-strong);
   backdrop-filter: var(--mos-frost-filter-strong);
   box-shadow: var(--mos-shadow-strong);
@@ -1465,6 +1468,11 @@
   justify-content: center;
 }
 
+.suite-backup-bundle-list span.suite-backup-note {
+  color: var(--mos-color-text);
+  font-style: italic;
+}
+
 .suite-backup-destination-card,
 .suite-backup-bundle-list article {
   display: grid;
@@ -1855,11 +1863,6 @@
 
 .suite-drive-select {
   user-select: text;
-}
-.suite-drive-badges .suite-category-pill.is-success {
-  border-color: var(--mos-color-success-border);
-  background: var(--mos-color-success-soft);
-  color: var(--mos-color-success);
 }
 
 .suite-drive-path {

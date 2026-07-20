@@ -553,10 +553,12 @@ test('importBundle turns a downloaded archive back into a restorable bundle and 
   const w = await world();
   await w.installApp(STIRLING);
   const core = w.core();
-  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  const backupJob = w.createJob('backup', { destinationId: w.destination(), note: 'before seafile' });
   await core.backup(backupJob);
   const bundle = bundleDirOf(backupJob);
   const originalManifest = readJson(path.join(bundle, 'manifest.json'));
+  // A note given at backup time is born with the bundle, as a sidecar only.
+  assert.equal(fs.readFileSync(path.join(bundle, 'note.txt'), 'utf8'), 'before seafile\n');
 
   // Uploading onto a destination that already holds the same backup refuses.
   const duplicateUpload = path.join(w.destination(), 'MOS-backups', '.upload-dup.tar.gz');
@@ -580,6 +582,8 @@ test('importBundle turns a downloaded archive back into a restorable bundle and 
   assert.ok(fs.existsSync(path.join(imported, 'bundle.tar.gz')));
   assert.equal(readJson(path.join(imported, 'manifest.json')).backup.id, originalManifest.backup.id);
   assert.equal(fs.existsSync(upload), false);
+  // The sidecar note never rides inside the downloadable archive.
+  assert.equal(fs.existsSync(path.join(imported, 'note.txt')), false);
 
   // The imported bundle actually restores.
   const restoreJob = w.createJob('restore', { backupPath: imported });
