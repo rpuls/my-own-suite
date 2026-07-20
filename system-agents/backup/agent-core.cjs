@@ -15,6 +15,7 @@
 //   assertArchiveReadable(archivePath)
 //   copyTree(source, target, { excludeNames })  removeTree(target)
 //   availableBytes(dir) -> bytes|null     pathBytes(target) -> bytes|null
+//   destinationMounted(dir) -> boolean (optional; true when dir is a live mountpoint)
 //   snapshotSqlite(databasePath, targetPath)
 //   restoreStateOwnership()               sourceInfo() -> { branch, commit, repoDir, version }
 //
@@ -118,6 +119,15 @@ class BackupAgentCore {
     return managedStateTargets(this.paths).filter((target) => target.backedUp && target.stagePath);
   }
 
+  // The destination directory outlives its mount, so without this check a
+  // detached drive turns backups into silent writes onto the system disk —
+  // reported as success and invisible in the bundle list.
+  async assertDestinationMounted(destinationId, message) {
+    if (!this.system.destinationMounted) return;
+    if (await this.system.destinationMounted(destinationId)) return;
+    throw new Error(message);
+  }
+
   // --- Restore journal -----------------------------------------------------
   // The journal exists from the moment the restore stops the runtime until
   // verification passes. Its presence is the durable statement "this machine
@@ -175,6 +185,7 @@ class BackupAgentCore {
     const { jobs, packages, system } = this;
     const started = jobs.update(jobFile, (job) => { job.status = 'running'; job.stage = 'starting'; });
     if (this.interruptedRestore()) throw new Error('A previous restore did not complete. Acknowledge it before starting new backup or restore work.');
+    await this.assertDestinationMounted(started.destinationId, 'The backup destination is not mounted. Reconnect the drive, refresh drives, and try again.');
     const stamp = new Date().toISOString().replace(/[:.]/gu, '-');
     const bundleDir = path.join(started.destinationId, 'MOS-backups', `mos-backup-${stamp}-${started.id.slice(0, 8)}`);
     const stateStage = path.join(bundleDir, 'state');
@@ -273,8 +284,17 @@ class BackupAgentCore {
       writeJson(path.join(bundleDir, 'manifest.json'), manifest);
       fs.writeFileSync(path.join(bundleDir, 'MANIFEST.sha256'), `${sha256(path.join(bundleDir, 'manifest.json'))}  manifest.json\n`);
       await system.archiveTree(bundleDir, path.join(bundleDir, 'bundle.tar.gz'), { entries: ['manifest.json', 'MANIFEST.sha256', 'state.tar.gz', 'volumes'] });
+      // Success requires the destination to still be the mounted drive: if it
+      // vanished mid-backup, everything above landed on the system disk and
+      // this bundle must not be reported as a usable backup.
+      await this.assertDestinationMounted(started.destinationId, 'The backup destination disappeared while the backup was running. The written data is not a usable backup; reconnect the drive and run a new backup.');
       fs.writeFileSync(path.join(bundleDir, COMPLETE_MARKER), `${new Date().toISOString()}\n`, 'utf8');
       fs.rmSync(stateStage, { force: true, recursive: true });
+    } catch (error) {
+      // A partial bundle is never restorable, and when the destination mount
+      // vanished mid-job it sits on the system disk — remove it either way.
+      if (!fs.existsSync(path.join(bundleDir, COMPLETE_MARKER))) fs.rmSync(bundleDir, { force: true, recursive: true });
+      throw error;
     } finally {
       jobs.stage(jobFile, 'Restarting runtime');
       await system.startService('mos-homepage.service');
@@ -371,6 +391,7 @@ class BackupAgentCore {
     const backupsRoot = path.join(started.destinationId, 'MOS-backups');
     const stagingDir = path.join(backupsRoot, `.import-${started.id.slice(0, 8)}`);
     try {
+      await this.assertDestinationMounted(started.destinationId, 'The backup destination is not mounted. Reconnect the drive, refresh drives, and upload again.');
       jobs.stage(jobFile, 'Reading the uploaded file');
       await system.assertArchiveReadable(uploadPath);
       const uploadBytes = (await system.pathBytes(uploadPath)) || 0;

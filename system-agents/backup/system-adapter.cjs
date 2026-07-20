@@ -109,6 +109,13 @@ class BackupSystemAdapter {
     try { const stat = fs.statfsSync(dir); return stat.bavail * stat.bsize; } catch { return null; }
   }
 
+  // True only while something is actually mounted at dir. The directory
+  // itself survives an unmount, so writes to a "destination" can silently
+  // land on the system disk — callers use this to refuse that.
+  async destinationMounted(dir) {
+    return this.optionalCommand('mountpoint', ['-q', dir]) !== null;
+  }
+
   async pathBytes(target) {
     if (!target || !fs.existsSync(target)) return 0;
     const output = this.optionalCommand('du', ['-sb', target], { timeout: 600_000 });

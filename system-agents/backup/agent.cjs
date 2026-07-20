@@ -127,6 +127,15 @@ async function mountDestination(destinationId) {
   if (!mounted) throw new Error('The drive was mounted, but the backup agent could not verify it.');
   return mounted;
 }
+// A destination is a mount path; the directory outlives the mount, so path
+// checks alone would happily aim a backup at the system disk after the drive
+// disappears. Only a currently mounted, writable destination is acceptable.
+async function assertMountedDestination(destinationId) {
+  const mounted = (await listDestinations()).find((item) => item.mountState === 'mounted' && item.mountPath === destinationId);
+  if (!mounted) throw new Error('The selected backup drive is not mounted anymore. Reconnect it, click Refresh drives, and try again.');
+  if (!mounted.writable) throw new Error('The selected backup drive is not writable.');
+  return mounted;
+}
 function listJobFiles() {
   ensureDir(jobsDir);
   return fs.readdirSync(jobsDir).filter((name) => name.endsWith('.json')).map((name) => path.join(jobsDir, name));
@@ -370,13 +379,20 @@ if (require.main === module && process.argv[2] === '--worker') {
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/destinations/mount') { respond(response, 200, { destination: await mountDestination((await readBody(request)).destinationId) }); return; }
-      if (request.method === 'POST' && url.pathname === '/v1/backups') { respond(response, 202, { job: createJob('backup', await readBody(request)) }); return; }
+      if (request.method === 'POST' && url.pathname === '/v1/backups') {
+        const body = await readBody(request);
+        const destination = normalizeDestination(body.destinationId);
+        if (destination) await assertMountedDestination(destination);
+        respond(response, 202, { job: createJob('backup', body) });
+        return;
+      }
       if (request.method === 'POST' && url.pathname === '/v1/backups/upload') {
         // Raw octet stream, not JSON: the body is the downloaded bundle
         // archive itself, saved onto the destination before an `upload` job
         // unpacks and validates it.
         const destinationId = normalizeDestination(url.searchParams.get('destinationId'));
-        if (!destinationId || !isWritable(destinationId)) { respond(response, 400, { code: 'INVALID_DESTINATION', error: 'Choose a mounted, writable destination under /media, /mnt, or /run/media.' }); return; }
+        if (!destinationId) { respond(response, 400, { code: 'INVALID_DESTINATION', error: 'Choose a mounted, writable destination under /media, /mnt, or /run/media.' }); return; }
+        await assertMountedDestination(destinationId);
         if (isActive(reconcileCurrentJob())) { respond(response, 409, { code: 'JOB_ACTIVE', error: 'A backup or restore job is already running.' }); return; }
         const contentLength = Number.parseInt(request.headers['content-length'] || '', 10);
         if (!Number.isFinite(contentLength) || contentLength <= 0) { respond(response, 411, { code: 'LENGTH_REQUIRED', error: 'The upload needs a known file size.' }); return; }

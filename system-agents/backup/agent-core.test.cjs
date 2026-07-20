@@ -104,6 +104,7 @@ class FakeSystem {
 
   async removeTree(target) { fs.rmSync(target, { force: true, recursive: true }); }
   async availableBytes(dir) { return this.freeBytes.has(dir) ? this.freeBytes.get(dir) : 10 ** 15; }
+  async destinationMounted() { return this.destinationMountedResult ?? true; }
 
   async pathBytes(target) {
     if (!target || !fs.existsSync(target)) return 0;
@@ -593,4 +594,35 @@ test('importBundle turns a downloaded archive back into a restorable bundle and 
   assert.equal(fs.existsSync(corrupt), false);
   const leftovers = fs.readdirSync(path.join(second, 'MOS-backups')).filter((name) => name.startsWith('.'));
   assert.deepEqual(leftovers, []);
+});
+
+// The 2026-07-20 unmounted-destination drill: the mountpoint directory
+// outlives the mount, so a backup whose drive vanished mid-job wrote 13 GB
+// onto the system disk and reported success. Success now requires the
+// destination to still be mounted.
+test('a backup whose destination disappears mid-job fails instead of reporting success', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const core = w.core();
+
+  // The drive detaches while the backup is writing volume archives.
+  const originalArchive = w.system.archiveTree.bind(w.system);
+  w.system.archiveTree = async (sourceDir, archivePath, options) => {
+    await originalArchive(sourceDir, archivePath, options);
+    w.system.destinationMountedResult = false;
+  };
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await assert.rejects(core.backup(backupJob), /disappeared while the backup was running/u);
+  // The partial bundle is removed outright — nothing can be listed as a
+  // bundle and no orphaned gigabytes stay behind on the system disk.
+  const bundleDir = readJson(backupJob).outputPath;
+  assert.equal(fs.existsSync(bundleDir), false);
+  // The runtime was restarted despite the failure.
+  assert.ok(w.system.events.some(([event, name]) => event === 'startContainer' && name === 'mos-app-stirling-pdf'));
+
+  // A backup that starts with the destination already gone fails immediately.
+  w.system.destinationMountedResult = false;
+  w.system.archiveTree = originalArchive;
+  const refusedJob = w.createJob('backup', { destinationId: w.destination() });
+  await assert.rejects(core.backup(refusedJob), /not mounted/u);
 });
