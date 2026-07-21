@@ -37,10 +37,11 @@ These rules are required for every non-trivial change (docs, config, code, infra
    - Use PR workflow only.
 6. **When a change affects compatibility contracts, call it out explicitly in changelog.**
    - This includes env vars, compose service/profile names, Dockerfile paths, and persistent volume semantics.
-7. **Managed updates must fully apply all repo-owned code.**
-   - A managed update must not leave Suite Manager, Docker containers, host agents, generated env/compose wiring, or systemd units running old code after reporting success.
+7. **Managed platform updates must fully apply all platform-owned code.**
+   - A managed update must not leave Suite Manager, host agents, generated env/compose wiring, or systemd units running old code after reporting success.
    - If repo-owned host agents need new capabilities, update/restart them as part of the same managed update instead of adding UI around the partially applied state.
    - Treat a partially applied managed update as a regression to fix at the update mechanism level.
+   - Installed app runtimes are intentionally outside a platform update's scope: each app runs from the package snapshot it was installed with, and app changes apply only through the per-app update transaction. A platform update must not silently rebuild installed apps, and must not claim to have updated them.
 
 ## Pre-Work Checklist (Agents)
 

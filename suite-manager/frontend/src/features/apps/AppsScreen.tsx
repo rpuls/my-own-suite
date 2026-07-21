@@ -580,6 +580,7 @@ function AppDetail({
   const [setupOpen, setSetupOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
   const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app, owner.email));
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [comparison, setComparison] = useState<UpdateComparison | null>(null);
@@ -730,11 +731,22 @@ function AppDetail({
             {actionsOpen ? <div className="suite-app-actions-popover" role="menu">
               {ready && hasGuide(app) && guideCompleted ? <button onClick={() => runMenuAction(openGuide)} role="menuitem" type="button">Setup guide</button> : null}
               {canRestartRuntime ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'restart'))} role="menuitem" type="button">Restart</button> : null}
-              {ready ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'stop'))} role="menuitem" type="button">Stop</button> : null}
+              {ready ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'stop'))} role="menuitem" type="button">Stop (keeps data)</button> : null}
               {disabled ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'enable'))} role="menuitem" type="button">Start</button> : null}
-              {app.instance && !uninstalled ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'uninstall'))} role="menuitem" type="button">Uninstall</button> : null}
+              {app.instance && !uninstalled ? <button onClick={() => runMenuAction(() => setConfirmUninstall(true))} role="menuitem" type="button">Uninstall</button> : null}
             </div> : null}
           </div> : null}
+          {confirmUninstall ? <Dialog
+            footer={<>
+              <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => { setConfirmUninstall(false); onLifecycle(app, 'uninstall'); }} type="button">Uninstall and delete data</button>
+              <button className="mos-btn mos-btn-secondary" disabled={installing} onClick={() => setConfirmUninstall(false)} type="button">Cancel</button>
+            </>}
+            onClose={() => { if (!installing) setConfirmUninstall(false); }}
+            title={`Uninstall ${app.name}?`}
+          >
+            <Notice title="Uninstalling deletes this app's data" variant="warning"><p>MOS removes the app's containers, web address, Homepage shortcut, settings, secrets, and data volumes. Anything stored in {app.name} is deleted with it &mdash; only a backup made beforehand can bring it back.</p></Notice>
+            <p className="suite-meta">If you only want the app offline, use Stop instead &mdash; it keeps all data and settings.</p>
+          </Dialog> : null}
           {homepageAvailable && !ready && !disabled && !uninstalled ? <label className="suite-app-homepage-option">
             <input checked={showOnHomepage} disabled={installing} onChange={(event) => setShowOnHomepage(event.currentTarget.checked)} type="checkbox" />
             <span>Add shortcut to Homepage</span>

@@ -27,7 +27,7 @@ Prefer observed package/runtime evidence over upstream marketing. Label every co
 
 ## Catalog signing
 
-Regenerating the catalog after any review or manifest change invalidates the committed Ed25519 catalog signature, so the signature half of `apps:catalog:check` fails until the key holder runs `MOS_CATALOG_SIGNING_KEY=<key path> npm run apps:catalog:sign`. If you do not hold the signing key, that specific failure is expected: report re-signing as a required step before merge. Never work around it by editing `.sig` files or leaving the regenerated catalog uncommitted.
+Regenerating the catalog after any review or manifest change invalidates the committed Ed25519 catalog signature, so the signature half of `apps:catalog:check` fails until the key holder runs `npm run apps:catalog:sign` (prompts to paste the key). If you do not hold the signing key, that specific failure is expected: report re-signing as a required step before merge. Never work around it by editing `.sig` files or leaving the regenerated catalog uncommitted.
 
 ## Change monitoring
 

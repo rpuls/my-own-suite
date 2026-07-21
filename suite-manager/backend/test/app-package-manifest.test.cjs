@@ -169,7 +169,7 @@ test('Immich package is discoverable and declares its heavy multi-service stack 
 
   assert.ok(immich);
   assert.equal(immich.manifest.name, 'Immich');
-  assert.equal(immich.manifest.version, '0.3.0');
+  assert.equal(immich.manifest.version, '0.3.1');
   // Every base image here is pinned to an amd64 manifest, so this package cannot
   // build anywhere else. Declaring it is what lets MOS say so before the build.
   assert.deepEqual(immich.manifest.architectures, ['amd64']);

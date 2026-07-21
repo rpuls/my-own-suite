@@ -1,7 +1,7 @@
 {
   "id": "immich",
   "name": "Immich",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "minimumMosVersion": "0.1.0",
   "architectures": ["amd64"],
   "summary": "High performance self-hosted photo and video backup solution.",
@@ -40,7 +40,7 @@
     "resourceHint": {
       "level": "high",
       "label": "High resources",
-      "description": "This package requires minimum 4GB RAM and CPU with AVX2 support for optimal machine learning performance."
+      "description": "This package requires minimum 4GB RAM and CPU with AVX2 support for optimal machine learning performance. Photo and video libraries grow large, and whole-suite backups include the full library - size your backup drive for the library you plan to store and expect backups to take longer as it grows."
     },
     "privacy": {
       "summary": "All photos, metadata, and machine learning models stay fully on your MOS server.",

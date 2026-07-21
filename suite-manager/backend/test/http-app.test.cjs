@@ -548,6 +548,39 @@ test('Updates API requires auth and proxies narrow update-agent actions', async 
   }, { homeHost: 'home.test', updateAgent });
 });
 
+test('Stable-track apply is refused before the update agent is asked to start', async () => {
+  const calls = [];
+  const updateAgent = {
+    async startUpdate(input) {
+      calls.push(['start', input]);
+      return { job: { id: 'job-one', status: 'queued' } };
+    },
+    async status() {
+      return {
+        capabilities: { updates: { capabilities: ['apply', 'configure-track'] } },
+        currentJob: null,
+        updaterStatus: {
+          checkedAt: '2026-07-21T12:00:00.000Z',
+          latestRelease: { channel: 'stable', source: 'github-releases', version: '0.12.0' },
+          track: { currentBranch: 'main', currentCommit: 'def456', label: 'Stable releases', ref: 'main', type: 'stable' },
+          updateAvailable: true,
+        },
+      };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const started = await hostRequest(baseUrl, '/suite-manager/api/updates/start', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(started.status, 409);
+    assert.match(started.json().error, /Stable tagged-release updates cannot be applied yet/u);
+    assert.deepEqual(calls, []);
+  }, { homeHost: 'home.test', updateAgent });
+});
+
 test('Backup API proxies simple owner backup, restore, and download actions', async () => {
   const backupDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-backup-bundle-'));
   const archivePath = path.join(backupDir, 'bundle.tar.gz');

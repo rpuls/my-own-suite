@@ -81,6 +81,11 @@ class UpdateService {
       error.statusCode = 503;
       throw error;
     }
+    if (status.track.type === 'stable') {
+      const error = new Error('Stable tagged-release updates cannot be applied yet. Switch to the MOS lab branch track to apply managed updates.');
+      error.statusCode = 409;
+      throw error;
+    }
     if (status.currentJob && (status.currentJob.status === 'queued' || status.currentJob.status === 'running')) {
       const error = new Error('An update job is already running.');
       error.statusCode = 409;

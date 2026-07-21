@@ -73,9 +73,9 @@ try {
     const signed = path.join(rootDir, 'apps', name);
     const signature = path.join(rootDir, 'apps', `${name}.sig`);
     if (!fs.existsSync(signature)) {
-      errors.push(`apps/${name}.sig is missing. Sign the catalog: MOS_CATALOG_SIGNING_KEY=<key path> npm run apps:catalog:sign`);
+      errors.push(`apps/${name}.sig is missing. Sign the catalog: npm run apps:catalog:sign (prompts for the publisher key)`);
     } else if (!verifyCatalogSignature({ bytes: fs.readFileSync(signed), publicKey, signature: readText(signature) })) {
-      errors.push(`apps/${name} is not signed by trust/official-catalog.pub. Re-sign it: MOS_CATALOG_SIGNING_KEY=<key path> npm run apps:catalog:sign`);
+      errors.push(`apps/${name} is not signed by trust/official-catalog.pub. Re-sign it: npm run apps:catalog:sign (prompts for the publisher key)`);
     }
   }
 } catch (error) {

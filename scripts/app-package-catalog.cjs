@@ -107,7 +107,7 @@ function main(args = process.argv.slice(2)) {
   // Rewriting the catalog invalidates the signature every installed MOS checks
   // it against, and a catalog that no longer verifies is one they all refuse. The
   // failure would otherwise surface on their boxes rather than on this one.
-  process.stdout.write('The catalog signature is now stale. Re-sign before committing:\n  MOS_CATALOG_SIGNING_KEY=<key path> npm run apps:catalog:sign\n');
+  process.stdout.write('The catalog signature is now stale. Re-sign before committing:\n  npm run apps:catalog:sign   (prompts you to paste the key; input stays hidden)\n');
 }
 
 if (require.main === module) main();

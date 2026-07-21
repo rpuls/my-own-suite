@@ -52,10 +52,10 @@ The **Updates** screen shows your update **track**, the version you're running, 
 
 ### Tracks
 
-- **Stable releases** — tagged, release-noted versions. The right choice once you depend on your suite.
+- **Stable releases** — tagged, release-noted versions. This track is visible but **not yet installable**: MOS cannot apply tagged stable releases until the first one ships, so the Updates screen keeps it read-only and won't start an update from it.
 - **MOS lab branch** — the active development branch, with changes arriving continuously. Fresh installs currently default to this track while MOS is pre-1.0; it's the version these docs describe, but it moves fast.
 
-You can switch tracks from the same screen.
+Until the first stable release ships, managed updates apply only from the MOS lab branch.
 
 ### What a platform update actually does
 

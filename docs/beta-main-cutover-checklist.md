@@ -11,15 +11,15 @@ The two decisions are intentionally separate:
 
 #### Blockers before main cutover
 
-- [ ] Managed updates apply all repo-owned app runtime changes before reporting success, or managed apply is disabled and described as experimental.
-- [ ] The Stable update track can actually apply tagged releases, or its apply controls and claims are removed until supported.
+- [x] Managed updates apply all repo-owned app runtime changes before reporting success, or managed apply is disabled and described as experimental — resolved by the snapshot contract: platform updates apply all platform-owned code and truthfully state that installed apps stay on their package snapshots; app changes apply only through the per-app update transaction (see item 1).
+- [x] The Stable update track can actually apply tagged releases, or its apply controls and claims are removed until supported — Stable is now visibly read-only: the Updates screen disables selecting it, refuses apply with a clear message, and the backend rejects stable-track start before the agent is asked (see item 2).
 - [x] Public cloud first-owner setup and subsequent owner authentication no longer rely on exposed plain HTTP, or cloud installation is explicitly removed from the supported beta paths.
 - [x] The landing-page one-line installer is implemented, tested, and safely delivered, or the unsupported command is removed.
 
 #### High priority before public announcement
 
 - [x] Remove obsolete USB-installer owner fields and make browser owner creation the only owner bootstrap path.
-- [ ] Make backup integrity and replacement-machine restore claims match verified behavior.
+- [x] Make backup integrity and replacement-machine restore claims match verified behavior.
 - [ ] Build the MOS `site/` from a clean install in required CI before deployment cutover.
 - [x] Publish a real, tested cloud HTTPS procedure or clearly classify cloud TLS as operator-owned and advanced.
 
@@ -35,37 +35,37 @@ The two decisions are intentionally separate:
 
 #### Required validation before approval
 
-- [ ] `npm run release:check`
-- [ ] `npm test`
+- [x] `npm run release:check` — passing after the owner re-signed the catalog on July 21, 2026; catalog and advisory signatures verify against the committed public key
+- [x] `npm test` — full suite green on July 21, 2026 (399 tests)
 - [x] `npm run typecheck`
 - [x] `npm run build:client`
-- [ ] Clean MOS `site/` install and build in CI
+- [ ] Clean MOS `site/` install and build in CI — the `MOS Site` job now runs `npm ci` + `astro build` from `site/` in `.github/workflows/ci.yml` and the build passes locally; confirm the job on the next push and add it to the required checks for `main`
 - [x] Installer contract/render checks
 - [x] Human-run Hyper-V full-platform E2E after blocker fixes — owner-confirmed on July 18, 2026, including the app catalog, external-package installation, and the broader platform E2E flow
-- [ ] Real backup/restore drill with representative multi-service and large-data apps
+- [x] Real backup/restore drill with representative multi-service and large-data apps — owner-run Hyper-V drills July 20-21, 2026: multi-service (Stirling, Seafile/MySQL, Immich/Postgres, Radicale) restores in both directions, ~6 GiB workload, replacement-VM recovery via uploaded bundle, corruption/version/disk/disconnected-destination refusals, and mid-restore power-loss interruption with journaled recovery; evidence recorded in `docs/backup-restore-reliability-plan.md`
 - [x] Explicitly approved DigitalOcean validation if cloud install remains a supported launch path
 - [ ] Branch protection requires PRs and passing CI for `main`
 - [ ] Release metadata, changelog, tag, and release notes agree
 
 ### Detailed findings and acceptance criteria
 
-#### 1. Managed updates must fully apply repo-owned app code
+#### 1. Managed updates must fully apply repo-owned app code — completed via the snapshot contract, retain as a regression check
 
 - **Severity:** Blocker
 - **Area:** Updates and release architecture
-- **Evidence:** `AGENTS.md` requires managed updates to apply all repo-owned code. `system-agents/update/lib.cjs` currently reports `manual-reapply-after-core-update`, and `system-agents/README.md` says changed package Dockerfiles or manifests may require owners to reapply or restart apps after a core update.
-- **Why it matters:** An update can report success while installed containers continue running images built from old repo-owned package code. That contradicts the repository's update contract and the public one-click update story.
-- **Required action:** Make package-aware rebuild/reapply part of the managed update transaction. If that cannot ship for beta, disable managed apply or label it experimental and do not report full update success while runtime code remains stale.
-- **Acceptance:** A test update that changes an installed app Dockerfile or manifest leaves the running app on the new projection/image without manual action, or the UI prevents the unsupported operation and states the limitation before starting.
+- **Original evidence:** `AGENTS.md` required managed updates to apply all repo-owned code including app containers. `system-agents/update/lib.cjs` reported `manual-reapply-after-core-update`, and `system-agents/README.md` said changed package Dockerfiles or manifests may require owners to reapply or restart apps after a core update.
+- **Resolution evidence:** The contradiction was resolved by making app decoupling the explicit contract rather than a partially applied state. Installed apps run from validated package snapshots and are deliberately outside a platform update's scope; app changes apply only through the per-app update transaction (staging, build, health-gated activation, rollback/recovery), which is what actually rebuilds containers from changed package files. `system-agents/update/lib.cjs` no longer emits a manual-reapply warning and logs that installed app runtimes remain bound to their snapshots; `system-agents/README.md`, the public updates guide, and `docs/decisions.md` describe the same scope; `AGENTS.md` rule 7 now states the platform/app split, and the Updates screen states at the action point that apps stay on their snapshots and update separately from Apps.
+- **Regression check:** A platform update must never claim to have updated installed apps, and app rebuilds from changed package files must keep flowing through the per-app update transaction (catalog digest/version comparison), never through a silent core-update rebuild.
+- **Acceptance:** A platform update reports only platform-owned scope truthfully; a changed app package surfaces as an app update in Apps and applies through the transactional pipeline.
 
-#### 2. Stable update track is advertised but cannot apply
+#### 2. Stable update track is advertised but cannot apply — completed as read-only until stable apply ships, retain as a regression check
 
 - **Severity:** Blocker
 - **Area:** Updates and releases
-- **Evidence:** The Updates guide and UI present Stable releases as a selectable track. `system-agents/update/lib.cjs` rejects apply unless the selected track is `branch`. `RELEASING.md` also notes that MOS stable release-track metadata is not complete.
-- **Why it matters:** Selecting the supposedly safer update channel disables the principal update operation and can leave users without a dependable security-update path.
-- **Required action:** Implement tagged stable release discovery, checkout, version reporting, and apply, or make Stable visibly unavailable/read-only until it exists.
-- **Acceptance:** A released tag can be discovered and applied end to end on a representative install, including full runtime reconciliation, with installed-version metadata updated truthfully.
+- **Original evidence:** The Updates guide and UI presented Stable releases as a selectable track. `system-agents/update/lib.cjs` rejects apply unless the selected track is `branch`. `RELEASING.md` also notes that MOS stable release-track metadata is not complete.
+- **Resolution evidence:** Stable is now visibly read-only everywhere it appears. The Updates screen disables the Stable option ("not yet available"), shows a warning notice on installs already parked on Stable, disables the update button with "Stable apply not yet available", and the track helper text says managed updates apply only from the MOS lab branch until the first tagged release ships. `UpdateService.start` refuses stable-track apply with a clear 409 before the update agent is ever asked (covered by a focused test in `suite-manager/backend/test/http-app.test.cjs`), and the public updates guide describes Stable as visible but not yet installable instead of "the right choice once you depend on your suite".
+- **Regression check:** No UI or docs surface may present Stable as installable until tagged stable discovery, checkout, version reporting, and apply exist end to end; the service-level refusal must stay ahead of the agent's branch-only rejection.
+- **Acceptance (for lifting read-only):** A released tag can be discovered and applied end to end on a representative install, including full runtime reconciliation, with installed-version metadata updated truthfully.
 
 #### 3. Public cloud onboarding must not depend on plain HTTP — completed, retain as a regression check
 
@@ -94,13 +94,14 @@ The two decisions are intentionally separate:
 - **Regression check:** Installer input and generated seed must never contain Suite Manager owner credentials. Only the machine login and legitimate host settings may be installer inputs.
 - **Acceptance:** Static installer tests reject owner credential inputs, and a fresh USB install reaches browser owner creation without placeholder secrets.
 
-#### 6. Backup integrity and fresh-machine restore claims must be proven
+#### 6. Backup integrity and fresh-machine restore claims must be proven — completed, retain as a regression check
 
 - **Severity:** High
 - **Area:** Backup, restore, and documentation
-- **Evidence:** The guide describes bundles as integrity-checked and sufficient to restore the suite on a fresh machine. The reviewed implementation hashed `manifest.json`, but not every state/volume archive, and restore operated on an already-installed MOS machine. Version matching was advised rather than visibly enforced.
+- **Original evidence:** The guide describes bundles as integrity-checked and sufficient to restore the suite on a fresh machine. The reviewed implementation hashed `manifest.json`, but not every state/volume archive, and restore operated on an already-installed MOS machine. Version matching was advised rather than visibly enforced.
 - **Why it matters:** Payload corruption may go undetected until restore, and "fresh machine" can be read as bare-metal recovery even though a compatible MOS installation is a prerequisite.
-- **Required action:** Hash every payload archive, verify all checksums before stopping services, validate/enforce compatible versions, and describe replacement-machine prerequisites precisely.
+- **Resolution evidence:** Bundle schema v3 hashes every state and volume archive; restore and the read-only bundle check verify all checksums, archive readability, and app package payloads before anything is stopped, enforce a declared schema-version window, and surface a recorded-vs-current MOS version mismatch as an explicit warning. Restores keep a complete rescue generation, run under a durable journal that blocks new work after interruption until typed acknowledgment, and report success only after the restored inventory verifies against the bundle. Hyper-V drills on July 20-21, 2026 confirmed each acceptance point on real hardware: deliberately corrupted archives (stream-level and checksum-level) and an out-of-window schema version were rejected before any destructive step; a replacement-VM recovery succeeded using only a downloaded bundle uploaded through the Backups screen plus the owner password; and a mid-restore power loss ended in journaled, acknowledgeable recovery rather than a false success. The restore guarantee reported by the API and Backups screen moved from `experimental` to `verified`, with replacement-machine prerequisites (a compatible installed MOS) documented. Full drill log: `docs/backup-restore-reliability-plan.md`.
+- **Regression check:** Bundles must not gain payload types that escape per-archive hashing; restore preflight must keep running every integrity/compatibility check before the first destructive step; and restore success must remain gated on inventory verification, never inferred from job completion.
 - **Acceptance:** A deliberately corrupted state or volume archive is rejected before destructive restore begins, incompatible versions are blocked or explicitly migrated, and a documented replacement-machine recovery drill succeeds.
 
 #### 7. MOS public site must be CI-validated before cutover
@@ -109,6 +110,7 @@ The two decisions are intentionally separate:
 - **Area:** Repository, CI, and deployment
 - **Evidence:** At review time, root `npm run build`, CI, and `wrangler.toml` still targeted `site-mos1-reference`, while `site/` had no required clean-build job. Active README wording also called the rebuilt site a placeholder.
 - **Why it matters:** The launch surface can fail only after deployment, while the live site may continue telling the MOS1 story.
+- **Progress (July 21, 2026):** CI now has a `MOS Site` job doing a clean `npm ci` + `astro build` from `site/`; the build passes locally. Remaining: confirm the job on the next push, mark it required in branch protection, and make the deployment cutover (root build script, `wrangler.toml`, Cloudflare Pages) a reviewed change with a rollback path — the cutover itself is deliberately deferred until the owner's site adjustments land.
 - **Required action:** Add a clean dependency install and MOS site build to required CI, verify links/assets/routes, explicitly switch deployment configuration, and update active documentation.
 - **Acceptance:** Required CI builds `site/` from a clean checkout on Linux, and the deployment cutover is a reviewed change with a rollback path.
 
@@ -199,29 +201,29 @@ The two decisions are intentionally separate:
 ### What is already strong and must not regress
 
 - [x] The previous site and previous root layout remain clearly isolated in `site-mos1-reference/` and the archive branch rather than mixed into the MOS runtime.
-- [ ] App packages remain manifest-driven with digest-pinned base images and root-level Dockerfile paths.
-- [ ] ONLYOFFICE remains an independent capability provider/Seafile companion rather than being presented as a standalone file cloud.
-- [ ] Stop remains non-destructive; uninstall remains explicitly destructive and removes declared containers, routes, Homepage entries, state, secrets, integrations, and volumes.
-- [ ] Suite Manager remains unprivileged and delegates bounded host work to narrow Unix-socket agents.
-- [ ] Cloudflare tokens remain in root-only storage and are never returned by the API or printed in logs.
-- [ ] Owner passwords remain scrypt-hashed and only hashes of session tokens persist.
-- [ ] Homepage remains loopback-only and protected by the Suite Manager session boundary.
-- [ ] App secrets remain redacted from public projections and API responses.
-- [ ] MOS-owned Homepage links can be reconciled without rewriting arbitrary user-authored links.
+- [x] App packages remain manifest-driven with digest-pinned base images and root-level Dockerfile paths. (Verified July 21, 2026: all 11 `apps/*/Dockerfile*` pin `@sha256:` digests, no floating tags, flat layout; projections rendered from manifests in `app-package-internals.cjs`.)
+- [x] ONLYOFFICE remains an independent capability provider/Seafile companion rather than being presented as a standalone file cloud. (Verified: `capability-provider` role, companion treatment in Suite Manager, companion framing in catalog and docs.)
+- [x] Stop remains non-destructive; uninstall remains explicitly destructive and removes declared containers, routes, Homepage entries, state, secrets, integrations, and volumes. (Verified in `app-package-service.cjs` disable/uninstall paths; the previously missing UI confirmation now exists — uninstall requires a dialog spelling out data deletion, and Stop is labeled as keeping data.)
+- [x] Suite Manager remains unprivileged and delegates bounded host work to narrow Unix-socket agents. (Verified: `mos` user unit, loopback bind, no Docker socket; root agents behind `/run/mos-*-agent/agent.sock` with group-scoped socket dirs; docker.sock/host-device mounts rejected in package contracts.)
+- [x] Cloudflare tokens remain in root-only storage and are never returned by the API or printed in logs. (Verified: `0600` root-agent env file, pass-through without persistence, boolean-only status, log redaction.)
+- [x] Owner passwords remain scrypt-hashed and only hashes of session tokens persist. (Verified: scrypt with timing-safe compare; SHA-256 session-token hashes only in the store.)
+- [x] Homepage remains loopback-only and protected by the Suite Manager session boundary. (Verified: `127.0.0.1` publish, session-gated HTTP proxy and WebSocket upgrades, cookie stripping both ways.)
+- [x] App secrets remain redacted from public projections and API responses. (Verified: secret values never serialized in `publicConfig`; projections keep placeholders unless materialized for the root agent.)
+- [x] MOS-owned Homepage links can be reconciled without rewriting arbitrary user-authored links. (Verified: `reconcileManagedUrls` mutates only entries whose `mos.id` matches the target set, via CST-level YAML edits.)
 
 ### Beta caveats required in public documentation and release notes
 
-- [ ] MOS is pre-1.0 and intended for evaluation or non-critical use with independent backups.
-- [ ] Cloud security/TLS and remote-access responsibilities are stated without implying provider tooling automatically supplies HTTPS.
+- [x] MOS is pre-1.0 and intended for evaluation or non-critical use with independent backups. (Beta/0.x labeling across landing, footer, docs, and terms; the FAQ beta answer and getting-started now state evaluation/non-critical use with independent backups explicitly.)
+- [x] Cloud security/TLS and remote-access responsibilities are stated without implying provider tooling automatically supplies HTTPS. (Cloud guides and the HTTPS settings screen state MOS does not manage provider DNS/TLS; the quick cloud path is described honestly.)
 - [x] Backups are manual, unencrypted, whole-suite only, destination-limited, and version-sensitive.
 - [x] Replacement-machine restore prerequisites are explicit.
-- [ ] Stable-track managed apply status is stated accurately.
-- [ ] App package changes that are not automatically reconciled are stated before an update starts.
+- [x] Stable-track managed apply status is stated accurately. (Updates guide describes Stable as visible but not yet installable; the Updates screen keeps it read-only and refuses stable apply.)
+- [x] App package changes that are not automatically reconciled are stated before an update starts. (The Updates screen states at the action point that installed apps stay on their snapshots and update separately; the updates guide documents the same contract.)
 - [x] MFA availability and login-hardening status are explicit.
-- [ ] Own-hardware setup requirements include USB creation, disk erasure, LAN addressing, and DNS/hosts configuration.
-- [ ] Immich resource and backup-size expectations are prominent.
-- [ ] ONLYOFFICE's companion role is clear.
-- [ ] Uninstall data deletion and Stop data preservation are clear at the action point.
+- [x] Own-hardware setup requirements include USB creation, disk erasure, LAN addressing, and DNS/hosts configuration. (All four covered in the own-hardware install guide.)
+- [x] Immich resource and backup-size expectations are prominent. (The Immich resource hint now covers RAM/AVX2 and backup-size/duration expectations; rendered on the public app page and the Suite Manager resources tile.)
+- [x] ONLYOFFICE's companion role is clear.
+- [x] Uninstall data deletion and Stop data preservation are clear at the action point. (Uninstall now opens a confirmation dialog listing exactly what is deleted and pointing to backup first; the Stop menu item is labeled as keeping data.)
 
 ### Suggested post-cutover issues
 

@@ -460,7 +460,7 @@ export function BackupsScreen() {
             label="Note for this backup (optional)"
             maxLength={200}
             onChange={(event) => setBackupNote(event.currentTarget.value)}
-            placeholder="e.g. Before installing Immich"
+            placeholder="e.g. Before installing a new app"
             value={backupNote}
           />
           <div className="suite-backup-action-footer">
@@ -544,7 +544,7 @@ export function BackupsScreen() {
           label="What is this restore point about?"
           maxLength={200}
           onChange={(event) => setNoteEditor({ backup: noteEditor.backup, value: event.currentTarget.value })}
-          placeholder="e.g. Before Immich install"
+          placeholder="e.g. Before a big app install"
           value={noteEditor.value}
         />
       </Dialog> : null}
