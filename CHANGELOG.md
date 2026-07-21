@@ -6,8 +6,13 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Added
+
+- The landing page now shows a dismissible "Early software" prototype notice that slides up from the bottom-left once a visitor starts scrolling, keeping the initial load clean. Its "Read more" dialog explains the project's beta status and AI-assisted development and advises keeping independent backups; dismissal persists across visits.
+
 ### Changed
 
+- Site beta/version badges (hero, footer, prototype notice) now read the actual version from the root `VERSION` file at build time instead of a hardcoded `0.x` placeholder.
 - The Apps screen no longer has a manual "Refresh catalog" button. The catalog loads on page mount, quietly nudges one background refresh, and re-reads the verified cache once a minute; transient refresh failures (such as GitHub rate-limit redirects) no longer surface as page-level errors while the last verified catalog keeps serving.
 
 ## [0.13.0] - 2026-07-21
