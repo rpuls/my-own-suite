@@ -590,8 +590,8 @@ function createMOSServer({
           return;
         }
         const body = await readJsonBody(request, 8 * 1024);
-        if (body.track !== 'stable' && body.track !== 'staging') {
-          jsonResponse(response, 400, { code: 'INVALID_UPDATE_TRACK', error: 'Update track must be stable or staging.' });
+        if (body.track !== 'stable' && body.track !== 'main' && body.track !== 'staging') {
+          jsonResponse(response, 400, { code: 'INVALID_UPDATE_TRACK', error: 'Update track must be stable, main, or staging.' });
           return;
         }
         jsonResponse(response, 200, await updates.configureTrack(body));

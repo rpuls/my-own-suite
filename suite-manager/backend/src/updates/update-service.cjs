@@ -82,7 +82,7 @@ class UpdateService {
       throw error;
     }
     if (status.track.type === 'stable') {
-      const error = new Error('Stable tagged-release updates cannot be applied yet. Switch to the MOS lab branch track to apply managed updates.');
+      const error = new Error('Stable tagged-release updates cannot be applied yet. Switch to the Main or Staging branch track to apply managed updates.');
       error.statusCode = 409;
       throw error;
     }
@@ -111,10 +111,10 @@ class UpdateService {
       error.statusCode = 409;
       throw error;
     }
-    const trackId = input.track === 'stable' ? 'stable' : 'staging';
+    const trackId = input.track === 'stable' ? 'stable' : input.track === 'staging' ? 'staging' : 'main';
     await this.agent.configureTrack(trackId === 'stable'
       ? { ref: 'main', track: 'stable' }
-      : { ref: 'staging', track: 'branch' });
+      : { ref: trackId, track: 'branch' });
     return this.status();
   }
 }

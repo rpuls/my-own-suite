@@ -4,7 +4,7 @@ const https = require('node:https');
 const { execFileSync } = require('node:child_process');
 
 const DEFAULT_REPO = 'rpuls/my-own-suite';
-const DEFAULT_BRANCH_REF = 'staging';
+const DEFAULT_BRANCH_REF = 'main';
 const SAFE_BRANCH_REF = /^[A-Za-z0-9._/-]+$/u;
 
 function now() {
@@ -102,8 +102,8 @@ function normalizeRef(track, value) {
 
 function trackLabel(track, ref) {
   if (track === 'stable') return 'Stable releases';
+  if (ref === 'main') return 'Main branch';
   if (ref === 'staging') return 'Staging branch';
-  if (ref === DEFAULT_BRANCH_REF) return 'Staging branch';
   return `Branch: ${ref}`;
 }
 

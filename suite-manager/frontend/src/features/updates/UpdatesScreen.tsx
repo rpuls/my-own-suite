@@ -49,13 +49,16 @@ function isRunning(job: UpdateJob | null) {
   return Boolean(job && (job.status === 'queued' || job.status === 'running'));
 }
 
-function selectedTrack(status: UpdateStatus): 'stable' | 'staging' {
-  return status.track.type === 'stable' ? 'stable' : 'staging';
+type TrackChoice = 'stable' | 'main' | 'staging';
+
+function selectedTrack(status: UpdateStatus): TrackChoice {
+  if (status.track.type === 'stable') return 'stable';
+  return status.track.ref === 'staging' ? 'staging' : 'main';
 }
 
 export function UpdatesScreen() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
-  const [track, setTrack] = useState<'stable' | 'staging'>('staging');
+  const [track, setTrack] = useState<TrackChoice>('main');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const running = isRunning(status?.currentJob || null);
@@ -111,7 +114,7 @@ export function UpdatesScreen() {
     </div>
 
     {error ? <Notice title="Updates need attention" variant="error"><p>{error}</p></Notice> : null}
-    {stableTrackActive ? <Notice title="Stable updates are not available yet" variant="warning"><p>This install follows the Stable releases track, but MOS cannot apply tagged stable releases yet. Switch to the MOS lab branch track to receive managed updates until the first stable release ships.</p></Notice> : null}
+    {stableTrackActive ? <Notice title="Stable updates are not available yet" variant="warning"><p>This install follows the Stable releases track, but MOS cannot apply tagged stable releases yet. Switch to the Main branch track to receive managed updates until the first stable release ships.</p></Notice> : null}
     {status && !status.serviceAvailable ? <Notice title="Update agent unavailable" variant="warning"><p>This install does not expose the MOS update agent to Suite Manager yet. Install or repair the host services before using in-app updates.</p></Notice> : null}
     {updating ? <Notice title={<span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Spinner />{busy === 'update' && !running ? 'Starting update' : 'Update in progress'}</span>} variant="info"><p>Suite Manager may briefly reconnect while the host refreshes repo-owned services and agents.</p></Notice> : null}
     {updating ? <div className="suite-updates-progress" role="status" aria-live="polite">
@@ -140,8 +143,9 @@ export function UpdatesScreen() {
         </dl>
 
         {status.trackConfigurationAvailable ? <div className="suite-updates-track">
-          <Select disabled={Boolean(busy) || running} helperText="Stable will follow tagged releases once the first one ships; until then, managed updates apply only from the MOS lab branch." label="Update track" onChange={(event) => setTrack(event.currentTarget.value === 'stable' ? 'stable' : 'staging')} value={track}>
-            <option value="staging">MOS lab branch</option>
+          <Select disabled={Boolean(busy) || running} helperText="Main carries reviewed changes and is the right choice for most installs. Staging receives changes earlier for testing. Stable will follow tagged releases once the first one ships." label="Update track" onChange={(event) => setTrack(event.currentTarget.value === 'stable' ? 'stable' : event.currentTarget.value === 'staging' ? 'staging' : 'main')} value={track}>
+            <option value="main">Main branch</option>
+            <option value="staging">Staging branch (early testing)</option>
             <option disabled value="stable">Stable releases (not yet available)</option>
           </Select>
           <button className="mos-btn mos-btn-secondary" disabled={busy === 'track' || updating || track === selectedTrack(status)} onClick={() => void switchTrack()} type="button">{busy === 'track' ? 'Switching...' : 'Switch track'}</button>

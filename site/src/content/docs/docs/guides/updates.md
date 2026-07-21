@@ -53,9 +53,10 @@ The **Updates** screen shows your update **track**, the version you're running, 
 ### Tracks
 
 - **Stable releases** — tagged, release-noted versions. This track is visible but **not yet installable**: MOS cannot apply tagged stable releases until the first one ships, so the Updates screen keeps it read-only and won't start an update from it.
-- **MOS lab branch** — the active development branch, with changes arriving continuously. Fresh installs currently default to this track while MOS is pre-1.0; it's the version these docs describe, but it moves fast.
+- **Main branch** — reviewed changes that have been promoted to the project's default branch. Fresh installs run code from this branch and default to this track; it's the right choice for most installs while MOS is pre-1.0.
+- **Staging branch** — the integration branch, where changes land for testing before promotion to main. Pick this only if you want new features earlier and accept more churn.
 
-Until the first stable release ships, managed updates apply only from the MOS lab branch.
+Until the first stable release ships, managed updates apply from the Main and Staging branch tracks.
 
 ### What a platform update actually does
 

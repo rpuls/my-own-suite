@@ -47,8 +47,42 @@ import { DOCS_PATH } from '../lib/links'
       </div>
     </div>
     <div class="install-line shell" style="width:100%;max-width:760px;margin-inline:auto;margin-top:var(--mos-space-7)">
-      <div class="cmd"><span class="dollar">$</span> curl -fsSL https://get.myownsuite.org | sudo bash</div>
+      <div class="cmd">
+        <span class="dollar">$</span>
+        <span class="cmd-text">curl -fsSL https://get.myownsuite.org | sudo bash</span>
+        <button
+          class="cmd-copy"
+          type="button"
+          aria-label="Copy install command"
+          data-copy="curl -fsSL https://get.myownsuite.org | sudo bash"
+        >
+          <svg class="icon-copy" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <svg class="icon-check" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </button>
+      </div>
       <p class="mos-small mos-meta" style="margin-top:8px;text-align:center">On fresh Ubuntu 24.04 this installs MOS from the current reviewed <code>main</code> commit, pinned the moment you run it. Inspect it first at <code>https://get.myownsuite.org/install.sh</code>.</p>
     </div>
   </div>
 </section>
+
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>('.cmd-copy')) {
+    let resetTimer: ReturnType<typeof setTimeout> | undefined
+    button.addEventListener('click', async () => {
+      const text = button.dataset.copy
+      if (!text) return
+      try {
+        await navigator.clipboard.writeText(text)
+      } catch {
+        return
+      }
+      button.classList.add('copied')
+      button.setAttribute('aria-label', 'Copied')
+      clearTimeout(resetTimer)
+      resetTimer = setTimeout(() => {
+        button.classList.remove('copied')
+        button.setAttribute('aria-label', 'Copy install command')
+      }, 2000)
+    })
+  }
+</script>
