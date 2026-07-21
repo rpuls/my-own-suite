@@ -82,9 +82,11 @@ try {
   errors.push(`Official catalog signing key is unusable: ${error instanceof Error ? error.message : String(error)}`);
 }
 
-// When MOS gains stable release-track managed updates, a Suite Manager
-// release metadata file should be added back here so packaged installs can
-// report their installed version without the repo root. See RELEASING.md.
+// Stable release-track managed updates compare the root VERSION file against
+// the newest GitHub release, so VERSION agreeing with the tag (checked above)
+// is what keeps installed-versus-latest truthful. A separate Suite Manager
+// release metadata file is only needed again if a packaged distribution
+// without the repo root returns. See RELEASING.md.
 
 if (warnings.length > 0) {
   console.log('Warnings:');

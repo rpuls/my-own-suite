@@ -45,7 +45,7 @@ The two decisions are intentionally separate:
 - [x] Real backup/restore drill with representative multi-service and large-data apps — owner-run Hyper-V drills July 20-21, 2026: multi-service (Stirling, Seafile/MySQL, Immich/Postgres, Radicale) restores in both directions, ~6 GiB workload, replacement-VM recovery via uploaded bundle, corruption/version/disk/disconnected-destination refusals, and mid-restore power-loss interruption with journaled recovery; evidence recorded in `docs/backup-restore-reliability-plan.md`
 - [x] Explicitly approved DigitalOcean validation if cloud install remains a supported launch path
 - [x] Branch protection requires PRs and passing CI for `main` — the "Protect main" ruleset requires pull requests and the current `MOS Workspace`, `MOS Site`, and `Shell Scripts Lint` checks (stale MOS1-era check names removed), plus deletion/force-push restrictions; updated by the owner on July 21, 2026
-- [ ] Release metadata, changelog, tag, and release notes agree
+- [x] Release metadata, changelog, tag, and release notes agree — v0.12.0 released July 21, 2026: tag `v0.12.0` points at the `main` head (`2a47062`, PR #189), the GitHub Release "v0.12.0 — The MOS app platform" is published from that tag, and `VERSION`, `releases/stable.json`, and the `CHANGELOG.md` `[0.12.0]` section all agree on 0.12.0 with `npm run release:check` passing; the GitHub `releases/latest` endpoint the update agent polls returns v0.12.0
 
 ### Detailed findings and acceptance criteria
 

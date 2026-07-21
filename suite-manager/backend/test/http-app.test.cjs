@@ -556,7 +556,7 @@ test('Updates API requires auth and proxies narrow update-agent actions', async 
   }, { homeHost: 'home.test', updateAgent });
 });
 
-test('Stable-track apply is refused before the update agent is asked to start', async () => {
+test('Stable-track apply starts the update agent when a newer release is available', async () => {
   const calls = [];
   const updateAgent = {
     async startUpdate(input) {
@@ -569,6 +569,7 @@ test('Stable-track apply is refused before the update agent is asked to start', 
         currentJob: null,
         updaterStatus: {
           checkedAt: '2026-07-21T12:00:00.000Z',
+          installedVersion: '0.11.0',
           latestRelease: { channel: 'stable', source: 'github-releases', version: '0.12.0' },
           track: { currentBranch: 'main', currentCommit: 'def456', label: 'Stable releases', ref: 'main', type: 'stable' },
           updateAvailable: true,
@@ -579,13 +580,17 @@ test('Stable-track apply is refused before the update agent is asked to start', 
 
   await withServer(async (baseUrl) => {
     const cookie = await createOwner(baseUrl);
+    const statusResponse = await hostRequest(baseUrl, '/suite-manager/api/updates/status', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    assert.equal(statusResponse.status, 200);
+    assert.equal(statusResponse.json().installedVersion, '0.11.0');
     const started = await hostRequest(baseUrl, '/suite-manager/api/updates/start', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
-    assert.equal(started.status, 409);
-    assert.match(started.json().error, /Stable tagged-release updates cannot be applied yet/u);
-    assert.deepEqual(calls, []);
+    assert.equal(started.status, 202);
+    assert.deepEqual(calls, [['start', { initiator: 'owner@example.com', target: 'latest' }]]);
   }, { homeHost: 'home.test', updateAgent });
 });
 

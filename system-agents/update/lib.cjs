@@ -6,6 +6,7 @@ const { execFileSync } = require('node:child_process');
 const DEFAULT_REPO = 'rpuls/my-own-suite';
 const DEFAULT_BRANCH_REF = 'main';
 const SAFE_BRANCH_REF = /^[A-Za-z0-9._/-]+$/u;
+const SAFE_RELEASE_VERSION = /^\d+\.\d+\.\d+$/u;
 
 function now() {
   return new Date().toISOString();
@@ -41,6 +42,7 @@ function buildPaths(repoRoot = repoRootFrom(process.cwd()), stateRoot = process.
     stateRoot,
     updateStateDir,
     rootPackageJsonPath: path.join(repoRoot, 'package.json'),
+    versionFilePath: path.join(repoRoot, 'VERSION'),
   };
 }
 
@@ -109,6 +111,11 @@ function trackLabel(track, ref) {
 
 function readConfig(paths) {
   try { return readJson(paths.configPath); } catch { return null; }
+}
+
+function readInstalledVersion(paths) {
+  const value = readText(paths.versionFilePath).trim();
+  return SAFE_RELEASE_VERSION.test(value) ? value : null;
 }
 
 function resolveTrack(paths) {
@@ -246,10 +253,11 @@ function ensureCleanWorkingTree(paths) {
   }
 }
 
-async function collectStatus(paths = buildPaths()) {
+async function collectStatus(paths = buildPaths(), { releaseLookup = fetchLatestRelease } = {}) {
   ensurePrerequisites(paths);
   const track = resolveTrack(paths);
   const githubRepo = parsePackageRepo(paths);
+  const installedVersion = readInstalledVersion(paths);
   let latestRelease = null;
   let latestRevision = null;
   const errors = [];
@@ -260,11 +268,11 @@ async function collectStatus(paths = buildPaths()) {
     latestRevision = refreshed.latestCommit || cached;
     if (refreshed.error) errors.push(refreshed.error);
     if (process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP !== '1') {
-      try { latestRelease = await fetchLatestRelease(githubRepo); } catch (error) { errors.push(`Stable release lookup: ${error.message}`); }
+      try { latestRelease = await releaseLookup(githubRepo); } catch (error) { errors.push(`Stable release lookup: ${error.message}`); }
     }
   } else {
     if (process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP !== '1') {
-      try { latestRelease = await fetchLatestRelease(githubRepo); } catch (error) { errors.push(error.message); }
+      try { latestRelease = await releaseLookup(githubRepo); } catch (error) { errors.push(error.message); }
     }
   }
 
@@ -273,13 +281,14 @@ async function collectStatus(paths = buildPaths()) {
     changeSummary: buildChangeSummary(paths, track.type, latestRelease),
     error: errors.length ? errors.join(' ') : null,
     githubRepo,
+    installedVersion,
     latestRelease,
     latestRevision,
     service: 'mos-update-agent',
     track,
     updateAvailable: track.type === 'branch'
       ? Boolean(track.currentCommit && latestRevision && track.currentCommit !== latestRevision)
-      : Boolean(latestRelease?.version),
+      : Boolean(latestRelease?.version && latestRelease.version !== installedVersion),
   };
   writeJson(path.join(paths.updateStateDir, 'state.json'), status);
   return status;
@@ -288,24 +297,36 @@ async function collectStatus(paths = buildPaths()) {
 function checkoutBranch(paths, ref, log) {
   log(`Fetching latest commit for ${ref}`);
   runCommand(paths.repoRoot, 'git', ['fetch', 'origin', ref], { stdio: 'inherit' });
-  const current = safeRunCommand(paths.repoRoot, 'git', ['branch', '--show-current']);
-  if (!current.ok || current.value !== ref) {
-    log(`Checking out ${ref}`);
-    runCommand(paths.repoRoot, 'git', ['checkout', ref], { stdio: 'inherit' });
-  }
-  log(`Fast-forwarding ${ref}`);
-  runCommand(paths.repoRoot, 'git', ['pull', '--ff-only', 'origin', ref], { stdio: 'inherit' });
+  // checkout -B lands exactly on the remote head even when the local branch
+  // diverged (for example after the tracked branch was force-rewritten); the
+  // checkout is platform-owned and the working tree was verified clean above.
+  log(`Checking out ${ref} at origin/${ref}`);
+  runCommand(paths.repoRoot, 'git', ['checkout', '-B', ref, `refs/remotes/origin/${ref}`], { stdio: 'inherit' });
 }
 
-async function runApply(paths, { log = () => {} } = {}) {
+function checkoutReleaseTag(paths, version, log) {
+  if (!SAFE_RELEASE_VERSION.test(String(version || ''))) {
+    throw new Error('The latest stable release version is missing or not plain X.Y.Z, so the release tag cannot be checked out.');
+  }
+  const tag = `v${version}`;
+  log(`Fetching release tag ${tag}`);
+  runCommand(paths.repoRoot, 'git', ['fetch', '--force', 'origin', `refs/tags/${tag}:refs/tags/${tag}`], { stdio: 'inherit' });
+  log(`Checking out release tag ${tag}`);
+  runCommand(paths.repoRoot, 'git', ['checkout', '--detach', `refs/tags/${tag}`], { stdio: 'inherit' });
+}
+
+async function runApply(paths, { log = () => {}, releaseLookup } = {}) {
   ensurePrerequisites(paths);
   ensureCleanWorkingTree(paths);
-  const status = await collectStatus(paths);
+  const status = await collectStatus(paths, { releaseLookup });
   if (!status.updateAvailable) throw new Error('This machine is already up to date on its current track.');
-  if (status.track.type !== 'branch') throw new Error('The first MOS managed-update slice supports branch-track updates only.');
 
   log(`Repository before update: ${shortCommit(status.track.currentCommit) || 'unknown'}`);
-  checkoutBranch(paths, status.track.ref, log);
+  if (status.track.type === 'stable') {
+    checkoutReleaseTag(paths, status.latestRelease?.version, log);
+  } else {
+    checkoutBranch(paths, status.track.ref, log);
+  }
   log(`Repository after checkout: ${shortCommit(currentGitState(paths.repoRoot).commit) || 'unknown'}`);
   log('Installing dependencies from lockfile, including build tooling');
   runNpm(paths, ['ci', '--include=dev'], log);
@@ -314,7 +335,7 @@ async function runApply(paths, { log = () => {} } = {}) {
   log('Reconciling MOS host services and agents');
   runNode(paths, path.join('scripts', 'reconcile-system.cjs'), [], log);
   log('Managed core update completed; installed app runtimes remain bound to their package snapshots');
-  return collectStatus(paths);
+  return collectStatus(paths, { releaseLookup });
 }
 
 module.exports = {

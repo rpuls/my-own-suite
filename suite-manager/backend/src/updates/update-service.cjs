@@ -33,6 +33,7 @@ function normalizeStatus(agentPayload, serviceAvailable) {
     checkedAt: typeof updaterStatus.checkedAt === 'string' ? updaterStatus.checkedAt : new Date().toISOString(),
     currentJob: normalizeJob(agentPayload?.currentJob),
     error: typeof updaterStatus.error === 'string' ? updaterStatus.error : null,
+    installedVersion: typeof updaterStatus.installedVersion === 'string' ? updaterStatus.installedVersion : null,
     latestRelease: {
       channel: typeof latestRelease.channel === 'string' ? latestRelease.channel : null,
       notesUrl: typeof latestRelease.notesUrl === 'string' ? latestRelease.notesUrl : null,
@@ -79,11 +80,6 @@ class UpdateService {
     if (!status.managedApplyAvailable) {
       const error = new Error('Managed update apply is unavailable on this install.');
       error.statusCode = 503;
-      throw error;
-    }
-    if (status.track.type === 'stable') {
-      const error = new Error('Stable tagged-release updates cannot be applied yet. Switch to the Main or Staging branch track to apply managed updates.');
-      error.statusCode = 409;
       throw error;
     }
     if (status.currentJob && (status.currentJob.status === 'queued' || status.currentJob.status === 'running')) {

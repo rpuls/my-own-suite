@@ -16,6 +16,7 @@ type UpdateStatus = {
   checkedAt: string;
   currentJob: UpdateJob | null;
   error: string | null;
+  installedVersion: string | null;
   latestRelease: { notesUrl: string | null; source: string | null; version: string | null };
   latestRevision: string | null;
   managedApplyAvailable: boolean;
@@ -45,6 +46,11 @@ function targetLabel(status: UpdateStatus) {
   return status.track.type === 'branch' ? shortCommit(status.latestRevision) : status.latestRelease.version || 'Unknown';
 }
 
+function currentLabel(status: UpdateStatus) {
+  if (status.track.type === 'stable' && status.installedVersion) return status.installedVersion;
+  return shortCommit(status.track.currentCommit);
+}
+
 function isRunning(job: UpdateJob | null) {
   return Boolean(job && (job.status === 'queued' || job.status === 'running'));
 }
@@ -63,7 +69,6 @@ export function UpdatesScreen() {
   const [busy, setBusy] = useState('');
   const running = isRunning(status?.currentJob || null);
   const updating = running || busy === 'update';
-  const stableTrackActive = status?.track.type === 'stable';
 
   async function load() {
     const next = await jsonResponse<UpdateStatus>(await fetch('/suite-manager/api/updates/status'), 'Unable to load update status.');
@@ -114,7 +119,6 @@ export function UpdatesScreen() {
     </div>
 
     {error ? <Notice title="Updates need attention" variant="error"><p>{error}</p></Notice> : null}
-    {stableTrackActive ? <Notice title="Stable updates are not available yet" variant="warning"><p>This install follows the Stable releases track, but MOS cannot apply tagged stable releases yet. Switch to the Main branch track to receive managed updates until the first stable release ships.</p></Notice> : null}
     {status && !status.serviceAvailable ? <Notice title="Update agent unavailable" variant="warning"><p>This install does not expose the MOS update agent to Suite Manager yet. Install or repair the host services before using in-app updates.</p></Notice> : null}
     {updating ? <Notice title={<span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Spinner />{busy === 'update' && !running ? 'Starting update' : 'Update in progress'}</span>} variant="info"><p>Suite Manager may briefly reconnect while the host refreshes repo-owned services and agents.</p></Notice> : null}
     {updating ? <div className="suite-updates-progress" role="status" aria-live="polite">
@@ -137,22 +141,22 @@ export function UpdatesScreen() {
 
         <dl className="suite-updates-facts">
           <div><dt>Track</dt><dd>{status.track.label || 'Unknown'}</dd></div>
-          <div><dt>Current</dt><dd>{shortCommit(status.track.currentCommit)}</dd></div>
+          <div><dt>Current</dt><dd>{currentLabel(status)}</dd></div>
           <div><dt>Target</dt><dd>{targetLabel(status)}</dd></div>
           <div><dt>Updater</dt><dd>{status.managedApplyAvailable ? 'Ready' : 'Unavailable'}</dd></div>
         </dl>
 
         {status.trackConfigurationAvailable ? <div className="suite-updates-track">
-          <Select disabled={Boolean(busy) || running} helperText="Main carries reviewed changes and is the right choice for most installs. Staging receives changes earlier for testing. Stable will follow tagged releases once the first one ships." label="Update track" onChange={(event) => setTrack(event.currentTarget.value === 'stable' ? 'stable' : event.currentTarget.value === 'staging' ? 'staging' : 'main')} value={track}>
+          <Select disabled={Boolean(busy) || running} helperText="Stable follows official tagged releases and is the calmest choice. Main carries reviewed changes ahead of the next release and is the default for fresh installs. Staging receives changes earlier for testing." label="Update track" onChange={(event) => setTrack(event.currentTarget.value === 'stable' ? 'stable' : event.currentTarget.value === 'staging' ? 'staging' : 'main')} value={track}>
+            <option value="stable">Stable releases</option>
             <option value="main">Main branch</option>
             <option value="staging">Staging branch (early testing)</option>
-            <option disabled value="stable">Stable releases (not yet available)</option>
           </Select>
           <button className="mos-btn mos-btn-secondary" disabled={busy === 'track' || updating || track === selectedTrack(status)} onClick={() => void switchTrack()} type="button">{busy === 'track' ? 'Switching...' : 'Switch track'}</button>
         </div> : null}
 
-        <button className="mos-btn mos-btn-primary" disabled={!status.managedApplyAvailable || !status.updateAvailable || stableTrackActive || Boolean(busy) || running} onClick={() => void startUpdate()} type="button">
-          {stableTrackActive ? 'Stable apply not yet available' : updating ? 'Updating...' : status.updateAvailable ? 'Update now' : 'Already up to date'}
+        <button className="mos-btn mos-btn-primary" disabled={!status.managedApplyAvailable || !status.updateAvailable || Boolean(busy) || running} onClick={() => void startUpdate()} type="button">
+          {updating ? 'Updating...' : status.updateAvailable ? 'Update now' : 'Already up to date'}
         </button>
         <p className="suite-meta">A platform update refreshes MOS services and host agents. Installed apps keep running from their installed package snapshots; app updates are applied separately from the Apps screen.</p>
       </section>
