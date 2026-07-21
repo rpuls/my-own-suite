@@ -1,0 +1,14 @@
+{
+  "name": "mos",
+  "owner": {
+    "name": "My Own Suite"
+  },
+  "description": "My Own Suite repository skills.",
+  "plugins": [
+    {
+      "name": "mos-app-skills",
+      "source": "./",
+      "description": "MOS app onboarding, update, and privacy-assessment procedures."
+    }
+  ]
+}

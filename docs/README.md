@@ -6,15 +6,16 @@ This folder holds durable project memory: architectural decisions, documentation
 
 | Need | Source of truth |
 | --- | --- |
-| Product and end-user documentation | `site/src/content/docs/` |
+| Product and end-user documentation | `site/` |
 | App technical reference | `apps/<app>/README.md` |
-| VPS/local Docker operations | `deploy/vps/README.md` |
-| USB/self-host installer operations | `deploy/self-host/README.md` |
-| Self-host host-agent implementation | `agents/selfhost/` |
-| Self-host backup agent notes | `agents/selfhost/backup/docs/` |
-| Updater smoke tests and low-level host checks | `agents/selfhost/update/docs/` |
+| MOS operator/developer scripts | `scripts/README.md` |
+| Test harness guidance | `test/README.md` |
+| USB/self-host installer support | `infrastructure/self-host/` and `scripts/README.md` |
+| Host-agent implementation | `system-agents/` |
+| Previous-site rollback/reference source | `site-mos1-reference/` |
 | Durable architecture decisions | `docs/decisions.md` |
 | Codex/project workflow notes | `docs/codex-notes.md` |
+| Temporary branch development notes explicitly requested for an active epic | `docs/<topic>-plan.md`, removed or converted to GitHub Issues before merge unless the owner explicitly designates the file as a kept durable record (so marked in its status line) |
 | GitHub task shape | `.github/ISSUE_TEMPLATE/codex-task.yml` |
 | Release workflow | `RELEASING.md` |
 | Release notes | `CHANGELOG.md` |

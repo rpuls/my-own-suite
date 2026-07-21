@@ -1,0 +1,60 @@
+{
+  "packages": {
+    "immich": {
+      "minimumMosVersion": "0.1.0",
+      "packageDigest": "sha256:99d8a4d688d08b741b311a43b2f4e5c0f40d44939181426ebe47612d0d22a805",
+      "packageVersion": "0.3.1",
+      "path": "apps/immich",
+      "privacy": {
+        "status": "review-required"
+      }
+    },
+    "onlyoffice": {
+      "minimumMosVersion": "0.1.0",
+      "packageDigest": "sha256:913249d992fa1fccabfa6c72a88119e660c0f231bb5cdd03e22e9f7c63e3295a",
+      "packageVersion": "0.1.0",
+      "path": "apps/onlyoffice",
+      "privacy": {
+        "status": "review-required"
+      }
+    },
+    "radicale": {
+      "minimumMosVersion": "0.1.0",
+      "packageDigest": "sha256:f25e382a09bc9d7f6b701e9e7df4f205a21486704487cbf3b9474faedbd4569b",
+      "packageVersion": "0.1.0",
+      "path": "apps/radicale",
+      "privacy": {
+        "status": "review-required"
+      }
+    },
+    "seafile": {
+      "minimumMosVersion": "0.1.0",
+      "packageDigest": "sha256:2270b5b3cfeff1f0057f7d2ba78ae09b912907279766a99e26d2e62263d63c43",
+      "packageVersion": "0.1.0",
+      "path": "apps/seafile",
+      "privacy": {
+        "status": "review-required"
+      }
+    },
+    "stirling-pdf": {
+      "minimumMosVersion": "0.1.0",
+      "packageDigest": "sha256:96599841d3f0482598f5eda229ba20639d3a1b8285766add77d3d60713b43021",
+      "packageVersion": "0.1.1",
+      "path": "apps/stirling-pdf",
+      "privacy": {
+        "posture": "privacy-configured",
+        "status": "reviewed"
+      }
+    },
+    "vaultwarden": {
+      "minimumMosVersion": "0.1.0",
+      "packageDigest": "sha256:9a3a489c5c61a809cc5bcf060a9370d8cb34feebeecb9c87f46a4a146cf341ad",
+      "packageVersion": "0.1.0",
+      "path": "apps/vaultwarden",
+      "privacy": {
+        "status": "review-required"
+      }
+    }
+  },
+  "schemaVersion": 1
+}

@@ -1,0 +1,228 @@
+{
+  "id": "seafile",
+  "name": "Seafile",
+  "version": "0.1.0",
+  "minimumMosVersion": "0.1.0",
+  "packageFiles": ["entrypoint.sh"],
+  "summary": "Private file sync, sharing, and browser-based file access.",
+  "category": "storage",
+  "icon": "icon.png",
+  "catalog": {
+    "description": "Seafile is a self-hosted file sync and sharing server for private libraries, browser access, desktop sync clients, mobile clients, and share links.",
+    "replaces": "Dropbox / Google Drive / OneDrive",
+    "tags": [
+      "files",
+      "sync",
+      "sharing",
+      "storage",
+      "dropbox-alternative"
+    ],
+    "features": [
+      {
+        "title": "Sync files across devices",
+        "body": "Use Seafile desktop and mobile clients with a MOS-hosted server."
+      },
+      {
+        "title": "Share libraries and links",
+        "body": "Create private libraries and share files or folders from the web interface."
+      },
+      {
+        "title": "Keep storage self-hosted",
+        "body": "Store Seafile data and metadata in package-owned MOS volumes."
+      }
+    ],
+    "complexity": {
+      "level": "advanced",
+      "label": "Advanced setup",
+      "description": "Seafile runs as a multi-service package with a database, cache, and persistent file storage."
+    },
+    "resourceHint": {
+      "level": "medium",
+      "label": "Medium resources",
+      "description": "This package starts Seafile plus MySQL and Valkey, so it is heavier than the first single-service MOS packages."
+    },
+    "privacy": {
+      "summary": "Files, metadata, and generated credentials are stored in your MOS runtime.",
+      "notes": [
+        "Back up the Seafile and MySQL volumes before relying on this package for important files.",
+        "Only the Seafile web service is exposed through Caddy; MySQL and Valkey stay internal to the package network.",
+        "ONLYOFFICE document editing is enabled only after an explicit MOS integration connection."
+      ]
+    },
+    "links": {
+      "website": "https://www.seafile.com/",
+      "docs": "https://manual.seafile.com/",
+      "repository": "https://github.com/haiwen/seafile"
+    },
+    "related": [
+      "stirling-pdf"
+    ]
+  },
+  "setup": {
+    "fields": [
+      {
+        "id": "adminEmail",
+        "type": "email",
+        "label": "Seafile admin email",
+        "required": true
+      },
+      {
+        "id": "adminPassword",
+        "type": "password",
+        "label": "Seafile admin password",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Seafile admin password"
+      },
+      {
+        "id": "mysqlRootPassword",
+        "type": "password",
+        "label": "MySQL root password",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Generated Seafile MySQL root password",
+        "generated": {
+          "kind": "random",
+          "bytes": 32,
+          "encoding": "base64url"
+        }
+      },
+      {
+        "id": "mysqlUserPassword",
+        "type": "password",
+        "label": "MySQL Seafile user password",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Generated Seafile MySQL user password",
+        "generated": {
+          "kind": "random",
+          "bytes": 32,
+          "encoding": "base64url"
+        }
+      },
+      {
+        "id": "jwtPrivateKey",
+        "type": "password",
+        "label": "Seafile JWT private key",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Generated Seafile JWT private key",
+        "generated": {
+          "kind": "random",
+          "bytes": 40,
+          "encoding": "base64url"
+        }
+      }
+    ]
+  },
+  "resources": {
+    "services": {
+      "seafile-mysql": {
+        "dockerfile": "Dockerfile.mysql",
+        "internalPort": 3306,
+        "env": {
+          "MYSQL_LOG_CONSOLE": "true",
+          "MYSQL_ROOT_PASSWORD": "${secret.mysqlRootPassword}"
+        },
+        "volumes": [
+          "mysql-data:/var/lib/mysql"
+        ]
+      },
+      "seafile-valkey": {
+        "dockerfile": "Dockerfile.valkey",
+        "internalPort": 6379
+      },
+      "seafile": {
+        "dockerfile": "Dockerfile",
+        "internalPort": 80,
+        "env": {
+          "SEAFILE_MYSQL_DB_HOST": "seafile-mysql",
+          "SEAFILE_MYSQL_DB_PORT": "3306",
+          "SEAFILE_MYSQL_DB_USER": "seafile",
+          "SEAFILE_MYSQL_DB_PASSWORD": "${secret.mysqlUserPassword}",
+          "SEAFILE_MYSQL_DB_CCNET_DB_NAME": "ccnet_db",
+          "SEAFILE_MYSQL_DB_SEAFILE_DB_NAME": "seafile_db",
+          "SEAFILE_MYSQL_DB_SEAHUB_DB_NAME": "seahub_db",
+          "INIT_SEAFILE_MYSQL_ROOT_PASSWORD": "${secret.mysqlRootPassword}",
+          "INIT_SEAFILE_ADMIN_EMAIL": "${config.adminEmail}",
+          "INIT_SEAFILE_ADMIN_PASSWORD": "${secret.adminPassword}",
+          "JWT_PRIVATE_KEY": "${secret.jwtPrivateKey}",
+          "CACHE_PROVIDER": "redis",
+          "REDIS_HOST": "seafile-valkey",
+          "REDIS_PORT": "6379",
+          "REDIS_PASSWORD": "",
+          "SEAFILE_SERVER_HOSTNAME": "${app.host}",
+          "SEAFILE_SERVER_PROTOCOL": "${app.scheme}",
+          "TIME_ZONE": "UTC"
+        },
+        "volumes": [
+          "data:/shared"
+        ]
+      }
+    }
+  },
+  "routes": [
+    {
+      "host": "seafile",
+      "service": "seafile",
+      "port": 80
+    }
+  ],
+  "homepage": {
+    "group": "Storage",
+    "name": "Seafile",
+    "description": "Sync and share files from your own server.",
+    "icon": "seafile"
+  },
+  "health": {
+    "type": "http",
+    "url": "http://seafile:80/api2/ping/"
+  },
+  "exports": {
+    "filePlatform": {
+      "type": "document-platform",
+      "implementation": "seafile",
+      "interfaceVersion": 1,
+      "protocol": "seafile-web",
+      "title": "Seafile document platform",
+      "internalBaseUrl": "http://seafile"
+    }
+  },
+  "configTargets": {
+    "seahubSettings": {
+      "kind": "service-env",
+      "service": "seafile",
+      "allowedKeys": [
+        "ONLYOFFICE_APIJS_URL",
+        "ONLYOFFICE_JWT_SECRET",
+        "ONLYOFFICE_INTERNAL_SEAFILE_URL",
+        "VERIFY_ONLYOFFICE_CERTIFICATE",
+        "ONLYOFFICE_FORCE_SAVE"
+      ]
+    }
+  },
+  "integrations": {
+    "documentEditor": {
+      "accepts": [
+        {
+          "type": "document-editor",
+          "protocol": "onlyoffice-docs-api",
+          "interfaceVersion": 1
+        }
+      ],
+      "title": "Document editing",
+      "providerLabel": "Document editor",
+      "apply": {
+        "kind": "service-env",
+        "target": "seahubSettings",
+        "values": {
+          "ONLYOFFICE_APIJS_URL": "${import.documentEditor.url}",
+          "ONLYOFFICE_JWT_SECRET": "${import.documentEditor.secrets.jwt}",
+          "ONLYOFFICE_INTERNAL_SEAFILE_URL": "${export.filePlatform.internalBaseUrl}",
+          "VERIFY_ONLYOFFICE_CERTIFICATE": "false",
+          "ONLYOFFICE_FORCE_SAVE": "true"
+        }
+      }
+    }
+  }
+}

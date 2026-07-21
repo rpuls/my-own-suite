@@ -1,0 +1,43 @@
+---
+import { Image } from 'astro:assets'
+import appCatalog from '../assets/screenshots/app-catalog.png'
+import appDetailInstall from '../assets/screenshots/app-detail-install.png'
+import backups from '../assets/screenshots/backups.png'
+
+const imageProps = {
+  widths: [560, 1120],
+  sizes: '(max-width: 900px) 100vw, 560px',
+  format: 'webp' as const,
+  quality: 82
+}
+---
+
+<section class="band">
+  <div class="shell">
+    <div class="section-head">
+      <span class="mos-eyebrow">A quick tour</span>
+      <h2 class="mos-section-title">As easy as the phone in your pocket</h2>
+    </div>
+    <div class="tour-row">
+      <div class="tour-copy">
+        <h3 class="mos-card-title" style="font-size:1.4rem">A catalog you just tap through</h3>
+        <p class="mos-meta" style="margin-top:8px">Pick what you want from a curated shortlist and install it in a single tap. MOS quietly handles the database, the networking, and the secure connections in the background — no config files, no command line.</p>
+      </div>
+      <div class="tour-frame"><Image src={appCatalog} alt="The MOS App Catalog" {...imageProps} /></div>
+    </div>
+    <div class="tour-row">
+      <div class="tour-copy">
+        <h3 class="mos-card-title" style="font-size:1.4rem">Know exactly what you're getting</h3>
+        <p class="mos-meta" style="margin-top:8px">Every app has a plain-language page: what it does, the Big Tech product it replaces, how much it will ask of your machine, and how your data stays private. Decide with confidence, then install with a single click.</p>
+      </div>
+      <div class="tour-frame"><Image src={appDetailInstall} alt="An app's detail view with a one-click Install action" {...imageProps} /></div>
+    </div>
+    <div class="tour-row">
+      <div class="tour-copy">
+        <h3 class="mos-card-title" style="font-size:1.4rem">Back up your whole suite to storage you control</h3>
+        <p class="mos-meta" style="margin-top:8px">One button copies your suite to storage attached to the MOS server: an encrypted USB disk at home, or a mounted block-storage volume on a rented server. MOS verifies every archive before restore. Bundles are not encrypted by MOS, so protect the destination like the server itself.</p>
+      </div>
+      <div class="tour-frame"><Image src={backups} alt="Backup and restore page in Suite Manager" {...imageProps} /></div>
+    </div>
+  </div>
+</section>

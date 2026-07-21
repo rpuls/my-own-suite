@@ -1,0 +1,55 @@
+# Builds the MOS public site (landing page + docs) and deploys it to Cloudflare
+# Pages by direct upload. Only `main` and `staging` deploy: `main` is the Pages
+# production branch, `staging` becomes the aliased preview deployment. No other
+# branch triggers a deployment, and the Pages project must not have its own git
+# integration enabled — this workflow is the only deployment path.
+name: Deploy Site
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+
+permissions:
+  contents: read
+
+# Queue deploys instead of cancelling: an interrupted upload could leave the
+# newest push undeployed while the dashboard still reports success for the run
+# that was cancelled mid-flight.
+concurrency:
+  group: deploy-site-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy MOS Site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Setup npm
+        run: npm install -g npm@11.2.0
+
+      - name: Install site dependencies
+        run: npm ci
+        working-directory: site
+
+      - name: Build MOS site
+        run: npm run build
+        working-directory: site
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy --branch=${{ github.ref_name }}

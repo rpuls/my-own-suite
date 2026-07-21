@@ -1,43 +1,40 @@
-#### Environment variables
+# Vaultwarden MOS Package
 
-- `DATABASE_URL`: Database connection string (required).
-- `DOMAIN`: Public URL used by Vaultwarden.
-- `ADMIN_TOKEN`: Token for admin panel access.
-- `WEBSOCKET_ENABLED`: Enables websocket notifications.
-- `ROCKET_PORT` / `PORT`: Runtime port binding (platform-dependent).
-- Shared SMTP inputs from `deploy/vps/services/suite-manager/.env` when enabled:
-  - `SMTP_ENABLED`
-  - `SMTP_HOST`
-  - `SMTP_FROM`
-  - `SMTP_FROM_NAME`
-  - `SMTP_USERNAME`
-  - `SMTP_PASSWORD`
-  - `SMTP_PORT`
-  - `SMTP_SECURITY` (`starttls`, `force_tls`, or `off`)
+This package pressure-tests generic package setup, generated secrets, persistence, routes, and onboarding metadata.
 
-#### Service: `vaultwarden-postgres`
+## Runtime Shape
 
-Environment variables:
-- `POSTGRES_USER`
-- `POSTGRES_PASSWORD`
-- `POSTGRES_DB`
+- Primary service: `vaultwarden`
+- Dockerfile: `Dockerfile`
+- Internal HTTP port: `80`
+- Public route host: `vaultwarden.<mos-base-domain>`
+- Health endpoint: `/alive`
 
-Volumes:
-- Required: `/var/lib/postgresql` for PostgreSQL 18 and later.
+## Persistence
 
-Healthcheck:
-- `pg_isready --dbname=$POSTGRES_DB --username=$POSTGRES_USER`
+The package declares one persistent mount:
 
-#### Required service wiring
+- `/data`
 
-- `vaultwarden` -> `vaultwarden-postgres`: set `DATABASE_URL` to `postgresql://<user>:<pass>@vaultwarden-postgres:5432/<db>`
-- `vaultwarden` -> `suite-manager`: optional shared SMTP settings can be sourced from the shared suite env file for password-reset, verification, and invite-capable flows.
+The MOS Vaultwarden package uses Vaultwarden's built-in SQLite storage to stay inside the current one-service lifecycle slice. A future richer package can introduce PostgreSQL once package dependencies and companion services are generic.
 
-#### Optional SMTP behavior
+## Setup
 
-- SMTP is fully optional and is intended for operators who already have access to an SMTP server.
-- When `SMTP_ENABLED` is explicitly false, the MOS startup wrapper removes shared SMTP variables before Vaultwarden validates its mail configuration.
-- When the shared SMTP values are present, Vaultwarden can use them for verification mail, welcome mail, master password hint mail, and similar account emails.
-- The canonical setup and troubleshooting guide lives in the dedicated advanced SMTP doc: [Optional email with SMTP](/docs/optional-email-with-smtp).
-- Some email-triggering actions may feel slow if the configured SMTP server is unreachable, because Vaultwarden sends those emails as part of the request flow.
+The package declares a generated secret setup field:
 
+- `adminToken`: generated at logical install time, stored as a restricted secret file, and represented in SQLite by secret reference, redacted label, and fingerprint only.
+
+Runtime environment values are projected generically from manifest fields:
+
+- `ADMIN_TOKEN=${secret.adminToken}`
+- `DOMAIN=${app.publicUrl}`
+- `SIGNUPS_ALLOWED=true`
+- `WEBSOCKET_ENABLED=true`
+
+Suite Manager must not return the raw admin token in package listings, install responses, logs, or projection previews. Runtime apply resolves the secret only from the configured MOS app secret directory. If the secret file is missing, unreadable, or outside that directory, Suite Manager returns a controlled `APP_SECRET_UNAVAILABLE` lifecycle error without calling the app agent or exposing the secret path.
+
+## Secret Management Caveat
+
+The current file-backed secret storage is a MOS package-contract proving step, not the final MOS secret management system. Vaultwarden needs a recoverable admin token so the runtime can be reapplied, restarted, or updated with the same value, but this package only separates raw secret material from broad SQLite state and public APIs, then fails closed when the secret cannot be materialized.
+
+After Vaultwarden is verified to install and run in Hyper-V, a later package-platform task should harden this into an explicit secret-management subsystem before adding more secret-bearing app packages. That follow-up should cover encrypted-at-rest storage or a local secret-store agent, rotation/reveal rules, backup/restore behavior, permission ownership, operator recovery, and expanded redaction tests.

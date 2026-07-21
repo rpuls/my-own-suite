@@ -1,26 +1,23 @@
 #### Environment variables
 
 - `TZ`: Container timezone.
-- `ALLOW_PRIVATE_IP_ADDRESS`: Allow callbacks to private/loopback addresses.
-- `ALLOW_META_IP_ADDRESS`: Allow callbacks to metadata/non-public address ranges.
-- `JWT_ENABLED`: Enable JWT protection.
-- `JWT_SECRET`: JWT secret used when JWT is enabled.
-- `SECURE_LINK_SECRET`: Secret used for nginx secure-link validation of `/cache/files/...`.
+- `ALLOW_PRIVATE_IP_ADDRESS`: Allows document callbacks to private network addresses for self-hosted app integrations.
+- `ALLOW_META_IP_ADDRESS`: Keeps metadata-address callbacks disabled.
+- `JWT_ENABLED`: Enables JWT protection.
+- `JWT_SECRET`: Stable provider-instance JWT secret shared with connected document platforms through MOS integration grants.
+- `SECURE_LINK_SECRET`: Stable nginx secure-link secret for `/cache/files/...` URLs.
 
 #### Volumes and persistence
 
-- Required volume mount: `/var/www/onlyoffice/Data`
-- This is required for VPS and managed platform deployments.
+- `data:/var/www/onlyoffice/Data`: ONLYOFFICE document server data and runtime state.
 
 #### Dependencies and integrations
 
-- Seafile integration is used for opening and saving files from user libraries.
+- Provides the `document-editor` capability using the ONLYOFFICE Docs API protocol.
+- Normal use requires a compatible document platform, such as Seafile, to create, open, and save files.
 
-#### Customizations in this project
+#### Customizations in this package
 
-- Startup wrapper normalizes selected env values.
-- Supports dynamic listen port mapping for managed platforms.
+- Startup wrapper normalizes selected environment values.
 - Synchronizes nginx `secure_link_secret` with `SECURE_LINK_SECRET`.
-
-
-
+- Prepares admin-panel supervisor log directories expected by current ONLYOFFICE images.

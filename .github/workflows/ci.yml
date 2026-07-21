@@ -4,19 +4,63 @@ on:
   pull_request:
   push:
     branches:
-      - main
-      - staging
+      - '**'
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  docs-build:
-    name: Docs Build
+  workspace:
+    name: MOS Workspace
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: site
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Setup npm
+        run: npm install -g npm@11.2.0
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Check app catalog and advisory feed
+        run: npm run apps:catalog:check
+
+      - name: Validate app privacy reviews
+        run: npm run apps:privacy:check
+
+      - name: Monitor stale reviews and advisories
+        run: npm run apps:privacy:monitor
+
+      - name: Typecheck Suite Manager
+        run: npm run typecheck
+
+      - name: Build Suite Manager client
+        run: npm run build:client
+
+      - name: Render installer contract
+        run: npm run install:render -- --target json
+
+      - name: Check release metadata
+        run: npm run release:check
+
+  site:
+    name: MOS Site
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,110 +75,13 @@ jobs:
       - name: Setup npm
         run: npm install -g npm@11.2.0
 
-      - name: Install dependencies
+      - name: Install site dependencies
         run: npm ci
+        working-directory: site
 
-      - name: Build docs site
+      - name: Build MOS site
         run: npm run build
-
-  homepage-config-generator:
-    name: Homepage Config Generator Build
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/homepage/config-generator
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: apps/homepage/config-generator/package-lock.json
-
-      - name: Setup npm
-        run: npm install -g npm@11.2.0
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build generator
-        run: npm run build
-
-  suite-manager-smoke:
-    name: Suite Manager Smoke Test
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/suite-manager
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: apps/suite-manager/package-lock.json
-
-      - name: Setup npm
-        run: npm install -g npm@11.2.0
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build suite-manager client
-        run: npm run build
-
-      - name: Run suite-manager once
-        run: npm start
-        env:
-          OWNER_EMAIL: admin@myownsuite.local
-          OWNER_PASSWORD: ci-test-owner-password
-          PORT: 3011
-          SESSION_SECRET: ci-test-session-secret
-          HOMEPAGE_URL: http://127.0.0.1:65534/
-          SUITE_MANAGER_REQUEST_TIMEOUT_MS: 500
-          SUITE_MANAGER_RUN_ONCE: true
-
-  compose-validate:
-    name: Docker Compose Validate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Render env files
-        run: node scripts/vps-init.cjs
-
-      - name: Validate rendered env files
-        run: node scripts/vps-doctor.cjs
-
-      - name: Validate compose config
-        run: docker compose -f deploy/vps/docker-compose.yml --project-directory deploy/vps config -q
-
-  release-metadata:
-    name: Release Metadata Check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Validate release metadata
-        run: node scripts/release-check.cjs
+        working-directory: site
 
   shellcheck:
     name: Shell Scripts Lint
@@ -146,4 +93,4 @@ jobs:
       - name: Run ShellCheck
         uses: ludeeus/action-shellcheck@2.0.0
         with:
-          scandir: ./apps
+          scandir: ./scripts

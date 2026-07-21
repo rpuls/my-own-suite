@@ -1,0 +1,55 @@
+---
+import '../../generated/branding/mos.css'
+import '../styles/landing.css'
+import IconSprite from '../components/IconSprite.astro'
+
+interface Props {
+  title?: string
+  description?: string
+}
+
+const {
+  title = 'My Own Suite — your own private cloud',
+  description = 'Your own private cloud. Install it once, then add the apps you want — passwords, photos, files, calendars — all running on hardware you control.'
+} = Astro.props
+
+const ogImage = new URL('/brand/android-chrome-512x512.png', Astro.site ?? Astro.url)
+
+// Starlight emits a canonical link for the docs pages; the landing layout has
+// to do it itself, so a trailing slash or a preview host cannot fork the URL
+// search engines index.
+// The OG image is the square brand mark, so `twitter:card` stays `summary` —
+// `summary_large_image` expects a wide (1.91:1) banner and letterboxes a square.
+const canonical = new URL(Astro.url.pathname, Astro.site ?? Astro.url)
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#061526" />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:site_name" content="My Own Suite" />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" href="/brand/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/brand/favicon-16x16.png" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+    <script
+      defer
+      src="https://umami-my.up.railway.app/script.js"
+      data-website-id="0fe6ba10-ae90-46d2-ae05-f488a8716fe2"></script>
+  </head>
+  <body>
+    <IconSprite />
+    <slot />
+  </body>
+</html>

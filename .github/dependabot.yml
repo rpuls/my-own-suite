@@ -13,60 +13,12 @@ updates:
         patterns:
           - "*"
 
-  - package-ecosystem: "npm"
-    directory: "/site"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:15"
-      timezone: "Europe/Amsterdam"
-    open-pull-requests-limit: 5
-    groups:
-      site-npm:
-        patterns:
-          - "*"
-
-  - package-ecosystem: "npm"
-    directory: "/apps/homepage/config-generator"
+  - package-ecosystem: "docker"
+    directory: "/infrastructure/caddy"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "06:30"
-      timezone: "Europe/Amsterdam"
-    open-pull-requests-limit: 5
-    groups:
-      homepage-config-generator:
-        patterns:
-          - "*"
-
-  - package-ecosystem: "docker"
-    directory: "/deploy/vps"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:45"
-      timezone: "Europe/Amsterdam"
-    open-pull-requests-limit: 10
-    groups:
-      docker-compose-images:
-        patterns:
-          - "*"
-
-  - package-ecosystem: "docker"
-    directory: "/apps/homepage"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "07:00"
-      timezone: "Europe/Amsterdam"
-    open-pull-requests-limit: 10
-
-  - package-ecosystem: "docker"
-    directory: "/apps/caddy"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "07:03"
       timezone: "Europe/Amsterdam"
     open-pull-requests-limit: 10
 
@@ -75,7 +27,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-      time: "07:04"
+      time: "07:00"
       timezone: "Europe/Amsterdam"
     open-pull-requests-limit: 10
 
@@ -84,7 +36,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-      time: "07:20"
+      time: "07:10"
       timezone: "Europe/Amsterdam"
     open-pull-requests-limit: 10
 
@@ -93,7 +45,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-      time: "07:25"
+      time: "07:20"
       timezone: "Europe/Amsterdam"
     open-pull-requests-limit: 10
 
@@ -106,8 +58,6 @@ updates:
       timezone: "Europe/Amsterdam"
     open-pull-requests-limit: 10
     ignore:
-      # Seafile currently requires MySQL 8.x because the stack still uses
-      # mysql_native_password; MySQL 9 rejects the existing startup option.
       - dependency-name: "mysql"
         update-types:
           - "version-update:semver-major"
@@ -117,7 +67,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-      time: "07:35"
+      time: "07:40"
       timezone: "Europe/Amsterdam"
     open-pull-requests-limit: 10
 
@@ -126,6 +76,6 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-      time: "07:40"
+      time: "07:50"
       timezone: "Europe/Amsterdam"
     open-pull-requests-limit: 10

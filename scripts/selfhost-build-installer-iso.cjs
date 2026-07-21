@@ -194,95 +194,13 @@ async function ensureOfficialUbuntuIso(isoDropDir) {
   return isoTargetPath;
 }
 
-function parseEnvFile(filePath) {
-  const values = {};
-  const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) {
-      continue;
-    }
-
-    const idx = line.indexOf('=');
-    if (idx < 1) {
-      continue;
-    }
-
-    const key = line.slice(0, idx).trim();
-    let value = line.slice(idx + 1).trim();
-
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-
-    values[key] = value;
-  }
-
-  return values;
-}
-
-function resolveInstallerConfig(repoRoot) {
-  const explicitConfig = readArg('installer-config');
-  const installerConfigDir = path.join(repoRoot, 'deploy', 'self-host', 'autoinstall', 'installer-config');
-  const defaultConfig = path.join(installerConfigDir, 'selfhost-installer.env');
-  const templatePath = path.join(installerConfigDir, 'selfhost-installer.env.template');
-  const resolvedPath = explicitConfig ? path.resolve(repoRoot, explicitConfig) : defaultConfig;
-
-  if (!fs.existsSync(resolvedPath)) {
-    console.error('WARNING: missing self-host installer config.');
-    console.error(`Expected file: ${resolvedPath}`);
-    console.error(`Copy and fill this template first: ${templatePath}`);
-    process.exit(1);
-  }
-
-  return resolvedPath;
-}
-
-function validateInstallerConfig(installerConfigPath) {
-  const values = parseEnvFile(installerConfigPath);
-  const requiredKeys = ['OWNER_NAME', 'OWNER_EMAIL', 'OWNER_PASSWORD', 'LINUX_PASSWORD'];
-  const placeholderValues = new Set(['Suite Owner', 'you@example.com', 'change-me-before-build']);
-  const missingKeys = [];
-  const placeholderKeys = [];
-
-  for (const key of requiredKeys) {
-    const value = (values[key] || '').trim();
-    if (!value) {
-      missingKeys.push(key);
-      continue;
-    }
-
-    if (placeholderValues.has(value)) {
-      placeholderKeys.push(key);
-    }
-  }
-
-  if (missingKeys.length === 0 && placeholderKeys.length === 0) {
-    return;
-  }
-
-  console.error('WARNING: self-host installer config is incomplete.');
-  console.error(`Config file: ${installerConfigPath}`);
-  if (missingKeys.length > 0) {
-    console.error(`Missing values: ${missingKeys.join(', ')}`);
-  }
-  if (placeholderKeys.length > 0) {
-    console.error(`Replace placeholder values for: ${placeholderKeys.join(', ')}`);
-  }
-  process.exit(1);
-}
-
 async function resolveInputIso(repoRoot) {
   const explicitIso = readArg('ubuntu-iso');
   if (explicitIso) {
     return path.resolve(repoRoot, explicitIso);
   }
 
-  const isoDropDir = path.join(repoRoot, 'deploy', 'self-host', 'autoinstall', 'ubuntu-iso');
+  const isoDropDir = path.join(repoRoot, 'infrastructure', 'self-host', 'autoinstall', 'ubuntu-iso');
   fs.mkdirSync(isoDropDir, { recursive: true });
 
   const isoFiles = fs
@@ -315,20 +233,28 @@ async function resolveInputIso(repoRoot) {
 async function main() {
   const repoRoot = process.cwd();
   const inputIso = await resolveInputIso(repoRoot);
-  const installerConfig = resolveInstallerConfig(repoRoot);
-  validateInstallerConfig(installerConfig);
+  const explicitSeedDir = readArg('seed-dir');
+  let seedDir;
+  if (explicitSeedDir) {
+    seedDir = path.resolve(repoRoot, explicitSeedDir);
+  } else {
+    console.log('Rendering the installer seed with defaults (no configuration required).');
+    run(process.execPath, [path.join(repoRoot, 'scripts', 'installers', 'render-hyperv-usb-seed.cjs')], {
+      stdio: 'inherit',
+    });
+    seedDir = path.join(repoRoot, '.mos-smoke', 'hyperv-usb', 'seed');
+  }
   const outputIso = path.resolve(
     repoRoot,
-    readArg('output-iso', 'deploy/self-host/output/my-own-suite-selfhost-installer.iso'),
+    readArg('output-iso', 'infrastructure/self-host/output/my-own-suite-selfhost-installer.iso'),
   );
   const buildRoot = path.resolve(repoRoot, readArg('build-dir', '.tmp/selfhost-iso-build'));
-  const seedDir = path.join(buildRoot, 'seed');
   const builderTag = readArg('builder-tag', 'mos-selfhost-iso-builder:latest');
+  const autoBoot = readArg('auto-boot', 'false').toLowerCase() === 'true';
 
   assertFile(inputIso, 'Ubuntu ISO');
 
   fs.rmSync(buildRoot, { force: true, recursive: true });
-  fs.mkdirSync(seedDir, { recursive: true });
   fs.mkdirSync(path.dirname(outputIso), { recursive: true });
 
   const passThroughArgs = [];
@@ -340,27 +266,25 @@ async function main() {
       arg.startsWith('--builder-tag') ||
       arg.startsWith('--installer-config') ||
       arg.startsWith('--no-auto-download')
+      || arg.startsWith('--auto-boot')
+      || arg.startsWith('--seed-dir')
     ) {
       continue;
     }
     passThroughArgs.push(arg);
   }
 
-  run('node', ['scripts/selfhost-write-autoinstall.cjs', '--output-dir', seedDir, '--installer-config', installerConfig, '--quiet', 'true', ...passThroughArgs], {
-    stdio: 'inherit',
-  });
-
   assertFile(path.join(seedDir, 'user-data'), 'Generated user-data');
   assertFile(path.join(seedDir, 'meta-data'), 'Generated meta-data');
 
-  run('docker', ['build', '-t', builderTag, 'deploy/self-host/iso-builder'], {
+  run('docker', ['build', '-t', builderTag, 'infrastructure/self-host/iso-builder'], {
     stdio: 'inherit',
   });
 
-  const normalizedRepoRoot = repoRoot.replace(/\\/g, '/');
   const normalizedSeedDir = seedDir.replace(/\\/g, '/');
   const normalizedOutputDir = path.dirname(outputIso).replace(/\\/g, '/');
   const normalizedInputDir = path.dirname(inputIso).replace(/\\/g, '/');
+  const normalizedWorkspaceDir = path.join(buildRoot, 'workspace').replace(/\\/g, '/');
   const inputIsoBaseName = path.basename(inputIso);
   const outputIsoBaseName = path.basename(outputIso);
 
@@ -375,10 +299,12 @@ async function main() {
       `INPUT_ISO_BASENAME=${inputIsoBaseName}`,
       '-e',
       `OUTPUT_ISO_BASENAME=${outputIsoBaseName}`,
+      '-e',
+      `MOS_INSTALLER_AUTO_BOOT=${autoBoot ? '1' : '0'}`,
       '-v',
       `${normalizedSeedDir}:/seed:ro`,
       '-v',
-      `${normalizedRepoRoot}/.tmp/selfhost-iso-build/workspace:/workspace`,
+      `${normalizedWorkspaceDir}:/workspace`,
       '-v',
       `${normalizedInputDir}:/input:ro`,
       '-v',
@@ -394,8 +320,23 @@ async function main() {
   console.log('Self-host installer ISO is ready.');
   console.log(`Flash this file: ${outputIso}`);
   console.log(`Ubuntu ISO source: ${inputIso}`);
-  console.log(`Installer config source: ${installerConfig}`);
+  console.log(`Installer seed source: ${seedDir}`);
   console.log('Ubuntu image source: official Ubuntu release URL verified against SHA256SUMS.');
+
+  const seedSummaryPath = path.join(seedDir, 'seed-summary.json');
+  if (fs.existsSync(seedSummaryPath)) {
+    try {
+      const seedSummary = JSON.parse(fs.readFileSync(seedSummaryPath, 'utf8'));
+      console.log('');
+      console.log(`Suite Home URL after install: ${seedSummary.home}`);
+      if (seedSummary.linuxPasswordGenerated) {
+        console.log(`Server machine login (generated — save it somewhere safe): ${seedSummary.linuxUsername} / ${seedSummary.linuxPassword}`);
+        console.log('You will rarely need this login; your suite itself is set up in the browser after install.');
+      }
+    } catch {
+      // A malformed summary only affects this convenience printout, never the ISO.
+    }
+  }
   console.log('');
   console.log('Recommended USB stick:');
   console.log('- Use a simple 8 GB or larger USB 3.0 stick from a reliable brand.');

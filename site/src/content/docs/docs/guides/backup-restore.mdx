@@ -1,0 +1,77 @@
+---
+title: Back up and restore
+description: Manual whole-suite backups to storage attached to the MOS server, and how restore works.
+---
+
+import { Steps } from '@astrojs/starlight/components'
+
+MOS creates manual, whole-suite backups on storage that is mounted on the server running MOS. The practical destination depends on where that server lives.
+
+:::danger[Every backup is an unencrypted full-secret export]
+A bundle contains app data, owner and app credentials, Suite Manager state, and HTTPS/provider secrets. Anyone who obtains it can read or reuse those secrets. MOS does not encrypt backup bundles today. Use encrypted removable media or an encrypted storage volume, restrict access to it, and do not leave a downloaded bundle in an ordinary Downloads folder or upload it to casual cloud storage.
+:::
+
+## What a backup contains
+
+A MOS backup captures:
+
+- every installed app and its declared data volumes,
+- the exact installed app-package snapshots and settings,
+- the owner account, app secrets, and app connections,
+- the Home dashboard layout,
+- domain and HTTPS configuration.
+
+Restore requires a working MOS installation on a compatible version. A bundle is not a bare-metal installer by itself.
+
+## Choose a destination for your installation
+
+### Own hardware
+
+Connect a writable USB disk or other external drive directly to the MOS machine. An encrypted drive is strongly recommended. MOS can detect supported local devices and offer to mount them from Suite Manager.
+
+Do not save the only backup on the server's internal system disk: a disk failure could take out both the suite and its backup.
+
+### Cloud server
+
+A rented server cannot use a USB disk attached to your computer. Attach a separate persistent block-storage volume through your provider, format and mount it on the server, then select that mounted volume in Suite Manager. Provider block storage is billed separately and remains inside the provider's trust boundary; use provider-supported encryption where available.
+
+MOS does not currently upload bundles directly to S3-compatible/object storage, another cloud account, or a backup service. Provider snapshots are outside MOS: they may be useful as an additional recovery layer, but MOS cannot verify their consistency, contents, retention, or restore behavior. They do not replace a tested MOS bundle.
+
+## Taking a backup
+
+<Steps>
+
+1. Attach and mount the destination described above.
+
+2. Open **Suite Manager → Backup** and click **Refresh drives**. Select the mounted, writable destination; MOS may offer to mount a supported local disk.
+
+3. Review the full-secret warning, then click **Back up now**. Apps pause while their data is captured and start again when the job finishes.
+
+4. Move or retain the completed bundle only on access-controlled, encrypted storage. If you download a copy through the browser, move it immediately out of Downloads and remove any unneeded browser copy.
+
+</Steps>
+
+Bundles are written under `MOS-backups/` on the selected destination. MOS records and verifies checksums for the bundle payloads before a restore changes running services.
+
+:::tip[A workable routine]
+Backups are manual; there is no scheduler or retention policy yet. Take one before updates or uninstalling an app, keep more than one generation, and periodically test that the destination is still readable.
+:::
+
+## Restoring
+
+Restore replaces the current suite with a bundle on a machine that already has a compatible MOS installation.
+
+1. Attach or mount the storage containing the bundle, open **Suite Manager → Backup**, and select it.
+2. Type `RESTORE` to confirm.
+3. MOS verifies the bundle and each saved app-package snapshot before stopping services. It creates a small rescue copy of current state, restores settings, package definitions, and data, then rebuilds the app runtimes.
+
+Important boundaries:
+
+- **Match the MOS version.** Each bundle records its source version. Restore onto that version unless a documented compatibility migration says otherwise.
+- **Restore is whole-suite.** Per-app restore is not supported.
+- **The machine must already run MOS.** Install the compatible MOS version first, then attach the backup destination and restore. Bare-metal recovery has not yet been validated as a single end-to-end workflow.
+- **Package snapshots are preserved, registry artifacts are not.** If an upstream registry removes a required digest-pinned image, MOS restores state and reports the affected app as failed rather than substituting another version.
+
+## Current limitations
+
+Manual only · mounted local/block storage only · no object-storage destination · unencrypted full-secret bundles · whole-suite restore only · version-sensitive restore.

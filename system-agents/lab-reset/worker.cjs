@@ -1,0 +1,155 @@
+#!/usr/bin/env node
+
+const fs = require('node:fs');
+const { execFileSync } = require('node:child_process');
+const path = require('node:path');
+
+const stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos';
+const installRoot = process.env.MOS_INSTALL_ROOT || '/opt/mos';
+const repoRoot = process.env.MOS_REPO_DIR || path.join(installRoot, 'repo');
+const resetId = process.env.MOS_LAB_RESET_ID || '';
+const statusDir = process.env.MOS_LAB_RESET_STATUS_DIR || '/run/mos-lab-reset-agent/jobs';
+const homepageSource = path.join(repoRoot, 'infrastructure', 'homepage');
+const homepageConfig = path.join(stateRoot, 'homepage', 'config');
+const bootstrapContract = path.join(stateRoot, 'bootstrap-contract.env');
+
+function validResetId(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(value);
+}
+
+function writeJob(status, details = {}) {
+  if (!validResetId(resetId)) return;
+  fs.mkdirSync(statusDir, { mode: 0o755, recursive: true });
+  fs.writeFileSync(path.join(statusDir, `${resetId}.json`), `${JSON.stringify({
+    resetId,
+    status,
+    updatedAt: new Date().toISOString(),
+    ...details,
+  })}\n`, { mode: 0o644 });
+}
+
+function parseEnvFile(filePath) {
+  try {
+    return Object.fromEntries(fs.readFileSync(filePath, 'utf8').split(/\r?\n/u).map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return null;
+      const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/u);
+      if (!match) return null;
+      return [match[1], match[2].trim().replace(/^(['"])(.*)\1$/u, '$2')];
+    }).filter(Boolean));
+  } catch {
+    return {};
+  }
+}
+
+function homeHostFromContract(contract) {
+  if (contract.MOS_HOME_HOST) return contract.MOS_HOME_HOST;
+  if (contract.MOS_HOME_URL) {
+    try {
+      return new URL(contract.MOS_HOME_URL).hostname;
+    } catch {}
+  }
+  if (contract.MOS_DOMAIN) return contract.MOS_DOMAIN === 'localhost' ? 'home.localhost' : `home.${contract.MOS_DOMAIN}`;
+  return 'home.localhost';
+}
+
+function renderBootstrapCaddyfile() {
+  const contract = parseEnvFile(bootstrapContract);
+  const homeHost = process.env.MOS_HOME_HOST || homeHostFromContract(contract);
+  const suiteManagerPort = process.env.MOS_SUITE_MANAGER_PORT || contract.MOS_SUITE_MANAGER_PORT || '3100';
+  return `http://${homeHost} {
+  reverse_proxy 127.0.0.1:${suiteManagerPort}
+}
+
+import /etc/caddy/mos-homepage-routes.caddy
+import /etc/caddy/mos-app-routes.caddy
+`;
+}
+
+function run(command, args, options = {}) {
+  return execFileSync(command, args, {
+    encoding: 'utf8',
+    stdio: options.stdio || 'pipe',
+    timeout: options.timeoutMs || 60_000,
+  });
+}
+
+function tryRun(command, args, options = {}) {
+  try {
+    return run(command, args, options);
+  } catch {
+    return '';
+  }
+}
+
+function dockerList(args) {
+  return tryRun('/usr/bin/docker', args)
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function resetDockerRuntime() {
+  const appContainers = unique([
+    ...dockerList(['ps', '-aq', '--filter', 'label=mos.package']),
+    ...dockerList(['ps', '-a', '--format', '{{.Names}}']).filter((name) => name.startsWith('mos-app-')),
+  ]);
+  for (const container of appContainers) tryRun('/usr/bin/docker', ['rm', '-f', container], { timeoutMs: 120_000 });
+
+  const appNetworks = dockerList(['network', 'ls', '--format', '{{.Name}}']).filter((name) => name.startsWith('mos-app-'));
+  for (const network of appNetworks) tryRun('/usr/bin/docker', ['network', 'rm', network]);
+
+  const appVolumes = dockerList(['volume', 'ls', '-q']).filter((name) => name.startsWith('mos-app-'));
+  for (const volume of appVolumes) tryRun('/usr/bin/docker', ['volume', 'rm', volume], { timeoutMs: 120_000 });
+}
+
+function copyDirectory(source, target) {
+  fs.rmSync(target, { force: true, recursive: true });
+  fs.mkdirSync(target, { mode: 0o755, recursive: true });
+  fs.cpSync(source, target, { recursive: true });
+}
+
+function main() {
+  const stoppedServices = [
+    'mos-suite-manager.service',
+    'mos-app-agent.service',
+    'mos-homepage-agent.service',
+    'mos-https-agent.service',
+    'mos-backup-agent.service',
+    'mos-update-agent.service',
+    'mos-homepage.service',
+  ];
+  const startedServices = [
+    'caddy.service',
+    'mos-homepage.service',
+    'mos-homepage-agent.service',
+    'mos-suite-manager.service',
+    'mos-https-agent.service',
+    'mos-app-agent.service',
+    'mos-backup-agent.service',
+    'mos-update-agent.service',
+  ];
+
+  writeJob('running');
+  try {
+    tryRun('/usr/bin/systemctl', ['stop', ...stoppedServices], { timeoutMs: 120_000 });
+    resetDockerRuntime();
+    fs.rmSync(path.join(stateRoot, 'suite-manager'), { force: true, recursive: true });
+    copyDirectory(homepageSource, homepageConfig);
+    tryRun('/usr/bin/chown', ['-R', '1000:1000', homepageConfig]);
+    fs.writeFileSync('/etc/caddy/Caddyfile', renderBootstrapCaddyfile());
+    fs.writeFileSync('/etc/caddy/mos-homepage-routes.caddy', '# No user-managed Homepage routes.\n');
+    fs.writeFileSync('/etc/caddy/mos-app-routes.caddy', '# No app runtime routes.\n');
+    tryRun('/usr/bin/systemctl', ['restart', ...startedServices], { timeoutMs: 120_000 });
+    writeJob('completed');
+  } catch (error) {
+    writeJob('failed', { error: error.message || 'Lab reset failed.' });
+    process.exitCode = 1;
+  }
+}
+
+main();

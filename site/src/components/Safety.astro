@@ -1,0 +1,46 @@
+---
+const iconStyle =
+  'width:2.6rem;height:2.6rem;border-radius:var(--mos-radius-sm);display:grid;place-items:center;background:var(--mos-color-accent-soft);color:var(--mos-color-accent)'
+---
+
+<section class="band" id="safe">
+  <div class="shell">
+    <div class="section-head center">
+      <span class="mos-eyebrow">Kept safe</span>
+      <h2 class="mos-section-title">Backups, updates, and a serious trust architecture</h2>
+      <p class="mos-body-lg mos-meta">Self-hosting only pays off if the thing hosting your life is careful. Here is what MOS does so you don't have to think about it.</p>
+    </div>
+    <div class="paths">
+      <div class="mos-panel path">
+        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-shield"/></svg></span>
+        <h3 style="font-size:1.15rem">Private HTTPS at home</h3>
+        <p class="mos-meta" style="font-size:0.92rem">Real green-lock certificates on your LAN via Cloudflare DNS-01 — without exposing anything to the internet.</p>
+      </div>
+      <div class="mos-panel path">
+        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-key"/></svg></span>
+        <h3 style="font-size:1.15rem">Secrets stay secret</h3>
+        <p class="mos-meta" style="font-size:0.92rem">Secrets never enter the database, logs, or API responses. Narrow host agents apply changes; the web UI never gets root.</p>
+      </div>
+      <div class="mos-panel path">
+        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-lock"/></svg></span>
+        <h3 style="font-size:1.15rem">A catalog your server can verify</h3>
+        <p class="mos-meta" style="font-size:0.92rem">The app catalog is cryptographically signed, and your server checks the signature against a key it already has — not one downloaded alongside it. Even offline, it won't trust a catalog nobody signed.</p>
+      </div>
+      <div class="mos-panel path">
+        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+        <h3 style="font-size:1.15rem">Apps update on their own schedule</h3>
+        <p class="mos-meta" style="font-size:0.92rem">A security fix for your password manager doesn't wait for us to ship a version of MOS. Each app updates by itself, when you say so — with the changes spelled out first.</p>
+      </div>
+      <div class="mos-panel path">
+        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-shield"/></svg></span>
+        <h3 style="font-size:1.15rem">Your apps can't change under you</h3>
+        <p class="mos-meta" style="font-size:0.92rem">Each app runs from a verified copy of the exact package it was installed with. Nothing we publish later reaches into a machine we don't own — your app changes when you decide it does.</p>
+      </div>
+      <div class="mos-panel path">
+        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-plug"/></svg></span>
+        <h3 style="font-size:1.15rem">Updates that put things back</h3>
+        <p class="mos-meta" style="font-size:0.92rem">The new version is built and health-checked before the old one stops. If it fails, MOS restores what was running — or tells you exactly what it couldn't undo. Never a cheerful "done" over a broken app.</p>
+      </div>
+    </div>
+  </div>
+</section>

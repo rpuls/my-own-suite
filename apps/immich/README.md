@@ -1,89 +1,42 @@
-#### Service: `immich` (server)
+# Immich
 
-Note:
-- This stack uses Valkey for caching.
-- Immich upstream requires `REDIS_*` environment variable names, so those names remain unchanged.
+High performance self-hosted photo and video backup solution.
 
-Environment variables:
-- `TZ`
-- `DB_HOSTNAME`
-- `DB_PORT`
-- `DB_USERNAME`
-- `DB_PASSWORD`
-- `DB_DATABASE_NAME`
-- `REDIS_HOSTNAME` (Valkey/Redis-compatible endpoint)
-- `REDIS_PORT`
-- `REDIS_PASSWORD` (required when Valkey auth is enabled)
-- `IMMICH_MACHINE_LEARNING_URL`
-- `UPLOAD_LOCATION`
+## Services
 
-Volumes:
-- Required: `/usr/src/app/upload`
+| Service | Image | Port |
+|---|---|---|
+| `immich-server` | Immich Server | 2283 |
+| `immich-machine-learning` | Immich ML | 3003 |
+| `immich-postgres` | Immich PostgreSQL 14 with VectorChord | 5432 |
+| `immich-valkey` | Valkey 9 | 6379 |
 
-Start command:
-- Use the image default command (no override required).
+## Volumes
 
-Resource baseline:
-- Recommended minimum: `1 GB RAM`, `1 vCPU`
-- Preferred for smoother operation: `2 GB RAM`
+| Volume | Path | Description |
+|---|---|---|
+| `library` | `/usr/src/app/upload` | Primary photo and video storage |
+| `postgres-data` | `/var/lib/postgresql/data` | Database metadata |
+| `cache` | `/usr/src/app/cache` | Thumbnails and previews |
+| `model-cache` | `/cache` | Machine learning model cache |
 
-#### Service: `immich-machine-learning`
+## Environment Variables
 
-Environment variables:
-- `TZ`
+| Variable | Source |
+|---|---|
+| `DB_PASSWORD` | Generated secret |
+| `JWT_SECRET` | Generated secret |
+| `PUBLIC_HOSTNAME` | Runtime app route |
+| `POSTGRES_INITDB_ARGS` | Enables data checksums for Immich database initialization |
 
-Volumes:
-- Recommended: `/cache`
+## Health Check
 
-Start command:
-- Use the image default command (no override required).
+Endpoint: `GET /api/server-info/ping`
 
-Resource baseline:
-- Recommended minimum: `1 GB RAM`, `1 vCPU`
-- Preferred when processing large libraries: `2 GB RAM`
+## Notes
 
-#### Service: `immich-postgres`
-
-Environment variables:
-- `POSTGRES_USER`
-- `POSTGRES_PASSWORD`
-- `POSTGRES_DB`
-- `POSTGRES_INITDB_ARGS` (recommended: `--data-checksums`)
-- `PGDATA` (recommended on mounted volumes: `/var/lib/postgresql/data/pgdata`)
-
-Volumes:
-- Required: `/var/lib/postgresql/data`
-
-Start command:
-```bash
-/usr/local/bin/immich-docker-entrypoint.sh postgres -c config_file=/etc/postgresql/postgresql.conf -c shared_preload_libraries=vchord.so,vectors.so
-```
-
-Resource baseline:
-- Recommended minimum for stable bootstrap: `2 GB RAM`, `1 vCPU`
-- Preferred for smoother first-run import/indexing: `4 GB RAM`
-
-#### Service: `immich-valkey`
-
-Environment variables:
-- `REDIS_PASSWORD` (required only if Valkey auth is enabled; Immich expects this `REDIS_*` name)
-
-Volumes:
-- None required.
-
-Start command:
-- Use the image default command (no override required).
-- If Valkey auth is enabled, override start command:
-```bash
-valkey-server --requirepass "$REDIS_PASSWORD"
-```
-- If your platform does not expand environment variables in start commands by default, run the command through a shell so `$REDIS_PASSWORD` is expanded at runtime (example pattern: `sh -lc '<command>'`).
-
-Resource baseline:
-- Recommended minimum: `256 MB RAM`, `0.5 vCPU`
-
-#### Required service wiring
-
-- `immich` -> `immich-postgres`: `DB_HOSTNAME`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE_NAME`
-- `immich` -> `immich-valkey`: `REDIS_HOSTNAME`, `REDIS_PORT`, `REDIS_PASSWORD` (when Valkey auth is enabled)
-- `immich` -> `immich-machine-learning`: `IMMICH_MACHINE_LEARNING_URL`
+- First admin account is created directly in Immich web UI after first startup
+- The server and machine-learning images are pinned to the amd64 manifests for Immich v3.0.2. The database image follows the official Immich v3.0.2 Docker Compose service, while Valkey provides the Redis-compatible cache service used by Immich.
+- Machine learning requires CPU with AVX2 support for optimal performance
+- All services are internal except the main Immich server port
+- Startup may take several minutes on first run while database is initialized

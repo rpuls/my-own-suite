@@ -11,7 +11,6 @@ fi
 
 /venv/bin/python - <<'PY'
 import configparser
-from datetime import datetime, timedelta, timezone
 import json
 import os
 from passlib.apache import HtpasswdFile
@@ -41,7 +40,6 @@ if admin_user not in ht.users():
 else:
     print(f"Radicale admin user '{admin_user}' already exists")
 
-# Ensure a default calendar exists for iCal widget integration.
 calendar_dir = f"/data/collections/collection-root/{admin_user}/default-calendar"
 props_path = os.path.join(calendar_dir, ".Radicale.props")
 os.makedirs(calendar_dir, exist_ok=True)
@@ -51,35 +49,6 @@ if not os.path.exists(props_path):
     print(f"Created default calendar for '{admin_user}'")
 else:
     print(f"Default calendar for '{admin_user}' already exists")
-
-# Seed one launch-day event for first-run visibility in Homepage calendar widget.
-launch_event_path = os.path.join(calendar_dir, "my-independence-day.ics")
-if not os.path.exists(launch_event_path):
-    launch_day = datetime.now(timezone.utc).date()
-    launch_day_end = launch_day + timedelta(days=1)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    launch_event = "\n".join(
-        [
-            "BEGIN:VCALENDAR",
-            "VERSION:2.0",
-            "PRODID:-//My-Own-Suite//Radicale Bootstrap//EN",
-            "BEGIN:VEVENT",
-            "UID:my-independence-day@my-own-suite",
-            f"DTSTAMP:{stamp}",
-            f"DTSTART;VALUE=DATE:{launch_day.strftime('%Y%m%d')}",
-            f"DTEND;VALUE=DATE:{launch_day_end.strftime('%Y%m%d')}",
-            "SUMMARY:My Independence day",
-            "DESCRIPTION:Launch day of my self-hosted stack.",
-            "END:VEVENT",
-            "END:VCALENDAR",
-            "",
-        ]
-    )
-    with open(launch_event_path, "w", encoding="utf-8") as f:
-        f.write(launch_event)
-    print(f"Created launch event for '{admin_user}'")
-else:
-    print(f"Launch event for '{admin_user}' already exists")
 PY
 
 exec /usr/local/bin/docker-entrypoint.sh "$@"
