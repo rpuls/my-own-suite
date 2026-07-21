@@ -15,8 +15,8 @@ My Own Suite is a self-hosted control plane for installing and managing private 
 | `skills/` | Public, versioned workflows for adding apps, updating apps, and assessing app privacy. |
 | `shared/` | Cross-process contracts used by Suite Manager and host agents. |
 | `test/` | Deterministic unit tests and browser/E2E harnesses. |
-| `site/` | MOS public landing page and end-user documentation source. |
-| `site-mos1-reference/` | Isolated previous-site source retained only for rollback/reference until deployment cutover. |
+| `site/` | MOS public landing page and end-user documentation source; deployed to Cloudflare Pages from `main` and `staging` via GitHub Actions. |
+| `site-mos1-reference/` | Isolated previous-site source retained only as frozen rollback/reference material; not built or deployed. |
 
 ## Local Development
 

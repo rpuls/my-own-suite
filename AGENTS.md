@@ -68,8 +68,8 @@ Use these locations:
 - `docs/decisions.md`: durable architecture decisions and their consequences.
 - `docs/codex-notes.md`: durable Codex/project working context.
 - `.github/ISSUE_TEMPLATE/codex-task.yml`: task template source of truth.
-- `site/`: MOS public/end-user documentation source after the public docs rebuild.
-- `site-mos1-reference/`: preserved MOS1 public site source; still the deployed public site (`npm run build`) until the MOS docs rebuild. Frozen content only; no new product docs.
+- `site/`: MOS public/end-user documentation source; the deployed public site. GitHub Actions builds it and deploys to Cloudflare Pages from `main` and `staging` only (`.github/workflows/deploy-site.yml`).
+- `site-mos1-reference/`: preserved MOS1 public site source; no longer built or deployed. Frozen content only; no new product docs.
 - `apps/<app>/README.md`: app-level technical reference.
 - `scripts/README.md`: MOS operator/developer script and smoke-harness guidance.
 - `infrastructure/`: shared MOS runtime and installer substrate.

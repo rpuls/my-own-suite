@@ -1,7 +1,9 @@
-name = "my-own-suite"
-# The deployed public site still builds from the preserved MOS1 source until
-# the MOS public site is rebuilt under site/. See docs/decisions.md.
-pages_build_output_dir = "site-mos1-reference/dist"
+name = "my-own-suite-pages"
+# The MOS public site (landing page + docs) deploys from site/ via the
+# Deploy Site workflow (.github/workflows/deploy-site.yml), which builds on
+# GitHub and pushes to Cloudflare Pages by direct upload from main and staging
+# only. The Pages project must not run its own git-integration builds.
+pages_build_output_dir = "site/dist"
 
 [vars]
 NODE_VERSION = "22.16.0"

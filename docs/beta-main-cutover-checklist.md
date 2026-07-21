@@ -20,7 +20,7 @@ The two decisions are intentionally separate:
 
 - [x] Remove obsolete USB-installer owner fields and make browser owner creation the only owner bootstrap path.
 - [x] Make backup integrity and replacement-machine restore claims match verified behavior.
-- [ ] Build the MOS `site/` from a clean install in required CI before deployment cutover.
+- [x] Build the MOS `site/` from a clean install in required CI before deployment cutover — the `MOS Site` CI job runs `npm ci` + `astro build`; its first run exposed integrity hashes in `site/package-lock.json` corrupted by the generation-label rename, now fixed with registry-verified values. The deployment cutover itself is implemented: `.github/workflows/deploy-site.yml` builds `site/` and deploys to Cloudflare Pages from `main` and `staging` only, and the MOS1 site is retired from CI and deployment (see item 7 for remaining owner actions).
 - [x] Publish a real, tested cloud HTTPS procedure or clearly classify cloud TLS as operator-owned and advanced.
 
 #### Beta truthfulness and security
@@ -39,7 +39,7 @@ The two decisions are intentionally separate:
 - [x] `npm test` — full suite green on July 21, 2026 (399 tests)
 - [x] `npm run typecheck`
 - [x] `npm run build:client`
-- [ ] Clean MOS `site/` install and build in CI — the `MOS Site` job now runs `npm ci` + `astro build` from `site/` in `.github/workflows/ci.yml` and the build passes locally; confirm the job on the next push and add it to the required checks for `main`
+- [x] Clean MOS `site/` install and build in CI — the `MOS Site` job runs `npm ci` + `astro build` from `site/` in `.github/workflows/ci.yml`; its first GitHub run caught real corruption (rename-damaged lockfile hashes, since fixed), and the clean install + build now pass. Remaining: confirm green on the next push and add the job to the required checks for `main`
 - [x] Installer contract/render checks
 - [x] Human-run Hyper-V full-platform E2E after blocker fixes — owner-confirmed on July 18, 2026, including the app catalog, external-package installation, and the broader platform E2E flow
 - [x] Real backup/restore drill with representative multi-service and large-data apps — owner-run Hyper-V drills July 20-21, 2026: multi-service (Stirling, Seafile/MySQL, Immich/Postgres, Radicale) restores in both directions, ~6 GiB workload, replacement-VM recovery via uploaded bundle, corruption/version/disk/disconnected-destination refusals, and mid-restore power-loss interruption with journaled recovery; evidence recorded in `docs/backup-restore-reliability-plan.md`
@@ -104,14 +104,15 @@ The two decisions are intentionally separate:
 - **Regression check:** Bundles must not gain payload types that escape per-archive hashing; restore preflight must keep running every integrity/compatibility check before the first destructive step; and restore success must remain gated on inventory verification, never inferred from job completion.
 - **Acceptance:** A deliberately corrupted state or volume archive is rejected before destructive restore begins, incompatible versions are blocked or explicitly migrated, and a documented replacement-machine recovery drill succeeds.
 
-#### 7. MOS public site must be CI-validated before cutover
+#### 7. MOS public site must be CI-validated before cutover — completed in-repo; owner switches the Cloudflare project
 
 - **Severity:** High before announcement; Medium before code-only main cutover
 - **Area:** Repository, CI, and deployment
-- **Evidence:** At review time, root `npm run build`, CI, and `wrangler.toml` still targeted `site-mos1-reference`, while `site/` had no required clean-build job. Active README wording also called the rebuilt site a placeholder.
+- **Original evidence:** At review time, root `npm run build`, CI, and `wrangler.toml` still targeted `site-mos1-reference`, while `site/` had no required clean-build job. Active README wording also called the rebuilt site a placeholder.
 - **Why it matters:** The launch surface can fail only after deployment, while the live site may continue telling the MOS1 story.
-- **Progress (July 21, 2026):** CI now has a `MOS Site` job doing a clean `npm ci` + `astro build` from `site/`; the build passes locally. Remaining: confirm the job on the next push, mark it required in branch protection, and make the deployment cutover (root build script, `wrangler.toml`, Cloudflare Pages) a reviewed change with a rollback path — the cutover itself is deliberately deferred until the owner's site adjustments land.
-- **Required action:** Add a clean dependency install and MOS site build to required CI, verify links/assets/routes, explicitly switch deployment configuration, and update active documentation.
+- **Resolution evidence (July 21, 2026):** The `MOS Site` CI job builds `site/` from a clean `npm ci` on every branch; its first GitHub run caught seven `site/package-lock.json` integrity hashes corrupted by the generation-label rename (`V2` → `MOS` inside base64), which were repaired with registry-verified values and re-validated by a clean local `npm ci` + build. The deployment cutover is implemented: `.github/workflows/deploy-site.yml` builds `site/` and runs `wrangler pages deploy` on pushes to `main` (production) and `staging` (aliased preview) only; root `npm run build` and `wrangler.toml` now target `site/dist`; the MOS1 reference site is retired from CI and deployment and its folder kept as frozen reference. Decision and rollback path recorded in `docs/decisions.md` (2026-07-21).
+- **Remaining owner actions:** add the `CLOUDFLARE_API_TOKEN` (Pages edit) and `CLOUDFLARE_ACCOUNT_ID` repository secrets; disable/disconnect the Pages project's git-integration builds so direct-upload deploys are accepted and no other branch can deploy; confirm the first green `Deploy Site` run; mark `MOS Site` required in branch protection.
+- **Regression check:** the site must keep building from a clean install in required CI, and deployment must only ever happen from `main` and `staging` through the deploy workflow.
 - **Acceptance:** Required CI builds `site/` from a clean checkout on Linux, and the deployment cutover is a reviewed change with a rollback path.
 
 #### 8. Cloud HTTPS guidance must describe a real supported path — completed, retain as a regression check

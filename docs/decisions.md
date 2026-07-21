@@ -4,6 +4,19 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-07-21: MOS Public Site Deployment Cutover To GitHub-Built Cloudflare Pages Deploys
+
+Decision: The MOS public site (`site/`, landing page + docs) replaces the preserved MOS1 site as the deployed source for `myownsuite.org`. Deployment moves from Cloudflare Pages git-integration builds to GitHub Actions direct upload: `.github/workflows/deploy-site.yml` builds `site/` from a clean install and runs `wrangler pages deploy` on pushes to `main` (production) and `staging` (aliased preview) only. No other branch deploys, and the Pages project's own git-integration builds must stay disabled so the workflow is the single deployment path. Root `npm run build` and `wrangler.toml` (`pages_build_output_dir = "site/dist"`) now target `site/`; the MOS1 reference site is no longer built in CI and `site-mos1-reference/` remains only as frozen reference content. The workflow authenticates with the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets.
+
+Reason: The rebuilt MOS site is good enough to replace the MOS1 story the live site was still telling, and building in required CI before deploying removes the failure mode where the launch surface breaks only inside Cloudflare's build environment. Restricting deploys to `main` and `staging` keeps feature branches from publishing previews of unreviewed content.
+
+Consequences:
+
+- This supersedes the public-site continuity part of the 2026-07-11 decision below; the MOS1 site is retired from CI and deployment.
+- Rollback path: revert the deploy workflow, `wrangler.toml`, and root build script in one commit to restore the previous MOS1 deployment contract (and re-enable the Pages git integration if reverting all the way to dashboard-driven builds).
+- The `MOS Site` CI job stays required on every branch; the deploy workflow additionally gates deployment on its own clean build.
+- Cloudflare credentials live only in GitHub repository secrets, never in the repo.
+
 ## 2026-07-11: Post-Cutover Repo Hygiene And Public Site Continuity
 
 Decision: `AGENTS.md` is the single tool-agnostic agent instruction file; `CLAUDE.md` exists only as a loader pointer for Claude Code, and tool-specific rule folders (`.codex/`, `.agents/`, `.clinerules/`) are removed. The deployed public site keeps building from the preserved MOS1 source: `site-mos1-reference/` embeds frozen MOS1 technical reference copies under `src/reference/` (taken from `archive/mos1-main-snapshot`) instead of reading live `apps/` packages, root `npm run build` builds it, and Cloudflare Pages output is `site-mos1-reference/dist`. Release metadata guardrails (`npm run release:check`) cover root `VERSION` and `releases/stable.json` only until MOS gains stable release-track managed updates.

@@ -1,6 +1,6 @@
 # MOS1 Public Site (Preserved Reference)
 
-This folder preserves the MOS1 Astro + Starlight website for `myownsuite.org`. It remains the deployed public site source until the MOS public site is rebuilt under `site/`, because the latest published release is still MOS1.
+This folder preserves the MOS1 Astro + Starlight website for `myownsuite.org`. It is no longer built in CI or deployed: the live site now builds from `site/` and deploys through `.github/workflows/deploy-site.yml`. This copy remains only as a frozen reference.
 
 Content is frozen at the MOS1 cutover point:
 
@@ -19,14 +19,8 @@ npm run dev
 ## Build and preview
 
 ```bash
-npm run build          # from the repo root (also used by Cloudflare Pages)
-cd site-mos1-reference && npm run preview
+cd site-mos1-reference
+npm install
+npm run build
+npm run preview
 ```
-
-## Cloudflare Pages
-
-The root `wrangler.toml` points Pages at `site-mos1-reference/dist`. The expected setup is:
-
-- Build command: `npm run build` (repo root)
-- Output directory: `site-mos1-reference/dist` (from `wrangler.toml`)
-- Node version: `22`

@@ -83,26 +83,6 @@ jobs:
         run: npm run build
         working-directory: site
 
-  site-reference:
-    name: Public Site (MOS1 Reference)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: site-mos1-reference/package-lock.json
-
-      - name: Setup npm
-        run: npm install -g npm@11.2.0
-
-      - name: Build preserved public site
-        run: npm run build
-
   shellcheck:
     name: Shell Scripts Lint
     runs-on: ubuntu-latest
