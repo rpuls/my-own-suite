@@ -86,6 +86,22 @@ test('apply recovers the known npm package-lock metadata dirtiness', async () =>
   assert.equal(run(repo, ['status', '--porcelain']), '');
 });
 
+test('a detached checkout without a saved track defaults to Stable releases', async () => {
+  const repo = makeRepo();
+  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-state-'));
+  const paths = buildPaths(repo, stateRoot);
+  run(repo, ['checkout', '--detach']);
+
+  process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP = '1';
+  try {
+    const status = await collectStatus(paths);
+    assert.equal(status.track.type, 'stable');
+    assert.equal(status.track.ref, 'main');
+  } finally {
+    delete process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP;
+  }
+});
+
 test('stable status compares the installed VERSION against the latest release', async () => {
   const repo = makeRepo();
   const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-state-'));

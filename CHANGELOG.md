@@ -4,11 +4,15 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
-## [Unreleased]
+## [0.13.0] - 2026-07-21
 
 ### Changed
 
-- The Stable update track can now apply tagged releases: the update agent fetches and checks out the published release tag, compares the installed version against the newest release, and the Updates screen lets owners select and apply Stable. Branch-track updates now land exactly on the tracked remote branch even if its history was rewritten, instead of failing the fast-forward pull.
+- The Stable update track can now apply tagged releases: the update agent fetches and checks out the published release tag, compares the installed version against the newest release, and the Updates screen lets owners select and apply Stable. Fresh installs now default to the Stable releases track, while checkouts sitting on a named branch keep following that branch. Branch-track updates now land exactly on the tracked remote branch even if its history was rewritten, instead of failing the fast-forward pull.
+
+### Fixed
+
+- Aligned the Updates screen track-switch button with the track dropdown instead of its label.
 
 ## [0.12.0] - 2026-07-21
 

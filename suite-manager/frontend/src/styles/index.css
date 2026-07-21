@@ -1319,6 +1319,12 @@
   flex: 1 1 18rem;
 }
 
+/* Keep the switch button on the same row as the select input rather than its label. */
+.suite-updates-track .mos-btn {
+  min-height: 2.9rem;
+  margin-top: calc(var(--mos-text-label) * var(--mos-line-height-body) + var(--mos-space-2));
+}
+
 .suite-updates-facts {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1767,6 +1773,9 @@
   .suite-updates-track {
     flex-direction: column;
     align-items: stretch;
+  }
+  .suite-updates-track .mos-btn {
+    margin-top: 0;
   }
   .suite-backup-busy {
     grid-template-columns: 1fr;
