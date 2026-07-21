@@ -535,6 +535,13 @@ test('Updates API requires auth and proxies narrow update-agent actions', async 
     });
     assert.equal(track.status, 200);
 
+    const mainTrack = await hostRequest(baseUrl, '/suite-manager/api/updates/track', {
+      body: JSON.stringify({ track: 'main' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(mainTrack.status, 200);
+
     const started = await hostRequest(baseUrl, '/suite-manager/api/updates/start', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
@@ -543,6 +550,7 @@ test('Updates API requires auth and proxies narrow update-agent actions', async 
     assert.equal(started.json().job.id, 'job-one');
     assert.deepEqual(calls.filter((call) => call[0] !== 'status'), [
       ['track', { ref: 'staging', track: 'branch' }],
+      ['track', { ref: 'main', track: 'branch' }],
       ['start', { initiator: 'owner@example.com', target: 'latest' }],
     ]);
   }, { homeHost: 'home.test', updateAgent });

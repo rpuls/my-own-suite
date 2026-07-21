@@ -69,6 +69,20 @@ section.band { padding: clamp(3rem, 7vh, 5rem) 0; }
   font-family: var(--mos-font-mono); font-size: 0.98rem; color: var(--mos-color-text-strong);
 }
 .cmd .dollar { color: var(--mos-color-accent); }
+.cmd .cmd-text { flex: 1 1 auto; overflow-x: auto; white-space: nowrap; }
+.cmd-copy {
+  display: grid; place-items: center; flex: 0 0 auto;
+  width: 2.1rem; height: 2.1rem;
+  border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm);
+  background: transparent; color: var(--mos-color-text-muted); cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.cmd-copy:hover { color: var(--mos-color-text-strong); background: var(--mos-color-surface-strong); }
+.cmd-copy:focus-visible { outline: var(--mos-focus-ring); outline-offset: 2px; }
+.cmd-copy .icon-check { display: none; }
+.cmd-copy.copied { color: var(--mos-color-accent); }
+.cmd-copy.copied .icon-copy { display: none; }
+.cmd-copy.copied .icon-check { display: block; }
 
 /* Catalog — max 4 cards visible per page */
 .catalog { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--mos-space-4); }
