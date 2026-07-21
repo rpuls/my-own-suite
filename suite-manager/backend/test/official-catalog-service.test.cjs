@@ -91,6 +91,57 @@ test('refresh resolves the branch once and downloads catalog content from that i
   assert.equal(result.status.freshness, 'fresh');
 });
 
+test('refresh treats a 304 on the conditional catalog request as unchanged, not a redirect', async () => {
+  const stateDir = tempDir();
+  // Seed the cache a prior successful refresh leaves behind: signed bytes, the
+  // matching revision, and the etag that arms the next conditional request.
+  const catalogText = JSON.stringify(catalog);
+  fs.writeFileSync(path.join(stateDir, 'official-app-catalog.json'), JSON.stringify({
+    catalogText,
+    etag: '"seed-etag"',
+    fetchedAt: new Date('2026-07-14T09:00:00.000Z').toISOString(),
+    revision,
+    schemaVersion: 2,
+    signature: signCatalogBytes(catalogText, publisher.privateKey),
+  }));
+  let conditional = false;
+  const service = catalogService({
+    fetchImpl: async (url, options) => {
+      if (url.includes('/commits/')) return jsonResponse({ sha: revision });
+      if (url.endsWith('/apps/catalog.json')) {
+        // Main is unchanged, so the refresh sends If-None-Match and GitHub answers
+        // 304 — a Location-less 3xx that must not be read as a redirect.
+        assert.equal(options.headers['If-None-Match'], '"seed-etag"');
+        conditional = true;
+        return new Response(null, { status: 304 });
+      }
+      if (url.endsWith('/apps/advisories.json')) return new Response('Not Found', { status: 404 });
+      throw new Error(`unexpected ${url}`);
+    },
+    now: () => new Date('2026-07-14T10:00:00.000Z'),
+    stateDir,
+  });
+  const result = await service.refresh();
+  assert.equal(conditional, true);
+  assert.equal(result.status.error, null);
+  assert.equal(result.status.revision, revision);
+  assert.equal(result.status.freshness, 'fresh');
+});
+
+test('refresh still refuses an actual redirect', async () => {
+  const service = catalogService({
+    // A 3xx that carries a Location is a real redirect off the pinned URL, and
+    // stays refused; only the Location-less 304 above is allowed through.
+    fetchImpl: async () => new Response(null, { headers: { location: 'https://evil.example.com/catalog.json' }, status: 302 }),
+    now: () => new Date('2026-07-14T10:00:00.000Z'),
+    stateDir: tempDir(),
+  });
+  await assert.rejects(service.refresh(), (error) => {
+    assert.equal(error.code, 'CATALOG_REDIRECT_REJECTED');
+    return true;
+  });
+});
+
 test('refresh fetches the advisory feed from the same revision and exposes applicable advisories', async () => {
   const advisories = {
     advisories: [

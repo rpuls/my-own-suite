@@ -400,6 +400,29 @@ function validateCatalog(manifest, errors) {
       }
     }
   }
+  if (catalog.demoDeployTargets !== undefined) {
+    if (!Array.isArray(catalog.demoDeployTargets) || catalog.demoDeployTargets.length === 0) {
+      errors.push('catalog.demoDeployTargets must be a non-empty array when present.');
+    } else {
+      const providers = new Set();
+      for (const [index, target] of catalog.demoDeployTargets.entries()) {
+        const prefix = `catalog.demoDeployTargets[${index}]`;
+        if (!isRecord(target)) {
+          errors.push(`${prefix} must be an object.`);
+          continue;
+        }
+        if (!APP_ID_PATTERN.test(String(target.provider || ''))) {
+          errors.push(`${prefix}.provider must be a DNS-safe provider id.`);
+        } else if (providers.has(target.provider)) {
+          errors.push(`${prefix}.provider must be unique within catalog.demoDeployTargets.`);
+        } else {
+          providers.add(target.provider);
+        }
+        if (!hasText(target.label)) errors.push(`${prefix}.label is required.`);
+        if (!safeUrl(target.url)) errors.push(`${prefix}.url must be an HTTP or HTTPS URL.`);
+      }
+    }
+  }
   if (catalog.screenshots !== undefined) {
     if (!Array.isArray(catalog.screenshots)) {
       errors.push('catalog.screenshots must be an array when present.');
@@ -671,6 +694,9 @@ function publicCatalog(manifest) {
       level: SUPPORTED_COMPLEXITY_LEVELS.has(complexity.level) ? complexity.level : '',
     },
     description: hasText(catalog.description) ? catalog.description : '',
+    demoDeployTargets: Array.isArray(catalog.demoDeployTargets) ? catalog.demoDeployTargets
+      .filter((target) => isRecord(target) && APP_ID_PATTERN.test(String(target.provider || '')) && hasText(target.label) && safeUrl(target.url))
+      .map((target) => ({ label: target.label, provider: target.provider, url: target.url })) : [],
     features: Array.isArray(catalog.features) ? catalog.features.map(normalizeFeature).filter((item) => item.title) : [],
     links: Object.fromEntries(
       Object.entries(links).filter(([key, value]) => CATALOG_LINK_KEYS.has(key) && safeUrl(value)),

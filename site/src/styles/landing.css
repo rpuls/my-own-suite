@@ -229,6 +229,8 @@ footer.site-footer { padding: var(--mos-space-8) 0 var(--mos-space-7); }
 .app-drawer-close { position: absolute; top: var(--mos-space-4); right: var(--mos-space-4); display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border: var(--mos-border-strong); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface); color: var(--mos-color-text); cursor: pointer; }
 .app-drawer-head { display: flex; align-items: center; gap: var(--mos-space-4); margin-bottom: var(--mos-space-4); padding-right: 3rem; }
 .app-drawer-head .app-ico { width: 3.5rem; height: 3.5rem; }
+.app-drawer-primary-actions { display: flex; align-items: center; margin-bottom: var(--mos-space-4); }
+.app-drawer-primary-actions > .mos-btn { width: 100%; }
 .app-drawer-facts { display: grid; grid-template-columns: 1fr 1fr; gap: var(--mos-space-3); margin: var(--mos-space-4) 0; }
 .app-drawer-facts div { padding: var(--mos-space-3) var(--mos-space-4); border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface-muted); }
 .app-drawer-facts .k { display: block; font-size: var(--mos-text-label); font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mos-color-text-muted); margin-bottom: 3px; }
@@ -238,6 +240,13 @@ footer.site-footer { padding: var(--mos-space-8) 0 var(--mos-space-7); }
 .app-drawer-features { display: grid; gap: var(--mos-space-3); margin: 0; padding: 0; list-style: none; }
 .app-drawer-features li strong { display: block; color: var(--mos-color-text-strong); }
 .app-drawer-links { display: flex; flex-wrap: wrap; gap: var(--mos-space-4); }
+.app-try-menu { position: relative; width: 100%; }
+.app-try-menu summary { justify-content: space-between; width: 100%; list-style: none; cursor: pointer; }
+.app-try-menu summary::-webkit-details-marker { display: none; }
+.app-try-menu[open] summary span { transform: rotate(180deg); }
+.app-try-options { position: absolute; top: calc(100% + 8px); right: 0; left: 0; z-index: 2; display: grid; padding: 6px; border: var(--mos-border-strong); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface); box-shadow: var(--mos-shadow-strong); }
+.app-try-options a { padding: 10px 12px; border-radius: var(--mos-radius-sm); color: var(--mos-color-text-strong); font-weight: 700; text-decoration: none; }
+.app-try-options a:hover, .app-try-options a:focus-visible { background: var(--mos-color-surface-muted); }
 
 /* Beta prototype disclaimer — floating snackbar + "About this beta" dialog.
    The notice rests off screen below the viewport and slides up into place

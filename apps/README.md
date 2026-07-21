@@ -25,7 +25,7 @@ Postures are derived from their dimensions:
 
 Unknown facts always produce `review-required`. Evidence is labeled `observed`, `configured`, `documented`, or `inferred`; configuration alone must not be presented as proof of network silence. App updates and detected Terms, privacy-policy, ownership, telemetry, or outbound-dependency changes trigger reassessment.
 
-Use `icon.png` in the package root for the catalog icon, and point `manifest.json` `icon` at that file. Richer screenshots or marketing assets are optional catalog metadata, not required package scaffolding.
+Use `icon.png` in the package root for the catalog icon, and point `manifest.json` `icon` at that file. Richer screenshots, marketing assets, and `catalog.demoDeployTargets` are optional catalog metadata, not required package scaffolding. Demo deployment targets are public-site previews on third-party providers; they are not MOS installation instructions.
 
 The first package is `stirling-pdf`, intentionally chosen as a boring app to prove discovery, manifest validation, projections, and lifecycle behavior before MOS grows a catalog.
 

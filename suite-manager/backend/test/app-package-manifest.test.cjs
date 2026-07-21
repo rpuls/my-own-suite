@@ -228,6 +228,7 @@ test('manifest validation accepts structured optional catalog presentation metad
     catalog: {
       complexity: { description: 'One click.', label: 'Easy setup', level: 'easy' },
       description: 'A longer description for the app detail view.',
+      demoDeployTargets: [{ label: 'Railway', provider: 'railway', url: 'https://railway.com/deploy/example' }],
       features: [
         'Quick setup',
         { body: 'Useful for everyday workflows.', title: 'Everyday friendly' },
@@ -249,6 +250,25 @@ test('manifest validation accepts structured optional catalog presentation metad
   });
 
   assert.deepEqual(validateAppPackageManifest(manifest), []);
+});
+
+test('manifest validation rejects malformed demo deployment targets', () => {
+  const manifest = validManifest({
+    catalog: {
+      demoDeployTargets: [
+        { label: '', provider: 'Bad Provider', url: 'ftp://example.com' },
+        { label: 'Railway again', provider: 'railway', url: 'https://example.com/one' },
+        { label: 'Duplicate', provider: 'railway', url: 'https://example.com/two' },
+      ],
+    },
+  });
+
+  assert.deepEqual(validateAppPackageManifest(manifest), [
+    'catalog.demoDeployTargets[0].provider must be a DNS-safe provider id.',
+    'catalog.demoDeployTargets[0].label is required.',
+    'catalog.demoDeployTargets[0].url must be an HTTP or HTTPS URL.',
+    'catalog.demoDeployTargets[2].provider must be unique within catalog.demoDeployTargets.',
+  ]);
 });
 
 test('manifest validation rejects malformed optional catalog metadata', () => {

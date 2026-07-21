@@ -7,6 +7,7 @@
 import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture'
 
 export type CatalogFeature = { title: string; body: string }
+export type DemoDeployTarget = { provider: string; label: string; url: string }
 export type CatalogApp = {
   id: string
   name: string
@@ -15,6 +16,7 @@ export type CatalogApp = {
   categorySlug: string
   summary: string
   description: string
+  demoDeployTargets: DemoDeployTarget[]
   replaces: string
   setup: string
   setupDetail: string
@@ -176,6 +178,13 @@ export const catalogApps: CatalogApp[] = Object.entries(manifestModules)
       categorySlug: String(manifest.category ?? ''),
       summary: String(manifest.summary ?? ''),
       description: String(catalog.description ?? manifest.summary ?? ''),
+      demoDeployTargets: Array.isArray(catalog.demoDeployTargets)
+        ? catalog.demoDeployTargets.map((target: any) => ({
+            provider: String(target?.provider ?? ''),
+            label: String(target?.label ?? ''),
+            url: String(target?.url ?? '')
+          })).filter((target: DemoDeployTarget) => target.provider && target.label && /^https?:\/\//.test(target.url))
+        : [],
       replaces: String(catalog.replaces ?? ''),
       setup: String(catalog.complexity?.label ?? ''),
       setupDetail: String(catalog.complexity?.description ?? ''),

@@ -258,12 +258,19 @@ class OfficialCatalogService {
     }
   }
 
+  // Catalog URLs are exact and pinned, so a redirect means GitHub is steering the
+  // request somewhere it was not asked to go, and it is refused rather than
+  // followed. A redirect is a 3xx carrying a Location, though — `304 Not Modified`
+  // is a 3xx without one, and it is the expected answer to the conditional catalog
+  // fetch, so it is handed back to the caller rather than mistaken for a redirect.
   async request(url, headers = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.limits.timeoutMs);
     try {
       const response = await this.fetch(url, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'mos-catalog', ...headers }, redirect: 'manual', signal: controller.signal });
-      if (response.status >= 300 && response.status < 400) throw new OfficialCatalogError('CATALOG_REDIRECT_REJECTED', 'Official catalog requests must not redirect.');
+      if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
+        throw new OfficialCatalogError('CATALOG_REDIRECT_REJECTED', 'Official catalog requests must not redirect.');
+      }
       return response;
     } catch (error) {
       if (error instanceof OfficialCatalogError) throw error;

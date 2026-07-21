@@ -9,6 +9,7 @@
   "icon": "icon.png",
   "catalog": {
     "description": "Seafile is a self-hosted file sync and sharing server for private libraries, browser access, desktop sync clients, mobile clients, and share links.",
+    "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/seafile-onlyoffice?referralCode=-Yg50p" }],
     "replaces": "Dropbox / Google Drive / OneDrive",
     "tags": [
       "files",

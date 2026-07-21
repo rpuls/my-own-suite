@@ -1117,6 +1117,20 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     return () => window.clearInterval(timer);
   }, []);
 
+  // The catalog and advisory feed refresh is a convenience on top of the signed
+  // catalog that already ships in the release, so a stale or failed fetch is not
+  // worth interrupting normal users with a banner. It is logged to the console
+  // instead, where anyone debugging still sees it and real users never do.
+  useEffect(() => {
+    if (!catalogStatus) return;
+    if (catalogStatus.freshness === 'stale' || catalogStatus.error) {
+      console.warn('[apps] official catalog refresh is not fresh:', catalogStatus.error?.code || catalogStatus.freshness, catalogStatus.error?.message || '');
+    }
+    if (catalogStatus.advisories && (catalogStatus.advisories.freshness !== 'fresh' || catalogStatus.advisories.error)) {
+      console.warn('[apps] privacy advisories are not fresh:', catalogStatus.advisories.error?.code || catalogStatus.advisories.freshness, catalogStatus.advisories.error?.message || '');
+    }
+  }, [catalogStatus]);
+
   const externalUrl = useMemo(() => repoUrlFromQuery(query), [query]);
 
   // Paste-a-URL flow: when the search box holds a repository URL, resolve it into
@@ -1398,8 +1412,6 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     </div>
 
     {error ? <Notice title="Apps unavailable" variant="error"><p>{error}</p></Notice> : null}
-    {catalogStatus?.freshness === 'stale' || catalogStatus?.error ? <Notice title="Using the saved app catalog" variant="warning"><p>MOS could not confirm the latest official catalog. Installed apps and the last verified catalog remain available.</p></Notice> : null}
-    {catalogStatus && (catalogStatus.advisories?.freshness !== 'fresh' || catalogStatus.advisories?.error) ? <Notice title="Privacy advisories may be out of date" variant="warning"><p>MOS could not confirm the latest signed privacy advisories. Treat a missing advisory as unknown until refresh succeeds.</p></Notice> : null}
     {loading && !externalUrl ? <p className="suite-meta">Loading app catalog...</p> : null}
 
     {externalUrl ? <div className="suite-app-catalog-sections">
