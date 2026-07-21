@@ -121,7 +121,10 @@ function readInstalledVersion(paths) {
 function resolveTrack(paths) {
   const gitState = currentGitState(paths.repoRoot);
   const config = readConfig(paths);
-  const track = normalizeTrack(process.env.MOS_UPDATE_TRACK) || normalizeTrack(config?.track) || 'branch';
+  // Without an explicit choice, a detached checkout (how the installer leaves
+  // fresh machines) follows Stable releases; a named branch checkout follows
+  // that branch, so development installs keep tracking what they sit on.
+  const track = normalizeTrack(process.env.MOS_UPDATE_TRACK) || normalizeTrack(config?.track) || (gitState.branch ? 'branch' : 'stable');
   const ref = String(process.env.MOS_UPDATE_REF || '').trim() || normalizeRef(track, config?.ref || gitState.branch);
   return {
     currentBranch: gitState.branch,

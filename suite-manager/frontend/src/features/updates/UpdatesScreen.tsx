@@ -64,7 +64,7 @@ function selectedTrack(status: UpdateStatus): TrackChoice {
 
 export function UpdatesScreen() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
-  const [track, setTrack] = useState<TrackChoice>('main');
+  const [track, setTrack] = useState<TrackChoice>('stable');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const running = isRunning(status?.currentJob || null);
@@ -147,7 +147,7 @@ export function UpdatesScreen() {
         </dl>
 
         {status.trackConfigurationAvailable ? <div className="suite-updates-track">
-          <Select disabled={Boolean(busy) || running} helperText="Stable follows official tagged releases and is the calmest choice. Main carries reviewed changes ahead of the next release and is the default for fresh installs. Staging receives changes earlier for testing." label="Update track" onChange={(event) => setTrack(event.currentTarget.value === 'stable' ? 'stable' : event.currentTarget.value === 'staging' ? 'staging' : 'main')} value={track}>
+          <Select disabled={Boolean(busy) || running} helperText="Stable follows official tagged releases and is the default for fresh installs. Main carries reviewed changes ahead of the next release. Staging receives changes earlier for testing." label="Update track" onChange={(event) => setTrack(event.currentTarget.value === 'stable' ? 'stable' : event.currentTarget.value === 'staging' ? 'staging' : 'main')} value={track}>
             <option value="stable">Stable releases</option>
             <option value="main">Main branch</option>
             <option value="staging">Staging branch (early testing)</option>

@@ -52,8 +52,8 @@ The **Updates** screen shows your update **track**, the version you're running, 
 
 ### Tracks
 
-- **Stable releases** — tagged, release-noted versions. Your server moves from one published release to the next, skipping the day-to-day changes in between. The calmest choice.
-- **Main branch** — reviewed changes that have been promoted to the project's default branch, ahead of the next tagged release. Fresh installs run code from this branch and default to this track.
+- **Stable releases** — tagged, release-noted versions. Your server moves from one published release to the next, skipping the day-to-day changes in between. Fresh installs default to this track.
+- **Main branch** — reviewed changes that have been promoted to the project's default branch, ahead of the next tagged release.
 - **Staging branch** — the integration branch, where changes land for testing before promotion to main. Pick this only if you want new features earlier and accept more churn.
 
 On the Stable track the screen compares your installed version against the newest published release; on a branch track it compares commits against that branch.
