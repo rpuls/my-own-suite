@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
+## [Unreleased]
+
+### Changed
+
+- The Stable update track can now apply tagged releases: the update agent fetches and checks out the published release tag, compares the installed version against the newest release, and the Updates screen lets owners select and apply Stable. Branch-track updates now land exactly on the tracked remote branch even if its history was rewritten, instead of failing the fast-forward pull.
+
 ## [0.12.0] - 2026-07-21
 
 Milestone release: My Own Suite is now an app platform instead of a fixed suite. This release replaces the pre-assembled app bundle with the MOS app-store architecture — versioned, signed app packages installed and managed individually through Suite Manager — and makes the rebuilt MOS layout, public site, and hosted installer the default for every new install.
