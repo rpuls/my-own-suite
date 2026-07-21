@@ -39,12 +39,12 @@ The two decisions are intentionally separate:
 - [x] `npm test` — full suite green on July 21, 2026 (399 tests)
 - [x] `npm run typecheck`
 - [x] `npm run build:client`
-- [x] Clean MOS `site/` install and build in CI — the `MOS Site` job runs `npm ci` + `astro build` from `site/` in `.github/workflows/ci.yml`; its first GitHub run caught real corruption (rename-damaged lockfile hashes, since fixed), and the clean install + build now pass. Remaining: confirm green on the next push and add the job to the required checks for `main`
+- [x] Clean MOS `site/` install and build in CI — the `MOS Site` job runs `npm ci` + `astro build` from `site/` in `.github/workflows/ci.yml`; its first GitHub run caught real corruption (rename-damaged lockfile hashes, since fixed), and all CI jobs including `MOS Site` passed on GitHub on July 21, 2026, and the job is a required check in the `main` branch protection ruleset
 - [x] Installer contract/render checks
 - [x] Human-run Hyper-V full-platform E2E after blocker fixes — owner-confirmed on July 18, 2026, including the app catalog, external-package installation, and the broader platform E2E flow
 - [x] Real backup/restore drill with representative multi-service and large-data apps — owner-run Hyper-V drills July 20-21, 2026: multi-service (Stirling, Seafile/MySQL, Immich/Postgres, Radicale) restores in both directions, ~6 GiB workload, replacement-VM recovery via uploaded bundle, corruption/version/disk/disconnected-destination refusals, and mid-restore power-loss interruption with journaled recovery; evidence recorded in `docs/backup-restore-reliability-plan.md`
 - [x] Explicitly approved DigitalOcean validation if cloud install remains a supported launch path
-- [ ] Branch protection requires PRs and passing CI for `main`
+- [x] Branch protection requires PRs and passing CI for `main` — the "Protect main" ruleset requires pull requests and the current `MOS Workspace`, `MOS Site`, and `Shell Scripts Lint` checks (stale MOS1-era check names removed), plus deletion/force-push restrictions; updated by the owner on July 21, 2026
 - [ ] Release metadata, changelog, tag, and release notes agree
 
 ### Detailed findings and acceptance criteria
@@ -111,7 +111,7 @@ The two decisions are intentionally separate:
 - **Original evidence:** At review time, root `npm run build`, CI, and `wrangler.toml` still targeted `site-mos1-reference`, while `site/` had no required clean-build job. Active README wording also called the rebuilt site a placeholder.
 - **Why it matters:** The launch surface can fail only after deployment, while the live site may continue telling the MOS1 story.
 - **Resolution evidence (July 21, 2026):** The `MOS Site` CI job builds `site/` from a clean `npm ci` on every branch; its first GitHub run caught seven `site/package-lock.json` integrity hashes corrupted by the generation-label rename (`V2` → `MOS` inside base64), which were repaired with registry-verified values and re-validated by a clean local `npm ci` + build. The deployment cutover is implemented: `.github/workflows/deploy-site.yml` builds `site/` and runs `wrangler pages deploy` on pushes to `main` (production) and `staging` (aliased preview) only; root `npm run build` and `wrangler.toml` now target `site/dist`; the MOS1 reference site is retired from CI and deployment and its folder kept as frozen reference. Decision and rollback path recorded in `docs/decisions.md` (2026-07-21).
-- **Remaining owner actions:** add the `CLOUDFLARE_API_TOKEN` (Pages edit) and `CLOUDFLARE_ACCOUNT_ID` repository secrets; disable/disconnect the Pages project's git-integration builds so direct-upload deploys are accepted and no other branch can deploy; confirm the first green `Deploy Site` run; mark `MOS Site` required in branch protection.
+- **Remaining owner actions:** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets were added on July 21, 2026, and CI including `MOS Site` passed on GitHub the same day. `MOS Site` was marked required in the `main` branch protection ruleset and the Pages project's git integration was disconnected the same day, so only workflow-driven direct-upload deploys remain possible. Still open: confirm the first green `Deploy Site` run after merging to `staging`.
 - **Regression check:** the site must keep building from a clean install in required CI, and deployment must only ever happen from `main` and `staging` through the deploy workflow.
 - **Acceptance:** Required CI builds `site/` from a clean checkout on Linux, and the deployment cutover is a reviewed change with a rollback path.
 
