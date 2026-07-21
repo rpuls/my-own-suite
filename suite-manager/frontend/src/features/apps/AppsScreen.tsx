@@ -1059,7 +1059,6 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
 export function AppsScreen({ owner }: { owner: Owner }) {
   const [packages, setPackages] = useState<AppPackageSummary[]>([]);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus | null>(null);
-  const [refreshingCatalog, setRefreshingCatalog] = useState(false);
   const [connectingId, setConnectingId] = useState('');
   const [error, setError] = useState('');
   const [installError, setInstallError] = useState('');
@@ -1076,9 +1075,15 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   const [externalInstalling, setExternalInstalling] = useState(false);
   const [externalInstallError, setExternalInstallError] = useState('');
 
-  async function load() {
-    setLoading(true);
-    setError('');
+  // Silent loads run in the background: they never flash the loading state and
+  // never replace a working catalog view with a transient fetch error. A silent
+  // success still clears an earlier error, so a page that failed to load once
+  // recovers on its own.
+  async function load({ silent = false } = {}) {
+    if (!silent) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const result = await jsonResponse<{ catalog: CatalogStatus; packages: AppPackageSummary[] }>(
         await fetch('/suite-manager/api/apps/packages'),
@@ -1086,14 +1091,31 @@ export function AppsScreen({ owner }: { owner: Owner }) {
       );
       setPackages(result.packages);
       setCatalogStatus(result.catalog);
+      setError('');
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load app packages.');
+      if (!silent) setError(caught instanceof Error ? caught.message : 'Unable to load app packages.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+    // Opening Apps signals intent to see the current catalog, so nudge the
+    // backend refresh once in the background. Failures stay silent: the page
+    // keeps serving the last verified catalog and the stale-catalog notice
+    // already covers persistent refresh trouble.
+    void (async () => {
+      try {
+        const response = await fetch('/suite-manager/api/apps/catalog/refresh', { method: 'POST' });
+        if (response.ok) await load({ silent: true });
+      } catch {}
+    })();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void load({ silent: true });
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const externalUrl = useMemo(() => repoUrlFromQuery(query), [query]);
 
@@ -1135,17 +1157,6 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     }, 450);
     return () => { cancelled = true; window.clearTimeout(handle); };
   }, [externalUrl]);
-
-  async function refreshCatalog() {
-    setRefreshingCatalog(true);
-    setError('');
-    try {
-      await jsonResponse(await fetch('/suite-manager/api/apps/catalog/refresh', { method: 'POST' }), 'Unable to refresh the app catalog.');
-      await load();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to refresh the app catalog.');
-    } finally { setRefreshingCatalog(false); }
-  }
 
   const selected = packages.find((app) => app.id === selectedId) || null;
   const hostsRepairCommand = useMemo(() => hypervHostsRepairCommand(packages), [packages]);
@@ -1380,7 +1391,6 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   return <section className="mos-shell mos-page">
     <div className="suite-app-simple-header">
       <h1>Apps</h1>
-      <button className="mos-btn mos-btn-secondary" disabled={refreshingCatalog} onClick={() => void refreshCatalog()} type="button">{refreshingCatalog ? 'Refreshing...' : 'Refresh catalog'}</button>
     </div>
 
     <div className="suite-app-search">

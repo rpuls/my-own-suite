@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
+## [Unreleased]
+
+### Changed
+
+- The Apps screen no longer has a manual "Refresh catalog" button. The catalog loads on page mount, quietly nudges one background refresh, and re-reads the verified cache once a minute; transient refresh failures (such as GitHub rate-limit redirects) no longer surface as page-level errors while the last verified catalog keeps serving.
+
 ## [0.13.0] - 2026-07-21
 
 ### Changed

@@ -12,7 +12,7 @@ The two decisions are intentionally separate:
 #### Blockers before main cutover
 
 - [x] Managed updates apply all repo-owned app runtime changes before reporting success, or managed apply is disabled and described as experimental — resolved by the snapshot contract: platform updates apply all platform-owned code and truthfully state that installed apps stay on their package snapshots; app changes apply only through the per-app update transaction (see item 1).
-- [x] The Stable update track can actually apply tagged releases, or its apply controls and claims are removed until supported — Stable is now visibly read-only: the Updates screen disables selecting it, refuses apply with a clear message, and the backend rejects stable-track start before the agent is asked (see item 2).
+- [x] The Stable update track can actually apply tagged releases, or its apply controls and claims are removed until supported — resolved fully in v0.13.0: the update agent discovers the newest GitHub release, checks out its tag, and compares the installed `VERSION` against it, and the read-only guards were lifted. The item-2 acceptance criterion was met on July 21, 2026: an owner-run DigitalOcean install on the Stable track applied v0.12.0 → v0.13.0 end to end, including runtime reconciliation and truthful installed-version reporting (see item 2).
 - [x] Public cloud first-owner setup and subsequent owner authentication no longer rely on exposed plain HTTP, or cloud installation is explicitly removed from the supported beta paths.
 - [x] The landing-page one-line installer is implemented, tested, and safely delivered, or the unsupported command is removed.
 
@@ -65,7 +65,7 @@ The two decisions are intentionally separate:
 - **Original evidence:** The Updates guide and UI presented Stable releases as a selectable track. `system-agents/update/lib.cjs` rejects apply unless the selected track is `branch`. `RELEASING.md` also notes that MOS stable release-track metadata is not complete.
 - **Resolution evidence:** Stable is now visibly read-only everywhere it appears. The Updates screen disables the Stable option ("not yet available"), shows a warning notice on installs already parked on Stable, disables the update button with "Stable apply not yet available", and the track helper text says managed updates apply from the Main and Staging branch tracks until the first tagged release ships (after the main cutover, the branch track offers Main — the default for fresh installs — and Staging). `UpdateService.start` refuses stable-track apply with a clear 409 before the update agent is ever asked (covered by a focused test in `suite-manager/backend/test/http-app.test.cjs`), and the public updates guide describes Stable as visible but not yet installable instead of "the right choice once you depend on your suite".
 - **Regression check:** No UI or docs surface may present Stable as installable until tagged stable discovery, checkout, version reporting, and apply exist end to end; the service-level refusal must stay ahead of the agent's branch-only rejection.
-- **Acceptance (for lifting read-only):** A released tag can be discovered and applied end to end on a representative install, including full runtime reconciliation, with installed-version metadata updated truthfully.
+- **Acceptance (for lifting read-only):** A released tag can be discovered and applied end to end on a representative install, including full runtime reconciliation, with installed-version metadata updated truthfully. **Met July 21, 2026 (v0.13.0):** owner-run DigitalOcean droplet on the Stable track applied v0.12.0 → v0.13.0 through the Updates screen; the agent fetched and checked out tag `v0.13.0`, reconciled host services, and reported 0.13.0 as the installed version afterwards. Fresh installs now default to the Stable track.
 
 #### 3. Public cloud onboarding must not depend on plain HTTP — completed, retain as a regression check
 
@@ -232,7 +232,7 @@ The two decisions are intentionally separate:
 - [ ] Authenticated-encryption backup format covering payload integrity, encryption at rest, authentication, key export, and recoverable-key loss/rotation workflows.
 - [ ] Scheduled backups, retention policy, and object/object-storage destinations.
 - [ ] Package-aware transactional updates and rollback.
-- [ ] Stable tagged-release updates and installed-version metadata.
+- [x] Stable tagged-release updates and installed-version metadata. (Shipped and verified in v0.13.0.)
 - [ ] Owner-facing security event monitoring and optional MFA/passkeys; login throttling and bounded event persistence are complete.
 - [x] Secure one-time first-owner bootstrap claim.
 - [x] Tested cloud HTTPS and reference firewall automation.
