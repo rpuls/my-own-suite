@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add MOS App"
+  short_description: "Onboard a new MOS app package safely"
+  default_prompt: "Use $add-mos-app to assess and add a new application package to MOS."

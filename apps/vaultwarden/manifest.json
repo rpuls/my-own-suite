@@ -1,0 +1,121 @@
+{
+  "id": "vaultwarden",
+  "name": "Vaultwarden",
+  "version": "0.1.0",
+  "minimumMosVersion": "0.1.0",
+  "summary": "Private Bitwarden-compatible password management.",
+  "category": "security",
+  "icon": "icon.png",
+  "catalog": {
+    "description": "Vaultwarden lets you use the familiar Bitwarden apps with your own private backend for passwords, secure notes, cards, identities, and shared vaults.",
+    "replaces": "LastPass / 1Password / Bitwarden cloud",
+    "tags": [
+      "passwords",
+      "security",
+      "bitwarden",
+      "password-manager",
+      "family-sharing"
+    ],
+    "features": [
+      {
+        "title": "Use Bitwarden clients",
+        "body": "Connect browser extensions, mobile apps, desktop apps, and the web vault to your own server."
+      },
+      {
+        "title": "Keep vault data encrypted",
+        "body": "Vault data is encrypted by the client before it reaches the server, so the server stores encrypted vault data."
+      },
+      {
+        "title": "Share with family or a team",
+        "body": "Use Bitwarden-compatible organization and collection features for shared credentials when you need them."
+      }
+    ],
+    "complexity": {
+      "level": "guided",
+      "label": "Guided setup",
+      "description": "MOS generates the app admin token, starts Vaultwarden, and then guides you to create the first account."
+    },
+    "resourceHint": {
+      "level": "low",
+      "label": "Light resources",
+      "description": "This MOS package runs Vaultwarden as one service using its built-in SQLite storage."
+    },
+    "privacy": {
+      "summary": "Vaultwarden stores encrypted vault data on your own server, while your master password remains your responsibility.",
+      "notes": [
+        "Use a strong, unique master password.",
+        "Enable two-factor authentication where possible.",
+        "Keep backups, because losing the app data volume can mean losing the vault."
+      ]
+    },
+    "links": {
+      "repository": "https://github.com/dani-garcia/vaultwarden",
+      "docs": "https://bitwarden.com/help/managing-items/"
+    }
+  },
+  "setup": {
+    "fields": [
+      {
+        "id": "adminToken",
+        "type": "password",
+        "label": "Admin token",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Generated Vaultwarden admin token",
+        "generated": {
+          "kind": "random",
+          "bytes": 32,
+          "encoding": "base64url"
+        }
+      }
+    ]
+  },
+  "resources": {
+    "services": {
+      "vaultwarden": {
+        "dockerfile": "Dockerfile",
+        "internalPort": 80,
+        "env": {
+          "ADMIN_TOKEN": "${secret.adminToken}",
+          "DOMAIN": "${app.publicUrl}",
+          "SIGNUPS_ALLOWED": "true",
+          "WEBSOCKET_ENABLED": "true"
+        },
+        "volumes": [
+          "data:/data"
+        ]
+      }
+    }
+  },
+  "routes": [
+    {
+      "host": "vaultwarden",
+      "service": "vaultwarden",
+      "port": 80
+    }
+  ],
+  "homepage": {
+    "group": "Security",
+    "name": "Vaultwarden",
+    "description": "Keep passwords and secure notes on your own server.",
+    "icon": "vaultwarden"
+  },
+  "health": {
+    "type": "http",
+    "url": "http://vaultwarden:80/alive"
+  },
+  "onboarding": {
+    "steps": [
+      {
+        "type": "open-url",
+        "title": "Create the first Vaultwarden account",
+        "body": "Open Vaultwarden over its generated app URL and create the owner account before storing shared credentials."
+      },
+      {
+        "type": "secret-note",
+        "title": "Admin token generated",
+        "body": "MOS generates a strong admin token for the Vaultwarden admin panel and stores only a secret reference plus fingerprint in Suite Manager state. This slice does not yet include an owner-facing reveal or rotation flow."
+      }
+    ]
+  }
+}

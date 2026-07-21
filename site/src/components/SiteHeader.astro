@@ -1,0 +1,25 @@
+---
+import BrandMark from './BrandMark.astro'
+import { GITHUB_REPO_URL } from '../lib/links'
+---
+
+<header class="site-header">
+  <div class="shell">
+    <div class="site-header-inner">
+      <span class="brand">
+        <BrandMark size={34} />
+        <span class="mos-eyebrow" style="font-size:0.82rem">My Own Suite</span>
+      </span>
+      <nav class="site-nav">
+        <a href="#how">How it works</a>
+        <a href="#apps">Apps</a>
+        <a href="#safe">Safety</a>
+        <a href="#install">Install</a>
+      </nav>
+      <div class="site-header-actions">
+        <a class="mos-btn mos-btn-ghost" href={GITHUB_REPO_URL} style="min-height:2.4rem">GitHub</a>
+        <a class="mos-btn mos-btn-primary" href="#install" style="min-height:2.4rem">Get started</a>
+      </div>
+    </div>
+  </div>
+</header>

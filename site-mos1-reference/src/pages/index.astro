@@ -1,0 +1,581 @@
+---
+import MadeWithCarousel from '../components/landing/MadeWithCarousel.astro'
+import { GITHUB_REPO_URL, WAITLIST_MAILTO } from '../lib/links'
+import '../styles/site.css'
+import homepageLogo from '../assets/logos/homepage.png'
+import homepageDashboardScreenshot from '../assets/screenshots/homepage/my-own-suite-homepage-dashboard-private-cloud-launchpad.png'
+import immichLogo from '../assets/logos/immich.png'
+import onlyofficeLogo from '../assets/logos/ONLYOFFICE.png'
+import radicaleLogo from '../assets/logos/radicale.png'
+import seafileLogo from '../assets/logos/seafile.png'
+import stirlingPdfLogo from '../assets/logos/stirling-pdf.png'
+import vaultwardenLogo from '../assets/logos/vaultwarden.png'
+import mosMark from '../assets/brand/my-own-suite-mark.png'
+
+const logoModules = import.meta.glob('../assets/logos/*.{png,jpg,jpeg,svg,webp,avif}', { eager: true })
+
+const normalizeLogoName = (name: string) => {
+  return name
+    .replace(/[-_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b(white|black|grey|gray|light|dark|logo)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+const getImageSrc = (mod: unknown) => {
+  const resolved = (mod as { default?: unknown }).default ?? mod
+  if (typeof resolved === 'string') {
+    return resolved
+  }
+  if (resolved && typeof resolved === 'object' && 'src' in resolved) {
+    const src = (resolved as { src?: unknown }).src
+    if (typeof src === 'string') {
+      return src
+    }
+  }
+  return ''
+}
+
+const appLogos = Object.entries(logoModules)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([path, mod]) => {
+    const fileName = path.split('/').pop() ?? ''
+    const baseName = fileName.replace(/\.[^.]+$/, '')
+    const alt = normalizeLogoName(baseName)
+
+    return {
+      src: getImageSrc(mod),
+      alt
+    }
+  })
+  .filter((logo) => logo.src.length > 0)
+
+const modules = [
+  {
+    title: 'Files and sync',
+    app: 'Seafile',
+    href: '/docs/apps/seafile',
+    logo: seafileLogo.src,
+    logoAlt: 'Seafile logo',
+    body: 'Trusted file sync and storage used by teams that need their cloud to stay dependable.'
+  },
+  {
+    title: 'Documents and spreadsheets',
+    app: 'ONLYOFFICE',
+    href: '/docs/apps/onlyoffice',
+    logo: onlyofficeLogo.src,
+    logoAlt: 'ONLYOFFICE logo',
+    body: 'Enterprise-ready office tools used by businesses and governments around the world.'
+  },
+  {
+    title: 'Photos and memories',
+    app: 'Immich',
+    href: '/docs/apps/immich',
+    logo: immichLogo.src,
+    logoAlt: 'Immich logo',
+    body: 'A modern photo platform backed by one of the fastest-growing self-hosted communities.'
+  },
+  {
+    title: 'Passwords',
+    app: 'Vaultwarden',
+    href: '/docs/apps/vaultwarden',
+    logo: vaultwardenLogo.src,
+    logoAlt: 'Vaultwarden logo',
+    body: 'Secure password storage and autofill without handing your vault to a hosted consumer platform.'
+  },
+  {
+    title: 'Calendars',
+    app: 'Radicale',
+    href: '/docs/apps/radicale',
+    logo: radicaleLogo.src,
+    logoAlt: 'Radicale logo',
+    body: 'Private calendar sync that works with the devices and clients you already use.'
+  },
+  {
+    title: 'PDF tools',
+    app: 'Stirling PDF',
+    href: '/docs/apps/stirling-pdf',
+    logo: stirlingPdfLogo.src,
+    logoAlt: 'Stirling PDF logo',
+    body: 'Merge, split, convert, and process PDFs inside your own stack.'
+  },
+  {
+    title: 'Dashboard',
+    app: 'Homepage',
+    href: '/docs/apps/homepage',
+    logo: homepageLogo.src,
+    logoAlt: 'Homepage logo',
+    body: 'One starting point for opening the suite and moving between modules quickly.'
+  },
+  {
+    title: 'Control plane',
+    app: 'Suite Manager',
+    href: '/docs/getting-started',
+    logo: mosMark.src,
+    logoAlt: 'My Own Suite logo',
+    body: 'Guided onboarding, first-run access, and the entrypoint that turns the bundle into a usable product.'
+  }
+]
+
+const steps = [
+  {
+    title: 'Choose your deploy style',
+    body: 'Start on a platform for the easiest launch, or install My Own Suite on a cloud server or your own hardware.',
+    href: '/docs/getting-started',
+    label: 'Explore deploy options'
+  },
+  {
+    title: 'Deploy the suite',
+    body: 'Bring up the curated stack with the documented setup flow instead of manually assembling each app yourself.',
+    href: '/docs/deploy-on-railway',
+    label: 'Read the quickest path'
+  },
+  {
+    title: 'Finish onboarding and use it',
+    body: 'Sign in through Suite Manager, land on Homepage, and start using the apps as one connected setup.',
+    href: '/docs',
+    label: 'See the overview'
+  }
+]
+
+---
+
+<html lang='en'>
+  <head>
+    <meta charset='utf-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1' />
+    <title>My Own Suite</title>
+    <meta name='theme-color' content='#061526' />
+    <meta
+      name='description'
+      content='My Own Suite is a modular self-hosted Big Tech exit kit: a curated bundle of open-source apps you control, with a platform path for quick trials and self-hosted installers for cloud servers or your own hardware.'
+    />
+    <link rel='icon' href='/favicon.ico' sizes='any' />
+    <link rel='icon' type='image/png' sizes='32x32' href='/favicon-32x32.png' />
+    <link rel='icon' type='image/png' sizes='16x16' href='/favicon-16x16.png' />
+    <link rel='apple-touch-icon' sizes='180x180' href='/apple-touch-icon.png' />
+    <link rel='manifest' href='/site.webmanifest' />
+    <script
+      defer
+      src='https://umami-my.up.railway.app/script.js'
+      data-website-id='0fe6ba10-ae90-46d2-ae05-f488a8716fe2'
+    ></script>
+  </head>
+  <body>
+    <main class='landing-page'>
+      <div class='site-header-wrap'>
+        <header class='site-header nav-shell'>
+          <a class='brand' href='/' aria-label='My Own Suite home'>
+            <img src='/brand/my-own-suite-mark.png' alt='' width='42' height='42' decoding='async' />
+            <span class='brand-copy'>
+              <strong>My Own Suite</strong>
+              <span>Your Big Tech exit kit</span>
+            </span>
+          </a>
+
+          <nav class='header-nav' aria-label='Primary'>
+            <a href='/docs'>Docs</a>
+            <a href={GITHUB_REPO_URL} target='_blank' rel='noreferrer'>GitHub</a>
+            <a class='mos-btn mos-btn-secondary header-cta secondary' href={WAITLIST_MAILTO} target='_blank' rel='noreferrer'>
+              Newsletter
+            </a>
+            <a class='mos-btn mos-btn-primary header-cta' href='/docs/getting-started'>Get started</a>
+          </nav>
+        </header>
+      </div>
+
+      <section class='hero section'>
+        <div class='shell hero-grid'>
+          <div class='hero-copy'>
+            <h1>Take back control of your digital life.</h1>
+            <p class='hero-lead mos-body-lg'>
+              Run your own private versions of the apps you use every day, like Google Drive, iCloud, and more,
+              without giving up convenience.
+            </p>
+            <p class='hero-support mos-body'>
+              Today, most people rely on services from Google, Apple, and Microsoft because they are simple, useful,
+              and free. Over time, the deal changes. The rules shift, and your data becomes part of a system you do
+              not control.
+            </p>
+            <p class='hero-support mos-body'>
+              My Own Suite gives you your own versions of these tools, running in a setup you control. You keep the
+              convenience, but your files, photos, and data stay yours.
+            </p>
+          </div>
+
+          <div class='hero-visual' aria-hidden='true'>
+            <div class='hero-network mos-panel'>
+              <div class='network-orbit orbit-one'></div>
+              <div class='network-orbit orbit-two'></div>
+              <div class='network-core'>
+                <img src='/brand/my-own-suite-mark.png' alt='' width='96' height='96' />
+                <span>Core suite</span>
+              </div>
+              <div class='network-node node-files'>
+                <strong>Files</strong>
+                <span>Seafile</span>
+              </div>
+              <div class='network-node node-office'>
+                <strong>Docs</strong>
+                <span>ONLYOFFICE</span>
+              </div>
+              <div class='network-node node-photos'>
+                <strong>Photos</strong>
+                <span>Immich</span>
+              </div>
+              <div class='network-node node-passwords'>
+                <strong>Passwords</strong>
+                <span>Vaultwarden</span>
+              </div>
+              <div class='network-node node-calendar'>
+                <strong>Calendar</strong>
+                <span>Radicale</span>
+              </div>
+              <div class='network-node node-pdf'>
+                <strong>PDF</strong>
+                <span>Stirling PDF</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class='trust-strip section' aria-label='Suite apps'>
+        <div class='shell section-heading suite-tools-copy'>
+          <h2 class='mos-section-title'>Built on proven tools, not reinvented ones</h2>
+          <p class='mos-body'>
+            My Own Suite brings together established open-source apps like Seafile, ONLYOFFICE, and Immich. These
+            are trusted by millions of users, as well as companies and even governments, and are combined into one
+            cohesive setup you can actually run and use.
+          </p>
+        </div>
+
+        <div class='shell suite-tools-grid'>
+          {modules.map((module) => (
+            <a class='suite-tool-card mos-panel' href={module.href}>
+              <div class='suite-tool-header'>
+                <img src={module.logo} alt={module.logoAlt} width='56' height='56' loading='lazy' decoding='async' />
+                <div>
+                  <h3 class='mos-card-title'>{module.app}</h3>
+                  <p class='suite-tool-category mos-small'>{module.title}</p>
+                </div>
+              </div>
+              <p class='suite-tool-body mos-body'>{module.body}</p>
+            </a>
+          ))}
+        </div>
+      </section>
+
+      <section class='section audience-section'>
+        <div class='shell section-heading'>
+          <h2 class='mos-section-title'>Who is My Own Suite for?</h2>
+          <p class='mos-body'>If any of this sounds familiar, you will probably feel at home with My Own Suite:</p>
+        </div>
+
+        <div class='shell audience-list-wrap'>
+          <ul class='audience-list'>
+            <li>People who want to leave Google, Apple, and Microsoft without losing convenience.</li>
+            <li>Freelancers and creators who refuse to have their work used to train AI models.</li>
+            <li>Individuals tired of trading privacy for "free" cloud services.</li>
+            <li>Families who want their photos and private moments to stay private.</li>
+            <li>People who have seen ads get a little too accurate, and it doesn't feel right.</li>
+            <li>People tired of ecosystems that are easy to enter, but hard to leave.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class='section private-cloud-section'>
+        <div class='shell private-cloud-grid'>
+          <div class='private-cloud-copy'>
+            <h2 class='mos-section-title'>Setup once. Use it everywhere.</h2>
+            <p class='mos-body'>
+              With My Own Suite, you don't set up apps on every device. You deploy it once, and your apps run in your
+              own private cloud.
+            </p>
+            <p class='mos-body'>
+              That means your files, photos, documents, and tools are always available through your browser - on your
+              laptop, phone, or tablet - just like the services you already use today.
+            </p>
+            <ul class='private-cloud-points'>
+              <li>Open your suite from any browser, on any device</li>
+              <li>Your apps and data stay in one place, always in sync</li>
+              <li>Add native apps or sync clients when you want deeper integration</li>
+            </ul>
+          </div>
+
+          <div class='private-cloud-visual' aria-hidden='true'>
+            <svg class='private-cloud-diagram' viewBox='0 0 640 520' role='img' aria-label='My Own Suite cloud access diagram'>
+              <defs>
+                <filter id='mosSoftGlow' x='-50%' y='-50%' width='200%' height='200%'>
+                  <feGaussianBlur stdDeviation='18' result='blur' />
+                  <feMerge>
+                    <feMergeNode in='blur' />
+                    <feMergeNode in='SourceGraphic' />
+                  </feMerge>
+                </filter>
+              </defs>
+
+              <circle class='cloud-aura' cx='320' cy='118' r='108' />
+
+              <g class='cloud-connectors'>
+                <path d='M320 178 L180 282' />
+                <path d='M320 178 L270 282' />
+                <path d='M320 178 L400 292' />
+                <path d='M320 178 L548 282' />
+              </g>
+
+              <g class='cloud-shape' filter='url(#mosSoftGlow)'>
+                <path d='M241 164c-31 0-56-22-56-50s25-50 56-50h6c8-36 41-61 81-61 35 0 65 18 80 46a66 66 0 0 1 18-2c35 0 64 24 68 56 22 8 38 28 38 51 0 33-28 60-63 60H267c-17 0-28-2-37-9-10-7-16-18-16-33v-8Z' />
+              </g>
+
+              <image href='/brand/my-own-suite-mark.png' x='276' y='70' width='110' height='110' preserveAspectRatio='xMidYMid meet' />
+
+              <g class='device device-phone' transform='translate(136 286)'>
+                <rect class='device-shell' x='0' y='0' width='54' height='104' rx='18' />
+                <rect class='device-screen' x='8' y='12' width='38' height='76' rx='10' />
+                <rect class='screen-bar' x='14' y='20' width='18' height='4' rx='2' />
+                <rect class='screen-chip accent' x='14' y='31' width='24' height='8' rx='4' />
+                <rect class='screen-chip muted' x='14' y='44' width='20' height='8' rx='4' />
+                <rect class='screen-chip soft' x='14' y='57' width='16' height='8' rx='4' />
+                <circle class='device-dot' cx='27' cy='95' r='3' />
+              </g>
+
+              <g class='device device-tablet' transform='translate(226 272)'>
+                <rect class='device-shell' x='0' y='0' width='96' height='126' rx='18' />
+                <rect class='device-screen' x='10' y='12' width='76' height='102' rx='10' />
+                <rect class='screen-bar' x='18' y='20' width='28' height='5' rx='2.5' />
+                <rect class='screen-chip accent' x='18' y='34' width='44' height='10' rx='5' />
+                <rect class='screen-chip muted' x='18' y='49' width='36' height='10' rx='5' />
+                <rect class='screen-chip soft' x='18' y='64' width='52' height='10' rx='5' />
+                <circle class='device-dot' cx='48' cy='120' r='3' />
+              </g>
+
+              <g class='device device-laptop' transform='translate(338 288)'>
+                <rect class='device-shell' x='10' y='0' width='124' height='78' rx='12' />
+                <rect class='device-screen' x='20' y='10' width='104' height='58' rx='8' />
+                <rect class='screen-bar' x='30' y='19' width='30' height='5' rx='2.5' />
+                <rect class='screen-chip accent' x='30' y='31' width='58' height='9' rx='4.5' />
+                <rect class='screen-chip muted' x='30' y='45' width='44' height='9' rx='4.5' />
+                <rect class='screen-chip soft' x='30' y='59' width='66' height='5' rx='2.5' />
+                <path class='device-base' d='M0 88h144l-10 12H10Z' />
+              </g>
+
+              <g class='device device-desktop' transform='translate(500 278)'>
+                <rect class='device-shell' x='0' y='0' width='96' height='74' rx='12' />
+                <rect class='device-screen' x='10' y='10' width='76' height='54' rx='8' />
+                <rect class='screen-bar' x='20' y='19' width='24' height='5' rx='2.5' />
+                <rect class='screen-chip accent' x='20' y='31' width='40' height='9' rx='4.5' />
+                <rect class='screen-chip muted' x='20' y='45' width='28' height='9' rx='4.5' />
+                <rect class='device-stand' x='42' y='78' width='12' height='18' rx='6' />
+                <rect class='device-base' x='28' y='94' width='40' height='8' rx='4' />
+              </g>
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      <section class='section dashboard-preview-section'>
+        <div class='shell dashboard-preview-grid'>
+          <div class='dashboard-preview-copy'>
+            <h2 class='mos-section-title'>One dashboard that makes the suite feel usable right away.</h2>
+            <p class='mos-body'>
+              Homepage is the everyday launchpad for My Own Suite. Instead of juggling bookmarks, ports, and app URLs,
+              you land in one calm place that reflects the stack you actually have running.
+            </p>
+            <p class='mos-body'>
+              The result feels much closer to a real product than a loose bundle of containers, which matters if the
+              goal is helping normal people leave Big Tech without walking into a hobbyist maze.
+            </p>
+            <a class='text-link mos-link' href='/docs/apps/homepage'>See the Homepage module</a>
+          </div>
+
+          <a
+            class='dashboard-preview-frame mos-panel'
+            href='/docs/apps/homepage'
+            aria-label='Open the Homepage documentation'
+          >
+            <img
+              src={homepageDashboardScreenshot.src}
+              alt='My Own Suite Homepage dashboard with app categories, widgets, and management links.'
+              width={homepageDashboardScreenshot.width}
+              height={homepageDashboardScreenshot.height}
+              loading='lazy'
+              decoding='async'
+            />
+          </a>
+        </div>
+      </section>
+
+      <section class='section getting-started-section'>
+        <div class='shell section-heading'>
+          <h2 class='mos-section-title'>How do I get started?</h2>
+          <p class='mos-body'>
+            My Own Suite now has two main setup stories: use a platform when you want the quickest hosted launch, or use
+            the self-hosted path when you want your own installed suite to manage routing, updates, backups, and local
+            infrastructure.
+          </p>
+        </div>
+
+        <div class='shell getting-started-flow'>
+          <article class='getting-started-card getting-started-primary mos-panel'>
+            <div class='getting-started-content getting-started-columns'>
+              <div class='getting-started-main'>
+                <h3 class='mos-card-title'>Start in minutes</h3>
+                <p class='mos-body'>
+                  Run the suite using a ready-made platform template with almost no setup. This is the easiest way to
+                  see how everything works. You trade some infrastructure control for simplicity, and platform-owned
+                  updates and backups stay with the host.
+                </p>
+                <a class='text-link mos-link' href='/docs/deploy-on-railway'>Start with Railway</a>
+              </div>
+
+              <div class='getting-started-metrics'>
+                <div class='metric metric-text'>
+                  <div class='metric-head'>
+                    <span>Setup time</span>
+                    <strong><span class='metric-icon' aria-hidden='true'>◷</span> Minutes</strong>
+                  </div>
+                </div>
+                <div class='metric'>
+                  <div class='metric-head'>
+                    <span>Privacy &amp; Control</span>
+                    <small>75%</small>
+                  </div>
+                  <div class='continuous-meter' aria-hidden='true'>
+                    <span style='width: 75%'></span>
+                  </div>
+                </div>
+                <div class='metric'>
+                  <div class='metric-head'>
+                    <span>Difficulty &amp; Responsibility</span>
+                    <small>Easy</small>
+                  </div>
+                  <div class='balance-meter' aria-hidden='true'>
+                    <span class='balance-marker' style='left: 90%'></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <div class='getting-started-choice' aria-hidden='true'>or</div>
+
+          <article class='getting-started-card getting-started-secondary mos-panel'>
+            <div class='getting-started-content getting-started-columns'>
+              <div class='getting-started-main'>
+                <h3 class='mos-card-title'>Cloud server installer</h3>
+                <p class='mos-body'>
+                  Run My Own Suite on an Ubuntu cloud server from a provider you choose. This is the hosted
+                  self-hosting path: rented infrastructure, but routing, updates, backups, restore, HTTPS, and
+                  customization live inside your own installed suite.
+                </p>
+                <a class='text-link mos-link' href='/docs/deploy-on-vps'>Self-host on a cloud server</a>
+              </div>
+
+              <div class='getting-started-metrics'>
+                <div class='metric metric-text'>
+                  <div class='metric-head'>
+                    <span>Setup time</span>
+                    <strong><span class='metric-icon' aria-hidden='true'>◷</span> ~30-60 min</strong>
+                  </div>
+                </div>
+                <div class='metric'>
+                  <div class='metric-head'>
+                    <span>Privacy &amp; Control</span>
+                    <small>95%</small>
+                  </div>
+                  <div class='continuous-meter' aria-hidden='true'>
+                    <span style='width: 95%'></span>
+                  </div>
+                </div>
+                <div class='metric'>
+                  <div class='metric-head'>
+                    <span>Difficulty &amp; Responsibility</span>
+                    <small>Moderate to advanced</small>
+                  </div>
+                  <div class='balance-meter' aria-hidden='true'>
+                    <span class='balance-marker' style='left: 42%'></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <div class='getting-started-choice' aria-hidden='true'>or</div>
+
+          <article class='getting-started-card getting-started-tertiary mos-panel'>
+            <div class='getting-started-content getting-started-columns'>
+              <div class='getting-started-main'>
+                <h3 class='mos-card-title'>Own-hardware installer</h3>
+                <p class='mos-body'>
+                  Install the same self-hosted My Own Suite setup on hardware you own with the USB installer. This is
+                  the most independent path, with local-network DNS decisions and full responsibility for the physical
+                  machine.
+                </p>
+                <a class='text-link mos-link' href='/docs/deploy-on-your-own-hardware'>Explore self-hosting</a>
+              </div>
+
+              <div class='getting-started-metrics'>
+                <div class='metric metric-text'>
+                  <div class='metric-head'>
+                    <span>Setup time</span>
+                    <strong><span class='metric-icon' aria-hidden='true'>◷</span> Several hours+</strong>
+                  </div>
+                </div>
+                <div class='metric'>
+                  <div class='metric-head'>
+                    <span>Privacy &amp; Control</span>
+                    <small>100%</small>
+                  </div>
+                  <div class='continuous-meter' aria-hidden='true'>
+                    <span style='width: 100%'></span>
+                  </div>
+                </div>
+                <div class='metric'>
+                  <div class='metric-head'>
+                    <span>Difficulty &amp; Responsibility</span>
+                    <small>Very difficult</small>
+                  </div>
+                  <div class='balance-meter' aria-hidden='true'>
+                    <span class='balance-marker' style='left: 6%'></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class='section how-section'>
+        <div class='shell section-heading'>
+          <span class='mos-eyebrow'>How it works</span>
+          <h2 class='mos-section-title'>Choose a path, deploy the stack, and land inside your own suite.</h2>
+        </div>
+
+        <div class='shell step-grid'>
+          {steps.map((step, index) => (
+            <article class='step-card mos-panel'>
+              <div class='step-number'>{index + 1}</div>
+              <h3 class='mos-card-title'>{step.title}</h3>
+              <p class='mos-body'>{step.body}</p>
+              <a class='text-link mos-link' href={step.href}>{step.label}</a>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <MadeWithCarousel appLogos={appLogos} />
+
+      <section class='section soft-transition-section'>
+        <div class='shell soft-transition-copy'>
+          <h2 class='mos-section-title'>Still unsure? That's completely fine.</h2>
+          <p class='mos-body'>Take a look at the docs to see how everything works in practice.</p>
+          <a class='text-link mos-link' href='/docs'>Open the docs</a>
+        </div>
+      </section>
+
+    </main>
+  </body>
+</html>

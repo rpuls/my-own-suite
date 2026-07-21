@@ -1,4 +1,1 @@
-# Immich Machine Learning Service (Platform Deployments)
-# Stable Railway build target for the Immich ML worker container.
-
-FROM ghcr.io/immich-app/immich-machine-learning@sha256:b213fa3c82d27a21a299c46ffbb38a091f18384db1ad67d409a3b34fe0fce556
+FROM ghcr.io/immich-app/immich-machine-learning:v3.0.2@sha256:cfde27af4382c12940e02186abf0c6089e4eca9ebd75490d0ac32daaf52a0add

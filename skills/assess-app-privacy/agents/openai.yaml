@@ -1,0 +1,4 @@
+interface:
+  display_name: "Assess App Privacy"
+  short_description: "Review app privacy evidence and posture"
+  default_prompt: "Use $assess-app-privacy to review an app's telemetry, terms, privacy policy, and MOS Privacy Posture."

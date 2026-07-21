@@ -1,0 +1,66 @@
+---
+title: Install on DigitalOcean
+description: Step-by-step guide to installing My Own Suite on a DigitalOcean droplet — from rendering the install file to creating your owner account.
+---
+
+import { Steps } from '@astrojs/starlight/components'
+
+This is the fastest way to get a running suite: a small DigitalOcean droplet that installs My Own Suite by itself while it boots. You never open a terminal on the server.
+
+**What you need**
+
+- A [DigitalOcean](https://www.digitalocean.com/) account (the reference droplet size costs about $24/month — you can destroy it at any time).
+- A computer with [Git](https://git-scm.com/) and [Node.js 22](https://nodejs.org/) installed, to prepare the install file.
+
+<Steps>
+
+1. **Get the install file.**
+
+   On your own computer, download the MOS repository and render the cloud install file. Rendering is free and touches nothing — it just writes a text file:
+
+   ```sh
+   git clone https://github.com/rpuls/my-own-suite.git
+   cd my-own-suite
+   npm run install:render -- --target cloud-init --front-door digitalocean-smoke > mos-cloud-init.yaml
+   ```
+
+   Open `mos-cloud-init.yaml` in any text editor if you're curious — it is a readable script that installs Docker, the MOS platform, and its services on first boot. It contains **no passwords and no secrets**; your owner account is created later, in your browser.
+
+2. **Create the droplet.**
+
+   In the DigitalOcean dashboard, choose **Create → Droplets** and pick:
+
+   - **Image:** Ubuntu **24.04 (LTS) x64**
+   - **Size:** at least **2 vCPU / 4 GB RAM** (the Basic shared-CPU tier is fine)
+   - Under **Advanced Options**, enable **Add Initialization scripts (free)** and paste the entire contents of `mos-cloud-init.yaml` into the box.
+
+   Then create the droplet.
+
+3. **Wait for the install to finish.**
+
+   The droplet installs everything itself — typically **5–15 minutes**, occasionally up to 30 on a slow machine. Note the droplet's public IP address from the DigitalOcean dashboard, then visit:
+
+   ```
+   http://home.<your-droplet-ip>.sslip.io/
+   ```
+
+   For example, if your droplet's IP is `203.0.113.10`, your suite lives at `http://home.203.0.113.10.sslip.io/`. Refresh occasionally; when the setup screen appears, the install is done.
+
+   :::tip[What is sslip.io?]
+   `sslip.io` is a public convenience service: any address ending in your IP + `.sslip.io` automatically points at that IP. It means your suite has a working web address instantly, with no domain to buy and no DNS to configure.
+   :::
+
+4. **Create your owner account.**
+
+   The first visit shows **Create your MOS owner account**. Do this right away — until an owner exists, anyone who knows the address could claim the fresh install. Then continue with [Your first sign-in](/docs/install/first-start/).
+
+</Steps>
+
+## Backup destination
+
+Attach a separate persistent block-storage volume through your provider, format and mount it on this server, then select that mounted volume in Suite Manager. A USB disk attached to your own computer is not visible to a rented server. MOS has no direct object-storage destination today; provider snapshots are an additional provider-managed recovery layer, not a consistency-checked MOS backup. Use encrypted storage and read [Back up and restore](/docs/guides/backup-restore/) before storing data.
+## Good to know
+
+- **Billing:** a powered-off droplet still bills. To stop paying, destroy the droplet (backups first — see [Back up and restore](/docs/guides/backup-restore/)).
+- **HTTPS and real domains:** this quick path serves your suite over plain HTTP on the generated `sslip.io` address. On cloud installs, custom domains and HTTPS are handled through your hosting provider's own domain tooling — the built-in [Cloudflare HTTPS setup](/docs/guides/https-domain/) is reserved for self-hosted installs, where MOS controls the machine's network story end to end.
+- **Other providers:** the same approach works anywhere that accepts cloud-init user data — see [Install on any cloud server](/docs/install/cloud-server/).

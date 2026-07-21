@@ -1,0 +1,258 @@
+---
+import AppConnect from './AppConnect.astro'
+import PrivacyPosture from './PrivacyPosture.astro'
+import { catalogApps as apps } from '../lib/app-catalog'
+
+// The app catalog is generated at build time from each package's
+// manifest under apps/<app>/manifest.json — the same single source of
+// truth Suite Manager uses (see src/lib/app-catalog.ts, shared with the
+// docs app pages). Adding a new app package to the repo adds it here
+// automatically on the next site build; nothing in this component
+// needs to change.
+
+const seafile = apps.find((app) => app.id === 'seafile')
+const onlyoffice = apps.find((app) => app.id === 'onlyoffice')
+
+const appsJson = JSON.stringify(apps).replace(/</g, '\\u003c')
+---
+
+<section class="band" id="apps">
+  <div class="shell">
+    <div class="section-head center">
+      <span class="mos-eyebrow">The app catalog</span>
+      <h2 class="mos-section-title">Explore the apps</h2>
+      <p class="mos-body-lg mos-meta">Every app is packaged by MOS, pinned to an exact version, verified by digest, and health-checked while it runs. A curated catalog — and if you want something that isn't in it, you can install your own and MOS will tell you exactly what you're trusting.</p>
+    </div>
+    <label class="apps-search">
+      <svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-search"/></svg>
+      <input id="appSearch" type="search" placeholder="Search — photos, passwords, files, calendar…" aria-label="Search the app catalog" />
+    </label>
+    <div class="catalog" id="appGrid"></div>
+    <div class="apps-pager" id="appsPager" hidden>
+      <button type="button" id="appsPrev" aria-label="Previous apps"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-arrow-left"/></svg></button>
+      <span class="page-info" id="appsPageInfo"></span>
+      <button type="button" id="appsNext" aria-label="More apps"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-arrow-right"/></svg></button>
+    </div>
+    {seafile && onlyoffice && (
+      <div class="together">
+        <AppConnect source={onlyoffice} target={seafile} />
+        <div>
+          <h3 class="mos-card-title" style="color:var(--mos-color-text-strong)">Apps that work together</h3>
+          <p class="mos-meta" style="margin-top:6px">Install Seafile, install ONLYOFFICE, press <strong style="color:var(--mos-color-text-strong)">Connect</strong> — MOS grants the secret, wires the network, and your documents open in the browser editor. No config files.</p>
+        </div>
+      </div>
+    )}
+  </div>
+</section>
+
+<div class="app-drawer-backdrop" id="appDrawerBackdrop"></div>
+<aside class="app-drawer" id="appDrawer" role="dialog" aria-modal="true" aria-label="App details"></aside>
+
+{/* Server-rendered privacy posture tile + score dialog per app (the same
+    PrivacyPosture component the docs app pages use). The drawer script
+    moves the open app's tile into the drawer facts grid and relocates its
+    dialog to <body> — the drawer's transform would otherwise trap and clip
+    the dialog's fixed-position backdrop. */}
+<div id="appPrivacyStore" hidden>
+  {apps.map((app) => (
+    <div data-privacy-home={app.id}>
+      <PrivacyPosture advisories={app.advisories} appName={app.name} assessmentUrl="/docs/privacy/how-we-assess/" packageVersion={app.version} privacy={app.privacyReview} />
+    </div>
+  ))}
+</div>
+
+<script is:inline type="application/json" id="mos-apps-data" set:html={appsJson} />
+
+<script>
+  type AppData = {
+    id: string
+    name: string
+    category: string
+    summary: string
+    description: string
+    replaces: string
+    setup: string
+    resources: string
+    privacy: string
+    privacyNotes: string[]
+    features: { title: string; body: string }[]
+    links: Record<string, string>
+    tags: string[]
+    icon: string
+  }
+
+  const PAGE_SIZE = 4
+  const LINK_LABELS: Record<string, string> = {
+    website: 'Official website',
+    repository: 'Source code',
+    docs: 'App documentation'
+  }
+
+  const apps: AppData[] = JSON.parse(document.getElementById('mos-apps-data')!.textContent || '[]')
+
+  const grid = document.getElementById('appGrid')!
+  const search = document.getElementById('appSearch') as HTMLInputElement
+  const pager = document.getElementById('appsPager')!
+  const prevBtn = document.getElementById('appsPrev') as HTMLButtonElement
+  const nextBtn = document.getElementById('appsNext') as HTMLButtonElement
+  const pageInfo = document.getElementById('appsPageInfo')!
+  const drawer = document.getElementById('appDrawer')!
+  const backdrop = document.getElementById('appDrawerBackdrop')!
+
+  let page = 0
+  let lastOpener: HTMLElement | null = null
+
+  // The open app's server-rendered privacy tile (see #appPrivacyStore) is
+  // borrowed into the drawer facts grid and returned before the next
+  // drawer render wipes it away with innerHTML.
+  let placedPrivacyTile: { home: HTMLElement; tile: HTMLElement } | null = null
+
+  function returnPrivacyTile() {
+    if (!placedPrivacyTile) return
+    placedPrivacyTile.home.prepend(placedPrivacyTile.tile)
+    placedPrivacyTile = null
+  }
+
+  function placePrivacyTile(appId: string, slot: HTMLElement) {
+    const home = document.querySelector<HTMLElement>(`[data-privacy-home="${CSS.escape(appId)}"] [data-privacy-posture]`)
+    if (!home) return
+    const dialog = home.querySelector<HTMLElement>('[data-dialog]')
+    if (dialog) document.body.appendChild(dialog)
+    const tile = home.querySelector<HTMLElement>('[data-open]')
+    if (!tile) return
+    slot.appendChild(tile)
+    placedPrivacyTile = { home, tile }
+  }
+
+  const esc = (value: string) =>
+    value.replace(/[&<>"']/g, (char) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] as string
+    )
+
+  const icon = (app: AppData, extra = '') =>
+    `<span class="app-ico"${extra}><img src="${esc(app.icon)}" alt="" loading="lazy" /></span>`
+
+  function filtered(): AppData[] {
+    const query = search.value.trim().toLowerCase()
+    if (!query) return apps
+    return apps.filter((app) =>
+      [app.name, app.category, app.summary, app.description, app.replaces, ...app.tags]
+        .join(' ')
+        .toLowerCase()
+        .includes(query)
+    )
+  }
+
+  function render() {
+    const list = filtered()
+    const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE))
+    page = Math.min(page, pages - 1)
+    const start = page * PAGE_SIZE
+    const visible = list.slice(start, start + PAGE_SIZE)
+
+    if (!visible.length) {
+      grid.innerHTML = '<p class="apps-empty">No apps match that search yet — the catalog is growing.</p>'
+    } else {
+      grid.innerHTML = visible
+        .map(
+          (app) => `<button type="button" class="mos-panel app" data-id="${esc(app.id)}">
+  <div class="app-top">${icon(app)}<span class="app-name-wrap"><h3>${esc(app.name)}</h3><span class="app-sub">${esc(app.category)}</span></span></div>
+  <p class="mos-meta app-desc">${esc(app.summary)}</p>
+  ${app.replaces ? `<span class="replaces">Replaces ${esc(app.replaces)}</span>` : ''}
+</button>`
+        )
+        .join('')
+    }
+
+    pager.hidden = list.length <= PAGE_SIZE
+    prevBtn.disabled = page === 0
+    nextBtn.disabled = page >= pages - 1
+    pageInfo.textContent = list.length
+      ? `${start + 1}–${Math.min(start + PAGE_SIZE, list.length)} of ${list.length}`
+      : ''
+  }
+
+  function openDrawer(app: AppData, opener: HTMLElement | null) {
+    lastOpener = opener
+    returnPrivacyTile()
+    const facts = [
+      '<span id="appDrawerPrivacy" style="display:contents"></span>',
+      app.setup ? `<div><span class="k">Complexity</span><strong>${esc(app.setup)}</strong></div>` : '',
+      app.resources ? `<div><span class="k">Resources</span><strong>${esc(app.resources)}</strong></div>` : '',
+      app.replaces ? `<div><span class="k">Replaces</span><strong>${esc(app.replaces)}</strong></div>` : '',
+      '<div><span class="k">Cost</span><strong>Free &amp; open source</strong></div>'
+    ].join('')
+    const features = app.features.length
+      ? `<div class="app-drawer-section"><span class="mos-eyebrow">What you can do</span><ul class="app-drawer-features">${app.features
+          .map((feature) => `<li><strong>${esc(feature.title)}</strong>${feature.body ? `<span class="mos-meta">${esc(feature.body)}</span>` : ''}</li>`)
+          .join('')}</ul></div>`
+      : ''
+    const privacy = app.privacy
+      ? `<div class="app-drawer-section"><span class="mos-eyebrow">Privacy</span><p class="mos-meta">${esc(app.privacy)}</p>${
+          app.privacyNotes.length
+            ? `<ul class="mos-meta" style="margin:8px 0 0;padding-left:1.1rem;display:grid;gap:4px;font-size:0.92rem">${app.privacyNotes.map((note) => `<li>${esc(note)}</li>`).join('')}</ul>`
+            : ''
+        }</div>`
+      : ''
+    const links = Object.entries(app.links)
+      .filter(([, url]) => typeof url === 'string' && /^https?:\/\//.test(url))
+      .map(([key, url]) => `<a class="mos-link" href="${esc(url)}" rel="noopener">${esc(LINK_LABELS[key] ?? key)} →</a>`)
+      .join('')
+
+    drawer.innerHTML = `<button type="button" class="app-drawer-close" aria-label="Close" id="appDrawerClose"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-x"/></svg></button>
+<div class="app-drawer-head">${icon(app)}<div><h3 style="margin:0;font-size:1.5rem;color:var(--mos-color-text-strong)">${esc(app.name)}</h3><span class="app-sub">${esc(app.category)}</span></div></div>
+<p class="mos-meta" style="margin:0 0 var(--mos-space-2)">${esc(app.description)}</p>
+<div class="app-drawer-facts">${facts}</div>
+${features}
+${privacy}
+${links ? `<div class="app-drawer-section"><span class="mos-eyebrow">Links</span><div class="app-drawer-links">${links}</div></div>` : ''}
+<a class="mos-btn mos-btn-primary" href="#install" id="appDrawerCta" style="width:100%">Get MOS and install ${esc(app.name)}</a>`
+
+    placePrivacyTile(app.id, document.getElementById('appDrawerPrivacy')!)
+
+    drawer.classList.add('open')
+    backdrop.classList.add('open')
+    document.body.style.overflow = 'hidden'
+    document.getElementById('appDrawerClose')!.addEventListener('click', closeDrawer)
+    document.getElementById('appDrawerCta')!.addEventListener('click', closeDrawer)
+    ;(document.getElementById('appDrawerClose') as HTMLElement).focus()
+  }
+
+  function closeDrawer() {
+    drawer.classList.remove('open')
+    backdrop.classList.remove('open')
+    document.body.style.overflow = ''
+    if (lastOpener) {
+      lastOpener.focus()
+      lastOpener = null
+    }
+  }
+
+  grid.addEventListener('click', (event) => {
+    const button = (event.target as HTMLElement).closest('.app') as HTMLElement | null
+    if (!button) return
+    const app = apps.find((candidate) => candidate.id === button.dataset.id)
+    if (app) openDrawer(app, button)
+  })
+  backdrop.addEventListener('click', closeDrawer)
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !drawer.classList.contains('open')) return
+    // An open privacy dialog consumes Escape before the drawer does.
+    if (document.querySelector('[data-dialog]:not([hidden])')) return
+    closeDrawer()
+  })
+  search.addEventListener('input', () => {
+    page = 0
+    render()
+  })
+  prevBtn.addEventListener('click', () => {
+    page = Math.max(0, page - 1)
+    render()
+  })
+  nextBtn.addEventListener('click', () => {
+    page = page + 1
+    render()
+  })
+
+  render()
+</script>

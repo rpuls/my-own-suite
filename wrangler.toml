@@ -1,4 +1,8 @@
-name = "my-own-suite"
+name = "my-own-suite-pages"
+# The MOS public site (landing page + docs) deploys from site/ via the
+# Deploy Site workflow (.github/workflows/deploy-site.yml), which builds on
+# GitHub and pushes to Cloudflare Pages by direct upload from main and staging
+# only. The Pages project must not run its own git-integration builds.
 pages_build_output_dir = "site/dist"
 
 [vars]

@@ -1,33 +1,16 @@
 # Environment files
 .env
 .env.selfhost
-vps/.env
 
 # temporary files
 .tmp/
 .local-tools/
-.mos-updater/
 .mos-smoke/
 .playwright-mcp/
 playwright-mcp
 .test-results-current/
 test-results-current
 test-results-current-full
-
-
-# VPS persistent data
-vps/apps/vaultwarden/data/*
-!vps/apps/vaultwarden/data/.gitkeep
-
-# Shared config local overrides
-shared/configs/local/
-
-# Caddy data
-vps/apps/caddy/data/
-
-# Docker volumes (if using local bind mounts)
-caddy_data/
-caddy_config/
 
 # OS files
 .DS_Store
@@ -48,24 +31,25 @@ node_modules/
 .npm-cache/
 
 # Frontend build output
-apps/suite-manager/frontend/dist/
-tests/e2e/node_modules/
-tests/e2e/playwright-report/
-tests/e2e/test-results/
+suite-manager/frontend/dist/
+test/e2e/node_modules/
+test/e2e/playwright-report/
+test/e2e/test-results/
+test/e2e/playwright-report-hyperv/
+test-results/
+test/e2e/.env
+
+# Local runtime state
+.state/
 
 # Self-host generated artifacts
-deploy/self-host/autoinstall/generated/
-deploy/self-host/cloud-init/generated/
-deploy/self-host/autoinstall/ubuntu-iso/
-deploy/self-host/output/
-deploy/self-host/autoinstall/*.vhdx
-deploy/self-host/autoinstall/*.avhdx
-deploy/self-host/autoinstall/ubuntu-iso/*
-!deploy/self-host/autoinstall/ubuntu-iso/.gitkeep
-deploy/self-host/autoinstall/installer-config/*
-!deploy/self-host/autoinstall/installer-config/.gitkeep
-!deploy/self-host/autoinstall/installer-config/selfhost-installer.env.template
-deploy/self-host/output/
-deploy/vps/docker-compose.selfhost.yml
-deploy/vps/generated/caddy/*.caddy
-!deploy/vps/generated/caddy/.gitkeep
+infrastructure/self-host/autoinstall/generated/
+infrastructure/self-host/cloud-init/generated/
+infrastructure/self-host/autoinstall/ubuntu-iso/*
+!infrastructure/self-host/autoinstall/ubuntu-iso/.gitkeep
+infrastructure/self-host/autoinstall/*.vhdx
+infrastructure/self-host/autoinstall/*.avhdx
+infrastructure/self-host/autoinstall/installer-config/*
+!infrastructure/self-host/autoinstall/installer-config/.gitkeep
+!infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env.template
+infrastructure/self-host/output/

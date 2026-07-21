@@ -1,0 +1,38 @@
+---
+title: What is My Own Suite?
+description: My Own Suite is a free, open-source private cloud you run on your own server — file sync, photos, documents, passwords, and calendars without Big Tech.
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components'
+
+My Own Suite (MOS) turns one machine — a cloud server or a computer at home — into your own private cloud. You get the everyday conveniences you are used to from Google, Apple, and Microsoft — file sync, photo backup, document editing, passwords, calendars — but running on hardware you control, with data that never leaves your possession.
+
+It is free, open source, and built entirely from respected open-source applications. My Own Suite's job is to make them work together as one coherent suite:
+
+- **One installer** sets up the whole platform on a fresh machine — no Linux experience required.
+- **One dashboard** (your Homepage) gives you and your family a single front door to all your apps.
+- **One control room** (Suite Manager) lets you install apps from a catalog, connect them to each other, back everything up, and keep both the platform and each app updated — all from the browser, in plain language.
+
+Apps update independently of MOS itself, so a fix for one app never waits on a MOS release, and each app runs from a verified copy of the exact package it was installed with — nothing changes under you. Where we've assessed an app's privacy, you get the score and the evidence; where we haven't, the app says so.
+
+You should not need to understand Docker, YAML, reverse proxies, or certificates just to own your data. And if you *do* understand those things, everything underneath is inspectable, pinned, and documented — see [Under the hood](/docs/reference/architecture/).
+
+## Is it for me?
+
+My Own Suite is built for two kinds of people at once:
+
+- **You want out of Big Tech, but you're not technical.** The guides in these docs assume nothing. Every step is written out, defaults are safe, and the suite explains itself in plain language as you use it.
+- **You love self-hosting and homelabs.** MOS gives you a curated, reproducible platform: digest-pinned images, a strict privilege boundary between the web UI and the host, manifest-driven app packages, a signed app catalog your server verifies against a key it already holds, immutable installed snapshots, transactional per-app updates, and honest documentation of how it all works. Bring your own package from a repository if the catalog doesn't have it — MOS will tell you exactly what you're trusting.
+
+## Where to go next
+
+<CardGrid>
+  <LinkCard title="Why your own cloud?" href="/docs/why-your-own-cloud/" description="The case for moving your digital life onto hardware you own." />
+  <LinkCard title="How to get started" href="/docs/getting-started/" description="Choose between a cloud server and your own hardware, and see what you need." />
+  <LinkCard title="Browse the apps" href="/docs/apps/" description="What's in the catalog and what each app replaces." />
+  <LinkCard title="How MOS works" href="/docs/reference/architecture/" description="The technical architecture, for the curious." />
+</CardGrid>
+
+:::note[Project status]
+My Own Suite is in active development and currently pre-1.0. Everything documented here reflects what actually works today — where a flow is still rough or developer-shaped, the docs say so honestly. Guided video walkthroughs of the install flows are planned once the platform is feature-locked.
+:::

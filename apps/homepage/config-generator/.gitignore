@@ -1,9 +1,0 @@
-# Dependencies
-node_modules/
-
-# Build output
-dist/
-
-# Test output
-test-output/
-test-output-empty/

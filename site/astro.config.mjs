@@ -1,15 +1,25 @@
 import { defineConfig } from 'astro/config'
 import starlight from '@astrojs/starlight'
-import mermaid from 'astro-mermaid'
+import { readdirSync, readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
-const umamiAnalyticsScript = {
-  tag: 'script',
-  attrs: {
-    defer: true,
-    src: 'https://umami-my.up.railway.app/script.js',
-    'data-website-id': '0fe6ba10-ae90-46d2-ae05-f488a8716fe2'
-  }
-}
+// The Apps docs section is generated from the app packages in apps/:
+// one sidebar link per package, read from each manifest at build time,
+// so new app packages appear in the docs automatically.
+const appsRoot = fileURLToPath(new URL('../apps', import.meta.url))
+const appSidebarLinks = readdirSync(appsRoot, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .flatMap((entry) => {
+    try {
+      const manifest = JSON.parse(readFileSync(`${appsRoot}/${entry.name}/manifest.json`, 'utf8'))
+      return manifest?.id && manifest?.name
+        ? [{ label: manifest.name, link: `/docs/apps/${manifest.id}/` }]
+        : []
+    } catch {
+      return []
+    }
+  })
+  .sort((a, b) => a.label.localeCompare(b.label))
 
 export default defineConfig({
   site: 'https://myownsuite.org',
@@ -17,76 +27,66 @@ export default defineConfig({
   vite: {
     server: {
       fs: {
+        // The app catalog on the landing page and the app docs pages import
+        // manifests, icons, and READMEs straight from the repo's apps/
+        // packages at build time.
         allow: ['..']
       }
     }
   },
   integrations: [
-    mermaid({
-      theme: 'base',
-      autoTheme: false,
-      mermaidConfig: {
-        flowchart: {
-          useMaxWidth: false
-        },
-        themeVariables: {
-          fontSize: 18,
-          edgeLabelBackground: '#00000000'
-        }
-      }
-    }),
     starlight({
       title: 'My Own Suite',
-      description: 'Your Big Tech exit kit.',
-      favicon: '/favicon.ico',
-      logo: {
-        src: './src/assets/brand/my-own-suite-mark.png',
-        alt: 'My Own Suite logo'
-      },
-      head: [umamiAnalyticsScript],
-      customCss: ['./src/styles/docs-theme.css'],
+      description: 'Your own private cloud, made simple.',
+      favicon: '/brand/favicon.ico',
+      logo: { src: './public/brand/my-own-suite-mark.svg', alt: '' },
+      social: [
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/rpuls/my-own-suite' }
+      ],
+      customCss: ['./generated/branding/mos.css', './src/styles/docs-theme.css'],
       sidebar: [
         {
-          label: 'Docs',
+          label: 'Start here',
+          items: ['docs', 'docs/why-your-own-cloud', 'docs/getting-started']
+        },
+        {
+          label: 'Install',
           items: [
-            'docs',
-            'docs/why-your-own-cloud',
-            'docs/getting-started',
-            'docs/deploy-on-railway',
-            'docs/deploy-on-vps',
-            'docs/deploy-on-your-own-hardware',
-            'docs/optional-email-with-smtp'
+            'docs/install/digitalocean',
+            'docs/install/cloud-server',
+            'docs/install/own-hardware',
+            'docs/install/first-start'
           ]
         },
         {
-          label: 'Using Suite Manager',
+          label: 'Everyday use',
           items: [
-            'docs/suite-manager',
-            'docs/suite-manager/homepage-customize',
-            'docs/suite-manager/local-https',
-            'docs/suite-manager/backups',
-            'docs/suite-manager/updates'
+            'docs/guides/suite-manager',
+            'docs/guides/apps',
+            'docs/guides/customize-homepage',
+            'docs/guides/https-domain',
+            'docs/guides/backup-restore',
+            'docs/guides/updates'
           ]
         },
         {
           label: 'Apps',
+          items: [{ label: 'App catalog', link: '/docs/apps/' }, ...appSidebarLinks]
+        },
+        {
+          label: 'Under the hood',
           items: [
-            'docs/apps/homepage',
-            'docs/apps/seafile',
-            'docs/apps/onlyoffice',
-            'docs/apps/immich',
-            'docs/apps/stirling-pdf',
-            'docs/apps/radicale',
-            'docs/apps/vaultwarden'
+            'docs/reference/architecture',
+            'docs/reference/host-agents',
+            'docs/reference/app-packages',
+            'docs/privacy/how-we-assess'
           ]
         },
         {
-          label: 'Project',
-          items: ['docs/releases']
+          label: 'Legal',
+          items: ['docs/terms', 'docs/privacy']
         }
       ]
     })
   ]
 })
-
-

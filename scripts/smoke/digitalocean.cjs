@@ -2,7 +2,9 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn, spawnSync } = require('node:child_process');
+const { spawnSync } = require('node:child_process');
+
+const { renderBootstrapPlan } = require('../installers/bootstrap-contract.cjs');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const smokeDir = path.join(repoRoot, '.mos-smoke');
@@ -12,18 +14,30 @@ const localEnvPath = path.join(smokeDir, 'digitalocean.env');
 const smokeTag = 'mos-smoke';
 const namePrefix = 'mos-smoke-';
 const apiBaseUrl = 'https://api.digitalocean.com/v2';
-
-const command = process.argv[2];
+const DEFAULT_READY_TIMEOUT_MS = 30 * 60 * 1000;
 
 loadLocalEnvFile();
 
 function usage() {
-  console.log(`Usage: node scripts/smoke/digitalocean.cjs <up|reset|destroy>
+  console.log(`Usage: node scripts/smoke/digitalocean.cjs <reset|destroy|render>
 
 Commands:
-  up       Create a tagged DigitalOcean smoke Droplet and install MOS.
-  reset    Reuse the current smoke Droplet, wipe MOS runtime state, and reinstall MOS.
-  destroy  Destroy the current tagged smoke Droplet from local state.
+  reset    Create a fresh MOS smoke Droplet, replacing the current one if present.
+  destroy  Destroy the current tagged MOS smoke Droplet from local state.
+  render   Render the MOS DigitalOcean cloud-init payload without creating paid resources.
+
+Environment:
+  DIGITALOCEAN_ACCESS_TOKEN       Required for up/reset/destroy.
+  MOS_SMOKE_REGION             Default: fra1.
+  MOS_SMOKE_SIZE               Default: s-2vcpu-4gb.
+  MOS_SMOKE_IMAGE              Default: ubuntu-24-04-x64.
+  MOS_SMOKE_INSTALLER_URL      Default: https://get-dev.myownsuite.org/install.sh.
+  MOS_SMOKE_DOMAIN             Optional explicit domain.
+  MOS_SMOKE_WAIT               Set to 0 to skip HTTP readiness polling.
+  MOS_SMOKE_SSH_KEY_ID         Optional SSH key id.
+  MOS_SMOKE_SSH_KEY_FINGERPRINT Optional SSH key fingerprint.
+  MOS_SMOKE_SSH_KEY_NAME       Optional SSH key name to resolve.
+  MOS_SMOKE_SSH_PRIVATE_KEY    Optional private-key path used to print the owner claim URL.
 `);
 }
 
@@ -75,16 +89,16 @@ function env(name, fallback = '') {
   return value === undefined || value === '' ? fallback : value;
 }
 
+function compatibleEnv(name, legacyName, fallback = '') {
+  return env(name, env(legacyName, fallback));
+}
+
 function requireEnv(name) {
   const value = env(name);
   if (!value) {
     fail(`Missing ${name}.`);
   }
   return value;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function ensureDirs() {
@@ -114,31 +128,8 @@ function timestamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
-function shQuote(value) {
-  return `'${String(value).replace(/'/g, `'\\''`)}'`;
-}
-
-function requireOwnerConfig() {
-  const email = env('MOS_SMOKE_OWNER_EMAIL');
-  const password = env('MOS_SMOKE_OWNER_PASSWORD');
-  const name = env('MOS_SMOKE_OWNER_NAME', 'Suite Owner');
-
-  if (!email || !password) {
-    fail('Missing MOS_SMOKE_OWNER_EMAIL or MOS_SMOKE_OWNER_PASSWORD. The current self-host installer needs temporary owner credentials.');
-  }
-
-  return { email, password, name };
-}
-
-function smokeConfigFromEnv(state = {}) {
-  return {
-    region: env('MOS_SMOKE_REGION', state.region || 'fra1'),
-    size: env('MOS_SMOKE_SIZE', state.size || 's-4vcpu-8gb'),
-    image: env('MOS_SMOKE_IMAGE', state.image || 'ubuntu-24-04-x64'),
-    repoRef: env('MOS_SMOKE_REPO_REF', state.repoRef || 'staging'),
-    repoUrl: env('MOS_SMOKE_REPO_URL', state.repoUrl || 'https://github.com/rpuls/my-own-suite.git'),
-    owner: requireOwnerConfig(),
-  };
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function getToken() {
@@ -164,7 +155,9 @@ async function doRequest(token, method, resourcePath, body = null) {
 
   if (!response.ok) {
     const message = payload?.message || payload?.id || response.statusText;
-    throw new Error(`${method} ${resourcePath} failed: ${message}`);
+    const error = new Error(`${method} ${resourcePath} failed: ${message}`);
+    error.status = response.status;
+    throw error;
   }
 
   return payload;
@@ -180,20 +173,20 @@ async function ensureTag(token) {
   }
 }
 
-async function resolveSshKey(token) {
-  const byId = env('MOS_SMOKE_SSH_KEY_ID');
+async function resolveOptionalSshKeys(token) {
+  const byId = compatibleEnv('MOS_SMOKE_SSH_KEY_ID', 'MOS_SMOKE_SSH_KEY_ID');
   if (byId) {
-    return Number.isNaN(Number(byId)) ? byId : Number(byId);
+    return [Number.isNaN(Number(byId)) ? byId : Number(byId)];
   }
 
-  const byFingerprint = env('MOS_SMOKE_SSH_KEY_FINGERPRINT');
+  const byFingerprint = compatibleEnv('MOS_SMOKE_SSH_KEY_FINGERPRINT', 'MOS_SMOKE_SSH_KEY_FINGERPRINT');
   if (byFingerprint) {
-    return byFingerprint;
+    return [byFingerprint];
   }
 
-  const byName = env('MOS_SMOKE_SSH_KEY_NAME');
+  const byName = compatibleEnv('MOS_SMOKE_SSH_KEY_NAME', 'MOS_SMOKE_SSH_KEY_NAME');
   if (!byName) {
-    fail('Set MOS_SMOKE_SSH_KEY_ID, MOS_SMOKE_SSH_KEY_FINGERPRINT, or MOS_SMOKE_SSH_KEY_NAME.');
+    return [];
   }
 
   const payload = await doRequest(token, 'GET', '/account/keys?per_page=200');
@@ -202,7 +195,73 @@ async function resolveSshKey(token) {
     fail(`Expected exactly one DigitalOcean SSH key named "${byName}", found ${matches.length}.`);
   }
 
-  return matches[0].id;
+  return [matches[0].id];
+}
+
+function smokeConfigFromEnv(state = {}) {
+  return {
+    image: env('MOS_SMOKE_IMAGE', state.image || 'ubuntu-24-04-x64'),
+    region: env('MOS_SMOKE_REGION', state.region || 'fra1'),
+    installerUrl: env('MOS_SMOKE_INSTALLER_URL', state.installerUrl || 'https://get-dev.myownsuite.org/install.sh'),
+    size: env('MOS_SMOKE_SIZE', state.size || 's-2vcpu-4gb'),
+  };
+}
+
+function renderPublicInstallerCloudInit(installerUrl) {
+  const parsed = new URL(installerUrl);
+  if (parsed.protocol !== 'https:') {
+    throw new Error('MOS_SMOKE_INSTALLER_URL must use HTTPS.');
+  }
+  return `#cloud-config
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+runcmd:
+  - [ bash, -lc, "curl -fsSL --proto '=https' --tlsv1.2 '${installerUrl}' | bash" ]
+`;
+}
+
+function bootstrapPlanFor(config, ip = '') {
+  return renderBootstrapPlan({
+    domain: env('MOS_SMOKE_DOMAIN'),
+    frontDoor: 'public-vps',
+    publicIpv4: ip || env('MOS_SMOKE_PUBLIC_IPV4'),
+    repoRef: config.repoRef,
+    repoUrl: config.repoUrl,
+  });
+}
+
+function ownerClaimUrl(setupUrl, token) {
+  const url = new URL(setupUrl);
+  url.searchParams.set('claim', token);
+  return url.toString();
+}
+
+async function readOwnerClaimToken(ip) {
+  const privateKey = compatibleEnv('MOS_SMOKE_SSH_PRIVATE_KEY', 'MOS_SMOKE_SSH_PRIVATE_KEY');
+  if (!privateKey) {
+    return '';
+  }
+
+  const deadline = Date.now() + Number(env('MOS_SMOKE_SSH_TIMEOUT_MS', '120000'));
+  while (Date.now() < deadline) {
+    const result = spawnSync('ssh', [
+      '-i', privateKey,
+      '-o', 'BatchMode=yes',
+      '-o', 'ConnectTimeout=10',
+      '-o', 'StrictHostKeyChecking=accept-new',
+      `root@${ip}`,
+      "sed -n 's/^MOS_OWNER_CLAIM_TOKEN=//p' /etc/mos/secrets/owner-claim.env",
+    ], { encoding: 'utf8', windowsHide: true });
+    const token = String(result.stdout || '').trim();
+    if (/^[a-f0-9]{64}$/.test(token)) {
+      return token;
+    }
+    await sleep(5000);
+  }
+
+  return '';
 }
 
 function dropletPublicIpv4(droplet) {
@@ -218,16 +277,11 @@ async function getDroplet(token, dropletId) {
     const payload = await doRequest(token, 'GET', `/droplets/${dropletId}`);
     return payload.droplet;
   } catch (error) {
-    if (String(error.message).includes('not_found')) {
+    if (error.status === 404) {
       return null;
     }
     throw error;
   }
-}
-
-async function listSmokeDroplets(token) {
-  const payload = await doRequest(token, 'GET', `/droplets?tag_name=${encodeURIComponent(smokeTag)}&per_page=200`);
-  return payload.droplets.filter(isSmokeDroplet);
 }
 
 async function waitForDropletNetwork(token, dropletId) {
@@ -248,168 +302,53 @@ async function waitForDropletNetwork(token, dropletId) {
   fail('Timed out waiting for Droplet to become active with a public IPv4 address.');
 }
 
-function sshArgs(host, remoteCommand = null) {
-  const args = [
-    '-o',
-    'BatchMode=yes',
-    '-o',
-    'StrictHostKeyChecking=accept-new',
-    '-o',
-    'ConnectTimeout=10',
-  ];
-
-  const privateKey = env('MOS_SMOKE_SSH_PRIVATE_KEY');
-  if (privateKey) {
-    args.push('-i', privateKey);
+async function waitForSuiteManager(plan) {
+  if (env('MOS_SMOKE_WAIT', '1') === '0') {
+    return;
   }
 
-  args.push(`${env('MOS_SMOKE_SSH_USER', 'root')}@${host}`);
-
-  if (remoteCommand) {
-    args.push(remoteCommand);
-  }
-
-  return args;
-}
-
-function sshCommand(ip) {
-  const privateKey = env('MOS_SMOKE_SSH_PRIVATE_KEY');
-  const keyArg = privateKey ? ` -i ${privateKey}` : '';
-  return `ssh${keyArg} ${env('MOS_SMOKE_SSH_USER', 'root')}@${ip}`;
-}
-
-async function waitForSsh(ip) {
-  const deadline = Date.now() + Number(env('MOS_SMOKE_SSH_TIMEOUT_MS', '600000'));
+  const statusUrl = new URL('api/setup/status', plan.config.publicUrls.suiteManager).toString();
+  const homeUrl = plan.config.publicUrls.home;
+  const deadline = Date.now() + Number(env('MOS_SMOKE_READY_TIMEOUT_MS', String(DEFAULT_READY_TIMEOUT_MS)));
 
   while (Date.now() < deadline) {
-    const result = spawnSync('ssh', sshArgs(ip, 'true'), {
-      stdio: 'ignore',
-    });
-
-    if (result.status === 0) {
-      return;
+    try {
+      const response = await fetch(statusUrl);
+      if (response.ok) {
+        const status = await response.json();
+        if (status.status === 'needs-owner' || status.status === 'signed-out') {
+          const homeResponse = await fetch(homeUrl, { redirect: 'manual' });
+          if (homeResponse.status === 302 && homeResponse.headers.get('location') === '/suite-manager/') {
+            return;
+          }
+        }
+      }
+    } catch {
+      // Cloud-init is still installing or Caddy is not ready yet.
     }
 
-    console.log('[mos-smoke:do] Waiting for SSH...');
-    await sleep(10000);
+    console.log('[mos-smoke:do] Waiting for Suite Manager first-run readiness...');
+    await sleep(15000);
   }
 
-  fail('Timed out waiting for SSH readiness.');
-}
-
-function runSsh(ip, label, remoteCommand, options = {}) {
-  const logPath = path.join(logDir, `${timestamp()}-${label}.log`);
-  const logStream = fs.createWriteStream(logPath, { flags: 'a' });
-  const args = sshArgs(ip, remoteCommand);
-
-  console.log(`[mos-smoke:do] Running ${label}; logging to ${path.relative(repoRoot, logPath)}`);
-
-  return new Promise((resolve, reject) => {
-    const child = spawn('ssh', args, {
-      cwd: repoRoot,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    if (options.input) {
-      child.stdin.end(options.input);
-    } else {
-      child.stdin.end();
-    }
-
-    child.stdout.on('data', (chunk) => {
-      process.stdout.write(chunk);
-      logStream.write(chunk);
-    });
-
-    child.stderr.on('data', (chunk) => {
-      process.stderr.write(chunk);
-      logStream.write(chunk);
-    });
-
-    child.on('error', (error) => {
-      logStream.end();
-      reject(error);
-    });
-
-    child.on('close', (code) => {
-      logStream.end();
-      if (code === 0) {
-        resolve(logPath);
-      } else {
-        reject(new Error(`${label} failed with exit code ${code}. See ${logPath}.`));
-      }
-    });
-  });
-}
-
-function installScript(config) {
-  const installerUrl = env(
-    'MOS_SMOKE_INSTALLER_URL',
-    `https://raw.githubusercontent.com/rpuls/my-own-suite/${config.repoRef}/scripts/selfhost/install-cloud.sh`,
-  );
-
-  const exports = {
-    MOS_REPO_URL: config.repoUrl,
-    MOS_REPO_REF: config.repoRef,
-    MOS_UPDATE_TRACK: 'branch',
-    MOS_UPDATE_REF: config.repoRef,
-    MOS_STACK_DOMAIN: config.domain,
-    MOS_OWNER_NAME: config.owner.name,
-    MOS_OWNER_EMAIL: config.owner.email,
-    MOS_OWNER_PASSWORD: config.owner.password,
-  };
-
-  return `set -euo pipefail
-${Object.entries(exports)
-  .map(([key, value]) => `export ${key}=${shQuote(value)}`)
-  .join('\n')}
-curl -fsSL ${shQuote(installerUrl)} -o /tmp/mos-install-cloud.sh
-sudo -E bash /tmp/mos-install-cloud.sh
-`;
-}
-
-function resetScript(config) {
-  return `set -euo pipefail
-repo_dir=${shQuote(env('MOS_SMOKE_REMOTE_REPO_DIR', '/opt/my-own-suite'))}
-stamp_file=${shQuote(env('MOS_SMOKE_REMOTE_STAMP_FILE', '/var/lib/mos-selfhost/bootstrap.done'))}
-echo "[mos-smoke:do] Stopping MOS host agents"
-sudo systemctl stop mos-update-agent mos-service-agent mos-backup-agent 2>/dev/null || true
-echo "[mos-smoke:do] Removing MOS Docker containers"
-if command -v docker >/dev/null 2>&1; then
-  containers="$(sudo docker ps -aq --filter label=com.docker.compose.project=mos)"
-  if [ -n "$containers" ]; then
-    sudo docker rm -f $containers
-  fi
-  volumes="$(sudo docker volume ls -q --filter label=com.docker.compose.project=mos)"
-  if [ -n "$volumes" ]; then
-    sudo docker volume rm $volumes
-  fi
-  networks="$(sudo docker network ls -q --filter label=com.docker.compose.project=mos)"
-  if [ -n "$networks" ]; then
-    sudo docker network rm $networks 2>/dev/null || true
-  fi
-fi
-echo "[mos-smoke:do] Removing MOS repo checkout and bootstrap stamp"
-sudo rm -rf "$repo_dir" "$stamp_file"
-${installScript(config)}
-`;
+  fail(`Timed out waiting for Suite Manager readiness at ${statusUrl}.`);
 }
 
 async function createDroplet(token, config) {
   await ensureTag(token);
-
-  const sshKey = await resolveSshKey(token);
+  const sshKeys = await resolveOptionalSshKeys(token);
   const name = `${namePrefix}${timestamp().slice(0, 19).toLowerCase()}`;
   const payload = await doRequest(token, 'POST', '/droplets', {
+    backups: false,
+    image: config.image,
+    ipv6: false,
+    monitoring: true,
     name,
     region: config.region,
     size: config.size,
-    image: config.image,
-    ssh_keys: [sshKey],
-    backups: false,
-    ipv6: false,
-    monitoring: true,
+    ssh_keys: sshKeys,
     tags: [smokeTag],
+    user_data: renderPublicInstallerCloudInit(config.installerUrl),
   });
 
   return payload.droplet;
@@ -437,173 +376,98 @@ async function destroyExistingFromState(token, state, reason) {
   return true;
 }
 
-function printSummary(state) {
-  const scheme = 'http';
+function printSummary(state, claimUrl = '') {
   console.log(`
 [mos-smoke:do] Smoke Droplet is ready.
 
-SSH:
-  ${sshCommand(state.ip)}
-
 URLs:
-  Suite Manager: ${scheme}://suite-manager.${state.domain}/setup/
-  Homepage:      ${scheme}://homepage.${state.domain}/
+  MOS Home:      ${state.homepageUrl}
+  Suite Manager: ${state.suiteManagerUrl}
+${claimUrl ? `  Owner setup:  ${claimUrl}` : '  Owner setup:  claim URL unavailable; configure MOS_SMOKE_SSH_PRIVATE_KEY'}
 
 State:
   ${path.relative(repoRoot, statePath)}
 
-Logs:
-  ${path.relative(repoRoot, logDir)}
-
 Destroy when finished:
   npm run smoke:do:destroy
 
-Fast reset this Droplet:
+Replace with a fresh MOS smoke Droplet:
   npm run smoke:do:reset
 `);
 }
 
-async function up() {
+async function reset() {
   ensureDirs();
   const existingState = readState();
 
-  if (existingState && env('MOS_SMOKE_REPLACE') !== '1') {
-    console.log('[mos-smoke:do] Existing smoke Droplet state found.');
-    printSummary(existingState);
-    fail('Refusing to create another Droplet. Set MOS_SMOKE_REPLACE=1 to destroy and replace the current smoke Droplet.');
-  }
-
   const token = getToken();
-
-  if (existingState && env('MOS_SMOKE_REPLACE') === '1') {
-    await destroyExistingFromState(token, existingState, 'MOS_SMOKE_REPLACE=1');
+  if (existingState) {
+    await destroyExistingFromState(token, existingState, 'reset');
   }
 
-  const config = smokeConfigFromEnv();
+  const config = smokeConfigFromEnv(existingState || {});
+  const droplet = await createDroplet(token, config);
+  console.log(`[mos-smoke:do] Created Droplet ${droplet.name} (${droplet.id}).`);
 
-  console.log(`[mos-smoke:do] Creating ${config.image} Droplet in ${config.region} (${config.size}) from ${config.repoRef}...`);
-  const created = await createDroplet(token, config);
-  let state = {
-    provider: 'digitalocean',
-    dropletId: created.id,
-    dropletName: created.name,
-    tag: smokeTag,
+  const { ip } = await waitForDropletNetwork(token, droplet.id);
+  const plan = bootstrapPlanFor(config, ip);
+  const state = {
+    createdAt: new Date().toISOString(),
+    domain: plan.config.domain,
+    dropletId: droplet.id,
+    homepageUrl: plan.config.publicUrls.homepage,
+    setupUrl: plan.config.publicUrls.setup,
+    image: config.image,
+    installerUrl: config.installerUrl,
+    ip,
     region: config.region,
     size: config.size,
-    image: config.image,
-    repoUrl: config.repoUrl,
-    repoRef: config.repoRef,
-    createdAt: new Date().toISOString(),
+    suiteManagerUrl: plan.config.publicUrls.suiteManager,
   };
+
   writeState(state);
-
-  const { droplet, ip } = await waitForDropletNetwork(token, created.id);
-  const domain = env('MOS_SMOKE_DOMAIN', `${ip}.sslip.io`);
-  state = { ...state, dropletName: droplet.name, ip, domain };
-  writeState(state);
-
-  console.log(`[mos-smoke:do] Droplet ${droplet.name} is active at ${ip}.`);
-  console.log(`[mos-smoke:do] MOS_STACK_DOMAIN=${domain}`);
-  await waitForSsh(ip);
-  await runSsh(
-    ip,
-    'cloud-init-wait',
-    'sudo cloud-init status --wait || { sudo journalctl -u cloud-init --no-pager --lines=120; exit 1; }',
-  );
-  await runSsh(ip, 'mos-install', 'sudo bash -s', { input: installScript({ ...config, domain }) });
-  await runSsh(
-    ip,
-    'readiness',
-    'cd /opt/my-own-suite && npm run vps:doctor && node scripts/mos-compose.cjs ps && docker ps',
-  );
-
-  printSummary(state);
-}
-
-async function reset() {
-  ensureDirs();
-  const token = getToken();
-  const state = readState();
-
-  if (!state) {
-    fail('No local DigitalOcean smoke state found. Run npm run smoke:do:up first.');
-  }
-
-  const droplet = await getDroplet(token, state.dropletId);
-  if (!droplet) {
-    removeState();
-    fail(`Droplet ${state.dropletId} no longer exists. Local state was removed.`);
-  }
-
-  if (!isSmokeDroplet(droplet)) {
-    fail(`Refusing to reset Droplet ${droplet.id} because it is not named ${namePrefix}* and tagged ${smokeTag}.`);
-  }
-
-  const ip = dropletPublicIpv4(droplet) || state.ip;
-  if (!ip) {
-    fail(`Droplet ${droplet.id} does not have a public IPv4 address.`);
-  }
-
-  const domain = env('MOS_SMOKE_DOMAIN', state.domain || `${ip}.sslip.io`);
-  const config = smokeConfigFromEnv(state);
-  const nextState = {
-    ...state,
-    dropletName: droplet.name,
-    ip,
-    domain,
-    repoUrl: config.repoUrl,
-    repoRef: config.repoRef,
-    resetAt: new Date().toISOString(),
-  };
-  writeState(nextState);
-
-  console.log(`[mos-smoke:do] Resetting ${droplet.name} (${droplet.id}) at ${ip} from ${config.repoRef}...`);
-  console.log('[mos-smoke:do] This removes MOS containers, MOS Docker volumes, and the remote repo checkout, but keeps the Droplet and IP.');
-  await waitForSsh(ip);
-  await runSsh(ip, 'mos-reset-install', 'sudo bash -s', { input: resetScript({ ...config, domain }) });
-  await runSsh(
-    ip,
-    'readiness',
-    'cd /opt/my-own-suite && npm run vps:doctor && node scripts/mos-compose.cjs ps && docker ps',
-  );
-
-  printSummary(nextState);
+  await waitForSuiteManager(plan);
+  const claimToken = await readOwnerClaimToken(ip);
+  printSummary(state, claimToken ? ownerClaimUrl(state.setupUrl, claimToken) : '');
 }
 
 async function destroy() {
-  const token = getToken();
   const state = readState();
-
-  if (state) {
-    await destroyExistingFromState(token, state, 'local state');
-    console.log('[mos-smoke:do] Destroy complete.');
+  if (!state) {
+    console.log('[mos-smoke:do] No local MOS smoke Droplet state found.');
     return;
   }
 
-  const droplets = await listSmokeDroplets(token);
-  if (droplets.length === 0) {
-    console.log('[mos-smoke:do] No local state and no tagged smoke Droplets found.');
-    return;
-  }
-
-  if (droplets.length > 1 && env('MOS_SMOKE_DESTROY_ALL_TAGGED') !== '1') {
-    console.log('[mos-smoke:do] Multiple tagged smoke Droplets found:');
-    for (const droplet of droplets) {
-      console.log(`  ${droplet.id} ${droplet.name} ${dropletPublicIpv4(droplet)}`);
-    }
-    fail('Refusing tag fallback cleanup for multiple Droplets. Set MOS_SMOKE_DESTROY_ALL_TAGGED=1 to destroy all tagged smoke Droplets.');
-  }
-
-  for (const droplet of droplets) {
-    await destroyDroplet(token, droplet, 'tag fallback');
-  }
-
+  const token = getToken();
+  await destroyExistingFromState(token, state, 'destroy command');
   console.log('[mos-smoke:do] Destroy complete.');
 }
 
-async function main() {
-  if (command === 'up') {
-    await up();
+function render() {
+  const config = smokeConfigFromEnv();
+  const plan = bootstrapPlanFor(config);
+  process.stdout.write(`${JSON.stringify({
+    cloudInit: renderPublicInstallerCloudInit(config.installerUrl),
+    components: plan.config.components,
+    domain: plan.config.domain,
+    homepageUrl: plan.config.publicUrls.homepage,
+    setupUrl: plan.config.publicUrls.setup,
+    note: 'Render-only MOS DigitalOcean smoke payload. No Droplet was created.',
+    installerUrl: config.installerUrl,
+    suiteManagerUrl: plan.config.publicUrls.suiteManager,
+  }, null, 2)}\n`);
+}
+
+async function main(argv = process.argv.slice(2)) {
+  const command = argv[0];
+
+  if (!command || command === '--help' || command === '-h') {
+    usage();
+    return;
+  }
+
+  if (command === 'render') {
+    render();
     return;
   }
 
@@ -617,10 +481,21 @@ async function main() {
     return;
   }
 
-  usage();
-  process.exit(command ? 1 : 0);
+  throw new Error(`Unknown command: ${command}.`);
 }
 
-main().catch((error) => {
-  fail(error.message);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(`[mos-smoke:do] ERROR: ${error.message}`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  DEFAULT_READY_TIMEOUT_MS,
+  bootstrapPlanFor,
+  main,
+  smokeConfigFromEnv,
+  renderPublicInstallerCloudInit,
+  ownerClaimUrl,
+};

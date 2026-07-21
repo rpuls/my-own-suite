@@ -1,0 +1,122 @@
+---
+// One docs page per app package, generated at build time from
+// apps/<app>/manifest.json and apps/<app>/README.md (via
+// src/lib/app-catalog.ts). The manifest provides the end-user half of
+// the page; the package README renders verbatim as the technical
+// reference, so there is no docs copy to keep in sync.
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import PrivacyPosture from '../../../components/PrivacyPosture.astro'
+import { catalogApps, appReadmes, LINK_LABELS } from '../../../lib/app-catalog'
+
+export function getStaticPaths() {
+  return catalogApps.map((app) => ({ params: { app: app.id } }))
+}
+
+const app = catalogApps.find((entry) => entry.id === Astro.params.app)
+if (!app) {
+  throw new Error(`Unknown app package: ${Astro.params.app}`)
+}
+const Readme = appReadmes[app.id]?.Content ?? null
+const linkEntries = Object.entries(app.links).map(([key, href]) => ({
+  label: LINK_LABELS[key] ?? key,
+  href: String(href)
+}))
+
+const headings = [
+  ...(app.features.length ? [{ depth: 2, slug: 'what-you-can-do', text: 'What you can do' }] : []),
+  { depth: 2, slug: 'good-to-know', text: 'Good to know' },
+  ...(Readme ? [{ depth: 2, slug: 'technical-reference', text: 'Technical reference' }] : []),
+  ...(linkEntries.length ? [{ depth: 2, slug: 'links', text: 'Links' }] : [])
+]
+---
+
+<StarlightPage frontmatter={{ title: app.name, description: app.summary }} headings={headings}>
+  <div class="app-doc-head">
+    <span class="app-doc-head-ico">
+      <img src={app.icon} alt="" />
+    </span>
+    <div class="app-doc-head-meta">
+      {app.replaces && <p class="app-doc-replaces">Replaces {app.replaces}</p>}
+      <p class="app-doc-badges">
+        <span class="app-doc-badge">{app.category}</span>
+        {app.setup && <span class="app-doc-badge">{app.setup}</span>}
+        {app.resources && <span class="app-doc-badge">{app.resources}</span>}
+      </p>
+    </div>
+  </div>
+
+  <p>{app.description}</p>
+
+  <p>
+    Install it from <a href="/docs/guides/apps/">Suite Manager → Apps</a> — once running it lives at
+    <code>{app.id}.&lt;your-domain&gt;</code> and on your Home dashboard.
+  </p>
+
+  {app.features.length > 0 && (
+    <>
+      <h2 id="what-you-can-do">What you can do</h2>
+      <ul>
+        {app.features.map((feature) => (
+          <li>
+            <strong>{feature.title}</strong>
+            {feature.body && <> — {feature.body}</>}
+          </li>
+        ))}
+      </ul>
+    </>
+  )}
+
+  <h2 id="good-to-know">Good to know</h2>
+  <PrivacyPosture advisories={app.advisories} appName={app.name} assessmentUrl="/docs/privacy/how-we-assess/" packageVersion={app.version} privacy={app.privacyReview} />
+  <ul>
+    {app.setup && (
+      <li>
+        <strong>Setup:</strong> {app.setup}
+        {app.setupDetail && <> — {app.setupDetail}</>}
+      </li>
+    )}
+    {app.resources && (
+      <li>
+        <strong>Resource needs:</strong> {app.resources}
+        {app.resourcesDetail && <> — {app.resourcesDetail}</>}
+      </li>
+    )}
+    {(app.privacy || app.privacyNotes.length > 0) && (
+      <li>
+        <strong>Package-provided privacy notes (not independently verified by MOS):</strong>
+        {app.privacy && <> {app.privacy}</>}
+        {app.privacyNotes.length > 0 && (
+          <ul>
+            {app.privacyNotes.map((note) => <li>{note}</li>)}
+          </ul>
+        )}
+      </li>
+    )}
+  </ul>
+
+  {Readme && (
+    <>
+      <h2 id="technical-reference">Technical reference</h2>
+      <p class="app-doc-refnote">
+        Maintained alongside the package at <code>apps/{app.id}/README.md</code> and rendered here
+        as-is.
+      </p>
+      <div class="tech-specs">
+        <Readme />
+      </div>
+    </>
+  )}
+
+  {linkEntries.length > 0 && (
+    <>
+      <h2 id="links">Links</h2>
+      <ul>
+        {linkEntries.map((link) => (
+          <li>
+            <a href={link.href} rel="noopener">{link.label}</a>
+          </li>
+        ))}
+      </ul>
+    </>
+  )}
+</StarlightPage>

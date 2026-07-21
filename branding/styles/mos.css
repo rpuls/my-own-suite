@@ -1,3 +1,12 @@
+/* ============================================================
+   My Own Suite — canonical brand stylesheet.
+   Single source of truth for shared MOS branding. Synced into
+   app-local copies by scripts/sync-branding.cjs (npm run
+   branding:sync); never edit the synced copies directly.
+   Token set and utilities match the "My Own Suite Design
+   System" project on claude.ai/design.
+   ============================================================ */
+
 @font-face {
   font-family: 'Open Sans';
   font-style: normal;
@@ -31,37 +40,81 @@
 }
 
 :root {
+  /* -- Canvas -------------------------------------------------- */
   --mos-color-bg: #061526;
   --mos-color-bg-soft: #0b2138;
-  --mos-color-surface: rgba(255, 255, 255, 0.06);
-  --mos-color-surface-strong: rgba(255, 255, 255, 0.1);
+
+  /* -- Translucent surfaces (white over navy) ------------------ */
+  --mos-color-surface: rgba(255, 255, 255, 0.08);
+  --mos-color-surface-muted: rgba(255, 255, 255, 0.04);
+  --mos-color-surface-strong: rgba(255, 255, 255, 0.12);
   --mos-color-surface-elevated: rgba(10, 31, 53, 0.86);
+
+  /* -- Frosted glass (signature overlay language) -------------- */
+  --mos-color-frost: rgba(10, 31, 53, 0.58);
+  --mos-color-frost-strong: rgba(10, 31, 53, 0.72);
+  --mos-color-overlay: rgba(2, 10, 18, 0.58);
+  --mos-color-backdrop: rgba(0, 0, 0, 0.54);
+
+  /* -- Borders / hairlines -------------------------------------- */
   --mos-color-surface-border: rgba(255, 255, 255, 0.18);
-  --mos-color-hairline: rgba(255, 255, 255, 0.08);
+  --mos-color-hairline: var(--mos-color-surface-muted);
+
+  /* -- Text ------------------------------------------------------ */
   --mos-color-text: #eef4ff;
   --mos-color-text-strong: #f4fbff;
   --mos-color-text-muted: #b8c9de;
+
+  /* -- Accent (mint -> teal) ------------------------------------ */
   --mos-color-accent: #63e2b3;
   --mos-color-accent-strong: #28bc84;
   --mos-color-accent-soft: rgba(99, 226, 179, 0.12);
+  --mos-color-accent-border: rgba(99, 226, 179, 0.32);
+  --mos-color-accent-focus: rgba(99, 226, 179, 0.18);
+
+  /* -- Brand mark ink (deep teal used in the logo) --------------- */
+  --mos-color-mark: #0d6e6e;
+
+  /* -- Status ----------------------------------------------------- */
   --mos-color-danger: #ff9d9d;
+  --mos-color-danger-soft: rgba(255, 157, 157, 0.1);
+  --mos-color-danger-border: rgba(255, 157, 157, 0.42);
+  --mos-color-warning: #ffcd78;
+  --mos-color-warning-soft: rgba(255, 205, 120, 0.1);
+  --mos-color-warning-border: rgba(255, 205, 120, 0.42);
+  --mos-color-info: #7dc4ff;
+  --mos-color-info-soft: rgba(125, 196, 255, 0.1);
+  --mos-color-info-border: rgba(125, 196, 255, 0.42);
+  --mos-color-info-surface: rgba(125, 196, 255, 0.08);
+  --mos-color-success: #63e2b3;
+  --mos-color-success-soft: rgba(99, 226, 179, 0.12);
+  --mos-color-success-border: rgba(99, 226, 179, 0.42);
+
+  /* -- Button text / links / focus -------------------------------- */
+  --mos-color-button-primary-text: #062016;
+  --mos-color-link-hover: #9ff0cf;
+  --mos-color-focus-visible: #ffffff;
+  --mos-color-focus: var(--mos-color-accent);
+  --mos-color-focus-ring: var(--mos-color-accent-focus);
+
+  /* -- Depth / frost filters --------------------------------------- */
   --mos-shadow-soft: 0 18px 48px rgba(0, 0, 0, 0.24);
   --mos-shadow-strong: 0 28px 70px rgba(0, 0, 0, 0.28);
+  --mos-frost-filter: blur(18px) saturate(125%);
+  --mos-frost-filter-strong: blur(28px) saturate(135%);
+  --mos-frost-filter-backdrop: blur(10px) saturate(110%);
 
-  --mos-space-1: 0.25rem;
-  --mos-space-2: 0.5rem;
-  --mos-space-3: 0.75rem;
-  --mos-space-4: 1rem;
-  --mos-space-5: 1.25rem;
-  --mos-space-6: 1.5rem;
-  --mos-space-7: 2rem;
-  --mos-space-8: 3rem;
-
-  --mos-radius-sm: 0.75rem;
-  --mos-radius-md: 1rem;
-  --mos-radius-lg: 1.25rem;
-  --mos-radius-xl: 1.5rem;
-  --mos-radius-pill: 999px;
+  /* -- Typography --------------------------------------------------- */
+  --mos-font-sans:
+    'Open Sans', 'Segoe UI', system-ui, -apple-system,
+    BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --mos-font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Consolas,
+    'Liberation Mono', Menlo, monospace;
+  --mos-weight-regular: 400;
+  --mos-weight-semibold: 600;
+  --mos-weight-bold: 700;
+  --mos-weight-black: 800;
 
   --mos-text-display: clamp(3rem, 6vw, 5.4rem);
   --mos-text-page-title: clamp(2.4rem, 7vw, 4.4rem);
@@ -79,9 +132,35 @@
   --mos-letter-spacing-label: 0.06em;
   --mos-letter-spacing-eyebrow: 0.08em;
 
-  --mos-border-hairline: 1px solid var(--mos-color-hairline);
-  --mos-border-strong: 1px solid var(--mos-color-surface-border);
+  /* -- Spacing -------------------------------------------------------- */
+  --mos-space-1: 0.25rem;
+  --mos-space-2: 0.5rem;
+  --mos-space-3: 0.75rem;
+  --mos-space-4: 1rem;
+  --mos-space-5: 1.25rem;
+  --mos-space-6: 1.5rem;
+  --mos-space-7: 2rem;
+  --mos-space-8: 3rem;
 
+  /* Centered content column used across product + docs */
+  --mos-shell-width: min(1100px, calc(100vw - 2rem));
+
+  /* -- Shape ------------------------------------------------------------ */
+  --mos-radius-sm: 0.75rem;
+  --mos-radius-md: 1rem;
+  --mos-radius-lg: 1.25rem;
+  --mos-radius-xl: 1.5rem;
+  --mos-radius-pill: 999px;
+
+  --mos-border-hairline: 1px solid var(--mos-color-hairline);
+  --mos-border-subtle: 1px solid var(--mos-color-hairline);
+  --mos-border-strong: 1px solid var(--mos-color-surface-border);
+  --mos-focus-ring: 3px solid var(--mos-color-accent-focus);
+
+  /* -- Motion ------------------------------------------------------------ */
+  --mos-transition: 180ms ease;
+
+  /* -- Semantic aliases (short names used across product) ---------------- */
   --bg: var(--mos-color-bg);
   --bg-soft: var(--mos-color-bg-soft);
   --surface: var(--mos-color-surface);
@@ -93,6 +172,59 @@
   --accent-strong: var(--mos-color-accent-strong);
   --danger: var(--mos-color-danger);
   --shadow-soft: var(--mos-shadow-soft);
+}
+
+/* ============================================================
+   Light theme variant (docs). Opt in by setting
+   data-theme="light" on <html> or any container. Only tokens
+   that change are redeclared — the rest inherit.
+   ============================================================ */
+[data-theme='light'] {
+  --mos-color-bg: #f4f8fd;
+  --mos-color-bg-soft: #e8f0f9;
+
+  --mos-color-surface: rgba(9, 30, 54, 0.04);
+  --mos-color-surface-muted: rgba(9, 30, 54, 0.025);
+  --mos-color-surface-strong: rgba(9, 30, 54, 0.07);
+  --mos-color-surface-elevated: #ffffff;
+
+  --mos-color-frost: rgba(255, 255, 255, 0.7);
+  --mos-color-frost-strong: rgba(255, 255, 255, 0.85);
+  --mos-color-overlay: rgba(9, 30, 54, 0.28);
+  --mos-color-backdrop: rgba(9, 30, 54, 0.32);
+
+  --mos-color-surface-border: rgba(9, 30, 54, 0.14);
+  --mos-color-hairline: rgba(9, 30, 54, 0.09);
+
+  --mos-color-text: #0d2135;
+  --mos-color-text-strong: #061526;
+  --mos-color-text-muted: #4a6076;
+
+  /* Accent: teal reads better than mint on light */
+  --mos-color-accent: #1c9e6d;
+  --mos-color-accent-strong: #12855a;
+  --mos-color-accent-soft: rgba(40, 188, 132, 0.12);
+  --mos-color-accent-border: rgba(40, 188, 132, 0.34);
+  --mos-color-accent-focus: rgba(40, 188, 132, 0.24);
+  --mos-color-link-hover: #12855a;
+
+  --mos-color-danger: #c53f3f;
+  --mos-color-danger-soft: rgba(197, 63, 63, 0.1);
+  --mos-color-danger-border: rgba(197, 63, 63, 0.4);
+  --mos-color-warning: #a4650d;
+  --mos-color-warning-soft: rgba(164, 101, 13, 0.1);
+  --mos-color-warning-border: rgba(164, 101, 13, 0.4);
+  --mos-color-info: #2b6fb0;
+  --mos-color-info-soft: rgba(43, 111, 176, 0.1);
+  --mos-color-info-border: rgba(43, 111, 176, 0.4);
+  --mos-color-info-surface: rgba(43, 111, 176, 0.07);
+  --mos-color-success: #12855a;
+  --mos-color-success-soft: rgba(40, 188, 132, 0.12);
+  --mos-color-success-border: rgba(40, 188, 132, 0.4);
+
+  --mos-color-focus-visible: #061526;
+  --mos-shadow-soft: 0 12px 32px rgba(13, 33, 53, 0.1);
+  --mos-shadow-strong: 0 20px 48px rgba(13, 33, 53, 0.14);
 }
 
 * {
@@ -112,25 +244,31 @@ body {
 }
 
 body {
-  font-family:
-    'Open Sans',
-    'Segoe UI',
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Helvetica Neue',
-    sans-serif;
+  font-family: var(--mos-font-sans);
   color: var(--mos-color-text);
   background:
-    radial-gradient(circle at 18% 12%, rgba(99, 226, 179, 0.2), transparent 38%),
-    radial-gradient(circle at 85% 0%, rgba(86, 188, 246, 0.16), transparent 34%),
+    radial-gradient(circle at 18% 12%, var(--mos-color-accent-soft), transparent 38%),
+    radial-gradient(circle at 85% 0%, var(--mos-color-info-soft), transparent 34%),
     linear-gradient(155deg, var(--mos-color-bg), var(--mos-color-bg-soft));
   line-height: var(--mos-line-height-body);
   min-height: 100vh;
 }
 
+/* Light theme: calmer wash, no dark glows */
+[data-theme='light'] body,
+body[data-theme='light'] {
+  background:
+    radial-gradient(circle at 16% 10%, var(--mos-color-accent-soft), transparent 40%),
+    linear-gradient(160deg, var(--mos-color-bg), var(--mos-color-bg-soft));
+}
+
 a {
-  color: inherit;
+  color: var(--mos-color-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--mos-color-link-hover);
 }
 
 button,
@@ -141,7 +279,7 @@ select {
 }
 
 .mos-shell {
-  width: min(1100px, calc(100vw - 2rem));
+  width: var(--mos-shell-width);
   margin: 0 auto;
 }
 
@@ -158,17 +296,29 @@ select {
   letter-spacing: var(--mos-letter-spacing-title);
 }
 
+.mos-display {
+  margin: 0;
+  color: var(--mos-color-text-strong);
+  font-size: var(--mos-text-display);
+  font-weight: var(--mos-weight-black);
+  line-height: var(--mos-line-height-tight);
+  letter-spacing: var(--mos-letter-spacing-title);
+}
+
 .mos-page-title {
   font-size: var(--mos-text-page-title);
+  font-weight: var(--mos-weight-black);
 }
 
 .mos-section-title {
   font-size: var(--mos-text-section-title);
+  font-weight: var(--mos-weight-bold);
 }
 
 .mos-card-title {
   font-size: var(--mos-text-card-title);
   line-height: 1.25;
+  font-weight: var(--mos-weight-bold);
 }
 
 .mos-body-lg,
@@ -200,29 +350,29 @@ select {
   border-radius: var(--mos-radius-sm);
   padding: 0.6rem 1rem;
   text-decoration: none;
-  font-weight: 700;
+  font-weight: var(--mos-weight-bold);
   border: 1px solid transparent;
   cursor: pointer;
   transition:
-    background 180ms ease,
-    border-color 180ms ease,
-    transform 180ms ease,
-    color 180ms ease,
-    box-shadow 180ms ease;
+    background var(--mos-transition),
+    border-color var(--mos-transition),
+    transform var(--mos-transition),
+    color var(--mos-transition),
+    box-shadow var(--mos-transition);
 }
 
 .mos-btn:focus-visible,
 a:focus-visible,
 button:focus-visible,
 summary:focus-visible {
-  outline: 3px solid #ffffff;
+  outline: 3px solid var(--mos-color-focus-visible);
   outline-offset: 2px;
 }
 
 .mos-btn-primary {
   background: linear-gradient(160deg, var(--mos-color-accent), var(--mos-color-accent-strong));
-  color: #062016;
-  box-shadow: 0 12px 28px rgba(20, 105, 76, 0.26);
+  color: var(--mos-color-button-primary-text);
+  box-shadow: var(--mos-shadow-soft);
 }
 
 .mos-btn-secondary {
@@ -231,25 +381,41 @@ summary:focus-visible {
   background: var(--mos-color-surface);
 }
 
+.mos-btn-ghost {
+  color: var(--mos-color-text);
+  background: transparent;
+  border-color: transparent;
+}
+
 .mos-btn:hover {
   transform: translateY(-1px);
 }
 
-.mos-btn-secondary:hover {
-  border-color: rgba(99, 226, 179, 0.32);
-  background: rgba(255, 255, 255, 0.1);
+.mos-btn-secondary:hover,
+.mos-btn-ghost:hover {
+  border-color: var(--mos-color-accent-border);
+  background: var(--mos-color-surface-strong);
+}
+
+.mos-btn:disabled,
+.mos-btn[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.55;
+  pointer-events: none;
+  transform: none;
 }
 
 .mos-panel {
   border: var(--mos-border-strong);
   border-radius: var(--mos-radius-md);
   background: var(--mos-color-surface);
-  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: var(--mos-frost-filter);
+  backdrop-filter: var(--mos-frost-filter);
   box-shadow: var(--mos-shadow-soft);
 }
 
 .mos-panel-subtle {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--mos-color-surface-muted);
   box-shadow: none;
 }
 
@@ -258,19 +424,56 @@ summary:focus-visible {
   box-shadow: var(--mos-shadow-strong);
 }
 
+.mos-frost {
+  background: var(--mos-color-frost);
+  -webkit-backdrop-filter: var(--mos-frost-filter);
+  backdrop-filter: var(--mos-frost-filter);
+}
+
+.mos-frost-strong {
+  background: var(--mos-color-frost-strong);
+  -webkit-backdrop-filter: var(--mos-frost-filter-strong);
+  backdrop-filter: var(--mos-frost-filter-strong);
+}
+
+.mos-frost-backdrop {
+  background: var(--mos-color-backdrop);
+  /* No backdrop-filter here. Blur is applied only on the actual overlay content, not the full scrim */
+}
+
+/* Floating overlay chrome: menus, popovers, dropdowns, tooltips.
+   THE FROST RULE — backdrop-filter blurs only what lies behind the element's
+   backdrop root. Any ancestor with backdrop-filter, filter, or opacity
+   (which includes every .mos-panel) becomes that root, so a frosted element
+   nested inside a panel silently loses its blur and renders as translucent
+   text-on-text. Overlays must therefore live in a top-level layer:
+   position fixed, rendered via a portal to <body> — exactly like the shared
+   Dialog and Drawer. Use this class for the surface and add layout
+   (padding, grid, width) in the consuming stylesheet. */
+.mos-overlay {
+  position: fixed;
+  z-index: 70;
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-frost-strong);
+  -webkit-backdrop-filter: var(--mos-frost-filter-strong);
+  backdrop-filter: var(--mos-frost-filter-strong);
+  box-shadow: var(--mos-shadow-strong);
+}
+
 .mos-badge,
 .mos-pill,
 .mos-label {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--mos-space-2);
   border-radius: var(--mos-radius-pill);
   padding: 0.25rem 0.7rem;
   border: var(--mos-border-strong);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--mos-color-surface);
   color: var(--mos-color-text-muted);
   font-size: var(--mos-text-label);
-  font-weight: 700;
+  font-weight: var(--mos-weight-bold);
   text-transform: uppercase;
   letter-spacing: var(--mos-letter-spacing-label);
 }
@@ -283,7 +486,7 @@ summary:focus-visible {
 }
 
 .mos-pill-accent {
-  border-color: rgba(99, 226, 179, 0.24);
+  border-color: var(--mos-color-accent-border);
   background: var(--mos-color-accent-soft);
   color: var(--mos-color-accent);
 }
@@ -292,7 +495,7 @@ summary:focus-visible {
   display: inline-block;
   color: var(--mos-color-accent);
   font-size: var(--mos-text-eyebrow);
-  font-weight: 800;
+  font-weight: var(--mos-weight-black);
   letter-spacing: var(--mos-letter-spacing-eyebrow);
   text-transform: uppercase;
 }
@@ -305,9 +508,9 @@ summary:focus-visible {
   width: fit-content;
   color: var(--mos-color-accent);
   text-decoration: none;
-  font-weight: 700;
+  font-weight: var(--mos-weight-bold);
 }
 
 .mos-link:hover {
-  color: #9ff0cf;
+  color: var(--mos-color-link-hover);
 }

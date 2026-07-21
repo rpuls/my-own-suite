@@ -1,0 +1,42 @@
+---
+title: Your first sign-in
+description: Create your My Own Suite owner account, find your way around the Home dashboard and Suite Manager, and take your first steps.
+---
+
+import { Steps } from '@astrojs/starlight/components'
+
+However you installed, every fresh My Own Suite ends at the same screen: **Create your MOS owner account**.
+
+## Create your owner account
+
+<Steps>
+
+1. Open your suite's address in a browser — the install guide you followed told you what it is (for example `http://home.mos.home/` at home, or `http://home.<ip>.sslip.io/` in the cloud).
+
+2. Fill in your **name**, **email**, and a **password of at least 12 characters**. This happens entirely on your own machine — nothing is sent to us or anyone else.
+
+3. Click **Create owner**. You're signed in and looking at your Home dashboard.
+
+</Steps>
+
+:::caution[Two things worth knowing]
+- **Do this promptly after installing.** Until an owner exists, anyone who can reach the address could claim the fresh install.
+- **Keep the password safe** — ideally in a password manager. It is the one key to your suite.
+:::
+
+There is exactly one account: yours, the owner. Housemates and family use the apps you install (most have their own accounts and sign-ins); the owner account is for running the suite itself.
+
+## Finding your way around
+
+Your suite has two faces, sharing one sign-in:
+
+- **The Home dashboard** (at `home.<your-domain>/`) is the daily front door — a tidy page of tiles for every app you install, plus any links you add. This is the page to bookmark and share with the household.
+- **Suite Manager** (at `home.<your-domain>/suite-manager/`, or via the menu) is the control room — installing apps, backups, updates, settings. You'll visit it when you're *changing* something, not when you're *using* the suite.
+
+More in [Suite Manager, your control room](/docs/guides/suite-manager/).
+
+## Good first steps
+
+1. **Install your first app.** [Stirling PDF](/docs/apps/stirling-pdf/) is a great warm-up — a private PDF toolbox with a one-click install and nothing to configure. Or start with what you actually came for: [browse the catalog](/docs/apps/).
+2. **Set up backups early.** On own hardware, connect an encrypted external drive. On a cloud server, attach and mount a separate encrypted block-storage volume. Then run your first whole-suite backup. See [Back up and restore](/docs/guides/backup-restore/).
+3. **Own hardware?** When you're settled, give your suite a real domain and HTTPS with the [Cloudflare setup guide](/docs/guides/https-domain/).

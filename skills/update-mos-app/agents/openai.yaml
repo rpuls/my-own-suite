@@ -1,0 +1,4 @@
+interface:
+  display_name: "Update MOS App"
+  short_description: "Update MOS apps and assess compatibility"
+  default_prompt: "Use $update-mos-app to update a packaged app, review breaking changes, and refresh its privacy assessment."

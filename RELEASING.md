@@ -34,9 +34,9 @@ This project uses **Semantic Versioning**: `MAJOR.MINOR.PATCH`.
 
 Treat these as stable API unless intentionally released as a major version:
 
-- Dockerfile paths used by deploy templates.
-- Docker Compose profile names and service names.
-- Env var names in `deploy/vps/.env.template` and `deploy/vps/services/*/.env.template`.
+- Dockerfile paths used by deploy templates (`apps/<app>/Dockerfile`, `apps/<app>/Dockerfile.<service>`).
+- App package service names and generated runtime projections.
+- Package manifest setup fields and env var contracts.
 - Persistent volume semantics/locations.
 - App URL patterns/subdomain expectations.
 
@@ -55,9 +55,10 @@ Each release includes:
 - An updated `CHANGELOG.md`
 - An updated root `VERSION` file containing `X.Y.Z`
 - An updated root `releases/stable.json` manifest containing the stable channel metadata
-- An updated `apps/suite-manager/release.json` file so containerized Suite Manager installs can still report their installed suite version without access to the repo root
 
 These files must agree with each other and with the release tag.
+
+The MOS1 layout also shipped an `apps/suite-manager/release.json` so packaged installs could report their version without the repo root. The MOS root layout has no equivalent yet; add one back (and extend `scripts/release-check.cjs`) when MOS stable release-track managed updates land.
 
 ## Safety Guardrails (Recommended)
 
@@ -95,13 +96,12 @@ Version bump guidance:
 4. Update release metadata files so they all match the intended version:
    - `VERSION`
    - `releases/stable.json`
-   - `apps/suite-manager/release.json`
 5. Validate locally (at minimum):
    - `npm run release:check`
-   - docs build
-   - compose config validation
-   - shell script lint parity with CI expectations
-   - `apps/suite-manager` build so the bundled release metadata is present in the control-plane image
+   - `npm test`
+   - `npm run typecheck`
+   - `npm run build:client`
+   - `npm run build` (public site)
 6. Merge release branch into `main`.
 7. Merge or fast-forward `main` back into `staging` if needed to keep branches aligned after release-only edits.
 8. Create and push tag:
@@ -119,7 +119,6 @@ When editing the versioned metadata files:
 
 - `VERSION` should contain only `X.Y.Z`
 - `releases/stable.json` should describe the newest stable release users should compare against
-- `apps/suite-manager/release.json` should mirror the same suite release version so packaged Suite Manager installs can report the installed version even when the repo root is not present inside the container
 
 Recommended release prep order:
 
@@ -127,9 +126,8 @@ Recommended release prep order:
 2. Update `CHANGELOG.md` for that release.
 3. Update `VERSION`.
 4. Update `releases/stable.json`.
-5. Update `apps/suite-manager/release.json`.
-6. Build and sanity-check Suite Manager so the bundled metadata path is exercised before tagging.
-7. Run `npm run release:check` from the repo root and fix any metadata drift before tagging.
+5. Build and sanity-check Suite Manager (`npm run build:client`) before tagging.
+6. Run `npm run release:check` from the repo root and fix any metadata drift before tagging.
 
 ## Hotfix Workflow
 
@@ -148,7 +146,6 @@ Use for urgent production-impacting issues.
 - [ ] Changelog updated
 - [ ] `VERSION` updated
 - [ ] `releases/stable.json` updated
-- [ ] `apps/suite-manager/release.json` updated
 - [ ] `npm run release:check` passed
 - [ ] CI passing on release branch
 - [ ] Upgrade notes written
