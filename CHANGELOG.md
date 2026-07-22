@@ -14,6 +14,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
+- Owner setup now asks you to confirm your password before creating the account, so a typo can't silently lock you out, and its opening copy is plain language ("My Own Suite" instead of unexplained "MOS"/roadmap wording).
+- The app privacy posture shield now shows a plain A-to-D grade (A best, D worst) instead of a bare 0–10 number, in both Suite Manager and on the public app pages. The underlying five-dimension assessment is unchanged; the shield, dialog, update-preview change row, and docs all present it as a letter grade.
 - Site beta/version badges (hero, footer, prototype notice) now read the actual version from the root `VERSION` file at build time instead of a hardcoded `0.x` placeholder.
 - Fixed app catalog refresh failing with "Official catalog requests must not redirect" once a catalog had been cached. The refresh sends a conditional request and GitHub answers `304 Not Modified` when the catalog is unchanged, but the redirect guard rejected every `3xx` status — including 304 — so the refresh broke on the first unchanged check. The guard now treats a `3xx` as a redirect only when it carries a `Location`, so 304 reaches its existing "unchanged" handler while actual redirects stay refused.
 - The Apps screen no longer has a manual "Refresh catalog" button, and no longer shows banners when the optional catalog/advisory refresh is stale or unreachable. The signed catalog ships in the release, so the network refresh is a convenience only; it loads on page mount, nudges one background refresh, and re-reads the verified cache once a minute. A stale or failed refresh is now logged to the browser console instead of interrupting the page.

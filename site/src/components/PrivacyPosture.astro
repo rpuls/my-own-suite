@@ -24,11 +24,11 @@ import {
   advisoryMarkerLabel,
   badgeTextFor,
   dimensionRowsFor,
+  gradeScaleLabel,
   isRated,
   postureFor,
   provenanceLine,
   provenanceMethodLabel,
-  scoreScaleLabel,
   sortedAdvisories,
   tileMetaLine,
   type PrivacyAdvisory,
@@ -49,7 +49,7 @@ const badge = badgeTextFor(privacy)
 const rows = dimensionRowsFor(privacy)
 const method = provenanceMethodLabel(privacy)
 const provenance = [provenanceLine(privacy, isRated(privacy) ? packageVersion : null), method].filter(Boolean).join(' · ')
-const scoreScale = scoreScaleLabel(privacy)
+const gradeScale = gradeScaleLabel(privacy)
 const sortedAdvisoryList = sortedAdvisories(advisories)
 const advisoryMarker = advisoryMarkerLabel(advisories)
 const topSeverity = sortedAdvisoryList[0]?.severity
@@ -57,7 +57,7 @@ const topSeverity = sortedAdvisoryList[0]?.severity
 
 <div class="privacy-posture" data-privacy-posture>
   <button class="suite-privacy-tile" data-open type="button">
-    <span class="suite-privacy-tile-label">Posture score</span>
+    <span class="suite-privacy-tile-label">Posture grade</span>
     <span class="suite-privacy-tile-posture">
       <span class={`suite-privacy-shield is-tile${badge.length > 1 ? ' is-wide' : ''}`} aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d={SHIELD_PATH} fill={posture.soft} stroke={posture.color} stroke-linejoin="round" stroke-width="1.6"></path></svg>
@@ -84,7 +84,7 @@ const topSeverity = sortedAdvisoryList[0]?.severity
           <div>
             <h2>{appName}</h2>
             <span class="suite-privacy-pill" style={`background: ${posture.soft}; border-color: ${posture.border}`}>{posture.label}</span>
-            {scoreScale ? <span class="suite-privacy-score-scale">{scoreScale}</span> : null}
+            {gradeScale ? <span class="suite-privacy-score-scale">{gradeScale}</span> : null}
           </div>
         </div>
         <button aria-label={`Close ${appName} privacy`} class="suite-icon-button" data-close type="button">

@@ -4,10 +4,11 @@ const owner = { email: 'owner@example.com', name: 'MOS Owner', password: 'correc
 
 test('owner onboarding, Homepage customization, Settings validation, and logout use the real control plane', async ({ page }) => {
   await page.goto('/suite-manager/');
-  await expect(page.getByRole('heading', { name: /Create your MOS owner account/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Create your owner account/i })).toBeVisible();
   await page.getByLabel(/name/i).fill(owner.name);
   await page.getByLabel(/email/i).fill(owner.email);
   await page.getByLabel(/^Password/i).fill(owner.password);
+  await page.getByLabel(/Confirm password/i).fill(owner.password);
   await page.getByRole('button', { name: /Create owner/i }).click();
 
   await expect(page).toHaveURL(/\/$/u);

@@ -1,6 +1,6 @@
 ---
 title: How MOS assesses app privacy
-description: How the MOS privacy posture score and per-dimension verdicts are produced.
+description: How the MOS privacy posture grade and per-dimension verdicts are produced.
 ---
 
 MOS Privacy Posture is a bounded, evidence-backed assessment of one exact app
@@ -33,10 +33,11 @@ We score five dimensions:
 - **Data processing** - whether your data is processed off your machine.
 - **Policies** - which terms and policies apply beyond the software license.
 
-Each contributes 0-2 points to the **0-10 posture score** shown on the shield.
-A sixth dimension, **confidence**, records how well the evidence actually
-supports the other five. It carries no points, but it is not decoration: if we
-cannot state our confidence, the app is not rated.
+Each contributes 0-2 points. The five points add up to an overall **A-to-D
+privacy grade** shown on the shield: **A** (9-10), **B** (7-8), **C** (4-6),
+**D** (0-3), where A is best. A sixth dimension, **confidence**, records how
+well the evidence actually supports the other five. It carries no points, but
+it is not decoration: if we cannot state our confidence, the app is not rated.
 
 The overall label is derived from the dimension verdicts rather than chosen
 independently. Any dimension that is unknown or unclear - confidence
@@ -78,4 +79,4 @@ feed, it warns that the absence of an advisory should be treated as unknown.
 
 Manifest privacy notes are labeled as package-provided and not independently
 verified. Only the structured Privacy Posture assessment receives the MOS
-evidence-backed score.
+evidence-backed grade.

@@ -21,13 +21,13 @@ import {
   advisoryMarkerLabel,
   badgeTextFor,
   dimensionRowsFor,
+  gradeScaleLabel,
   isRated,
   postureFor,
   privacyChangeSentence,
   privacyChanged,
   provenanceLine,
   provenanceMethodLabel,
-  scoreScaleLabel,
   sortedAdvisories,
   tileMetaLine,
   type PrivacyAdvisory,
@@ -52,7 +52,7 @@ export function PrivacyFactsTile({ advisories, onOpen, privacy }: { advisories?:
   const marker = advisoryMarkerLabel(advisories);
   const topSeverity = sortedAdvisories(advisories)[0]?.severity;
   return <button className="suite-privacy-tile" onClick={onOpen} type="button">
-    <span className="suite-privacy-tile-label">Posture score</span>
+    <span className="suite-privacy-tile-label">Posture grade</span>
     <span className="suite-privacy-tile-posture">
       <PrivacyShieldBadge privacy={privacy} size="tile" />
       <strong>{posture.label}</strong>
@@ -98,7 +98,7 @@ export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSE
 }) {
   const posture = postureFor(privacy);
   const method = provenanceMethodLabel(privacy);
-  const scoreScale = scoreScaleLabel(privacy);
+  const gradeScale = gradeScaleLabel(privacy);
   return <Dialog
     className="suite-privacy-dialog"
     closeOnBackdrop
@@ -107,7 +107,7 @@ export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSE
       <div>
         <h2>{appName}</h2>
         <span className="suite-privacy-pill" style={{ background: posture.soft, borderColor: posture.border }}>{posture.label}</span>
-        {scoreScale ? <span className="suite-privacy-score-scale">{scoreScale}</span> : null}
+        {gradeScale ? <span className="suite-privacy-score-scale">{gradeScale}</span> : null}
       </div>
     </div>}
     onClose={onClose}

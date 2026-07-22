@@ -35,7 +35,7 @@ jobs:
         run: npm ci
 
       - name: Run unit tests
-        run: npm test
+        run: npm run test:unit
 
       - name: Check app catalog and advisory feed
         run: npm run apps:catalog:check

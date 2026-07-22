@@ -7,7 +7,7 @@ Everything you host lives in the **Apps** screen of Suite Manager: a curated cat
 
 ## Installing an app
 
-1. Open **Suite Manager → Apps** and browse or search the catalog. Each app's card shows what it replaces, how involved the setup is, and roughly how heavy it is on your machine; the detail view adds features, related apps, and its [privacy posture](/docs/privacy/how-we-assess/) — a score out of 10 where we've assessed the app, or an honest *Not yet rated by MOS* where we haven't.
+1. Open **Suite Manager → Apps** and browse or search the catalog. Each app's card shows what it replaces, how involved the setup is, and roughly how heavy it is on your machine; the detail view adds features, related apps, and its [privacy posture](/docs/privacy/how-we-assess/) — an A-to-D grade where we've assessed the app, or an honest *Not yet rated by MOS* where we haven't.
 2. Click through to **install**. Some apps need nothing from you at all. Others ask for one or two inputs — typically an admin email (pre-filled with your owner email) and a password. Secrets an app needs internally are generated for you and stored on the server, never shown or asked for.
 3. Wait for the install to finish. Under the hood, MOS builds the app from its pinned recipe, starts it, wires up its web address, and adds a tile to your Home dashboard.
 
