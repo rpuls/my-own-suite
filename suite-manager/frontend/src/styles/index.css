@@ -312,6 +312,30 @@
   color: var(--mos-color-text-muted);
 }
 
+.suite-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mos-space-3);
+}
+
+.suite-firstrun-card {
+  display: grid;
+  gap: var(--mos-space-2);
+  align-content: start;
+}
+
+.suite-firstrun-steps {
+  display: grid;
+  gap: var(--mos-space-3);
+  margin-top: var(--mos-space-2);
+}
+
+.suite-firstrun-step {
+  justify-content: flex-start;
+  gap: var(--mos-space-3);
+  text-align: left;
+}
+
 
 .suite-app-simple-header {
   display: grid;

@@ -2,6 +2,7 @@
 import { Image } from 'astro:assets'
 import heroCatalog from '../assets/screenshots/app-catalog.png'
 import { MOS_BETA_LABEL } from '../lib/version'
+import { GET_STARTED_PATH } from '../lib/links'
 ---
 
 <section class="hero">
@@ -11,7 +12,7 @@ import { MOS_BETA_LABEL } from '../lib/version'
       <h1 class="mos-display" style="font-size:clamp(2.4rem,5vw,4.2rem)">Your own private cloud, made simple.</h1>
       <p class="hero-lede mos-body-lg mos-meta">Like Google Drive, Photos, and Docs — but you're in control, not a corporation. No tracking, no ads, no terms changing on you.</p>
       <div class="hero-cta">
-        <a class="mos-btn mos-btn-primary" href="#install" style="min-height:3.2rem;padding:0.85rem 1.5rem;font-size:1.05rem">Get started</a>
+        <a class="mos-btn mos-btn-primary" href={GET_STARTED_PATH} style="min-height:3.2rem;padding:0.85rem 1.5rem;font-size:1.05rem">Get started</a>
         <a class="mos-btn mos-btn-secondary" href="#how" style="min-height:3.2rem;padding:0.85rem 1.5rem">See how it works</a>
       </div>
       <div class="beta-badge"><span class="mos-badge">{MOS_BETA_LABEL} · free &amp; open source</span></div>

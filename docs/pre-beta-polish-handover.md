@@ -52,30 +52,32 @@ self-inflicted deployment-friction contradiction in the install docs.
 
 ### Tier 1 — Fix before inviting testers (every tester hits these)
 
-- [ ] **1. Rewrite cloud install docs around the hosted one-liner.** Removes a git/Node.js wall and a
-  plain-HTTP downgrade. *(docs, Medium)*
-- [ ] **2. Owner setup: add confirm-password field.** Prevents a silent typo locking the owner out
-  of the only privileged account. *(frontend, Small)*
-- [ ] **3. Replace the placeholder Suite Manager dashboard with a real "install your first app" +
+- [x] **1. Rewrite cloud install docs around the hosted one-liner.** Removes a git/Node.js wall and a
+  plain-HTTP downgrade. *(docs, Medium)* — done. Note: the installer now provisions automatic HTTPS
+  for all public-cloud front doors, so the "plain HTTP" caveat was corrected rather than preserved.
+- [x] **2. Owner setup: add confirm-password field.** Prevents a silent typo locking the owner out
+  of the only privileged account. *(frontend, Small)* — done in the earlier owner-setup slice.
+- [x] **3. Replace the placeholder Suite Manager dashboard with a real "install your first app" +
   first-run checklist.** Kills a dead-end and the total absence of first-run guidance. *(frontend,
   Small–Medium)*
 
 ### Tier 2 — Strongly recommended before wider testing
 
-- [ ] **4. Fix the "only you hold the keys" cloud overclaim** on the landing page. *(site, Tiny)*
+- [x] **4. Fix the "only you hold the keys" cloud overclaim** on the landing page. *(site, Tiny)*
 - [ ] **5. De-jargon the Backups screen** (empty state + opening warning placement). *(frontend, Small)*
-- [ ] **6. De-jargon the app catalog search + "Posture score" label.** *(frontend, Small)*
-- [ ] **7. Reorder the landing page** so apps/tour precede install mechanics. *(site, Small)*
+- [x] **6. De-jargon the app catalog search + "Posture score" label.** *(frontend, Small)* — search
+  prompt de-jargoned (repo-paste kept as a subtle secondary hint); tile relabeled "Privacy rating".
+- [x] **7. Reorder the landing page** so apps/tour precede install mechanics. *(site, Small)*
 - [ ] **8. Demote the Customize YAML editor behind "Advanced";** make the guided "Add to Homepage"
   dialog the default surface. *(frontend, Medium)*
 
 ### Tier 3 — Polish (batch together)
 
-- [ ] **9. Reconcile the cost framing** ("$20–25/month" vs. "a couple of coffees"). *(site, Tiny)*
-- [ ] **10. Humanize the secure-transport failure message** in setup. *(frontend, Small)*
-- [ ] **11. Route the primary "Get started" CTA** to the guided flow rather than the raw command.
+- [x] **9. Reconcile the cost framing** ("$20–25/month" vs. "a couple of coffees"). *(site, Tiny)*
+- [x] **10. Humanize the secure-transport failure message** in setup. *(frontend, Small)*
+- [x] **11. Route the primary "Get started" CTA** to the guided flow rather than the raw command.
   *(site, Tiny)*
-- [ ] **12. Minor render nit** in the DigitalOcean guide (missing blank line). *(docs, Tiny)*
+- [x] **12. Minor render nit** in the DigitalOcean guide (missing blank line). *(docs, Tiny)*
 
 ### Later / bigger bets (out of scope for this batch — file as GitHub issues)
 

@@ -1,6 +1,6 @@
 ---
 import BrandMark from './BrandMark.astro'
-import { GITHUB_REPO_URL } from '../lib/links'
+import { GITHUB_REPO_URL, GET_STARTED_PATH } from '../lib/links'
 ---
 
 <header class="site-header">
@@ -18,7 +18,7 @@ import { GITHUB_REPO_URL } from '../lib/links'
       </nav>
       <div class="site-header-actions">
         <a class="mos-btn mos-btn-ghost" href={GITHUB_REPO_URL} style="min-height:2.4rem">GitHub</a>
-        <a class="mos-btn mos-btn-primary" href="#install" style="min-height:2.4rem">Get started</a>
+        <a class="mos-btn mos-btn-primary" href={GET_STARTED_PATH} style="min-height:2.4rem">Get started</a>
       </div>
     </div>
   </div>

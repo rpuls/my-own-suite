@@ -2,7 +2,7 @@
   "packages": {
     "immich": {
       "minimumMosVersion": "0.1.0",
-      "packageDigest": "sha256:99d8a4d688d08b741b311a43b2f4e5c0f40d44939181426ebe47612d0d22a805",
+      "packageDigest": "sha256:14a93dfe76b23a852a8141c1885e5c7fb30183aea53ef8d313232e2d37e1ab54",
       "packageVersion": "0.3.1",
       "path": "apps/immich",
       "privacy": {

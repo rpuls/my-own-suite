@@ -9,6 +9,7 @@
   "icon": "icon.png",
   "catalog": {
     "description": "Immich is a self-hosted photo and video management server with automatic backup from mobile devices, facial recognition, object detection, and album organization.",
+    "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/immich-1?referralCode=-Yg50p" }],
     "replaces": "Google Photos / iCloud Photos",
     "tags": [
       "photos",

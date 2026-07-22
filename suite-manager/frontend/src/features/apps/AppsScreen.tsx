@@ -1408,7 +1408,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     </div>
 
     <div className="suite-app-search">
-      <input aria-label="Search apps" onChange={(event) => setQuery(event.target.value)} placeholder="Search apps, or paste a GitHub repo URL..." value={query} />
+      <input aria-label="Search apps" onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or what you want to do..." value={query} />
     </div>
 
     {error ? <Notice title="Apps unavailable" variant="error"><p>{error}</p></Notice> : null}

@@ -66,10 +66,15 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
         <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'updates' ? <UpdatesScreen /> : route === 'backups' ? <BackupsScreen /> : route === 'customize' ? <CustomizeScreen /> : route === 'apps' ? <AppsScreen owner={owner} /> : (
         <section className="mos-shell suite-dashboard">
           <div className="suite-hero">
-            <h1>Suite Manager is ready</h1>
+            <h1>You're all set — install your first app</h1>
             <p className="suite-lead mos-body-lg">
-              Owner setup is complete. App installs, platform settings, and host-agent controls will grow from here.
+              Suite Manager is your control room: add apps, keep them updated, and back everything up. The best first move is installing an app — everything else grows from there.
             </p>
+            <div className="suite-hero-actions">
+              <button className="mos-btn mos-btn-primary" onClick={() => navigate('apps', '/suite-manager/apps')} type="button">
+                Install your first app
+              </button>
+            </div>
           </div>
 
           <div className="suite-dashboard-grid">
@@ -80,11 +85,20 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
               <span>{owner.email}</span>
             </section>
 
-            <section className="mos-panel suite-card suite-status-card">
-              <h2 className="mos-card-title">Platform state</h2>
-              <p className="suite-meta mos-meta">Current milestone</p>
-              <strong>Owner onboarding</strong>
-              <span>No optional apps are installed by this slice.</span>
+            <section className="mos-panel suite-card suite-firstrun-card">
+              <h2 className="mos-card-title">First steps</h2>
+              <p className="suite-meta mos-meta">Three things to get your suite going.</p>
+              <div className="suite-firstrun-steps">
+                <button className="mos-btn mos-btn-secondary suite-firstrun-step" onClick={() => navigate('apps', '/suite-manager/apps')} type="button">
+                  <Icon name="apps" /><span>1. Install an app</span>
+                </button>
+                <button className="mos-btn mos-btn-secondary suite-firstrun-step" onClick={() => navigate('customize', '/suite-manager/customize')} type="button">
+                  <Icon name="customize" /><span>2. Add it to your Homepage</span>
+                </button>
+                <button className="mos-btn mos-btn-secondary suite-firstrun-step" onClick={() => navigate('backups', '/suite-manager/backups')} type="button">
+                  <Icon name="backup" /><span>3. Make your first backup</span>
+                </button>
+              </div>
             </section>
           </div>
         </section>
