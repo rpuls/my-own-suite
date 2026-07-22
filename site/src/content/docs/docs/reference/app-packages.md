@@ -31,7 +31,7 @@ On install, MOS copies the validated package — manifest, setup schema, privacy
 `manifest.json` declares everything the platform needs to present, install, run, and connect the app:
 
 - **Identity** — `id`, `name`, `version` (the *MOS package* version, not the upstream one), `summary`, `category`, `icon`, plus `minimumMosVersion` and optional `architectures` (Immich declares `["amd64"]`, so MOS refuses it on a host that isn't named rather than failing mid-build).
-- **`catalog`** — presentation metadata: description, what the app `replaces`, feature list, setup-complexity and resource hints, privacy notes, tags, official links, related apps.
+- **`catalog`** — presentation metadata: description, what the app `replaces`, feature list, setup-complexity and resource hints, privacy notes, tags, official links, related apps, and optional demo-deployment targets used only by the public site.
 - **`setup`** — the install form, as data: typed fields (text/email/password) with labels, defaults, and required flags. Fields can be marked `generated` — MOS creates the secret itself and the user never sees a prompt.
 - **`resources`** — the runtime shape: one or more services, each with its Dockerfile, internal port, environment (with `${secret.*}` / `${config.*}` / `${app.*}` interpolation), volumes, and dependencies. Multi-service apps (Seafile ships its own MySQL and Valkey) keep dependency containers internal-only.
 - **`routes`** — the public hostname(s) Caddy should route, e.g. `seafile.<domain>`.

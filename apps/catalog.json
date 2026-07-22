@@ -11,7 +11,7 @@
     },
     "onlyoffice": {
       "minimumMosVersion": "0.1.0",
-      "packageDigest": "sha256:913249d992fa1fccabfa6c72a88119e660c0f231bb5cdd03e22e9f7c63e3295a",
+      "packageDigest": "sha256:ff3e38fc2da2b026d94368a1aaabffa9be6c847aa7cccc850d64d5ca7a89af0f",
       "packageVersion": "0.1.0",
       "path": "apps/onlyoffice",
       "privacy": {
@@ -29,7 +29,7 @@
     },
     "seafile": {
       "minimumMosVersion": "0.1.0",
-      "packageDigest": "sha256:2270b5b3cfeff1f0057f7d2ba78ae09b912907279766a99e26d2e62263d63c43",
+      "packageDigest": "sha256:034113b90efd19b3670b4db909631d72c778dd0ed728828aaacf6ff8051f06bb",
       "packageVersion": "0.1.0",
       "path": "apps/seafile",
       "privacy": {

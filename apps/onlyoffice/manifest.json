@@ -10,6 +10,7 @@
   "icon": "icon.png",
   "catalog": {
     "description": "ONLYOFFICE provides document, spreadsheet, and presentation editing that compatible MOS file apps can connect to for browser-based office workflows.",
+    "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/seafile-onlyoffice?referralCode=-Yg50p" }],
     "replaces": "Google Docs / Microsoft 365",
     "tags": [
       "documents",

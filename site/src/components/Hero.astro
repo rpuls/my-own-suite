@@ -1,6 +1,7 @@
 ---
 import { Image } from 'astro:assets'
 import heroCatalog from '../assets/screenshots/app-catalog.png'
+import { MOS_BETA_LABEL } from '../lib/version'
 ---
 
 <section class="hero">
@@ -13,7 +14,7 @@ import heroCatalog from '../assets/screenshots/app-catalog.png'
         <a class="mos-btn mos-btn-primary" href="#install" style="min-height:3.2rem;padding:0.85rem 1.5rem;font-size:1.05rem">Get started</a>
         <a class="mos-btn mos-btn-secondary" href="#how" style="min-height:3.2rem;padding:0.85rem 1.5rem">See how it works</a>
       </div>
-      <div class="beta-badge"><span class="mos-badge">Beta · 0.x · free &amp; open source</span></div>
+      <div class="beta-badge"><span class="mos-badge">{MOS_BETA_LABEL} · free &amp; open source</span></div>
     </div>
     <div class="hero-frame">
       <Image
