@@ -22,8 +22,8 @@
     },
     "radicale": {
       "minimumMosVersion": "0.1.0",
-      "packageDigest": "sha256:9114ec2cd0ec8a0b965ba5ee73f5f483132734b41bdfedce5b0d004665c15f19",
-      "packageVersion": "0.2.0",
+      "packageDigest": "sha256:03c0f6d291467d19a06abaf376d625c9444aa85868a791a407313e43b86550ec",
+      "packageVersion": "0.3.0",
       "path": "apps/radicale",
       "privacy": {
         "posture": "private-by-default",

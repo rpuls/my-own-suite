@@ -1,24 +1,24 @@
 {
   "schemaVersion": 1,
   "appId": "radicale",
-  "reviewedAt": "2026-07-23T00:00:00.000Z",
-  "expiresAt": "2027-01-23T00:00:00.000Z",
+  "reviewedAt": "2026-07-24T00:00:00.000Z",
+  "expiresAt": "2027-01-24T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.2.0",
-    "packageDigest": "sha256:9114ec2cd0ec8a0b965ba5ee73f5f483132734b41bdfedce5b0d004665c15f19",
+    "packageVersion": "0.3.0",
+    "packageDigest": "sha256:03c0f6d291467d19a06abaf376d625c9444aa85868a791a407313e43b86550ec",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
       "path": "apps/radicale",
-      "revision": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
+      "revision": "6ccdac93c108b7d93e06a16febf0577ec0cf95af",
       "trust": "mos-reviewed"
     },
     "components": [
       {
         "name": "Radicale",
-        "version": "3.7.1",
+        "version": "3.7.6",
         "artifact": "docker.io/tomsquest/docker-radicale",
-        "digest": "sha256:454e7def1324f6f05a3786854346a035b7ad84b47eee15bc155b2fbc17cafb9d"
+        "digest": "sha256:89fa44d02b134f0ac37cad809883327af8424499d913eec74f95085c458a93b7"
       }
     ],
     "clientsExcluded": [
@@ -48,17 +48,24 @@
     },
     {
       "type": "documented",
-      "claim": "Radicale 3.7.1 is a self-hosted CalDAV/CardDAV server that serves DAV over its own port and stores collections on the local filesystem; its documentation describes no telemetry, usage analytics, update check, or phone-home behaviour.",
-      "source": "Radicale project documentation (v3.7.1)",
+      "claim": "Radicale 3.7.6 is a self-hosted CalDAV/CardDAV server that serves DAV over its own port and stores collections on the local filesystem; its documentation contains no mention of telemetry, usage analytics, update checks, or phone-home behaviour.",
+      "source": "Radicale project documentation (v3)",
       "url": "https://radicale.org/v3.html",
-      "retrievedAt": "2026-07-23"
+      "retrievedAt": "2026-07-24"
+    },
+    {
+      "type": "observed",
+      "claim": "The pinned tomsquest/docker-radicale 3.7.6.0 build installs only radicale, passlib[bcrypt], argon2-cffi, pytz, and ldap3 into a local venv and adds a loopback curl healthcheck; it introduces no outbound analytics, licensing, or update service. Its Dockerfile, entrypoint, and env-config helper are byte-identical to the previously reviewed 3.7.1.0 build apart from the default version string.",
+      "source": "tomsquest/docker-radicale Dockerfile at tag 3.7.6.0",
+      "url": "https://github.com/tomsquest/docker-radicale/blob/3.7.6.0/Dockerfile",
+      "retrievedAt": "2026-07-24"
     },
     {
       "type": "documented",
-      "claim": "The packaged tomsquest/docker-radicale image wraps upstream Radicale with a local container healthcheck and optional local brute-force protection; it does not add an outbound analytics, licensing, or update service.",
-      "source": "tomsquest/docker-radicale image documentation",
-      "url": "https://github.com/tomsquest/docker-radicale",
-      "retrievedAt": "2026-07-23"
+      "claim": "Radicale supports optional IMAP, LDAP, OAuth2, and SMTP authentication backends that would contact an external server, and 3.7.6 adds an imap_append_domain option to the IMAP backend. None are reachable in this package: the entrypoint pins auth type to htpasswd against a local file, and no manifest field exposes an alternative backend.",
+      "source": "Radicale project documentation (v3) and apps/radicale/entrypoint.sh",
+      "url": "https://radicale.org/v3.html",
+      "retrievedAt": "2026-07-24"
     },
     {
       "type": "configured",
@@ -70,22 +77,22 @@
     {
       "type": "documented",
       "claim": "Radicale ships no telemetry, analytics, or update-check behaviour, so no telemetry-disabling configuration is required or applied by the package.",
-      "source": "Radicale project documentation (v3.7.1)",
+      "source": "Radicale project documentation (v3)",
       "url": "https://radicale.org/v3.html",
-      "retrievedAt": "2026-07-23"
+      "retrievedAt": "2026-07-24"
     }
   ],
   "policies": [
     {
       "kind": "license",
-      "url": "https://github.com/Kozea/Radicale/blob/v3.7.1/COPYING.md",
-      "retrievedAt": "2026-07-23",
+      "url": "https://github.com/Kozea/Radicale/blob/v3.7.6/COPYING.md",
+      "retrievedAt": "2026-07-24",
       "publisher": "Radicale project (Kozea)"
     },
     {
       "kind": "license",
       "url": "https://github.com/tomsquest/docker-radicale/blob/master/LICENSE",
-      "retrievedAt": "2026-07-23",
+      "retrievedAt": "2026-07-24",
       "publisher": "Thomas Queste (tomsquest)"
     }
   ],
@@ -96,11 +103,11 @@
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
     "skillRevision": "6a741118713a2db4fd0323334fe39cc0d8021197",
-    "repositoryCommit": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
+    "repositoryCommit": "6ccdac93c108b7d93e06a16febf0577ec0cf95af",
     "humanReviewed": false
   },
   "openQuestions": [
-    "No runtime network capture was performed against the pinned 3.7.1 image; conclusions rely on package configuration and upstream documentation rather than observed traffic.",
+    "No runtime network capture was performed against the pinned 3.7.6 image; conclusions rely on package configuration, the upstream image build definition, and upstream documentation rather than observed traffic.",
     "CalDAV/CardDAV client apps may copy synced calendar and contact data into device or vendor cloud backups depending on each client's settings, which is outside the server package's control.",
     "The package provisions a single bootstrap Radicale user; multi-user authentication, password rotation, and DAV auto-discovery are future package work not covered by this review."
   ]
