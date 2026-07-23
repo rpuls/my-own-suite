@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "appId": "vaultwarden",
+  "reviewedAt": "2026-07-23T00:00:00.000Z",
+  "expiresAt": "2027-01-23T00:00:00.000Z",
+  "scope": {
+    "packageVersion": "0.1.0",
+    "packageDigest": "sha256:c0ca2552d13c9bd607084a62d0f5fa9c690b58840ced496b3f818c8034a270aa",
+    "source": {
+      "kind": "official-git",
+      "repository": "https://github.com/rpuls/my-own-suite",
+      "path": "apps/vaultwarden",
+      "revision": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
+      "trust": "mos-reviewed"
+    },
+    "components": [{
+      "name": "Vaultwarden",
+      "version": "1.36.0",
+      "artifact": "docker.io/vaultwarden/server",
+      "digest": "sha256:d626d04934cd1192ad8ced1adb975099fca78cec33ab467d2d3c923cde7f3b0c"
+    }],
+    "clientsExcluded": ["Bitwarden browser, desktop, mobile, and web vault clients", "Bitwarden-hosted push relay and identity services", "HaveIBeenPwned breach service", "Third-party API clients"]
+  },
+  "posture": "privacy-configured",
+  "dimensions": {
+    "telemetry": "none-observed",
+    "externalServices": "optional",
+    "accountDependency": "local-only",
+    "dataProcessing": "local",
+    "policyExposure": "upstream-services-involved",
+    "confidence": "documented"
+  },
+  "evidence": [
+    {
+      "type": "configured",
+      "claim": "The MOS package projects only ADMIN_TOKEN, DOMAIN, SIGNUPS_ALLOWED=true, and WEBSOCKET_ENABLED=true; it sets no analytics or telemetry variables because Vaultwarden defines none.",
+      "source": "apps/vaultwarden/manifest.json"
+    },
+    {
+      "type": "documented",
+      "claim": "The Vaultwarden 1.36.0 configuration template defines no telemetry, analytics, usage-reporting, crash-reporting, or phone-home settings.",
+      "source": "Vaultwarden .env.template (v1.36.0)",
+      "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.36.0/.env.template",
+      "retrievedAt": "2026-07-23"
+    },
+    {
+      "type": "documented",
+      "claim": "Vault data is encrypted by the Bitwarden clients before it reaches the server and is stored in the package's local SQLite data volume; the self-hosted server requires no upstream Bitwarden account.",
+      "source": "apps/vaultwarden/README.md and Vaultwarden project documentation",
+      "url": "https://github.com/dani-garcia/vaultwarden",
+      "retrievedAt": "2026-07-23"
+    },
+    {
+      "type": "documented",
+      "claim": "ICON_SERVICE defaults to 'internal' and DISABLE_ICON_DOWNLOAD defaults to false, so the server fetches website favicons directly from third-party sites for saved vault URLs; MOS does not override these defaults.",
+      "source": "Vaultwarden .env.template (v1.36.0)",
+      "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.36.0/.env.template",
+      "retrievedAt": "2026-07-23"
+    },
+    {
+      "type": "documented",
+      "claim": "Mobile push notifications (PUSH_ENABLED) default to false and HaveIBeenPwned breach checking requires an unset HIBP_API_KEY, so both optional Bitwarden and HIBP integrations are inactive in the packaged default.",
+      "source": "Vaultwarden .env.template (v1.36.0)",
+      "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.36.0/.env.template",
+      "retrievedAt": "2026-07-23"
+    }
+  ],
+  "telemetryControls": [{
+    "type": "documented",
+    "claim": "Vaultwarden ships no telemetry or analytics, so no telemetry-disabling configuration is required or applied by the package.",
+    "source": "Vaultwarden .env.template (v1.36.0)",
+    "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.36.0/.env.template",
+    "retrievedAt": "2026-07-23"
+  }],
+  "policies": [{
+    "kind": "license",
+    "url": "https://github.com/dani-garcia/vaultwarden/blob/1.36.0/LICENSE.txt",
+    "retrievedAt": "2026-07-23",
+    "publisher": "Vaultwarden (dani-garcia)"
+  }],
+  "provenance": {
+    "method": "ai-assisted",
+    "provider": "Anthropic",
+    "model": "Claude Opus 4.8",
+    "modelIdentifierSource": "runtime-reported",
+    "skill": "assess-app-privacy",
+    "skillRevision": "6a741118713a2db4fd0323334fe39cc0d8021197",
+    "repositoryCommit": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
+    "humanReviewed": false
+  },
+  "openQuestions": [
+    "No runtime network capture was performed against the pinned 1.36.0 image; conclusions rely on package configuration and upstream documentation.",
+    "With the default ICON_SERVICE=internal and DISABLE_ICON_DOWNLOAD=false, the server fetches favicons from third-party websites for saved vault URLs, which can reveal saved domains to those sites; the package does not currently set DISABLE_ICON_DOWNLOAD=true, and a future revision could harden this default.",
+    "Optional Bitwarden push relay and HaveIBeenPwned breach checking are inactive by default but become external dependencies if an operator later enables them."
+  ]
+}

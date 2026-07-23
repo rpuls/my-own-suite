@@ -43,11 +43,12 @@
       "description": "This package starts Seafile plus MySQL and Valkey, so it is heavier than the first single-service MOS packages."
     },
     "privacy": {
-      "summary": "Files, metadata, and generated credentials are stored in your MOS runtime.",
+      "summary": "Seafile Community Edition runs on your own server with no telemetry enabled by default, storing your files and metadata in local MOS volumes.",
       "notes": [
-        "Back up the Seafile and MySQL volumes before relying on this package for important files.",
         "Only the Seafile web service is exposed through Caddy; MySQL and Valkey stay internal to the package network.",
-        "ONLYOFFICE document editing is enabled only after an explicit MOS integration connection."
+        "External integrations such as email (SMTP), ONLYOFFICE editing, object storage, LDAP, and SSO are off by default and only reach outside your server if you enable them.",
+        "ONLYOFFICE document editing is enabled only after an explicit MOS integration connection.",
+        "Back up the Seafile and MySQL volumes before relying on this package for important files."
       ]
     },
     "links": {

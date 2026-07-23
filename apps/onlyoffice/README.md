@@ -3,6 +3,7 @@
 - `TZ`: Container timezone.
 - `ALLOW_PRIVATE_IP_ADDRESS`: Allows document callbacks to private network addresses for self-hosted app integrations.
 - `ALLOW_META_IP_ADDRESS`: Keeps metadata-address callbacks disabled.
+- `METRICS_ENABLED`: Set to `false` so the Document Server's optional StatsD metrics emitter stays off (upstream default is also `false`).
 - `JWT_ENABLED`: Enables JWT protection.
 - `JWT_SECRET`: Stable provider-instance JWT secret shared with connected document platforms through MOS integration grants.
 - `SECURE_LINK_SECRET`: Stable nginx secure-link secret for `/cache/files/...` URLs.

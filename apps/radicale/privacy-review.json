@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "appId": "radicale",
+  "reviewedAt": "2026-07-23T00:00:00.000Z",
+  "expiresAt": "2027-01-23T00:00:00.000Z",
+  "scope": {
+    "packageVersion": "0.1.0",
+    "packageDigest": "sha256:0c31ced0c92314d2d1a6b04bfc381106c911ce8c74231f6d8287dde225758b74",
+    "source": {
+      "kind": "official-git",
+      "repository": "https://github.com/rpuls/my-own-suite",
+      "path": "apps/radicale",
+      "revision": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
+      "trust": "mos-reviewed"
+    },
+    "components": [
+      {
+        "name": "Radicale",
+        "version": "3.7.1",
+        "artifact": "docker.io/tomsquest/docker-radicale",
+        "digest": "sha256:454e7def1324f6f05a3786854346a035b7ad84b47eee15bc155b2fbc17cafb9d"
+      }
+    ],
+    "clientsExcluded": [
+      "CalDAV and CardDAV client apps on phones, tablets, and desktops (for example Apple Calendar, DAVx5, Thunderbird)",
+      "Device or vendor cloud backups configured within those client apps"
+    ]
+  },
+  "posture": "private-by-default",
+  "dimensions": {
+    "telemetry": "none-observed",
+    "externalServices": "none-required",
+    "accountDependency": "local-only",
+    "dataProcessing": "local",
+    "policyExposure": "self-hosted-software-only",
+    "confidence": "documented"
+  },
+  "evidence": [
+    {
+      "type": "configured",
+      "claim": "The MOS package projects only RADICALE_ADMIN_USERNAME and RADICALE_ADMIN_PASSWORD into the service and mounts one local data volume; it sets no analytics, update-check, external-service, or telemetry variables.",
+      "source": "apps/radicale/manifest.json"
+    },
+    {
+      "type": "configured",
+      "claim": "The package entrypoint configures htpasswd authentication with bcrypt against a local /data/users file and creates the bootstrap user and a default calendar collection on the local data volume; no upstream account or service is contacted during provisioning.",
+      "source": "apps/radicale/entrypoint.sh"
+    },
+    {
+      "type": "documented",
+      "claim": "Radicale 3.7.1 is a self-hosted CalDAV/CardDAV server that serves DAV over its own port and stores collections on the local filesystem; its documentation describes no telemetry, usage analytics, update check, or phone-home behaviour.",
+      "source": "Radicale project documentation (v3.7.1)",
+      "url": "https://radicale.org/v3.html",
+      "retrievedAt": "2026-07-23"
+    },
+    {
+      "type": "documented",
+      "claim": "The packaged tomsquest/docker-radicale image wraps upstream Radicale with a local container healthcheck and optional local brute-force protection; it does not add an outbound analytics, licensing, or update service.",
+      "source": "tomsquest/docker-radicale image documentation",
+      "url": "https://github.com/tomsquest/docker-radicale",
+      "retrievedAt": "2026-07-23"
+    },
+    {
+      "type": "configured",
+      "claim": "All calendar and contact data is persisted to the single data:/data package volume, so CalDAV/CardDAV collections stay within the MOS runtime rather than any upstream store.",
+      "source": "apps/radicale/manifest.json and apps/radicale/README.md"
+    }
+  ],
+  "telemetryControls": [
+    {
+      "type": "documented",
+      "claim": "Radicale ships no telemetry, analytics, or update-check behaviour, so no telemetry-disabling configuration is required or applied by the package.",
+      "source": "Radicale project documentation (v3.7.1)",
+      "url": "https://radicale.org/v3.html",
+      "retrievedAt": "2026-07-23"
+    }
+  ],
+  "policies": [
+    {
+      "kind": "license",
+      "url": "https://github.com/Kozea/Radicale/blob/v3.7.1/COPYING.md",
+      "retrievedAt": "2026-07-23",
+      "publisher": "Radicale project (Kozea)"
+    },
+    {
+      "kind": "license",
+      "url": "https://github.com/tomsquest/docker-radicale/blob/master/LICENSE",
+      "retrievedAt": "2026-07-23",
+      "publisher": "Thomas Queste (tomsquest)"
+    }
+  ],
+  "provenance": {
+    "method": "ai-assisted",
+    "provider": "Anthropic",
+    "model": "Claude Opus 4.8",
+    "modelIdentifierSource": "runtime-reported",
+    "skill": "assess-app-privacy",
+    "skillRevision": "6a741118713a2db4fd0323334fe39cc0d8021197",
+    "repositoryCommit": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
+    "humanReviewed": false
+  },
+  "openQuestions": [
+    "No runtime network capture was performed against the pinned 3.7.1 image; conclusions rely on package configuration and upstream documentation rather than observed traffic.",
+    "CalDAV/CardDAV client apps may copy synced calendar and contact data into device or vendor cloud backups depending on each client's settings, which is outside the server package's control.",
+    "The package provisions a single bootstrap Radicale user; multi-user authentication, password rotation, and DAV auto-discovery are future package work not covered by this review."
+  ]
+}

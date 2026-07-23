@@ -8,6 +8,7 @@
   "icon": "icon.png",
   "catalog": {
     "description": "Stirling PDF gives you a private toolbox for everyday document work: merge, split, compress, convert, OCR, sign, redact, and automate PDFs without uploading them to random websites.",
+    "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/stirling-pdf-2?referralCode=-Yg50p" }],
     "replaces": "iLovePDF / Smallpdf / Adobe online tools",
     "tags": [
       "pdf",

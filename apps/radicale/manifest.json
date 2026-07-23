@@ -9,6 +9,7 @@
   "icon": "icon.png",
   "catalog": {
     "description": "Radicale provides a small private calendar and contacts sync server for CalDAV and CardDAV clients on phones, tablets, and desktops.",
+    "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/radicale?referralCode=-Yg50p" }],
     "replaces": "Google Calendar / Contacts",
     "tags": [
       "calendar",
@@ -43,7 +44,7 @@
       "description": "Radicale runs as one small service with one persistent data volume."
     },
     "privacy": {
-      "summary": "Calendar and contact collections are stored on your own MOS server.",
+      "summary": "Radicale runs entirely on your own MOS server with no telemetry, storing calendar and contact collections in a local data volume.",
       "notes": [
         "Use a strong app password because Radicale is exposed on its own authenticated app address.",
         "Back up the data volume before relying on it for important calendars or contacts.",

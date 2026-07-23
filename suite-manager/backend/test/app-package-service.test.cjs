@@ -819,6 +819,7 @@ test('updating an integration consumer keeps its integration env and reconciles 
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
   await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
   const source = { kind: 'official-git', path: 'apps/seafile', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
@@ -901,6 +902,7 @@ test('a provider update recovered at startup re-applies its integration consumer
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
   await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
   const source = { kind: 'official-git', path: 'apps/onlyoffice', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
