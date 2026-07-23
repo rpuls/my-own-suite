@@ -1,4 +1,4 @@
-FROM ghcr.io/immich-app/immich-server:v3.0.2@sha256:e027fa892e4c20ea8cba262e0d98dbaba14af873903408928e252596608a3a47
+FROM ghcr.io/immich-app/immich-server:v3.0.3@sha256:c716dc20f957aafd89fa9d284a2ec63e25c9e2d8d8e87c6197d540a3dce237db
 
 # MOS hardening: disable Immich's enabled-by-default new-version check so the
 # server makes no scheduled outbound release-check requests to GitHub. Applied
