@@ -40,6 +40,14 @@ jobs:
       - name: Check app catalog and advisory feed
         run: npm run apps:catalog:check
 
+      # The guard compares against the catalog installed boxes actually read, so
+      # the default shallow checkout has to be given that branch first.
+      - name: Fetch published catalog branch
+        run: git fetch --depth=1 origin main
+
+      - name: Check app package versions against the published catalog
+        run: npm run apps:version:check -- --require-baseline
+
       - name: Validate app privacy reviews
         run: npm run apps:privacy:check
 

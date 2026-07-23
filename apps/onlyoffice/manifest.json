@@ -1,7 +1,7 @@
 {
   "id": "onlyoffice",
   "name": "ONLYOFFICE",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minimumMosVersion": "0.1.0",
   "packageFiles": ["entrypoint.sh"],
   "summary": "Office editor suite for compatible file and content apps.",

@@ -522,11 +522,6 @@
   font-weight: 800;
 }
 
-.suite-app-update-pill.is-warning {
-  background: var(--mos-color-warning-soft);
-  color: var(--mos-color-warning);
-}
-
 .suite-app-external-pill {
   display: inline-flex;
   align-items: center;

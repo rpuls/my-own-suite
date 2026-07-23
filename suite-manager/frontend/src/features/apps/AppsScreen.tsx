@@ -25,7 +25,7 @@ type CatalogUpdate = {
   // `external-source` means the app came from a pasted repository rather than the
   // reviewed catalog, so only that repository knows whether a newer package
   // exists and the owner checks on demand.
-  status: 'current' | 'external-source' | 'installable' | 'installed-newer' | 'integrity-error' | 'not-in-catalog' | 'unavailable' | 'update-available';
+  status: 'current' | 'external-source' | 'installable' | 'installed-newer' | 'not-in-catalog' | 'unavailable' | 'update-available';
 };
 type UpdateComparison = {
   candidate: { packageVersion: string; privacy: PrivacyReviewSummary };
@@ -40,7 +40,7 @@ type UpdateComparison = {
   // version does not already have.
   permissions: { added: string[]; candidate: string[]; installed: string[]; removed: string[] };
   requiredInput: Array<{ id: string; label: string; secret: boolean; type: string }>;
-  updateStatus: 'current' | 'installed-newer' | 'integrity-error' | 'update-available';
+  updateStatus: 'current' | 'installed-newer' | 'update-available';
   validation: { agentCapability: string; errors: string[] };
 };
 
@@ -531,7 +531,6 @@ function AppCard({ app, onOpen }: { app: AppPackageSummary; onOpen: (app: AppPac
           <span className="suite-app-category-pill">{categoryLabel(primaryCategory(app))}</span>
           {app.external ? <span className="suite-app-external-pill">External &middot; Unverified</span> : null}
           {app.catalogUpdate?.status === 'update-available' ? <span className="suite-app-update-pill">Update available</span> : null}
-          {app.catalogUpdate?.status === 'integrity-error' ? <span className="suite-app-update-pill is-warning">Catalog conflict</span> : null}
         </span>
         <span>{descriptionFor(app)}</span>
       </span>
@@ -780,7 +779,6 @@ function AppDetail({
         {!app.validation.valid ? <Notice title="This package cannot be installed yet" variant="warning"><ul>{app.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}
         {missingUsefulPeers.length ? <Notice title="Needs a compatible app" variant="info"><p>{missingUsefulPeers[0]!.message}</p></Notice> : null}
         {ready && isCompanionApp(app) && !installedCompatiblePeers.length ? <Notice title="Companion app" variant="info"><p>{app.capabilities.usefulness.emptyState || 'Install a compatible app to use this service.'}</p></Notice> : null}
-        {app.catalogUpdate?.status === 'integrity-error' ? <Notice title="Catalog integrity conflict" variant="warning"><p>The catalog advertises different package contents under the installed version number. MOS will not treat this as an update.</p></Notice> : null}
         {app.external ? <Notice title="Unverified external package" variant="warning">
           <p>You installed this app from a repository you pasted, not the verified MOS catalog. MOS has not reviewed its code and cannot vouch for any privacy claims it makes. It runs with a restricted profile: only its own named storage and its own web addresses.</p>
         </Notice> : null}

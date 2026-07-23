@@ -96,17 +96,21 @@ function compareAppPackages({ candidate, installed, platformVersion, agentCapabi
       summary: `The update asks for access the installed version does not have: ${addedPermissions.join(', ')}.`,
     });
   }
-  // The candidate declaring the installed version number with different contents
-  // is an integrity problem, never a silent update.
+  // Version decides whether there is an update, and nothing else does. A
+  // candidate that declares the installed version number is not an update
+  // regardless of its contents, so it is reported as current and never applied —
+  // the outcome the old integrity-error status already produced, without calling
+  // the ordinary case a fault. Candidate bytes are verified against the signed
+  // catalog digest when they are downloaded, which is where an actual content
+  // substitution is caught.
   const versionOrder = compareSemver(candidate.manifest.version, installed.manifest.version);
-  const updateStatus = installed.packageDigest === candidate.packageDigest ? 'current'
-    : versionOrder > 0 ? 'update-available'
-      : versionOrder < 0 ? 'installed-newer'
-        : 'integrity-error';
+  const updateStatus = versionOrder > 0 ? 'update-available'
+    : versionOrder < 0 ? 'installed-newer'
+      : 'current';
   const installedPrivacy = privacyFor(installed.packageDir, installed.manifest, installed.packageDigest, installed.source);
   const candidatePrivacy = privacyFor(candidate.packageDir, candidate.manifest, candidate.packageDigest, candidate.source);
   if (!equal(installedPrivacy, candidatePrivacy)) changes.push({ area: 'privacy', classification: candidatePrivacy.status === 'reviewed' ? 'automatically-handled' : 'operator-action-required', summary: installedPrivacy.posture === candidatePrivacy.posture ? 'The privacy assessment changes without changing the overall posture.' : `Privacy posture changes from ${installedPrivacy.posture} to ${candidatePrivacy.posture}.` });
-  const unsupported = platformErrors.length || !agentReady || undeclaredBreaking.length || updateStatus === 'integrity-error';
+  const unsupported = platformErrors.length || !agentReady || undeclaredBreaking.length;
   const ownerAction = requiredInput.length || changes.some((change) => ['migration-required', 'operator-action-required'].includes(change.classification));
   const compatibility = unsupported ? 'unsupported' : ownerAction ? 'owner-action-required' : 'compatible';
   const identity = `${installed.packageDigest}:${candidate.packageDigest}`;
@@ -134,7 +138,6 @@ function compareAppPackages({ candidate, installed, platformVersion, agentCapabi
         ...platformErrors,
         ...(agentReady ? [] : [`App agent contract ${requiredAgentVersion} is required.`]),
         ...undeclaredBreaking.map((area) => `Undeclared breaking change: ${area}.`),
-        ...(updateStatus === 'integrity-error' ? ['The candidate declares the installed version number with different package contents.'] : []),
       ],
     },
   };

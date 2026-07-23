@@ -8,6 +8,7 @@
     "apps:catalog": "node scripts/app-package-catalog.cjs",
     "apps:catalog:check": "node scripts/app-package-catalog.cjs --check && node scripts/sign-app-catalog.cjs --check",
     "apps:catalog:sign": "node scripts/sign-app-catalog.cjs",
+    "apps:version:check": "node scripts/app-version-guard.cjs",
     "apps:privacy:check": "node scripts/app-privacy-check.cjs",
     "apps:privacy:monitor": "node scripts/app-privacy-monitor.cjs",
     "build": "cd site && npm install --no-audit --progress=false && npm run build",

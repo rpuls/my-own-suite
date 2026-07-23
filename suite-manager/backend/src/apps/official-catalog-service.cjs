@@ -369,11 +369,20 @@ class OfficialCatalogService {
     };
     if (!instance) return { available, installed: null, status: 'installable' };
     const installed = { packageDigest: instance.packageDigest, packageVersion: instance.packageVersion };
+    // Version alone decides this, never the digest. An official app is installed
+    // from the checkout on this box, not downloaded from the catalog, so the
+    // installed digest describes whatever contents that checkout held while the
+    // catalog digest describes the catalog branch's tip. The two are equal only
+    // when the checkout happens to sit exactly on that tip, which is false for
+    // every box pinned to a release tag and every box tracking a branch. Reading
+    // their inequality as a tampering signal reported the ordinary case as a
+    // fault. The digest is still what an update is verified against, at the point
+    // MOS actually downloads candidate bytes to apply (see downloadCandidate),
+    // where there is a real reference to compare to.
     const comparison = compareSemver(candidate.packageVersion, instance.packageVersion);
     const status = comparison > 0 ? 'update-available'
-      : comparison === 0 && candidate.packageDigest !== instance.packageDigest ? 'integrity-error'
-        : comparison < 0 ? 'installed-newer'
-          : 'current';
+      : comparison < 0 ? 'installed-newer'
+        : 'current';
     return { available, installed, status };
   }
 

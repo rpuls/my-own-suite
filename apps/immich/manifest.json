@@ -1,7 +1,7 @@
 {
   "id": "immich",
   "name": "Immich",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "minimumMosVersion": "0.1.0",
   "architectures": ["amd64"],
   "packageFiles": ["immich-config.json"],
