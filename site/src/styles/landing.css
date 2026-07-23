@@ -240,13 +240,6 @@ footer.site-footer { padding: var(--mos-space-8) 0 var(--mos-space-7); }
 .app-drawer-features { display: grid; gap: var(--mos-space-3); margin: 0; padding: 0; list-style: none; }
 .app-drawer-features li strong { display: block; color: var(--mos-color-text-strong); }
 .app-drawer-links { display: flex; flex-wrap: wrap; gap: var(--mos-space-4); }
-.app-try-menu { position: relative; width: 100%; }
-.app-try-menu summary { justify-content: space-between; width: 100%; list-style: none; cursor: pointer; }
-.app-try-menu summary::-webkit-details-marker { display: none; }
-.app-try-menu[open] summary span { transform: rotate(180deg); }
-.app-try-options { position: absolute; top: calc(100% + 8px); right: 0; left: 0; z-index: 2; display: grid; padding: 6px; border: var(--mos-border-strong); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface); box-shadow: var(--mos-shadow-strong); }
-.app-try-options a { padding: 10px 12px; border-radius: var(--mos-radius-sm); color: var(--mos-color-text-strong); font-weight: 700; text-decoration: none; }
-.app-try-options a:hover, .app-try-options a:focus-visible { background: var(--mos-color-surface-muted); }
 
 /* Beta prototype disclaimer — floating snackbar + "About this beta" dialog.
    The notice rests off screen below the viewport and slides up into place
