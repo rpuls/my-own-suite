@@ -264,7 +264,18 @@ function validatePrivacyBinding(review, { manifest, packageDigest, source }) {
   for (const sourceError of validateSourceIdentity(review.scope?.source, {
     officialRepository: source?.trust === 'mos-reviewed' ? source.repository : null,
   })) errors.push(`privacy review ${sourceError}`);
-  for (const field of ['kind', 'repository', 'path', 'revision', 'trust']) {
+  // `revision` is deliberately not compared. A review is a file inside the very
+  // commit a resolved revision names, so the commit it declares can never equal
+  // the commit that contains it. That made the comparison two different things
+  // in the two places it ran: install has no resolved commit and adopts the
+  // review's own, so it compared a value to itself; update resolves the catalog
+  // branch for real, so it could never match and refused every official
+  // candidate carrying a review. Neither outcome discriminated anything. What
+  // binds a review to its package is `packageDigest` above, which pins the exact
+  // bytes and, on the update path, has already been checked against the signed
+  // catalog entry before this runs. The declared revision stays in the document
+  // as provenance, and is still shape-checked by validateSourceIdentity.
+  for (const field of ['kind', 'repository', 'path', 'trust']) {
     if (review.scope?.source?.[field] !== source?.[field]) errors.push(`privacy review source.${field} does not match the resolved source.`);
   }
   if (!Array.isArray(review.scope?.components) || review.scope.components.length === 0) errors.push('privacy review must identify upstream components.');

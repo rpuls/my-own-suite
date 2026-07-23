@@ -530,7 +530,11 @@ function AppCard({ app, onOpen }: { app: AppPackageSummary; onOpen: (app: AppPac
           <strong>{app.name}</strong>
           <span className="suite-app-category-pill">{categoryLabel(primaryCategory(app))}</span>
           {app.external ? <span className="suite-app-external-pill">External &middot; Unverified</span> : null}
-          {app.catalogUpdate?.status === 'update-available' ? <span className="suite-app-update-pill">Update available</span> : null}
+          {/* Only advertise an update the owner can actually apply. A candidate that
+              needs a newer MOS than this one is still described in the detail panel,
+              which explains which MOS version it wants. */}
+          {app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available?.compatibility === 'compatible'
+            ? <span className="suite-app-update-pill">Update available</span> : null}
         </span>
         <span>{descriptionFor(app)}</span>
       </span>

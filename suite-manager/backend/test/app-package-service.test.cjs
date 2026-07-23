@@ -1531,6 +1531,77 @@ test('contract v6 app updates activate, promote, and commit candidate identity a
   store.close();
 });
 
+// Every other update test in this file deletes the candidate's privacy review
+// before updating, which is exactly what hid this: a reviewed official candidate
+// could never be staged. The review names the commit it was authored against,
+// while the update path resolves the catalog branch for real, and the binding
+// required the two to be equal — impossible for a file that lives inside the
+// commit it would have to name. This keeps the review, and gives the candidate a
+// source revision that differs from the one the review declares, which is the
+// only shape the catalog can ever produce.
+test('an official candidate that ships a privacy review updates and keeps its reviewed posture', async () => {
+  const root = await tempStateDir();
+  const candidateDir = path.join(root, 'candidate');
+  await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
+  const manifestPath = path.join(candidateDir, 'manifest.json');
+  const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: CANDIDATE_VERSION }, null, 2)}\n`);
+  // Re-stamp the review the way publishing a package does: packageVersion is
+  // hashed, packageDigest is placeholdered before hashing and so settles in one
+  // pass. The declared revision is left alone on purpose.
+  const reviewPath = path.join(candidateDir, 'privacy-review.json');
+  const review = JSON.parse(await fsp.readFile(reviewPath, 'utf8'));
+  review.scope.packageVersion = CANDIDATE_VERSION;
+  await fsp.writeFile(reviewPath, `${JSON.stringify(review, null, 2)}\n`);
+  review.scope.packageDigest = digestAppPackage(candidateDir);
+  await fsp.writeFile(reviewPath, `${JSON.stringify(review, null, 2)}\n`);
+  const candidatePackage = readAppPackageManifest(candidateDir);
+  const candidateDigest = digestAppPackage(candidateDir);
+  assert.notEqual(review.scope.source.revision, 'c'.repeat(40));
+  const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
+  const snapshotDir = path.join(root, 'snapshots', 'installed');
+  const agent = {
+    async activatePackageUpdate() { return { status: 'candidate-healthy' }; },
+    async buildPackageUpdate() { return { status: 'built' }; },
+    async promotePackageUpdate() {
+      await fsp.rm(snapshotDir, { force: true, recursive: true });
+      await fsp.cp(candidateDir, snapshotDir, { recursive: true });
+      return { snapshotPath: snapshotDir, status: 'snapshot-promoted' };
+    },
+    async rollbackPackageUpdate() { throw new Error('rollback must not run for a healthy candidate'); },
+    async snapshotPackage() {
+      await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), snapshotDir, { recursive: true });
+      return { snapshotPath: snapshotDir };
+    },
+    async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
+    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+  };
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({
+    agent,
+    appsDir: v2AppsDir,
+    catalogService: { advisoriesFor: () => [], platformVersion: '0.1.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    store,
+  });
+  await service.installPackage('stirling-pdf');
+
+  const comparison = await service.preparePackageUpdate('stirling-pdf');
+  assert.equal(comparison.updateStatus, 'update-available');
+  // The candidate's posture is read from its own shipped review, not degraded to
+  // review-required because the revision differs.
+  assert.equal(comparison.candidate.privacy.status, 'reviewed');
+  assert.equal(comparison.candidate.privacy.posture, review.posture);
+
+  const result = await service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf'));
+  assert.equal(result.operation.status, 'succeeded');
+  const updated = store.getAppInstanceByPackageId('stirling-pdf');
+  assert.equal(updated.packageVersion, CANDIDATE_VERSION);
+  assert.equal(updated.packageDigest, candidateDigest);
+  assert.equal(updated.privacyStatus, 'reviewed');
+  assert.equal(updated.privacyPosture, review.posture);
+  store.close();
+});
+
 test('app updates replace an applied Homepage entry and retain its applied projection state', async () => {
   const root = await tempStateDir();
   const candidateDir = path.join(root, 'candidate');
