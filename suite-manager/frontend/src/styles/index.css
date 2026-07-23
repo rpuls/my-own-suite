@@ -1282,6 +1282,37 @@
   gap: 0.2rem;
 }
 
+/* Connections: the shared connect-apps line drawing (.mos-connect-visual) on
+   an accent panel, the same treatment the public site gives the pairing. */
+.suite-app-connection-list {
+  display: grid;
+  gap: var(--mos-space-3);
+}
+
+.suite-app-connection {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--mos-space-4);
+  padding: var(--mos-space-4);
+  border: 1px solid var(--mos-color-accent-border);
+  border-radius: var(--mos-radius-md);
+  background: var(--mos-color-accent-soft);
+}
+
+.suite-app-connection-copy {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.suite-app-connection-copy strong {
+  color: var(--mos-color-text-strong);
+}
+
+.suite-app-connection-copy small {
+  color: var(--mos-color-text-muted);
+}
+
 .suite-app-advanced dl {
   grid-template-columns: minmax(8rem, auto) 1fr;
 }
@@ -1758,9 +1789,11 @@
   }
   .suite-app-card-main,
   .suite-app-detail-hero,
+  .suite-app-connection,
   .suite-app-related-list button {
     grid-template-columns: 1fr;
   }
+  .suite-app-connection { justify-items: start; }
   .suite-app-card-actions {
     align-items: flex-start;
     justify-content: flex-start;

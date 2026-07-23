@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 
-import { Dialog, Icon, Notice, TextInput } from '../../components/ui';
+import { AppConnect, Dialog, Icon, Notice, TextInput } from '../../components/ui';
 import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
 import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture';
 import type { Owner } from '../setup/types';
@@ -844,14 +844,28 @@ function AppDetail({
 
         {connections.length ? <section className="suite-app-detail-section">
           <h3>Connections</h3>
-          <div className="suite-app-related-list">
+          <div className="suite-app-connection-list">
             {connections.map((connection) => {
               const status = connection.relationship?.status || (connection.provider.installStatus === 'not-installed' ? 'Install first' : connection.provider.runtimeState === 'running' ? 'Ready to connect' : 'Start both apps first');
               const busy = connectingId === `${connection.consumerPackageId}:${connection.provider.id}:${connection.slotId}:${connection.capabilityId}`;
-              return <button disabled={!connection.ready || busy || installing} key={`${connection.provider.id}-${connection.slotId}-${connection.capabilityId}`} onClick={() => onConnect(connection)} type="button">
-                <span><strong>{connection.title}</strong><small>{connection.provider.name} - {status}</small></span>
-                <span>{busy ? 'Connecting...' : connection.ready ? connection.actionLabel : 'Unavailable'}</span>
-              </button>;
+              // The provider is drawn as the app that plugs in, the app on
+              // screen as the one holding the socket, matching the direction
+              // the public site draws the same pairing.
+              const providerPackage = packages.find((item) => item.id === connection.provider.id);
+              return <article className="suite-app-connection" key={`${connection.provider.id}-${connection.slotId}-${connection.capabilityId}`}>
+                <AppConnect
+                  size="sm"
+                  source={{ iconUrl: providerPackage?.iconUrl, name: connection.provider.name }}
+                  target={{ iconUrl: app.iconUrl, name: app.name }}
+                />
+                <div className="suite-app-connection-copy">
+                  <strong>{connection.title}</strong>
+                  <small>{connection.provider.name} - {status}</small>
+                </div>
+                <button className="mos-btn mos-btn-primary" disabled={!connection.ready || busy || installing} onClick={() => onConnect(connection)} type="button">
+                  {busy ? 'Connecting...' : connection.ready ? connection.actionLabel : 'Unavailable'}
+                </button>
+              </article>;
             })}
           </div>
         </section> : null}

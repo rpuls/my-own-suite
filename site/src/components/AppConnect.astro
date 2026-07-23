@@ -2,8 +2,12 @@
 // Visual for two apps connecting: one continuous line drawing of two
 // rounded boxes, with a plug cable leaving the source app and a socket
 // waiting on the target app it plugs into. The app icons render inside
-// the boxes as part of the SVG. Generic on purpose — Suite Manager will
-// get the same visual for its connect-apps flow.
+// the boxes as part of the SVG.
+//
+// Suite Manager draws the same mark for its app connections
+// (suite-manager/frontend/src/components/ui.tsx, AppConnect). The geometry
+// below and the React copy must stay identical; the styling is shared for
+// real through .mos-connect-visual in branding/styles/mos.css.
 interface ConnectApp {
   name: string
   icon: string
@@ -15,7 +19,7 @@ interface Props {
 const { source, target } = Astro.props
 ---
 
-<svg class="connect-visual" viewBox="0 0 460 160" fill="none" role="img" aria-label={`${source.name} plugs into ${target.name}`}>
+<svg class="mos-connect-visual" viewBox="0 0 460 160" fill="none" role="img" aria-label={`${source.name} plugs into ${target.name}`}>
   <g stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
     <rect x="12" y="24" width="112" height="112" rx="26" />
     <rect x="336" y="24" width="112" height="112" rx="26" />
