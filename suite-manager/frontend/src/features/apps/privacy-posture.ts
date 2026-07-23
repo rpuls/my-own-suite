@@ -12,10 +12,10 @@
 //   site/src/components/PrivacyPosture.astro
 //
 // Everything here derives presentation from a package's privacy-review.json
-// (schemas/app-privacy-assessment.schema.json). The score is the sum of the
-// five dimension levels (0-2 each, so 0-10 total). Postures, phrases, and
-// verdicts are generic schema-level rules — no app-specific logic belongs in
-// this file.
+// (schemas/app-privacy-assessment.schema.json). The five dimension levels
+// (0-2 each) sum to a 0-10 score, which maps to the A-to-D privacy grade shown
+// on the shield (A 9-10, B 7-8, C 4-6, D 0-3). Postures, phrases, and verdicts
+// are generic schema-level rules — no app-specific logic belongs in this file.
 
 export type PrivacyPostureId = 'private-by-default' | 'privacy-configured' | 'external-dependency' | 'review-required';
 
@@ -174,16 +174,23 @@ export function privacyScore(privacy: PrivacyReviewSummary | null | undefined): 
   return total;
 }
 
-export function badgeTextFor(privacy: PrivacyReviewSummary | null | undefined): string {
+// The 0-10 score collapses to a plain letter grade for display: A is best,
+// D is worst. Bands: A 9-10, B 7-8, C 4-6, D 0-3.
+export function privacyGrade(privacy: PrivacyReviewSummary | null | undefined): string | null {
   const score = privacyScore(privacy);
-  return score === null ? '?' : String(score);
+  if (score === null) return null;
+  return score >= 9 ? 'A' : score >= 7 ? 'B' : score >= 4 ? 'C' : 'D';
 }
 
-// The visible scale for the shield number: a bare "7" means nothing without
-// "out of 10" somewhere on the surface that shows it.
-export function scoreScaleLabel(privacy: PrivacyReviewSummary | null | undefined): string | null {
-  const score = privacyScore(privacy);
-  return score === null ? null : `Privacy score ${score} out of 10`;
+export function badgeTextFor(privacy: PrivacyReviewSummary | null | undefined): string {
+  return privacyGrade(privacy) ?? '?';
+}
+
+// The visible scale for the shield letter: a bare "B" means nothing without
+// the A-to-D scale spelled out somewhere on the surface that shows it.
+export function gradeScaleLabel(privacy: PrivacyReviewSummary | null | undefined): string | null {
+  const grade = privacyGrade(privacy);
+  return grade === null ? null : `Privacy grade ${grade} (A is best, D is worst)`;
 }
 
 export function dimensionRowsFor(privacy: PrivacyReviewSummary | null | undefined): PrivacyDimensionRow[] {
@@ -227,7 +234,7 @@ export function provenanceLine(privacy: PrivacyReviewSummary | null | undefined,
 }
 
 export function privacyChanged(installed: PrivacyReviewSummary, candidate: PrivacyReviewSummary): boolean {
-  return installed.posture !== candidate.posture || privacyScore(installed) !== privacyScore(candidate);
+  return installed.posture !== candidate.posture || privacyGrade(installed) !== privacyGrade(candidate);
 }
 
 // Advisories are current, source-trusted notices about the installed version.
@@ -274,7 +281,7 @@ export function privacyChangeSentence(installed: PrivacyReviewSummary, candidate
     // Two unrated packages share no score to "keep".
     return privacyScore(installed) === null
       ? 'Neither the version you run today nor this update has been rated by MOS yet.'
-      : 'This update keeps the same privacy score as the version you run today.';
+      : 'This update keeps the same privacy grade as the version you run today.';
   }
   const before = privacyScore(installed);
   const after = privacyScore(candidate);
@@ -282,5 +289,5 @@ export function privacyChangeSentence(installed: PrivacyReviewSummary, candidate
   if (before === null) return 'The version you run today was never rated. The new version has a completed MOS review.';
   if (after < before) return 'The new version relies more on outside services than the version you run today. Check the new assessment before updating.';
   if (after > before) return 'The new version is rated more private than the version you run today.';
-  return 'The overall score stays the same, but the assessment behind it changed. Check the new assessment before updating.';
+  return 'The overall grade stays the same, but the assessment behind it changed. Check the new assessment before updating.';
 }

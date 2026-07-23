@@ -103,9 +103,8 @@ section.band { padding: clamp(3rem, 7vh, 5rem) 0; }
   align-items: center; padding: var(--mos-space-7); border-radius: var(--mos-radius-lg);
   border: 1px solid var(--mos-color-accent-border); background: var(--mos-color-accent-soft);
 }
-/* Connect-apps visual: line drawing of the source app's plug cable
-   meeting the socket on the app it plugs into (icons drawn inside). */
-.connect-visual { width: min(280px, 100%); height: auto; color: var(--mos-color-accent); }
+/* The connect-apps visual itself is shared branding: see .mos-connect-visual
+   in branding/styles/mos.css. */
 
 /* Apps: search + clickable cards */
 .apps-search { display: flex; align-items: center; gap: var(--mos-space-3); width: min(540px, 100%); margin: 0 auto var(--mos-space-6); padding: 0 var(--mos-space-5); height: 3.5rem; border: var(--mos-border-strong); border-radius: var(--mos-radius-pill); background: var(--mos-color-frost); -webkit-backdrop-filter: var(--mos-frost-filter); backdrop-filter: var(--mos-frost-filter); box-shadow: var(--mos-shadow-soft); }
@@ -240,13 +239,6 @@ footer.site-footer { padding: var(--mos-space-8) 0 var(--mos-space-7); }
 .app-drawer-features { display: grid; gap: var(--mos-space-3); margin: 0; padding: 0; list-style: none; }
 .app-drawer-features li strong { display: block; color: var(--mos-color-text-strong); }
 .app-drawer-links { display: flex; flex-wrap: wrap; gap: var(--mos-space-4); }
-.app-try-menu { position: relative; width: 100%; }
-.app-try-menu summary { justify-content: space-between; width: 100%; list-style: none; cursor: pointer; }
-.app-try-menu summary::-webkit-details-marker { display: none; }
-.app-try-menu[open] summary span { transform: rotate(180deg); }
-.app-try-options { position: absolute; top: calc(100% + 8px); right: 0; left: 0; z-index: 2; display: grid; padding: 6px; border: var(--mos-border-strong); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface); box-shadow: var(--mos-shadow-strong); }
-.app-try-options a { padding: 10px 12px; border-radius: var(--mos-radius-sm); color: var(--mos-color-text-strong); font-weight: 700; text-decoration: none; }
-.app-try-options a:hover, .app-try-options a:focus-visible { background: var(--mos-color-surface-muted); }
 
 /* Beta prototype disclaimer — floating snackbar + "About this beta" dialog.
    The notice rests off screen below the viewport and slides up into place

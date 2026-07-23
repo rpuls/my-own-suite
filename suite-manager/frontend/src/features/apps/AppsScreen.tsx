@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 
-import { Dialog, Icon, Notice, TextInput } from '../../components/ui';
+import { AppConnect, Dialog, Icon, Notice, TextInput } from '../../components/ui';
 import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
 import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture';
 import type { Owner } from '../setup/types';
@@ -25,7 +25,7 @@ type CatalogUpdate = {
   // `external-source` means the app came from a pasted repository rather than the
   // reviewed catalog, so only that repository knows whether a newer package
   // exists and the owner checks on demand.
-  status: 'current' | 'external-source' | 'installable' | 'installed-newer' | 'integrity-error' | 'not-in-catalog' | 'unavailable' | 'update-available';
+  status: 'current' | 'external-source' | 'installable' | 'installed-newer' | 'not-in-catalog' | 'unavailable' | 'update-available';
 };
 type UpdateComparison = {
   candidate: { packageVersion: string; privacy: PrivacyReviewSummary };
@@ -40,7 +40,7 @@ type UpdateComparison = {
   // version does not already have.
   permissions: { added: string[]; candidate: string[]; installed: string[]; removed: string[] };
   requiredInput: Array<{ id: string; label: string; secret: boolean; type: string }>;
-  updateStatus: 'current' | 'installed-newer' | 'integrity-error' | 'update-available';
+  updateStatus: 'current' | 'installed-newer' | 'update-available';
   validation: { agentCapability: string; errors: string[] };
 };
 
@@ -530,8 +530,11 @@ function AppCard({ app, onOpen }: { app: AppPackageSummary; onOpen: (app: AppPac
           <strong>{app.name}</strong>
           <span className="suite-app-category-pill">{categoryLabel(primaryCategory(app))}</span>
           {app.external ? <span className="suite-app-external-pill">External &middot; Unverified</span> : null}
-          {app.catalogUpdate?.status === 'update-available' ? <span className="suite-app-update-pill">Update available</span> : null}
-          {app.catalogUpdate?.status === 'integrity-error' ? <span className="suite-app-update-pill is-warning">Catalog conflict</span> : null}
+          {/* Only advertise an update the owner can actually apply. A candidate that
+              needs a newer MOS than this one is still described in the detail panel,
+              which explains which MOS version it wants. */}
+          {app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available?.compatibility === 'compatible'
+            ? <span className="suite-app-update-pill">Update available</span> : null}
         </span>
         <span>{descriptionFor(app)}</span>
       </span>
@@ -780,7 +783,6 @@ function AppDetail({
         {!app.validation.valid ? <Notice title="This package cannot be installed yet" variant="warning"><ul>{app.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}
         {missingUsefulPeers.length ? <Notice title="Needs a compatible app" variant="info"><p>{missingUsefulPeers[0]!.message}</p></Notice> : null}
         {ready && isCompanionApp(app) && !installedCompatiblePeers.length ? <Notice title="Companion app" variant="info"><p>{app.capabilities.usefulness.emptyState || 'Install a compatible app to use this service.'}</p></Notice> : null}
-        {app.catalogUpdate?.status === 'integrity-error' ? <Notice title="Catalog integrity conflict" variant="warning"><p>The catalog advertises different package contents under the installed version number. MOS will not treat this as an update.</p></Notice> : null}
         {app.external ? <Notice title="Unverified external package" variant="warning">
           <p>You installed this app from a repository you pasted, not the verified MOS catalog. MOS has not reviewed its code and cannot vouch for any privacy claims it makes. It runs with a restricted profile: only its own named storage and its own web addresses.</p>
         </Notice> : null}
@@ -844,14 +846,28 @@ function AppDetail({
 
         {connections.length ? <section className="suite-app-detail-section">
           <h3>Connections</h3>
-          <div className="suite-app-related-list">
+          <div className="suite-app-connection-list">
             {connections.map((connection) => {
               const status = connection.relationship?.status || (connection.provider.installStatus === 'not-installed' ? 'Install first' : connection.provider.runtimeState === 'running' ? 'Ready to connect' : 'Start both apps first');
               const busy = connectingId === `${connection.consumerPackageId}:${connection.provider.id}:${connection.slotId}:${connection.capabilityId}`;
-              return <button disabled={!connection.ready || busy || installing} key={`${connection.provider.id}-${connection.slotId}-${connection.capabilityId}`} onClick={() => onConnect(connection)} type="button">
-                <span><strong>{connection.title}</strong><small>{connection.provider.name} - {status}</small></span>
-                <span>{busy ? 'Connecting...' : connection.ready ? connection.actionLabel : 'Unavailable'}</span>
-              </button>;
+              // The provider is drawn as the app that plugs in, the app on
+              // screen as the one holding the socket, matching the direction
+              // the public site draws the same pairing.
+              const providerPackage = packages.find((item) => item.id === connection.provider.id);
+              return <article className="suite-app-connection" key={`${connection.provider.id}-${connection.slotId}-${connection.capabilityId}`}>
+                <AppConnect
+                  size="sm"
+                  source={{ iconUrl: providerPackage?.iconUrl, name: connection.provider.name }}
+                  target={{ iconUrl: app.iconUrl, name: app.name }}
+                />
+                <div className="suite-app-connection-copy">
+                  <strong>{connection.title}</strong>
+                  <small>{connection.provider.name} - {status}</small>
+                </div>
+                <button className="mos-btn mos-btn-primary" disabled={!connection.ready || busy || installing} onClick={() => onConnect(connection)} type="button">
+                  {busy ? 'Connecting...' : connection.ready ? connection.actionLabel : 'Unavailable'}
+                </button>
+              </article>;
             })}
           </div>
         </section> : null}
@@ -1408,7 +1424,7 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     </div>
 
     <div className="suite-app-search">
-      <input aria-label="Search apps" onChange={(event) => setQuery(event.target.value)} placeholder="Search apps, or paste a GitHub repo URL..." value={query} />
+      <input aria-label="Search apps" onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or what you want to do..." value={query} />
     </div>
 
     {error ? <Notice title="Apps unavailable" variant="error"><p>{error}</p></Notice> : null}

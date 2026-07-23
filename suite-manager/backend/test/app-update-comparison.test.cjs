@@ -166,7 +166,12 @@ test('the same access increase from the reviewed catalog is reported without dem
   assert.equal(comparison.compatibility, 'compatible');
 });
 
-test('a candidate that reuses the installed version number with different contents is an integrity error, not an update', (t) => {
+// Differing contents under the installed version number is not an update and is
+// never applied as one, but it is also not a fault to report: the installed
+// package came from this box's checkout rather than from the catalog, so the two
+// digests were never contracted to match. Downloaded candidate bytes are still
+// verified against the signed catalog digest before anything is applied.
+test('a candidate that reuses the installed version number is current, and is not offered as an update', (t) => {
   const installed = appPackage('1.0.0');
   const candidate = appPackage('1.0.0', (manifest) => {
     manifest.summary = 'Same version number, different package.';
@@ -174,9 +179,10 @@ test('a candidate that reuses the installed version number with different conten
   });
   t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
   const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
-  assert.equal(comparison.updateStatus, 'integrity-error');
-  assert.equal(comparison.compatibility, 'unsupported');
-  assert.match(comparison.validation.errors.join(' '), /version number with different package contents/u);
+  assert.notEqual(installed.packageDigest, candidate.packageDigest);
+  assert.equal(comparison.updateStatus, 'current');
+  assert.equal(comparison.compatibility, 'compatible');
+  assert.deepEqual(comparison.validation.errors, []);
 });
 
 test('an unchanged candidate reports as current rather than as an update', (t) => {

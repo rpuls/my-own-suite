@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "appId": "onlyoffice",
+  "reviewedAt": "2026-07-23T00:00:00.000Z",
+  "expiresAt": "2027-01-23T00:00:00.000Z",
+  "scope": {
+    "packageVersion": "0.2.0",
+    "packageDigest": "sha256:50a62ce5866d9d88475661767dd68b4b47aea3484120ef94d647d368ca2724be",
+    "source": {
+      "kind": "official-git",
+      "repository": "https://github.com/rpuls/my-own-suite",
+      "path": "apps/onlyoffice",
+      "revision": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
+      "trust": "mos-reviewed"
+    },
+    "components": [
+      {
+        "name": "ONLYOFFICE Document Server (Community Edition)",
+        "version": "9.3.1",
+        "artifact": "docker.io/onlyoffice/documentserver",
+        "digest": "sha256:53a06109f1f4029a78f913a061e14f01bff023d109024073a13d4416b54d2195"
+      }
+    ],
+    "clientsExcluded": [
+      "The browser-based ONLYOFFICE editor JavaScript served to each user's browser",
+      "The ONLYOFFICE desktop and mobile client apps, which are distributed separately, are not shipped by this package, and are where ONLYOFFICE's known third-party trackers (for example the Google and Facebook trackers reported in the Android app) live",
+      "The connected document platform (for example Seafile) that stores files and sends them to ONLYOFFICE for editing",
+      "Optional ONLYOFFICE editor plugins or AI features that call third-party services when enabled by a user"
+    ]
+  },
+  "posture": "privacy-configured",
+  "dimensions": {
+    "telemetry": "disabled-by-mos",
+    "externalServices": "optional",
+    "accountDependency": "local-only",
+    "dataProcessing": "local",
+    "policyExposure": "upstream-services-involved",
+    "confidence": "documented"
+  },
+  "evidence": [
+    {
+      "type": "configured",
+      "claim": "The MOS package sets METRICS_ENABLED=false so the Document Server's optional StatsD metrics emitter stays off, enables JWT protection (JWT_ENABLED=true) with a generated provider-instance JWT_SECRET and a generated SECURE_LINK_SECRET, and projects no analytics, usage-reporting, or telemetry environment variables into the Document Server service.",
+      "source": "apps/onlyoffice/manifest.json"
+    },
+    {
+      "type": "documented",
+      "claim": "The Document Server default configuration ships StatsD metrics disabled (statsd.useMetrics=false, targeting localhost:8125) and carries an empty license_file with no license-server URL, update-check URL, or usage/analytics endpoint, so the packaged default contacts no ONLYOFFICE backend to run.",
+      "source": "ONLYOFFICE/server Common/config/default.json (license and statsd sections)",
+      "url": "https://github.com/ONLYOFFICE/server/blob/master/Common/config/default.json",
+      "retrievedAt": "2026-07-23"
+    },
+    {
+      "type": "documented",
+      "claim": "The onlyoffice/documentserver image documents no automatic update check or usage-statistics reporting to ONLYOFFICE; its only outbound-metrics knobs are METRICS_* (StatsD, METRICS_ENABLED defaults to false, METRICS_HOST defaults to localhost).",
+      "source": "ONLYOFFICE Docker-DocumentServer image documentation (available configuration parameters)",
+      "url": "https://github.com/ONLYOFFICE/Docker-DocumentServer",
+      "retrievedAt": "2026-07-23"
+    },
+    {
+      "type": "documented",
+      "claim": "The pinned image resolves to ONLYOFFICE Document Server 9.3.1 Community Edition, an AGPL-3.0 self-hosted document-editing backend whose 20-simultaneous-connection limit is enforced locally and which requires no upstream ONLYOFFICE account or license server to run.",
+      "source": "onlyoffice/documentserver image build metadata (config history for the pinned digest) and ONLYOFFICE DocumentServer editions/licensing documentation",
+      "url": "https://github.com/ONLYOFFICE/DocumentServer",
+      "retrievedAt": "2026-07-23"
+    },
+    {
+      "type": "documented",
+      "claim": "The telemetry ONLYOFFICE is publicly criticised for (for example the Google and Facebook trackers reported in the Android app and the opt-out toggle historically present in the desktop editor) is a property of the separately distributed client apps; this review covers only the Document Server backend, which MOS ships and which those clients are excluded from.",
+      "source": "Exodus Privacy / Privacy Guides community discussion on ONLYOFFICE telemetry, correlated with apps/onlyoffice/privacy-review.json scope.clientsExcluded",
+      "url": "https://discuss.privacyguides.net/t/does-onlyoffice-have-telemetry/21918",
+      "retrievedAt": "2026-07-23"
+    },
+    {
+      "type": "configured",
+      "claim": "The package sets ALLOW_META_IP_ADDRESS=false to block Document Server requests to cloud metadata addresses and ALLOW_PRIVATE_IP_ADDRESS=true so editing callbacks can reach the internal file-app service; both feed the Document Server's request-filtering allowlist that governs which URLs it will fetch.",
+      "source": "apps/onlyoffice/manifest.json and apps/onlyoffice/README.md"
+    },
+    {
+      "type": "documented",
+      "claim": "Document content is supplied to the Document Server by the connected document platform through the ONLYOFFICE Docs integration API; server-side conversion and collaborative editing run inside the container and persist to a single local data:/var/www/onlyoffice/Data volume, so normal editing keeps documents within the MOS runtime.",
+      "source": "ONLYOFFICE Docs integration documentation and apps/onlyoffice/manifest.json exports.documentEditor",
+      "url": "https://helpcenter.onlyoffice.com/docs/installation/docs-community-install-docker.aspx",
+      "retrievedAt": "2026-07-23"
+    },
+    {
+      "type": "inferred",
+      "claim": "The Document Server can still issue outbound requests driven by content and configuration - fetching external resources referenced inside documents and, where a user enables them, editor plugins or AI features that call third-party services - so external touchpoints exist but are content- or user-initiated rather than required for the packaged default.",
+      "source": "ONLYOFFICE Docs documentation on request filtering and editor plugins, correlated with apps/onlyoffice/manifest.json"
+    }
+  ],
+  "telemetryControls": [
+    {
+      "type": "configured",
+      "claim": "MOS pins METRICS_ENABLED=false, holding the Document Server's only optional metrics/telemetry emitter (StatsD) off. The upstream default is also false, so the setting keeps the emitter disabled even if a future image changes that default.",
+      "source": "apps/onlyoffice/manifest.json and apps/onlyoffice/entrypoint.sh",
+      "url": "https://github.com/ONLYOFFICE/Docker-DocumentServer",
+      "retrievedAt": "2026-07-23"
+    }
+  ],
+  "policies": [
+    {
+      "kind": "license",
+      "url": "https://github.com/ONLYOFFICE/DocumentServer/blob/v9.3.1/LICENSE",
+      "retrievedAt": "2026-07-23",
+      "publisher": "Ascensio System SIA (ONLYOFFICE)"
+    }
+  ],
+  "provenance": {
+    "method": "ai-assisted",
+    "provider": "Anthropic",
+    "model": "Claude Opus 4.8",
+    "modelIdentifierSource": "runtime-reported",
+    "skill": "assess-app-privacy",
+    "skillRevision": "6a741118713a2db4fd0323334fe39cc0d8021197",
+    "repositoryCommit": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
+    "humanReviewed": false
+  },
+  "openQuestions": [
+    "No runtime network capture was performed against the pinned 9.3.1 image; the no-backend-telemetry conclusion rests on the image's default configuration (empty license file, StatsD disabled and localhost-only, no documented analytics or update endpoint) plus the MOS METRICS_ENABLED=false pin, not on observed network silence.",
+    "Document content transits and is temporarily held by the Document Server during editing; the exact retention and cleanup of cached documents in the data volume was not independently verified for this version.",
+    "External resources referenced inside documents, and optional editor plugins or AI features, can cause outbound requests to third-party hosts on their own terms; the package constrains this only through the metadata-address block, so document- and user-driven network exposure remains operator-dependent."
+  ]
+}

@@ -6,6 +6,7 @@
 // reference, so there is no docs copy to keep in sync.
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
 import PrivacyPosture from '../../../components/PrivacyPosture.astro'
+import TryOutsideMos from '../../../components/TryOutsideMos.astro'
 import { catalogApps, appReadmes, LINK_LABELS } from '../../../lib/app-catalog'
 
 export function getStaticPaths() {
@@ -21,10 +22,14 @@ const linkEntries = Object.entries(app.links).map(([key, href]) => ({
   label: LINK_LABELS[key] ?? key,
   href: String(href)
 }))
+// The landing catalog's "Try <app>" button deep-links to #try-outside-mos, so
+// this section only exists for packages that ship a demo deploy target.
+const demoTarget = app.demoDeployTargets[0] ?? null
 
 const headings = [
   ...(app.features.length ? [{ depth: 2, slug: 'what-you-can-do', text: 'What you can do' }] : []),
   { depth: 2, slug: 'good-to-know', text: 'Good to know' },
+  ...(demoTarget ? [{ depth: 2, slug: 'try-outside-mos', text: `Just want to try ${app.name}?` }] : []),
   ...(Readme ? [{ depth: 2, slug: 'technical-reference', text: 'Technical reference' }] : []),
   ...(linkEntries.length ? [{ depth: 2, slug: 'links', text: 'Links' }] : [])
 ]
@@ -93,6 +98,8 @@ const headings = [
       </li>
     )}
   </ul>
+
+  {demoTarget && <TryOutsideMos appName={app.name} railwayUrl={demoTarget.url} />}
 
   {Readme && (
     <>

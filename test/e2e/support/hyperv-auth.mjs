@@ -18,10 +18,11 @@ export async function ensureOwnerSession(page, env, entryUrl = '/suite-manager/'
   const status = await apiJson(page, apiPathFor(entryUrl, '/suite-manager/api/setup/status'));
 
   if (status.status === 'needs-owner') {
-    await expect(page.getByRole('heading', { name: /Create your MOS owner account/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Create your owner account/i })).toBeVisible();
     await page.getByLabel(/name/i).fill(env.owner.name);
     await page.getByLabel(/email/i).fill(env.owner.email);
     await page.getByLabel(/^Password/i).fill(env.owner.password);
+    await page.getByLabel(/Confirm password/i).fill(env.owner.password);
     await page.getByRole('button', { name: /Create owner/i }).click();
     await expectHomeDashboard(page);
     await expectSignedInApi(page, entryUrl);

@@ -17,6 +17,12 @@ const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
 const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const v2AppsDir = path.join(repoRoot, 'apps');
 
+// These tests build update candidates out of the real apps/ packages, so a
+// literal candidate version silently stops being an upgrade the moment a real
+// package reaches it — which is exactly what a catalog-wide version bump did.
+// Kept deliberately above any version a shipped package will plausibly reach.
+const CANDIDATE_VERSION = '99.0.0';
+
 function snapshotResult(input) {
   return { snapshotPath: path.join(v2AppsDir, input.packageId) };
 }
@@ -818,7 +824,8 @@ test('updating an integration consumer keeps its integration env and reconciles 
   await fsp.cp(path.join(v2AppsDir, 'seafile'), candidateDir, { recursive: true });
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
-  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: CANDIDATE_VERSION }, null, 2)}\n`);
+  await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
   const source = { kind: 'official-git', path: 'apps/seafile', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
@@ -882,7 +889,7 @@ test('updating an integration consumer keeps its integration env and reconciles 
   const applyCalls = calls.filter(([kind]) => kind === 'apply');
   const [, reconciledApply] = applyCalls[applyCalls.length - 1];
   assert.equal(reconciledApply.packageId, 'seafile');
-  assert.equal(reconciledApply.packageVersion, '0.2.0');
+  assert.equal(reconciledApply.packageVersion, CANDIDATE_VERSION);
   assert.equal(reconciledApply.packageDigest, candidateDigest);
   assert.ok(calls.findIndex(([kind]) => kind === 'promote') < calls.lastIndexOf(applyCalls[applyCalls.length - 1]));
   assert.match(String(reconciledApply.compose.services.find((item) => item.id === 'seafile').environment.ONLYOFFICE_APIJS_URL), /onlyoffice\.example\.test/u);
@@ -900,7 +907,8 @@ test('a provider update recovered at startup re-applies its integration consumer
   await fsp.cp(path.join(v2AppsDir, 'onlyoffice'), candidateDir, { recursive: true });
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
-  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: CANDIDATE_VERSION }, null, 2)}\n`);
+  await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
   const source = { kind: 'official-git', path: 'apps/onlyoffice', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
@@ -970,7 +978,7 @@ test('a provider update recovered at startup re-applies its integration consumer
   const [recovery] = await service.recoverInterruptedUpdates({ publicUrlFor: requestContext().publicUrlFor });
 
   assert.equal(recovery.status, 'committed');
-  assert.equal(store.getAppInstanceByPackageId('onlyoffice').packageVersion, '0.2.0');
+  assert.equal(store.getAppInstanceByPackageId('onlyoffice').packageVersion, CANDIDATE_VERSION);
   assert.deepEqual(recovery.integrations.map((item) => item.status), ['active']);
   assert.equal(store.getAppIntegrations()[0].status, 'active');
   const consumerApplies = calls.filter(([kind, input]) => kind === 'apply' && input.packageId === 'seafile');
@@ -991,7 +999,7 @@ test('a crash between snapshot promotion and the durable commit is committed by 
   await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
-  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: CANDIDATE_VERSION }, null, 2)}\n`);
   await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
@@ -1061,7 +1069,7 @@ test('a crash between snapshot promotion and the durable commit is committed by 
   const recoveries = await service.recoverInterruptedUpdates();
   assert.deepEqual(recoveries, [{ instanceId: installed.id, integrations: [], recoveryState: 'none', status: 'committed' }]);
   const committed = store.getAppInstanceByPackageId('stirling-pdf');
-  assert.equal(committed.packageVersion, '0.2.0');
+  assert.equal(committed.packageVersion, CANDIDATE_VERSION);
   assert.equal(committed.packageDigest, candidateDigest);
   assert.equal(committed.sourceRevision, 'c'.repeat(40));
   assert.equal(committed.updateRecoveryState, 'none');
@@ -1069,7 +1077,7 @@ test('a crash between snapshot promotion and the durable commit is committed by 
   assert.equal(store.latestAppUpdateOperation(installed.id).status, 'succeeded');
   const healthy = service.listPackages().find((item) => item.id === 'stirling-pdf');
   assert.equal(healthy.instance.updateRecovery, null);
-  assert.equal(healthy.version, '0.2.0');
+  assert.equal(healthy.version, CANDIDATE_VERSION);
   store.close();
 });
 
@@ -1082,7 +1090,7 @@ test('the recovery action restores the recorded runtime after a failed rollback'
   await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
-  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: CANDIDATE_VERSION }, null, 2)}\n`);
   await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
@@ -1146,7 +1154,7 @@ test('the recovery action restores the recorded runtime after a failed rollback'
   assert.equal(rollback.installed.packageDigest, installed.packageDigest);
   assert.equal(rollback.installed.packageVersion, manifest.version);
   assert.equal(rollback.candidate.packageDigest, candidateDigest);
-  assert.equal(rollback.candidate.packageVersion, '0.2.0');
+  assert.equal(rollback.candidate.packageVersion, CANDIDATE_VERSION);
   assert.ok(rollback.candidate.compose.services.length >= 1);
   const after = store.getAppInstanceByPackageId('stirling-pdf');
   assert.equal(after.updateRecoveryState, 'none');
@@ -1156,7 +1164,7 @@ test('the recovery action restores the recorded runtime after a failed rollback'
   // The road is open again: the same update now runs to completion.
   const retried = await service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf'));
   assert.equal(retried.operation.status, 'succeeded');
-  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').packageVersion, '0.2.0');
+  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').packageVersion, CANDIDATE_VERSION);
   store.close();
 });
 
@@ -1348,7 +1356,7 @@ test('a candidate whose privacy review is unreadable fails the update as a class
   await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
-  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: CANDIDATE_VERSION }, null, 2)}\n`);
   const candidatePackage = readAppPackageManifest(candidateDir);
   // The digest is taken while the review still parses, exactly as the download
   // path takes it, and only then does the on-disk file go bad.
@@ -1393,7 +1401,7 @@ test('confirmed app updates are re-compared and durably staged against exact ide
   await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
-  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: CANDIDATE_VERSION }, null, 2)}\n`);
   await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
@@ -1446,7 +1454,7 @@ test('an agent that cannot apply updates end to end is refused before any update
   await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
-  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: '0.2.0' }, null, 2)}\n`);
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: CANDIDATE_VERSION }, null, 2)}\n`);
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
   const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'b'.repeat(40), trust: 'mos-reviewed' };
@@ -1492,7 +1500,7 @@ test('contract v6 app updates activate, promote, and commit candidate identity a
   await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
   const manifestPath = path.join(candidateDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
-  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, update: { ...manifest.update, rollback: 'safe' }, version: '0.2.0' }, null, 2)}\n`);
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, update: { ...manifest.update, rollback: 'safe' }, version: CANDIDATE_VERSION }, null, 2)}\n`);
   await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);
   const candidateDigest = digestAppPackage(candidateDir);
@@ -1515,11 +1523,82 @@ test('contract v6 app updates activate, promote, and commit candidate identity a
   const result = await service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf'));
   assert.equal(result.operation.status, 'succeeded');
   assert.equal(result.operation.stage, 'completed');
-  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').packageVersion, '0.2.0');
+  assert.equal(store.getAppInstanceByPackageId('stirling-pdf').packageVersion, CANDIDATE_VERSION);
   assert.equal(store.getAppInstanceByPackageId('stirling-pdf').packageDigest, candidateDigest);
   assert.equal(calls[0][0], 'activate');
   assert.equal(calls[1][0], 'promote');
   assert.equal(calls[1][1].rollbackSafe, true);
+  store.close();
+});
+
+// Every other update test in this file deletes the candidate's privacy review
+// before updating, which is exactly what hid this: a reviewed official candidate
+// could never be staged. The review names the commit it was authored against,
+// while the update path resolves the catalog branch for real, and the binding
+// required the two to be equal — impossible for a file that lives inside the
+// commit it would have to name. This keeps the review, and gives the candidate a
+// source revision that differs from the one the review declares, which is the
+// only shape the catalog can ever produce.
+test('an official candidate that ships a privacy review updates and keeps its reviewed posture', async () => {
+  const root = await tempStateDir();
+  const candidateDir = path.join(root, 'candidate');
+  await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
+  const manifestPath = path.join(candidateDir, 'manifest.json');
+  const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
+  await fsp.writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: CANDIDATE_VERSION }, null, 2)}\n`);
+  // Re-stamp the review the way publishing a package does: packageVersion is
+  // hashed, packageDigest is placeholdered before hashing and so settles in one
+  // pass. The declared revision is left alone on purpose.
+  const reviewPath = path.join(candidateDir, 'privacy-review.json');
+  const review = JSON.parse(await fsp.readFile(reviewPath, 'utf8'));
+  review.scope.packageVersion = CANDIDATE_VERSION;
+  await fsp.writeFile(reviewPath, `${JSON.stringify(review, null, 2)}\n`);
+  review.scope.packageDigest = digestAppPackage(candidateDir);
+  await fsp.writeFile(reviewPath, `${JSON.stringify(review, null, 2)}\n`);
+  const candidatePackage = readAppPackageManifest(candidateDir);
+  const candidateDigest = digestAppPackage(candidateDir);
+  assert.notEqual(review.scope.source.revision, 'c'.repeat(40));
+  const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'c'.repeat(40), trust: 'mos-reviewed' };
+  const snapshotDir = path.join(root, 'snapshots', 'installed');
+  const agent = {
+    async activatePackageUpdate() { return { status: 'candidate-healthy' }; },
+    async buildPackageUpdate() { return { status: 'built' }; },
+    async promotePackageUpdate() {
+      await fsp.rm(snapshotDir, { force: true, recursive: true });
+      await fsp.cp(candidateDir, snapshotDir, { recursive: true });
+      return { snapshotPath: snapshotDir, status: 'snapshot-promoted' };
+    },
+    async rollbackPackageUpdate() { throw new Error('rollback must not run for a healthy candidate'); },
+    async snapshotPackage() {
+      await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), snapshotDir, { recursive: true });
+      return { snapshotPath: snapshotDir };
+    },
+    async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
+    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+  };
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({
+    agent,
+    appsDir: v2AppsDir,
+    catalogService: { advisoriesFor: () => [], platformVersion: '0.1.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    store,
+  });
+  await service.installPackage('stirling-pdf');
+
+  const comparison = await service.preparePackageUpdate('stirling-pdf');
+  assert.equal(comparison.updateStatus, 'update-available');
+  // The candidate's posture is read from its own shipped review, not degraded to
+  // review-required because the revision differs.
+  assert.equal(comparison.candidate.privacy.status, 'reviewed');
+  assert.equal(comparison.candidate.privacy.posture, review.posture);
+
+  const result = await service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf'));
+  assert.equal(result.operation.status, 'succeeded');
+  const updated = store.getAppInstanceByPackageId('stirling-pdf');
+  assert.equal(updated.packageVersion, CANDIDATE_VERSION);
+  assert.equal(updated.packageDigest, candidateDigest);
+  assert.equal(updated.privacyStatus, 'reviewed');
+  assert.equal(updated.privacyPosture, review.posture);
   store.close();
 });
 
@@ -1533,7 +1612,7 @@ test('app updates replace an applied Homepage entry and retain its applied proje
     ...manifest,
     homepage: { ...manifest.homepage, name: 'Updated PDF' },
     name: 'Updated PDF',
-    version: '0.2.0',
+    version: CANDIDATE_VERSION,
   }, null, 2)}\n`);
   await fsp.rm(path.join(candidateDir, 'privacy-review.json'), { force: true });
   const candidatePackage = readAppPackageManifest(candidateDir);

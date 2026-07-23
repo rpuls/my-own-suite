@@ -10,10 +10,21 @@ export function OwnerSetupScreen({ error, onCreateOwner }: OwnerSetupScreenProps
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const shownError = formError ?? error;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+
+    if (password !== confirmPassword) {
+      setFormError("Those passwords don't match. Please retype them.");
+      return;
+    }
+
+    setFormError(null);
     setSubmitting(true);
 
     try {
@@ -39,9 +50,10 @@ export function OwnerSetupScreen({ error, onCreateOwner }: OwnerSetupScreenProps
           </div>
 
           <div className="suite-auth-copy">
-            <h1 className="mos-page-title">Create your MOS owner account</h1>
+            <h1 className="mos-page-title">Create your owner account</h1>
             <p className="suite-lead mos-body-lg">
-              This first account controls Suite Manager and the future app platform on this machine.
+              This is the main account for My Own Suite on this machine. It controls Suite Manager
+              and every app you install.
             </p>
           </div>
 
@@ -78,15 +90,34 @@ export function OwnerSetupScreen({ error, onCreateOwner }: OwnerSetupScreenProps
                 <input
                   autoComplete="new-password"
                   minLength={12}
-                  onChange={(event) => setPassword(event.target.value)}
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    setFormError(null);
+                  }}
                   required
                   type="password"
                   value={password}
                 />
-                <small>Use at least 12 characters.</small>
+                <small>{password.length >= 12 ? '✓ 12+ characters' : 'Use at least 12 characters.'}</small>
               </label>
 
-              {error ? <p className="suite-error">{error}</p> : null}
+              <label className="suite-auth-field">
+                <span>Confirm password</span>
+                <input
+                  autoComplete="new-password"
+                  minLength={12}
+                  onChange={(event) => {
+                    setConfirmPassword(event.target.value);
+                    setFormError(null);
+                  }}
+                  required
+                  type="password"
+                  value={confirmPassword}
+                />
+                <small>Retype your password to catch typos.</small>
+              </label>
+
+              {shownError ? <p className="suite-error">{shownError}</p> : null}
 
               <button className="mos-btn mos-btn-primary" disabled={submitting} type="submit">
                 {submitting ? 'Creating owner...' : 'Create owner'}

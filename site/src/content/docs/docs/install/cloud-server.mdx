@@ -1,16 +1,16 @@
 ---
 title: Install on any cloud server
-description: Install My Own Suite on any hosting provider's fresh Ubuntu 24.04 server, either over SSH or with cloud-init user data.
+description: Install My Own Suite on any hosting provider's fresh Ubuntu 24.04 server with a single hosted command, over SSH or with cloud-init user data.
 ---
 
 import { Steps } from '@astrojs/starlight/components'
 
-My Own Suite is provider-agnostic: any host that can give you a plain **Ubuntu Server 24.04 LTS** machine with at least **2 vCPU / 4 GB RAM** will do. There are two ways in — pick whichever your provider makes easier.
+My Own Suite is provider-agnostic: any host that can give you a plain **Ubuntu Server 24.04 LTS** machine with at least **2 vCPU / 4 GB RAM** will do. One hosted command installs everything — it works out the server's own public address, so there is nothing to configure in advance and nothing to install on your own computer. There are two ways to run it; pick whichever your provider makes easier.
 
 **What you need**
 
-- A fresh Ubuntu 24.04 server at any provider, and its public IP address.
-- A computer with [Git](https://git-scm.com/) and [Node.js 22](https://nodejs.org/) installed.
+- A fresh Ubuntu 24.04 server at any provider.
+- A way to run one command on it: SSH access, or your provider's "user data" / startup-script box.
 
 ## Option A — over SSH (works everywhere)
 
@@ -18,37 +18,45 @@ My Own Suite is provider-agnostic: any host that can give you a plain **Ubuntu S
 
 1. **Create the server** at your provider: Ubuntu 24.04 LTS, 2 vCPU / 4 GB RAM or better. Note its public IP address.
 
-2. **Render the install command** on your own computer:
+2. **Connect with SSH.** Your provider shows you how — usually `ssh root@<your-server-ip>`.
+
+3. **Run the installer:**
 
    ```sh
-   git clone https://github.com/rpuls/my-own-suite.git
-   cd my-own-suite
-   npm run install:render -- --target ssh --public-ipv4 <your-server-ip>
+   curl -fsSL https://get.myownsuite.org | sudo bash
    ```
 
-   This prints a single self-contained `sudo bash …` command (a readable script — no secrets inside). The `--public-ipv4` value is used to generate your suite's web address, `home.<ip>.sslip.io`.
+   The install runs unattended and prints your suite's address when it finishes. You can read the script first at <a href="https://get.myownsuite.org/install.sh">https://get.myownsuite.org/install.sh</a> — it contains no secrets; your owner account is created later, in your browser.
 
-3. **Run it on the server.** Connect with SSH (your provider shows you how — usually `ssh root@<your-server-ip>`), paste the entire rendered command, and press Enter. The install runs unattended; you can close the connection once it starts printing progress.
-
-4. **Open your suite.** After 5–15 minutes, visit `http://home.<your-server-ip>.sslip.io/` and create your owner account straight away. Continue with [Your first sign-in](/docs/install/first-start/).
+4. **Open your suite.** After 5–15 minutes, visit `https://home.<your-server-ip>.sslip.io/` and create your owner account straight away. Continue with [Your first sign-in](/docs/install/first-start/).
 
 </Steps>
 
 ## Option B — with cloud-init user data
 
-If your provider has a "user data" / "cloud-init" / "startup script" box when creating a server, you can skip SSH entirely — this is the flow the [DigitalOcean guide](/docs/install/digitalocean/) walks through in detail. The generic version:
+If your provider has a "user data" / "cloud-init" / "startup script" box when creating a server, you can skip SSH entirely — this is the flow the [DigitalOcean guide](/docs/install/digitalocean/) walks through in detail. Paste this into the box:
 
 ```sh
-npm run install:render -- --target cloud-init --public-ipv4 <your-server-ip> > mos-cloud-init.yaml
+#!/bin/bash
+curl -fsSL https://get.myownsuite.org | bash
 ```
 
-Paste the file's contents into the provider's user-data box when creating the server. The catch: most providers only assign the IP *after* creation, so this option fits providers that let you reserve a static IP first (or re-provision an existing server with known IP).
+The server installs itself on first boot and works out its own public address. When it's ready, open `https://home.<your-server-ip>.sslip.io/`.
 
-## Backup destination
-
-Attach a separate persistent block-storage volume through your provider, format and mount it on this server, then select that mounted volume in Suite Manager. A USB disk attached to your own computer is not visible to a rented server. MOS has no direct object-storage destination today; provider snapshots are an additional provider-managed recovery layer, not a consistency-checked MOS backup. Use encrypted storage and read [Back up and restore](/docs/guides/backup-restore/) before storing data.
 ## Good to know
 
-- **Own domain instead of sslip.io:** if you already have a domain with an A record pointing at the server, render with `--domain yourdomain.example` instead of `--public-ipv4`. Your suite then lives at `home.yourdomain.example`.
-- **HTTPS:** cloud installs rely on your provider's domain/TLS tooling for public HTTPS. The built-in [Cloudflare HTTPS flow](/docs/guides/https-domain/) is for self-hosted installs.
+- **HTTPS is automatic.** MOS obtains a real (Let's Encrypt) certificate for the generated `sslip.io` address, so your suite is served over HTTPS. The first load can take a minute while the certificate is issued.
+- **Own domain instead of sslip.io:** if you already have a domain with an A record pointing at the server, HTTPS for it is handled through your provider's domain tooling. The built-in [Cloudflare HTTPS flow](/docs/guides/https-domain/) is for self-hosted installs.
 - **What the installer sets up:** Docker, Node.js, the Caddy web server, Suite Manager, your Homepage dashboard, and the MOS host services — all as systemd services on the machine. Details in [How MOS works](/docs/reference/architecture/).
+
+## Advanced: render the install file yourself
+
+The hosted command above is the recommended path. If you'd rather build the install file on your own computer first — to review every line before it runs, or to install on an air-gapped server — render it from the MOS repository instead. This needs [Git](https://git-scm.com/) and [Node.js 22](https://nodejs.org/) on your machine:
+
+```sh
+git clone https://github.com/rpuls/my-own-suite.git
+cd my-own-suite
+npm run install:render -- --target ssh --public-ipv4 <your-server-ip>
+```
+
+This prints a single self-contained `sudo bash …` command (a readable script — no secrets inside), which you paste and run on the server. The `--public-ipv4` value is used to derive your suite's web address, `home.<ip>.sslip.io`. For a cloud-init file instead, use `--target cloud-init --public-ipv4 <your-server-ip> > mos-cloud-init.yaml`; most providers only assign the IP *after* creation, so this fits providers that let you reserve a static IP first.

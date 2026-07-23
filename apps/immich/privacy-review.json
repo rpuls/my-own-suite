@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "appId": "immich",
+  "reviewedAt": "2026-07-23T00:00:00.000Z",
+  "expiresAt": "2027-01-23T00:00:00.000Z",
+  "scope": {
+    "packageVersion": "0.4.0",
+    "packageDigest": "sha256:59366ce17a50c82aaa830b10de3180f052127ff3d0712b6ed8f69e1889375649",
+    "source": {
+      "kind": "official-git",
+      "repository": "https://github.com/rpuls/my-own-suite",
+      "path": "apps/immich",
+      "revision": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
+      "trust": "mos-reviewed"
+    },
+    "components": [
+      {
+        "name": "Immich Server",
+        "version": "3.0.2",
+        "artifact": "ghcr.io/immich-app/immich-server",
+        "digest": "sha256:e027fa892e4c20ea8cba262e0d98dbaba14af873903408928e252596608a3a47"
+      },
+      {
+        "name": "Immich Machine Learning",
+        "version": "3.0.2",
+        "artifact": "ghcr.io/immich-app/immich-machine-learning",
+        "digest": "sha256:cfde27af4382c12940e02186abf0c6089e4eca9ebd75490d0ac32daaf52a0add"
+      },
+      {
+        "name": "Immich PostgreSQL (VectorChord / pgvecto.rs)",
+        "version": "14-vectorchord0.4.3-pgvectors0.2.0",
+        "artifact": "ghcr.io/immich-app/postgres",
+        "digest": "sha256:b1d33572a9a0634aa6d344077467ad32847812a37fa3859f702952cba22a2f55"
+      },
+      {
+        "name": "Valkey",
+        "version": "9",
+        "artifact": "docker.io/valkey/valkey",
+        "digest": "sha256:e30fbdc8d6d6b355712e50f4008321026f69db3e450254b4f0008d22745d8d0e"
+      }
+    ],
+    "clientsExcluded": [
+      "The Immich mobile apps (iOS and Android) and their automatic photo/video backup behaviour",
+      "The browser-based Immich web client served to each user's device",
+      "Device or vendor cloud backups configured within those client apps",
+      "Third-party Immich API clients"
+    ]
+  },
+  "posture": "privacy-configured",
+  "dimensions": {
+    "telemetry": "disabled-by-mos",
+    "externalServices": "optional",
+    "accountDependency": "local-only",
+    "dataProcessing": "local",
+    "policyExposure": "upstream-services-involved",
+    "confidence": "documented"
+  },
+  "evidence": [
+    {
+      "type": "configured",
+      "claim": "The MOS package bakes an immich-config.json into the server image and points IMMICH_CONFIG_FILE at it, setting newVersionCheck.enabled to false so the enabled-by-default release check is turned off.",
+      "source": "apps/immich/manifest.json, apps/immich/Dockerfile, and apps/immich/immich-config.json"
+    },
+    {
+      "type": "documented",
+      "claim": "Immich's new-version check is a supported system setting (newVersionCheck.enabled) that is enabled by default and can be disabled through the IMMICH_CONFIG_FILE configuration file rather than only the admin UI.",
+      "source": "Immich configuration file documentation (v3.0.2)",
+      "url": "https://docs.immich.app/install/config-file/",
+      "retrievedAt": "2026-07-23"
+    },
+    {
+      "type": "configured",
+      "claim": "Only immich-server is published through the generated app route; immich-postgres, immich-valkey, and immich-machine-learning are internal-only services, and the first admin account is created locally in the Immich web UI without any upstream Immich account.",
+      "source": "apps/immich/manifest.json and apps/immich/onboarding setup guide"
+    },
+    {
+      "type": "configured",
+      "claim": "The photo and video library, database, thumbnail cache, and machine learning model cache persist to package-owned volumes, and DISABLE_MACHINE_LEARNING=false runs a local machine-learning service so facial recognition and smart-search inference execute on the MOS server.",
+      "source": "apps/immich/manifest.json and apps/immich/README.md"
+    },
+    {
+      "type": "documented",
+      "claim": "Machine learning models (CLIP for smart search and InsightFace for facial recognition) are downloaded from the immich-app organisation on Hugging Face on first use into the local model cache; inference then runs locally, and the photos themselves are not sent to an external service for processing.",
+      "source": "Immich FAQ and machine learning documentation",
+      "url": "https://docs.immich.app/FAQ/",
+      "retrievedAt": "2026-07-23"
+    },
+    {
+      "type": "documented",
+      "claim": "The web map view loads its map style and tiles from Immich's own hosted tile service at tiles.immich.cloud by default; this is a browser-side request made only when a user opens the map, and it is configurable through the map style settings.",
+      "source": "Immich custom map styles documentation",
+      "url": "https://docs.immich.app/guides/custom-map-styles/",
+      "retrievedAt": "2026-07-23"
+    }
+  ],
+  "telemetryControls": [
+    {
+      "type": "configured",
+      "claim": "MOS disables the enabled-by-default new-version check through the upstream-supported IMMICH_CONFIG_FILE mechanism (newVersionCheck.enabled=false) baked into the server image, so the server issues no scheduled release-check requests to GitHub.",
+      "source": "apps/immich/immich-config.json and apps/immich/manifest.json",
+      "url": "https://docs.immich.app/install/config-file/",
+      "retrievedAt": "2026-07-23"
+    }
+  ],
+  "policies": [
+    {
+      "kind": "license",
+      "url": "https://github.com/immich-app/immich/blob/v3.0.2/LICENSE",
+      "retrievedAt": "2026-07-23",
+      "publisher": "Immich project"
+    }
+  ],
+  "provenance": {
+    "method": "ai-assisted",
+    "provider": "Anthropic",
+    "model": "Claude Opus 4.8",
+    "modelIdentifierSource": "runtime-reported",
+    "skill": "assess-app-privacy",
+    "skillRevision": "6a741118713a2db4fd0323334fe39cc0d8021197",
+    "repositoryCommit": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
+    "humanReviewed": false
+  },
+  "openQuestions": [
+    "No runtime network capture was performed against the pinned v3.0.2 images; conclusions rely on package configuration and upstream documentation rather than observed traffic, so residual outbound requests were not independently ruled out.",
+    "Machine learning features download models from Hugging Face on first use and the web map view loads tiles from tiles.immich.cloud; these optional external touchpoints remain unless an operator disables machine learning or overrides the map style, and this review does not disable them.",
+    "The Immich mobile and web clients, and any device or vendor cloud backups configured within them, are outside the reviewed server package boundary."
+  ]
+}

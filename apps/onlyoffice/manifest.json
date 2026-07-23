@@ -1,7 +1,7 @@
 {
   "id": "onlyoffice",
   "name": "ONLYOFFICE",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minimumMosVersion": "0.1.0",
   "packageFiles": ["entrypoint.sh"],
   "summary": "Office editor suite for compatible file and content apps.",
@@ -39,10 +39,11 @@
       "description": "Document Server is heavier than small utility packages and may take several minutes to start cold."
     },
     "privacy": {
-      "summary": "Documents remain in the connected file app; ONLYOFFICE receives editing callbacks and temporary document data.",
+      "summary": "ONLYOFFICE Document Server runs on your own MOS server and edits documents the connected file app sends it. It needs no ONLYOFFICE account, processes documents inside the container, and MOS pins its optional StatsD metrics off. The trackers ONLYOFFICE is known for live in its desktop and mobile apps, which MOS does not ship.",
       "notes": [
-        "MOS generates a stable JWT secret so integrations keep working across restarts.",
-        "Connect this package to a compatible file app before expecting a normal user workflow."
+        "MOS sets METRICS_ENABLED=false so the server's optional StatsD metrics stay off.",
+        "No ONLYOFFICE account or license server is contacted; the Community Edition enforces its limits locally.",
+        "Opening documents that reference external images or links, or enabling editor plugins or AI, can still make the server reach out to third-party sites."
       ]
     },
     "links": {
@@ -93,6 +94,7 @@
           "TZ": "UTC",
           "ALLOW_PRIVATE_IP_ADDRESS": "true",
           "ALLOW_META_IP_ADDRESS": "false",
+          "METRICS_ENABLED": "false",
           "JWT_ENABLED": "true",
           "JWT_SECRET": "${secret.jwtSecret}",
           "SECURE_LINK_SECRET": "${secret.secureLinkSecret}"

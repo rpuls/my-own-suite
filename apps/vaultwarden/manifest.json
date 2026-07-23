@@ -1,13 +1,14 @@
 {
   "id": "vaultwarden",
   "name": "Vaultwarden",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minimumMosVersion": "0.1.0",
   "summary": "Private Bitwarden-compatible password management.",
   "category": "security",
   "icon": "icon.png",
   "catalog": {
     "description": "Vaultwarden lets you use the familiar Bitwarden apps with your own private backend for passwords, secure notes, cards, identities, and shared vaults.",
+    "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/vaultwarden-3?referralCode=-Yg50p" }],
     "replaces": "LastPass / 1Password / Bitwarden cloud",
     "tags": [
       "passwords",
@@ -41,11 +42,12 @@
       "description": "This MOS package runs Vaultwarden as one service using its built-in SQLite storage."
     },
     "privacy": {
-      "summary": "Vaultwarden stores encrypted vault data on your own server, while your master password remains your responsibility.",
+      "summary": "Vaultwarden runs entirely on your own server with no telemetry, storing client-encrypted vault data locally, while your master password remains your responsibility.",
       "notes": [
         "Use a strong, unique master password.",
         "Enable two-factor authentication where possible.",
-        "Keep backups, because losing the app data volume can mean losing the vault."
+        "Keep backups, because losing the app data volume can mean losing the vault.",
+        "By default the server fetches website icons from the sites you save, which can reveal those domains to third parties; you can turn icon downloading off in Vaultwarden if you prefer."
       ]
     },
     "links": {

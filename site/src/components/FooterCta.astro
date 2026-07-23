@@ -1,6 +1,6 @@
 ---
 import BrandMark from './BrandMark.astro'
-import { DOCS_PATH } from '../lib/links'
+import { DOCS_PATH, GET_STARTED_PATH } from '../lib/links'
 ---
 
 <section class="band">
@@ -9,7 +9,7 @@ import { DOCS_PATH } from '../lib/links'
       <BrandMark size={52} />
       <h2 class="mos-section-title" style="max-width:22ch">Start with one app. Own more of your life over time.</h2>
       <div class="hero-cta" style="justify-content:center">
-        <a class="mos-btn mos-btn-primary" href="#install" style="min-height:3.2rem;padding:0.85rem 1.6rem;font-size:1.05rem">Get started</a>
+        <a class="mos-btn mos-btn-primary" href={GET_STARTED_PATH} style="min-height:3.2rem;padding:0.85rem 1.6rem;font-size:1.05rem">Get started</a>
         <a class="mos-btn mos-btn-secondary" href={DOCS_PATH} style="min-height:3.2rem;padding:0.85rem 1.6rem">Read the docs</a>
       </div>
     </div>

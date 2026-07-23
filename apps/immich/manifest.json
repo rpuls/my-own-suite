@@ -1,14 +1,16 @@
 {
   "id": "immich",
   "name": "Immich",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "minimumMosVersion": "0.1.0",
   "architectures": ["amd64"],
+  "packageFiles": ["immich-config.json"],
   "summary": "High performance self-hosted photo and video backup solution.",
   "category": "media",
   "icon": "icon.png",
   "catalog": {
     "description": "Immich is a self-hosted photo and video management server with automatic backup from mobile devices, facial recognition, object detection, and album organization.",
+    "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/immich-1?referralCode=-Yg50p" }],
     "replaces": "Google Photos / iCloud Photos",
     "tags": [
       "photos",
@@ -43,11 +45,12 @@
       "description": "This package requires minimum 4GB RAM and CPU with AVX2 support for optimal machine learning performance. Photo and video libraries grow large, and whole-suite backups include the full library - size your backup drive for the library you plan to store and expect backups to take longer as it grows."
     },
     "privacy": {
-      "summary": "All photos, metadata, and machine learning models stay fully on your MOS server.",
+      "summary": "Photos are stored and processed on your MOS server, and MOS disables Immich's built-in version check so it does not phone home.",
       "notes": [
-        "Photo and video library data is stored in package-owned volumes.",
-        "Only the Immich web service is exposed through HTTPS; database, cache, and machine learning services remain internal.",
-        "Machine learning processing runs entirely locally on your server."
+        "Photo and video library data is stored in package-owned volumes, and machine learning inference runs locally on your server.",
+        "Only the Immich web service is exposed through HTTPS; the database, cache, and machine learning services remain internal.",
+        "MOS disables the enabled-by-default new-version check so the server makes no scheduled release-check requests to GitHub.",
+        "Optional features still reach external services: machine learning models are downloaded from Hugging Face on first use, and the map view loads tiles from Immich's hosted tile service."
       ]
     },
     "links": {
@@ -137,7 +140,8 @@
           "PUBLIC_PORT": "443",
           "PUBLIC_PROTOCOL": "${app.scheme}",
           "TZ": "UTC",
-          "DISABLE_MACHINE_LEARNING": "false"
+          "DISABLE_MACHINE_LEARNING": "false",
+          "IMMICH_CONFIG_FILE": "/etc/immich/immich-config.json"
         },
         "volumes": [
           "library:/usr/src/app/upload",

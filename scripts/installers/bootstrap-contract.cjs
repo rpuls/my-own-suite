@@ -547,7 +547,42 @@ MOS_BOOTSTRAP_DONE
 
 echo "[mos] Wrote bootstrap contract to $MOS_STATE_ROOT/bootstrap-contract.env"
 echo "[mos] MOS is ready for first-run owner setup at $MOS_SETUP_URL"
-${cloudBootstrap ? 'echo "[mos] Secure one-time owner setup URL: $MOS_SETUP_URL?claim=$MOS_OWNER_CLAIM_TOKEN"' : ''}
+
+${cloudBootstrap
+  ? `mos_setup_url="$MOS_SETUP_URL?claim=$MOS_OWNER_CLAIM_TOKEN"
+mos_setup_note="This link carries a one-time owner setup key — open it now, create your account, then it stops working. Keep it private."`
+  : `mos_setup_url="$MOS_SETUP_URL"
+mos_setup_note="Open it to create your owner account and finish first-run setup."`}
+
+if [ -t 1 ] && [ -z "\${NO_COLOR:-}" ]; then
+  B=$'\\033[1m'; D=$'\\033[2m'; G=$'\\033[32m'; C=$'\\033[36m'; Y=$'\\033[33m'; R=$'\\033[0m'
+else
+  B=''; D=''; G=''; C=''; Y=''; R=''
+fi
+
+printf '\\n\\n'
+printf '%s\\n' "\${G}      ███╗   ███╗  ██████╗  ███████╗\${R}"
+printf '%s\\n' "\${G}      ████╗ ████║ ██╔═══██╗ ██╔════╝\${R}"
+printf '%s\\n' "\${G}      ██╔████╔██║ ██║   ██║ ███████╗\${R}"
+printf '%s\\n' "\${G}      ██║╚██╔╝██║ ██║   ██║ ╚════██║\${R}"
+printf '%s\\n' "\${G}      ██║ ╚═╝ ██║ ╚██████╔╝ ███████║\${R}"
+printf '%s\\n' "\${G}      ╚═╝     ╚═╝  ╚═════╝  ╚══════╝\${R}"
+printf '\\n'
+printf '%s\\n' "   \${G}\${B}✓  Installation complete\${R}   \${D}My Own Suite is up and running.\${R}"
+printf '\\n'
+printf '%s\\n' "   \${D}──────────────────────────────────────────────────────────────\${R}"
+printf '\\n'
+printf '%s\\n' "   \${B}Finish setup — open this link in your browser:\${R}"
+printf '\\n'
+printf '%s\\n' "      \${C}\${B}\${mos_setup_url}\${R}"
+printf '\\n'
+printf '%s\\n' "   \${Y}▸\${R}  \${mos_setup_note}"
+printf '\\n'
+printf '%s\\n' "   \${D}Server\${R}   \${MOS_DOMAIN}"
+printf '%s\\n' "   \${D}Home\${R}     \${MOS_HOME_URL}"
+printf '\\n'
+printf '%s\\n' "   \${D}──────────────────────────────────────────────────────────────\${R}"
+printf '\\n\\n'
 `;
 
   return script.replace(/\r\n/g, '\n');

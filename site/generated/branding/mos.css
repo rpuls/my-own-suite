@@ -519,3 +519,16 @@ summary:focus-visible {
 .mos-link:hover {
   color: var(--mos-color-link-hover);
 }
+
+/* Connect-apps visual: line drawing of the source app's plug cable meeting
+   the socket on the app it plugs into. Shared by the public site catalog and
+   Suite Manager's app connections so both read as the same mark. */
+.mos-connect-visual {
+  width: min(280px, 100%);
+  height: auto;
+  color: var(--mos-color-accent);
+}
+
+.mos-connect-visual-sm {
+  width: min(168px, 100%);
+}

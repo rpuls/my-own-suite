@@ -323,10 +323,15 @@ test('a release missing its publisher key refuses to run a catalog at all', () =
   assert.throws(() => new OfficialCatalogService({ signingPublicKey: 'not a key', stateDir: tempDir() }), { code: 'CATALOG_SIGNATURE_INVALID' });
 });
 
-test('update classification distinguishes upgrades and same-version digest conflicts', () => {
+// An official app is installed from the checkout on the box, so its digest is
+// whatever that checkout held, while the catalog's is its branch tip's. They
+// differ on every box not sitting exactly on that tip, which is the normal case,
+// so only the version may decide whether an update exists.
+test('update classification is decided by version alone, not by digest', () => {
   const service = catalogService({ stateDir: writeVerifiedCache(tempDir()) });
   assert.equal(service.updateFor('immich', { packageDigest: `sha256:${'2'.repeat(64)}`, packageVersion: '1.1.0' }).status, 'update-available');
-  assert.equal(service.updateFor('immich', { packageDigest: `sha256:${'2'.repeat(64)}`, packageVersion: '1.2.0' }).status, 'integrity-error');
+  assert.equal(service.updateFor('immich', { packageDigest: `sha256:${'2'.repeat(64)}`, packageVersion: '1.3.0' }).status, 'installed-newer');
+  assert.equal(service.updateFor('immich', { packageDigest: `sha256:${'2'.repeat(64)}`, packageVersion: '1.2.0' }).status, 'current');
   assert.equal(service.updateFor('immich', { packageDigest: digest, packageVersion: '1.2.0' }).status, 'current');
 });
 

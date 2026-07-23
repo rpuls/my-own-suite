@@ -23,6 +23,38 @@ export function Icon({ name }: { name: IconName }) {
   return <svg aria-hidden="true" className="suite-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2">{paths[name]}</svg>;
 }
 
+export type ConnectApp = { iconUrl?: string; name: string };
+
+// Connect-apps visual: one continuous line drawing of two rounded boxes, with
+// a plug cable leaving the source app and a socket waiting on the app it plugs
+// into. The app icons render inside the boxes as part of the SVG, falling back
+// to initials when a package has no icon.
+//
+// This is the same mark the public site draws for "apps that work together"
+// (site/src/components/AppConnect.astro); the geometry below must stay
+// identical to that file, and the styling comes from the shared
+// .mos-connect-visual branding class.
+export function AppConnect({ size = 'md', source, target }: { size?: 'md' | 'sm'; source: ConnectApp; target: ConnectApp }) {
+  const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]!.toUpperCase()).join('');
+  const inset = (app: ConnectApp, x: number) => (app.iconUrl
+    ? <image height="56" href={app.iconUrl} width="56" x={x} y="52" />
+    : <text fill="currentColor" fontSize="34" fontWeight="800" textAnchor="middle" x={x + 28} y="92">{initials(app.name)}</text>);
+  return <svg aria-label={`${source.name} plugs into ${target.name}`} className={`mos-connect-visual${size === 'sm' ? ' mos-connect-visual-sm' : ''}`} fill="none" role="img" viewBox="0 0 460 160">
+    <g stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="7">
+      <rect height="112" rx="26" width="112" x="12" y="24" />
+      <rect height="112" rx="26" width="112" x="336" y="24" />
+      <line x1="124" x2="172" y1="80" y2="80" />
+      <path d="M 210 52 L 200 52 A 28 28 0 0 0 200 108 L 210 108 Z" />
+      <line x1="210" x2="236" y1="66" y2="66" />
+      <line x1="210" x2="236" y1="94" y2="94" />
+      <path d="M 252 50 L 260 50 A 30 30 0 0 1 260 110 L 252 110 Z" />
+      <line x1="290" x2="336" y1="80" y2="80" />
+    </g>
+    {inset(source, 40)}
+    {inset(target, 364)}
+  </svg>;
+}
+
 export function Drawer({ children, onClose, open, title }: { children: ReactNode; onClose: () => void; open: boolean; title: string }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
