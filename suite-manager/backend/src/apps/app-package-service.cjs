@@ -776,6 +776,40 @@ class AppPackageService {
     return iconPath;
   }
 
+  // Resolves one catalog screenshot to its file inside the package the owner is
+  // actually looking at (the installed snapshot when the app is installed, the
+  // shipped catalog package otherwise). The index addresses the same filtered
+  // screenshot list publicCatalog() projects, so the URLs the summary hands out
+  // always land on the file the manifest declared at that position.
+  screenshotPath(packageId, index) {
+    const storedInstance = this.store.getAppInstanceByPackageId(packageId);
+    const instance = storedInstance?.status === 'uninstalled' ? null : storedInstance;
+    if (instance && instance.snapshotState !== 'installed') {
+      throw new AppPackageServiceError('APP_SCREENSHOT_NOT_FOUND', 'This app screenshot is unavailable until its installed package is recovered.', 404);
+    }
+    const packageDir = instance ? this.installedPackageFor(instance).packageDir : path.join(this.appsDir, packageId);
+    if (!fs.existsSync(path.join(packageDir, 'manifest.json'))) {
+      throw new AppPackageServiceError('APP_PACKAGE_NOT_FOUND', 'That app package is not available.', 404);
+    }
+    const { manifest } = readAppPackageManifest(packageDir);
+    const screenshots = (Array.isArray(manifest.catalog?.screenshots) ? manifest.catalog.screenshots : [])
+      .filter((screenshot) => screenshot && typeof screenshot === 'object' && typeof screenshot.src === 'string' && screenshot.src.trim());
+    const src = screenshots[index]?.src;
+    if (!src || /^https?:\/\//iu.test(src)) {
+      throw new AppPackageServiceError('APP_SCREENSHOT_NOT_FOUND', 'That app package screenshot is not available.', 404);
+    }
+    const normalized = path.posix.normalize(String(src).replace(/\\/gu, '/'));
+    if (normalized.startsWith('../') || normalized === '..' || path.posix.isAbsolute(normalized)) {
+      throw new AppPackageServiceError('APP_SCREENSHOT_NOT_FOUND', 'That app package screenshot is not available.', 404);
+    }
+    const screenshotPath = path.resolve(packageDir, normalized);
+    const relative = path.relative(path.resolve(packageDir), screenshotPath);
+    if (relative.startsWith('..') || path.isAbsolute(relative) || !fs.existsSync(screenshotPath) || !fs.statSync(screenshotPath).isFile()) {
+      throw new AppPackageServiceError('APP_SCREENSHOT_NOT_FOUND', 'That app package screenshot is not available.', 404);
+    }
+    return screenshotPath;
+  }
+
   async installPackage(packageId, input = {}) {
     const current = this.store.getAppInstanceByPackageId(packageId);
     if (current) {

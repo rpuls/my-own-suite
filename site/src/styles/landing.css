@@ -231,15 +231,128 @@ footer.site-footer { padding: var(--mos-space-8) 0 var(--mos-space-7); }
 .app-drawer-head .app-ico { width: 3.5rem; height: 3.5rem; }
 .app-drawer-primary-actions { display: flex; align-items: center; margin-bottom: var(--mos-space-4); }
 .app-drawer-primary-actions > .mos-btn { width: 100%; }
-.app-drawer-facts { display: grid; grid-template-columns: 1fr 1fr; gap: var(--mos-space-3); margin: var(--mos-space-4) 0; }
-.app-drawer-facts div { padding: var(--mos-space-3) var(--mos-space-4); border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface-muted); }
-.app-drawer-facts .k { display: block; font-size: var(--mos-text-label); font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mos-color-text-muted); margin-bottom: 3px; }
-.app-drawer-facts strong { color: var(--mos-color-text-strong); }
+.app-drawer-replaces { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.4rem; margin-top: 2px; }
+.app-drawer-replaces span { font-size: var(--mos-text-label); font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mos-color-text-muted); }
+.app-drawer-replaces strong { color: var(--mos-color-text); font-size: 0.92rem; }
+
+/* Overview tiles — a wide Screens tile (when the package ships screenshots),
+   the privacy posture tile borrowed from #appPrivacyStore, and the Resources
+   drill-down.
+   SIBLING STYLES — these tiles and the gallery/services dialogs below mirror
+   the .suite-app-tiles/.suite-app-gallery/.suite-app-service rules in
+   suite-manager/frontend/src/styles/index.css; keep look and copy in sync. */
+.app-drawer-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: var(--mos-space-3); margin: var(--mos-space-4) 0 var(--mos-space-5); }
+.app-tile {
+  display: grid; align-content: start; gap: 0.45rem; min-height: 6.5rem;
+  padding: var(--mos-space-4); border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm); background: var(--mos-color-surface-muted);
+  color: inherit; cursor: pointer; font: inherit; text-align: left;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+.app-tile:hover { border-color: var(--mos-color-accent-border); background: var(--mos-color-surface); transform: translateY(-1px); }
+.app-tile:focus-visible { outline: var(--mos-focus-ring); }
+.app-tile .k, .app-screens-head .k { font-size: var(--mos-text-label); font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mos-color-text-muted); }
+.app-tile-meta { display: inline-flex; align-items: center; gap: 0.25rem; overflow: hidden; color: var(--mos-color-text-muted); font-size: var(--mos-text-small); white-space: nowrap; }
+.app-tile-meta svg { flex: 0 0 auto; }
+
+.app-screens-tile { position: relative; grid-column: 1 / -1; padding: 0; overflow: hidden; min-height: 8rem; }
+.app-screens-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top; }
+/* The cover screenshot can be any brightness, so the label sits on its own
+   darkened band that fades out. The band stays the brand navy (rgba of
+   --mos-color-bg's dark value) in every theme — a token here would flip
+   light and lose the guaranteed contrast over the image; its text is pinned
+   to the dark theme's muted color for the same reason. */
+.app-screens-head {
+  position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  width: 100%; padding: var(--mos-space-4) var(--mos-space-4) 1.2rem;
+  background: linear-gradient(180deg, rgba(6, 21, 38, 0.85) 0%, rgba(6, 21, 38, 0.6) 62%, rgba(6, 21, 38, 0) 100%);
+}
+.app-screens-head .k, .app-screens-count { color: #b8c9de; }
+.app-screens-count { font-size: var(--mos-text-label); font-weight: 800; letter-spacing: 0.06em; }
+
+.app-resources-line { display: flex; align-items: center; gap: 0.55rem; min-width: 0; }
+.app-resources-line strong { color: var(--mos-color-text-strong); line-height: 1.15; }
+.app-res-meter {
+  display: flex; flex: 0 0 auto; flex-direction: column-reverse; align-items: center; justify-content: flex-start;
+  gap: 0.22rem; width: 2.1rem; height: 2.1rem; padding: 0.4rem 0;
+  border: 1px solid var(--mos-color-surface-border); border-radius: 10px; background: var(--mos-color-surface);
+}
+.app-res-meter span { width: 1rem; height: 0.26rem; border-radius: var(--mos-radius-pill); background: var(--mos-color-surface-strong); }
+.app-res-meter span.is-filled { background: var(--mos-color-accent); }
+.app-res-meter.is-high span.is-filled { background: var(--mos-color-warning); }
+
 .app-drawer-section { margin: 0 0 var(--mos-space-5); }
 .app-drawer-section .mos-eyebrow { display: block; margin-bottom: 6px; }
 .app-drawer-features { display: grid; gap: var(--mos-space-3); margin: 0; padding: 0; list-style: none; }
+.app-drawer-features li { display: flex; align-items: flex-start; gap: var(--mos-space-3); }
 .app-drawer-features li strong { display: block; color: var(--mos-color-text-strong); }
+.app-feature-check {
+  display: grid; flex: 0 0 auto; place-items: center; width: 1.7rem; height: 1.7rem; margin-top: 0.1rem;
+  border-radius: var(--mos-radius-pill); background: var(--mos-color-accent-soft); color: var(--mos-color-accent);
+}
 .app-drawer-links { display: flex; flex-wrap: wrap; gap: var(--mos-space-4); }
+
+/* Drill-down dialogs (screens gallery, "What runs on your server").
+   Rendered into <body> above the drawer, mirroring the relocated privacy
+   dialog's frame. */
+.app-dialog-backdrop {
+  position: fixed; inset: 0; z-index: 120; display: grid; place-items: center;
+  padding: var(--mos-space-4); background: var(--mos-color-backdrop);
+}
+.app-dialog {
+  display: grid; gap: var(--mos-space-4); max-height: min(86vh, 820px); overflow: auto;
+  padding: var(--mos-space-5); border: 1px solid var(--mos-color-surface-border); border-radius: var(--mos-radius-md);
+  background: var(--mos-color-frost-strong);
+  -webkit-backdrop-filter: var(--mos-frost-filter-strong); backdrop-filter: var(--mos-frost-filter-strong);
+  box-shadow: var(--mos-shadow-strong);
+}
+.app-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--mos-space-4); }
+.app-dialog-header h2 { margin: 0; color: var(--mos-color-text-strong); font-size: 1.35rem; line-height: 1.2; }
+.app-dialog-close {
+  display: inline-grid; place-items: center; flex: 0 0 auto; width: 2.4rem; height: 2.4rem; padding: 0;
+  border: 1px solid var(--mos-color-surface-border); border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface); color: var(--mos-color-text); cursor: pointer;
+}
+.app-dialog-close:hover { border-color: var(--mos-color-accent-border); }
+
+.app-gallery-dialog { width: min(100%, 760px); }
+.app-gallery { display: grid; gap: var(--mos-space-3); margin: 0; }
+.app-gallery-frame {
+  overflow: hidden; aspect-ratio: 16 / 10; border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm); background: var(--mos-color-surface-muted);
+}
+.app-gallery-frame img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.app-gallery-nav { display: flex; align-items: center; justify-content: space-between; gap: var(--mos-space-3); }
+.app-gallery figcaption { display: grid; flex: 1; gap: 0.5rem; justify-items: center; min-width: 0; text-align: center; }
+.app-gallery figcaption strong { color: var(--mos-color-text-strong); font-size: var(--mos-text-small); }
+.app-gallery-dots { display: inline-flex; align-items: center; gap: 0.45rem; }
+.app-gallery-dots button {
+  width: 0.55rem; height: 0.55rem; padding: 0; border: 0; border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-surface-strong); cursor: pointer; transition: background 180ms ease;
+}
+.app-gallery-dots button.is-active { background: var(--mos-color-accent); }
+.app-gallery-dots button:focus-visible { outline: var(--mos-focus-ring); }
+
+.app-services-dialog { width: min(100%, 620px); }
+.app-service-list { display: grid; gap: var(--mos-space-2); }
+.app-service {
+  display: flex; align-items: flex-start; gap: var(--mos-space-3);
+  padding: var(--mos-space-3) var(--mos-space-4); border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm); background: var(--mos-color-surface-muted);
+}
+.app-service-dot { flex: 0 0 auto; width: 0.6rem; height: 0.6rem; margin-top: 0.45rem; border-radius: var(--mos-radius-pill); background: var(--mos-color-info); }
+.app-service.is-exposed .app-service-dot { background: var(--mos-color-accent); }
+.app-service-copy { display: grid; flex: 1; gap: 0.2rem; min-width: 0; }
+.app-service-role { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.6rem; }
+.app-service-role strong { color: var(--mos-color-text-strong); }
+.app-service-role code { color: var(--mos-color-text-muted); font-size: 0.78rem; }
+.app-service-tag {
+  flex: 0 0 auto; padding: 0.25rem 0.6rem; border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-pill); color: var(--mos-color-text-muted);
+  font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.app-service.is-exposed .app-service-tag { color: var(--mos-color-accent); }
+.app-services-note { margin: 0; }
 
 /* Beta prototype disclaimer — floating snackbar + "About this beta" dialog.
    The notice rests off screen below the viewport and slides up into place

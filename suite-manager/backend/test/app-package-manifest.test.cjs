@@ -225,6 +225,7 @@ test('manifest validation accepts declared architectures and rejects unbuildable
 
 test('manifest validation accepts structured optional catalog presentation metadata', () => {
   const manifest = validManifest({
+    packageFiles: ['assets/screenshot.png'],
     catalog: {
       complexity: { description: 'One click.', label: 'Easy setup', level: 'easy' },
       description: 'A longer description for the app detail view.',
@@ -243,6 +244,7 @@ test('manifest validation accepts structured optional catalog presentation metad
         summary: 'Private by default.',
       },
       related: ['another-app'],
+      replaces: 'Hosted example tools',
       resourceHint: { description: 'Small service.', label: 'Light resources', level: 'low' },
       screenshots: [{ alt: 'Example app screenshot', src: 'assets/screenshot.png' }],
       tags: ['example', 'demo'],
@@ -250,6 +252,23 @@ test('manifest validation accepts structured optional catalog presentation metad
   });
 
   assert.deepEqual(validateAppPackageManifest(manifest), []);
+});
+
+test('manifest validation requires package screenshots to ship with the package', () => {
+  const manifest = validManifest({
+    catalog: {
+      replaces: '   ',
+      screenshots: [
+        { alt: 'Undeclared file', src: 'assets/screenshot.png' },
+        { caption: 'Hosted screenshots stay allowed', src: 'https://example.com/shot.png' },
+      ],
+    },
+  });
+
+  assert.deepEqual(validateAppPackageManifest(manifest), [
+    'catalog.replaces must be a non-empty string when present.',
+    'catalog.screenshots[0].src must be listed in packageFiles so it ships with the package.',
+  ]);
 });
 
 test('manifest validation rejects malformed demo deployment targets', () => {
