@@ -25,11 +25,11 @@ The landing page uses [Umami](https://umami.is/), an open-source analytics tool 
 
 The apps in the catalog (Immich, Seafile, Vaultwarden, and the rest) are built by other teams and organizations, not by us. We package and configure them; we don't write them, and we cannot control or guarantee what happens inside someone else's software.
 
-So rather than ask you to take our word for it, we publish what we actually know. An app package can carry a **Privacy Posture** assessment: a bounded, evidence-backed review of one exact version of that app, graded from A to D, with the evidence, the sources, and the unanswered questions all published alongside it. Where an app has a supported switch for its telemetry, we turn it off in the MOS packaging and record that as evidence. The grade is derived from the findings — we can't simply award a good one, and an app cannot claim one for itself.
+So rather than ask you to take our word for it, we publish what we actually know. **Every app in the catalog carries a Privacy Posture assessment**: a bounded, evidence-backed review of one exact version of that app, graded from A to D, with the evidence, the sources, and the unanswered questions all published alongside it. Where an app has a supported switch for its telemetry, we turn it off in the MOS packaging and record that as evidence. The grade is derived from the findings — we can't simply award a good one, and an app cannot claim one for itself.
 
-Here is the honest state of it today: **one app (Stirling PDF) has a completed assessment. The rest are marked _Not yet rated by MOS_** — in the catalog, and on their tile inside your own server. We would rather show you a blank rating than a flattering one, so ratings arrive app by app as the work is done. [How we assess](/docs/privacy/how-we-assess/) explains exactly what a rating does and does not mean.
+The assessment is part of what makes an app a catalog app in the first place: an app joins the catalog when its review is done, not before. You'll see the grade in the catalog and on the app's tile inside your own server, and [How we assess](/docs/privacy/how-we-assess/) explains exactly what it does and does not mean.
 
-A rating is not a guarantee, and an unrated app is not an accusation — it means we haven't finished looking. Either way, double-checking an app's own privacy policy is still worth your time: every app's page in [the app catalog](/docs/apps/) links to its official website, where you'll find its policy.
+A rating is not a guarantee — it is honest, bounded evidence about one exact version of an app. Double-checking an app's own privacy policy is still worth your time: every app's page in [the app catalog](/docs/apps/) links to its official website, where you'll find its policy.
 
 ## Apps you bring yourself
 

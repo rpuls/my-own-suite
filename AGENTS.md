@@ -295,6 +295,12 @@ Do not introduce new canonical Dockerfiles in nested subfolders like `apps/<app>
 
 When adding or changing a package service, update the package manifest and keep generated runtime projections rooted at `apps/<app>`.
 
+### Catalog Privacy-Review Requirement
+
+- No app enters the official catalog without a completed privacy posture review.
+- A new `apps/<app>/` package must ship a valid `privacy-review.json`, bound to the exact package version and digest, before it gets an entry in the signed `apps/catalog.json`.
+- Because of this rule, site and docs copy may claim that every catalog app carries a published assessment. Keep that claim unconditional; never hardcode an app count that goes stale.
+
 ### Docs and automation updates required with each new service
 
 When adding/changing an app service, also update:

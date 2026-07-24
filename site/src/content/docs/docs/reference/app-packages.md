@@ -9,7 +9,7 @@ Every app in the catalog is a self-contained **package** in the repository — o
 apps/<app-id>/
 ├── manifest.json        # the single source of truth
 ├── Dockerfile           # primary service (Dockerfile.<service> for extras)
-├── privacy-review.json  # the MOS privacy assessment, where a package has one
+├── privacy-review.json  # the MOS privacy assessment behind the posture grade
 ├── icon.png
 └── README.md            # the package's technical reference
 ```
@@ -44,7 +44,7 @@ On install, MOS copies the validated package — manifest, setup schema, privacy
 
 Every installed package records its source repository, path, immutable source revision, package digest, package version, minimum MOS version, and trust level. Packages from the signed official catalog are `mos-reviewed`. A Git source you add yourself is `unverified`, and stays labelled that way everywhere it appears. `publisher-signed` is reserved for a future publisher-key design and is refused today — a trust label with nothing standing behind it is worse than the honest one it would replace. Structural validity never promotes a package to reviewed.
 
-Reviewed trust is not a claim that every app has been reviewed. Only a package shipping a valid `privacy-review.json`, bound to its exact version, digest, and source revision, carries a posture; today that is `stirling-pdf`, and the other five read `review-required` in the catalog. The review travels into the snapshot, so you see the assessment for the package you're actually running — not the latest repository wording. It isn't a legal audit.
+Reviewed trust and the privacy posture are separate claims: the trust level records where a package came from, while a posture comes only from a valid `privacy-review.json` bound to the package's exact version, digest, and source revision. Every package in the official catalog ships one — assessment is a condition of catalog entry. The review travels into the snapshot, so you see the assessment for the package you're actually running — not the latest repository wording. It isn't a legal audit.
 
 External packages reuse the same pipeline with a narrower profile. Publish a `.mos/` folder at the root of a GitHub repository, paste the repository URL into the Apps search, and MOS resolves the commit, extracts only `.mos/`, and runs a fail-closed gate before anything is built. Package ids are namespaced by source, so an external package cannot collide with or impersonate an official one. Privileged containers, host networking, the Docker socket, arbitrary host paths, raw Caddy directives, and other packages' secrets are refused outright.
 

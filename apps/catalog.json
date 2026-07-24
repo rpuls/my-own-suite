@@ -32,8 +32,8 @@
     },
     "seafile": {
       "minimumMosVersion": "0.1.0",
-      "packageDigest": "sha256:e4dfe8b296eae7ef0bb656ed7c01629f9107548ee363f781308abd07f312ca14",
-      "packageVersion": "0.2.0",
+      "packageDigest": "sha256:7eb583aa603326829dcdaf605c4251a031ea539ad8b455a494a19e4bec1fec97",
+      "packageVersion": "0.2.1",
       "path": "apps/seafile",
       "privacy": {
         "posture": "privacy-configured",
@@ -42,8 +42,8 @@
     },
     "stirling-pdf": {
       "minimumMosVersion": "0.1.0",
-      "packageDigest": "sha256:f7e7e08b704e83cb2c3174c113b15993306faca92f0c51e6e81e73b8677f13d5",
-      "packageVersion": "0.2.0",
+      "packageDigest": "sha256:0ed168f69c482839b414bd0911c3571e5fd292f9f475bff1c0542f5968ac663b",
+      "packageVersion": "0.2.1",
       "path": "apps/stirling-pdf",
       "privacy": {
         "posture": "privacy-configured",
@@ -52,8 +52,8 @@
     },
     "vaultwarden": {
       "minimumMosVersion": "0.1.0",
-      "packageDigest": "sha256:9e4352b2e00effae9cc1b62732f9b5fc47998813011da51d082d62f5613b1d9d",
-      "packageVersion": "0.2.0",
+      "packageDigest": "sha256:04584178b365ed9a49e3ed2562934391c643f89740305ebe0663de6af0715a5e",
+      "packageVersion": "0.2.1",
       "path": "apps/vaultwarden",
       "privacy": {
         "posture": "privacy-configured",

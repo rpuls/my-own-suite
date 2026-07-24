@@ -107,7 +107,7 @@ provider-neutral and the copy should feel that way.
 
 ## Tier 2 — Truth-in-claims batch
 
-- [ ] **3. Fix the three stale "only one app is rated" passages.** *(docs, Tiny)* All six catalog
+- [x] **3. Fix the three stale "only one app is rated" passages.** *(docs, Tiny)* All six catalog
   apps now carry posture grades; these pages still build their trust story on the number *one*:
   - `site/src/content/docs/docs/privacy/how-we-assess.md:12-13` — "One: Stirling PDF… we would
     rather publish one honest rating than six comfortable ones"
@@ -118,10 +118,31 @@ provider-neutral and the copy should feel that way.
   Per the new standing policy (item 4), wording can be unconditional ("every app in the catalog
   carries a published assessment") — **do not hardcode a count** that goes stale again.
 
-- [ ] **4. Codify the rating policy.** *(AGENTS.md, Tiny)* Owner decision, 2026-07-24: **no app
+  **Done 2026-07-24** (uncommitted, awaiting owner review): all three passages rewritten as
+  unconditional coverage claims backed by the item-4 policy, no counts anywhere. A sweep found two
+  more stale spots in `how-we-assess.md` — "one honest rating than six comfortable ones" (same
+  section) and the singular "in the review we have published so far" under expiry — both fixed.
+  The rewritten section also points out that external (outside-catalog) apps stay **External ·
+  Unverified** and ungraded.
+
+  **Correction round (owner, 2026-07-24):** dropped the "how many are rated" framing entirely —
+  no counting question, no "currently"/"so far" hedging that plants the idea a catalog app might
+  be unrated. Coverage is now definitional everywhere: *MOS catalog apps are assessed and receive
+  a posture grade; assessment is a condition of catalog entry.* Applied across `how-we-assess.md`
+  (section retitled "Every catalog app is rated"; intro and confidence wording aligned),
+  `privacy.md`, `app-packages.md` (file-tree comment + trust paragraph), the docs index blurb,
+  and `guides/apps.md`. "Not yet rated by MOS" phrasing now appears in docs only where it is
+  about external/unreviewed installs.
+
+- [x] **4. Codify the rating policy.** *(AGENTS.md, Tiny)* Owner decision, 2026-07-24: **no app
   enters the official catalog without a completed privacy posture review.** Add this to the app
   onboarding rules in `AGENTS.md` (alongside the manifest/README/dependabot requirements), so
   rating-related copy across site and docs can safely claim full coverage.
+
+  **Done 2026-07-24** (uncommitted, awaiting owner review): new "Catalog Privacy-Review
+  Requirement" subsection under AGENTS.md's Container and Versioning Rules — no catalog entry
+  without a valid version/digest-bound `privacy-review.json`, and copy may claim full coverage
+  unconditionally but must never hardcode an app count.
 
 - [ ] **5. Add a LICENSE.** *(root, Tiny — owner decision required)* There is no LICENSE file and no
   `license` field in `package.json`, while "free & open source" appears in the site header badge,
@@ -129,6 +150,14 @@ provider-neutral and the copy should feel that way.
   any [telemetry], because the code is open source"). Technical testers check this within minutes.
   Owner picks the license (note several bundled apps are AGPL themselves); then add root `LICENSE`,
   the `package.json` field, and a README mention so GitHub shows it.
+
+  **Prepared 2026-07-24, awaiting owner decision** — agent analysis: catalog apps are pulled as
+  containers at install time, not vendored, so their licenses don't constrain the choice for MOS's
+  own code; the real choice is AGPL-3.0 (keeps hosted forks open — matches the project ethos and
+  what Immich, Vaultwarden, and Seafile core chose; sole-copyright-holder status keeps dual
+  licensing possible later) versus Apache-2.0/MIT (maximally permissive, allows closed hosted
+  forks). Agent recommendation: **AGPL-3.0**. Once decided: root `LICENSE`, `"license"` field in
+  root `package.json`, and a README mention (the README gets its item-12 upgrade later anyway).
 
 - [ ] **6. Rewrite the scaffolding-voiced app READMEs.** *(apps, Small)* These render verbatim on
   the public app pages under "Technical reference":
@@ -144,10 +173,24 @@ provider-neutral and the copy should feel that way.
   roadmap talk to GitHub issues. **Warning:** package contents change ⇒ package **version bump**
   (CI enforces via `npm run apps:version:check`) **and owner-run catalog re-sign** before release.
 
-- [ ] **7. Release guardrail for claim-bearing pages.** *(RELEASING.md, Tiny)* Add one checklist
+  **Done 2026-07-24** (uncommitted, awaiting owner review): all three READMEs rewritten in the
+  Radicale README's house style (Environment Variables / Volumes And Persistence / Health Check /
+  Package Behavior / Current Limits); every technical fact preserved and checked against the
+  manifests, scaffolding and roadmap prose removed. Packages bumped 0.2.0 → 0.2.1, privacy-review
+  scopes re-stamped (version + digest), catalog regenerated; `apps:privacy:check`,
+  `apps:privacy:monitor`, `apps:version:check`, and the catalog content check all pass.
+  **Owner actions before release:** (1) run `npm run apps:catalog:sign` — the signature is stale;
+  (2) create the GitHub issue for the Vaultwarden secret-management follow-up (issue text prepared
+  by the agent; issue creation was permission-blocked) — the old README's "Secret Management
+  Caveat" roadmap scope moves there.
+
+- [x] **7. Release guardrail for claim-bearing pages.** *(RELEASING.md, Tiny)* Add one checklist
   line to the release flow: re-verify the "honesty pages" before tagging — rating coverage wording,
   video links, screenshots match current UI. This batch exists because claims lived in more places
   than the facts; make re-checking them a release step, not a memory.
+
+  **Done 2026-07-24** (uncommitted, awaiting owner review): added to the copy/paste Release
+  Checklist in `RELEASING.md`, between CI and upgrade notes.
 
 ---
 
@@ -241,13 +284,28 @@ provider-neutral and the copy should feel that way.
   reassurance it isn't hung. Add the expectation everywhere the install process is described: the
   install stepper copy (`AppsScreen.tsx`), `guides/apps.md`, and first-start's "Good first steps".
 
-- [ ] **16. Explain the AI review process where the shield links.** *(docs, Small)* Every visible
+- [x] **16. Explain the AI review process where the shield links.** *(docs, Small)* Every visible
   grade carries "AI-reviewed for MOS", and the dialog's "how MOS assesses" link lands on
   `site/src/content/docs/docs/privacy/how-we-assess.md` — which mentions AI-assisted vs
   human-authored but never defines the literal badge or describes the process. Add a short
   subsection: what the AI review workflow actually checks (evidence labels, config verification),
   what the badge text means, and the current human-review status. This is the first question a
   skeptical tester asks about the product's most differentiated feature.
+
+  **Done 2026-07-24, pulled forward on owner request** (uncommitted, awaiting owner review):
+  `how-we-assess.md` rewritten as one narrative — new "Humans pick the apps" section states the
+  curation reality (human-chosen shortlist: open source, real-world adoption, battle-tested,
+  actively maintained, privacy-respecting, run by us over time; assessment is the condition of
+  catalog entry) and a new "Where AI fits in" section states the division of labor (people decide,
+  AI does the long reading of source/config/ToS/privacy policies, re-done on every package
+  update), why (that volume of reading is unrealistic to repeat by hand per version), what keeps
+  AI work checkable (evidence labels + sources, fail-closed **Review required**, published open
+  questions, recorded provenance: method/provider/model/workflow revision/commit), and the
+  literal badge semantics: **AI-reviewed for MOS** = AI-assisted with no human sign-off (true of
+  every published review today, all six are `ai-assisted`/`humanReviewed: false`); **Reviewed by
+  MOS** appears only once a human authored or checked the review. The page links straight to the
+  workflow source, `skills/assess-app-privacy/SKILL.md` on GitHub ("read it and you know precisely
+  what the AI was told to do").
 
 ---
 
