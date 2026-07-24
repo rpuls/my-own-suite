@@ -148,6 +148,7 @@ Use for urgent production-impacting issues.
 - [ ] `releases/stable.json` updated
 - [ ] `npm run release:check` passed
 - [ ] CI passing on release branch
+- [ ] Honesty pages re-verified: rating-coverage wording, video links, and site screenshots still match the current product and UI
 - [ ] Upgrade notes written
 - [ ] Breaking changes documented (if any)
 - [ ] Tag pushed: `vX.Y.Z`

@@ -859,6 +859,16 @@ function createMOSServer({
         return;
       }
 
+      const appScreenshotMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/screenshots\/(\d{1,3})$/u);
+      if (request.method === 'GET' && appScreenshotMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review app packages.' });
+          return;
+        }
+        fileResponse(response, appPackages.screenshotPath(decodeURIComponent(appScreenshotMatch[1]), Number(appScreenshotMatch[2])));
+        return;
+      }
+
       const appInstallMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/install$/u);
       const appPrepareUpdateMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/prepare-update$/u);
       const appStageUpdateMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/stage-update$/u);

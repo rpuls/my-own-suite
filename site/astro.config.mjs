@@ -52,7 +52,6 @@ export default defineConfig({
         {
           label: 'Install',
           items: [
-            'docs/install/digitalocean',
             'docs/install/cloud-server',
             'docs/install/own-hardware',
             'docs/install/first-start'

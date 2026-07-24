@@ -3,8 +3,17 @@ import { expect } from '@playwright/test';
 import { apiJson } from './hyperv-api.mjs';
 import { waitForHomepageAvailable } from './hyperv-homepage.mjs';
 import { openSuiteManager } from './hyperv-navigation.mjs';
+import { captureElementShot, capturePageShot } from './screenshots.mjs';
 
 const runtimeKinds = new Set(['compose', 'caddy', 'health']);
+
+// The app whose pre-install detail view becomes the marketing
+// app-detail-install.png shot. Seafile is in the default post-DNS set and
+// its detail view shows setup fields, the posture-grade tile, and Install.
+const showcaseDetailAppId = () => process.env.MOS_E2E_SCREENSHOT_APP || 'seafile';
+
+// One-per-run guards for captures hooked into repeated flows.
+const capturedOnce = new Set();
 
 function projectionApplied(app, kind) {
   const projection = app.instance?.projections?.find((item) => item.kind === kind);
@@ -125,6 +134,12 @@ async function installAppViaUi(page, app, env) {
   const prepare = details.getByRole('button', { name: /^Prepare$/iu });
   if (await prepare.isVisible().catch(() => false)) await prepare.click();
 
+  // Marketing shot of the pre-install detail view in its untouched state:
+  // product prefills, posture-grade tile, and the Install action.
+  if (app.id === showcaseDetailAppId()) {
+    await capturePageShot(page, 'app-detail-install');
+  }
+
   for (const [fieldId, value] of Object.entries(config)) {
     const field = app.setup?.fields?.find((item) => item.id === fieldId);
     if (!field || field.generated) continue;
@@ -139,6 +154,10 @@ async function installAppViaUi(page, app, env) {
   if (await install.isVisible().catch(() => false)) {
     await install.click();
     await expect(details.getByText(/Starting containers|Add shortcut|Ready to open|Install complete|Preparing app/i).first()).toBeVisible({ timeout: 30000 });
+    if (!capturedOnce.has('app-install-progress')) {
+      capturedOnce.add('app-install-progress');
+      await capturePageShot(page, 'app-install-progress');
+    }
   }
 
   const running = await waitForRunning(page, app.id);
@@ -193,6 +212,94 @@ export async function connectSeafileOnlyOffice(page) {
   const updated = await packageById(page, 'seafile');
   const active = updated.compatibility?.connections?.find((item) => item.provider.id === 'onlyoffice');
   expect(active?.relationship?.status).toBe('active');
+}
+
+async function closeAppDetails(page, details) {
+  await details.getByLabel('Close app details').click();
+  await expect(details).toBeHidden({ timeout: 30000 });
+}
+
+// Marketing screenshots that need the fully installed suite: the catalog
+// with running apps, the privacy posture dialog, the Connect visual, and a
+// per-app setup guide. Called from the full spec after the connect step.
+// Every block is best-effort — a missed shot logs a warning and the
+// regression continues (see support/screenshots.mjs).
+export async function captureMarketingScreenshots(page, env, entryUrl = '/') {
+  try {
+    await verifyAppsPage(page, entryUrl);
+    await capturePageShot(page, 'app-catalog', { fullPage: true });
+  } catch (error) {
+    console.warn(`[screenshots] app catalog capture skipped: ${error.message}`);
+  }
+
+  try {
+    const showcase = await packageById(page, showcaseDetailAppId());
+    const details = await openAppDetails(page, showcase);
+    const postureTile = details.locator('.suite-privacy-tile').first();
+    if (await visible(postureTile)) {
+      await postureTile.click();
+      const dialog = page.getByRole('dialog', { name: `${showcase.name} privacy` });
+      await expect(dialog).toBeVisible({ timeout: 15000 });
+      await capturePageShot(page, 'privacy-posture');
+      await dialog.getByRole('button', { exact: true, name: 'Close' }).click();
+      await expect(dialog).toBeHidden({ timeout: 15000 });
+    }
+    const connections = details.locator('section.suite-app-detail-section', { hasText: 'Connections' }).first();
+    if (await visible(connections)) {
+      await captureElementShot(connections, 'app-connect');
+    }
+    await closeAppDetails(page, details);
+  } catch (error) {
+    console.warn(`[screenshots] posture/connect capture skipped: ${error.message}`);
+  }
+
+  try {
+    const guideApp = await packageById(page, 'radicale');
+    if (guideApp.instance) {
+      const details = await openAppDetails(page, guideApp);
+      const guideButton = details.getByRole('button', { name: /^(Setup guide|Continue guide)$/iu }).first();
+      if (await visible(guideButton)) {
+        await guideButton.click();
+        await expect(page.getByLabel(`${guideApp.name} setup guide`)).toBeVisible({ timeout: 15000 });
+        await capturePageShot(page, 'app-setup-guide');
+        await page.getByLabel('Close setup guide').click();
+      }
+      await closeAppDetails(page, details);
+    }
+  } catch (error) {
+    console.warn(`[screenshots] setup guide capture skipped: ${error.message}`);
+  }
+}
+
+// The update-review dialog only exists when the lab actually has a newer
+// compatible package for an installed app, so this shot refreshes
+// opportunistically: any run that encounters a real update captures it,
+// and runs without one leave the previous capture in place.
+export async function captureUpdateReviewIfAvailable(page, entryUrl = '/') {
+  try {
+    const packages = await listPackages(page);
+    const candidate = packages.find((item) => item.instance
+      && item.catalogUpdate?.status === 'update-available'
+      && item.catalogUpdate.available?.compatibility === 'compatible');
+    if (!candidate) {
+      console.log('[screenshots] no compatible app update in this lab; app-update-review.png not refreshed');
+      return;
+    }
+    await verifyAppsPage(page, entryUrl);
+    const details = await openAppDetails(page, candidate);
+    const review = details.getByRole('button', { name: /^Review update$/iu });
+    if (await visible(review)) {
+      await review.click();
+      const dialog = page.getByRole('dialog', { name: `Review ${candidate.name} update` });
+      await expect(dialog).toBeVisible({ timeout: 30000 });
+      await capturePageShot(page, 'app-update-review');
+      await dialog.getByRole('button', { name: /^(Cancel|Close)$/u }).click();
+      await expect(dialog).toBeHidden({ timeout: 15000 });
+    }
+    await closeAppDetails(page, details);
+  } catch (error) {
+    console.warn(`[screenshots] update review capture skipped: ${error.message}`);
+  }
 }
 
 export async function verifyAppRoutes(page) {

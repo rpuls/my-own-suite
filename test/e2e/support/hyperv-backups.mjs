@@ -2,6 +2,7 @@ import { expect } from '@playwright/test';
 
 import { apiJson } from './hyperv-api.mjs';
 import { openSuiteManager } from './hyperv-navigation.mjs';
+import { capturePageShot } from './screenshots.mjs';
 
 function backupRunning(job) {
   return job && ['queued', 'running'].includes(job.status);
@@ -33,6 +34,7 @@ export async function createBackupIfAvailable(page, env) {
   expect(current?.lastJob?.status, 'Backup job should succeed').toBe('succeeded');
   expect((current?.backups || []).length, 'Backup list should include at least one bundle').toBeGreaterThan(0);
   await expect(page.locator('body')).toContainText(/Backup completed|Restore from a backup/i, { timeout: 60000 });
+  await capturePageShot(page, 'backups', { fullPage: true });
   return latestBackup(current);
 }
 

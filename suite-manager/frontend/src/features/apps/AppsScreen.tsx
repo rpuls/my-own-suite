@@ -14,6 +14,7 @@ type CatalogMetadata = {
   links: Partial<Record<CatalogLinkKey, string>>;
   privacy: { notes: string[]; summary: string };
   related: string[];
+  replaces: string;
   resourceHint: { description: string; label: string; level: string };
   screenshots: Array<{ alt: string; caption: string; src: string }>;
   tags: string[];
@@ -292,12 +293,38 @@ function AppHealthIndicator({ app, ledVariant = false }: { app: AppPackageSummar
   return <span className={`suite-app-health-indicator ${status.className}`}>{status.label}</span>;
 }
 
-function complexityLabel(app: AppPackageSummary) {
-  return app.catalog.complexity.label || (app.catalog.complexity.level === 'guided' ? 'Guided setup' : app.catalog.complexity.level === 'advanced' ? 'Advanced' : 'Easy setup');
-}
-
 function resourceLabel(app: AppPackageSummary) {
   return app.catalog.resourceHint.label || (app.catalog.resourceHint.level ? `${app.catalog.resourceHint.level[0]!.toUpperCase()}${app.catalog.resourceHint.level.slice(1)} resources` : 'Resource use varies');
+}
+
+function serviceExposed(app: AppPackageSummary, serviceId: string) {
+  return app.routes.some((route) => route.service === serviceId);
+}
+
+// Plain-language role for one package service. Manifests do not describe their
+// services for humans, so this reads the service id the way an owner would:
+// the routed service is the app itself, the rest are recognisable supporting
+// parts (database, cache, machine learning).
+// COUSIN LOGIC — the public site's app drawer duplicates this heuristic in
+// site/src/lib/app-catalog.ts (serviceRole); if wording or matching changes
+// here, change it there too.
+function serviceRoleLabel(app: AppPackageSummary, serviceId: string) {
+  if (serviceExposed(app, serviceId)) return isCompanionApp(app) ? `The ${app.name} service` : `The ${app.name} app you open`;
+  const id = serviceId.toLowerCase();
+  if (/postgres|mysql|mariadb|database|\bdb\b/u.test(id)) return 'Database';
+  if (/valkey|redis|memcache|cache/u.test(id)) return 'Cache';
+  if (/machine-learning/u.test(id)) return 'Machine learning';
+  return 'Support service';
+}
+
+// SIBLING VISUAL — the public site's app drawer renders the same meter
+// (see the `meter` helper in site/src/components/AppCatalog.astro); keep the
+// level mapping and look in sync.
+function ResourceMeter({ level }: { level: string }) {
+  const filled = level === 'high' ? 3 : level === 'medium' ? 2 : level === 'low' ? 1 : 0;
+  return <span aria-hidden="true" className={`suite-app-resource-meter${level === 'high' ? ' is-high' : ''}`}>
+    {[1, 2, 3].map((bar) => <span className={bar <= filled ? 'is-filled' : ''} key={bar} />)}
+  </span>;
 }
 
 function descriptionFor(app: AppPackageSummary) {
@@ -586,6 +613,9 @@ function AppDetail({
   const [confirmUninstall, setConfirmUninstall] = useState(false);
   const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app, owner.email));
   const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [slideIdx, setSlideIdx] = useState(0);
+  const [resourcesOpen, setResourcesOpen] = useState(false);
   const [comparison, setComparison] = useState<UpdateComparison | null>(null);
   const [comparisonError, setComparisonError] = useState('');
   const [comparisonLoading, setComparisonLoading] = useState(false);
@@ -626,6 +656,9 @@ function AppDetail({
     setActionsOpen(false);
     setSetupConfig(initialSetupConfig(app, owner.email));
     setPrivacyOpen(false);
+    setGalleryOpen(false);
+    setSlideIdx(0);
+    setResourcesOpen(false);
     setComparison(null);
     setComparisonError('');
     setUpdateInput({});
@@ -721,10 +754,11 @@ function AppDetail({
         <div className="suite-app-detail-heading">
           <div className="suite-app-detail-title-row">
             <h2>{app.name}</h2>
+            <span className="suite-app-category-pill">{categoryLabel(primaryCategory(app))}</span>
             {app.external ? <span className="suite-app-external-pill">External &middot; Unverified</span> : null}
             <AppHealthIndicator app={app} />
           </div>
-          <p>{descriptionFor(app)}</p>
+          {app.catalog.replaces ? <p className="suite-app-detail-replaces"><span>Replaces</span><strong>{app.catalog.replaces}</strong></p> : null}
         </div>
         <div className="suite-app-primary-actions">
           {ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : needsPreparation && !setupOpen ? <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setSetupOpen(true)} type="button">Prepare</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={submitInstall} type="button">{installing ? 'Installing...' : 'Install'}</button>}
@@ -803,39 +837,42 @@ function AppDetail({
           {comparisonError ? <p role="alert">{comparisonError}</p> : null}
         </section> : null}
 
-        <section className="suite-app-facts" aria-label="App facts">
-          <div><span>Category</span><strong>{categoryLabel(primaryCategory(app))}</strong></div>
+        <section aria-label="App overview" className={`suite-app-tiles${app.catalog.screenshots.length ? ' has-screens' : ''}`}>
+          {app.catalog.screenshots.length ? <button aria-label={`Preview ${app.catalog.screenshots.length === 1 ? '1 screen' : `${app.catalog.screenshots.length} screens`} of ${app.name}`} className="suite-app-screens-tile" onClick={() => { setSlideIdx(0); setGalleryOpen(true); }} type="button">
+            <img alt="" src={app.catalog.screenshots[0]!.src} />
+            <span aria-hidden="true" className="suite-app-screens-head">
+              <span className="suite-app-tile-label">Screens</span>
+              <span className="suite-app-screens-count">({app.catalog.screenshots.length})</span>
+            </span>
+          </button> : null}
           <PrivacyFactsTile advisories={app.advisories} onOpen={() => setPrivacyOpen(true)} privacy={app.privacy} />
-          <div><span>Complexity</span><strong>{complexityLabel(app)}</strong></div>
-          <div><span>Resources</span><strong>{resourceLabel(app)}</strong></div>
+          <button className="suite-app-resources-tile" onClick={() => setResourcesOpen(true)} type="button">
+            <span className="suite-app-tile-label">Resources</span>
+            <span className="suite-app-resources-line">
+              <ResourceMeter level={app.catalog.resourceHint.level} />
+              <strong>{resourceLabel(app)}</strong>
+            </span>
+            <span className="suite-app-tile-meta">
+              {app.services.length === 1 ? 'Runs as 1 service' : app.services.length ? `Runs as ${app.services.length} services` : 'Details unavailable'}
+              <Icon name="chevron-right" />
+            </span>
+          </button>
         </section>
 
+        <p className="suite-app-detail-description">{descriptionFor(app)}</p>
+
         {app.catalog.features.length ? <section className="suite-app-detail-section">
-          <h3>Best For</h3>
-          <div className="suite-app-feature-grid">
+          <h3>Best for</h3>
+          <div className="suite-app-feature-list">
             {app.catalog.features.map((feature) => <article key={feature.title}>
-              <strong>{feature.title}</strong>
-              {feature.body ? <p>{feature.body}</p> : null}
+              <span aria-hidden="true" className="suite-app-feature-check"><Icon name="check" /></span>
+              <div>
+                <strong>{feature.title}</strong>
+                {feature.body ? <p>{feature.body}</p> : null}
+              </div>
             </article>)}
           </div>
         </section> : null}
-
-        <section className="suite-app-detail-section">
-          <h3>Setup</h3>
-          {app.setup.fieldCount === 0 ? <p className="suite-meta">This app does not need extra setup before MOS starts it.</p> : <div className="suite-app-setup-list">
-            {app.setup.fields.map((field) => <div key={field.id}>
-              <strong>{field.label}</strong>
-              <span>{field.generated ? 'Generated and stored by MOS' : field.required ? 'Required before install' : field.default !== undefined ? 'Default provided' : 'Optional'}</span>
-            </div>)}
-          </div>}
-          {app.onboarding?.steps.length ? <div className="suite-app-next-steps">
-            <h4>After install</h4>
-            {app.onboarding.steps.map((step) => <article key={`${step.type}-${step.title}`}>
-              <strong>{step.title}</strong>
-              <p>{step.body}</p>
-            </article>)}
-          </div> : null}
-        </section>
 
         {app.catalog.privacy.summary || app.catalog.privacy.notes.length ? <section className="suite-app-detail-section suite-app-privacy">
           <h3>Package-provided privacy notes</h3>
@@ -873,9 +910,9 @@ function AppDetail({
         </section> : null}
 
         {(Object.keys(app.catalog.links).length || related.length) ? <section className="suite-app-detail-section">
-          <h3>Links And Related Apps</h3>
+          <h3>Links and related apps</h3>
           {Object.keys(app.catalog.links).length ? <div className="suite-app-link-row">
-            {Object.entries(app.catalog.links).map(([key, href]) => <a className="mos-btn mos-btn-secondary" href={href} key={key} rel="noreferrer" target="_blank">{key === 'repository' ? 'Repository' : key === 'website' ? 'Website' : 'Docs'}</a>)}
+            {Object.entries(app.catalog.links).map(([key, href]) => <a className="mos-btn mos-btn-secondary" href={href} key={key} rel="noreferrer" target="_blank">{key === 'repository' ? 'Repository' : key === 'website' ? 'Website' : 'Docs'}<Icon name="external" /></a>)}
           </div> : null}
           {related.length ? <div className="suite-app-related-list">{related.map((item) => <button key={item.id} onClick={() => onSelect(item)} type="button"><AppIcon app={item} /><span><strong>{item.name}</strong><small>{descriptionFor(item)}</small></span></button>)}</div> : null}
         </section> : null}
@@ -884,6 +921,55 @@ function AppDetail({
       </div>
     </aside>
     {privacyOpen ? <PrivacyPostureDialog advisories={app.advisories} appName={app.name} onClose={() => setPrivacyOpen(false)} packageVersion={app.instance?.packageVersion || app.version} privacy={app.privacy} /> : null}
+    {galleryOpen && app.catalog.screenshots.length ? <Dialog className="suite-app-gallery-dialog" closeOnBackdrop onClose={() => setGalleryOpen(false)} title={`${app.name} screens`}>
+      <figure className="suite-app-gallery">
+        <div className="suite-app-gallery-frame">
+          <img alt={app.catalog.screenshots[slideIdx]?.alt || `${app.name} screenshot ${slideIdx + 1}`} src={app.catalog.screenshots[slideIdx]?.src || app.catalog.screenshots[0]!.src} />
+        </div>
+        <div className="suite-app-gallery-nav">
+          {app.catalog.screenshots.length > 1 ? <button aria-label="Previous screen" className="suite-icon-button is-back" onClick={() => setSlideIdx((current) => (current - 1 + app.catalog.screenshots.length) % app.catalog.screenshots.length)} type="button"><Icon name="chevron-right" /></button> : null}
+          <figcaption>
+            {app.catalog.screenshots[slideIdx]?.caption || app.catalog.screenshots[slideIdx]?.alt ? <strong>{app.catalog.screenshots[slideIdx]?.caption || app.catalog.screenshots[slideIdx]?.alt}</strong> : null}
+            {app.catalog.screenshots.length > 1 ? <span className="suite-app-gallery-dots">
+              {app.catalog.screenshots.map((shot, index) => <button aria-label={`Go to screen ${index + 1}`} className={index === slideIdx ? 'is-active' : ''} key={shot.src} onClick={() => setSlideIdx(index)} type="button" />)}
+            </span> : null}
+          </figcaption>
+          {app.catalog.screenshots.length > 1 ? <button aria-label="Next screen" className="suite-icon-button" onClick={() => setSlideIdx((current) => (current + 1) % app.catalog.screenshots.length)} type="button"><Icon name="chevron-right" /></button> : null}
+        </div>
+      </figure>
+    </Dialog> : null}
+    {resourcesOpen ? <Dialog
+      className="suite-app-resources-dialog"
+      closeOnBackdrop
+      footer={<button className="mos-btn mos-btn-secondary" onClick={() => setResourcesOpen(false)} type="button">Close</button>}
+      onClose={() => setResourcesOpen(false)}
+      title="What runs on your server"
+    >
+      <div className="suite-app-resources-summary">
+        <ResourceMeter level={app.catalog.resourceHint.level} />
+        <strong>{resourceLabel(app)}</strong>
+      </div>
+      {app.catalog.resourceHint.description ? <p className="suite-app-resources-note">{app.catalog.resourceHint.description}</p> : null}
+      {app.services.length ? <div className="suite-app-service-list">
+        {/* Manifests declare dependencies before the app they serve, which
+            would bury the service the owner actually recognises at the bottom.
+            The exposed app leads; the stable sort keeps the rest in order. */}
+        {[...app.services].sort((left, right) => Number(serviceExposed(app, right.id)) - Number(serviceExposed(app, left.id))).map((service) => {
+          const exposed = serviceExposed(app, service.id);
+          return <article className={exposed ? 'is-exposed' : ''} key={service.id}>
+            <span aria-hidden="true" className="suite-app-service-dot" />
+            <span className="suite-app-service-copy">
+              <span className="suite-app-service-role"><strong>{serviceRoleLabel(app, service.id)}</strong><code>{service.id}</code></span>
+              <small>{service.volumes.length ? 'Keeps its data in private app storage.' : 'Holds nothing permanent.'}</small>
+            </span>
+            <span className="suite-app-service-tag">{exposed ? 'Exposed via HTTPS' : 'Internal only'}</span>
+          </article>;
+        })}
+      </div> : null}
+      <p className="suite-meta">{app.services.some((service) => serviceExposed(app, service.id))
+        ? 'MOS installs, updates, and backs these up together as one app. Only the exposed service is reachable from outside — everything else stays internal to this app.'
+        : 'MOS installs, updates, and backs these up together as one app. Nothing is exposed publicly — compatible apps reach it internally once you connect them.'}</p>
+    </Dialog> : null}
     {comparison ? <Dialog
       footer={<>
         <button className="mos-btn mos-btn-secondary" disabled={applying} onClick={() => setComparison(null)} type="button">{comparison.updateStatus === 'update-available' ? 'Cancel' : 'Close'}</button>

@@ -16,8 +16,12 @@ async function diagnosticSnapshot(page, label) {
 export async function openSuiteManager(page, screenName, entryUrl = '/') {
   await page.goto(suiteManagerUrl(entryUrl));
   await page.getByRole('button', { name: 'Open navigation menu' }).click();
-  await expect(page.getByRole('navigation', { name: 'Suite Manager menu' })).toBeVisible();
-  await page.getByRole('button', { name: screenName }).click();
+  const menu = page.getByRole('navigation', { name: 'Suite Manager menu' });
+  await expect(menu).toBeVisible();
+  // Scoped to the menu: role-name matching is substring-based, and screen
+  // content behind the menu can echo a screen name (the first-run
+  // checklist's "Make your first backup" button also matches "Backup").
+  await menu.getByRole('button', { name: screenName }).click();
   const headingName = screenName === 'Backup' ? 'Backup & Restore' : screenName;
   try {
     await expect(page.getByRole('heading', { exact: true, level: 1, name: headingName })).toBeVisible();

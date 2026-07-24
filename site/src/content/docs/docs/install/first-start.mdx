@@ -11,7 +11,7 @@ However you installed, every fresh My Own Suite ends at the same screen: **Creat
 
 <Steps>
 
-1. Open your suite's address in a browser — the install guide you followed told you what it is (for example `http://home.mos.home/` at home, or `https://home.<ip>.sslip.io/` in the cloud).
+1. Open the address your install guide ended with. On a **cloud server**, that is the **Finish-setup link the installer printed** — it carries a one-time setup key, so use that exact link (the plain suite address will refuse owner setup). On **your own hardware**, it's `http://home.mos.home/`.
 
 2. Fill in your **name**, **email**, and a **password of at least 12 characters**, then retype the password to confirm it (this catches typos). This happens entirely on your own machine — nothing is sent to us or anyone else.
 
@@ -20,7 +20,7 @@ However you installed, every fresh My Own Suite ends at the same screen: **Creat
 </Steps>
 
 :::caution[Two things worth knowing]
-- **Do this promptly after installing.** Until an owner exists, anyone who can reach the address could claim the fresh install.
+- **Do this promptly after installing.** Until an owner exists, the install is unclaimed: on your own hardware anyone on your network could take it, and on a cloud server the printed one-time setup link is the only way in — it stops working once your account exists, so don't lose it before then ([here's how to recover it](/docs/install/cloud-server/#closed-the-terminal-before-opening-the-link) if you do).
 - **Keep the password safe** — ideally in a password manager. It is the one key to your suite.
 :::
 

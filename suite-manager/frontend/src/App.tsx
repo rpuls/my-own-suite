@@ -4,7 +4,7 @@ import { OwnerSetupScreen } from './features/setup/OwnerSetupScreen';
 import { useSetupSession } from './features/setup/useSetupSession';
 
 export default function App() {
-  const { createOwner, login, logout, state } = useSetupSession();
+  const { clearOwnerError, createOwner, login, logout, state } = useSetupSession();
 
   if (state.kind === 'loading') {
     return (
@@ -33,7 +33,14 @@ export default function App() {
   }
 
   if (state.kind === 'needs-owner') {
-    return <OwnerSetupScreen error={state.error} onCreateOwner={createOwner} />;
+    return (
+      <OwnerSetupScreen
+        error={state.error}
+        onClearError={clearOwnerError}
+        onCreateOwner={createOwner}
+        ownerClaimRequired={state.ownerClaimRequired}
+      />
+    );
   }
 
   if (state.kind === 'signed-out') {

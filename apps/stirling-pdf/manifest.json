@@ -1,7 +1,7 @@
 {
   "id": "stirling-pdf",
   "name": "Stirling PDF",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "minimumMosVersion": "0.1.0",
   "summary": "Private PDF tools for everyday document tasks.",
   "category": "office",

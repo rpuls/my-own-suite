@@ -1,9 +1,14 @@
 {
   "id": "onlyoffice",
   "name": "ONLYOFFICE",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "minimumMosVersion": "0.1.0",
-  "packageFiles": ["entrypoint.sh"],
+  "packageFiles": [
+    "entrypoint.sh",
+    "screenshots/document.png",
+    "screenshots/presentation.png",
+    "screenshots/spreadsheet.png"
+  ],
   "summary": "Office editor suite for compatible file and content apps.",
   "category": "office",
   "role": "capability-provider",
@@ -12,6 +17,23 @@
     "description": "ONLYOFFICE provides document, spreadsheet, and presentation editing that compatible MOS file apps can connect to for browser-based office workflows.",
     "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/seafile-onlyoffice?referralCode=-Yg50p" }],
     "replaces": "Google Docs / Microsoft 365",
+    "screenshots": [
+      {
+        "src": "screenshots/document.png",
+        "alt": "Editing a text document in the ONLYOFFICE browser editor",
+        "caption": "Documents edited right in your browser"
+      },
+      {
+        "src": "screenshots/spreadsheet.png",
+        "alt": "A spreadsheet with formulas and status highlighting in ONLYOFFICE",
+        "caption": "Spreadsheets with formulas, filters, and sheets"
+      },
+      {
+        "src": "screenshots/presentation.png",
+        "alt": "Designing slides in the ONLYOFFICE presentation editor",
+        "caption": "Presentations with themes and layouts"
+      }
+    ],
     "tags": [
       "documents",
       "office",

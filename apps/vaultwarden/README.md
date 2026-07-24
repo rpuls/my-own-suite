@@ -1,40 +1,27 @@
 # Vaultwarden MOS Package
 
-This package pressure-tests generic package setup, generated secrets, persistence, routes, and onboarding metadata.
+## Environment Variables
 
-## Runtime Shape
+- `ADMIN_TOKEN`: Admin-panel token, projected from the generated `adminToken` setup secret. Suite Manager state keeps only a secret reference, redacted label, and fingerprint.
+- `DOMAIN`: Projected from the app public URL.
+- `SIGNUPS_ALLOWED=true`: The server accepts new account registrations.
+- `WEBSOCKET_ENABLED=true`: Live sync notifications for connected clients.
 
-- Primary service: `vaultwarden`
-- Dockerfile: `Dockerfile`
-- Internal HTTP port: `80`
-- Public route host: `vaultwarden.<mos-base-domain>`
-- Health endpoint: `/alive`
+## Volumes And Persistence
 
-## Persistence
+- `data:/data`: Stores the SQLite database and all other server state. Vault data is encrypted by the Bitwarden clients before it reaches the server.
 
-The package declares one persistent mount:
+The package runs Vaultwarden as a single service on its built-in SQLite storage; there is no separate database container. The self-hosted server requires no upstream Bitwarden account.
 
-- `/data`
+## Health Check
 
-The MOS Vaultwarden package uses Vaultwarden's built-in SQLite storage to stay inside the current one-service lifecycle slice. A future richer package can introduce PostgreSQL once package dependencies and companion services are generic.
+- `http://vaultwarden:80/alive`
 
-## Setup
+## Secret Handling
 
-The package declares a generated secret setup field:
+The `adminToken` setup field is generated at logical install time and stored as a restricted secret file. Suite Manager must not return the raw admin token in package listings, install responses, logs, or projection previews. Runtime apply resolves the secret only from the configured MOS app secret directory; if the secret file is missing, unreadable, or outside that directory, Suite Manager fails closed with a controlled `APP_SECRET_UNAVAILABLE` lifecycle error without calling the app agent or exposing the secret path.
 
-- `adminToken`: generated at logical install time, stored as a restricted secret file, and represented in SQLite by secret reference, redacted label, and fingerprint only.
+## Current Limits
 
-Runtime environment values are projected generically from manifest fields:
-
-- `ADMIN_TOKEN=${secret.adminToken}`
-- `DOMAIN=${app.publicUrl}`
-- `SIGNUPS_ALLOWED=true`
-- `WEBSOCKET_ENABLED=true`
-
-Suite Manager must not return the raw admin token in package listings, install responses, logs, or projection previews. Runtime apply resolves the secret only from the configured MOS app secret directory. If the secret file is missing, unreadable, or outside that directory, Suite Manager returns a controlled `APP_SECRET_UNAVAILABLE` lifecycle error without calling the app agent or exposing the secret path.
-
-## Secret Management Caveat
-
-The current file-backed secret storage is a MOS package-contract proving step, not the final MOS secret management system. Vaultwarden needs a recoverable admin token so the runtime can be reapplied, restarted, or updated with the same value, but this package only separates raw secret material from broad SQLite state and public APIs, then fails closed when the secret cannot be materialized.
-
-After Vaultwarden is verified to install and run in Hyper-V, a later package-platform task should harden this into an explicit secret-management subsystem before adding more secret-bearing app packages. That follow-up should cover encrypted-at-rest storage or a local secret-store agent, rotation/reveal rules, backup/restore behavior, permission ownership, operator recovery, and expanded redaction tests.
+- There is no owner-facing admin-token reveal or rotation flow yet.
+- A richer package variant could introduce PostgreSQL; the current package intentionally stays on single-service SQLite.

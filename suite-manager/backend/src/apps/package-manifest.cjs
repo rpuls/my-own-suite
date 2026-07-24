@@ -423,10 +423,14 @@ function validateCatalog(manifest, errors) {
       }
     }
   }
+  if (catalog.replaces !== undefined && !hasText(catalog.replaces)) {
+    errors.push('catalog.replaces must be a non-empty string when present.');
+  }
   if (catalog.screenshots !== undefined) {
     if (!Array.isArray(catalog.screenshots)) {
       errors.push('catalog.screenshots must be an array when present.');
     } else {
+      const declaredFiles = Array.isArray(manifest.packageFiles) ? manifest.packageFiles : [];
       for (const [index, screenshot] of catalog.screenshots.entries()) {
         const prefix = `catalog.screenshots[${index}]`;
         if (!isRecord(screenshot)) {
@@ -436,7 +440,13 @@ function validateCatalog(manifest, errors) {
         if (!hasText(screenshot.src)) {
           errors.push(`${prefix}.src is required.`);
         } else if (!safeUrl(screenshot.src)) {
-          safeRelativePath(screenshot.src, `${prefix}.src`, errors);
+          const normalized = safeRelativePath(screenshot.src, `${prefix}.src`, errors);
+          // A relative screenshot ships inside the package, and only declared
+          // files survive the package digest, so an undeclared one would fail
+          // every install with an opaque digest error instead of this one.
+          if (normalized && !declaredFiles.includes(screenshot.src)) {
+            errors.push(`${prefix}.src must be listed in packageFiles so it ships with the package.`);
+          }
         }
         for (const field of ['alt', 'caption']) {
           if (screenshot[field] !== undefined && !hasText(screenshot[field])) {
@@ -706,17 +716,23 @@ function publicCatalog(manifest) {
       summary: hasText(privacy.summary) ? privacy.summary : '',
     },
     related: Array.isArray(catalog.related) ? catalog.related.filter((id) => APP_ID_PATTERN.test(String(id))) : [],
+    replaces: hasText(catalog.replaces) ? catalog.replaces : '',
     resourceHint: {
       description: hasText(resourceHint.description) ? resourceHint.description : '',
       label: hasText(resourceHint.label) ? resourceHint.label : '',
       level: SUPPORTED_RESOURCE_LEVELS.has(resourceHint.level) ? resourceHint.level : '',
     },
+    // A relative src is a file inside the package, served through the same
+    // authenticated endpoint family as the icon; the index addresses this
+    // filtered projection, which screenshotPath() mirrors exactly.
     screenshots: Array.isArray(catalog.screenshots) ? catalog.screenshots
       .filter((screenshot) => isRecord(screenshot) && hasText(screenshot.src))
-      .map((screenshot) => ({
+      .map((screenshot, index) => ({
         alt: hasText(screenshot.alt) ? screenshot.alt : '',
         caption: hasText(screenshot.caption) ? screenshot.caption : '',
-        src: screenshot.src,
+        src: safeUrl(screenshot.src)
+          ? screenshot.src
+          : `/suite-manager/api/apps/packages/${encodeURIComponent(manifest.id || '')}/screenshots/${index}`,
       })) : [],
     tags: isStringArray(catalog.tags) ? catalog.tags : [],
   };

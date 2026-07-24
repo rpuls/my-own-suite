@@ -1,9 +1,48 @@
+<div align="center">
+
+<img src="branding/my-own-suite-mark.png" alt="" width="112" />
+
 # My Own Suite
 
-My Own Suite is a self-hosted control plane for installing and managing private open-source apps from one owner UI.
+**Your own private cloud — passwords, photos, files, and calendars on hardware you control.**
 
+[Website](https://myownsuite.org) · [Get started](https://myownsuite.org/docs/getting-started/) · [Documentation](https://myownsuite.org/docs/) · [Changelog](./CHANGELOG.md)
 
-## Current Shape
+</div>
+
+---
+
+My Own Suite (MOS) turns one machine — a mini-PC at home or a small rented cloud server — into a private replacement for the everyday cloud: install it once, then add the open-source apps you want from a curated catalog in a couple of clicks. MOS handles the databases, networking, HTTPS, and secure wiring in the background; you get one owner UI and apps that just work, with your data staying on hardware you control.
+
+<div align="center">
+  <img src="site/src/assets/screenshots/app-catalog.png" alt="The MOS app catalog in Suite Manager" width="760" />
+</div>
+
+## Why it's different
+
+- **Privacy you can check, not marketing.** Every catalog app is assessed before it enters the catalog and carries an A-to-D privacy posture grade — telemetry, external services, accounts, data processing, and policies, each with published evidence. [How assessments work](https://myownsuite.org/docs/privacy/how-we-assess/).
+- **A signed catalog and pinned packages.** Apps build from digest-pinned recipes; your server verifies what it installs, and updates show you what changes — including privacy changes — before you apply them.
+- **One-button backups with verified restore.** Whole-suite backups to storage you control, checked for integrity before they're ever restored.
+- **Apps that plug into each other.** Connect Seafile to ONLYOFFICE and documents open for editing in the browser — MOS exchanges the secrets and wires the network.
+- **Not a walled garden.** Paste any GitHub repository URL and MOS previews what the package asks for before anything installs. External apps stay labelled unverified and run restricted — and publishers can make their own apps MOS-installable with the [public packaging workflow](./skills/add-mos-app/SKILL.md).
+
+## Install
+
+On a fresh Ubuntu 24.04 server (your provider's browser console or SSH):
+
+```bash
+curl -fsSL https://get.myownsuite.org | sudo bash
+```
+
+Or flash the USB installer for a dedicated machine at home. The [getting-started guide](https://myownsuite.org/docs/getting-started/) walks through both paths.
+
+**Status:** early beta. The platform is under active development and tested end-to-end, but expect rough edges and breaking releases while pre-1.0.
+
+---
+
+## Repository map
+
+This repository is the whole platform — control plane, app packages, installers, docs site, and the review workflows behind the privacy assessments.
 
 | Path | Purpose |
 | --- | --- |
@@ -18,7 +57,7 @@ My Own Suite is a self-hosted control plane for installing and managing private 
 | `site/` | MOS public landing page and end-user documentation source; deployed to Cloudflare Pages from `main` and `staging` via GitHub Actions. |
 | `site-mos1-reference/` | Isolated previous-site source retained only as frozen rollback/reference material; not built or deployed. |
 
-## Local Development
+## Local development
 
 Install dependencies, build the Suite Manager frontend, and run the local control plane:
 
@@ -45,7 +84,7 @@ npm run build   # currently configured deployment build; see the cutover checkli
 
 Browser and infrastructure smoke commands are intentionally human-run because they are noisy or can create paid/destructive resources. See [scripts/README.md](./scripts/README.md) and [test/README.md](./test/README.md).
 
-## Documentation Map
+## Documentation map
 
 | Need | Go here |
 | --- | --- |
@@ -60,4 +99,4 @@ Browser and infrastructure smoke commands are intentionally human-run because th
 | Operator/developer scripts | [scripts/README.md](./scripts/README.md) |
 | Test harness notes | [test/README.md](./test/README.md) |
 
-For day-to-day prototyping, use `staging` as the integration branch and reserve `main` for stable release-ready batches.
+For day-to-day prototyping, use `staging` as the integration branch and reserve `main` for stable release-ready batches. Agent and contributor workflow rules live in [AGENTS.md](./AGENTS.md).

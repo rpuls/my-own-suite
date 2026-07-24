@@ -34,7 +34,7 @@ function stateFromStatus(status: SetupStatusResponse): SetupSessionState {
         message: 'Your suite is not on a secure (HTTPS) connection yet, so owner setup is paused to keep your account safe. Right after installing this is normal for a minute or two while MOS finishes setting up its security certificate — wait a moment, then reload this page using its https:// address. If it keeps happening, your server may be blocking web traffic: check that your hosting provider allows incoming connections on ports 80 and 443.',
       };
     }
-    return { kind: 'needs-owner', error: null };
+    return { kind: 'needs-owner', error: null, ownerClaimRequired: Boolean(status.ownerClaimRequired) };
   }
 
   if (!status.owner) {
@@ -77,17 +77,20 @@ export function useSetupSession() {
     });
   }, []);
 
-  async function createOwner(input: { email: string; name: string; password: string }): Promise<void> {
-    const claimToken = new URLSearchParams(window.location.search).get('claim') || '';
+  async function createOwner(input: { claimToken: string; email: string; name: string; password: string }): Promise<void> {
     const response = await fetch('/suite-manager/api/setup/owner', {
-      body: JSON.stringify({ ...input, claimToken }),
+      body: JSON.stringify(input),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',
     });
     const body: AuthResponse & ApiErrorBody = await readJson<AuthResponse & ApiErrorBody>(response).catch(() => ({}));
 
     if (!response.ok || !body.owner) {
-      setState({ kind: 'needs-owner', error: errorMessage(body, 'Unable to create the owner account.') });
+      setState((current) => ({
+        kind: 'needs-owner',
+        error: errorMessage(body, 'Unable to create the owner account.'),
+        ownerClaimRequired: current.kind === 'needs-owner' ? current.ownerClaimRequired : false,
+      }));
       return;
     }
 
@@ -118,6 +121,10 @@ export function useSetupSession() {
     }
   }
 
+  function clearOwnerError(): void {
+    setState((current) => (current.kind === 'needs-owner' && current.error ? { ...current, error: null } : current));
+  }
+
   async function logout(): Promise<void> {
     await fetch('/suite-manager/api/auth/logout', { method: 'POST' });
     const status = await readStatus();
@@ -131,6 +138,7 @@ export function useSetupSession() {
   }
 
   return {
+    clearOwnerError,
     createOwner,
     login,
     logout,

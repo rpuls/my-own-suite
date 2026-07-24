@@ -1,9 +1,14 @@
 {
   "id": "seafile",
   "name": "Seafile",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "minimumMosVersion": "0.1.0",
-  "packageFiles": ["entrypoint.sh"],
+  "packageFiles": [
+    "entrypoint.sh",
+    "screenshots/library.png",
+    "screenshots/sharing.png",
+    "screenshots/version-history.png"
+  ],
   "summary": "Private file sync, sharing, and browser-based file access.",
   "category": "storage",
   "icon": "icon.png",
@@ -11,6 +16,23 @@
     "description": "Seafile is a self-hosted file sync and sharing server for private libraries, browser access, desktop sync clients, mobile clients, and share links.",
     "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/seafile-onlyoffice?referralCode=-Yg50p" }],
     "replaces": "Dropbox / Google Drive / OneDrive",
+    "screenshots": [
+      {
+        "src": "screenshots/library.png",
+        "alt": "Seafile library folders in the browser grid view",
+        "caption": "Your libraries in the browser"
+      },
+      {
+        "src": "screenshots/sharing.png",
+        "alt": "Sharing a document from the Seafile file menu",
+        "caption": "Share files and folders with the people you choose"
+      },
+      {
+        "src": "screenshots/version-history.png",
+        "alt": "The version history of a document in Seafile",
+        "caption": "Every change kept - restore any earlier version"
+      }
+    ],
     "tags": [
       "files",
       "sync",

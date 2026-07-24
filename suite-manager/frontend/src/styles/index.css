@@ -100,6 +100,36 @@
   color: var(--mos-color-text-muted);
 }
 
+.suite-auth-key-input {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.suite-auth-keyhelp {
+  display: grid;
+  gap: var(--mos-space-3);
+}
+
+.suite-auth-keyhelp p,
+.suite-auth-keyhelp .suite-command-block {
+  margin: 0;
+}
+
+.suite-auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mos-space-3);
+}
+
+.suite-auth-keynote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mos-space-2) var(--mos-space-3);
+  border-top: var(--mos-border-subtle);
+  padding-top: var(--mos-space-4);
+}
+
 .suite-error {
   margin: 0;
   border: 1px solid var(--mos-color-danger-border);
@@ -1026,12 +1056,13 @@
 
 .suite-app-detail-title-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
   gap: var(--mos-space-3);
 }
 
 .suite-app-detail-heading h2 {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   margin: 0;
   color: var(--mos-color-text-strong);
@@ -1040,12 +1071,43 @@
   overflow-wrap: anywhere;
 }
 
+.suite-app-detail-title-row .suite-app-health-indicator {
+  margin-left: auto;
+}
+
+.suite-app-detail-replaces {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0;
+}
+
+.suite-app-detail-replaces span {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+  font-weight: 800;
+  letter-spacing: var(--mos-letter-spacing-label);
+  text-transform: uppercase;
+}
+
+.suite-app-detail-replaces strong {
+  color: var(--mos-color-text);
+}
+
 .suite-app-detail-heading p,
 .suite-app-detail-section p,
-.suite-app-feature-grid p,
+.suite-app-feature-list p,
 .suite-app-related-list small {
   margin: 0;
   color: var(--mos-color-text-muted);
+}
+
+.suite-app-detail-description {
+  max-width: 46rem;
+  margin: 0;
+  color: var(--mos-color-text-muted);
+  line-height: 1.6;
 }
 
 .suite-app-primary-actions {
@@ -1193,10 +1255,7 @@
   gap: var(--mos-space-3);
 }
 
-.suite-app-facts div,
-.suite-app-feature-grid article,
-.suite-app-next-steps article,
-.suite-app-setup-list div {
+.suite-app-facts div {
   display: grid;
   gap: 0.35rem;
   padding: var(--mos-space-4);
@@ -1205,9 +1264,7 @@
   background: var(--mos-color-surface-muted);
 }
 
-.suite-app-facts span,
-.suite-app-setup-list span,
-.suite-app-next-steps h4 {
+.suite-app-facts span {
   color: var(--mos-color-text-muted);
   font-size: var(--mos-text-label);
   font-weight: 800;
@@ -1216,9 +1273,7 @@
 }
 
 .suite-app-facts strong,
-.suite-app-feature-grid strong,
-.suite-app-next-steps strong,
-.suite-app-setup-list strong {
+.suite-app-feature-list strong {
   color: var(--mos-color-text-strong);
 }
 
@@ -1227,19 +1282,385 @@
   gap: var(--mos-space-3);
 }
 
-.suite-app-detail-section h3,
-.suite-app-next-steps h4 {
+.suite-app-detail-section h3 {
   margin: 0;
 }
 
-.suite-app-feature-grid {
+/* Overview tiles under the hero: screens, posture grade, resources. Every
+   tile is a button opening a drill-down dialog; the posture tile ships its
+   own inner classes from PrivacyPosture and only borrows the container.
+   SIBLING STYLES — the public site's app drawer mirrors these tiles and the
+   gallery/services dialogs below as the .app-tile/.app-gallery/.app-service
+   rules in site/src/styles/landing.css; keep look and copy in sync. */
+.suite-app-tiles {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--mos-space-3);
 }
 
-.suite-app-setup-list,
-.suite-app-next-steps,
+.suite-app-tiles.has-screens {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.suite-app-tiles > button {
+  display: grid;
+  align-content: start;
+  gap: 0.45rem;
+  min-height: 7.5rem;
+  padding: var(--mos-space-4);
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface-muted);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.suite-app-tiles > button:hover {
+  border-color: var(--mos-color-accent-border);
+  background: var(--mos-color-surface);
+  transform: translateY(-1px);
+}
+
+.suite-app-tiles > button:focus-visible {
+  outline: var(--mos-focus-ring);
+}
+
+.suite-app-tile-label {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+  font-weight: 800;
+  letter-spacing: var(--mos-letter-spacing-label);
+  text-transform: uppercase;
+}
+
+.suite-app-tile-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  overflow: hidden;
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+  white-space: nowrap;
+}
+
+.suite-app-tile-meta .suite-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: 0 0 auto;
+}
+
+/* The child combinator keeps this heavier than the shared
+   .suite-app-tiles > button padding it must cancel. */
+.suite-app-tiles > button.suite-app-screens-tile {
+  position: relative;
+  align-content: start;
+  padding: 0;
+  overflow: hidden;
+}
+
+.suite-app-screens-tile img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
+/* The cover screenshot can be any brightness, so the label sits on its own
+   darkened band that fades out. Padding matches the sibling tiles so the
+   label lines up with Posture grade and Resources. The band stays the brand
+   navy (rgba of --mos-color-bg's dark value) in every theme — a token here
+   would flip light and lose the guaranteed contrast over the image. */
+.suite-app-screens-head {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: var(--mos-space-4) var(--mos-space-4) 1.3rem;
+  background: linear-gradient(180deg, rgba(6, 21, 38, 0.85) 0%, rgba(6, 21, 38, 0.6) 62%, rgba(6, 21, 38, 0) 100%);
+}
+
+/* Text on the fixed-dark band is pinned to the dark theme's muted color so
+   it matches the sibling tile labels today and stays readable if a light
+   theme ever reaches this screen. */
+.suite-app-screens-head .suite-app-tile-label,
+.suite-app-screens-count {
+  color: #b8c9de;
+}
+
+.suite-app-screens-count {
+  font-size: var(--mos-text-label);
+  font-weight: 800;
+  letter-spacing: var(--mos-letter-spacing-label);
+}
+
+.suite-app-resources-line {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.suite-app-resources-line strong {
+  color: var(--mos-color-text-strong);
+  line-height: 1.15;
+}
+
+.suite-app-resource-meter {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column-reverse;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.22rem;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0.4rem 0;
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: 10px;
+  background: var(--mos-color-surface);
+}
+
+.suite-app-resource-meter span {
+  width: 1rem;
+  height: 0.26rem;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-surface-strong);
+}
+
+.suite-app-resource-meter span.is-filled {
+  background: var(--mos-color-accent);
+}
+
+.suite-app-resource-meter.is-high span.is-filled {
+  background: var(--mos-color-warning);
+}
+
+.suite-app-gallery-dialog {
+  width: min(100%, 720px);
+}
+
+.suite-app-gallery {
+  display: grid;
+  gap: var(--mos-space-3);
+  margin: 0;
+}
+
+.suite-app-gallery-frame {
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface-muted);
+}
+
+.suite-app-gallery-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.suite-app-gallery-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mos-space-3);
+}
+
+.suite-app-gallery-nav .is-back .suite-icon {
+  transform: rotate(180deg);
+}
+
+.suite-app-gallery figcaption {
+  display: grid;
+  flex: 1;
+  gap: 0.5rem;
+  justify-items: center;
+  min-width: 0;
+  text-align: center;
+}
+
+.suite-app-gallery figcaption strong {
+  color: var(--mos-color-text-strong);
+  font-size: var(--mos-text-small);
+}
+
+.suite-app-gallery-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.suite-app-gallery-dots button {
+  width: 0.55rem;
+  height: 0.55rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-surface-strong);
+  cursor: pointer;
+  transition: background 180ms ease;
+}
+
+.suite-app-gallery-dots button.is-active {
+  background: var(--mos-color-accent);
+}
+
+.suite-app-gallery-dots button:focus-visible {
+  outline: var(--mos-focus-ring);
+}
+
+.suite-app-resources-dialog {
+  width: min(100%, 640px);
+}
+
+.suite-app-resources-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.suite-app-resources-summary strong {
+  color: var(--mos-color-text-strong);
+}
+
+.suite-app-resources-note {
+  margin: 0;
+  color: var(--mos-color-text-muted);
+}
+
+.suite-app-service-list {
+  display: grid;
+  gap: var(--mos-space-2);
+}
+
+.suite-app-service-list article {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mos-space-3);
+  padding: var(--mos-space-3) var(--mos-space-4);
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface-muted);
+}
+
+.suite-app-service-dot {
+  flex: 0 0 auto;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-top: 0.45rem;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-info);
+}
+
+.suite-app-service-list article.is-exposed .suite-app-service-dot {
+  background: var(--mos-color-accent);
+}
+
+.suite-app-service-copy {
+  display: grid;
+  flex: 1;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.suite-app-service-role {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.suite-app-service-role strong {
+  color: var(--mos-color-text-strong);
+}
+
+.suite-app-service-role code {
+  color: var(--mos-color-text-muted);
+  font-size: 0.78rem;
+}
+
+.suite-app-service-copy small {
+  color: var(--mos-color-text-muted);
+}
+
+.suite-app-service-tag {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-pill);
+  color: var(--mos-color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.suite-app-service-list article.is-exposed .suite-app-service-tag {
+  color: var(--mos-color-accent);
+}
+
+.suite-app-feature-list {
+  padding: 0.2rem var(--mos-space-4);
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface-muted);
+}
+
+.suite-app-feature-list article {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mos-space-3);
+  padding: var(--mos-space-3) 0;
+  border-bottom: var(--mos-border-hairline);
+}
+
+.suite-app-feature-list article:last-child {
+  border-bottom: 0;
+}
+
+.suite-app-feature-check {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  margin-top: 0.1rem;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-accent-soft);
+  color: var(--mos-color-accent);
+}
+
+.suite-app-feature-check .suite-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.suite-app-feature-list article > div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.suite-app-link-row .mos-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.suite-app-link-row .suite-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
 .suite-app-privacy {
   display: grid;
   gap: var(--mos-space-3);
@@ -1815,11 +2236,15 @@
     align-items: flex-start;
   }
   .suite-app-facts,
-  .suite-app-feature-grid,
+  .suite-app-tiles,
+  .suite-app-tiles.has-screens,
   .suite-updates-facts,
   .suite-backup-destination-card,
   .suite-backup-bundle-list article {
     grid-template-columns: 1fr;
+  }
+  .suite-app-screens-tile {
+    min-height: 9rem;
   }
   .suite-updates-header,
   .suite-updates-track {
@@ -2093,7 +2518,8 @@
   text-transform: none;
 }
 
-.suite-app-facts .suite-privacy-tile .suite-privacy-tile-label {
+.suite-app-facts .suite-privacy-tile .suite-privacy-tile-label,
+.suite-app-tiles .suite-privacy-tile-label {
   color: var(--mos-color-text-muted);
   font-size: var(--mos-text-label);
   font-weight: 800;
@@ -2113,7 +2539,8 @@
   line-height: 1.15;
 }
 
-.suite-app-facts .suite-privacy-tile .suite-privacy-tile-meta {
+.suite-app-facts .suite-privacy-tile .suite-privacy-tile-meta,
+.suite-app-tiles .suite-privacy-tile-meta {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;

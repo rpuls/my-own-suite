@@ -8,6 +8,8 @@ import { customizeHomepage, verifyHomepageCustomization, waitForHomepageAvailabl
 import { applyDns01IfConfigured } from '../support/hyperv-https.mjs';
 import { resetLabIfConfigured } from '../support/hyperv-lab-reset.mjs';
 import {
+  captureMarketingScreenshots,
+  captureUpdateReviewIfAvailable,
   clickHomepageAppTiles,
   connectSeafileOnlyOffice,
   expectInstalledAppIds,
@@ -79,6 +81,11 @@ test('Hyper-V MOS full platform regression', async ({ browser, page }) => {
   await test.step('connect Seafile and ONLYOFFICE', async () => {
     if (dns01?.homeUrl) await page.goto(`${dns01.homeUrl.replace(/\/$/u, '')}/suite-manager/`);
     await connectSeafileOnlyOffice(page);
+  });
+
+  await test.step('capture marketing screenshots', async () => {
+    await captureMarketingScreenshots(page, env, dns01?.homeUrl || '/');
+    await captureUpdateReviewIfAvailable(page, dns01?.homeUrl || '/');
   });
 
   await test.step('verify Homepage app tiles', async () => {
