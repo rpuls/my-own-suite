@@ -100,6 +100,36 @@
   color: var(--mos-color-text-muted);
 }
 
+.suite-auth-key-input {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.suite-auth-keyhelp {
+  display: grid;
+  gap: var(--mos-space-3);
+}
+
+.suite-auth-keyhelp p,
+.suite-auth-keyhelp .suite-command-block {
+  margin: 0;
+}
+
+.suite-auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mos-space-3);
+}
+
+.suite-auth-keynote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mos-space-2) var(--mos-space-3);
+  border-top: var(--mos-border-subtle);
+  padding-top: var(--mos-space-4);
+}
+
 .suite-error {
   margin: 0;
   border: 1px solid var(--mos-color-danger-border);

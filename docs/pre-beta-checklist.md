@@ -83,7 +83,7 @@ provider-neutral and the copy should feel that way.
   site page routes cloud users to a plain (token-less) setup URL; no install path advertises
   cloud-init.
 
-- [ ] **2. (Recommended safety net, Small)** Handle the missing-claim case in the setup screen:
+- [x] **2. (Recommended safety net, Small)** Handle the missing-claim case in the setup screen:
   when `/setup/status` returns `ownerClaimRequired: true` and the URL has no `claim` param, show
   "this install needs its one-time setup link" guidance (ideally with a paste-the-key field)
   *instead of* a form that fails only after submit
@@ -91,6 +91,17 @@ provider-neutral and the copy should feel that way.
   (reprint the link via `sudo cat /etc/mos/secrets/owner-claim.env`) already shipped with item 1 —
   see the guide's "Closed the terminal before opening the link?" section; only the frontend half
   remains.
+
+  **Done 2026-07-24** (uncommitted, awaiting owner review): `OwnerSetupScreen` now has two states —
+  opened without the key (cloud installs only), it shows guidance (open the printed Finish-setup
+  link; or reprint via `sudo cat /etc/mos/secrets/owner-claim.env`) with a paste-the-key field that
+  accepts the whole `MOS_OWNER_CLAIM_TOKEN=...` line; with a key, the normal form plus a quiet
+  "Change key" footer covering mis-copied links. `ownerClaimRequired` is threaded through the
+  session state; own-hardware installs see no change. Verified with `npm run typecheck` +
+  `npm run build:client`. Docs left as-is on purpose: the guide's `?claim=` recovery URL works on
+  every MOS version, while paste-on-screen only exists from the release carrying this change —
+  once that release is out, the recovery section can be simplified to "open the suite address and
+  paste the key".
 
 ---
 

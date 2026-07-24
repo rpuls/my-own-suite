@@ -16,6 +16,6 @@ export type SetupStatusResponse = {
 export type SetupSessionState =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'needs-owner'; error: string | null }
+  | { kind: 'needs-owner'; error: string | null; ownerClaimRequired: boolean }
   | { kind: 'signed-out'; error: string | null; owner: Owner }
   | { kind: 'signed-in'; owner: Owner };
