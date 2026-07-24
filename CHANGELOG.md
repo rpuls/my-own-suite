@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-07-24
+
 ### Added
 
 - Immich now has a MOS privacy assessment (grade B, "Privacy configured"): the pinned v3.0.2 multi-service stack (server, machine learning, PostgreSQL/VectorChord, Valkey) runs on your own MOS server with a local admin account and keeps your photo and video library — plus facial-recognition and smart-search inference — on the box, with only the web service exposed while the database, cache, and machine learning services stay internal. MOS now bakes an `IMMICH_CONFIG_FILE` into the server image that turns off Immich's enabled-by-default new-version check, so the server no longer makes scheduled release-check requests to GitHub. The review records the remaining optional, feature-gated touchpoints — machine learning models download from Hugging Face on first use, and the map view loads tiles from Immich's hosted tile service — and excludes the Immich mobile and web client apps. The Apps screen and public app page now show its shield instead of "Not yet rated". (Catalog re-signing required before release.)
