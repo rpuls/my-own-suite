@@ -60,6 +60,7 @@ Default coverage:
 - Homepage tile click-through checks for installed apps, including login validation for app packages with web or HTTP authentication where the package exposes test credentials.
 - App route checks that fail on server errors. Vaultwarden direct route checks are skipped on plain HTTP because the web vault requires HTTPS for normal browser loading.
 - Seafile plus ONLYOFFICE connection state.
+- Best-effort marketing screenshot capture into the ignored `test/e2e/screenshots/` folder (harvested by `npm run screenshots:update`; see the pipeline notes in `scripts/README.md`). A failed capture logs a warning and never fails the run.
 - Restore from the early backup checkpoint, followed by assertions that the owner, Homepage customization, and the first-app catalog state are restored while later apps are rolled back.
 
 Opt-in or deferred coverage:

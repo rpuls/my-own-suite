@@ -143,6 +143,7 @@ section.band { padding: clamp(3rem, 7vh, 5rem) 0; }
 
 /* Install paths */
 .paths { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--mos-space-4); }
+.byo { display: grid; grid-template-columns: 1fr 1fr; gap: var(--mos-space-4); max-width: 64rem; margin-inline: auto; }
 .path { padding: var(--mos-space-6); display: grid; gap: var(--mos-space-3); align-content: start; }
 .path h3 { margin: 0; font-size: 1.2rem; color: var(--mos-color-text-strong); }
 .path ul { margin: var(--mos-space-2) 0 0; padding-left: 1.1rem; color: var(--mos-color-text-muted); display: grid; gap: 6px; font-size: 0.92rem; }
@@ -317,7 +318,7 @@ footer.site-footer { padding: var(--mos-space-8) 0 var(--mos-space-7); }
 }
 
 @media (max-width: 900px) {
-  .hero-grid, .tour-row, .promise, .steps, .paths, .who-list, .made-with-panel, .together { grid-template-columns: 1fr; }
+  .hero-grid, .tour-row, .promise, .steps, .paths, .byo, .who-list, .made-with-panel, .together { grid-template-columns: 1fr; }
   .catalog { grid-template-columns: 1fr; }
   .tour-row:nth-child(even) .tour-copy { order: 0; }
   .site-nav { display: none; }

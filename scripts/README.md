@@ -101,6 +101,19 @@ cmd /c npm run e2e:full:headed
 
 The E2E command reads ignored local config from `test/e2e/.env`, never creates or destroys Hyper-V, and keeps destructive restore/update validation out of the default flow. By default it calls the Hyper-V lab-only reset endpoint to clear Suite Manager/Homepage/app state before each run; set `MOS_E2E_RESET_BEFORE_RUN=0` only when preserving current lab state. See `test/README.md` for the env shape and coverage.
 
+### Marketing screenshot pipeline
+
+The full Hyper-V E2E run doubles as the source of the public site's product screenshots. Capture hooks in `test/e2e/support/screenshots.mjs` and the app/backup flows save stable-named PNGs (app catalog, pre-install app detail, install progress, privacy posture dialog, Connect section, setup guide, backups screen, and — when the lab has a compatible app update pending — the update review dialog) into the ignored `test/e2e/screenshots/` folder. Captures are best-effort and never fail the regression.
+
+Refreshing the site's screenshots after a UI change is one human-run E2E pass plus one command:
+
+```powershell
+cmd /c npm run e2e:full
+cmd /c npm run screenshots:update
+```
+
+`screenshots:update` copies the last run's captures into `site/src/assets/screenshots/` under the same filenames, reports what was updated and what still carries an older capture, and leaves the changes uncommitted for review. The landing Tour picks up known filenames automatically — a Tour entry whose screenshot has not been captured yet simply does not render, so a partial set never breaks the site build. Run the capture lab with a presentable owner email (the defaults like `owner@example.com` are fine): whatever the lab shows on screen ends up in the published images. Set `MOS_E2E_SCREENSHOT_APP` to change which app's detail view becomes `app-detail-install.png` (default `seafile`).
+
 Inputs are optional and come from `infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env` (or matching environment variables) when the file exists:
 
 - `LINUX_PASSWORD` is used for the Ubuntu console/SSH login. When it is not set, the seed renderer generates a random password and prints it during the build (also in the final ISO summary). Pin it locally if you need a stable lab login across resets.

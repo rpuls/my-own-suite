@@ -36,6 +36,7 @@ test/e2e/node_modules/
 test/e2e/playwright-report/
 test/e2e/test-results/
 test/e2e/playwright-report-hyperv/
+test/e2e/screenshots/
 test-results/
 test/e2e/.env
 

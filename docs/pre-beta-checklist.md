@@ -159,7 +159,7 @@ provider-neutral and the copy should feel that way.
   forks). Agent recommendation: **AGPL-3.0**. Once decided: root `LICENSE`, `"license"` field in
   root `package.json`, and a README mention (the README gets its item-12 upgrade later anyway).
 
-- [ ] **6. Rewrite the scaffolding-voiced app READMEs.** *(apps, Small)* These render verbatim on
+- [x] **6. Rewrite the scaffolding-voiced app READMEs.** *(apps, Small)* These render verbatim on
   the public app pages under "Technical reference":
   - `apps/vaultwarden/README.md` — "pressure-tests generic package setup…" + the "Secret Management
     Caveat" roadmap prose, on the *password manager's* page.
@@ -206,7 +206,7 @@ provider-neutral and the copy should feel that way.
   self-hosted file or at minimum a no-cookie embed — a plain YouTube iframe injects Google tracking
   into the page that promises otherwise.
 
-- [ ] **9. E2E-generated screenshots + an update script.** *(test + scripts + site, Medium)* All
+- [x] **9. E2E-generated screenshots + an update script.** *(test + scripts + site, Medium)* All
   three current marketing screenshots are stale (`app-detail-install.png` predates the privacy-grade
   tile — the flagship feature is missing from its own screenshot; `backups.png` predates the
   unencrypted-exports notice and current copy; `app-catalog.png` has an old search placeholder).
@@ -221,13 +221,44 @@ provider-neutral and the copy should feel that way.
   **Acceptance:** `backups.png` shows the current warning notice; `app-detail-install.png` shows
   the posture-grade tile; refreshing screenshots after a UI change is one test run + one command.
 
-- [ ] **10. Expand the landing Tour / screenshot coverage.** *(site, Small)* Audit feedback: after
+  **Done 2026-07-24** (uncommitted, awaiting owner review + one human-run capture pass):
+  capture primitives in `test/e2e/support/screenshots.mjs` (best-effort — a failed shot logs a
+  warning, never fails the regression) write stable-named PNGs to the ignored
+  `test/e2e/screenshots/`. Hooks: `app-detail-install.png` (pre-install Seafile detail, untouched
+  prefill state; override app via `MOS_E2E_SCREENSHOT_APP`) and `app-install-progress.png`
+  (first install stepper of the run) inside `installAppViaUi`; `backups.png` (full page, current
+  warning notice) after backup success; a "capture marketing screenshots" step in the full spec
+  (post-connect, everything installed) shoots `app-catalog.png` (full page), `privacy-posture.png`
+  (posture dialog open), `app-connect.png` (Connections section element shot, connected state),
+  `app-setup-guide.png` (Radicale guide panel); `app-update-review.png` is opportunistic — any
+  run whose lab has a compatible pending app update captures the Review-update dialog, runs
+  without one keep the previous capture. Both Hyper-V configs now render at 1440×900 with
+  deviceScaleFactor 2 so captures match the existing 2880px-wide site assets.
+  `npm run screenshots:update` (new `scripts/screenshots-update.cjs`) harvests the last local
+  run into `site/src/assets/screenshots/`, reports updated/added/not-refreshed, exits nonzero
+  with guidance when no captures exist. Pipeline documented in `scripts/README.md` (+ a coverage
+  line in `test/README.md`). **Owner action:** run `npm run e2e:full` then
+  `npm run screenshots:update` once to mint the first fresh set (use a presentable owner email —
+  whatever the lab shows lands in the published images), review, commit with the site.
+
+- [x] **10. Expand the landing Tour / screenshot coverage.** *(site, Small)* Audit feedback: after
   the landing page alone, a visitor still can't picture what they get. With item 9's pipeline in
   place, add Tour entries (or a screenshot strip) for the product's most differentiated screens —
   candidates: privacy posture dialog, Connect plug-and-socket visual, a per-app setup guide, the
   app-update review dialog.
 
-- [ ] **11. New landing section: external apps as a dual selling point.** *(site, Small–Medium)*
+  **Done 2026-07-24** (uncommitted, awaiting owner review): `Tour.astro` is now data-driven — a
+  seven-entry storytelling arc (browse the catalog → read the app page → check the privacy grade
+  → connect apps → get guided onto your devices → approve updates → back it all up) where each
+  entry names its screenshot file and renders **only if that screenshot exists**
+  (`import.meta.glob` over `assets/screenshots/`). Today the site builds with the three existing
+  shots; the four new entries (privacy posture "The privacy grade, with receipts", Connect "Apps
+  that plug into each other", setup guide "Guided onto your other devices", update review
+  "Updates you approve, not endure") appear automatically after item 9's first capture run — a
+  partial screenshot set can never break the build or show a wrong image. New copy follows the
+  definitional privacy message from item 3 and the honest update/backup claims from the docs.
+
+- [x] **11. New landing section: external apps as a dual selling point.** *(site, Small–Medium)*
   Today the catalog's size (6) is visible but its *openness* isn't. Add a section making the
   external-install path a first-class pitch, aimed at two audiences at once:
   - **For users:** your favorite app isn't locked out — paste its GitHub repository URL and MOS
@@ -238,12 +269,31 @@ provider-neutral and the copy should feel that way.
 
   This also reframes the small catalog honestly: a curated, rated core plus an open edge.
 
-- [ ] **12. GitHub README upgrade.** *(README.md, Small)* The repo is a discovery surface — site
+  **Done 2026-07-24** (uncommitted, awaiting owner review): new `ExternalApps.astro` section
+  ("Beyond the catalog — Your favorite app isn't locked out") placed directly after the catalog
+  section so the reframe lands immediately: "a curated, privacy-rated core — not a wall". Two
+  cards reusing the existing `.mos-panel.path` conventions: **For you** (preview-first external
+  installs, honest trust framing, External · Unverified labelling, MOS restrictions, managed like
+  any app; links `guides/apps.md#bringing-your-own-app`) and **For open-source publishers**
+  (manifest/pinned-recipe packaging pitch; links `skills/add-mos-app/SKILL.md` on GitHub and the
+  `MOS-external-app-example` repository). All claims cross-checked against `guides/apps.md`.
+
+- [x] **12. GitHub README upgrade.** *(README.md, Small)* The repo is a discovery surface — site
   visitors (especially technical testers) click through and currently meet "self-hosted control
   plane", a directory table, and dev commands. Give it a massive visual and communication upgrade:
   brand banner/screenshot at the top, one plain-language paragraph on what MOS is, prominent links
   to myownsuite.org and the getting-started guide, license badge (after item 5) — then keep the
   existing developer map below for contributors.
+
+  **Done 2026-07-24** (uncommitted, awaiting owner review): centered brand mark
+  (`branding/my-own-suite-mark.png`) + tagline + Website/Get started/Docs/Changelog link row,
+  one plain-language paragraph on what MOS is, the app-catalog screenshot (embedded from
+  `site/src/assets/screenshots/` — refreshes automatically with item 9's pipeline), a
+  "Why it's different" list (privacy grades with evidence, signed catalog + pinned packages,
+  verified backups, Connect, bring-your-own-app + publisher packaging link), the one-line
+  installer with an honest early-beta status note, then the unchanged developer content
+  (repository map, local development, documentation map) plus an AGENTS.md pointer. No license
+  badge yet — that lands with item 5 once the owner picks the license.
 
 ---
 

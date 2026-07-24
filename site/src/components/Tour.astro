@@ -1,8 +1,66 @@
 ---
 import { Image } from 'astro:assets'
-import appCatalog from '../assets/screenshots/app-catalog.png'
-import appDetailInstall from '../assets/screenshots/app-detail-install.png'
-import backups from '../assets/screenshots/backups.png'
+import type { ImageMetadata } from 'astro'
+
+// The tour screenshots come from the E2E capture pipeline: a human-run
+// `npm run e2e:full` captures them, `npm run screenshots:update` copies
+// them into ../assets/screenshots/ under stable names (see
+// scripts/README.md). An entry renders only when its screenshot exists,
+// so a screen that has not been captured yet never breaks the build — it
+// appears automatically on the next screenshot refresh.
+const shots = import.meta.glob<{ default: ImageMetadata }>('../assets/screenshots/*.png', {
+  eager: true
+})
+
+const tour = [
+  {
+    file: 'app-catalog',
+    title: 'A catalog you just tap through',
+    copy: 'Pick what you want from a curated shortlist and install it in a single tap. MOS quietly handles the database, the networking, and the secure connections in the background — no config files, no command line.',
+    alt: 'The MOS App Catalog'
+  },
+  {
+    file: 'app-detail-install',
+    title: "Know exactly what you're getting",
+    copy: 'Every app has a plain-language page: what it does, the Big Tech product it replaces, how much it will ask of your machine, and how your data stays private. Decide with confidence, then install with a single click.',
+    alt: "An app's detail view with a one-click Install action and its privacy posture grade"
+  },
+  {
+    file: 'privacy-posture',
+    title: 'The privacy grade, with receipts',
+    copy: "Every catalog app is assessed before it enters the catalog and wears an A-to-D privacy grade. Tap it and see why: telemetry, outside services, accounts, where your data is processed, and the policies that apply — a plain verdict on each, backed by published evidence.",
+    alt: "The privacy posture dialog showing an app's A-to-D grade and per-dimension verdicts"
+  },
+  {
+    file: 'app-connect',
+    title: 'Apps that plug into each other',
+    copy: 'Some apps are better together — connect Seafile to ONLYOFFICE and every document in your file cloud opens for editing in the browser. One button does it: MOS exchanges the secrets and wires the network, so you never copy keys between admin panels.',
+    alt: 'Two apps shown as a plug and socket with a one-click Connect action'
+  },
+  {
+    file: 'app-setup-guide',
+    title: 'Guided onto your other devices',
+    copy: "Some apps meet you on your phone or laptop — like pointing your calendar at your own server. Those come with a built-in setup guide: per-device steps and copyable values right where you need them, tracking what you've finished.",
+    alt: "A per-app setup guide with per-device steps beside the app's detail view"
+  },
+  {
+    file: 'app-update-review',
+    title: 'Updates you approve, not endure',
+    copy: 'Your server checks a signed catalog for app updates and shows you what would change before anything does — the versions, new settings, whether the app asks for more access, and whether its privacy grade moved. You decide; MOS keeps the old version running until the new one is ready.',
+    alt: 'The update review dialog listing what an app update changes before it is applied'
+  },
+  {
+    file: 'backups',
+    title: 'Back up your whole suite to storage you control',
+    copy: 'One button copies your suite to storage attached to the MOS server: an encrypted USB disk at home, or a mounted block-storage volume on a rented server. MOS verifies every archive before restore. Bundles are not encrypted by MOS, so protect the destination like the server itself.',
+    alt: 'Backup and restore page in Suite Manager'
+  }
+]
+
+const entries = tour.flatMap((entry) => {
+  const image = shots[`../assets/screenshots/${entry.file}.png`]?.default
+  return image ? [{ ...entry, image }] : []
+})
 
 const imageProps = {
   widths: [560, 1120],
@@ -18,26 +76,14 @@ const imageProps = {
       <span class="mos-eyebrow">A quick tour</span>
       <h2 class="mos-section-title">As easy as the phone in your pocket</h2>
     </div>
-    <div class="tour-row">
-      <div class="tour-copy">
-        <h3 class="mos-card-title" style="font-size:1.4rem">A catalog you just tap through</h3>
-        <p class="mos-meta" style="margin-top:8px">Pick what you want from a curated shortlist and install it in a single tap. MOS quietly handles the database, the networking, and the secure connections in the background — no config files, no command line.</p>
+    {entries.map((entry) => (
+      <div class="tour-row">
+        <div class="tour-copy">
+          <h3 class="mos-card-title" style="font-size:1.4rem">{entry.title}</h3>
+          <p class="mos-meta" style="margin-top:8px">{entry.copy}</p>
+        </div>
+        <div class="tour-frame"><Image src={entry.image} alt={entry.alt} {...imageProps} /></div>
       </div>
-      <div class="tour-frame"><Image src={appCatalog} alt="The MOS App Catalog" {...imageProps} /></div>
-    </div>
-    <div class="tour-row">
-      <div class="tour-copy">
-        <h3 class="mos-card-title" style="font-size:1.4rem">Know exactly what you're getting</h3>
-        <p class="mos-meta" style="margin-top:8px">Every app has a plain-language page: what it does, the Big Tech product it replaces, how much it will ask of your machine, and how your data stays private. Decide with confidence, then install with a single click.</p>
-      </div>
-      <div class="tour-frame"><Image src={appDetailInstall} alt="An app's detail view with a one-click Install action" {...imageProps} /></div>
-    </div>
-    <div class="tour-row">
-      <div class="tour-copy">
-        <h3 class="mos-card-title" style="font-size:1.4rem">Back up your whole suite to storage you control</h3>
-        <p class="mos-meta" style="margin-top:8px">One button copies your suite to storage attached to the MOS server: an encrypted USB disk at home, or a mounted block-storage volume on a rented server. MOS verifies every archive before restore. Bundles are not encrypted by MOS, so protect the destination like the server itself.</p>
-      </div>
-      <div class="tour-frame"><Image src={backups} alt="Backup and restore page in Suite Manager" {...imageProps} /></div>
-    </div>
+    ))}
   </div>
 </section>
