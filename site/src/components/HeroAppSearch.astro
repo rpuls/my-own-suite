@@ -1,0 +1,175 @@
+---
+import BrandMark from './BrandMark.astro'
+import { catalogApps } from '../lib/app-catalog'
+
+const demoTerms = ['', 'dropbox', 'office', 'security', 'photo']
+const maxResults = 4
+const apps = catalogApps.map(({ id, name, category, summary, description, replaces, tags, icon }) => ({
+  id,
+  name,
+  category,
+  summary,
+  description,
+  replaces,
+  tags,
+  icon
+}))
+
+const matches = (term: string) =>
+  apps.filter((app) =>
+    [app.name, app.category, app.summary, app.description, app.replaces, ...app.tags]
+      .join(' ')
+      .toLowerCase()
+      .includes(term)
+  )
+
+const initialTerm = demoTerms.find((term) => matches(term).length) ?? ''
+const initialMatches = matches(initialTerm)
+const initialApps = initialMatches.slice(0, maxResults)
+const demoData = JSON.stringify({ apps, maxResults, terms: demoTerms }).replace(/</g, '\\u003c')
+---
+
+<div
+  class="hero-frame hero-app-demo"
+  data-hero-app-search
+  role="img"
+  aria-label="Suite Manager app search demonstrating private alternatives from the MOS catalog"
+>
+  <div class="hero-app-demo-screen" aria-hidden="true">
+    <div class="hero-app-demo-brand">
+      <BrandMark size={25} class="hero-app-demo-mark" />
+      <span><strong>MY OWN SUITE</strong><small>Suite Manager</small></span>
+    </div>
+
+    <div class="hero-app-demo-content">
+      <h2>Apps</h2>
+      <div class="apps-search hero-app-demo-search">
+        <svg width="16" height="16" viewBox="0 0 24 24"><use href="#i-search"/></svg>
+        <span
+          class="hero-app-demo-query"
+          data-demo-query
+          data-placeholder="Search by name or what you want to do..."
+        >{initialTerm}</span>
+        <span class="hero-app-demo-caret"></span>
+      </div>
+
+      <div class="hero-app-demo-label">
+        <span>Apps</span>
+        <span data-demo-count>{initialMatches.length} {initialMatches.length === 1 ? 'app' : 'apps'}</span>
+      </div>
+      <div class="hero-app-demo-results" data-demo-results>
+        {initialApps.map((app) => (
+          <div class="mos-panel hero-app-demo-app">
+            <div class="app-top">
+              <span class="app-ico"><img src={app.icon} alt="" /></span>
+              <span class="app-name-wrap">
+                <strong>{app.name}</strong>
+                <span class="app-sub">{app.category}</span>
+              </span>
+              <span class="hero-app-demo-view">View</span>
+            </div>
+            <p class="mos-meta app-desc">{app.summary}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script is:inline type="application/json" data-hero-app-data set:html={demoData} />
+
+<script>
+  type DemoApp = {
+    id: string
+    name: string
+    category: string
+    summary: string
+    description: string
+    replaces: string
+    tags: string[]
+    icon: string
+  }
+
+  const root = document.querySelector<HTMLElement>('[data-hero-app-search]')
+  const dataElement = document.querySelector<HTMLScriptElement>('[data-hero-app-data]')
+
+  if (root && dataElement) {
+    const { apps, maxResults, terms } = JSON.parse(dataElement.textContent || '{}') as {
+      apps: DemoApp[]
+      maxResults: number
+      terms: string[]
+    }
+    const query = root.querySelector<HTMLElement>('[data-demo-query]')!
+    const count = root.querySelector<HTMLElement>('[data-demo-count]')!
+    const results = root.querySelector<HTMLElement>('[data-demo-results]')!
+    const esc = (value: string) =>
+      value.replace(/[&<>"']/g, (char) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] as string
+      )
+    const matching = (term: string) =>
+      apps.filter((app) =>
+        [app.name, app.category, app.summary, app.description, app.replaces, ...app.tags]
+          .join(' ')
+          .toLowerCase()
+          .includes(term.toLowerCase())
+      )
+    const validTerms = terms.filter((term) => matching(term).length)
+
+    const render = (term: string) => {
+      const matches = matching(term)
+      const visible = matches.slice(0, maxResults)
+      count.textContent = `${matches.length} ${matches.length === 1 ? 'app' : 'apps'}`
+      results.innerHTML = visible
+        .map(
+          (app) => `<div class="mos-panel hero-app-demo-app">
+  <div class="app-top">
+    <span class="app-ico"><img src="${esc(app.icon)}" alt="" /></span>
+    <span class="app-name-wrap">
+      <strong>${esc(app.name)}</strong>
+      <span class="app-sub">${esc(app.category)}</span>
+    </span>
+    <span class="hero-app-demo-view">View</span>
+  </div>
+  <p class="mos-meta app-desc">${esc(app.summary)}</p>
+</div>`
+        )
+        .join('')
+    }
+    const sleep = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
+    const waitUntilVisible = async () => {
+      while (document.hidden) await sleep(250)
+    }
+
+    const animate = async () => {
+      if (validTerms.length < 2) return
+      let termIndex = 0
+      while (true) {
+        const current = validTerms[termIndex]
+        query.textContent = current
+        render(current)
+        await sleep(2400)
+        await waitUntilVisible()
+
+        termIndex = (termIndex + 1) % validTerms.length
+        const next = validTerms[termIndex]
+
+        root.classList.add('is-typing')
+        for (let length = current.length - 1; length >= 0; length -= 1) {
+          query.textContent = current.slice(0, length)
+          await sleep(45)
+        }
+        root.classList.remove('is-typing')
+        await sleep(1000)
+        root.classList.add('is-typing')
+        for (let length = 1; length <= next.length; length += 1) {
+          query.textContent = next.slice(0, length)
+          await sleep(90)
+        }
+        root.classList.remove('is-typing')
+        render(next)
+        await waitUntilVisible()
+      }
+    }
+    void animate()
+  }
+</script>
