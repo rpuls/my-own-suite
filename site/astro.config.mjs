@@ -83,7 +83,7 @@ export default defineConfig({
         },
         {
           label: 'Legal',
-          items: ['docs/terms', 'docs/privacy']
+          items: ['docs/license', 'docs/terms', 'docs/privacy']
         }
       ]
     })

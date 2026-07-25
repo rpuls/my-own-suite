@@ -234,3 +234,13 @@ starlight-toc nav a[aria-current='true'] {
   color: var(--sl-color-accent-high);
   font-weight: 600;
 }
+
+/* The public license page renders the canonical root LICENSE verbatim.
+   Keep long legal lines readable on small screens without restyling code
+   samples across the rest of the documentation. */
+.license-text {
+  max-height: 32rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: var(--sl-text-xs);
+}
