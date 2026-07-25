@@ -6,6 +6,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-07-25
+
 ### Added
 
 - My Own Suite is now officially licensed as free and open-source software under the GNU Affero General Public License v3.0 only.
