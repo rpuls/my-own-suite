@@ -18,8 +18,10 @@ These rules are required for every non-trivial change (docs, config, code, infra
 2. **Use `staging` as the default integration target for feature work.**
    - Merge feature branches into `staging` first when the goal is fast template/infrastructure testing.
    - Promote tested batches from `staging` to `main` through the release workflow in `RELEASING.md`.
-3. **Maintain `CHANGELOG.md` during the work, not after.**
-   - Add/update an entry under `## [Unreleased]` in the same branch as the change.
+3. **Maintain `CHANGELOG.md` during releasable software work, not after.**
+   - Add/update an entry under `## [Unreleased]` in the same branch when the change affects Suite Manager or installed-platform behavior, operations, compatibility, or another outcome relevant to people updating MOS.
+   - Do not add changelog entries for documentation-only, public-site-only, landing-page-only, repository-maintenance, or contributor-workflow changes. Those are not updater-facing software behavior.
+   - If documentation or public-site copy accompanies a software behavior change, describe the behavior once; do not separately log the documentation or site edit.
    - Keep entries concise, user-relevant, and release-shaped.
    - Prefer a few broad release-note bullets over a detailed work log of small implementation changes.
    - Do not add a new changelog bullet for every follow-up fix, test tweak, or implementation step within the same area of work.
@@ -49,7 +51,7 @@ Before making edits, agents should confirm:
 
 - Current branch is **not** `main`.
 - If the change is intended for fast platform testing, target **`staging` first** rather than `main`.
-- `CHANGELOG.md` contains or will contain an `Unreleased` entry for the change.
+- If the work changes updater-facing software behavior, `CHANGELOG.md` contains or will contain an `Unreleased` entry; docs-only and public-site-only work does not require one.
 - Any needed docs split rules (MDX vs app README) are respected.
 - Local git hooks are installed (`npm run hooks:install`) so commits/pushes on `main` are blocked.
 - If the work is release-related, confirm `VERSION`, `releases/stable.json`, and any Suite Manager release metadata will stay in sync with the intended tag.
@@ -61,7 +63,7 @@ Documentation must have a single source of truth. Before adding or moving Markdo
 Use these locations:
 
 - Root `README.md`: repository landing page and documentation map.
-- Root `CHANGELOG.md`: release notes only.
+- Root `CHANGELOG.md`: updater-facing software release notes only, excluding documentation, public-site, landing-page, repository-maintenance, and contributor-workflow-only changes.
 - Root `RELEASING.md`: official release workflow only.
 - Root `AGENTS.md`: agent workflow and repository rules only.
 - `docs/README.md`: documentation ownership map.

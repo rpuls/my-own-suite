@@ -1,6 +1,6 @@
 ---
 import BrandMark from './BrandMark.astro'
-import { CHANGELOG_URL, DOCS_PATH, GITHUB_REPO_URL, PRIVACY_PATH, TERMS_PATH } from '../lib/links'
+import { CHANGELOG_URL, DOCS_PATH, GITHUB_REPO_URL, LICENSE_PATH, PRIVACY_PATH, TERMS_PATH } from '../lib/links'
 import { MOS_VERSION } from '../lib/version'
 ---
 
@@ -9,9 +9,9 @@ import { MOS_VERSION } from '../lib/version'
     <div class="footer-row">
       <span class="brand"><BrandMark size={26} /> <span class="mos-eyebrow" style="font-size:0.76rem">My Own Suite</span></span>
       <nav class="footer-links">
-        <a href={DOCS_PATH}>Docs</a><a href={GITHUB_REPO_URL}>GitHub</a><a href={CHANGELOG_URL}>Changelog</a><a href={TERMS_PATH}>Terms</a><a href={PRIVACY_PATH}>Privacy</a>
+        <a href={DOCS_PATH}>Docs</a><a href={GITHUB_REPO_URL}>GitHub</a><a href={CHANGELOG_URL}>Changelog</a><a href={LICENSE_PATH}>License</a><a href={TERMS_PATH}>Terms</a><a href={PRIVACY_PATH}>Privacy</a>
       </nav>
-      <span>Free &amp; open source · Beta {MOS_VERSION}</span>
+      <span>AGPL-3.0-only · Beta {MOS_VERSION}</span>
     </div>
   </div>
 </footer>

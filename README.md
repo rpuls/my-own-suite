@@ -8,6 +8,8 @@
 
 [Website](https://myownsuite.org) · [Get started](https://myownsuite.org/docs/getting-started/) · [Documentation](https://myownsuite.org/docs/) · [Changelog](./CHANGELOG.md)
 
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
+
 </div>
 
 ---
@@ -100,3 +102,9 @@ Browser and infrastructure smoke commands are intentionally human-run because th
 | Test harness notes | [test/README.md](./test/README.md) |
 
 For day-to-day prototyping, use `staging` as the integration branch and reserve `main` for stable release-ready batches. Agent and contributor workflow rules live in [AGENTS.md](./AGENTS.md).
+
+## License
+
+My Own Suite is free and open-source software licensed under the [GNU Affero General Public License v3.0 only](./LICENSE). You may use, modify, distribute, and commercially host it under the license terms; modified versions offered over a network must offer their corresponding source code to their users.
+
+The My Own Suite, MOS, and Funkyton names and logos are not granted for use as the identity of a modified distribution or competing service. Third-party application names, logos, screenshots, and other assets remain the property of their respective owners.

@@ -1,307 +1,208 @@
 # Changelog
 
-All notable changes to this project are documented in this file.
+Notable updater-facing software changes are documented here. Documentation, public-site, landing-page, repository-maintenance, and contributor-workflow-only changes are intentionally excluded.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-07-25
+
+### Added
+
+- My Own Suite is now officially licensed as free and open-source software under the GNU Affero General Public License v3.0 only.
+
 ## [0.14.0] - 2026-07-24
 
 ### Added
 
-- Immich now has a MOS privacy assessment (grade B, "Privacy configured"): the pinned v3.0.2 multi-service stack (server, machine learning, PostgreSQL/VectorChord, Valkey) runs on your own MOS server with a local admin account and keeps your photo and video library — plus facial-recognition and smart-search inference — on the box, with only the web service exposed while the database, cache, and machine learning services stay internal. MOS now bakes an `IMMICH_CONFIG_FILE` into the server image that turns off Immich's enabled-by-default new-version check, so the server no longer makes scheduled release-check requests to GitHub. The review records the remaining optional, feature-gated touchpoints — machine learning models download from Hugging Face on first use, and the map view loads tiles from Immich's hosted tile service — and excludes the Immich mobile and web client apps. The Apps screen and public app page now show its shield instead of "Not yet rated". (Catalog re-signing required before release.)
-- ONLYOFFICE now has a MOS privacy assessment (grade B, "Privacy configured"): the pinned Document Server 9.3.1 Community Edition runs on your own MOS server with a generated JWT secret, needs no upstream ONLYOFFICE account or licence server (the Community Edition enforces its limits locally), and keeps documents inside the MOS runtime while editing. MOS pins the server's only optional metrics emitter off (`METRICS_ENABLED=false`, StatsD), and the review records that the trackers ONLYOFFICE is criticised for live in its separately distributed desktop and mobile client apps — which this package does not ship — while documents that reference external links, or optional editor plugins and AI features, can still trigger third-party requests. The Apps screen and public app page now show its shield instead of "Not yet reviewed". (Catalog re-signing required before release.)
-- Radicale now has a MOS privacy assessment (grade A, "Private by default"): the self-hosted CalDAV/CardDAV server carries no telemetry, requires no external service or upstream account, and keeps calendar and contact collections in a local data volume, so its shield replaces "Not yet reviewed" on the Apps screen and public app page. The review notes that CalDAV/CardDAV client apps may still copy synced data into device or vendor backups depending on each client's settings. (Catalog re-signing required before release.)
-
-- Vaultwarden now has a MOS privacy assessment (grade B, "Privacy configured"): the self-hosted server carries no telemetry and keeps client-encrypted vault data on your own machine with a local-only account, and the review documents the one default outbound touchpoint — the built-in icon service fetching website favicons from the sites you save — alongside the optional, off-by-default Bitwarden push and HaveIBeenPwned integrations. The Apps screen and public app page now show its shield instead of "Not yet reviewed". (Catalog re-signing required before release.)
-
-- Seafile now has a MOS privacy assessment (grade A, "Privacy configured"): the pinned Seafile Community Edition 13.0.21 server (AGPLv3 core, Apache-2.0 Seahub) runs on your own MOS server with no documented telemetry, needs no upstream Seafile account or licence, and keeps your files and metadata in local volumes, with only the web service exposed while its MySQL and Valkey services stay internal to the package network. The review records that Seafile's external integrations — SMTP, ONLYOFFICE editing, object storage, LDAP, and SSO — are all off by default and that the excluded desktop and mobile clients contact Seafile's own servers under Seafile's client terms. The Apps screen and public app page now show its shield instead of "Not yet reviewed". (Catalog re-signing required before release.)
-
-- App manifests can advertise a demo-deployment target so visitors can try a single app before installing MOS. The public app drawer's "Try <app>" button opens a new "Just want to try <app>?" section on that app's docs page, which sets the one-click Railway deploy side by side with what installing inside MOS gives you (your own machine, one dashboard, backups, handled updates, HTTPS and domains) and is clear that the demo runs on a third party's cloud rather than hardware you own. Seafile and ONLYOFFICE share a Railway template, while Immich, Radicale, Stirling PDF, and Vaultwarden each have their own.
-
-- The landing page now shows a dismissible "Early software" prototype notice that slides up from the bottom-left once a visitor starts scrolling, keeping the initial load clean. Its "Read more" dialog explains the project's beta status and AI-assisted development and advises keeping independent backups; dismissal persists across visits.
-
-- The landing page tour now covers the product's most differentiated screens — the privacy posture dialog with its A-to-D grade and evidence, apps connecting to each other, a per-app setup guide, and the update review dialog — alongside the existing catalog, app detail, and backups shots. A new "Beyond the catalog" landing section pitches external installs in both directions: paste a GitHub repository URL and MOS previews exactly what you'd be trusting before anything installs, and open-source publishers can make their own app MOS-installable with the public packaging workflow and example repository.
-
-- The site's product screenshots now come from the real product instead of drifting stale: the full E2E regression captures stable-named marketing shots as it runs (best-effort, never failing the suite), and `npm run screenshots:update` copies the latest human-run captures into the site's assets. Tour entries for screens that have not been captured yet simply wait — they appear automatically on the first refresh that includes them.
+- Every official catalog app now carries a published MOS privacy assessment. Immich, ONLYOFFICE, Vaultwarden, and Seafile are graded B ("Privacy configured"), while Radicale is graded A ("Private by default"). Their package versions were bumped so existing installations receive the assessments through ordinary app updates.
 
 ### Changed
 
-- The Suite Manager app detail view is redesigned around what an owner actually decides on: a tighter hero (icon, name, category, what the app replaces, live status), then three tap-through overview tiles — app screens (new, with a gallery dialog), the unchanged privacy posture grade, and a facelifted resources tile whose "What runs on your server" dialog lists each service in plain language with its exposed/internal status. The description, "Best for" list, connections, and links follow in reading order. The complexity tile and the pre-install setup-field listing are gone (the prepare form already collects those values), keeping low-level diagnostics behind Advanced details. App packages can now ship screenshots (`catalog.screenshots`, served through the authenticated package API like icons); Seafile 0.2.2 (libraries, sharing, version history) and ONLYOFFICE 0.2.1 (document, spreadsheet, presentation editors) ship real captures. The landing page's app drawer follows the same design: replaces-line in the header, the Screens/posture/Resources tile row with the same gallery and "What runs on your server" drill-downs, and the check-marked "Best for" list. (Catalog re-signing required before release.)
-- The cloud install docs are now one provider-neutral guide, "Install on any cloud server", built around the smoothest tested flow: create the server, paste the one command into the provider's **web console** (browser terminal), wait, and open the printed one-time Finish-setup link — nothing to install on your own computer, with SSH kept as the equivalent alternative and a recovery note for a closed terminal. The DigitalOcean-specific page is retired (the new guide keeps DigitalOcean as a body-text worked example), and the cloud-init "user data" install path is no longer documented: its finish banner — including the one-time owner-setup link cloud installs require — ends up in a boot log users would never find. First-sign-in and landing-page copy now point cloud users at the printed setup link instead of the plain suite address, which refuses owner setup without the key.
-- The cloud owner-setup screen no longer dead-ends when opened without its one-time setup key. Instead of a form that only fails after you've filled it in, it now explains that this install needs the Finish-setup link the installer printed, shows how to reprint the key on the server (`sudo cat /etc/mos/secrets/owner-claim.env`), and lets you paste the key straight into the page — pasting the whole printed line works, and a "Change key" control on the account form covers a mis-copied link as well.
-- The privacy docs now tell the real story instead of a snapshot: MOS catalog apps are assessed and receive a posture grade — assessment is a condition of catalog entry, replacing the stale "one app is rated" count everywhere. "How we assess" is rewritten around that narrative and now explains what a skeptical reader asks first: humans pick every catalog app (open source, battle-tested, actively maintained, run by us over time) and set the rules, while AI does the long reading behind each assessment — source code, configuration, terms, privacy policies, re-done on every package update — under a workflow that keeps every claim evidence-labelled and fail-closed. The page also defines the literal shield badges: "AI-reviewed for MOS" means no human sign-off yet (true of every published review today), "Reviewed by MOS" only ever means a human authored or checked it. The release checklist gains a step to re-verify these claim-bearing pages (rating coverage, video links, screenshots) before tagging.
-- The Vaultwarden, Stirling PDF, and Seafile technical references (rendered on their public app pages) are rewritten as plain package documentation — environment, volumes and persistence, health checks, and package behavior — replacing the internal platform-scaffolding narration and roadmap prose that previously rendered on those pages; secret-management follow-up work moves to GitHub issue tracking.
-- The GitHub repository README is now a proper landing page for visitors clicking through from the site — brand mark, plain-language description of what MOS is, product screenshot, a "why it's different" summary, and install pointers — with the developer repository map and command reference kept below for contributors.
-- Owner setup now asks you to confirm your password before creating the account, so a typo can't silently lock you out, and its opening copy is plain language ("My Own Suite" instead of unexplained "MOS"/roadmap wording).
-- The app privacy posture shield now shows a plain A-to-D grade (A best, D worst) instead of a bare 0–10 number, in both Suite Manager and on the public app pages. The underlying five-dimension assessment is unchanged; the shield, dialog, update-preview change row, and docs all present it as a letter grade.
-- Site beta/version badges (hero, footer, prototype notice) now read the actual version from the root `VERSION` file at build time instead of a hardcoded `0.x` placeholder.
-- Fixed app catalog refresh failing with "Official catalog requests must not redirect" once a catalog had been cached. The refresh sends a conditional request and GitHub answers `304 Not Modified` when the catalog is unchanged, but the redirect guard rejected every `3xx` status — including 304 — so the refresh broke on the first unchanged check. The guard now treats a `3xx` as a redirect only when it carries a `Location`, so 304 reaches its existing "unchanged" handler while actual redirects stay refused.
-- The installer's finish screen is now a clean, branded "Installation complete" banner that shows the single correct browser link to finish setup. Cloud installs show only the one-time owner-setup URL (with its claim key) instead of also printing the token-less URL that would be rejected, removing the earlier confusing two-link ending.
-- The Apps screen no longer has a manual "Refresh catalog" button, and no longer shows banners when the optional catalog/advisory refresh is stale or unreachable. The signed catalog ships in the release, so the network refresh is a convenience only; it loads on page mount, nudges one background refresh, and re-reads the verified cache once a minute. A stale or failed refresh is now logged to the browser console instead of interrupting the page.
-- Cloud install docs now lead with the hosted one-line installer (`curl -fsSL https://get.myownsuite.org | sudo bash`) on both the DigitalOcean and generic cloud-server guides, removing the previous Git/Node.js/clone prerequisite for renting a server; the local `install:render` flow is kept as an advanced inspect-before-you-run option. The guides now describe the automatic HTTPS the cloud installer provisions on the generated `sslip.io` address (correcting the earlier "plain HTTP" note), and monthly-cost framing is consistent across the site (about $20–25/month).
-- Suite Manager's first screen after setup is now a plain-language first-run experience — an "install your first app" call to action plus a three-step checklist (install an app → add it to your Homepage → make your first backup) — replacing the developer "milestone/slice/host-agent" placeholder. The secure-transport (HTTPS-not-ready) setup message is now plain language with a clear next step, and the app-catalog search prompt and privacy tile ("Privacy rating") no longer use developer jargon.
-- Suite Manager's app Connections section now uses the same plug-and-socket "apps that work together" visual the public site draws, replacing the plain list rows: each available connection shows the two app icons wired together on an accent panel with its own Connect button. The visual is now shared MOS branding (`.mos-connect-visual`) rather than a landing-page-only style.
-- Landing-page copy no longer claims "only you hold the keys" for rented cloud servers (which a hosting provider can technically access), the page now introduces the app catalog and product tour before the raw install command, and the primary "Get started" buttons lead to the guided getting-started flow instead of the raw shell command.
-- Fixed newly installed apps showing a "Catalog conflict" badge and a "Catalog integrity conflict" warning. MOS compared the package digest of the app it installed from your server's own checkout against the digest published on the catalog branch, and reported any difference as a tampering signal — but those two are only equal when the checkout sits exactly on that branch's tip, so the warning fired on ordinary installs. Whether an app update exists is now decided by version alone: newer is an update, older or equal is quiet. Downloaded update contents are still verified against the signed catalog digest before anything is applied, which is where a real content substitution is caught.
-- App packages must now change version when their contents change, enforced in CI (`npm run apps:version:check`) against the published catalog. Availability is decided by version, so a changed package that keeps its old version number can never be offered to anyone who already installed it.
-- Fixed app updates from the official catalog failing for every app that carries a MOS privacy assessment. The assessment records the commit it was reviewed against, and MOS required that to equal the commit the catalog resolved — impossible for a file that lives inside the commit it would have to name, so the update was refused before it could start. Updates are now bound to the package contents, which are still verified against the signed catalog before anything is applied, and an updated app keeps its privacy grade instead of falling back to "not yet reviewed".
-- The "Update available" badge on the Apps screen now appears only for updates this MOS version can actually apply. An update that needs a newer MOS is still shown when you open the app, with the version it requires, rather than advertised as available on the card.
+- Suite Manager's app detail view now puts status, screenshots, privacy posture, resources, connections, and owner-relevant information first, with low-level diagnostics kept under Advanced details. App packages can now ship screenshots through the authenticated package API.
+- Cloud owner setup now asks for the one-time claim key before account details when a setup link is incomplete, accepts the full printed key line, and allows a mis-copied key to be replaced. Owner setup also requires password confirmation.
+- Privacy posture is presented as an A-to-D grade instead of a 0–10 score throughout Suite Manager and update review.
+- The installer now prints one correct finish-setup link: cloud installs show only the claim-key URL required to create the owner account.
+- Optional catalog and advisory refreshes now run quietly in the background. The Apps screen uses the signed catalog bundled with the release and no longer interrupts owners when a network refresh is stale or unavailable.
+- Suite Manager's first-run screen now guides owners through installing an app, adding it to Homepage, and creating a backup. App connections use a clearer visual with a direct Connect action.
+- App update availability is now determined by package version and MOS compatibility. Package contents must change version, downloaded updates remain verified against the signed catalog digest, privacy-assessment metadata no longer blocks official updates, and incompatible updates are explained in app details without an actionable badge.
+
+### Fixed
+
+- Catalog refresh now accepts a valid `304 Not Modified` response while continuing to reject actual redirects.
+- Newly installed apps no longer show false catalog-integrity conflicts when the local checkout and catalog branch are at different commits.
 
 ### Compatibility
 
-- Every catalog app's package version is bumped so the new privacy assessments reach servers that already installed them (Immich 0.4.0; ONLYOFFICE 0.2.0; Radicale 0.3.0, which also updates Radicale itself to 3.7.6; Seafile, Stirling PDF, and Vaultwarden 0.2.1, which also carry the rewritten technical references). Existing installations will be offered these as ordinary app updates. (Catalog re-signing required before release.)
+- Catalog package versions are Immich 0.4.0, ONLYOFFICE 0.2.0, Radicale 0.3.0, and Seafile, Stirling PDF, and Vaultwarden 0.2.1. Radicale also updates to 3.7.6.
 
 ## [0.13.0] - 2026-07-21
 
 ### Changed
 
-- The Stable update track can now apply tagged releases: the update agent fetches and checks out the published release tag, compares the installed version against the newest release, and the Updates screen lets owners select and apply Stable. Fresh installs now default to the Stable releases track, while checkouts sitting on a named branch keep following that branch. Branch-track updates now land exactly on the tracked remote branch even if its history was rewritten, instead of failing the fast-forward pull.
-
-### Fixed
-
-- Aligned the Updates screen track-switch button with the track dropdown instead of its label.
+- The Stable update track can now apply tagged releases. Fresh installs default to Stable, named-branch checkouts continue following their branch, and branch-track updates land exactly on the tracked remote branch even after rewritten history.
 
 ## [0.12.0] - 2026-07-21
 
-Milestone release: My Own Suite is now an app platform instead of a fixed suite. This release replaces the pre-assembled app bundle with the MOS app-store architecture — versioned, signed app packages installed and managed individually through Suite Manager — and makes the rebuilt MOS layout, public site, and hosted installer the default for every new install.
+Milestone release: My Own Suite is now an app platform instead of a fixed suite, with versioned and signed app packages managed individually through Suite Manager.
 
 ### Added
 
-- Made MOS the default repository layout, with browser owner setup, an authenticated Home/Suite Manager control plane, manifest-driven app installation and lifecycle management, Homepage customization, private-LAN and public-VPS HTTPS paths, manual whole-suite backup/restore, and early managed platform updates.
-- Added independently versioned, source-addressed app packages. Official and constrained external Git sources use the same snapshot, preview, build, health-check, activation, rollback/recovery, and lifecycle pipeline; external packages remain visibly **External · Unverified**.
-- Added MOS Privacy Posture to Suite Manager and the public catalog, with evidence, provenance, freshness, per-dimension findings, and an explicit unrated state. Stirling PDF is the first and currently only assessed package; all other apps say **Not yet rated by MOS**.
-- Added hosted stable and development installer endpoints, a zero-configuration USB installer, DigitalOcean and generic Ubuntu VPS installation, and disposable Hyper-V/DigitalOcean validation harnesses built from the shared installer contract.
-- Added app packages for Stirling PDF, Vaultwarden, Radicale, Seafile, ONLYOFFICE, and Immich, including generic setup fields, secrets, multi-service runtimes, onboarding guides, Homepage projections, and the Seafile/ONLYOFFICE capability integration.
+- Added browser owner setup, an authenticated Home/Suite Manager control plane, manifest-driven app lifecycle management, Homepage customization, private-LAN and public-VPS HTTPS, whole-suite backup and restore, and managed platform updates.
+- Added independently versioned app packages with validated snapshots, preview, build, health-check, activation, rollback, recovery, and lifecycle handling. External Git packages use the same constrained pipeline and remain visibly **External · Unverified**.
+- Added MOS Privacy Posture with evidence, provenance, freshness, per-dimension findings, and an explicit unrated state.
+- Added hosted stable and development installers, a zero-configuration USB installer, and cloud and local installation paths.
+- Added packages for Stirling PDF, Vaultwarden, Radicale, Seafile, ONLYOFFICE, and Immich, including setup fields, secrets, multi-service runtimes, Homepage projections, and Seafile/ONLYOFFICE integration.
 
 ### Changed
 
-- App installs and updates now retain exact validated package snapshots so installed metadata, configuration, privacy posture, routes, integrations, backups, and lifecycle operations do not silently follow a moving repository. Update review shows permissions, privacy, migrations, downtime, backup requirements, and breaking changes before applying the reviewed digest.
-- Public documentation and landing copy now scope privacy claims to MOS-controlled behavior, distinguish assessed, unrated, and external packages, document outbound dependencies, and describe the cloud-provider trust boundary. Docs also state that pre-1.0 MOS is intended for evaluation and non-critical use with independent backups, describe the shipped one-line cloud installer accurately, and set Immich backup-size expectations alongside its resource requirements.
-- Uninstalling an app now asks for confirmation at the action point, spelling out that containers, web address, Homepage shortcut, settings, secrets, and data volumes are deleted, while Stop is labeled as keeping data.
-- Backup documentation and Suite Manager now distinguish own-hardware external drives from cloud-server block-storage volumes. Backup bundles are described at creation and download as unencrypted full-secret exports requiring encrypted, access-controlled storage; direct object-storage destinations are not supported. Recovery architecture now requires portable, app-agnostic authoritative-state backups, reconciliation of later persistent resources, a preserved recoverable state, regenerated runtime projections, and separately scoped optional local snapshots.
-- Full restore now reconciles absence as well as presence: app volumes created after a backup are rescued and removed instead of silently surviving to be reused by a later reinstall. MOS-owned volumes are created with ownership labels and never selected by name prefix alone; ambiguous volumes are reported and left untouched. Restores keep one complete rescue generation (control-plane state plus all owned volumes), run under a durable journal that surfaces interrupted restores and blocks new backup/restore work until acknowledged, verify the restored inventory against the bundle before reporting success, and check destination and rollback disk space before mutating anything. Backup bundles move to schema version 3 (owned-resource inventory, consistent database snapshot, size accounting); version 2 bundles remain restorable. A read-only bundle check runs the full restore preflight without touching the running suite — available from the Backups screen per bundle, even while an interrupted restore blocks destructive work — and warns when a bundle was created by a different MOS version. A previously downloaded backup file can be uploaded back to a mounted destination from the Backups screen — including onto a fresh replacement install — and becomes restorable only after passing that same validation. The backup list shows each bundle's size, collapses past three entries, moves per-bundle actions into a compact menu, supports deleting bundles behind a confirmation (refused while a job runs or an interrupted restore is unacknowledged), and each backup can carry an operator note describing the restore point, stored beside the bundle on its drive. Reinstalling an app over persistent data left by a different installation now fails clearly instead of pairing fresh credentials with old data. Full restore completed the recovery drills — same-machine and replacement-machine restores, database-backed and multi-gigabyte workloads, corruption/version/disk/disconnected-destination refusals, and mid-restore power-loss recovery — and is no longer labeled experimental. Because a restore replaces Suite Manager state, it also ends the operator's session; the Backups screen now says so and routes back to sign-in with the backup's owner account instead of showing an endless progress spinner. During a running restore the screen sets expectations that large backups take time and the suite may look offline, and warns before the operator leaves or refreshes the page. A backup, check, or restore whose worker process died without finishing (for example a power loss before any change was made) is now reported as failed and stops blocking new jobs, instead of being shown as running forever. Backups and uploads now refuse a destination whose drive is no longer mounted, a backup whose drive disappears mid-job is reported as failed instead of silently writing to the system disk and claiming success, and a failed backup's partial bundle is removed instead of lingering on disk.
-- Managed reconciliation refreshes Suite Manager, Caddy wiring, Homepage, systemd units, and repo-owned host agents without terminating the active updater. Branch-track updates can follow the Main branch (the default for fresh installs) or the Staging branch, selectable from the Updates screen. The Stable release track is visible but read-only until tagged-release apply support lands: the Updates screen and API refuse stable apply with a clear message, and the update action states that installed apps keep running from their package snapshots and update separately from Apps.
-- Shared MOS branding, Suite Manager UI primitives, active documentation ownership, and the MOS public site/docs source are consolidated under their canonical root-level locations.
-- The rebuilt MOS public site (landing page and docs) replaces the MOS1 site as the deployed source for `myownsuite.org`: GitHub Actions builds `site/` from a clean install and deploys it to Cloudflare Pages from `main` and `staging` only, replacing Cloudflare's git-integration builds; the preserved MOS1 site is no longer built or deployed.
+- App installs and updates retain the exact validated package snapshot. Update review shows permissions, privacy changes, migrations, downtime, backup requirements, and breaking changes before applying the reviewed digest.
+- Uninstall confirmation now clearly distinguishes permanent removal of app resources and data from stopping an app while retaining its data.
+- Whole-suite backup and restore now use schema version 3 with owned-resource inventory, database-consistent snapshots, size accounting, preflight bundle checks, uploaded-bundle validation, operator notes, and interruption recovery. Restore reconciles resources created after the backup, preserves one rescue generation, verifies the restored inventory, checks disk space, and refuses ambiguous or unsafe destinations. Version 2 bundles remain restorable.
+- Managed platform reconciliation refreshes Suite Manager, Caddy wiring, Homepage, systemd units, and repo-owned host agents without rebuilding installed apps. Main and Staging branch tracks are selectable; installed apps continue updating separately from their retained package snapshots.
 
 ### Fixed
 
-- Hardened app update interruption and rollback recovery, integrated-app updates, disabled-app and concurrent lifecycle handling, external app identity/configuration, source removal/orphan reporting, malformed privacy reviews, bounded large-file backup hashing, image/snapshot reclamation, and app runtime status truthfulness.
-- Fixed public-cloud first-owner setup with automatic trusted HTTPS, a root-only one-time claim secret, secure cookies, firewall configuration, and a non-secret diagnostic instead of owner creation over public HTTP.
-- Fixed DNS-01 and Homepage route reconciliation so MOS-owned links follow the active domain without rewriting user-authored links, and refreshed host services retain installed Home/state paths across managed updates.
+- Hardened app update interruption and rollback recovery, integrated-app updates, disabled and concurrent lifecycle handling, external app identity and configuration, orphan reporting, privacy-review validation, bounded backup hashing, image cleanup, and runtime status reporting.
+- Public-cloud owner setup now uses trusted HTTPS, a root-only one-time claim secret, secure cookies, and firewall configuration.
+- Fixed DNS-01 and Homepage route reconciliation so MOS-owned links follow the active domain without rewriting user-authored links, and managed updates retain installed Home and state paths.
 
 ### Security
 
-- Official catalog and advisory files require offline Ed25519 verification against the public key shipped with the release. Invalid or missing signatures fail closed and create bounded owner-visible security state.
-- External packages are rejected before build/apply when they request privileged containers, host paths/networking, devices, the Docker socket, raw proxy configuration, reserved identities, official-app impersonation, path escapes, or undeclared capabilities. Downloads use immutable revisions and enforce time, redirect, byte, file-count, extraction, canonical-path, and concurrency limits.
-- Added bounded progressive login throttling by client and account, trusted-proxy handling, `Retry-After`, and secret-free hourly security aggregates with retention and storage caps. MFA and passkeys are not yet available.
+- Official catalog and advisory files now require offline Ed25519 verification against the key shipped with the release; invalid or missing signatures fail closed.
+- External packages are rejected before build or apply when they request unsafe privileges or undeclared capabilities. Downloads use immutable revisions with bounded time, redirects, size, file count, extraction, canonical paths, and concurrency.
+- Added bounded progressive login throttling by client and account, trusted-proxy handling, `Retry-After`, and secret-free security aggregates with retention limits.
 
 ### Compatibility
 
-- Removed the temporary generation label from MOS-owned environment variables, runtime paths, services, sockets, containers, backup folders, smoke tooling, and documentation. Local prototype environments should be reset before validation.
-- MOS paths now live at the repository root, and the former `suite-manager.<domain>/setup/` control-plane URL is replaced by `home.<domain>/suite-manager/`. The previous site and root layout remain isolated as rollback/reference material.
-- The app-agent contract is version 9. App manifests may constrain `amd64`/`arm64`; package-aware backup schema 2 rejects pre-snapshot bundles; external routes use the reserved `ext-<host>` namespace; and releases must ship `trust/official-catalog.pub` with matching catalog/advisory signatures.
-- USB installer owner fields were removed. Owner creation happens in the browser, and an unpinned machine login password is generated uniquely for each installer build.
+- Removed the temporary generation label from MOS-owned environment variables, runtime paths, services, sockets, containers, and backup folders. Prototype environments should be reset before validation.
+- MOS paths now live at the repository root, and the control-plane URL moved from `suite-manager.<domain>/setup/` to `home.<domain>/suite-manager/`.
+- The app-agent contract is version 9. Manifests may constrain `amd64` and `arm64`; backup schema 2 rejects pre-snapshot bundles; external routes use `ext-<host>`; and releases require matching signed catalog and advisory metadata.
+- USB installer owner fields were removed. Owners are created in the browser, and each installer build generates a unique machine login password.
 
 ### Known limitations
 
-- MOS is beta. The Stable update track cannot apply tagged releases yet and is read-only in the Updates screen; platform updates deliberately leave installed apps on their package snapshots, with app updates applied separately per app.
-- Backups are manual, whole-suite, unencrypted, destination-limited, and version-sensitive. Restore requires an already-installed compatible MOS version, and rollback is not guaranteed across data migrations.
-- External packages remain unverified; publisher-key verification is not implemented; replay of a still-valid signed catalog revision is not cryptographically prevented; and a registry may stop serving a digest-pinned artifact retained by a package snapshot.
-- Owner-run validation passed for the app catalog, external-package installation, the broader platform E2E flow, the full backup/restore recovery drills including replacement-machine restore, the hosted stable installer on a fresh cloud server (including the claim-token owner-setup gate), and a managed branch-track platform update on that install.
+- MOS is beta. Platform updates leave installed apps on their package snapshots; apps update separately.
+- Backups are manual, whole-suite, unencrypted, destination-limited, and version-sensitive. Restore requires a compatible MOS installation, and rollback is not guaranteed across data migrations.
+- External packages remain unverified; publisher-key verification and cryptographic replay prevention are not yet implemented.
+
 ## [0.11.0] - 2026-06-07
 
 ### Changed
 
-- Added a unified `agents/selfhost/` home for host agents and a repo-owned self-host service-agent path for narrow host service actions, starting with capability-detected Homepage restarts after Suite Manager saves runtime Homepage config. Compatibility note: self-host reconciliation now manages `mos-update-agent`, `mos-service-agent`, their `/run` sockets and `/etc` token files, and the Suite Manager agent env/socket mounts for existing and fresh USB/self-host installs; `update/selfhost/*` remains as compatibility wrappers.
-- Began the offline backup/restore epic with a host-owned `mos-backup-agent`, Suite Manager Backup page, managed-infrastructure backup guidance when no agent is available, mounted external-destination detection, backup free-space preflight, cold Docker-volume archiving, detected backup-bundle listing, confirmed restore jobs with manifest/archive readability checks and pre-restore config rescue copies, and persistent backup/restore job state. Compatibility note: self-host reconciliation now manages `mos-backup-agent`, `/run/mos-backup-agent`, `/etc/mos-backup-agent/auth.token`, and the new `SUITE_MANAGER_BACKUP_AGENT_*` env/socket mounts.
-- Improved backup destination handling so connected removable/USB block devices appear in Suite Manager even before they are mounted, and supported unmounted data partitions can be mounted into `/media/mos-backup` before starting a backup.
-- Broadened backup destination discovery to include supported local data partitions and mounted network/shared storage under the backup paths, with capacity shown before mounting where Linux reports it.
-- Limited Suite Manager backup destination discovery to usable backup storage, hiding optical, loop, EFI, active system partitions, and other non-actionable block devices while labeling remaining entries as external, local, or network storage.
-- Refined Suite Manager backup status so disconnected or stale block-device mounts disappear after a rescan, duplicate mounted/unmounted entries are collapsed, and completed backup jobs show a compact activity summary with technical logs tucked behind details.
-- Made the Updates screen capability-driven: Suite Manager now shows managed update actions only when the local update agent is reachable and advertises `updates.apply`, while hosted or agent-less installs stay in notify/manual-update guidance. Compatibility note: `SUITE_MANAGER_UPDATES_MODE` has been removed from active Suite Manager config and generated env templates.
-- Retired the repo roadmap document in favor of GitHub Issues for roadmap-like task state, tightened the durable decision/agent docs around Homepage-driven proxy annotations, host-agent boundaries, temporary branch planning, local HTTPS/DNS-01 architecture, explicit Homepage URL ownership, and user-run E2E validation, replaced the temporary Homepage proxy annotations plan with maintained public Suite Manager guides, split self-host storytelling docs from the technical self-host README, and added Suite Manager validation plus capability-gated Customize UI preview for external-service `mos.proxy` Caddy annotations in Homepage tiles.
-- Staged the generated external-proxy Caddy snippet path for future `mos.proxy` apply support while leaving static routes unchanged. Compatibility note: the VPS/local Caddy service now imports `deploy/vps/generated/caddy/*.caddy` through a read-only mount at `/etc/caddy/generated`, and `vps:init` seeds the ignored `external-proxies.caddy` file when missing.
-- Added self-host service-agent support for applying generated external proxy routes after validation and Caddy reload, exposed through Suite Manager when the `external-proxies.apply` Caddy capability is available. Saving or resetting `services.template.yaml` now auto-applies saved proxy routes when that capability is reachable. Compatibility note: `mos-service-agent` now receives `MOS_SERVICE_AGENT_REPO_DIR` so it can write only the repo-owned generated Caddy snippet path.
-- Added `npm run caddy:external-proxies:apply` so local/VPS operators can apply saved Homepage `mos.proxy` routes to the generated Caddy snippet, validate the mounted Caddy config, and reload Caddy without needing the self-host service agent.
-- Added `vps:doctor` validation and focused smoke tests for generated external Caddy proxy snippets, including malformed snippets, duplicate generated hosts, and upstream URLs that would break Caddy validation.
-- Simplified the Homepage Customize save flow so edited files can be validated any time while edited files must still pass validation before saving, external-service routing details stay behind a discreet advanced dialog, and the Homepage restart option only appears once changes are ready to save; added shared Suite Manager dialog, notice, stepper, text-input, and select controls plus a calmer stepped Customize helper for adding websites and home network apps with safer placement, automatic Homepage URL generation, structured app-subdomain metadata for managed home network apps, and icon guidance; documented the Suite Manager UI component reuse rule for future work.
-- Added the first local HTTPS/DNS-01 foundation with a Cloudflare-capable Caddy build, generated Caddy built-in-route/global-options snippets, a Suite Manager Settings flow that can apply or reconfigure self-host HTTPS settings through the local service agent, and a shared `DOMAIN` / `PUBLIC_URL_SCHEME` / `MOS_TLS_MODE` contract for switching self-host installs from HTTP to Cloudflare DNS-01 HTTPS. Managed LAN-app proxy routes with `mos.public.mode: app-subdomain` now resolve their generated Caddy host from the same stack URL settings while explicit user-authored links stay untouched, and older Suite Manager-managed LAN-app tiles that still point at `*.mos.home` are upgraded to the current stack domain when Homepage config is read/exported. Compatibility note: the VPS/local Caddy service now reads `deploy/vps/services/caddy/.env`, `vps:init` refreshes `deploy/vps/generated/caddy/built-in-routes.caddy`, `global-options.caddy`, and known derived stack URL env values, and `MOS_TLS_MODE=cloudflare-dns01` requires `PUBLIC_URL_SCHEME=https`, a real domain, `CADDY_ACME_EMAIL`, and `CLOUDFLARE_API_TOKEN`.
+- Added repo-owned self-host service and backup agents. Managed reconciliation now maintains their systemd units, sockets, tokens, and Suite Manager mounts, while compatibility wrappers preserve the former update-agent paths.
+- Added offline whole-suite backup and restore with mounted local, removable, and network destination discovery, capacity and free-space checks, cold volume archives, bundle validation, rescue copies, persistent job state, and capability-driven Suite Manager controls.
+- Update and backup actions are now capability-driven: managed controls appear only when their corresponding host agent advertises support.
+- Homepage customization can validate and apply generated external Caddy proxy routes through the service agent or `npm run caddy:external-proxies:apply`, while explicit user-authored links remain untouched.
+- Added Cloudflare DNS-01 HTTPS configuration through Suite Manager, using a shared `DOMAIN`, `PUBLIC_URL_SCHEME`, and `MOS_TLS_MODE` contract for Caddy routes and managed Homepage links.
+
+### Compatibility
+
+- Self-host reconciliation manages `mos-update-agent`, `mos-service-agent`, and `mos-backup-agent`, their `/run` sockets, `/etc` token files, and Suite Manager env/socket mounts.
+- `SUITE_MANAGER_UPDATES_MODE` was removed from active configuration.
+- Caddy now imports generated snippets from `deploy/vps/generated/caddy/*.caddy`; DNS-01 mode also uses `deploy/vps/services/caddy/.env` and requires HTTPS, a real domain, an ACME email, and a Cloudflare API token.
 
 ### Fixed
 
-- Allowed managed updates to recover when the only dirty working-tree file is the generated external-proxy Caddy snippet, which can happen on installs that applied `mos.proxy` routes before the snippet became ignored.
-- Hardened the local E2E onboarding flow against Vaultwarden DOM and extension-setup route changes, and fixed Suite Manager onboarding copy buttons so successful clipboard actions reliably show copied feedback.
+- Managed updates can recover when the only dirty file is the generated external-proxy Caddy snippet.
+- Fixed onboarding clipboard feedback and hardened Vaultwarden onboarding against upstream UI changes.
 
 ## [0.10.0] - 2026-05-29
 
 ### Changed
 
-- Refreshed npm dependencies and pinned app container image digests across the suite, including Seafile 13 support, updated Seafile native database/admin/cache bootstrap settings, and current public docs and Suite Manager toolchain updates.
-- Pinned the Cloudflare Pages Node.js build version in repo-managed Pages config so the Astro docs site builds with a supported Node 22 runtime.
-- Swapped Seafile's local cache service from Memcached to Valkey using Seafile's Redis-compatible cache settings, including a system migration for existing own-infra installs. Compatibility note: the local/VPS service is now `seafile-valkey`, and Seafile cache env uses `CACHE_PROVIDER=redis` with `REDIS_*` variables instead of `MEMCACHED_*`.
-- Added lightweight project tracking docs, documentation ownership rules, and a Codex-ready GitHub issue template so roadmap items, architecture decisions, and implementation tasks have clear sources of truth.
-- Improved the self-host installer handoff so a simple local installer config can carry the chosen stack domain, Linux credentials, and Suite Manager owner credentials into a single first-boot manifest, feed bootstrap automatically, avoid leaving users hunting through generated env files after installation, help fetch the supported official Ubuntu Server ISO automatically when the local ISO folder is empty, and keep the USB installer menu human-confirmed instead of auto-starting after a timeout.
-- Added the managed self-host updater MVP: USB/self-host installs now bootstrap a host-owned `mos-update-agent`, mount its Unix socket into Suite Manager through a generated Compose override, let the backend proxy managed update actions, and show subscribed update-track details, job diagnostics, and a first in-app `Update now` action in the Updates UI. Compatibility note: the self-host installer config and bootstrap flow now recognize `UPDATE_TRACK` and `UPDATE_REF` for experimental managed-update track selection, and self-host bootstrap now forces `SUITE_MANAGER_UPDATES_MODE=managed`.
-- Added an explicit own-infra system migration phase for repo-managed VPS/self-host updates, keeping `.env.template` files as the latest app contract while moving historical compatibility fixes into named migrations.
-- Strengthened managed self-host update application so updates explicitly rebuild all profiled stack images with fresh base pulls, recreate containers from those images, and remove obsolete Compose service containers without removing persistent volumes.
-- Reprioritized the roadmap around real-install trust blockers: runtime Homepage YAML/CSS editing outside the source checkout and offline whole-suite backup/restore before managed updates become the default path for important app data.
-- Moved Homepage customization to Suite Manager-owned runtime config seeded from bundled defaults and added a syntax-aware Customize screen for allow-listed YAML/CSS/JS edits with YAML save validation, so installed suites can change dashboard files without dirtying the production source checkout while preserving generated service-tile pruning. Compatibility note: Homepage now fetches config from Suite Manager at startup using `HOMEPAGE_CONFIG_SYNC_TOKEN`, while `services.yaml` remains generated from `services.template.yaml`.
-- Added Umami analytics to the public landing and docs site without touching authenticated Suite Manager or bundled self-host app pages.
-- Polished the public landing page mobile layout so the header, hero diagram, screenshots, and deploy-path cards stay readable on narrow phone screens.
-- Documented and guarded the Seafile MySQL 8.x pin so Dependabot does not offer MySQL 9 updates before Seafile compatibility has been validated.
+- Updated application images and dependencies, including Seafile 13 and its native database, admin, and cache bootstrap settings.
+- Replaced Seafile's Memcached service with Valkey and added a migration for existing installations.
+- Improved self-host installer handoff so domain, Linux, and Suite Manager settings flow through one first-boot manifest, supported Ubuntu media can be fetched automatically, and installation remains human-confirmed.
+- Added managed self-host updates through `mos-update-agent`, including update-track selection, job status, full profiled image rebuilds, container recreation, and obsolete-service cleanup without removing persistent volumes.
+- Added named own-infrastructure migrations for compatibility changes during managed updates.
+- Moved Homepage customization into Suite Manager-owned runtime config with allow-listed YAML, CSS, and JavaScript editing and validation.
+
+### Compatibility
+
+- The Seafile cache service is now `seafile-valkey`; cache configuration uses `CACHE_PROVIDER=redis` and `REDIS_*` variables instead of `MEMCACHED_*`.
+- Self-host setup recognizes `UPDATE_TRACK` and `UPDATE_REF`, and managed installs use `SUITE_MANAGER_UPDATES_MODE=managed`.
+- Homepage runtime config uses `HOMEPAGE_CONFIG_SYNC_TOKEN`; `services.yaml` remains generated from `services.template.yaml`.
 
 ### Fixed
 
-- Fixed Vaultwarden startup with the shared SMTP block disabled so refreshed images no longer fail on inactive mail settings.
-- Fixed Suite Manager startup when Homepage runtime config uses the default state-directory-backed path.
-- Hardened the self-host first-boot handoff so USB installer owner details are logged, exported, and loaded through a self-host Suite Manager env override instead of falling back to default onboarding identity values.
-- Fixed self-host first-boot domain propagation so USB-installed Homepage tiles use the configured `*.mos.home` stack domain instead of stale `*.localhost` URLs.
-- Fixed Railway-style ONLYOFFICE startup with newer Document Server images by preparing the admin panel supervisor log directories before upstream services start.
-- Updated Vaultwarden Postgres to use the PostgreSQL 18 parent volume mount path for clean own-infra installs.
-- Hardened the headed E2E onboarding flow so it waits for Suite Manager login and signed-in surfaces before checking onboarding state.
+- Fixed Vaultwarden startup when shared SMTP is disabled, Suite Manager startup with default Homepage runtime state, self-host owner and domain propagation, ONLYOFFICE startup with newer images, and PostgreSQL 18 volume layout for Vaultwarden.
 
 ## [0.9.0] - 2026-04-17
 
 ### Changed
 
-- Hardened the self-host installer path so the single-USB workflow no longer auto-takes over a machine without an explicit human choice, while also carrying the primary user into first-boot bootstrap and automatically starting the stack after fresh-machine setup finishes.
-- Restored the rounded MOS screenshot-gallery corners in the docs by loading the shared branding tokens into the docs theme and enforcing the radius on the gallery media layers.
-- Ignored the large local self-host ISO artifact folders so downloaded Ubuntu install media and generated installer ISOs do not get picked up in future commits.
-- Clarified the Homepage app docs so the built-in search bar now explains its Startpage integration in plain language, including a short privacy-focused note and official reference links.
-- Strengthened the public docs positioning around private-cloud ownership by rewriting the `Why your own cloud?` page in clearer, more convincing product language.
-- Started the update-management foundation in Suite Manager with an `Updates` screen, a protected `/setup/api/updates` endpoint, bundled release metadata, and safe installed-versus-latest version comparison without giving the control plane host-level update powers yet.
-- Made the Suite Manager updates foundation more deployment-aware by adding a platform-agnostic `SUITE_MANAGER_UPDATES_MODE`, improving local version-file discovery, and bundling release/version metadata into the Suite Manager image so hosted installs can accurately show notify-only update state.
-- Added a test-only `SUITE_MANAGER_UPDATES_LATEST_VERSION_OVERRIDE` so the Updates screen can safely simulate "update available" states without changing the real release channel metadata.
-- Added a repo-level `npm run release:check` guardrail plus CI coverage so `VERSION`, `releases/stable.json`, and `apps/suite-manager/release.json` stay aligned before releases.
-- Started the manual self-host/VPS updater foundation with `npm run update:check`, `npm run update:status`, and explicit `npm run update:apply -- --target <version> --yes` commands, plus a local updater state file and preflight safety checks.
-- Refactored Suite Manager onboarding around a dependency-based flow with grouped progress, keeping Vaultwarden credential setup first while unlocking separate Calendar, Files & Office, and Photos tracks afterward so users can continue with the part of the suite they care about most.
-- Added an optional shared SMTP configuration block to the VPS/local stack so compatible apps can reuse one mail setup instead of forcing per-app email credentials; Seafile and Vaultwarden now consume that shared config for email-capable flows such as share links, verification mail, hints, and similar account notifications.
-- Clarified the technical docs around the optional shared SMTP setup, including where advanced users should configure it, which apps benefit from it, and how the Railway, VPS, and self-host guides should point to the deeper operational notes without overloading the normal user flow.
+- Hardened the single-USB installer so it requires explicit confirmation, carries the primary user into bootstrap, and starts the stack after setup.
+- Added deployment-aware update status in Suite Manager, release metadata checks, and manual self-host/VPS update commands with preflight safeguards.
+- Reworked onboarding into dependency-based tracks after Vaultwarden credential setup.
+- Added optional shared SMTP configuration consumed by Seafile and Vaultwarden.
+
 ## [0.8.0] - 2026-04-10
 
-Milestone release: My Own Suite now has a validated self-host installation path on real home-server hardware over LAN, including the new single-USB installer tooling that helped bring the first end-to-end machine install together.
+Milestone release: MOS gained a validated self-host installation path on home-server hardware over LAN.
 
 ### Changed
 
-- Validated the new self-host track on a real home server over LAN, building on the Ubuntu 24.04 bootstrap flow, canonical `appname.mos.home` and `appname.mos.<your-domain>` domain model, Cloudflare wildcard tunnel generator, and improved first-boot bootstrap behavior.
-- Added an early single-USB installer builder that remasters an Ubuntu Server ISO with the MOS autoinstall seed, writes a dedicated `Install My Own Suite (ERASES DISK)` boot entry, and outputs a ready-to-flash installer image.
-- Ignored local self-host ISO input and output artifact folders so downloaded Ubuntu media and generated installer images do not leak into future commits.
-- Refined the public homepage, docs, and default Homepage experience with stronger MOS branding, restored screenshot-gallery polish, clearer app descriptions, better link defaults, a dedicated Management section for Suite Manager, and sharper private-cloud messaging.
-- Hardened the default stack against unnecessary third-party calls by removing Google-hosted fonts and remote Homepage icons, disabling Vaultwarden relay-based mobile push, and turning off Stirling PDF analytics by default.
-- Fixed the Suite Manager Vaultwarden credential-import onboarding flow, expanded E2E coverage around that live-session sync path, and corrected a runtime string-syntax bug that blocked `suite-manager` smoke startup.
-- Clarified Homepage search documentation with a plain-language Startpage explanation and official reference links.
-
-## [0.7.1] - 2026-03-29
-
-### Changed
-
-- Expanded the Railway deployment guide with clearer official-template support material, including the canonical public deploy URL, annotated setup screenshots for the required owner inputs, and a calmer plain-language explanation of resource usage and cost expectations.
+- Added an Ubuntu 24.04 single-USB installer builder with a clearly destructive boot entry and a ready-to-flash output image.
+- Hardened the default stack against third-party calls by removing remotely hosted fonts and Homepage icons, disabling Vaultwarden relay push, and disabling Stirling PDF analytics by default.
+- Fixed Vaultwarden credential-import onboarding and a Suite Manager runtime syntax error.
 
 ## [0.7.0] - 2026-03-29
 
 ### Added
 
-- Started the dedicated self-host track with an Ubuntu 24.04 bootstrap path, a canonical `appname.mos.home` and `appname.mos.<your-domain>` domain model, Cloudflare wildcard tunnel scaffolding, and an early unattended-install flow for testing the appliance-style setup on fresh machines.
+- Added the Ubuntu 24.04 self-host bootstrap path, canonical `appname.mos.home` and `appname.mos.<your-domain>` addressing, Cloudflare wildcard tunnel scaffolding, and unattended installation support.
 
 ### Changed
 
-- Hardened the default stack against unnecessary third-party calls by removing Google-hosted fonts and remote Homepage icons, disabling Vaultwarden relay-based mobile push, and turning off Stirling PDF analytics by default.
-- Refined the public homepage, root README, deployment/docs screenshot coverage, and default Homepage experience with stronger MOS branding, clearer app descriptions, better link defaults, a dedicated Management section for Suite Manager, and a tighter trust story around the bundled apps.
+- Hardened the default stack against third-party calls by removing remotely hosted fonts and Homepage icons, disabling Vaultwarden relay push, and disabling Stirling PDF analytics by default.
 
 ### Fixed
 
-- Fixed a Suite Manager onboarding regression so the Vaultwarden credential-import step now advances correctly after manual confirmation, and expanded the E2E coverage to catch the same live-session UI sync bug in the future.
-
-## [0.6.0] - 2026-03-27
-
-### Changed
-
-- Redesigned the public homepage into a full product landing page with a stronger hero, clearer narrative sections, a concrete module grid, and preserved built-with attribution so the suite feels like a polished product instead of an MVP placeholder.
-- Introduced a shared MOS design-system foundation with documented tokens and ownership rules, then aligned the public site, docs theme, and Suite Manager around more consistent type roles, spacing, radii, panels, labels, and meta text.
-- Refreshed the OnlyOffice screenshot set with sharper 1080p captures across the docs and landing-page galleries, improving how the suite looks in release materials and app previews.
+- Fixed Vaultwarden credential-import onboarding so the flow advances after manual confirmation.
 
 ## [0.5.0] - 2026-03-24
 
 ### Changed
 
-- Refreshed the public site and app pages with stronger MOS branding, real product screenshot galleries, and clearer end-user documentation around deployment and core apps.
-- Improved the first-run Suite Manager flow by importing the control-plane credentials into Vaultwarden, clarifying the user-facing control-plane naming, and smoothing the credential handoff experience.
-- Streamlined local validation and manual testing with clearer E2E command docs, a new onboarding-manual flow that pauses on Homepage, and a smaller interactive command set.
-- Changed the default Docker Compose project name for the normal stack to `mos`. Compatibility note: generated Compose resources such as the default network and named volumes now use the `mos_` prefix instead of `vps_`.
-- Hardened local cross-platform behavior with simpler `*.localhost` routing and Windows-friendly line-ending safeguards for scripts and container entrypoints.
+- Improved first-run credential handoff from Suite Manager to Vaultwarden.
+- Changed the default Docker Compose project name to `mos`; generated networks and named volumes now use the `mos_` prefix instead of `vps_`.
+- Hardened local cross-platform operation with simpler `*.localhost` routing and Windows-safe script and entrypoint line endings.
 
 ## [0.4.0] - 2026-03-18
 
 ### Added
 
-- Added a real `suite-manager` control-plane with owner sign-in, persistent onboarding state, and a guided first-run setup flow.
-- Added real Docker-backed Playwright E2E coverage for the onboarding flow and Homepage-driven app verification.
+- Added the authenticated Suite Manager control plane with persistent onboarding state and guided first-run setup.
 
 ### Changed
 
-- Reworked the suite access flow so Suite Manager is now the single login and control-plane entrypoint, with Homepage linking back into the `/setup/` experience.
-- Improved onboarding with Vaultwarden-first setup, guided Radicale calendar connection, clearer completion behavior, and a simpler escape path back to Homepage.
-- Tightened local/VPS validation and CI so generated env files, required Suite Manager auth inputs, and compose checks stay aligned with the real first-run flow.
-- Clarified public-facing deployment messaging so the docs now distinguish the current maintained VPS/local stack from earlier Railway validation work.
-- Reworked the public docs around a more beginner-friendly setup flow, including separate guides for Railway, VPS, and self-hosted hardware.
-- Strengthened the public docs language around hosted infrastructure, privacy boundaries, and why Railway or a VPS still differ from consumer Big Tech cloud ecosystems.
-- Added a short plain-language explanation of why a Google/Microsoft/Apple alternative still needs a cloud runtime for sync, backup, and multi-device access.
-- Simplified the early cloud explainer around a clearer ownership message and added an optional further-reading link for people who want more background.
-- Moved the private-cloud explanation into the main `What is` flow and added a dedicated plain-language explainer page about why this differs from Google, Microsoft, or Apple cloud products.
-- Reworked the plain-language cloud explainer around a safer and more relatable bank safe-deposit-box analogy.
-- Added a short `Is My Own Suite free?` section to explain the difference between free software and optional hosting costs.
-- Updated docs and repo guidance to match the current Suite Manager-first architecture, `Technical reference` app docs pattern, and discoverable root E2E commands.
-- Replaced the Suite Manager bootstrap-token gate with built-in owner email/password auth, a signed session cookie, and a `/setup/` control-plane surface that can proxy Homepage after login. Compatibility note: `BOOTSTRAP_TOKEN` has been removed from the suite-manager env contract and replaced by required `OWNER_PASSWORD` and `SESSION_SECRET` inputs; Homepage `SUITE_MANAGER_URL` now needs the `/setup/` suffix.
-- Simplified the Suite Manager Homepage contract so it now uses only `HOMEPAGE_URL` for the private Homepage upstream. Compatibility note: `HOMEPAGE_PUBLIC_URL` has been removed from the suite-manager env contract.
-- Refreshed Homepage defaults with MOS styling, a lighter top bar, a built-in `theme-mos` palette, simpler datetime formatting, and no weather prompt.
-- Added shared `suite-manager` onboarding env inputs (`OWNER_NAME`, `OWNER_PASSWORD`, `SESSION_SECRET`, `SUITE_MANAGER_PUBLIC_URL`, `SUITE_MANAGER_STATE_DIR`) and expanded the suite-manager runtime env surface to consume existing Vaultwarden, Seafile, and Radicale bootstrap data.
-- Changed local/VPS Vaultwarden routing so it now uses HTTPS and advertises an HTTPS public URL, which is required for the web signup flow to work correctly.
-- Updated the Homepage base image pin to the `v1.8.0` release digest to test whether newer upstream runtime behavior fixes the custom search widget regression.
+- Made Suite Manager the single control-plane entry point, with Homepage linking into `/setup/`.
+- Improved onboarding with Vaultwarden-first setup, guided Radicale connection, clearer completion, and a direct return to Homepage.
+- Replaced the bootstrap-token gate with owner email/password authentication and signed sessions. `BOOTSTRAP_TOKEN` was replaced by required `OWNER_PASSWORD` and `SESSION_SECRET`; `SUITE_MANAGER_URL` now requires the `/setup/` suffix.
+- Removed `HOMEPAGE_PUBLIC_URL` from the Suite Manager contract in favor of `HOMEPAGE_URL`.
+- Added shared owner and integration inputs for Suite Manager and changed local/VPS Vaultwarden routing to HTTPS.
 
 ## [0.3.0] - 2026-03-09
 
 ### Added
 
-- Added a minimal `apps/suite-manager` Node/TypeScript service that exposes a status endpoint and logs periodic Homepage health checks, providing a concrete deployment target for future shared bootstrap and monitoring work.
+- Added the initial Suite Manager service with status reporting and Homepage health checks.
 
 ### Changed
 
-- Documented a `staging` integration branch workflow so feature branches can be tested and batched before promotion to `main` releases.
-- Reworked VPS/local setup around `suite-manager` shared inputs and service-level `deploy/vps/services/*.env.template` files, replacing the older app-level runtime env layout.
-- Simplified `vps:init` and `vps:doctor` to match the new template structure and dropped the remaining legacy `.env.example` compatibility code.
-- Fixed `npm run vps:rebuild` so clean-slate rebuilds also remove profiled service volumes and auth state.
+- Reworked VPS/local setup around shared Suite Manager inputs and service-level env templates.
+- Simplified `vps:init` and `vps:doctor` for the new template layout and removed legacy `.env.example` compatibility.
+- Fixed `vps:rebuild` so clean-slate rebuilds remove profiled service volumes and auth state.
 
 ## [0.2.0] - 2026-03-08
 
 ### Added
 
-- New root scripts for safer VPS onboarding:
-  - `npm run vps:init` to create missing `deploy/vps/**/*.env` files from `.env.example` templates without overwriting existing values.
-  - `npm run vps:doctor` to validate required env vars and cross-file configuration checks before startup.
-  - `npm run vps:up` to run a non-destructive full stack startup flow (`init` + `doctor` + compose up).
-- `vps:init` now renders template expressions in `.env.example`, including:
-  - `secret(length[, alphabet])`
-  - `secret(name, length[, alphabet])` for shared generated values across files
-  - `base64(text)` for derived values (for example `username:password` auth headers)
-
-### Changed
-
-- Updated VPS onboarding documentation to use the new `vps:init -> vps:doctor -> vps:up` flow and keep `vps:rebuild` as an explicit destructive reset command.
-- Updated app `.env.example` templates to support generated shared secrets and derived values during first-time setup.
-- Updated CI compose validation to render and verify VPS env files before running `docker compose config`.
+- Added `vps:init`, `vps:doctor`, and `vps:up` for non-destructive VPS configuration and startup.
+- Added generated and shared secret expressions plus derived Base64 values in env templates.
 
 ## [0.1.0] - 2026-03-04
 
-First official release of My Own Suite.
-Establishes the release/publishing foundation and ships the initial MVP application stack, validated locally with Docker Compose and in a Railway cloud deployment.
-
-### Added
-
-- `RELEASING.md` with SemVer rules, compatibility contracts, and a clear release workflow.
-- `CHANGELOG.md` as the canonical release history.
-- Starlight docs `Releases` page rendering `CHANGELOG.md`.
-- Top-level `Project` docs section (after `Apps`) containing `Releases`.
-- Git hooks (`pre-commit`, `pre-push`) to block commits/pushes directly on `main`.
+First official release of My Own Suite, establishing the release foundation and initial Docker Compose application stack.

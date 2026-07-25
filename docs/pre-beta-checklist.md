@@ -144,7 +144,7 @@ provider-neutral and the copy should feel that way.
   without a valid version/digest-bound `privacy-review.json`, and copy may claim full coverage
   unconditionally but must never hardcode an app count.
 
-- [ ] **5. Add a LICENSE.** *(root, Tiny — owner decision required)* There is no LICENSE file and no
+- [x] **5. Add a LICENSE.** *(root, Tiny — owner decision required)* There is no LICENSE file and no
   `license` field in `package.json`, while "free & open source" appears in the site header badge,
   FAQ, footer, docs index, and `privacy.md` (which also leans on it: "no way for us to quietly add
   any [telemetry], because the code is open source"). Technical testers check this within minutes.
@@ -158,6 +158,12 @@ provider-neutral and the copy should feel that way.
   licensing possible later) versus Apache-2.0/MIT (maximally permissive, allows closed hosted
   forks). Agent recommendation: **AGPL-3.0**. Once decided: root `LICENSE`, `"license"` field in
   root `package.json`, and a README mention (the README gets its item-12 upgrade later anyway).
+
+  **Done 2026-07-25:** owner chose **AGPL-3.0-only**. Added the unmodified GNU AGPLv3 text at root,
+  the exact SPDX identifier in `package.json`, a README badge and plain-language license section,
+  and a concise boundary for MOS/Funkyton branding and third-party app assets. The public site now
+  has a Legal-section license page that renders the canonical root text, plus License links and
+  plain-language AGPL messaging in the landing page's open-source section and footer.
 
 - [x] **6. Rewrite the scaffolding-voiced app READMEs.** *(apps, Small)* These render verbatim on
   the public app pages under "Technical reference":

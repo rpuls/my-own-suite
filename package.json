@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "My Own Suite launch platform workspace.",
+  "license": "AGPL-3.0-only",
   "type": "commonjs",
   "scripts": {
     "apps:catalog": "node scripts/app-package-catalog.cjs",

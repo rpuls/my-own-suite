@@ -5,6 +5,8 @@ description: The plain-language terms for using My Own Suite — free, open sour
 
 My Own Suite is free, open source software that you download and run on your own machine or on a server you rent. These terms are written in plain language on purpose, but they are the real terms: by installing or using My Own Suite, you accept them.
 
+The software is made available under the [GNU Affero General Public License v3.0 only](/docs/license/). That open-source license governs your rights to use, modify, share, and host MOS; these terms explain your responsibilities when operating it.
+
 ## You are the operator
 
 Self-hosting means the machine is yours — and so is the responsibility for running it. When you use My Own Suite, **you**, not the My Own Suite project, are responsible for:
