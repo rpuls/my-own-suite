@@ -247,6 +247,12 @@ provider-neutral and the copy should feel that way.
   `npm run screenshots:update` once to mint the first fresh set (use a presentable owner email —
   whatever the lab shows lands in the published images), review, commit with the site.
 
+  **Owner action completed 2026-07-25:** the first capture run landed — all seven stable-named
+  screenshots in `site/src/assets/screenshots/` are fresh, so the stale-marketing-screenshot
+  problem is closed and both acceptance criteria are met. The opportunistic eighth shot,
+  `app-update-review.png`, is still absent (that lab run had no compatible pending app update), so
+  the Tour's "Updates you approve" entry stays hidden until a future run captures it.
+
 - [x] **10. Expand the landing Tour / screenshot coverage.** *(site, Small)* Audit feedback: after
   the landing page alone, a visitor still can't picture what they get. With item 9's pipeline in
   place, add Tour entries (or a screenshot strip) for the product's most differentiated screens —

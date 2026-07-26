@@ -20,6 +20,8 @@ These rules are required for every non-trivial change (docs, config, code, infra
    - Promote tested batches from `staging` to `main` through the release workflow in `RELEASING.md`.
 3. **Maintain `CHANGELOG.md` during releasable software work, not after.**
    - Add/update an entry under `## [Unreleased]` in the same branch when the change affects Suite Manager or installed-platform behavior, operations, compatibility, or another outcome relevant to people updating MOS.
+   - Touching platform-shipped code or config is necessary but not sufficient: the changelog is reserved for changes an updating operator would genuinely want to read. If a change is real but too small to matter to an updater, omit it entirely rather than writing a small bullet for it.
+   - Do not log micro UI adjustments, cosmetic polish, icon/link/copy tweaks, or minor edits to seeded default content (dashboards, bookmarks, templates), even though they ship with the platform.
    - Do not add changelog entries for documentation-only, public-site-only, landing-page-only, repository-maintenance, or contributor-workflow changes. Those are not updater-facing software behavior.
    - If documentation or public-site copy accompanies a software behavior change, describe the behavior once; do not separately log the documentation or site edit.
    - Keep entries concise, user-relevant, and release-shaped.

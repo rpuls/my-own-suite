@@ -108,3 +108,17 @@ For day-to-day prototyping, use `staging` as the integration branch and reserve 
 My Own Suite is free and open-source software licensed under the [GNU Affero General Public License v3.0 only](./LICENSE). You may use, modify, distribute, and commercially host it under the license terms; modified versions offered over a network must offer their corresponding source code to their users.
 
 The My Own Suite, MOS, and Funkyton names and logos are not granted for use as the identity of a modified distribution or competing service. Third-party application names, logos, screenshots, and other assets remain the property of their respective owners.
+
+## How AI is used in this project
+
+This project uses AI-assisted development tools, including Codex and Claude Code, to support rapid prototyping during the beta phase.
+
+Human software engineers define the requirements, architecture, technical constraints, and acceptance criteria. AI agents may assist with implementing clearly scoped tasks, but the resulting code is reviewed by a human before it is committed.
+
+AI tools are also used for troubleshooting, debugging, research, and exploring possible solutions. They are not treated as an authority on whether the software behaves correctly. Final validation is based on human review and hands-on QA testing.
+
+AI agents are generally assigned small, specific tasks with clearly defined expectations. Their output is inspected and verified before further development continues. They are not independently given broad feature requirements and left to design, implement, and approve complete solutions without human oversight.
+
+The maintainers remain responsible for every change included in the project, regardless of whether AI contributed to its implementation.
+
+We believe AI-assisted development can significantly improve productivity and experimentation when it is used carefully, transparently, and with appropriate human oversight.

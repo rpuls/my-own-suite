@@ -3,13 +3,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-test('Hyper-V USB smoke exposes a guarded two-command lifecycle', () => {
+test('Hyper-V USB smoke exposes a guarded three-command lifecycle', () => {
   const packageJson = require('../../package.json');
   const hypervScripts = Object.keys(packageJson.scripts).filter((name) => name.startsWith('smoke:hyperv:'));
-  assert.deepEqual(hypervScripts.sort(), ['smoke:hyperv:destroy', 'smoke:hyperv:reset']);
+  assert.deepEqual(hypervScripts.sort(), ['smoke:hyperv:destroy', 'smoke:hyperv:refresh', 'smoke:hyperv:reset']);
 
   const script = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'smoke', 'hyperv-usb-lab.ps1'), 'utf8');
-  assert.match(script, /\[ValidateSet\('reset', 'destroy'\)\]/u);
+  assert.match(script, /\[ValidateSet\('reset', 'refresh', 'destroy'\)\]/u);
+  assert.match(script, /if \(\$Command -eq 'refresh'\)/u);
   assert.match(script, /\$VmName = 'mos-usb-smoke'/u);
   assert.match(script, /New-VHD .* -Dynamic -SizeBytes 64GB/u);
   assert.match(script, /\$BackupDiskPath = Join-Path \$LabRoot 'backup\.vhdx'/u);
@@ -50,7 +51,8 @@ test('Hyper-V USB smoke exposes a guarded two-command lifecycle', () => {
   assert.match(script, /\$suiteManagerExitCode -eq 0 -and \$homepageExitCode -eq 0/u);
   assert.ok(script.indexOf('Remove-LabVm') < script.indexOf('Build-InstallerIso'));
   assert.ok(script.indexOf('Build-InstallerIso') < script.indexOf('New-VM -Name $VmName'));
-  assert.ok(script.indexOf('Add-VMDvdDrive') < script.indexOf('Start-VM -Name $VmName'));
+  const resetBuildFlow = script.slice(script.indexOf('New-VM -Name $VmName'));
+  assert.ok(resetBuildFlow.indexOf('Add-VMDvdDrive') < resetBuildFlow.indexOf('Start-VM -Name $VmName'));
   assert.doesNotMatch(script, /Get-VM\s*\|/u);
 
   const builder = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'smoke', 'build-hyperv-usb-iso.cjs'), 'utf8');

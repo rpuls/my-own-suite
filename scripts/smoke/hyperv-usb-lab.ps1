@@ -1,6 +1,6 @@
 param(
   [Parameter(Position = 0)]
-  [ValidateSet('reset', 'destroy')]
+  [ValidateSet('reset', 'refresh', 'destroy')]
   [string]$Command = 'reset'
 )
 
@@ -203,6 +203,15 @@ function Get-BackupDiskSizeBytes {
   return $sizeGb * 1GB
 }
 
+function Set-LabVmRestartPolicy {
+  # Hyper-V only allows changing automatic start/stop actions while the VM is
+  # off. The default stop action (Save) breaks the lab across host restarts:
+  # the Default Switch gets a new subnet on every host boot, and a resumed
+  # guest keeps its DHCP lease for the old subnet, so nothing is reachable.
+  # A clean shutdown/boot cycle re-leases on the current subnet.
+  Set-VM -Name $VmName -AutomaticStopAction ShutDown -AutomaticStartAction StartIfRunning -AutomaticStartDelay 10
+}
+
 function Get-StackDomain {
   if ($env:STACK_DOMAIN) {
     return $env:STACK_DOMAIN.Trim().Trim('"').Trim("'")
@@ -244,7 +253,11 @@ function Get-GuestIpv4Addresses {
 }
 
 function Wait-ForSuiteManager {
-  param([string]$StackDomain)
+  param(
+    [string]$StackDomain,
+    [int]$TimeoutMinutesOverride = 0,
+    [string]$ProgressLabel = 'Installing'
+  )
 
   $timeoutMinutes = 90
   if ($env:MOS_HYPERV_READY_TIMEOUT_MINUTES) {
@@ -252,6 +265,7 @@ function Wait-ForSuiteManager {
       Fail 'MOS_HYPERV_READY_TIMEOUT_MINUTES must be a positive whole number.'
     }
   }
+  if ($TimeoutMinutesOverride -gt 0) { $timeoutMinutes = $TimeoutMinutesOverride }
 
   $hostName = "home.$StackDomain"
   $healthUrl = "http://$hostName/suite-manager/api/setup/status"
@@ -289,7 +303,7 @@ function Wait-ForSuiteManager {
 
     if ($detail -ne $lastDetail -or (Get-Date) -ge $nextReportAt) {
       $elapsed = [math]::Floor(((Get-Date) - $startedAt).TotalMinutes)
-      Write-Host "[mos-smoke:hyperv-usb] Installing ($elapsed/$timeoutMinutes min): $detail"
+      Write-Host "[mos-smoke:hyperv-usb] $ProgressLabel ($elapsed/$timeoutMinutes min): $detail"
       $lastDetail = $detail
       $nextReportAt = (Get-Date).AddSeconds(30)
     }
@@ -334,6 +348,55 @@ if ($Command -eq 'destroy') {
   exit 0
 }
 
+if ($Command -eq 'refresh') {
+  $vm = Get-VM -Name $VmName -ErrorAction SilentlyContinue
+  if (-not $vm) {
+    Fail "VM '$VmName' does not exist. Run 'npm run smoke:hyperv:reset' (destructive; builds a fresh lab) to create it."
+  }
+
+  if ($vm.State -eq 'Off') {
+    Set-LabVmRestartPolicy
+    Write-Host "[mos-smoke:hyperv-usb] Starting VM '$VmName'..."
+    Start-VM -Name $VmName | Out-Null
+  }
+  elseif ($vm.State -ne 'Running') {
+    Write-Host "[mos-smoke:hyperv-usb] Resuming VM '$VmName' from state '$($vm.State)'..."
+    Start-VM -Name $VmName | Out-Null
+  }
+
+  $stackDomain = Get-StackDomain
+  $probeMinutes = 5
+  if ($env:MOS_HYPERV_REFRESH_PROBE_MINUTES) {
+    if (-not [int]::TryParse($env:MOS_HYPERV_REFRESH_PROBE_MINUTES, [ref]$probeMinutes) -or $probeMinutes -lt 1) {
+      Fail 'MOS_HYPERV_REFRESH_PROBE_MINUTES must be a positive whole number.'
+    }
+  }
+
+  Write-Host "[mos-smoke:hyperv-usb] Probing Suite Manager readiness on *.$stackDomain..."
+  $ip = $null
+  try {
+    $ip = Wait-ForSuiteManager -StackDomain $stackDomain -TimeoutMinutesOverride $probeMinutes -ProgressLabel 'Probing'
+  }
+  catch {
+    # Typical after a host restart: the guest resumed from a saved state with a
+    # DHCP lease for the previous Default Switch subnet. A guest reboot
+    # re-leases on the current subnet.
+    Write-Host "[mos-smoke:hyperv-usb] Suite Manager is unreachable; restarting the guest so it re-leases on the current switch subnet..."
+    Stop-VM -Name $VmName -Force
+    Set-LabVmRestartPolicy
+    Start-VM -Name $VmName | Out-Null
+    $ip = Wait-ForSuiteManager -StackDomain $stackDomain -ProgressLabel 'Rebooting'
+  }
+
+  Set-SmokeHostsEntries -Ip $ip -StackDomain $stackDomain
+  $vm = Get-VM -Name $VmName
+  if ($vm.AutomaticStopAction -ne 'ShutDown') {
+    Write-Host "[mos-smoke:hyperv-usb] Note: automatic stop action is still '$($vm.AutomaticStopAction)'; the next refresh that stops the VM will switch it to ShutDown."
+  }
+  Show-Summary -Ip $ip -StackDomain $stackDomain
+  exit 0
+}
+
 Write-Host "[mos-smoke:hyperv-usb] Removing any existing '$VmName' VM and lab artifacts..."
 Remove-LabVm
 Remove-LabArtifacts
@@ -354,6 +417,7 @@ try {
   $dvd = Add-VMDvdDrive -VMName $VmName -Path $IsoPath -Passthru
   $osDisk = Get-VMHardDiskDrive -VMName $VmName | Where-Object Path -eq $DiskPath
   Set-VMFirmware -VMName $VmName -BootOrder $osDisk, $dvd
+  Set-LabVmRestartPolicy
   Start-VM -Name $VmName | Out-Null
 }
 catch {

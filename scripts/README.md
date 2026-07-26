@@ -73,10 +73,11 @@ The smoke install uses cloud-init, so SSH keys are optional for installation. Wh
 
 ### Local Hyper-V smoke
 
-The USB-aligned Hyper-V smoke surface has two lifecycle commands:
+The USB-aligned Hyper-V smoke surface has three lifecycle commands:
 
 ```powershell
 cmd /c npm run smoke:hyperv:reset
+cmd /c npm run smoke:hyperv:refresh
 cmd /c npm run smoke:hyperv:destroy
 ```
 
@@ -85,6 +86,8 @@ Run these commands from an Administrator PowerShell terminal. Set `MOS_HYPERV_SW
 The installer seed clones a Git ref inside the guest. It uses `MOS_SMOKE_REPO_REF` when set, otherwise the current non-`main` branch, then `staging` as a fallback. Commit and push the branch you want the VM to install before running `smoke:hyperv:reset`; the seed renderer fails fast if the selected ref does not contain the MOS root layout.
 
 `reset` is the full disposable lifecycle. It removes the exact `mos-usb-smoke` VM and its lab directory, renders a MOS-specific Ubuntu autoinstall seed from the selected bootstrap contract, remasters and verifies a smoke-only auto-boot installer ISO, creates a fresh Generation 2 VM with a blank 64 GB OS disk and a smaller disposable backup disk, attaches the ISO, starts the VM, waits for Suite Manager, writes local Windows host resolution, and prints the working URL summary.
+
+`refresh` is the non-destructive recovery command for an existing lab, built for the one situation that otherwise looks like a broken install: a host PC restart. Hyper-V's Default Switch gets a new subnet on every host boot, so the guest's old IP — and the hosts-file block pointing at it — both go stale; on top of that, Hyper-V's default stop action saves the VM at host shutdown, and the resumed guest still holds its DHCP lease for the old subnet. `refresh` starts the VM if needed, probes readiness for a few minutes (`MOS_HYPERV_REFRESH_PROBE_MINUTES`, default 5), gracefully reboots the guest if it stays unreachable so it re-leases on the current subnet, rewrites the hosts block with the current IP, and prints the URL summary. It also pins the VM to shut down cleanly with the host instead of saving state, so later host restarts boot the guest fresh and `refresh` completes without the reboot step. Run it after every host restart before `npm run e2e:full`; the installed MOS state (owner, apps, backups) is preserved.
 
 `destroy` removes the exact VM, its disposable disk/ISO/build workspace, and the hosts-file entries written by `reset`.
 

@@ -96,7 +96,10 @@ test('Homepage ships useful defaults and an editable source template without ove
   }
   assert.match(widgets, /www\.startpage\.com\/sp\/search/);
   assert.match(bookmarks, /github\.com\/rpuls\/my-own-suite/);
-  assert.match(bookmarks, /discord\.gg\/K72wyWRt/);
+  assert.match(bookmarks, /discord\.gg\/YMpF6faBCv/);
+  assert.match(bookmarks, /icon: \/images\/github\.svg/);
+  assert.match(bookmarks, /icon: \/images\/discord\.svg/);
+  assert.match(bookmarks, /icon: \/images\/my-own-suite-mark\.png/);
   assert.match(bookmarks, /- Releases:/);
   assert.match(bookmarks, /- Social:/);
   assert.match(bookmarks, /- Docs:/);
@@ -105,4 +108,6 @@ test('Homepage ships useful defaults and an editable source template without ove
   assert.match(customCss, /\.bookmark-group a/);
   assert.equal(fs.existsSync(path.join(configDir, 'images', 'my-own-suite-mark.png')), true);
   assert.equal(fs.existsSync(path.join(configDir, 'images', 'funkyton-F-icon.png')), true);
+  assert.equal(fs.existsSync(path.join(configDir, 'images', 'github.svg')), true);
+  assert.equal(fs.existsSync(path.join(configDir, 'images', 'discord.svg')), true);
 });

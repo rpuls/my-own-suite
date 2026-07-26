@@ -1,6 +1,6 @@
 # Changelog
 
-Notable updater-facing software changes are documented here. Documentation, public-site, landing-page, repository-maintenance, and contributor-workflow-only changes are intentionally excluded.
+Notable updater-facing software changes are documented here. Documentation, public-site, landing-page, repository-maintenance, contributor-workflow-only, and minor cosmetic changes are intentionally excluded.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
