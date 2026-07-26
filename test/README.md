@@ -20,7 +20,7 @@ Local E2E covers owner setup, Customize navigation, invalid YAML, allowlisted ed
 
 ## Hyper-V Full E2E
 
-The Hyper-V full E2E suite runs against a real, already-running MOS Hyper-V install. It does not create or destroy the VM, but by default it asks the Hyper-V lab install to reset MOS application state before the browser flow starts. Start or reset Hyper-V yourself first, wait for Suite Manager readiness, then run the suite from Windows:
+The Hyper-V full E2E suite runs against a real, already-running MOS Hyper-V install. It does not create or destroy the VM, but by default it asks the Hyper-V lab install to reset MOS application state before the browser flow starts. Start or reset Hyper-V yourself first, wait for Suite Manager readiness, then run the suite from Windows. After a host PC restart, run `npm run smoke:hyperv:refresh` (Administrator terminal) first — the Default Switch subnet changes on every host boot, so the lab is unreachable until the guest IP and hosts entries are refreshed (details in `scripts/README.md`):
 
 ```powershell
 cmd /c npm run e2e:full

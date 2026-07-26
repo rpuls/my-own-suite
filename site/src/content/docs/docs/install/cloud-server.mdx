@@ -20,6 +20,8 @@ My Own Suite is provider-agnostic: any host that can rent you a plain **Ubuntu S
 
    As a worked example, on DigitalOcean that is **Create → Droplets**, image **Ubuntu 24.04 (LTS) x64**, and a **Basic** shared-CPU droplet with 2 vCPU / 4 GB RAM (about $24/month). Other providers differ only in menu names.
 
+   If the form asks how you'll log in (an "authentication method" choice), pick **Password** and set a strong server password — MOS does not need an SSH key. Providers usually recommend SSH keys, but that recommendation is aimed at people who manage servers from their own terminal; the browser console in the next step signs you in without one, and some consoles simply ask for the password you just set.
+
 2. **Open the server's web console.** Every mainstream provider offers a browser terminal on the server's page — look for a button named **Console** or **Web console** (DigitalOcean uses **Web console**, on the droplet's page). It opens a terminal on the server in a browser tab, usually already signed in as `root`; if it asks who to log in as, choose `root`.
 
 3. **Paste the install command and wait:**

@@ -33,6 +33,7 @@
     "smoke:do:render": "node scripts/smoke/digitalocean.cjs render",
     "smoke:do:reset": "node scripts/smoke/digitalocean.cjs reset",
     "smoke:hyperv:destroy": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke/hyperv-usb-lab.ps1 destroy",
+    "smoke:hyperv:refresh": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke/hyperv-usb-lab.ps1 refresh",
     "smoke:hyperv:reset": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke/hyperv-usb-lab.ps1 reset",
     "test": "npm run typecheck && npm run test:unit && npm run apps:catalog:check && npm run apps:privacy:check && npm run apps:privacy:monitor && npm run installer:check && npm run release:check && npm run build:client && npm run build",
     "installer:check": "node -e \"require('fs').mkdirSync('.tmp',{recursive:true})\" && npm run install:render -- --target json > .tmp/installer-contract.json",

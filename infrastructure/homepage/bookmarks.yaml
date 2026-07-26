@@ -2,13 +2,16 @@
     - Source Code:
         - abbr: GH
           href: https://github.com/rpuls/my-own-suite
+          icon: /images/github.svg
 
 - Social:
     - Community:
         - abbr: DC
-          href: https://discord.gg/K72wyWRt
+          href: https://discord.gg/YMpF6faBCv
+          icon: /images/discord.svg
 
 - Docs:
     - Documentation:
         - abbr: DOC
           href: https://myownsuite.org/docs/
+          icon: /images/my-own-suite-mark.png

@@ -41,7 +41,8 @@ export default defineConfig({
       favicon: '/brand/favicon.ico',
       logo: { src: './public/brand/my-own-suite-mark.svg', alt: '' },
       social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/rpuls/my-own-suite' }
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/rpuls/my-own-suite' },
+        { icon: 'discord', label: 'Community', href: 'https://discord.gg/YMpF6faBCv' }
       ],
       customCss: ['./generated/branding/mos.css', './src/styles/docs-theme.css'],
       sidebar: [
