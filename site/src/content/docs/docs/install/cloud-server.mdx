@@ -4,6 +4,7 @@ description: Install My Own Suite on any hosting provider's fresh Ubuntu 24.04 s
 ---
 
 import { Steps } from '@astrojs/starlight/components'
+import DigitalOceanReferral from '../../../../components/DigitalOceanReferral.astro'
 
 My Own Suite is provider-agnostic: any host that can rent you a plain **Ubuntu Server 24.04 LTS** machine with at least **2 vCPU / 4 GB RAM** will do. The whole install is **one command in a browser terminal — nothing to install on your own computer**. The installer works out the server's public address by itself, and when it finishes it prints the link where you create your owner account.
 
@@ -12,15 +13,19 @@ My Own Suite is provider-agnostic: any host that can rent you a plain **Ubuntu S
 - An account at any hosting provider (the recommended server size costs about $20–25/month — you can destroy the server at any time).
 - Nothing else. No SSH keys, no local tools — your browser does everything.
 
+No provider account yet? DigitalOcean is the provider MOS is tested against. The button below is a **referral link** — signing up through it supports MOS with a small commission from DigitalOcean, at no extra cost to you.
+
+<DigitalOceanReferral />
+
 ## Install from your browser
 
 <Steps>
 
 1. **Create the server** in your provider's dashboard: image **Ubuntu 24.04 (LTS) x64**, size at least **2 vCPU / 4 GB RAM**.
 
-   As a worked example, on DigitalOcean that is **Create → Droplets**, image **Ubuntu 24.04 (LTS) x64**, and a **Basic** shared-CPU droplet with 2 vCPU / 4 GB RAM (about $24/month). Other providers differ only in menu names.
+   As a worked example, on DigitalOcean that is **Create → Droplets**, image **Ubuntu 24.04 (LTS) x64**, and a **Basic** shared-CPU droplet with 2 vCPU / 4 GB RAM (about $24/month). Other providers differ only in menu names. Don't overthink the size — you can resize to a bigger plan later if your suite grows (see [Good to know](#good-to-know)).
 
-   If the form asks how you'll log in (an "authentication method" choice), pick **Password** and set a strong server password — MOS does not need an SSH key. Providers usually recommend SSH keys, but that recommendation is aimed at people who manage servers from their own terminal; the browser console in the next step signs you in without one, and some consoles simply ask for the password you just set.
+   If the form asks how you'll log in, pick **Password** and set a strong server password — the browser console in the next step works without an SSH key. (Already use SSH keys? Feel free; everything else is the same.)
 
 2. **Open the server's web console.** Every mainstream provider offers a browser terminal on the server's page — look for a button named **Console** or **Web console** (DigitalOcean uses **Web console**, on the droplet's page). It opens a terminal on the server in a browser tab, usually already signed in as `root`; if it asks who to log in as, choose `root`.
 
@@ -69,6 +74,7 @@ Attach a separate persistent block-storage volume through your provider, format 
 - **Your suite's address is generated for you.** It looks like `https://home.<your-server-ip>.sslip.io/`. `sslip.io` is a public convenience service: any address ending in your IP + `.sslip.io` automatically points at that IP, so your suite has a working web address instantly — no domain to buy, no DNS to configure.
 - **HTTPS is automatic.** MOS obtains a real (Let's Encrypt) certificate for the generated `sslip.io` address, so your suite is served over HTTPS. The very first load can take a minute while the certificate is issued; if you see a brief certificate warning, wait and refresh.
 - **Own domain instead of sslip.io:** if you already have a domain, point an A record at the server and use your provider's domain tooling for HTTPS. The built-in [Cloudflare HTTPS flow](/docs/guides/https-domain/) is for self-hosted installs.
+- **Start small — you can grow the server later.** Most providers let you resize an existing server to a bigger plan when more apps need more resources. On DigitalOcean: power off the droplet, pick a larger plan under **Resize**, power back on — a few minutes of downtime, and the server keeps its IP address, so your suite's web address and everything on it carry over untouched. Prefer a **CPU and RAM only** resize if you want the option to scale back down later (disk expansions can't be undone), and take a provider snapshot first as a safety net.
 - **Billing:** at most providers a powered-off server still bills. To stop paying, destroy the server — backups first (see [Back up and restore](/docs/guides/backup-restore/)).
 - **What the installer sets up:** Docker, Node.js, the Caddy web server, Suite Manager, your Homepage dashboard, and the MOS host services — all as systemd services on the machine. Details in [How MOS works](/docs/reference/architecture/).
 

@@ -118,9 +118,16 @@ const CHECK_PATH = 'M4 12.5l5 5L20 6.5'
           Good for a test drive, not the destination — this runs on Railway's cloud, not hardware you
           own, and comes without MOS backups, updates, or your own domain.
         </p>
-        <a class="try-deploy" href={railwayUrl} rel="noopener noreferrer" target="_blank">
+        <a class="try-deploy" href={railwayUrl} rel="noopener noreferrer sponsored" target="_blank">
           <img src="https://railway.app/button.svg" alt="Deploy on Railway" loading="lazy" />
         </a>
+        {/* EU ad-labelling rules (UCPD art. 7, German UWG case law) require the
+            referral disclosure to sit directly at the monetized link — keep this
+            line adjacent to the deploy button, don't move it to a footer. */}
+        <p class="try-referral">
+          Referral link — Railway pays MOS a commission on deploys made through this button, at no
+          extra cost to you.
+        </p>
       </div>
     </div>
   </div>
@@ -287,5 +294,12 @@ const CHECK_PATH = 'M4 12.5l5 5L20 6.5'
   .try-deploy img {
     display: block;
     height: 40px;
+  }
+
+  .try-referral {
+    margin: 0;
+    color: var(--mos-color-text-muted);
+    font-size: 0.78rem;
+    line-height: 1.5;
   }
 </style>
