@@ -1,3 +1,3 @@
-FROM mysql@sha256:99d774bf02a48a1bb1c599920d2571946d31e5940b854b02737d5e95c184358f
+FROM mysql@sha256:cbade841779f1661300e705721f9d2ff159865cc7a8a291affbff43ac6ec7f1d
 
 CMD ["mysqld", "--default-authentication-plugin=mysql_native_password"]
