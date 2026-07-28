@@ -85,6 +85,11 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.doesNotMatch(plan.cloudInit, /\r/);
   assert.match(plan.shell, /^#!\/usr\/bin\/env bash/);
   assert.doesNotMatch(plan.sshBootstrap, /\r/);
+  // Local installs must show the LAN IP and the DNS override to add, because
+  // home.<domain> only resolves once the user configures local DNS.
+  assert.match(plan.shell, /mos_lan_ip="\$\(ip -4 route get/);
+  assert.match(plan.shell, /LAN IP/);
+  assert.match(plan.shell, /add a DNS override in your router/);
 });
 
 test('bootstrap contract derives sslip.io domain for cloud smoke installs', () => {
@@ -112,6 +117,8 @@ test('public VPS installs use the protected HTTPS cloud contract', () => {
   assert.match(plan.shell, /MOS_FRONT_DOOR='public-vps'/);
   assert.match(plan.shell, /OWNER_CLAIM_TOKEN=/);
   assert.match(plan.shell, /https:\/\/\$MOS_HOME_HOST/);
+  // Cloud installs use a public sslip.io domain; a LAN IP hint would mislead.
+  assert.doesNotMatch(plan.shell, /mos_lan_ip="\$\(ip -4 route get/);
 });
 
 test('DigitalOcean smoke allows slow first-machine builds to reach readiness', () => {

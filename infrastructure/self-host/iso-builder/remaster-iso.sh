@@ -120,9 +120,12 @@ done
 mkdir -p "$(dirname "${OUTPUT_ISO}")"
 rm -f "${OUTPUT_ISO}"
 
+# -volid must come after -indev so it overrides the loaded Ubuntu label.
+# Keep it short: FAT32 (Rufus ISO mode) shows at most 11 characters.
 xorriso \
   -indev "${INPUT_ISO}" \
   -outdev "${OUTPUT_ISO}" \
+  -volid 'MOS-INSTALLER' \
   "${xorriso_args[@]}" \
   -boot_image any replay \
   -commit \

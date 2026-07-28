@@ -552,7 +552,9 @@ ${cloudBootstrap
   ? `mos_setup_url="$MOS_SETUP_URL?claim=$MOS_OWNER_CLAIM_TOKEN"
 mos_setup_note="This link carries a one-time owner setup key — open it now, create your account, then it stops working. Keep it private."`
   : `mos_setup_url="$MOS_SETUP_URL"
-mos_setup_note="Open it to create your owner account and finish first-run setup."`}
+mos_setup_note="Open it to create your owner account and finish first-run setup."
+mos_lan_ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit } }')"
+[ -n "$mos_lan_ip" ] || mos_lan_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"`}
 
 if [ -t 1 ] && [ -z "\${NO_COLOR:-}" ]; then
   B=$'\\033[1m'; D=$'\\033[2m'; G=$'\\033[32m'; C=$'\\033[36m'; Y=$'\\033[33m'; R=$'\\033[0m'
@@ -580,6 +582,12 @@ printf '%s\\n' "   \${Y}▸\${R}  \${mos_setup_note}"
 printf '\\n'
 printf '%s\\n' "   \${D}Server\${R}   \${MOS_DOMAIN}"
 printf '%s\\n' "   \${D}Home\${R}     \${MOS_HOME_URL}"
+if [ -n "\${mos_lan_ip:-}" ]; then
+  printf '%s\\n' "   \${D}LAN IP\${R}   \${mos_lan_ip}"
+  printf '\\n'
+  printf '%s\\n' "   \${Y}▸\${R}  If the link does not open, add a DNS override in your router or"
+  printf '%s\\n' "      local DNS pointing \${B}*.\${MOS_DOMAIN}\${R} to \${B}\${mos_lan_ip}\${R}, then reload the page."
+fi
 printf '\\n'
 printf '%s\\n' "   \${D}──────────────────────────────────────────────────────────────\${R}"
 printf '\\n\\n'

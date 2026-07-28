@@ -52,8 +52,8 @@
     },
     "vaultwarden": {
       "minimumMosVersion": "0.1.0",
-      "packageDigest": "sha256:04584178b365ed9a49e3ed2562934391c643f89740305ebe0663de6af0715a5e",
-      "packageVersion": "0.2.1",
+      "packageDigest": "sha256:d6e41f2bd762185712862f7f881a804309ce3bdca9ffe17794103af2072fe1fc",
+      "packageVersion": "0.2.2",
       "path": "apps/vaultwarden",
       "privacy": {
         "posture": "privacy-configured",

@@ -35,12 +35,12 @@ Copy-Item test\e2e\.env.example test\e2e\.env
 
 Required values:
 
-- `MOS_E2E_BASE_URL`: the Home origin, for example `http://home.mos.home`.
+- `MOS_E2E_BASE_URL`: the Home origin, for example `http://home.mos.hyperv`.
 - `MOS_E2E_OWNER_EMAIL` and `MOS_E2E_OWNER_PASSWORD`: used to create the owner on a fresh install or sign in on an existing one.
 - App setup passwords for packages that need human-supplied credentials, especially Radicale, Seafile, and Vaultwarden.
 - `MOS_E2E_RESET_BEFORE_RUN`: defaults to `1`. The test calls the lab-only `/suite-manager/api/lab/reset` endpoint so repeated failures can be rerun without reinstalling the VM. Set it to `0` only when intentionally preserving current Suite Manager/Homepage/app state.
 
-Before DNS-01 runs, Windows must resolve both the bootstrap hosts, such as `home.mos.home`, and the post-DNS-01 hosts, such as `home.hyperv.diemernet.uk`, to the Hyper-V guest IP. `smoke:hyperv:reset` writes both sets into the marked hosts block and flushes DNS automatically. If you use another DNS-01 lab domain, set `MOS_HYPERV_EXTRA_HOST_DOMAINS` before reset or add equivalent local DNS/hosts entries yourself.
+Before DNS-01 runs, Windows must resolve both the bootstrap hosts, such as `home.mos.hyperv`, and the post-DNS-01 hosts, such as `home.hyperv.diemernet.uk`, to the Hyper-V guest IP. `smoke:hyperv:reset` writes both sets into the marked hosts block and flushes DNS automatically. If you use another DNS-01 lab domain, set `MOS_HYPERV_EXTRA_HOST_DOMAINS` before reset or add equivalent local DNS/hosts entries yourself.
 
 DNS-01 values for the full Hyper-V regression:
 

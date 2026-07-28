@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Fixed
+
+- USB installer hardening: the installed server no longer adopts the build computer's hostname, the Ubuntu install phase no longer needs network access (first boot still does), the success screen now shows the server's LAN IP with the exact local DNS override to add, and the ISO carries a recognizable `MOS-INSTALLER` volume label.
+- The Vaultwarden package was updated to server 1.37.0, restoring vault sync for Bitwarden clients 2026.7.0 and newer, which show an empty vault against older servers.
+
 ## [0.15.0] - 2026-07-25
 
 ### Added

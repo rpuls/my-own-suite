@@ -14,12 +14,14 @@ const defaultConfigPath = path.join(configDir, 'selfhost-installer.env');
 const defaultConfigTemplatePath = path.join(configDir, 'selfhost-installer.env.template');
 const defaultOutputDir = path.join(repoRoot, '.mos-smoke', 'hyperv-usb', 'seed');
 const defaultSmokeRepoRef = 'staging';
+// Only MOS_-prefixed names: ambient shell variables (HOSTNAME in bash/MSYS,
+// USERNAME on Windows) must never leak the build machine's identity into the seed.
 const configEnvOverrides = {
-  HOSTNAME: 'HOSTNAME',
-  LINUX_PASSWORD: 'LINUX_PASSWORD',
-  REALNAME: 'REALNAME',
-  STACK_DOMAIN: 'STACK_DOMAIN',
-  TIMEZONE: 'TIMEZONE',
+  HOSTNAME: 'MOS_HOSTNAME',
+  LINUX_PASSWORD: 'MOS_LINUX_PASSWORD',
+  REALNAME: 'MOS_REALNAME',
+  STACK_DOMAIN: 'MOS_STACK_DOMAIN',
+  TIMEZONE: 'MOS_TIMEZONE',
   USERNAME: 'MOS_HYPERV_USERNAME',
 };
 const placeholderLinuxPassword = 'change-me-before-build';
@@ -188,7 +190,9 @@ function renderSeed(config, options = {}) {
       keyboard: { layout: 'us' },
       timezone,
       ssh: { 'install-server': true, 'allow-pw': true },
-      packages: ['qemu-guest-agent'],
+      // No extra packages: anything listed here is downloaded from the Ubuntu
+      // archive mid-install, making the offline-capable install phase fail on
+      // machines without working DHCP/DNS. First boot has the network steps.
       storage: { layout: { name: 'direct' } },
       'user-data': firstBoot,
     },

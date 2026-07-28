@@ -117,12 +117,12 @@ cmd /c npm run screenshots:update
 
 `screenshots:update` copies the last run's captures into `site/src/assets/screenshots/` under the same filenames, reports what was updated and what still carries an older capture, and leaves the changes uncommitted for review. The landing Tour picks up known filenames automatically — a Tour entry whose screenshot has not been captured yet simply does not render, so a partial set never breaks the site build. Run the capture lab with a presentable owner email (the defaults like `owner@example.com` are fine): whatever the lab shows on screen ends up in the published images. Set `MOS_E2E_SCREENSHOT_APP` to change which app's detail view becomes `app-detail-install.png` (default `seafile`).
 
-Inputs are optional and come from `infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env` (or matching environment variables) when the file exists:
+Inputs are optional and come from `infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env` (or matching `MOS_`-prefixed environment variables such as `MOS_HOSTNAME` and `MOS_STACK_DOMAIN`; bare names like `HOSTNAME` are deliberately ignored because shells export them ambiently) when the file exists:
 
 - `LINUX_PASSWORD` is used for the Ubuntu console/SSH login. When it is not set, the seed renderer generates a random password and prints it during the build (also in the final ISO summary). Pin it locally if you need a stable lab login across resets.
 - `USERNAME` defaults to `mos`.
 - `HOSTNAME` defaults to `mos`.
-- `STACK_DOMAIN` defaults to `mos.home`.
+- `STACK_DOMAIN` defaults to `mos.home` for real USB installer builds. The Hyper-V lab always renders its seed with `mos.hyperv` instead (override with `MOS_STACK_DOMAIN`), so the Windows hosts entries it writes can never shadow a real `mos.home` install reachable from the same machine.
 
 The Hyper-V seed uses the current bootstrap contract and never embeds a preconfigured Suite Manager owner. Owner setup happens in Suite Manager after first boot.
 
@@ -146,9 +146,9 @@ Readiness and access:
 # END MOS HYPERV USB SMOKE
 ```
 
-- Browser access is through `http://home.<domain>/suite-manager/`, for example `http://home.mos.home/suite-manager/`. The supported control-plane path is `home.<domain>/suite-manager/`.
+- Browser access is through `http://home.<domain>/suite-manager/`, for example `http://home.mos.hyperv/suite-manager/`. The supported control-plane path is `home.<domain>/suite-manager/`.
 - The final summary prints the VM name, switch, OS disk, backup disk, installer ISO, IPv4, MOS Home URL, and Suite Manager URL.
-- `reset` writes the Home host and known package route hosts into the same marked Windows hosts block for `STACK_DOMAIN` plus the configured DNS-01 test domain, and removes stale copies from earlier VM resets. The temporary Apps page still shows a repair command for app hosts, but the normal Stirling smoke path should not need it. For lower-friction repeated testing across arbitrary domains, a local wildcard DNS override such as `*.test.example.com -> <guest-ip>` in the user's router, AdGuard Home, Unbound, Pi-hole, or other local DNS service is still the cleanest option.
+- `reset` writes the Home host and known package route hosts into the same marked Windows hosts block for the lab domain (`mos.hyperv` by default) plus the configured DNS-01 test domain, and removes stale copies from earlier VM resets. The temporary Apps page still shows a repair command for app hosts, but the normal Stirling smoke path should not need it. For lower-friction repeated testing across arbitrary domains, a local wildcard DNS override such as `*.test.example.com -> <guest-ip>` in the user's router, AdGuard Home, Unbound, Pi-hole, or other local DNS service is still the cleanest option.
 
 If the wait looks stuck, open Hyper-V Manager, connect to `mos-usb-smoke`, and inspect the Ubuntu console. Useful console checks after login are:
 

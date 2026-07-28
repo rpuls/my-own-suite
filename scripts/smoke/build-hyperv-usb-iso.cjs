@@ -41,7 +41,12 @@ function main(extraArgs = process.argv.slice(2)) {
   const seedRenderer = path.join(repoRoot, 'scripts', 'installers', 'render-hyperv-usb-seed.cjs');
   const seedResult = spawnSync(process.execPath, [seedRenderer], {
     cwd: repoRoot,
-    env: process.env,
+    env: {
+      ...process.env,
+      // The lab must never share a domain with a real USB install: the hosts
+      // entries it writes on this PC would shadow the real server's DNS.
+      MOS_STACK_DOMAIN: process.env.MOS_STACK_DOMAIN || 'mos.hyperv',
+    },
     stdio: 'inherit',
   });
   if (seedResult.error) fail(`Unable to start the MOS USB seed renderer: ${seedResult.error.message}`);

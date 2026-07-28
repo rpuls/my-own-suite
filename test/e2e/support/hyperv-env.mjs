@@ -64,7 +64,7 @@ function vaultwardenPassword() {
 }
 
 function normalizeBaseURL(value) {
-  const parsed = new URL(value || 'http://home.mos.home');
+  const parsed = new URL(value || 'http://home.mos.hyperv');
   parsed.pathname = parsed.pathname.replace(/\/+$/u, '');
   parsed.search = '';
   parsed.hash = '';
@@ -84,7 +84,7 @@ export function loadHypervEnv() {
 
   return {
     appIds,
-    baseURL: normalizeBaseURL(envString('MOS_E2E_BASE_URL', 'http://home.mos.home')),
+    baseURL: normalizeBaseURL(envString('MOS_E2E_BASE_URL', 'http://home.mos.hyperv')),
     cloudflareApiToken,
     dns01AcmeEmail: envString('MOS_E2E_DNS01_ACME_EMAIL', envString('MOS_E2E_OWNER_EMAIL', 'owner@example.com')),
     dns01BaseDomain,
