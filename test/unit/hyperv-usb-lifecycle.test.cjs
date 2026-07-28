@@ -30,9 +30,10 @@ test('Hyper-V USB smoke exposes a guarded three-command lifecycle', () => {
   assert.match(script, /\$adapter\.MacAddress/u);
   assert.match(script, /# BEGIN MOS HYPERV USB SMOKE/u);
   assert.match(script, /\$DefaultDns01SmokeDomain = 'hyperv\.diemernet\.uk'/u);
-  assert.match(script, /\$InstallerConfigTemplatePath/u);
   assert.match(script, /MOS_HYPERV_EXTRA_HOST_DOMAINS/u);
-  assert.match(script, /\$env:STACK_DOMAIN/u);
+  assert.match(script, /\$env:MOS_STACK_DOMAIN/u);
+  assert.match(script, /return 'mos\.hyperv'/u);
+  assert.doesNotMatch(script, /'mos\.home'/u);
   assert.match(script, /Get-SmokeHostDomains/u);
   assert.match(script, /Get-SmokeHostNames/u);
   assert.match(script, /Get-SmokeHostNamesForDomain/u);
@@ -60,6 +61,7 @@ test('Hyper-V USB smoke exposes a guarded three-command lifecycle', () => {
   assert.match(builder, /render-hyperv-usb-seed\.cjs/u);
   assert.match(builder, /'--seed-dir', seedDir/u);
   assert.match(builder, /'--auto-boot', 'true'/u);
+  assert.match(builder, /MOS_STACK_DOMAIN \|\| 'mos\.hyperv'/u);
 
   const rootBuilder = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'selfhost-build-installer-iso.cjs'), 'utf8');
   const remaster = fs.readFileSync(path.join(__dirname, '..', '..', 'infrastructure', 'self-host', 'iso-builder', 'remaster-iso.sh'), 'utf8');
@@ -67,4 +69,5 @@ test('Hyper-V USB smoke exposes a guarded three-command lifecycle', () => {
   assert.match(rootBuilder, /readArg\('seed-dir'\)/u);
   assert.match(rootBuilder, /MOS_INSTALLER_AUTO_BOOT=\$\{autoBoot \? '1' : '0'\}/u);
   assert.match(remaster, /timeout = "3" if os\.environ\.get\("MOS_INSTALLER_AUTO_BOOT"\) == "1" else "-1"/u);
+  assert.match(remaster, /-volid 'MOS-INSTALLER'/u);
 });

@@ -36,6 +36,10 @@ test('Hyper-V USB seed embeds the MOS bootstrap without the v1 owner handoff', (
   assert.match(renderedFirstBoot, /mkfs\.ext4 -F -L MOS_BACKUP/u);
   assert.match(renderedFirstBoot, /\/media\/mos-backup/u);
   assert.match(renderedFirstBoot, /No empty second disk found for backup storage/u);
+  // The Ubuntu install phase must stay offline-capable: no extra packages may
+  // be fetched from the archive mid-install.
+  assert.equal(document.autoinstall.packages, undefined);
+  assert.doesNotMatch(rendered.userData, /qemu-guest-agent/u);
   assert.doesNotMatch(rendered.userData, /v1-owner@example\.com|v1-owner-password|mos-selfhost-bootstrap/u);
 });
 
@@ -71,4 +75,24 @@ test('Hyper-V USB seed works without a local installer env and without template 
 
 test('Hyper-V USB seed repo ref is explicit for branch smoke installs', () => {
   assert.equal(resolveSmokeRepoRef({ MOS_SMOKE_REPO_REF: 'feat/root-layout-smoke' }), 'feat/root-layout-smoke');
+});
+
+test('ambient shell HOSTNAME cannot leak the build machine name into the seed', () => {
+  const saved = { HOSTNAME: process.env.HOSTNAME, MOS_HOSTNAME: process.env.MOS_HOSTNAME };
+  process.env.HOSTNAME = 'BUILD-PC-NAME';
+  delete process.env.MOS_HOSTNAME;
+  try {
+    const rendered = renderSeed(loadSmokeConfig(), { repoRef: 'staging' });
+    const hostname = YAML.parse(rendered.userData).autoinstall.identity.hostname;
+    assert.notEqual(hostname, 'BUILD-PC-NAME');
+
+    process.env.MOS_HOSTNAME = 'pinned-host';
+    const pinned = renderSeed(loadSmokeConfig(), { repoRef: 'staging' });
+    assert.equal(YAML.parse(pinned.userData).autoinstall.identity.hostname, 'pinned-host');
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });

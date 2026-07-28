@@ -12,8 +12,6 @@ $VmName = 'mos-usb-smoke'
 $DiskPath = Join-Path $LabRoot 'os.vhdx'
 $BackupDiskPath = Join-Path $LabRoot 'backup.vhdx'
 $IsoPath = Join-Path $LabRoot 'my-own-suite-installer.iso'
-$InstallerConfigPath = Join-Path $MOSRoot 'infrastructure\self-host\autoinstall\installer-config\selfhost-installer.env'
-$InstallerConfigTemplatePath = Join-Path $MOSRoot 'infrastructure\self-host\autoinstall\installer-config\selfhost-installer.env.template'
 $HostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
 $HostsStartMarker = '# BEGIN MOS HYPERV USB SMOKE'
 $HostsEndMarker = '# END MOS HYPERV USB SMOKE'
@@ -213,26 +211,14 @@ function Set-LabVmRestartPolicy {
 }
 
 function Get-StackDomain {
-  if ($env:STACK_DOMAIN) {
-    return $env:STACK_DOMAIN.Trim().Trim('"').Trim("'")
+  if ($env:MOS_STACK_DOMAIN) {
+    return $env:MOS_STACK_DOMAIN.Trim().Trim('"').Trim("'")
   }
 
-  $configPath = if (Test-Path -LiteralPath $InstallerConfigPath) {
-    $InstallerConfigPath
-  }
-  elseif (Test-Path -LiteralPath $InstallerConfigTemplatePath) {
-    $InstallerConfigTemplatePath
-  }
-  else {
-    return 'mos.home'
-  }
-
-  $line = Get-Content -LiteralPath $configPath |
-    Where-Object { $_ -match '^\s*STACK_DOMAIN\s*=' } |
-    Select-Object -Last 1
-  if (-not $line) { return 'mos.home' }
-  $value = ($line -split '=', 2)[1].Trim()
-  return $value.Trim('"').Trim("'")
+  # The lab deliberately ignores selfhost-installer.env here: its domain must
+  # never match a real USB install (mos.home), or the hosts entries written by
+  # this script would shadow the real server's DNS on this machine.
+  return 'mos.hyperv'
 }
 
 function Get-GuestIpv4Addresses {
