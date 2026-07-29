@@ -63,11 +63,28 @@ function enterHomeDashboard(): boolean {
   return true;
 }
 
+// Signing in normally hands the owner straight to their Homepage dashboard.
+// That handover waits while the terms are unanswered: an acceptance a redirect
+// can jump over is not an acceptance, and first run is exactly when it matters.
+// Accepting performs the same handover afterwards.
+function termsPending(status: SetupStatusResponse): boolean {
+  return status.status === 'signed-in' && Boolean(status.terms?.version) && !status.terms?.accepted;
+}
+
 export function useSetupSession() {
   const [state, setState] = useState<SetupSessionState>({ kind: 'loading' });
 
   async function refresh(): Promise<void> {
     setState(stateFromStatus(await readStatus()));
+  }
+
+  // Shared tail of owner creation and sign-in: show the terms gate if it is
+  // owed, otherwise hand over to the Homepage dashboard as before.
+  async function completeSignIn(): Promise<void> {
+    const status = await readStatus();
+    if (termsPending(status) || !enterHomeDashboard()) {
+      setState(stateFromStatus(status));
+    }
   }
 
   useEffect(() => {
@@ -96,9 +113,7 @@ export function useSetupSession() {
       return;
     }
 
-    if (!enterHomeDashboard()) {
-      await refresh();
-    }
+    await completeSignIn();
   }
 
   async function login(input: { email: string; password: string; owner: Owner }): Promise<void> {
@@ -118,9 +133,7 @@ export function useSetupSession() {
       return;
     }
 
-    if (!enterHomeDashboard()) {
-      await refresh();
-    }
+    await completeSignIn();
   }
 
   // Accepting is recorded server-side, so it survives a new browser, a new
@@ -135,7 +148,9 @@ export function useSetupSession() {
       const body = await readJson<ApiErrorBody>(response).catch(() => ({}));
       throw new Error(errorMessage(body, 'Unable to record your acceptance.'));
     }
-    await refresh();
+    // The handover sign-in deferred: from /suite-manager/ the owner lands on
+    // their Homepage dashboard, and from anywhere else they stay where they are.
+    if (!enterHomeDashboard()) await refresh();
   }
 
   function clearOwnerError(): void {

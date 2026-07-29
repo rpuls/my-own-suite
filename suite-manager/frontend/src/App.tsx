@@ -1,6 +1,7 @@
 import { AppShell } from './features/app-shell/AppShell';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { OwnerSetupScreen } from './features/setup/OwnerSetupScreen';
+import { TermsGateScreen } from './features/setup/TermsGateScreen';
 import { useSetupSession } from './features/setup/useSetupSession';
 
 export default function App() {
@@ -47,5 +48,11 @@ export default function App() {
     return <LoginScreen error={state.error} owner={state.owner} onLogin={login} />;
   }
 
-  return <AppShell onAcceptTerms={acceptTerms} onLogout={logout} owner={state.owner} terms={state.terms} />;
+  // An empty version means this frontend is talking to a backend that does not
+  // know about terms yet; there is nothing to ask about, so the gate stays away.
+  if (!state.terms.accepted && state.terms.version) {
+    return <TermsGateScreen onAccept={acceptTerms} onLogout={logout} owner={state.owner} terms={state.terms} />;
+  }
+
+  return <AppShell onLogout={logout} owner={state.owner} />;
 }

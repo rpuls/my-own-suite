@@ -7,13 +7,11 @@ import { DashboardScreen } from '../dashboard/DashboardScreen';
 import { SettingsScreen } from '../settings/SettingsScreen';
 import { CustomizeScreen } from '../customize/CustomizeScreen';
 import { UpdatesScreen } from '../updates/UpdatesScreen';
-import type { Owner, TermsState } from '../setup/types';
+import type { Owner } from '../setup/types';
 
 type AppShellProps = {
-  onAcceptTerms: (version: string) => Promise<void>;
   onLogout: () => Promise<void>;
   owner: Owner;
-  terms: TermsState;
 };
 
 class RouteBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -26,7 +24,7 @@ class RouteBoundary extends Component<{ children: ReactNode }, { failed: boolean
   }
 }
 
-export function AppShell({ onAcceptTerms, onLogout, owner, terms }: AppShellProps) {
+export function AppShell({ onLogout, owner }: AppShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const routeForPath = () => window.location.pathname.endsWith('/settings') ? 'settings' : window.location.pathname.endsWith('/updates') ? 'updates' : window.location.pathname.endsWith('/backups') ? 'backups' : window.location.pathname.endsWith('/customize') ? 'customize' : window.location.pathname.endsWith('/apps') ? 'apps' : 'dashboard';
   const [route, setRoute] = useState(routeForPath);
@@ -73,14 +71,14 @@ export function AppShell({ onAcceptTerms, onLogout, owner, terms }: AppShellProp
         </div>
         <button aria-current={route === 'apps' ? 'page' : undefined} onClick={() => navigate('apps', '/suite-manager/apps')} type="button"><Icon name="apps" />Apps</button>
         <button aria-current={route === 'backups' ? 'page' : undefined} onClick={() => navigate('backups', '/suite-manager/backups')} type="button"><Icon name="backup" />Backup</button>
-        <button aria-current={route === 'updates' ? 'page' : undefined} onClick={() => navigate('updates', '/suite-manager/updates')} type="button"><Icon name="settings" />Updates</button>
+        <button aria-current={route === 'updates' ? 'page' : undefined} onClick={() => navigate('updates', '/suite-manager/updates')} type="button"><Icon name="update" />Updates</button>
         <button aria-current={route === 'settings' ? 'page' : undefined} onClick={() => navigate('settings', '/suite-manager/settings')} type="button"><Icon name="settings" />Settings</button>
         <button onClick={() => { closeMenu(); void onLogout(); }} type="button"><Icon name="sign-out" />Sign out</button>
       </nav></Drawer>
 
       <main className="suite-shell-main">
         <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'updates' ? <UpdatesScreen /> : route === 'backups' ? <BackupsScreen /> : route === 'customize' ? <CustomizeScreen /> : route === 'apps' ? <AppsScreen owner={owner} /> : (
-          <DashboardScreen onAcceptTerms={onAcceptTerms} onNavigate={navigate} owner={owner} terms={terms} />
+          <DashboardScreen onNavigate={navigate} owner={owner} />
         )}</RouteBoundary>
       </main>
     </div>

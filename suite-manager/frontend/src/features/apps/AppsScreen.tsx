@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 
-import { AppConnect, Dialog, Icon, Notice, TextInput } from '../../components/ui';
+import { ActionMenu, AppConnect, Dialog, Icon, Notice, TextInput } from '../../components/ui';
 import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
 import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture';
 import type { Owner } from '../setup/types';
@@ -609,7 +609,6 @@ function AppDetail({
   const [showOnHomepage, setShowOnHomepage] = useState(true);
   const [setupOpen, setSetupOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
-  const [actionsOpen, setActionsOpen] = useState(false);
   const [confirmUninstall, setConfirmUninstall] = useState(false);
   const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app, owner.email));
   const [privacyOpen, setPrivacyOpen] = useState(false);
@@ -653,7 +652,6 @@ function AppDetail({
     setShowOnHomepage(hasHomepageContribution(app));
     setSetupOpen(false);
     setGuideOpen(false);
-    setActionsOpen(false);
     setSetupConfig(initialSetupConfig(app, owner.email));
     setPrivacyOpen(false);
     setGalleryOpen(false);
@@ -730,15 +728,9 @@ function AppDetail({
 
   function openGuide() {
     setGuideOpen(true);
-    setActionsOpen(false);
     if (!app.instance?.guideState || app.instance.guideState.status === 'not-started') {
       onGuideStatus(app, 'viewed');
     }
-  }
-
-  function runMenuAction(action: () => void) {
-    setActionsOpen(false);
-    action();
   }
 
   // A running app with a newer package waiting leads with the update rather
@@ -747,7 +739,13 @@ function AppDetail({
   // stays one button away.
   const updateWaiting = Boolean(ready && app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available && !app.instance?.updateRecovery);
   const canRestartRuntime = Boolean(runtimeRouteApplied(app) && !disabled && !uninstalled);
-  const hasMaintenanceActions = Boolean(canRestartRuntime || ready || disabled || (app.instance && !uninstalled) || (ready && hasGuide(app) && guideCompleted));
+  const maintenanceActions = [
+    ...(ready && hasGuide(app) && guideCompleted ? [{ label: 'Setup guide', onSelect: openGuide }] : []),
+    ...(canRestartRuntime ? [{ label: 'Restart', onSelect: () => onLifecycle(app, 'restart') }] : []),
+    ...(ready ? [{ label: 'Stop (keeps data)', onSelect: () => onLifecycle(app, 'stop') }] : []),
+    ...(disabled ? [{ label: 'Start', onSelect: () => onLifecycle(app, 'enable') }] : []),
+    ...(app.instance && !uninstalled ? [{ label: 'Uninstall', onSelect: () => setConfirmUninstall(true) }] : []),
+  ];
 
   return <div className={`suite-app-detail-layer${guideOpen ? ' has-guide' : ''}`}>
     <button aria-label="Close app details" className="suite-app-detail-backdrop" onClick={onClose} tabIndex={-1} type="button" />
@@ -771,16 +769,7 @@ function AppDetail({
             {primaryDestination ? <a className="mos-btn mos-btn-secondary" href={url}>Open {app.name}</a> : null}
           </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : needsPreparation && !setupOpen ? <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setSetupOpen(true)} type="button">Prepare</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={submitInstall} type="button">{installing ? 'Installing...' : 'Install'}</button>}
           {ready && hasGuide(app) && !guideCompleted ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
-          {hasMaintenanceActions ? <div className="suite-app-actions-menu">
-            <button aria-expanded={actionsOpen} aria-haspopup="menu" aria-label="More app actions" className="suite-icon-button" disabled={installing || guideUpdating} onClick={() => setActionsOpen((current) => !current)} title="More app actions" type="button"><Icon name="more" /></button>
-            {actionsOpen ? <div className="suite-app-actions-popover" role="menu">
-              {ready && hasGuide(app) && guideCompleted ? <button onClick={() => runMenuAction(openGuide)} role="menuitem" type="button">Setup guide</button> : null}
-              {canRestartRuntime ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'restart'))} role="menuitem" type="button">Restart</button> : null}
-              {ready ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'stop'))} role="menuitem" type="button">Stop (keeps data)</button> : null}
-              {disabled ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'enable'))} role="menuitem" type="button">Start</button> : null}
-              {app.instance && !uninstalled ? <button onClick={() => runMenuAction(() => setConfirmUninstall(true))} role="menuitem" type="button">Uninstall</button> : null}
-            </div> : null}
-          </div> : null}
+          {maintenanceActions.length ? <ActionMenu ariaLabel="More app actions" disabled={installing || guideUpdating} items={maintenanceActions} /> : null}
           {confirmUninstall ? <Dialog
             footer={<>
               <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => { setConfirmUninstall(false); onLifecycle(app, 'uninstall'); }} type="button">Uninstall and delete data</button>

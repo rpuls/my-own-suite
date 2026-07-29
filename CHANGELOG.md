@@ -8,7 +8,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Added
 
-- Suite Manager's welcome screen now states plainly that this is early beta software provided as is — in the same words as the public site — and asks the owner to accept the terms of use once. The acceptance is recorded on the server against a terms version, so it survives a new browser and is asked again if the terms change. The screen also carries thank-you, Discord, and contribution links.
+- Suite Manager now states plainly that this is early beta software provided as is — in the same words as the public site — and asks the owner to accept the terms of use once before the suite opens, including on first run. The acceptance is recorded on the server against a terms version, so it survives a new browser and is asked again if the terms change. The welcome screen keeps the beta warning and adds thank-you, Discord, and contribution links.
 - Settings now includes an owner password change. It proves the current password first, then signs every other browser out and keeps the one that made the change signed in. This is how an install created over plain HTTP (own hardware and local installs) replaces the password that first travelled the network in the clear.
 
 ### Changed
@@ -19,6 +19,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Fixed
 
+- A newly installed Radicale no longer shows a broken calendar widget on Homepage. Homepage reports a calendar feed with no entries as an error, so an empty new collection looked like a failure; the package now adds a yearly "Your independence day" event dated the install day alongside the default calendar. Existing calendars are untouched.
+- Dialogs and action menus opened from inside Suite Manager's app details now appear centred on screen and correctly frosted, instead of being positioned against the panel behind them.
 - USB installer hardening: the installed server no longer adopts the build computer's hostname, the Ubuntu install phase no longer needs network access (first boot still does), the success screen now shows the server's LAN IP with the exact local DNS override to add, and the ISO carries a recognizable `MOS-INSTALLER` volume label.
 - The Vaultwarden package was updated to server 1.37.0, restoring vault sync for Bitwarden clients 2026.7.0 and newer, which show an empty vault against older servers.
 

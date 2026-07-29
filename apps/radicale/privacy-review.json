@@ -4,8 +4,8 @@
   "reviewedAt": "2026-07-24T00:00:00.000Z",
   "expiresAt": "2027-01-24T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.3.0",
-    "packageDigest": "sha256:03c0f6d291467d19a06abaf376d625c9444aa85868a791a407313e43b86550ec",
+    "packageVersion": "0.3.1",
+    "packageDigest": "sha256:19a12f3c1d786bf1f115569766065733ac8200d53955774f24a008c10f75f5c2",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -43,7 +43,7 @@
     },
     {
       "type": "configured",
-      "claim": "The package entrypoint configures htpasswd authentication with bcrypt against a local /data/users file and creates the bootstrap user and a default calendar collection on the local data volume; no upstream account or service is contacted during provisioning.",
+      "claim": "The package entrypoint configures htpasswd authentication with bcrypt against a local /data/users file and creates the bootstrap user, a default calendar collection, and one locally generated all-day starter event on the local data volume; no upstream account or service is contacted during provisioning, and the starter event contains no identifying data beyond a random UID and the install date.",
       "source": "apps/radicale/entrypoint.sh"
     },
     {

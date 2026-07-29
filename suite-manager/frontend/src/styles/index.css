@@ -416,6 +416,12 @@
   .suite-nav .suite-nav-edit { opacity: 1; }
 }
 
+/* The terms gate carries the beta warning and the terms card, so it needs more
+   room than the sign-in stage it otherwise reuses. */
+.suite-terms-stage {
+  width: min(100%, 680px);
+}
+
 .suite-terms-card,
 .suite-community-card {
   display: grid;
@@ -748,39 +754,18 @@
   justify-content: flex-end;
 }
 
-.suite-app-actions-menu {
-  position: relative;
-}
-
-.suite-app-actions-popover {
-  position: absolute;
-  z-index: 8;
-  right: 0;
-  top: calc(100% + var(--mos-space-2));
-  display: grid;
-  min-width: 13rem;
-  padding: var(--mos-space-2);
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: var(--mos-radius-sm);
-  /* Opaque surface, not frost: an ancestor with its own backdrop-filter
-     becomes the popover's backdrop root, so the blur never reaches the page
-     content underneath and frost renders as unreadable text-on-text. */
-  background: var(--mos-color-surface-elevated);
-  -webkit-backdrop-filter: var(--mos-frost-filter-strong);
-  backdrop-filter: var(--mos-frost-filter-strong);
-  box-shadow: var(--mos-shadow-strong);
-}
-
 /* Layout for the shared ActionMenu portal popover; the frosted surface
    itself comes from the canonical .mos-overlay (see branding/styles/mos.css
    for why overlays must be portaled to <body>). */
 .suite-actions-popover {
+  /* Above the app detail slide-over (70), below dialogs (80): the menu opens
+     from inside the slide-over and its items open dialogs on top of both. */
+  z-index: 75;
   display: grid;
   min-width: 13rem;
   padding: var(--mos-space-2);
 }
 
-.suite-app-actions-popover button,
 .suite-actions-popover button {
   display: flex;
   align-items: center;
@@ -797,18 +782,11 @@
   text-align: left;
 }
 
-.suite-app-actions-popover button:hover,
-.suite-app-actions-popover button:focus-visible,
 .suite-actions-popover button:hover,
 .suite-actions-popover button:focus-visible {
   background: #0f2842;
   color: var(--mos-color-text-strong);
   outline: none;
-}
-
-.suite-app-actions-popover button:disabled {
-  cursor: progress;
-  opacity: 0.58;
 }
 
 .suite-app-health-indicator {
