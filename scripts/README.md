@@ -119,7 +119,7 @@ cmd /c npm run screenshots:update
 
 Inputs are optional and come from `infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env` (or matching `MOS_`-prefixed environment variables such as `MOS_HOSTNAME` and `MOS_STACK_DOMAIN`; bare names like `HOSTNAME` are deliberately ignored because shells export them ambiently) when the file exists:
 
-- `LINUX_PASSWORD` is used for the Ubuntu console/SSH login. When it is not set, the seed renderer generates a random password and prints it during the build (also in the final ISO summary). Pin it locally if you need a stable lab login across resets.
+- `LINUX_PASSWORD` is used for the Ubuntu console/SSH login. When it is not set, the seed renderer generates a random password and prints it during the build (also in the final ISO summary). A generated password is additionally written to `MOS-server-login.txt` beside the built ISO, so closing the build window does not lose it; the file tells the owner to move the password into a password manager and delete it. Pinning `LINUX_PASSWORD` skips that file, because the value already lives in a file you control. Pin it locally if you need a stable lab login across resets.
 - `USERNAME` defaults to `mos`.
 - `HOSTNAME` defaults to `mos`.
 - `STACK_DOMAIN` defaults to `mos.home` for real USB installer builds. The Hyper-V lab always renders its seed with `mos.hyperv` instead (override with `MOS_STACK_DOMAIN`), so the Windows hosts entries it writes can never shadow a real `mos.home` install reachable from the same machine.

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { parseDocument } from 'yaml';
+import { CustomizeYamlNotice } from '../../components/disclaimers';
 import { Notice } from '../../components/ui';
 import { AddHomepageItemDialog } from './AddHomepageItemDialog';
 import { CodeEditor } from './CodeEditor';
@@ -48,7 +49,6 @@ export function CustomizeScreen() {
   const [revision, setRevision] = useState('');
   const [agentAvailable, setAgentAvailable] = useState(true);
   const [busy, setBusy] = useState(true);
-  const [validatedContent, setValidatedContent] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [steps, setSteps] = useState<string[]>([]);
   const [addOpen, setAddOpen] = useState(false);
@@ -57,7 +57,7 @@ export function CustomizeScreen() {
   const groups = useMemo(() => groupsFrom(file === 'services.template.yaml' ? content : savedContent), [content, file, savedContent]);
 
   async function load(selectedFile = file) {
-    setBusy(true); setError(null); setSteps([]); setValidatedContent(null);
+    setBusy(true); setError(null); setSteps([]);
     try {
       const value = await api<FileResult>('/file/read', { file: selectedFile });
       setFile(selectedFile); setContent(value.content); setSavedContent(value.content); setRevision(value.revision);
@@ -70,19 +70,16 @@ export function CustomizeScreen() {
     void load();
   }, []);
 
-  async function validate() {
-    setBusy(true); setError(null); setSteps([]);
-    try { await api('/file/validate', { content, file }); setValidatedContent(content); }
-    catch (caught) { setValidatedContent(null); setError(caught as ApiError); }
-    finally { setBusy(false); }
-  }
-
+  // Validating is not a decision worth asking the owner to make: the agent
+  // validates before it writes anything, so the errors that used to need a
+  // separate Validate click now arrive from the one button that was ever going
+  // to be pressed, and an invalid file never reaches the dashboard either way.
   async function save() {
-    if (!dirty || validatedContent !== content) return;
+    if (!dirty) return;
     setBusy(true); setError(null); setSteps([]);
     try {
       const value = await api<ApplyResult>('/file/apply', { content, expectedRevision: revision, file });
-      setRevision(value.revision); setSavedContent(content); setValidatedContent(null); setSteps(value.steps || ['written']);
+      setRevision(value.revision); setSavedContent(content); setSteps(value.steps || ['written']);
     } catch (caught) { setError(caught as ApiError); }
     finally { setBusy(false); }
   }
@@ -100,13 +97,29 @@ export function CustomizeScreen() {
     <section className="mos-panel suite-card suite-customize-panel">
       <header className="suite-customize-header"><div><h2>{selected.name}</h2><p className="suite-meta">{selected.description}</p></div>{file === 'services.template.yaml' ? <button className="mos-btn mos-btn-primary" disabled={busy || !agentAvailable} onClick={() => setAddOpen(true)} type="button">Add to Homepage</button> : null}</header>
       <div className="suite-customize-layout">
-        <nav className="suite-file-list" aria-label="Homepage config files">{FILES.map((item) => <button aria-current={item.name === file ? 'page' : undefined} disabled={busy} key={item.name} onClick={() => { if (!dirty || window.confirm('Discard unsaved changes?')) void load(item.name); }} type="button"><span>{item.name.replace('.template', '').replace('.yaml', '')}</span><small>YAML</small></button>)}</nav>
+        <div className="suite-customize-sidebar">
+          <nav className="suite-file-list" aria-label="Homepage config files">{FILES.map((item) => <button aria-current={item.name === file ? 'page' : undefined} disabled={busy} key={item.name} onClick={() => { if (!dirty || window.confirm('Discard unsaved changes?')) void load(item.name); }} type="button"><span>{item.name.replace('.template', '').replace('.yaml', '')}</span><small>YAML</small></button>)}</nav>
+          {/* Out of the way of the save path. It explains the whole screen
+              rather than the file in front of you, so it belongs beside the
+              editor in the column's dead space, not stacked between the
+              save button and what the button just said. */}
+          <CustomizeYamlNotice />
+        </div>
         <div className="suite-editor-column">
-          {validatedContent === content && dirty ? <Notice title="Ready to save" variant="success"><p>No validation errors found.</p></Notice> : null}
-          {error ? <Notice title="Could not apply" variant="error"><p>{error.message}</p>{error.details?.map((detail) => <p key={detail}>{detail}</p>)}</Notice> : null}
+          {error ? <Notice title="Could not save" variant="error">
+            <p>{error.message}</p>
+            {error.details?.map((detail) => <p key={detail}>{detail}</p>)}
+            {/* The only way this file changes underneath the editor is something
+                else writing it — installing an app adds its Homepage tile — so
+                the way out of a conflict is offered here, when it happens,
+                rather than as a button that sits on the screen forever. */}
+            {error.code === 'HOMEPAGE_REVISION_CONFLICT' ? <div className="suite-editor-actions">
+              <button className="mos-btn mos-btn-secondary" disabled={busy} onClick={() => void load()} type="button">Discard my changes and reload</button>
+            </div> : null}
+          </Notice> : null}
           {steps.length ? <><Notice title="Homepage updated" variant="success"><p>The saved dashboard configuration is active.</p></Notice><details className="suite-advanced"><summary>Advanced details</summary><pre>{steps.join('\n')}</pre></details></> : null}
-          <div className="suite-editor-actions"><button className="mos-btn mos-btn-secondary" disabled={busy || !dirty} onClick={() => void validate()} type="button">{busy ? 'Checking...' : 'Validate'}</button><button className="mos-btn mos-btn-primary" disabled={busy || !dirty || validatedContent !== content || !agentAvailable} onClick={() => void save()} type="button">{busy ? 'Applying...' : 'Save and apply'}</button><button className="mos-btn mos-btn-secondary" disabled={busy} onClick={() => { if (!dirty || window.confirm('Discard unsaved changes?')) void load(); }} type="button">Reload saved</button></div>
-          {busy && !content ? <p className="suite-meta">Loading Homepage configuration...</p> : <CodeEditor key={file} value={content} onChange={(value) => { setContent(value); setValidatedContent(null); setError(null); setSteps([]); }} />}
+          <div className="suite-editor-actions"><button className="mos-btn mos-btn-primary" disabled={busy || !dirty || !agentAvailable} onClick={() => void save()} type="button">{busy ? 'Saving...' : 'Save and apply'}</button></div>
+          {busy && !content ? <p className="suite-meta">Loading Homepage configuration...</p> : <CodeEditor key={file} value={content} onChange={(value) => { setContent(value); setError(null); setSteps([]); }} />}
         </div>
       </div>
     </section>

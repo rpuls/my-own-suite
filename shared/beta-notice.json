@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical early-software beta wording. Rendered by the public landing page (site/src/components/BetaDisclaimer.astro) and by Suite Manager's welcome screen (suite-manager/frontend/src/components/BetaNotice.tsx). Edit the words here so both say the same thing; neither copy should hardcode its own version of this text.",
+  "_comment": "Canonical early-software beta wording. Rendered by the public landing page (site/src/components/BetaDisclaimer.astro) and by Suite Manager (suite-manager/frontend/src/components/disclaimers/BetaNotice.tsx). Edit the words here so both say the same thing; neither copy should hardcode its own version of this text. It lives in shared/ only because two builds read it; wording used by one app belongs next to that app's component.",
   "title": "Early software",
   "summary": "This is a working prototype, not a finished product. Expect some rough edges.",
   "readMoreLabel": "Read more",
@@ -9,6 +9,7 @@
     "We're also open about how it's built: many modules were written partly or mostly with AI assistance. Human engineers set the architecture, direct the work, and review the critical paths — but not every line has been hand-audited yet.",
     "If the project proves its worth and graduates to a real alpha, every module will go through full verification by human software engineers before we call it that."
   ],
+  "calloutTitle": "Keep backups",
   "callout": "Practical advice for now: keep backups (MOS makes that easy), and don't make this the only copy of anything you'd hate to lose.",
   "dismissLabel": "Got it"
 }

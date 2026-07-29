@@ -41,7 +41,11 @@ No configuration files, no editing — two commands and a flash.
 
    `infrastructure/self-host/output/my-own-suite-selfhost-installer.iso`
 
-   At the end, the build prints a **generated login password for the server machine** — save it somewhere safe. You'll rarely need it: your owner account and everything else about your suite is set up **in the browser after install**, never in config files or a terminal.
+   At the end, the build generates a **login password for the server machine**. It is printed in the terminal and saved next to the ISO as `MOS-server-login.txt`, so it survives closing the window:
+
+   `infrastructure/self-host/output/MOS-server-login.txt`
+
+   Open that file, copy the password into your password manager, then delete the file. You'll rarely need this login: your owner account and everything else about your suite is set up **in the browser after install**, never in config files or a terminal.
 
 3. **Flash the stick.** Write the ISO to your USB stick with Rufus (choose ISO mode if asked) or balenaEtcher.
 

@@ -1,0 +1,20 @@
+{
+  "_comment": "Wording for the Customize screen's raw-YAML disclaimer, kept out of the component so the text can be edited without reading JSX. Rendered by ./CustomizeYamlNotice.tsx. Delete this file and that component when Customize gets a real visual editor.",
+  "title": "Raw YAML, for now",
+  "summary": "Until there is a proper editor, your dashboard is a config file.",
+  "readMoreLabel": "How to use it",
+  "dialogTitle": "Editing your dashboard",
+  "paragraphs": [
+    "Adding things is the easy part: apps you install through MOS appear on your dashboard by themselves, and Add to Homepage covers the rest — an app already running on your network, or an ordinary website link.",
+    "Layout is another story. Grouping, ordering, renaming, moving things around: all of that still means editing this file by hand. Until we build something better, the quickest way through is to let an AI assistant do the fiddly part."
+  ],
+  "steps": [
+    "Copy everything in the editor and paste it into a text file or a note. That is your undo.",
+    "Paste it into any AI assistant and describe the layout you want in plain language — \"move Photos above Files\", \"rename this group to Media\", \"put the media apps in one column\".",
+    "Paste its version back over everything in the editor and press Save and apply. Malformed YAML is refused, so a bad answer costs you a red message, not your dashboard.",
+    "Open your dashboard and look. If something is missing, paste your copy back and save again."
+  ],
+  "calloutTitle": "Rearranging only",
+  "callout": "Don't ask an assistant to add an app for you. It will happily invent one you don't run, at an address that doesn't exist, and still hand you perfectly valid YAML.",
+  "dismissLabel": "Got it"
+}

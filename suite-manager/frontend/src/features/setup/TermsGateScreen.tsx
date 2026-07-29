@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { BetaNotice } from '../../components/BetaNotice';
+import { BetaNotice } from '../../components/disclaimers';
 import { Icon, Notice } from '../../components/ui';
 import { TERMS_URL } from '../../lib/links';
 import type { Owner, TermsState } from './types';

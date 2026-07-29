@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { BetaNotice } from '../../components/BetaNotice';
+import { BetaNotice } from '../../components/disclaimers';
 import { Icon } from '../../components/ui';
 import { CONTRIBUTING_URL, DISCORD_INVITE_URL, GITHUB_REPO_URL } from '../../lib/links';
 import type { Owner } from '../setup/types';
@@ -26,14 +26,19 @@ async function readInstalledCount(): Promise<number> {
 function CommunityCard() {
   return <section className="mos-panel suite-card suite-community-card">
     <h2 className="mos-card-title">Thank you for trying My Own Suite</h2>
+    {/* The reason to ask for feedback here is not politeness: MOS has no
+        telemetry, so an owner who says nothing is genuinely invisible to us.
+        Saying that out loud turns the ask into the natural consequence of a
+        promise we already made, rather than one more product nagging for a
+        review. */}
     <p className="suite-meta">
-      This project exists because people run it, break it, and say so. Being here this early genuinely
-      helps — every rough edge you report makes the next person's install smoother.
+      We collect no data about you or your suite, so your feedback is the only way we find out how
+      this is going.
     </p>
     <p>
-      Got feedback, an idea, or something that went wrong? Bring it to Discord. Want to help build
-      it? The contribution guide is the place to start — code, docs, app packages, and testing are all
-      welcome.
+      Tell us what broke or confused you — every rough edge reported makes the next person's install
+      smoother. Discord is the quickest way to reach us; if you'd rather build than report, start
+      with the contribution guide.
     </p>
     <div className="suite-hero-actions">
       <a className="mos-btn mos-btn-primary" href={DISCORD_INVITE_URL} rel="noreferrer" target="_blank">

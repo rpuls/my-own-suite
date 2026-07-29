@@ -469,22 +469,31 @@
   accent-color: var(--mos-color-accent);
 }
 
-.suite-beta-actions {
+/* Temporary-disclaimer styles. Every rule here belongs to
+   src/components/disclaimers/, and goes when that folder does. */
+.suite-disclaimer-actions {
   display: flex;
   margin-top: var(--mos-space-2);
 }
 
-.suite-beta-actions .mos-btn {
+.suite-disclaimer-actions .mos-btn {
   align-items: center;
   gap: var(--mos-space-2);
 }
 
-.suite-beta-details {
+.suite-disclaimer-details {
   display: grid;
   gap: var(--mos-space-4);
 }
 
-.suite-beta-details p { margin: 0; }
+.suite-disclaimer-details p { margin: 0; }
+
+.suite-disclaimer-steps {
+  margin: 0;
+  padding-inline-start: var(--mos-space-5);
+}
+
+.suite-disclaimer-steps li + li { margin-top: var(--mos-space-3); }
 
 
 .suite-app-simple-header {
@@ -2184,7 +2193,8 @@
 .suite-customize-panel { display: grid; gap: var(--mos-space-5); }
 .suite-customize-header { display: flex; align-items: start; justify-content: space-between; gap: var(--mos-space-4); }
 .suite-customize-header h2 { margin: 0 0 var(--mos-space-2); }
-.suite-customize-layout { display: grid; grid-template-columns: 12rem minmax(0, 1fr); gap: var(--mos-space-5); }
+.suite-customize-layout { display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: var(--mos-space-5); }
+.suite-customize-sidebar { display: grid; align-content: start; min-width: 0; gap: var(--mos-space-4); }
 .suite-file-list { display: grid; align-content: start; gap: var(--mos-space-2); }
 .suite-file-list button { display: flex; justify-content: space-between; gap: var(--mos-space-2); padding: var(--mos-space-3); border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface-muted); color: var(--mos-color-text); cursor: pointer; font: inherit; text-align: left; }
 .suite-file-list button[aria-current='page'] { border-color: var(--mos-color-accent-border); background: var(--mos-color-accent-soft); }

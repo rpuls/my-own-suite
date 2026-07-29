@@ -37,11 +37,17 @@ test('owner onboarding, Homepage customization, Settings validation, and logout 
   await expect(page).toHaveURL(/\/suite-manager\/customize$/u);
   await expect(page.getByRole('heading', { name: 'Customize' })).toBeVisible();
 
+  // Saving is the only button, and it is what validates: a broken file has to
+  // be refused by the same click that would have written it, not by a separate
+  // Validate step the owner could skip.
+  await expect(page.getByText('Raw YAML, for now')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Validate' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Reload saved' })).toHaveCount(0);
   await page.getByLabel('Homepage YAML').fill('- broken: [');
-  await page.getByRole('button', { name: 'Validate' }).click();
+  await page.getByRole('button', { name: 'Save and apply' }).click();
   await expect(page.getByText('Fix the YAML errors before saving.')).toBeVisible();
-  page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', { name: 'Reload saved' }).click();
+  await page.reload();
+  await expect(page.getByLabel('Homepage YAML')).not.toContainText('broken');
 
   await page.getByRole('button', { name: 'Add to Homepage' }).click();
   await page.getByRole('button', { name: /Website/ }).click();
