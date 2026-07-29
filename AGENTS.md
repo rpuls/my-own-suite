@@ -71,6 +71,7 @@ Use these locations:
 - Root `AGENTS.md`: agent workflow and repository rules only.
 - `docs/README.md`: documentation ownership map.
 - `docs/decisions.md`: durable architecture decisions and their consequences.
+- `docs/roadmap.md`: the single forward-looking document — themes, "done when" gates, sequencing, open owner questions, and the decided-against list. No checkboxes, no status, no evidence.
 - `docs/codex-notes.md`: durable Codex/project working context.
 - `.github/ISSUE_TEMPLATE/codex-task.yml`: task template source of truth.
 - `site/`: MOS public/end-user documentation source; the deployed public site. GitHub Actions builds it and deploys to Cloudflare Pages from `main` and `staging` only (`.github/workflows/deploy-site.yml`).
@@ -82,9 +83,10 @@ Use these locations:
 
 Maintenance rules:
 
-- Do not create new long-lived roadmap, TODO, decision, or planning Markdown files unless no current owner fits.
-- Use GitHub Issues for task state and roadmap-like planning; do not maintain long-lived task lists in repo docs.
-- If a task changes long-term direction, capture actionable follow-up in GitHub Issues and update `docs/decisions.md` only when the direction changes architecture, deployment contracts, security boundaries, or ownership model.
+- Do not create new long-lived roadmap, TODO, decision, or planning Markdown files. `docs/roadmap.md` is the only forward-looking document; add a theme or an item line there instead of starting a competing file.
+- Use GitHub Issues for task state; do not maintain task lists, checkboxes, or progress notes in repo docs, including the roadmap. An item belongs in the roadmap as one line pointing at its issue.
+- If a task changes long-term direction, capture actionable follow-up in GitHub Issues, add or move the roadmap line, and update `docs/decisions.md` only when the direction changes architecture, deployment contracts, security boundaries, or ownership model.
+- When a roadmap theme's gate is met, delete the theme and record the resulting contract in `docs/decisions.md`. Do not leave completed themes in place as history.
 - If a task changes architecture, deployment contracts, security boundaries, or ownership model, update `docs/decisions.md`.
 - If a task changes how agents or contributors should work, update `AGENTS.md` or `docs/codex-notes.md`, depending on whether it is a hard rule or contextual note.
 - If a temporary feature plan is useful during a branch, remove it or replace it with a pointer before merging.

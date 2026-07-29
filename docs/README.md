@@ -14,6 +14,8 @@ This folder holds durable project memory: architectural decisions, documentation
 | Host-agent implementation | `system-agents/` |
 | Previous-site rollback/reference source | `site-mos1-reference/` |
 | Durable architecture decisions | `docs/decisions.md` |
+| Forward-looking themes, gates, sequencing, and decided-against list | `docs/roadmap.md` |
+| Task state and progress on any roadmap item | GitHub Issues |
 | Codex/project workflow notes | `docs/codex-notes.md` |
 | Temporary branch development notes explicitly requested for an active epic | `docs/<topic>-plan.md`, removed or converted to GitHub Issues before merge unless the owner explicitly designates the file as a kept durable record (so marked in its status line) |
 | GitHub task shape | `.github/ISSUE_TEMPLATE/codex-task.yml` |
@@ -36,7 +38,8 @@ Do not move these into `docs/` unless the project deliberately changes its tooli
 
 ## Anti-Drift Rules
 
-- Do not create long-lived roadmap, TODO, or planning documents in repo docs; use GitHub Issues for task state and roadmap-like planning.
+- `docs/roadmap.md` is the only forward-looking document. Do not create additional roadmap, TODO, backlog, or planning documents in repo docs.
+- Keep the split strict: the roadmap holds themes, gates, and sequencing; GitHub Issues hold task state. The roadmap must never contain checkboxes, status notes, or implementation evidence — that is what turned its four predecessors into stale checklists.
 - Do not create a new architecture note when an update to `docs/decisions.md` would do.
 - Do not duplicate task templates in Markdown; update `.github/ISSUE_TEMPLATE/codex-task.yml`.
 - Keep runbooks close to the thing they operate unless they become broad project policy.
