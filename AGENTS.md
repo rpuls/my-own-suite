@@ -67,6 +67,7 @@ Use these locations:
 - Root `README.md`: repository landing page and documentation map.
 - Root `CHANGELOG.md`: updater-facing software release notes only, excluding documentation, public-site, landing-page, repository-maintenance, and contributor-workflow-only changes.
 - Root `RELEASING.md`: official release workflow only.
+- Root `CONTRIBUTING.md`: contributor onboarding for humans (how to report, what to work on, how to open a pull request). Points at `AGENTS.md` and `RELEASING.md` rather than restating their rules.
 - Root `AGENTS.md`: agent workflow and repository rules only.
 - `docs/README.md`: documentation ownership map.
 - `docs/decisions.md`: durable architecture decisions and their consequences.

@@ -6,6 +6,17 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Added
+
+- Suite Manager's welcome screen now states plainly that this is early beta software provided as is — in the same words as the public site — and asks the owner to accept the terms of use once. The acceptance is recorded on the server against a terms version, so it survives a new browser and is asked again if the terms change. The screen also carries thank-you, Discord, and contribution links.
+- Settings now includes an owner password change. It proves the current password first, then signs every other browser out and keeps the one that made the change signed in. This is how an install created over plain HTTP (own hardware and local installs) replaces the password that first travelled the network in the clear.
+
+### Changed
+
+- Suite Manager's menu combines Dashboard and Customize into one row: the entry opens the dashboard and an edit button beside it opens the editor for that same dashboard.
+- The welcome screen no longer pushes "install your first app" at owners who already installed one, and its next steps change to match a running suite.
+- An installed app with an update waiting now leads with **Review update** in its detail view; opening the app stays available beside it.
+
 ### Fixed
 
 - USB installer hardening: the installed server no longer adopts the build computer's hostname, the Ubuntu install phase no longer needs network access (first boot still does), the success screen now shows the server's LAN IP with the exact local DNS override to add, and the ISO carries a recognizable `MOS-INSTALLER` volume label.

@@ -77,6 +77,60 @@ function AppReconciliationNotice({ reconciliation }: { reconciliation?: AppRecon
   </Notice>;
 }
 
+const MIN_PASSWORD_LENGTH = 12;
+
+// Rotating the owner password matters most on the installs where it was created
+// over plain HTTP — a local or own-hardware suite that had no certificate yet.
+// The first password travelled the LAN in the clear; this is how it stops being
+// the password that guards everything.
+function OwnerAccountPanel() {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [changed, setChanged] = useState(false);
+
+  const tooShort = newPassword.length > 0 && newPassword.length < MIN_PASSWORD_LENGTH;
+  const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
+  const canSubmit = Boolean(currentPassword && newPassword.length >= MIN_PASSWORD_LENGTH && newPassword === confirmPassword && !saving);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setError('');
+    setChanged(false);
+    if (!canSubmit) return;
+    setSaving(true);
+    try {
+      await jsonResponse(await fetch('/suite-manager/api/settings/owner/password', {
+        body: JSON.stringify({ currentPassword, newPassword }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Your password could not be changed.');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setChanged(true);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Your password could not be changed.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <div className="mos-panel suite-card suite-settings-panel">
+    <div><h2 className="mos-card-title">Owner password</h2><p className="suite-meta">Change the password for the account that controls Suite Manager and every app you install.</p></div>
+    <form className="suite-settings-form" onSubmit={(event) => void submit(event)}>
+      <TextInput autoComplete="current-password" label="Current password" onChange={(event) => { setCurrentPassword(event.target.value); setError(''); setChanged(false); }} type="password" value={currentPassword} />
+      <TextInput autoComplete="new-password" helperText={tooShort ? `Use at least ${MIN_PASSWORD_LENGTH} characters.` : `At least ${MIN_PASSWORD_LENGTH} characters.`} label="New password" minLength={MIN_PASSWORD_LENGTH} onChange={(event) => { setNewPassword(event.target.value); setError(''); setChanged(false); }} type="password" value={newPassword} />
+      <TextInput autoComplete="new-password" helperText={mismatch ? "Those passwords don't match." : 'Retype it to catch typos.'} label="Confirm new password" minLength={MIN_PASSWORD_LENGTH} onChange={(event) => { setConfirmPassword(event.target.value); setError(''); setChanged(false); }} type="password" value={confirmPassword} />
+      {error ? <Notice title="Your password was not changed" variant="error"><p>{error}</p></Notice> : null}
+      {changed ? <Notice title="Password changed" variant="success"><p>Your new password is active. Every other signed-in browser was signed out; this one stays signed in.</p></Notice> : null}
+      <button className="mos-btn mos-btn-primary" disabled={!canSubmit} type="submit">{saving ? 'Changing password...' : 'Change password'}</button>
+    </form>
+  </div>;
+}
+
 const securityEventLabels: Record<string, { description: string; label: string }> = {
   'app-catalog-refresh-failed': { description: 'MOS could not refresh the verified app catalog.', label: 'Catalog refresh failures' },
   'app-catalog-signature-invalid': { description: 'Catalog data was refused because its publisher signature was missing or invalid.', label: 'Invalid catalog signatures' },
@@ -201,7 +255,7 @@ export function SettingsScreen() {
   );
 
   return <section className="mos-shell mos-page">
-    <div className="suite-hero"><h1>Settings</h1><p className="suite-lead mos-body-lg">Manage how this MOS Home is reached from your browser.</p></div>
+    <div className="suite-hero"><h1>Settings</h1><p className="suite-lead mos-body-lg">Manage how this MOS Home is reached from your browser, and the owner account that controls it.</p></div>
     {loadError ? <Notice title="Settings unavailable" variant="error"><p>{loadError}</p></Notice> : null}
     {status ? !status.privateHttpsAvailable ? <div className="mos-panel suite-card suite-settings-panel">
       <div><h2 className="mos-card-title">Custom domains are handled by your provider</h2><p className="suite-meta">This install looks like it is hosted on an external provider. MOS does not manage public DNS, provider routing, or public TLS from here.</p></div>
@@ -222,6 +276,7 @@ export function SettingsScreen() {
       {!result && status.lastApply.status === 'applied' && activeHomeHost ? <Notice title="HTTPS is configured" variant="success"><p>Active Home URL: <a href={status.activeHomeUrl}>{status.activeHomeUrl}</a>.</p><LocalDnsInstructions homeHost={activeHomeHost} serverAddress={dnsAddress} /></Notice> : null}
       <AdvancedDetails status={status} />
     </div> : <p className="suite-meta">Loading HTTPS settings...</p>}
+    <OwnerAccountPanel />
     <SecurityActivity error={securityError} summary={securitySummary} />
   </section>;
 }

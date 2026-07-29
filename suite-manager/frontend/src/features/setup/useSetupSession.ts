@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 
-import type { Owner, SetupSessionState, SetupStatusResponse } from './types';
+import type { Owner, SetupSessionState, SetupStatusResponse, TermsState } from './types';
+
+const UNKNOWN_TERMS: TermsState = { accepted: false, acceptedAt: null, version: '' };
 
 type ApiErrorBody = {
   error?: string;
@@ -42,7 +44,7 @@ function stateFromStatus(status: SetupStatusResponse): SetupSessionState {
   }
 
   if (status.status === 'signed-in') {
-    return { kind: 'signed-in', owner: status.owner };
+    return { kind: 'signed-in', owner: status.owner, terms: status.terms || UNKNOWN_TERMS };
   }
 
   return { kind: 'signed-out', error: null, owner: status.owner };
@@ -95,7 +97,7 @@ export function useSetupSession() {
     }
 
     if (!enterHomeDashboard()) {
-      setState({ kind: 'signed-in', owner: body.owner });
+      await refresh();
     }
   }
 
@@ -117,8 +119,23 @@ export function useSetupSession() {
     }
 
     if (!enterHomeDashboard()) {
-      setState({ kind: 'signed-in', owner: body.owner });
+      await refresh();
     }
+  }
+
+  // Accepting is recorded server-side, so it survives a new browser, a new
+  // device, and a cleared cache — the acceptance belongs to the install.
+  async function acceptTerms(version: string): Promise<void> {
+    const response = await fetch('/suite-manager/api/setup/terms/accept', {
+      body: JSON.stringify({ version }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+    if (!response.ok) {
+      const body = await readJson<ApiErrorBody>(response).catch(() => ({}));
+      throw new Error(errorMessage(body, 'Unable to record your acceptance.'));
+    }
+    await refresh();
   }
 
   function clearOwnerError(): void {
@@ -138,6 +155,7 @@ export function useSetupSession() {
   }
 
   return {
+    acceptTerms,
     clearOwnerError,
     createOwner,
     login,

@@ -19,6 +19,7 @@ This folder holds durable project memory: architectural decisions, documentation
 | GitHub task shape | `.github/ISSUE_TEMPLATE/codex-task.yml` |
 | Release workflow | `RELEASING.md` |
 | Release notes | `CHANGELOG.md` |
+| Contributor onboarding | `CONTRIBUTING.md` |
 | Agent instructions | `AGENTS.md` |
 
 ## Why Some Docs Stay At The Repo Root
@@ -28,6 +29,7 @@ Some files intentionally stay at the repository root because that is the industr
 - `README.md`: repository landing page.
 - `CHANGELOG.md`: release notes.
 - `RELEASING.md`: release process.
+- `CONTRIBUTING.md`: contributor onboarding, discovered by GitHub's own contribution prompts.
 - `AGENTS.md`: agent instructions loaded by coding assistants.
 
 Do not move these into `docs/` unless the project deliberately changes its tooling and contributor conventions.

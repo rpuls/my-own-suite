@@ -7,6 +7,10 @@
 // screen on first load for a clean landing, then slides up from the bottom
 // once the visitor starts scrolling. Dismissal persists in localStorage so
 // returning visitors are not nagged.
+//
+// The wording comes from shared/beta-notice.json so this page and Suite
+// Manager's welcome screen warn people in exactly the same words.
+import betaNotice from '../../../shared/beta-notice.json'
 import { MOS_BETA_LABEL } from '../lib/version'
 ---
 
@@ -14,14 +18,14 @@ import { MOS_BETA_LABEL } from '../lib/version'
   <div class="beta-notice-body">
     <div class="beta-notice-head">
       <span class="mos-badge mos-pill-accent">{MOS_BETA_LABEL}</span>
-      <span class="beta-notice-title">Early software</span>
+      <span class="beta-notice-title">{betaNotice.title}</span>
     </div>
     <p class="beta-notice-text">
-      This is a working prototype, not a finished product. Expect some rough edges.
+      {betaNotice.summary}
     </p>
     <div>
       <button type="button" class="mos-btn mos-btn-ghost beta-notice-more" data-beta-open>
-        Read more
+        {betaNotice.readMoreLabel}
         <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-arrow-right" /></svg>
       </button>
     </div>
@@ -43,31 +47,16 @@ import { MOS_BETA_LABEL } from '../lib/version'
   <button type="button" class="beta-dialog-close" data-beta-close aria-label="Close">
     <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x" /></svg>
   </button>
-  <h2 id="beta-dialog-title" class="beta-dialog-title">About this beta</h2>
+  <h2 id="beta-dialog-title" class="beta-dialog-title">{betaNotice.dialogTitle}</h2>
   <div class="beta-dialog-content">
-    <p>
-      My Own Suite is early software. It works — we run it ourselves — but it hasn't yet been
-      hardened by years of production use, and some features have had limited real-world testing.
-    </p>
-    <p>
-      We're also open about how it's built: many modules were written partly or mostly with AI
-      assistance. Human engineers set the architecture, direct the work, and review the critical
-      paths — but not every line has been hand-audited yet.
-    </p>
-    <p>
-      If the project proves its worth and graduates to a real alpha, every module will go through
-      full verification by human software engineers before we call it that.
-    </p>
+    {betaNotice.paragraphs.map((paragraph) => <p>{paragraph}</p>)}
     <div class="beta-dialog-callout">
       <span class="beta-dialog-callout-ico"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-shield" /></svg></span>
-      <span>
-        Practical advice for now: keep backups (MOS makes that easy), and don't make this the only
-        copy of anything you'd hate to lose.
-      </span>
+      <span>{betaNotice.callout}</span>
     </div>
   </div>
   <div class="beta-dialog-footer">
-    <button type="button" class="mos-btn mos-btn-primary" data-beta-close>Got it</button>
+    <button type="button" class="mos-btn mos-btn-primary" data-beta-close>{betaNotice.dismissLabel}</button>
   </div>
 </div>
 

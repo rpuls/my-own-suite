@@ -91,6 +91,7 @@ Browser and infrastructure smoke commands are intentionally human-run because th
 | Need | Go here |
 | --- | --- |
 | Documentation ownership | [docs/README.md](./docs/README.md) |
+| How to contribute | [CONTRIBUTING.md](./CONTRIBUTING.md) |
 | Architecture decisions | [docs/decisions.md](./docs/decisions.md) |
 | Release process | [RELEASING.md](./RELEASING.md) |
 | Release notes | [CHANGELOG.md](./CHANGELOG.md) |

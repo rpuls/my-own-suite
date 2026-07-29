@@ -1,0 +1,7 @@
+{
+  "_comment": "Canonical MOS community/contribution links. Imported by site/src/lib/links.ts and by Suite Manager (suite-manager/frontend/src/lib/links.ts) so the public site and the installed platform never point people at different places.",
+  "github": "https://github.com/rpuls/my-own-suite",
+  "discord": "https://discord.gg/YMpF6faBCv",
+  "contributing": "https://github.com/rpuls/my-own-suite/blob/main/CONTRIBUTING.md",
+  "issues": "https://github.com/rpuls/my-own-suite/issues"
+}

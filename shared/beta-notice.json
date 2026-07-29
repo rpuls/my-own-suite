@@ -1,0 +1,14 @@
+{
+  "_comment": "Canonical early-software beta wording. Rendered by the public landing page (site/src/components/BetaDisclaimer.astro) and by Suite Manager's welcome screen (suite-manager/frontend/src/components/BetaNotice.tsx). Edit the words here so both say the same thing; neither copy should hardcode its own version of this text.",
+  "title": "Early software",
+  "summary": "This is a working prototype, not a finished product. Expect some rough edges.",
+  "readMoreLabel": "Read more",
+  "dialogTitle": "About this beta",
+  "paragraphs": [
+    "My Own Suite is early software. It works — we run it ourselves — but it hasn't yet been hardened by years of production use, and some features have had limited real-world testing.",
+    "We're also open about how it's built: many modules were written partly or mostly with AI assistance. Human engineers set the architecture, direct the work, and review the critical paths — but not every line has been hand-audited yet.",
+    "If the project proves its worth and graduates to a real alpha, every module will go through full verification by human software engineers before we call it that."
+  ],
+  "callout": "Practical advice for now: keep backups (MOS makes that easy), and don't make this the only copy of anything you'd hate to lose.",
+  "dismissLabel": "Got it"
+}

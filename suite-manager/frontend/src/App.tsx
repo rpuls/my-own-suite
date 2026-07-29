@@ -4,7 +4,7 @@ import { OwnerSetupScreen } from './features/setup/OwnerSetupScreen';
 import { useSetupSession } from './features/setup/useSetupSession';
 
 export default function App() {
-  const { clearOwnerError, createOwner, login, logout, state } = useSetupSession();
+  const { acceptTerms, clearOwnerError, createOwner, login, logout, state } = useSetupSession();
 
   if (state.kind === 'loading') {
     return (
@@ -47,5 +47,5 @@ export default function App() {
     return <LoginScreen error={state.error} owner={state.owner} onLogin={login} />;
   }
 
-  return <AppShell onLogout={logout} owner={state.owner} />;
+  return <AppShell onAcceptTerms={acceptTerms} onLogout={logout} owner={state.owner} terms={state.terms} />;
 }
