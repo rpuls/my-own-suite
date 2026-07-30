@@ -484,3 +484,133 @@ Consequences:
 - No protection is given up. Content substitution is caught by `packageDigest`, which on the update path is verified twice — once against the signed catalog entry when the candidate is downloaded (`CANDIDATE_DIGEST_MISMATCH`), and again in the binding itself. A review still cannot describe a package other than the one it ships with.
 - `suite-manager/backend/test/app-package-service.test.cjs` covers a reviewed official candidate updating and keeping its posture, with a candidate source revision that differs from the review's declared one — the only shape the catalog can produce.
 - Authoring a review no longer needs to guess a future commit. Record the commit the assessment was made against and leave it; it is read as provenance.
+
+## 2026-07-30: The Backup And Restore Guarantee Is Verified, With Three Recorded Deviations
+
+Decision: the recovery contract proven by the July 2026 drills is the durable one, and the three
+architectural deviations from the original plan are accepted rather than open work. Recorded here
+because `docs/backup-restore-reliability-plan.md` was retired into `docs/roadmap.md` and
+`docs/decisions.md` on 2026-07-30, and the evidence behind a `verified` guarantee must outlive the
+document that gathered it.
+
+The contract:
+
+> After a successful full restore, MOS authoritative persistent state and installed-package state
+> match the validated backup. No MOS-owned persistent resource created after that backup remains
+> active or can be silently reused. Runtime projections are freshly reconstructed and verified.
+
+Invariants that must not regress:
+
+1. MOS enumerates all persistent state it owns without an app allowlist.
+2. Full restore reconciles presence **and absence**. The July 19, 2026 drill that started this work
+   was a false restore: the control plane rolled back to a Stirling-only backup while Seafile's
+   post-backup volumes survived, so reinstalling Seafile generated new credentials against old MySQL
+   data and authentication failed.
+3. Non-MOS resources are never selected by guesswork or broad name prefixes; ambiguity is reported
+   (`ambiguousVolumes`), never claimed.
+4. Bundles are portable to a clean compatible MOS installation.
+5. Stateful workloads are stopped or quiesced at the consistency boundary.
+6. Bundle integrity, compatibility, paths, and required space are validated **before any mutation**.
+7. An interrupted restore can never be reported as successful.
+8. A recoverable previous state is preserved until the new state is verified.
+9. A newly packaged app only declares persistent resources and a reproducible package identity — it
+   never implements backup orchestration.
+
+Accepted deviations from the original plan, all deliberate:
+
+- **Restore is validated-then-in-place after a complete rescue copy**, not a swap onto an inactive
+  target. Generation-switched storage was rejected on 2026-07-19 (see the decision below): Docker
+  named volumes cannot be re-pointed without bind-mount migration or touching Docker internals, and a
+  control-plane-only generation tree cannot make whole-state activation atomic.
+- **Restore reuses the installed MOS software** with the bundle's validated package snapshots rather
+  than recreating the recorded MOS version. A recorded-vs-current version mismatch is surfaced as a
+  validation warning on both the read-only check and the restore job.
+- **Activation is in-place**, so verification gates the success *report* rather than the activation.
+  The safe-failure half holds: failure leaves a journal, a rescue generation, and a blocked agent
+  requiring typed acknowledgment. Automatic rollback is roadmap item **D3**.
+
+Drill evidence behind the `verified` guarantee (owner-run, Hyper-V, July 20-21 2026):
+
+- Three restore points (Stirling-only; Stirling + Seafile + Immich with data; + Radicale) restored in
+  both directions with apps, users, files, and credentials intact, and absence reconciled each time.
+- Replacement-machine recovery onto a fresh VM using only the downloaded bundle plus the owner
+  password, uploaded through the Backups screen: 3 apps / 11 volumes verified matched.
+- Database-backed multi-service (Seafile/MySQL, Immich/Postgres) and a ~6 GiB Seafile workload.
+- Refusals all correct: stream-level and checksum-level corruption, out-of-window schema version,
+  insufficient destination space, disconnected destination.
+- Power-loss interruption at major boundaries, including a sysrq hard reset during app reconciliation
+  mid-restore: the journal survived, new jobs were blocked, the dead worker's job reconciled to
+  failed, typed ACKNOWLEDGE unblocked, and re-restoring the same bundle converged to a verified state.
+
+Two bugs the drills found are the reason these invariants are written down:
+
+- **A backup to a detached drive succeeded.** The mountpoint directory outlives the mount, so 13 GiB
+  landed on the system disk and the job reported success while the bundle was invisible in the list.
+  Fixed at both ends — jobs refuse a destination that is not a live mount at start
+  (`assertMountedDestination`), and the engine refuses to write the COMPLETE marker if the destination
+  is no longer mounted at completion. **New destination types must preserve both checks.**
+- **A job whose detached worker died pre-journal reported running forever** and blocked new jobs.
+  Fixed by reconciling the current job against the live worker process (`reconcileCurrentJob`).
+
+## 2026-07-30: Beta Cutover Audit Invariants
+
+Decision: the regression checks established by the July 2026 beta-cutover audit are durable
+contracts, not release-specific checklist rows. Recorded here because
+`docs/beta-main-cutover-checklist.md` was retired on 2026-07-30 once every blocker and high-priority
+item in it had shipped (v0.13.0 through v0.15.0).
+
+Must not regress:
+
+- **Platform updates never claim to have updated installed apps.** Installed apps run from validated
+  package snapshots and are deliberately outside a platform update's scope; app rebuilds from changed
+  package files flow only through the per-app update transaction, never a silent core-update rebuild.
+- **No UI or documentation surface presents an update track as installable before it is.** The
+  service-level refusal stays ahead of the agent's own rejection.
+- **Owner credentials and session cookies are never sent over public HTTP.** A new cloud install
+  cannot be claimed by an unauthorised visitor; the smoke harness may read the claim token over SSH
+  only to print the one-time URL, and must never persist it in smoke state or log files.
+- **The stable and development installer Workers stay separate**, both configured in the repository,
+  and the DigitalOcean and Hyper-V harnesses consume the public development endpoint rather than
+  maintaining an alternate installation path.
+- **Installer input and generated seed never contain Suite Manager owner credentials.** Only the
+  machine login and legitimate host settings are installer inputs.
+- **Bundles gain no payload type that escapes per-archive hashing**; restore preflight keeps running
+  every integrity and compatibility check before the first destructive step; restore success stays
+  gated on inventory verification and is never inferred from job completion.
+- **The site keeps building from a clean install in required CI**, and deployment happens only from
+  `main` and `staging` through the deploy workflow.
+- **Platform behaviour, upstream-package assessments, external-package claims, and public-site
+  analytics are described separately.** A new or updated app stays unrated until an assessment bound
+  to its exact package identity passes the repository checks.
+- **Every supported installation path names a destination the server can actually mount**, and new
+  destination types are not advertised before backup *and* restore support exists.
+- **Login throttling stays bounded** — it must not enable trivial permanent denial of service — and
+  security events stay secret-free, with forwarded addresses trusted only from the loopback Caddy
+  boundary.
+- **Any new create, export, or download surface warns before a bundle leaves MOS-managed storage** and
+  never implies an unencrypted browser or cloud copy is safe.
+- **Active documentation describes current paths.** Historical names appear only in archive,
+  migration, rollback, or compatibility context, and no numbered MOS generation label is reintroduced;
+  upstream API and dependency version strings are not generation labels and must not be rewritten.
+- **Follow-up fixes in the same release area update an existing changelog outcome bullet** unless they
+  add a distinct user-visible, operational, security, or compatibility result.
+
+Properties verified as already strong, which the audit flagged as regression-sensitive: app packages
+stay manifest-driven with digest-pinned base images and root-level Dockerfile paths; Stop stays
+non-destructive and Uninstall stays explicitly destructive with a confirmation that spells out what is
+deleted; Suite Manager stays unprivileged and delegates bounded host work to narrow Unix-socket
+agents; Cloudflare tokens stay in root-only storage and are never returned by the API or logged; owner
+passwords stay scrypt-hashed and only session-token hashes persist; Homepage stays loopback-only
+behind the Suite Manager session boundary; app secrets stay redacted from public projections; and
+MOS-owned Homepage links are reconciled without rewriting arbitrary user-authored links.
+
+**Claim discipline.** Approved framing, at the confidence level the product can support:
+
+> My Own Suite is an open-source, self-hosted app launcher for running private apps on hardware you
+> control. MOS is currently beta: installation and recovery still require some technical comfort, but
+> everyday app management happens in one browser interface.
+
+Avoid until the corresponding capability exists: "one-click updates" without precise
+runtime-reconciliation scope; "everything included" backups without recovery prerequisites; "only you
+hold the keys" for rented cloud servers; any claim that MOS universally removes upstream app
+analytics; and "safe to use" without the intended beta risk profile.

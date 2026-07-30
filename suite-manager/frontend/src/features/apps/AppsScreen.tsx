@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 
-import { AppConnect, Dialog, Icon, Notice, TextInput } from '../../components/ui';
+import { ActionMenu, AppConnect, Dialog, Icon, Notice, TextInput } from '../../components/ui';
 import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
 import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture';
 import type { Owner } from '../setup/types';
@@ -331,48 +331,6 @@ function descriptionFor(app: AppPackageSummary) {
   return app.catalog.description || app.homepage?.description || app.summary;
 }
 
-function powershellSingleQuote(value: string) {
-  return `'${value.replace(/'/gu, "''")}'`;
-}
-
-function hypervHostsRepairCommand(packages: AppPackageSummary[]) {
-  const hostBase = baseHost();
-  const names = new Set([`home.${hostBase}`]);
-  for (const app of packages) {
-    for (const route of app.routes) {
-      if (route.host) names.add(`${route.host}.${hostBase}`);
-    }
-  }
-  const hostsLiteral = `@(${[...names].sort().map(powershellSingleQuote).join(', ')})`;
-  const homeHost = powershellSingleQuote(`home.${hostBase}`);
-
-  return `$ErrorActionPreference='Stop'
-$hostsPath="$env:SystemRoot\\System32\\drivers\\etc\\hosts"
-$start='# BEGIN MOS HYPERV USB SMOKE'
-$end='# END MOS HYPERV USB SMOKE'
-$names=${hostsLiteral}
-$home=${homeHost}
-$ip=(Resolve-DnsName $home -Type A | Select-Object -First 1 -ExpandProperty IPAddress)
-$content=Get-Content -Path $hostsPath
-$next=New-Object System.Collections.Generic.List[string]
-$inside=$false
-foreach ($line in $content) {
-  if ($line -eq $start) { $inside=$true; continue }
-  if ($line -eq $end) { $inside=$false; continue }
-  if ($inside) { continue }
-  $matches=$false
-  foreach ($name in $names) {
-    if ($line -match "^\\s*\\S+\\s+$([regex]::Escape($name))(\\s|$)") { $matches=$true; break }
-  }
-  if (-not $matches) { $next.Add($line) }
-}
-$next.Add($start)
-foreach ($name in $names) { $next.Add("$ip $name") }
-$next.Add($end)
-Set-Content -Path $hostsPath -Value $next -Encoding ASCII
-ipconfig /flushdns`;
-}
-
 function defaultInstallSteps(showOnHomepage = true): InstallStep[] {
   return [
     { detail: 'Saving the app choice and generating any safe defaults.', id: 'prepare', label: 'Preparing app', status: 'pending' },
@@ -609,7 +567,6 @@ function AppDetail({
   const [showOnHomepage, setShowOnHomepage] = useState(true);
   const [setupOpen, setSetupOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
-  const [actionsOpen, setActionsOpen] = useState(false);
   const [confirmUninstall, setConfirmUninstall] = useState(false);
   const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app, owner.email));
   const [privacyOpen, setPrivacyOpen] = useState(false);
@@ -653,7 +610,6 @@ function AppDetail({
     setShowOnHomepage(hasHomepageContribution(app));
     setSetupOpen(false);
     setGuideOpen(false);
-    setActionsOpen(false);
     setSetupConfig(initialSetupConfig(app, owner.email));
     setPrivacyOpen(false);
     setGalleryOpen(false);
@@ -730,19 +686,24 @@ function AppDetail({
 
   function openGuide() {
     setGuideOpen(true);
-    setActionsOpen(false);
     if (!app.instance?.guideState || app.instance.guideState.status === 'not-started') {
       onGuideStatus(app, 'viewed');
     }
   }
 
-  function runMenuAction(action: () => void) {
-    setActionsOpen(false);
-    action();
-  }
-
+  // A running app with a newer package waiting leads with the update rather
+  // than with its front door: the owner came here to be told what changed, and
+  // an update they never notice is an update they never apply. Opening the app
+  // stays one button away.
+  const updateWaiting = Boolean(ready && app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available && !app.instance?.updateRecovery);
   const canRestartRuntime = Boolean(runtimeRouteApplied(app) && !disabled && !uninstalled);
-  const hasMaintenanceActions = Boolean(canRestartRuntime || ready || disabled || (app.instance && !uninstalled) || (ready && hasGuide(app) && guideCompleted));
+  const maintenanceActions = [
+    ...(ready && hasGuide(app) && guideCompleted ? [{ label: 'Setup guide', onSelect: openGuide }] : []),
+    ...(canRestartRuntime ? [{ label: 'Restart', onSelect: () => onLifecycle(app, 'restart') }] : []),
+    ...(ready ? [{ label: 'Stop (keeps data)', onSelect: () => onLifecycle(app, 'stop') }] : []),
+    ...(disabled ? [{ label: 'Start', onSelect: () => onLifecycle(app, 'enable') }] : []),
+    ...(app.instance && !uninstalled ? [{ label: 'Uninstall', onSelect: () => setConfirmUninstall(true) }] : []),
+  ];
 
   return <div className={`suite-app-detail-layer${guideOpen ? ' has-guide' : ''}`}>
     <button aria-label="Close app details" className="suite-app-detail-backdrop" onClick={onClose} tabIndex={-1} type="button" />
@@ -761,18 +722,12 @@ function AppDetail({
           {app.catalog.replaces ? <p className="suite-app-detail-replaces"><span>Replaces</span><strong>{app.catalog.replaces}</strong></p> : null}
         </div>
         <div className="suite-app-primary-actions">
-          {ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : needsPreparation && !setupOpen ? <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setSetupOpen(true)} type="button">Prepare</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={submitInstall} type="button">{installing ? 'Installing...' : 'Install'}</button>}
+          {updateWaiting ? <>
+            <button className="mos-btn mos-btn-primary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking update...' : 'Review update'}</button>
+            {primaryDestination ? <a className="mos-btn mos-btn-secondary" href={url}>Open {app.name}</a> : null}
+          </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : needsPreparation && !setupOpen ? <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setSetupOpen(true)} type="button">Prepare</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={submitInstall} type="button">{installing ? 'Installing...' : 'Install'}</button>}
           {ready && hasGuide(app) && !guideCompleted ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
-          {hasMaintenanceActions ? <div className="suite-app-actions-menu">
-            <button aria-expanded={actionsOpen} aria-haspopup="menu" aria-label="More app actions" className="suite-icon-button" disabled={installing || guideUpdating} onClick={() => setActionsOpen((current) => !current)} title="More app actions" type="button"><Icon name="more" /></button>
-            {actionsOpen ? <div className="suite-app-actions-popover" role="menu">
-              {ready && hasGuide(app) && guideCompleted ? <button onClick={() => runMenuAction(openGuide)} role="menuitem" type="button">Setup guide</button> : null}
-              {canRestartRuntime ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'restart'))} role="menuitem" type="button">Restart</button> : null}
-              {ready ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'stop'))} role="menuitem" type="button">Stop (keeps data)</button> : null}
-              {disabled ? <button onClick={() => runMenuAction(() => onLifecycle(app, 'enable'))} role="menuitem" type="button">Start</button> : null}
-              {app.instance && !uninstalled ? <button onClick={() => runMenuAction(() => setConfirmUninstall(true))} role="menuitem" type="button">Uninstall</button> : null}
-            </div> : null}
-          </div> : null}
+          {maintenanceActions.length ? <ActionMenu ariaLabel="More app actions" disabled={installing || guideUpdating} items={maintenanceActions} /> : null}
           {confirmUninstall ? <Dialog
             footer={<>
               <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => { setConfirmUninstall(false); onLifecycle(app, 'uninstall'); }} type="button">Uninstall and delete data</button>
@@ -825,7 +780,7 @@ function AppDetail({
           <div><span>Installed</span><strong>{app.catalogUpdate.installed?.packageVersion}</strong></div>
           <div><span>Available</span><strong>{app.catalogUpdate.available.packageVersion}</strong></div>
           <div><span>Compatibility</span><strong>{app.catalogUpdate.available.compatibility === 'compatible' ? 'Ready for this MOS version' : `Requires MOS ${app.catalogUpdate.available.minimumMosVersion}`}</strong></div>
-          <button className="mos-btn mos-btn-secondary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking update...' : 'Review update'}</button>
+          {updateWaiting ? null : <button className="mos-btn mos-btn-secondary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking update...' : 'Review update'}</button>}
           {comparisonError ? <p role="alert">{comparisonError}</p> : null}
         </section> : null}
 
@@ -1275,7 +1230,6 @@ export function AppsScreen({ owner }: { owner: Owner }) {
   }, [externalUrl]);
 
   const selected = packages.find((app) => app.id === selectedId) || null;
-  const hostsRepairCommand = useMemo(() => hypervHostsRepairCommand(packages), [packages]);
 
   const filtered = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -1547,14 +1501,6 @@ export function AppsScreen({ owner }: { owner: Owner }) {
         </div>
       </section> : null}
     </div> : null}
-
-    {!loading && !error && packages.length ? <details className="suite-advanced suite-app-advanced">
-      <summary>Advanced details</summary>
-      <dl>
-        <dt>Hyper-V hosts repair</dt>
-        <dd><pre>{hostsRepairCommand}</pre></dd>
-      </dl>
-    </details> : null}
 
     {externalOpen && externalResolved ? <ExternalAppDetail
       installError={externalInstallError}

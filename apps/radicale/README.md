@@ -24,6 +24,7 @@ The MOS app agent maps this to the package loopback port and treats an HTTP resp
 - `entrypoint.sh` configures Radicale htpasswd authentication with bcrypt.
 - The entrypoint creates the configured admin user when missing.
 - The entrypoint creates a default calendar collection at `/<RADICALE_ADMIN_USERNAME>/default-calendar/` when missing.
+- When it creates that collection, the entrypoint also writes one all-day event (`mos-welcome.ics`) dated the install day and repeating yearly (`RRULE:FREQ=YEARLY`). The Homepage calendar widget reports a feed with zero `VEVENT`/`VTODO` items as an error, so an otherwise-empty new collection would render as a broken widget; the recurrence keeps the feed non-empty in every subsequent year too. Existing collections are never touched. This is a normal CalDAV item, so an owner who deletes it and holds no other events will see the upstream empty-feed error again.
 - The manifest declares a Homepage calendar widget and a structured internal iCal bridge. Suite Manager keeps the bridge token and Radicale password redacted in public projections, then materializes them only while applying the app runtime and Homepage tile.
 
 ## Current Limits

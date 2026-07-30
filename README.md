@@ -91,6 +91,8 @@ Browser and infrastructure smoke commands are intentionally human-run because th
 | Need | Go here |
 | --- | --- |
 | Documentation ownership | [docs/README.md](./docs/README.md) |
+| How to contribute | [CONTRIBUTING.md](./CONTRIBUTING.md) |
+| Reporting a vulnerability | [SECURITY.md](./SECURITY.md) |
 | Architecture decisions | [docs/decisions.md](./docs/decisions.md) |
 | Release process | [RELEASING.md](./RELEASING.md) |
 | Release notes | [CHANGELOG.md](./CHANGELOG.md) |
@@ -111,14 +113,14 @@ The My Own Suite, MOS, and Funkyton names and logos are not granted for use as t
 
 ## How AI is used in this project
 
-This project uses AI-assisted development tools, including Codex and Claude Code, to support rapid prototyping during the beta phase.
+This project uses AI-assisted development tools, including Codex and Claude Code, to support rapid prototyping during the beta phase. Much of the code was written with that assistance, and we would rather explain how it is verified than leave you guessing.
 
-Human software engineers define the requirements, architecture, technical constraints, and acceptance criteria. AI agents may assist with implementing clearly scoped tasks, but the resulting code is reviewed by a human before it is committed.
+**Humans decide what gets built.** Requirements, architecture, technical constraints, security boundaries, and acceptance criteria are human decisions. AI agents are assigned small, clearly scoped tasks. They are not handed broad feature requirements and left to design, implement, and approve a complete solution unsupervised.
 
-AI tools are also used for troubleshooting, debugging, research, and exploring possible solutions. They are not treated as an authority on whether the software behaves correctly. Final validation is based on human review and hands-on QA testing.
+**Nothing ships that a human has not driven by hand.** No feature reaches a release until it has been exercised on a real deployment — not a mocked test, an actual install. That is why so much of this repository is verification tooling rather than product: a Hyper-V harness that builds the USB installer and installs the platform from scratch on a virtual machine, an automated DigitalOcean harness that does the same on a real cloud server, a browser E2E suite that walks the genuine install-to-apps flow with no test-only bypasses, and a deterministic unit suite that runs on every push and pull request. The point of all of it is to make hands-on human validation cheap enough to do constantly instead of occasionally, and it is done constantly.
 
-AI agents are generally assigned small, specific tasks with clearly defined expectations. Their output is inspected and verified before further development continues. They are not independently given broad feature requirements and left to design, implement, and approve complete solutions without human oversight.
+**AI is not treated as an authority on whether the software works.** It is used for implementation, troubleshooting, research, and exploring options. Whether MOS behaves correctly is decided by a human running it.
 
-The maintainers remain responsible for every change included in the project, regardless of whether AI contributed to its implementation.
+**The honest limit.** This process validates behaviour — that the platform installs, upgrades, backs up, restores, and fails safely on real machines. It is not the same as a line-by-line human audit of every module, and we do not claim it is. That full audit is what the alpha is for: if the project proves its worth, every module goes through human verification before we use that word. The gaps we already know about are recorded in the **Alpha gate** section of [docs/roadmap.md](./docs/roadmap.md) and in [SECURITY.md](./SECURITY.md), rather than left for someone to discover.
 
-We believe AI-assisted development can significantly improve productivity and experimentation when it is used carefully, transparently, and with appropriate human oversight.
+The maintainers remain responsible for every change in the project, regardless of whether AI contributed to its implementation.

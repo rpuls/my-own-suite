@@ -7,6 +7,11 @@ const {
 
 const MIN_PASSWORD_LENGTH = 12;
 
+// The terms the owner is asked to accept, versioned by the "Last updated" date
+// on site/src/content/docs/docs/terms.md. Bumping this date there means bumping
+// it here: a new version is a new acceptance, and every install is asked again.
+const TERMS_VERSION = '2026-07';
+
 class SetupError extends Error {
   constructor(code, message) {
     super(message);
@@ -61,14 +66,39 @@ class SetupService {
     const session = this.hasSession(sessionToken);
 
     if (!owner) {
-      return { owner: null, status: 'needs-owner' };
+      return { owner: null, status: 'needs-owner', ...this.termsState() };
     }
 
     if (session) {
-      return { owner: publicOwner(owner), status: 'signed-in' };
+      return { owner: publicOwner(owner), status: 'signed-in', ...this.termsState() };
     }
 
-    return { owner: publicOwner(owner), status: 'signed-out' };
+    return { owner: publicOwner(owner), status: 'signed-out', ...this.termsState() };
+  }
+
+  termsState() {
+    const acceptance = this.store.getTermsAcceptance(TERMS_VERSION);
+    return {
+      terms: {
+        accepted: Boolean(acceptance),
+        acceptedAt: acceptance?.acceptedAt || null,
+        version: TERMS_VERSION,
+      },
+    };
+  }
+
+  acceptTerms(input) {
+    if (!this.store.getOwner()) {
+      throw new SetupError('OWNER_NOT_CREATED', 'Create the MOS owner account first.');
+    }
+    // The version travels with the acceptance so a stale tab cannot accept
+    // terms the owner was never shown.
+    const version = String(input?.version || '');
+    if (version !== TERMS_VERSION) {
+      throw new SetupError('TERMS_VERSION_MISMATCH', 'These terms have changed. Reload Suite Manager and read them again.');
+    }
+    this.store.recordTermsAcceptance({ acceptedAt: this.now().toISOString(), termsVersion: TERMS_VERSION });
+    return this.termsState();
   }
 
   createOwner(input) {
@@ -133,6 +163,46 @@ class SetupService {
     };
   }
 
+  // Rotating the owner password is how an install created over plain HTTP gets
+  // a password that was never sent in the clear. It proves the current password
+  // first, then ends every session — including the caller's — and hands back a
+  // fresh one so the owner stays signed in on this browser only.
+  changeOwnerPassword(input) {
+    const owner = this.store.getOwner();
+    if (!owner) {
+      throw new SetupError('OWNER_NOT_CREATED', 'Create the MOS owner account first.');
+    }
+
+    const currentPassword = String(input?.currentPassword || '');
+    const newPassword = String(input?.newPassword || '');
+
+    if (!verifyPassword(currentPassword, owner.passwordHash)) {
+      throw new SetupError('INVALID_CURRENT_PASSWORD', 'Your current password is incorrect.');
+    }
+
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      throw new SetupError('WEAK_OWNER_PASSWORD', `Owner password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+    }
+
+    if (verifyPassword(newPassword, owner.passwordHash)) {
+      throw new SetupError('PASSWORD_UNCHANGED', 'Choose a password you have not used here before.');
+    }
+
+    this.store.replaceOwnerPassword(hashPassword(newPassword));
+
+    const token = createSessionToken();
+    this.store.createSession({
+      createdAt: this.now().toISOString(),
+      tokenHash: hashSessionToken(token),
+    });
+
+    return {
+      owner: publicOwner(owner),
+      sessionToken: token,
+      status: 'signed-in',
+    };
+  }
+
   logout(sessionToken = '') {
     const tokenHash = sessionToken ? hashSessionToken(sessionToken) : '';
     this.store.deleteSession(tokenHash);
@@ -155,6 +225,8 @@ class SetupService {
 }
 
 module.exports = {
+  MIN_PASSWORD_LENGTH,
   SetupError,
   SetupService,
+  TERMS_VERSION,
 };

@@ -1,5 +1,5 @@
 ---
-import { DOCS_PATH } from '../lib/links'
+import { INSTALL_CLOUD_PATH, INSTALL_OWN_HARDWARE_PATH } from '../lib/links'
 ---
 
 <section class="band" id="install">
@@ -13,14 +13,15 @@ import { DOCS_PATH } from '../lib/links'
       <div class="mos-panel path">
         <span class="mos-pill mos-pill-accent">Own hardware</span>
         <h3>USB installer</h3>
-        <p class="mos-meta" style="font-size:0.92rem">Flash the installer, boot a dedicated machine, confirm. LAN-first at <code style="font-family:var(--mos-font-mono)">home.mos.home</code>.</p>
+        <p class="mos-meta" style="font-size:0.92rem">Build the installer image, flash it, boot a dedicated machine, confirm. LAN-first at <code style="font-family:var(--mos-font-mono)">home.mos.home</code>.</p>
         <ul>
           <li>A spare mini-PC or PC to dedicate</li>
           <li>Erases the target disk (Ubuntu Server 24.04-based)</li>
+          <li>The most hands-on path: you build the USB image yourself, which needs Git, Node.js 22, and Docker on your everyday computer</li>
           <li>Costs only your electricity — usually a small amount each month</li>
           <li>Best privacy — nothing leaves your home</li>
         </ul>
-        <a class="mos-link" href={DOCS_PATH} style="margin-top:8px">Read the install guide →</a>
+        <a class="mos-link" href={INSTALL_OWN_HARDWARE_PATH} style="margin-top:8px">Read the install guide →</a>
       </div>
       <div class="mos-panel path">
         <span class="mos-pill mos-pill-accent">Cloud server</span>
@@ -31,7 +32,7 @@ import { DOCS_PATH } from '../lib/links'
           <li>Your provider's web console or SSH — nothing to install on your computer</li>
           <li>Reachable from anywhere you allow</li>
         </ul>
-        <a class="mos-link" href={DOCS_PATH} style="margin-top:8px">Read the install guide →</a>
+        <a class="mos-link" href={INSTALL_CLOUD_PATH} style="margin-top:8px">Read the install guide →</a>
       </div>
       <div class="mos-panel path coming">
         <span class="mos-badge">Coming soon</span>

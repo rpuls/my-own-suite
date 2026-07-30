@@ -13,6 +13,52 @@ const SUPPORTED_UBUNTU_RELEASE = {
   sha256Url: 'https://releases.ubuntu.com/noble/SHA256SUMS',
 };
 
+const SERVER_LOGIN_FILE_NAME = 'MOS-server-login.txt';
+
+// The generated machine password used to reach the builder only as a line of
+// terminal output, so closing the build window lost it for good. It is written
+// beside the ISO as well, in a file whose whole job is to be read once, copied
+// into a password manager, and deleted.
+function renderServerLoginFile({ generatedAt, home, password, username }) {
+  return [
+    'My Own Suite - server machine login',
+    '===================================',
+    '',
+    'This is the login for the SERVER MACHINE itself - its Ubuntu console and',
+    'SSH. It is NOT your My Own Suite owner account: you create that in your',
+    'browser after the server boots for the first time.',
+    '',
+    `  Suite address   ${home}`,
+    `  Username        ${username}`,
+    `  Password        ${password}`,
+    '',
+    'You will rarely need this. Everything about your suite is set up in the',
+    'browser. This login is for the day something goes wrong and you need to',
+    'reach the machine directly.',
+    '',
+    'WHAT TO DO NOW',
+    '  1. Copy the password above into your password manager.',
+    '  2. Delete this file.',
+    '',
+    'If you lose it anyway, you can still reset it from the server\'s own',
+    'keyboard and screen through Ubuntu recovery mode. Physical access to the',
+    'machine is the recovery path.',
+    '',
+    `Generated ${generatedAt} by the My Own Suite installer build.`,
+    'This file is not needed to install or run MOS, and nothing reads it.',
+    '',
+  ].join('\n');
+}
+
+function writeServerLoginFile(directory, contents) {
+  const target = path.join(directory, SERVER_LOGIN_FILE_NAME);
+  // Removed first so the restrictive mode below applies to a fresh file rather
+  // than being ignored on an existing one left by an earlier build.
+  fs.rmSync(target, { force: true });
+  fs.writeFileSync(target, contents, { encoding: 'utf8', mode: 0o600 });
+  return target;
+}
+
 function readArg(name, fallback = '') {
   const prefixed = `--${name}=`;
   const valueWithEquals = process.argv.find((arg) => arg.startsWith(prefixed));
@@ -330,7 +376,21 @@ async function main() {
       console.log('');
       console.log(`Suite Home URL after install: ${seedSummary.home}`);
       if (seedSummary.linuxPasswordGenerated) {
-        console.log(`Server machine login (generated — save it somewhere safe): ${seedSummary.linuxUsername} / ${seedSummary.linuxPassword}`);
+        // Printed before the file is written: if writing fails, the password
+        // still has to reach the person standing at the build.
+        console.log(`Server machine login (generated): ${seedSummary.linuxUsername} / ${seedSummary.linuxPassword}`);
+        try {
+          const loginFile = writeServerLoginFile(path.dirname(outputIso), renderServerLoginFile({
+            generatedAt: new Date().toISOString().slice(0, 10),
+            home: seedSummary.home,
+            password: seedSummary.linuxPassword,
+            username: seedSummary.linuxUsername,
+          }));
+          console.log(`Also saved here, so it is not lost when this window closes: ${loginFile}`);
+          console.log('Copy the password into your password manager, then delete that file.');
+        } catch (error) {
+          console.log(`Could not save the login file (${error.message}) — copy the line above now.`);
+        }
         console.log('You will rarely need this login; your suite itself is set up in the browser after install.');
       }
     } catch {
@@ -349,8 +409,12 @@ async function main() {
   console.log('- If Rufus asks between ISO mode and DD mode, use ISO mode unless you hit a hardware-specific boot problem.');
 }
 
-main().catch((error) => {
-  console.error(`WARNING: failed to prepare the self-host installer ISO.`);
-  console.error(error.message || String(error));
-  process.exit(1);
-});
+module.exports = { SERVER_LOGIN_FILE_NAME, renderServerLoginFile, writeServerLoginFile };
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(`WARNING: failed to prepare the self-host installer ISO.`);
+    console.error(error.message || String(error));
+    process.exit(1);
+  });
+}

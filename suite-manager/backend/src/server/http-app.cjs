@@ -506,6 +506,30 @@ function createMOSServer({
         return;
       }
 
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/setup/terms/accept`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to accept the MOS terms.' });
+          return;
+        }
+        jsonResponse(response, 200, setup.acceptTerms(await readJsonBody(request, 4 * 1024)));
+        return;
+      }
+
+      // Changing the owner password rotates the session cookie in the same
+      // response that ends every other session, so the browser that made the
+      // change is the only one still signed in when this returns.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/owner/password`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change the owner password.' });
+          return;
+        }
+        const result = setup.changeOwnerPassword(await readJsonBody(request, 8 * 1024));
+        jsonResponse(response, 200, { owner: result.owner, status: result.status }, {
+          'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),
+        });
+        return;
+      }
+
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/auth/logout`) {
         const result = setup.logout(sessionToken);
         jsonResponse(response, 200, result, {

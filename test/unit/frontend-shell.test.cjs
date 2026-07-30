@@ -17,7 +17,6 @@ test('Customize reuses the proven file editor, validation, and guided add workfl
   const dialog = fs.readFileSync(path.join(frontendRoot, 'features', 'customize', 'AddHomepageItemDialog.tsx'), 'utf8');
   const editor = fs.readFileSync(path.join(frontendRoot, 'features', 'customize', 'CodeEditor.tsx'), 'utf8');
   assert.match(customize, /suite-file-list/u);
-  assert.match(customize, /'Validate'/u);
   assert.match(customize, /Save and apply/u);
   assert.match(customize, /Add to Homepage/u);
   assert.match(customize, /mos-btn mos-btn-primary/u);
@@ -30,6 +29,24 @@ test('Customize reuses the proven file editor, validation, and guided add workfl
   assert.match(editor, /mosHighlightStyle/u);
 });
 
+test('Customize offers one save, and offers a reload only when the file conflicts', () => {
+  const customize = fs.readFileSync(path.join(frontendRoot, 'features', 'customize', 'CustomizeScreen.tsx'), 'utf8');
+
+  // Validating was a second click in front of the only action anyone wanted,
+  // and a permanent Reload saved button implied the editor routinely shows
+  // stale content. Both are gone; the agent still validates before it writes.
+  assert.doesNotMatch(customize, /'Validate'/u);
+  assert.doesNotMatch(customize, /Reload saved/u);
+  assert.doesNotMatch(customize, /validatedContent/u);
+  assert.match(customize, /HOMEPAGE_REVISION_CONFLICT/u);
+  assert.match(customize, /Discard my changes and reload/u);
+});
+
+test('Customize says out loud that it is a raw YAML editor', () => {
+  const customize = fs.readFileSync(path.join(frontendRoot, 'features', 'customize', 'CustomizeScreen.tsx'), 'utf8');
+  assert.match(customize, /<CustomizeYamlNotice \/>/u);
+});
+
 test('authenticated page routes render inside the shared shell and route boundary', () => {
   const shell = fs.readFileSync(path.join(frontendRoot, 'features', 'app-shell', 'AppShell.tsx'), 'utf8');
   assert.ok(shell.indexOf('suite-shell-header') < shell.indexOf('<RouteBoundary'));
@@ -37,13 +54,13 @@ test('authenticated page routes render inside the shared shell and route boundar
   assert.match(shell, /<CustomizeScreen \/>/u);
 });
 
-test('Apps host helper repairs stale app host entries after fresh VM resets', () => {
+// The app catalog used to end in an Advanced details block holding a PowerShell
+// snippet that rewrote the Windows hosts file for the Hyper-V smoke lab. It was
+// lab scaffolding on a page every owner sees, so it is gone; this keeps it gone.
+test('the app catalog does not ship lab host-file tooling to owners', () => {
   const apps = fs.readFileSync(path.join(frontendRoot, 'features', 'apps', 'AppsScreen.tsx'), 'utf8');
-  assert.match(apps, /# BEGIN MOS HYPERV USB SMOKE/u);
-  assert.match(apps, /\$names=\$\{hostsLiteral\}/u);
-  assert.match(apps, /\$line -eq \$start/u);
-  assert.match(apps, /Set-Content -Path \$hostsPath -Value \$next/u);
-  assert.doesNotMatch(apps, /if \(-not \(Select-String/u);
+  assert.doesNotMatch(apps, /HYPERV USB SMOKE/u);
+  assert.doesNotMatch(apps, /hostsPath/u);
 });
 
 test('Apps setup email fields default to the signed-in owner email', () => {

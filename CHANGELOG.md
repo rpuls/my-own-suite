@@ -1,15 +1,28 @@
 # Changelog
 
-Notable updater-facing software changes are documented here. Documentation, public-site, landing-page, repository-maintenance, contributor-workflow-only, and minor cosmetic changes are intentionally excluded.
-
-The format is based on Keep a Changelog, and this project follows Semantic Versioning.
+Updater-facing software changes only — documentation, site, repository, and cosmetic changes are excluded. Format follows Keep a Changelog; versioning follows Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Onboarding requires accepting the terms of use before the owner account is created.
+- Settings can change the owner password. It verifies the current password, then signs every other browser out — the way to replace a password first set over plain HTTP on own-hardware and local installs.
+
+### Changed
+
+- Suite Manager's menu combines Dashboard and Customize into one row.
+- Customize saves in one click. Validation runs as part of saving rather than as a separate button, and the reload button is replaced by a reload offered only when the file changed underneath the editor.
+- The welcome screen adapts to whether any apps are installed.
+- An installed app with an update waiting leads with **Review update**; opening the app stays beside it.
+- Fresh installs resolve the control plane's dependencies with `npm ci` instead of `npm install`, matching what managed updates already did. Installs now use the committed lockfile exactly and fail fast if it and `package.json` disagree.
+
 ### Fixed
 
-- USB installer hardening: the installed server no longer adopts the build computer's hostname, the Ubuntu install phase no longer needs network access (first boot still does), the success screen now shows the server's LAN IP with the exact local DNS override to add, and the ISO carries a recognizable `MOS-INSTALLER` volume label.
-- The Vaultwarden package was updated to server 1.37.0, restoring vault sync for Bitwarden clients 2026.7.0 and newer, which show an empty vault against older servers.
+- A new Radicale install no longer shows a broken Homepage calendar widget. Homepage treats a feed with no entries as an error, so the package now seeds a yearly "Your independence day" event dated the install day. Existing calendars are untouched.
+- Dialogs and action menus opened from app details now centre on screen and frost correctly.
+- USB installer hardening: the installed server keeps its own hostname, the Ubuntu install phase no longer needs network access (first boot still does), the success screen shows the server's LAN IP with the local DNS override to add, the ISO carries a `MOS-INSTALLER` volume label, and the generated machine password is saved beside the ISO as `MOS-server-login.txt` instead of only being printed.
+- The Vaultwarden package moves to server 1.37.0, restoring vault sync for Bitwarden clients 2026.7.0 and newer.
 
 ## [0.15.0] - 2026-07-25
 

@@ -5,8 +5,19 @@ description: Install My Own Suite on any hosting provider's fresh Ubuntu 24.04 s
 
 import { Steps } from '@astrojs/starlight/components'
 import DigitalOceanReferral from '../../../../components/DigitalOceanReferral.astro'
+import VideoEmbed from '../../../../components/VideoEmbed.astro'
+import installPoster from '../../../../assets/video/cloud-install-walkthrough.jpg'
 
 My Own Suite is provider-agnostic: any host that can rent you a plain **Ubuntu Server 24.04 LTS** machine with at least **2 vCPU / 4 GB RAM** will do. The whole install is **one command in a browser terminal — nothing to install on your own computer**. The installer works out the server's public address by itself, and when it finishes it prints the link where you create your owner account.
+
+Prefer to watch it first? Here is the whole thing, start to finish — the written steps below are the same install.
+
+<VideoEmbed
+  videoId="f9Y9Mbys1GQ"
+  title="Installing My Own Suite on a cloud server"
+  poster={installPoster}
+  caption="Recorded against an early beta, so a screen or two may have moved."
+/>
 
 **What you need**
 
@@ -64,6 +75,16 @@ sudo cat /etc/mos/secrets/owner-claim.env
 ```
 
 Copy the value after `MOS_OWNER_CLAIM_TOKEN=`, then open `https://home.<your-server-ip>.sslip.io/suite-manager/?claim=<that-value>` in your browser.
+
+## Advanced: give your apps more room than the server's own disk
+
+Your apps keep their data on the server's system disk, which on a typical plan is smaller than it looks — the operating system, the app images, and the databases all share it. For a photo or file library that outgrows it, the only route today is to attach a larger block-storage volume **before you install** and let the container runtime use it:
+
+1. Create and attach the volume in your provider's dashboard.
+2. Format and mount it at `/var/lib/docker` on the server, and add it to `/etc/fstab` so it survives a reboot.
+3. Run the install command as normal. Everything your apps store lands on the volume.
+
+There is no setting for this in Suite Manager yet, and moving an existing install is not a supported operation — so decide before you install, not after. If your library is genuinely large, weigh the per-GB monthly cost against [running MOS on your own hardware](/docs/install/own-hardware/), where the disk is a one-time purchase.
 
 ## Backup destination
 

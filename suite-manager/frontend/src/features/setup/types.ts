@@ -6,11 +6,18 @@ export type Owner = {
 
 export type SetupStatus = 'needs-owner' | 'signed-out' | 'signed-in';
 
+export type TermsState = {
+  accepted: boolean;
+  acceptedAt: string | null;
+  version: string;
+};
+
 export type SetupStatusResponse = {
   owner: Owner | null;
   ownerClaimRequired?: boolean;
   secureTransport?: boolean;
   status: SetupStatus;
+  terms?: TermsState;
 };
 
 export type SetupSessionState =
@@ -18,4 +25,4 @@ export type SetupSessionState =
   | { kind: 'error'; message: string }
   | { kind: 'needs-owner'; error: string | null; ownerClaimRequired: boolean }
   | { kind: 'signed-out'; error: string | null; owner: Owner }
-  | { kind: 'signed-in'; owner: Owner };
+  | { kind: 'signed-in'; owner: Owner; terms: TermsState };

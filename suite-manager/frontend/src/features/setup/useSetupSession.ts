@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 
-import type { Owner, SetupSessionState, SetupStatusResponse } from './types';
+import type { Owner, SetupSessionState, SetupStatusResponse, TermsState } from './types';
+
+const UNKNOWN_TERMS: TermsState = { accepted: false, acceptedAt: null, version: '' };
 
 type ApiErrorBody = {
   error?: string;
@@ -42,7 +44,7 @@ function stateFromStatus(status: SetupStatusResponse): SetupSessionState {
   }
 
   if (status.status === 'signed-in') {
-    return { kind: 'signed-in', owner: status.owner };
+    return { kind: 'signed-in', owner: status.owner, terms: status.terms || UNKNOWN_TERMS };
   }
 
   return { kind: 'signed-out', error: null, owner: status.owner };
@@ -61,11 +63,28 @@ function enterHomeDashboard(): boolean {
   return true;
 }
 
+// Signing in normally hands the owner straight to their Homepage dashboard.
+// That handover waits while the terms are unanswered: an acceptance a redirect
+// can jump over is not an acceptance, and first run is exactly when it matters.
+// Accepting performs the same handover afterwards.
+function termsPending(status: SetupStatusResponse): boolean {
+  return status.status === 'signed-in' && Boolean(status.terms?.version) && !status.terms?.accepted;
+}
+
 export function useSetupSession() {
   const [state, setState] = useState<SetupSessionState>({ kind: 'loading' });
 
   async function refresh(): Promise<void> {
     setState(stateFromStatus(await readStatus()));
+  }
+
+  // Shared tail of owner creation and sign-in: show the terms gate if it is
+  // owed, otherwise hand over to the Homepage dashboard as before.
+  async function completeSignIn(): Promise<void> {
+    const status = await readStatus();
+    if (termsPending(status) || !enterHomeDashboard()) {
+      setState(stateFromStatus(status));
+    }
   }
 
   useEffect(() => {
@@ -94,9 +113,7 @@ export function useSetupSession() {
       return;
     }
 
-    if (!enterHomeDashboard()) {
-      setState({ kind: 'signed-in', owner: body.owner });
-    }
+    await completeSignIn();
   }
 
   async function login(input: { email: string; password: string; owner: Owner }): Promise<void> {
@@ -116,9 +133,24 @@ export function useSetupSession() {
       return;
     }
 
-    if (!enterHomeDashboard()) {
-      setState({ kind: 'signed-in', owner: body.owner });
+    await completeSignIn();
+  }
+
+  // Accepting is recorded server-side, so it survives a new browser, a new
+  // device, and a cleared cache — the acceptance belongs to the install.
+  async function acceptTerms(version: string): Promise<void> {
+    const response = await fetch('/suite-manager/api/setup/terms/accept', {
+      body: JSON.stringify({ version }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+    if (!response.ok) {
+      const body = await readJson<ApiErrorBody>(response).catch(() => ({}));
+      throw new Error(errorMessage(body, 'Unable to record your acceptance.'));
     }
+    // The handover sign-in deferred: from /suite-manager/ the owner lands on
+    // their Homepage dashboard, and from anywhere else they stay where they are.
+    if (!enterHomeDashboard()) await refresh();
   }
 
   function clearOwnerError(): void {
@@ -138,6 +170,7 @@ export function useSetupSession() {
   }
 
   return {
+    acceptTerms,
     clearOwnerError,
     createOwner,
     login,

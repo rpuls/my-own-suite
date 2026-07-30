@@ -230,7 +230,7 @@ fi
 git -C "$MOS_INSTALL_ROOT/repo" checkout "$MOS_REPO_REF"
 git -C "$MOS_INSTALL_ROOT/repo" reset --hard "$MOS_REPO_REF"
 
-npm --prefix "$MOS_INSTALL_ROOT/repo" install
+npm --prefix "$MOS_INSTALL_ROOT/repo" ci
 npm --prefix "$MOS_INSTALL_ROOT/repo" run build:client
 
 docker build --file "$MOS_INSTALL_ROOT/repo/infrastructure/caddy/Dockerfile" --tag mos-caddy-builder "$MOS_INSTALL_ROOT/repo"

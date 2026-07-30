@@ -3,6 +3,7 @@ import { Component, useCallback, useEffect, useState, type ErrorInfo, type React
 import { Drawer, Icon } from '../../components/ui';
 import { AppsScreen } from '../apps/AppsScreen';
 import { BackupsScreen } from '../backups/BackupsScreen';
+import { DashboardScreen } from '../dashboard/DashboardScreen';
 import { SettingsScreen } from '../settings/SettingsScreen';
 import { CustomizeScreen } from '../customize/CustomizeScreen';
 import { UpdatesScreen } from '../updates/UpdatesScreen';
@@ -60,48 +61,24 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
         <button aria-expanded={menuOpen} aria-haspopup="dialog" aria-label="Open navigation menu" className="suite-icon-button" onClick={() => setMenuOpen(true)} title="Menu" type="button"><Icon name="menu" /></button>
       </header>
 
-      <Drawer onClose={closeMenu} open={menuOpen} title="Suite Manager menu"><nav aria-label="Suite Manager menu" className="suite-nav"><a href="/"><Icon name="dashboard" />Dashboard</a><button aria-current={route === 'apps' ? 'page' : undefined} onClick={() => navigate('apps', '/suite-manager/apps')} type="button"><Icon name="apps" />Apps</button><button aria-current={route === 'customize' ? 'page' : undefined} onClick={() => navigate('customize', '/suite-manager/customize')} type="button"><Icon name="customize" />Customize</button><button aria-current={route === 'backups' ? 'page' : undefined} onClick={() => navigate('backups', '/suite-manager/backups')} type="button"><Icon name="backup" />Backup</button><button aria-current={route === 'updates' ? 'page' : undefined} onClick={() => navigate('updates', '/suite-manager/updates')} type="button"><Icon name="settings" />Updates</button><button aria-current={route === 'settings' ? 'page' : undefined} onClick={() => navigate('settings', '/suite-manager/settings')} type="button"><Icon name="settings" />Settings</button><button onClick={() => { closeMenu(); void onLogout(); }} type="button"><Icon name="sign-out" />Sign out</button></nav></Drawer>
+      {/* Dashboard and Customize are one row: the link opens the dashboard, the
+          pencil beside it edits that same dashboard. Two menu entries for one
+          thing made the menu longer without making it clearer. */}
+      <Drawer onClose={closeMenu} open={menuOpen} title="Suite Manager menu"><nav aria-label="Suite Manager menu" className="suite-nav">
+        <div className="suite-nav-row">
+          <a href="/"><Icon name="dashboard" />Dashboard</a>
+          <button aria-current={route === 'customize' ? 'page' : undefined} aria-label="Customize dashboard" className="suite-nav-edit" onClick={() => navigate('customize', '/suite-manager/customize')} title="Customize dashboard" type="button"><Icon name="customize" /></button>
+        </div>
+        <button aria-current={route === 'apps' ? 'page' : undefined} onClick={() => navigate('apps', '/suite-manager/apps')} type="button"><Icon name="apps" />Apps</button>
+        <button aria-current={route === 'backups' ? 'page' : undefined} onClick={() => navigate('backups', '/suite-manager/backups')} type="button"><Icon name="backup" />Backup</button>
+        <button aria-current={route === 'updates' ? 'page' : undefined} onClick={() => navigate('updates', '/suite-manager/updates')} type="button"><Icon name="update" />Updates</button>
+        <button aria-current={route === 'settings' ? 'page' : undefined} onClick={() => navigate('settings', '/suite-manager/settings')} type="button"><Icon name="settings" />Settings</button>
+        <button onClick={() => { closeMenu(); void onLogout(); }} type="button"><Icon name="sign-out" />Sign out</button>
+      </nav></Drawer>
 
       <main className="suite-shell-main">
         <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'updates' ? <UpdatesScreen /> : route === 'backups' ? <BackupsScreen /> : route === 'customize' ? <CustomizeScreen /> : route === 'apps' ? <AppsScreen owner={owner} /> : (
-        <section className="mos-shell suite-dashboard">
-          <div className="suite-hero">
-            <h1>You're all set — install your first app</h1>
-            <p className="suite-lead mos-body-lg">
-              Suite Manager is your control room: add apps, keep them updated, and back everything up. The best first move is installing an app — everything else grows from there.
-            </p>
-            <div className="suite-hero-actions">
-              <button className="mos-btn mos-btn-primary" onClick={() => navigate('apps', '/suite-manager/apps')} type="button">
-                Install your first app
-              </button>
-            </div>
-          </div>
-
-          <div className="suite-dashboard-grid">
-            <section className="mos-panel suite-card suite-status-card">
-              <h2 className="mos-card-title">Signed in</h2>
-              <p className="suite-meta mos-meta">Owner</p>
-              <strong>{owner.name}</strong>
-              <span>{owner.email}</span>
-            </section>
-
-            <section className="mos-panel suite-card suite-firstrun-card">
-              <h2 className="mos-card-title">First steps</h2>
-              <p className="suite-meta mos-meta">Three things to get your suite going.</p>
-              <div className="suite-firstrun-steps">
-                <button className="mos-btn mos-btn-secondary suite-firstrun-step" onClick={() => navigate('apps', '/suite-manager/apps')} type="button">
-                  <Icon name="apps" /><span>1. Install an app</span>
-                </button>
-                <button className="mos-btn mos-btn-secondary suite-firstrun-step" onClick={() => navigate('customize', '/suite-manager/customize')} type="button">
-                  <Icon name="customize" /><span>2. Add it to your Homepage</span>
-                </button>
-                <button className="mos-btn mos-btn-secondary suite-firstrun-step" onClick={() => navigate('backups', '/suite-manager/backups')} type="button">
-                  <Icon name="backup" /><span>3. Make your first backup</span>
-                </button>
-              </div>
-            </section>
-          </div>
-        </section>
+          <DashboardScreen onNavigate={navigate} owner={owner} />
         )}</RouteBoundary>
       </main>
     </div>

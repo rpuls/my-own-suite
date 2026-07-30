@@ -10,6 +10,7 @@ const { loopbackPortFor } = require('../src/apps/app-package-service.cjs');
 const { LoginThrottle } = require('../src/auth/login-throttle.cjs');
 
 const { createMOSServer } = require('../src/server/http-app.cjs');
+const { TERMS_VERSION } = require('../src/setup/setup-service.cjs');
 const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
 const { ExternalSourceService } = require('../src/apps/external-source-service.cjs');
 const { ExternalSourceError } = require('../src/apps/external-source-registry.cjs');
@@ -1472,6 +1473,7 @@ test('empty setup status requires owner creation', async () => {
       ownerClaimRequired: false,
       secureTransport: false,
       status: 'needs-owner',
+      terms: { accepted: false, acceptedAt: null, version: TERMS_VERSION },
     });
   });
 });
@@ -1645,6 +1647,76 @@ test('login and logout transition session state', async () => {
     assert.equal(logoutResponse.status, 200);
     assert.equal(logout.status, 'signed-out');
     assert.match(logoutResponse.headers.get('set-cookie'), /Max-Age=0/);
+  });
+});
+
+test('terms acceptance and the owner password change require a session', async () => {
+  await withServer(async (baseUrl) => {
+    for (const [pathname, body] of [
+      ['/suite-manager/api/setup/terms/accept', { version: TERMS_VERSION }],
+      ['/suite-manager/api/settings/owner/password', { currentPassword: 'correct horse battery', newPassword: 'a much better passphrase' }],
+    ]) {
+      const response = await fetch(`${baseUrl}${pathname}`, {
+        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+      assert.equal(response.status, 401);
+      assert.equal((await response.json()).code, 'AUTH_REQUIRED');
+    }
+  });
+});
+
+test('an owner accepts the terms and rotates the password without losing this browser', async () => {
+  await withServer(async (baseUrl) => {
+    const created = await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
+      body: JSON.stringify({ email: 'owner@example.com', name: 'Suite Owner', password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+    const cookie = created.headers.get('set-cookie').split(';')[0];
+
+    const accepted = await fetch(`${baseUrl}/suite-manager/api/setup/terms/accept`, {
+      body: JSON.stringify({ version: TERMS_VERSION }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      method: 'POST',
+    });
+    assert.equal(accepted.status, 200);
+    assert.equal((await accepted.json()).terms.accepted, true);
+
+    const stale = await fetch(`${baseUrl}/suite-manager/api/setup/terms/accept`, {
+      body: JSON.stringify({ version: 'not-the-shown-version' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      method: 'POST',
+    });
+    assert.equal(stale.status, 400);
+    assert.equal((await stale.json()).code, 'TERMS_VERSION_MISMATCH');
+
+    const changed = await fetch(`${baseUrl}/suite-manager/api/settings/owner/password`, {
+      body: JSON.stringify({ currentPassword: 'correct horse battery', newPassword: 'a much better passphrase' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      method: 'POST',
+    });
+    assert.equal(changed.status, 200);
+    const rotatedCookie = changed.headers.get('set-cookie').split(';')[0];
+    assert.notEqual(rotatedCookie, cookie);
+
+    // The cookie the change was made with is dead; the one it handed back works,
+    // and the acceptance recorded earlier survived the rotation.
+    const withOldCookie = await fetch(`${baseUrl}/suite-manager/api/setup/status`, { headers: { Cookie: cookie } });
+    assert.equal((await withOldCookie.json()).status, 'signed-out');
+    const withNewCookie = await fetch(`${baseUrl}/suite-manager/api/setup/status`, { headers: { Cookie: rotatedCookie } });
+    const status = await withNewCookie.json();
+    assert.equal(status.status, 'signed-in');
+    assert.equal(status.terms.accepted, true);
+
+    const wrongCurrent = await fetch(`${baseUrl}/suite-manager/api/settings/owner/password`, {
+      body: JSON.stringify({ currentPassword: 'correct horse battery', newPassword: 'yet another passphrase' }),
+      headers: { 'Content-Type': 'application/json', Cookie: rotatedCookie },
+      method: 'POST',
+    });
+    assert.equal(wrongCurrent.status, 400);
+    assert.equal((await wrongCurrent.json()).code, 'INVALID_CURRENT_PASSWORD');
   });
 });
 

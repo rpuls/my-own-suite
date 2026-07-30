@@ -1,0 +1,167 @@
+---
+// Privacy-preserving video embed: a "facade" that renders a self-hosted poster
+// frame and only creates the YouTube iframe once the visitor presses play.
+//
+// The docs pages deliberately make no third-party requests, and a plain
+// <iframe> would break that on page load — including youtube-nocookie.com,
+// which still contacts Google immediately and only defers the tracking cookie
+// until playback. The poster is imported through astro:assets and served from
+// this origin rather than hotlinked from ytimg.com, which would be the same
+// leak wearing a different hat.
+//
+// Refresh a poster with:
+//   curl -fsSL -o site/src/assets/video/<name>.jpg \
+//     https://i.ytimg.com/vi/<videoId>/maxresdefault.jpg
+import { Image } from 'astro:assets'
+import type { ImageMetadata } from 'astro'
+
+interface Props {
+  /** YouTube video id, e.g. the `f9Y9…` in https://youtu.be/f9Y9… */
+  videoId: string
+  /** Used as the iframe title and the play button's accessible name. */
+  title: string
+  /** Poster frame, imported from src/assets so it is optimized and self-hosted. */
+  poster: ImageMetadata
+  /** Optional line shown before the standing privacy note. */
+  caption?: string
+}
+
+const { caption, poster, title, videoId } = Astro.props
+---
+
+<figure class="video-embed not-content" data-video-embed data-video-id={videoId} data-video-title={title}>
+  {/* The stage owns the frame and the 16:9 box for BOTH states. It has to,
+      because Astro scopes this <style> block to elements rendered here — the
+      iframe is created by the script below and never receives the scope
+      attribute, so a rule written against the iframe itself would silently not
+      apply and the player would collapse to the browser's default 300x150. */}
+  <div class="video-embed-stage">
+    <button type="button" class="video-embed-trigger" aria-label={`Play the video: ${title}`}>
+      <Image
+        alt=""
+        src={poster}
+        widths={[640, 1280]}
+        sizes="(max-width: 900px) 100vw, 860px"
+        format="webp"
+        quality={78}
+      />
+      <span class="video-embed-play" aria-hidden="true">
+        <svg width="30" height="30" viewBox="0 0 24 24"><path d="M8 5.2v13.6L19 12z" fill="currentColor" /></svg>
+      </span>
+    </button>
+  </div>
+  {/* The watch link is a deliberate fallback, not decoration: an embedded
+      player can fail for reasons neither this page nor the viewer controls
+      (privacy extensions blocking the frame, a transcode still finishing),
+      and a dead rectangle with no way out is the worst version of that. */}
+  <figcaption class="video-embed-note">
+    {caption && <span>{caption} </span>}
+    Hosted on YouTube — nothing is requested from them until you press play.
+    Player not working? <a href={`https://www.youtube.com/watch?v=${videoId}`} rel="noopener" target="_blank">Watch it on YouTube</a>.
+  </figcaption>
+</figure>
+
+<style>
+  .video-embed {
+    margin: var(--mos-space-6) 0;
+  }
+
+  .video-embed-stage {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    border: 1px solid var(--mos-color-surface-border);
+    border-radius: var(--mos-radius-lg);
+    background: var(--mos-color-surface-muted);
+    aspect-ratio: 16 / 9;
+  }
+
+  /* :global() so the rule survives onto the runtime-injected iframe — the
+     scope attribute lives on .video-embed-stage, which is enough to keep this
+     from leaking to other iframes on the page. */
+  .video-embed-stage :global(iframe) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+
+  .video-embed-trigger {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+  }
+
+  .video-embed-trigger img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* The play badge brightens and grows slightly on hover/focus so the poster
+     reads as a control rather than a screenshot. */
+  .video-embed-play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    display: grid;
+    width: 4.5rem;
+    height: 4.5rem;
+    transform: translate(-50%, -50%);
+    place-items: center;
+    border-radius: 50%;
+    background: var(--mos-color-accent);
+    box-shadow: var(--mos-shadow-soft);
+    color: #fff;
+    transition: transform 0.15s ease, filter 0.15s ease;
+  }
+
+  .video-embed-play svg {
+    margin-left: 4px;
+  }
+
+  .video-embed-trigger:hover .video-embed-play,
+  .video-embed-trigger:focus-visible .video-embed-play {
+    transform: translate(-50%, -50%) scale(1.06);
+    filter: brightness(1.1);
+  }
+
+  .video-embed-note {
+    margin-top: var(--mos-space-3);
+    color: var(--mos-color-text-muted);
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+</style>
+
+<script>
+  for (const embed of document.querySelectorAll<HTMLElement>('[data-video-embed]')) {
+    const trigger = embed.querySelector<HTMLButtonElement>('.video-embed-trigger')
+    const videoId = embed.dataset.videoId
+    if (!trigger || !videoId) continue
+
+    trigger.addEventListener(
+      'click',
+      () => {
+        const frame = document.createElement('iframe')
+        // youtube-nocookie plus autoplay: the visitor already pressed play, so
+        // starting playback is what they asked for rather than an autoplaying ad.
+        frame.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?autoplay=1&rel=0`
+        frame.title = embed.dataset.videoTitle || 'Video'
+        frame.className = 'video-embed-frame'
+        frame.allow = 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share'
+        frame.allowFullscreen = true
+        trigger.replaceWith(frame)
+        frame.focus()
+      },
+      { once: true }
+    )
+  }
+</script>

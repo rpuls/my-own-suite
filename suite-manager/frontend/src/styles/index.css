@@ -366,6 +366,135 @@
   text-align: left;
 }
 
+/* Dashboard and its edit shortcut share one menu row: the link fills the row,
+   the pencil sits at its right edge and reveals itself on hover or keyboard
+   focus. On touch, where there is no hover, it is simply always visible. */
+.suite-nav-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.suite-nav .suite-nav-row a {
+  flex: 1;
+  padding-right: 3.4rem;
+}
+
+/* Specificity has to beat the generic `.suite-nav button` sizing above, which
+   makes every menu entry a full-width 3rem row. */
+.suite-nav .suite-nav-edit {
+  position: absolute;
+  right: 0.45rem;
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  min-height: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  border: var(--mos-border-subtle);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface);
+  color: var(--mos-color-text-muted);
+  opacity: 0;
+  transition: opacity var(--mos-transition), color var(--mos-transition), border-color var(--mos-transition);
+}
+
+.suite-nav .suite-nav-row:hover .suite-nav-edit,
+.suite-nav .suite-nav-row:focus-within .suite-nav-edit,
+.suite-nav .suite-nav-edit[aria-current='page'] {
+  opacity: 1;
+}
+
+.suite-nav .suite-nav-edit:hover,
+.suite-nav .suite-nav-edit[aria-current='page'] {
+  border-color: var(--mos-color-accent-border);
+  background: var(--mos-color-accent-soft);
+  color: var(--mos-color-text-strong);
+}
+
+@media (hover: none) {
+  .suite-nav .suite-nav-edit { opacity: 1; }
+}
+
+/* The terms gate carries the beta warning and the terms card, so it needs more
+   room than the sign-in stage it otherwise reuses. */
+.suite-terms-stage {
+  width: min(100%, 680px);
+}
+
+.suite-terms-card,
+.suite-community-card {
+  display: grid;
+  gap: var(--mos-space-3);
+  align-content: start;
+}
+
+.suite-terms-card p,
+.suite-community-card p {
+  margin: 0;
+}
+
+.suite-terms-card p a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.suite-terms-card p a .suite-icon {
+  width: 0.9em;
+  height: 0.9em;
+}
+
+.suite-community-card a.mos-btn {
+  align-items: center;
+  gap: var(--mos-space-2);
+}
+
+.suite-terms-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mos-space-3);
+  padding: var(--mos-space-4);
+  border: var(--mos-border-subtle);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface);
+  cursor: pointer;
+}
+
+.suite-terms-confirm input {
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--mos-color-accent);
+}
+
+/* Temporary-disclaimer styles. Every rule here belongs to
+   src/components/disclaimers/, and goes when that folder does. */
+.suite-disclaimer-actions {
+  display: flex;
+  margin-top: var(--mos-space-2);
+}
+
+.suite-disclaimer-actions .mos-btn {
+  align-items: center;
+  gap: var(--mos-space-2);
+}
+
+.suite-disclaimer-details {
+  display: grid;
+  gap: var(--mos-space-4);
+}
+
+.suite-disclaimer-details p { margin: 0; }
+
+.suite-disclaimer-steps {
+  margin: 0;
+  padding-inline-start: var(--mos-space-5);
+}
+
+.suite-disclaimer-steps li + li { margin-top: var(--mos-space-3); }
+
 
 .suite-app-simple-header {
   display: grid;
@@ -634,39 +763,18 @@
   justify-content: flex-end;
 }
 
-.suite-app-actions-menu {
-  position: relative;
-}
-
-.suite-app-actions-popover {
-  position: absolute;
-  z-index: 8;
-  right: 0;
-  top: calc(100% + var(--mos-space-2));
-  display: grid;
-  min-width: 13rem;
-  padding: var(--mos-space-2);
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: var(--mos-radius-sm);
-  /* Opaque surface, not frost: an ancestor with its own backdrop-filter
-     becomes the popover's backdrop root, so the blur never reaches the page
-     content underneath and frost renders as unreadable text-on-text. */
-  background: var(--mos-color-surface-elevated);
-  -webkit-backdrop-filter: var(--mos-frost-filter-strong);
-  backdrop-filter: var(--mos-frost-filter-strong);
-  box-shadow: var(--mos-shadow-strong);
-}
-
 /* Layout for the shared ActionMenu portal popover; the frosted surface
    itself comes from the canonical .mos-overlay (see branding/styles/mos.css
    for why overlays must be portaled to <body>). */
 .suite-actions-popover {
+  /* Above the app detail slide-over (70), below dialogs (80): the menu opens
+     from inside the slide-over and its items open dialogs on top of both. */
+  z-index: 75;
   display: grid;
   min-width: 13rem;
   padding: var(--mos-space-2);
 }
 
-.suite-app-actions-popover button,
 .suite-actions-popover button {
   display: flex;
   align-items: center;
@@ -683,18 +791,11 @@
   text-align: left;
 }
 
-.suite-app-actions-popover button:hover,
-.suite-app-actions-popover button:focus-visible,
 .suite-actions-popover button:hover,
 .suite-actions-popover button:focus-visible {
   background: #0f2842;
   color: var(--mos-color-text-strong);
   outline: none;
-}
-
-.suite-app-actions-popover button:disabled {
-  cursor: progress;
-  opacity: 0.58;
 }
 
 .suite-app-health-indicator {
@@ -2092,7 +2193,8 @@
 .suite-customize-panel { display: grid; gap: var(--mos-space-5); }
 .suite-customize-header { display: flex; align-items: start; justify-content: space-between; gap: var(--mos-space-4); }
 .suite-customize-header h2 { margin: 0 0 var(--mos-space-2); }
-.suite-customize-layout { display: grid; grid-template-columns: 12rem minmax(0, 1fr); gap: var(--mos-space-5); }
+.suite-customize-layout { display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: var(--mos-space-5); }
+.suite-customize-sidebar { display: grid; align-content: start; min-width: 0; gap: var(--mos-space-4); }
 .suite-file-list { display: grid; align-content: start; gap: var(--mos-space-2); }
 .suite-file-list button { display: flex; justify-content: space-between; gap: var(--mos-space-2); padding: var(--mos-space-3); border: var(--mos-border-subtle); border-radius: var(--mos-radius-sm); background: var(--mos-color-surface-muted); color: var(--mos-color-text); cursor: pointer; font: inherit; text-align: left; }
 .suite-file-list button[aria-current='page'] { border-color: var(--mos-color-accent-border); background: var(--mos-color-accent-soft); }

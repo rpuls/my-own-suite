@@ -41,7 +41,11 @@ No configuration files, no editing — two commands and a flash.
 
    `infrastructure/self-host/output/my-own-suite-selfhost-installer.iso`
 
-   At the end, the build prints a **generated login password for the server machine** — save it somewhere safe. You'll rarely need it: your owner account and everything else about your suite is set up **in the browser after install**, never in config files or a terminal.
+   At the end, the build generates a **login password for the server machine**. It is printed in the terminal and saved next to the ISO as `MOS-server-login.txt`, so it survives closing the window:
+
+   `infrastructure/self-host/output/MOS-server-login.txt`
+
+   Open that file, copy the password into your password manager, then delete the file. You'll rarely need this login: your owner account and everything else about your suite is set up **in the browser after install**, never in config files or a terminal.
 
 3. **Flash the stick.** Write the ISO to your USB stick with Rufus (choose ISO mode if asked) or balenaEtcher.
 
@@ -74,5 +78,7 @@ If you'd rather choose the machine's login password yourself — or change the t
 
 - **The USB stick is safe by design.** The install option must be chosen manually from the boot menu — the default entry boots normally, so a forgotten stick can't wipe a machine by accident.
 - **Give the server a stable IP.** In your router, reserve the server's IP address (often called "DHCP reservation") so your DNS rules never go stale.
+- **The server's disk is currently not encrypted.** MOS installs Ubuntu with a plain disk layout today, so anyone who walks off with the machine can read what is on it. Full-disk encryption is planned; until then, treat physical access to the server the way you'd treat physical access to a filing cabinet, and prefer a machine that isn't easy to pocket. Apps that encrypt their own data on your device before sending it are unaffected.
+- **Some apps need HTTPS before they work at all.** A fresh self-hosted suite is served over plain `http://`, and browsers withhold part of their cryptography from insecure addresses. Password managers are the clearest case — they will not work until your suite has a certificate. If that is what you came for, do the [Cloudflare HTTPS setup](/docs/guides/https-domain/) first. Most other apps are fine on plain HTTP inside your own network.
 - **Backups:** Connect an encrypted USB or external drive directly to the MOS machine; do not keep the only backup on its internal disk. See [Back up and restore](/docs/guides/backup-restore/).
 - **Next step — a real domain with HTTPS.** Own-hardware installs unlock the built-in [Cloudflare HTTPS setup](/docs/guides/https-domain/): your suite on `home.yourdomain.example` with a real certificate, still completely private to your home network.

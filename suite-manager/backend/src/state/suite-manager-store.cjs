@@ -301,6 +301,19 @@ const MIGRATIONS = [
     `,
     version: 12,
   },
+  {
+    // Owner acceptance of the MOS terms, recorded once per terms version. The
+    // row is the acceptance itself, so an owner who accepted an older version
+    // is asked again rather than silently carried forward.
+    name: 'owner-terms-acceptance',
+    sql: `
+      CREATE TABLE owner_terms_acceptances (
+        terms_version TEXT PRIMARY KEY,
+        accepted_at TEXT NOT NULL
+      ) STRICT;
+    `,
+    version: 13,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -426,6 +439,33 @@ class SuiteManagerStore {
 
   hasSession(tokenHash) {
     return Boolean(this.database.prepare('SELECT 1 FROM sessions WHERE token_hash = ?').get(tokenHash));
+  }
+
+  getTermsAcceptance(termsVersion) {
+    return this.database.prepare(`
+      SELECT accepted_at AS acceptedAt, terms_version AS termsVersion
+      FROM owner_terms_acceptances
+      WHERE terms_version = ?
+    `).get(termsVersion) || null;
+  }
+
+  recordTermsAcceptance({ acceptedAt, termsVersion }) {
+    this.database.prepare(`
+      INSERT INTO owner_terms_acceptances (terms_version, accepted_at)
+      VALUES (?, ?)
+      ON CONFLICT (terms_version) DO NOTHING
+    `).run(termsVersion, acceptedAt);
+  }
+
+  // Rotating the owner password ends every session in the same transaction that
+  // stores the new hash: a password changed because it may have leaked has to
+  // take the sessions that password opened with it. The caller signs back in
+  // with the session it is issued afterwards.
+  replaceOwnerPassword(passwordHash) {
+    this.transaction(() => {
+      this.database.prepare('UPDATE owners SET password_hash = ? WHERE id = 1').run(passwordHash);
+      this.database.prepare('DELETE FROM sessions').run();
+    });
   }
 
   getHttpsSettings() {

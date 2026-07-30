@@ -11,10 +11,18 @@ const iconStyle =
       <p class="mos-body-lg mos-meta">Self-hosting only pays off if the thing hosting your life is careful. Here is what MOS does so you don't have to think about it.</p>
     </div>
     <div class="paths">
+      {/* Deliberately leads with the condition rather than the benefit: this is
+          the one card in the section that describes something the owner sets up
+          rather than something MOS already did, and the section lede ("what MOS
+          does so you don't have to think about it") pulls the other way. A
+          skim-reader must not come away thinking a fresh self-hosted install is
+          already on HTTPS — it is not; it serves plain HTTP until this is done.
+          Revert to the benefit-first wording once AL6 (docs/roadmap.md) ships
+          trusted HTTPS on own hardware with no domain to buy. */}
       <div class="mos-panel path">
         <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-shield"/></svg></span>
         <h3 style="font-size:1.15rem">Private HTTPS at home</h3>
-        <p class="mos-meta" style="font-size:0.92rem">Real green-lock certificates on your LAN via Cloudflare DNS-01 — without exposing anything to the internet.</p>
+        <p class="mos-meta" style="font-size:0.92rem">Bring a domain and point its DNS at Cloudflare, and MOS issues real green-lock certificates for your LAN — without exposing anything to the internet.</p>
       </div>
       <div class="mos-panel path">
         <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-key"/></svg></span>

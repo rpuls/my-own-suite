@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { acceptTermsIfPending, settleAfterSignIn } from '../support/terms.mjs';
+
 const owner = { email: 'owner@example.com', name: 'MOS Owner', password: 'correct horse battery' };
 
 test('owner onboarding, Homepage customization, Settings validation, and logout use the real control plane', async ({ page }) => {
@@ -11,6 +13,21 @@ test('owner onboarding, Homepage customization, Settings validation, and logout 
   await page.getByLabel(/Confirm password/i).fill(owner.password);
   await page.getByRole('button', { name: /Create owner/i }).click();
 
+  // The terms gate holds a new owner here instead of handing them to their
+  // Homepage dashboard, and it holds on every Suite Manager route, not just
+  // the one they landed on — an acceptance a URL can walk around is no
+  // acceptance at all.
+  await settleAfterSignIn(page);
+  await expect(page.getByRole('heading', { name: /Before you start/i })).toBeVisible();
+  await page.goto('/suite-manager/apps');
+  await expect(page.getByRole('heading', { name: /Before you start/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open navigation menu' })).toBeHidden();
+  // Back to the entry route, so accepting performs the handover sign-in
+  // deferred rather than simply unlocking the page it was called from.
+  await page.goto('/suite-manager/');
+  await expect(page.getByRole('heading', { name: /Before you start/i })).toBeVisible();
+  expect(await acceptTermsIfPending(page)).toBe(true);
+
   await expect(page).toHaveURL(/\/$/u);
   await expect(page.locator('body')).toContainText('My Own Suite');
   await page.goto('/suite-manager/');
@@ -20,11 +37,17 @@ test('owner onboarding, Homepage customization, Settings validation, and logout 
   await expect(page).toHaveURL(/\/suite-manager\/customize$/u);
   await expect(page.getByRole('heading', { name: 'Customize' })).toBeVisible();
 
+  // Saving is the only button, and it is what validates: a broken file has to
+  // be refused by the same click that would have written it, not by a separate
+  // Validate step the owner could skip.
+  await expect(page.getByText('Raw YAML, for now')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Validate' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Reload saved' })).toHaveCount(0);
   await page.getByLabel('Homepage YAML').fill('- broken: [');
-  await page.getByRole('button', { name: 'Validate' }).click();
+  await page.getByRole('button', { name: 'Save and apply' }).click();
   await expect(page.getByText('Fix the YAML errors before saving.')).toBeVisible();
-  page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', { name: 'Reload saved' }).click();
+  await page.reload();
+  await expect(page.getByLabel('Homepage YAML')).not.toContainText('broken');
 
   await page.getByRole('button', { name: 'Add to Homepage' }).click();
   await page.getByRole('button', { name: /Website/ }).click();
