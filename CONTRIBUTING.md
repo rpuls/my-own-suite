@@ -63,7 +63,7 @@ Parts of this project were written with AI assistance, and we say so openly — 
 
 ## Security
 
-Please do **not** open a public issue for a security vulnerability. Report it privately through Discord to a maintainer, or by email to the address on the [GitHub profile](https://github.com/rpuls). This is early software run by real people on their own servers, so responsible disclosure genuinely matters here.
+Please do **not** open a public issue for a security vulnerability. [SECURITY.md](./SECURITY.md) is the full policy: how to report privately, what to expect and when, what is in scope, and the known gaps that are already recorded so you don't spend an evening rediscovering them. This is early software run by real people on their own servers, so responsible disclosure genuinely matters here.
 
 ## License
 

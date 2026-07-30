@@ -4,6 +4,11 @@
 // border, which clashes with the badge's own artwork.
 // EU/NL ad-labelling rules require the disclosure to sit directly at the
 // monetized link — keep the caption adjacent to the button.
+//
+// The badge is served from /vendor/ rather than DigitalOcean's CDN on
+// purpose: a docs page on a privacy-first site should not hand a third party
+// the reader's IP and page just to render a button. Re-download it into
+// site/public/vendor/ if DigitalOcean refreshes the artwork.
 ---
 
 <div class="do-referral not-content">
@@ -13,7 +18,7 @@
     target="_blank"
   >
     <img
-      src="https://web-platforms.sfo2.cdn.digitaloceanspaces.com/WWW/Badge%201.svg"
+      src="/vendor/digitalocean-referral-badge.svg"
       alt="Sign up at DigitalOcean through MOS's referral link"
       width="200"
       height="65"

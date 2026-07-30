@@ -54,9 +54,16 @@ have one documented destination story, and no restore screen shows a raw 502 or 
 **Gate:** every visible privacy grade has a human behind it, no third-party cookie reaches an install
 domain, and "what if myownsuite.org disappears" has a published answer.
 
-- **B1 — Human sign-off on the first batch of privacy reviews.** Every published review is
+- **B1 — Make first-entry review human, and AI the change detector.** Every published review is
   `ai-assisted` / `humanReviewed: false` today. That is disclosed honestly, but it is a discoverable
-  gotcha on the single most differentiated feature, and the first skeptical tester will find it.
+  gotcha on the single most differentiated feature. The fix is a process, not a backfill: **a human
+  reviews an app before it enters the catalog, against a written checklist, and signs it** — which is
+  roughly what already happens informally and needs to become defined and recorded. From then on, an
+  app *update* is reviewed as a **diff against the last signed review**, which is the work AI is
+  genuinely good at and the part that does not scale by hand. Anything the diff surfaces goes back to
+  a human before the grade moves. The AI never authors a whole assessment, so no published review
+  rests on an unreviewed machine judgement. Needs the checklist written, `assess-app-privacy` split
+  into first-entry and update-diff modes, and the provenance schema extended to record which one ran.
   *(Medium)*
 - **B2 — Replace sslip.io with self-hosted branded wildcard DNS.** `#192`. Google Analytics cookies
   land on install domains because sslip.io is not on the Public Suffix List — inert, but it
@@ -79,7 +86,11 @@ setup, and never waits at a screen that looks hung.
 - **C2 — "What it costs" docs page.** Apps running × VPS size × monthly range, provider-neutral, with
   an own-hardware electricity row and an honest note that the stated 2 vCPU / 4 GB minimum plausibly
   cannot run the advertised Seafile + ONLYOFFICE pair. Also rewrites getting-started's overspecific
-  "roughly the price of the subscriptions you're replacing" line. *(Small)*
+  "roughly the price of the subscriptions you're replacing" line. Must cover **disk capacity**, not
+  only CPU and RAM: nothing in the docs currently says how much storage a plan includes, block storage
+  is billed per GB at every provider, and app data cannot be moved off the root disk today — so a
+  reader arriving from Google Photos has no way to predict either the size or the bill. This is where
+  own hardware is the honest answer for large libraries. *(Small)*
 - **C3 — App-install duration expectations.** First installs of heavy apps take up to ~10 minutes and
   nothing says so; a user watching "Starting app" has no reason to believe it isn't hung. Install
   stepper copy, `guides/apps.md`, first-start. *(Small)*
@@ -90,6 +101,85 @@ setup, and never waits at a screen that looks hung.
 - **C5 — Finish suite user management in Settings.** `#130`. Owner password change shipped in the
   current Unreleased set; re-scope the issue to what remains rather than leaving it open as written.
   *(Small)*
+
+---
+
+## Alpha gate — the bar before MOS is called an alpha
+
+The beta notice promises that if the project proves its worth and graduates to an alpha, every module
+goes through full verification by human engineers. This section is the rest of that promise: the
+things a prototype is allowed to skip and an alpha is not. **Nothing here is a beta blocker** — it is
+the list that keeps "we'll harden it at alpha" from being a sentence nobody wrote down.
+
+### AL-S — Security hardening
+
+- **AL1 — Host OS patching.** MOS updates itself and it updates the apps, and nothing updates Ubuntu;
+  an install running for months is quietly behind on kernel and TLS fixes while the Updates screen
+  says everything is current. Enable unattended security upgrades at bootstrap, and surface host patch
+  state where owners already look for updates. *(Small)*
+- **AL2 — Full-disk encryption for own-hardware installs.** The installer uses a plain disk layout, so
+  the "safe in your own house" claim currently survives everything except someone carrying the safe
+  out of the house. Needs a decision on the unlock model for a headless machine — passphrase at boot,
+  TPM-backed, or network-bound — before it is buildable. *(Large — needs a decision first)*
+- **AL3 — Sign-in hardening either side of the second factor.** Raise the owner password hashing cost
+  to current guidance, and persist the login throttle so restarting the service does not reset an
+  attacker's budget. Both are small and independent of the MFA question in **E5**, which is the other
+  half of this gate. *(Small)*
+- **AL5 — Close the installer's placeholder-credential window on USB installs.** The autoinstall seed
+  sets the machine account from a committed placeholder hash and the real generated password is
+  applied later by first-boot `chpasswd`, while the Ubuntu installer has already enabled SSH password
+  authentication. Between those two moments the account's password is whatever that public hash
+  matches. Sixteen obvious candidates do not match it and its shape suggests hand-authored filler, so
+  the account is probably unopenable — "probably" is the problem. Fix by setting the account to a
+  genuinely locked value and confirming the installer accepts it on a real boot, or by applying the
+  real password within the install phase rather than at first boot. *(Small — solution not yet
+  determined)*
+- **AL6 — Trusted HTTPS on own hardware immediately after install, with no domain to buy.** Today a
+  self-hosted suite serves plain HTTP until the owner buys a domain and moves its DNS to Cloudflare,
+  so the owner password is first set over an unencrypted connection and secure-origin apps do not work
+  at all. **Depends on B2** — it is only buildable once MOS operates its own wildcard DNS zone.
+  Shape: derive a per-install name under the MOS zone; publish an A record pointing at the server's
+  **LAN** IP (a public name resolving to a private address is legitimate and is how comparable
+  platforms do this); let Caddy solve DNS-01 against the MOS zone using a credential MOS holds rather
+  than one the owner supplies; keep `http://home.mos.home` as the recovery door. Two things to settle
+  before building: routers and resolvers with DNS-rebinding protection will refuse the answer and need
+  a documented per-device override, and **publishing a record per install means the zone operator
+  learns an install exists** — a telemetry-shaped fact that must be designed down (one wildcard per
+  install, no per-app records) and disclosed in the privacy policy, or it contradicts "we don't know
+  that you installed it". The existing Cloudflare flow stays for owners bringing their own domain.
+  *(Large)*
+
+### AL-A — Access
+
+- **AL4 — View-only household access to the Home dashboard.** Homepage is reachable only through the
+  owner session, so the only way to let a partner or housemate use the dashboard today is to hand over
+  the owner password — which is also the credential that can install and run code as root. A view-only
+  role that reaches the dashboard and its app tiles and nothing in Suite Manager. Deliberately narrow:
+  this is not multi-user, LDAP, or SSO, which stay declined. *(Medium)*
+
+### AL-R — Backup and restore hardening
+
+- **AL7 — Recovery onto a new machine at the version the bundle expects.** The backup guide tells an
+  owner to restore onto the MOS version the bundle records; the hosted installer only ever produces
+  the current `main` tip. On the worst day, those two instructions disagree. `--repo-ref` already
+  accepts a tag and is the mechanical escape hatch, but it needs a clone and Node on a second machine
+  — which the fire took too. Decide the real shape: a version argument the hosted installer accepts, a
+  restore path that migrates forward from an older bundle (**D2**), or documenting the escape hatch
+  and accepting it. *(Medium — solution not yet determined)*
+
+### AL-C — Storage
+
+- **AL8 — Per-app volume placement.** App data lives on whichever disk the container runtime uses, so
+  the system disk is the ceiling and attaching a larger volume does nothing for it. Documented as a
+  manual pre-install mount for now (`cloud-server.mdx`), which does not help an existing install and
+  cannot vary per app. The durable answer is MOS choosing where each app's volumes live. *(Large)*
+
+### Carried in — already tracked above, and alpha gates rather than 1.0 wishes
+
+**A1** encrypted bundles · **A2** scheduled backups · **B1** human sign-off on privacy reviews ·
+**D1** object-storage destination · **E3** signed release and installer artifacts · **E4**
+owner-facing security events · **E5** passkeys and the MFA shape · **F1** runtime hardening of app
+containers. Alpha is where these stop being roadmap and become the bar.
 
 ---
 
@@ -175,6 +265,16 @@ the update or install path requires SSH.
   work. *(Large)*
 - **L7 — Prebuilt signed ISO for own hardware.** The standing bet behind accepting that the
   own-hardware path is for technical users. *(Large)*
+- **L8 — More DNS providers for the certificate flow.** Cloudflare is the only supported provider, and
+  it is the one dependency in MOS that is a hard requirement for a feature rather than a distribution
+  channel — which makes it the one people argue about. Caddy's `libdns` modules cover deSEC, Hetzner
+  DNS, Porkbun, Gandi, Njalla, DuckDNS and more; compiling a second provider in and adding a picker
+  turns "requires Cloudflare" into "supports Cloudflare or …". deSEC is the strongest first addition:
+  a free German nonprofit built for exactly this. *(Medium)*
+- **L9 — ACME-DNS delegation as the advanced certificate path.** The owner adds one `_acme-challenge`
+  CNAME once, and MOS thereafter talks only to a narrow service that can answer challenges and nothing
+  else. Strictly better than today's model, where MOS asks for a token that can edit the owner's whole
+  zone. Self-hostable, and the option this audience respects most. *(Medium)*
 
 ---
 
@@ -225,7 +325,10 @@ Owner decisions. Future agents and reviews should not resurface these.
 - **Do not chase a mail server** — a decade-deep moat at the nearest comparable platform and a
   tarpit. **L1** is a relay, not a mail server.
 - **Do not chase multi-user, LDAP, or SSO.** Single-owner is a position, not a gap: the platform has
-  one owner, apps have their own users, families live inside their Immich and Seafile accounts.
+  one owner, apps have their own users, families live inside their Immich and Seafile accounts. The
+  one carve-out is **AL4**, view-only dashboard access at alpha — because "share the dashboard with
+  the household" currently means sharing the credential that can run code as root. That is an access
+  fix, not the start of a user system.
 - **Do not chase app-count parity, a DNS-provider matrix, or monitoring graphs.**
 
 ---

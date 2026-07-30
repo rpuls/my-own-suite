@@ -6,7 +6,7 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ### Added
 
-- Onbaording requires acception terms
+- Onboarding requires accepting the terms of use before the owner account is created.
 - Settings can change the owner password. It verifies the current password, then signs every other browser out — the way to replace a password first set over plain HTTP on own-hardware and local installs.
 
 ### Changed
@@ -15,6 +15,7 @@ Updater-facing software changes only — documentation, site, repository, and co
 - Customize saves in one click. Validation runs as part of saving rather than as a separate button, and the reload button is replaced by a reload offered only when the file changed underneath the editor.
 - The welcome screen adapts to whether any apps are installed.
 - An installed app with an update waiting leads with **Review update**; opening the app stays beside it.
+- Fresh installs resolve the control plane's dependencies with `npm ci` instead of `npm install`, matching what managed updates already did. Installs now use the committed lockfile exactly and fail fast if it and `package.json` disagree.
 
 ### Fixed
 

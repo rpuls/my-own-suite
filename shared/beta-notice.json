@@ -5,9 +5,9 @@
   "readMoreLabel": "Read more",
   "dialogTitle": "About this beta",
   "paragraphs": [
-    "My Own Suite is early software. It works — we run it ourselves — but it hasn't yet been hardened by years of production use, and some features have had limited real-world testing.",
-    "We're also open about how it's built: many modules were written partly or mostly with AI assistance. Human engineers set the architecture, direct the work, and review the critical paths — but not every line has been hand-audited yet.",
-    "If the project proves its worth and graduates to a real alpha, every module will go through full verification by human software engineers before we call it that."
+    "My Own Suite is early software. It works — we build on it and run it ourselves — but it hasn't been hardened by years of production use, and some features have had limited real-world testing.",
+    "How it's built, plainly: much of the code was written with AI assistance. What that does not mean is code shipped unseen. No feature reaches a release before a human has driven it by hand on a real deployment — MOS is installed from scratch on virtual machines and on real cloud servers, over and over, and a large share of the work here has gone into the tooling that makes that verification repeatable rather than occasional.",
+    "The honest limit: that testing shows the software behaves correctly from the outside. It is not the same as a line-by-line human audit of every module, and we won't pretend it is. That audit is what an alpha is for — if the project proves its worth, every module goes through full verification by human engineers before we call it that."
   ],
   "calloutTitle": "Keep backups",
   "callout": "Practical advice for now: keep backups (MOS makes that easy), and don't make this the only copy of anything you'd hate to lose.",
