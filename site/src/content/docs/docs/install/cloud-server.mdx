@@ -5,8 +5,19 @@ description: Install My Own Suite on any hosting provider's fresh Ubuntu 24.04 s
 
 import { Steps } from '@astrojs/starlight/components'
 import DigitalOceanReferral from '../../../../components/DigitalOceanReferral.astro'
+import VideoEmbed from '../../../../components/VideoEmbed.astro'
+import installPoster from '../../../../assets/video/cloud-install-walkthrough.jpg'
 
 My Own Suite is provider-agnostic: any host that can rent you a plain **Ubuntu Server 24.04 LTS** machine with at least **2 vCPU / 4 GB RAM** will do. The whole install is **one command in a browser terminal — nothing to install on your own computer**. The installer works out the server's public address by itself, and when it finishes it prints the link where you create your owner account.
+
+Prefer to watch it first? Here is the whole thing, start to finish — the written steps below are the same install.
+
+<VideoEmbed
+  videoId="f9Y9Mbys1GQ"
+  title="Installing My Own Suite on a cloud server"
+  poster={installPoster}
+  caption="Recorded against an early beta, so a screen or two may have moved."
+/>
 
 **What you need**
 
