@@ -40,7 +40,7 @@ type UpdateComparison = {
   // What the candidate asks MOS for, and what it asks for that the installed
   // version does not already have.
   permissions: { added: string[]; candidate: string[]; installed: string[]; removed: string[] };
-  requiredInput: Array<{ id: string; label: string; secret: boolean; type: string }>;
+  requiredInput: Array<{ default?: unknown; id: string; label: string; secret: boolean; type: string }>;
   updateStatus: 'current' | 'installed-newer' | 'update-available';
   validation: { agentCapability: string; errors: string[] };
 };
@@ -248,11 +248,17 @@ function setupFieldsNeedInput(app: SetupSource) {
   return app.setup.fields.filter((field) => !field.generated);
 }
 
-function initialSetupConfig(app: SetupSource, ownerEmail: string) {
+// Non-secret manifest defaults may reference the signed-in owner
+// (`${owner.name}`, `${owner.email}`) so setup forms open personalized.
+function ownerDefault(value: string, owner: Owner) {
+  return value.replace(/\$\{owner\.email\}/gu, owner.email).replace(/\$\{owner\.name\}/gu, owner.name);
+}
+
+function initialSetupConfig(app: SetupSource, owner: Owner) {
   return Object.fromEntries(
     setupFieldsNeedInput(app).map((field) => [
       field.id,
-      typeof field.default === 'string' ? field.default : field.type === 'email' ? ownerEmail : '',
+      typeof field.default === 'string' ? ownerDefault(field.default, owner) : field.type === 'email' ? owner.email : '',
     ]),
   );
 }
@@ -568,7 +574,7 @@ function AppDetail({
   const [setupOpen, setSetupOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [confirmUninstall, setConfirmUninstall] = useState(false);
-  const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app, owner.email));
+  const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app, owner));
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [slideIdx, setSlideIdx] = useState(0);
@@ -610,7 +616,7 @@ function AppDetail({
     setShowOnHomepage(hasHomepageContribution(app));
     setSetupOpen(false);
     setGuideOpen(false);
-    setSetupConfig(initialSetupConfig(app, owner.email));
+    setSetupConfig(initialSetupConfig(app, owner));
     setPrivacyOpen(false);
     setGalleryOpen(false);
     setSlideIdx(0);
@@ -620,7 +626,7 @@ function AppDetail({
     setUpdateInput({});
     setApplyError('');
     setRecoverError('');
-  }, [app.id, owner.email]);
+  }, [app.id, owner]);
 
   async function prepareUpdate() {
     setComparisonLoading(true);
@@ -628,7 +634,7 @@ function AppDetail({
     try {
       const result = await jsonResponse<{ comparison: UpdateComparison }>(await fetch(`/suite-manager/api/apps/packages/${encodeURIComponent(app.id)}/prepare-update`, { method: 'POST' }), `Unable to prepare the ${app.name} update.`);
       setComparison(result.comparison);
-      setUpdateInput({});
+      setUpdateInput(Object.fromEntries(result.comparison.requiredInput.flatMap((field) => (typeof field.default === 'string' ? [[field.id, ownerDefault(field.default, owner)]] : []))));
       setApplyError('');
     } catch (caught) { setComparisonError(caught instanceof Error ? caught.message : 'Unable to prepare this update.'); }
     finally { setComparisonLoading(false); }
@@ -1044,7 +1050,7 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
   resolved: ExternalResolveResponse;
 }) {
   const { card, permissions, source } = resolved;
-  const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(card, owner.email));
+  const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(card, owner));
   const inputFields = setupFieldsNeedInput(card);
   const canInstall = card.validation.valid && !requiredSetupMissing(card, setupConfig) && !installing;
   return <div className="suite-app-detail-layer">

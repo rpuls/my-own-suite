@@ -54,7 +54,7 @@ function compareAppPackages({ candidate, installed, platformVersion, agentCapabi
   const requiredInput = [];
   for (const [id, field] of candidateFields) {
     if (!installedFields.has(id) && field.required && !field.generated) {
-      requiredInput.push({ id, label: field.label, secret: field.secret === true, type: field.type });
+      requiredInput.push({ id, label: field.label, secret: field.secret === true, type: field.type, ...(field.secret !== true && field.default !== undefined ? { default: field.default } : {}) });
       changes.push({ area: 'setup', classification: 'operator-action-required', summary: `New required setup value: ${field.label || id}.` });
     }
   }

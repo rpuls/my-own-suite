@@ -15,6 +15,7 @@ Updater-facing software changes only — documentation, site, repository, and co
 - Customize saves in one click. Validation runs as part of saving rather than as a separate button, and the reload button is replaced by a reload offered only when the file changed underneath the editor.
 - The welcome screen adapts to whether any apps are installed.
 - An installed app with an update waiting leads with **Review update**; opening the app stays beside it.
+- App setup forms can prefill values from the owner profile (`${owner.name}` / `${owner.email}` manifest defaults), on install and when an update asks for newly required values. Radicale 0.4.0 uses this: the username prefills with the owner email and a new "Calendar name" field names the seeded calendar in connected clients — replacing the bare "default-calendar" slug phones showed, which invited deleting and recreating the calendar and silently broke the dashboard widget.
 - Fresh installs resolve the control plane's dependencies with `npm ci` instead of `npm install`, matching what managed updates already did. Installs now use the committed lockfile exactly and fail fast if it and `package.json` disagree.
 
 ### Fixed

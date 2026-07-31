@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "appId": "radicale",
-  "reviewedAt": "2026-07-24T00:00:00.000Z",
-  "expiresAt": "2027-01-24T00:00:00.000Z",
+  "reviewedAt": "2026-07-31T00:00:00.000Z",
+  "expiresAt": "2027-01-31T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.3.1",
-    "packageDigest": "sha256:19a12f3c1d786bf1f115569766065733ac8200d53955774f24a008c10f75f5c2",
+    "packageVersion": "0.4.0",
+    "packageDigest": "sha256:f33488d0c86467dd8251f25c69572b51c39fc942aa90e6402be9d57f58610fa9",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
       "path": "apps/radicale",
-      "revision": "6ccdac93c108b7d93e06a16febf0577ec0cf95af",
+      "revision": "59a4e004337e5f72e7f9b24107dab376cdd7af5a",
       "trust": "mos-reviewed"
     },
     "components": [
@@ -38,12 +38,12 @@
   "evidence": [
     {
       "type": "configured",
-      "claim": "The MOS package projects only RADICALE_ADMIN_USERNAME and RADICALE_ADMIN_PASSWORD into the service and mounts one local data volume; it sets no analytics, update-check, external-service, or telemetry variables.",
+      "claim": "The MOS package projects only RADICALE_ADMIN_USERNAME, RADICALE_ADMIN_PASSWORD, and RADICALE_CALENDAR_DISPLAYNAME into the service and mounts one local data volume; it sets no analytics, update-check, external-service, or telemetry variables.",
       "source": "apps/radicale/manifest.json"
     },
     {
       "type": "configured",
-      "claim": "The package entrypoint configures htpasswd authentication with bcrypt against a local /data/users file and creates the bootstrap user, a default calendar collection, and one locally generated all-day starter event on the local data volume; no upstream account or service is contacted during provisioning, and the starter event contains no identifying data beyond a random UID and the install date.",
+      "claim": "The package entrypoint configures htpasswd authentication with bcrypt against a local /data/users file and creates the bootstrap user, a default calendar collection named from the locally supplied RADICALE_CALENDAR_DISPLAYNAME value, and one locally generated all-day starter event on the local data volume; no upstream account or service is contacted during provisioning, and the starter event contains no identifying data beyond a random UID and the install date.",
       "source": "apps/radicale/entrypoint.sh"
     },
     {
@@ -71,6 +71,19 @@
       "type": "configured",
       "claim": "All calendar and contact data is persisted to the single data:/data package volume, so CalDAV/CardDAV collections stay within the MOS runtime rather than any upstream store.",
       "source": "apps/radicale/manifest.json and apps/radicale/README.md"
+    },
+    {
+      "type": "observed",
+      "claim": "A packet capture on the Docker bridge of the built package container recorded no DNS queries and no packets to any routable address across first boot with user and calendar provisioning, idle time, authenticated and rejected CalDAV requests, an event write, a calendar export, recovery from a hard kill, and a clean restart; the only captured traffic was the test client's requests to the Radicale port plus link-local ARP and IPv6 multicast housekeeping from the kernel.",
+      "source": "tcpdump capture of the locally built package image (docker0 bridge), 2026-07-31",
+      "retrievedAt": "2026-07-31"
+    },
+    {
+      "type": "documented",
+      "claim": "The docker-radicale image maintainer confirmed in writing that to his knowledge the image contains no telemetry, noting that nearly all behaviour comes from Radicale itself.",
+      "source": "tomsquest/docker-radicale issue 238, maintainer reply",
+      "url": "https://github.com/tomsquest/docker-radicale/issues/238",
+      "retrievedAt": "2026-07-31"
     }
   ],
   "telemetryControls": [
@@ -99,15 +112,16 @@
   "provenance": {
     "method": "ai-assisted",
     "provider": "Anthropic",
-    "model": "Claude Opus 4.8",
+    "model": "Fable 5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
     "skillRevision": "6a741118713a2db4fd0323334fe39cc0d8021197",
-    "repositoryCommit": "6ccdac93c108b7d93e06a16febf0577ec0cf95af",
-    "humanReviewed": false
+    "repositoryCommit": "59a4e004337e5f72e7f9b24107dab376cdd7af5a",
+    "humanReviewed": true,
+    "humanReviewer": "Rasmus Puls"
   },
   "openQuestions": [
-    "No runtime network capture was performed against the pinned 3.7.6 image; conclusions rely on package configuration, the upstream image build definition, and upstream documentation rather than observed traffic.",
+    "The 2026-07-31 packet capture covered minutes of provisioning, active use, crash recovery, and restarts; outbound behaviour on longer timers than that window is excluded by the code and build-definition review rather than by observation.",
     "CalDAV/CardDAV client apps may copy synced calendar and contact data into device or vendor cloud backups depending on each client's settings, which is outside the server package's control.",
     "The package provisions a single bootstrap Radicale user; multi-user authentication, password rotation, and DAV auto-discovery are future package work not covered by this review."
   ]

@@ -86,7 +86,7 @@ test('Radicale package is discoverable and declares user-supplied credentials ge
   assert.ok(radicale);
   assert.equal(radicale.manifest.name, 'Radicale');
   assert.equal(radicale.manifest.catalog.complexity.level, 'guided');
-  assert.equal(radicale.manifest.setup.fields.length, 3);
+  assert.equal(radicale.manifest.setup.fields.length, 4);
   assert.deepEqual(radicale.manifest.setup.fields.map((field) => ({
     id: field.id,
     generated: Boolean(field.generated),
@@ -95,6 +95,7 @@ test('Radicale package is discoverable and declares user-supplied credentials ge
     type: field.type,
   })), [
     { generated: false, id: 'adminUsername', required: true, secret: false, type: 'text' },
+    { generated: false, id: 'calendarName', required: true, secret: false, type: 'text' },
     { generated: false, id: 'adminPassword', required: true, secret: true, type: 'password' },
     { generated: true, id: 'icalToken', required: true, secret: true, type: 'password' },
   ]);
@@ -105,9 +106,9 @@ test('Radicale package is discoverable and declares user-supplied credentials ge
   assert.deepEqual(radicale.manifest.resources.services.radicale.volumes, ['data:/data']);
   assert.equal(radicale.manifest.onboarding.title, 'Connect your calendar');
   assert.equal(radicale.manifest.onboarding.sections[0].type, 'values');
-  assert.equal(radicale.manifest.onboarding.sections[0].values[0].value, '${app.publicUrl}');
-  assert.equal(radicale.manifest.onboarding.sections[2].type, 'choice-guide');
-  assert.ok(radicale.manifest.onboarding.sections[2].choices.some((choice) => choice.id === 'ios'));
+  assert.equal(radicale.manifest.onboarding.sections[0].values[0].value, '${app.publicUrl}${config.adminUsername}/default-calendar/');
+  assert.equal(radicale.manifest.onboarding.sections[3].type, 'choice-guide');
+  assert.ok(radicale.manifest.onboarding.sections[3].choices.some((choice) => choice.id === 'ios'));
   assert.deepEqual(validateAppPackageManifest(radicale.manifest, { packageDir: radicale.packageDir }), []);
 });
 

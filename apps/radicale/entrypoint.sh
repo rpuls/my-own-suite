@@ -21,6 +21,7 @@ config_path = "/config/config"
 users_path = "/data/users"
 admin_user = os.environ["RADICALE_ADMIN_USERNAME"]
 admin_pass = os.environ["RADICALE_ADMIN_PASSWORD"]
+display_name = os.environ.get("RADICALE_CALENDAR_DISPLAYNAME", "").strip() or "My Calendar"
 
 cfg = configparser.ConfigParser()
 cfg.read(config_path)
@@ -46,8 +47,12 @@ calendar_dir = f"/data/collections/collection-root/{admin_user}/default-calendar
 props_path = os.path.join(calendar_dir, ".Radicale.props")
 os.makedirs(calendar_dir, exist_ok=True)
 if not os.path.exists(props_path):
+    # The display name is what clients show; without it, phones fall back to
+    # the ugly URL slug "default-calendar" — which tempts owners into deleting
+    # the calendar and recreating it under a new path, silently breaking the
+    # dashboard widget that exports this exact collection.
     with open(props_path, "w", encoding="utf-8") as f:
-        f.write(json.dumps({"tag": "VCALENDAR"}))
+        f.write(json.dumps({"D:displayname": display_name, "tag": "VCALENDAR"}))
 
     # One all-day event on install day, repeating yearly. A calendar with no
     # items at all exports a valid but empty VCALENDAR, and the Homepage
@@ -79,6 +84,19 @@ if not os.path.exists(props_path):
         f.write(event)
     print(f"Created default calendar for '{admin_user}'")
 else:
+    # Calendars seeded before the display name existed show the URL slug in
+    # clients. Name them once; a calendar the owner already renamed carries a
+    # displayname of its own and is left alone.
+    props = None
+    try:
+        with open(props_path, encoding="utf-8") as f:
+            props = json.load(f)
+    except (OSError, ValueError):
+        pass
+    if isinstance(props, dict) and "D:displayname" not in props:
+        props["D:displayname"] = display_name
+        with open(props_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(props))
     print(f"Default calendar for '{admin_user}' already exists")
 PY
 
