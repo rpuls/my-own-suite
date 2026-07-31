@@ -23,6 +23,7 @@ Updater-facing software changes only — documentation, site, repository, and co
 - Dialogs and action menus opened from app details now centre on screen and frost correctly.
 - USB installer hardening: the installed server keeps its own hostname, the Ubuntu install phase no longer needs network access (first boot still does), the success screen shows the server's LAN IP with the local DNS override to add, the ISO carries a `MOS-INSTALLER` volume label, and the generated machine password is saved beside the ISO as `MOS-server-login.txt` instead of only being printed.
 - The Vaultwarden package moves to server 1.37.0, restoring vault sync for Bitwarden clients 2026.7.0 and newer.
+- Homepage customization now supports one level of nested service groups (sections inside a category), as Homepage itself renders and as MOS1 layouts used. Previously nested entries were silently accepted but ignored: their home-service Caddy routes were dropped on save and their metadata skipped validation. Guided add/remove and app URL reconciliation now reach entries inside subgroups too.
 
 ## [0.15.0] - 2026-07-25
 

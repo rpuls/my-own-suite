@@ -164,6 +164,63 @@ test('agent reconciles app URLs while regenerating separate home-service routes'
   assert.equal(fake.transactions[0].caddyRoutes, 'https://printer.mos.example.com {\n  reverse_proxy http://192.168.1.20:8080\n}\n');
 });
 
+const nestedSeed = `- MOS Cloud:
+    - My Files:
+        - TrueNAS:
+            href: https://truenas.mos.example.com
+            description: NAS admin
+            icon: truenas
+            mos:
+              id: 52345678-1234-4123-8123-123456789abc
+              managedBy: user
+              proxy:
+                subdomain: truenas
+                upstream: http://192.168.1.30:81
+    - Tools:
+        - Stirling:
+            href: http://stirling-pdf.mos.home/
+            description: PDF tools
+            icon: stirling-pdf
+            mos:
+              id: 62345678-1234-4123-8123-123456789abc
+              managedBy: user
+- Resources:
+    - Docs:
+        href: https://example.com/docs
+        description: Docs
+`;
+
+test('nested subgroups project, route, and validate like top-level entries', () => {
+  const projection = projectServices(nestedSeed, domainState);
+  assert.match(projection, /https:\/\/truenas\.mos\.example\.com\//u);
+  assert.doesNotMatch(projection, /mos:/u);
+  assert.match(projection, /My Files:/u);
+  assert.equal(renderCaddyRoutes(nestedSeed, domainState), 'https://truenas.mos.example.com {\n  reverse_proxy http://192.168.1.30:81\n}\n');
+
+  // Invalid metadata inside a subgroup must be rejected, never silently skipped.
+  assert.throws(
+    () => validateYaml(nestedSeed.replace('managedBy: user', 'managedBy: intruder'), 'services.template.yaml'),
+    (error) => error.code === 'INVALID_MOS_METADATA',
+  );
+  const tooDeep = `- A:\n    - B:\n        - C:\n            - Service:\n                href: https://example.com\n`;
+  assert.throws(() => validateYaml(tooDeep, 'services.template.yaml'), (error) => error.code === 'INVALID_SERVICES_TEMPLATE');
+});
+
+test('guided edits reach entries inside nested subgroups', () => {
+  const added = addEntry(nestedSeed, { ...link, group: 'Tools' }, { id });
+  assert.doesNotMatch(added.content, /\n- Tools:/u);
+  assert.match(added.content, new RegExp(id, 'u'));
+
+  const removed = removeEntryById(added.content, '52345678-1234-4123-8123-123456789abc');
+  assert.equal(removed.changed, true);
+  assert.doesNotMatch(removed.content, /TrueNAS/u);
+  assert.match(removed.content, /Stirling/u);
+
+  const reconciled = reconcileManagedUrls(nestedSeed, [{ href: 'https://stirling-pdf.mos.example.com/', id: '62345678-1234-4123-8123-123456789abc' }]);
+  assert.equal(reconciled.changed, true);
+  assert.match(reconciled.content, /href: https:\/\/stirling-pdf\.mos\.example\.com\//u);
+});
+
 test('agent API has no arbitrary command, path, file, or service operation', async () => {
   const core = new HomepageAgentCore(adapter());
   const status = await core.status();

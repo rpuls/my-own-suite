@@ -56,26 +56,38 @@ function validateYaml(content, file) {
   return { valid: true };
 }
 
+// Homepage renders one nested level of groups (sections inside a category), so
+// the contract walks group -> subgroup -> service. A list value marks a
+// subgroup; anything else is a service config.
+const MAX_GROUP_DEPTH = 2;
+
 function entriesFromServices(value) {
   if (!Array.isArray(value)) {
     throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Services must be a list of groups.');
   }
   const entries = [];
+  const walkGroup = (group, services, depth) => {
+    if (!group.trim() || !Array.isArray(services)) {
+      throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Every service group must have a name and service list.');
+    }
+    if (depth > MAX_GROUP_DEPTH) {
+      throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Service groups can be nested at most one level deep.');
+    }
+    for (const serviceItem of services) {
+      if (!serviceItem || typeof serviceItem !== 'object' || Array.isArray(serviceItem)) {
+        throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Every dashboard service must be a mapping.');
+      }
+      for (const [name, config] of Object.entries(serviceItem)) {
+        if (Array.isArray(config)) walkGroup(name, config, depth + 1);
+        else entries.push({ config, group, name });
+      }
+    }
+  };
   for (const groupItem of value) {
     if (!groupItem || typeof groupItem !== 'object' || Array.isArray(groupItem)) {
       throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Every service group must be a mapping.');
     }
-    for (const [group, services] of Object.entries(groupItem)) {
-      if (!group.trim() || !Array.isArray(services)) {
-        throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Every service group must have a name and service list.');
-      }
-      for (const serviceItem of services) {
-        if (!serviceItem || typeof serviceItem !== 'object' || Array.isArray(serviceItem)) {
-          throw new HomepageConfigError('INVALID_SERVICES_TEMPLATE', 'Every dashboard service must be a mapping.');
-        }
-        for (const [name, config] of Object.entries(serviceItem)) entries.push({ config, group, name });
-      }
-    }
+    for (const [group, services] of Object.entries(groupItem)) walkGroup(group, services, 1);
   }
   return entries;
 }
@@ -203,6 +215,36 @@ function normalizeDashboardInput(input, homeService) {
   return { ...text, proxy };
 }
 
+// Every group's service list in the parsed document, including nested
+// subgroups, so guided edits reach entries at either depth.
+function serviceListsIn(document) {
+  const lists = [];
+  const visit = (seq) => {
+    if (!YAML.isSeq(seq)) return;
+    lists.push(seq);
+    for (const serviceNode of seq.items) {
+      for (const pair of YAML.isMap(serviceNode) ? serviceNode.items : []) {
+        if (YAML.isSeq(pair?.value)) visit(pair.value);
+      }
+    }
+  };
+  for (const groupNode of document.contents?.items || []) {
+    for (const pair of YAML.isMap(groupNode) ? groupNode.items : []) visit(pair?.value);
+  }
+  return lists;
+}
+
+function findGroupPair(document, name) {
+  const stack = (document.contents?.items || []).flatMap((item) => (YAML.isMap(item) ? item.items : []));
+  while (stack.length) {
+    const pair = stack.shift();
+    if (!YAML.isSeq(pair?.value)) continue;
+    if (pair?.key?.value === name) return pair;
+    for (const node of pair.value.items) stack.push(...(YAML.isMap(node) ? node.items : []));
+  }
+  return null;
+}
+
 function addEntry(content, rawInput, { homeService = false, id = crypto.randomUUID() } = {}) {
   const document = parseDocument(content);
   const current = document.toJS();
@@ -214,9 +256,7 @@ function addEntry(content, rawInput, { homeService = false, id = crypto.randomUU
   if (homeService && entries.some(({ config }) => config?.mos?.proxy?.subdomain === input.proxy.subdomain)) {
     throw new HomepageConfigError('DUPLICATE_PUBLIC_HOST', 'That public subdomain is already used.');
   }
-  let groupPair = document.contents.items
-    .flatMap((item) => item?.items || [])
-    .find((pair) => pair?.key?.value === input.group);
+  let groupPair = findGroupPair(document, input.group);
   if (!groupPair) {
     document.add(document.createNode({ [input.group]: [] }));
     groupPair = document.contents.items.at(-1)?.items?.[0];
@@ -248,13 +288,11 @@ function removeEntryById(content, id) {
   const current = document.toJS();
   validateServices(current);
   let changed = false;
-  for (const groupNode of document.contents.items || []) {
-    const groupPair = groupNode?.items?.[0];
-    const serviceList = groupPair?.value;
-    if (!serviceList?.items) continue;
+  for (const serviceList of serviceListsIn(document)) {
     const before = serviceList.items.length;
     serviceList.items = serviceList.items.filter((serviceNode) => {
       const servicePair = serviceNode?.items?.[0];
+      if (YAML.isSeq(servicePair?.value)) return true;
       const configPair = servicePair?.value?.items?.find((pair) => pair?.key?.value === 'mos');
       const idPair = configPair?.value?.items?.find((pair) => pair?.key?.value === 'id');
       return idPair?.value?.value !== id;
@@ -290,15 +328,12 @@ function reconcileManagedUrls(content, entries = []) {
   }
 
   let changed = false;
-  for (const groupNode of document.contents.items || []) {
-    const groupPair = groupNode?.items?.[0];
-    const serviceList = groupPair?.value;
-    if (!serviceList?.items) continue;
+  for (const serviceList of serviceListsIn(document)) {
     for (const serviceNode of serviceList.items || []) {
       const servicePair = serviceNode?.items?.[0];
       const configNode = servicePair?.value;
-      const configPairItems = configNode?.items;
-      if (!Array.isArray(configPairItems)) continue;
+      if (!YAML.isMap(configNode)) continue;
+      const configPairItems = configNode.items;
       const mosPair = configPairItems.find((pair) => pair?.key?.value === 'mos');
       const idPair = mosPair?.value?.items?.find((pair) => pair?.key?.value === 'id');
       const target = entryMap.get(idPair?.value?.value);
