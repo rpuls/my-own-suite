@@ -22,9 +22,13 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 - A new Radicale install no longer shows a broken Homepage calendar widget. Homepage treats a feed with no entries as an error, so the package now seeds a yearly "Your independence day" event dated the install day. Existing calendars are untouched.
 - Dialogs and action menus opened from app details now centre on screen and frost correctly.
-- USB installer hardening: the installed server keeps its own hostname, the Ubuntu install phase no longer needs network access (first boot still does), the success screen shows the server's LAN IP with the local DNS override to add, the ISO carries a `MOS-INSTALLER` volume label, and the generated machine password is saved beside the ISO as `MOS-server-login.txt` instead of only being printed.
+- USB installer hardening: the installed server keeps its own hostname, the Ubuntu install phase no longer needs network access (first boot still does), the success screen shows the server's LAN IP with the local DNS override to add, and the ISO carries a `MOS-INSTALLER` volume label.
 - The Vaultwarden package moves to server 1.37.0, restoring vault sync for Bitwarden clients 2026.7.0 and newer.
 - Homepage customization now supports one level of nested service groups (sections inside a category), as Homepage itself renders and as MOS1 layouts used. Previously nested entries were silently accepted but ignored: their home-service Caddy routes were dropped on save and their metadata skipped validation. Guided add/remove and app URL reconciliation now reach entries inside subgroups too.
+
+### Security
+
+- The USB installer no longer decides the server's console password when the ISO is built. The autoinstall ships a locked account, and the installed machine generates its own login on first boot. The password is shown on the server's own screen and handed over once in Suite Manager, which deletes it as soon as the owner confirms they saved it — so it exists only on the machine that uses it. This replaces both the committed placeholder hash that briefly owned the account during install and the `MOS-server-login.txt` file written beside the ISO. **Anyone who has shared a built ISO should treat its machine password as public and change it.** Setting `LINUX_PASSWORD` still pins a password for a lab machine you own, and an ISO built that way must not be shared.
 
 ## [0.15.0] - 2026-07-25
 

@@ -21,14 +21,48 @@ function Fail([string]$Message) {
   throw "[mos-smoke:hyperv-usb] $Message"
 }
 
-function Assert-HyperV {
-  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-  $principal = [Security.Principal.WindowsPrincipal]::new($identity)
-  if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Fail 'Run this command from an Administrator PowerShell terminal.'
+# Asks what this session can actually do rather than whether it is elevated.
+# Elevation is one way to get these rights; membership of Hyper-V Administrators
+# is another, and a hosts file whose ACL grants the user write is a third. Testing
+# the role instead of the capability refused terminals that were perfectly able to
+# run the lab.
+function Test-HostsWritable {
+  try {
+    $stream = [IO.File]::Open($HostsPath, 'Append', 'Write')
+    $stream.Close()
+    return $true
   }
+  catch {
+    return $false
+  }
+}
+
+function Assert-HyperV {
   if (-not (Get-Command Get-VM -ErrorAction SilentlyContinue)) {
     Fail 'Hyper-V PowerShell management tools are not installed.'
+  }
+
+  try {
+    Get-VM -ErrorAction Stop | Out-Null
+  }
+  catch {
+    Fail @'
+This session cannot manage Hyper-V.
+
+Either run the command from an Administrator PowerShell terminal, or grant this
+account standing access once (from an Administrator terminal, then sign out and
+back in):
+
+  Add-LocalGroupMember -Group "Hyper-V Administrators" -Member "$env:USERNAME"
+'@
+  }
+
+  # Not fatal. Everything slow and interesting — the ISO build, the VM, the
+  # install — works without it; only the *.local-domain shortcut on this PC does
+  # not, and that is a two-line paste the summary prints at the end.
+  $script:HostsWritable = Test-HostsWritable
+  if (-not $script:HostsWritable) {
+    Write-Host "[mos-smoke:hyperv-usb] No write access to $HostsPath - the lab will run and print the entries to add by hand."
   }
 }
 
@@ -158,8 +192,44 @@ function Get-SmokeHostNames {
   return $names | Select-Object -Unique
 }
 
-function Remove-SmokeHostsEntries {
-  if (-not (Test-Path -LiteralPath $HostsPath)) { return }
+# The hosts file is the one thing the lab touches that Windows reserves for
+# administrators, and no group membership delegates it the way Hyper-V
+# Administrators delegates the VM. Rather than force the whole run to be
+# elevated - which would move all of its output into a second window - the
+# rewrite is handed to a short-lived elevated helper. One prompt, at the end of
+# a run that is otherwise entirely unprivileged.
+function Write-HostsContent {
+  param([string]$Content)
+
+  if ($script:HostsWritable) {
+    [IO.File]::WriteAllText($HostsPath, $Content, [Text.Encoding]::ASCII)
+    & ipconfig.exe /flushdns | Out-Null
+    return $true
+  }
+
+  # The whole file is composed here, where the logic already lives, and the
+  # elevated half only copies it into place. Nothing that decides *what* the
+  # hosts file should say runs with administrator rights.
+  $staging = Join-Path ([IO.Path]::GetTempPath()) ("mos-hosts-" + [guid]::NewGuid().ToString('N') + '.txt')
+  [IO.File]::WriteAllText($staging, $Content, [Text.Encoding]::ASCII)
+
+  $command = "Copy-Item -LiteralPath '$staging' -Destination '$HostsPath' -Force; ipconfig.exe /flushdns | Out-Null; Remove-Item -LiteralPath '$staging' -Force"
+  Write-Host '[mos-smoke:hyperv-usb] Updating the Windows hosts file - accept the elevation prompt.'
+  try {
+    Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -WindowStyle Hidden -ErrorAction Stop `
+      -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $command
+    return $true
+  }
+  catch {
+    # Declining the prompt is a choice, not a failure. The lab is already built
+    # and running; only name resolution on this PC is missing.
+    Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue
+    return $false
+  }
+}
+
+function Get-HostsWithoutSmokeEntries {
+  if (-not (Test-Path -LiteralPath $HostsPath)) { return '' }
   $content = [IO.File]::ReadAllText($HostsPath)
   $stackDomain = Get-StackDomain
   $hostNames = @(Get-SmokeHostNames -StackDomain $stackDomain)
@@ -169,7 +239,19 @@ function Remove-SmokeHostsEntries {
     $hostPattern = "(?m)^\s*\S+\s+$([regex]::Escape($hostName))(\s|$).*\r?\n?"
     $updated = [regex]::Replace($updated, $hostPattern, '').TrimEnd()
   }
-  [IO.File]::WriteAllText($HostsPath, "$updated`r`n", [Text.Encoding]::ASCII)
+  return $updated
+}
+
+function Remove-SmokeHostsEntries {
+  # A reset clears the entries and then writes them again a few minutes later.
+  # Skipping the clear when it would cost a prompt keeps a reset to exactly one,
+  # because the write that follows composes the whole file anyway. Destroy has no
+  # later write, so it asks.
+  param([switch]$AllowElevation)
+
+  if (-not (Test-Path -LiteralPath $HostsPath)) { return }
+  if (-not $script:HostsWritable -and -not $AllowElevation) { return }
+  Write-HostsContent -Content "$(Get-HostsWithoutSmokeEntries)`r`n" | Out-Null
 }
 
 function Set-SmokeHostsEntries {
@@ -177,11 +259,16 @@ function Set-SmokeHostsEntries {
     [string]$Ip,
     [string]$StackDomain
   )
-  Remove-SmokeHostsEntries
   $entries = @(Get-SmokeHostNames -StackDomain $StackDomain | ForEach-Object { "$Ip $_" })
   $block = (@($HostsStartMarker) + $entries + @($HostsEndMarker)) -join "`r`n"
-  [IO.File]::AppendAllText($HostsPath, "$block`r`n", [Text.Encoding]::ASCII)
-  & ipconfig.exe /flushdns | Out-Null
+
+  if (Write-HostsContent -Content "$(Get-HostsWithoutSmokeEntries)`r`n$block`r`n") { return }
+
+  Write-Host ''
+  Write-Host "[mos-smoke:hyperv-usb] The hosts file was not updated. Add these lines to $HostsPath by hand:"
+  Write-Host ''
+  Write-Host $block
+  Write-Host ''
 }
 
 function Build-InstallerIso {
@@ -329,7 +416,9 @@ Assert-HyperV
 if ($Command -eq 'destroy') {
   Remove-LabVm
   Remove-LabArtifacts
-  Remove-SmokeHostsEntries
+  # Nothing writes the entries again after a destroy, so this is the only chance
+  # to leave the hosts file pointing at a VM that no longer exists.
+  Remove-SmokeHostsEntries -AllowElevation
   Write-Host "[mos-smoke:hyperv-usb] Removed VM '$VmName' and its disposable lab artifacts."
   exit 0
 }

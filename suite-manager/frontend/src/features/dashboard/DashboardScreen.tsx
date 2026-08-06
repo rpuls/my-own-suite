@@ -4,6 +4,7 @@ import { BetaNotice } from '../../components/disclaimers';
 import { Icon } from '../../components/ui';
 import { CONTRIBUTING_URL, DISCORD_INVITE_URL, GITHUB_REPO_URL } from '../../lib/links';
 import type { Owner } from '../setup/types';
+import { ConsoleLoginCard } from './ConsoleLoginCard';
 
 type DashboardScreenProps = {
   onNavigate: (route: 'apps' | 'backups' | 'customize', path: string) => void;
@@ -86,6 +87,10 @@ export function DashboardScreen({ onNavigate, owner }: DashboardScreenProps) {
           </button>
         </div>}
       </div>
+
+      {/* Above the beta notice and the grid on purpose: it is the one thing on
+          this screen that stops being possible if the owner ignores it. */}
+      <ConsoleLoginCard />
 
       <BetaNotice />
 

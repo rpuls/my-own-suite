@@ -97,6 +97,13 @@ export function Select({ children, helperText, label, ...props }: SelectHTMLAttr
   return <label className="suite-control"><span className="suite-field-label">{label}</span><select className="suite-input suite-select" {...props}>{children}</select>{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
 }
 
+// The shared confirmation checkbox: a boxed, full-width row whose whole surface
+// is the hit target. Used wherever a deliberate acknowledgement gates an action,
+// so "I have read this" looks and behaves the same everywhere it is asked.
+export function Checkbox({ children, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { children: ReactNode }) {
+  return <label className="suite-confirm"><input className="suite-confirm-box" type="checkbox" {...props} /><span>{children}</span></label>;
+}
+
 export function Notice({ children, title, variant = 'info' }: { children: ReactNode; title: ReactNode; variant?: 'error' | 'info' | 'success' | 'warning' }) {
   return <div className={`suite-notice suite-notice-${variant}`} role={variant === 'error' ? 'alert' : 'status'}><strong>{title}</strong><div>{children}</div></div>;
 }
