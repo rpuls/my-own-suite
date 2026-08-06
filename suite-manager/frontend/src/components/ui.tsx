@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
-export type IconName = 'apps' | 'backup' | 'check' | 'chevron-right' | 'customize' | 'dashboard' | 'external' | 'hard-drive' | 'menu' | 'more' | 'network-drive' | 'refresh' | 'settings' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'x';
+export type IconName = 'apps' | 'backup' | 'check' | 'chevron-right' | 'customize' | 'dashboard' | 'external' | 'eye' | 'eye-off' | 'hard-drive' | 'menu' | 'more' | 'network-drive' | 'refresh' | 'settings' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'x';
 
 export function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -12,6 +12,8 @@ export function Icon({ name }: { name: IconName }) {
     customize: <><path d="M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></>,
     dashboard: <><rect height="7" rx="1" width="7" x="3" y="3" /><rect height="7" rx="1" width="7" x="14" y="3" /><rect height="7" rx="1" width="7" x="3" y="14" /><rect height="7" rx="1" width="7" x="14" y="14" /></>,
     external: <path d="M7 17L17 7M9 7h8v8" />,
+    eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>,
+    'eye-off': <><path d="M10.6 6.2A9.8 9.8 0 0 1 12 6c6.4 0 10 6 10 6a17.6 17.6 0 0 1-3 3.6" /><path d="M6.3 7.7A17.6 17.6 0 0 0 2 12s3.6 6 10 6a9.8 9.8 0 0 0 3.6-.7" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /><path d="m3 3 18 18" /></>,
     'hard-drive': <><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><line x1="3" x2="21" y1="9" y2="9" /></>,
     menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
     more: <><circle cx="12" cy="5" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="12" cy="19" r="1.2" /></>,

@@ -369,6 +369,14 @@
   user-select: all;
 }
 
+/* The mask is decoration standing in for a value, so it is not selectable:
+   dragging across it would put a row of dots on the clipboard. */
+.suite-console-login-secret dd.suite-console-login-masked {
+  color: var(--mos-color-text-muted);
+  letter-spacing: 0.18em;
+  user-select: none;
+}
+
 .suite-status-card {
   display: grid;
   gap: var(--mos-space-2);
