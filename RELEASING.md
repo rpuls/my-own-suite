@@ -95,27 +95,29 @@ Version bump guidance:
 
 ## Standard Release Workflow
 
-Two commands and a tag. Everything that can be checked is checked by one gate, and
+One command and a tag. Everything that can be checked is checked by one gate, and
 everything that can be automated happens when the tag is pushed.
 
-1. Ensure `staging` is green (CI passing) and contains the batch you want to release.
-2. Create release branch from `staging`: `release/vX.Y.Z`
-3. Prepare the release:
+1. Ensure `staging` is green (CI passing), contains the batch you want to release, and
+   has nothing uncommitted.
+2. From `staging`, prepare the release:
 
    ```bash
    npm run release:prepare -- X.Y.Z
    ```
 
-   This rewrites `VERSION` and `releases/stable.json`, moves everything under
-   `## [Unreleased]` into a dated `## [X.Y.Z]` section, and then runs the release gate
-   against what it just wrote. It refuses to leave a prepared-but-invalid tree behind.
+   This creates and switches to `release/vX.Y.Z`, rewrites `VERSION` and
+   `releases/stable.json`, moves everything under `## [Unreleased]` into a dated
+   `## [X.Y.Z]` section, and then runs the release gate against what it just wrote. It
+   refuses to leave a prepared-but-invalid tree behind, and it refuses to start from a
+   dirty working tree so that unrelated work cannot ride along in the release commit.
    It does not commit, so review the diff.
-4. Commit the prepared files, open the PR into `main`, and merge it with a **merge commit**.
-5. Optional, and worth it when the installer or the pipeline itself changed: go to
+3. Commit the prepared files, open the PR into `main`, and merge it with a **merge commit**.
+4. Optional, and worth it when the installer or the pipeline itself changed: go to
    **Actions → Release → Run workflow** on `main`. That runs the same gate and the same
    installer build, uploads to `dry-run/` in the bucket, and stops before publishing. It
    rehearses the part of a release a moved tag cannot undo.
-6. Tag and push:
+5. Tag and push:
 
    ```bash
    git tag vX.Y.Z

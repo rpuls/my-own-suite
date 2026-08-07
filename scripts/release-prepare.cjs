@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-// The single command that prepares a release. It edits every file that has to
-// agree about the version, moves the changelog forward, and then runs the same
-// gate the pipeline runs — so the answer to "did I remember everything?" is
-// never a checklist someone reads, it is an exit code.
+// The single command that prepares a release. It creates the release branch,
+// edits every file that has to agree about the version, moves the changelog
+// forward, and then runs the same gate the pipeline runs — so the answer to
+// "did I remember everything?" is never a checklist someone reads, it is an
+// exit code.
 //
 // It writes files and stops. Committing, tagging and pushing stay manual and
 // reviewable, because those are the steps that are hard to undo.
@@ -35,9 +36,45 @@ function readTarget() {
   return version;
 }
 
+function git(args) {
+  return spawnSync('git', args, { cwd: rootDir, encoding: 'utf8' });
+}
+
 function currentBranch() {
-  const result = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: rootDir, encoding: 'utf8' });
+  const result = git(['rev-parse', '--abbrev-ref', 'HEAD']);
   return result.status === 0 ? String(result.stdout).trim() : '';
+}
+
+// One command, one branch. Asking for the branch to be created first makes it a
+// step that can be forgotten, and forgetting it prepares a release on whatever
+// branch someone happened to be standing on.
+function ensureReleaseBranch(version) {
+  const target = `release/v${version}`;
+  const current = currentBranch();
+  if (current === target) {
+    return target;
+  }
+
+  if (current === 'main') {
+    fail('releases are prepared from the branch holding the batch you are releasing, usually staging — never from main. See RELEASING.md.');
+  }
+
+  // Uncommitted work would follow you onto the release branch and be swept into
+  // the release commit unnoticed. That commit is the one that has to contain the
+  // release and nothing else, because it is what the tag points at.
+  if (git(['status', '--porcelain']).stdout.trim()) {
+    fail(`the working tree has uncommitted changes. Commit or stash them first — ${target} has to start from a clean ${current || 'HEAD'}.`);
+  }
+
+  const checkout = git(['rev-parse', '--verify', '--quiet', `refs/heads/${target}`]).status === 0
+    ? git(['checkout', target])
+    : git(['checkout', '-b', target]);
+  if (checkout.status !== 0) {
+    fail(`could not switch to ${target}: ${String(checkout.stderr).trim()}`);
+  }
+
+  console.log(`Switched to ${target}, branched from ${current || 'detached HEAD'}.`);
+  return target;
 }
 
 // Every entry under Unreleased becomes the new version's section, and Unreleased
@@ -72,10 +109,7 @@ function rollChangelog(changelog, version, today) {
 
 function main() {
   const version = readTarget();
-  const branch = currentBranch();
-  if (branch === 'main') {
-    fail('releases are prepared on a release branch, never on main. See RELEASING.md.');
-  }
+  const branch = ensureReleaseBranch(version);
 
   const today = new Date().toISOString().slice(0, 10);
   const written = [];
@@ -103,7 +137,7 @@ function main() {
     written.push(`CHANGELOG.md  [Unreleased] -> [${version}] - ${today}`);
   }
 
-  console.log(`Prepared release v${version} on branch ${branch || '(detached)'}:`);
+  console.log(`Prepared release v${version} on branch ${branch}:`);
   for (const line of written) console.log(`  ${line}`);
   console.log('');
 
