@@ -70,6 +70,13 @@ npm run hooks:install
 
 These hooks block committing/pushing directly on `main` and reinforce PR-only workflow.
 
+GitHub enforces the same thing on its side, so a fresh clone without hooks is still safe:
+
+- `main` is protected — pull request required, CI must pass, no force pushes, no deletion.
+  Admins are not enforced, so there is a deliberate manual override for emergencies.
+- The repository allows **merge commits only**. Squash and rebase merging are disabled,
+  because a squashed release PR would rewrite the commit the tag is supposed to point at.
+
 ## PR Labeling Rules
 
 Use at least one of:
@@ -104,7 +111,11 @@ everything that can be automated happens when the tag is pushed.
    against what it just wrote. It refuses to leave a prepared-but-invalid tree behind.
    It does not commit, so review the diff.
 4. Commit the prepared files, open the PR into `main`, and merge it with a **merge commit**.
-5. Tag and push:
+5. Optional, and worth it when the installer or the pipeline itself changed: go to
+   **Actions → Release → Run workflow** on `main`. That runs the same gate and the same
+   installer build, uploads to `dry-run/` in the bucket, and stops before publishing. It
+   rehearses the part of a release a moved tag cannot undo.
+6. Tag and push:
 
    ```bash
    git tag vX.Y.Z
@@ -113,6 +124,8 @@ everything that can be automated happens when the tag is pushed.
 
 Pushing the tag runs `.github/workflows/release.yml`, which:
 
+- refuses to go further if the tagged commit is not on `main`, so a tag cannot publish
+  code that never went through a pull request;
 - re-runs `npm test` and `npm run release:check -- --release vX.Y.Z`, so a hand-made tag
   cannot skip a check the prepare step would have caught;
 - renders the installer seed **pinned to the tag**, and fails if it resolves to a branch
