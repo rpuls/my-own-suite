@@ -8,6 +8,10 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 - The hosted one-line installer installs the latest published release instead of the tip of `main`, so both installer paths now start on the same release commit. Cloud installs previously picked up unreleased commits while still reporting the last release version.
 
+### Fixed
+
+- Installing an app whose images take more than three minutes to build no longer fails with "App runtime apply timed out". Suite Manager gave up on the host agent at the three-minute mark and lost the result, while the agent carried on and finished — so the app ended up running and healthy behind a Suite Manager that reported it had never started. ONLYOFFICE takes just under four minutes and hit this every time. An app already stranded this way recovers by running its install again, which picks up where the runtime step left off.
+
 ### Security
 
 - USB-installed servers no longer expose an unauthenticated endpoint that wipes the suite. It deletes every installed app's containers and volumes, and was enabled on published installer images, so any device on the same network could have triggered it. It is now confined to the disposable test-VM build profile, and a release build fails if a publishable image carries it. Machines installed from the v0.16.0 image close the endpoint when they take this update; reinstalling is not required.

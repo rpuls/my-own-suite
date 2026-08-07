@@ -5,6 +5,10 @@ const APP_AGENT_TIMEOUT_MS = 180_000;
 // allowed for each build. Keep the caller alive for that full worst case plus
 // a small allowance for request and agent bookkeeping.
 const APP_AGENT_UPDATE_BUILD_TIMEOUT_MS = 45 * 60_000;
+// Apply builds too, on the same budget. Hanging up first does not stop the
+// agent — it strands an app whose containers are running with its projections
+// still unapplied.
+const APP_AGENT_APPLY_TIMEOUT_MS = 50 * 60_000;
 
 class AppAgentClient {
   constructor({ socketPath = process.env.MOS_APP_AGENT_SOCKET || '/run/mos-app-agent/agent.sock', timeoutMs = APP_AGENT_TIMEOUT_MS } = {}) {
@@ -53,7 +57,7 @@ class AppAgentClient {
   }
 
   status() { return this.request('GET', '/v1/status'); }
-  apply(input) { return this.request('POST', '/v1/apps/apply', input); }
+  apply(input) { return this.request('POST', '/v1/apps/apply', input, { timeoutMs: APP_AGENT_APPLY_TIMEOUT_MS }); }
   checkHealth(input) { return this.request('POST', '/v1/apps/check-health', input); }
   connectNetwork(input) { return this.request('POST', '/v1/apps/connect-network', input); }
   snapshotPackage(input) { return this.request('POST', '/v1/apps/snapshot', input); }
@@ -67,4 +71,4 @@ class AppAgentClient {
   remove(input) { return this.request('POST', '/v1/apps/remove', input); }
 }
 
-module.exports = { APP_AGENT_TIMEOUT_MS, APP_AGENT_UPDATE_BUILD_TIMEOUT_MS, AppAgentClient };
+module.exports = { APP_AGENT_APPLY_TIMEOUT_MS, APP_AGENT_TIMEOUT_MS, APP_AGENT_UPDATE_BUILD_TIMEOUT_MS, AppAgentClient };

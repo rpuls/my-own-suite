@@ -13,6 +13,8 @@ export async function acceptTermsIfPending(page) {
   if (!(await acceptButton(page).isVisible().catch(() => false))) return false;
   await page.getByRole('checkbox', { name: /accept the terms of use/iu }).check();
   await acceptButton(page).click();
+  // The gate coming down means the acceptance was recorded, so navigating next cannot race it.
+  await expect(acceptButton(page)).toBeHidden({ timeout: 60000 });
   return true;
 }
 
