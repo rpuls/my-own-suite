@@ -4,6 +4,8 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-07
+
 ### Added
 
 - Onboarding requires accepting the terms of use before the owner account is created.
