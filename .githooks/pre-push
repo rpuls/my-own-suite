@@ -1,11 +1,20 @@
 #!/bin/sh
 
-branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+# Blocks pushes that would update main, not pushes that happen to be made while
+# main is checked out. Tagging a release is done from main by design, and a tag
+# push updates refs/tags/*, so it is none of this hook's business.
+#
+# git feeds one line per ref being pushed:
+#   <local ref> <local sha> <remote ref> <remote sha>
 
-if [ "$branch" = "main" ]; then
-  echo "ERROR: pushing from 'main' is blocked."
-  echo "Push a feature branch and open a PR instead."
-  exit 1
-fi
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main)
+      echo "ERROR: pushing to 'main' is blocked."
+      echo "Open a pull request instead. Release tags are fine: git push origin vX.Y.Z"
+      exit 1
+      ;;
+  esac
+done
 
 exit 0
