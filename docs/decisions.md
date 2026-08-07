@@ -4,6 +4,21 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-08-07: Releases Publish A Flashable Installer Image, Built By The Pipeline And Free Of Machine Identity
+
+Decision: Pushing a `v*` tag is the entire release. `.github/workflows/release.yml` refuses a tag that is not on `main`, re-runs `npm test` and `npm run release:check -- --release <tag>`, renders the installer seed pinned to the tag, builds the ISO, uploads it to the Cloudflare R2 bucket `mos-downloads`, and only then publishes the GitHub Release with the download link and SHA256. `npm run release:prepare -- X.Y.Z` is the one command that prepares a release: it creates `release/vX.Y.Z`, writes `VERSION` and `releases/stable.json`, rolls `## [Unreleased]` into a dated section, and runs the same strict gate the pipeline runs. The published image is served from `downloads.myownsuite.org`, not as a GitHub release asset, because the Ubuntu 24.04 base puts it at ~3.2 GiB against a 2 GiB asset cap. Two properties are enforced before the build starts and are release-stopping: the seed must pin the tag rather than a branch, and it must carry no password. Nothing about a machine's identity or credentials may originate in the image — the console login is generated on first boot and handed over once through Suite Manager, and SSH host keys are generated on the target.
+
+Reason: One image is flashed by everyone who downloads it, so anything decided at build time is shared by every install and extractable from the file. Building it once in CI also removes Node and Docker as prerequisites for the own-hardware path, which is what made that path technical at all. Having local preparation and CI run the same gate means there is one definition of "ready to release" and no way for them to disagree.
+
+Consequences:
+
+- `main` is protected (PR required, CI required, no force pushes) and the repository allows merge commits only, because a squashed release PR would rewrite the commit the tag is meant to point at.
+- R2's S3 credentials live in `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`; the S3 API is required because a multi-gigabyte upload needs multipart. `CLOUDFLARE_API_TOKEN` belongs to the site deployment and is not interchangeable.
+- The workflow can be run manually to rehearse the build without publishing; those artifacts go to `dry-run/` and are never linked.
+- R2's free tier holds roughly three images. Superseded releases will eventually need their notes repointed before a lifecycle rule expires their objects.
+- A published image is frozen at release time, which makes the update path on first boot load-bearing for anyone flashing an older download.
+- Still open, and not covered by this decision: booting the published image in CI before it publishes, and what an unattended installer may do to a stranger's disk.
+
 ## 2026-07-21: MOS Public Site Deployment Cutover To GitHub-Built Cloudflare Pages Deploys
 
 Decision: The MOS public site (`site/`, landing page + docs) replaces the preserved MOS1 site as the deployed source for `myownsuite.org`. Deployment moves from Cloudflare Pages git-integration builds to GitHub Actions direct upload: `.github/workflows/deploy-site.yml` builds `site/` from a clean install and runs `wrangler pages deploy` on pushes to `main` (production) and `staging` (aliased preview) only. No other branch deploys, and the Pages project's own git-integration builds must stay disabled so the workflow is the single deployment path. Root `npm run build` and `wrangler.toml` (`pages_build_output_dir = "site/dist"`) now target `site/`; the MOS1 reference site is no longer built in CI and `site-mos1-reference/` remains only as frozen reference content. The workflow authenticates with the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets.

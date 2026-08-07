@@ -57,12 +57,12 @@ A spare computer, a mini PC, or an old laptop that becomes your family's server.
     <tr>
       <th>To prepare the install</th>
       <td>Nothing to install first — you paste one command on the server</td>
-      <td>A computer with <a href="https://git-scm.com/">Git</a>, <a href="https://nodejs.org/">Node.js 22</a>, and <a href="https://www.docker.com/products/docker-desktop/">Docker Desktop</a> to build the USB installer</td>
+      <td>A free USB writer — <a href="https://rufus.ie/">Rufus</a> on Windows runs without installing, <a href="https://etcher.balena.io/">balenaEtcher</a> elsewhere</td>
     </tr>
     <tr>
       <th>Time</th>
       <td>~15 minutes</td>
-      <td>~45 minutes including the ISO build</td>
+      <td>~45 minutes including the download</td>
     </tr>
     <tr>
       <th>A domain name?</th>
@@ -73,14 +73,14 @@ A spare computer, a mini PC, or an old laptop that becomes your family's server.
 </table>
 
 :::note[Honest early-access note]
-My Own Suite is pre-1.0 and best treated as ready for evaluation and non-critical use — keep an independent backup of anything you can't afford to lose. A cloud server installs from a single hosted command — nothing to set up on your own computer first. Own hardware is the one path that still needs Git, Node.js, and Docker locally, to build the USB installer — that's why they appear in the table. The cloud-server guide includes a full video walkthrough; the own-hardware one is still written steps only. Both spell out every step.
+My Own Suite is pre-1.0 and best treated as ready for evaluation and non-critical use — keep an independent backup of anything you can't afford to lose. Neither path needs a development toolchain any more: a cloud server installs from a single hosted command, and own hardware installs from an image you download and write to a USB stick with a free utility. The cloud-server guide includes a full video walkthrough; the own-hardware one is still written steps only. Both spell out every step.
 :::
 
 ## Pick your guide
 
 <CardGrid>
   <LinkCard title="Install on any cloud server" href="/docs/install/cloud-server/" description="The fastest path — one command in your provider's browser console, on any host with fresh Ubuntu 24.04 servers." />
-  <LinkCard title="Install on your own hardware" href="/docs/install/own-hardware/" description="Build the USB installer and turn a spare machine into your server." />
+  <LinkCard title="Install on your own hardware" href="/docs/install/own-hardware/" description="Download the installer image and turn a spare machine into your server." />
 </CardGrid>
 
 Whichever path you choose, finish with [Your first sign-in](/docs/install/first-start/) — it covers creating your owner account and finding your way around.
