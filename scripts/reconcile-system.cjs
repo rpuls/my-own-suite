@@ -49,7 +49,7 @@ function resolveRuntimeConfig(env = process.env) {
     frontDoor: env.MOS_FRONT_DOOR || bootstrapContract.MOS_FRONT_DOOR || 'ssh-bootstrap',
     homeHost: env.MOS_HOME_HOST || homeHostFromContract(bootstrapContract),
     homepagePort: env.MOS_HOMEPAGE_PORT || bootstrapContract.MOS_HOMEPAGE_PORT || '3200',
-    labResetEnabled: env.MOS_LAB_RESET_ENABLED || bootstrapContract.MOS_LAB_RESET_ENABLED || (bootstrapContract.MOS_FRONT_DOOR === 'usb-autoinstall' ? '1' : '0'),
+    disposableLab: env.MOS_DISPOSABLE_LAB || bootstrapContract.MOS_DISPOSABLE_LAB || '0',
     repoRoot,
     runtimeUser: env.MOS_RUNTIME_USER || bootstrapContract.MOS_RUNTIME_USER || 'mos',
     stateRoot,
@@ -63,7 +63,7 @@ const {
   frontDoor,
   homeHost,
   homepagePort,
-  labResetEnabled,
+  disposableLab,
   repoRoot,
   runtimeUser,
   stateRoot,
@@ -180,7 +180,7 @@ Environment=MOS_APP_AGENT_SOCKET=/run/mos-app-agent/agent.sock
 Environment=MOS_APP_PACKAGE_ROOT=${config.stateRoot}/app-packages
 Environment=MOS_BACKUP_AGENT_SOCKET=/run/mos-backup-agent/agent.sock
 Environment=MOS_UPDATE_AGENT_SOCKET=/run/mos-update-agent/agent.sock
-Environment=MOS_LAB_RESET_ENABLED=${config.labResetEnabled}
+Environment=MOS_DISPOSABLE_LAB=${config.disposableLab}
 Environment=MOS_LAB_RESET_AGENT_SOCKET=/run/mos-lab-reset-agent/agent.sock
 EnvironmentFile=-/etc/mos/secrets/owner-claim.env
 ExecStart=/usr/bin/node ${config.mosRoot}/suite-manager/backend/src/server/start.cjs
@@ -328,7 +328,7 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
     run('systemctl', ['enable', service]);
     run('systemctl', ['restart', service]);
   }
-  if (labResetEnabled === '1') {
+  if (disposableLab === '1') {
     run('systemctl', ['enable', 'mos-lab-reset-agent.service']);
     run('systemctl', ['restart', 'mos-lab-reset-agent.service']);
   }

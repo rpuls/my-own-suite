@@ -76,6 +76,7 @@ function createBootstrapConfig(input = {}) {
     frontDoor,
     homepagePort: HOMEPAGE_PORT,
     installRoot: input.installRoot || DEFAULT_INSTALL_ROOT,
+    disposableLab: input.disposableLab === true,
     noPreconfig: true,
     publicUrls: publicUrlsFor(domain, publicScheme),
     repoRef: normalizeRef(input.repoRef),
@@ -135,7 +136,7 @@ function renderBootstrapEnv(config) {
     ['MOS_SUITE_MANAGER_PORT', String(config.suiteManagerPort)],
     ['MOS_HOMEPAGE_PORT', String(config.homepagePort)],
     ['MOS_COMPONENTS', config.components.join(',')],
-    ['MOS_LAB_RESET_ENABLED', config.frontDoor === 'usb-autoinstall' ? '1' : '0'],
+    ['MOS_DISPOSABLE_LAB', config.disposableLab ? '1' : '0'],
     ['MOS_OWNER_SETUP', 'suite-manager-browser'],
     ['MOS_APP_SELECTION', 'suite-manager-after-install'],
   ]
@@ -151,7 +152,7 @@ function renderBootstrapShell(config) {
 set -euo pipefail
 
 ${renderBootstrapEnv(config)}
-export MOS_REPO_URL MOS_REPO_REF MOS_FRONT_DOOR MOS_DOMAIN MOS_INSTALL_ROOT MOS_STATE_ROOT MOS_RUNTIME_USER MOS_SUITE_MANAGER_PORT MOS_HOMEPAGE_PORT MOS_COMPONENTS MOS_LAB_RESET_ENABLED MOS_OWNER_SETUP MOS_APP_SELECTION
+export MOS_REPO_URL MOS_REPO_REF MOS_FRONT_DOOR MOS_DOMAIN MOS_INSTALL_ROOT MOS_STATE_ROOT MOS_RUNTIME_USER MOS_SUITE_MANAGER_PORT MOS_HOMEPAGE_PORT MOS_COMPONENTS MOS_DISPOSABLE_LAB MOS_OWNER_SETUP MOS_APP_SELECTION
 
 if [ "$MOS_DOMAIN" = "localhost" ] && [ "$MOS_FRONT_DOOR" = "digitalocean-smoke" ]; then
   metadata_ip="$(curl -fsS --max-time 5 http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address 2>/dev/null || true)"
@@ -328,7 +329,7 @@ Environment=MOS_APP_AGENT_SOCKET=/run/mos-app-agent/agent.sock
 Environment=MOS_APP_PACKAGE_ROOT=$MOS_STATE_ROOT/app-packages
 Environment=MOS_BACKUP_AGENT_SOCKET=/run/mos-backup-agent/agent.sock
 Environment=MOS_UPDATE_AGENT_SOCKET=/run/mos-update-agent/agent.sock
-Environment=MOS_LAB_RESET_ENABLED=$MOS_LAB_RESET_ENABLED
+Environment=MOS_DISPOSABLE_LAB=$MOS_DISPOSABLE_LAB
 Environment=MOS_LAB_RESET_AGENT_SOCKET=/run/mos-lab-reset-agent/agent.sock
 EnvironmentFile=-/etc/mos/secrets/owner-claim.env
 ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/suite-manager/backend/src/server/start.cjs
@@ -536,7 +537,7 @@ systemctl enable mos-backup-agent.service
 systemctl restart mos-backup-agent.service
 systemctl enable mos-update-agent.service
 systemctl restart mos-update-agent.service
-if [ "$MOS_LAB_RESET_ENABLED" = '1' ]; then
+if [ "$MOS_DISPOSABLE_LAB" = '1' ]; then
   systemctl enable mos-lab-reset-agent.service
   systemctl restart mos-lab-reset-agent.service
 fi

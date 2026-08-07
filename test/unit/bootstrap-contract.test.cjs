@@ -35,7 +35,7 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.doesNotMatch(plan.env, /SELECTED_APPS|MOS_APPS|STIRLING|VAULTWARDEN/);
   assert.match(plan.env, /MOS_OWNER_SETUP='suite-manager-browser'/);
   assert.match(plan.env, /MOS_APP_SELECTION='suite-manager-after-install'/);
-  assert.match(plan.env, /MOS_LAB_RESET_ENABLED='0'/);
+  assert.match(plan.env, /MOS_DISPOSABLE_LAB='0'/);
   assert.match(plan.cloudInit, /ExecStart=\/usr\/bin\/node .*suite-manager\/backend\/src\/server\/start\.cjs/);
   assert.match(plan.cloudInit, /reverse_proxy 127\.0\.0\.1:\$MOS_SUITE_MANAGER_PORT/);
   assert.match(plan.cloudInit, /mos-homepage\.service/);
@@ -68,7 +68,7 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.match(plan.cloudInit, /MOS_BACKUP_AGENT_SOCKET=\/run\/mos-backup-agent\/agent\.sock/);
   assert.match(plan.cloudInit, /mos-lab-reset-agent\.service/);
   assert.match(plan.cloudInit, /MOS_LAB_RESET_AGENT_SOCKET=\/run\/mos-lab-reset-agent\/agent\.sock/);
-  assert.match(plan.cloudInit, /if \[ "\$MOS_LAB_RESET_ENABLED" = '1' \]; then/);
+  assert.match(plan.cloudInit, /if \[ "\$MOS_DISPOSABLE_LAB" = '1' \]; then/);
   assert.match(plan.cloudInit, /mos-homepage-routes\.caddy/);
   assert.match(plan.cloudInit, /MOS_HTTPS_AGENT_SOCKET/);
   assert.match(plan.cloudInit, /caddy-cloudflare\.env/);
@@ -171,10 +171,25 @@ test('rendered cloud, SSH, and USB payloads share the same bootstrap contract', 
 
   assert.match(plan.usbSeed, /MOS_REPO_URL='https:\/\/example.test\/mos.git'/);
   assert.match(plan.usbSeed, /MOS_FRONT_DOOR='usb-autoinstall'/);
-  assert.match(plan.usbSeed, /MOS_LAB_RESET_ENABLED='1'/);
+  assert.match(plan.usbSeed, /MOS_DISPOSABLE_LAB='0'/);
   assert.match(plan.usbSeed, /MOS_SUITE_MANAGER_URL='http:\/\/home.mos.example.test\/suite-manager\/'/);
   assert.match(plan.usbSeed, /MOS_HOMEPAGE_URL='http:\/\/home.mos.example.test\/'/);
   assert.doesNotMatch(plan.usbSeed, /MOS_OWNER_PASSWORD|MOS_SMOKE_OWNER_PASSWORD|MOS_SELECTED_APPS/);
+});
+
+test('the USB front door alone does not enable the lab reset agent', () => {
+  const plan = renderBootstrapPlan({ domain: 'mos.home', frontDoor: 'usb-autoinstall' });
+  assert.equal(plan.config.disposableLab, false);
+  assert.match(plan.env, /MOS_DISPOSABLE_LAB='0'/);
+  assert.match(plan.usbSeed, /MOS_DISPOSABLE_LAB='0'/);
+  assert.match(plan.cloudInit, /MOS_DISPOSABLE_LAB='0'/);
+});
+
+test('the lab reset agent is enabled only when asked for explicitly', () => {
+  const plan = renderBootstrapPlan({ domain: 'mos.home', frontDoor: 'usb-autoinstall', disposableLab: true });
+  assert.equal(plan.config.disposableLab, true);
+  assert.match(plan.env, /MOS_DISPOSABLE_LAB='1'/);
+  assert.match(plan.cloudInit, /MOS_DISPOSABLE_LAB='1'/);
 });
 
 test('render CLI parses dry-run target inputs without requiring an env file', () => {
@@ -232,9 +247,6 @@ test('DigitalOcean smoke defaults to the public installer without owner inputs',
   }
 });
 
-// A failed download must not pipe an empty stream into a bash that exits 0. That
-// combination installs nothing and reports nothing, and the only symptom is a
-// readiness timeout half an hour later on a paid machine.
 test('DigitalOcean cloud-init fails the install when the installer download fails', () => {
   assert.match(
     renderPublicInstallerCloudInit('https://get-dev.myownsuite.org/install.sh'),
@@ -264,9 +276,9 @@ test('DigitalOcean smoke records the exact commit the installer endpoint is serv
   assert.deepEqual(
     await preflightInstaller('https://get-dev.myownsuite.org/install.sh', installerResponse({
       body: '#!/usr/bin/env bash\nset -euo pipefail\n',
-      headers: { 'x-mos-install-branch': 'staging', 'x-mos-install-ref': 'a'.repeat(40) },
+      headers: { 'x-mos-install-source': 'staging', 'x-mos-install-ref': 'a'.repeat(40) },
     })),
-    { installBranch: 'staging', installRef: 'a'.repeat(40) },
+    { installSource: 'staging', installRef: 'a'.repeat(40) },
   );
 });
 

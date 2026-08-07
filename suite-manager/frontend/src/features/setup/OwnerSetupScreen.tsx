@@ -63,11 +63,6 @@ export function OwnerSetupScreen({ error, onClearError, onCreateOwner, ownerClai
     onClearError();
   }
 
-  function openKeyEditor(): void {
-    setKeyDraft(claimKey);
-    setKeyEditorOpen(true);
-  }
-
   return (
     <main className="suite-app">
       <section className="mos-shell suite-auth-layout suite-first-run">
@@ -138,11 +133,6 @@ export function OwnerSetupScreen({ error, onClearError, onCreateOwner, ownerClai
                     <button className="mos-btn mos-btn-primary" disabled={!normalizeClaimKey(keyDraft)} type="submit">
                       Use this key
                     </button>
-                    {claimKey ? (
-                      <button className="mos-btn mos-btn-secondary" onClick={() => setKeyEditorOpen(false)} type="button">
-                        Back
-                      </button>
-                    ) : null}
                   </div>
                 </form>
               </>
@@ -219,9 +209,6 @@ export function OwnerSetupScreen({ error, onClearError, onCreateOwner, ownerClai
                     <span className="suite-meta">
                       Owner setup on a cloud server uses the one-time key from your setup link.
                     </span>
-                    <button className="mos-btn mos-btn-ghost" onClick={openKeyEditor} type="button">
-                      Change key
-                    </button>
                   </div>
                 ) : null}
               </>

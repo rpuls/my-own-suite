@@ -121,11 +121,6 @@
 }
 
 .suite-auth-keynote {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--mos-space-2) var(--mos-space-3);
   border-top: var(--mos-border-subtle);
   padding-top: var(--mos-space-4);
 }

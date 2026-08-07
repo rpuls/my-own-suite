@@ -146,7 +146,13 @@ jobs:
             exit 1
           fi
 
-          echo "Seed pins ${GITHUB_REF_NAME} and bakes no password."
+          if ! grep -q "MOS_DISPOSABLE_LAB='0'" "$seed"; then
+            echo "::error::This seed enables the lab reset agent. A published image must never carry an unauthenticated endpoint that wipes the suite."
+            grep -o "MOS_DISPOSABLE_LAB='[^']*'" "$seed" | head -1
+            exit 1
+          fi
+
+          echo "Seed pins ${GITHUB_REF_NAME}, bakes no password, and disables lab reset."
 
       - name: Build the installer ISO
         run: |

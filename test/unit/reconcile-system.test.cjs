@@ -33,10 +33,12 @@ test('system reconciliation preserves the installed Home host from the bootstrap
 
   assert.equal(config.homeHost, 'home.mos.home');
   assert.equal(config.frontDoor, 'usb-autoinstall');
-  assert.equal(config.labResetEnabled, '1');
+  // This contract predates the flag, which is exactly the shape that used to be
+  // inferred from the front door and put a wipe endpoint on published images.
+  assert.equal(config.disposableLab, '0');
   assert.match(unit, /Environment=MOS_HOME_HOST=home\.mos\.home/u);
   assert.match(unit, /Environment=MOS_FRONT_DOOR=usb-autoinstall/u);
-  assert.match(unit, /Environment=MOS_LAB_RESET_ENABLED=1/u);
+  assert.match(unit, /Environment=MOS_DISPOSABLE_LAB=0/u);
   assert.match(unit, /Environment=MOS_LAB_RESET_AGENT_SOCKET=\/run\/mos-lab-reset-agent\/agent\.sock/u);
   assert.match(unit, new RegExp(`Environment=MOS_APP_PACKAGE_ROOT=${tempDir.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}\\/app-packages`, 'u'));
   assert.doesNotMatch(unit, /home\.localhost/u);

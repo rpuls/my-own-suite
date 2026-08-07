@@ -4,6 +4,14 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+### Changed
+
+- The hosted one-line installer installs the latest published release instead of the tip of `main`, so both installer paths now start on the same release commit. Cloud installs previously picked up unreleased commits while still reporting the last release version.
+
+### Security
+
+- USB-installed servers no longer expose an unauthenticated endpoint that wipes the suite. It deletes every installed app's containers and volumes, and was enabled on published installer images, so any device on the same network could have triggered it. It is now confined to the disposable test-VM build profile, and a release build fails if a publishable image carries it. Machines installed from the v0.16.0 image close the endpoint when they take this update; reinstalling is not required.
+
 ## [0.16.0] - 2026-08-07
 
 ### Added

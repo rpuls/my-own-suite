@@ -212,24 +212,17 @@ function renderPublicInstallerCloudInit(installerUrl) {
   if (parsed.protocol !== 'https:') {
     throw new Error('MOS_SMOKE_INSTALLER_URL must use HTTPS.');
   }
-  // pipefail matters more than it looks: without it, a failed download pipes an
-  // empty stream into bash, which exits 0. The machine then sits there having
-  // installed nothing, and the only symptom is a readiness timeout half an hour
-  // later. With it, cloud-init records the failure in /var/log/cloud-init-output.log.
+  // Without pipefail a failed download pipes an empty stream into bash, which exits 0.
   return `#cloud-config
 package_update: true
 packages:
   - ca-certificates
   - curl
 runcmd:
-  - [ bash, -lc, "set -o pipefail; curl -fsSL --proto '=https' --tlsv1.2 '${installerUrl}' | bash" ]
+  - [ bash, -lc, "set -o pipefail; curl -fsSL --proto '=https' --tlsv1.2 --retry 5 --retry-all-errors --retry-delay 10 '${installerUrl}' | bash" ]
 `;
 }
 
-// Runs before anything paid is created. The dev installer endpoint resolves a
-// branch tip through GitHub on every request, so it starts returning 503 the
-// moment the branch it is pinned to is deleted — and a Droplet booted against a
-// broken endpoint looks exactly like a Droplet that is still installing.
 async function preflightInstaller(installerUrl, fetchImpl = fetch) {
   const endpointHelp = 'Point the dev Worker at a branch that exists and redeploy it — see infrastructure/installer-endpoint/README.md.';
 
@@ -250,7 +243,7 @@ async function preflightInstaller(installerUrl, fetchImpl = fetch) {
   }
 
   return {
-    installBranch: response.headers.get('x-mos-install-branch') || '',
+    installSource: response.headers.get('x-mos-install-source') || '',
     installRef: response.headers.get('x-mos-install-ref') || '',
   };
 }
@@ -415,13 +408,13 @@ function printSummary(state, claimUrl = '') {
   console.log(`
 [mos-smoke:do] Smoke Droplet is ready.
 
-URLs:
-  MOS Home:      ${state.homepageUrl}
-  Suite Manager: ${state.suiteManagerUrl}
-${claimUrl ? `  Owner setup:  ${claimUrl}` : '  Owner setup:  claim URL unavailable; configure MOS_SMOKE_SSH_PRIVATE_KEY'}
+Open this to create the owner account:
+  ${claimUrl || `${state.setupUrl}
+  (no one-time key: set MOS_SMOKE_SSH_PRIVATE_KEY, or read it on the Droplet with
+   sudo cat /etc/mos/secrets/owner-claim.env)`}
 
 Installed:
-  ${state.installBranch || '(branch unreported)'} @ ${state.installRef || '(commit unreported)'}
+  ${state.installSource || '(branch unreported)'} @ ${state.installRef || '(commit unreported)'}
 
 State:
   ${path.relative(repoRoot, statePath)}
@@ -440,10 +433,10 @@ async function reset() {
   const token = getToken();
   const config = smokeConfigFromEnv(existingState || {});
 
-  // Ahead of the destroy as well as the create: a broken endpoint should not
-  // cost the Droplet that is already running.
-  const { installBranch, installRef } = await preflightInstaller(config.installerUrl);
-  console.log(`[mos-smoke:do] Installer endpoint is serving ${installBranch || 'its configured branch'} at ${installRef ? installRef.slice(0, 12) : 'an unreported commit'}.`);
+  // Ahead of the destroy as well as the create: a broken endpoint should not cost
+  // the Droplet that is already running.
+  const { installSource, installRef } = await preflightInstaller(config.installerUrl);
+  console.log(`[mos-smoke:do] Installer endpoint is serving ${installSource || 'its configured branch'} at ${installRef ? installRef.slice(0, 12) : 'an unreported commit'}.`);
 
   if (existingState) {
     await destroyExistingFromState(token, existingState, 'reset');
@@ -461,9 +454,7 @@ async function reset() {
     homepageUrl: plan.config.publicUrls.homepage,
     setupUrl: plan.config.publicUrls.setup,
     image: config.image,
-    // The exact snapshot this machine installed, recorded at creation time. The
-    // branch moves; this is what you compare against when a smoke run misbehaves.
-    installBranch,
+    installSource,
     installerUrl: config.installerUrl,
     installRef,
     ip,

@@ -314,7 +314,7 @@ function createMOSServer({
   frontDoor = process.env.MOS_FRONT_DOOR || 'ssh-bootstrap',
   homeHost = process.env.MOS_HOME_HOST || 'home.localhost',
   homepageUpstream = process.env.MOS_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
-  labResetEnabled = process.env.MOS_LAB_RESET_ENABLED === '1',
+  disposableLab = process.env.MOS_DISPOSABLE_LAB === '1',
   loginThrottle = new LoginThrottle(),
   securityLogger = (event) => console.warn(JSON.stringify(event)),
   securityEventRecorder = null,
@@ -416,8 +416,11 @@ function createMOSServer({
         return;
       }
 
+      // Unauthenticated on purpose and not fixable by adding a sign-in check: the
+      // e2e suite calls this to get back to first-run, when no owner account
+      // exists to authenticate as. Its only containment is disposableLab.
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/lab/reset`) {
-        if (!labResetEnabled) {
+        if (!disposableLab) {
           jsonResponse(response, 404, { code: 'LAB_RESET_DISABLED', error: 'Lab reset is not enabled on this install.' });
           return;
         }
@@ -430,7 +433,7 @@ function createMOSServer({
 
       const labResetStatusMatch = url.pathname.match(/^\/suite-manager\/api\/lab\/reset\/([^/]+)$/u);
       if (request.method === 'GET' && labResetStatusMatch) {
-        if (!labResetEnabled) {
+        if (!disposableLab) {
           jsonResponse(response, 404, { code: 'LAB_RESET_DISABLED', error: 'Lab reset is not enabled on this install.' });
           return;
         }

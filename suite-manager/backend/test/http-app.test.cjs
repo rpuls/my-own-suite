@@ -1562,7 +1562,7 @@ test('lab reset endpoint schedules the narrow lab agent when enabled', async () 
     assert.deepEqual(calls, [{ reason: 'hyperv-e2e' }]);
     assert.match(String(response.headers['set-cookie']), /mos_session=/u);
   }, {
-    labResetEnabled: true,
+    disposableLab: true,
     labResetAgent: {
       async reset(input) {
         calls.push(input);
@@ -1582,7 +1582,7 @@ test('lab reset status endpoint proxies the scheduled reset job when enabled', a
       status: 'completed',
     });
   }, {
-    labResetEnabled: true,
+    disposableLab: true,
     labResetAgent: {
       async resetStatus(resetId) {
         assert.equal(resetId, 'reset-one');
