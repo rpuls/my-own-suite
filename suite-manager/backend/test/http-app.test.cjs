@@ -311,10 +311,19 @@ test('App package catalog API requires authentication and exposes safe manifest 
     assert.equal(radicale.health.url, 'http://radicale:5232/');
     assert.deepEqual(radicale.setup.fields, [
       {
-        default: 'admin',
+        default: '${owner.email}',
         generated: false,
         id: 'adminUsername',
         label: 'Radicale username',
+        required: true,
+        secret: false,
+        type: 'text',
+      },
+      {
+        default: "${owner.name}'s calendar",
+        generated: false,
+        id: 'calendarName',
+        label: 'Calendar name',
         required: true,
         secret: false,
         type: 'text',

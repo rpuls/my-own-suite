@@ -328,6 +328,55 @@
   gap: var(--mos-space-4);
 }
 
+/* The one-time server-login handover. Accented rather than alarming: it is a
+   task the owner must finish, not a failure, and it disappears for good once
+   they do. */
+.suite-console-login-card {
+  display: grid;
+  gap: var(--mos-space-3);
+  border-left: 3px solid var(--mos-color-accent);
+}
+
+.suite-console-login-card p {
+  margin: 0;
+}
+
+.suite-console-login-secret {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--mos-space-2) var(--mos-space-4);
+  margin: var(--mos-space-4) 0;
+  padding: var(--mos-space-4);
+  border: var(--mos-border-subtle);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface);
+}
+
+.suite-console-login-secret dt {
+  color: var(--mos-color-text-muted);
+  font-size: 0.9rem;
+}
+
+.suite-console-login-secret dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--mos-color-text-strong);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 1.05rem;
+  /* Selectable by design: copy-to-clipboard fails on a page served over plain
+     HTTP, which is exactly how an own-hardware install starts out. */
+  user-select: all;
+}
+
+/* The mask is decoration standing in for a value, so it is not selectable:
+   dragging across it would put a row of dots on the clipboard. */
+.suite-console-login-secret dd.suite-console-login-masked {
+  color: var(--mos-color-text-muted);
+  letter-spacing: 0.18em;
+  user-select: none;
+}
+
 .suite-status-card {
   display: grid;
   gap: var(--mos-space-2);
@@ -450,7 +499,8 @@
   gap: var(--mos-space-2);
 }
 
-.suite-terms-confirm {
+/* Shared confirmation checkbox — components/ui.tsx Checkbox. */
+.suite-confirm {
   display: flex;
   align-items: flex-start;
   gap: var(--mos-space-3);
@@ -461,7 +511,7 @@
   cursor: pointer;
 }
 
-.suite-terms-confirm input {
+.suite-confirm-box {
   flex: 0 0 auto;
   margin-top: 0.15rem;
   width: 1.1rem;

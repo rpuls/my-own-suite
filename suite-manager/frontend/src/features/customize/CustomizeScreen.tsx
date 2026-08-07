@@ -37,8 +37,19 @@ function groupsFrom(content: string) {
   try {
     const value = parseDocument(content).toJS();
     if (!Array.isArray(value)) return ['Home services'];
-    const groups = value.flatMap((item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.keys(item) : []);
-    return groups.length ? groups : ['Home services'];
+    const groups: string[] = [];
+    const walk = (items: unknown[]) => {
+      for (const item of items) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+        for (const [name, children] of Object.entries(item)) {
+          if (!Array.isArray(children)) continue;
+          groups.push(name);
+          walk(children);
+        }
+      }
+    };
+    walk(value);
+    return groups.length ? [...new Set(groups)] : ['Home services'];
   } catch { return ['Home services']; }
 }
 

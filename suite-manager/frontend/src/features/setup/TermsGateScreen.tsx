@@ -1,7 +1,6 @@
 import { useState } from 'react';
 
-import { BetaNotice } from '../../components/disclaimers';
-import { Icon, Notice } from '../../components/ui';
+import { Checkbox, Icon, Notice } from '../../components/ui';
 import { TERMS_URL } from '../../lib/links';
 import type { Owner, TermsState } from './types';
 
@@ -57,8 +56,6 @@ export function TermsGateScreen({ onAccept, onLogout, owner, terms }: TermsGateS
             </p>
           </div>
 
-          <BetaNotice />
-
           <section className="mos-panel suite-card suite-terms-card">
             <h2 className="mos-card-title">Terms of use</h2>
             <p className="suite-meta">
@@ -69,10 +66,9 @@ export function TermsGateScreen({ onAccept, onLogout, owner, terms }: TermsGateS
             <p>
               Please read the <a href={TERMS_URL} rel="noreferrer" target="_blank">terms of use<Icon name="external" /></a> once. They are short and written in plain language.
             </p>
-            <label className="suite-terms-confirm">
-              <input checked={confirmed} disabled={saving} onChange={(event) => setConfirmed(event.currentTarget.checked)} type="checkbox" />
-              <span>I have read and accept the terms of use, and I understand this is early software provided as is.</span>
-            </label>
+            <Checkbox checked={confirmed} disabled={saving} onChange={(event) => setConfirmed(event.currentTarget.checked)}>
+              I have read and accept the terms of use, and I understand this is early software provided as is.
+            </Checkbox>
             {error ? <Notice title="Your acceptance was not recorded" variant="error"><p>{error}</p></Notice> : null}
             <div className="suite-hero-actions">
               <button className="mos-btn mos-btn-primary" disabled={!confirmed || saving} onClick={() => void accept()} type="button">

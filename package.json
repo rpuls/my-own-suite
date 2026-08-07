@@ -27,6 +27,7 @@
     "install:render": "node scripts/installers/render-bootstrap.cjs",
     "installer:usb": "node scripts/selfhost-build-installer-iso.cjs",
     "release:check": "node scripts/release-check.cjs",
+    "release:prepare": "node scripts/release-prepare.cjs",
     "screenshots:update": "node scripts/screenshots-update.cjs",
     "smoke:do:destroy": "node scripts/smoke/digitalocean.cjs destroy",
     "smoke:do:dns01": "node scripts/smoke/dns01.cjs",

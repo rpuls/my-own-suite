@@ -63,12 +63,15 @@ test('the app catalog does not ship lab host-file tooling to owners', () => {
   assert.doesNotMatch(apps, /hostsPath/u);
 });
 
-test('Apps setup email fields default to the signed-in owner email', () => {
+test('Apps setup fields prefill from the signed-in owner', () => {
   const shell = fs.readFileSync(path.join(frontendRoot, 'features', 'app-shell', 'AppShell.tsx'), 'utf8');
   const apps = fs.readFileSync(path.join(frontendRoot, 'features', 'apps', 'AppsScreen.tsx'), 'utf8');
   assert.match(shell, /<AppsScreen owner=\{owner\} \/>/u);
-  assert.match(apps, /initialSetupConfig\(app, owner\.email\)/u);
-  assert.match(apps, /field\.type === 'email' \? ownerEmail/u);
+  assert.match(apps, /initialSetupConfig\(app, owner\)/u);
+  assert.match(apps, /field\.type === 'email' \? owner\.email/u);
+  // Manifest defaults may reference the owner; both tokens must resolve.
+  assert.match(apps, /\\\$\\\{owner\\\.email\\\}/u);
+  assert.match(apps, /\\\$\\\{owner\\\.name\\\}/u);
 });
 
 test('Apps catalog separates companion apps and hides Homepage controls when absent', () => {

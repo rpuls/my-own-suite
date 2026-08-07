@@ -1,7 +1,7 @@
 {
   "id": "radicale",
   "name": "Radicale",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "minimumMosVersion": "0.1.0",
   "packageFiles": ["entrypoint.sh"],
   "update": {
@@ -69,7 +69,14 @@
         "type": "text",
         "label": "Radicale username",
         "required": true,
-        "default": "admin"
+        "default": "${owner.email}"
+      },
+      {
+        "id": "calendarName",
+        "type": "text",
+        "label": "Calendar name",
+        "required": true,
+        "default": "${owner.name}'s calendar"
       },
       {
         "id": "adminPassword",
@@ -101,7 +108,8 @@
         "internalPort": 5232,
         "env": {
           "RADICALE_ADMIN_USERNAME": "${config.adminUsername}",
-          "RADICALE_ADMIN_PASSWORD": "${secret.adminPassword}"
+          "RADICALE_ADMIN_PASSWORD": "${secret.adminPassword}",
+          "RADICALE_CALENDAR_DISPLAYNAME": "${config.calendarName}"
         },
         "volumes": [
           "data:/data"
@@ -160,7 +168,7 @@
       {
         "type": "manual",
         "title": "Connect a CalDAV or CardDAV client",
-        "body": "Use the server URL shown by MOS, your Radicale username, and the password you chose. The default calendar collection is available under /<username>/default-calendar/."
+        "body": "Use the Calendar URL shown by MOS, your Radicale username, and the password you chose."
       }
     ],
     "sections": [
@@ -170,13 +178,7 @@
         "title": "Connection details",
         "values": [
           {
-            "label": "Server URL",
-            "value": "${app.publicUrl}",
-            "copy": true,
-            "qr": false
-          },
-          {
-            "label": "Default calendar collection",
+            "label": "Calendar URL",
             "value": "${app.publicUrl}${config.adminUsername}/default-calendar/",
             "copy": true
           },
@@ -196,7 +198,13 @@
         "id": "client-warning",
         "type": "warning",
         "title": "Use a calendar or contacts client",
-        "body": "The server URL is meant for CalDAV and CardDAV clients. A normal browser may show a sparse Radicale page instead of your calendar."
+        "body": "The Calendar URL is meant for CalDAV and CardDAV clients. A normal browser may show a sparse Radicale page instead of your calendar."
+      },
+      {
+        "id": "calendar-rename-note",
+        "type": "warning",
+        "title": "Rename your calendar, don't recreate it",
+        "body": "You can safely rename this calendar from any connected client at any time. Avoid deleting it and creating a new one: the MOS dashboard calendar widget reads this exact calendar, and a recreated calendar no longer appears there."
       },
       {
         "id": "device-guide",
@@ -210,7 +218,7 @@
               "Open Settings.",
               "Open Apps, then Calendar, then Calendar Accounts, then Add Account.",
               "Tap Add Other Account, then Add CalDAV Account.",
-              "Paste the Server URL into the Server field.",
+              "Paste the Calendar URL into the Server field.",
               "Paste the Username into the User Name field.",
               "Enter the Radicale password you chose during install.",
               "Tap Next or Save, then open the Calendar app and confirm the account appears there."
@@ -222,7 +230,7 @@
             "steps": [
               "Install and open DAVx5. DAVx5 connects Android to private CalDAV and CardDAV servers.",
               "Add a new account and choose Login with URL and user name, or the closest manual server setup option.",
-              "Paste the Server URL into the Base URL or Server URL field.",
+              "Paste the Calendar URL into the Base URL or Server URL field.",
               "Paste the Username into the user name field.",
               "Enter the Radicale password you chose during install.",
               "Finish the DAVx5 setup and enable the calendar or contacts collection after DAVx5 finds it.",
@@ -237,7 +245,7 @@
               "Choose Calendar, then Add Account.",
               "Choose Add Other Account, then CalDAV Account.",
               "Set Account Type to Manual if macOS asks how to sign in.",
-              "Paste the Server URL into the Server Address field.",
+              "Paste the Calendar URL into the Server Address field.",
               "Paste the Username into the User Name field.",
               "Enter the Radicale password you chose during install.",
               "Finish setup and confirm the calendar appears in Apple Calendar."
@@ -250,7 +258,7 @@
               "Open Thunderbird and switch to Calendar.",
               "Create a New Calendar.",
               "Choose On the Network, then choose CalDAV if Thunderbird asks for a format.",
-              "Paste the Server URL into the location or server field. If Thunderbird asks for an exact calendar location, paste the Default calendar collection URL instead.",
+              "Paste the Calendar URL into the location or server field.",
               "Paste the Username when Thunderbird asks for it.",
               "Enter the Radicale password you chose during install.",
               "Choose your calendar when Thunderbird lists it, then finish setup."
@@ -262,8 +270,7 @@
             "steps": [
               "Open the account or sync settings in your calendar or contacts client.",
               "Choose manual CalDAV or CardDAV setup.",
-              "Use the Server URL as the account server.",
-              "Use the Default calendar collection URL if your client asks for one specific calendar URL.",
+              "Use the Calendar URL as the server or account address.",
               "Use the Username shown above.",
               "Use the Radicale password you chose during install.",
               "Save the account, then confirm your calendar or contacts appear in the client."

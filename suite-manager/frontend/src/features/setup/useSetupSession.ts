@@ -66,7 +66,6 @@ function enterHomeDashboard(): boolean {
 // Signing in normally hands the owner straight to their Homepage dashboard.
 // That handover waits while the terms are unanswered: an acceptance a redirect
 // can jump over is not an acceptance, and first run is exactly when it matters.
-// Accepting performs the same handover afterwards.
 function termsPending(status: SetupStatusResponse): boolean {
   return status.status === 'signed-in' && Boolean(status.terms?.version) && !status.terms?.accepted;
 }
@@ -148,9 +147,13 @@ export function useSetupSession() {
       const body = await readJson<ApiErrorBody>(response).catch(() => ({}));
       throw new Error(errorMessage(body, 'Unable to record your acceptance.'));
     }
-    // The handover sign-in deferred: from /suite-manager/ the owner lands on
-    // their Homepage dashboard, and from anywhere else they stay where they are.
-    if (!enterHomeDashboard()) await refresh();
+    // Deliberately no handover to the Homepage dashboard. Accepting the terms
+    // only happens on first run, which is the one moment Suite Manager has
+    // things to say that arrive nowhere else — the server login to save, the
+    // state of the install. Dropping the owner on Homepage here would skip past
+    // all of it. Ordinary sign-ins, where the terms are already accepted, still
+    // hand over as before.
+    await refresh();
   }
 
   function clearOwnerError(): void {

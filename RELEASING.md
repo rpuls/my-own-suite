@@ -70,6 +70,13 @@ npm run hooks:install
 
 These hooks block committing/pushing directly on `main` and reinforce PR-only workflow.
 
+GitHub enforces the same thing on its side, so a fresh clone without hooks is still safe:
+
+- `main` is protected — pull request required, CI must pass, no force pushes, no deletion.
+  Admins are not enforced, so there is a deliberate manual override for emergencies.
+- The repository allows **merge commits only**. Squash and rebase merging are disabled,
+  because a squashed release PR would rewrite the commit the tag is supposed to point at.
+
 ## PR Labeling Rules
 
 Use at least one of:
@@ -88,30 +95,63 @@ Version bump guidance:
 
 ## Standard Release Workflow
 
-1. Ensure `staging` is green (CI passing) and contains the batch you want to release.
-2. Create release branch from `staging`:
-   - `release/vX.Y.Z`
-3. Update `CHANGELOG.md`:
-   - Sections: `Added`, `Changed`, `Fixed`, `Breaking` (if any).
-4. Update release metadata files so they all match the intended version:
-   - `VERSION`
-   - `releases/stable.json`
-5. Validate locally (at minimum):
-   - `npm run release:check`
-   - `npm test`
-   - `npm run typecheck`
-   - `npm run build:client`
-   - `npm run build` (public site)
-6. Merge release branch into `main`.
-7. Merge or fast-forward `main` back into `staging` if needed to keep branches aligned after release-only edits.
-8. Create and push tag:
-   - `git tag vX.Y.Z`
-   - `git push origin vX.Y.Z`
-9. Publish GitHub Release from tag `vX.Y.Z` with:
-   - summary
-   - upgrade steps
-   - breaking changes (if any)
-   - rollback notes (if relevant)
+One command and a tag. Everything that can be checked is checked by one gate, and
+everything that can be automated happens when the tag is pushed.
+
+1. Ensure `staging` is green (CI passing), contains the batch you want to release, and
+   has nothing uncommitted.
+2. From `staging`, prepare the release:
+
+   ```bash
+   npm run release:prepare -- X.Y.Z
+   ```
+
+   This creates and switches to `release/vX.Y.Z`, rewrites `VERSION` and
+   `releases/stable.json`, moves everything under `## [Unreleased]` into a dated
+   `## [X.Y.Z]` section, and then runs the release gate against what it just wrote. It
+   refuses to leave a prepared-but-invalid tree behind, and it refuses to start from a
+   dirty working tree so that unrelated work cannot ride along in the release commit.
+   It does not commit, so review the diff.
+3. Commit the prepared files, open the PR into `main`, and merge it with a **merge commit**.
+4. Optional, and worth it when the installer or the pipeline itself changed: go to
+   **Actions → Release → Run workflow** on `main`. That runs the same gate and the same
+   installer build, uploads to `dry-run/` in the bucket, and stops before publishing. It
+   rehearses the part of a release a moved tag cannot undo.
+5. Tag and push:
+
+   ```bash
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+
+Pushing the tag runs `.github/workflows/release.yml`, which:
+
+- refuses to go further if the tagged commit is not on `main`, so a tag cannot publish
+  code that never went through a pull request;
+- re-runs `npm test` and `npm run release:check -- --release vX.Y.Z`, so a hand-made tag
+  cannot skip a check the prepare step would have caught;
+- renders the installer seed **pinned to the tag**, and fails if it resolves to a branch
+  or carries a build-time password;
+- builds the installer ISO, checksums it, and uploads it to R2;
+- publishes the GitHub Release with the download link, the SHA256, and the changelog
+  section for that version.
+
+Any failing step means no release is published. Fix forward and move the tag.
+
+### The release gate
+
+`npm run release:check` runs in two modes:
+
+- **No arguments** — part of `npm test` on every branch. Checks only that the release
+  metadata agrees with itself, so ordinary work is never blocked by a changelog section
+  nobody has written yet.
+- **`--release vX.Y.Z`** — the gate a published release must pass. Every warning becomes a
+  failure, and it additionally checks that the tag matches `VERSION`, that
+  `releases/stable.json` points at the right notes URL and carries a valid timestamp, and
+  that nothing is stranded under `## [Unreleased]`.
+
+Both `release:prepare` and the pipeline run the second form. That is deliberate: there is
+one definition of "ready to release" and no way for local and CI to disagree about it.
 
 ## Release Prep Details
 
@@ -140,19 +180,43 @@ Use for urgent production-impacting issues.
 4. Tag and release `vX.Y.(Z+1)`.
 5. Merge hotfix back into `main`.
 
+## One-time infrastructure setup
+
+Needed once, ever, before the first automated release. Not per release.
+
+1. Create an R2 bucket named `mos-downloads` in the Cloudflare account that already
+   serves the site.
+2. Bind the custom domain `downloads.myownsuite.org` to that bucket, and confirm the DNS
+   record resolves. The release notes link to this hostname, so it has to exist before
+   the first tag.
+3. In **R2 → Manage API Tokens**, create an Object Read & Write token scoped to that
+   bucket, then add both halves as repository secrets:
+   - `R2_ACCESS_KEY_ID`
+   - `R2_SECRET_ACCESS_KEY`
+
+   These are R2's S3 credentials, which are not the same thing as `CLOUDFLARE_API_TOKEN`.
+   The workflow uses the S3 API because the image is several gigabytes and needs multipart
+   upload; `wrangler r2 object put` sends a single request and would fail on a file this size.
+4. `CLOUDFLARE_ACCOUNT_ID` is already a repository secret from the site deployment and is
+   reused to build the R2 endpoint. Nothing to do.
+
+Consider an R2 lifecycle rule that expires objects older than a few releases. Release notes
+for superseded versions can then be edited to point at the current download.
+
 ## Release Checklist (Copy/Paste)
 
+Most of this is now enforced rather than remembered — the gate fails if it is not true. What
+remains is the judgement a script cannot make.
+
 - [ ] Version selected using SemVer rules
-- [ ] Changelog updated
-- [ ] `VERSION` updated
-- [ ] `releases/stable.json` updated
-- [ ] `npm run release:check` passed
+- [ ] Changelog entries are release-shaped and describe outcomes, not commits
+- [ ] `npm run release:prepare -- X.Y.Z` passed
 - [ ] CI passing on release branch
 - [ ] Honesty pages re-verified: rating-coverage wording, video links, and site screenshots still match the current product and UI
-- [ ] Upgrade notes written
-- [ ] Breaking changes documented (if any)
-- [ ] Tag pushed: `vX.Y.Z`
-- [ ] GitHub Release published
+- [ ] Breaking changes documented, with migration notes (if any)
+- [ ] Release branch merged into `main` with a merge commit
+- [ ] Tag pushed: `vX.Y.Z` — this publishes the release
+- [ ] Installer image downloaded from the published link, checksum verified, and booted once
 
 ## Recommended First Release
 

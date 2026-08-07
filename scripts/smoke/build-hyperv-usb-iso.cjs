@@ -46,6 +46,10 @@ function main(extraArgs = process.argv.slice(2)) {
       // The lab must never share a domain with a real USB install: the hosts
       // entries it writes on this PC would shadow the real server's DNS.
       MOS_STACK_DOMAIN: process.env.MOS_STACK_DOMAIN || 'mos.hyperv',
+      // Gives the VM a fixed, published-in-the-repo login so anyone — including
+      // an agent debugging a failed run — can SSH in without first finding out
+      // what the password is. A released ISO never takes this path.
+      MOS_SEED_PROFILE: process.env.MOS_SEED_PROFILE || 'lab',
     },
     stdio: 'inherit',
   });
@@ -85,8 +89,12 @@ function main(extraArgs = process.argv.slice(2)) {
   console.log(`  Ref:  ${smokeRepoRef}`);
   try {
     const seedSummary = JSON.parse(fs.readFileSync(path.join(seedDir, 'seed-summary.json'), 'utf8'));
-    if (seedSummary.linuxPasswordGenerated) {
-      console.log(`  Login: ${seedSummary.linuxUsername} / ${seedSummary.linuxPassword} (generated for this build)`);
+    if (seedSummary.consoleLoginHandover === 'preconfigured') {
+      console.log(`  Login: ${seedSummary.linuxUsername} / ${seedSummary.linuxPassword}  (SSH and console)`);
+    } else {
+      // Only reachable if someone overrode MOS_SEED_PROFILE, which turns this
+      // lab VM into a machine nobody can sign in to without its console.
+      console.log('  Login: generated on the VM at first boot — read it from the VM console or Suite Manager.');
     }
   } catch {
     // Login printout is best-effort; the ISO itself is already verified.
