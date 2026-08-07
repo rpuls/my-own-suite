@@ -3,4 +3,4 @@ main = "worker.mjs"
 compatibility_date = "2026-07-12"
 
 [vars]
-INSTALL_BRANCH = "feat/app-privacy-posture"
+INSTALL_BRANCH = "staging"

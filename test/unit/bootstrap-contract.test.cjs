@@ -9,7 +9,17 @@ const {
   validateBootstrapInput,
 } = require('../../scripts/installers/bootstrap-contract.cjs');
 const { parseArgs, selectOutput } = require('../../scripts/installers/render-bootstrap.cjs');
-const { DEFAULT_READY_TIMEOUT_MS, bootstrapPlanFor, ownerClaimUrl, renderPublicInstallerCloudInit, smokeConfigFromEnv } = require('../../scripts/smoke/digitalocean.cjs');
+const { DEFAULT_READY_TIMEOUT_MS, bootstrapPlanFor, ownerClaimUrl, preflightInstaller, renderPublicInstallerCloudInit, smokeConfigFromEnv } = require('../../scripts/smoke/digitalocean.cjs');
+
+function installerResponse({ body, ok = true, status = 200, headers = {} }) {
+  return async () => ({
+    headers: { get: (name) => headers[name.toLowerCase()] ?? null },
+    ok,
+    status,
+    statusText: '',
+    text: async () => body,
+  });
+}
 
 test('bootstrap contract defaults to a no-preconfig control-plane install', () => {
   const plan = renderBootstrapPlan({});
@@ -220,6 +230,44 @@ test('DigitalOcean smoke defaults to the public installer without owner inputs',
       }
     }
   }
+});
+
+// A failed download must not pipe an empty stream into a bash that exits 0. That
+// combination installs nothing and reports nothing, and the only symptom is a
+// readiness timeout half an hour later on a paid machine.
+test('DigitalOcean cloud-init fails the install when the installer download fails', () => {
+  assert.match(
+    renderPublicInstallerCloudInit('https://get-dev.myownsuite.org/install.sh'),
+    /set -o pipefail; curl -fsSL/,
+  );
+});
+
+test('DigitalOcean smoke refuses to create a Droplet when the installer endpoint is down', async () => {
+  await assert.rejects(
+    preflightInstaller('https://get-dev.myownsuite.org/install.sh', installerResponse({
+      body: 'Installer unavailable: GitHub could not resolve INSTALL_BRANCH (422).\n',
+      ok: false,
+      status: 503,
+    })),
+    /returned 503.*INSTALL_BRANCH.*installer-endpoint\/README\.md/su,
+  );
+});
+
+test('DigitalOcean smoke refuses an installer endpoint that is not serving a script', async () => {
+  await assert.rejects(
+    preflightInstaller('https://get-dev.myownsuite.org/install.sh', installerResponse({ body: '<html>nope</html>' })),
+    /did not return a shell script/u,
+  );
+});
+
+test('DigitalOcean smoke records the exact commit the installer endpoint is serving', async () => {
+  assert.deepEqual(
+    await preflightInstaller('https://get-dev.myownsuite.org/install.sh', installerResponse({
+      body: '#!/usr/bin/env bash\nset -euo pipefail\n',
+      headers: { 'x-mos-install-branch': 'staging', 'x-mos-install-ref': 'a'.repeat(40) },
+    })),
+    { installBranch: 'staging', installRef: 'a'.repeat(40) },
+  );
 });
 
 test('DigitalOcean smoke builds the owner setup URL without persisting token state', () => {

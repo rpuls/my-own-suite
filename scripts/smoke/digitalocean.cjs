@@ -212,14 +212,47 @@ function renderPublicInstallerCloudInit(installerUrl) {
   if (parsed.protocol !== 'https:') {
     throw new Error('MOS_SMOKE_INSTALLER_URL must use HTTPS.');
   }
+  // pipefail matters more than it looks: without it, a failed download pipes an
+  // empty stream into bash, which exits 0. The machine then sits there having
+  // installed nothing, and the only symptom is a readiness timeout half an hour
+  // later. With it, cloud-init records the failure in /var/log/cloud-init-output.log.
   return `#cloud-config
 package_update: true
 packages:
   - ca-certificates
   - curl
 runcmd:
-  - [ bash, -lc, "curl -fsSL --proto '=https' --tlsv1.2 '${installerUrl}' | bash" ]
+  - [ bash, -lc, "set -o pipefail; curl -fsSL --proto '=https' --tlsv1.2 '${installerUrl}' | bash" ]
 `;
+}
+
+// Runs before anything paid is created. The dev installer endpoint resolves a
+// branch tip through GitHub on every request, so it starts returning 503 the
+// moment the branch it is pinned to is deleted — and a Droplet booted against a
+// broken endpoint looks exactly like a Droplet that is still installing.
+async function preflightInstaller(installerUrl, fetchImpl = fetch) {
+  const endpointHelp = 'Point the dev Worker at a branch that exists and redeploy it — see infrastructure/installer-endpoint/README.md.';
+
+  let response;
+  try {
+    response = await fetchImpl(installerUrl, { headers: { 'Cache-Control': 'no-cache' } });
+  } catch (error) {
+    throw new Error(`Could not reach the installer endpoint at ${installerUrl}: ${error.message}`);
+  }
+
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`The installer endpoint at ${installerUrl} returned ${response.status}: ${body.trim() || response.statusText}\n${endpointHelp}`);
+  }
+
+  if (!body.startsWith('#!')) {
+    throw new Error(`The installer endpoint at ${installerUrl} did not return a shell script.\n${endpointHelp}`);
+  }
+
+  return {
+    installBranch: response.headers.get('x-mos-install-branch') || '',
+    installRef: response.headers.get('x-mos-install-ref') || '',
+  };
 }
 
 function bootstrapPlanFor(config, ip = '') {
@@ -331,7 +364,9 @@ async function waitForSuiteManager(plan) {
     await sleep(15000);
   }
 
-  fail(`Timed out waiting for Suite Manager readiness at ${statusUrl}.`);
+  fail(`Timed out waiting for Suite Manager readiness at ${statusUrl}.
+The Droplet is still running so the install can be inspected:
+  ssh root@${new URL(homeUrl).hostname.replace(/^home\./u, '').replace(/\.sslip\.io$/u, '')} 'tail -n 80 /var/log/cloud-init-output.log; systemctl --failed'`);
 }
 
 async function createDroplet(token, config) {
@@ -385,6 +420,9 @@ URLs:
   Suite Manager: ${state.suiteManagerUrl}
 ${claimUrl ? `  Owner setup:  ${claimUrl}` : '  Owner setup:  claim URL unavailable; configure MOS_SMOKE_SSH_PRIVATE_KEY'}
 
+Installed:
+  ${state.installBranch || '(branch unreported)'} @ ${state.installRef || '(commit unreported)'}
+
 State:
   ${path.relative(repoRoot, statePath)}
 
@@ -399,13 +437,18 @@ Replace with a fresh MOS smoke Droplet:
 async function reset() {
   ensureDirs();
   const existingState = readState();
-
   const token = getToken();
+  const config = smokeConfigFromEnv(existingState || {});
+
+  // Ahead of the destroy as well as the create: a broken endpoint should not
+  // cost the Droplet that is already running.
+  const { installBranch, installRef } = await preflightInstaller(config.installerUrl);
+  console.log(`[mos-smoke:do] Installer endpoint is serving ${installBranch || 'its configured branch'} at ${installRef ? installRef.slice(0, 12) : 'an unreported commit'}.`);
+
   if (existingState) {
     await destroyExistingFromState(token, existingState, 'reset');
   }
 
-  const config = smokeConfigFromEnv(existingState || {});
   const droplet = await createDroplet(token, config);
   console.log(`[mos-smoke:do] Created Droplet ${droplet.name} (${droplet.id}).`);
 
@@ -418,7 +461,11 @@ async function reset() {
     homepageUrl: plan.config.publicUrls.homepage,
     setupUrl: plan.config.publicUrls.setup,
     image: config.image,
+    // The exact snapshot this machine installed, recorded at creation time. The
+    // branch moves; this is what you compare against when a smoke run misbehaves.
+    installBranch,
     installerUrl: config.installerUrl,
+    installRef,
     ip,
     region: config.region,
     size: config.size,
@@ -495,6 +542,7 @@ module.exports = {
   DEFAULT_READY_TIMEOUT_MS,
   bootstrapPlanFor,
   main,
+  preflightInstaller,
   smokeConfigFromEnv,
   renderPublicInstallerCloudInit,
   ownerClaimUrl,
