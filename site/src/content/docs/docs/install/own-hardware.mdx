@@ -1,11 +1,11 @@
 ---
 title: Install on your own hardware
-description: Build the My Own Suite USB installer and turn a spare PC, mini PC, or old laptop into your family's private cloud server.
+description: Download the My Own Suite installer image and turn a spare PC, mini PC, or old laptop into your family's private cloud server.
 ---
 
 import { Steps } from '@astrojs/starlight/components'
 
-This path gives you full physical ownership: a machine in your home, running your suite, with no monthly bill. You build a bootable USB stick on your everyday computer, boot the spare machine from it once, and it installs Ubuntu plus the whole MOS platform unattended.
+This path gives you full physical ownership: a machine in your home, running your suite, with no monthly bill. You download one file, write it to a USB stick, and boot the spare machine from it once. It installs Ubuntu plus the whole MOS platform unattended.
 
 :::caution
 The installer **erases the entire disk** of the machine it installs onto. Use a machine you can dedicate to being your server, and double-check nothing you need is still on it.
@@ -15,44 +15,40 @@ The installer **erases the entire disk** of the machine it installs onto. Use a 
 
 - **The server-to-be:** a 64-bit PC, mini PC, or old laptop with 4 GB+ RAM. Old machines work well — this is a great second life for retired hardware.
 - **A USB stick:** 8 GB or larger (it will be overwritten).
-- **Your everyday computer** with [Git](https://git-scm.com/), [Node.js 22](https://nodejs.org/), and [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed (Docker assembles the installer image), plus [Rufus](https://rufus.ie/) on Windows or [balenaEtcher](https://etcher.balena.io/) elsewhere to flash the stick.
+- **Your everyday computer**, plus a free utility to write the stick: [Rufus](https://rufus.ie/) on Windows — a single file you run, with nothing to install — or [balenaEtcher](https://etcher.balena.io/) on macOS and Linux. Windows has no built-in way to write a bootable USB, so one of these is needed. Nothing else is.
 
-## Build the installer
-
-No configuration files, no editing — two commands and a flash.
+## Get the installer
 
 <Steps>
 
-1. **Get the repository:**
+1. **Download the image.** Open the [latest release](https://github.com/rpuls/my-own-suite/releases/latest) and use the download link at the top of the notes. It is about 3 GB.
 
-   ```sh
-   git clone https://github.com/rpuls/my-own-suite.git
-   cd my-own-suite
-   npm ci
-   ```
+2. **Check it arrived intact.** The release page shows a `SHA256` line. Compare it against your copy:
 
-2. **Build the USB installer image** (make sure Docker Desktop is running):
+   - **Windows:** `certutil -hashfile my-own-suite-installer-vX.Y.Z.iso SHA256`
+   - **macOS / Linux:** `shasum -a 256 my-own-suite-installer-vX.Y.Z.iso`
 
-   ```sh
-   npm run installer:usb
-   ```
+   They must match exactly. This takes a minute and is worth doing — you are about to let this file install an operating system.
 
-   The first run downloads the official Ubuntu Server 24.04 image (~3 GB) and verifies its checksum, then produces:
-
-   `infrastructure/self-host/output/my-own-suite-selfhost-installer.iso`
-
-   At the end, the build generates a **login password for the server machine**. It is printed in the terminal and saved next to the ISO as `MOS-server-login.txt`, so it survives closing the window:
-
-   `infrastructure/self-host/output/MOS-server-login.txt`
-
-   Open that file, copy the password into your password manager, then delete the file. You'll rarely need this login: your owner account and everything else about your suite is set up **in the browser after install**, never in config files or a terminal.
-
-3. **Flash the stick.** Write the ISO to your USB stick with Rufus (choose ISO mode if asked) or balenaEtcher.
+3. **Write it to the stick** with Rufus (choose ISO mode if asked) or balenaEtcher.
 
 </Steps>
 
-:::note[Optional: pin your own values]
-If you'd rather choose the machine's login password yourself — or change the timezone or the local domain (default `mos.home`, fine for almost everyone) — copy `infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env.template` to `selfhost-installer.env` in the same folder and uncomment the values you want before building. Entirely optional.
+:::note[The image contains no password]
+Every download is identical, so it cannot contain a password — anyone with the file would have it. Your server generates its own login the first time it boots, and hands it to you once. That happens during install, below.
+:::
+
+:::note[Prefer to build it yourself?]
+Everything is open source, so you can produce the same installer from the repository instead of trusting a download. You will need [Git](https://git-scm.com/), [Node.js 22](https://nodejs.org/), and [Docker Desktop](https://www.docker.com/products/docker-desktop/):
+
+```sh
+git clone https://github.com/rpuls/my-own-suite.git
+cd my-own-suite
+npm ci
+npm run installer:usb
+```
+
+The result lands in `infrastructure/self-host/output/`. To change the timezone or the local domain (default `mos.home`, fine for almost everyone), copy `infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env.template` to `selfhost-installer.env` in the same folder and uncomment what you want before building.
 :::
 
 ## Install the server
@@ -70,9 +66,13 @@ If you'd rather choose the machine's login password yourself — or change the t
    - **Quick (one computer):** add lines to the [hosts file](https://en.wikipedia.org/wiki/Hosts_(file)) on the computer you'll use, e.g. `192.168.1.42 home.mos.home` — plus one line per app you install later (`192.168.1.42 seafile.mos.home`, and so on).
    - **Proper (whole household):** add a wildcard DNS rule `*.mos.home → 192.168.1.42` in your router, AdGuard Home, or Pi-hole. Every device in the house can then reach the suite, and new apps work with no extra steps.
 
-5. **Open your suite** at `http://home.mos.home/` and create your owner account. Continue with [Your first sign-in](/docs/install/first-start/).
+5. **Open your suite** at `http://home.mos.home/` and create your owner account.
+
+6. **Save the server login.** Once you are signed in, Suite Manager shows a **Save your server login** panel. This is the login for the machine itself — its screen and SSH — generated by your server on its first boot. It is the way back in if the suite ever stops responding. Copy it into your password manager, then confirm you have saved it: MOS deletes its copy and clears it from the server's screen. The same login is also shown on a monitor plugged into the server, if you would rather read it there.
 
 </Steps>
+
+Continue with [Your first sign-in](/docs/install/first-start/).
 
 ## Good to know
 

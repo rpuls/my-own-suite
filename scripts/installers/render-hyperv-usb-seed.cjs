@@ -326,6 +326,7 @@ function renderSeed(config, options = {}) {
   const plan = renderBootstrapPlan({
     domain,
     frontDoor: 'usb-autoinstall',
+    disposableLab: profile === 'lab',
     repoRef: smokeRepoRef,
   });
   const suiteManagerStateDir = `${plan.config.stateRoot}/suite-manager`;

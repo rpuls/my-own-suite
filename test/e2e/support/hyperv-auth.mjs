@@ -29,7 +29,8 @@ export async function ensureOwnerSession(page, env, entryUrl = '/suite-manager/'
     // yet, and sign-in deliberately holds there instead of redirecting past it.
     await settleAfterSignIn(page);
     expect(await acceptTermsIfPending(page)).toBe(true);
-    await expectHomeDashboard(page);
+    // Accepting deliberately leaves the owner in Suite Manager, so navigate to Homepage.
+    await gotoHomeDashboard(page, entryUrl);
     await expectSignedInApi(page, entryUrl);
     return;
   }
@@ -39,11 +40,11 @@ export async function ensureOwnerSession(page, env, entryUrl = '/suite-manager/'
     await page.getByLabel(/email/i).fill(env.owner.email);
     await page.getByLabel(/^Password/i).fill(env.owner.password);
     await page.getByRole('button', { name: /Sign in/i }).click();
-    // Signing back in only meets the gate on a lab whose owner never accepted,
-    // or after a terms-version bump, so this one is conditional.
+    // Conditional: only a lab whose owner never accepted, or a terms-version bump, meets the
+    // gate here. Sign-in hands over to Homepage on its own, accepting does not — navigate either way.
     await settleAfterSignIn(page);
     await acceptTermsIfPending(page);
-    await expectHomeDashboard(page);
+    await gotoHomeDashboard(page, entryUrl);
     await expectSignedInApi(page, entryUrl);
     return;
   }

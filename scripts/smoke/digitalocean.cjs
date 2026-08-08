@@ -212,14 +212,41 @@ function renderPublicInstallerCloudInit(installerUrl) {
   if (parsed.protocol !== 'https:') {
     throw new Error('MOS_SMOKE_INSTALLER_URL must use HTTPS.');
   }
+  // Downloaded rather than piped into bash, so a failing endpoint leaves its
+  // response body in the log instead of an empty stream that bash exits 0 on.
   return `#cloud-config
 package_update: true
 packages:
   - ca-certificates
   - curl
 runcmd:
-  - [ bash, -lc, "curl -fsSL --proto '=https' --tlsv1.2 '${installerUrl}' | bash" ]
+  - [ bash, -lc, "curl -sSL --fail-with-body --proto '=https' --tlsv1.2 --retry 5 --retry-all-errors --retry-delay 10 -o /root/mos-install.sh '${installerUrl}' || { echo '[mos] installer download failed:'; cat /root/mos-install.sh; exit 1; }; bash /root/mos-install.sh" ]
 `;
+}
+
+async function preflightInstaller(installerUrl, fetchImpl = fetch) {
+  const endpointHelp = 'Point the dev Worker at a branch that exists and redeploy it — see infrastructure/installer-endpoint/README.md.';
+
+  let response;
+  try {
+    response = await fetchImpl(installerUrl, { headers: { 'Cache-Control': 'no-cache' } });
+  } catch (error) {
+    throw new Error(`Could not reach the installer endpoint at ${installerUrl}: ${error.message}`);
+  }
+
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`The installer endpoint at ${installerUrl} returned ${response.status}: ${body.trim() || response.statusText}\n${endpointHelp}`);
+  }
+
+  if (!body.startsWith('#!')) {
+    throw new Error(`The installer endpoint at ${installerUrl} did not return a shell script.\n${endpointHelp}`);
+  }
+
+  return {
+    installSource: response.headers.get('x-mos-install-source') || '',
+    installRef: response.headers.get('x-mos-install-ref') || '',
+  };
 }
 
 function bootstrapPlanFor(config, ip = '') {
@@ -238,8 +265,56 @@ function ownerClaimUrl(setupUrl, token) {
   return url.toString();
 }
 
+function sshPrivateKey() {
+  return compatibleEnv('MOS_SMOKE_SSH_PRIVATE_KEY', 'MOS_SMOKE_SSH_PRIVATE_KEY');
+}
+
+// Returns null when the machine cannot be reached yet, which is normal for the
+// first minute of a boot and is not the same as a command that failed.
+function askDroplet(ip, command) {
+  const privateKey = sshPrivateKey();
+  if (!privateKey) return null;
+
+  const result = spawnSync('ssh', [
+    '-i', privateKey,
+    '-o', 'BatchMode=yes',
+    '-o', 'ConnectTimeout=10',
+    '-o', 'StrictHostKeyChecking=accept-new',
+    `root@${ip}`,
+    command,
+  ], { encoding: 'utf8', windowsHide: true });
+
+  return result.status === 0 ? String(result.stdout || '') : null;
+}
+
+const INSTALL_LOG = '/var/log/cloud-init-output.log';
+
+// cloud-init reports `error` the moment the install dies. Without asking, the
+// harness cannot tell a machine that failed two minutes in from one that is
+// still working, and polls a corpse until the timeout.
+function installProgress(ip) {
+  const raw = askDroplet(ip, [
+    'cloud-init status 2>/dev/null | head -n1',
+    `tail -n 1 ${INSTALL_LOG} 2>/dev/null | tr -d '\\r' | cut -c1-110`,
+    'systemctl is-active mos-suite-manager 2>/dev/null',
+  ].join('; echo "|"; '));
+  if (raw === null) return null;
+
+  const [status = '', lastLine = '', suiteManager = ''] = raw.split(/^\|$/mu).map((part) => part.trim());
+  return {
+    failed: /error/u.test(status),
+    lastLine,
+    status: status.replace(/^status:\s*/u, '') || 'unknown',
+    suiteManager: suiteManager || 'unknown',
+  };
+}
+
+function installLogTail(ip, lines = 60) {
+  return askDroplet(ip, `tail -n ${lines} ${INSTALL_LOG} 2>/dev/null`) || '';
+}
+
 async function readOwnerClaimToken(ip) {
-  const privateKey = compatibleEnv('MOS_SMOKE_SSH_PRIVATE_KEY', 'MOS_SMOKE_SSH_PRIVATE_KEY');
+  const privateKey = sshPrivateKey();
   if (!privateKey) {
     return '';
   }
@@ -302,7 +377,18 @@ async function waitForDropletNetwork(token, dropletId) {
   fail('Timed out waiting for Droplet to become active with a public IPv4 address.');
 }
 
-async function waitForSuiteManager(plan) {
+function reportInstallFailure(ip, headline) {
+  const log = installLogTail(ip);
+  fail(`${headline}
+
+${log ? `Last ${log.trim().split('\n').length} lines of ${INSTALL_LOG} on ${ip}:\n\n${log.trim()}` : `Could not read ${INSTALL_LOG}. Set MOS_SMOKE_SSH_PRIVATE_KEY, or read it yourself:
+  ssh root@${ip} 'tail -n 80 ${INSTALL_LOG}; systemctl --failed'`}
+
+The Droplet is left running so it can be inspected. Destroy it with:
+  npm run smoke:do:destroy`);
+}
+
+async function waitForSuiteManager(plan, ip) {
   if (env('MOS_SMOKE_WAIT', '1') === '0') {
     return;
   }
@@ -327,11 +413,18 @@ async function waitForSuiteManager(plan) {
       // Cloud-init is still installing or Caddy is not ready yet.
     }
 
-    console.log('[mos-smoke:do] Waiting for Suite Manager first-run readiness...');
+    const progress = installProgress(ip);
+    if (progress?.failed) {
+      reportInstallFailure(ip, `The install failed on ${ip}: cloud-init reports "${progress.status}".`);
+    }
+
+    console.log(progress
+      ? `[mos-smoke:do] cloud-init=${progress.status} suite-manager=${progress.suiteManager} | ${progress.lastLine || '(no output yet)'}`
+      : '[mos-smoke:do] Waiting for the Droplet to accept SSH...');
     await sleep(15000);
   }
 
-  fail(`Timed out waiting for Suite Manager readiness at ${statusUrl}.`);
+  reportInstallFailure(ip, `Timed out waiting for Suite Manager readiness at ${statusUrl}.`);
 }
 
 async function createDroplet(token, config) {
@@ -380,10 +473,13 @@ function printSummary(state, claimUrl = '') {
   console.log(`
 [mos-smoke:do] Smoke Droplet is ready.
 
-URLs:
-  MOS Home:      ${state.homepageUrl}
-  Suite Manager: ${state.suiteManagerUrl}
-${claimUrl ? `  Owner setup:  ${claimUrl}` : '  Owner setup:  claim URL unavailable; configure MOS_SMOKE_SSH_PRIVATE_KEY'}
+Open this to create the owner account:
+  ${claimUrl || `${state.setupUrl}
+  (no one-time key: set MOS_SMOKE_SSH_PRIVATE_KEY, or read it on the Droplet with
+   sudo cat /etc/mos/secrets/owner-claim.env)`}
+
+Installed:
+  ${state.installSource || '(branch unreported)'} @ ${state.installRef || '(commit unreported)'}
 
 State:
   ${path.relative(repoRoot, statePath)}
@@ -399,13 +495,18 @@ Replace with a fresh MOS smoke Droplet:
 async function reset() {
   ensureDirs();
   const existingState = readState();
-
   const token = getToken();
+  const config = smokeConfigFromEnv(existingState || {});
+
+  // Ahead of the destroy as well as the create: a broken endpoint should not cost
+  // the Droplet that is already running.
+  const { installSource, installRef } = await preflightInstaller(config.installerUrl);
+  console.log(`[mos-smoke:do] Installer endpoint is serving ${installSource || 'its configured branch'} at ${installRef ? installRef.slice(0, 12) : 'an unreported commit'}.`);
+
   if (existingState) {
     await destroyExistingFromState(token, existingState, 'reset');
   }
 
-  const config = smokeConfigFromEnv(existingState || {});
   const droplet = await createDroplet(token, config);
   console.log(`[mos-smoke:do] Created Droplet ${droplet.name} (${droplet.id}).`);
 
@@ -418,7 +519,9 @@ async function reset() {
     homepageUrl: plan.config.publicUrls.homepage,
     setupUrl: plan.config.publicUrls.setup,
     image: config.image,
+    installSource,
     installerUrl: config.installerUrl,
+    installRef,
     ip,
     region: config.region,
     size: config.size,
@@ -426,7 +529,7 @@ async function reset() {
   };
 
   writeState(state);
-  await waitForSuiteManager(plan);
+  await waitForSuiteManager(plan, ip);
   const claimToken = await readOwnerClaimToken(ip);
   printSummary(state, claimToken ? ownerClaimUrl(state.setupUrl, claimToken) : '');
 }
@@ -495,6 +598,7 @@ module.exports = {
   DEFAULT_READY_TIMEOUT_MS,
   bootstrapPlanFor,
   main,
+  preflightInstaller,
   smokeConfigFromEnv,
   renderPublicInstallerCloudInit,
   ownerClaimUrl,

@@ -1,4 +1,4 @@
 import { createInstallerWorker } from '../core.mjs';
 
-// Production is deliberately fixed to the release branch.
-export default createInstallerWorker(() => 'main');
+// Production installs the published release, never a branch tip.
+export default createInstallerWorker(() => ({ stable: true }));

@@ -9,7 +9,17 @@ const {
   validateBootstrapInput,
 } = require('../../scripts/installers/bootstrap-contract.cjs');
 const { parseArgs, selectOutput } = require('../../scripts/installers/render-bootstrap.cjs');
-const { DEFAULT_READY_TIMEOUT_MS, bootstrapPlanFor, ownerClaimUrl, renderPublicInstallerCloudInit, smokeConfigFromEnv } = require('../../scripts/smoke/digitalocean.cjs');
+const { DEFAULT_READY_TIMEOUT_MS, bootstrapPlanFor, ownerClaimUrl, preflightInstaller, renderPublicInstallerCloudInit, smokeConfigFromEnv } = require('../../scripts/smoke/digitalocean.cjs');
+
+function installerResponse({ body, ok = true, status = 200, headers = {} }) {
+  return async () => ({
+    headers: { get: (name) => headers[name.toLowerCase()] ?? null },
+    ok,
+    status,
+    statusText: '',
+    text: async () => body,
+  });
+}
 
 test('bootstrap contract defaults to a no-preconfig control-plane install', () => {
   const plan = renderBootstrapPlan({});
@@ -25,7 +35,7 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.doesNotMatch(plan.env, /SELECTED_APPS|MOS_APPS|STIRLING|VAULTWARDEN/);
   assert.match(plan.env, /MOS_OWNER_SETUP='suite-manager-browser'/);
   assert.match(plan.env, /MOS_APP_SELECTION='suite-manager-after-install'/);
-  assert.match(plan.env, /MOS_LAB_RESET_ENABLED='0'/);
+  assert.match(plan.env, /MOS_DISPOSABLE_LAB='0'/);
   assert.match(plan.cloudInit, /ExecStart=\/usr\/bin\/node .*suite-manager\/backend\/src\/server\/start\.cjs/);
   assert.match(plan.cloudInit, /reverse_proxy 127\.0\.0\.1:\$MOS_SUITE_MANAGER_PORT/);
   assert.match(plan.cloudInit, /mos-homepage\.service/);
@@ -58,7 +68,7 @@ test('bootstrap contract defaults to a no-preconfig control-plane install', () =
   assert.match(plan.cloudInit, /MOS_BACKUP_AGENT_SOCKET=\/run\/mos-backup-agent\/agent\.sock/);
   assert.match(plan.cloudInit, /mos-lab-reset-agent\.service/);
   assert.match(plan.cloudInit, /MOS_LAB_RESET_AGENT_SOCKET=\/run\/mos-lab-reset-agent\/agent\.sock/);
-  assert.match(plan.cloudInit, /if \[ "\$MOS_LAB_RESET_ENABLED" = '1' \]; then/);
+  assert.match(plan.cloudInit, /if \[ "\$MOS_DISPOSABLE_LAB" = '1' \]; then/);
   assert.match(plan.cloudInit, /mos-homepage-routes\.caddy/);
   assert.match(plan.cloudInit, /MOS_HTTPS_AGENT_SOCKET/);
   assert.match(plan.cloudInit, /caddy-cloudflare\.env/);
@@ -161,10 +171,25 @@ test('rendered cloud, SSH, and USB payloads share the same bootstrap contract', 
 
   assert.match(plan.usbSeed, /MOS_REPO_URL='https:\/\/example.test\/mos.git'/);
   assert.match(plan.usbSeed, /MOS_FRONT_DOOR='usb-autoinstall'/);
-  assert.match(plan.usbSeed, /MOS_LAB_RESET_ENABLED='1'/);
+  assert.match(plan.usbSeed, /MOS_DISPOSABLE_LAB='0'/);
   assert.match(plan.usbSeed, /MOS_SUITE_MANAGER_URL='http:\/\/home.mos.example.test\/suite-manager\/'/);
   assert.match(plan.usbSeed, /MOS_HOMEPAGE_URL='http:\/\/home.mos.example.test\/'/);
   assert.doesNotMatch(plan.usbSeed, /MOS_OWNER_PASSWORD|MOS_SMOKE_OWNER_PASSWORD|MOS_SELECTED_APPS/);
+});
+
+test('the USB front door alone does not enable the lab reset agent', () => {
+  const plan = renderBootstrapPlan({ domain: 'mos.home', frontDoor: 'usb-autoinstall' });
+  assert.equal(plan.config.disposableLab, false);
+  assert.match(plan.env, /MOS_DISPOSABLE_LAB='0'/);
+  assert.match(plan.usbSeed, /MOS_DISPOSABLE_LAB='0'/);
+  assert.match(plan.cloudInit, /MOS_DISPOSABLE_LAB='0'/);
+});
+
+test('the lab reset agent is enabled only when asked for explicitly', () => {
+  const plan = renderBootstrapPlan({ domain: 'mos.home', frontDoor: 'usb-autoinstall', disposableLab: true });
+  assert.equal(plan.config.disposableLab, true);
+  assert.match(plan.env, /MOS_DISPOSABLE_LAB='1'/);
+  assert.match(plan.cloudInit, /MOS_DISPOSABLE_LAB='1'/);
 });
 
 test('render CLI parses dry-run target inputs without requiring an env file', () => {
@@ -207,7 +232,7 @@ test('DigitalOcean smoke defaults to the public installer without owner inputs',
 
     assert.equal(config.installerUrl, 'https://get-dev.myownsuite.org/install.sh');
     const cloudInit = renderPublicInstallerCloudInit(config.installerUrl);
-    assert.match(cloudInit, /curl -fsSL --proto '=https'.*get-dev\.myownsuite\.org\/install\.sh.*\| bash/);
+    assert.match(cloudInit, /curl .*--proto '=https'.*get-dev\.myownsuite\.org\/install\.sh.*bash \/root\/mos-install\.sh/);
     assert.doesNotMatch(cloudInit, /render-bootstrap\.cjs|git clone/);
     assert.match(plan.cloudInit, /MOS_FRONT_DOOR='public-vps'/);
     assert.doesNotMatch(plan.cloudInit, /old-owner@example.com|old-password|MOS_SMOKE_OWNER/);
@@ -220,6 +245,42 @@ test('DigitalOcean smoke defaults to the public installer without owner inputs',
       }
     }
   }
+});
+
+test('DigitalOcean cloud-init fails the install and keeps what the endpoint said', () => {
+  const cloudInit = renderPublicInstallerCloudInit('https://get-dev.myownsuite.org/install.sh');
+  assert.match(cloudInit, /--fail-with-body/);
+  assert.match(cloudInit, /installer download failed:'; cat \/root\/mos-install\.sh; exit 1/);
+  // Never piped into bash: an empty stream from a failed download exits 0.
+  assert.doesNotMatch(cloudInit, /install\.sh' \| bash/);
+});
+
+test('DigitalOcean smoke refuses to create a Droplet when the installer endpoint is down', async () => {
+  await assert.rejects(
+    preflightInstaller('https://get-dev.myownsuite.org/install.sh', installerResponse({
+      body: 'Installer unavailable: GitHub could not resolve INSTALL_BRANCH (422).\n',
+      ok: false,
+      status: 503,
+    })),
+    /returned 503.*INSTALL_BRANCH.*installer-endpoint\/README\.md/su,
+  );
+});
+
+test('DigitalOcean smoke refuses an installer endpoint that is not serving a script', async () => {
+  await assert.rejects(
+    preflightInstaller('https://get-dev.myownsuite.org/install.sh', installerResponse({ body: '<html>nope</html>' })),
+    /did not return a shell script/u,
+  );
+});
+
+test('DigitalOcean smoke records the exact commit the installer endpoint is serving', async () => {
+  assert.deepEqual(
+    await preflightInstaller('https://get-dev.myownsuite.org/install.sh', installerResponse({
+      body: '#!/usr/bin/env bash\nset -euo pipefail\n',
+      headers: { 'x-mos-install-source': 'staging', 'x-mos-install-ref': 'a'.repeat(40) },
+    })),
+    { installSource: 'staging', installRef: 'a'.repeat(40) },
+  );
 });
 
 test('DigitalOcean smoke builds the owner setup URL without persisting token state', () => {

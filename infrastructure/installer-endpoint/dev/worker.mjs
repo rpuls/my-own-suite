@@ -1,4 +1,4 @@
 import { createInstallerWorker } from '../core.mjs';
 
-// Development follows the branch configured in the Worker environment.
-export default createInstallerWorker((env) => env.INSTALL_BRANCH);
+// Development installs unreleased code, so it follows a branch.
+export default createInstallerWorker((env) => ({ branch: env.INSTALL_BRANCH }));

@@ -134,6 +134,18 @@ test('a fixed password still travels the real handover path', () => {
   assert.doesNotMatch(init.content, /dev\/urandom/u);
 });
 
+test('a shareable image never carries the lab reset endpoint', () => {
+  for (const options of [{ profile: 'release' }, {}, { profile: 'release', config: { LINUX_PASSWORD: 'someones-own-password' } }]) {
+    const rendered = renderSeed(options.config || {}, { profile: options.profile, repoRef: 'staging' });
+    assert.match(rendered.userData, /MOS_DISPOSABLE_LAB='0'/u);
+    assert.doesNotMatch(rendered.userData, /MOS_DISPOSABLE_LAB='1'/u);
+  }
+});
+
+test('the lab profile keeps the reset endpoint the e2e suite depends on', () => {
+  assert.match(renderSeed({}, { profile: 'lab', repoRef: 'staging' }).userData, /MOS_DISPOSABLE_LAB='1'/u);
+});
+
 test('only an explicit profile can bake a password into an image', () => {
   assert.equal(resolveSeedProfile({}), 'release');
   assert.equal(resolveSeedProfile({ MOS_SEED_PROFILE: '' }), 'release');
