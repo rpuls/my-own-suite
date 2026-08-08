@@ -4,13 +4,15 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-08-08
+
 ### Changed
 
 - The hosted one-line installer installs the latest published release instead of the tip of `main`, so both installer paths now start on the same release commit. Cloud installs previously picked up unreleased commits while still reporting the last release version.
 
 ### Fixed
 
-- Installing an app whose images take more than three minutes to build no longer fails with "App runtime apply timed out". Suite Manager gave up on the host agent at the three-minute mark and lost the result, while the agent carried on and finished — so the app ended up running and healthy behind a Suite Manager that reported it had never started. ONLYOFFICE takes just under four minutes and hit this every time. An app already stranded this way recovers by running its install again, which picks up where the runtime step left off.
+- Installing an app whose images take more than three minutes to build no longer fails with "App runtime apply timed out". The app was in fact running — Suite Manager had stopped waiting and lost track of it. ONLYOFFICE hit this on a small server; an app left stuck this way recovers by running its install again.
 
 ### Security
 
