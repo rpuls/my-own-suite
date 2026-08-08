@@ -1,5 +1,8 @@
+const fs = require('node:fs');
+const path = require('node:path');
+
 const { digestAppPackage } = require('./package-contracts.cjs');
-const { readAppPackageManifest } = require('./package-manifest.cjs');
+const { MANIFEST_FILENAME, validateAppPackageManifest } = require('./package-manifest.cjs');
 const { AppOperationLimiter } = require('./app-operation-limits.cjs');
 const { createCandidateDir, releaseCandidateDir } = require('./candidate-storage.cjs');
 const { COMMIT_PATTERN, DEFAULT_LIMITS, downloadMosPackage, parseGitPackageUrl, resolveCommit } = require('./git-archive-source.cjs');
@@ -83,11 +86,18 @@ class ExternalSourceClient {
     try {
       await downloadMosPackage(this.fetch, { ...coordinates, sha: source.revision }, candidateDir, this.limits);
       const packageDigest = digestAppPackage(candidateDir);
-      const appPackage = readAppPackageManifest(candidateDir);
-      const packageId = appPackage.manifest.id;
+      const manifestPath = path.join(candidateDir, MANIFEST_FILENAME);
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      const packageId = manifest.id;
       const candidateSource = { kind: 'external-git', path: EXTERNAL_PACKAGE_DIR, repository: source.repository, revision: source.revision, trust: source.trust };
-      const gate = validateExternalCandidate({ manifest: appPackage.manifest, officialPackageIds: this.officialPackageIds, platformVersion: this.platformVersion, source: candidateSource });
-      if (gate.errors.length) throw new ExternalSourceError('CANDIDATE_REJECTED', `External candidate failed validation: ${gate.errors.join(' ')}`);
+      // The constrained gate and the generic manifest contract are reported
+      // together so a publisher sees every problem in one rejection instead of
+      // peeling them one error class at a time.
+      const gate = validateExternalCandidate({ manifest, officialPackageIds: this.officialPackageIds, platformVersion: this.platformVersion, source: candidateSource });
+      const manifestErrors = validateAppPackageManifest(manifest, { packageDir: candidateDir });
+      const problems = [...gate.errors, ...manifestErrors];
+      if (problems.length) throw new ExternalSourceError('CANDIDATE_REJECTED', `External candidate failed validation: ${problems.join(' ')}`);
+      const appPackage = { manifest, manifestPath, packageDir: candidateDir };
       // The collision-safe id every MOS-side identity (instance row, containers,
       // volumes, routes, build context) uses for this package. Without it the
       // package could not be isolated from an official id, so fail closed.

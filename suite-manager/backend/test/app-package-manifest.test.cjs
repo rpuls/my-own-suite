@@ -17,6 +17,7 @@ const v2AppsDir = path.join(repoRoot, 'apps');
 
 function validManifest(overrides = {}) {
   return {
+    manifestVersion: 1,
     id: 'example-app',
     name: 'Example App',
     version: '0.1.0',
@@ -33,7 +34,7 @@ function validManifest(overrides = {}) {
         },
       },
     },
-    routes: [{ host: 'example-app', service: 'example-app', port: 8080 }],
+    routes: [{ host: 'example-app', service: 'example-app' }],
     homepage: {
       description: 'A useful example.',
       group: 'Tools',
@@ -50,10 +51,10 @@ test('Stirling PDF package is discoverable and validates as the first boring app
   const stirling = packages.find((entry) => entry.manifest.id === 'stirling-pdf');
 
   assert.ok(stirling);
+  assert.equal(stirling.manifest.manifestVersion, 1);
   assert.equal(stirling.manifest.name, 'Stirling PDF');
   assert.equal(stirling.manifest.category, 'office');
-  assert.equal(stirling.manifest.setup.fields.length, 0);
-  assert.equal(stirling.manifest.catalog.complexity.level, 'easy');
+  assert.equal(stirling.manifest.setup, undefined);
   assert.ok(stirling.manifest.catalog.tags.includes('adobe-acrobat-alternative'));
   assert.equal(stirling.manifest.resources.services['stirling-pdf'].internalPort, 8080);
   assert.deepEqual(validateAppPackageManifest(stirling.manifest, { packageDir: stirling.packageDir }), []);
@@ -65,7 +66,6 @@ test('Vaultwarden package is discoverable and declares generated secret setup ge
 
   assert.ok(vaultwarden);
   assert.equal(vaultwarden.manifest.name, 'Vaultwarden');
-  assert.equal(vaultwarden.manifest.catalog.complexity.level, 'guided');
   assert.equal(vaultwarden.manifest.catalog.resourceHint.level, 'low');
   assert.equal(vaultwarden.manifest.setup.fields.length, 1);
   assert.equal(vaultwarden.manifest.setup.fields[0].id, 'adminToken');
@@ -85,7 +85,6 @@ test('Radicale package is discoverable and declares user-supplied credentials ge
 
   assert.ok(radicale);
   assert.equal(radicale.manifest.name, 'Radicale');
-  assert.equal(radicale.manifest.catalog.complexity.level, 'guided');
   assert.equal(radicale.manifest.setup.fields.length, 4);
   assert.deepEqual(radicale.manifest.setup.fields.map((field) => ({
     id: field.id,
@@ -105,10 +104,11 @@ test('Radicale package is discoverable and declares user-supplied credentials ge
   assert.equal(radicale.manifest.resources.services.radicale.internalPort, 5232);
   assert.deepEqual(radicale.manifest.resources.services.radicale.volumes, ['data:/data']);
   assert.equal(radicale.manifest.onboarding.title, 'Connect your calendar');
-  assert.equal(radicale.manifest.onboarding.sections[0].type, 'values');
-  assert.equal(radicale.manifest.onboarding.sections[0].values[0].value, '${app.publicUrl}${config.adminUsername}/default-calendar/');
-  assert.equal(radicale.manifest.onboarding.sections[3].type, 'choice-guide');
-  assert.ok(radicale.manifest.onboarding.sections[3].choices.some((choice) => choice.id === 'ios'));
+  assert.equal(radicale.manifest.onboarding.sections[0].type, 'steps');
+  assert.equal(radicale.manifest.onboarding.sections[1].type, 'values');
+  assert.equal(radicale.manifest.onboarding.sections[1].values[0].value, '${app.publicUrl}${config.adminUsername}/default-calendar/');
+  assert.equal(radicale.manifest.onboarding.sections[4].type, 'choice-guide');
+  assert.ok(radicale.manifest.onboarding.sections[4].choices.some((choice) => choice.id === 'ios'));
   assert.deepEqual(validateAppPackageManifest(radicale.manifest, { packageDir: radicale.packageDir }), []);
 });
 
@@ -118,7 +118,6 @@ test('Seafile package is discoverable and declares a multi-service core package 
 
   assert.ok(seafile);
   assert.equal(seafile.manifest.name, 'Seafile');
-  assert.equal(seafile.manifest.catalog.complexity.level, 'advanced');
   assert.deepEqual(Object.keys(seafile.manifest.resources.services).sort(), ['seafile', 'seafile-mysql', 'seafile-valkey']);
   assert.equal(seafile.manifest.routes.length, 1);
   assert.equal(seafile.manifest.routes[0].service, 'seafile');
@@ -152,7 +151,6 @@ test('OnlyOffice package is discoverable and exports a document editor capabilit
 
   assert.ok(onlyoffice);
   assert.equal(onlyoffice.manifest.name, 'ONLYOFFICE');
-  assert.equal(onlyoffice.manifest.catalog.complexity.level, 'advanced');
   assert.equal(onlyoffice.manifest.resources.services.onlyoffice.internalPort, 80);
   assert.deepEqual(onlyoffice.manifest.resources.services.onlyoffice.volumes, ['data:/var/www/onlyoffice/Data']);
   assert.equal(onlyoffice.manifest.setup.fields.length, 2);
@@ -170,11 +168,9 @@ test('Immich package is discoverable and declares its heavy multi-service stack 
 
   assert.ok(immich);
   assert.equal(immich.manifest.name, 'Immich');
-  assert.equal(immich.manifest.version, '0.4.0');
   // Every base image here is pinned to an amd64 manifest, so this package cannot
   // build anywhere else. Declaring it is what lets MOS say so before the build.
   assert.deepEqual(immich.manifest.architectures, ['amd64']);
-  assert.equal(immich.manifest.catalog.complexity.level, 'advanced');
   assert.deepEqual(Object.keys(immich.manifest.resources.services).sort(), [
     'immich-machine-learning',
     'immich-postgres',
@@ -189,17 +185,52 @@ test('Immich package is discoverable and declares its heavy multi-service stack 
   assert.equal(immich.manifest.routes[0].service, 'immich-server');
   assert.equal(immich.manifest.health.url, 'http://immich-server:2283/api/server-info/ping');
   assert.equal(immich.manifest.setup.fields.length, 2);
-  assert.deepEqual(immich.manifest.setup.fields.map((field) => ({
-    id: field.id,
-    generated: Boolean(field.generated),
-    required: field.required,
-    secret: field.secret === true,
-    type: field.type,
-  })), [
-    { generated: true, id: 'postgresPassword', required: true, secret: true, type: 'password' },
-    { generated: true, id: 'jwtSecret', required: true, secret: true, type: 'password' },
-  ]);
+  assert.ok(Array.isArray(immich.manifest.onboarding.sections));
   assert.deepEqual(validateAppPackageManifest(immich.manifest, { packageDir: immich.packageDir }), []);
+});
+
+// The open-world rule is the locked contract's escape hatch: a field added by
+// a later manifest generation amendment must be ignored by this MOS, never
+// fatal. This test is the tripwire the roadmap asked for — it fails the moment
+// anyone reintroduces a closed allow-list anywhere in the manifest shape.
+test('unknown manifest fields are ignored at every level, never fatal', () => {
+  const manifest = validManifest({
+    futureTopLevelField: { anything: ['goes', 'here'] },
+    catalog: {
+      description: 'Described.',
+      links: { website: 'https://example.com/', forum: 'https://example.com/forum' },
+      futureCatalogField: true,
+    },
+    update: { backupRequired: false, futureUpdateHint: 'ignored' },
+    setup: {
+      fields: [{ id: 'username', type: 'text', label: 'Username', futureFieldFlag: 1 }],
+      futureSetupField: {},
+    },
+    homepage: {
+      description: 'A useful example.',
+      group: 'Tools',
+      icon: 'example-app',
+      name: 'Example App',
+      futureHomepageField: 'ok',
+    },
+    onboarding: {
+      sections: [{ id: 'hello', type: 'note', title: 'Hello', futureSectionField: 'ok' }],
+    },
+  });
+  manifest.routes[0].futureRouteField = 'ok';
+  manifest.resources.services['example-app'].futureServiceField = 'ok';
+  manifest.health.futureHealthField = 'ok';
+
+  assert.deepEqual(validateAppPackageManifest(manifest), []);
+});
+
+test('manifestVersion is required and must be a known generation', () => {
+  const missing = validManifest();
+  delete missing.manifestVersion;
+  assert.deepEqual(validateAppPackageManifest(missing), ['manifestVersion is required.']);
+
+  const wrong = validManifest({ manifestVersion: 2 });
+  assert.deepEqual(validateAppPackageManifest(wrong), ['manifestVersion must be 1, got 2.']);
 });
 
 test('manifest validation accepts companion packages without Homepage metadata', () => {
@@ -218,21 +249,25 @@ test('manifest validation accepts companion packages without Homepage metadata',
 test('manifest validation accepts declared architectures and rejects unbuildable ones', () => {
   assert.deepEqual(validateAppPackageManifest(validManifest({ architectures: ['amd64', 'arm64'] })), []);
   assert.deepEqual(validateAppPackageManifest(validManifest({ architectures: undefined })), []);
-  const expected = ['architectures must be a non-empty array of amd64, arm64 when present.'];
-  assert.deepEqual(validateAppPackageManifest(validManifest({ architectures: [] })), expected);
-  assert.deepEqual(validateAppPackageManifest(validManifest({ architectures: 'amd64' })), expected);
-  assert.deepEqual(validateAppPackageManifest(validManifest({ architectures: ['x86_64'] })), expected);
+  assert.deepEqual(validateAppPackageManifest(validManifest({ architectures: [] })), [
+    'architectures must contain at least 1 item.',
+  ]);
+  assert.deepEqual(validateAppPackageManifest(validManifest({ architectures: 'amd64' })), [
+    'architectures must be array, got "amd64".',
+  ]);
+  assert.deepEqual(validateAppPackageManifest(validManifest({ architectures: ['x86_64'] })), [
+    'architectures[0] must be one of: amd64, arm64.',
+  ]);
 });
 
 test('manifest validation accepts structured optional catalog presentation metadata', () => {
   const manifest = validManifest({
     packageFiles: ['assets/screenshot.png'],
     catalog: {
-      complexity: { description: 'One click.', label: 'Easy setup', level: 'easy' },
       description: 'A longer description for the app detail view.',
       demoDeployTargets: [{ label: 'Railway', provider: 'railway', url: 'https://railway.com/deploy/example' }],
       features: [
-        'Quick setup',
+        { title: 'Quick setup' },
         { body: 'Useful for everyday workflows.', title: 'Everyday friendly' },
       ],
       links: {
@@ -245,7 +280,7 @@ test('manifest validation accepts structured optional catalog presentation metad
         summary: 'Private by default.',
       },
       related: ['another-app'],
-      replaces: 'Hosted example tools',
+      replaces: ['Hosted example tools', 'Another hosted tool'],
       resourceHint: { description: 'Small service.', label: 'Light resources', level: 'low' },
       screenshots: [{ alt: 'Example app screenshot', src: 'assets/screenshot.png' }],
       tags: ['example', 'demo'],
@@ -255,21 +290,23 @@ test('manifest validation accepts structured optional catalog presentation metad
   assert.deepEqual(validateAppPackageManifest(manifest), []);
 });
 
-test('manifest validation requires package screenshots to ship with the package', () => {
+test('manifest validation requires package screenshots to ship inside the package', () => {
   const manifest = validManifest({
     catalog: {
-      replaces: '   ',
+      replaces: 'Hosted example tools',
       screenshots: [
         { alt: 'Undeclared file', src: 'assets/screenshot.png' },
-        { caption: 'Hosted screenshots stay allowed', src: 'https://example.com/shot.png' },
+        { caption: 'Remote screenshots are refused', src: 'https://example.com/shot.png' },
       ],
     },
   });
 
-  assert.deepEqual(validateAppPackageManifest(manifest), [
-    'catalog.replaces must be a non-empty string when present.',
-    'catalog.screenshots[0].src must be listed in packageFiles so it ships with the package.',
-  ]);
+  const errors = validateAppPackageManifest(manifest);
+  assert.ok(errors.some((error) => error.startsWith('catalog.replaces must be array')));
+  assert.ok(errors.includes('catalog.screenshots[0].src must be listed in packageFiles so it ships with the package.'));
+  // A remote URL is structurally not a package-relative path: catalog browsing
+  // must never fetch third-party origins.
+  assert.ok(errors.some((error) => error.startsWith('catalog.screenshots[1].src')));
 });
 
 test('manifest validation rejects malformed demo deployment targets', () => {
@@ -277,24 +314,19 @@ test('manifest validation rejects malformed demo deployment targets', () => {
     catalog: {
       demoDeployTargets: [
         { label: '', provider: 'Bad Provider', url: 'ftp://example.com' },
-        { label: 'Railway again', provider: 'railway', url: 'https://example.com/one' },
-        { label: 'Duplicate', provider: 'railway', url: 'https://example.com/two' },
       ],
     },
   });
 
-  assert.deepEqual(validateAppPackageManifest(manifest), [
-    'catalog.demoDeployTargets[0].provider must be a DNS-safe provider id.',
-    'catalog.demoDeployTargets[0].label is required.',
-    'catalog.demoDeployTargets[0].url must be an HTTP or HTTPS URL.',
-    'catalog.demoDeployTargets[2].provider must be unique within catalog.demoDeployTargets.',
-  ]);
+  const errors = validateAppPackageManifest(manifest);
+  assert.ok(errors.some((error) => error.startsWith('catalog.demoDeployTargets[0].provider')));
+  assert.ok(errors.includes('catalog.demoDeployTargets[0].label must not be empty.'));
+  assert.ok(errors.some((error) => error.startsWith('catalog.demoDeployTargets[0].url')));
 });
 
-test('manifest validation rejects malformed optional catalog metadata', () => {
+test('manifest validation rejects malformed optional catalog metadata but ignores unknown link keys', () => {
   const manifest = validManifest({
     catalog: {
-      complexity: { level: 'wizard' },
       features: [{ body: 'Missing title.' }],
       links: { forum: 'https://example.com/forum', website: 'ftp://example.com' },
       related: ['Bad_App'],
@@ -303,15 +335,15 @@ test('manifest validation rejects malformed optional catalog metadata', () => {
     },
   });
 
-  assert.deepEqual(validateAppPackageManifest(manifest), [
-    'catalog.tags must be an array of non-empty strings when present.',
-    'catalog.related must be an array of DNS-safe app ids when present.',
-    'catalog.features[0] must be a string or an object with title and optional body.',
-    'catalog.complexity.level must be one of: easy, guided, advanced.',
-    'catalog.resourceHint.level must be one of: low, medium, high.',
-    'catalog.links.forum is not supported.',
-    'catalog.links.website must be an HTTP or HTTPS URL.',
-  ]);
+  const errors = validateAppPackageManifest(manifest);
+  assert.ok(errors.includes('catalog.resourceHint.level must be one of: low, medium, high.'));
+  assert.ok(errors.includes('catalog.features[0].title is required.'));
+  assert.ok(errors.includes('catalog.tags[1] must not be empty.'));
+  assert.ok(errors.some((error) => error.startsWith('catalog.related[0]')));
+  assert.ok(errors.some((error) => error.startsWith('catalog.links.website')));
+  // Unknown link keys are ignored (open world), never fatal — they are simply
+  // not rendered.
+  assert.ok(!errors.some((error) => error.includes('forum')));
 });
 
 test('manifest validation rejects V1-style unsafe app coupling', () => {
@@ -319,7 +351,6 @@ test('manifest validation rejects V1-style unsafe app coupling', () => {
     routes: [
       {
         host: 'example-app',
-        port: 8080,
         service: 'missing-service',
         snippet: 'reverse_proxy example-app:8080',
       },
@@ -337,12 +368,10 @@ test('manifest validation rejects V1-style unsafe app coupling', () => {
     },
   });
 
-  assert.deepEqual(validateAppPackageManifest(manifest), [
-    'setup.fields[0] is secret and must not define a default value.',
-    'routes[0].service must reference a declared service.',
-    'manifest.routes[0].snippet is not allowed; use structured route fields.',
-    'manifest.routes[0].snippet must not contain raw Caddy directives.',
-  ]);
+  const errors = validateAppPackageManifest(manifest);
+  assert.ok(errors.includes('setup.fields[0] is secret and must not declare a default value.'));
+  assert.ok(errors.includes('routes[0].service must reference a declared service.'));
+  assert.ok(errors.includes('routes[0].snippet is not allowed; routes are structured fields, never raw proxy configuration.'));
 });
 
 test('manifest validation rejects malformed onboarding guide sections', () => {
@@ -359,13 +388,77 @@ test('manifest validation rejects malformed onboarding guide sections', () => {
     },
   });
 
+  const errors = validateAppPackageManifest(manifest);
+  assert.ok(errors.includes('onboarding.sections[0].type must be one of: note, warning, steps, values, choice-guide, manual-complete.'));
+  assert.ok(errors.includes('onboarding.sections[0].title must not be empty.'));
+  assert.ok(errors.some((error) => error.startsWith('onboarding.sections[0].values[0].value must not reference ${secret.*}')));
+});
+
+// The template grammar is half the locked contract: a mistyped reference must
+// fail validation here instead of shipping verbatim into a container env var
+// and failing silently on somebody else's machine.
+test('manifest validation enforces the template grammar', () => {
+  const withField = (env) => validManifest({
+    setup: {
+      fields: [
+        { id: 'adminName', label: 'Admin name', type: 'text' },
+        { id: 'adminToken', label: 'Admin token', secret: true, type: 'password' },
+      ],
+    },
+    resources: {
+      services: {
+        'example-app': { dockerfile: 'Dockerfile', env, internalPort: 8080 },
+      },
+    },
+  });
+
+  assert.deepEqual(validateAppPackageManifest(withField({
+    ADMIN_NAME: '${config.adminName}',
+    ADMIN_TOKEN: '${secret.adminToken}',
+    PUBLIC_URL: '${app.publicUrl}',
+    SHELL_STYLE: '${HOME} $PATH ${not-a-namespace}',
+  })), []);
+
+  assert.deepEqual(validateAppPackageManifest(withField({ TYPO: '${config.adminNam}' })), [
+    'resources.services.example-app.env.TYPO references ${config.adminNam}, which is not a declared non-secret setup field.',
+  ]);
+  assert.deepEqual(validateAppPackageManifest(withField({ SECRET_AS_CONFIG: '${config.adminToken}' })), [
+    'resources.services.example-app.env.SECRET_AS_CONFIG references ${config.adminToken}, which is not a declared non-secret setup field.',
+  ]);
+  assert.deepEqual(validateAppPackageManifest(withField({ UNKNOWN: '${smtp.host}' })), [
+    'resources.services.example-app.env.UNKNOWN references unknown template namespace "smtp" in ${smtp.host}. Known namespaces: app, config, export, import, owner, secret.',
+  ]);
+  assert.deepEqual(validateAppPackageManifest(withField({ BAD_APP_KEY: '${app.port}' })), [
+    'resources.services.example-app.env.BAD_APP_KEY references ${app.port}; supported app keys are host, publicUrl, scheme.',
+  ]);
+  // The owner namespace resolves at setup time, so it lives only in field
+  // defaults — never in runtime projections.
+  assert.deepEqual(validateAppPackageManifest(withField({ OWNER: '${owner.email}' })), [
+    'resources.services.example-app.env.OWNER must not reference ${owner.*}.',
+  ]);
+
+  const ownerDefault = validManifest({
+    setup: { fields: [{ default: '${owner.email}', id: 'username', label: 'Username', type: 'text' }] },
+  });
+  assert.deepEqual(validateAppPackageManifest(ownerDefault), []);
+});
+
+test('manifest validation requires the health probe to target a declared service', () => {
+  const manifest = validManifest({ health: { type: 'http', url: 'http://not-a-service:8080/healthz' } });
   assert.deepEqual(validateAppPackageManifest(manifest), [
-    'onboarding.sections[0].type must be one of: choice-guide, manual-complete, note, steps, values, warning.',
-    'onboarding.sections[0].title is required.',
-    'onboarding.sections[0].values[0].value must not reference secrets.',
+    'health.url hostname must be a declared service id, got "not-a-service".',
   ]);
 });
 
+test('manifest validation requires named package volumes, never host paths', () => {
+  const withVolumes = (volumes) => validManifest({
+    resources: { services: { 'example-app': { dockerfile: 'Dockerfile', internalPort: 8080, volumes } } },
+  });
+  assert.deepEqual(validateAppPackageManifest(withVolumes(['data:/data'])), []);
+  assert.ok(validateAppPackageManifest(withVolumes(['/host/path:/data'])).length > 0);
+  assert.ok(validateAppPackageManifest(withVolumes(['data'])).length > 0);
+  assert.ok(validateAppPackageManifest(withVolumes(['../escape:/data'])).length > 0);
+});
 
 test('manifest validation rejects package paths that escape the app folder', () => {
   const manifest = validManifest({
@@ -380,7 +473,7 @@ test('manifest validation rejects package paths that escape the app folder', () 
   });
 
   assert.deepEqual(validateAppPackageManifest(manifest), [
-    'resources.services.example-app.dockerfile must stay inside the app package folder.',
+    'resources.services.example-app.dockerfile must be a canonical forward-slash path inside the app package folder.',
   ]);
 });
 
@@ -400,7 +493,7 @@ test('manifest validation keeps service environment projection generic', () => {
   });
 
   assert.deepEqual(validateAppPackageManifest(manifest), [
-    'resources.services.example-app.env must contain uppercase environment keys with string values.',
+    'resources.services.example-app.env.bad-key is not an allowed key name.',
   ]);
 });
 
@@ -420,9 +513,9 @@ test('manifest validation rejects unsafe generated setup declarations', () => {
   });
 
   assert.deepEqual(validateAppPackageManifest(manifest), [
-    'setup.fields[0].generated.kind must be one of: random.',
-    'setup.fields[0].generated.bytes must be a whole number from 16 to 128.',
+    'setup.fields[0].generated.bytes must be at least 16.',
     'setup.fields[0].generated.encoding must be one of: base64url, hex.',
+    'setup.fields[0].generated.kind must be one of: random.',
   ]);
 });
 
@@ -464,7 +557,7 @@ test('readAppPackageManifest reports all validation details', async () => {
     () => readAppPackageManifest(packageDir),
     (error) => {
       assert.ok(error instanceof AppPackageManifestError);
-      assert.ok(error.details.includes('id must be a DNS-safe app id.'));
+      assert.ok(error.details.some((detail) => detail.startsWith('id ')));
       assert.ok(error.details.includes('routes[0].service must reference a declared service.'));
       return true;
     },

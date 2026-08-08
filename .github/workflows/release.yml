@@ -252,3 +252,88 @@ jobs:
             --title "${GITHUB_REF_NAME}" \
             --notes-file "$notes" \
             dist/SHA256SUMS
+
+  # An installer image is only ever used to install; a server updates itself
+  # afterwards, so nobody needs an old one. Keeping them costs storage the free
+  # tier does not have, and a withdrawn image is the only way to stop handing out
+  # one with a known flaw. Two are kept so a release whose image turns out not to
+  # boot still has something to point people back to.
+  prune:
+    name: Prune superseded installer images
+    needs: [gate, publish]
+    runs-on: ubuntu-latest
+    env:
+      KEEP: 2
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v4
+
+      - name: Delete every image outside the keep window
+        id: prune
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          set -euo pipefail
+          iso="my-own-suite-installer-${GITHUB_REF_NAME}.iso"
+
+          # Nothing is deleted until the image this release just published is
+          # confirmed present. A prune that runs against a failed upload would
+          # empty the bucket.
+          aws s3api head-object --bucket "$R2_BUCKET" \
+            --key "${GITHUB_REF_NAME}/${iso}" --endpoint-url "$R2_ENDPOINT" >/dev/null
+
+          aws s3 ls "s3://${R2_BUCKET}/" --endpoint-url "$R2_ENDPOINT" \
+            | awk '$1 == "PRE" { sub(/\/$/, "", $2); print $2 }' | sort > all-prefixes
+
+          # Version-sorted, so the window follows releases rather than upload
+          # order. Anything that is not a version — `dry-run/` — is never kept.
+          grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' all-prefixes | sort -V | tail -n "$KEEP" > keep
+          comm -23 all-prefixes <(sort keep) > remove
+
+          if [ ! -s remove ]; then
+            echo "Nothing to prune. Hosted: $(paste -sd' ' keep)"
+            exit 0
+          fi
+
+          while read -r prefix; do
+            echo "Removing s3://${R2_BUCKET}/${prefix}/"
+            aws s3 rm "s3://${R2_BUCKET}/${prefix}/" --recursive --endpoint-url "$R2_ENDPOINT"
+          done < remove
+
+          echo "Hosted: $(paste -sd' ' keep)"
+          echo "removed=$(grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' remove | paste -sd' ' || true)" >> "$GITHUB_OUTPUT"
+
+      # A deleted image leaves a download link on a published release page that
+      # answers 404. Rewriting the notes is what turns pruning into a redirect
+      # instead of a dead end.
+      - name: Repoint the notes of releases whose image is gone
+        if: steps.prune.outputs.removed != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REMOVED: ${{ steps.prune.outputs.removed }}
+        run: |
+          set -euo pipefail
+          for tag in $REMOVED; do
+            gh release view "$tag" >/dev/null 2>&1 || continue
+
+            notes="$(mktemp)"
+            {
+              echo "## Installer image withdrawn"
+              echo
+              echo "The image for this version is no longer hosted. Install the [current"
+              echo "release](https://github.com/${GITHUB_REPOSITORY}/releases/latest) instead — a"
+              echo "server installed from it arrives at this version and beyond on its own."
+              echo
+              echo "---"
+              echo
+              # Read from the changelog rather than the old notes: the tag being
+              # released still carries every past section, so this cannot drift.
+              sed -n "/^## \[${tag#v}\]/,/^## \[/p" CHANGELOG.md | sed '$d'
+            } > "$notes"
+
+            gh release edit "$tag" --notes-file "$notes"
+            echo "Repointed the notes for $tag."
+          done

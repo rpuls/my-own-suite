@@ -28,7 +28,7 @@ Classify each relevant change as automatically handled, migration required, oper
 1. Establish the previous and candidate app-package versions, exact upstream versions/digests, and all intervening upstream releases.
 2. Complete the breaking-change gate and plan migrations before changing pins.
 3. Follow the `assess-app-privacy` skill for the target version even if policy URLs look unchanged.
-4. Update Dockerfiles, manifests, runtime wiring, README, Dependabot, and tests together; bump the package version according to the package-level compatibility impact.
+4. Update Dockerfiles, manifests, runtime wiring, README, Dependabot, and tests together; bump the package version according to the package-level compatibility impact. Manifest edits must stay inside the locked generation-1 contract (`apps/manifest.schema.json`, reference at `site/src/content/docs/docs/reference/manifest.md`); run `npm run apps:manifest:check -- apps/<app>` and declare structural changes in `update.breakingChanges`.
 5. Preserve public Dockerfile paths and volume semantics; call compatibility changes out in `CHANGELOG.md`.
 6. Verify that installed instances can compare their preserved installed snapshot with this candidate without replacing installed settings or privacy information before apply.
 7. Test fresh install and supported upgrade paths, including health, integrations, backup assumptions, and failures.

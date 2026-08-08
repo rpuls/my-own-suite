@@ -213,7 +213,7 @@ custom domain `downloads.myownsuite.org`:
 | --- | --- | --- |
 | `vX.Y.Z/my-own-suite-installer-vX.Y.Z.iso` | tag push | the published download |
 | `vX.Y.Z/SHA256SUMS` | tag push | checksum beside the bytes |
-| `dry-run/…` | manual Run workflow | rehearsal only, never linked |
+| `dry-run/…` | manual Run workflow | rehearsal only, never linked; deleted by the next release |
 
 The checksum is also attached to the GitHub Release, and **that is the copy to trust**: one
 served from the same host as the image it describes proves only that the host agrees with
@@ -231,9 +231,20 @@ S3 credentials, from an Object Read & Write token scoped to this bucket. They ar
 `CLOUDFLARE_API_TOKEN`, which belongs to the site deployment. `CLOUDFLARE_ACCOUNT_ID` is
 shared with the site deployment and forms the S3 endpoint.
 
-**Storage.** The free tier is 10 GB, so roughly three images. Nothing prunes them today.
-When it matters, add an R2 lifecycle rule and repoint the superseded releases' notes at the
-current download before their objects expire.
+**Storage.** The free tier is 10 GB and an image is ~3.2 GiB, so the bucket holds three.
+Publishing a release deletes everything except the newest two versions and the `dry-run/`
+scratch prefix, and rewrites the notes of any release whose image it removed so the page
+points at the current download instead of a 404.
+
+Only ever install from the newest image: a server updates itself afterwards, so an old
+image installs the same machine by a slower route. The second one is kept for the case the
+newest turns out not to boot, which is the one thing a release cannot verify before
+publishing.
+
+A withdrawn image is also the only way to stop handing out a build with a known flaw. If a
+published image has to go before the next release prunes it, delete its prefix in the
+Cloudflare dashboard and edit that release's notes by hand — the pipeline owns the routine
+case, not the urgent one.
 
 ### What the image is not allowed to contain
 

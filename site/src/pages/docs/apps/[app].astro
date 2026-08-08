@@ -44,7 +44,6 @@ const headings = [
       {app.replaces && <p class="app-doc-replaces">Replaces {app.replaces}</p>}
       <p class="app-doc-badges">
         <span class="app-doc-badge">{app.category}</span>
-        {app.setup && <span class="app-doc-badge">{app.setup}</span>}
         {app.resources && <span class="app-doc-badge">{app.resources}</span>}
       </p>
     </div>
@@ -74,12 +73,6 @@ const headings = [
   <h2 id="good-to-know">Good to know</h2>
   <PrivacyPosture advisories={app.advisories} appName={app.name} assessmentUrl="/docs/privacy/how-we-assess/" packageVersion={app.version} privacy={app.privacyReview} />
   <ul>
-    {app.setup && (
-      <li>
-        <strong>Setup:</strong> {app.setup}
-        {app.setupDetail && <> — {app.setupDetail}</>}
-      </li>
-    )}
     {app.resources && (
       <li>
         <strong>Resource needs:</strong> {app.resources}

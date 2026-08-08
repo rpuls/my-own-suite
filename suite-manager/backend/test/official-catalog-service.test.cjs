@@ -337,7 +337,7 @@ test('update classification is decided by version alone, not by digest', () => {
 
 test('candidate download is revision-bound and verifies the complete digest before returning package inputs', async (t) => {
   const fixture = tempDir();
-  const manifest = { category: 'test', health: { type: 'http', url: 'http://example:8080/health' }, id: 'example', minimumMosVersion: '0.1.0', name: 'Example', resources: { services: { example: { dockerfile: 'Dockerfile', internalPort: 8080 } } }, routes: [{ host: 'example', port: 8080, service: 'example' }], setup: { fields: [] }, summary: 'Example.', version: '1.1.0' };
+  const manifest = { manifestVersion: 1, category: 'test', health: { type: 'http', url: 'http://example:8080/health' }, id: 'example', minimumMosVersion: '0.1.0', name: 'Example', resources: { services: { example: { dockerfile: 'Dockerfile', internalPort: 8080 } } }, routes: [{ host: 'example', port: 8080, service: 'example' }], setup: { fields: [] }, summary: 'Example.', version: '1.1.0' };
   fs.writeFileSync(path.join(fixture, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   fs.writeFileSync(path.join(fixture, 'Dockerfile'), 'FROM scratch\n');
   const candidateDigest = digestAppPackage(fixture);
