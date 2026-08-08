@@ -4,6 +4,8 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-08
+
 ### Added
 
 - Seafile now enables its WebDAV extension: WebDAV-capable clients (for example the ONLYOFFICE mobile apps) can connect at `https://seafile.<your-domain>/seafdav` using Seafile account credentials.
