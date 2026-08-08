@@ -8,7 +8,6 @@ import type { Owner } from '../setup/types';
 type CatalogFeature = { body: string; title: string };
 type CatalogLinkKey = 'docs' | 'repository' | 'website';
 type CatalogMetadata = {
-  complexity: { description: string; label: string; level: string };
   description: string;
   features: CatalogFeature[];
   links: Partial<Record<CatalogLinkKey, string>>;
@@ -1243,7 +1242,6 @@ export function AppsScreen({ owner }: { owner: Owner }) {
         app.homepage?.description || '',
         app.catalog.description,
         app.catalog.privacy.summary,
-        app.catalog.complexity.label,
         app.catalog.resourceHint.label,
         ...app.catalog.tags,
         ...app.catalog.features.flatMap((feature) => [feature.title, feature.body]),

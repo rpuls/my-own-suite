@@ -33,11 +33,6 @@
         "body": "Use pipelines for repeatable document workflows when the same manual steps keep coming back."
       }
     ],
-    "complexity": {
-      "level": "easy",
-      "label": "Easy setup",
-      "description": "No account, secret, or first-run configuration is needed before MOS starts the app."
-    },
     "resourceHint": {
       "level": "low",
       "label": "Light resources",

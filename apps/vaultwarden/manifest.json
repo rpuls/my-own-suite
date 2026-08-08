@@ -32,11 +32,6 @@
         "body": "Use Bitwarden-compatible organization and collection features for shared credentials when you need them."
       }
     ],
-    "complexity": {
-      "level": "guided",
-      "label": "Guided setup",
-      "description": "MOS generates the app admin token, starts Vaultwarden, and then guides you to create the first account."
-    },
     "resourceHint": {
       "level": "low",
       "label": "Light resources",

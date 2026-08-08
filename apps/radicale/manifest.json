@@ -39,11 +39,6 @@
         "body": "This package creates one htpasswd-backed Radicale user and a default calendar collection."
       }
     ],
-    "complexity": {
-      "level": "guided",
-      "label": "Guided setup",
-      "description": "Choose a Radicale username and password, then connect your CalDAV or CardDAV client after MOS starts the app."
-    },
     "resourceHint": {
       "level": "low",
       "label": "Light resources",

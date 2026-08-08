@@ -2,7 +2,7 @@
   "packages": {
     "immich": {
       "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:d4152f58a2048a19ebbb6f6b26d5c9e3e7e730d93963605b596316f4d58eeccd",
+      "packageDigest": "sha256:399c1d88f3a2eca40872c62091669601e2d1ceaac0c62b8b408c7478d3242771",
       "packageVersion": "0.4.1",
       "path": "apps/immich",
       "privacy": {
@@ -12,7 +12,7 @@
     },
     "onlyoffice": {
       "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:5fbbeb1c762fcb2df615acf168a42a4fb883e8b080a36dcebb45bf2ffa2ae706",
+      "packageDigest": "sha256:5fa8449f870d3f354f3a0c8ed768152a65e28fcc131646a1f16636417ab39f68",
       "packageVersion": "0.2.2",
       "path": "apps/onlyoffice",
       "privacy": {
@@ -22,7 +22,7 @@
     },
     "radicale": {
       "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:047099ccb36c1541e31577c04a7ccd5eaed1a8d74c632152252b255de32ab5a1",
+      "packageDigest": "sha256:080c8f13536903e23bb1bc36a7c5ca2e4ffa2100f34fffd822ece213429bf732",
       "packageVersion": "0.4.1",
       "path": "apps/radicale",
       "privacy": {
@@ -32,7 +32,7 @@
     },
     "seafile": {
       "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:b6fa01c7de7fe5646f5e1465dbcd599b247445c923ebedd6a73e0e3b94e966c3",
+      "packageDigest": "sha256:88e689b8f2b4264e90188e03b9193fccc2b448a6544d227dd4b891b4ad880ed2",
       "packageVersion": "0.2.3",
       "path": "apps/seafile",
       "privacy": {
@@ -42,7 +42,7 @@
     },
     "stirling-pdf": {
       "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:216eda1a64f791421c6c33525036a37c850c028445590886c78cada6937289cd",
+      "packageDigest": "sha256:9406c150b91aa986fa6add856d59917ff8bdbb1795e87581c675ff4f4351f918",
       "packageVersion": "0.2.2",
       "path": "apps/stirling-pdf",
       "privacy": {
@@ -52,7 +52,7 @@
     },
     "vaultwarden": {
       "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:68b76478227d64f617edce72909d614d9e073e5aee1064c7f1915b66efa3c763",
+      "packageDigest": "sha256:e21f1a7e0dfadb8c1b4715f570102e6c9e9dfc453926ac90cc1dc57b4593e3b8",
       "packageVersion": "0.2.3",
       "path": "apps/vaultwarden",
       "privacy": {

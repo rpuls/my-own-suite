@@ -51,11 +51,6 @@
         "body": "Install and run the office editor separately from the file app that stores documents."
       }
     ],
-    "complexity": {
-      "level": "advanced",
-      "label": "Integration service",
-      "description": "ONLYOFFICE is useful after it is connected to a compatible document platform."
-    },
     "resourceHint": {
       "level": "high",
       "label": "High resources",

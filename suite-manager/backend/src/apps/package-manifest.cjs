@@ -14,7 +14,6 @@ const { validateManifestStructure } = require('./manifest-schema.cjs');
 const { APP_ID_PATTERN, validateManifestSemantics } = require('./manifest-semantics.cjs');
 
 const MANIFEST_FILENAME = 'manifest.json';
-const SUPPORTED_COMPLEXITY_LEVELS = new Set(['easy', 'guided', 'advanced']);
 const SUPPORTED_RESOURCE_LEVELS = new Set(['low', 'medium', 'high']);
 const SUPPORTED_PACKAGE_ROLES = new Set(['standalone', 'capability-provider']);
 const CATALOG_LINK_KEYS = new Set(['docs', 'repository', 'website']);
@@ -114,17 +113,11 @@ function publicCatalog(manifest) {
     body: hasText(feature?.body) ? feature.body : '',
     title: hasText(feature?.title) ? feature.title : '',
   });
-  const complexity = isRecord(catalog.complexity) ? catalog.complexity : {};
   const resourceHint = isRecord(catalog.resourceHint) ? catalog.resourceHint : {};
   const privacy = isRecord(catalog.privacy) ? catalog.privacy : {};
   const links = isRecord(catalog.links) ? catalog.links : {};
 
   return {
-    complexity: {
-      description: hasText(complexity.description) ? complexity.description : '',
-      label: hasText(complexity.label) ? complexity.label : '',
-      level: SUPPORTED_COMPLEXITY_LEVELS.has(complexity.level) ? complexity.level : '',
-    },
     description: hasText(catalog.description) ? catalog.description : '',
     demoDeployTargets: Array.isArray(catalog.demoDeployTargets) ? catalog.demoDeployTargets
       .filter((target) => isRecord(target) && APP_ID_PATTERN.test(String(target.provider || '')) && hasText(target.label) && safeUrl(target.url))

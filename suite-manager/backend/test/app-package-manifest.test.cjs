@@ -55,7 +55,6 @@ test('Stirling PDF package is discoverable and validates as the first boring app
   assert.equal(stirling.manifest.name, 'Stirling PDF');
   assert.equal(stirling.manifest.category, 'office');
   assert.equal(stirling.manifest.setup, undefined);
-  assert.equal(stirling.manifest.catalog.complexity.level, 'easy');
   assert.ok(stirling.manifest.catalog.tags.includes('adobe-acrobat-alternative'));
   assert.equal(stirling.manifest.resources.services['stirling-pdf'].internalPort, 8080);
   assert.deepEqual(validateAppPackageManifest(stirling.manifest, { packageDir: stirling.packageDir }), []);
@@ -67,7 +66,6 @@ test('Vaultwarden package is discoverable and declares generated secret setup ge
 
   assert.ok(vaultwarden);
   assert.equal(vaultwarden.manifest.name, 'Vaultwarden');
-  assert.equal(vaultwarden.manifest.catalog.complexity.level, 'guided');
   assert.equal(vaultwarden.manifest.catalog.resourceHint.level, 'low');
   assert.equal(vaultwarden.manifest.setup.fields.length, 1);
   assert.equal(vaultwarden.manifest.setup.fields[0].id, 'adminToken');
@@ -87,7 +85,6 @@ test('Radicale package is discoverable and declares user-supplied credentials ge
 
   assert.ok(radicale);
   assert.equal(radicale.manifest.name, 'Radicale');
-  assert.equal(radicale.manifest.catalog.complexity.level, 'guided');
   assert.equal(radicale.manifest.setup.fields.length, 4);
   assert.deepEqual(radicale.manifest.setup.fields.map((field) => ({
     id: field.id,
@@ -121,7 +118,6 @@ test('Seafile package is discoverable and declares a multi-service core package 
 
   assert.ok(seafile);
   assert.equal(seafile.manifest.name, 'Seafile');
-  assert.equal(seafile.manifest.catalog.complexity.level, 'advanced');
   assert.deepEqual(Object.keys(seafile.manifest.resources.services).sort(), ['seafile', 'seafile-mysql', 'seafile-valkey']);
   assert.equal(seafile.manifest.routes.length, 1);
   assert.equal(seafile.manifest.routes[0].service, 'seafile');
@@ -155,7 +151,6 @@ test('OnlyOffice package is discoverable and exports a document editor capabilit
 
   assert.ok(onlyoffice);
   assert.equal(onlyoffice.manifest.name, 'ONLYOFFICE');
-  assert.equal(onlyoffice.manifest.catalog.complexity.level, 'advanced');
   assert.equal(onlyoffice.manifest.resources.services.onlyoffice.internalPort, 80);
   assert.deepEqual(onlyoffice.manifest.resources.services.onlyoffice.volumes, ['data:/var/www/onlyoffice/Data']);
   assert.equal(onlyoffice.manifest.setup.fields.length, 2);
@@ -176,7 +171,6 @@ test('Immich package is discoverable and declares its heavy multi-service stack 
   // Every base image here is pinned to an amd64 manifest, so this package cannot
   // build anywhere else. Declaring it is what lets MOS say so before the build.
   assert.deepEqual(immich.manifest.architectures, ['amd64']);
-  assert.equal(immich.manifest.catalog.complexity.level, 'advanced');
   assert.deepEqual(Object.keys(immich.manifest.resources.services).sort(), [
     'immich-machine-learning',
     'immich-postgres',
@@ -270,7 +264,6 @@ test('manifest validation accepts structured optional catalog presentation metad
   const manifest = validManifest({
     packageFiles: ['assets/screenshot.png'],
     catalog: {
-      complexity: { description: 'One click.', label: 'Easy setup', level: 'easy' },
       description: 'A longer description for the app detail view.',
       demoDeployTargets: [{ label: 'Railway', provider: 'railway', url: 'https://railway.com/deploy/example' }],
       features: [
@@ -334,7 +327,6 @@ test('manifest validation rejects malformed demo deployment targets', () => {
 test('manifest validation rejects malformed optional catalog metadata but ignores unknown link keys', () => {
   const manifest = validManifest({
     catalog: {
-      complexity: { level: 'wizard' },
       features: [{ body: 'Missing title.' }],
       links: { forum: 'https://example.com/forum', website: 'ftp://example.com' },
       related: ['Bad_App'],
@@ -344,7 +336,6 @@ test('manifest validation rejects malformed optional catalog metadata but ignore
   });
 
   const errors = validateAppPackageManifest(manifest);
-  assert.ok(errors.includes('catalog.complexity.level must be one of: easy, guided, advanced.'));
   assert.ok(errors.includes('catalog.resourceHint.level must be one of: low, medium, high.'));
   assert.ok(errors.includes('catalog.features[0].title is required.'));
   assert.ok(errors.includes('catalog.tags[1] must not be empty.'));

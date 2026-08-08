@@ -106,7 +106,7 @@ The install form, as data. Each field:
 
 ## Catalog metadata (`catalog`)
 
-All display-only. `description`, `tags`, `related` (app ids), `features` (`{title, body?}`), `complexity` (`level`: `easy`/`guided`/`advanced` + `label`/`description`), `resourceHint` (`level`: `low`/`medium`/`high` + `label`/`description`), `privacy` (`summary`, `notes[]` — the plain-language summary; the bound `privacy-review.json` is the authoritative assessment), `links` (`website`/`docs`/`repository`; other keys ignored), `demoDeployTargets` (public-site deploy links), and:
+All display-only. `description`, `tags`, `related` (app ids), `features` (`{title, body?}`), `resourceHint` (`level`: `low`/`medium`/`high` + `label`/`description`), `privacy` (`summary`, `notes[]` — the plain-language summary; the bound `privacy-review.json` is the authoritative assessment), `links` (`website`/`docs`/`repository`; other keys ignored), `demoDeployTargets` (public-site deploy links), and:
 
 - **`replaces`** — an array of product names, one per entry: `["Google Photos", "iCloud Photos"]`. Display joins them; search matches each.
 - **`screenshots`** — `{src, alt?, caption?}` where `src` is a package-relative path listed in `packageFiles`. Remote screenshot URLs are refused: browsing the catalog must never fetch third-party origins.

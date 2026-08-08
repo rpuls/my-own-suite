@@ -101,16 +101,6 @@
           },
           "description": "Short capability highlights for the detail view."
         },
-        "complexity": {
-          "type": "object",
-          "required": ["level"],
-          "properties": {
-            "level": { "enum": ["easy", "guided", "advanced"] },
-            "label": { "$ref": "#/$defs/text" },
-            "description": { "$ref": "#/$defs/text" }
-          },
-          "description": "How much setup the owner should expect."
-        },
         "resourceHint": {
           "type": "object",
           "required": ["level"],

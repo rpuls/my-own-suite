@@ -35,11 +35,6 @@
         "body": "Search photos by objects, locations, dates, and people."
       }
     ],
-    "complexity": {
-      "level": "advanced",
-      "label": "Heavy application",
-      "description": "Immich runs multiple services including a database, cache, and machine learning worker. Requires significant CPU and memory."
-    },
     "resourceHint": {
       "level": "high",
       "label": "High resources",

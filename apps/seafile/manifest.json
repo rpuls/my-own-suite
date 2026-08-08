@@ -55,11 +55,6 @@
         "body": "Store Seafile data and metadata in package-owned MOS volumes."
       }
     ],
-    "complexity": {
-      "level": "advanced",
-      "label": "Advanced setup",
-      "description": "Seafile runs as a multi-service package with a database, cache, and persistent file storage."
-    },
     "resourceHint": {
       "level": "medium",
       "label": "Medium resources",
