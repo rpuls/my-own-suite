@@ -31,6 +31,10 @@ The manifest supplies Seafile's database, cache, admin, JWT, and public URL sett
 
 Disable stops and removes containers while keeping routes, volumes, and stored secret references. Uninstall removes containers, routes, MOS-owned Homepage shortcuts, these Docker volumes, stored config/secrets, and integration rows.
 
+## WebDAV
+
+The entrypoint enables Seafile's WebDAV extension (seafdav) in `/shared/seafile/conf/seafdav.conf`. WebDAV clients connect at `https://seafile.<base-domain>/seafdav` with Seafile account credentials; the image's bundled nginx proxies `/seafdav/` to the internal daemon, so no extra route or port is needed. On a brand-new install the config file is generated during first-time setup, so if the daemon read the flag before the entrypoint patched it, WebDAV becomes available after the next container restart.
+
 ## Health Check
 
 - `http://seafile:80/api2/ping/`
@@ -40,4 +44,5 @@ The MOS app agent checks this through the loopback port mapping for the public S
 ## Package Behavior
 
 - The entrypoint patches proxy-facing Seahub settings so Seafile knows its MOS app host and forwarded scheme.
+- The entrypoint enables the WebDAV extension in `seafdav.conf` (`enabled = true`, `share_name = /seafdav`).
 - When Suite Manager connects a compatible ONLYOFFICE provider, the entrypoint applies the allowlisted integration values to Seahub settings, and ONLYOFFICE server-side downloads and callbacks can use Seafile's package network.
