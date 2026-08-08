@@ -232,7 +232,7 @@ test('DigitalOcean smoke defaults to the public installer without owner inputs',
 
     assert.equal(config.installerUrl, 'https://get-dev.myownsuite.org/install.sh');
     const cloudInit = renderPublicInstallerCloudInit(config.installerUrl);
-    assert.match(cloudInit, /curl -fsSL --proto '=https'.*get-dev\.myownsuite\.org\/install\.sh.*\| bash/);
+    assert.match(cloudInit, /curl .*--proto '=https'.*get-dev\.myownsuite\.org\/install\.sh.*bash \/root\/mos-install\.sh/);
     assert.doesNotMatch(cloudInit, /render-bootstrap\.cjs|git clone/);
     assert.match(plan.cloudInit, /MOS_FRONT_DOOR='public-vps'/);
     assert.doesNotMatch(plan.cloudInit, /old-owner@example.com|old-password|MOS_SMOKE_OWNER/);
@@ -247,11 +247,12 @@ test('DigitalOcean smoke defaults to the public installer without owner inputs',
   }
 });
 
-test('DigitalOcean cloud-init fails the install when the installer download fails', () => {
-  assert.match(
-    renderPublicInstallerCloudInit('https://get-dev.myownsuite.org/install.sh'),
-    /set -o pipefail; curl -fsSL/,
-  );
+test('DigitalOcean cloud-init fails the install and keeps what the endpoint said', () => {
+  const cloudInit = renderPublicInstallerCloudInit('https://get-dev.myownsuite.org/install.sh');
+  assert.match(cloudInit, /--fail-with-body/);
+  assert.match(cloudInit, /installer download failed:'; cat \/root\/mos-install\.sh; exit 1/);
+  // Never piped into bash: an empty stream from a failed download exits 0.
+  assert.doesNotMatch(cloudInit, /install\.sh' \| bash/);
 });
 
 test('DigitalOcean smoke refuses to create a Droplet when the installer endpoint is down', async () => {

@@ -110,42 +110,6 @@ test('endpoint serves an exact commit resolved from its configured branch', asyn
   }
 });
 
-test('endpoint stops asking GitHub for a ref it already knows', async () => {
-  let calls = 0;
-  const endpoint = createInstallerWorker(() => ({ branch: 'staging' }), {
-    fetchImpl: async () => { calls += 1; return Response.json({ sha: commit }); },
-    now: () => 1_000,
-  });
-
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    assert.equal((await endpoint.fetch(installerRequest(), {})).status, 200);
-  }
-  assert.equal(calls, 1);
-});
-
-test('endpoint serves the last known commit while GitHub refuses to answer', async () => {
-  let clock = 0;
-  let rateLimited = false;
-  const endpoint = createInstallerWorker(() => ({ branch: 'staging' }), {
-    fetchImpl: async () => (rateLimited
-      ? new Response('rate limit exceeded', { status: 403 })
-      : Response.json({ sha: commit })),
-    now: () => clock,
-  });
-
-  assert.equal((await endpoint.fetch(installerRequest(), {})).status, 200);
-
-  rateLimited = true;
-  clock = 10 * 60_000;
-  const fallback = await endpoint.fetch(installerRequest(), {});
-  assert.equal(fallback.status, 200);
-  assert.equal(fallback.headers.get('x-mos-install-ref'), commit);
-  assert.equal(fallback.headers.get('x-mos-install-ref-age'), '600');
-
-  clock = 25 * 60 * 60 * 1000;
-  assert.equal((await endpoint.fetch(installerRequest(), {})).status, 503);
-});
-
 test('endpoint fails closed when GitHub cannot resolve the branch', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response('not found', { status: 404 });

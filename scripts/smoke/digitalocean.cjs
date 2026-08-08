@@ -212,14 +212,15 @@ function renderPublicInstallerCloudInit(installerUrl) {
   if (parsed.protocol !== 'https:') {
     throw new Error('MOS_SMOKE_INSTALLER_URL must use HTTPS.');
   }
-  // Without pipefail a failed download pipes an empty stream into bash, which exits 0.
+  // Downloaded rather than piped into bash, so a failing endpoint leaves its
+  // response body in the log instead of an empty stream that bash exits 0 on.
   return `#cloud-config
 package_update: true
 packages:
   - ca-certificates
   - curl
 runcmd:
-  - [ bash, -lc, "set -o pipefail; curl -fsSL --proto '=https' --tlsv1.2 --retry 5 --retry-all-errors --retry-delay 10 '${installerUrl}' | bash" ]
+  - [ bash, -lc, "curl -sSL --fail-with-body --proto '=https' --tlsv1.2 --retry 5 --retry-all-errors --retry-delay 10 -o /root/mos-install.sh '${installerUrl}' || { echo '[mos] installer download failed:'; cat /root/mos-install.sh; exit 1; }; bash /root/mos-install.sh" ]
 `;
 }
 
@@ -264,8 +265,56 @@ function ownerClaimUrl(setupUrl, token) {
   return url.toString();
 }
 
+function sshPrivateKey() {
+  return compatibleEnv('MOS_SMOKE_SSH_PRIVATE_KEY', 'MOS_SMOKE_SSH_PRIVATE_KEY');
+}
+
+// Returns null when the machine cannot be reached yet, which is normal for the
+// first minute of a boot and is not the same as a command that failed.
+function askDroplet(ip, command) {
+  const privateKey = sshPrivateKey();
+  if (!privateKey) return null;
+
+  const result = spawnSync('ssh', [
+    '-i', privateKey,
+    '-o', 'BatchMode=yes',
+    '-o', 'ConnectTimeout=10',
+    '-o', 'StrictHostKeyChecking=accept-new',
+    `root@${ip}`,
+    command,
+  ], { encoding: 'utf8', windowsHide: true });
+
+  return result.status === 0 ? String(result.stdout || '') : null;
+}
+
+const INSTALL_LOG = '/var/log/cloud-init-output.log';
+
+// cloud-init reports `error` the moment the install dies. Without asking, the
+// harness cannot tell a machine that failed two minutes in from one that is
+// still working, and polls a corpse until the timeout.
+function installProgress(ip) {
+  const raw = askDroplet(ip, [
+    'cloud-init status 2>/dev/null | head -n1',
+    `tail -n 1 ${INSTALL_LOG} 2>/dev/null | tr -d '\\r' | cut -c1-110`,
+    'systemctl is-active mos-suite-manager 2>/dev/null',
+  ].join('; echo "|"; '));
+  if (raw === null) return null;
+
+  const [status = '', lastLine = '', suiteManager = ''] = raw.split(/^\|$/mu).map((part) => part.trim());
+  return {
+    failed: /error/u.test(status),
+    lastLine,
+    status: status.replace(/^status:\s*/u, '') || 'unknown',
+    suiteManager: suiteManager || 'unknown',
+  };
+}
+
+function installLogTail(ip, lines = 60) {
+  return askDroplet(ip, `tail -n ${lines} ${INSTALL_LOG} 2>/dev/null`) || '';
+}
+
 async function readOwnerClaimToken(ip) {
-  const privateKey = compatibleEnv('MOS_SMOKE_SSH_PRIVATE_KEY', 'MOS_SMOKE_SSH_PRIVATE_KEY');
+  const privateKey = sshPrivateKey();
   if (!privateKey) {
     return '';
   }
@@ -328,7 +377,18 @@ async function waitForDropletNetwork(token, dropletId) {
   fail('Timed out waiting for Droplet to become active with a public IPv4 address.');
 }
 
-async function waitForSuiteManager(plan) {
+function reportInstallFailure(ip, headline) {
+  const log = installLogTail(ip);
+  fail(`${headline}
+
+${log ? `Last ${log.trim().split('\n').length} lines of ${INSTALL_LOG} on ${ip}:\n\n${log.trim()}` : `Could not read ${INSTALL_LOG}. Set MOS_SMOKE_SSH_PRIVATE_KEY, or read it yourself:
+  ssh root@${ip} 'tail -n 80 ${INSTALL_LOG}; systemctl --failed'`}
+
+The Droplet is left running so it can be inspected. Destroy it with:
+  npm run smoke:do:destroy`);
+}
+
+async function waitForSuiteManager(plan, ip) {
   if (env('MOS_SMOKE_WAIT', '1') === '0') {
     return;
   }
@@ -353,13 +413,18 @@ async function waitForSuiteManager(plan) {
       // Cloud-init is still installing or Caddy is not ready yet.
     }
 
-    console.log('[mos-smoke:do] Waiting for Suite Manager first-run readiness...');
+    const progress = installProgress(ip);
+    if (progress?.failed) {
+      reportInstallFailure(ip, `The install failed on ${ip}: cloud-init reports "${progress.status}".`);
+    }
+
+    console.log(progress
+      ? `[mos-smoke:do] cloud-init=${progress.status} suite-manager=${progress.suiteManager} | ${progress.lastLine || '(no output yet)'}`
+      : '[mos-smoke:do] Waiting for the Droplet to accept SSH...');
     await sleep(15000);
   }
 
-  fail(`Timed out waiting for Suite Manager readiness at ${statusUrl}.
-The Droplet is still running so the install can be inspected:
-  ssh root@${new URL(homeUrl).hostname.replace(/^home\./u, '').replace(/\.sslip\.io$/u, '')} 'tail -n 80 /var/log/cloud-init-output.log; systemctl --failed'`);
+  reportInstallFailure(ip, `Timed out waiting for Suite Manager readiness at ${statusUrl}.`);
 }
 
 async function createDroplet(token, config) {
@@ -464,7 +529,7 @@ async function reset() {
   };
 
   writeState(state);
-  await waitForSuiteManager(plan);
+  await waitForSuiteManager(plan, ip);
   const claimToken = await readOwnerClaimToken(ip);
   printSummary(state, claimToken ? ownerClaimUrl(state.setupUrl, claimToken) : '');
 }

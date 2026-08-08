@@ -14,7 +14,6 @@ Consequences:
 
 - `MOS_DISPOSABLE_LAB` replaces `MOS_LAB_RESET_ENABLED` in `bootstrap-contract.env` and the Suite Manager unit. A machine whose contract predates the name reads as not disposable, which closes the endpoint on v0.16.0 installs when they next update, and turns lab reset off on a lab VM that is updated rather than reflashed.
 - Publishing a release switches the hosted one-liner on its own. The stable Worker is not redeployed per release.
-- The Worker keeps a per-isolate memory of the last resolved commit, because GitHub's unauthenticated API allows 60 requests an hour per IP and Workers egress from shared Cloudflare addresses.
 - The USB image still pins its tag at build time, because its bootstrap script is generated at build time and would otherwise run against source it was never written for. Making that image version-independent means turning its seed into a launcher, which is not decided here.
 
 ## 2026-08-07: Releases Publish A Flashable Installer Image, Built By The Pipeline And Free Of Machine Identity
