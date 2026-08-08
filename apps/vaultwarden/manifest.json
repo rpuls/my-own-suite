@@ -1,15 +1,16 @@
 {
+  "manifestVersion": 1,
   "id": "vaultwarden",
   "name": "Vaultwarden",
-  "version": "0.2.2",
-  "minimumMosVersion": "0.1.0",
+  "version": "0.2.3",
+  "minimumMosVersion": "0.17.0",
   "summary": "Private Bitwarden-compatible password management.",
   "category": "security",
   "icon": "icon.png",
   "catalog": {
     "description": "Vaultwarden lets you use the familiar Bitwarden apps with your own private backend for passwords, secure notes, cards, identities, and shared vaults.",
     "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/vaultwarden-3?referralCode=-Yg50p" }],
-    "replaces": "LastPass / 1Password / Bitwarden cloud",
+    "replaces": ["LastPass", "1Password", "Bitwarden cloud"],
     "tags": [
       "passwords",
       "security",
@@ -31,11 +32,6 @@
         "body": "Use Bitwarden-compatible organization and collection features for shared credentials when you need them."
       }
     ],
-    "complexity": {
-      "level": "guided",
-      "label": "Guided setup",
-      "description": "MOS generates the app admin token, starts Vaultwarden, and then guides you to create the first account."
-    },
     "resourceHint": {
       "level": "low",
       "label": "Light resources",
@@ -92,8 +88,7 @@
   "routes": [
     {
       "host": "vaultwarden",
-      "service": "vaultwarden",
-      "port": 80
+      "service": "vaultwarden"
     }
   ],
   "homepage": {
@@ -107,14 +102,17 @@
     "url": "http://vaultwarden:80/alive"
   },
   "onboarding": {
-    "steps": [
+    "title": "Set up Vaultwarden",
+    "sections": [
       {
-        "type": "open-url",
+        "id": "first-account",
+        "type": "steps",
         "title": "Create the first Vaultwarden account",
         "body": "Open Vaultwarden over its generated app URL and create the owner account before storing shared credentials."
       },
       {
-        "type": "secret-note",
+        "id": "admin-token",
+        "type": "note",
         "title": "Admin token generated",
         "body": "MOS generates a strong admin token for the Vaultwarden admin panel and stores only a secret reference plus fingerprint in Suite Manager state. This slice does not yet include an owner-facing reveal or rotation flow."
       }

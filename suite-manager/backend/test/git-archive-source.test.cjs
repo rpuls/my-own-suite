@@ -53,6 +53,7 @@ function tarGz(entries) {
 }
 
 const validManifest = JSON.stringify({
+  manifestVersion: 1,
   category: 'tools', health: { type: 'http', url: 'http://notes:8080/health' }, id: 'community-notes',
   minimumMosVersion: '0.1.0', name: 'Community Notes', resources: { services: { notes: { dockerfile: 'Dockerfile', internalPort: 8080 } } },
   routes: [{ host: 'notes', port: 8080, service: 'notes' }], setup: { fields: [] }, summary: 'Notes.', version: '1.0.0',

@@ -6,7 +6,7 @@ The visual design comes from the "My Own Suite Design System" project on claude.
 
 ## App catalog is manifest-driven
 
-The "Explore the apps" section is generated at build time from `apps/*/manifest.json` and `apps/*/icon.png` — the same single source of truth Suite Manager uses. Adding a new app package to the repo adds it to the landing page on the next build; no site change needed. The card/side-panel content uses `name`, `summary`, `category`, and the `catalog` fields (`description`, `replaces`, `complexity.label`, `resourceHint.label`, `privacy`, `features`, `links`, `demoDeployTargets`, `tags`).
+The "Explore the apps" section is generated at build time from `apps/*/manifest.json` and `apps/*/icon.png` — the same single source of truth Suite Manager uses. Adding a new app package to the repo adds it to the landing page on the next build; no site change needed. The card/side-panel content uses `name`, `summary`, `category`, and the `catalog` fields (`description`, `replaces`, `resourceHint.label`, `privacy`, `features`, `links`, `demoDeployTargets`, `tags`).
 
 ## Local development
 

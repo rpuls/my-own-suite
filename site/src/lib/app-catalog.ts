@@ -20,8 +20,6 @@ export type CatalogApp = {
   description: string
   demoDeployTargets: DemoDeployTarget[]
   replaces: string
-  setup: string
-  setupDetail: string
   resources: string
   resourcesDetail: string
   resourceLevel: string
@@ -238,9 +236,7 @@ export const catalogApps: CatalogApp[] = Object.entries(manifestModules)
             url: String(target?.url ?? '')
           })).filter((target: DemoDeployTarget) => target.provider && target.label && /^https?:\/\//.test(target.url))
         : [],
-      replaces: String(catalog.replaces ?? ''),
-      setup: String(catalog.complexity?.label ?? ''),
-      setupDetail: String(catalog.complexity?.description ?? ''),
+      replaces: (Array.isArray(catalog.replaces) ? catalog.replaces.map(String) : []).join(' / '),
       resources: String(catalog.resourceHint?.label ?? ''),
       resourcesDetail: String(catalog.resourceHint?.description ?? ''),
       resourceLevel: String(catalog.resourceHint?.level ?? ''),

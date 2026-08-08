@@ -73,6 +73,12 @@ function setupFields(manifest) {
 
 function generateValue(field) {
   if (!isRecord(field.generated)) return undefined;
+  // The validator only admits kind "random" today; refusing anything else here
+  // keeps a future kind from silently producing random bytes on a MOS release
+  // that predates it.
+  if (field.generated.kind !== 'random') {
+    throw new AppPackageServiceError('APP_SETUP_INVALID', `Unsupported generated value kind: ${String(field.generated.kind)}.`, 400);
+  }
   const bytes = field.generated.bytes;
   const value = crypto.randomBytes(bytes);
   if (field.generated.encoding === 'hex') return value.toString('hex');
@@ -299,7 +305,12 @@ function createConfigRows({ input = {}, instanceId, manifest, secretDir }) {
     for (const field of setupFields(manifest)) {
       const hasUserValue = Object.hasOwn(supplied, field.id) && supplied[field.id] !== undefined && supplied[field.id] !== null && supplied[field.id] !== '';
       const generated = generateValue(field);
-      const value = hasUserValue ? supplied[field.id] : generated ?? field.default;
+      // ${owner.*} defaults resolve in the setup form, which knows the owner
+      // profile. A caller that skips the form must supply the value itself —
+      // storing the unresolved reference would ship it into a container as
+      // literal text.
+      const fallbackDefault = typeof field.default === 'string' && /\$\{owner\./u.test(field.default) ? undefined : field.default;
+      const value = hasUserValue ? supplied[field.id] : generated ?? fallbackDefault;
       if ((value === undefined || value === null || value === '') && field.required === true) {
         throw new AppPackageServiceError('APP_SETUP_REQUIRED', `${field.label || field.id} is required.`, 400);
       }

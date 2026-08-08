@@ -2,6 +2,7 @@
 set -eu
 
 SEAHUB_SETTINGS_FILE="/shared/seafile/conf/seahub_settings.py"
+SEAFDAV_SETTINGS_FILE="/shared/seafile/conf/seafdav.conf"
 
 # Some hosts expose a syslog-ng version older than the syntax bundled in this
 # image. Normalize it before the upstream init process starts.
@@ -36,6 +37,17 @@ patch_seahub_proxy_settings() {
 
   upsert_setting "$SEAHUB_SETTINGS_FILE" "SECURE_PROXY_SSL_HEADER" "SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')"
   upsert_setting "$SEAHUB_SETTINGS_FILE" "USE_X_FORWARDED_HOST" "USE_X_FORWARDED_HOST = True"
+}
+
+# The image's nginx already proxies /seafdav/ to the daemon; only the enabled
+# flag keeps WebDAV off. share_name must match the proxied path.
+patch_seafdav_settings() {
+  if [ ! -f "$SEAFDAV_SETTINGS_FILE" ]; then
+    return 0
+  fi
+
+  upsert_setting "$SEAFDAV_SETTINGS_FILE" "enabled" "enabled = true"
+  upsert_setting "$SEAFDAV_SETTINGS_FILE" "share_name" "share_name = /seafdav"
 }
 
 patch_seahub_onlyoffice_settings() {
@@ -157,6 +169,7 @@ def _rewrite_onlyoffice_file_url_for_internal_callback(url):\\
 }
 
 patch_seahub_proxy_settings
+patch_seafdav_settings
 patch_seahub_onlyoffice_settings
 patch_seahub_onlyoffice_runtime
 
@@ -169,7 +182,8 @@ patch_seahub_onlyoffice_runtime
       patch_seahub_proxy_settings
       patch_seahub_onlyoffice_settings
     fi
-    if [ -f "$SEAHUB_SETTINGS_FILE" ] && [ -f "$onlyoffice_utils_file" ] && grep -q "_get_onlyoffice_internal_seafile_url" "$onlyoffice_utils_file"; then
+    patch_seafdav_settings
+    if [ -f "$SEAHUB_SETTINGS_FILE" ] && [ -f "$onlyoffice_utils_file" ] && grep -q "_get_onlyoffice_internal_seafile_url" "$onlyoffice_utils_file" && [ -f "$SEAFDAV_SETTINGS_FILE" ] && grep -q "^enabled = true" "$SEAFDAV_SETTINGS_FILE"; then
       break
     fi
     i=$((i + 1))

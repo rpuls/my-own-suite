@@ -307,7 +307,7 @@ test('App package catalog API requires authentication and exposes safe manifest 
     assert.ok(radicale);
     assert.equal(radicale.name, 'Radicale');
     assert.equal(radicale.validation.valid, true);
-    assert.deepEqual(radicale.routes, [{ host: 'radicale', port: 5232, service: 'radicale' }]);
+    assert.deepEqual(radicale.routes, [{ host: 'radicale', service: 'radicale' }]);
     assert.equal(radicale.health.url, 'http://radicale:5232/');
     assert.deepEqual(radicale.setup.fields, [
       {
@@ -354,7 +354,7 @@ test('App package catalog API requires authentication and exposes safe manifest 
     assert.equal(stirling.setup.fieldCount, 0);
     assert.equal(stirling.icon, 'icon.png');
     assert.equal(stirling.iconUrl, '/suite-manager/api/apps/packages/stirling-pdf/icon');
-    assert.deepEqual(stirling.routes, [{ host: 'stirling-pdf', port: 8080, service: 'stirling-pdf' }]);
+    assert.deepEqual(stirling.routes, [{ host: 'stirling-pdf', service: 'stirling-pdf' }]);
     assert.equal(stirling.health.url, 'http://stirling-pdf:8080/api/v1/info/status');
     assert.equal(JSON.stringify(stirling).includes('reverse_proxy'), false);
     assert.ok(vaultwarden);
@@ -369,7 +369,7 @@ test('App package catalog API requires authentication and exposes safe manifest 
       secret: true,
       type: 'password',
     }]);
-    assert.equal(vaultwarden.onboarding.steps.length, 2);
+    assert.equal(vaultwarden.onboarding.sections.length, 2);
   }, { homeHost: 'home.test' });
 });
 
@@ -884,7 +884,7 @@ test('Radicale install stores user-supplied credentials with secret redaction an
 
     const password = 'correct horse battery staple';
     const installed = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/radicale/install', {
-      body: JSON.stringify({ config: { adminPassword: password, adminUsername: 'calendar-admin' } }),
+      body: JSON.stringify({ config: { adminPassword: password, adminUsername: 'calendar-admin', calendarName: 'Family calendar' } }),
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
@@ -1178,7 +1178,7 @@ test('Radicale Homepage projection adds a calendar widget without exposing crede
     const cookie = await createOwner(baseUrl);
     const password = 'calendar widget passphrase';
     await hostRequest(baseUrl, '/suite-manager/api/apps/packages/radicale/install', {
-      body: JSON.stringify({ config: { adminPassword: password, adminUsername: 'calendar-admin' } }),
+      body: JSON.stringify({ config: { adminPassword: password, adminUsername: 'calendar-admin', calendarName: 'Family calendar' } }),
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });

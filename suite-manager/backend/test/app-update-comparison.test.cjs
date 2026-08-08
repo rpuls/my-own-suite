@@ -16,6 +16,7 @@ const EXTERNAL_SOURCE = Object.freeze({ kind: 'external-git', path: '.mos', repo
 function appPackage(version, mutate = (manifest) => manifest, source = OFFICIAL_SOURCE) {
   const packageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-compare-'));
   const manifest = mutate({
+    manifestVersion: 1,
     category: 'test',
     health: { type: 'http', url: 'http://example:8080/health' },
     id: 'example',
