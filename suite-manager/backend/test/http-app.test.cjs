@@ -1,4 +1,4 @@
-const assert = require('node:assert/strict');
+﻿const assert = require('node:assert/strict');
 const http = require('node:http');
 const net = require('node:net');
 const fs = require('node:fs/promises');
@@ -884,7 +884,7 @@ test('Radicale install stores user-supplied credentials with secret redaction an
 
     const password = 'correct horse battery staple';
     const installed = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/radicale/install', {
-      body: JSON.stringify({ config: { adminPassword: password, adminUsername: 'calendar-admin' } }),
+      body: JSON.stringify({ config: { adminPassword: password, adminUsername: 'calendar-admin', calendarName: 'Family calendar' } }),
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
@@ -1178,7 +1178,7 @@ test('Radicale Homepage projection adds a calendar widget without exposing crede
     const cookie = await createOwner(baseUrl);
     const password = 'calendar widget passphrase';
     await hostRequest(baseUrl, '/suite-manager/api/apps/packages/radicale/install', {
-      body: JSON.stringify({ config: { adminPassword: password, adminUsername: 'calendar-admin' } }),
+      body: JSON.stringify({ config: { adminPassword: password, adminUsername: 'calendar-admin', calendarName: 'Family calendar' } }),
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });

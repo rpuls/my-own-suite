@@ -234,7 +234,6 @@
         }
       ],
       "title": "Document editing",
-      "providerLabel": "Document editor",
       "apply": {
         "kind": "service-env",
         "target": "seahubSettings",

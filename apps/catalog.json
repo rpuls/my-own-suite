@@ -32,7 +32,7 @@
     },
     "seafile": {
       "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:c61b2732097a04570de5836e4f335b604fd3d6d901efc0c240576a68a366b101",
+      "packageDigest": "sha256:b6fa01c7de7fe5646f5e1465dbcd599b247445c923ebedd6a73e0e3b94e966c3",
       "packageVersion": "0.2.3",
       "path": "apps/seafile",
       "privacy": {

@@ -48,7 +48,7 @@ type UpdateComparison = {
 type AppPackageSummary = {
   capabilities: {
     exports: Array<{ features: Record<string, unknown>; id: string; implementation: string; interfaceVersion: number | null; protocol: string; title: string; type: string }>;
-    integrations: Array<{ accepts: Array<{ interfaceVersion: number | null; protocol: string; type: string }>; id: string; providerLabel: string; title: string }>;
+    integrations: Array<{ accepts: Array<{ interfaceVersion: number | null; protocol: string; type: string }>; id: string; title: string }>;
     usefulness: { emptyState: string; requiresOneOf: string[] };
   };
   catalog: CatalogMetadata;
