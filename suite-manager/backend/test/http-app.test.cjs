@@ -1,4 +1,4 @@
-﻿const assert = require('node:assert/strict');
+const assert = require('node:assert/strict');
 const http = require('node:http');
 const net = require('node:net');
 const fs = require('node:fs/promises');

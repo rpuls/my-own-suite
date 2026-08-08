@@ -1,4 +1,4 @@
-﻿const assert = require('node:assert/strict');
+const assert = require('node:assert/strict');
 const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
