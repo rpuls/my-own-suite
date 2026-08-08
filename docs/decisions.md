@@ -641,3 +641,18 @@ Avoid until the corresponding capability exists: "one-click updates" without pre
 runtime-reconciliation scope; "everything included" backups without recovery prerequisites; "only you
 hold the keys" for rented cloud servers; any claim that MOS universally removes upstream app
 analytics; and "safe to use" without the intended beta risk profile.
+
+## 2026-08-08: The App Manifest Is A Locked, Versioned, Open-World Contract
+
+Decision: the app package manifest shape is manifest generation 1, a locked public contract. Manifests declare `manifestVersion: 1`. The canonical structural contract is the published JSON Schema at `apps/manifest.schema.json`, which the backend validator interprets directly (no hand-written twin), plus a semantic pass covering cross-references, package files, and the template grammar. `npm run apps:manifest:check` validates packages without running MOS.
+
+Reason: the manifest is the only MOS contract whose other side is package authors outside this repository, so the day an external package ships against it, its shape stops being ours to change. Locking before the contributor app wave lands is the cheap moment. Hand-written validation had accidentally inverted the compatibility rule in places (`update` and `catalog.links` rejected unknown keys), which is precisely the failure that would strand packages on older platforms.
+
+Consequences:
+
+- Unknown manifest fields are ignored, never fatal, at every level, and projections copy known fields only, so unknown fields can never leak into runtime projections. A unit test fails if a closed allow-list is reintroduced.
+- Contract amendments are optional additive fields gated by `minimumMosVersion`; changing an existing field's meaning requires a new manifest generation. The amendment policy binds agents via `AGENTS.md`.
+- The template grammar is part of the contract: `${config.*}`, `${secret.*}`, `${app.host|scheme|publicUrl}`, `${owner.name|email}` (setup defaults only), `${import.*}`/`${export.*}` (capability areas only). Every reference is validated against declared fields; unknown namespaces are errors and the namespace space is reserved for future providers such as `${smtp.*}`. Strings not shaped like a lowercase `${namespace.path}` reference pass through as literals.
+- The capability system (`role`, `exports`, `integrations`, `configTargets`, `usefulness`), `homepage.widget`, and `routes[].internalIcalBridge` are declared provisional and sit outside the locked baseline until more real relationships shape them.
+- Locked-shape corrections shipped with the lock: `catalog.replaces` is an array of product names; `routes[].port`, service `depends_on`, top-level `onboarding.steps`, the unused `select` field type, and other dead metadata are out of the contract; catalog screenshots must ship inside the package (no third-party fetches while browsing); official packages get the same named-volume-only enforcement external packages always had; the health probe hostname must name a declared service.
+- Bind mounts, host networking, device passthrough, privileged containers, raw proxy directives, scripted guides, and SSO wiring stay out of the manifest permanently; a free-form uninterpreted manifest object was considered and rejected because the open-world rule already provides the escape hatch with versioned semantics.

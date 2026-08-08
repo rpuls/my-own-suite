@@ -14,7 +14,7 @@ type CatalogMetadata = {
   links: Partial<Record<CatalogLinkKey, string>>;
   privacy: { notes: string[]; summary: string };
   related: string[];
-  replaces: string;
+  replaces: string[];
   resourceHint: { description: string; label: string; level: string };
   screenshots: Array<{ alt: string; caption: string; src: string }>;
   tags: string[];
@@ -102,14 +102,13 @@ type AppPackageSummary = {
       steps?: string[];
       title: string;
       type: string;
-      values?: Array<{ copy: boolean; label: string; qr: boolean; value: string }>;
+      values?: Array<{ copy: boolean; label: string; value: string }>;
     }>;
-    steps: Array<{ body: string; title: string; type: string }>;
     summary?: string;
     title?: string;
   };
-  routes: Array<{ host: string; port: number | null; service: string }>;
-  role: 'standalone' | 'companion' | 'capability-provider' | 'integration-helper' | string;
+  routes: Array<{ host: string; service: string }>;
+  role: 'standalone' | 'capability-provider' | string;
   services: Array<{ dockerfile: string | null; id: string; internalPort: number | null; volumes: string[] }>;
   setup: { fieldCount: number; fields: Array<{ default?: unknown; generated: boolean; id: string; label: string; required: boolean; secret: boolean; type: string }> };
   summary: string;
@@ -219,7 +218,7 @@ function appUrl(app: AppPackageSummary) {
 }
 
 function hasGuide(app: AppPackageSummary) {
-  return Boolean(app.onboarding && ((app.onboarding.sections?.length || 0) > 0 || app.onboarding.steps.length > 0));
+  return Boolean(app.onboarding && (app.onboarding.sections?.length || 0) > 0);
 }
 
 function guideStatusLabel(app: AppPackageSummary) {
@@ -412,12 +411,7 @@ function AppGuidePanel({
 }) {
   const [copied, setCopied] = useState('');
   const [choiceBySection, setChoiceBySection] = useState<Record<string, string>>({});
-  const sections = app.onboarding?.sections?.length ? app.onboarding.sections : [{
-    id: 'legacy-steps',
-    steps: app.onboarding?.steps.map((step) => `${step.title}: ${step.body}`) || [],
-    title: 'After install',
-    type: 'steps',
-  }];
+  const sections = app.onboarding?.sections || [];
   const status = app.instance?.guideState?.status || 'not-started';
 
   async function copyValue(key: string, value: string) {
@@ -497,7 +491,7 @@ function AdvancedDetails({ app }: { app: AppPackageSummary }) {
       <dt>Package id</dt><dd>{app.id}</dd>
       <dt>Version</dt><dd>{app.version}</dd>
       <dt>Service</dt><dd>{app.services.map((service) => `${service.id}:${service.internalPort ?? '?'}`).join(', ') || 'None'}</dd>
-      <dt>Route</dt><dd>{app.routes.map((route) => `${route.host} -> ${route.service}:${route.port ?? '?'}`).join(', ') || 'None'}</dd>
+      <dt>Route</dt><dd>{app.routes.map((route) => `${route.host} -> ${route.service}`).join(', ') || 'None'}</dd>
       <dt>Volumes</dt><dd>{app.services.flatMap((service) => service.volumes).join(', ') || 'None'}</dd>
       <dt>Health</dt><dd>{app.health ? `${app.health.type}: ${app.health.url}` : 'None'}</dd>
       <dt>Projections</dt><dd>{projections.length ? projections.map((projection) => `${projection.kind}: ${projection.status}`).join(', ') : 'Rendered during install'}</dd>
@@ -725,7 +719,7 @@ function AppDetail({
             {app.external ? <span className="suite-app-external-pill">External &middot; Unverified</span> : null}
             <AppHealthIndicator app={app} />
           </div>
-          {app.catalog.replaces ? <p className="suite-app-detail-replaces"><span>Replaces</span><strong>{app.catalog.replaces}</strong></p> : null}
+          {app.catalog.replaces.length ? <p className="suite-app-detail-replaces"><span>Replaces</span><strong>{app.catalog.replaces.join(' / ')}</strong></p> : null}
         </div>
         <div className="suite-app-primary-actions">
           {updateWaiting ? <>
@@ -1111,7 +1105,7 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
             <dt>Package id</dt><dd>{source.packageId}</dd>
             <dt>Package digest</dt><dd><code>{resolved.packageDigest}</code></dd>
             <dt>Services</dt><dd>{card.services.map((service) => `${service.id}:${service.internalPort ?? '?'}`).join(', ') || 'None'}</dd>
-            <dt>Routes</dt><dd>{card.routes.map((route) => `${route.host} -> ${route.service}:${route.port ?? '?'}`).join(', ') || 'None'}</dd>
+            <dt>Routes</dt><dd>{card.routes.map((route) => `${route.host} -> ${route.service}`).join(', ') || 'None'}</dd>
           </dl>
         </details>
       </div>

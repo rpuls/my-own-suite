@@ -1,15 +1,16 @@
 {
+  "manifestVersion": 1,
   "id": "stirling-pdf",
   "name": "Stirling PDF",
-  "version": "0.2.1",
-  "minimumMosVersion": "0.1.0",
+  "version": "0.2.2",
+  "minimumMosVersion": "0.17.0",
   "summary": "Private PDF tools for everyday document tasks.",
   "category": "office",
   "icon": "icon.png",
   "catalog": {
     "description": "Stirling PDF gives you a private toolbox for everyday document work: merge, split, compress, convert, OCR, sign, redact, and automate PDFs without uploading them to random websites.",
     "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/stirling-pdf-2?referralCode=-Yg50p" }],
-    "replaces": "iLovePDF / Smallpdf / Adobe online tools",
+    "replaces": ["iLovePDF", "Smallpdf", "Adobe online tools"],
     "tags": [
       "pdf",
       "documents",
@@ -56,9 +57,6 @@
       "repository": "https://github.com/Stirling-Tools/Stirling-PDF"
     }
   },
-  "setup": {
-    "fields": []
-  },
   "resources": {
     "services": {
       "stirling-pdf": {
@@ -81,8 +79,7 @@
   "routes": [
     {
       "host": "stirling-pdf",
-      "service": "stirling-pdf",
-      "port": 8080
+      "service": "stirling-pdf"
     }
   ],
   "homepage": {

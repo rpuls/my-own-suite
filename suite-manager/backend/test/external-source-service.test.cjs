@@ -186,6 +186,7 @@ test('a resolved card inlines the package own icon as a data URL', async () => {
   const store = await tempStore();
   const iconBytes = Buffer.from('89504e470d0a1a0a', 'hex'); // tiny PNG-ish blob
   const manifest = {
+    manifestVersion: 1,
     category: 'tools', health: { type: 'http', url: 'http://notes:8080/health' }, icon: 'icon.png', id: 'community-notes',
     minimumMosVersion: '0.1.0', name: 'Community Notes', resources: { services: { notes: { dockerfile: 'Dockerfile', internalPort: 8080, volumes: ['notes-data:/data'] } } },
     routes: [{ host: 'notes', port: 8080, service: 'notes' }], setup: { fields: [] }, summary: 'Notes.', version: '1.0.0',

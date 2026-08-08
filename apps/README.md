@@ -2,7 +2,16 @@
 
 MOS app packages live here, one app per folder.
 
-Each app package should own its app-specific manifest, Dockerfiles, setup helpers, runtime assets, Caddy snippets, optional Homepage contributions, backup metadata, and technical notes.
+Each app package should own its app-specific manifest, Dockerfiles, setup helpers, runtime assets, optional Homepage contributions, backup metadata, and technical notes.
+
+## The manifest contract
+
+`manifest.json` follows the locked, versioned manifest contract (generation 1, `manifestVersion: 1`):
+
+- `manifest.schema.json` in this folder is the canonical machine-readable JSON Schema. The backend validator interprets this exact file; do not hand-edit validation logic into divergence with it.
+- The authoring reference for humans and agents is the public site page `site/src/content/docs/docs/reference/manifest.md` (published at `/docs/reference/manifest/`), covering every supported field, the template grammar, semantic rules, and the provisional areas outside the lock.
+- `npm run apps:manifest:check` validates every package (structure + semantics) without running MOS.
+- Unknown manifest fields are ignored, never fatal, and never projected into runtimes. Amendments to the contract must be optional additive fields; changing an existing field's meaning requires a new manifest generation. See the amendment policy in `AGENTS.md` and `docs/decisions.md`.
 
 ## Package identity and sources
 

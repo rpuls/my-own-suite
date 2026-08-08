@@ -1,8 +1,9 @@
 {
+  "manifestVersion": 1,
   "id": "seafile",
   "name": "Seafile",
-  "version": "0.2.2",
-  "minimumMosVersion": "0.1.0",
+  "version": "0.2.3",
+  "minimumMosVersion": "0.17.0",
   "packageFiles": [
     "entrypoint.sh",
     "screenshots/library.png",
@@ -15,7 +16,7 @@
   "catalog": {
     "description": "Seafile is a self-hosted file sync and sharing server for private libraries, browser access, desktop sync clients, mobile clients, and share links.",
     "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/seafile-onlyoffice?referralCode=-Yg50p" }],
-    "replaces": "Dropbox / Google Drive / OneDrive",
+    "replaces": ["Dropbox", "Google Drive", "OneDrive"],
     "screenshots": [
       {
         "src": "screenshots/library.png",
@@ -188,8 +189,7 @@
   "routes": [
     {
       "host": "seafile",
-      "service": "seafile",
-      "port": 80
+      "service": "seafile"
     }
   ],
   "homepage": {
@@ -205,7 +205,6 @@
   "exports": {
     "filePlatform": {
       "type": "document-platform",
-      "implementation": "seafile",
       "interfaceVersion": 1,
       "protocol": "seafile-web",
       "title": "Seafile document platform",

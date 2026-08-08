@@ -1,8 +1,9 @@
 {
+  "manifestVersion": 1,
   "id": "onlyoffice",
   "name": "ONLYOFFICE",
-  "version": "0.2.1",
-  "minimumMosVersion": "0.1.0",
+  "version": "0.2.2",
+  "minimumMosVersion": "0.17.0",
   "packageFiles": [
     "entrypoint.sh",
     "screenshots/document.png",
@@ -16,7 +17,7 @@
   "catalog": {
     "description": "ONLYOFFICE provides document, spreadsheet, and presentation editing that compatible MOS file apps can connect to for browser-based office workflows.",
     "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/seafile-onlyoffice?referralCode=-Yg50p" }],
-    "replaces": "Google Docs / Microsoft 365",
+    "replaces": ["Google Docs", "Microsoft 365"],
     "screenshots": [
       {
         "src": "screenshots/document.png",
@@ -130,8 +131,7 @@
   "routes": [
     {
       "host": "onlyoffice",
-      "service": "onlyoffice",
-      "port": 80
+      "service": "onlyoffice"
     }
   ],
   "health": {
@@ -141,21 +141,15 @@
   "exports": {
     "documentEditor": {
       "type": "document-editor",
-      "implementation": "onlyoffice-docs",
       "interfaceVersion": 1,
       "protocol": "onlyoffice-docs-api",
       "title": "ONLYOFFICE office editing",
-      "features": {
-        "browserEditing": true,
-        "jwt": true
-      },
       "url": "${app.publicUrl}web-apps/apps/api/documents/api.js",
       "healthUrl": "${app.publicUrl}welcome/",
       "secrets": {
         "jwt": {
           "scope": "provider-instance",
-          "ref": "${secret.jwtSecret}",
-          "rotationBlastRadius": "all-consumers"
+          "ref": "${secret.jwtSecret}"
         }
       }
     }

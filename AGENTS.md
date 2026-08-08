@@ -302,6 +302,18 @@ Do not introduce new canonical Dockerfiles in nested subfolders like `apps/<app>
 
 When adding or changing a package service, update the package manifest and keep generated runtime projections rooted at `apps/<app>`.
 
+### Manifest Contract Amendment Policy
+
+The manifest shape (generation 1, `manifestVersion: 1`) is a locked public contract with package authors. `apps/manifest.schema.json` is the canonical schema and the published reference is `/docs/reference/manifest/`.
+
+- A manifest contract change must be an optional, additive field. It is an emergency measure or a deliberate contract amendment, never routine maintenance, and never becomes something the UI requires.
+- Unknown manifest fields are ignored, never fatal, and never projected into runtimes. Do not reintroduce closed allow-lists anywhere in manifest validation; a unit test guards this.
+- Changing the meaning, type, or requiredness of an existing field requires a new manifest generation, which is a major platform event.
+- A package using a newly added field must raise its `minimumMosVersion` to the release that introduced the field.
+- New template namespaces (for example a future `${smtp.*}`) follow the same rule: added to the validator and schema together, gated by `minimumMosVersion`.
+- Fields documented as provisional (`role`, `exports`, `integrations`, `configTargets`, `usefulness`, `homepage.widget`, `routes[].internalIcalBridge`) are outside the lock and may still change; do not present them to external authors as stable.
+- Schema and validator move together: any change to `apps/manifest.schema.json` requires updating the manifest reference page and running `npm run apps:manifest:check` plus the backend unit tests.
+
 ### Catalog Privacy-Review Requirement
 
 - No app enters the official catalog without a completed privacy posture review.

@@ -4,6 +4,10 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+### Changed
+
+- The app package manifest is now a locked, versioned contract (generation 1). Manifests declare `manifestVersion: 1`, unknown fields are ignored instead of sometimes rejecting the package, every `${…}` template reference is validated against the fields it names, and a published JSON Schema (`apps/manifest.schema.json`) plus `npm run apps:manifest:check` let package authors validate without running MOS. All six catalog packages ship a patch update migrated to the locked shape (`catalog.replaces` is now a list, redundant route ports and dead onboarding metadata removed); the migrated packages require this MOS release or newer.
+
 ## [0.16.1] - 2026-08-08
 
 ### Changed

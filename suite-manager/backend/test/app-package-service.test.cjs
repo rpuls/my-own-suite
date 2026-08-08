@@ -1,4 +1,4 @@
-const assert = require('node:assert/strict');
+﻿const assert = require('node:assert/strict');
 const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
@@ -19,7 +19,7 @@ const v2AppsDir = path.join(repoRoot, 'apps');
 
 // These tests build update candidates out of the real apps/ packages, so a
 // literal candidate version silently stops being an upgrade the moment a real
-// package reaches it — which is exactly what a catalog-wide version bump did.
+// package reaches it â€” which is exactly what a catalog-wide version bump did.
 // Kept deliberately above any version a shipped package will plausibly reach.
 const CANDIDATE_VERSION = '99.0.0';
 
@@ -50,6 +50,7 @@ async function externalCandidate(root, overrides = {}, dirName = 'ext-abc') {
   const packageDir = path.join(root, 'app-candidates', dirName);
   await fsp.mkdir(packageDir, { recursive: true });
   const manifest = {
+    manifestVersion: 1,
     category: 'test', health: { type: 'http', url: 'http://notes:8080/health' }, id: 'community-notes',
     minimumMosVersion: '0.1.0', name: 'Community Notes',
     resources: { services: { notes: { dockerfile: 'Dockerfile', internalPort: 8080, volumes: ['notes-data:/data'] } } },
@@ -133,7 +134,7 @@ async function updatableExternalApp(root, store, calls, { reclaims = false } = {
 // source's commit, then hand back the candidate that commit publishes.
 function externalClientStub(candidate) {
   return {
-    platformVersion: '0.1.0',
+    platformVersion: '0.17.0',
     async downloadCandidate() { return { ...candidate, cleanup() {} }; },
     async resolveRevision(source) { return withRevision(source, candidate.source.revision); },
   };
@@ -846,7 +847,7 @@ test('updating an integration consumer keeps its integration env and reconciles 
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { platformVersion: '0.1.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    catalogService: { platformVersion: '0.17.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
     store,
   });
   await service.installPackage('seafile', { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' });
@@ -942,7 +943,7 @@ test('a provider update recovered at startup re-applies its integration consumer
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { advisoriesFor: () => [], platformVersion: '0.1.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    catalogService: { advisoriesFor: () => [], platformVersion: '0.17.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
     store,
   });
   await service.installPackage('seafile', { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' });
@@ -990,8 +991,8 @@ test('a provider update recovered at startup re-applies its integration consumer
 });
 
 // The S2 pin: a snapshot promotion whose durable commit never happened is
-// finished by startup recovery — the disk proves the promote, the operation row
-// carries what the commit needs — and one wedged app never takes the Apps API
+// finished by startup recovery â€” the disk proves the promote, the operation row
+// carries what the commit needs â€” and one wedged app never takes the Apps API
 // down while it waits.
 test('a crash between snapshot promotion and the durable commit is committed by startup recovery', async () => {
   const root = await tempStateDir();
@@ -1032,7 +1033,7 @@ test('a crash between snapshot promotion and the durable commit is committed by 
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { advisoriesFor: () => [], platformVersion: '0.1.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    catalogService: { advisoriesFor: () => [], platformVersion: '0.17.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
     store,
   });
   await service.installPackage('stirling-pdf');
@@ -1121,7 +1122,7 @@ test('the recovery action restores the recorded runtime after a failed rollback'
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { platformVersion: '0.1.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    catalogService: { platformVersion: '0.17.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
     store,
   });
   await service.installPackage('stirling-pdf');
@@ -1373,7 +1374,7 @@ test('a candidate whose privacy review is unreadable fails the update as a class
     async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
   };
   const catalogService = {
-    platformVersion: '0.1.0',
+    platformVersion: '0.17.0',
     async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
@@ -1418,7 +1419,7 @@ test('confirmed app updates are re-compared and durably staged against exact ide
     async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
   };
   const catalogService = {
-    platformVersion: '0.1.0',
+    platformVersion: '0.17.0',
     async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
@@ -1471,7 +1472,7 @@ test('an agent that cannot apply updates end to end is refused before any update
     async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build'], contractVersion: 3 }; },
   };
   const catalogService = {
-    platformVersion: '0.1.0',
+    platformVersion: '0.17.0',
     async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
@@ -1515,7 +1516,7 @@ test('contract v6 app updates activate, promote, and commit candidate identity a
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
     async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
   };
-  const catalogService = { platformVersion: '0.1.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } };
+  const catalogService = { platformVersion: '0.17.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({ agent, appsDir: v2AppsDir, catalogService, store });
   await service.installPackage('stirling-pdf');
@@ -1535,7 +1536,7 @@ test('contract v6 app updates activate, promote, and commit candidate identity a
 // before updating, which is exactly what hid this: a reviewed official candidate
 // could never be staged. The review names the commit it was authored against,
 // while the update path resolves the catalog branch for real, and the binding
-// required the two to be equal — impossible for a file that lives inside the
+// required the two to be equal â€” impossible for a file that lives inside the
 // commit it would have to name. This keeps the review, and gives the candidate a
 // source revision that differs from the one the review declares, which is the
 // only shape the catalog can ever produce.
@@ -1580,7 +1581,7 @@ test('an official candidate that ships a privacy review updates and keeps its re
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { advisoriesFor: () => [], platformVersion: '0.1.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    catalogService: { advisoriesFor: () => [], platformVersion: '0.17.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
     store,
   });
   await service.installPackage('stirling-pdf');
@@ -1630,7 +1631,7 @@ test('app updates replace an applied Homepage entry and retain its applied proje
       async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
     },
     appsDir: v2AppsDir,
-    catalogService: { platformVersion: '0.1.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    catalogService: { platformVersion: '0.17.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
     store,
   });
   await service.installPackage('stirling-pdf');
@@ -1736,7 +1737,7 @@ test('legacy instances migrate only from an exactly matching validated package',
 });
 
 // Regression: an unguarded privacy-review.json parse in the startup migration
-// aborted migrateLegacyPackages, and start.cjs exits on that — one malformed
+// aborted migrateLegacyPackages, and start.cjs exits on that â€” one malformed
 // file in one package prevented Suite Manager from booting at all.
 test('a malformed privacy review degrades to recovery at migration and a 409 at install', async (t) => {
   const root = await tempStateDir();

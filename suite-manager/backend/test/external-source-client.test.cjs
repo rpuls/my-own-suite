@@ -44,6 +44,7 @@ function tarGz(files) {
 
 function baseManifest(overrides = {}) {
   return {
+    manifestVersion: 1,
     category: 'test', health: { type: 'http', url: 'http://notes:8080/health' }, id: 'community-notes',
     minimumMosVersion: '0.1.0', name: 'Community Notes',
     resources: { services: { notes: { dockerfile: 'Dockerfile', internalPort: 8080, volumes: ['notes-data:/data'] } } },

@@ -238,7 +238,7 @@ export const catalogApps: CatalogApp[] = Object.entries(manifestModules)
             url: String(target?.url ?? '')
           })).filter((target: DemoDeployTarget) => target.provider && target.label && /^https?:\/\//.test(target.url))
         : [],
-      replaces: String(catalog.replaces ?? ''),
+      replaces: (Array.isArray(catalog.replaces) ? catalog.replaces.map(String) : []).join(' / '),
       setup: String(catalog.complexity?.label ?? ''),
       setupDetail: String(catalog.complexity?.description ?? ''),
       resources: String(catalog.resourceHint?.label ?? ''),

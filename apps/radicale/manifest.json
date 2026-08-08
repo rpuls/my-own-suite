@@ -1,8 +1,9 @@
 {
+  "manifestVersion": 1,
   "id": "radicale",
   "name": "Radicale",
-  "version": "0.4.0",
-  "minimumMosVersion": "0.1.0",
+  "version": "0.4.1",
+  "minimumMosVersion": "0.17.0",
   "packageFiles": ["entrypoint.sh"],
   "update": {
     "backupRequired": false,
@@ -15,7 +16,7 @@
   "catalog": {
     "description": "Radicale provides a small private calendar and contacts sync server for CalDAV and CardDAV clients on phones, tablets, and desktops.",
     "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/radicale?referralCode=-Yg50p" }],
-    "replaces": "Google Calendar / Contacts",
+    "replaces": ["Google Calendar", "Google Contacts"],
     "tags": [
       "calendar",
       "contacts",
@@ -121,7 +122,6 @@
     {
       "host": "radicale",
       "service": "radicale",
-      "port": 5232,
       "internalIcalBridge": {
         "path": "/__mos/ical/${secret.icalToken}",
         "targetPath": "/${config.adminUsername}/default-calendar/?export",
@@ -159,19 +159,16 @@
   "onboarding": {
     "title": "Connect your calendar",
     "summary": "Use these details with a CalDAV or CardDAV client on your phone, tablet, or desktop.",
-    "steps": [
-      {
-        "type": "open-url",
-        "title": "Open the Radicale address",
-        "body": "Open Radicale at its generated app URL and sign in with the username and password you entered during install."
-      },
-      {
-        "type": "manual",
-        "title": "Connect a CalDAV or CardDAV client",
-        "body": "Use the Calendar URL shown by MOS, your Radicale username, and the password you chose."
-      }
-    ],
     "sections": [
+      {
+        "id": "get-started",
+        "type": "steps",
+        "title": "Get started",
+        "steps": [
+          "Open Radicale at its generated app URL and sign in with the username and password you entered during install.",
+          "Connect a CalDAV or CardDAV client using the Calendar URL shown below, your Radicale username, and the password you chose."
+        ]
+      },
       {
         "id": "connection-details",
         "type": "values",

@@ -1,0 +1,482 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://myownsuite.org/schemas/app-manifest-v1.json",
+  "title": "MOS app package manifest (generation 1)",
+  "description": "The locked structural contract for apps/<app>/manifest.json. Generation 1 is frozen: fields listed here are supported by every MOS release that supports manifestVersion 1, and unknown fields are ignored, never fatal. Amendments are additive and optional only. Fields marked PROVISIONAL in their description are outside the locked baseline: they work today for official packages but their shape may still change. Structural validity is only half the contract; MOS also runs semantic checks (template references, cross-references, package-file existence) documented in the manifest reference.",
+  "type": "object",
+  "required": [
+    "manifestVersion",
+    "id",
+    "name",
+    "version",
+    "minimumMosVersion",
+    "summary",
+    "category",
+    "resources",
+    "health"
+  ],
+  "properties": {
+    "manifestVersion": {
+      "const": 1,
+      "description": "The manifest generation this package targets. Generation 1 is the first locked generation. A MOS release that does not know this generation refuses the package instead of misreading it."
+    },
+    "id": {
+      "$ref": "#/$defs/appId",
+      "description": "The package identity: a DNS-safe lowercase id, stable for the life of the package. It names the package folder (apps/<id>), namespaces volumes and containers, and prefixes route hosts."
+    },
+    "name": {
+      "$ref": "#/$defs/text",
+      "description": "Human-readable app name shown in the catalog and app views."
+    },
+    "version": {
+      "$ref": "#/$defs/semverish",
+      "description": "The app-package version, independent of the MOS platform version and of the upstream app version. Any change to package contents requires a bump; installed boxes are offered updates by comparing this value."
+    },
+    "minimumMosVersion": {
+      "$ref": "#/$defs/semverish",
+      "description": "The oldest MOS platform release this package works on. A package that uses a manifest field or template namespace introduced in a later MOS release must raise this to that release."
+    },
+    "architectures": {
+      "type": "array",
+      "items": { "enum": ["amd64", "arm64"] },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "CPU architectures the package's pinned base images actually publish. Omitted means no constraint. Incompatible hosts refuse the install."
+    },
+    "packageFiles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relativePath" },
+      "uniqueItems": true,
+      "description": "Extra files shipped with the package beyond the fixed root set (manifest.json, Dockerfile*, README.md, entrypoint.sh, icon.*, privacy-review.json). Only listed files survive packaging and count toward the package digest."
+    },
+    "summary": {
+      "$ref": "#/$defs/text",
+      "description": "One-line plain-language description used on catalog cards."
+    },
+    "category": {
+      "$ref": "#/$defs/text",
+      "description": "Free-text catalog category. Use an existing category when one fits (media, storage, office, security, tools); unknown categories render as provided with default styling."
+    },
+    "icon": {
+      "$ref": "#/$defs/relativePath",
+      "description": "Package-relative path to the catalog icon, conventionally icon.png in the package root."
+    },
+    "role": {
+      "enum": ["standalone", "capability-provider"],
+      "description": "PROVISIONAL. How the package is useful: standalone (default) or capability-provider (useful mainly through other apps; grouped as a companion app)."
+    },
+    "catalog": {
+      "type": "object",
+      "description": "Optional catalog presentation metadata. Everything here is display-only and never affects runtime behavior.",
+      "properties": {
+        "description": {
+          "$ref": "#/$defs/text",
+          "description": "A fuller paragraph for the app detail view."
+        },
+        "tags": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/text" },
+          "description": "Search keywords."
+        },
+        "related": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/appId" },
+          "description": "Ids of catalog apps that pair well with this one."
+        },
+        "replaces": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/text" },
+          "minItems": 1,
+          "description": "Commercial products this app replaces, one name per entry. Display joins them; search matches each."
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["title"],
+            "properties": {
+              "title": { "$ref": "#/$defs/text" },
+              "body": { "$ref": "#/$defs/text" }
+            }
+          },
+          "description": "Short capability highlights for the detail view."
+        },
+        "complexity": {
+          "type": "object",
+          "required": ["level"],
+          "properties": {
+            "level": { "enum": ["easy", "guided", "advanced"] },
+            "label": { "$ref": "#/$defs/text" },
+            "description": { "$ref": "#/$defs/text" }
+          },
+          "description": "How much setup the owner should expect."
+        },
+        "resourceHint": {
+          "type": "object",
+          "required": ["level"],
+          "properties": {
+            "level": { "enum": ["low", "medium", "high"] },
+            "label": { "$ref": "#/$defs/text" },
+            "description": { "$ref": "#/$defs/text" }
+          },
+          "description": "How heavy the package is on a small server."
+        },
+        "privacy": {
+          "type": "object",
+          "properties": {
+            "summary": { "$ref": "#/$defs/text" },
+            "notes": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/text" }
+            }
+          },
+          "description": "Plain-language privacy posture summary shown to owners. The bound privacy-review.json remains the authoritative assessment."
+        },
+        "links": {
+          "type": "object",
+          "properties": {
+            "website": { "$ref": "#/$defs/httpUrl" },
+            "docs": { "$ref": "#/$defs/httpUrl" },
+            "repository": { "$ref": "#/$defs/httpUrl" }
+          },
+          "description": "Official upstream links. Keys beyond website, docs, and repository are ignored and not rendered."
+        },
+        "demoDeployTargets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["provider", "label", "url"],
+            "properties": {
+              "provider": { "$ref": "#/$defs/appId" },
+              "label": { "$ref": "#/$defs/text" },
+              "url": { "$ref": "#/$defs/httpUrl" }
+            }
+          },
+          "description": "Public-site 'try it elsewhere' deploy links on third-party providers. Not MOS installation instructions; never rendered inside Suite Manager."
+        },
+        "screenshots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["src"],
+            "properties": {
+              "src": {
+                "$ref": "#/$defs/relativePath",
+                "description": "Package-relative image path. Must be listed in packageFiles. Remote URLs are not permitted: catalog browsing must not fetch third-party origins."
+              },
+              "alt": { "$ref": "#/$defs/text" },
+              "caption": { "$ref": "#/$defs/text" }
+            }
+          },
+          "description": "Screenshots shipped inside the package and served by MOS itself."
+        }
+      }
+    },
+    "setup": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "type", "label"],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/fieldId",
+                "description": "camelCase field id, referenced from templates as ${config.<id>} or ${secret.<id>}."
+              },
+              "type": {
+                "enum": ["text", "email", "password", "url", "boolean"],
+                "description": "Input kind. Values are stored as strings; boolean stores \"true\" or \"false\"."
+              },
+              "label": { "$ref": "#/$defs/text" },
+              "required": { "type": "boolean" },
+              "secret": {
+                "type": "boolean",
+                "description": "Secret fields are stored as redacted references, referenced as ${secret.<id>}, and may never declare a default."
+              },
+              "redactedLabel": {
+                "$ref": "#/$defs/text",
+                "description": "Label shown in place of a secret's value."
+              },
+              "default": {
+                "type": "string",
+                "description": "Prefill for non-secret fields. May reference ${owner.name} or ${owner.email}; this is the only place the owner namespace is allowed."
+              },
+              "generated": {
+                "type": "object",
+                "required": ["kind", "bytes", "encoding"],
+                "properties": {
+                  "kind": { "enum": ["random"] },
+                  "bytes": { "type": "integer", "minimum": 16, "maximum": 128 },
+                  "encoding": { "enum": ["base64url", "hex"] }
+                },
+                "description": "MOS generates the value at install instead of asking the owner."
+              }
+            }
+          }
+        }
+      },
+      "description": "Install-time inputs. Omit, or use an empty fields array, when the app needs none."
+    },
+    "resources": {
+      "type": "object",
+      "required": ["services"],
+      "properties": {
+        "services": {
+          "type": "object",
+          "minProperties": 1,
+          "patternProperties": {
+            "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$": {
+              "type": "object",
+              "required": ["dockerfile", "internalPort"],
+              "properties": {
+                "dockerfile": {
+                  "$ref": "#/$defs/relativePath",
+                  "description": "Package-root Dockerfile for this service: Dockerfile for the primary service, Dockerfile.<service> for others. Base images must be pinned by immutable digest."
+                },
+                "internalPort": {
+                  "$ref": "#/$defs/port",
+                  "description": "The one TCP port the service listens on inside the package network."
+                },
+                "env": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^[A-Z_][A-Z0-9_]*$": { "type": "string" }
+                  },
+                  "additionalProperties": false,
+                  "description": "Environment for the service. Values are template strings; see the template grammar. Startup order is not guaranteed - services must tolerate their dependencies starting later and retry."
+                },
+                "volumes": {
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/namedVolume" },
+                  "description": "Persistent named volumes as <volume-name>:<absolute-container-path>. Named volumes only: host paths, bind mounts, and device paths are refused by design - they break backup, restore, and isolation guarantees."
+                }
+              }
+            }
+          },
+          "additionalProperties": false,
+          "description": "The containers this package runs, keyed by DNS-safe service id. Service ids are container hostnames on the package network."
+        }
+      },
+      "description": "The package's runtime shape."
+    },
+    "routes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["host", "service"],
+        "properties": {
+          "host": {
+            "$ref": "#/$defs/appId",
+            "description": "Subdomain label under the suite domain. Traffic is HTTPS-terminated by MOS and proxied to the service's internalPort."
+          },
+          "service": {
+            "$ref": "#/$defs/text",
+            "description": "The declared service that receives this route's traffic."
+          },
+          "internalIcalBridge": {
+            "type": "object",
+            "required": ["path", "targetPath", "basicAuth"],
+            "properties": {
+              "path": { "type": "string" },
+              "targetPath": { "type": "string" },
+              "basicAuth": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "$ref": "#/$defs/text" },
+                  "password": { "$ref": "#/$defs/text" }
+                }
+              }
+            },
+            "description": "PROVISIONAL. A token-gated read-only proxy path that lets the dashboard fetch an app resource without exposing credentials. Expected to be replaced by a general bridge contract."
+          }
+        }
+      },
+      "description": "Public HTTPS entry points. Every route is HTTP reverse-proxied; other protocols are not routable in generation 1."
+    },
+    "homepage": {
+      "type": "object",
+      "required": ["group", "icon"],
+      "properties": {
+        "group": { "$ref": "#/$defs/text" },
+        "name": {
+          "$ref": "#/$defs/text",
+          "description": "Tile name. Defaults to the package name."
+        },
+        "description": {
+          "$ref": "#/$defs/text",
+          "description": "Tile line. Defaults to the package summary."
+        },
+        "icon": { "$ref": "#/$defs/text" },
+        "widget": {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": { "$ref": "#/$defs/text" }
+          },
+          "description": "PROVISIONAL. Dashboard widget contribution. Only the monthly calendar widget shape is supported today; a general widget contract is future work."
+        }
+      },
+      "description": "Dashboard tile contribution. Omit for packages that should not appear on the dashboard."
+    },
+    "health": {
+      "type": "object",
+      "required": ["type", "url"],
+      "properties": {
+        "type": { "enum": ["http"] },
+        "url": {
+          "$ref": "#/$defs/httpUrl",
+          "description": "Internal health probe URL. Its hostname must be a declared service id; the probe runs on the package network."
+        }
+      },
+      "description": "How MOS decides the app is up."
+    },
+    "onboarding": {
+      "type": "object",
+      "properties": {
+        "title": { "$ref": "#/$defs/text" },
+        "summary": { "$ref": "#/$defs/text" },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "type", "title"],
+            "properties": {
+              "id": { "$ref": "#/$defs/sectionId" },
+              "type": {
+                "enum": ["note", "warning", "steps", "values", "choice-guide", "manual-complete"]
+              },
+              "title": { "$ref": "#/$defs/text" },
+              "body": { "$ref": "#/$defs/text" },
+              "steps": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/text" }
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["label", "value"],
+                  "properties": {
+                    "label": { "$ref": "#/$defs/text" },
+                    "value": {
+                      "type": "string",
+                      "description": "May interpolate ${app.publicUrl} and non-secret ${config.*} values. Never secrets: explain secret values in words instead."
+                    },
+                    "copy": { "type": "boolean" }
+                  }
+                }
+              },
+              "choices": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "label", "steps"],
+                  "properties": {
+                    "id": { "$ref": "#/$defs/sectionId" },
+                    "label": { "$ref": "#/$defs/text" },
+                    "steps": {
+                      "type": "array",
+                      "items": { "$ref": "#/$defs/text" }
+                    }
+                  }
+                }
+              },
+              "actionLabel": { "$ref": "#/$defs/text" }
+            }
+          }
+        }
+      },
+      "description": "Declarative post-install guidance rendered by Suite Manager. Never scripts, components, or secret reveals."
+    },
+    "update": {
+      "type": "object",
+      "properties": {
+        "backupRequired": { "type": "boolean" },
+        "breakingChanges": {
+          "type": "array",
+          "items": {
+            "enum": ["capabilities", "health", "integrations", "resources", "routes", "setup", "volumes"]
+          },
+          "description": "Structural areas this package version changes relative to its predecessor. An undeclared structural change makes the update unofferable."
+        },
+        "downtime": { "enum": ["none", "brief", "extended", "unknown"] },
+        "migrations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/text" }
+        },
+        "minimumAppAgentVersion": { "type": "integer", "minimum": 1 },
+        "ownerActions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/text" }
+        },
+        "rollback": { "enum": ["safe", "not-guaranteed", "unsupported"] }
+      },
+      "description": "What updating to this package version means for an installed box. Unknown keys are ignored."
+    },
+    "exports": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9]*(?:[A-Z][a-z0-9]*)*$" },
+      "description": "PROVISIONAL. Capabilities this package offers to other apps. The capability system (exports, integrations, configTargets, usefulness) is not part of the locked generation-1 baseline; its shape may change."
+    },
+    "integrations": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9]*(?:[A-Z][a-z0-9]*)*$" },
+      "description": "PROVISIONAL. Capability slots this package can consume. See exports."
+    },
+    "configTargets": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9]*(?:[A-Z][a-z0-9]*)*$" },
+      "description": "PROVISIONAL. Package-owned config surfaces an integration apply operation may patch. See exports."
+    },
+    "usefulness": {
+      "type": "object",
+      "description": "PROVISIONAL. When the package is only useful alongside a capability another app provides. See exports."
+    }
+  },
+  "$defs": {
+    "appId": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "fieldId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[A-Z][a-z0-9]*)*$"
+    },
+    "sectionId": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "semverish": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "httpUrl": {
+      "type": "string",
+      "pattern": "^https?://\\S+$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^/\\\\][^\\\\]*$",
+      "description": "Forward-slash path relative to the package root. MOS additionally verifies normalization and containment (no .. segments) semantically."
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "namedVolume": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?:/[^:\\u0000]*$"
+    }
+  }
+}

@@ -43,6 +43,7 @@ const contractFixtures = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtur
 function packageFixture(lineEnding = '\n') {
   const packageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-package-contract-'));
   const manifest = {
+    manifestVersion: 1,
     category: 'test',
     health: { type: 'http', url: 'http://example:8080/health' },
     id: 'example',

@@ -1,8 +1,9 @@
 {
+  "manifestVersion": 1,
   "id": "immich",
   "name": "Immich",
-  "version": "0.4.0",
-  "minimumMosVersion": "0.1.0",
+  "version": "0.4.1",
+  "minimumMosVersion": "0.17.0",
   "architectures": ["amd64"],
   "packageFiles": ["immich-config.json"],
   "summary": "High performance self-hosted photo and video backup solution.",
@@ -11,7 +12,7 @@
   "catalog": {
     "description": "Immich is a self-hosted photo and video management server with automatic backup from mobile devices, facial recognition, object detection, and album organization.",
     "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/immich-1?referralCode=-Yg50p" }],
-    "replaces": "Google Photos / iCloud Photos",
+    "replaces": ["Google Photos", "iCloud Photos"],
     "tags": [
       "photos",
       "videos",
@@ -118,11 +119,6 @@
       "immich-server": {
         "dockerfile": "Dockerfile",
         "internalPort": 2283,
-        "depends_on": [
-          "immich-postgres",
-          "immich-valkey",
-          "immich-machine-learning"
-        ],
         "env": {
           "DB_HOSTNAME": "immich-postgres",
           "DB_PORT": "5432",
@@ -153,8 +149,7 @@
   "routes": [
     {
       "host": "immich",
-      "service": "immich-server",
-      "port": 2283
+      "service": "immich-server"
     }
   ],
   "homepage": {
@@ -168,26 +163,30 @@
     "url": "http://immich-server:2283/api/server-info/ping"
   },
   "onboarding": {
-    "setupGuide": [
+    "title": "Set up Immich",
+    "summary": "Create your admin account, then connect the mobile app for automatic photo backup.",
+    "sections": [
       {
+        "id": "first-run",
         "type": "note",
-        "level": "info",
         "title": "First run setup",
         "body": "Immich will automatically prepare the database on first startup. This may take several minutes."
       },
       {
-        "type": "step",
+        "id": "admin-account",
+        "type": "steps",
         "title": "Create admin account",
         "body": "After Immich finishes starting, open the application and create your first admin user account directly in the Immich web interface."
       },
       {
-        "type": "note",
-        "level": "warning",
+        "id": "backup-reminder",
+        "type": "warning",
         "title": "Backup important",
         "body": "Your photo library is stored in the Immich package volume. Ensure you run regular MOS backups before uploading large amounts of data."
       },
       {
-        "type": "step",
+        "id": "mobile-app",
+        "type": "steps",
         "title": "Install mobile app",
         "body": "Download the official Immich mobile app from App Store or Google Play to enable automatic photo backup from your device."
       }
