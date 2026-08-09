@@ -4,6 +4,10 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+### Fixed
+
+- Backing up to an exFAT or NTFS drive no longer fails with "EPERM: operation not permitted, chmod ...". MOS built the state snapshot on the destination drive itself, which required that drive to store Linux file permissions; external drives are normally formatted exFAT or NTFS and cannot. The snapshot is now built on the system disk and only the finished archive is written to the drive, so the permissions the drive cannot hold are preserved inside the backup and restored correctly. Any MOS installation with installed apps was affected, and the backup failed rather than producing an incomplete bundle.
+
 ## [0.17.0] - 2026-08-08
 
 ### Added

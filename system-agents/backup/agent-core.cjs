@@ -188,7 +188,9 @@ class BackupAgentCore {
     await this.assertDestinationMounted(started.destinationId, 'The backup destination is not mounted. Reconnect the drive, refresh drives, and try again.');
     const stamp = new Date().toISOString().replace(/[:.]/gu, '-');
     const bundleDir = path.join(started.destinationId, 'MOS-backups', `mos-backup-${stamp}-${started.id.slice(0, 8)}`);
-    const stateStage = path.join(bundleDir, 'state');
+    // exFAT and NTFS destinations reject app-packages' setgid mode, so the
+    // stage cannot live on the drive.
+    const stateStage = path.join(this.paths.agentStateDir, `backup-stage-${started.id}`);
     const volumesDir = path.join(bundleDir, 'volumes');
 
     jobs.stage(jobFile, 'Preparing backup bundle');
@@ -218,6 +220,11 @@ class BackupAgentCore {
     const freeBytes = await system.availableBytes(started.destinationId);
     if (freeBytes !== null && freeBytes < estimatedBytes) {
       throw new Error(`The destination has ${formatBytes(freeBytes)} free but this backup needs up to ${formatBytes(estimatedBytes)}. Free space on the destination and try again.`);
+    }
+    ensureDir(this.paths.agentStateDir);
+    const localFreeBytes = await system.availableBytes(this.paths.agentStateDir);
+    if (localFreeBytes !== null && localFreeBytes < stateRawBytes) {
+      throw new Error(`Staging the suite state needs ${formatBytes(stateRawBytes)} free on the system disk, but only ${formatBytes(localFreeBytes)} is available.`);
     }
     jobs.log(jobFile, `Backing up about ${formatBytes(estimatedBytes)} of persistent state (${owned.length} app volumes).`);
 
@@ -292,13 +299,13 @@ class BackupAgentCore {
       // this bundle must not be reported as a usable backup.
       await this.assertDestinationMounted(started.destinationId, 'The backup destination disappeared while the backup was running. The written data is not a usable backup; reconnect the drive and run a new backup.');
       fs.writeFileSync(path.join(bundleDir, COMPLETE_MARKER), `${new Date().toISOString()}\n`, 'utf8');
-      fs.rmSync(stateStage, { force: true, recursive: true });
     } catch (error) {
       // A partial bundle is never restorable, and when the destination mount
       // vanished mid-job it sits on the system disk — remove it either way.
       if (!fs.existsSync(path.join(bundleDir, COMPLETE_MARKER))) fs.rmSync(bundleDir, { force: true, recursive: true });
       throw error;
     } finally {
+      fs.rmSync(stateStage, { force: true, recursive: true });
       jobs.stage(jobFile, 'Restarting runtime');
       await system.startService('mos-homepage.service');
       for (const container of stoppedContainers) await system.startContainer(container);
