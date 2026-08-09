@@ -129,6 +129,56 @@ exist" and "a stranger can safely boot them".
 A flashable image that installs an OS and then runs a root shell script is the highest-trust artifact
 the project ships, which is what makes **E3** load-bearing rather than aspirational.
 
+### I. Knowing why something broke
+
+**Gate:** a tester who hits a failure can hand over one file that contains the reason — and MOS wrote
+that reason down before anyone thought to go looking for it.
+
+MOS is blind, and more completely than "we should add an export button" suggests. The backend's entire
+logging surface is eleven `console` lines, all of them boot banner; the top-level request handler
+classifies an internal error, returns `Internal server error.` and **never writes it anywhere**; and the
+host agents run every privileged command with `stdio: 'ignore'`, so when a package's `docker build`
+fails the reason exists for a few milliseconds inside a pipe and is then discarded. The owner sees
+`APP_RUNTIME_APPLY_FAILED`. So does the maintainer, the database, and any bundle we might export. The
+export is the visible half; the half that matters is that something was recorded at all.
+
+This lands in **Now** rather than at the alpha gate for a reason that is about the calendar, not the
+code: the whole point of the beta window is friend-testers hitting failures on machines nobody can SSH
+into. Every week without this converts a bug report into a shrug. **I1** and **I2** are the two that
+change that on their own, before any of the rest exists.
+
+- **I1 — A structured logger, and stop discarding internal errors.** `#246`. JSON lines to stdout;
+  journald already captures them, so no files, no rotation, no dependency in a backend that has none.
+  The single highest-value line in the theme is logging the error the catch-all currently throws away.
+  *(Small)*
+- **I2 — Capture failed-command output in the host agents.** `#247`. This **amends a stated security
+  property** — `system-agents/README.md` promises logs never include command output — so it should be
+  argued before it is built and recorded in `docs/decisions.md` after. The real hazard is not stderr but
+  the command line: app containers are started with materialized secrets on the argv, so any error path
+  that echoes what it tried to run leaks every app secret at once. Capture output, never arguments.
+  *(Medium — posture change)*
+- **I3 — Persist and show why an app operation failed.** `#248`. `app_operations.diagnostics` was
+  designed, shipped, and never written to by anything. Redact on the way in, not on the way out: once
+  it is in SQLite it is also in every backup bundle. *(Small)*
+- **I4 — Bound app container log growth.** `#249`. No `--log-opt` on `docker run` and no `daemon.json`
+  anywhere, so every app writes to an uncapped json-file log until the root disk fills. A disk-safety
+  fix on its own, and the precondition for bounding anything we later collect. *(Small)*
+- **I5 — Pin journald persistence and retention.** `#250`. **I1** and **I2** both route into the
+  journal, and nothing in the repo configures it. If it is volatile a reboot erases everything, which is
+  exactly wrong: rebooting is what people do immediately before asking for help. Verify both install
+  paths, then set it explicitly rather than inheriting a base-image default. *(Small)*
+- **I6 — A diagnostics agent that can read host state.** `#251`. Suite Manager is unprivileged, so
+  collection has to be an agent. Its own socket rather than a new operation on the app agent, because
+  reading arbitrary host state is a different kind of power and should be auditable as one thing. The
+  collector list is data, modelled on `managedStateTargets`. Container labels already carry package
+  version and digest, so every collected log stamps itself. *(Medium)*
+- **I7 — Export a redacted diagnostics bundle from Settings.** `#252`. MOS can redact by **exact
+  value** rather than by guessing at token shapes, because Suite Manager holds the plaintext of every
+  app secret — an unusually strong position, and the reason this is safe to ship. A streamed zip, so the
+  owner can open it and read what they are about to send, with a plain-language summary and a redaction
+  report that proves masking ran. The decision worth making deliberately is hostnames and IP addresses:
+  not secret, but identifying. *(Medium)*
+
 ---
 
 ## Alpha gate — the bar before MOS is called an alpha
