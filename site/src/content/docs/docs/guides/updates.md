@@ -10,7 +10,11 @@ Updates in My Own Suite come in two kinds, and it's worth knowing which is which
 
 They are deliberately separate. Your password manager shouldn't have to wait for us to ship a version of MOS before it can get a security fix.
 
-Neither kind happens on its own. MOS checks for updates in the background and tells you what it found; applying anything is your decision. No SSH, no package managers, no surprises.
+Neither kind happens on its own. MOS checks for updates in the background and tells you what it found; applying either through Suite Manager is your decision and needs no SSH or package manager.
+
+:::caution[MOS does not update Ubuntu yet]
+Platform updates cover MOS, not the server’s operating system. Keep Ubuntu security updates current through your provider or Ubuntu’s own tools. Managing host patching from Suite Manager is planned.
+:::
 
 ## App updates
 

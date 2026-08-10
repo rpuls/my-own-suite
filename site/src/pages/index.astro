@@ -3,6 +3,7 @@ import LandingLayout from '../layouts/LandingLayout.astro'
 import SiteHeader from '../components/SiteHeader.astro'
 import Hero from '../components/Hero.astro'
 import ValuePromise from '../components/ValuePromise.astro'
+import WhyMosExists from '../components/WhyMosExists.astro'
 import HowItWorks from '../components/HowItWorks.astro'
 import InstallPaths from '../components/InstallPaths.astro'
 import AppCatalog from '../components/AppCatalog.astro'
@@ -26,6 +27,10 @@ import BetaDisclaimer from '../components/BetaDisclaimer.astro'
     <AppCatalog />
     <ExternalApps />
     <WhoItsFor />
+    {/* Objection handling ("why this and not CasaOS/Cloudron?") only lands once
+        the reader knows what MOS is and has seen the catalog — so it sits after
+        WhoItsFor rather than competing with the pitch near the top. */}
+    <WhyMosExists />
     <Tour />
     <InstallPaths />
     <Safety />

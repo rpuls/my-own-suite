@@ -117,6 +117,35 @@ section.band { padding: clamp(3rem, 7vh, 5rem) 0; }
 .section-head { max-width: 40rem; margin-bottom: var(--mos-space-7); display: grid; gap: var(--mos-space-3); }
 .section-head.center { margin-inline: auto; text-align: center; justify-items: center; }
 
+/* Why MOS exists */
+.why-mos {
+  border-block: var(--mos-border-subtle);
+  background: linear-gradient(135deg, var(--mos-color-surface-muted), transparent 65%);
+}
+.why-mos-layout {
+  display: grid; grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  gap: clamp(2.5rem, 7vw, 6rem); align-items: start;
+}
+.why-mos-heading { display: grid; gap: var(--mos-space-3); }
+.why-mos-heading .mos-section-title { max-width: 12ch; }
+.why-mos-link {
+  display: inline-flex; align-items: center; gap: var(--mos-space-2); width: fit-content;
+  margin-top: var(--mos-space-2); color: var(--mos-color-accent); font-size: 0.92rem; font-weight: 700;
+}
+.why-mos-story { display: grid; }
+.why-mos-chapter {
+  display: grid; grid-template-columns: minmax(7.5rem, 0.32fr) minmax(0, 1fr);
+  gap: var(--mos-space-5); padding: var(--mos-space-4) 0; border-top: var(--mos-border-subtle);
+}
+.why-mos-chapter:first-child { padding-top: 0; border-top: 0; }
+.why-mos-project { color: var(--mos-color-text-strong); font-weight: 800; }
+.why-mos-chapter p, .why-mos-answer { margin: 0; color: var(--mos-color-text-muted); line-height: 1.65; }
+.why-mos-answer {
+  margin-top: var(--mos-space-3); padding-top: var(--mos-space-5);
+  border-top: 2px solid var(--mos-color-accent-border); color: var(--mos-color-text);
+}
+.why-mos-answer strong { color: var(--mos-color-text-strong); }
+
 /* How it works */
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--mos-space-5); }
 .step { padding: var(--mos-space-6); display: grid; gap: var(--mos-space-3); align-content: start; }
@@ -493,11 +522,14 @@ footer.site-footer { padding: var(--mos-space-8) 0 var(--mos-space-7); }
 
 @media (max-width: 900px) {
   .hero-grid, .tour-row, .promise, .steps, .paths, .byo, .who-list, .made-with-panel, .together { grid-template-columns: 1fr; }
+  .why-mos-layout { grid-template-columns: 1fr; }
+  .why-mos-heading .mos-section-title { max-width: 18ch; }
   .catalog { grid-template-columns: 1fr; }
   .tour-row:nth-child(even) .tour-copy { order: 0; }
   .site-nav { display: none; }
 }
 
 @media (max-width: 480px) {
+  .why-mos-chapter { grid-template-columns: 1fr; gap: var(--mos-space-2); }
   .beta-notice { left: var(--mos-space-4); right: var(--mos-space-4); bottom: var(--mos-space-4); max-width: none; }
 }
