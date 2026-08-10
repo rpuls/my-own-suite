@@ -11,8 +11,10 @@
 //   suite-manager/frontend/src/features/apps/PrivacyPosture.tsx
 //   site/src/components/PrivacyPosture.astro
 //
-// Everything here derives presentation from a package's privacy-review.json
-// (schemas/app-privacy-assessment.schema.json). The five dimension levels
+// Everything here derives presentation from a package's privacy-review.json,
+// whose contract lives in suite-manager/backend/src/apps/package-contracts.cjs
+// (PRIVACY_DIMENSION_VALUES, PRIVACY_POSTURES, derivePrivacyPosture). The
+// posture strings below must stay in step with that module. The five levels
 // (0-2 each) sum to a 0-10 score, which maps to the A-to-D privacy grade shown
 // on the shield (A 9-10, B 7-8, C 4-6, D 0-3). Postures, phrases, and verdicts
 // are generic schema-level rules — no app-specific logic belongs in this file.
@@ -93,7 +95,7 @@ export const POSTURES: Record<PrivacyPostureId, { border: string; color: string;
     border: 'var(--mos-color-warning-border)',
     color: 'var(--mos-color-warning)',
     label: 'External dependency',
-    sentence: 'Normal use relies on an outside service or account, so some traffic or data leaves your server.',
+    sentence: 'Normal use relies on an outside service or account, so some traffic or data leaves your server. MOS reviewed that dependency and accepted it as the price of the feature — the evidence below says exactly what leaves, who receives it, and why.',
     soft: 'var(--mos-color-warning-soft)',
   },
   'review-required': {
@@ -117,7 +119,7 @@ const PHRASES: Record<PrivacyDimensionKey, Record<string, { level: 0 | 1 | 2; ph
   telemetry: {
     'disabled-by-mos': { level: 2, phrase: 'Turned off by MOS' },
     'none-observed': { level: 2, phrase: 'None observed' },
-    optional: { level: 1, phrase: 'Optional, off by default' },
+    optional: { level: 1, phrase: 'Present, you can turn it off' },
     unavoidable: { level: 0, phrase: 'Cannot be turned off' },
     unknown: { level: 0, phrase: 'Not yet known' },
   },

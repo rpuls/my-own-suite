@@ -9,7 +9,7 @@ Produce a bounded assessment of one exact MOS app-package candidate. Bind it to 
 
 ## Required sources
 
-Read `apps/README.md`, `schemas/app-privacy-assessment.schema.json`, the app manifest, Dockerfiles, runtime configuration, and existing `privacy-review.json` first. Browse current primary upstream sources: release notes, server documentation, telemetry configuration, Terms of Service, privacy policy, license, and source code when documentation is insufficient.
+Read `apps/README.md`, the assessment contracts in `suite-manager/backend/src/apps/package-contracts.cjs` (the canonical document shape, dimension vocabulary, and posture derivation), the app manifest, Dockerfiles, runtime configuration, and existing `privacy-review.json` first. Browse current primary upstream sources: release notes, server documentation, telemetry configuration, Terms of Service, privacy policy, license, and source code when documentation is insufficient.
 
 Prefer observed package/runtime evidence over upstream marketing. Label every conclusion `observed`, `configured`, `documented`, or `inferred`. Record uncertainty as `unknown`; never turn missing evidence into a favorable result.
 

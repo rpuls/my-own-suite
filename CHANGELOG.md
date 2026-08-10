@@ -4,6 +4,12 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+### Changed
+
+- Immich's privacy assessment was redone against observed behaviour rather than documentation, using a network capture of the running package and a capture of the browser client. Its posture moves from "Privacy configured" to "External dependency". The map is enabled and, because MOS pins Immich's configuration to a file, no owner or administrator can turn it off; opening it requests map imagery from Immich's tile service, which its privacy policy says logs the requested tile, the IP address and timing. MOS accepted that trade because the map is part of what makes Immich worth running, and your photo coordinates are never sent — markers come from your own server and are drawn in your browser. The assessment now names every external host reached, corrects the version check's destination from GitHub to version.immich.cloud, and records that turning photo GPS into place names runs locally from data shipped inside the image.
+- The "External dependency" privacy label now states that MOS reviewed the dependency and accepted it, rather than leaving owners to read a bare warning. Every catalog app has a completed review, so the posture describes an accepted cost, not an unfinished assessment.
+- Immich package 0.5.0 updates Immich to v3.1.0. Its health check now targets the endpoint Immich actually serves, so a server whose API is failing is reported as unhealthy instead of passing on a 404. Immich's database migrations are forward-only: once the update has applied, going back to the previous Immich version is not supported. Live Photos uploaded in the background on the previous version may have missing thumbnails; running Immich's "missing" thumbnail job clears them, as does the nightly job.
+
 ### Fixed
 
 - Backing up to an exFAT or NTFS drive no longer fails with "EPERM: operation not permitted, chmod ...". MOS built the state snapshot on the destination drive itself, which required that drive to store Linux file permissions; external drives are normally formatted exFAT or NTFS and cannot. The snapshot is now built on the system disk and only the finished archive is written to the drive, so the permissions the drive cannot hold are preserved inside the backup and restored correctly. Any MOS installation with installed apps was affected, and the backup failed rather than producing an incomplete bundle.

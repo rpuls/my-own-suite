@@ -183,7 +183,7 @@ test('Immich package is discoverable and declares its heavy multi-service stack 
   assert.equal(immich.manifest.resources.services['immich-valkey'].dockerfile, 'Dockerfile.valkey');
   assert.equal(immich.manifest.homepage.icon, 'immich');
   assert.equal(immich.manifest.routes[0].service, 'immich-server');
-  assert.equal(immich.manifest.health.url, 'http://immich-server:2283/api/server-info/ping');
+  assert.equal(immich.manifest.health.url, 'http://immich-server:2283/api/server/ping');
   assert.equal(immich.manifest.setup.fields.length, 2);
   assert.ok(Array.isArray(immich.manifest.onboarding.sections));
   assert.deepEqual(validateAppPackageManifest(immich.manifest, { packageDir: immich.packageDir }), []);

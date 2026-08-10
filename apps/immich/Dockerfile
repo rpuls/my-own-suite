@@ -1,7 +1,8 @@
-FROM ghcr.io/immich-app/immich-server:v3.0.2@sha256:e027fa892e4c20ea8cba262e0d98dbaba14af873903408928e252596608a3a47
+FROM ghcr.io/immich-app/immich-server:v3.1.0@sha256:079cc990b26a88d71f96027341c67329cb11829d4c341ce33b3718fe0f84cbfa
 
-# MOS hardening: disable Immich's enabled-by-default new-version check so the
-# server makes no scheduled outbound release-check requests to GitHub. Applied
+# Disable Immich's enabled-by-default new-version check: MOS controls when Immich
+# updates are offered, so an in-app prompt for a release MOS does not ship yet is
+# misleading. Side effect: no scheduled requests to version.immich.cloud. Applied
 # through the upstream-supported IMMICH_CONFIG_FILE mechanism; the manifest points
 # IMMICH_CONFIG_FILE at this baked-in file.
 COPY immich-config.json /etc/immich/immich-config.json

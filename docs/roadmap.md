@@ -73,6 +73,17 @@ domain, and "what if myownsuite.org disappears" has a published answer.
   explicit "if this project vanishes, your suite keeps working and anyone can mirror it." Answers
   both the Cloudron-history question and the revenue-model question that launch will produce.
   *(Small)*
+- **B4 — Let owners choose privacy-relevant app settings at install time.** MOS pins app
+  configuration with a baked-in config file, which is what makes a hardened default possible and also
+  freezes that setting for the owner. Immich is the worked example: the signed review found its map
+  is a genuinely valuable feature that reaches an external tile service, and because MOS ships it on
+  with no way to change it, the honest posture is `external-dependency` — the same grade an app earns
+  when an upstream account is mandatory, which flattens a real difference. Surfacing a small set of
+  package-declared, privacy-relevant settings during install would let the owner make that call, and
+  would let a package that is only externally dependent by default derive `privacy-configured` once
+  the owner turns the touchpoint off. Needs a manifest field for owner-visible settings, install-flow
+  UI built from the shared primitives, and a review contract that can express a posture conditional
+  on a choice rather than one fixed at packaging time. *(Medium)*
 
 ### C. What a tester hits in the first hour
 
