@@ -4,6 +4,10 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+### Added
+
+- Paperless-ngx is available in the app catalog. Scan or photograph letters, invoices and contracts and it reads the text so you can search for any word inside them, suggesting the sender and tags for each new document. Text recognition runs on your own server in English, Dutch, German, French, Italian or Spanish, chosen during install; its optional cloud AI and remote OCR features stay off, and its own update check is switched off because MOS handles app updates.
+
 ### Changed
 
 - Immich's privacy assessment was redone against observed behaviour rather than documentation, using a network capture of the running package and a capture of the browser client. Its posture moves from "Privacy configured" to "External dependency". The map is enabled and, because MOS pins Immich's configuration to a file, no owner or administrator can turn it off; opening it requests map imagery from Immich's tile service, which its privacy policy says logs the requested tile, the IP address and timing. MOS accepted that trade because the map is part of what makes Immich worth running, and your photo coordinates are never sent — markers come from your own server and are drawn in your browser. The assessment now names every external host reached, corrects the version check's destination from GitHub to version.immich.cloud, and records that turning photo GPS into place names runs locally from data shipped inside the image.

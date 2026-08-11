@@ -1,0 +1,2 @@
+# Valkey 9.1.1 (Alpine), the Redis-protocol broker Paperless-ngx requires.
+FROM valkey/valkey@sha256:ee91f7a174ac4d6a6b0685b3a60e321f0a9dbbb691f9b0e285be2ba1d1be8328

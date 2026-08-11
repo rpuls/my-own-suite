@@ -9,9 +9,10 @@ description: Walk a MOS app package's privacy assessment item by item with a hum
 and stands behind the result. It is not a formatting step and not a rubber
 stamp on an agent's output.
 
-Run this when a package's assessment was written by an agent, or when an
-existing assessment is challenged. It complements `assess-app-privacy`, which
-produces the assessment; this procedure tests one.
+Run this when a package's assessment was written by an agent, when an existing
+assessment is challenged, or when a first-time package needs one. It
+complements `assess-app-privacy`, which produces the assessment; this procedure
+tests one.
 
 Work one item at a time and stop after each for the reviewer's call. Do not
 present a finished document for approval — that reproduces the problem this
@@ -30,7 +31,20 @@ procedure exists to fix, except that the result now carries a human's name.
   `suite-manager/backend/src/apps/package-contracts.cjs`.
 - Record what was not examined as explicitly as what was.
 
-## Gate 0 — Is the package current?
+## Gate 0 — Is there an assessment to test?
+
+A first-time package has none. This procedure tests a claim, so with nothing to
+falsify it collapses into writing and approving one document in a single pass —
+the failure it exists to prevent, now carrying a human's name.
+
+Run `assess-app-privacy` first and review its output. Write that draft from
+documentation, source and shipped configuration, before anything has been
+observed, so its claims are on record ahead of the evidence that will confirm or
+break them. Leave `provenance.humanReviewed` false, keep `confidence` no higher
+than the method supports, and expect the posture to derive to `review-required`
+until the observed items are done. Then start at Gate 1 and test it.
+
+## Gate 1 — Is the package current?
 
 A review binds to one exact version. Reviewing a stale package produces a
 signed statement about software nobody runs.
