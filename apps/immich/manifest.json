@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "immich",
   "name": "Immich",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "minimumMosVersion": "0.17.0",
   "architectures": ["amd64"],
   "packageFiles": ["immich-config.json"],
@@ -41,12 +41,13 @@
       "description": "This package requires minimum 4GB RAM and CPU with AVX2 support for optimal machine learning performance. Photo and video libraries grow large, and whole-suite backups include the full library - size your backup drive for the library you plan to store and expect backups to take longer as it grows."
     },
     "privacy": {
-      "summary": "Photos are stored and processed on your MOS server, and MOS disables Immich's built-in version check so it does not phone home.",
+      "summary": "Your photos are stored and processed on your own server. MOS disables Immich's version check and keeps the map, one of the features that makes Immich what it is. We assessed the map's outside dependency in detail and consider it privacy respecting: it never learns where your photos were taken.",
       "notes": [
-        "Photo and video library data is stored in package-owned volumes, and machine learning inference runs locally on your server.",
+        "Photo and video library data is stored in package-owned volumes, and machine learning inference runs locally on your server. Turning photo GPS into place names also happens locally, from a 54 MB dataset shipped inside the image.",
         "Only the Immich web service is exposed through HTTPS; the database, cache, and machine learning services remain internal.",
-        "MOS disables the enabled-by-default new-version check so the server makes no scheduled release-check requests to GitHub.",
-        "Optional features still reach external services: machine learning models are downloaded from Hugging Face on first use, and the map view loads tiles from Immich's hosted tile service."
+        "MOS disables the enabled-by-default new-version check, so the server makes no scheduled release-check requests to version.immich.cloud.",
+        "MOS keeps the map switched on, and that outside dependency is why this app is marked External dependency. Opening the map asks Immich's tile service for plain map imagery, requested by grid square from tiles.immich.cloud and static.immich.cloud, both served via Cloudflare. Your photo locations never leave your server: the markers you see are drawn in your browser from your own server's data. What the tile service can tell is which square of the world map you are looking at, and the smallest square it serves spans about 1.2 km — a neighbourhood, not an address, and never a photo. Immich's privacy policy says it logs the requested tile, your IP address and timing. Requests happen only while the map is open and carry no cookie or account identity.",
+        "Machine learning models are downloaded on first use, from Hugging Face for smart search and face recognition and from Alibaba Cloud's ModelScope for text recognition. The downloads are unauthenticated, and your photos are never sent out for processing."
       ]
     },
     "links": {
@@ -155,7 +156,7 @@
   },
   "health": {
     "type": "http",
-    "url": "http://immich-server:2283/api/server-info/ping"
+    "url": "http://immich-server:2283/api/server/ping"
   },
   "onboarding": {
     "title": "Set up Immich",

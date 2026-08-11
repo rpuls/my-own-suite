@@ -29,8 +29,8 @@ Postures are derived from their dimensions:
 
 - `private-by-default`: reviewed behavior requires no external service or account, processes app data locally, and has no known enabled telemetry.
 - `privacy-configured`: MOS uses supported package configuration to disable known optional telemetry, with no required external data processing.
-- `external-dependency`: normal operation requires an upstream account, service, telemetry, or external data processing.
-- `review-required`: evidence is missing, stale, unresolved, or does not support another posture.
+- `external-dependency`: normal operation requires an upstream account, service, telemetry, or external data processing. It is a completed assessment, not a warning to stay away: an app only reaches the catalog once its review is done, so this posture says MOS examined the dependency and accepted it as the price of the feature. The review's evidence carries what leaves, who receives it, and why it was accepted.
+- `review-required`: evidence is missing, stale, or unresolved.
 
 Unknown facts always produce `review-required`. Evidence is labeled `observed`, `configured`, `documented`, or `inferred`; configuration alone must not be presented as proof of network silence. App updates and detected Terms, privacy-policy, ownership, telemetry, or outbound-dependency changes trigger reassessment.
 

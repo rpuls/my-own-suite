@@ -1,30 +1,30 @@
 {
   "schemaVersion": 1,
   "appId": "immich",
-  "reviewedAt": "2026-07-23T00:00:00.000Z",
-  "expiresAt": "2027-01-23T00:00:00.000Z",
+  "reviewedAt": "2026-08-11T00:00:00.000Z",
+  "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.4.1",
-    "packageDigest": "sha256:399c1d88f3a2eca40872c62091669601e2d1ceaac0c62b8b408c7478d3242771",
+    "packageVersion": "0.5.0",
+    "packageDigest": "sha256:690aa1916a681b3b5fe890668d7f8e7985e1bca5bb72e1e3ecd61024abd6d8a8",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
       "path": "apps/immich",
-      "revision": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
+      "revision": "d74ed44a0a6040a80713e68db1f9b14c1f44c956",
       "trust": "mos-reviewed"
     },
     "components": [
       {
         "name": "Immich Server",
-        "version": "3.0.2",
+        "version": "3.1.0",
         "artifact": "ghcr.io/immich-app/immich-server",
-        "digest": "sha256:e027fa892e4c20ea8cba262e0d98dbaba14af873903408928e252596608a3a47"
+        "digest": "sha256:079cc990b26a88d71f96027341c67329cb11829d4c341ce33b3718fe0f84cbfa"
       },
       {
         "name": "Immich Machine Learning",
-        "version": "3.0.2",
+        "version": "3.1.0",
         "artifact": "ghcr.io/immich-app/immich-machine-learning",
-        "digest": "sha256:cfde27af4382c12940e02186abf0c6089e4eca9ebd75490d0ac32daaf52a0add"
+        "digest": "sha256:a25ddad7d6d2ab18a161176731dc171bb7e39c0e9dd3884fb1ec629dab535d05"
       },
       {
         "name": "Immich PostgreSQL (VectorChord / pgvecto.rs)",
@@ -36,37 +36,132 @@
         "name": "Valkey",
         "version": "9",
         "artifact": "docker.io/valkey/valkey",
-        "digest": "sha256:e30fbdc8d6d6b355712e50f4008321026f69db3e450254b4f0008d22745d8d0e"
+        "digest": "sha256:64f6e8025b9a798061c8c79e73a7a79dbc8cca437e6af682e9f7605ff334615d"
       }
     ],
     "clientsExcluded": [
       "The Immich mobile apps (iOS and Android) and their automatic photo/video backup behaviour",
-      "The browser-based Immich web client served to each user's device",
       "Device or vendor cloud backups configured within those client apps",
       "Third-party Immich API clients"
     ]
   },
-  "posture": "privacy-configured",
+  "posture": "external-dependency",
   "dimensions": {
-    "telemetry": "disabled-by-mos",
+    "telemetry": "unavoidable",
     "externalServices": "optional",
     "accountDependency": "local-only",
     "dataProcessing": "local",
     "policyExposure": "upstream-services-involved",
-    "confidence": "documented"
+    "confidence": "verified"
   },
   "evidence": [
     {
-      "type": "configured",
-      "claim": "The MOS package bakes an immich-config.json into the server image and points IMMICH_CONFIG_FILE at it, setting newVersionCheck.enabled to false so the enabled-by-default release check is turned off.",
-      "source": "apps/immich/manifest.json, apps/immich/Dockerfile, and apps/immich/immich-config.json"
+      "type": "observed",
+      "claim": "Runtime network capture of this package: a logging DNS resolver was the only upstream resolver for all four containers and every packet crossing the package-network boundary was recorded, across first boot and interactive use (admin creation, 11 asset uploads, and the machine-learning jobs those triggered). The immich-server, immich-postgres and immich-valkey containers made no outbound connection and no external DNS query at any point. Control requests injected from inside the containers appeared in both channels, so the silence is an observation rather than a failed capture.",
+      "source": "MOS runtime projection of apps/immich 0.5.0 (Immich v3.1.0), observed 2026-08-10",
+      "retrievedAt": "2026-08-10"
+    },
+    {
+      "type": "observed",
+      "claim": "The disabled new-version check was observed not to fire. Immich runs handleVersionCheck() at server bootstrap and hourly thereafter, and that method returns Skipped before issuing any request when newVersionCheck.enabled is false; the capture covers bootstrap and immich-server contacted nothing. The observation is scoped to the boot-time check, because no hourly tick was separately isolated.",
+      "source": "MOS runtime projection of apps/immich 0.5.0 observed 2026-08-10, and server/src/services/version.service.ts at v3.1.0",
+      "retrievedAt": "2026-08-10"
+    },
+    {
+      "type": "observed",
+      "claim": "The new-version check contacts Immich's own infrastructure, not GitHub. The only version endpoints present in the pinned server image are https://version.immich.cloud/version and https://version.dev.immich.cloud/version, and the image contains no api.github.com endpoint at all. Earlier revisions of this review described the check as a request to GitHub; that description was incorrect and has been corrected here.",
+      "source": "grep of /usr/src/app/server/dist in the pinned immich-server image (sha256:079cc990b26a88d71f96027341c67329cb11829d4c341ce33b3718fe0f84cbfa), observed 2026-08-11",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "observed",
+      "claim": "Client-side capture of the browser surface, which earlier revisions of this review excluded from scope. A full HAR of an authenticated 77-second session (sign-in, timeline browsing, opening individual photos, the map view with zooming, search and explore) recorded 378 entries: 8 inline data: URIs that touch no network, and 370 real requests. Exactly three hosts were contacted in the entire session: 127.0.0.1:2283, tiles.immich.cloud and static.immich.cloud. 316 requests were local and 54 external. No raw-IP request bypassed DNS, no request reached any analytics, error-reporting or advertising host, and the single WebSocket connection was to the local server.",
+      "source": "Firefox HAR capture of the MOS runtime projection of apps/immich 0.5.0 (Immich v3.1.0), captured by the human reviewer 2026-08-10 and analysed 2026-08-11",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "observed",
+      "claim": "External requests from the browser are read-only and carry no identity. All 54 external requests were GET, none carried a request body, none carried a cookie, and no external response set a cookie; the only Set-Cookie headers in the capture came from the local Immich server setting its own session. Approximately 20.1 KB left the browser as request headers against 2.9 MB received. The session cookie immich_access_token was never sent across the package boundary.",
+      "source": "Firefox HAR capture of apps/immich 0.5.0, analysed 2026-08-11",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "observed",
+      "claim": "Map tiles are fetched only while the map is open, not on every page view. The first 14.2 seconds of the session produced 315 local requests and zero external ones. External traffic began 0.1 seconds after the map component mounted and 0.0 seconds after the browser requested /api/map/markers from the local server, and ended 11 seconds later when the reviewer left the map; a further 52 seconds of browsing, including a search, produced no external request at all.",
+      "source": "Firefox HAR capture of apps/immich 0.5.0, analysed 2026-08-11",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "observed",
+      "claim": "Photo coordinates are not sent to the tile service. The browser obtains photo markers, including latitude and longitude, from the operator's own server via /api/map/markers and assembles the map overlay locally; requests to the tile service are of the form GET /v1/<zoom>/<x>/<y>.mvt with no query string, no body and no cookie. The tile operator therefore observes that an IP address requested a map square covering a geographic area at a point in time, but never learns which photo, which coordinate, or which user that square relates to. In this reviewer's judgement this is a deliberate and effective privacy design: the feature could have been made fully local and was not, but where an external service was chosen it was built so that the operator is structurally unable to reconstruct where a user has been or taken photographs. It is a middle ground rather than a perfect outcome, and it is disclosed accurately by the publisher.",
+      "source": "Firefox HAR capture of apps/immich 0.5.0 analysed 2026-08-11, with the assessment recorded by the human reviewer",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "observed",
+      "claim": "What the tile requests reveal is a map viewport, at low precision, not a location. A tile is a fixed square of the world map addressed by zoom level and grid position, so GET /v1/<z>/<x>/<y>.mvt tells the operator which square of the map the browser is drawing and nothing about what is drawn on top of it. Across the captured session, which included the reviewer zooming the map, the deepest zoom requested was level 6, where one tile spans roughly 626 km at the equator. The service's own TileJSON advertises maxzoom 15, so the finest square it will ever serve spans roughly 1.2 km: that is the upper bound on the precision available to the operator under any use, and it describes a neighbourhood rather than a street address, a person or a photograph. The underlying map data is OpenStreetMap, per the attribution the service returns. The honest residual is that someone who zooms fully into the area where they photograph would request the square containing it, so repeated use could indicate a coarse area of interest over time; even then no request carries a photo, a coordinate, an account, a cookie or a session, and the operator cannot distinguish a place someone lives from a place they were merely looking at.",
+      "source": "Firefox HAR capture of apps/immich 0.5.0 analysed 2026-08-11, including the TileJSON body returned by https://tiles.immich.cloud/v1.json",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "observed",
+      "claim": "static.immich.cloud is contacted in normal use and serves map rendering assets. It received 11 requests during the map session: nine Noto Sans glyph ranges (label fonts) and the dark sprite atlas (dark@2x.json and dark@2x.png). This host is listed in Immich's own Content-Security-Policy but is not referenced anywhere in the built web client or the server, because its URLs are constructed at runtime from the style document served by tiles.immich.cloud. Static analysis of the shipped bundle could not have found it; only the runtime capture did. It shares the trust boundary, timing and operator of the tile service and should be treated as part of the same map dependency.",
+      "source": "Firefox HAR capture of apps/immich 0.5.0 analysed 2026-08-11, and grep of /build/www in the pinned immich-server image",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "observed",
+      "claim": "Both map hosts are served by Cloudflare rather than by Immich-operated origin servers. tiles.immich.cloud and static.immich.cloud both resolve to 188.114.96.0 / 188.114.97.0 and 2a06:98c1:31xx::, and responses carry server: cloudflare with cf-ray identifiers ending -AMS, indicating the Amsterdam edge. 50 of the 54 external responses reported cf-cache-status: HIT with cache ages of 5.1 and 13.9 days, so those requests were answered at the Cloudflare edge and did not reach an Immich origin. The party observing the requesting IP address is therefore Cloudflare in the first instance; Cloudflare is a United States company operating an EU edge, which is a transfer consideration this review records rather than resolves.",
+      "source": "Firefox HAR capture of apps/immich 0.5.0 analysed 2026-08-11, and DNS resolution of tiles.immich.cloud",
+      "retrievedAt": "2026-08-11"
     },
     {
       "type": "documented",
-      "claim": "Immich's new-version check is a supported system setting (newVersionCheck.enabled) that is enabled by default and can be disabled through the IMMICH_CONFIG_FILE configuration file rather than only the admin UI.",
-      "source": "Immich configuration file documentation (v3.0.2)",
-      "url": "https://docs.immich.app/install/config-file/",
-      "retrievedAt": "2026-07-23"
+      "claim": "Immich's published privacy policy discloses the tile service collection accurately and completely, and the disclosure matches what was independently measured. The policy states that requests to tiles.immich.cloud collect the requested tile, the IP address and timing metrics, and marks the feature optional with a link to the setting that disables it. The runtime capture found exactly that and nothing further: no cookie, no identifier, no request body, no additional field. The same policy section states that hosted services including the Tile Server and the Version Service collect request metadata 'in order to better understand our user base', which is the publisher characterising this metadata as analytics rather than purely operational data. Immich publishes no separate terms of service: the privacy policy is the only policy document on its site, and the AGPL licence is the only other instrument that binds an operator. The policy exposure recorded here is therefore complete rather than partially surveyed.",
+      "source": "Immich Privacy Policy, last updated 6 April 2026 (source text at immich-app/static-pages, apps/root.immich.app/src/routes/privacy-policy/+page.md)",
+      "url": "https://immich.app/privacy-policy/",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "observed",
+      "claim": "Google Cast is present in the Content-Security-Policy but is not loaded by default. www.gstatic.com is permitted in Immich's script-src for the Google Cast SDK, and one file in the web bundle references cast_sender.js. The feature is a per-user preference, gCastEnabled, which upstream defaults to false, and www.gstatic.com was never contacted during the captured session. The only Google-named assets loaded were GoogleSans.ttf and GoogleSansCode.ttf, both served from the operator's own server rather than from a Google font CDN. pay.futo.org, permitted for supporter licence purchase and gated on administrator action, was likewise never contacted.",
+      "source": "server/helmet.json and server/src/utils/preferences.ts at v3.1.0, grep of /build/www in the pinned image, and the Firefox HAR capture analysed 2026-08-11",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "observed",
+      "claim": "Reverse geocoding runs entirely on the operator's own server. The pinned immich-server image ships 54 MB of geodata at /build/geodata, including cities500.txt, admin1CodesASCII.txt, admin2Codes.txt and ne_10m_admin_0_countries.geojson. Turning a photograph's GPS coordinates into a place name therefore requires no external lookup, and the server was observed making no network request while processing uploaded assets.",
+      "source": "MOS runtime projection of apps/immich 0.5.0 (Immich v3.1.0), observed 2026-08-10",
+      "retrievedAt": "2026-08-10"
+    },
+    {
+      "type": "observed",
+      "claim": "On first machine-learning use the immich-machine-learning container downloaded models from five hosts across two operators: huggingface.co, cas-server.xethub.hf.co and us.aws.cdn.hf.co for the CLIP and facial-recognition models, and www.modelscope.cn and cdn-lfs-cn-1.modelscope.cn for the OCR models. ModelScope is operated by Alibaba Cloud. Requests were unauthenticated with no HF_TOKEN configured, so no account identity was attached, though the server's IP address, the timing of first use, and which models are fetched are visible to both operators.",
+      "source": "MOS runtime projection of apps/immich 0.5.0 (Immich v3.1.0), observed 2026-08-10",
+      "retrievedAt": "2026-08-10"
+    },
+    {
+      "type": "observed",
+      "claim": "Across the whole interactive session the machine-learning container received 1068.62 MB from the internet and sent 0.07 MB to it. The outbound total is consistent with TLS handshakes and HTTP request headers for the observed connections and is orders of magnitude too small to carry the uploaded assets; immich-server contacted nothing while processing them. Model artifacts are therefore fetched inbound, and photo and metadata content was not observed leaving the package. TLS payloads were not decrypted, so this bounds behaviour by destination and volume rather than asserting request contents.",
+      "source": "MOS runtime projection of apps/immich 0.5.0 (Immich v3.1.0), observed 2026-08-10",
+      "retrievedAt": "2026-08-10"
+    },
+    {
+      "type": "documented",
+      "claim": "The OCR model download endpoint is chosen by a third-party dependency rather than by Immich or MOS. Immich's OCR feature is enabled by default (machineLearning.ocr.enabled, model PP-OCRv5_mobile), and its TextDetector._download() resolves the URL through the rapidocr package instead of the Hugging Face path every other model uses. That package's bundled default_models.yaml hardcodes www.modelscope.cn URLs for every PP-OCR artifact and pins a SHA256 for each, so the downloads are integrity-checked against an unexpected host rather than merely trusted. MOS keeps OCR enabled because in-photo text search is a substantive feature, and discloses the operator by name instead.",
+      "source": "machine-learning/immich_ml/models/ocr/detection.py at v3.1.0, and rapidocr/default_models.yaml as installed in the pinned machine-learning image",
+      "retrievedAt": "2026-08-10"
+    },
+    {
+      "type": "configured",
+      "claim": "The MOS package bakes an immich-config.json into the server image and points IMMICH_CONFIG_FILE at it, setting newVersionCheck.enabled to false. The primary motivation is product coherence rather than privacy: MOS controls when Immich updates are offered, so an in-app 'new version available' prompt for a release MOS does not yet ship is misleading to the operator. Suppressing the outbound request to version.immich.cloud is a real privacy side effect of that decision, not its purpose. The map remains enabled at its upstream default; MOS has deliberately not disabled it.",
+      "source": "apps/immich/manifest.json, apps/immich/Dockerfile, and apps/immich/immich-config.json"
+    },
+    {
+      "type": "configured",
+      "claim": "MOS keeps the map enabled by decision, and its packaging makes that a property of the app as shipped rather than a per-owner setting. MOS points IMMICH_CONFIG_FILE at a baked-in configuration file, and Immich treats that file as the authority for system settings: updateSystemConfig() returns BadRequestException('Cannot update configuration while IMMICH_CONFIG_FILE is in use') instead of accepting a change. map.enabled is a system setting with no per-user equivalent, since Immich's user-preference schema covers albums, avatar, cast, download, email notifications, folders, memories, people, purchase, ratings, shared links and tags but not the map. The tile requests are therefore part of the package rather than something an owner opts into, which is why this review records telemetry as unavoidable rather than optional; changing it would be a package decision. This follows from MOS's packaging rather than from Immich, which lets an administrator toggle the map in the settings UI when no config file is in use.",
+      "source": "server/src/services/system-config.service.ts and server/src/dtos/user-preferences.dto.ts at v3.1.0, apps/immich/manifest.json (IMMICH_CONFIG_FILE), and apps/immich/immich-config.json",
+      "retrievedAt": "2026-08-11"
     },
     {
       "type": "configured",
@@ -77,52 +172,56 @@
       "type": "configured",
       "claim": "The photo and video library, database, thumbnail cache, and machine learning model cache persist to package-owned volumes, and DISABLE_MACHINE_LEARNING=false runs a local machine-learning service so facial recognition and smart-search inference execute on the MOS server.",
       "source": "apps/immich/manifest.json and apps/immich/README.md"
-    },
-    {
-      "type": "documented",
-      "claim": "Machine learning models (CLIP for smart search and InsightFace for facial recognition) are downloaded from the immich-app organisation on Hugging Face on first use into the local model cache; inference then runs locally, and the photos themselves are not sent to an external service for processing.",
-      "source": "Immich FAQ and machine learning documentation",
-      "url": "https://docs.immich.app/FAQ/",
-      "retrievedAt": "2026-07-23"
-    },
-    {
-      "type": "documented",
-      "claim": "The web map view loads its map style and tiles from Immich's own hosted tile service at tiles.immich.cloud by default; this is a browser-side request made only when a user opens the map, and it is configurable through the map style settings.",
-      "source": "Immich custom map styles documentation",
-      "url": "https://docs.immich.app/guides/custom-map-styles/",
-      "retrievedAt": "2026-07-23"
     }
   ],
   "telemetryControls": [
     {
       "type": "configured",
-      "claim": "MOS disables the enabled-by-default new-version check through the upstream-supported IMMICH_CONFIG_FILE mechanism (newVersionCheck.enabled=false) baked into the server image, so the server issues no scheduled release-check requests to GitHub.",
+      "claim": "MOS disables the enabled-by-default new-version check through the upstream-supported IMMICH_CONFIG_FILE mechanism (newVersionCheck.enabled=false) baked into the server image, so the server issues no scheduled release-check requests to version.immich.cloud. Immich's privacy policy states that this service collects User-Agent, IP address and timing metrics.",
       "source": "apps/immich/immich-config.json and apps/immich/manifest.json",
       "url": "https://docs.immich.app/install/config-file/",
-      "retrievedAt": "2026-07-23"
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "configured",
+      "claim": "MOS has decided to keep the map, because it is one of the fundamental features that make Immich what it is, and this review assessed that external dependency thoroughly before accepting it. The assessment finds it privacy respecting: photo locations never leave the owner's server, the requests reveal a map viewport rather than a location, and nothing identifying travels with them. What remains true is that the dependency exists and the tile operator logs request metadata, which Immich's privacy policy states plainly and which this review measured and found to match. Because MOS ships the map on as part of the package rather than as an opt-in, telemetry is recorded as unavoidable and the posture derives to external-dependency. That posture describes an accepted, examined cost rather than an unfinished assessment: the traffic is fully characterised in the evidence above, and MOS considers it a fair price for the feature.",
+      "source": "apps/immich/immich-config.json, apps/immich/manifest.json, server/src/services/system-config.service.ts at v3.1.0, and the Immich privacy policy",
+      "url": "https://immich.app/privacy-policy/",
+      "retrievedAt": "2026-08-11"
     }
   ],
   "policies": [
     {
+      "kind": "privacy",
+      "url": "https://immich.app/privacy-policy/",
+      "retrievedAt": "2026-08-11",
+      "publisher": "Immich project (FUTO)",
+      "effectiveDate": "2026-04-06"
+    },
+    {
       "kind": "license",
-      "url": "https://github.com/immich-app/immich/blob/v3.0.2/LICENSE",
-      "retrievedAt": "2026-07-23",
+      "url": "https://github.com/immich-app/immich/blob/v3.1.0/LICENSE",
+      "retrievedAt": "2026-08-11",
       "publisher": "Immich project"
     }
   ],
   "provenance": {
     "method": "ai-assisted",
     "provider": "Anthropic",
-    "model": "Claude Opus 4.8",
+    "model": "Claude Opus 5",
     "modelIdentifierSource": "runtime-reported",
     "skill": "assess-app-privacy",
     "skillRevision": "6a741118713a2db4fd0323334fe39cc0d8021197",
-    "repositoryCommit": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
-    "humanReviewed": false
+    "repositoryCommit": "d74ed44a0a6040a80713e68db1f9b14c1f44c956",
+    "humanReviewed": true,
+    "humanReviewer": "Rasmus Puls"
   },
   "openQuestions": [
-    "No runtime network capture was performed against the pinned v3.0.2 images; conclusions rely on package configuration and upstream documentation rather than observed traffic, so residual outbound requests were not independently ruled out.",
-    "Machine learning features download models from Hugging Face on first use and the web map view loads tiles from tiles.immich.cloud; these optional external touchpoints remain unless an operator disables machine learning or overrides the map style, and this review does not disable them.",
-    "The Immich mobile and web clients, and any device or vendor cloud backups configured within them, are outside the reviewed server package boundary."
+    "MOS's use of IMMICH_CONFIG_FILE to disable the version check has a wider effect than the privacy control it was chosen for: while that variable is set Immich rejects every system-configuration change, so storage templates, transcoding, machine-learning options, job concurrency, the backup schedule and the map are all frozen for the owner as well. Whether MOS should keep that trade, expose the settings it freezes, or disable the version check by another means is a packaging decision outside the scope of this review.",
+    "Requests to the tile service carry a Referer header identifying the origin the Immich web client is served from. The capture was taken over loopback, so only http://127.0.0.1:2283/ was sent; a MOS deployment reached through a public domain would send that domain to Cloudflare alongside the tile coordinates under the browser default referrer policy. This is an inference from the observed header rather than a measured result, and has not been confirmed against a domain-based deployment.",
+    "The /photos document returned no Content-Security-Policy and no Referrer-Policy header, and still carried X-Powered-By: Express, which suggests the helmet configuration shipped at server/helmet.json is not enforced on that response. The captured session contacted no host outside that policy, so nothing was observed escaping it, but the policy should be treated as a declaration of intent rather than an enforced control. Only one document response was examined.",
+    "Machine learning models are downloaded on first use from Hugging Face and from Alibaba Cloud's ModelScope, and the map loads tiles from Immich's Cloudflare-fronted infrastructure. These optional external touchpoints remain unless an operator disables machine learning or the map, and this review deliberately does not disable them.",
+    "TLS payloads were not decrypted in either the server-side or client-side capture, so conclusions bound behaviour by destination, method, header content and volume rather than by asserting the contents of encrypted request bodies.",
+    "The Immich mobile applications, and any device or vendor cloud backups configured within them, remain outside the reviewed package boundary. The browser-based web client is now inside the boundary and was captured directly."
   ]
 }

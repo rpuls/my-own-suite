@@ -91,11 +91,16 @@ test('every official package still names its route host after its id, so its add
   // The derivation moved from the package id to the route host. That is a no-op
   // for official packages only while these agree; if a future official package
   // breaks the convention, its public address silently moves, so say so here.
+  // paperless-ngx is the one deliberate divergence: the id carries the upstream
+  // project name, while owners reach it at paperless.<domain> because "ngx" means
+  // nothing to the person typing the address.
+  const hostDiffersFromId = new Map([['paperless-ngx', 'paperless']]);
   const { discoverAppPackages } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
   const packages = discoverAppPackages(require('node:path').resolve(__dirname, '..', '..', 'apps'));
   assert.ok(packages.length > 0, 'expected official packages to be discovered');
   for (const { manifest: official } of packages) {
-    assert.equal(official.routes[0].host, official.id, `official package ${official.id} must serve its own id as its primary route host`);
+    const expected = hostDiffersFromId.get(official.id) ?? official.id;
+    assert.equal(official.routes[0].host, expected, `official package ${official.id} must serve ${expected} as its primary route host`);
   }
 });
 

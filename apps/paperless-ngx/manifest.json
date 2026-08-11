@@ -1,0 +1,190 @@
+{
+  "manifestVersion": 1,
+  "id": "paperless-ngx",
+  "name": "Paperless-ngx",
+  "version": "0.1.0",
+  "minimumMosVersion": "0.17.0",
+  "summary": "A searchable archive of every letter, invoice and contract you own.",
+  "category": "office",
+  "icon": "icon.png",
+  "packageFiles": [
+    "screenshots/documents.png",
+    "screenshots/search.png",
+    "screenshots/document-detail.png",
+    "screenshots/recognised-text.png"
+  ],
+  "catalog": {
+    "description": "Scan a letter or drop in a PDF, and Paperless-ngx reads the text on the page, works out who sent it, and files it under the right type and tags. Months later you find it again by typing a word you happen to remember - a name from the letterhead, an amount, a policy number. Nothing is sent anywhere to make that work: the text recognition runs on your own server, and the original scan is kept exactly as it arrived.",
+    "replaces": ["Evernote", "Adobe Scan"],
+    "screenshots": [
+      {
+        "src": "screenshots/documents.png",
+        "alt": "The Paperless-ngx document list showing filed household paperwork with coloured tags and thumbnails",
+        "caption": "Your paperwork, filed and tagged"
+      },
+      {
+        "src": "screenshots/search.png",
+        "alt": "Typing in the Paperless-ngx search box, with matching documents, tags and senders listed underneath",
+        "caption": "Find anything by typing a word from it"
+      },
+      {
+        "src": "screenshots/document-detail.png",
+        "alt": "A council tax bill open in Paperless-ngx, its sender, type and tags shown beside the scanned page",
+        "caption": "Every document keeps its sender, type and tags"
+      },
+      {
+        "src": "screenshots/recognised-text.png",
+        "alt": "The text Paperless-ngx recognised from a scanned letter, shown next to the original page",
+        "caption": "The text read off the page, searchable word for word"
+      }
+    ],
+    "tags": [
+      "documents",
+      "scanning",
+      "ocr",
+      "paperwork",
+      "archive",
+      "evernote-alternative"
+    ],
+    "features": [
+      {
+        "title": "Search the words inside your paper",
+        "body": "Every page that arrives is read once, so a scanned letter can be found later by any word printed on it - a reference number, an amount, or the name of the company that sent it."
+      },
+      {
+        "title": "Files new documents for you",
+        "body": "Paperless learns from the documents you have already sorted, then suggests the sender, the document type and the tags for each new arrival."
+      },
+      {
+        "title": "Keeps the original exactly as it came in",
+        "body": "The scan you fed in is stored untouched next to the searchable version, so you can always download the document you actually received."
+      },
+      {
+        "title": "Reads English and Dutch out of the box",
+        "body": "Text recognition runs on your own machine, with English, Dutch, German, French, Italian and Spanish already installed - no account and no upload to anyone else's service."
+      }
+    ],
+    "resourceHint": {
+      "level": "medium",
+      "label": "Medium resources",
+      "description": "Runs Paperless plus a Valkey broker, and text recognition is CPU-heavy while documents are being processed."
+    },
+    "privacy": {
+      "summary": "Paperless-ngx stores and processes your documents on your own server. Text recognition runs locally in the container, and the optional AI and cloud-OCR features are off unless you configure them yourself.",
+      "notes": [
+        "Only the Paperless web service is reachable through Caddy; the Valkey broker stays internal to the package network.",
+        "Optional remote OCR through Azure AI and optional AI suggestions through an OpenAI-compatible service or Ollama are disabled by default, and MOS does not configure them.",
+        "MOS turns off Paperless' own update check, which would contact GitHub, because MOS handles app updates itself.",
+        "Documents, thumbnails and the search index live in package-owned MOS volumes; back them up before relying on this package for records you cannot scan again."
+      ]
+    },
+    "links": {
+      "website": "https://docs.paperless-ngx.com/",
+      "docs": "https://docs.paperless-ngx.com/configuration/",
+      "repository": "https://github.com/paperless-ngx/paperless-ngx"
+    },
+    "related": [
+      "stirling-pdf"
+    ]
+  },
+  "setup": {
+    "fields": [
+      {
+        "id": "adminUsername",
+        "type": "text",
+        "label": "Paperless admin username",
+        "required": true,
+        "default": "${owner.email}"
+      },
+      {
+        "id": "adminPassword",
+        "type": "password",
+        "label": "Paperless admin password",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Paperless admin password"
+      },
+      {
+        "id": "secretKey",
+        "type": "password",
+        "label": "Paperless secret key",
+        "required": true,
+        "secret": true,
+        "redactedLabel": "Generated Paperless secret key",
+        "generated": {
+          "kind": "random",
+          "bytes": 32,
+          "encoding": "base64url"
+        }
+      },
+      {
+        "id": "ocrLanguage",
+        "type": "text",
+        "label": "Document language as a three-letter code - eng, nld, deu, fra, ita or spa. Combine two with a plus, such as nld+eng.",
+        "required": true,
+        "default": "eng"
+      },
+      {
+        "id": "timeZone",
+        "type": "text",
+        "label": "Time zone, such as Europe/Amsterdam",
+        "required": true,
+        "default": "Europe/Amsterdam"
+      }
+    ]
+  },
+  "resources": {
+    "services": {
+      "broker": {
+        "dockerfile": "Dockerfile.broker",
+        "internalPort": 6379,
+        "volumes": [
+          "redis-data:/data"
+        ]
+      },
+      "paperless": {
+        "dockerfile": "Dockerfile",
+        "internalPort": 8000,
+        "env": {
+          "PAPERLESS_REDIS": "redis://broker:6379",
+          "PAPERLESS_DBENGINE": "sqlite",
+          "PAPERLESS_URL": "${app.publicUrl}",
+          "PAPERLESS_ALLOWED_HOSTS": "paperless",
+          "PAPERLESS_ENABLE_UPDATE_CHECK": "false",
+          "PAPERLESS_SECRET_KEY": "${secret.secretKey}",
+          "PAPERLESS_ADMIN_USER": "${config.adminUsername}",
+          "PAPERLESS_ADMIN_PASSWORD": "${secret.adminPassword}",
+          "PAPERLESS_OCR_LANGUAGE": "${config.ocrLanguage}",
+          "PAPERLESS_TIME_ZONE": "${config.timeZone}"
+        },
+        "volumes": [
+          "data:/usr/src/paperless/data",
+          "media:/usr/src/paperless/media",
+          "export:/usr/src/paperless/export",
+          "consume:/usr/src/paperless/consume"
+        ]
+      }
+    }
+  },
+  "routes": [
+    {
+      "host": "paperless",
+      "service": "paperless"
+    }
+  ],
+  "homepage": {
+    "group": "Office",
+    "name": "Paperless-ngx",
+    "description": "Search your scanned paper documents.",
+    "icon": "paperless-ngx"
+  },
+  "health": {
+    "type": "http",
+    "url": "http://paperless:8000/accounts/login/"
+  },
+  "update": {
+    "backupRequired": true,
+    "downtime": "brief",
+    "rollback": "safe"
+  }
+}

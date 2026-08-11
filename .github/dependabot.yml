@@ -63,6 +63,15 @@ updates:
           - "version-update:semver-major"
 
   - package-ecosystem: "docker"
+    directory: "/apps/paperless-ngx"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:35"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "docker"
     directory: "/apps/stirling-pdf"
     schedule:
       interval: "weekly"

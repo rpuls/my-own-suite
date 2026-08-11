@@ -7,8 +7,8 @@ import { Steps } from '@astrojs/starlight/components'
 
 MOS creates manual, whole-suite backups on storage that is mounted on the server running MOS. The practical destination depends on where that server lives.
 
-:::danger[Every backup is an unencrypted full-secret export]
-A bundle contains app data, owner and app credentials, Suite Manager state, and HTTPS/provider secrets. Anyone who obtains it can read or reuse those secrets. MOS does not encrypt backup bundles today. Use encrypted removable media or an encrypted storage volume, restrict access to it, and do not leave a downloaded bundle in an ordinary Downloads folder or upload it to casual cloud storage.
+:::danger[Backups are not encrypted]
+Bundles contain your data, credentials, and secrets. Anyone with access can read or reuse them. Keep backups on encrypted, access-controlled storage—never in Downloads or casual cloud storage.
 :::
 
 ## What a backup contains
@@ -75,3 +75,5 @@ Important boundaries:
 ## Current limitations
 
 Manual only · mounted local/block storage only · no object-storage destination · unencrypted full-secret bundles · whole-suite restore only · version-sensitive restore.
+
+Encrypted bundles, scheduled backups with retention, and object-storage destinations are the next things being built here. If you work with backup, storage, encryption, or recovery systems and want to shape how they land, [join us on Discord](https://discord.gg/YMpF6faBCv) or [open a GitHub issue](https://github.com/rpuls/my-own-suite/issues).

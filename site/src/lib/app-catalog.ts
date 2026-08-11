@@ -12,6 +12,7 @@ export type AppScreenshot = { src: string; alt: string; caption: string }
 export type AppService = { id: string; role: string; exposed: boolean; persistent: boolean }
 export type CatalogApp = {
   id: string
+  routeHost: string
   name: string
   version: string
   category: string
@@ -223,6 +224,9 @@ export const catalogApps: CatalogApp[] = Object.entries(manifestModules)
       .sort((a, b) => Number(b.exposed) - Number(a.exposed))
     return {
       id: String(manifest.id ?? ''),
+      // The address is the route host, which an app may deliberately name
+      // differently from its package id.
+      routeHost: String(routes[0]?.host ?? manifest.id ?? ''),
       name: String(manifest.name ?? ''),
       version: String(manifest.version ?? ''),
       category: categoryLabel(String(manifest.category ?? '')),

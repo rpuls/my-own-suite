@@ -437,6 +437,26 @@ test('backup refuses an undersized destination before touching the runtime', asy
   assert.ok(!w.system.events.some(([event]) => event === 'stopContainer' || event === 'stopService'));
 });
 
+test('backup stages suite state off the destination filesystem', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const core = w.core();
+  const destination = `${path.resolve(w.destination())}${path.sep}`;
+  const realCopyTree = w.system.copyTree.bind(w.system);
+  const stagedTargets = [];
+  w.system.copyTree = async (source, target, options) => {
+    const resolved = path.resolve(target);
+    stagedTargets.push(resolved);
+    if (resolved.startsWith(destination)) {
+      throw Object.assign(new Error(`EPERM: operation not permitted, chmod '${target}'`), { code: 'EPERM' });
+    }
+    return realCopyTree(source, target, options);
+  };
+  await core.backup(w.createJob('backup', { destinationId: w.destination() }));
+  assert.ok(stagedTargets.length > 0);
+  assert.ok(stagedTargets.every((target) => !target.startsWith(destination)));
+});
+
 test('backup classifies volumes by ownership evidence, not bare prefix', async () => {
   const w = await world();
   await w.installApp(STIRLING);

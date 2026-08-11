@@ -18,7 +18,7 @@ Rules for editing:
 - When a theme's gate is met, delete the theme and record the contract in `docs/decisions.md`.
 
 Consolidated 2026-07-30 from `pre-beta-checklist.md`, `beta-main-cutover-checklist.md`,
-`backup-restore-reliability-plan.md`, and the app-package refactor plan. Current release: 0.16.0.
+`backup-restore-reliability-plan.md`, and the app-package refactor plan. Current release: 0.17.0.
 
 ---
 
@@ -73,6 +73,17 @@ domain, and "what if myownsuite.org disappears" has a published answer.
   explicit "if this project vanishes, your suite keeps working and anyone can mirror it." Answers
   both the Cloudron-history question and the revenue-model question that launch will produce.
   *(Small)*
+- **B4 — Let owners choose privacy-relevant app settings at install time.** MOS pins app
+  configuration with a baked-in config file, which is what makes a hardened default possible and also
+  freezes that setting for the owner. Immich is the worked example: the signed review found its map
+  is a genuinely valuable feature that reaches an external tile service, and because MOS ships it on
+  with no way to change it, the honest posture is `external-dependency` — the same grade an app earns
+  when an upstream account is mandatory, which flattens a real difference. Surfacing a small set of
+  package-declared, privacy-relevant settings during install would let the owner make that call, and
+  would let a package that is only externally dependent by default derive `privacy-configured` once
+  the owner turns the touchpoint off. Needs a manifest field for owner-visible settings, install-flow
+  UI built from the shared primitives, and a review contract that can express a posture conditional
+  on a choice rather than one fixed at packaging time. *(Medium)*
 
 ### C. What a tester hits in the first hour
 
@@ -95,16 +106,14 @@ setup, and never waits at a screen that looks hung.
   is billed per GB at every provider, and app data cannot be moved off the root disk today — so a
   reader arriving from Google Photos has no way to predict either the size or the bill. This is where
   own hardware is the honest answer for large libraries. *(Small)*
-- **C3 — App-install duration expectations.** First installs of heavy apps take up to ~10 minutes and
-  nothing says so; a user watching "Starting app" has no reason to believe it isn't hung. Install
-  stepper copy, `guides/apps.md`, first-start. *(Small)*
+- **C3 — App-install duration expectations.** `#235`. First installs of heavy apps take up to ~10
+  minutes and nothing says so; a user watching "Starting app" has no reason to believe it isn't hung.
+  Install stepper copy, `guides/apps.md`, first-start. *(Small)*
 - **C4 — Returning-owner welcome screen.** First-run state is handled; the returning-owner state has
   no design — quicklinks, apps running, last-backup age, updates available. The post-setup redirect
   question inside this item is settled: accepting the terms lands the owner on Suite Manager, because
   first run is the only moment with a server login to hand over, and ordinary sign-ins go on to the
   Homepage dashboard as before. *(Medium)*
-- **C5 — Finish suite user management in Settings.** `#130`. Owner password change shipped in
-  `v0.16.0`; re-scope the issue to what remains rather than leaving it open as written. *(Small)*
 
 ### H. Install media people can just flash
 
@@ -129,6 +138,56 @@ exist" and "a stranger can safely boot them".
 A flashable image that installs an OS and then runs a root shell script is the highest-trust artifact
 the project ships, which is what makes **E3** load-bearing rather than aspirational.
 
+### I. Knowing why something broke
+
+**Gate:** a tester who hits a failure can hand over one file that contains the reason — and MOS wrote
+that reason down before anyone thought to go looking for it.
+
+MOS is blind, and more completely than "we should add an export button" suggests. The backend's entire
+logging surface is eleven `console` lines, all of them boot banner; the top-level request handler
+classifies an internal error, returns `Internal server error.` and **never writes it anywhere**; and the
+host agents run every privileged command with `stdio: 'ignore'`, so when a package's `docker build`
+fails the reason exists for a few milliseconds inside a pipe and is then discarded. The owner sees
+`APP_RUNTIME_APPLY_FAILED`. So does the maintainer, the database, and any bundle we might export. The
+export is the visible half; the half that matters is that something was recorded at all.
+
+This lands in **Now** rather than at the alpha gate for a reason that is about the calendar, not the
+code: the whole point of the beta window is friend-testers hitting failures on machines nobody can SSH
+into. Every week without this converts a bug report into a shrug. **I1** and **I2** are the two that
+change that on their own, before any of the rest exists.
+
+- **I1 — A structured logger, and stop discarding internal errors.** `#246`. JSON lines to stdout;
+  journald already captures them, so no files, no rotation, no dependency in a backend that has none.
+  The single highest-value line in the theme is logging the error the catch-all currently throws away.
+  *(Small)*
+- **I2 — Capture failed-command output in the host agents.** `#247`. This **amends a stated security
+  property** — `system-agents/README.md` promises logs never include command output — so it should be
+  argued before it is built and recorded in `docs/decisions.md` after. The real hazard is not stderr but
+  the command line: app containers are started with materialized secrets on the argv, so any error path
+  that echoes what it tried to run leaks every app secret at once. Capture output, never arguments.
+  *(Medium — posture change)*
+- **I3 — Persist and show why an app operation failed.** `#248`. `app_operations.diagnostics` was
+  designed, shipped, and never written to by anything. Redact on the way in, not on the way out: once
+  it is in SQLite it is also in every backup bundle. *(Small)*
+- **I4 — Bound app container log growth.** `#249`. No `--log-opt` on `docker run` and no `daemon.json`
+  anywhere, so every app writes to an uncapped json-file log until the root disk fills. A disk-safety
+  fix on its own, and the precondition for bounding anything we later collect. *(Small)*
+- **I5 — Pin journald persistence and retention.** `#250`. **I1** and **I2** both route into the
+  journal, and nothing in the repo configures it. If it is volatile a reboot erases everything, which is
+  exactly wrong: rebooting is what people do immediately before asking for help. Verify both install
+  paths, then set it explicitly rather than inheriting a base-image default. *(Small)*
+- **I6 — A diagnostics agent that can read host state.** `#251`. Suite Manager is unprivileged, so
+  collection has to be an agent. Its own socket rather than a new operation on the app agent, because
+  reading arbitrary host state is a different kind of power and should be auditable as one thing. The
+  collector list is data, modelled on `managedStateTargets`. Container labels already carry package
+  version and digest, so every collected log stamps itself. *(Medium)*
+- **I7 — Export a redacted diagnostics bundle from Settings.** `#252`. MOS can redact by **exact
+  value** rather than by guessing at token shapes, because Suite Manager holds the plaintext of every
+  app secret — an unusually strong position, and the reason this is safe to ship. A streamed zip, so the
+  owner can open it and read what they are about to send, with a plain-language summary and a redaction
+  report that proves masking ran. The decision worth making deliberately is hostnames and IP addresses:
+  not secret, but identifying. *(Medium)*
+
 ---
 
 ## Alpha gate — the bar before MOS is called an alpha
@@ -137,68 +196,6 @@ The beta notice promises that if the project proves its worth and graduates to a
 goes through full verification by human engineers. This section is the rest of that promise: the
 things a prototype is allowed to skip and an alpha is not. **Nothing here is a beta blocker** — it is
 the list that keeps "we'll harden it at alpha" from being a sentence nobody wrote down.
-
-### AL-M — The app manifest contract, locked
-
-The manifest is the only contract in MOS that becomes genuinely unchangeable. Everything else is
-renegotiable because both sides of it live in this repository; the manifest is a promise to package
-authors who are not here yet, and the day one of them ships against it, its shape stops being ours.
-So the gate is not "the manifest is good enough" but "the manifest is finished, documented, and
-mechanically prevented from needing to change".
-
-Not a beta blocker, but the one alpha gate whose cost rises every week it waits. The contributor app
-wave (`#214`–`#239`) is authoring manifests against today's shape right now, and every package that
-lands before the lock is one more migration. The irreversible moment comes later — the first package
-published outside this repository — but the cheap moment is now.
-
-**Gate:** a stranger can author a working package from published documentation alone, validate it
-without running MOS, and be certain no future MOS release will reject it.
-
-- **M1 — The amendment mechanism, before any freeze.** Locking is only safe if amending is possible
-  without a new generation: a `manifestVersion` field, since nothing today declares which schema a
-  manifest targets; a uniform "unknown fields are ignored, never fatal" rule; and a UI contract that
-  every field beyond the required core renders as absent rather than as an error. Today the rule is
-  accidentally inverted in places — `update` and `catalog.links` reject unknown keys, so a field
-  added in a later MOS makes the package invalid on an earlier one, which is precisely the failure
-  the escape hatch exists to prevent. Needs a test that fails if anyone reintroduces a closed
-  allow-list. *(Medium)*
-- **M2 — Generalize the app-shaped fields out of the generic schema.** `routes[].internalIcalBridge`
-  is a Radicale feature living in the route contract, and `homepage.widget` validates only
-  `calendar` / `monthly` / `showTime: true`. Freezing today promises both forever. The calendar case
-  is probably a Homepage-wide widget standard that several calendar apps implement rather than a
-  Radicale one, so the answer is likely a general widget contract rather than removal — that needs
-  establishing before it is designed. *(Medium — needs research first)*
-- **M3 — Specify the template grammar.** `${config.*}`, `${secret.*}` and
-  `${app.publicUrl|host|scheme}` resolve in the backend while `${owner.name|email}` resolves only in
-  the frontend, and the validator checks none of them — so a mistyped `${config.adminUserName}`
-  passes validation and ships as a literal string into a container env var, failing silently on
-  someone else's machine. This grammar is half the contract; locking the JSON shape without it locks
-  half a thing. *(Medium)*
-- **M4 — Outlier-app research: decide what the permanent fields are.** Design against apps MOS has
-  not onboarded rather than the six it has — ones needing outbound SMTP, an OIDC client, a background
-  worker, a scheduled job, GPU access, a second exposed port, file-based config instead of env vars,
-  or knowledge of their own external URL at build time. The output is a decided list of fields
-  general-purpose enough to be permanent and an equally decided list of what stays out. Two questions
-  it must settle: whether the manifest carries one free-form namespaced object MOS never interprets,
-  which buys flexibility at the cost of the predictability the lock exists for; and whether the
-  capability system (`exports`, `integrations`, `configTargets`, `usefulness`) is mature enough to
-  freeze on two packages' evidence, or is declared provisional and held out of the baseline.
-  *(Large — the decisive item)*
-- **M5 — Objective defects.** `catalog.replaces` is a slash-joined string doing two jobs: display
-  wants one name, search wants every alias. An array serves both. Carry the remaining small
-  corrections M4 surfaces here rather than opening an issue per field. *(Small)*
-- **M6 — Rebuild the validator around the locked shape, and publish a schema.** Validation is
-  hand-written imperative code in `package-manifest.cjs` with no machine-readable artifact, so an
-  external author cannot check a manifest without running MOS's backend, and there is nothing to
-  version, diff, or publish. A JSON Schema is what third parties validate against and what the
-  authoring documentation is generated from rather than drifting away from. *(Medium)*
-- **M7 — Authoring documentation, and everything that points at it.** The "how to package your app
-  for MOS" reference a stranger works from, plus the passes over `apps/README.md`, the app-package
-  contributor issues, the site, and the agent rules and skills that describe the old shape. *(Medium)*
-- **M8 — Record the amendment policy where it binds future work.** `docs/decisions.md` takes the
-  contract; `AGENTS.md` takes the rule: a manifest change must be a non-required additive, is an
-  emergency measure rather than routine maintenance, and never becomes something the UI requires.
-  Without this written down, the lock lasts exactly as long as the person who remembers it. *(Small)*
 
 ### AL-S — Security hardening
 
@@ -314,8 +311,10 @@ the update or install path requires SSH.
   sign-ins, refused packages, download-bound trips, and failed catalog refreshes — with no route and
   no UI, so nothing is ever shown to the owner. A failing catalog refresh is the quiet one: the cache
   keeps serving while MOS stops learning which installed packages have advisories. *(Small)*
-- **E5 — Passkeys, and decide the MFA shape.** `#164`. Research passkey-as-second-factor vs
-  passkey-as-sole-credential and bring a recommendation before building. *(Medium)*
+- **E5 — Passkeys, and decide the MFA shape.** `#238`, after `#237`. Research
+  passkey-as-second-factor vs passkey-as-sole-credential and bring a recommendation before
+  building. The deciding constraint is that the relying-party ID is the Home host, which changes
+  when an owner applies HTTPS and will change again under **B2**. *(Medium)*
 
 ### F. Runtime hardening
 
@@ -330,9 +329,9 @@ the update or install path requires SSH.
 
 **Gate:** the claim-drift class the July 2026 audit found cannot recur silently.
 
-- **G1 — Automated stale-wording checks for active documentation.** The audit's core finding was that
-  claims outlived the facts and lived in more places than the facts did. *(Small)*
-- **G2 — Site link, accessibility, and clean-build checks in CI.** Clean-build landed with the
+- **G1 — Automated stale-wording checks for active documentation.** `#224`. The audit's core finding
+  was that claims outlived the facts and lived in more places than the facts did. *(Small)*
+- **G2 — Site link, accessibility, and clean-build checks in CI.** `#225`. Clean-build landed with the
   deployment cutover; links and a11y did not. *(Small)*
 
 ---
@@ -342,10 +341,12 @@ the update or install path requires SSH.
 - **L1 — Restore the shared SMTP relay.** A MOS1 capability (v0.9.0) absent in MOS2; apps half-work
   without outbound mail — Vaultwarden hints at it, Seafile notifications are off. Relay presets only,
   explicitly **not** a mail server. *(Medium)*
-- **L2 — Advanced User mode.** `#124`. A project-wide opt-in for technical and experimental controls,
-  starting with the Homepage escape hatches (`custom.css`, `custom.js`, `docker.yaml`). Overlaps the
-  existing "Advanced details" convention in `AGENTS.md`; unify rather than add a second concept.
-  *(Medium)*
+- **L2 — Advanced User mode.** `#124`. A project-wide opt-in for technical and experimental controls.
+  Needs a first real candidate before it is buildable: the Homepage escape hatches it was conceived
+  around (`custom.css`, `custom.js`, `docker.yaml`) were removed rather than hidden, so `HOMEPAGE_FILES`
+  now exposes only the four dashboard files and there is nothing left there to put behind a mode.
+  Overlaps the existing "Advanced details" convention in `AGENTS.md`; unify rather than add a second
+  concept. *(Medium)*
 - **L3 — Communicate capacity in-product.** See **OQ2**. Folds in resource estimation/preflight for
   Immich, Seafile, and ONLYOFFICE. *(Medium)*
 - **L4 — One proven local VM/filesystem snapshot integration.** Fast same-machine rollback; never a
