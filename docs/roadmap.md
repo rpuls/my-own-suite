@@ -18,7 +18,7 @@ Rules for editing:
 - When a theme's gate is met, delete the theme and record the contract in `docs/decisions.md`.
 
 Consolidated 2026-07-30 from `pre-beta-checklist.md`, `beta-main-cutover-checklist.md`,
-`backup-restore-reliability-plan.md`, and the app-package refactor plan. Current release: 0.16.0.
+`backup-restore-reliability-plan.md`, and the app-package refactor plan. Current release: 0.17.0.
 
 ---
 
@@ -106,16 +106,14 @@ setup, and never waits at a screen that looks hung.
   is billed per GB at every provider, and app data cannot be moved off the root disk today — so a
   reader arriving from Google Photos has no way to predict either the size or the bill. This is where
   own hardware is the honest answer for large libraries. *(Small)*
-- **C3 — App-install duration expectations.** First installs of heavy apps take up to ~10 minutes and
-  nothing says so; a user watching "Starting app" has no reason to believe it isn't hung. Install
-  stepper copy, `guides/apps.md`, first-start. *(Small)*
+- **C3 — App-install duration expectations.** `#235`. First installs of heavy apps take up to ~10
+  minutes and nothing says so; a user watching "Starting app" has no reason to believe it isn't hung.
+  Install stepper copy, `guides/apps.md`, first-start. *(Small)*
 - **C4 — Returning-owner welcome screen.** First-run state is handled; the returning-owner state has
   no design — quicklinks, apps running, last-backup age, updates available. The post-setup redirect
   question inside this item is settled: accepting the terms lands the owner on Suite Manager, because
   first run is the only moment with a server login to hand over, and ordinary sign-ins go on to the
   Homepage dashboard as before. *(Medium)*
-- **C5 — Finish suite user management in Settings.** `#130`. Owner password change shipped in
-  `v0.16.0`; re-scope the issue to what remains rather than leaving it open as written. *(Small)*
 
 ### H. Install media people can just flash
 
@@ -313,8 +311,10 @@ the update or install path requires SSH.
   sign-ins, refused packages, download-bound trips, and failed catalog refreshes — with no route and
   no UI, so nothing is ever shown to the owner. A failing catalog refresh is the quiet one: the cache
   keeps serving while MOS stops learning which installed packages have advisories. *(Small)*
-- **E5 — Passkeys, and decide the MFA shape.** `#164`. Research passkey-as-second-factor vs
-  passkey-as-sole-credential and bring a recommendation before building. *(Medium)*
+- **E5 — Passkeys, and decide the MFA shape.** `#238`, after `#237`. Research
+  passkey-as-second-factor vs passkey-as-sole-credential and bring a recommendation before
+  building. The deciding constraint is that the relying-party ID is the Home host, which changes
+  when an owner applies HTTPS and will change again under **B2**. *(Medium)*
 
 ### F. Runtime hardening
 
@@ -329,9 +329,9 @@ the update or install path requires SSH.
 
 **Gate:** the claim-drift class the July 2026 audit found cannot recur silently.
 
-- **G1 — Automated stale-wording checks for active documentation.** The audit's core finding was that
-  claims outlived the facts and lived in more places than the facts did. *(Small)*
-- **G2 — Site link, accessibility, and clean-build checks in CI.** Clean-build landed with the
+- **G1 — Automated stale-wording checks for active documentation.** `#224`. The audit's core finding
+  was that claims outlived the facts and lived in more places than the facts did. *(Small)*
+- **G2 — Site link, accessibility, and clean-build checks in CI.** `#225`. Clean-build landed with the
   deployment cutover; links and a11y did not. *(Small)*
 
 ---
@@ -341,10 +341,12 @@ the update or install path requires SSH.
 - **L1 — Restore the shared SMTP relay.** A MOS1 capability (v0.9.0) absent in MOS2; apps half-work
   without outbound mail — Vaultwarden hints at it, Seafile notifications are off. Relay presets only,
   explicitly **not** a mail server. *(Medium)*
-- **L2 — Advanced User mode.** `#124`. A project-wide opt-in for technical and experimental controls,
-  starting with the Homepage escape hatches (`custom.css`, `custom.js`, `docker.yaml`). Overlaps the
-  existing "Advanced details" convention in `AGENTS.md`; unify rather than add a second concept.
-  *(Medium)*
+- **L2 — Advanced User mode.** `#124`. A project-wide opt-in for technical and experimental controls.
+  Needs a first real candidate before it is buildable: the Homepage escape hatches it was conceived
+  around (`custom.css`, `custom.js`, `docker.yaml`) were removed rather than hidden, so `HOMEPAGE_FILES`
+  now exposes only the four dashboard files and there is nothing left there to put behind a mode.
+  Overlaps the existing "Advanced details" convention in `AGENTS.md`; unify rather than add a second
+  concept. *(Medium)*
 - **L3 — Communicate capacity in-product.** See **OQ2**. Folds in resource estimation/preflight for
   Immich, Seafile, and ONLYOFFICE. *(Medium)*
 - **L4 — One proven local VM/filesystem snapshot integration.** Fast same-machine rollback; never a
