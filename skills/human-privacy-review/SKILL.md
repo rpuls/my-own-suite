@@ -91,13 +91,36 @@ which one you have.
 
 The item that separates this procedure from another documentation pass.
 
-Requirements:
+### How the session runs
+
+Get this shape right before touching anything, because getting it wrong costs
+the reviewer's time rather than yours.
+
+**You run the containers and the capture. The reviewer only uses a browser.**
+Do not hand the reviewer a script to run, a host to ssh into, or a set of
+commands to paste. Have the rig built, started, and its controls verified
+*before* you involve them; then give them one URL, credentials, and a list of
+what to exercise. They drive the app and save a HAR, say when they are done, and
+you collect and analyse. Anything else turns a seven-minute browsing session
+into an afternoon.
+
+Verify the controls landed *before* handing over. A capture that was already
+broken wastes the whole session, and you only learn that at the end.
+
+### Requirements
 
 - The MOS runtime projection, not upstream's compose. The review binds to the
-  MOS package.
+  MOS package. **This does not require an installed MOS host**: the projection
+  is the output of Suite Manager's own projection code, so render it from there
+  and start the containers the way the host agent does. A hand-written compose
+  file that resembles the manifest is not the projection, and the difference is
+  exactly where an unnoticed divergence hides.
 - A logging resolver as the containers' only upstream resolver, so every name
   they try to resolve is recorded.
 - A packet capture covering everything crossing the package-network boundary.
+  Taking it from inside each container's own network namespace also attributes
+  every byte to one container and catches its DNS to the container runtime's
+  embedded resolver on loopback, which never crosses the bridge.
 - **A control.** Inject a deliberate outbound request from inside the
   containers and confirm it appears. Without a control, a silent log is
   indistinguishable from a broken capture, and reporting it as silence is the
@@ -105,9 +128,18 @@ Requirements:
   evidence so it can never be misread as the app's behaviour.
 - Exercise the features under review — first boot, account creation, and the
   real workload. Optional features do not reveal themselves at idle.
+- **A saved HAR, not a remembered one.** The reviewer watching the network panel
+  and reporting what they saw is real evidence, but it cannot be re-analysed and
+  supports no claim about headers, cookies or bodies. Ask for the file while the
+  session is still open; afterwards it costs another session.
+
+Collect every log and capture *before* stopping or removing anything. Evidence
+collection must never be the step that destroys the evidence.
 
 Report the window, the packet count, and what was contacted. A short window is
-a limit on the finding, not a clean result.
+a limit on the finding, not a clean result. Note which scheduled tasks fell
+inside the window and which did not; an hourly job in a ten-minute capture was
+not observed doing nothing, it was not observed at all.
 
 ## Item 5 — Which direction does the data flow?
 

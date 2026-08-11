@@ -22,11 +22,12 @@
     },
     "paperless-ngx": {
       "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:aa2ef78e7fb323f37ef902ce878c81cde9ea4d9b127b793e91006af1e5da75fa",
+      "packageDigest": "sha256:e2e787bb2ff19abd3a6cbda2f705b189e170404b77ca7aa375a915290c0f980a",
       "packageVersion": "0.1.0",
       "path": "apps/paperless-ngx",
       "privacy": {
-        "status": "review-required"
+        "posture": "private-by-default",
+        "status": "reviewed"
       }
     },
     "radicale": {

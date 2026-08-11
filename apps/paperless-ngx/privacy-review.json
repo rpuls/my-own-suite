@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "appId": "paperless-ngx",
+  "reviewedAt": "2026-08-11T00:00:00.000Z",
+  "expiresAt": "2027-02-11T00:00:00.000Z",
+  "scope": {
+    "packageVersion": "0.1.0",
+    "packageDigest": "sha256:e2e787bb2ff19abd3a6cbda2f705b189e170404b77ca7aa375a915290c0f980a",
+    "source": {
+      "kind": "official-git",
+      "repository": "https://github.com/rpuls/my-own-suite",
+      "path": "apps/paperless-ngx",
+      "revision": "3fa1119973bac8c2065806961736c66996543978",
+      "trust": "mos-reviewed"
+    },
+    "components": [
+      {
+        "name": "Paperless-ngx",
+        "version": "3.0.5",
+        "artifact": "ghcr.io/paperless-ngx/paperless-ngx",
+        "digest": "sha256:65a4cabf0169ea7fbd90ab7bb28ba3f8b5909613635acda1a03ad606f34b456b"
+      },
+      {
+        "name": "Valkey",
+        "version": "9.1.1",
+        "artifact": "docker.io/valkey/valkey",
+        "digest": "sha256:ee91f7a174ac4d6a6b0685b3a60e321f0a9dbbb691f9b0e285be2ba1d1be8328"
+      }
+    ],
+    "clientsExcluded": [
+      "Third-party Paperless-ngx mobile and desktop clients, none of which are published by the project",
+      "Third-party Paperless-ngx API clients",
+      "Network scanners or multifunction printers configured by the owner to deposit documents into the consume folder",
+      "IMAP mail servers reached by mail accounts the owner adds after installation"
+    ]
+  },
+  "posture": "private-by-default",
+  "dimensions": {
+    "telemetry": "none-observed",
+    "externalServices": "none-required",
+    "accountDependency": "local-only",
+    "dataProcessing": "local",
+    "policyExposure": "self-hosted-software-only",
+    "confidence": "verified"
+  },
+  "evidence": [
+    {
+      "type": "observed",
+      "claim": "Runtime network capture of this package. Both containers were run from the MOS runtime projection, rendered by Suite Manager's own projection code, with a logging resolver as their only upstream resolver and a packet capture inside each container's own network namespace, so DNS to Docker's embedded resolver on loopback was recorded alongside everything crossing the package boundary. Across a 7 minute 25 second session covering first boot, superuser creation, document upload, OCR, search, opening documents and every settings page, the only DNS name either container resolved, apart from the injected control host, was the internal service alias 'broker' (300 times from the paperless container and never from the broker container), and the only TLS server name either presented was that same control host. Control requests were injected into both containers and appear in both the DNS and the packet record, so the silence is an observation rather than a failed capture.",
+      "source": "MOS runtime projection of apps/paperless-ngx 0.1.0 (Paperless-ngx 3.0.5), observed 2026-08-11 21:36:43 to 21:44:08 UTC",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "observed",
+      "claim": "No connection bypassed name resolution. Every IP conversation recorded on either container was internal to the package network, on loopback, or to one of the two addresses the control host resolved to; there was no unexplained external address, which is the check that catches a hardcoded endpoint reached without a DNS lookup. Both external conversations began 3.8 and 4.1 seconds into the capture and lasted under a twentieth of a second each, matching the control injection window, and no external conversation occurred during the remaining seven minutes of interactive use. There was no IPv6 egress at all: the only IPv6 traffic was link-local neighbour discovery and ::1 loopback, and although AAAA records for the control host were requested, no IPv6 connection was established.",
+      "source": "MOS runtime projection of apps/paperless-ngx 0.1.0, tshark conversation and protocol analysis of the per-container captures, observed 2026-08-11",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "observed",
+      "claim": "Document content was not observed leaving the package. The paperless container received 2027 kB from the browser over the published loopback port and returned 543 kB; its total outbound traffic to the internet across the whole session was 2893 bytes and 1767 bytes, both to the control host, which is consistent with two TLS handshakes and orders of magnitude too small to carry the uploaded documents. Text recognition ran while the container contacted nothing. TLS payloads were not decrypted, so this bounds behaviour by destination and volume rather than asserting request contents.",
+      "source": "MOS runtime projection of apps/paperless-ngx 0.1.0, per-container conversation byte counts, observed 2026-08-11",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "observed",
+      "claim": "The scheduled task that reaches outward was observed doing nothing. Of the six tasks Paperless ships enabled, the ten-minute 'Check all e-mail accounts' job is the only one that would contact an external server, and its 23:40 local tick fell inside the capture window. It produced no DNS query and no connection, confirming that it is a true no-op when no mail account is configured, which MOS does not create. The observation is scoped to that task: at the wall-clock times covered, the hourly classifier training, hourly workflow check, nightly index optimisation, daily trash emptying and weekly sanity check did not tick, though all five are local by inspection.",
+      "source": "MOS runtime projection of apps/paperless-ngx 0.1.0 observed 2026-08-11 23:36 to 23:44 Europe/Amsterdam, and src/paperless/settings/custom.py parse_beat_schedule at v3.0.5",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "observed",
+      "claim": "The browser client was observed contacting nothing outside the operator's own server. The human reviewer drove the full session in Firefox with the network panel open and preserve-log enabled, covering sign-in, uploads, search, opening documents, viewing recognised text and every settings page, and reported that every request went to the local server with no outbound destination. This agrees independently with the server-side capture and with static analysis of the compiled bundle. It is recorded as the reviewer's direct observation: no HAR file was retained, so unlike the server-side finding it cannot be re-analysed later, and no claim is made here about request headers, cookies or bodies.",
+      "source": "Firefox network panel observation of the MOS runtime projection of apps/paperless-ngx 0.1.0, by the human reviewer, 2026-08-11",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "documented",
+      "claim": "The pinned image contains no analytics, crash-reporting or usage-telemetry library. A search of the entire Python source tree for sentry, posthog, analytics, matomo, plausible and google-analytics returned no file. There is no telemetry subsystem to disable, which is a different and stronger statement than a telemetry feature that ships switched off.",
+      "source": "grep of /usr/src/paperless/src in the pinned image (sha256:65a4cabf0169ea7fbd90ab7bb28ba3f8b5909613635acda1a03ad606f34b456b)",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "documented",
+      "claim": "The built web client contacts no external host. Extracting every http(s) URL from the compiled Angular bundle yields only http://www.w3.org (SVG and XML namespace identifiers, which are never fetched), https://docs.paperless-ngx.com and https://github.com as documentation links a user may click, plus placeholder strings from bundled libraries. There is no CDN, font service, script origin, map provider, error reporter or analytics endpoint in the client surface.",
+      "source": "grep of /usr/src/paperless/src/documents/static/frontend/en-US/*.js in the pinned image",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "documented",
+      "claim": "The server has exactly one hardcoded outbound endpoint: https://api.github.com/repos/paperless-ngx/paperless-ngx/releases/latest, issued by RemoteVersionView when the web client requests /api/remote_version/ and cached for 15 minutes. Nothing else in the server or the client reaches a network host that the owner has not configured themselves. MOS switches the check off (see telemetryControls). Upstream would leave it off anyway at v3.0.5, because the client setting that triggers it defaults to false, so the MOS setting pins a default rather than correcting an enabled one. The runtime capture confirms this: api.github.com was never resolved and never contacted, including at first boot and on first sign-in, when a client with no stored preference falls back to its defaults.",
+      "source": "src/documents/views.py RemoteVersionView, src/paperless/settings/__init__.py ENABLE_UPDATE_CHECK, and src-ui/src/app/data/ui-settings.ts at v3.0.5",
+      "url": "https://github.com/paperless-ngx/paperless-ngx/blob/v3.0.5/src-ui/src/app/data/ui-settings.ts",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "documented",
+      "claim": "Text recognition and language processing run entirely on the operator's own server from assets baked into the image. The image ships 22 MB of NLTK corpora, stemmers and tokenizers at /usr/share/nltk_data, so the punkt and stopwords archives the source documents are never fetched at runtime, and Tesseract language data is installed at build time. The document classifier that suggests correspondents, types and tags is trained hourly from the operator's own documents by a local scheduled task; no model is downloaded and no inference leaves the container.",
+      "source": "filesystem inspection of the pinned image, src/paperless/settings/__init__.py _get_nltk_language_setting, and documents.tasks.train_classifier",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "configured",
+      "claim": "MOS installs the Dutch Tesseract language pack at image build time rather than through PAPERLESS_OCR_LANGUAGES, which installs packages over the network at every container start. The motivation was reproducibility from a pinned image, and keeping the OCR languages the MOS install form offers working without a runtime package fetch is a direct consequence: every language the form accepts is present in the image before it runs.",
+      "source": "apps/paperless-ngx/Dockerfile and apps/paperless-ngx/manifest.json"
+    },
+    {
+      "type": "documented",
+      "claim": "The two features that would send document content to a third party are off unless the owner configures them. PAPERLESS_AI_ENABLED defaults to NO, so AI suggestions and the document chat are inactive and no LLM endpoint, model or API key is set. PAPERLESS_REMOTE_OCR_ENGINE is unset, so cloud OCR through Azure AI is inactive. MOS sets neither variable and exposes neither in its install form, so reaching an external AI or OCR service requires the owner to add configuration that the MOS package does not provide.",
+      "source": "src/paperless/settings/__init__.py AI_ENABLED, LLM_BACKEND and REMOTE_OCR_ENGINE at v3.0.5, and apps/paperless-ngx/manifest.json",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "documented",
+      "claim": "Six scheduled tasks ship enabled. Five are local: training the classifier hourly, optimising the search index nightly, a weekly sanity check, emptying the trash daily, and checking scheduled workflows hourly. The sixth, 'Check all e-mail accounts', runs every ten minutes and would connect to IMAP servers, but it iterates over mail accounts the owner has added and MOS creates none. Whether it is a true no-op with zero accounts configured has not yet been observed on the wire.",
+      "source": "src/paperless/settings/custom.py parse_beat_schedule at v3.0.5",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "documented",
+      "claim": "Where the app does accept an owner-supplied URL, it defends the operator's own network against it. src/paperless/network.py resolves every outbound hostname, refuses the request if it resolves to a private, loopback, link-local, multicast or unspecified address unless internal access is explicitly allowed, and then connects to the vetted IP while preserving the original Host header and TLS SNI so the pinning cannot be defeated by DNS rebinding. This governs the AI, embedding and remote-OCR endpoints. It is a deliberate anti-SSRF design rather than an egress allow-list, and this review records it as a point in the package's favour.",
+      "source": "src/paperless/network.py at v3.0.5",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "configured",
+      "claim": "Only the paperless service is published through the generated app route; the Valkey broker has no route and stays internal to the package network. The first administrator account is created from the MOS install form directly inside the container through PAPERLESS_ADMIN_USER and PAPERLESS_ADMIN_PASSWORD, with no upstream Paperless-ngx account, no registration and no licence check. Documents, the originals as received, thumbnails, the search index and the SQLite database persist to package-owned MOS volumes.",
+      "source": "apps/paperless-ngx/manifest.json and apps/paperless-ngx/README.md"
+    },
+    {
+      "type": "documented",
+      "claim": "The project publishes no privacy policy and no terms of service, and the absence is consistent rather than an omission: paperless-ngx operates no hosted service, no account system and no back end of its own, so there is no data controller relationship for a policy to describe. The repository at v3.0.5 contains LICENSE, SECURITY.md, CONTRIBUTING.md and CODE_OF_CONDUCT.md and no policy document. The GNU General Public License v3 is the only instrument binding an operator. The publisher is the paperless-ngx organisation, a GitHub-verified community project reachable at hello@paperless-ngx.com, with no corporate owner and no ownership change to report.",
+      "source": "repository contents at tag v3.0.5 and the paperless-ngx GitHub organisation record",
+      "url": "https://github.com/paperless-ngx/paperless-ngx/blob/v3.0.5/LICENSE",
+      "retrievedAt": "2026-08-11"
+    }
+  ],
+  "telemetryControls": [
+    {
+      "type": "configured",
+      "claim": "MOS sets PAPERLESS_ENABLE_UPDATE_CHECK=false through the upstream-supported setting. The motivation is product coherence rather than privacy: MOS owns app updates, so an app announcing its own new release contradicts the platform that decides when it updates. This control is defensive rather than corrective, and the distinction is why this review records telemetry as none-observed rather than disabled-by-mos: the release check is not enabled in Paperless-ngx 3.0.5 to begin with, it is a documented environment variable and a visible toggle rather than anything an operator would have to work around, and the capture found it silent. What pinning the value adds is that a future upstream change of default cannot silently switch it on inside a MOS install.",
+      "source": "apps/paperless-ngx/manifest.json and src/paperless/settings/__init__.py at v3.0.5",
+      "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "documented",
+      "claim": "The limits of that control, stated precisely because configuration is not behaviour. The variable is a user-interface control, not a server-side block, and it works in two steps: it sets update_checking.backend_setting on the settings endpoint, and the web client's maybeMigrateSettings() copies that value into a user's update_checking_enabled preference only when the preference has never been set. A user who afterwards turns the toggle back on inside Paperless keeps that preference and will still trigger the request. RemoteVersionView itself never consults settings.ENABLE_UPDATE_CHECK, so /api/remote_version/ performs the fetch whenever it is called. What MOS has therefore guaranteed is the shipped default for every account, not that the server is incapable of reaching GitHub. This review makes no claim beyond that.",
+      "source": "src/documents/views.py RemoteVersionView, src/documents/views.py UiSettingsView, and src-ui/src/app/services/settings.service.ts maybeMigrateSettings at v3.0.5",
+      "url": "https://github.com/paperless-ngx/paperless-ngx/blob/v3.0.5/src-ui/src/app/services/settings.service.ts",
+      "retrievedAt": "2026-08-11"
+    }
+  ],
+  "policies": [
+    {
+      "kind": "license",
+      "url": "https://github.com/paperless-ngx/paperless-ngx/blob/v3.0.5/LICENSE",
+      "retrievedAt": "2026-08-11",
+      "publisher": "paperless-ngx organisation"
+    }
+  ],
+  "provenance": {
+    "method": "ai-assisted",
+    "provider": "Anthropic",
+    "model": "Claude Opus 5",
+    "modelIdentifierSource": "runtime-reported",
+    "skill": "assess-app-privacy",
+    "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
+    "repositoryCommit": "3fa1119973bac8c2065806961736c66996543978",
+    "humanReviewed": true,
+    "humanReviewer": "Rasmus Puls"
+  },
+  "openQuestions": [
+    "TLS payloads were not decrypted, so every conclusion bounds behaviour by destination, resolved name and volume rather than asserting the contents of encrypted requests. In this package that limit binds unusually little, because no external destination was contacted at all outside the injected control.",
+    "The client-side result rests on the reviewer watching the browser network panel during the session rather than on a retained HAR. No artifact exists to re-analyse, so unlike the server-side capture it cannot be revisited if the finding is later challenged, and nothing is claimed about request headers, cookies or bodies. Capturing and keeping a HAR would close this.",
+    "The capture was taken over loopback, so browser requests carried localhost as their origin. A deployment reached through a public domain would send that domain in Referer and Origin headers to any external host it contacted; no external host was contacted, so nothing was observed leaving, but the reasoning is an inference from the absence of destinations rather than a measurement against a domain-based install.",
+    "The packet capture attached about three seconds after the containers started. Database migrations, superuser creation and the application's own startup all fall inside the window, since Paperless takes considerably longer than that to answer, but the first few seconds of container life are not covered.",
+    "Features an owner can add after installation are outside this result: mail accounts, which would connect to an IMAP server every ten minutes; AI suggestions and document chat through an OpenAI-compatible service or Ollama; remote OCR through Azure AI; and documents deposited into the consume volume by a scanner. MOS configures none of them and exposes none in its install form, and the review deliberately does not disable them."
+  ]
+}

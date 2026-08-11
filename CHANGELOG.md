@@ -6,7 +6,7 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ### Added
 
-- Paperless-ngx is available in the app catalog. Scan or photograph letters, invoices and contracts and it reads the text so you can search for any word inside them, suggesting the sender and tags for each new document. Text recognition runs on your own server in English, Dutch, German, French, Italian or Spanish, chosen during install; its optional cloud AI and remote OCR features stay off, and its own update check is switched off because MOS handles app updates.
+- Paperless-ngx is available in the app catalog. Scan or photograph letters, invoices and contracts and it reads the text so you can search for any word inside them, suggesting the sender and tags for each new document. Text recognition runs on your own server in English, Dutch, German, French, Italian or Spanish, chosen during install; its optional cloud AI and remote OCR features stay off, and its own update check is switched off because MOS handles app updates. Its privacy assessment is rated "Private by default": watched on the wire through a full session of uploading, text recognition, searching and browsing its settings, neither of its containers contacted anything outside your server.
 
 ### Changed
 
