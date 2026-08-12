@@ -158,6 +158,7 @@ function advisoriesFor(manifest: any): PrivacyAdvisory[] {
 // Friendly labels for manifest category slugs; unknown slugs fall back
 // to a capitalized form so new categories never break the site.
 const CATEGORY_LABELS: Record<string, string> = {
+  finance: 'Money & budgeting',
   media: 'Photos & media',
   office: 'Office & documents',
   security: 'Passwords & security',

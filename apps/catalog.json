@@ -1,5 +1,14 @@
 {
   "packages": {
+    "actual-budget": {
+      "minimumMosVersion": "0.17.0",
+      "packageDigest": "sha256:2ebf607e90d5c5404c1404a8648193f57a96142ee9c7e8462b670cafbe1770c6",
+      "packageVersion": "0.1.0",
+      "path": "apps/actual-budget",
+      "privacy": {
+        "status": "review-required"
+      }
+    },
     "immich": {
       "minimumMosVersion": "0.17.0",
       "packageDigest": "sha256:690aa1916a681b3b5fe890668d7f8e7985e1bca5bb72e1e3ecd61024abd6d8a8",
