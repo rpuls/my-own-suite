@@ -1,7 +1,7 @@
 ---
 import AppConnect from './AppConnect.astro'
 import PrivacyPosture from './PrivacyPosture.astro'
-import { catalogApps as apps, REPLACES_HEADLINE, shortReplaces } from '../lib/app-catalog'
+import { catalogApps as apps, shortReplaces } from '../lib/app-catalog'
 
 // The app catalog is generated at build time from each package's
 // manifest under apps/<app>/manifest.json — the same single source of
@@ -12,15 +12,6 @@ import { catalogApps as apps, REPLACES_HEADLINE, shortReplaces } from '../lib/ap
 
 const seafile = apps.find((app) => app.id === 'seafile')
 const onlyoffice = apps.find((app) => app.id === 'onlyoffice')
-
-// The headline counts what the catalog *replaces*, not how many apps it has —
-// a curated suite loses an app-count race and wins an outcome comparison.
-// Both numbers come from the manifests so neither can go stale, and only each
-// app's best-known few count: the long tail of a `replaces` list belongs on
-// the app's docs page, not in a number that has to survive a sceptical read.
-const replacedServices = new Set(
-  apps.flatMap((app) => app.replaces.slice(0, REPLACES_HEADLINE))
-)
 
 // Cards and the drawer name the top two; the full list still travels with the
 // payload so search matches every product an app replaces.
@@ -33,12 +24,16 @@ const appsJson = JSON.stringify(
   <div class="shell">
     <div class="section-head center">
       <span class="mos-eyebrow">The app catalog</span>
-      <h2 class="mos-section-title">{apps.length} apps that replace {replacedServices.size} subscriptions</h2>
-      {/* Kept to one line of thought: curation, plus the privacy assessment
-          nothing else on the page claims. The "install your own" escape hatch
-          is the next section's whole headline, and pinning/health checks are
-          covered in Safety — repeating either here just costs lines. */}
-      <p class="mos-body-lg mos-meta">The best answer for each job, not ten to choose between — every app packaged by MOS, version-pinned, and carrying a published privacy assessment.</p>
+      <h2 class="mos-section-title">Pick what you actually need</h2>
+      {/* Two rules this copy exists to keep. Selection is stated as fit — the
+          app MOS chose for a job — never as ranking: a headline implying the
+          projects outside the catalog lost a contest is hostile to the open
+          source it depends on. And nothing here refers to how long the list
+          is, in either direction; defending the count answers a question the
+          visitor has not asked. Trust claims are already the page's: privacy
+          assessments in ValuePromise, pinning and signing in Safety,
+          curation-is-not-a-wall in ExternalApps just below. */}
+      <p class="mos-body-lg mos-meta">Established open-source projects, each chosen by MOS for one everyday job and packaged so it runs, connects, and updates without setup. Start with one and add more whenever you're ready.</p>
     </div>
     <label class="apps-search">
       <svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-search"/></svg>

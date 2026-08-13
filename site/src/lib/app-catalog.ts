@@ -43,8 +43,8 @@ export type CatalogApp = {
 // A manifest ranks `replaces` most-recognised first, and can list every
 // product the app stands in for. Only the app's own docs page has room for
 // the whole list: cards, the drawer and Suite Manager name the top two, and
-// the landing headline counts the top three per app so the number it claims
-// stays one a visitor recognises rather than a long-tail total.
+// the docs page's search-result description names the top three, keeping it
+// to products a searcher recognises rather than a long-tail total.
 export const REPLACES_SHORT = 2
 export const REPLACES_HEADLINE = 3
 export const shortReplaces = (replaces: string[]) => replaces.slice(0, REPLACES_SHORT).join(' / ')
