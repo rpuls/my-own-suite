@@ -2,15 +2,59 @@
   "manifestVersion": 1,
   "id": "vaultwarden",
   "name": "Vaultwarden",
-  "version": "0.2.3",
-  "minimumMosVersion": "0.17.0",
+  "version": "0.2.5",
+  "minimumMosVersion": "0.18.0",
   "summary": "Private Bitwarden-compatible password management.",
   "category": "security",
   "icon": "icon.png",
+  "packageFiles": [
+    "screenshots/vault.png",
+    "screenshots/item.png",
+    "screenshots/generator.png",
+    "screenshots/send.png"
+  ],
   "catalog": {
     "description": "Vaultwarden lets you use the familiar Bitwarden apps with your own private backend for passwords, secure notes, cards, identities, and shared vaults.",
-    "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/vaultwarden-3?referralCode=-Yg50p" }],
-    "replaces": ["LastPass", "1Password", "Bitwarden cloud"],
+    "screenshots": [
+      {
+        "src": "screenshots/vault.png",
+        "alt": "The Vaultwarden web vault listing a household's saved logins, cards and notes, with folders for home, money, health and work down the side",
+        "caption": "Every login in one place, filed the way you think about them"
+      },
+      {
+        "src": "screenshots/item.png",
+        "alt": "A saved bank login open in Vaultwarden, showing the username, a hidden password and a two-factor code counting down",
+        "caption": "One entry up close, two-factor code included"
+      },
+      {
+        "src": "screenshots/generator.png",
+        "alt": "The Vaultwarden password generator with length and character options and a freshly generated password",
+        "caption": "A strong new password instead of the one you reuse"
+      },
+      {
+        "src": "screenshots/send.png",
+        "alt": "The Vaultwarden Send composer, sharing a note with a seven-day expiry and a limit on who can view it",
+        "caption": "Hand one thing to one person, with an expiry on it"
+      }
+    ],
+    "demoDeployTargets": [
+      {
+        "provider": "railway",
+        "label": "Railway",
+        "url": "https://railway.com/deploy/vaultwarden-3?referralCode=-Yg50p"
+      }
+    ],
+    "replaces": [
+      "LastPass",
+      "1Password",
+      "Bitwarden cloud",
+      "Dashlane",
+      "Google Password Manager",
+      "iCloud Keychain",
+      "NordPass",
+      "Keeper",
+      "Proton Pass"
+    ],
     "tags": [
       "passwords",
       "security",

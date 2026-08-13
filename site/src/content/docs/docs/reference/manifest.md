@@ -108,7 +108,7 @@ The install form, as data. Each field:
 
 All display-only. `description`, `tags`, `related` (app ids), `features` (`{title, body?}`), `resourceHint` (`level`: `low`/`medium`/`high` + `label`/`description`), `privacy` (`summary`, `notes[]` — the plain-language summary; the bound `privacy-review.json` is the authoritative assessment), `links` (`website`/`docs`/`repository`; other keys ignored), `demoDeployTargets` (public-site deploy links), and:
 
-- **`replaces`** — an array of product names, one per entry: `["Google Photos", "iCloud Photos"]`. Display joins them; search matches each.
+- **`replaces`** — an array of product names, one per entry, ranked most-recognised first: `["Google Photos", "iCloud Photos", "Amazon Photos", "Flickr"]`. List every commercial product the app genuinely stands in for, not only the obvious two — search matches each entry, and the app's page on this site lists all of them. Space-constrained surfaces (catalog cards, the Suite Manager detail hero) name only the first two, which is why the ranking matters.
 - **`screenshots`** — `{src, alt?, caption?}` where `src` is a package-relative path listed in `packageFiles`. Remote screenshot URLs are refused: browsing the catalog must never fetch third-party origins.
 
 ## Homepage tile (`homepage`)

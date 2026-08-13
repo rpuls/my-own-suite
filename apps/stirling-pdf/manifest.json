@@ -2,15 +2,58 @@
   "manifestVersion": 1,
   "id": "stirling-pdf",
   "name": "Stirling PDF",
-  "version": "0.2.2",
-  "minimumMosVersion": "0.17.0",
+  "version": "0.2.4",
+  "minimumMosVersion": "0.18.0",
   "summary": "Private PDF tools for everyday document tasks.",
   "category": "office",
   "icon": "icon.png",
+  "packageFiles": [
+    "screenshots/workspace.png",
+    "screenshots/merge.png",
+    "screenshots/redact.png",
+    "screenshots/ocr.png"
+  ],
   "catalog": {
     "description": "Stirling PDF gives you a private toolbox for everyday document work: merge, split, compress, convert, OCR, sign, redact, and automate PDFs without uploading them to random websites.",
-    "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/stirling-pdf-2?referralCode=-Yg50p" }],
-    "replaces": ["iLovePDF", "Smallpdf", "Adobe online tools"],
+    "screenshots": [
+      {
+        "src": "screenshots/workspace.png",
+        "alt": "The Stirling PDF workspace, with the tool list down the left and a household bill open in the document viewer",
+        "caption": "The whole toolbox, with your document already open"
+      },
+      {
+        "src": "screenshots/merge.png",
+        "alt": "The Stirling PDF merge tool with six household documents queued as numbered cards, ready to combine into one file",
+        "caption": "Six separate statements into one file, in the order you pick"
+      },
+      {
+        "src": "screenshots/redact.png",
+        "alt": "The Stirling PDF redaction tool set to black out a name, beside the payslip it will be applied to",
+        "caption": "Black out a name or a number before you pass it on"
+      },
+      {
+        "src": "screenshots/ocr.png",
+        "alt": "The Stirling PDF OCR tool set to English, beside a scanned energy bill waiting to be recognised",
+        "caption": "Turn a scan into text you can search, without uploading it anywhere"
+      }
+    ],
+    "demoDeployTargets": [
+      {
+        "provider": "railway",
+        "label": "Railway",
+        "url": "https://railway.com/deploy/stirling-pdf-2?referralCode=-Yg50p"
+      }
+    ],
+    "replaces": [
+      "Adobe Acrobat",
+      "iLovePDF",
+      "Smallpdf",
+      "PDF24",
+      "Sejda",
+      "Soda PDF",
+      "Nitro PDF",
+      "Foxit PDF"
+    ],
     "tags": [
       "pdf",
       "documents",

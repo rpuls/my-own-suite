@@ -4,8 +4,8 @@
   "reviewedAt": "2026-08-11T00:00:00.000Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.1.0",
-    "packageDigest": "sha256:e2e787bb2ff19abd3a6cbda2f705b189e170404b77ca7aa375a915290c0f980a",
+    "packageVersion": "0.1.1",
+    "packageDigest": "sha256:e3e0e043b36d9538220c5cf8ac5197f035b5328eb228248dfb26c5032ecbd5f1",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -36,8 +36,8 @@
   },
   "posture": "private-by-default",
   "dimensions": {
-    "telemetry": "none-observed",
-    "externalServices": "none-required",
+    "defaultEgress": "none",
+    "control": "nothing-to-decide",
     "accountDependency": "local-only",
     "dataProcessing": "local",
     "policyExposure": "self-hosted-software-only",

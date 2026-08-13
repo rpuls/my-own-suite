@@ -35,8 +35,10 @@ third-party API clients are excluded unless the assessment names them explicitly
 
 We score five dimensions:
 
-- **Telemetry** - whether the app reports usage or diagnostics anywhere.
-- **External services** - whether features depend on outside services.
+- **Out of the box** - installed the way MOS ships it and used normally, does
+  anything leave your server at all.
+- **Who decides** - if something does, who settled that, and whether you can
+  change it.
 - **Accounts** - whether an outside account is needed to use the app.
 - **Data processing** - whether your data is processed off your machine.
 - **Policies** - which terms and policies apply beyond the software license.
@@ -48,10 +50,29 @@ well the evidence actually supports the other five. It carries no points, but
 it is not decoration: if we cannot state our confidence, there is no completed
 assessment - and without one, an app does not enter the catalog.
 
-The overall label is derived from the dimension verdicts rather than chosen
-independently. Any dimension that is unknown or unclear - confidence
-included - forces **Review required**. Missing evidence is never scored in an
-app's favor.
+## The four labels
+
+The label on an app comes from the first two dimensions alone, and only from
+the four combinations that describe a state an app can really be in:
+
+- **Private by default** - nothing leaves, because the app has no outside
+  touchpoint to begin with.
+- **Privacy configured** - it had one, and MOS switched it off before you ever
+  saw it. MOS's job is to pick the right default so you do not have to think
+  about it.
+- **Your choice** - something does leave, the app itself has a setting that
+  stops it, and we judged the trade-off genuinely yours to make. We pick the
+  default we think suits most people and tell you where the switch is.
+- **External dependency** - something leaves and nothing in the app stops it.
+  We reviewed that and accepted it as the price of the feature; the evidence
+  says what leaves, who receives it, and why.
+
+The label is derived, never chosen. The remaining three dimensions describe the
+app and count toward the grade, but they cannot move the label, so no reviewer
+can reach a friendlier badge by rewording a fact. Missing evidence is never
+scored in an app's favor, and an unfinished assessment does not produce a label
+at all: an app with unresolved questions stays out of the catalog rather than
+appearing with a cautious-looking one.
 
 ## Evidence and confidence
 
@@ -75,9 +96,9 @@ use AI where it genuinely helps, and say so.
 
 The workflow is built so AI-read evidence stays checkable rather than taken on
 faith. Every claim must carry one of the evidence labels above and name its
-source; configuration claims point at the actual package files; anything
-unknown or unclear forces **Review required** instead of a favorable default;
-and open questions are published, not smoothed over. Each review also records
+source; configuration claims point at the actual package files; an unsettled
+fact leaves the assessment unfinished rather than resolving into a favorable
+default; and open questions are published, not smoothed over. Each review also records
 its provenance: the review method, the AI provider and model, the exact
 workflow revision it ran under, and the repository commit. The workflow itself
 is open source like everything else:

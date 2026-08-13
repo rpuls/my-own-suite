@@ -20,7 +20,7 @@ export type CatalogApp = {
   summary: string
   description: string
   demoDeployTargets: DemoDeployTarget[]
-  replaces: string
+  replaces: string[]
   resources: string
   resourcesDetail: string
   resourceLevel: string
@@ -29,12 +29,28 @@ export type CatalogApp = {
   privacy: string
   privacyNotes: string[]
   privacyReview: PrivacyReviewSummary
+  // The whole assessment document, for the full-report section on the app's
+  // docs page. The posture dialog promises the evidence says what leaves and
+  // who receives it, so the evidence has to be readable somewhere.
+  privacyAssessment: PrivacyAssessment | null
   advisories: PrivacyAdvisory[]
   features: CatalogFeature[]
   links: Record<string, string>
   tags: string[]
   icon: string
 }
+
+// A manifest ranks `replaces` most-recognised first, and can list every
+// product the app stands in for. Only the app's own docs page has room for
+// the whole list: cards, the drawer and Suite Manager name the top two, and
+// the landing headline counts the top three per app so the number it claims
+// stays one a visitor recognises rather than a long-tail total.
+export const REPLACES_SHORT = 2
+export const REPLACES_HEADLINE = 3
+export const shortReplaces = (replaces: string[]) => replaces.slice(0, REPLACES_SHORT).join(' / ')
+// "a, b and c" for the prose lead-in on the app docs pages.
+export const replacesSentence = (replaces: string[]) =>
+  new Intl.ListFormat('en', { style: 'long', type: 'conjunction' }).format(replaces)
 
 const manifestModules = import.meta.glob('../../../apps/*/manifest.json', {
   eager: true,
@@ -67,9 +83,31 @@ const privacyReviewModules = import.meta.glob('../../../apps/*/privacy-review.js
   import: 'default'
 }) as Record<string, any>
 
+export type PrivacyEvidence = {
+  claim: string
+  retrievedAt?: string
+  source: string
+  type: 'observed' | 'configured' | 'documented' | 'inferred'
+  url?: string
+}
+
+export type PrivacyAssessment = {
+  components: Array<{ artifact?: string; digest?: string; name: string; version?: string }>
+  clientsExcluded: string[]
+  evidence: PrivacyEvidence[]
+  expiresAt: string | null
+  openQuestions: string[]
+  packageDigest: string
+  packageVersion: string
+  policies: Array<{ kind: string; publisher?: string; retrievedAt?: string; url: string }>
+  provenance: Record<string, any>
+  reviewedAt: string | null
+  sourceRevision: string | null
+}
+
 const UNRATED: PrivacyReviewSummary = {
   dimensions: null,
-  posture: 'review-required',
+  posture: null,
   provenance: null,
   reviewedAt: null,
   status: 'review-required'
@@ -90,7 +128,7 @@ function privacyReviewFor(manifestPath: string, manifest: any): PrivacyReviewSum
   const provenance = review.provenance ?? {}
   return {
     dimensions: review.dimensions ?? null,
-    posture: String(review.posture ?? 'review-required'),
+    posture: review.posture ? String(review.posture) : null,
     provenance: {
       humanReviewed: provenance.humanReviewed === true,
       method: provenance.method ?? null,
@@ -99,6 +137,33 @@ function privacyReviewFor(manifestPath: string, manifest: any): PrivacyReviewSum
     },
     reviewedAt: review.reviewedAt ?? null,
     status: 'reviewed'
+  }
+}
+
+// The same document, whole. It passes the same binding check as the summary,
+// so a page never shows evidence belonging to a different package version.
+function privacyAssessmentFor(manifestPath: string, manifest: any): PrivacyAssessment | null {
+  const review = privacyReviewModules[manifestPath.replace(/manifest\.json$/, 'privacy-review.json')]
+  if (
+    !review ||
+    review.schemaVersion !== 1 ||
+    review.appId !== manifest.id ||
+    review.scope?.packageVersion !== manifest.version
+  ) {
+    return null
+  }
+  return {
+    clientsExcluded: review.scope?.clientsExcluded ?? [],
+    components: review.scope?.components ?? [],
+    evidence: review.evidence ?? [],
+    expiresAt: review.expiresAt ?? null,
+    openQuestions: review.openQuestions ?? [],
+    packageDigest: review.scope?.packageDigest ?? '',
+    packageVersion: review.scope?.packageVersion ?? '',
+    policies: review.policies ?? [],
+    provenance: review.provenance ?? {},
+    reviewedAt: review.reviewedAt ?? null,
+    sourceRevision: review.scope?.source?.revision ?? null
   }
 }
 
@@ -241,7 +306,7 @@ export const catalogApps: CatalogApp[] = Object.entries(manifestModules)
             url: String(target?.url ?? '')
           })).filter((target: DemoDeployTarget) => target.provider && target.label && /^https?:\/\//.test(target.url))
         : [],
-      replaces: (Array.isArray(catalog.replaces) ? catalog.replaces.map(String) : []).join(' / '),
+      replaces: Array.isArray(catalog.replaces) ? catalog.replaces.map(String) : [],
       resources: String(catalog.resourceHint?.label ?? ''),
       resourcesDetail: String(catalog.resourceHint?.description ?? ''),
       resourceLevel: String(catalog.resourceHint?.level ?? ''),
@@ -249,6 +314,7 @@ export const catalogApps: CatalogApp[] = Object.entries(manifestModules)
       services,
       privacy: String(catalog.privacy?.summary ?? ''),
       privacyNotes: Array.isArray(catalog.privacy?.notes) ? catalog.privacy.notes.map(String) : [],
+      privacyAssessment: privacyAssessmentFor(path, manifest),
       privacyReview: privacyReviewFor(path, manifest),
       advisories: advisoriesFor(manifest),
       features,

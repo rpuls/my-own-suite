@@ -87,7 +87,7 @@
           "type": "array",
           "items": { "$ref": "#/$defs/text" },
           "minItems": 1,
-          "description": "Commercial products this app replaces, one name per entry. Display joins them; search matches each."
+          "description": "Commercial products this app replaces, one name per entry, ranked most-recognised first. List them all; surfaces with limited space show only the first two."
         },
         "features": {
           "type": "array",

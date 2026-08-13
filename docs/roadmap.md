@@ -77,13 +77,15 @@ domain, and "what if myownsuite.org disappears" has a published answer.
   configuration with a baked-in config file, which is what makes a hardened default possible and also
   freezes that setting for the owner. Immich is the worked example: the signed review found its map
   is a genuinely valuable feature that reaches an external tile service, and because MOS ships it on
-  with no way to change it, the honest posture is `external-dependency` — the same grade an app earns
-  when an upstream account is mandatory, which flattens a real difference. Surfacing a small set of
-  package-declared, privacy-relevant settings during install would let the owner make that call, and
-  would let a package that is only externally dependent by default derive `privacy-configured` once
-  the owner turns the touchpoint off. Needs a manifest field for owner-visible settings, install-flow
-  UI built from the shared primitives, and a review contract that can express a posture conditional
-  on a choice rather than one fixed at packaging time. *(Medium)*
+  through `IMMICH_CONFIG_FILE`, Immich rejects every system-configuration change, so the owner has no
+  way to turn it off. That is what makes its posture `external-dependency` rather than
+  `owner-disableable`, and the distinction is now honest rather than an artefact of the vocabulary.
+  What remains is that MOS's own pinning is what removed the control: an app the owner could have
+  configured is presented as one they cannot. Surfacing a small set of package-declared,
+  privacy-relevant settings during install would give the choice back. Needs a manifest field for
+  owner-visible settings, install-flow UI built from the shared primitives, and a review contract
+  that can express a posture conditional on a choice rather than one fixed at packaging time.
+  *(Medium)*
 
 ### C. What a tester hits in the first hour
 

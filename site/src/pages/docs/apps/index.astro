@@ -3,7 +3,7 @@
 // (via src/lib/app-catalog.ts) — new app packages appear here and in the
 // sidebar automatically.
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
-import { catalogApps } from '../../../lib/app-catalog'
+import { catalogApps, shortReplaces } from '../../../lib/app-catalog'
 ---
 
 <StarlightPage
@@ -33,7 +33,9 @@ import { catalogApps } from '../../../lib/app-catalog'
         <span class="app-doc-card-body">
           <span class="app-doc-card-name">{app.name}</span>
           <span class="app-doc-card-summary">{app.summary}</span>
-          {app.replaces && <span class="app-doc-card-replaces">Replaces {app.replaces}</span>}
+          {app.replaces.length > 0 && (
+            <span class="app-doc-card-replaces">Replaces {shortReplaces(app.replaces)}</span>
+          )}
         </span>
       </a>
     ))}

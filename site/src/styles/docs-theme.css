@@ -144,6 +144,32 @@ starlight-toc nav a[aria-current='true'] {
   color: var(--sl-color-gray-2);
 }
 
+/* The full ranked `replaces` list, as a scannable grid rather than a bullet
+   column — a visitor should find the product they arrived comparing without
+   reading the list top to bottom. */
+.app-doc-alternatives {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.5rem;
+}
+
+.app-doc-alternatives li {
+  margin: 0;
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface);
+  border: var(--mos-border-subtle);
+  font-size: var(--sl-text-sm);
+  color: var(--sl-color-gray-2);
+}
+
+.app-doc-alternatives strong {
+  color: var(--sl-color-white);
+}
+
 .app-doc-refnote {
   font-size: var(--sl-text-sm);
   color: var(--sl-color-gray-3);

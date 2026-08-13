@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "appId": "actual-budget",
+  "reviewedAt": "2026-08-12T00:00:00.000Z",
+  "expiresAt": "2027-02-12T00:00:00.000Z",
+  "scope": {
+    "packageVersion": "0.1.0",
+    "packageDigest": "sha256:d384cff9d811c98e3fedfd515fee4a2b71c64ed495725a778574ccf4873baabc",
+    "source": {
+      "kind": "official-git",
+      "repository": "https://github.com/rpuls/my-own-suite",
+      "path": "apps/actual-budget",
+      "revision": "c48bb6242a7768c61699567457fe966b01ebdb11",
+      "trust": "mos-reviewed"
+    },
+    "components": [
+      {
+        "name": "Actual Budget",
+        "version": "26.8.1",
+        "artifact": "ghcr.io/actualbudget/actual",
+        "digest": "sha256:6478d9ddfc0924479c09e6699c205e354c6f2216dfe7de3c0fb7b590d6edcdc5"
+      }
+    ],
+    "clientsExcluded": [
+      "Actual's official desktop application, which MOS does not ship; this package serves the web client bundled in the sync-server image",
+      "Third-party clients built on @actual-app/api",
+      "Bank aggregation providers an owner signs up with and configures after installation"
+    ]
+  },
+  "posture": "owner-disableable",
+  "dimensions": {
+    "defaultEgress": "external-contact",
+    "control": "left-to-owner",
+    "accountDependency": "local-only",
+    "dataProcessing": "local",
+    "policyExposure": "upstream-services-involved",
+    "confidence": "verified"
+  },
+  "evidence": [
+    {
+      "type": "documented",
+      "claim": "The pinned image contains no analytics, crash-reporting or usage-telemetry library. Searching the compiled server bundle and the compiled web client for sentry, posthog, analytics, matomo, plausible and google-analytics returns no match beyond a case-insensitive collision with an unrelated identifier. There is no telemetry subsystem to disable, which is a different and stronger statement than a telemetry feature shipped switched off.",
+      "source": "grep of /app and /app/node_modules/@actual-app/web/build in the pinned image (sha256:6478d9ddfc0924479c09e6699c205e354c6f2216dfe7de3c0fb7b590d6edcdc5)",
+      "retrievedAt": "2026-08-12"
+    },
+    {
+      "type": "documented",
+      "claim": "The server's complete set of compiled-in outbound hosts is eight, and every one is reached only after an owner switches something on. Five are bank aggregators - bankaccountdata.gocardless.com, bridge.simplefin.org, api.enablebanking.com, and the Pluggy.ai and Akahu endpoints - each of which requires API credentials the owner obtains from that provider and enters; with none entered there is no code path that contacts a bank. Three are GitHub - raw.githubusercontent.com, api.github.com and github.com - and belong to the experimental plugin store. Three further hostnames appear in the bundle (expressjs.com, cheatsheetseries.owasp.org, danskeci.com) and are documentation URLs inside source comments retained by the bundler, never fetched.",
+      "source": "extraction of every https:// literal from /app/app.js, /app/chunks and /app/src in the pinned image, then reading each in context",
+      "retrievedAt": "2026-08-12"
+    },
+    {
+      "type": "documented",
+      "claim": "The plugin store is the server's only non-bank egress and it is gated four ways. Its entry point is the /cors-proxy route, which requires a valid session, is rate limited to 25 requests per minute, resolves the target hostname through DNS and refuses any address in a private, loopback, link-local, reserved, broadcast or unspecified range, and forwards only to repositories on an allow-list fetched from actualbudget/plugin-store. Nothing is fetched until the browser asks the proxy for it; the server performs no plugin request at start-up or on a schedule.",
+      "source": "src/app-cors-proxy.js and src/util/ssrf.ts as compiled into /app/chunks/app-*.js at 26.8.1",
+      "retrievedAt": "2026-08-12"
+    },
+    {
+      "type": "documented",
+      "claim": "The web client asks GitHub for the project's latest release number by default. getLatestVersion() fetches https://api.github.com/repos/actualbudget/actual/releases/latest and compares the tag with the running client's version so the About screen can report that a newer release exists. It is a read of a public URL that carries no install identifier, no version and no usage data, and it is issued by the owner's browser rather than by the server, so the address disclosed to GitHub is the owner's. It is gated on the global preference notifyWhenUpdateIsAvailable, which defaults to on and is exposed as the Settings checkbox 'Display a notification when updates are available'. Because it is a client preference and not a server setting, this package has no environment variable with which to pin it, and MOS does not disable it.",
+      "source": "getLatestVersion and the getLatestAppVersion thunk in the compiled web client at 26.8.1, and the About settings component that owns the checkbox",
+      "retrievedAt": "2026-08-12"
+    },
+    {
+      "type": "configured",
+      "claim": "MOS sets no environment variables for this package at all. The rendered runtime projection is one service built from the package Dockerfile, one named volume at /data, one published route, and an empty environment block. Every upstream default therefore applies unchanged, which is stated here so that no claim elsewhere in this review can rest on a MOS setting that does not exist.",
+      "source": "apps/actual-budget/manifest.json and the projection rendered by renderInstanceProjections for this package",
+      "retrievedAt": "2026-08-12"
+    },
+    {
+      "type": "documented",
+      "claim": "Normal use requires no upstream account and no external service. The server ships with no credentials and no registration: the first visitor to the app is offered a set-a-password screen, that password is stored as an argon2id hash in the account database inside the package volume, and there is no licence check, activation or account system anywhere in the product. Budget files, the account database and sessions all live under /data in the package-owned MOS volume.",
+      "source": "the /account/bootstrap and /account/needs-bootstrap handlers at 26.8.1, and the volume layout observed in the pinned image",
+      "retrievedAt": "2026-08-12"
+    },
+    {
+      "type": "documented",
+      "claim": "Sync between an owner's devices can be end-to-end encrypted with a key derived from a password the server never receives, in which case the server stores only ciphertext for the budget file. Bank-sync API secrets, if an owner adds any, are explicitly outside that encryption and are stored server-side; upstream documents this and recommends self-hosting because of it.",
+      "source": "Actual Budget end-to-end encryption and bank sync documentation",
+      "url": "https://actualbudget.org/docs/advanced/bank-sync/",
+      "retrievedAt": "2026-08-12"
+    },
+    {
+      "type": "documented",
+      "claim": "The project publishes no terms of service and no privacy policy, and the absence is consistent rather than an omission: Actual Budget operates no hosted service, no account system and no back end of its own, so there is no data-controller relationship for a policy to describe. The MIT licence is the only instrument binding an operator. The publisher is the actualbudget GitHub organisation, a community project with no corporate owner and no ownership change to report; the product began as a commercial application and was open-sourced by its original author in 2022, which is the last ownership change on record.",
+      "source": "repository contents and licence at v26.8.1, and the actualbudget GitHub organisation record",
+      "url": "https://github.com/actualbudget/actual/blob/master/LICENSE.txt",
+      "retrievedAt": "2026-08-12"
+    },
+    {
+      "type": "observed",
+      "claim": "The server contacts nothing. Across two captures totalling 27 minutes of wall clock - 832.3 seconds over first boot, bootstrap and browsing, then 778.2 seconds covering budget creation, adding a local account, entering transactions, editing categories and syncing to the server - a logging dnsmasq was the container’s only resolver and tcpdump ran inside its own network namespace, so every packet crossing the package boundary was recorded. The only hostname the container ever resolved was the injected control example.com, and the only TLS server name it ever sent was example.com. Both external IP conversations in each pass, 104.20.23.154 and 172.66.147.243, are that control’s own addresses as answered by the resolver, and both fall inside the injection windows. Container-to-external payload was 4,622 bytes in the first pass and 4,874 in the second, all of it control.",
+      "source": ".local-tools/privacy-rigs/actual-budget capture-20260812-172931: actual.pcap, actual-pass2.pcap, dns-queries.log, controls.txt",
+      "retrievedAt": "2026-08-12"
+    },
+    {
+      "type": "observed",
+      "claim": "The injected control appeared in both channels in both passes, so the silence is a measurement rather than a capture that was not working. The control was issued from inside the container itself, resolved through the logging resolver, and shows in the DNS log, the TLS server names and the packet capture each time.",
+      "source": "controls.txt and controls-verify.log for both passes of capture-20260812-172931",
+      "retrievedAt": "2026-08-12"
+    },
+    {
+      "type": "observed",
+      "claim": "A human reviewer’s authenticated browser session was recorded in full and confirms the release check as the single external request. The HAR holds 114 entries over 2 minutes 36 seconds of clicking through every screen the reviewer could find: 112 went to the app on localhost across 80 distinct endpoints, one was an inline data: URI that touches no network, and exactly one left the machine - GET https://api.github.com/repos/actualbudget/actual/releases/latest, answered 200 in 244 ms with a 4,213-byte body. It carried no cookie, no request body and no identifier of any kind, and no response set a cookie. Fonts and all other assets were served locally.",
+      "source": "reviewer-session.har in capture-20260812-172931, summarised by host and by request",
+      "retrievedAt": "2026-08-12"
+    },
+    {
+      "type": "observed",
+      "claim": "The release check is issued by the browser and discloses the address the app is reached at. Its Referer and Origin headers carry the deployment URL, which in this capture was http://localhost:18881 because the reviewer session ran over loopback; on a real MOS install those headers would carry the app’s public hostname, so GitHub would observe the owner’s browser IP alongside the hostname of their Actual Budget. Nothing else is disclosed: no version, no install identifier, no usage data.",
+      "source": "request headers of the api.github.com entry in reviewer-session.har",
+      "retrievedAt": "2026-08-12"
+    },
+    {
+      "type": "observed",
+      "claim": "The bank-sync status probes stay local and produce no egress. The reviewer session posted twice each to /gocardless/status, /simplefin/status and /pluggyai/status while opening the bank-connection screens; every one went to the app on localhost, and the packet capture recorded no outbound connection from the container in the same window. With no provider credentials entered there is no code path that reaches a bank.",
+      "source": "reviewer-session.har local endpoint list, cross-checked against actual-pass2.pcap over the same window",
+      "retrievedAt": "2026-08-12"
+    }
+  ],
+  "policies": [
+    {
+      "kind": "license",
+      "url": "https://github.com/actualbudget/actual/blob/master/LICENSE.txt",
+      "retrievedAt": "2026-08-12",
+      "publisher": "actualbudget organisation"
+    }
+  ],
+  "provenance": {
+    "method": "ai-assisted",
+    "provider": "Anthropic",
+    "model": "Claude Opus 5",
+    "modelIdentifierSource": "runtime-reported",
+    "skill": "assess-app-privacy",
+    "skillRevision": "5146372c3c87e81d66115b21d5885a186232cc9a",
+    "repositoryCommit": "c48bb6242a7768c61699567457fe966b01ebdb11",
+    "humanReviewed": true,
+    "humanReviewer": "Rasmus Puls"
+  },
+  "openQuestions": [
+    "The reviewer session ran over loopback, so the Referer and Origin the release check sends were http://localhost:18881. A deployment reached through a public domain would send that domain to GitHub instead; this is a reasoned extension of what was measured, not itself measured.",
+    "The plugin store was never exercised. /cors-proxy is the server’s only non-bank egress path, it is gated behind a session, a rate limit, an SSRF check and a repository allow-list, and nothing in either capture invoked it - but that means its behaviour is read from source rather than observed.",
+    "No HAR was retained for the second pass, so the client-side claims rest on the first reviewer session. The second pass is covered at the packet level only.",
+    "Whether the update-notification preference is stored per browser or on the server has not been established; the code path writes it through the client’s own key-value store, but the sync server also gained a server_prefs table in a recent release. An owner who turns it off may have to do so again in another browser.",
+    "TLS payloads were not decrypted, so conclusions bound behaviour by destination, method, header content and volume rather than by asserting the contents of encrypted bodies.",
+    "The captures span 27 minutes and cover first boot, bootstrap, budget creation and normal use. A scheduled task with a period longer than that would not have been seen."
+  ]
+}

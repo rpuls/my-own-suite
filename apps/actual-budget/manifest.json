@@ -3,7 +3,7 @@
   "id": "actual-budget",
   "name": "Actual Budget",
   "version": "0.1.0",
-  "minimumMosVersion": "0.17.0",
+  "minimumMosVersion": "0.18.0",
   "summary": "Envelope budgeting for your household, kept on your own server.",
   "category": "finance",
   "icon": "icon.png",
@@ -15,7 +15,16 @@
   ],
   "catalog": {
     "description": "Actual Budget asks one question at the start of every month: what is this money for? You hand out what is actually in your accounts across categories - rent, food, the car, the trip you keep postponing - and everything you spend afterwards is measured against the amount you set aside. Overspend somewhere and you decide what it comes out of, so the budget always adds up to money you really have. All of it runs on your own server: your salary, your balances and your spending stay there, and no bank is connected unless you set that up yourself.",
-    "replaces": ["YNAB", "Mint", "Quicken"],
+    "replaces": [
+      "YNAB",
+      "Mint",
+      "Quicken",
+      "Monarch Money",
+      "EveryDollar",
+      "Goodbudget",
+      "PocketGuard",
+      "Copilot Money"
+    ],
     "screenshots": [
       {
         "src": "screenshots/budget.png",

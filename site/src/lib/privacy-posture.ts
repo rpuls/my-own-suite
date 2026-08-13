@@ -19,9 +19,9 @@
 // on the shield (A 9-10, B 7-8, C 4-6, D 0-3). Postures, phrases, and verdicts
 // are generic schema-level rules — no app-specific logic belongs in this file.
 
-export type PrivacyPostureId = 'private-by-default' | 'privacy-configured' | 'external-dependency' | 'review-required';
+export type PrivacyPostureId = 'private-by-default' | 'privacy-configured' | 'owner-disableable' | 'external-dependency';
 
-export type PrivacyDimensionKey = 'telemetry' | 'externalServices' | 'accountDependency' | 'dataProcessing' | 'policyExposure';
+export type PrivacyDimensionKey = 'defaultEgress' | 'control' | 'accountDependency' | 'dataProcessing' | 'policyExposure';
 
 export type PrivacyProvenance = {
   humanReviewed: boolean;
@@ -32,7 +32,7 @@ export type PrivacyProvenance = {
 
 export type PrivacyReviewSummary = {
   dimensions: Record<string, string> | null;
-  posture: string;
+  posture: string | null;
   provenance?: PrivacyProvenance | null;
   reviewedAt: string | null;
   status: string;
@@ -91,66 +91,73 @@ export const POSTURES: Record<PrivacyPostureId, { border: string; color: string;
     sentence: 'Talks to outside services out of the box — MOS turned those parts off for you.',
     soft: 'var(--mos-color-info-soft)',
   },
+  'owner-disableable': {
+    border: 'var(--mos-color-warning-border)',
+    color: 'var(--mos-color-warning)',
+    label: 'Your choice',
+    sentence: 'Something leaves your server in normal use, and the app has a setting that stops it. MOS left the choice to you because it is a real trade-off. The full assessment says what leaves, who receives it, and where the switch is.',
+    soft: 'var(--mos-color-warning-soft)',
+  },
   'external-dependency': {
     border: 'var(--mos-color-warning-border)',
     color: 'var(--mos-color-warning)',
     label: 'External dependency',
-    sentence: 'Normal use relies on an outside service or account, so some traffic or data leaves your server. MOS reviewed that dependency and accepted it as the price of the feature — the evidence below says exactly what leaves, who receives it, and why.',
+    sentence: 'Something leaves your server in normal use and there is no in-app setting that stops it. MOS reviewed that and accepted it as the price of the feature. The full assessment says exactly what leaves, who receives it, and why.',
     soft: 'var(--mos-color-warning-soft)',
-  },
-  'review-required': {
-    border: 'var(--mos-color-danger-border)',
-    color: 'var(--mos-color-danger)',
-    label: 'Not yet reviewed',
-    sentence: 'MOS has not reviewed this app. Treat it as unverified.',
-    soft: 'var(--mos-color-danger-soft)',
   },
 };
 
+// Not a posture. The absence of a review is a process state, tracked as
+// `privacy.status`, and it is deliberately unavailable to the derivation: no
+// combination of facts about an app can conclude "unreviewed".
+export const UNREVIEWED = {
+  border: 'var(--mos-color-danger-border)',
+  color: 'var(--mos-color-danger)',
+  label: 'Not yet reviewed',
+  sentence: 'MOS has not reviewed this app. Treat it as unverified.',
+  soft: 'var(--mos-color-danger-soft)',
+};
+
+// The first two rows are the ones the posture derives from, and they lead for
+// that reason: what happens, then who settled it.
 export const DIMENSIONS: Array<{ iconPath: string; key: PrivacyDimensionKey; label: string }> = [
-  { iconPath: 'M4.9 19.1a10 10 0 010-14.2M19.1 4.9a10 10 0 010 14.2M7.8 16.2a6 6 0 010-8.4M16.2 7.8a6 6 0 010 8.4M12 11a1 1 0 100 2 1 1 0 000-2z', key: 'telemetry', label: 'Telemetry' },
-  { iconPath: 'M9 3v5M15 3v5M6.5 8h11v3.5a5.5 5.5 0 01-5.5 5.5 5.5 5.5 0 01-5.5-5.5V8zM12 17v4', key: 'externalServices', label: 'External services' },
+  { iconPath: 'M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3', key: 'defaultEgress', label: 'Out of the box' },
+  { iconPath: 'M7 8h10a4 4 0 010 8H7a4 4 0 010-8zM7.5 12a1.5 1.5 0 103 0 1.5 1.5 0 00-3 0z', key: 'control', label: 'Who decides' },
   { iconPath: 'M21 2l-9.6 9.6M15.5 7.5l3 3M11.4 11.6a4.8 4.8 0 10-6.8 6.8 4.8 4.8 0 006.8-6.8z', key: 'accountDependency', label: 'Accounts' },
   { iconPath: 'M22 12H2M5.5 5h13l3.5 7v5a2 2 0 01-2 2H4a2 2 0 01-2-2v-5l3.5-7zM6 16h.01M10 16h.01', key: 'dataProcessing', label: 'Data processing' },
   { iconPath: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6M16 13H8M16 17H8', key: 'policyExposure', label: 'Policies' },
 ];
 
 const PHRASES: Record<PrivacyDimensionKey, Record<string, { level: 0 | 1 | 2; phrase: string }>> = {
-  telemetry: {
-    'disabled-by-mos': { level: 2, phrase: 'Turned off by MOS' },
-    'none-observed': { level: 2, phrase: 'None observed' },
-    optional: { level: 1, phrase: 'Present, you can turn it off' },
-    unavoidable: { level: 0, phrase: 'Cannot be turned off' },
-    unknown: { level: 0, phrase: 'Not yet known' },
+  defaultEgress: {
+    'external-contact': { level: 1, phrase: 'Some contact in normal use' },
+    none: { level: 2, phrase: 'Nothing leaves your server' },
   },
-  externalServices: {
-    'none-required': { level: 2, phrase: 'None required' },
-    optional: { level: 1, phrase: 'Optional features only' },
-    required: { level: 0, phrase: 'Required to work' },
-    unknown: { level: 0, phrase: 'Not yet known' },
+  control: {
+    'accepted-by-mos': { level: 0, phrase: 'Kept on, reviewed by MOS' },
+    'disabled-by-mos': { level: 1, phrase: 'Turned off by MOS' },
+    'left-to-owner': { level: 1, phrase: 'Yours to switch off' },
+    'nothing-to-decide': { level: 2, phrase: 'Nothing to decide' },
   },
   accountDependency: {
     'local-only': { level: 2, phrase: 'Your local account only' },
     'optional-upstream-account': { level: 1, phrase: 'Optional outside account' },
     'required-upstream-account': { level: 0, phrase: 'Outside account required' },
-    unknown: { level: 0, phrase: 'Not yet known' },
   },
   dataProcessing: {
     local: { level: 2, phrase: 'Stays on your machine' },
     'optional-external': { level: 1, phrase: 'Optional outside processing' },
     'required-external': { level: 0, phrase: 'Processed outside' },
-    unknown: { level: 0, phrase: 'Not yet known' },
   },
   policyExposure: {
     'self-hosted-software-only': { level: 2, phrase: 'Only the software license' },
     'upstream-services-involved': { level: 1, phrase: 'Outside terms apply' },
-    unclear: { level: 0, phrase: 'Unclear' },
   },
 };
 
 const VERDICTS: Record<0 | 1 | 2, PrivacyVerdict> = {
   0: { border: 'var(--mos-color-danger-border)', color: 'var(--mos-color-danger)', soft: 'var(--mos-color-danger-soft)', word: 'Outside' },
-  1: { border: 'var(--mos-color-warning-border)', color: 'var(--mos-color-warning)', soft: 'var(--mos-color-warning-soft)', word: 'Your choice' },
+  1: { border: 'var(--mos-color-warning-border)', color: 'var(--mos-color-warning)', soft: 'var(--mos-color-warning-soft)', word: 'Limited' },
   2: { border: 'var(--mos-color-accent-border)', color: 'var(--mos-color-accent)', soft: 'var(--mos-color-accent-soft)', word: 'Private' },
 };
 
@@ -158,11 +165,14 @@ const UNKNOWN_VERDICT: PrivacyVerdict = { border: 'var(--mos-color-surface-borde
 
 export function postureFor(privacy: PrivacyReviewSummary | null | undefined) {
   const posture = privacy?.posture as PrivacyPostureId | undefined;
-  return (posture && POSTURES[posture]) || POSTURES['review-required'];
+  return (posture && POSTURES[posture]) || UNREVIEWED;
 }
 
+// A completed review always carries a posture, so the status alone answers
+// this. It used to also have to exclude a "reviewed" package whose posture
+// said "review-required", a state the derivation can no longer produce.
 export function isRated(privacy: PrivacyReviewSummary | null | undefined): boolean {
-  return privacy?.status === 'reviewed' && privacy.posture !== 'review-required';
+  return privacy?.status === 'reviewed';
 }
 
 export function privacyScore(privacy: PrivacyReviewSummary | null | undefined): number | null {
@@ -197,14 +207,14 @@ export function gradeScaleLabel(privacy: PrivacyReviewSummary | null | undefined
 
 export function dimensionRowsFor(privacy: PrivacyReviewSummary | null | undefined): PrivacyDimensionRow[] {
   return DIMENSIONS.map((dimension) => {
-    const value = String(privacy?.dimensions?.[dimension.key] ?? 'unknown');
-    const entry = PHRASES[dimension.key][value] || { level: 0 as const, phrase: 'Not yet known' };
-    const unknown = /unknown|unclear/u.test(value);
+    const value = String(privacy?.dimensions?.[dimension.key] ?? '');
+    const entry = PHRASES[dimension.key][value];
+    const unknown = !entry;
     return {
       iconPath: dimension.iconPath,
       key: dimension.key,
       label: dimension.label,
-      phrase: entry.phrase,
+      phrase: entry ? entry.phrase : 'Not yet known',
       verdict: unknown ? UNKNOWN_VERDICT : VERDICTS[entry.level],
     };
   });

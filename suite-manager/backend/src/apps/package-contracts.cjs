@@ -284,60 +284,73 @@ function validatePrivacyBinding(review, { manifest, packageDigest, source }) {
 }
 
 // The mechanical posture derivation promised by apps/README.md: postures are
-// derived from their dimensions, never selected by intuition, and an unknown
-// fact is never turned into a favorable result.
+// derived from their dimensions, never selected by intuition.
 //
-// The permitted value of every dimension, which is also the vocabulary
-// derivePrivacyPosture reasons over. Declared once so the derivation and the
-// document validator below cannot disagree about what a dimension may say.
+// Two dimensions decide the posture, and both are deliberately factual rather
+// than evaluative. `defaultEgress` is settled by a runtime capture: with the
+// configuration MOS ships, does anything leave in normal use? `control` is
+// settled by reading the package and the app's own settings: who decided that,
+// and can the owner change it? Anything a reviewer could reasonably argue
+// about belongs in the evidence prose, not in a dimension value. The remaining
+// dimensions describe the app but do not steer the posture, so no reviewer has
+// to bend one of them to reach a defensible badge.
+//
+// The line between 'left-to-owner' and 'accepted-by-mos' is whether the app
+// offers a control the owner can actually reach. An in-app setting is the
+// owner's decision to make; a value reachable only by editing packaging MOS
+// owns is MOS's decision, and is recorded as MOS's.
+//
+// There is no 'unknown' anywhere in this vocabulary. A fact nobody has
+// established yet is not a posture — it means no review exists, which the
+// catalog records as `privacy.status: review-required` and which never reaches
+// this derivation.
 const PRIVACY_DIMENSION_VALUES = Object.freeze({
-  accountDependency: ['local-only', 'optional-upstream-account', 'required-upstream-account', 'unknown'],
-  confidence: ['verified', 'documented', 'inferred', 'unknown'],
-  dataProcessing: ['local', 'optional-external', 'required-external', 'unknown'],
-  externalServices: ['none-required', 'optional', 'required', 'unknown'],
-  policyExposure: ['self-hosted-software-only', 'upstream-services-involved', 'unclear'],
-  telemetry: ['none-observed', 'disabled-by-mos', 'optional', 'unavoidable', 'unknown'],
+  accountDependency: ['local-only', 'optional-upstream-account', 'required-upstream-account'],
+  confidence: ['verified', 'documented'],
+  control: ['nothing-to-decide', 'disabled-by-mos', 'left-to-owner', 'accepted-by-mos'],
+  dataProcessing: ['local', 'optional-external', 'required-external'],
+  defaultEgress: ['none', 'external-contact'],
+  policyExposure: ['self-hosted-software-only', 'upstream-services-involved'],
 });
-const PRIVACY_POSTURES = Object.freeze(['private-by-default', 'privacy-configured', 'external-dependency', 'review-required']);
+const PRIVACY_POSTURES = Object.freeze(['private-by-default', 'privacy-configured', 'owner-disableable', 'external-dependency']);
 const PRIVACY_DIMENSIONS = Object.freeze(Object.keys(PRIVACY_DIMENSION_VALUES));
+
+// Total over the four legal (defaultEgress, control) pairs, one per posture.
+// The other four pairs are contradictions — nothing leaves yet MOS left a
+// switch to the owner, or something leaves yet there was nothing to decide —
+// and validatePrivacyAssessment rejects them instead of resolving them into a
+// badge. A derivation with no fallthrough cannot quietly publish a verdict
+// nobody chose.
+const PRIVACY_POSTURE_BY_DIMENSIONS = Object.freeze({
+  'external-contact|accepted-by-mos': 'external-dependency',
+  'external-contact|left-to-owner': 'owner-disableable',
+  'none|disabled-by-mos': 'privacy-configured',
+  'none|nothing-to-decide': 'private-by-default',
+});
 
 function derivePrivacyPosture(dimensions) {
   const d = dimensions && typeof dimensions === 'object' && !Array.isArray(dimensions) ? dimensions : {};
-  if (PRIVACY_DIMENSIONS.some((name) => d[name] === undefined || d[name] === 'unknown' || d[name] === 'unclear')) {
-    return 'review-required';
-  }
-  if (d.telemetry === 'unavoidable' || d.externalServices === 'required'
-    || d.accountDependency === 'required-upstream-account' || d.dataProcessing === 'required-external') {
-    return 'external-dependency';
-  }
-  if (d.telemetry === 'none-observed' && d.externalServices === 'none-required'
-    && d.accountDependency === 'local-only' && d.dataProcessing === 'local') {
-    return 'private-by-default';
-  }
-  // Optional external touchpoints with no enabled telemetry. Telemetry that
-  // exists but was not disabled ('optional') supports no favorable posture.
-  if (d.telemetry === 'none-observed' || d.telemetry === 'disabled-by-mos') {
-    return 'privacy-configured';
-  }
-  return 'review-required';
+  return PRIVACY_POSTURE_BY_DIMENSIONS[`${d.defaultEgress}|${d.control}`] || null;
 }
 
 // Semantic validity of the assessment itself, independent of which package it
-// binds to: the stated posture must be the one its dimensions derive, and a
-// favorable posture must rest on at least one concrete piece of evidence.
+// binds to: the dimensions must describe a state that exists, the stated
+// posture must be the one they derive, and every posture must rest on at least
+// one concrete piece of evidence.
 function validatePrivacyAssessment(review) {
   if (!review || typeof review !== 'object' || Array.isArray(review)) return ['privacy review must be an object.'];
   const errors = [];
   const derived = derivePrivacyPosture(review.dimensions);
-  if (review.posture !== derived) {
+  if (derived === null) {
+    const d = isPlainRecord(review.dimensions) ? review.dimensions : {};
+    errors.push(`privacy review dimensions describe no reviewable state: defaultEgress ${String(d.defaultEgress)} cannot be combined with control ${String(d.control)}.`);
+  } else if (review.posture !== derived) {
     errors.push(`privacy review posture must be derived from its dimensions: expected ${derived}, found ${String(review.posture)}.`);
   }
-  if (review.posture !== 'review-required') {
-    const evidence = Array.isArray(review.evidence) ? review.evidence : [];
-    const concrete = evidence.filter((entry) => entry && typeof entry === 'object'
-      && String(entry.claim || '').trim() && String(entry.source || '').trim());
-    if (concrete.length === 0) errors.push('privacy review must cite at least one evidence entry with a claim and source for its posture.');
-  }
+  const evidence = Array.isArray(review.evidence) ? review.evidence : [];
+  const concrete = evidence.filter((entry) => entry && typeof entry === 'object'
+    && String(entry.claim || '').trim() && String(entry.source || '').trim());
+  if (concrete.length === 0) errors.push('privacy review must cite at least one evidence entry with a claim and source for its posture.');
   return errors;
 }
 

@@ -158,6 +158,14 @@ function categoryLabel(category: string) {
   return CATEGORY_LABELS[category] || category.replace(/-/gu, ' ').replace(/\b\w/gu, (match) => match.toUpperCase());
 }
 
+// A manifest may list every product an app stands in for, ranked most-known
+// first. The detail hero has room for the two that identify it; the app's page
+// on the public docs site carries the whole list. Cousin of shortReplaces() in
+// the site's src/lib/app-catalog.ts.
+function shortReplaces(replaces: string[]) {
+  return replaces.slice(0, 2).join(' / ');
+}
+
 function primaryCategory(app: AppPackageSummary) {
   return Array.isArray(app.category) ? app.category[0] || 'apps' : app.category;
 }
@@ -718,7 +726,7 @@ function AppDetail({
             {app.external ? <span className="suite-app-external-pill">External &middot; Unverified</span> : null}
             <AppHealthIndicator app={app} />
           </div>
-          {app.catalog.replaces.length ? <p className="suite-app-detail-replaces"><span>Replaces</span><strong>{app.catalog.replaces.join(' / ')}</strong></p> : null}
+          {app.catalog.replaces.length ? <p className="suite-app-detail-replaces"><span>Replaces</span><strong>{shortReplaces(app.catalog.replaces)}</strong></p> : null}
         </div>
         <div className="suite-app-primary-actions">
           {updateWaiting ? <>
@@ -874,7 +882,7 @@ function AppDetail({
         <AdvancedDetails app={app} />
       </div>
     </aside>
-    {privacyOpen ? <PrivacyPostureDialog advisories={app.advisories} appName={app.name} onClose={() => setPrivacyOpen(false)} packageVersion={app.instance?.packageVersion || app.version} privacy={app.privacy} /> : null}
+    {privacyOpen ? <PrivacyPostureDialog advisories={app.advisories} appName={app.name} onClose={() => setPrivacyOpen(false)} packageId={app.id} packageVersion={app.instance?.packageVersion || app.version} privacy={app.privacy} /> : null}
     {galleryOpen && app.catalog.screenshots.length ? <Dialog className="suite-app-gallery-dialog" closeOnBackdrop onClose={() => setGalleryOpen(false)} title={`${app.name} screens`}>
       <figure className="suite-app-gallery">
         <div className="suite-app-gallery-frame">
@@ -1243,6 +1251,9 @@ export function AppsScreen({ owner }: { owner: Owner }) {
         app.catalog.description,
         app.catalog.privacy.summary,
         app.catalog.resourceHint.label,
+        // Owners search for what they are leaving behind ("dropbox", "lastpass")
+        // more readily than for an app they have never heard of.
+        ...app.catalog.replaces,
         ...app.catalog.tags,
         ...app.catalog.features.flatMap((feature) => [feature.title, feature.body]),
       ].join(' ').toLowerCase();

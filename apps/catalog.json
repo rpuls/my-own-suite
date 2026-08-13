@@ -1,18 +1,19 @@
 {
   "packages": {
     "actual-budget": {
-      "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:2ebf607e90d5c5404c1404a8648193f57a96142ee9c7e8462b670cafbe1770c6",
+      "minimumMosVersion": "0.18.0",
+      "packageDigest": "sha256:d384cff9d811c98e3fedfd515fee4a2b71c64ed495725a778574ccf4873baabc",
       "packageVersion": "0.1.0",
       "path": "apps/actual-budget",
       "privacy": {
-        "status": "review-required"
+        "posture": "owner-disableable",
+        "status": "reviewed"
       }
     },
     "immich": {
-      "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:690aa1916a681b3b5fe890668d7f8e7985e1bca5bb72e1e3ecd61024abd6d8a8",
-      "packageVersion": "0.5.0",
+      "minimumMosVersion": "0.18.0",
+      "packageDigest": "sha256:d287518b7ad7ea4f1325bc42c7871a59ec9ce7b935696732c2e4add22deb394b",
+      "packageVersion": "0.5.1",
       "path": "apps/immich",
       "privacy": {
         "posture": "external-dependency",
@@ -20,9 +21,9 @@
       }
     },
     "onlyoffice": {
-      "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:5fa8449f870d3f354f3a0c8ed768152a65e28fcc131646a1f16636417ab39f68",
-      "packageVersion": "0.2.2",
+      "minimumMosVersion": "0.18.0",
+      "packageDigest": "sha256:5b9f359ecb2567227bfc774f7798f45a671fcbf735b49249b335f955d2aeb7f6",
+      "packageVersion": "0.2.3",
       "path": "apps/onlyoffice",
       "privacy": {
         "posture": "privacy-configured",
@@ -30,9 +31,9 @@
       }
     },
     "paperless-ngx": {
-      "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:e2e787bb2ff19abd3a6cbda2f705b189e170404b77ca7aa375a915290c0f980a",
-      "packageVersion": "0.1.0",
+      "minimumMosVersion": "0.18.0",
+      "packageDigest": "sha256:e3e0e043b36d9538220c5cf8ac5197f035b5328eb228248dfb26c5032ecbd5f1",
+      "packageVersion": "0.1.1",
       "path": "apps/paperless-ngx",
       "privacy": {
         "posture": "private-by-default",
@@ -40,9 +41,9 @@
       }
     },
     "radicale": {
-      "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:080c8f13536903e23bb1bc36a7c5ca2e4ffa2100f34fffd822ece213429bf732",
-      "packageVersion": "0.4.1",
+      "minimumMosVersion": "0.18.0",
+      "packageDigest": "sha256:03aec2c9182d7c7e5e9d3616f0c95d7e77ee98d7faccd3eca1d838133fdce871",
+      "packageVersion": "0.4.2",
       "path": "apps/radicale",
       "privacy": {
         "posture": "private-by-default",
@@ -50,19 +51,19 @@
       }
     },
     "seafile": {
-      "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:2bbd88b4bf65c41e91419c188c66a83ac3531e51f0922eb8ba4f02b085c52755",
-      "packageVersion": "0.2.3",
+      "minimumMosVersion": "0.18.0",
+      "packageDigest": "sha256:2b7fc7374f0f373faf0dce151ad7989f214649b1826ab7e84b2b556a7b9ef863",
+      "packageVersion": "0.2.4",
       "path": "apps/seafile",
       "privacy": {
-        "posture": "privacy-configured",
+        "posture": "private-by-default",
         "status": "reviewed"
       }
     },
     "stirling-pdf": {
-      "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:9406c150b91aa986fa6add856d59917ff8bdbb1795e87581c675ff4f4351f918",
-      "packageVersion": "0.2.2",
+      "minimumMosVersion": "0.18.0",
+      "packageDigest": "sha256:586365818b7cb07daf6708567cc77dfffdb09c1b2d53d5db45fc942cd6954777",
+      "packageVersion": "0.2.4",
       "path": "apps/stirling-pdf",
       "privacy": {
         "posture": "privacy-configured",
@@ -70,12 +71,12 @@
       }
     },
     "vaultwarden": {
-      "minimumMosVersion": "0.17.0",
-      "packageDigest": "sha256:e21f1a7e0dfadb8c1b4715f570102e6c9e9dfc453926ac90cc1dc57b4593e3b8",
-      "packageVersion": "0.2.3",
+      "minimumMosVersion": "0.18.0",
+      "packageDigest": "sha256:cabf9762597b74620d4bf8e0f011a5b41c577a9b66c2a1067aa1159a3e6b518d",
+      "packageVersion": "0.2.5",
       "path": "apps/vaultwarden",
       "privacy": {
-        "posture": "privacy-configured",
+        "posture": "owner-disableable",
         "status": "reviewed"
       }
     }

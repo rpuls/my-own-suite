@@ -88,11 +88,15 @@ function AdvisoryNotices({ advisories }: { advisories: PrivacyAdvisory[] }) {
   </div>;
 }
 
-export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSESSMENT_DOCS_URL, onClose, packageVersion, privacy }: {
+export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSESSMENT_DOCS_URL, onClose, packageId, packageVersion, privacy }: {
   advisories?: PrivacyAdvisory[] | null;
   appName: string;
   assessmentUrl?: string;
   onClose: () => void;
+  // Used only to link out to the published assessment. The posture sentence
+  // promises the evidence names what leaves and who receives it, so the
+  // dialog has to be able to reach it.
+  packageId?: string | null;
   packageVersion?: string | null;
   privacy: PrivacyReviewSummary | null | undefined;
 }) {
@@ -125,6 +129,18 @@ export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSE
       </div>)}
     </div>
     <AdvisoryNotices advisories={advisories || []} />
+    {packageId && isRated(privacy) ? <a
+      className="suite-privacy-report-link"
+      href={`https://myownsuite.org/docs/apps/${packageId}/#privacy-assessment`}
+      rel="noreferrer"
+      target="_blank"
+    >
+      <span>
+        <strong>Read the full assessment</strong>
+        <span>Every piece of evidence, its source, and what the review does not settle</span>
+      </span>
+      <Glyph path={GLYPHS.externalLink} />
+    </a> : null}
     <div className="suite-privacy-footer">
       <div className="suite-privacy-footer-meta">
         <span>{[provenanceLine(privacy, isRated(privacy) ? packageVersion : null), method].filter(Boolean).join(' · ')}</span>

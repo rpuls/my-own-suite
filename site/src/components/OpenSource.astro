@@ -2,30 +2,50 @@
 // MOS1's "Built on great open-source work" panel, ported to the MOS site:
 // frosted panel with a scrolling logo marquee and maker attribution.
 // The maker logo is self-hosted so the page makes no third-party requests.
+//
+// Two sources feed the marquee and they are deliberately kept apart:
+//   - catalog apps take their icon from apps/<app>/icon.png through the same
+//     manifest catalog the rest of the site uses, so a new app package appears
+//     here on the next build with nothing to copy
+//   - the platform stack is curated below, because nothing in the repo declares
+//     which projects MOS itself is built on
 import funkytonLogo from '../assets/funkyton-logo.png'
+import { catalogApps } from '../lib/app-catalog'
 
-const logoModules = import.meta.glob('../assets/logos/*.{png,jpg,jpeg,svg,webp,avif}', {
+const stackModules = import.meta.glob('../assets/stack/*.{png,jpg,jpeg,svg,webp,avif}', {
   eager: true,
+  query: '?url',
   import: 'default'
-}) as Record<string, ImageMetadata>
+}) as Record<string, string>
 
-const normalizeLogoName = (name: string) =>
-  name
-    .replace(/[-_]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase())
+// File name -> the project's own spelling, in display order. App icons never
+// belong here; add the app package instead and it arrives on its own.
+const STACK: Array<[string, string]> = [
+  ['docker.png', 'Docker'],
+  ['caddy.png', 'Caddy'],
+  ['nodejs.svg', 'Node.js'],
+  ['typescript.svg', 'TypeScript'],
+  ['react.svg', 'React'],
+  ['vite.svg', 'Vite'],
+  ['astro.svg', 'Astro'],
+  ['postgresql.png', 'PostgreSQL'],
+  ['valkey.png', 'Valkey'],
+  ['homepage.png', 'Homepage']
+]
 
-const appLogos = Object.entries(logoModules)
-  .sort(([a], [b]) => a.localeCompare(b))
-  .map(([path, image]) => {
-    const fileName = path.split('/').pop() ?? ''
-    return {
-      src: image.src,
-      alt: normalizeLogoName(fileName.replace(/\.[^.]+$/, ''))
-    }
-  })
-  .filter((logo) => logo.src.length > 0)
+// The list and the folder must agree, so a renamed or dropped-in asset fails
+// the build instead of quietly appearing unlabelled or vanishing from the row.
+const onDisk = new Set(Object.keys(stackModules).map((path) => path.split('/').pop()))
+const listed = new Set(STACK.map(([file]) => file))
+const drift = [...new Set([...onDisk, ...listed])].filter((file) => !onDisk.has(file) || !listed.has(file))
+if (drift.length) {
+  throw new Error(`OpenSource: site/src/assets/stack/ and the STACK list disagree on: ${drift.join(', ')}`)
+}
+
+const logos = [
+  ...catalogApps.filter((app) => app.icon).map((app) => ({ src: app.icon, alt: app.name })),
+  ...STACK.map(([file, name]) => ({ src: stackModules[`../assets/stack/${file}`], alt: name }))
+]
 ---
 
 <section class="band" aria-labelledby="made-with-title">
@@ -47,13 +67,13 @@ const appLogos = Object.entries(logoModules)
 
       <div class="made-with-attribution" aria-label="Attribution">
         <p class="made-with-label">Built with</p>
-        <div class="logo-marquee" aria-label="Included apps">
+        <div class="logo-marquee" aria-label="Catalog apps and the projects MOS is built on">
           <div class="logo-track">
-            {appLogos.map((logo) => (
+            {logos.map((logo) => (
               <img class="app-logo" src={logo.src} alt={logo.alt} loading="lazy" decoding="async" />
             ))}
-            {appLogos.map((logo) => (
-              <img class="app-logo" src={logo.src} alt={logo.alt} aria-hidden="true" loading="lazy" decoding="async" />
+            {logos.map((logo) => (
+              <img class="app-logo" src={logo.src} alt="" aria-hidden="true" loading="lazy" decoding="async" />
             ))}
           </div>
         </div>

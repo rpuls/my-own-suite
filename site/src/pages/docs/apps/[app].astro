@@ -5,9 +5,17 @@
 // the page; the package README renders verbatim as the technical
 // reference, so there is no docs copy to keep in sync.
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import PrivacyAssessment from '../../../components/PrivacyAssessment.astro'
 import PrivacyPosture from '../../../components/PrivacyPosture.astro'
 import TryOutsideMos from '../../../components/TryOutsideMos.astro'
-import { catalogApps, appReadmes, LINK_LABELS } from '../../../lib/app-catalog'
+import {
+  catalogApps,
+  appReadmes,
+  LINK_LABELS,
+  REPLACES_HEADLINE,
+  replacesSentence,
+  shortReplaces
+} from '../../../lib/app-catalog'
 
 export function getStaticPaths() {
   return catalogApps.map((app) => ({ params: { app: app.id } }))
@@ -26,22 +34,58 @@ const linkEntries = Object.entries(app.links).map(([key, href]) => ({
 // this section only exists for packages that ship a demo deploy target.
 const demoTarget = app.demoDeployTargets[0] ?? null
 
+// This page is the one surface with room for the manifest's full `replaces`
+// list, and it is the page someone searching "<product> alternative" lands on
+// — so the heading names the best-known product it stands in for and the rest
+// of the ranked list follows underneath.
+const alternativesHeading = app.replaces.length
+  ? `A self-hosted ${app.replaces[0]} alternative`
+  : ''
+
+// Same job for the tab title and the search snippet: the heading on the page
+// stays the app's own name, while the title tag and description answer the
+// query that brought someone here. Starlight lets a `title` head entry
+// override the generated one.
+const seoTitle = app.replaces.length
+  ? `${app.name} — a self-hosted ${app.replaces[0]} alternative`
+  : ''
+const seoDescription = app.replaces.length
+  ? `${app.summary} A self-hosted alternative to ${replacesSentence(app.replaces.slice(0, REPLACES_HEADLINE))}.`
+  : app.summary
+
 const headings = [
   ...(app.features.length ? [{ depth: 2, slug: 'what-you-can-do', text: 'What you can do' }] : []),
+  ...(alternativesHeading ? [{ depth: 2, slug: 'alternatives', text: alternativesHeading }] : []),
   { depth: 2, slug: 'good-to-know', text: 'Good to know' },
   ...(demoTarget ? [{ depth: 2, slug: 'try-outside-mos', text: `Just want to try ${app.name}?` }] : []),
+  ...(app.privacyAssessment ? [{ depth: 2, slug: 'privacy-assessment', text: 'Privacy assessment' }] : []),
   ...(Readme ? [{ depth: 2, slug: 'technical-reference', text: 'Technical reference' }] : []),
   ...(linkEntries.length ? [{ depth: 2, slug: 'links', text: 'Links' }] : [])
 ]
 ---
 
-<StarlightPage frontmatter={{ title: app.name, description: app.summary }} headings={headings}>
+<StarlightPage
+  frontmatter={{
+    title: app.name,
+    description: seoDescription,
+    head: seoTitle
+      ? [
+          { tag: 'title', content: `${seoTitle} | My Own Suite` },
+          { tag: 'meta', attrs: { property: 'og:title', content: seoTitle } },
+          { tag: 'meta', attrs: { name: 'twitter:title', content: seoTitle } }
+        ]
+      : []
+  }}
+  headings={headings}
+>
   <div class="app-doc-head">
     <span class="app-doc-head-ico">
       <img src={app.icon} alt="" />
     </span>
     <div class="app-doc-head-meta">
-      {app.replaces && <p class="app-doc-replaces">Replaces {app.replaces}</p>}
+      {app.replaces.length > 0 && (
+        <p class="app-doc-replaces">Replaces {shortReplaces(app.replaces)}</p>
+      )}
       <p class="app-doc-badges">
         <span class="app-doc-badge">{app.category}</span>
         {app.resources && <span class="app-doc-badge">{app.resources}</span>}
@@ -70,8 +114,26 @@ const headings = [
     </>
   )}
 
+  {alternativesHeading && (
+    <>
+      <h2 id="alternatives">{alternativesHeading}</h2>
+      <p>
+        {app.name} does the job people use {replacesSentence(app.replaces)} for, on a server you
+        own: the same everyday task, without a subscription and without an account at a company
+        that also keeps your data. If you arrived comparing one of these, this is the app My Own
+        Suite installs in its place — its privacy posture below says exactly what it does and does
+        not send anywhere.
+      </p>
+      <ul class="app-doc-alternatives">
+        {app.replaces.map((product) => (
+          <li><strong>{product}</strong> alternative</li>
+        ))}
+      </ul>
+    </>
+  )}
+
   <h2 id="good-to-know">Good to know</h2>
-  <PrivacyPosture advisories={app.advisories} appName={app.name} assessmentUrl="/docs/privacy/how-we-assess/" packageVersion={app.version} privacy={app.privacyReview} />
+  <PrivacyPosture advisories={app.advisories} appName={app.name} assessmentUrl="/docs/privacy/how-we-assess/" packageVersion={app.version} privacy={app.privacyReview} reportUrl={app.privacyAssessment ? '#privacy-assessment' : null} />
   <ul>
     {app.resources && (
       <li>
@@ -93,6 +155,13 @@ const headings = [
   </ul>
 
   {demoTarget && <TryOutsideMos appName={app.name} railwayUrl={demoTarget.url} />}
+
+  {app.privacyAssessment && (
+    <>
+      <h2 id="privacy-assessment">Privacy assessment</h2>
+      <PrivacyAssessment appName={app.name} assessment={app.privacyAssessment} />
+    </>
+  )}
 
   {Readme && (
     <>
@@ -119,4 +188,5 @@ const headings = [
       </ul>
     </>
   )}
+
 </StarlightPage>
