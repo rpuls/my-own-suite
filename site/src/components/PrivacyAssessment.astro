@@ -1,0 +1,208 @@
+---
+// The full privacy assessment for one app, rendered from its
+// apps/<app>/privacy-review.json. The posture dialog states that the evidence
+// says what leaves, who receives it and why; this section is where a reader
+// can actually check that, so it is deliberately complete rather than a
+// summary — including the open questions, which are the part a sceptic should
+// read first.
+import type { PrivacyAssessment, PrivacyEvidence } from '../lib/app-catalog'
+import { reviewDateLabel } from '../lib/privacy-posture'
+
+interface Props {
+  appName: string
+  assessment: PrivacyAssessment
+}
+
+const { appName, assessment } = Astro.props
+
+// Ordered strongest-first: what was watched on the wire outranks what the
+// package is configured to do, which outranks what a publisher documents.
+const EVIDENCE_KINDS: Array<{ gloss: string; label: string; type: PrivacyEvidence['type'] }> = [
+  { gloss: 'Watched on the wire, in a running instance of this package.', label: 'Observed', type: 'observed' },
+  { gloss: 'Read from the configuration MOS actually ships.', label: 'Configured', type: 'configured' },
+  { gloss: 'Taken from upstream documentation, policies or source.', label: 'Documented', type: 'documented' },
+  { gloss: 'Reasoned from the above rather than established directly.', label: 'Inferred', type: 'inferred' }
+]
+
+const groups = EVIDENCE_KINDS
+  .map((kind) => ({ ...kind, items: assessment.evidence.filter((entry) => entry.type === kind.type) }))
+  .filter((group) => group.items.length > 0)
+
+const shortDigest = (value: string) => (value ? `${String(value).replace(/^sha256:/, '').slice(0, 12)}…` : '')
+const reviewed = reviewDateLabel(assessment.reviewedAt)
+const expires = reviewDateLabel(assessment.expiresAt)
+const provenance = assessment.provenance
+const humanReviewer = provenance.humanReviewed ? (provenance.humanReviewer || 'a MOS maintainer') : null
+---
+
+<div class="privacy-report">
+  <p class="privacy-report-intro">
+    This is the assessment behind {appName}'s posture grade, exactly as it ships inside the package.
+    It describes package version <strong>{assessment.packageVersion}</strong> and nothing else — install
+    a different version and its own assessment travels with it.
+    {reviewed && <> Reviewed {reviewed}{expires && <>, due for reassessment by {expires}</>}.</>}
+  </p>
+
+  <h3 id="privacy-assessment-scope">What was reviewed</h3>
+  <ul class="privacy-report-scope">
+    <li>
+      <strong>Package</strong> — version {assessment.packageVersion}, content digest
+      <code>{shortDigest(assessment.packageDigest)}</code>
+      {assessment.sourceRevision && <> at commit <code>{String(assessment.sourceRevision).slice(0, 12)}</code></>}
+    </li>
+    {assessment.components.map((component) => (
+      <li>
+        <strong>{component.name}</strong>
+        {component.version && <> — version {component.version}</>}
+        {component.artifact && <> from <code>{component.artifact}</code></>}
+        {component.digest && <> pinned at <code>{shortDigest(component.digest)}</code></>}
+      </li>
+    ))}
+  </ul>
+
+  {assessment.clientsExcluded.length > 0 && (
+    <>
+      <p class="privacy-report-note">Deliberately outside this assessment:</p>
+      <ul class="privacy-report-excluded">
+        {assessment.clientsExcluded.map((item) => <li>{item}</li>)}
+      </ul>
+    </>
+  )}
+
+  <h3 id="privacy-assessment-evidence">Evidence</h3>
+  {groups.map((group) => (
+    <div class="privacy-report-group">
+      <p class="privacy-report-group-head">
+        <span class={`privacy-report-kind is-${group.type}`}>{group.label}</span>
+        <span class="privacy-report-gloss">{group.gloss}</span>
+      </p>
+      <ul class="privacy-report-evidence">
+        {group.items.map((entry) => (
+          <li>
+            <p>{entry.claim}</p>
+            <p class="privacy-report-source">
+              Source: {entry.url ? <a href={entry.url} rel="noreferrer" target="_blank">{entry.source}</a> : entry.source}
+              {entry.retrievedAt && <> · checked {entry.retrievedAt}</>}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  ))}
+
+  {assessment.openQuestions.length > 0 && (
+    <>
+      <h3 id="privacy-assessment-open-questions">What this review does not settle</h3>
+      <p class="privacy-report-note">
+        Published rather than smoothed over. Each of these is a limit of the method, not a finding
+        against the app.
+      </p>
+      <ul class="privacy-report-open">
+        {assessment.openQuestions.map((question) => <li>{question}</li>)}
+      </ul>
+    </>
+  )}
+
+  {assessment.policies.length > 0 && (
+    <>
+      <h3 id="privacy-assessment-policies">Policies read</h3>
+      <ul class="privacy-report-policies">
+        {assessment.policies.map((policy) => (
+          <li>
+            <a href={policy.url} rel="noreferrer" target="_blank">{policy.kind}</a>
+            {policy.publisher && <> — {policy.publisher}</>}
+            {policy.retrievedAt && <> · retrieved {policy.retrievedAt}</>}
+          </li>
+        ))}
+      </ul>
+    </>
+  )}
+
+  <h3 id="privacy-assessment-provenance">How this review was produced</h3>
+  <ul class="privacy-report-provenance">
+    <li><strong>Method</strong> — {provenance.method === 'human' ? 'human review' : 'AI-assisted review'}{humanReviewer ? `, checked by ${humanReviewer}` : ', not yet checked by a human'}</li>
+    {provenance.model && <li><strong>Model</strong> — {provenance.model}{provenance.provider && <> ({provenance.provider})</>}</li>}
+    {provenance.skill && (
+      <li>
+        <strong>Workflow</strong> —
+        <a href={`https://github.com/rpuls/my-own-suite/blob/main/skills/${provenance.skill}/SKILL.md`} rel="noreferrer" target="_blank">{provenance.skill}</a>
+        {provenance.skillRevision && <> at <code>{String(provenance.skillRevision).slice(0, 12)}</code></>}
+      </li>
+    )}
+    {provenance.repositoryCommit && <li><strong>Repository commit</strong> — <code>{String(provenance.repositoryCommit).slice(0, 12)}</code></li>}
+  </ul>
+</div>
+
+<style>
+  .privacy-report {
+    margin-top: var(--mos-space-4);
+  }
+
+  .privacy-report-intro,
+  .privacy-report-note {
+    color: var(--mos-color-text-muted);
+  }
+
+  .privacy-report h3 {
+    margin-top: var(--mos-space-5);
+  }
+
+  .privacy-report-scope code {
+    font-size: 0.85em;
+  }
+
+  .privacy-report-group {
+    margin-top: var(--mos-space-4);
+  }
+
+  .privacy-report-group-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .privacy-report-kind {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.12rem 0.5rem;
+    border: 1px solid var(--mos-color-surface-border);
+    border-radius: var(--mos-radius-pill);
+    background: var(--mos-color-surface-strong);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: var(--mos-letter-spacing-label);
+    text-transform: uppercase;
+  }
+
+  .privacy-report-kind.is-observed {
+    border-color: var(--mos-color-accent-border);
+    background: var(--mos-color-accent-soft);
+    color: var(--mos-color-accent);
+  }
+
+  .privacy-report-gloss {
+    color: var(--mos-color-text-muted);
+    font-size: var(--mos-text-small);
+  }
+
+  .privacy-report-evidence > li {
+    margin-bottom: var(--mos-space-3);
+  }
+
+  .privacy-report-evidence p {
+    margin: 0;
+  }
+
+  .privacy-report-source {
+    margin-top: 0.2rem !important;
+    color: var(--mos-color-text-muted);
+    font-size: var(--mos-text-small);
+  }
+
+  .privacy-report-open > li,
+  .privacy-report-excluded > li {
+    color: var(--mos-color-text-muted);
+  }
+</style>

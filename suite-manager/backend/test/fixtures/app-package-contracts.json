@@ -90,10 +90,10 @@
     "dimensions": {
       "accountDependency": "local-only",
       "confidence": "verified",
+      "control": "nothing-to-decide",
       "dataProcessing": "local",
-      "externalServices": "none-required",
-      "policyExposure": "self-hosted-software-only",
-      "telemetry": "none-observed"
+      "defaultEgress": "none",
+      "policyExposure": "self-hosted-software-only"
     },
     "evidence": [
       {

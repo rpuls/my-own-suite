@@ -4,8 +4,8 @@
   "reviewedAt": "2026-07-16T00:00:00.000Z",
   "expiresAt": "2027-01-16T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.2.2",
-    "packageDigest": "sha256:9406c150b91aa986fa6add856d59917ff8bdbb1795e87581c675ff4f4351f918",
+    "packageVersion": "0.2.4",
+    "packageDigest": "sha256:586365818b7cb07daf6708567cc77dfffdb09c1b2d53d5db45fc942cd6954777",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -13,18 +13,24 @@
       "revision": "ef5027cc1528b516edbd03c6a7e65349adbcc4b4",
       "trust": "mos-reviewed"
     },
-    "components": [{
-      "name": "Stirling PDF",
-      "version": "2.10.0",
-      "artifact": "docker.io/stirlingtools/stirling-pdf",
-      "digest": "sha256:4d9abedcd57a9aa4d36ffb8fc9a4801aea2d295bf6ad349e23dd4b45661a5e42"
-    }],
-    "clientsExcluded": ["Stirling PDF desktop applications", "Stirling Cloud", "Third-party API clients"]
+    "components": [
+      {
+        "name": "Stirling PDF",
+        "version": "2.10.0",
+        "artifact": "docker.io/stirlingtools/stirling-pdf",
+        "digest": "sha256:4d9abedcd57a9aa4d36ffb8fc9a4801aea2d295bf6ad349e23dd4b45661a5e42"
+      }
+    ],
+    "clientsExcluded": [
+      "Stirling PDF desktop applications",
+      "Stirling Cloud",
+      "Third-party API clients"
+    ]
   },
   "posture": "privacy-configured",
   "dimensions": {
-    "telemetry": "disabled-by-mos",
-    "externalServices": "optional",
+    "defaultEgress": "none",
+    "control": "disabled-by-mos",
     "accountDependency": "local-only",
     "dataProcessing": "optional-external",
     "policyExposure": "upstream-services-involved",
@@ -58,19 +64,23 @@
       "retrievedAt": "2026-07-16"
     }
   ],
-  "telemetryControls": [{
-    "type": "configured",
-    "claim": "Known optional analytics are disabled through the upstream-supported SYSTEM_ENABLEANALYTICS setting.",
-    "source": "apps/stirling-pdf/manifest.json",
-    "url": "https://docs.stirlingpdf.com/analytics-telemetry/",
-    "retrievedAt": "2026-07-16"
-  }],
-  "policies": [{
-    "kind": "license",
-    "url": "https://github.com/Stirling-Tools/Stirling-PDF/blob/v2.10.0/LICENSE",
-    "retrievedAt": "2026-07-16",
-    "publisher": "Stirling Tools"
-  }],
+  "telemetryControls": [
+    {
+      "type": "configured",
+      "claim": "Known optional analytics are disabled through the upstream-supported SYSTEM_ENABLEANALYTICS setting.",
+      "source": "apps/stirling-pdf/manifest.json",
+      "url": "https://docs.stirlingpdf.com/analytics-telemetry/",
+      "retrievedAt": "2026-07-16"
+    }
+  ],
+  "policies": [
+    {
+      "kind": "license",
+      "url": "https://github.com/Stirling-Tools/Stirling-PDF/blob/v2.10.0/LICENSE",
+      "retrievedAt": "2026-07-16",
+      "publisher": "Stirling Tools"
+    }
+  ],
   "provenance": {
     "method": "ai-assisted",
     "provider": "OpenAI",

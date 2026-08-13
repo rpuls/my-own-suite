@@ -41,9 +41,13 @@ interface Props {
   privacy: PrivacyReviewSummary
   advisories?: PrivacyAdvisory[]
   assessmentUrl?: string
+  // Where this app's full assessment is published. The posture sentence
+  // promises the evidence names what leaves and who receives it, so every
+  // surface that shows the sentence has to be able to reach the evidence.
+  reportUrl?: string | null
 }
 
-const { appName, packageVersion = null, privacy, advisories = [], assessmentUrl = ASSESSMENT_DOCS_URL } = Astro.props
+const { appName, packageVersion = null, privacy, advisories = [], assessmentUrl = ASSESSMENT_DOCS_URL, reportUrl = null } = Astro.props
 const posture = postureFor(privacy)
 const badge = badgeTextFor(privacy)
 const rows = dimensionRowsFor(privacy)
@@ -126,6 +130,15 @@ const topSeverity = sortedAdvisoryList[0]?.severity
             </div>
           ))}
         </div>
+      ) : null}
+      {reportUrl && isRated(privacy) ? (
+        <a class="suite-privacy-report-link" data-close href={reportUrl}>
+          <span>
+            <strong>Read the full assessment</strong>
+            <span>Every piece of evidence, its source, and what the review does not settle</span>
+          </span>
+          <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d={GLYPHS.arrowRight}></path></svg>
+        </a>
       ) : null}
       <div class="suite-privacy-footer">
         <div class="suite-privacy-footer-meta">
@@ -214,7 +227,7 @@ const topSeverity = sortedAdvisoryList[0]?.severity
     gap: 0.45rem;
     width: 100%;
     max-width: 18rem;
-    padding: var(--mos-space-4);
+    padding: var(--mos-space-3);
     border: 1px solid var(--mos-color-surface-border);
     border-radius: var(--mos-radius-sm);
     background: var(--mos-color-surface-muted);
@@ -497,6 +510,47 @@ const topSeverity = sortedAdvisoryList[0]?.severity
     margin: 0;
     color: var(--mos-color-text-muted);
     font-size: var(--mos-text-small);
+  }
+
+  .suite-privacy-report-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mos-space-3);
+    padding: var(--mos-space-3);
+    border: 1px solid var(--mos-color-surface-border);
+    border-radius: var(--mos-radius-sm);
+    background: var(--mos-color-surface-muted);
+    color: inherit;
+    text-decoration: none;
+    transition: border-color 180ms ease, background 180ms ease;
+  }
+
+  .suite-privacy-report-link:hover {
+    border-color: var(--mos-color-accent-border);
+    background: var(--mos-color-surface);
+  }
+
+  .suite-privacy-report-link > span {
+    display: grid;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+
+  .suite-privacy-report-link strong {
+    color: var(--mos-color-accent);
+  }
+
+  .suite-privacy-report-link span span {
+    color: var(--mos-color-text-muted);
+    font-size: var(--mos-text-small);
+  }
+
+  .suite-privacy-report-link svg {
+    width: 1.1rem;
+    height: 1.1rem;
+    flex: 0 0 auto;
+    color: var(--mos-color-accent);
   }
 
   .suite-privacy-footer {

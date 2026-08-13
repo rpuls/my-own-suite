@@ -2,9 +2,11 @@
   "manifestVersion": 1,
   "id": "radicale",
   "name": "Radicale",
-  "version": "0.4.1",
-  "minimumMosVersion": "0.17.0",
-  "packageFiles": ["entrypoint.sh"],
+  "version": "0.4.2",
+  "minimumMosVersion": "0.18.0",
+  "packageFiles": [
+    "entrypoint.sh"
+  ],
   "update": {
     "backupRequired": false,
     "downtime": "brief",
@@ -15,8 +17,22 @@
   "icon": "icon.png",
   "catalog": {
     "description": "Radicale provides a small private calendar and contacts sync server for CalDAV and CardDAV clients on phones, tablets, and desktops.",
-    "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/radicale?referralCode=-Yg50p" }],
-    "replaces": ["Google Calendar", "Google Contacts"],
+    "demoDeployTargets": [
+      {
+        "provider": "railway",
+        "label": "Railway",
+        "url": "https://railway.com/deploy/radicale?referralCode=-Yg50p"
+      }
+    ],
+    "replaces": [
+      "Google Calendar",
+      "Google Contacts",
+      "iCloud Calendar",
+      "Outlook Calendar",
+      "iCloud Contacts",
+      "Proton Calendar",
+      "Fastmail Calendar"
+    ],
     "tags": [
       "calendar",
       "contacts",

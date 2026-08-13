@@ -17,7 +17,7 @@ const apps = catalogApps.map(({ id, name, category, summary, description, replac
 
 const matches = (term: string) =>
   apps.filter((app) =>
-    [app.name, app.category, app.summary, app.description, app.replaces, ...app.tags]
+    [app.name, app.category, app.summary, app.description, ...app.replaces, ...app.tags]
       .join(' ')
       .toLowerCase()
       .includes(term)
@@ -85,7 +85,7 @@ const demoData = JSON.stringify({ apps, maxResults, terms: demoTerms }).replace(
     category: string
     summary: string
     description: string
-    replaces: string
+    replaces: string[]
     tags: string[]
     icon: string
   }
@@ -108,7 +108,7 @@ const demoData = JSON.stringify({ apps, maxResults, terms: demoTerms }).replace(
       )
     const matching = (term: string) =>
       apps.filter((app) =>
-        [app.name, app.category, app.summary, app.description, app.replaces, ...app.tags]
+        [app.name, app.category, app.summary, app.description, ...app.replaces, ...app.tags]
           .join(' ')
           .toLowerCase()
           .includes(term.toLowerCase())

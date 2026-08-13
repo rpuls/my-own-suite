@@ -507,7 +507,7 @@ class AppUpdateService {
         secretDir: this.secretDir,
       });
       const candidateConfig = [...installedConfigRows, ...addedConfig];
-      let candidatePrivacy = { posture: 'review-required', reviewedAt: null, status: 'review-required' };
+      let candidatePrivacy = { posture: null, reviewedAt: null, status: 'review-required' };
       const candidateReviewPath = path.join(candidate.packageDir, 'privacy-review.json');
       // A package-shipped review counts as a review only from a MOS-reviewed
       // source. An external candidate can ship a `privacy-review.json` claiming

@@ -134,7 +134,7 @@ async function updatableExternalApp(root, store, calls, { reclaims = false } = {
 // source's commit, then hand back the candidate that commit publishes.
 function externalClientStub(candidate) {
   return {
-    platformVersion: '0.17.0',
+    platformVersion: '0.18.0',
     async downloadCandidate() { return { ...candidate, cleanup() {} }; },
     async resolveRevision(source) { return withRevision(source, candidate.source.revision); },
   };
@@ -196,7 +196,7 @@ test('an external package cannot present its own privacy review as a MOS review'
 
   const listed = service.listPackages().find((item) => item.id === 'x-abcdef01-community-notes');
   assert.equal(listed.privacy.status, 'review-required');
-  assert.equal(listed.privacy.posture, 'review-required');
+  assert.equal(listed.privacy.posture, null);
   assert.equal(listed.mosReviewed, false);
   store.close();
 });
@@ -847,7 +847,7 @@ test('updating an integration consumer keeps its integration env and reconciles 
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { platformVersion: '0.17.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    catalogService: { platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
     store,
   });
   await service.installPackage('seafile', { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' });
@@ -943,7 +943,7 @@ test('a provider update recovered at startup re-applies its integration consumer
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { advisoriesFor: () => [], platformVersion: '0.17.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    catalogService: { advisoriesFor: () => [], platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
     store,
   });
   await service.installPackage('seafile', { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' });
@@ -1033,7 +1033,7 @@ test('a crash between snapshot promotion and the durable commit is committed by 
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { advisoriesFor: () => [], platformVersion: '0.17.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    catalogService: { advisoriesFor: () => [], platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
     store,
   });
   await service.installPackage('stirling-pdf');
@@ -1122,7 +1122,7 @@ test('the recovery action restores the recorded runtime after a failed rollback'
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { platformVersion: '0.17.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    catalogService: { platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
     store,
   });
   await service.installPackage('stirling-pdf');
@@ -1374,7 +1374,7 @@ test('a candidate whose privacy review is unreadable fails the update as a class
     async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
   };
   const catalogService = {
-    platformVersion: '0.17.0',
+    platformVersion: '0.18.0',
     async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
@@ -1419,7 +1419,7 @@ test('confirmed app updates are re-compared and durably staged against exact ide
     async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
   };
   const catalogService = {
-    platformVersion: '0.17.0',
+    platformVersion: '0.18.0',
     async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
@@ -1472,7 +1472,7 @@ test('an agent that cannot apply updates end to end is refused before any update
     async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build'], contractVersion: 3 }; },
   };
   const catalogService = {
-    platformVersion: '0.17.0',
+    platformVersion: '0.18.0',
     async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
@@ -1516,7 +1516,7 @@ test('contract v6 app updates activate, promote, and commit candidate identity a
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
     async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
   };
-  const catalogService = { platformVersion: '0.17.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } };
+  const catalogService = { platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({ agent, appsDir: v2AppsDir, catalogService, store });
   await service.installPackage('stirling-pdf');
@@ -1581,7 +1581,7 @@ test('an official candidate that ships a privacy review updates and keeps its re
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { advisoriesFor: () => [], platformVersion: '0.17.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    catalogService: { advisoriesFor: () => [], platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
     store,
   });
   await service.installPackage('stirling-pdf');
@@ -1631,7 +1631,7 @@ test('app updates replace an applied Homepage entry and retain its applied proje
       async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
     },
     appsDir: v2AppsDir,
-    catalogService: { platformVersion: '0.17.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    catalogService: { platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
     store,
   });
   await service.installPackage('stirling-pdf');

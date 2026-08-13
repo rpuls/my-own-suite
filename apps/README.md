@@ -25,14 +25,24 @@ Every installed package records its source repository, path, immutable source re
 
 Each reviewed candidate package owns a `privacy-review.json` and a compact manifest summary. Reviews are validated by `npm run apps:privacy:check` against the contracts in `suite-manager/backend/src/apps/package-contracts.cjs`, which enforce the document's shape, its binding to the package it ships with, and the derivation of its posture. The assessment binds to the package version, digest, immutable source revision, component versions, and artifact digests. It travels into the installed package snapshot, so an owner sees the review for the package actually running rather than the latest repository wording. The assessment records provenance, including the AI model only when runtime-reported and whether a human reviewed it. It is not a legal audit or guarantee.
 
-Postures are derived from their dimensions:
+The posture is derived from exactly two dimensions, and both are questions of fact rather than judgement. `defaultEgress` is settled by a runtime capture: installed as MOS ships it and used normally, does anything leave the owner's server? `control` is settled by reading the package and the app's own settings: who decided that, and can the owner change it? The line between `left-to-owner` and `accepted-by-mos` is whether the app offers a control the owner can actually reach — an in-app setting is the owner's decision to make, while a value reachable only by editing packaging MOS owns is MOS's decision and is recorded as MOS's.
 
-- `private-by-default`: reviewed behavior requires no external service or account, processes app data locally, and has no known enabled telemetry.
-- `privacy-configured`: MOS uses supported package configuration to disable known optional telemetry, with no required external data processing.
-- `external-dependency`: normal operation requires an upstream account, service, telemetry, or external data processing. It is a completed assessment, not a warning to stay away: an app only reaches the catalog once its review is done, so this posture says MOS examined the dependency and accepted it as the price of the feature. The review's evidence carries what leaves, who receives it, and why it was accepted.
-- `review-required`: evidence is missing, stale, or unresolved.
+The four legal combinations map one-to-one onto the four postures:
 
-Unknown facts always produce `review-required`. Evidence is labeled `observed`, `configured`, `documented`, or `inferred`; configuration alone must not be presented as proof of network silence. App updates and detected Terms, privacy-policy, ownership, telemetry, or outbound-dependency changes trigger reassessment.
+| `defaultEgress` | `control` | posture |
+| --- | --- | --- |
+| `none` | `nothing-to-decide` | `private-by-default` — the app has no external touchpoint to begin with. |
+| `none` | `disabled-by-mos` | `privacy-configured` — it had one, and MOS switched it off so the owner never has to. |
+| `external-contact` | `left-to-owner` | `owner-disableable` — something leaves, the app has a setting that stops it, and MOS judged the trade-off genuinely the owner's to make. |
+| `external-contact` | `accepted-by-mos` | `external-dependency` — something leaves, no in-app setting stops it, and MOS reviewed and accepted it as the price of the feature. |
+
+Any other pairing is a contradiction and fails validation instead of resolving into a badge. The derivation has no fallthrough, so it cannot publish a verdict nobody chose.
+
+The remaining dimensions — `accountDependency`, `dataProcessing`, `policyExposure`, `confidence` — describe the app and feed the published grade, but do not steer the posture. That separation is deliberate: no reviewer should ever have to bend a descriptive fact to reach a defensible badge.
+
+No dimension may be `unknown`. An unestablished fact is not a posture — it means no review exists, which the catalog records as `privacy.status: review-required`, a process state that never reaches this derivation. A posture describes a finished review and nothing else.
+
+Evidence is labeled `observed`, `configured`, `documented`, or `inferred`; configuration alone must not be presented as proof of network silence, so `defaultEgress: none` is only credible with an `observed` capture behind it. App updates and detected Terms, privacy-policy, ownership, telemetry, or outbound-dependency changes trigger reassessment.
 
 Use `icon.png` in the package root for the catalog icon, and point `manifest.json` `icon` at that file. Richer screenshots, marketing assets, and `catalog.demoDeployTargets` are optional catalog metadata, not required package scaffolding. Demo deployment targets are public-site previews on third-party providers; they are not MOS installation instructions.
 

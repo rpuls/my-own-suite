@@ -187,12 +187,12 @@ test('privacy assessment document validation accepts an authored review', () => 
 test('privacy assessment document validation rejects every class of authoring defect', () => {
   const cases = [
     ['a misspelled top-level property', (review) => { review.postrue = review.posture; }, 'review.postrue is not a known property.'],
-    ['an unknown dimension value', (review) => { review.dimensions.telemetry = 'sorta'; }, 'review.dimensions.telemetry must be one of none-observed, disabled-by-mos, optional, unavoidable, unknown.'],
+    ['an unknown dimension value', (review) => { review.dimensions.control = 'sorta'; }, 'review.dimensions.control must be one of nothing-to-decide, disabled-by-mos, left-to-owner, accepted-by-mos.'],
     ['a missing review date', (review) => { delete review.reviewedAt; }, 'review.reviewedAt is required.'],
     ['an unparseable review date', (review) => { review.reviewedAt = 'last tuesday'; }, 'review.reviewedAt must be an ISO date-time.'],
     ['incomplete provenance', (review) => { delete review.provenance.skillRevision; }, 'review.provenance.skillRevision is required.'],
     ['a provenance flag of the wrong type', (review) => { review.provenance.humanReviewed = 'no'; }, 'review.provenance.humanReviewed must be a boolean.'],
-    ['a posture outside the vocabulary', (review) => { review.posture = 'totally-private'; }, 'review.posture must be one of private-by-default, privacy-configured, external-dependency, review-required.'],
+    ['a posture outside the vocabulary', (review) => { review.posture = 'totally-private'; }, 'review.posture must be one of private-by-default, privacy-configured, owner-disableable, external-dependency.'],
     ['an assessment scoped to no components', (review) => { review.scope.components = []; }, 'review.scope.components must contain at least 1 item(s).'],
     ['a malformed package digest', (review) => { review.scope.packageDigest = 'sha256:nope'; }, 'review.scope.packageDigest must be a SHA-256 digest.'],
     ['evidence with no source', (review) => { delete review.evidence[0].source; }, 'review.evidence[0].source is required.'],
@@ -221,49 +221,64 @@ test('privacy binding rejects review metadata from a different package source', 
   assert.ok(validatePrivacyBinding(review, { manifest, packageDigest, source }).some((error) => error.includes('does not match the resolved source')));
 });
 
-test('posture derivation never turns an unknown dimension into a favorable result', () => {
+// The posture comes from exactly two dimensions, and only the four pairs that
+// describe a state an app can actually be in derive anything at all. Any other
+// pair is a contradiction: a derivation with a fallthrough is how "reviewed"
+// packages used to end up publishing "not yet reviewed".
+test('posture derivation is total over the legal dimension pairs and refuses every other pair', () => {
   const local = {
     accountDependency: 'local-only',
     confidence: 'verified',
+    control: 'nothing-to-decide',
     dataProcessing: 'local',
-    externalServices: 'none-required',
+    defaultEgress: 'none',
     policyExposure: 'self-hosted-software-only',
-    telemetry: 'none-observed',
   };
   assert.equal(derivePrivacyPosture(local), 'private-by-default');
-  assert.equal(derivePrivacyPosture({ ...local, telemetry: 'disabled-by-mos' }), 'privacy-configured');
-  assert.equal(derivePrivacyPosture({ ...local, externalServices: 'optional' }), 'privacy-configured');
-  assert.equal(derivePrivacyPosture({ ...local, externalServices: 'required' }), 'external-dependency');
-  assert.equal(derivePrivacyPosture({ ...local, accountDependency: 'required-upstream-account' }), 'external-dependency');
-  assert.equal(derivePrivacyPosture({ ...local, dataProcessing: 'required-external' }), 'external-dependency');
-  assert.equal(derivePrivacyPosture({ ...local, telemetry: 'unavoidable' }), 'external-dependency');
-  // Optional telemetry MOS did not disable supports no favorable posture.
-  assert.equal(derivePrivacyPosture({ ...local, telemetry: 'optional' }), 'review-required');
-  for (const dimension of Object.keys(local)) {
-    assert.equal(derivePrivacyPosture({ ...local, [dimension]: 'unknown' }), 'review-required');
+  assert.equal(derivePrivacyPosture({ ...local, control: 'disabled-by-mos' }), 'privacy-configured');
+  assert.equal(derivePrivacyPosture({ ...local, control: 'left-to-owner', defaultEgress: 'external-contact' }), 'owner-disableable');
+  assert.equal(derivePrivacyPosture({ ...local, control: 'accepted-by-mos', defaultEgress: 'external-contact' }), 'external-dependency');
+
+  // Nothing leaves, yet there is something to switch off; and something leaves,
+  // yet nothing was decided. Neither describes a real app.
+  assert.equal(derivePrivacyPosture({ ...local, control: 'left-to-owner' }), null);
+  assert.equal(derivePrivacyPosture({ ...local, control: 'accepted-by-mos' }), null);
+  assert.equal(derivePrivacyPosture({ ...local, defaultEgress: 'external-contact' }), null);
+  assert.equal(derivePrivacyPosture({ ...local, control: 'disabled-by-mos', defaultEgress: 'external-contact' }), null);
+
+  // The descriptive dimensions never move the posture, so no reviewer has to
+  // bend one of them to reach a defensible badge.
+  for (const dimension of ['accountDependency', 'confidence', 'dataProcessing', 'policyExposure']) {
+    assert.equal(derivePrivacyPosture({ ...local, [dimension]: 'anything-at-all' }), 'private-by-default');
   }
-  assert.equal(derivePrivacyPosture({ ...local, policyExposure: 'unclear' }), 'review-required');
-  assert.equal(derivePrivacyPosture(undefined), 'review-required');
+
+  // An absent review is a status, not a posture, and never reaches here.
+  assert.equal(derivePrivacyPosture(undefined), null);
+  assert.equal(derivePrivacyPosture({ ...local, control: 'unknown' }), null);
 });
 
-test('assessment validation rejects postures its dimensions do not derive and favorable postures without evidence', () => {
+test('assessment validation rejects postures its dimensions do not derive and postures without evidence', () => {
   const dimensions = {
     accountDependency: 'local-only',
     confidence: 'verified',
+    control: 'nothing-to-decide',
     dataProcessing: 'local',
-    externalServices: 'none-required',
+    defaultEgress: 'none',
     policyExposure: 'self-hosted-software-only',
-    telemetry: 'none-observed',
   };
   const evidence = [{ claim: 'No outbound requests observed at runtime.', source: 'apps/example/Dockerfile', type: 'observed' }];
   assert.deepEqual(validatePrivacyAssessment({ dimensions, evidence, posture: 'private-by-default' }), []);
-  assert.ok(validatePrivacyAssessment({ dimensions: { ...dimensions, telemetry: 'unknown' }, evidence, posture: 'private-by-default' })
-    .some((error) => error.includes('expected review-required')));
+  assert.ok(validatePrivacyAssessment({ dimensions, evidence, posture: 'external-dependency' })
+    .some((error) => error.includes('expected private-by-default')));
+  assert.ok(validatePrivacyAssessment({ dimensions: { ...dimensions, control: 'left-to-owner' }, evidence, posture: 'owner-disableable' })
+    .some((error) => error.includes('describe no reviewable state')));
   assert.ok(validatePrivacyAssessment({ dimensions, evidence: [], posture: 'private-by-default' })
     .some((error) => error.includes('at least one evidence entry')));
   assert.ok(validatePrivacyAssessment({ dimensions, evidence: [{ claim: ' ', source: '' }], posture: 'private-by-default' })
     .some((error) => error.includes('at least one evidence entry')));
-  assert.deepEqual(validatePrivacyAssessment({ dimensions: {}, evidence: [], posture: 'review-required' }), []);
+  // Every posture now needs evidence: there is no longer an evidence-free
+  // posture to fall back to.
+  assert.ok(validatePrivacyAssessment({ dimensions: {}, evidence: [], posture: 'private-by-default' }).length >= 2);
 });
 
 test('privacy-invalidated advisories apply only to their bounded package versions', () => {

@@ -20,8 +20,9 @@ procedure exists to fix, except that the result now carries a human's name.
 
 ## Standing rules
 
-- Missing evidence never becomes a favourable result. `unknown` is a valid
-  answer and forces `review-required`.
+- Missing evidence never becomes a favourable result. There is no `unknown`
+  dimension value: an unestablished fact means the review is not finished, so
+  the document stays unpublished rather than deriving a posture.
 - Configuration is not behaviour. A setting that should prevent a request is
   evidence about intent, not about the network.
 - Label every conclusion `observed`, `configured`, `documented` or `inferred`,
@@ -40,9 +41,12 @@ the failure it exists to prevent, now carrying a human's name.
 Run `assess-app-privacy` first and review its output. Write that draft from
 documentation, source and shipped configuration, before anything has been
 observed, so its claims are on record ahead of the evidence that will confirm or
-break them. Leave `provenance.humanReviewed` false, keep `confidence` no higher
-than the method supports, and expect the posture to derive to `review-required`
-until the observed items are done. Then start at Gate 1 and test it.
+break them. Leave `provenance.humanReviewed` false and keep `confidence` at
+`documented` until the observed items are done. A draft written this way still
+derives a posture, because the two dimensions behind it are answerable from
+source; the capture in the later gates is what earns the right to state
+`defaultEgress: none` and raise `confidence` to `verified`. Then start at
+Gate 1 and test it.
 
 ## Gate 1 — Is the package current?
 

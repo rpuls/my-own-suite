@@ -175,7 +175,7 @@ class AppPackageService {
         revision: packageDigest,
         trust: 'mos-reviewed',
       };
-      let privacy = { posture: 'review-required', reviewedAt: null, status: 'review-required' };
+      let privacy = { posture: null, reviewedAt: null, status: 'review-required' };
       const privacyReviewPath = path.join(packageDir, 'privacy-review.json');
       if (fs.existsSync(privacyReviewPath)) {
         // A malformed review must degrade the one instance to recovery, exactly
@@ -614,11 +614,11 @@ class AppPackageService {
     // candidate. Full privacy binding validation still gates install/update.
     if (!instance) {
       return (candidateVersion && privacyReviewPresentation(path.join(this.appsDir, packageId), { id: packageId, version: candidateVersion }))
-        || { dimensions: null, posture: 'review-required', reviewedAt: null, status: 'review-required' };
+        || { dimensions: null, posture: null, reviewedAt: null, status: 'review-required' };
     }
     const stored = {
       dimensions: null,
-      posture: instance.privacyPosture || 'review-required',
+      posture: instance.privacyPosture || null,
       reviewedAt: instance.privacyReviewedAt || null,
       status: instance.privacyStatus || 'review-required',
     };
@@ -848,7 +848,7 @@ class AppPackageService {
       revision: packageDigest,
       trust: 'mos-reviewed',
     };
-    let privacy = { posture: 'review-required', reviewedAt: null, status: 'review-required' };
+    let privacy = { posture: null, reviewedAt: null, status: 'review-required' };
     const privacyReviewPath = path.join(packageDir, 'privacy-review.json');
     if (fs.existsSync(privacyReviewPath)) {
       let review;
@@ -1032,7 +1032,7 @@ class AppPackageService {
       // MOS has not reviewed this package. A `privacy-review.json` the package
       // ships is not a MOS review, so the instance records review-required and
       // the Apps UI keeps showing it as unverified.
-      privacy: { posture: 'review-required', reviewedAt: null, status: 'review-required' },
+      privacy: { posture: null, reviewedAt: null, status: 'review-required' },
       source: candidate.source,
     };
     const snapshot = await this.agent.snapshotExternalPackage({

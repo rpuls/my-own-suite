@@ -4,8 +4,8 @@
   "reviewedAt": "2026-07-23T00:00:00.000Z",
   "expiresAt": "2027-01-23T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.2.3",
-    "packageDigest": "sha256:e21f1a7e0dfadb8c1b4715f570102e6c9e9dfc453926ac90cc1dc57b4593e3b8",
+    "packageVersion": "0.2.5",
+    "packageDigest": "sha256:cabf9762597b74620d4bf8e0f011a5b41c577a9b66c2a1067aa1159a3e6b518d",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -13,18 +13,25 @@
       "revision": "a7b99f9bb6dfc265f75b3acf7461862386f1cdc4",
       "trust": "mos-reviewed"
     },
-    "components": [{
-      "name": "Vaultwarden",
-      "version": "1.37.0",
-      "artifact": "docker.io/vaultwarden/server",
-      "digest": "sha256:e6443e3d5ed8fcee2204b89ec778d7f24d0173bcc42d1ea34f990304f5f63f51"
-    }],
-    "clientsExcluded": ["Bitwarden browser, desktop, mobile, and web vault clients", "Bitwarden-hosted push relay and identity services", "HaveIBeenPwned breach service", "Third-party API clients"]
+    "components": [
+      {
+        "name": "Vaultwarden",
+        "version": "1.37.0",
+        "artifact": "docker.io/vaultwarden/server",
+        "digest": "sha256:e6443e3d5ed8fcee2204b89ec778d7f24d0173bcc42d1ea34f990304f5f63f51"
+      }
+    ],
+    "clientsExcluded": [
+      "Bitwarden browser, desktop, mobile, and web vault clients",
+      "Bitwarden-hosted push relay and identity services",
+      "HaveIBeenPwned breach service",
+      "Third-party API clients"
+    ]
   },
-  "posture": "privacy-configured",
+  "posture": "owner-disableable",
   "dimensions": {
-    "telemetry": "none-observed",
-    "externalServices": "optional",
+    "defaultEgress": "external-contact",
+    "control": "left-to-owner",
     "accountDependency": "local-only",
     "dataProcessing": "local",
     "policyExposure": "upstream-services-involved",
@@ -65,19 +72,23 @@
       "retrievedAt": "2026-07-23"
     }
   ],
-  "telemetryControls": [{
-    "type": "documented",
-    "claim": "Vaultwarden ships no telemetry or analytics, so no telemetry-disabling configuration is required or applied by the package.",
-    "source": "Vaultwarden .env.template (v1.36.0)",
-    "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.36.0/.env.template",
-    "retrievedAt": "2026-07-23"
-  }],
-  "policies": [{
-    "kind": "license",
-    "url": "https://github.com/dani-garcia/vaultwarden/blob/1.36.0/LICENSE.txt",
-    "retrievedAt": "2026-07-23",
-    "publisher": "Vaultwarden (dani-garcia)"
-  }],
+  "telemetryControls": [
+    {
+      "type": "documented",
+      "claim": "Vaultwarden ships no telemetry or analytics, so no telemetry-disabling configuration is required or applied by the package.",
+      "source": "Vaultwarden .env.template (v1.36.0)",
+      "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.36.0/.env.template",
+      "retrievedAt": "2026-07-23"
+    }
+  ],
+  "policies": [
+    {
+      "kind": "license",
+      "url": "https://github.com/dani-garcia/vaultwarden/blob/1.36.0/LICENSE.txt",
+      "retrievedAt": "2026-07-23",
+      "publisher": "Vaultwarden (dani-garcia)"
+    }
+  ],
   "provenance": {
     "method": "ai-assisted",
     "provider": "Anthropic",

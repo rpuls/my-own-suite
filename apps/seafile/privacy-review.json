@@ -4,8 +4,8 @@
   "reviewedAt": "2026-07-23T00:00:00.000Z",
   "expiresAt": "2027-01-23T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.2.3",
-    "packageDigest": "sha256:2bbd88b4bf65c41e91419c188c66a83ac3531e51f0922eb8ba4f02b085c52755",
+    "packageVersion": "0.2.4",
+    "packageDigest": "sha256:2b7fc7374f0f373faf0dce151ad7989f214649b1826ab7e84b2b556a7b9ef863",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -39,10 +39,10 @@
       "WebDAV and third-party API clients that access the server"
     ]
   },
-  "posture": "privacy-configured",
+  "posture": "private-by-default",
   "dimensions": {
-    "telemetry": "none-observed",
-    "externalServices": "optional",
+    "defaultEgress": "none",
+    "control": "nothing-to-decide",
     "accountDependency": "local-only",
     "dataProcessing": "local",
     "policyExposure": "self-hosted-software-only",

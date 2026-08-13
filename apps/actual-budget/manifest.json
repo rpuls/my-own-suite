@@ -1,0 +1,128 @@
+{
+  "manifestVersion": 1,
+  "id": "actual-budget",
+  "name": "Actual Budget",
+  "version": "0.1.0",
+  "minimumMosVersion": "0.18.0",
+  "summary": "Envelope budgeting for your household, kept on your own server.",
+  "category": "finance",
+  "icon": "icon.png",
+  "packageFiles": [
+    "screenshots/budget.png",
+    "screenshots/transactions.png",
+    "screenshots/reports.png",
+    "screenshots/schedules.png"
+  ],
+  "catalog": {
+    "description": "Actual Budget asks one question at the start of every month: what is this money for? You hand out what is actually in your accounts across categories - rent, food, the car, the trip you keep postponing - and everything you spend afterwards is measured against the amount you set aside. Overspend somewhere and you decide what it comes out of, so the budget always adds up to money you really have. All of it runs on your own server: your salary, your balances and your spending stay there, and no bank is connected unless you set that up yourself.",
+    "replaces": [
+      "YNAB",
+      "Mint",
+      "Quicken",
+      "Monarch Money",
+      "EveryDollar",
+      "Goodbudget",
+      "PocketGuard",
+      "Copilot Money"
+    ],
+    "screenshots": [
+      {
+        "src": "screenshots/budget.png",
+        "alt": "The Actual Budget monthly view, with household categories and the amount budgeted, spent and left in each",
+        "caption": "Every category gets an amount, and you watch it come down"
+      },
+      {
+        "src": "screenshots/transactions.png",
+        "alt": "An account register in Actual Budget listing dated transactions with payee, category and running balance",
+        "caption": "Each transaction lands in a category as it arrives"
+      },
+      {
+        "src": "screenshots/reports.png",
+        "alt": "The Actual Budget reports dashboard showing net worth over time, cash flow and spending breakdowns",
+        "caption": "A year later, the answers are already there"
+      },
+      {
+        "src": "screenshots/schedules.png",
+        "alt": "The schedules list in Actual Budget showing recurring bills with their next due date and amount",
+        "caption": "Bills you know are coming, entered once"
+      }
+    ],
+    "tags": [
+      "budget",
+      "money",
+      "finance",
+      "expenses",
+      "envelope-budgeting",
+      "ynab-alternative"
+    ],
+    "features": [
+      {
+        "title": "Give every amount a job",
+        "body": "Budget from the money already in your accounts rather than a forecast. Each category holds what you assigned it this month, so 'can I afford this' has an answer instead of a guess."
+      },
+      {
+        "title": "The bills you already know about",
+        "body": "Enter rent, insurance and subscriptions once as schedules. Actual shows what is due before the end of the month and keeps that money out of the total you think is free."
+      },
+      {
+        "title": "Reports that answer real questions",
+        "body": "Net worth over time, cash flow month by month, and where the spending actually went - built from your own history, not a category average from someone else's data."
+      },
+      {
+        "title": "Your money stays your business",
+        "body": "The budget file lives on your server and works offline in the browser. Bank connections are optional and off until you add credentials yourself, and sync between devices can be end-to-end encrypted."
+      }
+    ],
+    "resourceHint": {
+      "level": "low",
+      "label": "Light resources",
+      "description": "A single small web service storing everything in one data folder. It idles quietly between visits."
+    },
+    "privacy": {
+      "summary": "Actual Budget keeps your accounts, transactions and budgets in a file on your own server. The image carries no analytics or crash reporting, and no bank is contacted unless you set up a bank connection yourself.",
+      "notes": [
+        "Bank sync is optional and off by default. GoCardless, SimpleFIN, Enable Banking, Pluggy.ai and Akahu each need API credentials you sign up for and enter yourself; with none entered, nothing reaches out to a bank.",
+        "One request does leave by default, and it is the browser that makes it, not the server: Actual asks GitHub for the number of its latest release so it can tell you when a newer version exists. It sends nothing about you or your money, and 'Display a notification when updates are available' in Settings switches it off.",
+        "Sync between your devices can be end-to-end encrypted with a password only you hold. Bank-sync API keys, if you add any, are stored on the server outside that encryption.",
+        "Budget files, the account database and sessions live in one package-owned MOS volume. Back it up before this becomes the only record of your finances."
+      ]
+    },
+    "links": {
+      "website": "https://actualbudget.org/",
+      "docs": "https://actualbudget.org/docs/",
+      "repository": "https://github.com/actualbudget/actual"
+    }
+  },
+  "resources": {
+    "services": {
+      "actual": {
+        "dockerfile": "Dockerfile",
+        "internalPort": 5006,
+        "volumes": [
+          "data:/data"
+        ]
+      }
+    }
+  },
+  "routes": [
+    {
+      "host": "actual",
+      "service": "actual"
+    }
+  ],
+  "homepage": {
+    "group": "Finance",
+    "name": "Actual Budget",
+    "description": "Plan the month and track what you spend.",
+    "icon": "actual-budget"
+  },
+  "health": {
+    "type": "http",
+    "url": "http://actual:5006/health"
+  },
+  "update": {
+    "backupRequired": true,
+    "downtime": "brief",
+    "rollback": "safe"
+  }
+}

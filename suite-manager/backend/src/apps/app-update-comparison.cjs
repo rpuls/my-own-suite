@@ -17,7 +17,7 @@ function fields(manifest) { return new Map((manifest.setup?.fields || []).map((f
 function volumes(manifest) { return new Set(Object.values(manifest.resources?.services || {}).flatMap((service) => service.volumes || [])); }
 
 function privacyFor(packageDir, manifest, packageDigest, source) {
-  const unreviewed = { dimensions: null, posture: 'review-required', reviewedAt: null, status: 'review-required' };
+  const unreviewed = { dimensions: null, posture: null, reviewedAt: null, status: 'review-required' };
   // Only a MOS-reviewed source may have its shipped review presented as a
   // review. Any other package can put whatever posture it likes in its own
   // `privacy-review.json`, so the file is not read for it at all.
@@ -33,11 +33,11 @@ function privacyFor(packageDir, manifest, packageDigest, source) {
   try {
     review = JSON.parse(fs.readFileSync(reviewPath, 'utf8'));
   } catch {
-    return { dimensions: null, errors: ['privacy review is not valid JSON.'], posture: 'review-required', reviewedAt: null, status: 'invalid' };
+    return { dimensions: null, errors: ['privacy review is not valid JSON.'], posture: null, reviewedAt: null, status: 'invalid' };
   }
   const errors = validatePrivacyBinding(review, { manifest, packageDigest, source });
   return errors.length
-    ? { dimensions: null, errors, posture: 'review-required', reviewedAt: null, status: 'invalid' }
+    ? { dimensions: null, errors, posture: null, reviewedAt: null, status: 'invalid' }
     : { dimensions: review.dimensions || null, posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
 }
 

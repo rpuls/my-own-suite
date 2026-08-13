@@ -129,7 +129,7 @@ test('an unverified package cannot present its own privacy review as a MOS revie
   const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
   for (const side of [comparison.installed.privacy, comparison.candidate.privacy]) {
     assert.equal(side.status, 'review-required');
-    assert.equal(side.posture, 'review-required');
+    assert.equal(side.posture, null);
     assert.equal(side.dimensions, null);
   }
   assert.equal(comparison.changes.find((item) => item.area === 'privacy'), undefined);

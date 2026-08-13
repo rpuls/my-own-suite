@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "paperless-ngx",
   "name": "Paperless-ngx",
-  "version": "0.1.0",
-  "minimumMosVersion": "0.17.0",
+  "version": "0.1.1",
+  "minimumMosVersion": "0.18.0",
   "summary": "A searchable archive of every letter, invoice and contract you own.",
   "category": "office",
   "icon": "icon.png",
@@ -15,7 +15,15 @@
   ],
   "catalog": {
     "description": "Scan a letter or drop in a PDF, and Paperless-ngx reads the text on the page, works out who sent it, and files it under the right type and tags. Months later you find it again by typing a word you happen to remember - a name from the letterhead, an amount, a policy number. Nothing is sent anywhere to make that work: the text recognition runs on your own server, and the original scan is kept exactly as it arrived.",
-    "replaces": ["Evernote", "Adobe Scan"],
+    "replaces": [
+      "Evernote",
+      "Adobe Scan",
+      "Microsoft Lens",
+      "Genius Scan",
+      "DEVONthink",
+      "SwiftScan",
+      "DocuWare"
+    ],
     "screenshots": [
       {
         "src": "screenshots/documents.png",

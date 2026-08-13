@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "onlyoffice",
   "name": "ONLYOFFICE",
-  "version": "0.2.2",
-  "minimumMosVersion": "0.17.0",
+  "version": "0.2.3",
+  "minimumMosVersion": "0.18.0",
   "packageFiles": [
     "entrypoint.sh",
     "screenshots/document.png",
@@ -16,8 +16,25 @@
   "icon": "icon.png",
   "catalog": {
     "description": "ONLYOFFICE provides document, spreadsheet, and presentation editing that compatible MOS file apps can connect to for browser-based office workflows.",
-    "demoDeployTargets": [{ "provider": "railway", "label": "Railway", "url": "https://railway.com/deploy/seafile-onlyoffice?referralCode=-Yg50p" }],
-    "replaces": ["Google Docs", "Microsoft 365"],
+    "demoDeployTargets": [
+      {
+        "provider": "railway",
+        "label": "Railway",
+        "url": "https://railway.com/deploy/seafile-onlyoffice?referralCode=-Yg50p"
+      }
+    ],
+    "replaces": [
+      "Google Docs",
+      "Microsoft 365",
+      "Google Sheets",
+      "Microsoft Word",
+      "Google Slides",
+      "Microsoft Excel",
+      "Microsoft PowerPoint",
+      "Apple Pages",
+      "Apple Keynote",
+      "Apple Numbers"
+    ],
     "screenshots": [
       {
         "src": "screenshots/document.png",

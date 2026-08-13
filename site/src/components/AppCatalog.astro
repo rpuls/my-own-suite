@@ -1,7 +1,7 @@
 ---
 import AppConnect from './AppConnect.astro'
 import PrivacyPosture from './PrivacyPosture.astro'
-import { catalogApps as apps } from '../lib/app-catalog'
+import { catalogApps as apps, REPLACES_HEADLINE, shortReplaces } from '../lib/app-catalog'
 
 // The app catalog is generated at build time from each package's
 // manifest under apps/<app>/manifest.json — the same single source of
@@ -15,18 +15,18 @@ const onlyoffice = apps.find((app) => app.id === 'onlyoffice')
 
 // The headline counts what the catalog *replaces*, not how many apps it has —
 // a curated suite loses an app-count race and wins an outcome comparison.
-// Both numbers are derived from the manifests' `replaces` lists (joined with
-// ' / ' by app-catalog.ts) so neither can go stale as the catalog grows.
+// Both numbers come from the manifests so neither can go stale, and only each
+// app's best-known few count: the long tail of a `replaces` list belongs on
+// the app's docs page, not in a number that has to survive a sceptical read.
 const replacedServices = new Set(
-  apps.flatMap((app) =>
-    app.replaces
-      .split(' / ')
-      .map((service) => service.trim())
-      .filter(Boolean)
-  )
+  apps.flatMap((app) => app.replaces.slice(0, REPLACES_HEADLINE))
 )
 
-const appsJson = JSON.stringify(apps).replace(/</g, '\\u003c')
+// Cards and the drawer name the top two; the full list still travels with the
+// payload so search matches every product an app replaces.
+const appsJson = JSON.stringify(
+  apps.map((app) => ({ ...app, replacesShort: shortReplaces(app.replaces) }))
+).replace(/</g, '\\u003c')
 ---
 
 <section class="band" id="apps">
@@ -73,7 +73,7 @@ const appsJson = JSON.stringify(apps).replace(/</g, '\\u003c')
 <div id="appPrivacyStore" hidden>
   {apps.map((app) => (
     <div data-privacy-home={app.id}>
-      <PrivacyPosture advisories={app.advisories} appName={app.name} assessmentUrl="/docs/privacy/how-we-assess/" packageVersion={app.version} privacy={app.privacyReview} />
+      <PrivacyPosture advisories={app.advisories} appName={app.name} assessmentUrl="/docs/privacy/how-we-assess/" packageVersion={app.version} privacy={app.privacyReview} reportUrl={app.privacyAssessment ? `/docs/apps/${app.id}/#privacy-assessment` : null} />
     </div>
   ))}
 </div>
@@ -88,7 +88,8 @@ const appsJson = JSON.stringify(apps).replace(/</g, '\\u003c')
     summary: string
     description: string
     demoDeployTargets: { provider: string; label: string; url: string }[]
-    replaces: string
+    replaces: string[]
+    replacesShort: string
     setup: string
     resources: string
     resourcesDetail: string
@@ -162,7 +163,7 @@ const appsJson = JSON.stringify(apps).replace(/</g, '\\u003c')
     const query = search.value.trim().toLowerCase()
     if (!query) return apps
     return apps.filter((app) =>
-      [app.name, app.category, app.summary, app.description, app.replaces, ...app.tags]
+      [app.name, app.category, app.summary, app.description, ...app.replaces, ...app.tags]
         .join(' ')
         .toLowerCase()
         .includes(query)
@@ -184,7 +185,7 @@ const appsJson = JSON.stringify(apps).replace(/</g, '\\u003c')
           (app) => `<button type="button" class="mos-panel app" data-id="${esc(app.id)}">
   <div class="app-top">${icon(app)}<span class="app-name-wrap"><h3>${esc(app.name)}</h3><span class="app-sub">${esc(app.category)}</span></span></div>
   <p class="mos-meta app-desc">${esc(app.summary)}</p>
-  ${app.replaces ? `<span class="replaces">Replaces ${esc(app.replaces)}</span>` : ''}
+  ${app.replacesShort ? `<span class="replaces">Replaces ${esc(app.replacesShort)}</span>` : ''}
 </button>`
         )
         .join('')
@@ -252,7 +253,7 @@ const appsJson = JSON.stringify(apps).replace(/</g, '\\u003c')
       : ''
 
     drawer.innerHTML = `<button type="button" class="app-drawer-close" aria-label="Close" id="appDrawerClose"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-x"/></svg></button>
-<div class="app-drawer-head">${icon(app)}<div><h3 style="margin:0;font-size:1.5rem;color:var(--mos-color-text-strong)">${esc(app.name)}</h3><span class="app-sub">${esc(app.category)}</span>${app.replaces ? `<span class="app-drawer-replaces"><span>Replaces</span><strong>${esc(app.replaces)}</strong></span>` : ''}</div></div>
+<div class="app-drawer-head">${icon(app)}<div><h3 style="margin:0;font-size:1.5rem;color:var(--mos-color-text-strong)">${esc(app.name)}</h3><span class="app-sub">${esc(app.category)}</span>${app.replacesShort ? `<span class="app-drawer-replaces"><span>Replaces</span><strong>${esc(app.replacesShort)}</strong></span>` : ''}</div></div>
 ${tryAction ? `<div class="app-drawer-primary-actions">${tryAction}</div>` : ''}
 ${tiles}
 <p class="mos-meta" style="margin:0 0 var(--mos-space-5)">${esc(app.description)}</p>
