@@ -133,11 +133,19 @@ G3 booted the stick in legacy/CSM mode; subiquity correctly produced GPT + BIOS 
 refuses to boot a GPT disk in legacy mode. Curtin reported success, and the machine was unbootable
 with no error recorded anywhere. **H1** removes that runtime decision.
 
-- **H1 — Ship a prebuilt disk image instead of running an OS installer on the target.** CI runs the
-  existing `renderBootstrapShell` in a VM against the Ubuntu cloud image and snapshots the result, so
-  every machine gets a byte-identical, CI-tested layout and control plane; the USB carries a UEFI-only
-  writer that picks a disk, writes, expands and reboots. Makes install offline and minutes-long, and
+- **H1 — Ship a prebuilt disk image instead of running an OS installer on the target.** A build runs the
+  existing `renderBootstrapShell` in a VM and snapshots the result, so every machine gets a
+  byte-identical, CI-tested layout and control plane. Makes install offline and minutes-long, and
   deletes the Rufus-mode, boot-entry and GRUB-menu steps from the walkthrough. *(Large — flagship)*
+
+  A proof of concept lives in `image-builder/`, built in parallel so the shipping ISO path stays
+  untouched until this one is proven. It bakes through the existing autoinstall seed in Hyper-V rather
+  than from the Ubuntu cloud image, which keeps one definition of a MOS machine; and the image
+  self-installs from removable media rather than shipping a separate writer, so there is one artifact to
+  flash. Open: the image is UEFI-only, so the HP EliteDesk that triggered this theme is still not
+  covered — it cannot UEFI-boot a USB stick under any layout tried. Either it needs a BIOS update, or
+  H1 ships an MBR-partitioned image with a FAT32 ESP, which boots on legacy firmware and on most UEFI
+  firmware. That decision is still open and should be made before this leaves PoC.
 - **H2 — Hold the cloud path byte-identical while H1 lands.** `renderBootstrapShell` is the single
   definition of a MOS machine and must not be edited to make the image build work; a snapshot test on
   the rendered `sshBootstrap` and `cloudInit` output turns that from an intention into a CI gate.

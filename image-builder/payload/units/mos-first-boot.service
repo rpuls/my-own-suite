@@ -1,0 +1,14 @@
+[Unit]
+Description=Announce this My Own Suite machine's own address and server login
+After=network-online.target mos-suite-manager.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/mos-first-boot
+StandardOutput=journal+console
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

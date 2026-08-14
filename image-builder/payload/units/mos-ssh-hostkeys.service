@@ -1,0 +1,14 @@
+[Unit]
+Description=Generate this machine's own SSH host keys
+DefaultDependencies=no
+After=local-fs.target
+Before=sysinit.target ssh.service ssh.socket shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/ssh-keygen -A
+
+[Install]
+WantedBy=sysinit.target

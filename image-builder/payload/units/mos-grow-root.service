@@ -1,0 +1,15 @@
+[Unit]
+Description=Expand the My Own Suite root filesystem to fill this machine's disk
+DefaultDependencies=no
+Requires=local-fs.target
+After=local-fs.target mos-self-install.service
+Before=basic.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/mos-grow-root
+
+[Install]
+WantedBy=sysinit.target

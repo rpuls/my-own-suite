@@ -1,0 +1,23 @@
+[Unit]
+Description=Install My Own Suite onto this machine's internal disk
+DefaultDependencies=no
+Requires=local-fs.target
+Wants=systemd-udev-settle.service
+After=local-fs.target systemd-udev-settle.service
+Before=basic.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/mos-self-install
+StandardInput=tty-force
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=sysinit.target

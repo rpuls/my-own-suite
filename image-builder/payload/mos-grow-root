@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# The image is built at a fixed small size so it writes quickly. Every machine it
+# lands on has a bigger disk than that, so claim the rest of it. Idempotent.
+set -euo pipefail
+
+root_source="$(findmnt -no SOURCE / || true)"
+[ -n "$root_source" ] || exit 0
+root_parent="$(lsblk -no PKNAME "$root_source" 2>/dev/null | head -n1 || true)"
+[ -n "$root_parent" ] || exit 0
+root_disk="/dev/$root_parent"
+partition_number="$(printf '%s' "$root_source" | grep -oE '[0-9]+$' || true)"
+[ -n "$partition_number" ] || exit 0
+
+sgdisk -e "$root_disk" >/dev/null 2>&1 || true
+partprobe "$root_disk" >/dev/null 2>&1 || true
+growpart "$root_disk" "$partition_number" >/dev/null 2>&1 || true
+resize2fs "$root_source" >/dev/null 2>&1 || true
+
+# The image ships without one so nobody downloads 2 GB of zeroes. Sized against
+# what is actually free after the grow above: a swapfile that fills the root
+# filesystem is worse than no swapfile, and the image only carries 512 MB of slack.
+if [ ! -e /swap.img ]; then
+  available_mb="$(df -Pm / | awk 'NR == 2 { print $4 }')"
+  swap_mb=2048
+  if [ "$available_mb" -lt $((swap_mb + 4096)) ]; then
+    swap_mb=$(( (available_mb - 2048) / 2 ))
+  fi
+  if [ "$swap_mb" -ge 512 ] && fallocate -l "${swap_mb}M" /swap.img 2>/dev/null; then
+    chmod 0600 /swap.img
+    mkswap /swap.img >/dev/null 2>&1 || true
+    grep -q '^/swap\.img' /etc/fstab || printf '/swap.img none swap sw 0 0\n' >> /etc/fstab
+    swapon /swap.img >/dev/null 2>&1 || true
+  else
+    rm -f /swap.img
+  fi
+fi
+exit 0

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# The bake VM already ran the control-plane bootstrap, so the only things left
+# for the real machine are the ones that are about *this* machine: its own
+# server login, and a banner carrying its own address.
+set -euo pipefail
+
+setup_url='@@SETUP_URL@@'
+home_url='@@HOME_URL@@'
+domain='@@DOMAIN@@'
+begin='### My Own Suite address (begin)'
+end='### My Own Suite address (end)'
+
+if [ -x /usr/local/sbin/mos-console-login-init ]; then
+  /usr/local/sbin/mos-console-login-init || true
+fi
+
+lan_ip=''
+for _ in $(seq 1 30); do
+  lan_ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit } }')"
+  [ -n "$lan_ip" ] && break
+  sleep 2
+done
+[ -n "$lan_ip" ] || lan_ip='(no network yet)'
+
+if [ -f /etc/issue ]; then
+  awk -v b="$begin" -v e="$end" \
+    'index($0, b) { skip = 1 } !skip { print } index($0, e) { skip = 0 }' /etc/issue > /etc/issue.next
+  mv /etc/issue.next /etc/issue
+fi
+
+cat >> /etc/issue <<MOS_ADDRESS
+
+$begin
+  My Own Suite is running on this machine.
+
+      this machine   $lan_ip
+      open           $setup_url
+
+  If that address does not open, point *.$domain at $lan_ip on your
+  router, or add this line to the hosts file of the computer you browse from:
+
+      $lan_ip  home.$domain
+
+$end
+
+MOS_ADDRESS
+chmod 0644 /etc/issue
+
+printf '\n  My Own Suite is ready at %s (%s)\n\n' "$setup_url" "$lan_ip"
+exit 0
