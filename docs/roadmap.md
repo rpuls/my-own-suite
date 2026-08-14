@@ -133,24 +133,50 @@ G3 booted the stick in legacy/CSM mode; subiquity correctly produced GPT + BIOS 
 refuses to boot a GPT disk in legacy mode. Curtin reported success, and the machine was unbootable
 with no error recorded anywhere. **H1** removes that runtime decision.
 
-- **H1 — Ship a prebuilt disk image instead of running an OS installer on the target.** CI runs the
-  existing `renderBootstrapShell` in a VM against the Ubuntu cloud image and snapshots the result, so
-  every machine gets a byte-identical, CI-tested layout and control plane; the USB carries a UEFI-only
-  writer that picks a disk, writes, expands and reboots. Makes install offline and minutes-long, and
+- **H1 — Ship a prebuilt disk image instead of running an OS installer on the target.** A build runs the
+  existing `renderBootstrapShell` in a VM and snapshots the result, so every machine gets a
+  byte-identical, CI-tested layout and control plane. Makes install offline and minutes-long, and
   deletes the Rufus-mode, boot-entry and GRUB-menu steps from the walkthrough. *(Large — flagship)*
+
+  Built in `image-builder/`, in parallel, so the shipping ISO path stays untouched until this one is
+  proven. It bakes through the existing autoinstall seed — Hyper-V locally, QEMU/KVM in CI — rather than
+  from the Ubuntu cloud image, which keeps one definition of a MOS machine; and the image self-installs
+  from removable media rather than shipping a separate writer, so there is one artifact to flash.
+
+  Proven end to end on 2026-08-14: baked in 7 minutes, 2.0 GB download (smaller than the 3.17 GB ISO it
+  replaces), and installed on the HP EliteDesk 705 G3 that triggered this theme.
+
+  **UEFI-only is settled, and the MBR question is closed.** The HP appeared unable to UEFI-boot a USB
+  stick across four attempts and three stick layouts, which nearly justified shipping an MBR-partitioned
+  image to rescue it — at the cost of a 2 TB partition ceiling on every machine. It turned out to be
+  firmware state, not capability: **Apply Factory Defaults** in F10 cleared it and the correct settings
+  were already in place. Do not reopen MBR for a single machine; suspect NVRAM before suspecting the
+  layout.
 - **H2 — Hold the cloud path byte-identical while H1 lands.** `renderBootstrapShell` is the single
   definition of a MOS machine and must not be edited to make the image build work; a snapshot test on
   the rendered `sshBootstrap` and `cloudInit` output turns that from an intention into a CI gate.
   *(Small — precondition for H1)*
-- **H3 — Boot-test the published image before the release publishes.** Boot it in QEMU in CI and assert
-  MOS comes up, under both UEFI and legacy firmware, so a boot-layout regression cannot ship. The
-  Hyper-V harness shares this blind spot: it attaches the ISO as a virtual DVD in a Generation 2
-  (UEFI-only) VM, so it has never tested a USB boot or a legacy boot. *(Medium)*
+- **H3 — Boot-test the published image before the release publishes.** Done for the disk image: the
+  `disk-image` job in `release.yml` boots the compressed artifact it is about to upload under OVMF, on a
+  disk deliberately larger than the image, and refuses to upload unless Suite Manager answers 200 and
+  the disk it leaves behind passes `check-target.sh` — grown to fill the disk, still has free space, has
+  a swapfile in `fstab`, cloud-init still disabled, own SSH host keys. So a boot-layout regression
+  cannot reach a download. It gates only itself: while the ISO is the supported download, an
+  experimental image must not hold back a release. Still open for the ISO path, whose Hyper-V harness
+  attaches it as a virtual DVD in a Generation 2 VM and has therefore never tested a USB boot or a
+  legacy boot. *(Retires with the ISO path.)*
 - **H4 — Decide what the writer is allowed to do to a stranger's disk.** On a machine handed to ten
   thousand people, someone boots it on their daily driver. Needs a visible target-disk confirmation and
   a decided answer for multi-disk machines. *(Small — needs a decision first)*
 - **H5 — Name and describe the image so it does not read as a Canonical product.** It is a stock Ubuntu
   base plus MOS, and the download is public. *(Small)*
+- **H7 — Let the machine answer on its own LAN address.** With H1 landed this is the only manual step
+  left in an own-hardware install, and the last one that can make a finished install look broken:
+  `renderCaddyfile()` serves one site block, so until the owner adds a hosts entry or a router DNS
+  override, nothing they can type reaches the suite. The first-boot banner now leads with that instead
+  of printing a link that does not work yet, which is honest but is not a fix. A catch-all site block
+  would delete the step; it does not touch the cloud path, which uses `renderPublicCloudCaddyfile()`.
+  Needs a decision on what the bare-IP address should serve. *(Small — needs a decision first)*
 - **H6 — Regenerate `md5sum.txt` when remastering.** Patching `grub.cfg` and `loopback.cfg` without
   updating the manifest makes casper's integrity self-check fail on every image published so far.
   *(Small — retires with the ISO path if H1 lands first)*

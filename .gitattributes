@@ -1,3 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 *.sh text eol=lf
+
+# Copied verbatim into a Linux disk image, and named without an extension, so the
+# rule above does not cover them. A CRLF checkout on Windows would bake scripts
+# whose shebang line ends in \r onto every machine flashed from that build.
+image-builder/payload/** text eol=lf

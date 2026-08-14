@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# The bake VM already ran the control-plane bootstrap, so the only things left for
+# the real machine are the ones about *this* machine: its own server login, and a
+# banner carrying its own address.
+#
+# The bootstrap's own completion banner cannot be reused here. It runs at bake
+# time, where the LAN IP belongs to the build VM and means nothing.
+#
+# It also renders over SSH, where any glyph works. This one renders on the Linux
+# console, whose font is 256 glyphs, so it stays within block/box drawing (which
+# the VGA-derived console fonts carry) and Latin-1. The bootstrap banner's ✓ and
+# ▸ are in neither and would come out blank.
+set -euo pipefail
+
+setup_url='@@SETUP_URL@@'
+home_url='@@HOME_URL@@'
+domain='@@DOMAIN@@'
+docs_url='@@DOCS_URL@@'
+begin='### My Own Suite address (begin)'
+end='### My Own Suite address (end)'
+
+if [ -x /usr/local/sbin/mos-console-login-init ]; then
+  /usr/local/sbin/mos-console-login-init || true
+fi
+
+lan_ip=''
+for _ in $(seq 1 30); do
+  lan_ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit } }')"
+  [ -n "$lan_ip" ] && break
+  sleep 2
+done
+[ -n "$lan_ip" ] || lan_ip="$(hostname -I 2>/dev/null | awk '{ print $1 }')"
+
+install -d -m 0755 /etc/issue.d
+banner=/etc/issue.d/10-mos-address.issue
+{
+  printf '\n'
+  printf '\033[32m      ███╗   ███╗  ██████╗  ███████╗\033[0m\n'
+  printf '\033[32m      ████╗ ████║ ██╔═══██╗ ██╔════╝\033[0m\n'
+  printf '\033[32m      ██╔████╔██║ ██║   ██║ ███████╗\033[0m\n'
+  printf '\033[32m      ██║╚██╔╝██║ ██║   ██║ ╚════██║\033[0m\n'
+  printf '\033[32m      ██║ ╚═╝ ██║ ╚██████╔╝ ███████║\033[0m\n'
+  printf '\033[32m      ╚═╝     ╚═╝  ╚═════╝  ╚══════╝\033[0m\n'
+  printf '\n'
+  printf '   \033[1;32m»  Installation complete\033[0m   \033[2mMy Own Suite is running on this machine.\033[0m\n'
+  printf '\n'
+  printf '   \033[2m──────────────────────────────────────────────────────────────\033[0m\n'
+  printf '\n'
+  if [ -n "$lan_ip" ]; then
+    printf '   \033[1mStep 1\033[0m   \033[1mTeach your network the name\033[0m\n'
+    printf '\n'
+    printf '   \033[2mNothing on your network resolves \033[0m\033[1m%s\033[0m\033[2m yet. Add a DNS override\033[0m\n' "$domain"
+    printf '   \033[2mfor \033[0m\033[1m*.%s\033[0m\033[2m in your router, or add this line to the hosts file\033[0m\n' "$domain"
+    printf '   \033[2mon the computer you browse from:\033[0m\n'
+    printf '\n'
+    printf '         \033[1;36m%s   home.%s\033[0m\n' "$lan_ip" "$domain"
+    printf '\n'
+    printf '   \033[2mHow to do either:\033[0m  \033[36m%s\033[0m\n' "$docs_url"
+    printf '\n'
+    printf '   \033[1mStep 2\033[0m   \033[1mOpen your suite\033[0m\n'
+    printf '\n'
+    printf '         \033[1;36m%s\033[0m\n' "$setup_url"
+    printf '\n'
+    printf '   \033[33m»\033[0m  Create your owner account there to finish setup.\n'
+  else
+    # Printing the hosts-file line with an empty address would be worse than
+    # saying nothing: it reads as advice and cannot work.
+    printf '   \033[1;33mThis machine has no network address yet.\033[0m\n'
+    printf '\n'
+    printf '   \033[2mMy Own Suite is installed and running, but nothing can reach it until\033[0m\n'
+    printf '   \033[2mit is on your network. Plug it into your router, then reboot to see\033[0m\n'
+    printf '   \033[2mthe address and the last setup step.\033[0m\n'
+  fi
+  printf '\n'
+  printf '   \033[2m──────────────────────────────────────────────────────────────\033[0m\n'
+  printf '\n'
+  printf '   \033[2mThis machine\033[0m   %s\n' "${lan_ip:-no address yet}"
+  printf '   \033[2mHome\033[0m           %s\n' "$home_url"
+  printf '\n'
+} > "$banner"
+chmod 0644 "$banner"
+
+# Only for machines built by an earlier image, which put this block straight into
+# /etc/issue with visible markers. agetty prints /etc/issue.d/*.issue after
+# /etc/issue, so the banner now lands closest to the login prompt with no markers.
+if [ -f /etc/issue ] && grep -qF "$begin" /etc/issue; then
+  awk -v b="$begin" -v e="$end" \
+    'index($0, b) { skip = 1 } !skip { print } index($0, e) { skip = 0 }' /etc/issue > /etc/issue.next
+  mv /etc/issue.next /etc/issue
+  chmod 0644 /etc/issue
+fi
+
+# agetty renders /etc/issue when it paints a prompt and never redraws one it has
+# already painted, so without this the machine sits on the pre-install banner
+# until someone presses a key.
+systemctl restart getty@tty1.service >/dev/null 2>&1 || true
+exit 0
