@@ -31,6 +31,9 @@ param(
   # nothing and costs the download almost nothing. Being stingy here only buys a
   # brick if mos-grow-root ever fails to expand on the target.
   [int]$SlackMB = 1024,
+  # Deliberately larger than the image: nobody installs onto a disk exactly the
+  # size of the download, and the difference is what mos-grow-root is judged on.
+  [int]$VerifyDiskGB = 40,
   [string]$RepoRef = 'staging',
   [switch]$DebugBake
 )
@@ -166,10 +169,54 @@ function Invoke-Bake {
   Say "The bake VM powered off after $minutes minutes. Run the convert stage to read what finalize recorded."
 }
 
+# The local Caddyfile serves exactly one site block, so a request to the bare IP
+# gets a 404 no matter how healthy the machine is. Taken from the rendered seed
+# rather than hardcoded, so a domain change cannot turn this into a false pass.
+function Get-HomeHost {
+  $summaryPath = Join-Path $SeedDir 'bake-summary.json'
+  if (-not (Test-Path $summaryPath)) { Fail 'No bake summary found. Run the seed stage first.' }
+  return ([uri](Get-Content $summaryPath -Raw | ConvertFrom-Json).home).Host
+}
+
+# Hyper-V only reports a guest address if the KVP daemon is running inside it, and
+# a plain Ubuntu server install has no reason to be running one — so the published
+# image never reports one. The host's neighbour table has it regardless, because
+# the guest DHCPs against the Default Switch to get it.
+function Get-GuestAddress([string]$VmName) {
+  $adapter = Get-VMNetworkAdapter -VMName $VmName
+  $reported = $adapter.IPAddresses | Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' } | Select-Object -First 1
+  if ($reported) { return $reported }
+
+  $mac = $adapter.MacAddress -replace '(..)(?=.)', '$1-'
+  return Get-NetNeighbor -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object { $_.LinkLayerAddress -eq $mac -and $_.IPAddress -notmatch '^(0\.|169\.254\.)' } |
+    Select-Object -First 1 -ExpandProperty IPAddress
+}
+
+function Get-SuiteManagerStatus([string]$Address, [string]$HomeHost) {
+  try {
+    # HttpWebRequest rather than Invoke-WebRequest: .NET refuses a Host header set
+    # through -Headers and only exposes it as a property.
+    $request = [System.Net.HttpWebRequest]::Create("http://$Address/suite-manager/")
+    $request.Host = $HomeHost
+    $request.Timeout = 10000
+    $response = $request.GetResponse()
+    $code = [int]$response.StatusCode
+    $response.Close()
+    return $code
+  }
+  catch [System.Net.WebException] {
+    if ($_.Exception.Response) { return [int]$_.Exception.Response.StatusCode }
+    return 0
+  }
+  catch { return 0 }
+}
+
 function Invoke-Verify {
   Assert-HyperV
   $imageName = "my-own-suite-$RepoRef.img"
   if (-not (Test-Path (Join-Path $OutputDir $imageName))) { Fail 'No image found. Run the convert stage first.' }
+  $homeHost = Get-HomeHost
 
   Remove-BakeVm $VerifyVmName
   if (Test-Path $VerifyDiskPath) { Remove-Item $VerifyDiskPath -Force }
@@ -185,11 +232,8 @@ function Invoke-Verify {
     & docker run --rm -v "${WorkRoot}:/work" $ToolingImage `
       qemu-img convert -f raw -O vhdx "/work/out/$imageName" /work/verify.vhdx
   }
-  # Deliberately larger than the image, because that is the only realistic case:
-  # nobody installs onto a disk exactly the size of the download. It also makes
-  # this a real test of mos-grow-root rather than a boot with nothing to grow.
-  Resize-VHD -Path $VerifyDiskPath -SizeBytes 40GB
-  Say 'Booting it on a 40 GB disk.'
+  Resize-VHD -Path $VerifyDiskPath -SizeBytes ($VerifyDiskGB * 1GB)
+  Say "Booting it on a ${VerifyDiskGB} GB disk."
 
   $switch = Get-BakeSwitch
   New-VM -Name $VerifyVmName -Generation 2 -MemoryStartupBytes 4GB `
@@ -199,26 +243,63 @@ function Invoke-Verify {
   Set-VMFirmware -VMName $VerifyVmName -EnableSecureBoot On -SecureBootTemplate MicrosoftUEFICertificateAuthority
   Start-VM -Name $VerifyVmName
 
-  Say 'Waiting for it to report an address (up to 5 minutes).'
+  Say 'Waiting for it to take an address (up to 5 minutes).'
   $deadline = (Get-Date).AddMinutes(5)
   $address = $null
   while ((Get-Date) -lt $deadline) {
-    $address = (Get-VMNetworkAdapter -VMName $VerifyVmName).IPAddresses |
-      Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' } | Select-Object -First 1
+    $address = Get-GuestAddress $VerifyVmName
     if ($address) { break }
     Start-Sleep -Seconds 10
   }
+  if (-not $address) {
+    Fail "It never took an address on the '$($switch.Name)' switch, so it did not get as far as networking. Look at the console: vmconnect.exe localhost $VerifyVmName"
+  }
 
-  Say ''
-  if ($address) {
-    Say "It booted and took the address $address."
-    Say "Open http://$address/suite-manager/ to confirm Suite Manager answers."
+  Say "It booted and took the address $address. Waiting for Suite Manager to answer."
+  $deadline = (Get-Date).AddMinutes(10)
+  $status = 0
+  while ((Get-Date) -lt $deadline) {
+    $status = Get-SuiteManagerStatus $address $homeHost
+    if ($status -eq 200) { break }
+    Start-Sleep -Seconds 10
+    # Re-resolved every pass: Hyper-V reuses MAC addresses, so the neighbour table
+    # can still hold the previous verify VM's lease when this one starts. Left
+    # stale it would poll a dead address for ten minutes and blame the image.
+    $current = Get-GuestAddress $VerifyVmName
+    if ($current -and $current -ne $address) {
+      Say "Its address changed to $current."
+      $address = $current
+    }
   }
-  else {
-    Say 'No address reported. Hyper-V only sees one if the guest runs the KVP daemon,'
-    Say 'so this is not proof of failure. Look at the console instead:'
+  if ($status -ne 200) {
+    Fail "Suite Manager never answered on the published image (last status '$status'). Look at the console: vmconnect.exe localhost $VerifyVmName"
   }
-  Say "  vmconnect.exe localhost $VerifyVmName"
+  Say "Suite Manager answered 200 at http://$address/suite-manager/ (Host: $homeHost)."
+
+  # Shut it down rather than turning it off, so the filesystem it is about to be
+  # judged on is consistent.
+  Say 'Shutting it down to check what its first boot did to the disk.'
+  Stop-VM -Name $VerifyVmName -Force
+  $deadline = (Get-Date).AddMinutes(3)
+  while ((Get-VM -Name $VerifyVmName).State -ne 'Off') {
+    if ((Get-Date) -gt $deadline) { Stop-VM -Name $VerifyVmName -TurnOff -Force; break }
+    Start-Sleep -Seconds 5
+  }
+  Remove-VM -Name $VerifyVmName -Force
+
+  $bootedImage = Join-Path $WorkRoot 'verify-booted.img'
+  if (Test-Path $bootedImage) { Remove-Item $bootedImage -Force }
+  Invoke-Native 'Could not convert the booted disk for inspection.' {
+    & docker run --rm -v "${WorkRoot}:/work" $ToolingImage `
+      qemu-img convert -f vhdx -O raw /work/verify.vhdx /work/verify-booted.img
+  }
+  # Privileged only to attach a loop device; the mount itself is read-only.
+  Invoke-Native 'The booted image failed its checks.' {
+    & docker run --rm --privileged -v "${WorkRoot}:/work" $ToolingImage `
+      check-target.sh /work/verify-booted.img $VerifyDiskGB
+  }
+  Remove-Item $bootedImage -Force
+  if (Test-Path $VerifyDiskPath) { Remove-Item $VerifyDiskPath -Force }
 }
 
 function Invoke-Convert {
@@ -247,8 +328,8 @@ function Invoke-Convert {
   Say ''
   Say "Image ready: $(Join-Path $OutputDir $imageName)"
   Say ''
-  Say 'Write it to a USB stick with balenaEtcher, boot the target machine from it,'
-  Say 'and type YES when it asks which disk to erase.'
+  Say 'Write it to a USB stick with Rufus (DD mode) or balenaEtcher, boot the target'
+  Say 'machine from it, and type YES when it asks which disk to erase.'
 }
 
 function Invoke-Inspect {

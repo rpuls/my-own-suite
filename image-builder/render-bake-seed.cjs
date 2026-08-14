@@ -27,6 +27,10 @@ const outputDir = path.join(__dirname, '.work', 'seed');
 const consoleIssueBeginMarker = '### My Own Suite server login (begin)';
 const consoleIssueEndMarker = '### My Own Suite server login (end)';
 
+// The console banner says a DNS override is needed and points here rather than
+// explaining hosts files on a login screen. Step 4 of that page is the override.
+const networkDocsUrl = 'https://myownsuite.org/docs/install/own-hardware/';
+
 const payloadScripts = [
   'mos-image-finalize',
   'mos-self-install',
@@ -59,11 +63,25 @@ function assertRefIsPushed(repoRef) {
   }
 }
 
-function fill(template, values) {
-  return Object.entries(values).reduce(
+// `.gitattributes` pins these to LF, but normalize anyway: renderBootstrapShell
+// does the same, and a checkout that slipped through would otherwise bake a
+// shebang line ending in \r onto every machine flashed from the build.
+function readPayload(dir, name) {
+  return fs.readFileSync(path.join(dir, name), 'utf8').replace(/\r\n/g, '\n');
+}
+
+function fill(name, template, values) {
+  const filled = Object.entries(values).reduce(
     (text, [key, value]) => text.split(`@@${key}@@`).join(value),
     template,
   );
+  // An unfilled placeholder is not a build error anywhere else in the chain — it
+  // just bakes '@@DOCS_URL@@' onto the login screen of every machine.
+  const leftover = filled.match(/@@[A-Z_]+@@/g);
+  if (leftover) {
+    throw new Error(`${name} still contains unfilled placeholders: ${[...new Set(leftover)].join(', ')}`);
+  }
+  return filled;
 }
 
 function main() {
@@ -91,6 +109,7 @@ function main() {
   const stateDir = `${rendered.plan.config.stateRoot}/suite-manager`;
 
   const values = {
+    DOCS_URL: networkDocsUrl,
     DOMAIN: rendered.plan.config.domain,
     HOME_URL: rendered.plan.config.publicUrls.home,
     ISSUE_BEGIN: consoleIssueBeginMarker,
@@ -104,14 +123,14 @@ function main() {
   const writeFiles = [];
   for (const name of payloadScripts) {
     writeFiles.push({
-      content: fill(fs.readFileSync(path.join(payloadDir, name), 'utf8'), values),
+      content: fill(name, readPayload(payloadDir, name), values),
       path: `/usr/local/sbin/${name}`,
       permissions: '0755',
     });
   }
   for (const name of payloadUnits) {
     writeFiles.push({
-      content: fs.readFileSync(path.join(payloadDir, 'units', name), 'utf8'),
+      content: readPayload(path.join(payloadDir, 'units'), name),
       path: `/etc/systemd/system/${name}`,
       permissions: '0644',
     });

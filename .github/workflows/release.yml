@@ -196,6 +196,136 @@ jobs:
           path: dist/SHA256SUMS
           retention-days: 1
 
+  # The prebuilt disk image (roadmap H1). Runs alongside the ISO rather than
+  # replacing it: the ISO stays the supported download until this has proven
+  # itself over a release or two. It publishes under a disk-image/ prefix so
+  # nothing links to it by accident, and the release notes do not mention it yet.
+  #
+  # `publish` deliberately does not need this job. While the ISO is the supported
+  # download, an experimental image must not be able to hold back a release; it
+  # only gates itself, by refusing to upload an image that does not boot.
+  disk-image:
+    name: Build prebuilt disk image
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Pin npm
+        run: npm install -g npm@11.2.0
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The bake needs room for the Ubuntu ISO, the remastered ISO, a 16 GB
+      # qcow2, the raw image and its compressed copy at the same time.
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          df -h /
+
+      - name: Install QEMU and image tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils ovmf mtools gdisk fdisk e2fsprogs xz-utils
+          # Nested virtualisation is available on these runners, but the runner
+          # user is not in the kvm group and a group change needs a new login.
+          sudo chmod 666 /dev/kvm
+          test -w /dev/kvm && echo 'KVM is usable.'
+
+      - name: Decide where this build goes
+        id: target
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = 'workflow_dispatch' ]; then
+            echo 'prefix=dry-run' >> "$GITHUB_OUTPUT"
+          else
+            echo "prefix=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Same publishability gates the ISO gets. A disk image is flashed by
+      # everyone who downloads it, so a baked-in password would be shared by
+      # every machine in the world.
+      - name: Render and check the bake seed
+        env:
+          MOS_IMAGE_REPO_REF: ${{ github.ref_name }}
+        run: |
+          bash ./image-builder/bake.sh seed
+          seed='image-builder/.work/seed/user-data'
+          summary='image-builder/.work/seed/bake-summary.json'
+
+          if ! grep -q "MOS_REPO_REF='${GITHUB_REF_NAME}'" "$seed"; then
+            echo "::error::The seed does not pin ${GITHUB_REF_NAME}."
+            exit 1
+          fi
+          if [ "$(node -p "require('./$summary').consoleLoginHandover")" != 'first-boot' ]; then
+            echo '::error::This seed carries a build-time password. Every machine flashed from it would share one login.'
+            exit 1
+          fi
+          if [ "$(node -p "require('./$summary').profile")" != 'release' ]; then
+            echo '::error::This is a debug bake and must not be published.'
+            exit 1
+          fi
+          if ! grep -q "MOS_DISPOSABLE_LAB='0'" "$seed"; then
+            echo '::error::This seed enables the lab reset agent.'
+            exit 1
+          fi
+
+      - name: Bake
+        env:
+          MOS_IMAGE_REPO_REF: ${{ github.ref_name }}
+        run: |
+          bash ./image-builder/bake.sh iso
+          bash ./image-builder/bake.sh bake
+
+      - name: Convert, shrink and compress
+        env:
+          MOS_IMAGE_REPO_REF: ${{ github.ref_name }}
+        run: bash ./image-builder/bake.sh convert
+
+      # The gate the ISO never had: boot what is about to be published and make
+      # it answer, before anything is uploaded. A boot-layout regression cannot
+      # reach a download from here.
+      - name: Boot the published image and require Suite Manager to answer
+        env:
+          MOS_IMAGE_REPO_REF: ${{ github.ref_name }}
+        run: bash ./image-builder/bake.sh verify
+
+      - name: Upload the disk image to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          PREFIX: ${{ steps.target.outputs.prefix }}
+        run: |
+          cd image-builder/.work/out
+          image="my-own-suite-${GITHUB_REF_NAME}.img.xz"
+          aws s3 cp "$image" "s3://${R2_BUCKET}/${PREFIX}/disk-image/${image}" \
+            --endpoint-url "$R2_ENDPOINT" --checksum-algorithm CRC32
+          aws s3 cp SHA256SUMS "s3://${R2_BUCKET}/${PREFIX}/disk-image/SHA256SUMS" \
+            --endpoint-url "$R2_ENDPOINT" --checksum-algorithm CRC32
+          echo "Published to https://${DOWNLOAD_HOST}/${PREFIX}/disk-image/${image}"
+          ls -lh
+
+      - name: Keep the checksum and the bake log
+        uses: actions/upload-artifact@v4
+        with:
+          name: disk-image-evidence
+          path: |
+            image-builder/.work/out/SHA256SUMS
+            image-builder/.work/out/mos-image-build.log
+          retention-days: 7
+
   publish:
     name: Publish release
     needs: [gate, installer]
