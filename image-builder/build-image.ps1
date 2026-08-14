@@ -187,8 +187,12 @@ function Get-GuestAddress([string]$VmName) {
   $reported = $adapter.IPAddresses | Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' } | Select-Object -First 1
   if ($reported) { return $reported }
 
+  # Scoped to the switch's own host adapter. Hyper-V hands out MAC addresses from
+  # a pool and reuses them, so an unscoped lookup also matches leases a retired VM
+  # left on the physical LAN — which returns a live-looking address belonging to
+  # something else entirely, and then blames the image for not answering on it.
   $mac = $adapter.MacAddress -replace '(..)(?=.)', '$1-'
-  return Get-NetNeighbor -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+  return Get-NetNeighbor -AddressFamily IPv4 -InterfaceAlias "vEthernet ($($adapter.SwitchName))" -ErrorAction SilentlyContinue |
     Where-Object { $_.LinkLayerAddress -eq $mac -and $_.IPAddress -notmatch '^(0\.|169\.254\.)' } |
     Select-Object -First 1 -ExpandProperty IPAddress
 }
@@ -236,8 +240,13 @@ function Invoke-Verify {
   Say "Booting it on a ${VerifyDiskGB} GB disk."
 
   $switch = Get-BakeSwitch
-  New-VM -Name $VerifyVmName -Generation 2 -MemoryStartupBytes 4GB `
+  New-VM -Name $VerifyVmName -Generation 2 -MemoryStartupBytes 2GB `
     -VHDPath $VerifyDiskPath -SwitchName $switch.Name | Out-Null
+  # Dynamic for the same reason the bake VM is: a fixed 4 GB reservation fails to
+  # start on a host that is already running something, and a verify that cannot
+  # start is indistinguishable from an image that cannot boot.
+  Set-VMMemory -VMName $VerifyVmName -DynamicMemoryEnabled $true `
+    -MinimumBytes 1GB -StartupBytes 2GB -MaximumBytes 4GB
   Set-VMProcessor -VMName $VerifyVmName -Count 2
   Set-VM -Name $VerifyVmName -AutomaticCheckpointsEnabled $false
   Set-VMFirmware -VMName $VerifyVmName -EnableSecureBoot On -SecureBootTemplate MicrosoftUEFICertificateAuthority

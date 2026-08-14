@@ -292,6 +292,14 @@ jobs:
           MOS_IMAGE_REPO_REF: ${{ github.ref_name }}
         run: bash ./image-builder/bake.sh convert
 
+      # Verify boots the image on a disk larger than itself, so it needs room for
+      # a 40 GB sparse copy. The baked disk and the installer ISO are finished
+      # with by this point and together hold about 12 GB.
+      - name: Drop the bake intermediates
+        run: |
+          rm -f image-builder/.work/bake.qcow2 image-builder/.work/bake-installer.iso
+          df -h /
+
       # The gate the ISO never had: boot what is about to be published and make
       # it answer, before anything is uploaded. A boot-layout regression cannot
       # reach a download from here.

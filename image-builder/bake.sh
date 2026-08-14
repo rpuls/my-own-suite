@@ -135,7 +135,13 @@ do_convert() {
   # Invoked through bash rather than directly: these are authored on Windows, so
   # git does not carry an executable bit for them.
   bash "$here/extract-image.sh" "$bake_disk" "$out_dir/$image_name"
-  bash "$here/shrink-image.sh" "$out_dir/$image_name" "$slack_mb"
+  # Root only to attach a loop device for resize2fs. The Windows driver gets the
+  # same privilege by running this script in a --privileged container; here there
+  # is no container, so it has to be asked for directly.
+  sudo bash "$here/shrink-image.sh" "$out_dir/$image_name" "$slack_mb"
+  # The outputs are root-owned after that, and everything downstream — the verify
+  # copy, the upload, the artifact — runs as the ordinary runner user.
+  sudo chown -R "$(id -u):$(id -g)" "$out_dir"
 }
 
 do_verify() {
