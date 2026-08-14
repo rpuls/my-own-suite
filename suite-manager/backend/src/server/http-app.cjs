@@ -850,14 +850,14 @@ function createMOSServer({
           return;
         }
         try {
-          const result = await catalogService.refresh({ manual: true });
+          const result = await catalogService.refresh();
           jsonResponse(response, 200, result);
         } catch (error) {
           if (!(error instanceof OfficialCatalogError)) throw error;
-          jsonResponse(response, error.code === 'CATALOG_REFRESH_THROTTLED' ? 429 : 502, {
-            catalog: error.catalogStatus || catalogService.status(),
+          jsonResponse(response, 502, {
             code: error.code,
             error: error.message,
+            status: error.catalogStatus || catalogService.status(),
           });
         }
         return;

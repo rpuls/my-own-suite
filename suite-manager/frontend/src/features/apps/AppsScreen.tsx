@@ -1163,17 +1163,24 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     }
   }
 
+  // Fetches the current app list from GitHub in the background and folds it in.
+  async function refreshCatalog() {
+    try {
+      const response = await fetch('/suite-manager/api/apps/catalog/refresh', { method: 'POST' });
+      const body = await response.json().catch(() => ({})) as { code?: string; error?: string; status?: CatalogStatus };
+      if (body.status) setCatalogStatus(body.status);
+      if (!response.ok) throw new Error(`${body.code || 'CATALOG_FETCH_FAILED'}: ${body.error || 'app catalog refresh failed'}`);
+      console.debug('[apps] app catalog checked:', body.status?.fetchedAt, body.status?.revision);
+      await load({ silent: true });
+    } catch (caught) {
+      console.warn('[apps] could not refresh the app catalog:', caught instanceof Error ? caught.message : caught);
+    }
+  }
+
   useEffect(() => {
-    void load();
-    // Opening Apps signals intent to see the current catalog, so nudge the
-    // backend refresh once in the background. Failures stay silent: the page
-    // keeps serving the last verified catalog and the stale-catalog notice
-    // already covers persistent refresh trouble.
     void (async () => {
-      try {
-        const response = await fetch('/suite-manager/api/apps/catalog/refresh', { method: 'POST' });
-        if (response.ok) await load({ silent: true });
-      } catch {}
+      await load();
+      await refreshCatalog();
     })();
     const timer = window.setInterval(() => {
       if (!document.hidden) void load({ silent: true });
@@ -1181,14 +1188,19 @@ export function AppsScreen({ owner }: { owner: Owner }) {
     return () => window.clearInterval(timer);
   }, []);
 
-  // The catalog and advisory feed refresh is a convenience on top of the signed
-  // catalog that already ships in the release, so a stale or failed fetch is not
-  // worth interrupting normal users with a banner. It is logged to the console
-  // instead, where anyone debugging still sees it and real users never do.
+  // The catalog and advisory feed are a convenience on top of the signed catalog
+  // the release already ships, so a stale or failed fetch goes to the console
+  // rather than interrupting normal users with a banner.
   useEffect(() => {
     if (!catalogStatus) return;
     if (catalogStatus.freshness === 'stale' || catalogStatus.error) {
-      console.warn('[apps] official catalog refresh is not fresh:', catalogStatus.error?.code || catalogStatus.freshness, catalogStatus.error?.message || '');
+      console.warn('[apps] official catalog refresh is not fresh:', {
+        error: catalogStatus.error?.code || null,
+        fetchedAt: catalogStatus.fetchedAt,
+        freshness: catalogStatus.freshness,
+        message: catalogStatus.error?.message || null,
+        revision: catalogStatus.revision,
+      });
     }
     if (catalogStatus.advisories && (catalogStatus.advisories.freshness !== 'fresh' || catalogStatus.advisories.error)) {
       console.warn('[apps] privacy advisories are not fresh:', catalogStatus.advisories.error?.code || catalogStatus.advisories.freshness, catalogStatus.advisories.error?.message || '');

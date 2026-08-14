@@ -181,13 +181,81 @@ test('a missing or malformed advisory feed never fails the catalog refresh', asy
 
 test('failed refresh preserves last-known-good catalog and records a secret-free status error', async () => {
   const stateDir = tempDir();
-  const good = catalogService({ fetchImpl: serveRepo(), stateDir });
+  const good = catalogService({ fetchImpl: serveRepo(), now: () => new Date('2026-07-14T10:00:00.000Z'), stateDir });
   await good.refresh();
-  const offline = catalogService({ fetchImpl: async () => { throw new Error('network included secret-token'); }, stateDir });
+  const offline = catalogService({
+    fetchImpl: async () => { throw new Error('network included secret-token'); },
+    now: () => new Date('2026-07-14T11:00:00.000Z'), // past the reuse window, so this really fetches
+    stateDir,
+  });
   await assert.rejects(() => offline.refresh(), { code: 'CATALOG_FETCH_FAILED' });
   assert.equal(offline.catalog().packages.immich.packageVersion, '1.2.0');
   assert.equal(offline.status().error.message, 'Official catalog request failed.');
   assert.doesNotMatch(JSON.stringify(offline.status()), /secret-token/u);
+});
+
+test('a refresh inside the reuse window answers from the catalog just fetched, without calling GitHub again', async () => {
+  const serve = serveRepo();
+  const clock = { at: new Date('2026-07-14T10:00:00.000Z') };
+  let calls = 0;
+  const service = catalogService({
+    fetchImpl: async (url) => { calls += 1; return serve(url); },
+    now: () => clock.at,
+    stateDir: tempDir(),
+  });
+  await service.refresh();
+  const afterFirst = calls;
+
+  clock.at = new Date('2026-07-14T10:00:10.000Z');
+  const reused = await service.refresh();
+  assert.equal(calls, afterFirst, 'reuse must not spend another GitHub call');
+  assert.ok(reused.reusedForMs > 0);
+  assert.equal(reused.status.error, null);
+  assert.equal(reused.status.revision, revision);
+  assert.equal(reused.catalog.packages.immich.packageVersion, '1.2.0');
+
+  clock.at = new Date('2026-07-14T10:01:00.000Z');
+  assert.equal((await service.refresh()).reusedForMs, 0);
+  assert.ok(calls > afterFirst, 'past the window the catalog is fetched again');
+});
+
+test('a refresh after a failed one retries immediately instead of reusing the failure', async () => {
+  const serve = serveRepo();
+  const clock = { at: new Date('2026-07-14T10:00:00.000Z') };
+  let calls = 0;
+  let online = false;
+  const service = catalogService({
+    fetchImpl: async (url) => {
+      calls += 1;
+      if (!online) throw new Error('network down');
+      return serve(url);
+    },
+    now: () => clock.at,
+    stateDir: tempDir(),
+  });
+  await assert.rejects(() => service.refresh(), { code: 'CATALOG_FETCH_FAILED' });
+  const afterFailure = calls;
+
+  online = true;
+  clock.at = new Date('2026-07-14T10:00:02.000Z');
+  const recovered = await service.refresh();
+  assert.ok(calls > afterFailure, 'a failed refresh must not hold back the next attempt');
+  assert.equal(recovered.status.error, null);
+  assert.equal(recovered.status.revision, revision);
+});
+
+test('a restart reports the refresh failure the cache recorded, not a clean slate', async () => {
+  const stateDir = writeVerifiedCache(tempDir());
+  const before = catalogService({
+    fetchImpl: async () => { throw new Error('network down'); },
+    now: () => new Date('2026-07-14T10:00:00.000Z'),
+    stateDir,
+  });
+  await assert.rejects(() => before.refresh(), { code: 'CATALOG_FETCH_FAILED' });
+
+  const restarted = catalogService({ fetchImpl: serveRepo(), now: () => new Date('2026-07-14T10:00:05.000Z'), stateDir });
+  assert.equal(restarted.status().error.code, 'CATALOG_FETCH_FAILED');
+  assert.equal((await restarted.refresh()).status.error, null); // inside the window, but the recorded attempt failed
 });
 
 // A catalog that cannot refresh is a MOS that has stopped learning which of its

@@ -96,10 +96,10 @@ setup, and never waits at a screen that looks hung.
   printed Finish-setup link → owner account → first app. Three site spots currently promise it as
   "on the way". Hosting must respect the page's own privacy claim — self-hosted file or a no-cookie
   embed, not a plain YouTube iframe. *(Owner-run)*
-- **C6 — Record the own-hardware install walkthrough.** The second video: download the published ISO →
-  Rufus or Etcher → boot → save the server login → owner account. Unblocked since `v0.16.0` — the flow
-  no longer starts with installing Node and Docker on the viewer's laptop. Filming it is also the
-  first real test that a published image installs. *(Owner-run)*
+- **C6 — Record the own-hardware install walkthrough.** The second video: download → Etcher → boot →
+  save the server login → owner account. **Blocked on H1** — the flow it would document changes, and a
+  2026-08-14 attempt to film it produced an unbootable machine on ordinary HP hardware. Recording is
+  expensive enough that it should happen once, against the flow we intend to keep. *(Owner-run)*
 - **C2 — "What it costs" docs page.** Apps running × VPS size × monthly range, provider-neutral, with
   an own-hardware electricity row and an honest note that the stated 2 vCPU / 4 GB minimum plausibly
   cannot run the advertised Seafile + ONLYOFFICE pair. Also rewrites getting-started's overspecific
@@ -123,19 +123,37 @@ setup, and never waits at a screen that looks hung.
 can boot it on their own machine without the project having guessed wrong about their disk.
 
 Promoted from **L7** and from the standing "own hardware is for technical users" position, which this
-theme retires. Building and publishing the image, and keeping machine identity out of it, shipped in
-`v0.16.0` — see the 2026-08-07 decision. What remains is everything that stands between "the bytes
-exist" and "a stranger can safely boot them".
+theme retires. Publishing a bootable download, and keeping machine identity out of it, shipped in
+`v0.16.0` — see the 2026-08-07 decision.
 
-- **H3 — Boot-test the published image before the release publishes.** Boot the built ISO in QEMU in CI
-  and assert MOS comes up. Today the pipeline proves the image was produced and uploaded, not that it
-  installs, so the first person to discover a bad image is a downloader. *(Medium)*
-- **H4 — Decide what an unattended installer is allowed to do to a stranger's disk.** The seed installs
-  to a `direct` layout; on a machine handed to ten thousand people, someone boots it on their daily
-  driver. Needs a visible target-disk confirmation and a decided answer for multi-disk machines.
-  *(Small — needs a decision first)*
+What that download still is, though, is Ubuntu's own installer plus an autoinstall seed, so the
+partition table and bootloader are decided on the target machine at install time, mirroring however
+its firmware happened to boot the USB stick. On 2026-08-14 a `v0.17.0` install on an HP EliteDesk 705
+G3 booted the stick in legacy/CSM mode; subiquity correctly produced GPT + BIOS GRUB, and HP firmware
+refuses to boot a GPT disk in legacy mode. Curtin reported success, and the machine was unbootable
+with no error recorded anywhere. **H1** removes that runtime decision.
+
+- **H1 — Ship a prebuilt disk image instead of running an OS installer on the target.** CI runs the
+  existing `renderBootstrapShell` in a VM against the Ubuntu cloud image and snapshots the result, so
+  every machine gets a byte-identical, CI-tested layout and control plane; the USB carries a UEFI-only
+  writer that picks a disk, writes, expands and reboots. Makes install offline and minutes-long, and
+  deletes the Rufus-mode, boot-entry and GRUB-menu steps from the walkthrough. *(Large — flagship)*
+- **H2 — Hold the cloud path byte-identical while H1 lands.** `renderBootstrapShell` is the single
+  definition of a MOS machine and must not be edited to make the image build work; a snapshot test on
+  the rendered `sshBootstrap` and `cloudInit` output turns that from an intention into a CI gate.
+  *(Small — precondition for H1)*
+- **H3 — Boot-test the published image before the release publishes.** Boot it in QEMU in CI and assert
+  MOS comes up, under both UEFI and legacy firmware, so a boot-layout regression cannot ship. The
+  Hyper-V harness shares this blind spot: it attaches the ISO as a virtual DVD in a Generation 2
+  (UEFI-only) VM, so it has never tested a USB boot or a legacy boot. *(Medium)*
+- **H4 — Decide what the writer is allowed to do to a stranger's disk.** On a machine handed to ten
+  thousand people, someone boots it on their daily driver. Needs a visible target-disk confirmation and
+  a decided answer for multi-disk machines. *(Small — needs a decision first)*
 - **H5 — Name and describe the image so it does not read as a Canonical product.** It is a stock Ubuntu
-  base plus an autoinstall seed, and the download is now public. *(Small)*
+  base plus MOS, and the download is public. *(Small)*
+- **H6 — Regenerate `md5sum.txt` when remastering.** Patching `grub.cfg` and `loopback.cfg` without
+  updating the manifest makes casper's integrity self-check fail on every image published so far.
+  *(Small — retires with the ISO path if H1 lands first)*
 
 A flashable image that installs an OS and then runs a root shell script is the highest-trust artifact
 the project ships, which is what makes **E3** load-bearing rather than aspirational.

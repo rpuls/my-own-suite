@@ -75,10 +75,10 @@ class OfficialCatalogService {
     this.cachePath = path.join(stateDir, 'official-app-catalog.json');
     this.timer = null;
     this.failures = 0;
-    this.lastAttemptedAt = this.cache?.attemptedAt || null;
-    this.lastError = this.cache?.error || null;
     this.refreshing = null;
     this.cache = this.readCache();
+    this.lastAttemptedAt = this.cache?.attemptedAt || null;
+    this.lastError = this.cache?.error || null;
   }
 
   // Signed bytes in, parsed result out. A parsed catalog cannot be re-verified —
@@ -278,11 +278,21 @@ class OfficialCatalogService {
     } finally { clearTimeout(timer); }
   }
 
-  async refresh({ manual = false } = {}) {
+  // Milliseconds a freshly fetched catalog stays reusable. Zero once the window
+  // has passed, and zero if the last attempt failed so a retry is never blocked.
+  reusableForMs() {
+    if (!this.lastAttemptedAt || this.lastError) return 0; // a failed attempt must never block its retry
+    const elapsed = this.now().getTime() - Date.parse(this.lastAttemptedAt);
+    if (!Number.isFinite(elapsed) || elapsed < 0) return 0;
+    return Math.max(0, CATALOG_REFRESH_POLICY.reuseWindowMs - elapsed);
+  }
+
+  // Fetches the catalog from GitHub and always answers with one: joining an
+  // in-flight fetch, or reusing a recent success, rather than failing.
+  async refresh() {
     if (this.refreshing) return this.refreshing;
-    if (manual && this.lastAttemptedAt && this.now().getTime() - Date.parse(this.lastAttemptedAt) < CATALOG_REFRESH_POLICY.manualMinimumIntervalMs) {
-      throw new OfficialCatalogError('CATALOG_REFRESH_THROTTLED', 'Wait briefly before refreshing the app catalog again.');
-    }
+    const reusedForMs = this.reusableForMs();
+    if (reusedForMs > 0) return { catalog: this.catalog(), reusedForMs, status: this.status() };
     this.refreshing = this.performRefresh().finally(() => { this.refreshing = null; });
     return this.refreshing;
   }
@@ -334,7 +344,7 @@ class OfficialCatalogService {
         }
       }
       this.writeCache(this.cache);
-      return { catalog: this.catalog(), status: this.status() };
+      return { catalog: this.catalog(), reusedForMs: 0, status: this.status() };
     } catch (error) {
       this.failures += 1;
       const safeError = { code: error.code || 'CATALOG_FETCH_FAILED', message: error.message || 'Official catalog refresh failed.' };
