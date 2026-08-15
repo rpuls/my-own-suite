@@ -156,11 +156,13 @@ Written to a USB stick with Rufus (DD mode) or balenaEtcher, and booted:
   they can open the thing they just installed. A prebuilt image removes the boot
   failure and leaves this one untouched.
 
-  The console banner now leads with it rather than printing a link that does not
-  work yet, which is honest but is not a fix. The fix is a catch-all site block so
-  the machine also answers on its bare LAN IP; it would not touch the cloud path,
-  which uses `renderPublicCloudCaddyfile()` instead. That is a change to shared
-  code, so it is a decision rather than something this PoC took.
+  The console banner leads with it rather than printing a link that does not work
+  yet, which is honest but is not a fix. A bare-IP catch-all was considered and is
+  not the answer: `seafile.192.168.1.42` cannot exist, so it fixes first contact
+  and nothing past the first app the owner installs. The fix is roadmap **H8** — a
+  per-install name under a MOS-operated wildcard DNS zone resolving to the LAN IP —
+  with the `*.mos.home` wildcard rule staying the door for owners already running a
+  resolver. Until that lands, the banner is the honest version of a manual step.
 - **UEFI only.** One image means one layout, and that layout is GPT + ESP. The HP
   EliteDesk that triggered this work appeared unable to UEFI-boot a USB stick
   across four attempts, which nearly justified an MBR image; it turned out to be

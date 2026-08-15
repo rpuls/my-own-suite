@@ -1,6 +1,7 @@
 # Environment files
 .env
 .env.selfhost
+.mos-nameserver.env
 
 # temporary files
 .tmp/

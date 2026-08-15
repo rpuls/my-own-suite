@@ -1,0 +1,46 @@
+# MOS Easy Door authoritative nameserver.
+#
+# Answers A queries for names of the form <labels>.<a>-<b>-<c>-<d>.local.myownsuite.org
+# with the encoded address, but only when that address is in RFC1918 space. Everything
+# else under the zone is NXDOMAIN, and everything outside the zone is REFUSED.
+#
+# Stateless: there is no database, no API, and nothing ever writes here.
+
+local.myownsuite.org.:53 {
+    errors
+
+    # Caps the EDNS0 buffer so this cannot be used as an amplifier, and answers
+    # QTYPE=ANY with the RFC 8482 minimal response instead of everything we know.
+    bufsize 512
+    any
+
+    health 127.0.0.1:8080
+    prometheus 127.0.0.1:9153
+
+    # The three RFC1918 ranges, each capturing its four octets as a/b/c/d.
+    # A public address matches none of them and falls through to NXDOMAIN below.
+    # That restriction is the anti-phishing control: without it the zone is an
+    # open redirector that lends the myownsuite.org name to an attacker's host.
+    template IN A local.myownsuite.org {
+        match "^(?:[^.]+\.)*(?P<a>10)-(?P<b>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?P<c>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?P<d>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.local\.myownsuite\.org\.$"
+        match "^(?:[^.]+\.)*(?P<a>172)-(?P<b>1[6-9]|2[0-9]|3[01])-(?P<c>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?P<d>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.local\.myownsuite\.org\.$"
+        match "^(?:[^.]+\.)*(?P<a>192)-(?P<b>168)-(?P<c>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?P<d>25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.local\.myownsuite\.org\.$"
+        answer "{{ .Name }} 60 IN A {{ .Group.a }}.{{ .Group.b }}.{{ .Group.c }}.{{ .Group.d }}"
+        fallthrough
+    }
+
+    # Same names, every other type: NODATA, not NXDOMAIN. A stub resolver that asks
+    # for AAAA alongside A must not be told the name does not exist.
+    template IN ANY local.myownsuite.org {
+        match "^(?:[^.]+\.)*10-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.local\.myownsuite\.org\.$"
+        match "^(?:[^.]+\.)*172-(?:1[6-9]|2[0-9]|3[01])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.local\.myownsuite\.org\.$"
+        match "^(?:[^.]+\.)*192-168-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])-(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.local\.myownsuite\.org\.$"
+        rcode NOERROR
+        authority "local.myownsuite.org. 60 IN SOA ns1.myownsuite.org. hostmaster.myownsuite.org. 2026081501 7200 3600 1209600 60"
+        fallthrough
+    }
+
+    # Serves the apex SOA/NS, and turns every unmatched name into a properly
+    # negative-cacheable NXDOMAIN rather than the SERVFAIL an unmatched template returns.
+    file /etc/coredns/zones/local.myownsuite.org.zone local.myownsuite.org
+}

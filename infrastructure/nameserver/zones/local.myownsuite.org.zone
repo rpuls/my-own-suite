@@ -1,0 +1,18 @@
+; Delegated zone apex only. Every usable name under it is synthesised by the
+; template blocks in the Corefile; this file exists so unmatched names get an
+; NXDOMAIN carrying a SOA, and so apex SOA/NS queries are answered truthfully.
+;
+; The nameserver is named in the parent zone (ns1.myownsuite.org), not inside
+; this one, so there is no circular dependency and no glue record to maintain.
+
+$ORIGIN local.myownsuite.org.
+$TTL 3600
+
+@   IN  SOA ns1.myownsuite.org. hostmaster.myownsuite.org. (
+        2026081501  ; serial
+        7200        ; refresh
+        3600        ; retry
+        1209600     ; expire
+        60 )        ; negative TTL, kept short so a DHCP change recovers quickly
+
+@   IN  NS  ns1.myownsuite.org.

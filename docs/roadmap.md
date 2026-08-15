@@ -65,9 +65,18 @@ domain, and "what if myownsuite.org disappears" has a published answer.
   rests on an unreviewed machine judgement. Needs the checklist written, `assess-app-privacy` split
   into first-entry and update-diff modes, and the provenance schema extended to record which one ran.
   *(Medium)*
-- **B2 — Replace sslip.io with self-hosted branded wildcard DNS.** `#192`. Google Analytics cookies
-  land on install domains because sslip.io is not on the Public Suffix List — inert, but it
-  contradicts the promise for anyone who opens DevTools. *(Medium)*
+- **B2 — Get the MOS zone onto the Public Suffix List.** `#192`. The zone is operated now and the
+  contract is in `docs/decisions.md`; what is left is the listing, and it is the long pole. It began
+  as a cookie-isolation fix: Google Analytics cookies land on install domains because sslip.io is not
+  on the PSL — inert, but it contradicts the promise for anyone who opens DevTools. It is now
+  load-bearing for the whole own-hardware path, because without the listing one install's suite can
+  set cookies another install's suite reads, and Let's Encrypt's fifty-certificates-per-registered-
+  domain limit keeps **H8** on plain HTTP. The entry is a pull request against `publicsuffix/list`
+  that then waits on browser release cycles, so the lead time is months and it has to start early —
+  and the PSL guidelines decline beta-stage projects, so the submission needs the project to look
+  like something first. The remaining non-PSL work is disclosure: MOS receives the queries, and the
+  no-log commitment belongs in the privacy policy and in **B3** rather than being discovered.
+  *(Medium — the submission is the part that has to start early)*
 - **B3 — Sovereignty guarantee document.** Near-zero code: state what is already structurally true —
   no account, no license server, AGPL, catalog verifiable offline, per-install snapshots — plus an
   explicit "if this project vanishes, your suite keeps working and anyone can mirror it." Answers
@@ -119,8 +128,10 @@ setup, and never waits at a screen that looks hung.
 
 ### H. Install media people can just flash
 
-**Gate:** downloading and flashing the published image is the whole own-hardware path, and a stranger
-can boot it on their own machine without the project having guessed wrong about their disk.
+**Gate:** downloading and flashing the published image is the whole own-hardware path, a stranger can
+boot it on their own machine without the project having guessed wrong about their disk, and they can
+open their suite — and the apps they install into it — from a phone or a laptop without first
+configuring DNS.
 
 Promoted from **L7** and from the standing "own hardware is for technical users" position, which this
 theme retires. Publishing a bootable download, and keeping machine identity out of it, shipped in
@@ -170,16 +181,44 @@ with no error recorded anywhere. **H1** removes that runtime decision.
   a decided answer for multi-disk machines. *(Small — needs a decision first)*
 - **H5 — Name and describe the image so it does not read as a Canonical product.** It is a stock Ubuntu
   base plus MOS, and the download is public. *(Small)*
-- **H7 — Let the machine answer on its own LAN address.** With H1 landed this is the only manual step
-  left in an own-hardware install, and the last one that can make a finished install look broken:
-  `renderCaddyfile()` serves one site block, so until the owner adds a hosts entry or a router DNS
-  override, nothing they can type reaches the suite. The first-boot banner now leads with that instead
-  of printing a link that does not work yet, which is honest but is not a fix. A catch-all site block
-  would delete the step; it does not touch the cloud path, which uses `renderPublicCloudCaddyfile()`.
-  Needs a decision on what the bare-IP address should serve. *(Small — needs a decision first)*
 - **H6 — Regenerate `md5sum.txt` when remastering.** Patching `grub.cfg` and `loopback.cfg` without
   updating the manifest makes casper's integrity self-check fail on every image published so far.
   *(Small — retires with the ISO path if H1 lands first)*
+- **H7 — Two doors on the success screen, and the owner picks one.** With **H1** landed, reaching the
+  suite is the only manual step left and the last one that can make a finished install look broken.
+  The screen has to answer "how do I open this" for two owners with nothing in common. *Own resolver*:
+  one wildcard rule, `*.mos.home` pointed at the server, nothing leaves the house — the answer for
+  anyone already running Pi-hole, AdGuard, Unbound or OpenWRT, and unavailable to everyone else,
+  because most consumer routers cannot express a wildcard rewrite at all. *MOS zone* (**H8**): every
+  device including phones, no configuration, at the cost of the DNS queries reaching MOS. Both doors
+  stay open for the life of the install, and the screen states each trade in a sentence rather than
+  ranking them — an owner who takes the first door should not feel the second one exists. The screen
+  cannot simply offer the MOS zone and hope: rebinding protection blocks it on real networks, and
+  whether it works varies *per device on one network*, because Private Relay and Private DNS route
+  lookups past the router. So the probe runs in the owner's browser and the screen reacts to what it
+  finds, rather than the server deciding once. Blocked on
+  **H8**, and the copy is as much the deliverable as the routing. *(Small once H8 lands)*
+- **H8 — A working address, and trusted HTTPS, with no domain to buy.** Today a self-hosted suite
+  serves plain HTTP at a name nothing on an ordinary LAN resolves, so the owner password is first set
+  over an unencrypted connection, secure-origin apps do not work at all, and a non-technical owner has
+  no way in. Promoted out of the alpha gate: it is not hardening, it is the only entry door that half
+  the audience has. The address half is now answerable: the MOS zone resolves any name encoding a
+  private address, so the remaining work is to derive the per-install name, route it in Caddy, and
+  carry it through the install flow — keeping `http://home.mos.home` as the recovery door. Two things
+  still to settle. Routers and resolvers with DNS-rebinding protection refuse answers pointing into
+  private space and need a documented per-device override — Fritz!Box, OpenWRT, pfSense, Pi-hole and
+  AdGuard ship it on, which mostly hits owners who would take the other door anyway, Fritz!Box being
+  the painful exception. And the address encodes the LAN IP, so a DHCP change breaks every bookmark
+  and an address reservation stops being advice.
+
+  **The HTTPS half is a separate and larger problem than it looked.** A LAN box is not publicly
+  reachable, so HTTP-01 and TLS-ALPN-01 are out and DNS-01 is the only challenge left — but DNS-01
+  means writing a `_acme-challenge` TXT record, and the MOS zone is deliberately stateless with no
+  writable path and no zone-editing credential anywhere. So certificates need something that stores
+  per-install challenge state: either the registry declined below, or an `acme-dns`-style responder
+  whose entire scope is holding TXT challenges under per-install credentials, which is the narrower
+  and more defensible shape. That is on top of the PSL entry in **B2**, not instead of it. The
+  existing Cloudflare flow stays for owners bringing their own domain. *(Large)*
 
 A flashable image that installs an OS and then runs a root shell script is the highest-trust artifact
 the project ships, which is what makes **E3** load-bearing rather than aspirational.
@@ -261,21 +300,6 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
   to current guidance, and persist the login throttle so restarting the service does not reset an
   attacker's budget. Both are small and independent of the MFA question in **E5**, which is the other
   half of this gate. *(Small)*
-- **AL6 — Trusted HTTPS on own hardware immediately after install, with no domain to buy.** Today a
-  self-hosted suite serves plain HTTP until the owner buys a domain and moves its DNS to Cloudflare,
-  so the owner password is first set over an unencrypted connection and secure-origin apps do not work
-  at all. **Depends on B2** — it is only buildable once MOS operates its own wildcard DNS zone.
-  Shape: derive a per-install name under the MOS zone; publish an A record pointing at the server's
-  **LAN** IP (a public name resolving to a private address is legitimate and is how comparable
-  platforms do this); let Caddy solve DNS-01 against the MOS zone using a credential MOS holds rather
-  than one the owner supplies; keep `http://home.mos.home` as the recovery door. Two things to settle
-  before building: routers and resolvers with DNS-rebinding protection will refuse the answer and need
-  a documented per-device override, and **publishing a record per install means the zone operator
-  learns an install exists** — a telemetry-shaped fact that must be designed down (one wildcard per
-  install, no per-app records) and disclosed in the privacy policy, or it contradicts "we don't know
-  that you installed it". The existing Cloudflare flow stays for owners bringing their own domain.
-  *(Large)*
-
 ### AL-A — Access
 
 - **AL4 — View-only household access to the Home dashboard.** Homepage is reachable only through the
@@ -309,7 +333,8 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 **A1** encrypted bundles · **A2** scheduled backups · **B1** human sign-off on privacy reviews ·
 **D1** object-storage destination · **E3** signed release and installer artifacts · **E4**
 owner-facing security events · **E5** passkeys and the MFA shape · **F1** runtime hardening of app
-containers. Alpha is where these stop being roadmap and become the bar.
+containers · **H8** trusted HTTPS on own hardware. Alpha is where these stop being roadmap and become
+the bar.
 
 ---
 
@@ -448,6 +473,31 @@ Possibly best decided after tester feedback.
 Owner decisions. Future agents and reviews should not resurface these.
 
 - **Password recovery / owner account lifecycle** — post-beta; not part of early testing.
+- **Reaching apps by path or by port** (`server/seafile`, `server:8001`) — declined. Subdomains are
+  separate browser origins, so collapsing apps onto one makes any single app's XSS everyone's problem,
+  and it breaks password-manager matching for a large refactor and an uglier result. MOS carries many
+  separate web apps, which is exactly what single-app self-hosted projects do not have to solve.
+- **mDNS `.local` as the way in** — declined as the primary answer. Android does not resolve `.local`
+  in the browser, which loses the device people open a photo suite on, and `.local` can never carry a
+  publicly trusted certificate. Note for anyone tempted to reopen it: the absence of mDNS wildcards is
+  *not* the reason, because MOS owns the app lifecycle and could publish a record per app on install.
+- **MOS shipping its own LAN DNS resolver** — declined. It adds nothing for owners already running a
+  resolver, and buying the router-only case costs an always-on service, a `systemd-resolved` port
+  conflict, and a failure mode where the box going down takes the household's DNS with it. **H8**
+  reaches the same owners without any of that.
+- **A bare-IP catch-all as the answer to reachability** — declined as a solution, though it may still
+  ship as a convenience. It fixes first contact and nothing after it: `seafile.192.168.1.42` cannot
+  exist, so the first app an owner installs puts them back where they started.
+- **A stateful DNS registry — a Worker, the Cloudflare API, and a record per install** — declined for
+  now. It is free and gives stable names that survive a DHCP change, but it is security-sensitive code
+  holding a credential that can edit a DNS zone, against a stateless nameserver with no code to audit
+  and no credential to lose. It stays the documented upgrade path if name instability annoys real
+  testers, and **H8**'s certificate half may force a narrow version of it regardless.
+- **Hosting authoritative DNS on Railway, Cloudflare Workers, or any PaaS** — impossible, verified,
+  not a budget question. Recursive resolvers query authoritative servers over plain UDP/53 and need a
+  static inbound address; DNS-over-HTTPS is a stub-to-resolver protocol and does not substitute. This
+  is why the feature costs a Droplet. DigitalOcean over Hetzner because it is one existing bill and DO
+  Reserved IPs are free while attached, so a rebuilt box keeps the address the NS record points at.
 - **Railway "try it" demos stay low-key** — intentional, for search and for people who find them. Do
   not promote them on the landing page.
 - **No public roadmap page** for early testers.

@@ -11,6 +11,7 @@ This folder holds durable project memory: architectural decisions, documentation
 | MOS operator/developer scripts | `scripts/README.md` |
 | Test harness guidance | `test/README.md` |
 | USB/self-host installer support | `infrastructure/self-host/` and `scripts/README.md` |
+| MOS-operated nameserver: rebuild, verify, operate | `infrastructure/nameserver/README.md` |
 | Host-agent implementation | `system-agents/` |
 | Previous-site rollback/reference source | `site-mos1-reference/` |
 | Durable architecture decisions | `docs/decisions.md` |
