@@ -8,18 +8,18 @@ on:
   push:
     tags:
       - 'v*'
-  # The same build, on demand. It proves the installer job and the R2 upload
-  # work before a tag exists, which is the part of a release that cannot be
-  # undone by moving a tag. The publish job is skipped and the image lands under
-  # a scratch prefix, so a dispatch run can never be mistaken for a release.
+  # The same build, on demand. It proves the image build and the R2 upload work
+  # before a tag exists, which is the part of a release that cannot be undone by
+  # moving a tag. The publish job is skipped and the image lands under a scratch
+  # prefix, so a dispatch run can never be mistaken for a release.
   workflow_dispatch:
 
 permissions:
   contents: write
 
 env:
-  # The bucket and hostname the installer image is served from. Changing these
-  # changes the download URL printed in the release notes and in the docs.
+  # The bucket and hostname the image is served from. Changing these changes the
+  # download URL printed in the release notes and in the docs.
   R2_BUCKET: mos-downloads
   DOWNLOAD_HOST: downloads.myownsuite.org
 
@@ -33,8 +33,8 @@ jobs:
       - name: Check out the tag
         uses: actions/checkout@v4
         with:
-          # The installer seed pins itself to this tag by asking git whether the
-          # tag really contains the layout it is about to install, so the full
+          # The bake seed pins itself to this tag by asking git whether the tag
+          # really contains the layout it is about to install, so the full
           # history and tags have to be present.
           fetch-depth: 0
 
@@ -77,135 +77,15 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: npm run release:check -- --release "${GITHUB_REF_NAME}"
 
-  installer:
-    name: Build installer image
-    needs: gate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out the tag
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Pin npm
-        run: npm install -g npm@11.2.0
-
-      - name: Install dependencies
-        run: npm ci
-
-      # The Ubuntu base is ~3.2 GB, the extracted tree another ~3.2 GB, and the
-      # repacked output ~3.2 GB again. A stock runner does not have room for that
-      # alongside the preinstalled toolchains it will never use here.
-      - name: Reclaim runner disk
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          df -h /
-
-      # A dispatch build is a rehearsal, so it is kept out of the namespace real
-      # downloads live in. Nothing ever links to dry-run/, and overwriting it on
-      # every rehearsal is the point.
-      - name: Decide where this build goes
-        id: target
-        run: |
-          if [ "${GITHUB_EVENT_NAME}" = 'workflow_dispatch' ]; then
-            echo 'prefix=dry-run' >> "$GITHUB_OUTPUT"
-          else
-            echo "prefix=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Render the installer seed pinned to this tag
-        env:
-          MOS_SMOKE_REPO_REF: ${{ github.ref_name }}
-          # Named explicitly rather than left to the default, so this file states
-          # which profile a published image is built with.
-          MOS_SEED_PROFILE: release
-        run: node scripts/installers/render-hyperv-usb-seed.cjs
-
-      # Fails in seconds, before the multi-gigabyte download, on the two mistakes
-      # that would otherwise be discovered by whoever flashed the image.
-      - name: Verify the seed is publishable
-        run: |
-          seed=".mos-smoke/hyperv-usb/seed/user-data"
-          summary=".mos-smoke/hyperv-usb/seed/seed-summary.json"
-
-          if ! grep -q "MOS_REPO_REF='${GITHUB_REF_NAME}'" "$seed"; then
-            echo "::error::The seed does not pin ${GITHUB_REF_NAME}. A published image must install the tagged release, not a branch."
-            grep -o "MOS_REPO_REF='[^']*'" "$seed" | head -1
-            exit 1
-          fi
-
-          handover="$(node -p "require('./$summary').consoleLoginHandover")"
-          if [ "$handover" != 'first-boot' ]; then
-            echo "::error::This seed carries a build-time password (handover=$handover). Every machine flashed from it would share one login."
-            exit 1
-          fi
-
-          if ! grep -q "MOS_DISPOSABLE_LAB='0'" "$seed"; then
-            echo "::error::This seed enables the lab reset agent. A published image must never carry an unauthenticated endpoint that wipes the suite."
-            grep -o "MOS_DISPOSABLE_LAB='[^']*'" "$seed" | head -1
-            exit 1
-          fi
-
-          echo "Seed pins ${GITHUB_REF_NAME}, bakes no password, and disables lab reset."
-
-      - name: Build the installer ISO
-        run: |
-          npm run installer:usb -- \
-            --seed-dir .mos-smoke/hyperv-usb/seed \
-            --output-iso "dist/my-own-suite-installer-${GITHUB_REF_NAME}.iso"
-
-      - name: Checksum
-        working-directory: dist
-        run: |
-          sha256sum "my-own-suite-installer-${GITHUB_REF_NAME}.iso" | tee SHA256SUMS
-          ls -lh
-
-      # aws-cli rather than wrangler: `wrangler r2 object put` uploads in a single
-      # request and this file is several gigabytes, so it needs the S3 API's
-      # multipart upload. R2 speaks it, and the CLI is already on the runner.
-      - name: Upload the image to R2
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          PREFIX: ${{ steps.target.outputs.prefix }}
-        run: |
-          aws s3 cp "dist/my-own-suite-installer-${GITHUB_REF_NAME}.iso" \
-            "s3://${R2_BUCKET}/${PREFIX}/my-own-suite-installer-${GITHUB_REF_NAME}.iso" \
-            --endpoint-url "$R2_ENDPOINT" --checksum-algorithm CRC32
-          aws s3 cp dist/SHA256SUMS \
-            "s3://${R2_BUCKET}/${PREFIX}/SHA256SUMS" \
-            --endpoint-url "$R2_ENDPOINT" --checksum-algorithm CRC32
-
-          echo "Published to https://${DOWNLOAD_HOST}/${PREFIX}/my-own-suite-installer-${GITHUB_REF_NAME}.iso"
-
-      # Small enough for a release asset, and it belongs on GitHub rather than
-      # beside the image: a checksum served from the same host as the bytes it
-      # describes proves only that the host is consistent with itself.
-      - name: Keep the checksum for the release
-        uses: actions/upload-artifact@v4
-        with:
-          name: installer-checksum
-          path: dist/SHA256SUMS
-          retention-days: 1
-
-  # The prebuilt disk image (roadmap H1). Runs alongside the ISO rather than
-  # replacing it: the ISO stays the supported download until this has proven
-  # itself over a release or two. It publishes under a disk-image/ prefix so
-  # nothing links to it by accident, and the release notes do not mention it yet.
+  # The published download. It is a prebuilt disk image: the machine is installed
+  # once here, in a VM, and every owner flashes the finished result — so the
+  # partition table and bootloader are decided by this job rather than by whatever
+  # mode a stranger's firmware happened to boot the stick in.
   #
-  # `publish` deliberately does not need this job. While the ISO is the supported
-  # download, an experimental image must not be able to hold back a release; it
-  # only gates itself, by refusing to upload an image that does not boot.
+  # The installer ISO is still built, inside `bake.sh iso`, because the image is
+  # baked by running it. It is no longer uploaded or linked anywhere.
   disk-image:
-    name: Build prebuilt disk image
+    name: Build the disk image
     needs: gate
     runs-on: ubuntu-latest
     steps:
@@ -308,6 +188,9 @@ jobs:
           MOS_IMAGE_REPO_REF: ${{ github.ref_name }}
         run: bash ./image-builder/bake.sh verify
 
+      # aws-cli rather than wrangler: `wrangler r2 object put` uploads in a single
+      # request and this file is gigabytes, so it needs the S3 API's multipart
+      # upload. R2 speaks it, and the CLI is already on the runner.
       - name: Upload the disk image to R2
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -318,13 +201,16 @@ jobs:
         run: |
           cd image-builder/.work/out
           image="my-own-suite-${GITHUB_REF_NAME}.img.xz"
-          aws s3 cp "$image" "s3://${R2_BUCKET}/${PREFIX}/disk-image/${image}" \
+          aws s3 cp "$image" "s3://${R2_BUCKET}/${PREFIX}/${image}" \
             --endpoint-url "$R2_ENDPOINT" --checksum-algorithm CRC32
-          aws s3 cp SHA256SUMS "s3://${R2_BUCKET}/${PREFIX}/disk-image/SHA256SUMS" \
+          aws s3 cp SHA256SUMS "s3://${R2_BUCKET}/${PREFIX}/SHA256SUMS" \
             --endpoint-url "$R2_ENDPOINT" --checksum-algorithm CRC32
-          echo "Published to https://${DOWNLOAD_HOST}/${PREFIX}/disk-image/${image}"
+          echo "Published to https://${DOWNLOAD_HOST}/${PREFIX}/${image}"
           ls -lh
 
+      # The checksum belongs on GitHub rather than beside the image: one served
+      # from the same host as the bytes it describes proves only that the host is
+      # consistent with itself.
       - name: Keep the checksum and the bake log
         uses: actions/upload-artifact@v4
         with:
@@ -336,7 +222,7 @@ jobs:
 
   publish:
     name: Publish release
-    needs: [gate, installer]
+    needs: [gate, disk-image]
     # Only a tag publishes. A dispatch run stops after proving the build.
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
@@ -347,7 +233,7 @@ jobs:
       - name: Fetch the checksum
         uses: actions/download-artifact@v4
         with:
-          name: installer-checksum
+          name: disk-image-evidence
           path: dist
 
       - name: Publish the GitHub Release
@@ -355,31 +241,37 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.gate.outputs.version }}
         run: |
-          iso="my-own-suite-installer-${GITHUB_REF_NAME}.iso"
-          url="https://${DOWNLOAD_HOST}/${GITHUB_REF_NAME}/${iso}"
-          sha="$(cut -d' ' -f1 < dist/SHA256SUMS)"
+          image="my-own-suite-${GITHUB_REF_NAME}.img.xz"
+          url="https://${DOWNLOAD_HOST}/${GITHUB_REF_NAME}/${image}"
+          # SHA256SUMS carries the uncompressed image too, so the line is selected
+          # by name rather than by position.
+          sha="$(awk -v f="$image" '$2 == f { print $1 }' dist/SHA256SUMS)"
+          [ -n "$sha" ] || { echo "::error::No checksum for ${image} in SHA256SUMS."; exit 1; }
 
           notes="$(mktemp)"
           {
             echo "## Install on your own hardware"
             echo
-            echo "Download the installer image, write it to a USB stick with"
-            echo "[Rufus](https://rufus.ie/) or [balenaEtcher](https://etcher.balena.io/), and boot the"
-            echo "server from it. Nothing else to install."
+            echo "This is a finished server, not an installer: the machine was installed and tested"
+            echo "in CI, and you flash the result. Write it to a USB stick with"
+            echo "[balenaEtcher](https://etcher.balena.io/) and boot your server from it. It names the"
+            echo "disk it found, asks you to type \`YES\`, and is running a few minutes later with"
+            echo "nothing downloaded."
             echo
-            echo "**[Download ${iso}](${url})** (~3 GB)"
+            echo "**[Download ${image}](${url})** (~2 GB)"
             echo
             echo '```'
             echo "SHA256  ${sha}"
             echo '```'
             echo
-            echo "Verify before flashing — \`sha256sum ${iso}\` on Linux or macOS,"
-            echo "\`certutil -hashfile ${iso} SHA256\` on Windows. The checksum is also attached"
+            echo "Verify before flashing — \`sha256sum ${image}\` on Linux or macOS,"
+            echo "\`certutil -hashfile ${image} SHA256\` on Windows. The checksum is also attached"
             echo "to this release, which is the copy to trust."
             echo
-            echo "The image contains no password. Your server generates its own login the first"
-            echo "time it boots, shows it on its screen and in Suite Manager, and forgets it once"
-            echo "you confirm you have saved it."
+            echo "Requires a machine that boots in **UEFI** mode with a single internal disk. The"
+            echo "image contains no password:"
+            echo "your server generates its own login the first time it boots, shows it on its"
+            echo "screen and in Suite Manager, and forgets it once you confirm you have saved it."
             echo
             echo "---"
             echo
@@ -391,13 +283,13 @@ jobs:
             --notes-file "$notes" \
             dist/SHA256SUMS
 
-  # An installer image is only ever used to install; a server updates itself
-  # afterwards, so nobody needs an old one. Keeping them costs storage the free
-  # tier does not have, and a withdrawn image is the only way to stop handing out
-  # one with a known flaw. Two are kept so a release whose image turns out not to
-  # boot still has something to point people back to.
+  # An image is only ever used to install; a server updates itself afterwards, so
+  # nobody needs an old one. Keeping them costs storage the free tier does not
+  # have, and a withdrawn image is the only way to stop handing out one with a
+  # known flaw. Two are kept so a release whose image turns out not to boot still
+  # has something to point people back to.
   prune:
-    name: Prune superseded installer images
+    name: Prune superseded images
     needs: [gate, publish]
     runs-on: ubuntu-latest
     env:
@@ -415,13 +307,13 @@ jobs:
           R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
           set -euo pipefail
-          iso="my-own-suite-installer-${GITHUB_REF_NAME}.iso"
+          image="my-own-suite-${GITHUB_REF_NAME}.img.xz"
 
           # Nothing is deleted until the image this release just published is
           # confirmed present. A prune that runs against a failed upload would
           # empty the bucket.
           aws s3api head-object --bucket "$R2_BUCKET" \
-            --key "${GITHUB_REF_NAME}/${iso}" --endpoint-url "$R2_ENDPOINT" >/dev/null
+            --key "${GITHUB_REF_NAME}/${image}" --endpoint-url "$R2_ENDPOINT" >/dev/null
 
           aws s3 ls "s3://${R2_BUCKET}/" --endpoint-url "$R2_ENDPOINT" \
             | awk '$1 == "PRE" { sub(/\/$/, "", $2); print $2 }' | sort > all-prefixes
@@ -459,7 +351,7 @@ jobs:
 
             notes="$(mktemp)"
             {
-              echo "## Installer image withdrawn"
+              echo "## Image withdrawn"
               echo
               echo "The image for this version is no longer hosted. Install the [current"
               echo "release](https://github.com/${GITHUB_REPOSITORY}/releases/latest) instead — a"

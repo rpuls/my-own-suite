@@ -1,9 +1,12 @@
-# Prebuilt disk image (proof of concept)
+# Prebuilt disk image
 
-Roadmap theme **H1**. Built in parallel with the shipping ISO installer, which is
-untouched and still the supported path. The release pipeline builds and boot-tests
-the image, but uploads it unlisted: nothing links to it and the release notes do
-not mention it.
+**This is the published own-hardware download.** The release pipeline bakes it,
+boots the compressed artifact it is about to upload, and refuses to publish one
+that does not answer.
+
+The ISO installer it replaced is not gone: `bake.sh iso` still builds it, because
+the image is made by *running* it in a VM and snapshotting the result. It is no
+longer uploaded, linked from a release, or documented as a download.
 
 Proven end to end on 2026-08-14 — baked, flashed, and installed on the HP
 EliteDesk 705 G3 that triggered the theme.
@@ -55,13 +58,11 @@ Both drivers call the same `render-bake-seed.cjs`, `extract-image.sh`,
 image come off one pipeline rather than two that drift.
 
 The `disk-image` job in `.github/workflows/release.yml` runs it on every tag. It
-applies the same publishability gates the ISO gets — the seed must pin the tag,
-must not bake a password, must not enable the lab reset agent — then **boots the
-compressed artifact it is about to upload and refuses to publish it unless it
-passes the verify checks below**. It publishes under a `disk-image/` prefix and is
-not mentioned in the release notes, because the ISO is still the supported
-download. It is deliberately not a dependency of the `publish` job: an
-experimental image must not be able to hold back a release.
+checks the seed pins the tag, bakes no password, uses the release profile and does
+not enable the lab reset agent, then **boots the compressed artifact it is about to
+upload and refuses to publish it unless it passes the verify checks below**. It
+uploads to `vX.Y.Z/` in the bucket, and `publish` depends on it — so a release
+without a bootable image is not published at all.
 
 | Flag | Default | Notes |
 | --- | --- | --- |

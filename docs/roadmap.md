@@ -106,9 +106,9 @@ setup, and never waits at a screen that looks hung.
   "on the way". Hosting must respect the page's own privacy claim — self-hosted file or a no-cookie
   embed, not a plain YouTube iframe. *(Owner-run)*
 - **C6 — Record the own-hardware install walkthrough.** The second video: download → Etcher → boot →
-  save the server login → owner account. **Blocked on H1** — the flow it would document changes, and a
-  2026-08-14 attempt to film it produced an unbootable machine on ordinary HP hardware. Recording is
-  expensive enough that it should happen once, against the flow we intend to keep. *(Owner-run)*
+  type `YES` → save the server login → owner account. Unblocked — the disk image is the flow we intend
+  to keep — but it needs a release first, because the walkthrough films a published download and not a
+  branch. *(Owner-run)*
 - **C2 — "What it costs" docs page.** Apps running × VPS size × monthly range, provider-neutral, with
   an own-hardware electricity row and an honest note that the stated 2 vCPU / 4 GB minimum plausibly
   cannot run the advertised Seafile + ONLYOFFICE pair. Also rewrites getting-started's overspecific
@@ -134,56 +134,24 @@ open their suite — and the apps they install into it — from a phone or a lap
 configuring DNS.
 
 Promoted from **L7** and from the standing "own hardware is for technical users" position, which this
-theme retires. Publishing a bootable download, and keeping machine identity out of it, shipped in
-`v0.16.0` — see the 2026-08-07 decision.
+theme retires.
 
-What that download still is, though, is Ubuntu's own installer plus an autoinstall seed, so the
-partition table and bootloader are decided on the target machine at install time, mirroring however
-its firmware happened to boot the USB stick. On 2026-08-14 a `v0.17.0` install on an HP EliteDesk 705
-G3 booted the stick in legacy/CSM mode; subiquity correctly produced GPT + BIOS GRUB, and HP firmware
-refuses to boot a GPT disk in legacy mode. Curtin reported success, and the machine was unbootable
-with no error recorded anywhere. **H1** removes that runtime decision.
+**The download is now a prebuilt disk image, and the ISO installer is retired as a download** — the
+2026-08-16 decision records the contract. What is left in this theme is the part an image cannot fix
+on its own: machines it refuses to install on, and reaching the suite once it is running.
 
-- **H1 — Ship a prebuilt disk image instead of running an OS installer on the target.** A build runs the
-  existing `renderBootstrapShell` in a VM and snapshots the result, so every machine gets a
-  byte-identical, CI-tested layout and control plane. Makes install offline and minutes-long, and
-  deletes the Rufus-mode, boot-entry and GRUB-menu steps from the walkthrough. *(Large — flagship)*
-
-  Built in `image-builder/`, in parallel, so the shipping ISO path stays untouched until this one is
-  proven. It bakes through the existing autoinstall seed — Hyper-V locally, QEMU/KVM in CI — rather than
-  from the Ubuntu cloud image, which keeps one definition of a MOS machine; and the image self-installs
-  from removable media rather than shipping a separate writer, so there is one artifact to flash.
-
-  Proven end to end on 2026-08-14: baked in 7 minutes, 2.0 GB download (smaller than the 3.17 GB ISO it
-  replaces), and installed on the HP EliteDesk 705 G3 that triggered this theme.
-
-  **UEFI-only is settled, and the MBR question is closed.** The HP appeared unable to UEFI-boot a USB
-  stick across four attempts and three stick layouts, which nearly justified shipping an MBR-partitioned
-  image to rescue it — at the cost of a 2 TB partition ceiling on every machine. It turned out to be
-  firmware state, not capability: **Apply Factory Defaults** in F10 cleared it and the correct settings
-  were already in place. Do not reopen MBR for a single machine; suspect NVRAM before suspecting the
-  layout.
-- **H2 — Hold the cloud path byte-identical while H1 lands.** `renderBootstrapShell` is the single
-  definition of a MOS machine and must not be edited to make the image build work; a snapshot test on
-  the rendered `sshBootstrap` and `cloudInit` output turns that from an intention into a CI gate.
-  *(Small — precondition for H1)*
-- **H3 — Boot-test the published image before the release publishes.** Done for the disk image: the
-  `disk-image` job in `release.yml` boots the compressed artifact it is about to upload under OVMF, on a
-  disk deliberately larger than the image, and refuses to upload unless Suite Manager answers 200 and
-  the disk it leaves behind passes `check-target.sh` — grown to fill the disk, still has free space, has
-  a swapfile in `fstab`, cloud-init still disabled, own SSH host keys. So a boot-layout regression
-  cannot reach a download. It gates only itself: while the ISO is the supported download, an
-  experimental image must not hold back a release. Still open for the ISO path, whose Hyper-V harness
-  attaches it as a virtual DVD in a Generation 2 VM and has therefore never tested a USB boot or a
-  legacy boot. *(Retires with the ISO path.)*
-- **H4 — Decide what the writer is allowed to do to a stranger's disk.** On a machine handed to ten
-  thousand people, someone boots it on their daily driver. Needs a visible target-disk confirmation and
-  a decided answer for multi-disk machines. *(Small — needs a decision first)*
+- **H4 — Multi-disk machines cannot install at all.** The image refuses rather than guessing, which is
+  the right default and not an answer: an old desktop with an SSD and a spare HDD is exactly the
+  hardware this theme is for. Needs a target picker on the console, which is the one screen in the
+  product with no browser and no shared UI to build from. *(Small — needs a decision first)*
 - **H5 — Name and describe the image so it does not read as a Canonical product.** It is a stock Ubuntu
   base plus MOS, and the download is public. *(Small)*
-- **H6 — Regenerate `md5sum.txt` when remastering.** Patching `grub.cfg` and `loopback.cfg` without
-  updating the manifest makes casper's integrity self-check fail on every image published so far.
-  *(Small — retires with the ISO path if H1 lands first)*
+- **H9 — Re-render app routes when the machine's address changes.** The Easy Door name encodes the LAN
+  IP. Suite Manager survives a DHCP move because its site block matches any private address, but every
+  installed app's route names one exact host and is only re-rendered when that app is next applied — so
+  the suite comes back and the apps do not. A reboot is not the trigger: a lease changes on a running
+  machine. Needs address-change detection plus a re-apply of the generated routes, and it is what
+  turns the DHCP reservation from a required install step back into advice. *(Medium)*
 - **H7 — Tell the owner which door actually works on the device in their hand.** The console banner
   now states both doors and the dashboard works through either, and the contract for both is in
   `docs/decisions.md` (2026-08-16). What is left is the case the banner cannot cover: rebinding
@@ -193,21 +161,14 @@ with no error recorded anywhere. **H1** removes that runtime decision.
   in the owner's browser and the onboarding screen has to react to what it finds. The banner's
   standing advice — no answer on the second address means your router refuses names pointing into
   your own network, use the first — is the fallback this replaces, not a stopgap to remove. *(Small)*
-- **H8 — A working address, and trusted HTTPS, with no domain to buy.** Today a self-hosted suite
-  serves plain HTTP at a name nothing on an ordinary LAN resolves, so the owner password is first set
-  over an unencrypted connection, secure-origin apps do not work at all, and a non-technical owner has
-  no way in. Promoted out of the alpha gate: it is not hardening, it is the only entry door that half
-  the audience has. **The address half has landed** — the box answers on
+- **H8 — Trusted HTTPS with no domain to buy.** A self-hosted suite serves plain HTTP, so the owner
+  password is first set over an unencrypted connection and secure-origin apps do not work at all.
+  Promoted out of the alpha gate: it is not hardening, it is the only entry door that half the
+  audience has. **The address half has landed** — the box answers on
   `home.<lan-ip-with-dashes>.local.myownsuite.org` and serves every installed app under the same
   base, `http://home.mos.home` stays the recovery door, and applying a real domain closes it; the
-  contract is in `docs/decisions.md`. Two things it left behind. Routers and resolvers with
-  DNS-rebinding protection refuse answers pointing into private space and need a documented
-  per-device override — Fritz!Box, OpenWRT, pfSense, Pi-hole and AdGuard ship it on, which mostly
-  hits owners who would take the other door anyway, Fritz!Box being the painful exception; detecting
-  it belongs to **H7**. And the address encodes the LAN IP, so a DHCP move breaks saved bookmarks and
-  the generated app routes, which are only re-rendered when an app is next applied — noticing an
-  address change and re-rendering them is unbuilt, so an address reservation is a step rather than
-  advice.
+  contract is in `docs/decisions.md`. It left two things behind: rebinding protection, which belongs
+  to **H7**, and address instability, which is **H9**.
 
   **The HTTPS half is a separate and larger problem than it looked.** A LAN box is not publicly
   reachable, so HTTP-01 and TLS-ALPN-01 are out and DNS-01 is the only challenge left — but DNS-01
