@@ -2,9 +2,9 @@
   "manifestVersion": 1,
   "id": "vaultwarden",
   "name": "Vaultwarden",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "minimumMosVersion": "0.18.0",
-  "summary": "Private Bitwarden-compatible password management.",
+  "summary": "Every password, on every device, in a vault only you hold the key to.",
   "category": "security",
   "icon": "icon.png",
   "packageFiles": [

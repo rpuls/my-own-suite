@@ -419,9 +419,13 @@ cloud guidance with the consistency caveat, block storage retained for advanced 
 **A1** changes the arithmetic on option 2.
 
 **OQ2 — Communicating per-app resource needs in-product.** **C2** answers sizing *before* install.
-Undecided is the in-product half: how an owner with a 4 GB server predicts whether the next app
-fits. Catalog card badges with approximate RAM? Figures on app detail? A suite-level capacity meter?
-Possibly best decided after tester feedback.
+The per-app half is now decided and built: packages declare resting and peak memory/CPU per service
+(`resources.services.<id>.requires`), and the app's Resources view states them. What remains is the
+suite-level half — an owner with a 4 GB server still adds the figures up themselves. A capacity view
+that compares declared totals against the machine, and eventually against measured use, is the
+candidate; it is only worth building once most of the catalog declares figures, since a total that
+silently omits undeclared apps is worse than no total. Catalog-card RAM badges were considered and
+left out: the card is the scanning surface and already carries category, status and summary.
 
 ---
 

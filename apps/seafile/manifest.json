@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "seafile",
   "name": "Seafile",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "minimumMosVersion": "0.18.0",
   "packageFiles": [
     "entrypoint.sh",
@@ -10,7 +10,7 @@
     "screenshots/sharing.png",
     "screenshots/version-history.png"
   ],
-  "summary": "Private file sync, sharing, and browser-based file access.",
+  "summary": "Your files on every device, and a link to share when you want one.",
   "category": "storage",
   "icon": "icon.png",
   "catalog": {

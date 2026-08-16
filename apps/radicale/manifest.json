@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "radicale",
   "name": "Radicale",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "minimumMosVersion": "0.18.0",
   "packageFiles": [
     "entrypoint.sh"
@@ -12,7 +12,7 @@
     "downtime": "brief",
     "rollback": "safe"
   },
-  "summary": "Private CalDAV and CardDAV sync for calendars and contacts.",
+  "summary": "Your calendar and contacts, synced to every device, from a server you own.",
   "category": "office",
   "icon": "icon.png",
   "catalog": {
@@ -125,7 +125,11 @@
         },
         "volumes": [
           "data:/data"
-        ]
+        ],
+        "requires": {
+          "cpuCores": 0.1,
+          "memoryMb": 128
+        }
       }
     }
   },

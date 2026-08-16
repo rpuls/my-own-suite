@@ -5,6 +5,10 @@ import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './Priv
 import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture';
 import type { Owner } from '../setup/types';
 
+// What one service needs. The resting pair is always present when the package
+// declares anything; the peaks are stated only where a service has a heavy job
+// to do, so absent means "no meaningful peak", not "unknown".
+type ServiceRequires = { cpuCores: number; cpuPeakCores: number | null; memoryMb: number; memoryPeakMb: number | null };
 type CatalogFeature = { body: string; title: string };
 type CatalogLinkKey = 'docs' | 'repository' | 'website';
 type CatalogMetadata = {
@@ -108,7 +112,7 @@ type AppPackageSummary = {
   };
   routes: Array<{ host: string; service: string }>;
   role: 'standalone' | 'capability-provider' | string;
-  services: Array<{ dockerfile: string | null; id: string; internalPort: number | null; volumes: string[] }>;
+  services: Array<{ dockerfile: string | null; id: string; internalPort: number | null; requires: ServiceRequires | null; volumes: string[] }>;
   setup: { fieldCount: number; fields: Array<{ default?: unknown; generated: boolean; id: string; label: string; required: boolean; secret: boolean; type: string }> };
   summary: string;
   validation: { errors: string[]; valid: boolean };
@@ -339,8 +343,45 @@ function ResourceMeter({ level }: { level: string }) {
   </span>;
 }
 
+// Two different jobs, two different fields. `summary` is the one-line pitch a
+// catalog row has space for; `catalog.description` is the paragraph the detail
+// view exists to show. Rendering the paragraph in a row turns the list into a
+// wall of text, so nothing here may fall back from the short to the long form.
+function summaryFor(app: AppPackageSummary) {
+  return app.summary || app.homepage?.description || '';
+}
+
 function descriptionFor(app: AppPackageSummary) {
   return app.catalog.description || app.homepage?.description || app.summary;
+}
+
+function formatMemory(mb: number) {
+  if (mb < 1024) return `${Math.round(mb)} MB`;
+  const gb = mb / 1024;
+  return `${Number(gb.toFixed(gb < 10 ? 1 : 0))} GB`;
+}
+
+function formatCores(cores: number) {
+  return cores === 1 ? '1 core' : `${Number(cores.toFixed(2))} cores`;
+}
+
+// A package's declared needs, added up across the services it runs. Its own
+// services can be busy at the same moment, so their peaks add up here; across
+// separate apps a peak is headroom to keep free, not a running cost, which is
+// why nothing outside this package total sums them.
+function requirementsFor(app: AppPackageSummary) {
+  const declared = app.services.map((service) => service.requires).filter((requires): requires is ServiceRequires => requires !== null);
+  if (!declared.length || declared.length !== app.services.length) return null;
+  const cpuCores = declared.reduce((total, requires) => total + requires.cpuCores, 0);
+  const memoryMb = declared.reduce((total, requires) => total + requires.memoryMb, 0);
+  const cpuPeakCores = declared.reduce((total, requires) => total + (requires.cpuPeakCores ?? requires.cpuCores), 0);
+  const memoryPeakMb = declared.reduce((total, requires) => total + (requires.memoryPeakMb ?? requires.memoryMb), 0);
+  return {
+    cpuCores,
+    cpuPeakCores: cpuPeakCores > cpuCores ? cpuPeakCores : null,
+    memoryMb,
+    memoryPeakMb: memoryPeakMb > memoryMb ? memoryPeakMb : null,
+  };
 }
 
 function defaultInstallSteps(showOnHomepage = true): InstallStep[] {
@@ -528,7 +569,7 @@ function AppCard({ app, onOpen }: { app: AppPackageSummary; onOpen: (app: AppPac
           {app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available?.compatibility === 'compatible'
             ? <span className="suite-app-update-pill">Update available</span> : null}
         </span>
-        <span>{descriptionFor(app)}</span>
+        <span>{summaryFor(app)}</span>
       </span>
     </button>
     <div className="suite-app-card-actions">
@@ -589,6 +630,7 @@ function AppDetail({
   const [recovering, setRecovering] = useState(false);
   const [recoverError, setRecoverError] = useState('');
   const ready = runtimeApplied(app);
+  const requirements = requirementsFor(app);
   const homepageAvailable = hasHomepageContribution(app);
   const primaryDestination = hasPrimaryAppDestination(app);
   const uninstalled = app.instance?.status === 'uninstalled';
@@ -815,7 +857,7 @@ function AppDetail({
               <strong>{resourceLabel(app)}</strong>
             </span>
             <span className="suite-app-tile-meta">
-              {app.services.length === 1 ? 'Runs as 1 service' : app.services.length ? `Runs as ${app.services.length} services` : 'Details unavailable'}
+              {requirements ? `${formatMemory(requirements.memoryMb)} memory` : app.services.length === 1 ? 'Runs as 1 service' : app.services.length ? `Runs as ${app.services.length} services` : 'Details unavailable'}
               <Icon name="chevron-right" />
             </span>
           </button>
@@ -876,7 +918,7 @@ function AppDetail({
           {Object.keys(app.catalog.links).length ? <div className="suite-app-link-row">
             {Object.entries(app.catalog.links).map(([key, href]) => <a className="mos-btn mos-btn-secondary" href={href} key={key} rel="noreferrer" target="_blank">{key === 'repository' ? 'Repository' : key === 'website' ? 'Website' : 'Docs'}<Icon name="external" /></a>)}
           </div> : null}
-          {related.length ? <div className="suite-app-related-list">{related.map((item) => <button key={item.id} onClick={() => onSelect(item)} type="button"><AppIcon app={item} /><span><strong>{item.name}</strong><small>{descriptionFor(item)}</small></span></button>)}</div> : null}
+          {related.length ? <div className="suite-app-related-list">{related.map((item) => <button key={item.id} onClick={() => onSelect(item)} type="button"><AppIcon app={item} /><span><strong>{item.name}</strong><small>{summaryFor(item)}</small></span></button>)}</div> : null}
         </section> : null}
 
         <AdvancedDetails app={app} />
@@ -912,6 +954,19 @@ function AppDetail({
         <strong>{resourceLabel(app)}</strong>
       </div>
       {app.catalog.resourceHint.description ? <p className="suite-app-resources-note">{app.catalog.resourceHint.description}</p> : null}
+      {requirements ? <>
+        <dl className="suite-app-requirements">
+          <div>
+            <dt>Memory</dt>
+            <dd><strong>{formatMemory(requirements.memoryMb)}</strong>{requirements.memoryPeakMb ? <span>up to {formatMemory(requirements.memoryPeakMb)} while it works</span> : <span>steady</span>}</dd>
+          </div>
+          <div>
+            <dt>Processor</dt>
+            <dd><strong>{formatCores(requirements.cpuCores)}</strong>{requirements.cpuPeakCores ? <span>up to {formatCores(requirements.cpuPeakCores)} while it works</span> : <span>steady</span>}</dd>
+          </div>
+        </dl>
+        <p className="suite-meta">Figures the package declares, not a limit MOS enforces. The steady figure is what this app holds all day and is what to add up when deciding whether another app fits; the peak is headroom that only has to be free while the app is busy.</p>
+      </> : null}
       {app.services.length ? <div className="suite-app-service-list">
         {/* Manifests declare dependencies before the app they serve, which
             would bury the service the owner actually recognises at the bottom.
@@ -923,6 +978,12 @@ function AppDetail({
             <span className="suite-app-service-copy">
               <span className="suite-app-service-role"><strong>{serviceRoleLabel(app, service.id)}</strong><code>{service.id}</code></span>
               <small>{service.volumes.length ? 'Keeps its data in private app storage.' : 'Holds nothing permanent.'}</small>
+              {/* Only worth splitting out when there is more than one share to
+                  account for; on a single-service app it would just restate
+                  the package total printed above. */}
+              {app.services.length > 1 && service.requires ? <small className="suite-app-service-requires">
+                {formatMemory(service.requires.memoryMb)} memory{service.requires.memoryPeakMb ? ` (${formatMemory(service.requires.memoryPeakMb)} at peak)` : ''} &middot; {formatCores(service.requires.cpuCores)}
+              </small> : null}
             </span>
             <span className="suite-app-service-tag">{exposed ? 'Exposed via HTTPS' : 'Internal only'}</span>
           </article>;

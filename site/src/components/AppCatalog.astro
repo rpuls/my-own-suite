@@ -89,8 +89,9 @@ const appsJson = JSON.stringify(
     resources: string
     resourcesDetail: string
     resourceLevel: string
+    requirements: { memory: string; memoryPeak: string; cpu: string; cpuPeak: string } | null
     screenshots: { src: string; alt: string; caption: string }[]
-    services: { id: string; role: string; exposed: boolean; persistent: boolean }[]
+    services: { id: string; role: string; exposed: boolean; persistent: boolean; requires: string }[]
     privacy: string
     privacyNotes: string[]
     features: { title: string; body: string }[]
@@ -216,7 +217,7 @@ const appsJson = JSON.stringify(
     const resourcesTile = `<button type="button" class="app-tile app-resources-tile" id="appDrawerResources">
         <span class="k">Resources</span>
         <span class="app-resources-line">${meter(app.resourceLevel)}<strong>${esc(app.resources || 'Resource use varies')}</strong></span>
-        <span class="app-tile-meta">${app.services.length === 1 ? 'Runs as 1 service' : app.services.length ? `Runs as ${app.services.length} services` : 'Details unavailable'}${chevron}</span>
+        <span class="app-tile-meta">${app.requirements ? `${esc(app.requirements.memory)} memory` : app.services.length === 1 ? 'Runs as 1 service' : app.services.length ? `Runs as ${app.services.length} services` : 'Details unavailable'}${chevron}</span>
       </button>`
     const tiles = `<div class="app-drawer-tiles">
         ${screensTile}
@@ -342,7 +343,7 @@ ${links ? `<div class="app-drawer-section"><span class="mos-eyebrow">Links</span
       .map(
         (service) => `<div class="app-service${service.exposed ? ' is-exposed' : ''}">
           <span class="app-service-dot" aria-hidden="true"></span>
-          <span class="app-service-copy"><span class="app-service-role"><strong>${esc(service.role)}</strong><code>${esc(service.id)}</code></span><span class="mos-meta">${service.persistent ? 'Keeps its data in private app storage.' : 'Holds nothing permanent.'}</span></span>
+          <span class="app-service-copy"><span class="app-service-role"><strong>${esc(service.role)}</strong><code>${esc(service.id)}</code></span><span class="mos-meta">${service.persistent ? 'Keeps its data in private app storage.' : 'Holds nothing permanent.'}</span>${service.requires ? `<span class="mos-meta">${esc(service.requires)}</span>` : ''}</span>
           <span class="app-service-tag">${service.exposed ? 'Exposed via HTTPS' : 'Internal only'}</span>
         </div>`
       )
@@ -353,6 +354,15 @@ ${links ? `<div class="app-drawer-section"><span class="mos-eyebrow">Links</span
         <div class="app-dialog-header"><h2>What runs on your server</h2><button type="button" class="app-dialog-close" data-close aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-x"/></svg></button></div>
         <div class="app-resources-line">${meter(app.resourceLevel)}<strong>${esc(app.resources || 'Resource use varies')}</strong></div>
         ${app.resourcesDetail ? `<p class="mos-meta">${esc(app.resourcesDetail)}</p>` : ''}
+        ${
+          app.requirements
+            ? `<dl class="app-requirements">
+                <div><dt>Memory</dt><dd><strong>${esc(app.requirements.memory)}</strong><span>${app.requirements.memoryPeak ? `up to ${esc(app.requirements.memoryPeak)} while it works` : 'steady'}</span></dd></div>
+                <div><dt>Processor</dt><dd><strong>${esc(app.requirements.cpu)}</strong><span>${app.requirements.cpuPeak ? `up to ${esc(app.requirements.cpuPeak)} while it works` : 'steady'}</span></dd></div>
+              </dl>
+              <p class="mos-meta">Figures the package declares, not a limit MOS enforces. The steady figure is what this app holds all day and is what to add up when deciding whether another app fits; the peak is headroom that only has to be free while the app is busy.</p>`
+            : ''
+        }
         ${rows ? `<div class="app-service-list">${rows}</div>` : ''}
         <p class="mos-meta app-services-note">${
           exposed

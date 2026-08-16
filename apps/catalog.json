@@ -22,8 +22,8 @@
     },
     "onlyoffice": {
       "minimumMosVersion": "0.18.0",
-      "packageDigest": "sha256:5b9f359ecb2567227bfc774f7798f45a671fcbf735b49249b335f955d2aeb7f6",
-      "packageVersion": "0.2.3",
+      "packageDigest": "sha256:68b9043125c88c001f5d29d9f6a28c0ff5e2c8f26e12bd323c4f33f170489595",
+      "packageVersion": "0.2.4",
       "path": "apps/onlyoffice",
       "privacy": {
         "posture": "privacy-configured",
@@ -42,8 +42,8 @@
     },
     "radicale": {
       "minimumMosVersion": "0.18.0",
-      "packageDigest": "sha256:03aec2c9182d7c7e5e9d3616f0c95d7e77ee98d7faccd3eca1d838133fdce871",
-      "packageVersion": "0.4.2",
+      "packageDigest": "sha256:1a6c65be9b93f560ba66517243bcd40af449e30fa308dd11b4d714744f003652",
+      "packageVersion": "0.4.3",
       "path": "apps/radicale",
       "privacy": {
         "posture": "private-by-default",
@@ -52,8 +52,8 @@
     },
     "seafile": {
       "minimumMosVersion": "0.18.0",
-      "packageDigest": "sha256:2b7fc7374f0f373faf0dce151ad7989f214649b1826ab7e84b2b556a7b9ef863",
-      "packageVersion": "0.2.4",
+      "packageDigest": "sha256:27e3cda2a671e7e0f1416a7baf25b522cd68445517e160a3285d77d3e4686da4",
+      "packageVersion": "0.2.5",
       "path": "apps/seafile",
       "privacy": {
         "posture": "private-by-default",
@@ -62,8 +62,8 @@
     },
     "stirling-pdf": {
       "minimumMosVersion": "0.18.0",
-      "packageDigest": "sha256:586365818b7cb07daf6708567cc77dfffdb09c1b2d53d5db45fc942cd6954777",
-      "packageVersion": "0.2.4",
+      "packageDigest": "sha256:db67601b2de9b6b8c42e521fff88005956fb3929997f7c8a8d585caff2bdb43e",
+      "packageVersion": "0.2.5",
       "path": "apps/stirling-pdf",
       "privacy": {
         "posture": "privacy-configured",
@@ -72,8 +72,8 @@
     },
     "vaultwarden": {
       "minimumMosVersion": "0.18.0",
-      "packageDigest": "sha256:cabf9762597b74620d4bf8e0f011a5b41c577a9b66c2a1067aa1159a3e6b518d",
-      "packageVersion": "0.2.5",
+      "packageDigest": "sha256:ebc56a4112a8ec10e394b86c737b6ad1bfba8b604e07fb85149a9e56ebb05d5b",
+      "packageVersion": "0.2.6",
       "path": "apps/vaultwarden",
       "privacy": {
         "posture": "owner-disableable",

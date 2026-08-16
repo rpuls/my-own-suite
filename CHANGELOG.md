@@ -7,6 +7,7 @@ Updater-facing software changes only — documentation, site, repository, and co
 ### Added
 
 - A home-server install now has two ways in, and the screen shown when the install finishes offers both: `http://home.mos.home`, which needs a `*.mos.home` rule in your own router or Pi-hole, and `http://home.<your-lan-ip-with-dashes>.local.myownsuite.org` — for example `home.192-168-123-45.local.myownsuite.org` — which needs nothing set up on any device. Installed apps answer under whichever you use, neither address is a setting, and dashboard tiles now open the app through the address you arrived on instead of the one that installed it. **The second address sends DNS lookups for your app subdomains to MOS-operated nameservers, which do not log queries; the first never involves MOS infrastructure.** It contains your server's LAN address, so set a DHCP reservation — both addresses need one, and if it changes, saved links and app addresses break until each app is applied again. Applying your own domain with HTTPS stops the second address being served, and cloud/VPS installs are unaffected.
+- App packages can declare what each of their services needs to run — memory and CPU at rest, and at peak where a service has heavy work to do — and the Resources view shows the figures beside the existing light/medium/heavy band. Radicale and Stirling PDF declare them first; apps without figures read as before. **Compatibility:** `resources.services.<id>.requires` is an optional addition to manifest generation 1 that older releases ignore, so packages using it require this release.
 - **Actual Budget**: envelope budgeting, one service and one volume. Sets its own password on first open; connects to no bank unless you add sync credentials.
 - **Paperless-ngx**: searchable scanned documents, OCR on your own server in the language chosen at install (EN/NL/DE/FR/IT/ES). Cloud AI, remote OCR and its own update check are off. Rated "Private by default" — no outbound traffic observed.
 
@@ -19,6 +20,7 @@ Updater-facing software changes only — documentation, site, repository, and co
 - Immich package 0.5.0 updates Immich to v3.1.0; its health check now targets an endpoint Immich serves. **Migrations are forward-only — no downgrade after this applies.** Live Photos uploaded in the background on the previous version may lack thumbnails until Immich's "missing" job runs.
 - Catalog packages name the full set of products they replace, and app search matches them: "onedrive", "lastpass" and "ynab" find the right app.
 - Vaultwarden and Stirling PDF show screenshots before install. Patch update; no runtime change.
+- The app list shows each app's one-line summary instead of the opening paragraph of its full description, which had turned the catalog into a wall of text; the full description still opens with the app. Radicale, Seafile, Stirling PDF, ONLYOFFICE and Vaultwarden ship plainer summaries to match, and Stirling PDF moves from "Light" to "Medium" resources, which its declared figures now back up.
 
 ### Fixed
 
