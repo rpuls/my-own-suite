@@ -1,0 +1,90 @@
+---
+title: Why your address has numbers in it
+description: My Own Suite gives every server a working web address without you buying a domain. Here is how that works, what leaves your network, and what does not.
+---
+
+Your suite has an address that looks a bit odd:
+
+```
+http://home.192-168-20-175.local.myownsuite.org/
+```
+
+Those numbers are your server's own address on your network, with dashes instead of dots. This page explains why, what it means for your privacy, and what to do if it stops working.
+
+You do not need to read this to use your suite. It is here for the moment you look at that address and think *hang on, what is that?*
+
+## The problem it solves
+
+Your suite is not one website. Every app you install gets its own address — `photos.…`, `files.…`, `documents.…` — because keeping them separate is what stops one app from being able to read another's data. That separation is a real security boundary, not a tidiness preference.
+
+For those addresses to work, something has to know that `photos.<something>` means *that machine over there*. On the public internet, a domain name does that job, and you buy one. On your home network, nothing does — you would have to teach your router, and most home routers cannot be taught.
+
+So My Own Suite generates an address that already contains the answer.
+
+## It looks public. It is not.
+
+`local.myownsuite.org` is a real domain name, so the address looks like it points somewhere on the internet. It does not.
+
+It resolves to `192.168.20.175` — an address that only exists inside your own home. Those ranges are reserved for private networks and are not reachable from the internet, by design and by every router in between. Type that address into a phone using mobile data and nothing will load, because there is nothing out there to load. It only works on your own network, which is the entire point.
+
+:::note[The short version]
+The **name** is public. What it points at is not. Nobody outside your home can open your suite through it.
+:::
+
+## What actually leaves your network
+
+One thing, and it is worth being precise about it.
+
+When a device on your network opens `photos.192-168-20-175.local.myownsuite.org`, it first has to ask *what address is that?* That question — and only that question — goes out to a nameserver My Own Suite operates. The answer comes back: `192.168.20.175`. Your device then connects to your own server directly, and everything after that stays inside your house.
+
+What that means in practice:
+
+- **We do not log those questions.** No record is kept of which suite asked, or when.
+- **The answer is useless to anyone else.** It is a private address. Knowing it does not help anyone reach your server.
+- **Your files, photos, passwords and documents never touch it.** The nameserver answers a naming question. It never sees, stores or relays anything you put in your suite.
+- **We cannot see inside your suite**, and nothing about this address gives us a way in.
+
+What is technically visible to whoever runs that nameserver is *which app names get asked about* — that `photos.` and `documents.` were looked up by someone. That is a property of how naming works on the internet generally, not something specific to us, and it is why the other option below exists.
+
+## If you would rather nothing left at all
+
+There is a second way in, and it is the better one if your equipment supports it.
+
+If your router, [Pi-hole](https://pi-hole.net/) or [AdGuard Home](https://adguard.com/en/adguard-home/overview.html) can add a **wildcard DNS record**, point `*.mos.home` at your server's address and use `http://home.mos.home/` instead. Then the naming question is answered inside your house, nothing is asked of anyone, and your suite works with no outside involvement whatsoever — even with the internet unplugged.
+
+Both addresses work at the same time. You can start with the generated one and switch later; your server's screen shows both.
+
+## If it stops working
+
+**The address contains your server's IP, so if that changes, the address changes.** Home routers hand out addresses on a lease and can hand out a different one after a power cut or a reboot. Give your server a fixed address in your router — usually called a **DHCP reservation** — and this cannot happen. It is worth doing on the day you install, not the day it breaks.
+
+If the address has already changed, your server's screen shows the current one. Plug in a monitor and read it there.
+
+**If the address never worked at all**, your router is probably refusing it. Some routers and DNS filters — Fritz!Box, OpenWRT, pfSense, Pi-hole and AdGuard Home among them — block answers that point into your own network as a security measure. It is called *DNS rebinding protection*, and it is a reasonable default that happens to block this.
+
+Two ways around it:
+
+- Add `local.myownsuite.org` to your router's rebinding exception list. Most routers that do this have one; it may be called an allow-list or an exception.
+- Or use the `*.mos.home` route above instead, which never involves an outside answer.
+
+It can also differ between devices on the same network: iPhones with Private Relay and Android phones with Private DNS send these questions past your router entirely, so one device can work while another does not.
+
+## On a cloud server
+
+If you [installed on a rented server](/docs/install/cloud-server/) rather than your own hardware, your address works the same way and looks similar:
+
+```
+https://home.203-0-113-9.sslip.io/
+```
+
+Same idea — your server's address, in the name, so it works immediately with no domain to buy. Three differences:
+
+- **The address is public**, because a rented server has a public address. Your suite is reachable from anywhere, which is what you are paying for.
+- **HTTPS is automatic.** Because the address is publicly reachable, My Own Suite can obtain a real certificate for it, and your connection is encrypted. Home installs are plain HTTP until you add a domain of your own.
+- **The naming service is [sslip.io](https://sslip.io/)**, a long-running public utility, not something we run.
+
+## Using your own domain
+
+Whichever way you installed, you can buy a domain and use it instead. That gives you an address you chose, and — on a home server — encrypted HTTPS connections that the generated address cannot provide.
+
+See [Use your own domain with HTTPS](/docs/guides/https-domain/). Your apps are moved across for you; you do not reinstall anything. When you do, the generated address stops being served, because there is no longer a reason to keep a plain HTTP door open.

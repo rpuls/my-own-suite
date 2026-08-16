@@ -84,6 +84,26 @@ else
   fail "no SSH host keys — mos-ssh-hostkeys did not run"
 fi
 
+# The handover is the only route to this machine's console password, and Suite
+# Manager runs as the unprivileged runtime user. A root-owned copy is unreadable
+# to it and reads exactly like an owner who already saved their password, so
+# nothing else on the machine reports it. The ISO path never had the fault, which
+# is why its suite cannot catch it: the bootstrap there runs after first boot and
+# chowns the whole state root.
+handover=/mnt/target/var/lib/mos/suite-manager/console-login.json
+if [ ! -e "$handover" ]; then
+  fail "no console login handover — mos-console-login-init did not run, so this machine has no reachable password"
+else
+  handover_user="$(stat -c '%U' "$handover")"
+  runtime_user="$(awk -F= '/^Environment=MOS_RUNTIME_USER=/ { print $3 }' /mnt/target/etc/systemd/system/mos-suite-manager.service 2>/dev/null | head -n 1)"
+  [ -n "$runtime_user" ] || runtime_user=mos
+  if [ "$handover_user" = "$runtime_user" ]; then
+    pass "console login handover is readable by Suite Manager (owned by ${handover_user})"
+  else
+    fail "console login handover is owned by ${handover_user}, not ${runtime_user} — Suite Manager cannot hand the password over"
+  fi
+fi
+
 echo
 if [ "$failures" -gt 0 ]; then
   echo "[mos-image] $failures check(s) failed." >&2

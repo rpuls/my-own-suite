@@ -40,9 +40,18 @@ class ConsoleLoginService {
   status() {
     const handover = this.#readHandover();
     if (handover) {
-      return { acknowledged: false, pending: true, username: handover.username };
+      return { acknowledged: false, pending: true, unreadable: false, username: handover.username };
     }
-    return { acknowledged: fs.existsSync(this.acknowledgedPath()), pending: false, username: '' };
+    // A handover this process cannot open is not the same as no handover, and
+    // reporting them alike is what let an unreadable one look like an owner who
+    // had already saved their password. The dashboard says so rather than
+    // rendering nothing, because the only route to that password is this panel.
+    return {
+      acknowledged: fs.existsSync(this.acknowledgedPath()),
+      pending: false,
+      unreadable: this.#handoverUnreadable(),
+      username: '',
+    };
   }
 
   // Deliberately a separate, explicit step: the password crosses the wire only
@@ -70,13 +79,31 @@ class ConsoleLoginService {
     return { acknowledged: true, pending: false };
   }
 
+  // True when a handover exists but this process cannot read it — an ownership
+  // or permission fault on the installer's side. Distinguished from "no file"
+  // because the two need opposite responses: one is the steady state, the other
+  // means a password is stranded on disk with no way to reach its owner.
+  #handoverUnreadable() {
+    try {
+      fs.accessSync(this.handoverPath(), fs.constants.R_OK);
+      return false;
+    } catch (error) {
+      return error.code !== 'ENOENT';
+    }
+  }
+
   #readHandover() {
     let raw = '';
     try {
       raw = fs.readFileSync(this.handoverPath(), 'utf8');
-    } catch {
+    } catch (error) {
       // No file is the normal steady state on every install past its handover,
       // and on every install that never generated a console login at all.
+      // Anything else is a fault, and silence about it is what turned a one-line
+      // ownership bug into a handover that appeared never to have existed.
+      if (error.code !== 'ENOENT') {
+        console.error(`[mos-suite-manager] Console login handover is unreadable (${error.code}): ${this.handoverPath()}`);
+      }
       return null;
     }
 

@@ -172,7 +172,7 @@ echo "[mos-smoke:hyperv-usb] Mounted disposable backup disk at /media/mos-backup
 // shortcut around it. That is the point: the lab and smoke VMs then exercise the
 // real handover — banner, Suite Manager panel, acknowledgement, cleanup — instead
 // of testing a branch that no published install ever runs.
-function renderConsoleLoginInitScript({ fixedPassword, setupUrl, stateDir, username }) {
+function renderConsoleLoginInitScript({ fixedPassword, runtimeUser, setupUrl, stateDir, username }) {
   const choosePassword = fixedPassword
     ? `# Fixed by the build profile, so this VM's login is predictable for humans
 # and agents that have to reach it. Never used by a released image.
@@ -192,6 +192,7 @@ state_dir=${shellQuote(stateDir)}
 handover="$state_dir/${consoleLoginFileName}"
 acknowledged="$state_dir/${consoleLoginAcknowledgedFileName}"
 username=${shellQuote(username)}
+runtime_user=${shellQuote(runtimeUser)}
 
 # A re-run must never rotate a password the owner may already have written down.
 if [ -e "$handover" ] || [ -e "$acknowledged" ]; then
@@ -216,6 +217,15 @@ cat > "$handover.next" <<MOS_CONSOLE_LOGIN
 }
 MOS_CONSOLE_LOGIN
 chmod 0600 "$handover.next"
+# This script runs as root, so root would own the file it leaves for a Suite
+# Manager that runs as the unprivileged runtime user — which would then be shut
+# out of the handover it is the only route for. Ownership is handed over before
+# the file is in place, so it is never readable by nobody.
+#
+# On the ISO path the control-plane bootstrap runs after this and chowns the
+# whole state root, which hid the problem. A machine installed from the prebuilt
+# image ran that bootstrap at bake time and never chowns anything again.
+chown "$runtime_user" "$handover.next"
 mv "$handover.next" "$handover"
 
 # Also on the physical console, because an owner who never opens Suite Manager
@@ -337,6 +347,7 @@ function renderSeed(config, options = {}) {
     {
       content: renderConsoleLoginInitScript({
         fixedPassword,
+        runtimeUser: plan.config.runtimeUser,
         setupUrl: plan.config.publicUrls.setup,
         stateDir: suiteManagerStateDir,
         username,

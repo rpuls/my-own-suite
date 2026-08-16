@@ -66,7 +66,7 @@ The result lands in `infrastructure/self-host/output/`. To change the timezone o
 5. **Open your suite.** Two addresses reach it and the server's own screen shows both. Neither is a setting; pick whichever suits your network.
 
    - **`http://home.mos.home/`** — add a wildcard DNS rule `*.mos.home → 192.168.123.45` in your router, AdGuard Home, or Pi-hole. Nothing about your suite ever leaves your network. Many consumer routers cannot express a wildcard rule at all; if yours can, this is the door to take. *Just one computer?* Add `192.168.123.45 home.mos.home` to its [hosts file](https://en.wikipedia.org/wiki/Hosts_(file)) instead, plus one line per app you install later.
-   - **`http://home.192-168-123-45.local.myownsuite.org/`** — your server's address with dashes instead of dots. Nothing to set up, and it works on every device including phones. A My Own Suite nameserver answers this name, so looking up your app addresses sends those lookups to us; we do not log them, and the answer only ever points back into your own network. It stops being served if you later add [your own domain with HTTPS](/docs/guides/https-domain/).
+   - **`http://home.192-168-123-45.local.myownsuite.org/`** — your server's address with dashes instead of dots. Nothing to set up, and it works on every device including phones. The name is public but what it points at is not, so nobody outside your home can reach your suite through it — [how this works](/docs/install/easy-address/) covers what does and does not leave your network. It stops being served if you later add [your own domain with HTTPS](/docs/guides/https-domain/).
 
    Create your owner account on the page that opens.
 

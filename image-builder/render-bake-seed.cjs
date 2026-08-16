@@ -31,6 +31,13 @@ const consoleIssueEndMarker = '### My Own Suite server login (end)';
 // explaining hosts files on a login screen. Step 4 of that page is the override.
 const networkDocsUrl = 'https://myownsuite.org/docs/install/own-hardware/';
 
+// The banner stopped explaining DNS on a login screen, so this page carries what
+// it no longer says: that the second address is resolved by a My Own Suite
+// nameserver, that those lookups are not logged, and that the answer only ever
+// points back at the machine. Those are commitments in CHANGELOG.md and
+// docs/decisions.md — they moved here, they did not go away.
+const easyAddressDocsUrl = 'https://myownsuite.org/docs/install/easy-address/';
+
 const payloadScripts = [
   'mos-image-finalize',
   'mos-self-install',
@@ -111,6 +118,7 @@ function main() {
   const values = {
     DOCS_URL: networkDocsUrl,
     DOMAIN: rendered.plan.config.domain,
+    EASY_DOCS_URL: easyAddressDocsUrl,
     HOME_URL: rendered.plan.config.publicUrls.home,
     ISSUE_BEGIN: consoleIssueBeginMarker,
     ISSUE_END: consoleIssueEndMarker,

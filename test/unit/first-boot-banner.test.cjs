@@ -26,10 +26,18 @@ const script = fs.readFileSync(
 const WIDEST = {
   docs_url: 'https://myownsuite.org/docs/install/own-hardware/',
   domain: 'mos.home',
+  easy_docs_url: 'https://myownsuite.org/docs/install/easy-address/',
   easy_host: 'home.192-168-255-255.local.myownsuite.org',
   home_url: 'http://home.mos.home/',
   lan_ip: '255.255.255.255',
 };
+
+// Latin-1 is not the whole console font. The VGA-derived fonts Linux ships also
+// carry the CP437 box and block drawing the logo and the rules are made of, so
+// an allow-list of the exact glyphs used is the honest rule — a codepoint ceiling
+// would either reject the logo or wave through characters that render blank.
+// ✓ (U+2713), ▸ (U+25B8) and an em dash (U+2014) are outside both sets.
+const CONSOLE_BOX_GLYPHS = new Set([...'█╗═║╔╝╚─']);
 
 function bannerLines() {
   const block = script.split('banner=/etc/issue.d/10-mos-address.issue')[1];
@@ -43,7 +51,7 @@ function renderedWidth(line) {
   const args = [...line.matchAll(/"\$([a-z_]+)"/gu)].map((match) => match[1]);
   let index = 0;
   return format
-    .replace(/\\033\[[0-9;]*m/gu, '')
+    .replace(/\\033\[[0-9;]*[A-Za-z]/gu, '')
     .replace(/\\n$/u, '')
     .replace(/%(-?\d+)?s/gu, (_match, width) => {
       const value = WIDEST[args[index]];
@@ -80,7 +88,7 @@ function tallestPath(lines, start = 0) {
   return { count, next: index };
 }
 
-test('the banner fits an 80x25 console and stays inside the console font', () => {
+test('the banner fits a framebuffer console and stays inside the console font', () => {
   const lines = bannerLines();
   const printfs = lines.filter((line) => line.trim().startsWith('printf '));
   assert.ok(printfs.length > 10, 'the banner block was not found');
@@ -90,15 +98,21 @@ test('the banner fits an 80x25 console and stays inside the console font', () =>
     assert.equal(format.match(/\\n/gu)?.length, 1, `one line per printf: ${format}`);
     assert.ok(format.endsWith('\\n'), `printf must end its line: ${format}`);
     assert.ok(renderedWidth(line) <= 80, `wider than an 80-column console: ${format}`);
-    // ✓, ▸ and — render blank in a 256-glyph console font; » is Latin-1 and does not.
     for (const character of format) {
-      assert.ok(character.codePointAt(0) <= 0xff, `outside Latin-1 and blank on the console: ${character}`);
+      assert.ok(
+        character.codePointAt(0) <= 0xff || CONSOLE_BOX_GLYPHS.has(character),
+        `outside the console font and blank on screen: ${character}`,
+      );
     }
   }
 
-  // agetty prints /etc/issue and then the login prompt after this file, so the
-  // banner cannot claim all 25 rows.
-  assert.ok(tallestPath(lines).count <= 22, 'the tallest banner path no longer fits above the login prompt');
+  // 80x25 was the old budget and it is a text-mode number. A UEFI machine paints
+  // the console on the framebuffer at the panel's resolution, so the floor is
+  // 1024x768 with an 8x16 font — 48 rows — of which agetty spends some on
+  // /etc/issue and the login prompt. A machine that does fall back to text mode
+  // scrolls the logo off the top and keeps the addresses, which is the right way
+  // round for it to degrade.
+  assert.ok(tallestPath(lines).count <= 45, 'the tallest banner path no longer fits above the login prompt');
 });
 
 test('the banner derives the Easy Door name rather than reimplementing it', () => {
@@ -107,21 +121,32 @@ test('the banner derives the Easy Door name rather than reimplementing it', () =
   assert.match(script, /"\$easy_door_module" address/u);
   // A second implementation of "this machine's LAN address" or of the dashed
   // name is exactly the divergence that puts an unserved address on the screen.
-  assert.doesNotMatch(script, /local\.myownsuite\.org/u);
+  // Naming the zone as prose is fine and necessary — the rebinding note has to
+  // tell the owner what to allow — so this rejects *building* a name from one,
+  // not mentioning one.
+  assert.doesNotMatch(script, /[%$][^ ]*\.local\.myownsuite\.org/u);
   assert.doesNotMatch(script, /tr '\.' '-'|sed 's\/\\\.\/-\/|192\.168/u);
 
   // Every Easy Door line sits behind the derived name being non-empty, so a
-  // public address or a closed door prints the first door alone.
-  const easyDoorBlock = script.split('if [ -n "$easy_host" ]; then')[1].split('else')[0];
-  assert.match(easyDoorBlock, /If it cannot/u);
+  // public address or a closed door prints one door and never a dead second one.
+  const easyDoorBlock = script.split('if [ -n "$easy_host" ]; then')[2].split('else')[0];
+  assert.match(easyDoorBlock, /THE EASY WAY IN/u);
   assert.match(easyDoorBlock, /http:\/\/%s\//u);
-  assert.match(easyDoorBlock, /No answer on the second address/u);
-  assert.doesNotMatch(script.split('if [ -n "$easy_host" ]; then')[0], /If it cannot/u);
+  assert.match(easyDoorBlock, /Nothing loads\?/u);
+  assert.doesNotMatch(script.split('if [ -n "$easy_host" ]; then')[0], /THE EASY WAY IN/u);
+
+  // With one door there is no "A" to label and no "B" to point at, so the
+  // lettered pair is replaced rather than left half-referenced.
+  const labels = bannerLines().filter((line) => line.includes('WAY IN'));
+  assert.equal(labels.length, 3, 'expected a lettered pair and a single-door label');
+  assert.match(labels[0], /A   THE BEST WAY IN/u);
+  assert.doesNotMatch(labels[1], /BEST|EASY/u);
+  assert.match(labels[2], /B   THE EASY WAY IN/u);
 
   // Both doors need the reservation, so it is stated before either of them.
   const withAddress = script.split('if [ -n "$lan_ip" ]; then')[1];
-  assert.ok(withAddress.indexOf('reserve this address') < withAddress.indexOf('If your router or Pi-hole'));
-  assert.match(withAddress, /trusted HTTPS needs a domain of your own/u);
+  assert.ok(withAddress.indexOf('Reserve that address') < withAddress.indexOf('WAY IN'));
+  assert.match(withAddress, /only from inside your own network/u);
 });
 
 test('the Easy Door CLI answers with the name the host gate admits', () => {
