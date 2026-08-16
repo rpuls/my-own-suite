@@ -144,8 +144,6 @@ on its own: machines it refuses to install on, and reaching the suite once it is
   the right default and not an answer: an old desktop with an SSD and a spare HDD is exactly the
   hardware this theme is for. Needs a target picker on the console, which is the one screen in the
   product with no browser and no shared UI to build from. *(Small — needs a decision first)*
-- **H5 — Name and describe the image so it does not read as a Canonical product.** It is a stock Ubuntu
-  base plus MOS, and the download is public. *(Small)*
 - **H9 — Re-render app routes when the machine's address changes.** The Easy Door name encodes the LAN
   IP. Suite Manager survives a DHCP move because its site block matches any private address, but every
   installed app's route names one exact host and is only re-rendered when that app is next applied — so

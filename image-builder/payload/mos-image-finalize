@@ -83,6 +83,42 @@ NETPLAN
 chmod 0600 /etc/netplan/01-mos.yaml
 netplan generate
 
+stage 'Replacing the login message'
+# `00-mos` was written by cloud-init on the previous boot; everything else in
+# here is Canonical's, and it is removed rather than reordered. See the header of
+# /etc/update-motd.d/00-mos for what those scripts do and why none of it is
+# right on this machine. `find` rather than a glob so our own file survives.
+find /etc/update-motd.d -maxdepth 1 -type f ! -name '00-mos' -delete
+if [ ! -f /etc/update-motd.d/00-mos ]; then
+  # `false` rather than `exit`: the ERR trap is what records the failed stage and
+  # powers the VM off, and an `exit` here would leave the bake waiting for a
+  # machine that is never coming back.
+  log 'The MOS motd is missing — cloud-init did not write it.'
+  false
+fi
+# The news fetcher is a timer, not just a motd script, so deleting the script
+# leaves it running. Turned off in both places because a host OS upgrade that
+# restores the unit would otherwise silently restore the outbound call too.
+systemctl disable --now motd-news.timer motd-news.service >/dev/null 2>&1 || true
+systemctl mask motd-news.service >/dev/null 2>&1 || true
+if [ -f /etc/default/motd-news ]; then
+  sed -i 's/^ENABLED=.*/ENABLED=0/' /etc/default/motd-news
+fi
+
+stage 'Naming the system'
+# So a shell, a support request or anything reading os-release says what this
+# machine is. `ID` stays `ubuntu` deliberately: apt, dpkg, unattended-upgrades
+# and every install script in the world branch on it, and this is a stock Ubuntu
+# base — only the human-facing name is ours. `/etc/os-release` is a symlink into
+# /usr/lib on Ubuntu, so it is replaced with a real file rather than edited
+# through, which is the documented way to override it.
+if [ -L /etc/os-release ]; then
+  cp --remove-destination "$(readlink -f /etc/os-release)" /etc/os-release
+fi
+os_version="$(awk -F= '/^VERSION_ID=/ { gsub(/"/, "", $2); print $2 }' /etc/os-release)"
+sed -i "s|^PRETTY_NAME=.*|PRETTY_NAME=\"My Own Suite (Ubuntu ${os_version:-24.04})\"|" /etc/os-release
+printf 'VARIANT="My Own Suite"\nVARIANT_ID=mos\n' >> /etc/os-release
+
 stage 'Disabling cloud-init'
 # Everything it would do has already been done at bake time. Left enabled it
 # would hunt for a datasource on every first boot and stall for minutes.

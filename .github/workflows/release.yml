@@ -269,9 +269,13 @@ jobs:
             echo "to this release, which is the copy to trust."
             echo
             echo "Requires a machine that boots in **UEFI** mode with a single internal disk. The"
-            echo "image contains no password:"
-            echo "your server generates its own login the first time it boots, shows it on its"
-            echo "screen and in Suite Manager, and forgets it once you confirm you have saved it."
+            echo "image contains no password: your server generates its own login the first time it"
+            echo "boots, shows it on its screen and in Suite Manager, and forgets it once you confirm"
+            echo "you have saved it."
+            echo
+            echo "Built from stock Ubuntu Server 24.04 LTS. This is an unofficial image published by"
+            echo "the My Own Suite project, not affiliated with or endorsed by Canonical Ltd; Ubuntu"
+            echo "is a trademark of Canonical Ltd."
             echo
             echo "---"
             echo

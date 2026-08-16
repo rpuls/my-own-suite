@@ -94,13 +94,24 @@ handover=/mnt/target/var/lib/mos/suite-manager/console-login.json
 if [ ! -e "$handover" ]; then
   fail "no console login handover — mos-console-login-init did not run, so this machine has no reachable password"
 else
-  handover_user="$(stat -c '%U' "$handover")"
-  runtime_user="$(awk -F= '/^Environment=MOS_RUNTIME_USER=/ { print $3 }' /mnt/target/etc/systemd/system/mos-suite-manager.service 2>/dev/null | head -n 1)"
+  # Compared numerically, and against the *target's* passwd. `stat -c %U` resolves
+  # an owner through whatever passwd database the machine running stat has, which
+  # here is the CI runner rather than the image mounted under /mnt/target — uid
+  # 1000 is `mos` inside the image and `packer` on a GitHub runner, so the name
+  # comparison this replaces failed a correctly-owned file.
+  handover_uid="$(stat -c '%u' "$handover")"
+  # `User=` is the only place the unit states who Suite Manager runs as; it
+  # carries no MOS_RUNTIME_USER environment line.
+  runtime_user="$(awk -F= '/^User=/ { print $2; exit }' /mnt/target/etc/systemd/system/mos-suite-manager.service 2>/dev/null)"
   [ -n "$runtime_user" ] || runtime_user=mos
-  if [ "$handover_user" = "$runtime_user" ]; then
-    pass "console login handover is readable by Suite Manager (owned by ${handover_user})"
+  runtime_uid="$(awk -F: -v user="$runtime_user" '$1 == user { print $3; exit }' /mnt/target/etc/passwd)"
+
+  if [ -z "$runtime_uid" ]; then
+    fail "the image has no '${runtime_user}' account, but mos-suite-manager.service runs as one"
+  elif [ "$handover_uid" = "$runtime_uid" ]; then
+    pass "console login handover is readable by Suite Manager (${runtime_user}, uid ${runtime_uid})"
   else
-    fail "console login handover is owned by ${handover_user}, not ${runtime_user} — Suite Manager cannot hand the password over"
+    fail "console login handover is owned by uid ${handover_uid}, not ${runtime_user} (uid ${runtime_uid}) — Suite Manager cannot hand the password over"
   fi
 fi
 

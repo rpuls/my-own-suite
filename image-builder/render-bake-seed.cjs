@@ -38,11 +38,22 @@ const networkDocsUrl = 'https://myownsuite.org/docs/install/own-hardware/';
 // docs/decisions.md — they moved here, they did not go away.
 const easyAddressDocsUrl = 'https://myownsuite.org/docs/install/easy-address/';
 
+// The MOTD is read by someone who already has a shell, so it points at the docs
+// root rather than at the install page the console banner links to.
+const docsRootUrl = 'https://myownsuite.org/docs/';
+
 const payloadScripts = [
   'mos-image-finalize',
   'mos-self-install',
   'mos-grow-root',
   'mos-first-boot',
+];
+
+// Payload that does not belong in /usr/local/sbin. The MOTD has to land where
+// pam_motd looks for it, and the number prefix orders it among the stock scripts
+// for the boot between cloud-init writing it and finalize deleting those.
+const payloadFiles = [
+  { destination: '/etc/update-motd.d/00-mos', name: 'mos-motd', permissions: '0755' },
 ];
 
 const payloadUnits = [
@@ -116,6 +127,7 @@ function main() {
   const stateDir = `${rendered.plan.config.stateRoot}/suite-manager`;
 
   const values = {
+    DOCS_ROOT_URL: docsRootUrl,
     DOCS_URL: networkDocsUrl,
     DOMAIN: rendered.plan.config.domain,
     EASY_DOCS_URL: easyAddressDocsUrl,
@@ -140,6 +152,13 @@ function main() {
       content: readPayload(path.join(payloadDir, 'units'), name),
       path: `/etc/systemd/system/${name}`,
       permissions: '0644',
+    });
+  }
+  for (const { destination, name, permissions } of payloadFiles) {
+    writeFiles.push({
+      content: fill(name, readPayload(payloadDir, name), values),
+      path: destination,
+      permissions,
     });
   }
 
