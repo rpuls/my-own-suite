@@ -142,27 +142,49 @@ Written to a USB stick with Rufus (DD mode) or balenaEtcher, and booted:
 - `mos-ssh-hostkeys`, `mos-grow-root` and `mos-first-boot` give the machine its own
   identity, its full disk, and its own server login.
 - `mos-first-boot` then writes the completion banner to `/etc/issue.d/`. It leads
-  with the DNS override, because until that is done the setup link does not open —
-  a screen that prints only the link reads as a finished install that is broken.
-  It points at the docs for how; a login screen is the wrong place for a guide.
+  with the DNS override for `home.mos.home` and points at the docs for how; a
+  login screen is the wrong place for a guide. It does not yet offer the second
+  door below, which needs no override at all — putting both on the banner and the
+  success screen, with a probe for the one that works, is roadmap **H7**.
+
+## Two ways in, and one of them needs nothing configured
+
+The image serves both doors for the life of the install, and the owner picks
+neither — they are aliases for the same Suite Manager.
+
+- `http://home.mos.home` needs one wildcard `*.mos.home` rule in the owner's own
+  Pi-hole, AdGuard, Unbound or OpenWRT, or a hosts-file line on the computer they
+  browse from. Nothing leaves the house, and it does not depend on MOS.
+- `http://home.<lan-ip-with-dashes>.local.myownsuite.org` needs nothing at all.
+  The MOS-operated nameserver in `infrastructure/nameserver/` answers it with the
+  encoded address, so a phone on the same wifi opens the suite with no
+  configuration by anyone. `192.168.1.42` becomes `192-168-1-42`, and every
+  installed app gets the same treatment: `seafile.192-168-1-42.local.myownsuite.org`.
+
+The Caddyfile baked into this image matches the second name by pattern rather than
+naming a host, because a disk image cannot know the address the machine it boots
+on will be given.
+
+Both doors close in favour of a real domain: applying one with DNS-01 in Suite
+Manager replaces the Caddyfile with the HTTPS one, and plain HTTP on a globally
+resolvable name stops being served.
 
 ## Known gaps
 
-- **Reaching it in a browser is still a manual step, and this does not fix that.**
-  `renderCaddyfile()` — the local, non-cloud Caddyfile — serves exactly one site
-  block, `http://$MOS_HOME_HOST`, so `home.mos.home` is the only address that
-  reaches Suite Manager. Nothing on an ordinary LAN resolves that name, so every
-  own-hardware installer has to edit a hosts file or configure router DNS before
-  they can open the thing they just installed. A prebuilt image removes the boot
-  failure and leaves this one untouched.
-
-  The console banner leads with it rather than printing a link that does not work
-  yet, which is honest but is not a fix. A bare-IP catch-all was considered and is
-  not the answer: `seafile.192.168.1.42` cannot exist, so it fixes first contact
-  and nothing past the first app the owner installs. The fix is roadmap **H8** — a
-  per-install name under a MOS-operated wildcard DNS zone resolving to the LAN IP —
-  with the `*.mos.home` wildcard rule staying the door for owners already running a
-  resolver. Until that lands, the banner is the honest version of a manual step.
+- **The name carries the LAN IP, so a DHCP move breaks every saved bookmark and
+  every generated app route.** Suite Manager itself survives it — its site block
+  matches any private address rather than one — but the apps do not: their routes
+  name one exact host and are only re-rendered when the app is next applied.
+  Re-rendering them when the machine's address changes is deliberately not built
+  yet, so **a DHCP reservation is a step in the install, not advice after it.**
+  The console banner prints the address the machine actually has, which is where
+  an owner finds out it moved.
+- **DNS-rebinding protection refuses these answers on some networks.** Fritz!Box,
+  OpenWRT, pfSense, Pi-hole and AdGuard ship it on, and whether it works can
+  differ *per device on one network* because Private Relay and Private DNS route
+  lookups past the router. That mostly hits owners who would take the first door
+  anyway. Detecting it from the browser and offering the other door is roadmap
+  **H7**; `infrastructure/nameserver/README.md` has the measurements.
 - **UEFI only.** One image means one layout, and that layout is GPT + ESP. The HP
   EliteDesk that triggered this work appeared unable to UEFI-boot a USB stick
   across four attempts, which nearly justified an MBR image; it turned out to be

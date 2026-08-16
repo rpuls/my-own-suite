@@ -21,6 +21,31 @@ test('Caddy exposes the single Home origin only through Suite Manager', () => {
   assert.doesNotMatch(caddyfile, /3200|homepage:3000|reverse_proxy\s+homepage/);
 });
 
+test('the Easy Door serves Suite Manager without changing what an unmatched host gets', () => {
+  const caddyfile = renderCaddyfile();
+
+  assert.match(caddyfile, /# mos-easy-door\nhttp:\/\/ \{/u);
+  assert.match(caddyfile, /@mos-easy-door header_regexp Host \^home\\\./u);
+  // Two site blocks, one upstream: the Easy Door is an alias for the same Suite
+  // Manager, never a second thing to keep in step.
+  assert.equal((caddyfile.match(/reverse_proxy 127\.0\.0\.1:\$MOS_SUITE_MANAGER_PORT/gu) || []).length, 2);
+  // A request to the bare address still 404s, which the image verification in
+  // `image-builder/` relies on to tell a healthy machine from a matched host.
+  assert.match(caddyfile, /handle \{\n {4}respond 404\n {2}\}/u);
+});
+
+test('the Easy Door closes when a real domain takes over, and never opens on a cloud install', () => {
+  const https = renderHttpsCaddyfile({
+    acmeEmail: 'owner@example.com',
+    baseDomain: 'mos.example.com',
+    bootstrapHost: 'home.mos.home',
+    suiteManagerPort: '3100',
+  });
+
+  assert.doesNotMatch(https, /mos-easy-door|myownsuite\.org/u);
+  assert.doesNotMatch(renderPublicCloudCaddyfile(), /mos-easy-door|myownsuite\.org/u);
+});
+
 test('public-cloud Caddy serves diagnostics on HTTP and owner setup on automatic HTTPS', () => {
   const caddyfile = renderPublicCloudCaddyfile();
   assert.match(caddyfile, /http:\/\/\$MOS_HOME_HOST/u);

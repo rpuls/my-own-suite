@@ -196,20 +196,25 @@ with no error recorded anywhere. **H1** removes that runtime decision.
   cannot simply offer the MOS zone and hope: rebinding protection blocks it on real networks, and
   whether it works varies *per device on one network*, because Private Relay and Private DNS route
   lookups past the router. So the probe runs in the owner's browser and the screen reacts to what it
-  finds, rather than the server deciding once. Blocked on
-  **H8**, and the copy is as much the deliverable as the routing. *(Small once H8 lands)*
+  finds, rather than the server deciding once. Unblocked: **H8**'s address half has landed, so both
+  doors are live and the remaining work is the screen, the probe and the copy — which is as much the
+  deliverable as the routing. The console banner in `image-builder/payload/mos-first-boot` still
+  offers only the first door and belongs to the same change. *(Small)*
 - **H8 — A working address, and trusted HTTPS, with no domain to buy.** Today a self-hosted suite
   serves plain HTTP at a name nothing on an ordinary LAN resolves, so the owner password is first set
   over an unencrypted connection, secure-origin apps do not work at all, and a non-technical owner has
   no way in. Promoted out of the alpha gate: it is not hardening, it is the only entry door that half
-  the audience has. The address half is now answerable: the MOS zone resolves any name encoding a
-  private address, so the remaining work is to derive the per-install name, route it in Caddy, and
-  carry it through the install flow — keeping `http://home.mos.home` as the recovery door. Two things
-  still to settle. Routers and resolvers with DNS-rebinding protection refuse answers pointing into
-  private space and need a documented per-device override — Fritz!Box, OpenWRT, pfSense, Pi-hole and
-  AdGuard ship it on, which mostly hits owners who would take the other door anyway, Fritz!Box being
-  the painful exception. And the address encodes the LAN IP, so a DHCP change breaks every bookmark
-  and an address reservation stops being advice.
+  the audience has. **The address half has landed** — the box answers on
+  `home.<lan-ip-with-dashes>.local.myownsuite.org` and serves every installed app under the same
+  base, `http://home.mos.home` stays the recovery door, and applying a real domain closes it; the
+  contract is in `docs/decisions.md`. Two things it left behind. Routers and resolvers with
+  DNS-rebinding protection refuse answers pointing into private space and need a documented
+  per-device override — Fritz!Box, OpenWRT, pfSense, Pi-hole and AdGuard ship it on, which mostly
+  hits owners who would take the other door anyway, Fritz!Box being the painful exception; detecting
+  it belongs to **H7**. And the address encodes the LAN IP, so a DHCP move breaks saved bookmarks and
+  the generated app routes, which are only re-rendered when an app is next applied — noticing an
+  address change and re-rendering them is unbuilt, so an address reservation is a step rather than
+  advice.
 
   **The HTTPS half is a separate and larger problem than it looked.** A LAN box is not publicly
   reachable, so HTTP-01 and TLS-ALPN-01 are out and DNS-01 is the only challenge left — but DNS-01

@@ -6,6 +6,7 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ### Added
 
+- A home-server install now also answers on `http://home.<your-lan-ip-with-dashes>.local.myownsuite.org` — for example `home.192-168-1-42.local.myownsuite.org` — with installed apps under the same name, so any device on your network opens your suite with no router DNS rule or hosts file. `home.mos.home` is unchanged and neither address is a setting. **Using the new one sends DNS lookups for your app subdomains to MOS-operated nameservers, which do not log queries; `home.mos.home` never involves MOS infrastructure.** The name contains your server's LAN address, so set a DHCP reservation: if it changes, saved links and app addresses break until each app is applied again. Applying your own domain with HTTPS stops the new address being served, and cloud/VPS installs are unaffected.
 - **Actual Budget**: envelope budgeting, one service and one volume. Sets its own password on first open; connects to no bank unless you add sync credentials.
 - **Paperless-ngx**: searchable scanned documents, OCR on your own server in the language chosen at install (EN/NL/DE/FR/IT/ES). Cloud AI, remote OCR and its own update check are off. Rated "Private by default" — no outbound traffic observed.
 

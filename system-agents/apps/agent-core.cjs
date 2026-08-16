@@ -1,3 +1,5 @@
+const { detectEasyDoorBase } = require('../../shared/easy-door.cjs');
+
 class AppRuntimeError extends Error {
   constructor(code, message, statusCode = 400) {
     super(message);
@@ -284,10 +286,10 @@ function runtimeServices(input, routes) {
   }));
 }
 
-function runtimeAdapterInput(input, routes) {
+function runtimeAdapterInput(input, routes, easyDoorBase = null) {
   const publicUrl = new URL(input.publicUrl);
   return {
-    caddyRoutes: renderAppRoutes({ appHost: input.appHost, routes, scheme: publicUrl.protocol.replace(/:$/u, '') }),
+    caddyRoutes: renderAppRoutes({ appHost: input.appHost, easyDoorBase, routes, scheme: publicUrl.protocol.replace(/:$/u, '') }),
     healthTarget: input.health.target,
     instanceId: input.instanceId,
     packageDigest: input.packageDigest,
@@ -350,21 +352,29 @@ ${bridge}
 `;
 }
 
-function renderAppRoutes({ appHost, internalIcalBridge = null, reverseProxy, routes = null, scheme = 'http' }) {
+// `easyDoorBase` gives every route a second site on the Easy Door name, so an app
+// is reachable from the same door the owner reached Suite Manager through. Unlike
+// Suite Manager's own block, which Caddy matches by pattern, an app route names
+// one exact host and so has to be re-derived here on every apply — which is also
+// what closes it: the base is null whenever this box is not serving the door.
+function renderAppRoutes({ appHost, easyDoorBase = null, internalIcalBridge = null, reverseProxy, routes = null, scheme = 'http' }) {
   if (Array.isArray(routes)) {
-    return routes.map((route) => renderAppRouteSite({
-      appHost: `${route.host}.${appHost.split('.').slice(1).join('.')}`,
+    const baseDomain = appHost.split('.').slice(1).join('.');
+    const baseDomains = easyDoorBase && easyDoorBase !== baseDomain ? [baseDomain, easyDoorBase] : [baseDomain];
+    return routes.flatMap((route) => baseDomains.map((base) => renderAppRouteSite({
+      appHost: `${route.host}.${base}`,
       internalIcalBridge: route.internalIcalBridge || null,
       reverseProxy: route.reverseProxy,
       scheme,
-    })).join('\n');
+    }))).join('\n');
   }
   return renderAppRouteSite({ appHost, internalIcalBridge, reverseProxy, scheme });
 }
 
 class AppAgentCore {
-  constructor(adapter) {
+  constructor(adapter, { easyDoorBase = detectEasyDoorBase } = {}) {
     this.adapter = adapter;
+    this.easyDoorBase = easyDoorBase;
   }
 
   async status() {
@@ -410,9 +420,10 @@ class AppAgentCore {
 
   async activatePackageUpdate(input) {
     const { candidate, installed } = assertPackageUpdateActivateRequest(input);
+    const easyDoorBase = this.easyDoorBase();
     const result = await this.adapter.activateAppPackageUpdate({
-      candidate: runtimeAdapterInput(input.candidate, candidate.routes),
-      installed: runtimeAdapterInput(input.installed, installed.routes),
+      candidate: runtimeAdapterInput(input.candidate, candidate.routes, easyDoorBase),
+      installed: runtimeAdapterInput(input.installed, installed.routes, easyDoorBase),
     });
     return { ...result, candidateDigest: input.candidate.packageDigest, instanceId: input.candidate.instanceId, packageId: input.candidate.packageId, status: 'candidate-healthy' };
   }
@@ -425,9 +436,10 @@ class AppAgentCore {
 
   async rollbackPackageUpdate(input) {
     const { candidate, installed } = assertPackageUpdateRollbackRequest(input);
+    const easyDoorBase = this.easyDoorBase();
     const result = await this.adapter.rollbackAppPackageUpdate({
-      candidate: runtimeAdapterInput(input.candidate, candidate.routes),
-      installed: runtimeAdapterInput(input.installed, installed.routes),
+      candidate: runtimeAdapterInput(input.candidate, candidate.routes, easyDoorBase),
+      installed: runtimeAdapterInput(input.installed, installed.routes, easyDoorBase),
     });
     return { ...result, instanceId: input.installed.instanceId, packageDigest: input.installed.packageDigest, packageId: input.installed.packageId, status: 'installed-restored' };
   }
@@ -437,7 +449,7 @@ class AppAgentCore {
     const publicUrl = new URL(input.publicUrl);
     const scheme = publicUrl.protocol.replace(/:$/u, '');
     const result = await this.adapter.applyAppServices({
-      caddyRoutes: renderAppRoutes({ appHost: input.appHost, routes, scheme }),
+      caddyRoutes: renderAppRoutes({ appHost: input.appHost, easyDoorBase: this.easyDoorBase(), routes, scheme }),
       healthTarget: input.health.target,
       instanceId: input.instanceId,
       packageDigest: input.packageDigest,

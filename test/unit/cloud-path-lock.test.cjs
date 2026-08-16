@@ -43,7 +43,11 @@ const lockedRenderings = [
     output: 'cloudInit',
   },
   {
-    digest: 'd0fde921bb811c1686d50fb568c59433086e8a7fc0596d7207531c249ae641c3',
+    // The only locked rendering that writes `renderCaddyfile()` rather than
+    // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
+    // here and nowhere else in this list. Moved once, for the Easy Door site
+    // block; nothing the installer prints changed.
+    digest: 'e0a75190ebc114062df1bb5a697a5de549a0c347984ff5e42fc92f8c93c19be1',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',
