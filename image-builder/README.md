@@ -141,11 +141,12 @@ Written to a USB stick with Rufus (DD mode) or balenaEtcher, and booted:
   image is both the installer and the installed system.
 - `mos-ssh-hostkeys`, `mos-grow-root` and `mos-first-boot` give the machine its own
   identity, its full disk, and its own server login.
-- `mos-first-boot` then writes the completion banner to `/etc/issue.d/`. It leads
-  with the DNS override for `home.mos.home` and points at the docs for how; a
-  login screen is the wrong place for a guide. It does not yet offer the second
-  door below, which needs no override at all — putting both on the banner and the
-  success screen, with a probe for the one that works, is roadmap **H7**.
+- `mos-first-boot` then writes the completion banner to `/etc/issue.d/`. It states
+  the address reservation both doors need, then offers each door in one line, and
+  points at the docs for the rest; a login screen is the wrong place for a guide.
+  The Easy Door line appears only when this machine's address is RFC1918 and the
+  live Caddyfile still serves that door, and the name comes from
+  `shared/easy-door.cjs` so the screen cannot print an address the box refuses.
 
 ## Two ways in, and one of them needs nothing configured
 
@@ -158,8 +159,8 @@ neither — they are aliases for the same Suite Manager.
 - `http://home.<lan-ip-with-dashes>.local.myownsuite.org` needs nothing at all.
   The MOS-operated nameserver in `infrastructure/nameserver/` answers it with the
   encoded address, so a phone on the same wifi opens the suite with no
-  configuration by anyone. `192.168.1.42` becomes `192-168-1-42`, and every
-  installed app gets the same treatment: `seafile.192-168-1-42.local.myownsuite.org`.
+  configuration by anyone. `192.168.123.45` becomes `192-168-123-45`, and every
+  installed app gets the same treatment: `seafile.192-168-123-45.local.myownsuite.org`.
 
 The Caddyfile baked into this image matches the second name by pattern rather than
 naming a host, because a disk image cannot know the address the machine it boots

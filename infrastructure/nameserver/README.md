@@ -4,7 +4,7 @@ MOS serves each app on its own subdomain, which is a browser-origin isolation bo
 ordinary LAN nothing resolves those names, so an owner who finishes an install has no way in unless
 they run their own resolver. This box is the second door: a public authoritative nameserver that
 answers queries for names encoding the server's **LAN** address, so
-`seafile.192-168-1-42.local.myownsuite.org` resolves to `192.168.1.42` on any device with no
+`seafile.192-168-123-45.local.myownsuite.org` resolves to `192.168.123.45` on any device with no
 configuration by the owner.
 
 The first door — one wildcard `*.mos.home` rule in the owner's own Pi-hole, AdGuard, Unbound or
@@ -134,7 +134,7 @@ both edges of `172.16/12`, public addresses returning NXDOMAIN, a name that exis
 rather than NXDOMAIN for AAAA, the apex SOA, and recursion being refused. The equivalent with `dig`:
 
 ```bash
-dig @<reserved-ip> seafile.192-168-1-42.local.myownsuite.org +short   # -> 192.168.1.42
+dig @<reserved-ip> seafile.192-168-123-45.local.myownsuite.org +short   # -> 192.168.123.45
 dig @<reserved-ip> login.203-0-113-9.local.myownsuite.org +short      # must be empty
 dig @<reserved-ip> google.com                                         # must be REFUSED
 ```

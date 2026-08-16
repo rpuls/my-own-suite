@@ -7,7 +7,7 @@ const test = require('node:test');
 
 const { HttpsSettingsService } = require('../src/settings/https-settings-service.cjs');
 
-function service({ address = '192.168.1.42', settings = {} } = {}) {
+function service({ address = '192.168.123.45', settings = {} } = {}) {
   return new HttpsSettingsService({
     agent: {},
     bootstrapHost: 'home.mos.home',
@@ -21,7 +21,7 @@ function service({ address = '192.168.1.42', settings = {} } = {}) {
 test('a private LAN address answers on its Easy Door name as well as the Stealth one', () => {
   const hosts = service().allowedHosts();
 
-  assert.equal(hosts.has('home.192-168-1-42.local.myownsuite.org'), true);
+  assert.equal(hosts.has('home.192-168-123-45.local.myownsuite.org'), true);
   assert.equal(hosts.has('home.mos.home'), true);
 });
 
@@ -36,7 +36,7 @@ test('applying a real domain with DNS-01 closes the Easy Door name for good', ()
   }).allowedHosts();
 
   assert.deepEqual([...hosts], ['home.mos.home', 'home.mos.example.com']);
-  assert.equal(hosts.has('home.192-168-1-42.local.myownsuite.org'), false);
+  assert.equal(hosts.has('home.192-168-123-45.local.myownsuite.org'), false);
 });
 
 test('a domain waiting to be applied is still reachable alongside the Easy Door', () => {
@@ -44,6 +44,6 @@ test('a domain waiting to be applied is still reachable alongside the Easy Door'
 
   assert.deepEqual(
     [...hosts],
-    ['home.mos.home', 'home.mos.example.com', 'home.192-168-1-42.local.myownsuite.org'],
+    ['home.mos.home', 'home.mos.example.com', 'home.192-168-123-45.local.myownsuite.org'],
   );
 });

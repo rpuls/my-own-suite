@@ -28,7 +28,7 @@ function tempFile(contents) {
 }
 
 test('only RFC1918 addresses get an Easy Door name', () => {
-  for (const address of ['10.0.0.5', '10.255.255.254', '172.16.0.1', '172.31.255.254', '192.168.1.42']) {
+  for (const address of ['10.0.0.5', '10.255.255.254', '172.16.0.1', '172.31.255.254', '192.168.123.45']) {
     assert.equal(isPrivateIPv4(address), true, `${address} is RFC1918`);
   }
   // The restriction is the anti-phishing control, not tidiness: a public address
@@ -45,15 +45,15 @@ test('only RFC1918 addresses get an Easy Door name', () => {
 });
 
 test('the Easy Door name places the address in its own label under the MOS zone', () => {
-  assert.equal(easyDoorBaseDomain('192.168.1.42'), '192-168-1-42.local.myownsuite.org');
-  assert.equal(easyDoorHomeHost('192.168.1.42'), 'home.192-168-1-42.local.myownsuite.org');
+  assert.equal(easyDoorBaseDomain('192.168.123.45'), '192-168-123-45.local.myownsuite.org');
+  assert.equal(easyDoorHomeHost('192.168.123.45'), 'home.192-168-123-45.local.myownsuite.org');
   assert.equal(easyDoorHomeHost('10.0.0.5'), 'home.10-0-0-5.local.myownsuite.org');
 });
 
 test('Caddy matches exactly the home names the nameserver answers', () => {
   const pattern = new RegExp(EASY_DOOR_HOME_HOST_REGEXP, 'u');
 
-  for (const address of ['10.0.0.5', '10.255.255.254', '172.16.0.1', '172.31.255.254', '192.168.1.42']) {
+  for (const address of ['10.0.0.5', '10.255.255.254', '172.16.0.1', '172.31.255.254', '192.168.123.45']) {
     assert.equal(pattern.test(easyDoorHomeHost(address)), true, `${address} must be matched`);
   }
   for (const host of [
@@ -62,9 +62,9 @@ test('Caddy matches exactly the home names the nameserver answers', () => {
     'home.172-15-0-1.local.myownsuite.org',
     'home.192-169-1-1.local.myownsuite.org',
     'home.192-168-1-999.local.myownsuite.org',
-    'home.192-168-1-42.local.myownsuite.org.evil.example.com',
-    'evil.home.192-168-1-42.local.myownsuite.org',
-    'seafile.192-168-1-42.local.myownsuite.org',
+    'home.192-168-123-45.local.myownsuite.org.evil.example.com',
+    'evil.home.192-168-123-45.local.myownsuite.org',
+    'seafile.192-168-123-45.local.myownsuite.org',
     'home.mos.home',
   ]) {
     assert.equal(pattern.test(host), false, `${host} must not be matched`);
@@ -80,7 +80,7 @@ test('the Easy Door is open only while the live Caddyfile serves it', () => {
   assert.equal(easyDoorOpen(closed), false);
   assert.equal(easyDoorOpen(path.join(path.dirname(closed), 'absent')), false);
 
-  assert.equal(detectEasyDoorBase({ caddyfilePath: open, serverAddress: '192.168.1.42' }), '192-168-1-42.local.myownsuite.org');
+  assert.equal(detectEasyDoorBase({ caddyfilePath: open, serverAddress: '192.168.123.45' }), '192-168-123-45.local.myownsuite.org');
   assert.equal(detectEasyDoorBase({ caddyfilePath: open, serverAddress: '203.0.113.9' }), null);
-  assert.equal(detectEasyDoorBase({ caddyfilePath: closed, serverAddress: '192.168.1.42' }), null);
+  assert.equal(detectEasyDoorBase({ caddyfilePath: closed, serverAddress: '192.168.123.45' }), null);
 });

@@ -43,10 +43,18 @@ class HomepageService {
     }));
   }
 
-  async add(body, homeService) {
+  add(body, homeService) { return this.addEntry(body, { homeService }); }
+
+  // Managed app tiles link to Suite Manager's own redirect rather than to an
+  // absolute app address, so the dashboard is correct through whichever door the
+  // visitor arrived by. It is a separate method rather than a request field so
+  // that no owner-supplied body reaching `add` can claim it.
+  addManagedApp(body) { return this.addEntry(body, { managed: true }); }
+
+  async addEntry(body, { homeService = false, managed = false } = {}) {
     const requestId = typeof body?.requestId === 'string' && body.requestId ? body.requestId : crypto.randomUUID();
     const result = await this.runOperation(homeService ? 'add-home-service' : 'add-link', () => {
-      const input = { domainState: this.domainState(), entry: body?.entry, expectedRevision: body?.expectedRevision, requestId };
+      const input = { domainState: this.domainState(), entry: body?.entry, expectedRevision: body?.expectedRevision, managed, requestId };
       return homeService ? this.agent.addHomeService(input) : this.agent.addLink(input);
     });
     return { ...result, requestId };

@@ -184,22 +184,15 @@ with no error recorded anywhere. **H1** removes that runtime decision.
 - **H6 — Regenerate `md5sum.txt` when remastering.** Patching `grub.cfg` and `loopback.cfg` without
   updating the manifest makes casper's integrity self-check fail on every image published so far.
   *(Small — retires with the ISO path if H1 lands first)*
-- **H7 — Two doors on the success screen, and the owner picks one.** With **H1** landed, reaching the
-  suite is the only manual step left and the last one that can make a finished install look broken.
-  The screen has to answer "how do I open this" for two owners with nothing in common. *Own resolver*:
-  one wildcard rule, `*.mos.home` pointed at the server, nothing leaves the house — the answer for
-  anyone already running Pi-hole, AdGuard, Unbound or OpenWRT, and unavailable to everyone else,
-  because most consumer routers cannot express a wildcard rewrite at all. *MOS zone* (**H8**): every
-  device including phones, no configuration, at the cost of the DNS queries reaching MOS. Both doors
-  stay open for the life of the install, and the screen states each trade in a sentence rather than
-  ranking them — an owner who takes the first door should not feel the second one exists. The screen
-  cannot simply offer the MOS zone and hope: rebinding protection blocks it on real networks, and
-  whether it works varies *per device on one network*, because Private Relay and Private DNS route
-  lookups past the router. So the probe runs in the owner's browser and the screen reacts to what it
-  finds, rather than the server deciding once. Unblocked: **H8**'s address half has landed, so both
-  doors are live and the remaining work is the screen, the probe and the copy — which is as much the
-  deliverable as the routing. The console banner in `image-builder/payload/mos-first-boot` still
-  offers only the first door and belongs to the same change. *(Small)*
+- **H7 — Tell the owner which door actually works on the device in their hand.** The console banner
+  now states both doors and the dashboard works through either, and the contract for both is in
+  `docs/decisions.md` (2026-08-16). What is left is the case the banner cannot cover: rebinding
+  protection blocks the MOS-zone door on real networks, and whether it works varies *per device on
+  one network*, because Private Relay and Private DNS route lookups past the router. A console banner
+  cannot probe anything and the server cannot decide once for every device, so the probe has to run
+  in the owner's browser and the onboarding screen has to react to what it finds. The banner's
+  standing advice — no answer on the second address means your router refuses names pointing into
+  your own network, use the first — is the fallback this replaces, not a stopgap to remove. *(Small)*
 - **H8 — A working address, and trusted HTTPS, with no domain to buy.** Today a self-hosted suite
   serves plain HTTP at a name nothing on an ordinary LAN resolves, so the owner password is first set
   over an unencrypted connection, secure-origin apps do not work at all, and a non-technical owner has
@@ -491,7 +484,7 @@ Owner decisions. Future agents and reviews should not resurface these.
   conflict, and a failure mode where the box going down takes the household's DNS with it. **H8**
   reaches the same owners without any of that.
 - **A bare-IP catch-all as the answer to reachability** — declined as a solution, though it may still
-  ship as a convenience. It fixes first contact and nothing after it: `seafile.192.168.1.42` cannot
+  ship as a convenience. It fixes first contact and nothing after it: `seafile.192.168.123.45` cannot
   exist, so the first app an owner installs puts them back where they started.
 - **A stateful DNS registry — a Worker, the Cloudflare API, and a record per install** — declined for
   now. It is free and gives stable names that survive a DHCP change, but it is security-sensitive code

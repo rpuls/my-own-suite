@@ -12,6 +12,14 @@ const PROTOCOLS = new Set(['http', 'https']);
 const HOST_PATTERN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const SUBDOMAIN_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+// A managed app tile links to Suite Manager's own redirect rather than to the
+// app's absolute address. Homepage is a separate container serving one file to
+// every visitor, so an absolute href is a snapshot of whichever door installed
+// the app and is dead through the other one; a relative href resolves in the
+// visitor's browser against the origin they already reached. The path is derived
+// from the entry id and never from anything the caller supplies, which is what
+// keeps a tile from being aimed anywhere Suite Manager did not resolve itself.
+const MANAGED_APP_HREF_PREFIX = '/suite-manager/open/';
 
 class HomepageConfigError extends Error {
   constructor(code, message, statusCode = 400, details = []) {
@@ -27,6 +35,13 @@ function assertAllowedFile(file) {
     throw new HomepageConfigError('HOMEPAGE_FILE_NOT_ALLOWED', 'That Homepage file is not editable.', 404);
   }
   return file;
+}
+
+function managedAppHref(id) {
+  if (!ID_PATTERN.test(String(id || ''))) {
+    throw new HomepageConfigError('INVALID_HOMEPAGE_ID', 'A stable dashboard entry ID is required.');
+  }
+  return `${MANAGED_APP_HREF_PREFIX}${id}`;
 }
 
 function revisionFor(content) {
@@ -245,7 +260,11 @@ function findGroupPair(document, name) {
   return null;
 }
 
-function addEntry(content, rawInput, { homeService = false, id = crypto.randomUUID() } = {}) {
+// `managed` marks an app tile Suite Manager owns. It changes only where the href
+// comes from: the entry still carries the app's absolute address and that address
+// is still validated, because widget endpoints are fetched server-side from
+// inside the Homepage container and are meaningless relative.
+function addEntry(content, rawInput, { homeService = false, id = crypto.randomUUID(), managed = false } = {}) {
   const document = parseDocument(content);
   const current = document.toJS();
   validateServices(current);
@@ -264,7 +283,7 @@ function addEntry(content, rawInput, { homeService = false, id = crypto.randomUU
   const service = {
     [input.name]: {
       description: input.description,
-      href: homeService ? '#' : input.url,
+      href: homeService ? '#' : managed ? managedAppHref(id) : input.url,
       icon: input.icon,
       ...(input.widget === undefined ? {} : { widget: input.widget }),
       mos: {
@@ -305,24 +324,18 @@ function removeEntryById(content, id) {
   return { changed: true, content: next, id };
 }
 
+// Every entry here is a managed app tile, so no href is accepted: each one is
+// re-stamped to the relative form derived from its own id. That is also what
+// migrates a tile installed before this shape existed, whose href is still the
+// absolute address of whichever door installed it.
 function reconcileManagedUrls(content, entries = []) {
   const document = parseDocument(content);
   const current = document.toJS();
   validateServices(current);
   const entryMap = new Map();
   for (const entry of entries) {
-    if (!ID_PATTERN.test(String(entry?.id || ''))) {
-      throw new HomepageConfigError('INVALID_HOMEPAGE_ID', 'A stable dashboard entry ID is required.');
-    }
-    let href;
-    try { href = new URL(String(entry.href || '').trim()); } catch {
-      throw new HomepageConfigError('INVALID_LINK_URL', 'Enter a valid HTTP or HTTPS link URL.');
-    }
-    if (!PROTOCOLS.has(href.protocol.replace(':', '')) || href.username || href.password) {
-      throw new HomepageConfigError('INVALID_LINK_URL', 'Links must use HTTP or HTTPS and cannot contain credentials.');
-    }
-    entryMap.set(entry.id, {
-      href: href.href,
+    entryMap.set(entry?.id, {
+      href: managedAppHref(entry?.id),
       ...(entry.widget === undefined ? {} : { widget: validateWidget(entry.widget) }),
     });
   }
@@ -396,9 +409,11 @@ function renderCaddyRoutes(content, domainState) {
 module.exports = {
   HOMEPAGE_FILES,
   HomepageConfigError,
+  MANAGED_APP_HREF_PREFIX,
   addEntry,
   assertAllowedFile,
   entriesFromServices,
+  managedAppHref,
   projectServices,
   publicUrlFor,
   reconcileManagedUrls,

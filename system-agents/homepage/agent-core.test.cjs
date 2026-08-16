@@ -133,17 +133,36 @@ test('agent removes guided links through the same transactional projection path'
   assert.doesNotMatch(fake.transactions[0].files['services.template.yaml'], new RegExp(id, 'u'));
 });
 
+// A managed tile's href is the one thing on the dashboard that must not name a
+// door: Homepage serves one file to every visitor, so an absolute address is
+// only correct through the door that installed the app.
+test('managed app tiles link relatively while owner-entered links keep their own URL', () => {
+  const appId = '32345678-1234-4123-8123-123456789abc';
+  const added = addEntry(seed, { ...link, name: 'Stirling', url: 'http://stirling-pdf.mos.home/' }, { id: appId, managed: true });
+
+  assert.match(added.content, new RegExp(`href: /suite-manager/open/${appId}`, 'u'));
+  assert.doesNotMatch(added.content, /stirling-pdf\.mos\.home/u);
+  assert.match(addEntry(seed, link, { id }).content, /href: https:\/\/example\.com\/docs/u);
+  // Relaxing the managed href must not relax what an owner may paste.
+  assert.throws(() => addEntry(seed, { ...link, url: 'javascript:alert(1)' }, { id }), (error) => error.code === 'INVALID_LINK_URL');
+  assert.throws(() => addEntry(seed, { ...link, url: '/suite-manager/open/whatever' }, { id }), (error) => error.code === 'INVALID_LINK_URL');
+});
+
 test('managed URL reconciliation updates only MOS-owned app IDs and keeps random links untouched', () => {
   const appId = '32345678-1234-4123-8123-123456789abc';
   const randomId = '42345678-1234-4123-8123-123456789abc';
   const withApp = addEntry(seed, { ...link, name: 'Stirling', url: 'http://stirling-pdf.mos.home/' }, { id: appId }).content;
   const withRandom = addEntry(withApp, { ...link, name: 'Docs', url: 'https://example.com/docs' }, { id: randomId }).content;
 
-  const reconciled = reconcileManagedUrls(withRandom, [{ href: 'https://stirling-pdf.mos.example.com/', id: appId }]);
+  // The app tile went in absolute, as every tile written before this shape did,
+  // so this is also the migration path for an existing install.
+  const reconciled = reconcileManagedUrls(withRandom, [{ id: appId }]);
 
   assert.equal(reconciled.changed, true);
-  assert.match(reconciled.content, /href: https:\/\/stirling-pdf\.mos\.example\.com\//u);
+  assert.match(reconciled.content, new RegExp(`href: /suite-manager/open/${appId}`, 'u'));
+  assert.doesNotMatch(reconciled.content, /stirling-pdf\.mos\.home/u);
   assert.match(reconciled.content, /href: https:\/\/example\.com\/docs/u);
+  assert.throws(() => reconcileManagedUrls(withRandom, [{ id: 'not-a-uuid' }]), (error) => error.code === 'INVALID_HOMEPAGE_ID');
 });
 
 test('agent reconciles app URLs while regenerating separate home-service routes', async () => {
@@ -155,11 +174,11 @@ test('agent reconciles app URLs while regenerating separate home-service routes'
 
   await core.reconcileUrls({
     domainState,
-    entries: [{ href: 'https://stirling-pdf.mos.example.com/', id: appId }],
+    entries: [{ id: appId }],
     expectedRevision: revisionFor(withService),
   });
 
-  assert.match(fake.transactions[0].files['services.template.yaml'], /href: https:\/\/stirling-pdf\.mos\.example\.com\//u);
+  assert.match(fake.transactions[0].files['services.template.yaml'], new RegExp(`href: /suite-manager/open/${appId}`, 'u'));
   assert.match(fake.transactions[0].files['services.yaml'], /https:\/\/printer\.mos\.example\.com\//u);
   assert.equal(fake.transactions[0].caddyRoutes, 'https://printer.mos.example.com {\n  reverse_proxy http://192.168.1.20:8080\n}\n');
 });
@@ -216,14 +235,14 @@ test('guided edits reach entries inside nested subgroups', () => {
   assert.doesNotMatch(removed.content, /TrueNAS/u);
   assert.match(removed.content, /Stirling/u);
 
-  const reconciled = reconcileManagedUrls(nestedSeed, [{ href: 'https://stirling-pdf.mos.example.com/', id: '62345678-1234-4123-8123-123456789abc' }]);
+  const reconciled = reconcileManagedUrls(nestedSeed, [{ id: '62345678-1234-4123-8123-123456789abc' }]);
   assert.equal(reconciled.changed, true);
-  assert.match(reconciled.content, /href: https:\/\/stirling-pdf\.mos\.example\.com\//u);
+  assert.match(reconciled.content, /href: \/suite-manager\/open\/62345678-1234-4123-8123-123456789abc/u);
 });
 
 test('agent API has no arbitrary command, path, file, or service operation', async () => {
   const core = new HomepageAgentCore(adapter());
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['homepage.read', 'homepage.apply', 'homepage.add-link', 'homepage.add-home-service', 'homepage.remove-link', 'homepage.reconcile-urls']);
+  assert.deepEqual(status.capabilities, ['homepage.read', 'homepage.apply', 'homepage.add-link', 'homepage.add-managed-app', 'homepage.add-home-service', 'homepage.remove-link', 'homepage.reconcile-urls']);
   await assert.rejects(() => core.apply({ command: 'sh', file: 'services.template.yaml' }), HomepageConfigError);
 });

@@ -115,7 +115,6 @@ function main() {
     ISSUE_BEGIN: consoleIssueBeginMarker,
     ISSUE_END: consoleIssueEndMarker,
     REPO_REF: repoRef,
-    SETUP_URL: rendered.plan.config.publicUrls.setup,
     STATE_DIR: stateDir,
     USERNAME: rendered.linuxUsername,
   };
@@ -178,7 +177,7 @@ function main() {
   );
 
   console.log(`[mos-image] Bake seed rendered for ${repoRef} (${profile} profile).`);
-  console.log(`[mos-image] Setup URL baked into the banner: ${summary.setup}`);
+  console.log(`[mos-image] Stealth-door URL baked into the banner: ${summary.home}`);
   console.log(`[mos-image] Seed: ${outputDir}`);
   if (profile === 'lab') {
     console.log('[mos-image] WARNING: debug bake. This image carries a fixed password and must not be published.');

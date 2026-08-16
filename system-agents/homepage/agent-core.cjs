@@ -21,7 +21,7 @@ class HomepageAgentCore {
 
   async status() {
     return {
-      capabilities: ['homepage.read', 'homepage.apply', 'homepage.add-link', 'homepage.add-home-service', 'homepage.remove-link', 'homepage.reconcile-urls'],
+      capabilities: ['homepage.read', 'homepage.apply', 'homepage.add-link', 'homepage.add-managed-app', 'homepage.add-home-service', 'homepage.remove-link', 'homepage.reconcile-urls'],
       files: HOMEPAGE_FILES,
       service: 'mos-homepage-agent',
     };
@@ -48,7 +48,7 @@ class HomepageAgentCore {
   }
 
   async add(input, homeService) {
-    if (!exactKeys(input, ['domainState', 'entry', 'expectedRevision', 'requestId'])) {
+    if (!exactKeys(input, ['domainState', 'entry', 'expectedRevision', 'managed', 'requestId'])) {
       throw new HomepageConfigError('INVALID_REQUEST_SHAPE', 'Only the documented guided-entry fields are accepted.');
     }
     if (!/^[0-9a-f-]{36}$/u.test(String(input.requestId || ''))) {
@@ -59,7 +59,7 @@ class HomepageAgentCore {
     if (revisionFor(current) !== input.expectedRevision) {
       throw new HomepageConfigError('HOMEPAGE_REVISION_CONFLICT', 'Homepage configuration changed. Reload it before saving.', 409);
     }
-    const mutation = addEntry(current, input.entry, { homeService, id: input.requestId });
+    const mutation = addEntry(current, input.entry, { homeService, id: input.requestId, managed: input.managed === true });
     if (!mutation.changed) return { changed: false, file, id: mutation.id, revision: revisionFor(current) };
     const result = await this.applyFile(file, mutation.content, input.expectedRevision, input.domainState);
     return { ...result, id: mutation.id };

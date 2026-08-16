@@ -489,13 +489,13 @@ const twoRoutes = {
 };
 
 test('every app route gets a second site on the Easy Door name', async () => {
-  const { calls, core } = easyDoorAgent('192-168-1-42.local.myownsuite.org');
+  const { calls, core } = easyDoorAgent('192-168-123-45.local.myownsuite.org');
 
   await core.apply(twoRoutes);
 
   assert.match(calls[0].caddyRoutes, /^http:\/\/example-tool\.mos\.home \{/u);
-  assert.match(calls[0].caddyRoutes, /http:\/\/example-tool\.192-168-1-42\.local\.myownsuite\.org \{/u);
-  assert.match(calls[0].caddyRoutes, /http:\/\/example-admin\.192-168-1-42\.local\.myownsuite\.org \{/u);
+  assert.match(calls[0].caddyRoutes, /http:\/\/example-tool\.192-168-123-45\.local\.myownsuite\.org \{/u);
+  assert.match(calls[0].caddyRoutes, /http:\/\/example-admin\.192-168-123-45\.local\.myownsuite\.org \{/u);
   assert.equal((calls[0].caddyRoutes.match(/reverse_proxy http:\/\/127\.0\.0\.1:18123/gu) || []).length, 2);
 });
 
@@ -532,7 +532,7 @@ test('a DNS-01 Caddyfile leaves no Easy Door alias in the routes the agent regen
       calls.push(input);
       return { steps: ['built'] };
     },
-  }, { easyDoorBase: () => detectEasyDoorBase({ caddyfilePath, serverAddress: '192.168.1.42' }) });
+  }, { easyDoorBase: () => detectEasyDoorBase({ caddyfilePath, serverAddress: '192.168.123.45' }) });
 
   await core.apply({
     ...request,
@@ -546,12 +546,12 @@ test('a DNS-01 Caddyfile leaves no Easy Door alias in the routes the agent regen
 test('installing while already on the Easy Door does not emit the same site twice', async () => {
   // Caddy refuses a duplicate site address, so an owner who installs an app from
   // the Easy Door must not get the alias they are already standing on.
-  const { calls, core } = easyDoorAgent('192-168-1-42.local.myownsuite.org');
+  const { calls, core } = easyDoorAgent('192-168-123-45.local.myownsuite.org');
 
   await core.apply({
     ...request,
-    appHost: 'example-tool.192-168-1-42.local.myownsuite.org',
-    publicUrl: 'http://example-tool.192-168-1-42.local.myownsuite.org/',
+    appHost: 'example-tool.192-168-123-45.local.myownsuite.org',
+    publicUrl: 'http://example-tool.192-168-123-45.local.myownsuite.org/',
   });
 
   assert.equal((calls[0].caddyRoutes.match(/^http:\/\//gmu) || []).length, 1);
@@ -578,9 +578,9 @@ test('the Easy Door alias follows an app through an update activation and its ro
 test('renderAppRoutes keeps the primary site first so the Stealth door stays the canonical address', () => {
   const rendered = renderAppRoutes({
     appHost: 'example-tool.mos.home',
-    easyDoorBase: '192-168-1-42.local.myownsuite.org',
+    easyDoorBase: '192-168-123-45.local.myownsuite.org',
     routes: [{ host: 'example-tool', reverseProxy: '127.0.0.1:18123', service: 'web' }],
   });
 
-  assert.match(rendered, /^http:\/\/example-tool\.mos\.home \{[\s\S]*http:\/\/example-tool\.192-168-1-42\.local\.myownsuite\.org \{/u);
+  assert.match(rendered, /^http:\/\/example-tool\.mos\.home \{[\s\S]*http:\/\/example-tool\.192-168-123-45\.local\.myownsuite\.org \{/u);
 });

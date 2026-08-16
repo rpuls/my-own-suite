@@ -58,10 +58,10 @@ function refuses(name, why) {
 }
 
 // A private address encoded in the name resolves to itself, under any app label.
-resolves(`home.192-168-1-42.${ZONE}`, '192.168.1.42');
-resolves(`seafile.192-168-1-42.${ZONE}`, '192.168.1.42');
-resolves(`immich.192-168-1-42.${ZONE}`, '192.168.1.42');
-resolves(`192-168-1-42.${ZONE}`, '192.168.1.42');
+resolves(`home.192-168-123-45.${ZONE}`, '192.168.123.45');
+resolves(`seafile.192-168-123-45.${ZONE}`, '192.168.123.45');
+resolves(`immich.192-168-123-45.${ZONE}`, '192.168.123.45');
+resolves(`192-168-123-45.${ZONE}`, '192.168.123.45');
 resolves(`home.10-0-0-5.${ZONE}`, '10.0.0.5');
 resolves(`home.172-16-4-9.${ZONE}`, '172.16.4.9');
 resolves(`home.172-31-255-254.${ZONE}`, '172.31.255.254');
@@ -78,10 +78,10 @@ refuses(`nothing.${ZONE}`, 'no address in the name');
 // A name that exists must return NODATA for other types, never NXDOMAIN: a stub
 // resolver asking AAAA alongside A would otherwise treat the whole lookup as dead.
 checks.push({
-  name: `AAAA home.192-168-1-42.${ZONE}`,
-  label: `AAAA home.192-168-1-42.${ZONE} -> NODATA, not NXDOMAIN`,
+  name: `AAAA home.192-168-123-45.${ZONE}`,
+  label: `AAAA home.192-168-123-45.${ZONE} -> NODATA, not NXDOMAIN`,
   run: async () => {
-    const { records, code } = await query('resolve6', `home.192-168-1-42.${ZONE}`);
+    const { records, code } = await query('resolve6', `home.192-168-123-45.${ZONE}`);
     if (records) return `answered ${records.join(', ')}`;
     if (code === 'ENOTFOUND') return 'returned NXDOMAIN for a name that exists';
     if (code !== 'ENODATA') return `expected NODATA, got ${code}`;

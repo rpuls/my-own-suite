@@ -81,6 +81,33 @@ function detectEasyDoorBase({ caddyfilePath = CADDYFILE_PATH, serverAddress = nu
   return easyDoorBaseDomain(serverAddress || detectServerAddress());
 }
 
+// The console banner has to print the same address Suite Manager's host gate
+// admits, and shell cannot reproduce the selection rule above — a second
+// implementation of it is exactly what this module exists to prevent. Both
+// subcommands print an empty line when there is no answer, so a caller can read
+// the result without inspecting an exit code.
+//
+//   node shared/easy-door.cjs address              this machine's LAN address
+//   node shared/easy-door.cjs home-host <address>  its Easy Door name, while the door is open
+function runCli(argv) {
+  const [command, address] = argv;
+  if (command === 'address') return detectServerAddress() || '';
+  if (command === 'home-host') {
+    const base = detectEasyDoorBase({ serverAddress: address || null });
+    return base ? `home.${base}` : '';
+  }
+  throw new Error(`Unknown easy-door command: ${command || '(none)'}`);
+}
+
+if (require.main === module) {
+  try {
+    process.stdout.write(`${runCli(process.argv.slice(2))}\n`);
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 2;
+  }
+}
+
 module.exports = {
   EASY_DOOR_CADDY_MARKER,
   EASY_DOOR_HOME_HOST_REGEXP,
@@ -91,4 +118,5 @@ module.exports = {
   easyDoorHomeHost,
   easyDoorOpen,
   isPrivateIPv4,
+  runCli,
 };
