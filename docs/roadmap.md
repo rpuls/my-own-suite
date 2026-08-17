@@ -18,7 +18,7 @@ Rules for editing:
 - When a theme's gate is met, delete the theme and record the contract in `docs/decisions.md`.
 
 Consolidated 2026-07-30 from `pre-beta-checklist.md`, `beta-main-cutover-checklist.md`,
-`backup-restore-reliability-plan.md`, and the app-package refactor plan. Current release: 0.17.0.
+`backup-restore-reliability-plan.md`, and the app-package refactor plan. Current release: 0.18.0.
 
 ---
 
@@ -54,17 +54,20 @@ have one documented destination story, and no restore screen shows a raw 502 or 
 **Gate:** every visible privacy grade has a human behind it, no third-party cookie reaches an install
 domain, and "what if myownsuite.org disappears" has a published answer.
 
-- **B1 — Make first-entry review human, and AI the change detector.** Every published review is
-  `ai-assisted` / `humanReviewed: false` today. That is disclosed honestly, but it is a discoverable
-  gotcha on the single most differentiated feature. The fix is a process, not a backfill: **a human
-  reviews an app before it enters the catalog, against a written checklist, and signs it** — which is
-  roughly what already happens informally and needs to become defined and recorded. From then on, an
-  app *update* is reviewed as a **diff against the last signed review**, which is the work AI is
-  genuinely good at and the part that does not scale by hand. Anything the diff surfaces goes back to
-  a human before the grade moves. The AI never authors a whole assessment, so no published review
-  rests on an unreviewed machine judgement. Needs the checklist written, `assess-app-privacy` split
-  into first-entry and update-diff modes, and the provenance schema extended to record which one ran.
-  *(Medium)*
+- **B1 — Sign the rest of the baseline, and make AI the change detector.** The first-entry half is
+  established: `skills/human-privacy-review` is the written procedure, a review records
+  `humanReviewed` and a named reviewer, and the packages that entered the catalog most recently were
+  signed before they shipped. Two things are unfinished. Half the catalog — ONLYOFFICE, Seafile,
+  Stirling PDF and Vaultwarden — still publishes assessments no human has signed, which the site
+  discloses honestly and which is still a discoverable gotcha on the most differentiated feature in
+  the product; two of the four are reruns rather than signatures, because a capture taken since
+  contradicts a published claim in each. And the change detector does not exist: an app update
+  re-authors the whole assessment from scratch, when it should be reviewed as a **diff against the
+  last signed review** — the work AI is genuinely good at, the part that does not scale by hand, and
+  the only thing standing between an upstream policy change and a published grade that moves with no
+  human in the loop. Anything the diff surfaces goes back to a human before the grade moves. Needs
+  `assess-app-privacy` split into first-entry and update-diff modes, and a provenance field recording
+  which one ran. *(Medium)*
 - **B2 — Get the MOS zone onto the Public Suffix List.** `#192`. The zone is operated now and the
   contract is in `docs/decisions.md`; what is left is the listing, and it is the long pole. It began
   as a cookie-isolation fix: Google Analytics cookies land on install domains because sslip.io is not

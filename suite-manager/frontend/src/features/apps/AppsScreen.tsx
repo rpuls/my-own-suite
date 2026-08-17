@@ -636,6 +636,8 @@ function AppDetail({
   const uninstalled = app.instance?.status === 'uninstalled';
   const disabled = !uninstalled && (app.instance?.status === 'disabled' || app.instance?.enabled === false);
   const url = appUrl(app);
+  const screenshots = app.catalog.screenshots;
+  const cover = screenshots[0];
   const guideCompleted = app.instance?.guideState?.status === 'completed';
   const inputFields = setupFieldsNeedInput(app);
   const needsPreparation = !app.instance && inputFields.length > 0;
@@ -758,24 +760,44 @@ function AppDetail({
     <button aria-label="Close app details" className="suite-app-detail-backdrop" onClick={onClose} tabIndex={-1} type="button" />
     {guideOpen && hasGuide(app) ? <AppGuidePanel app={app} onClose={() => setGuideOpen(false)} onStatus={(status) => onGuideStatus(app, status)} updating={guideUpdating} /> : null}
     <aside aria-label={`${app.name} details`} aria-modal="true" className="suite-app-detail" role="dialog">
-      <header className="suite-app-detail-hero">
-        <button aria-label="Close app details" className="suite-icon-button suite-app-detail-close" onClick={onClose} type="button"><Icon name="x" /></button>
-        <AppIcon app={app} large />
-        <div className="suite-app-detail-heading">
-          <div className="suite-app-detail-title-row">
-            <h2>{app.name}</h2>
-            <span className="suite-app-category-pill">{categoryLabel(primaryCategory(app))}</span>
-            {app.external ? <span className="suite-app-external-pill">External &middot; Unverified</span> : null}
-            <AppHealthIndicator app={app} />
-          </div>
-          {app.catalog.replaces.length ? <p className="suite-app-detail-replaces"><span>Replaces</span><strong>{shortReplaces(app.catalog.replaces)}</strong></p> : null}
+      {/* The first package screenshot is the hero backdrop, fading into the
+          drawer surface behind the name. A package without screenshots keeps
+          the same arrangement on the plain drawer surface. */}
+      <header className={`suite-app-detail-hero${cover ? ' has-cover' : ''}`}>
+        {cover ? <img alt="" className="suite-app-detail-cover" src={cover.src} /> : null}
+        <div className="suite-app-detail-hero-top">
+          {screenshots.length ? <button className="suite-app-hero-pill" onClick={() => { setSlideIdx(0); setGalleryOpen(true); }} type="button">
+            <Icon name="screens" />
+            {screenshots.length === 1 ? '1 screen' : `${screenshots.length} screens`}
+          </button> : null}
+          <button aria-label="Close app details" className="suite-app-hero-pill is-round" onClick={onClose} type="button"><Icon name="x" /></button>
         </div>
-        <div className="suite-app-primary-actions">
+        <div className="suite-app-detail-hero-bottom">
+          <AppIcon app={app} large />
+          <div className="suite-app-detail-heading">
+            <div className="suite-app-detail-title-row">
+              <h2>{app.name}</h2>
+              <AppHealthIndicator app={app} />
+            </div>
+            <p className="suite-app-detail-replaces">
+              {app.catalog.replaces.length ? <><span className="suite-app-detail-replaces-label">Replaces</span><strong>{shortReplaces(app.catalog.replaces)}</strong></> : null}
+              <span className="suite-app-category-pill">{categoryLabel(primaryCategory(app))}</span>
+              {app.external ? <span className="suite-app-external-pill">External &middot; Unverified</span> : null}
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <div className="suite-app-detail-scroll">
+        {/* Sticky under the hero image: the app's own front door stays reachable
+            however far down the owner has read. */}
+        <div className="suite-app-action-bar">
           {updateWaiting ? <>
             <button className="mos-btn mos-btn-primary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking update...' : 'Review update'}</button>
             {primaryDestination ? <a className="mos-btn mos-btn-secondary" href={url}>Open {app.name}</a> : null}
           </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : needsPreparation && !setupOpen ? <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setSetupOpen(true)} type="button">Prepare</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={submitInstall} type="button">{installing ? 'Installing...' : 'Install'}</button>}
           {ready && hasGuide(app) && !guideCompleted ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
+          <span className="suite-app-action-spacer" />
           {maintenanceActions.length ? <ActionMenu ariaLabel="More app actions" disabled={installing || guideUpdating} items={maintenanceActions} /> : null}
           {confirmUninstall ? <Dialog
             footer={<>
@@ -788,34 +810,34 @@ function AppDetail({
             <Notice title="Uninstalling deletes this app's data" variant="warning"><p>MOS removes the app's containers, web address, Homepage shortcut, settings, secrets, and data volumes. Anything stored in {app.name} is deleted with it &mdash; only a backup made beforehand can bring it back.</p></Notice>
             <p className="suite-meta">If you only want the app offline, use Stop instead &mdash; it keeps all data and settings.</p>
           </Dialog> : null}
-          {homepageAvailable && !ready && !disabled && !uninstalled ? <label className="suite-app-homepage-option">
-            <input checked={showOnHomepage} disabled={installing} onChange={(event) => setShowOnHomepage(event.currentTarget.checked)} type="checkbox" />
-            <span>Add shortcut to Homepage</span>
-          </label> : null}
-          {setupOpen && needsPreparation ? <AppSetupPanel
-            disabled={installing}
-            fields={inputFields}
-            onChange={(id, value) => setSetupConfig((current) => ({ ...current, [id]: value }))}
-            values={setupConfig}
-          /> : null}
         </div>
-      </header>
-      {app.instance?.updateRecovery ? <Notice title="App update needs attention" variant="warning">
-        <p>{app.instance.updateRecovery.state === 'retry-safe'
-          ? 'The update stopped before changing the running app. Review the latest update and try again.'
-          : app.instance.updateRecovery.state === 'rollback-required'
-            ? 'The update stopped after changing the running app. Restore the previous version, then update again when ready.'
-            : 'The update installed its new version but stopped before recording it. Finish the update to bring this record in line with what is running.'}</p>
-        {app.instance.updateRecovery.state !== 'retry-safe' ? <p>
-          <button className="mos-btn mos-btn-secondary" disabled={recovering} onClick={() => void recoverUpdate()} type="button">
-            {recovering ? 'Recovering...' : app.instance.updateRecovery.state === 'rollback-required' ? 'Restore previous version' : 'Finish update'}
-          </button>
-        </p> : null}
-        {recoverError ? <p role="alert">{recoverError}</p> : null}
-        <details className="suite-advanced"><summary>Advanced details</summary><code>{app.instance.updateRecovery.errorCode}</code></details>
-      </Notice> : null}
 
-      <div className="suite-app-detail-scroll">
+        {homepageAvailable && !ready && !disabled && !uninstalled ? <label className="suite-app-homepage-option">
+          <input checked={showOnHomepage} disabled={installing} onChange={(event) => setShowOnHomepage(event.currentTarget.checked)} type="checkbox" />
+          <span>Add shortcut to Homepage</span>
+        </label> : null}
+        {setupOpen && needsPreparation ? <AppSetupPanel
+          disabled={installing}
+          fields={inputFields}
+          onChange={(id, value) => setSetupConfig((current) => ({ ...current, [id]: value }))}
+          values={setupConfig}
+        /> : null}
+
+        {app.instance?.updateRecovery ? <Notice title="App update needs attention" variant="warning">
+          <p>{app.instance.updateRecovery.state === 'retry-safe'
+            ? 'The update stopped before changing the running app. Review the latest update and try again.'
+            : app.instance.updateRecovery.state === 'rollback-required'
+              ? 'The update stopped after changing the running app. Restore the previous version, then update again when ready.'
+              : 'The update installed its new version but stopped before recording it. Finish the update to bring this record in line with what is running.'}</p>
+          {app.instance.updateRecovery.state !== 'retry-safe' ? <p>
+            <button className="mos-btn mos-btn-secondary" disabled={recovering} onClick={() => void recoverUpdate()} type="button">
+              {recovering ? 'Recovering...' : app.instance.updateRecovery.state === 'rollback-required' ? 'Restore previous version' : 'Finish update'}
+            </button>
+          </p> : null}
+          {recoverError ? <p role="alert">{recoverError}</p> : null}
+          <details className="suite-advanced"><summary>Advanced details</summary><code>{app.instance.updateRecovery.errorCode}</code></details>
+        </Notice> : null}
+
         <InstallProgress error={installError} steps={installSteps} />
 
         {!app.validation.valid ? <Notice title="This package cannot be installed yet" variant="warning"><ul>{app.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}
@@ -841,14 +863,7 @@ function AppDetail({
           {comparisonError ? <p role="alert">{comparisonError}</p> : null}
         </section> : null}
 
-        <section aria-label="App overview" className={`suite-app-tiles${app.catalog.screenshots.length ? ' has-screens' : ''}`}>
-          {app.catalog.screenshots.length ? <button aria-label={`Preview ${app.catalog.screenshots.length === 1 ? '1 screen' : `${app.catalog.screenshots.length} screens`} of ${app.name}`} className="suite-app-screens-tile" onClick={() => { setSlideIdx(0); setGalleryOpen(true); }} type="button">
-            <img alt="" src={app.catalog.screenshots[0]!.src} />
-            <span aria-hidden="true" className="suite-app-screens-head">
-              <span className="suite-app-tile-label">Screens</span>
-              <span className="suite-app-screens-count">({app.catalog.screenshots.length})</span>
-            </span>
-          </button> : null}
+        <section aria-label="App overview" className="suite-app-tiles">
           <PrivacyFactsTile advisories={app.advisories} onOpen={() => setPrivacyOpen(true)} privacy={app.privacy} />
           <button className="suite-app-resources-tile" onClick={() => setResourcesOpen(true)} type="button">
             <span className="suite-app-tile-label">Resources</span>
@@ -1118,28 +1133,37 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
   return <div className="suite-app-detail-layer">
     <button aria-label="Close package details" className="suite-app-detail-backdrop" onClick={onClose} tabIndex={-1} type="button" />
     <aside aria-label={`${card.name} details`} aria-modal="true" className="suite-app-detail" role="dialog">
+      {/* An external package never ships screenshots, so this is the same hero
+          without a cover image. */}
       <header className="suite-app-detail-hero">
-        <button aria-label="Close package details" className="suite-icon-button suite-app-detail-close" onClick={onClose} type="button"><Icon name="x" /></button>
-        <ExternalAppIcon card={card} large />
-        <div className="suite-app-detail-heading">
-          <div className="suite-app-detail-title-row">
-            <h2>{card.name}</h2>
-            <span className="suite-app-external-pill">External &middot; Unverified</span>
-          </div>
-          <p>{externalDescription(card)}</p>
+        <div className="suite-app-detail-hero-top">
+          <button aria-label="Close package details" className="suite-app-hero-pill is-round" onClick={onClose} type="button"><Icon name="x" /></button>
         </div>
-        <div className="suite-app-primary-actions">
-          <button className="mos-btn mos-btn-primary" disabled={!canInstall} onClick={() => onInstall(resolved, { ...setupConfig })} type="button">{installing ? 'Installing...' : 'Install'}</button>
-          {inputFields.length ? <AppSetupPanel
-            disabled={installing}
-            fields={inputFields}
-            onChange={(id, value) => setSetupConfig((current) => ({ ...current, [id]: value }))}
-            values={setupConfig}
-          /> : null}
+        <div className="suite-app-detail-hero-bottom">
+          <ExternalAppIcon card={card} large />
+          <div className="suite-app-detail-heading">
+            <div className="suite-app-detail-title-row">
+              <h2>{card.name}</h2>
+            </div>
+            <p className="suite-app-detail-replaces">
+              <span className="suite-app-external-pill">External &middot; Unverified</span>
+            </p>
+          </div>
         </div>
       </header>
 
       <div className="suite-app-detail-scroll">
+        <div className="suite-app-action-bar">
+          <button className="mos-btn mos-btn-primary" disabled={!canInstall} onClick={() => onInstall(resolved, { ...setupConfig })} type="button">{installing ? 'Installing...' : 'Install'}</button>
+        </div>
+        <p className="suite-app-detail-description">{externalDescription(card)}</p>
+        {inputFields.length ? <AppSetupPanel
+          disabled={installing}
+          fields={inputFields}
+          onChange={(id, value) => setSetupConfig((current) => ({ ...current, [id]: value }))}
+          values={setupConfig}
+        /> : null}
+
         {installError ? <Notice title="This package could not be installed" variant="warning"><p>{installError}</p></Notice> : null}
 
         <Notice title="Unverified external package" variant="warning">

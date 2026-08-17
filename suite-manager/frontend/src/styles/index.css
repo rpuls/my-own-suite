@@ -794,7 +794,6 @@
 }
 
 .suite-app-card-actions,
-.suite-app-primary-actions,
 .suite-app-link-row {
   display: flex;
   flex-wrap: wrap;
@@ -1172,32 +1171,147 @@
   gap: var(--mos-space-5);
   min-height: 0;
   overflow: auto;
-  padding: var(--mos-space-5) var(--mos-space-6) var(--mos-space-6);
+  padding: 0 var(--mos-space-6) var(--mos-space-6);
+}
+
+/* App detail hero — the package's first screenshot fills the top of the
+   drawer and fades into the drawer surface, with the logo, name, and what it
+   replaces sitting on the faded end of it. --suite-sheet is the colour the
+   drawer's frost actually resolves to over the dimmed page behind it, so the
+   fade lands on the drawer surface without a seam in either theme; the same
+   colour backs the sticky action bar. */
+.suite-app-detail {
+  --suite-sheet-rgb: 8 26 46;
+  --suite-sheet: rgb(var(--suite-sheet-rgb));
+}
+
+[data-theme='light'] .suite-app-detail {
+  --suite-sheet-rgb: 244 245 246;
 }
 
 .suite-app-detail-hero {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--mos-space-4);
   position: relative;
   z-index: 1;
-  padding: var(--mos-space-6) var(--mos-space-6) var(--mos-space-5);
-  border-bottom: var(--mos-border-hairline);
-  background: var(--mos-color-frost);
-  -webkit-backdrop-filter: var(--mos-frost-filter);
-  backdrop-filter: var(--mos-frost-filter);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  isolation: isolate;
+  min-height: 12rem;
 }
 
-.suite-app-detail-close {
+.suite-app-detail-hero.has-cover {
+  min-height: 18rem;
+}
+
+.suite-app-detail-cover {
   position: absolute;
-  top: var(--mos-space-6);
-  right: var(--mos-space-6);
+  z-index: -1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: left top;
+}
+
+.suite-app-detail-hero.has-cover::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--suite-sheet-rgb) / 0.3) 0%,
+    rgb(var(--suite-sheet-rgb) / 0) 40%,
+    rgb(var(--suite-sheet-rgb) / 0.55) 56%,
+    rgb(var(--suite-sheet-rgb) / 0.92) 70%,
+    var(--suite-sheet) 84%,
+    var(--suite-sheet) 100%
+  );
+}
+
+.suite-app-detail-hero-top {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--mos-space-2);
+  padding: var(--mos-space-4);
+}
+
+/* No bottom padding: the sticky action bar's own top padding is the whole
+   gap between the name and the first action. */
+.suite-app-detail-hero-bottom {
+  display: grid;
+  align-content: end;
+  justify-items: start;
+  gap: var(--mos-space-3);
+  padding: var(--mos-space-5) var(--mos-space-6) 0;
+}
+
+/* Floating controls sit on the unfaded part of the screenshot, which can be
+   any brightness, so they carry their own dark chip in both themes. Without a
+   cover they fall back to the ordinary surface chip. */
+.suite-app-hero-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.35rem;
+  padding: 0 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: var(--mos-radius-pill);
+  background: rgba(6, 21, 38, 0.55);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+.suite-app-hero-pill:hover {
+  background: rgba(6, 21, 38, 0.78);
+  transform: translateY(-1px);
+}
+
+.suite-app-hero-pill:focus-visible {
+  outline: var(--mos-focus-ring);
+}
+
+.suite-app-hero-pill.is-round {
+  width: 2.35rem;
+  padding: 0;
+  justify-content: center;
+}
+
+.suite-app-hero-pill .suite-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex: 0 0 auto;
+}
+
+.suite-app-detail-hero:not(.has-cover) .suite-app-hero-pill {
+  border: 1px solid var(--mos-color-surface-border);
+  background: var(--mos-color-surface);
+  color: var(--mos-color-text);
+}
+
+.suite-app-detail-hero:not(.has-cover) .suite-app-hero-pill:hover {
+  background: var(--mos-color-surface-strong);
+}
+
+/* The logo keeps a light tile of its own: package icons are drawn for light
+   backgrounds and would disappear into the screenshot behind them. */
+.suite-app-detail-hero .suite-app-icon-large {
+  width: 5.25rem;
+  height: 5.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 1.25rem 2.5rem rgba(3, 10, 20, 0.45);
 }
 
 .suite-app-detail-heading {
   display: grid;
-  gap: var(--mos-space-3);
-  padding-right: 3.5rem;
+  gap: 0.45rem;
+  min-width: 0;
 }
 
 .suite-app-detail-title-row {
@@ -1212,24 +1326,26 @@
   min-width: 0;
   margin: 0;
   color: var(--mos-color-text-strong);
-  font-size: 2rem;
+  font-size: 2.1rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
   line-height: var(--mos-line-height-tight);
   overflow-wrap: anywhere;
 }
 
-.suite-app-detail-title-row .suite-app-health-indicator {
-  margin-left: auto;
+.suite-app-detail-hero.has-cover .suite-app-detail-heading h2 {
+  text-shadow: 0 2px 12px rgb(var(--suite-sheet-rgb) / 0.55);
 }
 
 .suite-app-detail-replaces {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.5rem;
   margin: 0;
 }
 
-.suite-app-detail-replaces span {
+.suite-app-detail-replaces-label {
   color: var(--mos-color-text-muted);
   font-size: var(--mos-text-label);
   font-weight: 800;
@@ -1239,6 +1355,7 @@
 
 .suite-app-detail-replaces strong {
   color: var(--mos-color-text);
+  font-weight: 600;
 }
 
 .suite-app-detail-heading p,
@@ -1256,9 +1373,24 @@
   line-height: 1.6;
 }
 
-.suite-app-primary-actions {
-  grid-column: 1 / -1;
+/* Sticky action bar directly under the hero. It carries the drawer's own
+   opaque colour so the content scrolling beneath it stays hidden, and its
+   padding replaces the scroll container's missing top padding. */
+.suite-app-action-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: var(--mos-space-3);
+  padding: var(--mos-space-4) 0;
+  border-bottom: var(--mos-border-hairline);
+  background: var(--suite-sheet);
+}
+
+.suite-app-action-spacer {
+  flex: 1 1 auto;
 }
 
 .suite-app-homepage-option {
@@ -1438,14 +1570,13 @@
    SIBLING STYLES — the public site's app drawer mirrors these tiles and the
    gallery/services dialogs below as the .app-tile/.app-gallery/.app-service
    rules in site/src/styles/landing.css; keep look and copy in sync. */
+/* Three columns for two tiles: the row is sized for the facts MOS can state
+   about any package, and the free column keeps that width honest rather than
+   stretching two tiles to fill it. */
 .suite-app-tiles {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--mos-space-3);
-}
-
-.suite-app-tiles.has-screens {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--mos-space-3);
 }
 
 .suite-app-tiles > button {
@@ -1496,55 +1627,6 @@
   width: 0.85rem;
   height: 0.85rem;
   flex: 0 0 auto;
-}
-
-/* The child combinator keeps this heavier than the shared
-   .suite-app-tiles > button padding it must cancel. */
-.suite-app-tiles > button.suite-app-screens-tile {
-  position: relative;
-  align-content: start;
-  padding: 0;
-  overflow: hidden;
-}
-
-.suite-app-screens-tile img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top;
-}
-
-/* The cover screenshot can be any brightness, so the label sits on its own
-   darkened band that fades out. Padding matches the sibling tiles so the
-   label lines up with Posture grade and Resources. The band stays the brand
-   navy (rgba of --mos-color-bg's dark value) in every theme — a token here
-   would flip light and lose the guaranteed contrast over the image. */
-.suite-app-screens-head {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  width: 100%;
-  padding: var(--mos-space-3) var(--mos-space-3) 1.2rem;
-  background: linear-gradient(180deg, rgba(6, 21, 38, 0.85) 0%, rgba(6, 21, 38, 0.6) 62%, rgba(6, 21, 38, 0) 100%);
-}
-
-/* Text on the fixed-dark band is pinned to the dark theme's muted color so
-   it matches the sibling tile labels today and stays readable if a light
-   theme ever reaches this screen. */
-.suite-app-screens-head .suite-app-tile-label,
-.suite-app-screens-count {
-  color: #b8c9de;
-}
-
-.suite-app-screens-count {
-  font-size: var(--mos-text-label);
-  font-weight: 800;
-  letter-spacing: var(--mos-letter-spacing-label);
 }
 
 .suite-app-resources-line {
@@ -2394,7 +2476,6 @@
     align-items: stretch;
   }
   .suite-app-card-main,
-  .suite-app-detail-hero,
   .suite-app-connection,
   .suite-app-related-list button {
     grid-template-columns: 1fr;
@@ -2415,26 +2496,19 @@
     min-width: 0;
     border-left: 0;
   }
-  .suite-app-detail-hero { padding: var(--mos-space-5) var(--mos-space-4); }
-  .suite-app-detail-scroll { padding: var(--mos-space-4) var(--mos-space-4) var(--mos-space-5); }
-  .suite-app-detail-close {
-    top: var(--mos-space-5);
-    right: var(--mos-space-4);
-  }
-  .suite-app-detail-heading { padding-right: 3.25rem; }
+  .suite-app-detail-hero.has-cover { min-height: 15.5rem; }
+  .suite-app-detail-hero-bottom { padding: var(--mos-space-4) var(--mos-space-4) 0; }
+  .suite-app-detail-scroll { padding: 0 var(--mos-space-4) var(--mos-space-5); }
+  .suite-app-detail-heading h2 { font-size: 1.7rem; }
   .suite-app-detail-title-row {
     align-items: flex-start;
   }
   .suite-app-facts,
   .suite-app-tiles,
-  .suite-app-tiles.has-screens,
   .suite-updates-facts,
   .suite-backup-destination-card,
   .suite-backup-bundle-list article {
     grid-template-columns: 1fr;
-  }
-  .suite-app-screens-tile {
-    min-height: 9rem;
   }
   .suite-updates-header,
   .suite-updates-track {
