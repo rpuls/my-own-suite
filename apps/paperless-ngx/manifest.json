@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "paperless-ngx",
   "name": "Paperless-ngx",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "minimumMosVersion": "0.18.0",
   "summary": "A searchable archive of every letter, invoice and contract you own.",
   "category": "office",
@@ -156,7 +156,7 @@
         "env": {
           "PAPERLESS_REDIS": "redis://broker:6379",
           "PAPERLESS_DBENGINE": "sqlite",
-          "PAPERLESS_URL": "${app.publicUrl}",
+          "PAPERLESS_URL": "${app.scheme}://${app.host}",
           "PAPERLESS_ALLOWED_HOSTS": "paperless",
           "PAPERLESS_ENABLE_UPDATE_CHECK": "false",
           "PAPERLESS_SECRET_KEY": "${secret.secretKey}",

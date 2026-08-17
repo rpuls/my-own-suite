@@ -168,9 +168,11 @@ A reference is recognized only when the namespace is a lowercase word followed b
 | --- | --- | --- |
 | `${config.<fieldId>}` | A non-secret setup field's value | Service env, onboarding `values[].value`, provisional areas |
 | `${secret.<fieldId>}` | A secret setup field's value | Service env and provisional areas only — never onboarding, never catalog |
-| `${app.host}` / `${app.scheme}` / `${app.publicUrl}` | The app's public hostname, scheme, and full URL | Service env, onboarding `values[].value`, provisional areas |
+| `${app.host}` / `${app.scheme}` / `${app.publicUrl}` | The app's public hostname, scheme, and base URL — `publicUrl` always ends in `/` | Service env, onboarding `values[].value`, provisional areas |
 | `${owner.name}` / `${owner.email}` | The suite owner's profile | `setup.fields[].default` only |
 | `${import.*}` / `${export.*}` | Capability wiring | The provisional capability system only |
+
+Because `${app.publicUrl}` ends in `/`, it concatenates cleanly with a path (`${app.publicUrl}welcome/`) but is the wrong value for a variable that wants a bare origin — some servers reject an origin carrying a path and refuse to start. Compose those as `${app.scheme}://${app.host}`.
 
 **Every reference is validated.** A typo like `${config.adminUserName}` fails validation instead of shipping verbatim into a container env var and failing silently on someone else's machine. An unknown namespace is an error too — future namespaces (an SMTP relay would introduce `${smtp.*}`) are reserved and arrive gated by `minimumMosVersion`.
 
