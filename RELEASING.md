@@ -55,7 +55,7 @@ Each release includes:
 - An updated `CHANGELOG.md`
 - An updated root `VERSION` file containing `X.Y.Z`
 - An updated root `releases/stable.json` manifest containing the stable channel metadata
-- A flashable installer image and its SHA256, hosted on `downloads.myownsuite.org`
+- A flashable disk image and its SHA256, hosted on `downloads.myownsuite.org`
 
 These files must agree with each other and with the release tag. The pipeline writes the
 image and the release notes; the rest comes from `npm run release:prepare`.
@@ -115,9 +115,9 @@ everything that can be automated happens when the tag is pushed.
    dirty working tree so that unrelated work cannot ride along in the release commit.
    It does not commit, so review the diff.
 3. Commit the prepared files, open the PR into `main`, and merge it with a **merge commit**.
-4. Optional, and worth it when the installer or the pipeline itself changed: go to
+4. Optional, and worth it when the image build or the pipeline itself changed: go to
    **Actions → Release → Run workflow** on `main`. That runs the same gate and the same
-   installer build, uploads to `dry-run/` in the bucket, and stops before publishing. It
+   image build, uploads to `dry-run/` in the bucket, and stops before publishing. It
    rehearses the part of a release a moved tag cannot undo.
 5. Tag and push:
 
@@ -132,9 +132,10 @@ Pushing the tag runs `.github/workflows/release.yml`, which:
   code that never went through a pull request;
 - re-runs `npm test` and `npm run release:check -- --release vX.Y.Z`, so a hand-made tag
   cannot skip a check the prepare step would have caught;
-- renders the installer seed **pinned to the tag**, and fails if it resolves to a branch
-  or carries a build-time password;
-- builds the installer ISO, checksums it, and uploads it to R2;
+- renders the bake seed **pinned to the tag**, and fails if it resolves to a branch or
+  carries a build-time password;
+- bakes the disk image, **boots the compressed artifact it is about to upload** and
+  refuses to continue unless Suite Manager answers on it, then uploads it to R2;
 - publishes the GitHub Release with the download link, the SHA256, and the changelog
   section for that version.
 
@@ -201,27 +202,33 @@ Use for urgent production-impacting issues.
 4. Tag and release `vX.Y.(Z+1)`.
 5. Merge hotfix back into `main`.
 
-## The installer image
+## The published image
 
-Since `v0.16.0`, every release publishes a flashable installer image. There is nothing to
-do per release — this section is here so the wiring is understood, not operated.
+Every release publishes a flashable disk image. There is nothing to do per release — this
+section is here so the wiring is understood, not operated.
+
+**What it is.** Not an installer: a machine that was installed inside a VM by the pipeline
+and snapshotted, so the partition table and bootloader are decided at build time rather than
+on a stranger's hardware. It self-installs when booted from removable media. The installer
+ISO still exists and is still built — the bake runs it to produce the machine it snapshots —
+but it is no longer uploaded, linked, or documented as a download.
 
 **Where it lives.** Cloudflare R2 bucket `mos-downloads`, served publicly through the bound
 custom domain `downloads.myownsuite.org`:
 
 | Path | Written by | Meaning |
 | --- | --- | --- |
-| `vX.Y.Z/my-own-suite-installer-vX.Y.Z.iso` | tag push | the published download |
-| `vX.Y.Z/SHA256SUMS` | tag push | checksum beside the bytes |
+| `vX.Y.Z/my-own-suite-vX.Y.Z.img.xz` | tag push | the published download |
+| `vX.Y.Z/SHA256SUMS` | tag push | checksums beside the bytes, for the compressed and raw image |
 | `dry-run/…` | manual Run workflow | rehearsal only, never linked; deleted by the next release |
 
 The checksum is also attached to the GitHub Release, and **that is the copy to trust**: one
 served from the same host as the image it describes proves only that the host agrees with
 itself.
 
-**Why R2 and not a release asset.** The Ubuntu 24.04 base makes the image ~3.2 GiB, and a
-GitHub release asset is capped at 2 GiB. R2 has no egress charge, and the account already
-exists for the site.
+**Why R2 and not a release asset.** The image is ~2 GiB compressed, which is already at
+GitHub's 2 GiB per-asset cap and free to grow past it as the baked container images do. R2
+has no egress charge, and the account already exists for the site.
 
 **Why the S3 API and not `wrangler`.** `wrangler r2 object put` sends one request; a file
 this size needs multipart upload. The workflow uses `aws s3 cp`, which R2 speaks natively.
@@ -231,15 +238,13 @@ S3 credentials, from an Object Read & Write token scoped to this bucket. They ar
 `CLOUDFLARE_API_TOKEN`, which belongs to the site deployment. `CLOUDFLARE_ACCOUNT_ID` is
 shared with the site deployment and forms the S3 endpoint.
 
-**Storage.** The free tier is 10 GB and an image is ~3.2 GiB, so the bucket holds three.
-Publishing a release deletes everything except the newest two versions and the `dry-run/`
-scratch prefix, and rewrites the notes of any release whose image it removed so the page
-points at the current download instead of a 404.
+**Storage.** The free tier is 10 GB. Publishing a release deletes everything except the
+newest two versions and the `dry-run/` scratch prefix, and rewrites the notes of any release
+whose image it removed so the page points at the current download instead of a 404.
 
-Only ever install from the newest image: a server updates itself afterwards, so an old
-image installs the same machine by a slower route. The second one is kept for the case the
-newest turns out not to boot, which is the one thing a release cannot verify before
-publishing.
+Only ever install from the newest image: a server updates itself afterwards, so an old image
+installs the same machine by a slower route. The second is kept so that a withdrawal has
+somewhere to point.
 
 A withdrawn image is also the only way to stop handing out a build with a known flaw. If a
 published image has to go before the next release prunes it, delete its prefix in the
@@ -250,16 +255,25 @@ case, not the urgent one.
 
 One build is flashed by everyone who downloads it, so anything decided while the image is
 built is shared by every machine installed from it, and extractable by anyone who has the
-file. The pipeline enforces two things before the multi-gigabyte build even starts, and both
-failures are release-stopping:
+file. The pipeline checks the seed before the multi-gigabyte build even starts, and every
+one of these failures is release-stopping:
 
 - the seed must pin the **tag**, never a branch — otherwise the image installs whatever that
   branch happens to be later;
 - the seed must carry **no password**. The installed machine generates its own console login
-  on first boot and hands it over once through Suite Manager.
+  on first boot and hands it over once through Suite Manager;
+- the seed must be built with the **release** profile, not the debug one;
+- the seed must not enable the **lab reset agent**, which is an unauthenticated endpoint that
+  wipes the suite.
 
-Setting `LINUX_PASSWORD` still pins a password for a lab machine you build yourself. An
-image built that way must never be shared.
+Setting `LINUX_PASSWORD`, or baking with `-DebugBake`, still pins a password for a lab
+machine you build yourself. An image built that way must never be shared.
+
+**And it must boot.** After the bake, the pipeline boots the compressed artifact it is about
+to upload — on a disk deliberately larger than the image, because nobody installs onto a disk
+the exact size of the download — and refuses to upload unless Suite Manager answers 200 and
+the disk left behind passes `image-builder/check-target.sh`. So a boot-layout regression
+cannot reach a download.
 
 ## Release Checklist (Copy/Paste)
 
@@ -282,8 +296,11 @@ After tagging:
 - [ ] Release page shows the download link, the SHA256, and that version's changelog section
 - [ ] Image downloaded from the published link and its checksum matches the one on the
       release page
-- [ ] Image flashed and booted at least once, reaching a working Suite Manager
+- [ ] Image flashed to a USB stick and self-installed onto real hardware at least once,
+      reaching a working Suite Manager
 
-The last item is the only part of a release nothing can verify for you. Until someone boots
-a published image, "the pipeline succeeded" means the bytes were produced and uploaded — not
-that they install.
+The last item is the part of a release nothing can verify for you, and the reason is
+specific: the pipeline boots the published image in a VM, but neither QEMU nor Hyper-V
+presents a disk as *removable*, so the self-install guard — the thing that decides whether
+this is an install or an already-installed machine — is the one step no automated run
+exercises. Everything up to it is proven before upload; that step is proven by a person.

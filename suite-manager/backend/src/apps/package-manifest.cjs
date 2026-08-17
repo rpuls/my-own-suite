@@ -107,6 +107,23 @@ function publicOnboarding(manifest) {
   };
 }
 
+// Declared resource needs, or null when the package does not state them. The
+// steady pair travels together or not at all, so the UI never has to render
+// half a figure; the peaks are independently optional.
+function publicServiceRequires(requires) {
+  if (!isRecord(requires)) return null;
+  const positive = (value) => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null);
+  const cpuCores = positive(requires.cpuCores);
+  const memoryMb = positive(requires.memoryMb);
+  if (cpuCores === null || memoryMb === null) return null;
+  return {
+    cpuCores,
+    cpuPeakCores: positive(requires.cpuPeakCores),
+    memoryMb,
+    memoryPeakMb: positive(requires.memoryPeakMb),
+  };
+}
+
 function publicCatalog(manifest) {
   const catalog = isRecord(manifest.catalog) ? manifest.catalog : {};
   const normalizeFeature = (feature) => ({
@@ -157,6 +174,7 @@ function publicPackageSummary(manifest, validationErrors = []) {
       dockerfile: hasText(service?.dockerfile) ? service.dockerfile : null,
       id,
       internalPort: Number.isInteger(service?.internalPort) ? service.internalPort : null,
+      requires: publicServiceRequires(service?.requires),
       volumes: Array.isArray(service?.volumes) ? service.volumes : [],
     }));
   return {

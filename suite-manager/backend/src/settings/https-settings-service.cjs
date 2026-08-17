@@ -1,21 +1,8 @@
 const { HttpsSettingsError, validateHttpsInput } = require('../../../../shared/https-contract.cjs');
-const os = require('node:os');
+const { detectServerAddress, easyDoorHomeHost } = require('../../../../shared/easy-door.cjs');
 
 function homeHostFor(baseDomain) {
   return baseDomain ? `home.${baseDomain}` : null;
-}
-
-function detectServerAddress() {
-  const addresses = [];
-  for (const [name, entries] of Object.entries(os.networkInterfaces())) {
-    if (/^(br-|docker|veth)/u.test(name)) continue;
-    for (const entry of entries || []) {
-      if (entry.family !== 'IPv4' || entry.internal) continue;
-      if (/^172\.(17|18)\./u.test(entry.address)) continue;
-      addresses.push(entry.address);
-    }
-  }
-  return addresses[0] || null;
 }
 
 function privateHttpsAvailable(frontDoor) {
@@ -49,12 +36,22 @@ function publicStatus(settings, bootstrapHost, agentAvailable, {
 }
 
 class HttpsSettingsService {
-  constructor({ agent, bootstrapHost, frontDoor = process.env.MOS_FRONT_DOOR || 'ssh-bootstrap', now = () => new Date(), store }) {
+  constructor({ agent, bootstrapHost, detectAddress = detectServerAddress, frontDoor = process.env.MOS_FRONT_DOOR || 'ssh-bootstrap', now = () => new Date(), store }) {
     this.agent = agent;
     this.bootstrapHost = bootstrapHost;
+    this.detectAddress = detectAddress;
     this.frontDoor = frontDoor;
     this.now = now;
     this.store = store;
+  }
+
+  // The Easy Door name this machine answers on right now, or null. Derived on
+  // every call and stored nowhere: it follows the machine's address, and it has
+  // to stop being served the moment a real domain takes over, which is the same
+  // moment Caddy stops serving the door.
+  easyDoorHost(settings = this.store.getHttpsSettings()) {
+    if (settings.tlsMode === 'cloudflare-dns01') return null;
+    return easyDoorHomeHost(this.detectAddress());
   }
 
   allowedHosts() {
@@ -63,6 +60,7 @@ class HttpsSettingsService {
       this.bootstrapHost,
       homeHostFor(settings.baseDomain),
       homeHostFor(settings.pendingBaseDomain),
+      this.easyDoorHost(settings),
     ].filter(Boolean));
   }
 

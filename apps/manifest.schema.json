@@ -242,6 +242,37 @@
                   "type": "array",
                   "items": { "$ref": "#/$defs/namedVolume" },
                   "description": "Persistent named volumes as <volume-name>:<absolute-container-path>. Named volumes only: host paths, bind mounts, and device paths are refused by design - they break backup, restore, and isolation guarantees."
+                },
+                "requires": {
+                  "type": "object",
+                  "required": ["cpuCores", "memoryMb"],
+                  "properties": {
+                    "cpuCores": {
+                      "type": "number",
+                      "minimum": 0.01,
+                      "maximum": 256,
+                      "description": "Cores the service occupies in normal use, fractional allowed. Not a ceiling: MOS does not enforce it as a limit."
+                    },
+                    "memoryMb": {
+                      "type": "integer",
+                      "minimum": 16,
+                      "maximum": 1048576,
+                      "description": "RAM the service holds at rest. This is the figure that adds up across installed apps, so state what the container actually occupies idle, not the upstream project's recommended server size."
+                    },
+                    "cpuPeakCores": {
+                      "type": "number",
+                      "minimum": 0.01,
+                      "maximum": 256,
+                      "description": "Cores the service wants available during heavy work such as OCR, transcoding, or indexing. Omit when the service has no meaningful peak."
+                    },
+                    "memoryPeakMb": {
+                      "type": "integer",
+                      "minimum": 16,
+                      "maximum": 1048576,
+                      "description": "RAM the service needs available during heavy work. Headroom rather than a running cost: it is the largest peak that has to fit, not a per-app amount that sums."
+                    }
+                  },
+                  "description": "What this one service needs to run well, used to tell an owner whether another app still fits on the server. Display-only and advisory: MOS applies no cgroup limits from these figures. Steady-state figures add up across apps; peak figures do not."
                 }
               }
             }

@@ -58,10 +58,17 @@ export async function listPackages(page) {
   return (await apiJson(page, '/suite-manager/api/apps/packages')).packages;
 }
 
-function expectHomepageHref(app, page, href) {
-  expect(href || '', `${app.id} Homepage tile should have an app URL`).toContain(`${app.routes[0]?.host}.${baseHostFromPage(page)}`);
+// A managed tile carries no address: it links to Suite Manager's own redirect,
+// which resolves the app against whichever door this request arrived on. So the
+// tile is checked by following it rather than by reading a host out of it.
+async function expectHomepageHref(app, page, href) {
+  expect(href || '', `${app.id} Homepage tile should link to the Suite Manager app redirect`)
+    .toMatch(/^\/suite-manager\/open\/[0-9a-f-]{36}$/u);
+  const redirect = await page.request.get(new URL(href, page.url()).toString(), { maxRedirects: 0, timeout: 60000 });
+  expect(redirect.status(), `${app.id} tile should redirect`).toBe(302);
+  expect(redirect.headers().location, `${app.id} tile should resolve to its address on this door`).toBe(routeUrl(page, app));
   if (app.id === 'vaultwarden') {
-    expect(new URL(href).protocol, 'Vaultwarden Homepage tile should use HTTPS').toBe('https:');
+    expect(new URL(redirect.headers().location).protocol, 'Vaultwarden must resolve to HTTPS').toBe('https:');
   }
 }
 
@@ -318,8 +325,7 @@ export async function verifyHomepageAppTiles(page, homeUrl = '/') {
   for (const app of packages.filter((item) => item.homepage && projectionApplied(item, 'homepage'))) {
     await expect(page.getByText(app.homepage.name)).toBeVisible({ timeout: 60000 });
     const link = page.getByRole('link', { name: new RegExp(app.homepage.name.replace(/[-/\\^$*+?.()|[\]{}]/gu, '\\$&')) }).first();
-    const href = await link.getAttribute('href');
-    expectHomepageHref(app, page, href);
+    await expectHomepageHref(app, page, await link.getAttribute('href'));
   }
 }
 
@@ -529,15 +535,15 @@ export async function clickHomepageAppTiles(page, env, homeUrl = '/', options = 
     await waitForHomepageAvailable(page, homeUrl);
     const link = page.getByRole('link', { name: new RegExp(app.homepage.name.replace(/[-/\\^$*+?.()|[\]{}]/gu, '\\$&')) }).first();
     await expect(link, `${app.id} Homepage tile should be clickable`).toBeVisible({ timeout: 60000 });
-    const href = await link.getAttribute('href');
-    expectHomepageHref(app, page, href);
-    if (href) await waitForRouteAvailable(page, app, href);
+    await expectHomepageHref(app, page, await link.getAttribute('href'));
+    const appUrl = routeUrl(page, app);
+    if (appUrl) await waitForRouteAvailable(page, app, appUrl);
     const beforeClickUrl = page.url();
     const popupPromise = page.context().waitForEvent('page', { timeout: 3000 }).catch(() => null);
     await link.click();
     const appPage = (await popupPromise) || page;
     await appPage.waitForLoadState('domcontentloaded', { timeout: 60000 }).catch(() => undefined);
-    if (appPage.url() === beforeClickUrl && href) await appPage.goto(href, { waitUntil: 'domcontentloaded' });
+    if (appPage.url() === beforeClickUrl && appUrl) await appPage.goto(appUrl, { waitUntil: 'domcontentloaded' });
 
     await expectLoadedAppPage(appPage, app);
     if (app.id === 'stirling-pdf') {

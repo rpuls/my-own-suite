@@ -350,11 +350,11 @@ class AppUpdateService {
     if (operation.stage?.startsWith('homepage-reconciled') && homepageProjectionApplied(installedProjections) && requestContext.homepageService) {
       try {
         const current = await requestContext.homepageService.read({ file: 'services.template.yaml' });
-        homepage = await requestContext.homepageService.add({
+        homepage = await requestContext.homepageService.addManagedApp({
           entry: homepageEntryForHomepage(instance, installedProjections, configRows, requestContext),
           expectedRevision: current.revision,
           requestId: instance.id,
-        }, false);
+        });
       } catch (error) {
         homepage = { errorCode: error.code || 'APP_UPDATE_HOMEPAGE_ROLLBACK_FAILED', status: 'failed' };
       }
@@ -655,11 +655,11 @@ class AppUpdateService {
           entry: homepageEntryForHomepage(instance, installedProjections, installedConfig, requestContext),
           homepageService: requestContext.homepageService,
         };
-        homepage = await requestContext.homepageService.add({
+        homepage = await requestContext.homepageService.addManagedApp({
           entry: homepageEntryForHomepage(candidateInstance, candidateProjections, candidateConfig, requestContext),
           expectedRevision: current.revision,
           requestId: instance.id,
-        }, false);
+        });
         operation = this.store.advanceAppUpdate({ instanceId: instance.id, operationId, stage: 'homepage-reconciled' });
         lastDurableStage = 'homepage-reconciled';
       }

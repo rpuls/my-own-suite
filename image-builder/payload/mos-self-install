@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# Runs on every boot, very early. Does nothing unless this machine booted from
+# removable media, in which case the stick is the installer: it copies itself to
+# an internal disk and reboots into it.
+set -euo pipefail
+
+image_id_file=/boot/efi/mos-image.json
+
+root_source="$(findmnt -no SOURCE / || true)"
+[ -n "$root_source" ] || exit 0
+root_parent="$(lsblk -no PKNAME "$root_source" 2>/dev/null | head -n1 || true)"
+[ -n "$root_parent" ] || exit 0
+root_disk="/dev/$root_parent"
+
+transport="$(lsblk -dno TRAN "$root_disk" 2>/dev/null | tr -d ' ' || true)"
+removable="$(cat "/sys/block/$root_parent/removable" 2>/dev/null || echo 0)"
+if [ "$transport" != "usb" ] && [ "$removable" != "1" ]; then
+  exit 0
+fi
+
+source_bytes="$(blockdev --getsize64 "$root_disk")"
+
+candidates=()
+while read -r name type; do
+  [ "$type" = "disk" ] || continue
+  [ "$name" != "$root_disk" ] || continue
+  candidate_name="$(basename "$name")"
+  candidate_transport="$(lsblk -dno TRAN "$name" 2>/dev/null | tr -d ' ' || true)"
+  candidate_removable="$(cat "/sys/block/$candidate_name/removable" 2>/dev/null || echo 0)"
+  [ "$candidate_transport" != "usb" ] || continue
+  [ "$candidate_removable" != "1" ] || continue
+  [ "$(blockdev --getsize64 "$name")" -ge "$source_bytes" ] || continue
+  candidates+=("$name")
+done < <(lsblk -dnpo NAME,TYPE)
+
+printf '\n'
+printf '  My Own Suite installer\n'
+printf '  ----------------------\n\n'
+
+if [ "${#candidates[@]}" -eq 0 ]; then
+  printf '  No internal disk large enough for this image was found.\n'
+  printf '  This image needs at least %s GB.\n\n' "$((source_bytes / 1000000000 + 1))"
+  printf '  Press Enter to continue booting from the USB stick instead.\n'
+  read -r _ || true
+  exit 0
+fi
+
+if [ "${#candidates[@]}" -gt 1 ]; then
+  printf '  This machine has more than one internal disk:\n\n'
+  lsblk -dno NAME,SIZE,MODEL "${candidates[@]}" | sed 's/^/    /'
+  printf '\n  Refusing to guess which one to erase. Disconnect the disks you want\n'
+  printf '  to keep, then reboot. Press Enter to continue from the USB stick.\n'
+  read -r _ || true
+  exit 0
+fi
+
+target="${candidates[0]}"
+target_description="$(lsblk -dno NAME,SIZE,MODEL "$target" | sed 's/  */ /g')"
+
+printf '  Everything on this disk will be erased:\n\n'
+printf '      %s\n\n' "$target_description"
+printf '  Type YES to install My Own Suite onto it, or press Enter to cancel.\n'
+printf '  > '
+read -r answer || answer=''
+if [ "$answer" != "YES" ]; then
+  printf '\n  Cancelled. Continuing to boot from the USB stick.\n\n'
+  exit 0
+fi
+
+printf '\n  Copying. This takes a few minutes and must not be interrupted.\n\n'
+sync
+mount -o remount,ro / 2>/dev/null || true
+
+dd if="$root_disk" of="$target" bs=4M conv=fsync status=progress
+sync
+
+printf '\n  Expanding the system to fill the disk.\n'
+partprobe "$target" 2>/dev/null || true
+sgdisk -e "$target" >/dev/null 2>&1 || true
+partprobe "$target" 2>/dev/null || true
+
+last_partition="$(lsblk -nrpo NAME,TYPE "$target" | awk '$2 == "part" { print $1 }' | tail -n1)"
+if [ -n "$last_partition" ]; then
+  partition_number="$(printf '%s' "$last_partition" | grep -oE '[0-9]+$' || true)"
+  if [ -n "$partition_number" ]; then
+    growpart "$target" "$partition_number" >/dev/null 2>&1 || true
+    partprobe "$target" 2>/dev/null || true
+  fi
+  e2fsck -fy "$last_partition" >/dev/null 2>&1 || true
+  resize2fs "$last_partition" >/dev/null 2>&1 || true
+fi
+sync
+
+printf '\n'
+printf '  Done.\n\n'
+printf '  Remove the USB stick now, then press Enter to restart.\n'
+printf '  > '
+read -r _ || true
+sync
+reboot -f

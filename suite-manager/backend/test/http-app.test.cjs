@@ -1844,6 +1844,75 @@ test('HTTPS Settings API requires authentication and never returns the submitted
   }, { homeHost: 'home.test', homepageAgent, httpsAgent });
 });
 
+// Homepage serves one dashboard file to every visitor, so the tile cannot hold
+// an address. This endpoint is what makes it door-agnostic, and it is also the
+// one place a tile could become an open redirector if the target ever came from
+// the request rather than from installed state.
+test('a dashboard tile redirect resolves the app against the door it was reached through', async () => {
+  const appAgent = {
+    async apply(input) { return { publicUrl: input.publicUrl, status: 'applied', steps: [] }; },
+  };
+  const homepageAgent = {
+    async addLink(input) { return { changed: true, file: 'services.template.yaml', id: input.requestId, revision: 'sha256:added' }; },
+    async read(file) { return { content: '[]', file, revision: 'sha256:current' }; },
+    async reconcileUrls() { return { changed: true, file: 'services.template.yaml', revision: 'sha256:reconciled' }; },
+  };
+  const httpsAgent = {
+    apply: async () => ({ rollbackId: 'rollback-one' }),
+    commit: async () => ({ status: 'committed' }),
+    rollback: async () => ({ status: 'rolled-back' }),
+    status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    for (const action of ['install', 'apply-runtime']) {
+      await hostRequest(baseUrl, `/suite-manager/api/apps/packages/stirling-pdf/${action}`, {
+        headers: { Cookie: cookie, Host: 'home.test' },
+        method: 'POST',
+      });
+    }
+    const added = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/add-to-homepage', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    const instanceId = added.json().homepage.requestId;
+
+    // Signed out on purpose: the app behind the tile does its own auth, and a
+    // tile that only works for a signed-in owner is a broken tile.
+    const firstDoor = await hostRequest(baseUrl, `/suite-manager/open/${instanceId}`, { headers: { Host: 'home.test' } });
+    assert.equal(firstDoor.status, 302);
+    assert.equal(firstDoor.headers.location, 'http://stirling-pdf.test/');
+
+    await hostRequest(baseUrl, '/suite-manager/api/settings/https/apply', {
+      body: JSON.stringify({
+        acmeEmail: 'owner@example.com',
+        baseDomain: 'mos.example.com',
+        cloudflareApiToken: 'cloudflare_token_1234567890',
+      }),
+      headers: { Cookie: cookie, 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+
+    // Same tile, second door, second answer — and neither was stamped anywhere.
+    const secondDoor = await hostRequest(baseUrl, `/suite-manager/open/${instanceId}`, { headers: { Host: 'home.mos.example.com' } });
+    assert.equal(secondDoor.status, 302);
+    assert.equal(secondDoor.headers.location, 'https://stirling-pdf.mos.example.com/');
+
+    const unknown = await hostRequest(baseUrl, '/suite-manager/open/00000000-0000-4000-8000-000000000000', { headers: { Host: 'home.test' } });
+    assert.equal(unknown.status, 404);
+    assert.equal(unknown.json().code, 'APP_NOT_INSTALLED');
+
+    // Nothing that is not an instance id reaches the redirect at all.
+    const steered = await hostRequest(baseUrl, '/suite-manager/open/evil.example.com', { headers: { Host: 'home.test' } });
+    assert.equal(steered.headers.location, undefined);
+
+    // The host gate still owns the door: an unknown host gets no app address.
+    const unknownHost = await hostRequest(baseUrl, `/suite-manager/open/${instanceId}`, { headers: { Host: 'attacker.example.com' } });
+    assert.equal(unknownHost.status, 421);
+  }, { appAgent, homeHost: 'home.test', homepageAgent, httpsAgent });
+});
+
 test('HTTPS Settings apply reports partial app URL reconciliation without hiding HTTPS success', async () => {
   const calls = [];
   const appAgent = {
@@ -1865,7 +1934,7 @@ test('HTTPS Settings apply reports partial app URL reconciliation without hiding
       return { content: '[]', file, revision: 'sha256:current' };
     },
     async reconcileUrls(input) {
-      calls.push(['homepage-reconcile', input.entries.map((entry) => entry.href)]);
+      calls.push(['homepage-reconcile', input.entries]);
       return { changed: true, file: 'services.template.yaml', revision: 'sha256:reconciled' };
     },
   };
@@ -1911,7 +1980,11 @@ test('HTTPS Settings apply reports partial app URL reconciliation without hiding
       publicUrl: 'https://stirling-pdf.mos.example.com/',
       status: 'failed',
     }]);
-    assert.deepEqual(calls.find((call) => call[0] === 'homepage-reconcile')[1], ['https://stirling-pdf.mos.example.com/']);
+    // The tile carries no address to re-stamp: its href is derived from its own
+    // id, so a domain change leaves it correct without touching it.
+    const reconciled = calls.find((call) => call[0] === 'homepage-reconcile')[1];
+    assert.equal(reconciled.length, 1);
+    assert.deepEqual(Object.keys(reconciled[0]), ['id']);
     assert.ok(calls.findIndex((call) => call[0] === 'homepage-reconcile') < calls.findIndex((call) => call[0] === 'app' && call[2].startsWith('https://')));
   }, { appAgent, homeHost: 'home.test', homepageAgent, httpsAgent });
 });

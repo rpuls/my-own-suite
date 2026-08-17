@@ -19,7 +19,6 @@ const {
   hostArchitectureOf,
   integrationConfigKey,
   integrationSlots,
-  linkEntryForHomepage,
   loopbackPortFor,
   materializeRuntimeCaddy,
   materializeRuntimeCompose,
@@ -231,6 +230,16 @@ class AppPackageService {
     const instance = this.store.getAppInstanceByPackageId(packageId);
     if (!instance || instance.status === 'uninstalled') return null;
     return primaryProjectedRoute(this.store.getAppProjections(instance.id))?.host || null;
+  }
+
+  // The package a dashboard tile belongs to, for the tile redirect, which holds
+  // only the entry id the tile was written with. Null for anything that is not a
+  // live installed instance, so an id from a stale, hand-edited or invented tile
+  // resolves to no address rather than to a guess.
+  installedPackageIdForInstance(instanceId) {
+    const id = String(instanceId || '');
+    const instance = this.store.getAppInstances().find((candidate) => candidate.id === id);
+    return instance && instance.status === 'installed' ? instance.packageId : null;
   }
 
   async applyPackageRuntime(packageId, requestContext = {}, options = {}) {
@@ -1100,11 +1109,11 @@ class AppPackageService {
     const configRows = this.store.getAppConfig(instance.id).map((row) => (
       row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
     ));
-    const result = await homepageService.add({
+    const result = await homepageService.addManagedApp({
       entry: homepageEntryForHomepage(instance, projections, configRows, requestContext),
       expectedRevision: current.revision,
       requestId: instance.id,
-    }, false);
+    });
 
     const at = this.now().toISOString();
     this.store.applyAppProjection({
@@ -1129,22 +1138,40 @@ class AppPackageService {
     };
   }
 
+  // Startup migration for tiles written before hrefs became relative, which still
+  // hold the absolute address of whichever door installed the app. It needs only
+  // the ids, because `reconcileManagedUrls` derives every href from the id and
+  // this is not an address change — widget endpoints are already correct.
+  // Idempotent, so it is a no-op from the second boot onward.
+  async reconcileDashboardLinks(homepageService) {
+    const entries = this.store.getAppInstances()
+      .filter((instance) => instance.status === 'installed' && homepageProjectionApplied(this.store.getAppProjections(instance.id)))
+      .map((instance) => ({ id: instance.id }));
+    if (!entries.length) return { changed: false, status: 'skipped' };
+    try {
+      return { changed: (await homepageService.reconcileUrls({ entries })).changed === true, status: 'applied' };
+    } catch (error) {
+      return { changed: false, errorCode: error.code || 'HOMEPAGE_DASHBOARD_LINK_RECONCILE_FAILED', status: 'failed' };
+    }
+  }
+
   async reconcilePublicUrls(homepageService, requestContext = {}) {
     const runtime = [];
     const homepageEntries = [];
     const homepageEntryFailures = [];
     for (const instance of this.store.getAppInstances()) {
       if (instance.status !== 'installed') continue;
-      const packageContext = requestContextForPackage(instance.packageId, requestContext);
       const projections = this.store.getAppProjections(instance.id);
       if (homepageProjectionApplied(projections)) {
         try {
           const configRows = this.store.getAppConfig(instance.id).map((row) => (
             row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
           ));
-          const entry = homepageEntryForHomepage(instance, projections, configRows, packageContext);
+          // The tile's own href is derived from its id and needs nothing from
+          // here. This still resolves the entry because a widget's endpoints are
+          // absolute and have to be re-derived against the new address.
+          const entry = homepageEntryForHomepage(instance, projections, configRows, requestContextForPackage(instance.packageId, requestContext));
           homepageEntries.push({
-            href: entry.url,
             id: instance.id,
             ...(entry.widget === undefined ? {} : { widget: entry.widget }),
           });
@@ -1379,7 +1406,6 @@ module.exports = {
   digestFor,
   healthTargetFor,
   homepageEntryForHomepage,
-  linkEntryForHomepage,
   loopbackPortFor,
   materializeRuntimeCaddy,
   materializeRuntimeCompose,

@@ -70,8 +70,31 @@ Each key is a DNS-safe service id, which is also the container's hostname on the
 | `internalPort` | yes | The one TCP port the service listens on. |
 | `env` | no | Environment map: `UPPER_CASE` keys, string values, template references allowed (see the grammar below). |
 | `volumes` | no | Persistent storage as `<volume-name>:<absolute-container-path>`. **Named volumes only** — host paths, bind mounts, and device paths are refused by design (they break backup, restore, and isolation). Volume names are unique within the package; each volume belongs to exactly one service. |
+| `requires` | no | What the service needs to run well — see below. |
 
 MOS does not order service startup. A service must tolerate its dependencies starting later and retry — every mainstream server image already does.
+
+### Resource requirements (`requires`)
+
+Added in MOS 0.18.0. Optional, display-only, and advisory: MOS applies no cgroup limits from these figures. They exist so an owner can be told whether another app still fits on the server.
+
+```json
+"requires": { "cpuCores": 0.25, "memoryMb": 1024, "cpuPeakCores": 2, "memoryPeakMb": 2048 }
+```
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `cpuCores` | yes | Cores the service occupies in normal use. Fractional allowed. |
+| `memoryMb` | yes | RAM the service holds **at rest**. |
+| `cpuPeakCores` | no | Cores it wants available during heavy work (OCR, transcoding, indexing). |
+| `memoryPeakMb` | no | RAM it needs available during heavy work. |
+
+Two rules make the arithmetic honest, so state the figures accordingly:
+
+- **Resting figures add up; peak figures do not.** A resting figure is a running cost every installed app pays at once. A peak is headroom that only has to be free while that app is busy, so MOS keeps the largest peak rather than the sum. Within one package the services can be busy together, so a package's own peaks are summed into its total.
+- **Describe the container, not the project's recommended server.** Upstream "minimum 2 GB RAM" usually means the machine, and often means the peak. `memoryMb` is what the container actually occupies idle.
+
+Declare `requires` on every service of a package or none: a package with figures on only some of its services shows no total, because a partial sum understates it. A peak below its resting figure is rejected.
 
 ## Routes
 
@@ -106,7 +129,7 @@ The install form, as data. Each field:
 
 ## Catalog metadata (`catalog`)
 
-All display-only. `description`, `tags`, `related` (app ids), `features` (`{title, body?}`), `resourceHint` (`level`: `low`/`medium`/`high` + `label`/`description`), `privacy` (`summary`, `notes[]` — the plain-language summary; the bound `privacy-review.json` is the authoritative assessment), `links` (`website`/`docs`/`repository`; other keys ignored), `demoDeployTargets` (public-site deploy links), and:
+All display-only. `description` (the fuller paragraph for the app detail view — the one-line `summary` is what catalog rows show, and neither substitutes for the other), `tags`, `related` (app ids), `features` (`{title, body?}`), `resourceHint` (`level`: `low`/`medium`/`high` + `label`/`description` — the plain-language band, shown alongside the exact figures in `resources.services.<id>.requires`), `privacy` (`summary`, `notes[]` — the plain-language summary; the bound `privacy-review.json` is the authoritative assessment), `links` (`website`/`docs`/`repository`; other keys ignored), `demoDeployTargets` (public-site deploy links), and:
 
 - **`replaces`** — an array of product names, one per entry, ranked most-recognised first: `["Google Photos", "iCloud Photos", "Amazon Photos", "Flickr"]`. List every commercial product the app genuinely stands in for, not only the obvious two — search matches each entry, and the app's page on this site lists all of them. Space-constrained surfaces (catalog cards, the Suite Manager detail hero) name only the first two, which is why the ranking matters.
 - **`screenshots`** — `{src, alt?, caption?}` where `src` is a package-relative path listed in `packageFiles`. Remote screenshot URLs are refused: browsing the catalog must never fetch third-party origins.
@@ -145,9 +168,11 @@ A reference is recognized only when the namespace is a lowercase word followed b
 | --- | --- | --- |
 | `${config.<fieldId>}` | A non-secret setup field's value | Service env, onboarding `values[].value`, provisional areas |
 | `${secret.<fieldId>}` | A secret setup field's value | Service env and provisional areas only — never onboarding, never catalog |
-| `${app.host}` / `${app.scheme}` / `${app.publicUrl}` | The app's public hostname, scheme, and full URL | Service env, onboarding `values[].value`, provisional areas |
+| `${app.host}` / `${app.scheme}` / `${app.publicUrl}` | The app's public hostname, scheme, and base URL — `publicUrl` always ends in `/` | Service env, onboarding `values[].value`, provisional areas |
 | `${owner.name}` / `${owner.email}` | The suite owner's profile | `setup.fields[].default` only |
 | `${import.*}` / `${export.*}` | Capability wiring | The provisional capability system only |
+
+Because `${app.publicUrl}` ends in `/`, it concatenates cleanly with a path (`${app.publicUrl}welcome/`) but is the wrong value for a variable that wants a bare origin — some servers reject an origin carrying a path and refuse to start. Compose those as `${app.scheme}://${app.host}`.
 
 **Every reference is validated.** A typo like `${config.adminUserName}` fails validation instead of shipping verbatim into a container env var and failing silently on someone else's machine. An unknown namespace is an error too — future namespaces (an SMTP relay would introduce `${smtp.*}`) are reserved and arrive gated by `minimumMosVersion`.
 

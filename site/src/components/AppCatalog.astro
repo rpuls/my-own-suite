@@ -1,7 +1,7 @@
 ---
 import AppConnect from './AppConnect.astro'
 import PrivacyPosture from './PrivacyPosture.astro'
-import { catalogApps as apps, REPLACES_HEADLINE, shortReplaces } from '../lib/app-catalog'
+import { catalogApps as apps, shortReplaces } from '../lib/app-catalog'
 
 // The app catalog is generated at build time from each package's
 // manifest under apps/<app>/manifest.json — the same single source of
@@ -12,15 +12,6 @@ import { catalogApps as apps, REPLACES_HEADLINE, shortReplaces } from '../lib/ap
 
 const seafile = apps.find((app) => app.id === 'seafile')
 const onlyoffice = apps.find((app) => app.id === 'onlyoffice')
-
-// The headline counts what the catalog *replaces*, not how many apps it has —
-// a curated suite loses an app-count race and wins an outcome comparison.
-// Both numbers come from the manifests so neither can go stale, and only each
-// app's best-known few count: the long tail of a `replaces` list belongs on
-// the app's docs page, not in a number that has to survive a sceptical read.
-const replacedServices = new Set(
-  apps.flatMap((app) => app.replaces.slice(0, REPLACES_HEADLINE))
-)
 
 // Cards and the drawer name the top two; the full list still travels with the
 // payload so search matches every product an app replaces.
@@ -33,12 +24,16 @@ const appsJson = JSON.stringify(
   <div class="shell">
     <div class="section-head center">
       <span class="mos-eyebrow">The app catalog</span>
-      <h2 class="mos-section-title">{apps.length} apps that replace {replacedServices.size} subscriptions</h2>
-      {/* Kept to one line of thought: curation, plus the privacy assessment
-          nothing else on the page claims. The "install your own" escape hatch
-          is the next section's whole headline, and pinning/health checks are
-          covered in Safety — repeating either here just costs lines. */}
-      <p class="mos-body-lg mos-meta">The best answer for each job, not ten to choose between — every app packaged by MOS, version-pinned, and carrying a published privacy assessment.</p>
+      <h2 class="mos-section-title">Pick what you actually need</h2>
+      {/* Two rules this copy exists to keep. Selection is stated as fit — the
+          app MOS chose for a job — never as ranking: a headline implying the
+          projects outside the catalog lost a contest is hostile to the open
+          source it depends on. And nothing here refers to how long the list
+          is, in either direction; defending the count answers a question the
+          visitor has not asked. Trust claims are already the page's: privacy
+          assessments in ValuePromise, pinning and signing in Safety,
+          curation-is-not-a-wall in ExternalApps just below. */}
+      <p class="mos-body-lg mos-meta">Established open-source projects, each chosen by MOS for one everyday job and packaged so it runs, connects, and updates without setup. Start with one and add more whenever you're ready.</p>
     </div>
     <label class="apps-search">
       <svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-search"/></svg>
@@ -94,8 +89,9 @@ const appsJson = JSON.stringify(
     resources: string
     resourcesDetail: string
     resourceLevel: string
+    requirements: { memory: string; memoryPeak: string; cpu: string; cpuPeak: string } | null
     screenshots: { src: string; alt: string; caption: string }[]
-    services: { id: string; role: string; exposed: boolean; persistent: boolean }[]
+    services: { id: string; role: string; exposed: boolean; persistent: boolean; requires: string }[]
     privacy: string
     privacyNotes: string[]
     features: { title: string; body: string }[]
@@ -221,7 +217,7 @@ const appsJson = JSON.stringify(
     const resourcesTile = `<button type="button" class="app-tile app-resources-tile" id="appDrawerResources">
         <span class="k">Resources</span>
         <span class="app-resources-line">${meter(app.resourceLevel)}<strong>${esc(app.resources || 'Resource use varies')}</strong></span>
-        <span class="app-tile-meta">${app.services.length === 1 ? 'Runs as 1 service' : app.services.length ? `Runs as ${app.services.length} services` : 'Details unavailable'}${chevron}</span>
+        <span class="app-tile-meta">${app.requirements ? `${esc(app.requirements.memory)} memory` : app.services.length === 1 ? 'Runs as 1 service' : app.services.length ? `Runs as ${app.services.length} services` : 'Details unavailable'}${chevron}</span>
       </button>`
     const tiles = `<div class="app-drawer-tiles">
         ${screensTile}
@@ -347,7 +343,7 @@ ${links ? `<div class="app-drawer-section"><span class="mos-eyebrow">Links</span
       .map(
         (service) => `<div class="app-service${service.exposed ? ' is-exposed' : ''}">
           <span class="app-service-dot" aria-hidden="true"></span>
-          <span class="app-service-copy"><span class="app-service-role"><strong>${esc(service.role)}</strong><code>${esc(service.id)}</code></span><span class="mos-meta">${service.persistent ? 'Keeps its data in private app storage.' : 'Holds nothing permanent.'}</span></span>
+          <span class="app-service-copy"><span class="app-service-role"><strong>${esc(service.role)}</strong><code>${esc(service.id)}</code></span><span class="mos-meta">${service.persistent ? 'Keeps its data in private app storage.' : 'Holds nothing permanent.'}</span>${service.requires ? `<span class="mos-meta">${esc(service.requires)}</span>` : ''}</span>
           <span class="app-service-tag">${service.exposed ? 'Exposed via HTTPS' : 'Internal only'}</span>
         </div>`
       )
@@ -358,6 +354,15 @@ ${links ? `<div class="app-drawer-section"><span class="mos-eyebrow">Links</span
         <div class="app-dialog-header"><h2>What runs on your server</h2><button type="button" class="app-dialog-close" data-close aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-x"/></svg></button></div>
         <div class="app-resources-line">${meter(app.resourceLevel)}<strong>${esc(app.resources || 'Resource use varies')}</strong></div>
         ${app.resourcesDetail ? `<p class="mos-meta">${esc(app.resourcesDetail)}</p>` : ''}
+        ${
+          app.requirements
+            ? `<dl class="app-requirements">
+                <div><dt>Memory</dt><dd><strong>${esc(app.requirements.memory)}</strong><span>${app.requirements.memoryPeak ? `up to ${esc(app.requirements.memoryPeak)} while it works` : 'steady'}</span></dd></div>
+                <div><dt>Processor</dt><dd><strong>${esc(app.requirements.cpu)}</strong><span>${app.requirements.cpuPeak ? `up to ${esc(app.requirements.cpuPeak)} while it works` : 'steady'}</span></dd></div>
+              </dl>
+              <p class="mos-meta">Figures the package declares, not a limit MOS enforces. The steady figure is what this app holds all day and is what to add up when deciding whether another app fits; the peak is headroom that only has to be free while the app is busy.</p>`
+            : ''
+        }
         ${rows ? `<div class="app-service-list">${rows}</div>` : ''}
         <p class="mos-meta app-services-note">${
           exposed

@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "onlyoffice",
   "name": "ONLYOFFICE",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "minimumMosVersion": "0.18.0",
   "packageFiles": [
     "entrypoint.sh",
@@ -10,7 +10,7 @@
     "screenshots/presentation.png",
     "screenshots/spreadsheet.png"
   ],
-  "summary": "Office editor suite for compatible file and content apps.",
+  "summary": "Open and edit documents, spreadsheets and presentations straight from your file app.",
   "category": "office",
   "role": "capability-provider",
   "icon": "icon.png",

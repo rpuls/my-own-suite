@@ -22,8 +22,32 @@ function withHandover(stateDir, handover = { password: 'abcde-fghij-klmno', user
 
 test('an install with no generated console login reports nothing pending', () => {
   const service = new ConsoleLoginService({ stateDir: freshStateDir() });
-  assert.deepEqual(service.status(), { acknowledged: false, pending: false, username: '' });
+  assert.deepEqual(service.status(), { acknowledged: false, pending: false, unreadable: false, username: '' });
   assert.throws(() => service.reveal(), (error) => error instanceof ConsoleLoginError && error.code === 'CONSOLE_LOGIN_NOT_PENDING');
+});
+
+// The fault that produced this test: the installer runs as root and Suite Manager
+// as the runtime user, so a handover left root-owned is unreadable here — and
+// reporting it as "nothing pending" made a stranded password look like one the
+// owner had already saved. No panel, no error, nothing in a log.
+test('a handover it cannot read is reported as a fault, not as nothing pending', () => {
+  const stateDir = freshStateDir();
+  const handoverPath = path.join(stateDir, HANDOVER_FILE);
+  withHandover(stateDir);
+  fs.chmodSync(handoverPath, 0o000);
+
+  const service = new ConsoleLoginService({ stateDir });
+  const status = service.status();
+  // Root ignores the mode bits, so a suite run as root sees a readable handover.
+  // Either answer is correct for the process reading it; what must never happen
+  // is an unreadable file reported as an absent one.
+  if (status.pending) {
+    assert.equal(status.unreadable, false);
+  } else {
+    assert.deepEqual(status, { acknowledged: false, pending: false, unreadable: true, username: '' });
+  }
+
+  fs.chmodSync(handoverPath, 0o600);
 });
 
 test('status names the account but never carries the password', () => {
@@ -31,7 +55,7 @@ test('status names the account but never carries the password', () => {
   withHandover(stateDir);
   const status = new ConsoleLoginService({ stateDir }).status();
 
-  assert.deepEqual(status, { acknowledged: false, pending: true, username: 'mos' });
+  assert.deepEqual(status, { acknowledged: false, pending: true, unreadable: false, username: 'mos' });
   // The dashboard reads this on every load; the password must only ever travel
   // in the response to an explicit reveal.
   assert.doesNotMatch(JSON.stringify(status), /abcde-fghij-klmno/u);
@@ -52,7 +76,7 @@ test('acknowledging destroys the password and leaves the sentinel the installer 
   assert.equal(fs.existsSync(path.join(stateDir, HANDOVER_FILE)), false);
   // The installer's path unit fires on this file and clears the console banner.
   assert.equal(fs.existsSync(path.join(stateDir, ACKNOWLEDGED_FILE)), true);
-  assert.deepEqual(service.status(), { acknowledged: true, pending: false, username: '' });
+  assert.deepEqual(service.status(), { acknowledged: true, pending: false, unreadable: false, username: '' });
   assert.throws(() => service.reveal(), (error) => error.code === 'CONSOLE_LOGIN_NOT_PENDING');
 });
 

@@ -2,9 +2,9 @@
   "manifestVersion": 1,
   "id": "stirling-pdf",
   "name": "Stirling PDF",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "minimumMosVersion": "0.18.0",
-  "summary": "Private PDF tools for everyday document tasks.",
+  "summary": "Merge, split, sign and redact PDFs without uploading them to a stranger's website.",
   "category": "office",
   "icon": "icon.png",
   "packageFiles": [
@@ -77,9 +77,9 @@
       }
     ],
     "resourceHint": {
-      "level": "low",
-      "label": "Light resources",
-      "description": "A good first app for testing the catalog because it runs as one straightforward web service."
+      "level": "medium",
+      "label": "Medium resources",
+      "description": "One service that sits quietly between jobs, but wants a spare gigabyte and a couple of cores while it reads a scan or converts an office document."
     },
     "privacy": {
       "summary": "MOS configures the self-hosted server to process ordinary PDF tasks locally and disable known optional analytics.",
@@ -110,7 +110,13 @@
           "custom-files:/customFiles",
           "logs:/logs",
           "pipeline:/pipeline"
-        ]
+        ],
+        "requires": {
+          "cpuCores": 0.25,
+          "memoryMb": 1024,
+          "cpuPeakCores": 2,
+          "memoryPeakMb": 2048
+        }
       }
     }
   },

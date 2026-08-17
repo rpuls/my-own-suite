@@ -8,6 +8,7 @@ const test = require('node:test');
 const {
   AppPackageManifestError,
   discoverAppPackages,
+  publicPackageSummary,
   readAppPackageManifest,
   validateAppPackageManifest,
 } = require('../src/apps/package-manifest.cjs');
@@ -258,6 +259,70 @@ test('manifest validation accepts declared architectures and rejects unbuildable
   assert.deepEqual(validateAppPackageManifest(validManifest({ architectures: ['x86_64'] })), [
     'architectures[0] must be one of: amd64, arm64.',
   ]);
+});
+
+// Declared resource needs are advisory display data, so the validator's job is
+// to stop figures that would make capacity advice wrong rather than to police
+// the numbers themselves.
+test('manifest validation accepts declared service resource requirements', () => {
+  const withRequires = (requires) => validManifest({
+    resources: { services: { 'example-app': { dockerfile: 'Dockerfile', internalPort: 8080, requires } } },
+  });
+
+  assert.deepEqual(validateAppPackageManifest(withRequires({ cpuCores: 0.25, memoryMb: 1024 })), []);
+  assert.deepEqual(validateAppPackageManifest(withRequires({
+    cpuCores: 0.25, cpuPeakCores: 2, memoryMb: 1024, memoryPeakMb: 2048,
+  })), []);
+  assert.deepEqual(validateAppPackageManifest(validManifest()), []);
+
+  assert.deepEqual(validateAppPackageManifest(withRequires({ memoryMb: 1024 })), [
+    'resources.services.example-app.requires.cpuCores is required.',
+  ]);
+  assert.deepEqual(validateAppPackageManifest(withRequires({ cpuCores: 0.25 })), [
+    'resources.services.example-app.requires.memoryMb is required.',
+  ]);
+  assert.deepEqual(validateAppPackageManifest(withRequires({ cpuCores: 0, memoryMb: 1024 })), [
+    'resources.services.example-app.requires.cpuCores must be at least 0.01.',
+  ]);
+  assert.deepEqual(validateAppPackageManifest(withRequires({ cpuCores: 0.25, memoryMb: 512.5 })), [
+    'resources.services.example-app.requires.memoryMb must be integer, got 512.5.',
+  ]);
+  // A peak under the resting figure reads as a transposed pair, not a claim.
+  assert.deepEqual(validateAppPackageManifest(withRequires({ cpuCores: 2, memoryMb: 1024, memoryPeakMb: 512 })), [
+    'resources.services.example-app.requires.memoryPeakMb must be at least memoryMb (1024), got 512.',
+  ]);
+});
+
+test('public package summary carries declared requirements and drops partial ones', () => {
+  const summary = publicPackageSummary(validManifest({
+    resources: {
+      services: {
+        'example-app': {
+          dockerfile: 'Dockerfile',
+          internalPort: 8080,
+          requires: { cpuCores: 0.25, cpuPeakCores: 2, memoryMb: 1024, memoryPeakMb: 2048 },
+        },
+      },
+    },
+  }));
+  assert.deepEqual(summary.services[0].requires, {
+    cpuCores: 0.25, cpuPeakCores: 2, memoryMb: 1024, memoryPeakMb: 2048,
+  });
+
+  const noPeaks = publicPackageSummary(validManifest({
+    resources: { services: { 'example-app': { dockerfile: 'Dockerfile', internalPort: 8080, requires: { cpuCores: 0.1, memoryMb: 128 } } } },
+  }));
+  assert.deepEqual(noPeaks.services[0].requires, {
+    cpuCores: 0.1, cpuPeakCores: null, memoryMb: 128, memoryPeakMb: null,
+  });
+
+  // An older or hand-edited package that states neither, or only half, must
+  // reach the UI as "not declared" rather than as a figure to add up.
+  assert.equal(publicPackageSummary(validManifest()).services[0].requires, null);
+  const partial = publicPackageSummary(validManifest({
+    resources: { services: { 'example-app': { dockerfile: 'Dockerfile', internalPort: 8080, requires: { memoryMb: 512 } } } },
+  }));
+  assert.equal(partial.services[0].requires, null);
 });
 
 test('manifest validation accepts structured optional catalog presentation metadata', () => {

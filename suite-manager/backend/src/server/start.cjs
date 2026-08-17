@@ -18,6 +18,8 @@ async function start() {
   for (const migration of migrations) console.log(`[mos-suite-manager] App package migration ${migration.packageId}: ${migration.status}`);
   const recoveries = await server.recoverAppPackageUpdates();
   for (const recovery of recoveries) console.log(`[mos-suite-manager] App update recovery ${recovery.instanceId}: ${recovery.recoveryState}`);
+  const dashboardLinks = await server.reconcileDashboardLinks();
+  if (dashboardLinks.status !== 'skipped') console.log(`[mos-suite-manager] Dashboard app links: ${dashboardLinks.status}${dashboardLinks.errorCode ? ` (${dashboardLinks.errorCode})` : ''}`);
   const sweptCandidates = server.sweepAppCandidates();
   if (sweptCandidates.length) console.log(`[mos-suite-manager] Reclaimed ${sweptCandidates.length} abandoned app package candidate download(s).`);
   void server.startCatalogRefresh();

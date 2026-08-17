@@ -602,7 +602,6 @@ module.exports = {
   integrationConfigKey,
   integrationSlots,
   isRecord,
-  linkEntryForHomepage,
   loopbackPortFor,
   materializeRuntimeCaddy,
   materializeRuntimeCompose,

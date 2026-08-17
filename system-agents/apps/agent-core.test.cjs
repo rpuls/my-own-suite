@@ -453,3 +453,134 @@ test('app network connect accepts only package and service ids', async () => {
     providerServices: ['bad/service'],
   }), AppRuntimeError);
 });
+
+function easyDoorAgent(easyDoorBase) {
+  const calls = [];
+  const core = new AppAgentCore({
+    async applyAppServices(input) {
+      calls.push(input);
+      return { steps: ['built', 'started', 'healthy'] };
+    },
+  }, { easyDoorBase: () => easyDoorBase });
+  return { calls, core };
+}
+
+const twoRoutes = {
+  ...request,
+  caddy: {
+    routes: [
+      { host: 'example-tool', reverseProxy: '127.0.0.1:18123', service: 'web' },
+      { host: 'example-admin', reverseProxy: '127.0.0.1:18124', service: 'admin' },
+    ],
+  },
+  compose: {
+    services: [
+      request.compose.services[0],
+      {
+        build: { context: 'apps/example-tool', dockerfile: 'Dockerfile.admin' },
+        id: 'admin',
+        internalPort: 3001,
+        loopbackPort: 18124,
+        volumes: [],
+      },
+    ],
+    volumes: ['configs'],
+  },
+};
+
+test('every app route gets a second site on the Easy Door name', async () => {
+  const { calls, core } = easyDoorAgent('192-168-123-45.local.myownsuite.org');
+
+  await core.apply(twoRoutes);
+
+  assert.match(calls[0].caddyRoutes, /^http:\/\/example-tool\.mos\.home \{/u);
+  assert.match(calls[0].caddyRoutes, /http:\/\/example-tool\.192-168-123-45\.local\.myownsuite\.org \{/u);
+  assert.match(calls[0].caddyRoutes, /http:\/\/example-admin\.192-168-123-45\.local\.myownsuite\.org \{/u);
+  assert.equal((calls[0].caddyRoutes.match(/reverse_proxy http:\/\/127\.0\.0\.1:18123/gu) || []).length, 2);
+});
+
+test('no Easy Door means no alias, so a public or DNS-01 install serves one site per route', async () => {
+  const { calls, core } = easyDoorAgent(null);
+
+  await core.apply(twoRoutes);
+
+  assert.doesNotMatch(calls[0].caddyRoutes, /myownsuite\.org/u);
+  assert.equal((calls[0].caddyRoutes.match(/^http:\/\//gmu) || []).length, 2);
+});
+
+test('a DNS-01 Caddyfile leaves no Easy Door alias in the routes the agent regenerates', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { detectEasyDoorBase } = require('../../shared/easy-door.cjs');
+  const { renderHttpsCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
+
+  // App routes are regenerated on every apply, so unlike Suite Manager's own
+  // site block they do not stop carrying the alias by themselves. The signal is
+  // the live Caddyfile, which the HTTPS agent has already replaced by this point.
+  const caddyfilePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mos-app-routes-')), 'Caddyfile');
+  fs.writeFileSync(caddyfilePath, renderHttpsCaddyfile({
+    acmeEmail: 'owner@example.com',
+    baseDomain: 'mos.example.com',
+    bootstrapHost: 'home.mos.home',
+    suiteManagerPort: '3100',
+  }));
+
+  const calls = [];
+  const core = new AppAgentCore({
+    async applyAppServices(input) {
+      calls.push(input);
+      return { steps: ['built'] };
+    },
+  }, { easyDoorBase: () => detectEasyDoorBase({ caddyfilePath, serverAddress: '192.168.123.45' }) });
+
+  await core.apply({
+    ...request,
+    appHost: 'example-tool.mos.example.com',
+    publicUrl: 'https://example-tool.mos.example.com/',
+  });
+
+  assert.doesNotMatch(calls[0].caddyRoutes, /myownsuite\.org/u);
+});
+
+test('installing while already on the Easy Door does not emit the same site twice', async () => {
+  // Caddy refuses a duplicate site address, so an owner who installs an app from
+  // the Easy Door must not get the alias they are already standing on.
+  const { calls, core } = easyDoorAgent('192-168-123-45.local.myownsuite.org');
+
+  await core.apply({
+    ...request,
+    appHost: 'example-tool.192-168-123-45.local.myownsuite.org',
+    publicUrl: 'http://example-tool.192-168-123-45.local.myownsuite.org/',
+  });
+
+  assert.equal((calls[0].caddyRoutes.match(/^http:\/\//gmu) || []).length, 1);
+});
+
+test('the Easy Door alias follows an app through an update activation and its rollback', async () => {
+  const calls = [];
+  const core = new AppAgentCore({
+    async activateAppPackageUpdate(input) {
+      calls.push(input);
+      return { steps: ['candidate-healthy'] };
+    },
+  }, { easyDoorBase: () => '10-0-0-5.local.myownsuite.org' });
+
+  await core.activatePackageUpdate({
+    candidate: { ...request, expectedInstalledDigest: `sha256:${'a'.repeat(64)}`, packageDigest: `sha256:${'b'.repeat(64)}`, packageVersion: '0.2.0' },
+    installed: request,
+  });
+
+  assert.match(calls[0].candidate.caddyRoutes, /http:\/\/example-tool\.10-0-0-5\.local\.myownsuite\.org \{/u);
+  assert.match(calls[0].installed.caddyRoutes, /http:\/\/example-tool\.10-0-0-5\.local\.myownsuite\.org \{/u);
+});
+
+test('renderAppRoutes keeps the primary site first so the Stealth door stays the canonical address', () => {
+  const rendered = renderAppRoutes({
+    appHost: 'example-tool.mos.home',
+    easyDoorBase: '192-168-123-45.local.myownsuite.org',
+    routes: [{ host: 'example-tool', reverseProxy: '127.0.0.1:18123', service: 'web' }],
+  });
+
+  assert.match(rendered, /^http:\/\/example-tool\.mos\.home \{[\s\S]*http:\/\/example-tool\.192-168-123-45\.local\.myownsuite\.org \{/u);
+});

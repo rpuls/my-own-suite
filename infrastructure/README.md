@@ -10,6 +10,10 @@ Placement rule:
 - Shared Caddy/Compose/Docker substrate belongs here.
 - Suite Manager orchestrates state and intent; system agents apply privileged host changes.
 
+One folder here is not installed-platform substrate: `nameserver/` configures a MOS-operated box that
+owner installs resolve names against, rather than anything that ships to an owner's machine. It is
+kept here because it is infrastructure MOS runs; its runbook is `nameserver/README.md`.
+
 ## Control-Plane Bootstrap Shape
 
 The first installer contract is control-plane-only. It renders shared inputs for cloud-init, USB/autoinstall, and SSH/bootstrap paths without requiring a `.env` file, and the cloud/SSH bootstrap currently installs the first runnable Suite Manager process behind Caddy on Ubuntu 24.04.

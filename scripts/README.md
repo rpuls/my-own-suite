@@ -181,3 +181,47 @@ cmd /c npm run smoke:do:dns01
 ```
 
 The command signs in through the bootstrap URL, submits the production Settings API, and waits for the HTTPS Home status endpoint. It never prints either credential. It refuses to run without the exact confirmation value and existing smoke state.
+
+### MOS-operated nameserver
+
+`scripts/nameserver.cjs` provisions and operates the Easy Door nameserver — the MOS-run box that
+answers `local.myownsuite.org`, resolving a name to the private address encoded in it so an owner can
+reach their suite without configuring DNS. It is not installed-platform code and ships to nobody; it
+manages infrastructure MOS runs. The box itself is defined in `infrastructure/nameserver/` and
+injected by cloud-init at create time, so the server holds no state and a rebuild is `destroy` then
+`apply`.
+
+```bash
+npm run nameserver:render     # print the cloud-init payload; creates nothing, needs no token
+npm run nameserver:plan       # what apply would create, and what it costs, against live state
+npm run nameserver:status     # current droplet, reserved IP and firewall
+npm run nameserver:verify     # acceptance checks against the live Reserved IP
+npm run nameserver:ssh-open   # point the firewall's SSH rule at wherever you are now
+```
+
+`npm run nameserver:apply` **creates billable DigitalOcean resources** (a $6/mo Droplet plus a
+firewall) and `npm run nameserver:destroy` removes them. Treat both the way `AGENTS.md` treats the
+DigitalOcean smoke commands: an agent runs them only when explicitly asked. Run `plan` first — it
+prices the change against live state before anything is created.
+
+`destroy` keeps the Reserved IP on purpose, because the parent zone's `ns1` A record points at it and
+an owner install resolving through this box depends on that address surviving a rebuild. An
+unattached Reserved IP is billed, and the next `apply` reattaches it.
+
+`DIGITALOCEAN_ACCESS_TOKEN` is required for everything except `render`. It is read from the
+environment, or from `.mos-nameserver.env` or `.mos-smoke/digitalocean.env` — all git-ignored. Run
+`node scripts/nameserver.cjs` with no arguments for the full environment-variable list.
+
+The acceptance checks in `infrastructure/nameserver/verify.cjs` also run standalone against a local
+container or a public resolver, which is how the delegation is proven end to end:
+
+```bash
+node infrastructure/nameserver/verify.cjs 127.0.0.1:15353   # a local test container
+node infrastructure/nameserver/verify.cjs <reserved-ip>     # the box itself
+node infrastructure/nameserver/verify.cjs 1.1.1.1 --via-resolver
+```
+
+They assert both directions of the security contract: private addresses resolve, **public addresses
+are refused**, and the box answers nothing outside its own zone. The refusal is not tidiness — without
+it the zone is an open redirector lending the `myownsuite.org` name to an attacker's host. Operating
+detail and the rebuild runbook are in `infrastructure/nameserver/README.md`.

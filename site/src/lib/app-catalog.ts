@@ -9,7 +9,11 @@ import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture'
 export type CatalogFeature = { title: string; body: string }
 export type DemoDeployTarget = { provider: string; label: string; url: string }
 export type AppScreenshot = { src: string; alt: string; caption: string }
-export type AppService = { id: string; role: string; exposed: boolean; persistent: boolean }
+// Formatted for display rather than passed as numbers: the drawer runs as a
+// vanilla client script, and a second copy of the MB/core formatters there
+// would be one more thing to keep in step with Suite Manager.
+export type AppRequirements = { memory: string; memoryPeak: string; cpu: string; cpuPeak: string }
+export type AppService = { id: string; role: string; exposed: boolean; persistent: boolean; requires: string }
 export type CatalogApp = {
   id: string
   routeHost: string
@@ -24,6 +28,7 @@ export type CatalogApp = {
   resources: string
   resourcesDetail: string
   resourceLevel: string
+  requirements: AppRequirements | null
   screenshots: AppScreenshot[]
   services: AppService[]
   privacy: string
@@ -43,8 +48,8 @@ export type CatalogApp = {
 // A manifest ranks `replaces` most-recognised first, and can list every
 // product the app stands in for. Only the app's own docs page has room for
 // the whole list: cards, the drawer and Suite Manager name the top two, and
-// the landing headline counts the top three per app so the number it claims
-// stays one a visitor recognises rather than a long-tail total.
+// the docs page's search-result description names the top three, keeping it
+// to products a searcher recognises rather than a long-tail total.
 export const REPLACES_SHORT = 2
 export const REPLACES_HEADLINE = 3
 export const shortReplaces = (replaces: string[]) => replaces.slice(0, REPLACES_SHORT).join(' / ')
@@ -253,6 +258,54 @@ function serviceRole(appName: string, serviceId: string, exposed: boolean, compa
   return 'Support service'
 }
 
+// COUSIN LOGIC — formatMemory/formatCores/requirementsFor in
+// suite-manager/frontend/src/features/apps/AppsScreen.tsx. Same rounding, same
+// summing rule (a package's own services can be busy together, so their peaks
+// add up; peaks across separate apps are headroom and never summed), and the
+// same all-or-nothing rule so a partly-declared package shows no total.
+type ServiceRequires = { cpuCores: number; memoryMb: number; cpuPeakCores: number | null; memoryPeakMb: number | null }
+
+function positiveNumber(value: any): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
+}
+
+function serviceRequires(value: any): ServiceRequires | null {
+  const cpuCores = positiveNumber(value?.cpuCores)
+  const memoryMb = positiveNumber(value?.memoryMb)
+  if (cpuCores === null || memoryMb === null) return null
+  return {
+    cpuCores,
+    memoryMb,
+    cpuPeakCores: positiveNumber(value?.cpuPeakCores),
+    memoryPeakMb: positiveNumber(value?.memoryPeakMb)
+  }
+}
+
+function formatMemory(mb: number): string {
+  if (mb < 1024) return `${Math.round(mb)} MB`
+  const gb = mb / 1024
+  return `${Number(gb.toFixed(gb < 10 ? 1 : 0))} GB`
+}
+
+function formatCores(cores: number): string {
+  return cores === 1 ? '1 core' : `${Number(cores.toFixed(2))} cores`
+}
+
+function packageRequirements(declared: (ServiceRequires | null)[]): AppRequirements | null {
+  const stated = declared.filter((entry): entry is ServiceRequires => entry !== null)
+  if (!stated.length || stated.length !== declared.length) return null
+  const cpuCores = stated.reduce((total, entry) => total + entry.cpuCores, 0)
+  const memoryMb = stated.reduce((total, entry) => total + entry.memoryMb, 0)
+  const cpuPeakCores = stated.reduce((total, entry) => total + (entry.cpuPeakCores ?? entry.cpuCores), 0)
+  const memoryPeakMb = stated.reduce((total, entry) => total + (entry.memoryPeakMb ?? entry.memoryMb), 0)
+  return {
+    memory: formatMemory(memoryMb),
+    memoryPeak: memoryPeakMb > memoryMb ? formatMemory(memoryPeakMb) : '',
+    cpu: formatCores(cpuCores),
+    cpuPeak: cpuPeakCores > cpuCores ? formatCores(cpuPeakCores) : ''
+  }
+}
+
 export const catalogApps: CatalogApp[] = Object.entries(manifestModules)
   .map(([path, manifest]) => {
     const catalog = manifest.catalog ?? {}
@@ -277,16 +330,23 @@ export const catalogApps: CatalogApp[] = Object.entries(manifestModules)
     const routes = Array.isArray(manifest.routes) ? manifest.routes : []
     // Exposed service first — manifests declare dependencies before the app
     // they serve, which would bury the service the owner recognises.
-    const services: AppService[] = Object.entries(manifest.resources?.services ?? {})
+    const serviceEntries = Object.entries(manifest.resources?.services ?? {})
       .map(([serviceId, service]: [string, any]) => {
         const exposed = routes.some((route: any) => route?.service === serviceId)
-        return {
-          id: serviceId,
-          role: serviceRole(String(manifest.name ?? serviceId), serviceId, exposed, companion),
-          exposed,
-          persistent: Array.isArray(service?.volumes) && service.volumes.length > 0
-        }
+        return { exposed, requires: serviceRequires(service?.requires), service, serviceId }
       })
+    const multiService = serviceEntries.length > 1
+    const services: AppService[] = serviceEntries
+      .map(({ exposed, requires, service, serviceId }) => ({
+        id: serviceId,
+        role: serviceRole(String(manifest.name ?? serviceId), serviceId, exposed, companion),
+        exposed,
+        persistent: Array.isArray(service?.volumes) && service.volumes.length > 0,
+        // On a single-service app this would only restate the package total.
+        requires: multiService && requires
+          ? `${formatMemory(requires.memoryMb)} memory${requires.memoryPeakMb ? ` (${formatMemory(requires.memoryPeakMb)} at peak)` : ''} · ${formatCores(requires.cpuCores)}`
+          : ''
+      }))
       .sort((a, b) => Number(b.exposed) - Number(a.exposed))
     return {
       id: String(manifest.id ?? ''),
@@ -310,6 +370,7 @@ export const catalogApps: CatalogApp[] = Object.entries(manifestModules)
       resources: String(catalog.resourceHint?.label ?? ''),
       resourcesDetail: String(catalog.resourceHint?.description ?? ''),
       resourceLevel: String(catalog.resourceHint?.level ?? ''),
+      requirements: packageRequirements(serviceEntries.map((entry) => entry.requires)),
       screenshots,
       services,
       privacy: String(catalog.privacy?.summary ?? ''),

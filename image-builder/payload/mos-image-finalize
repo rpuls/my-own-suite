@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# Runs once, inside the bake VM, after the control plane is installed and running.
+# Turns that one provisioned machine into an image any machine can boot: hardware
+# assumptions removed, machine identity removed, first-boot units armed.
+set -euo pipefail
+
+esp=/boot/efi
+username='@@USERNAME@@'
+state_dir='@@STATE_DIR@@'
+
+# A FAT32 scratch disk the build host can read afterwards without a Linux
+# machine. Without it this script's outcome would only be visible from inside an
+# image that has already powered off.
+status_dir=/run/mos-image-status
+status_device="$(blkid -L MOSBUILD 2>/dev/null || true)"
+if [ -n "$status_device" ] && mkdir -p "$status_dir" && mount "$status_device" "$status_dir" 2>/dev/null; then
+  :
+else
+  status_dir="$esp"
+fi
+
+exec > >(tee -a "$status_dir/mos-image-build.log") 2>&1
+
+log() { printf '[mos-image-finalize] %s\n' "$*"; }
+
+fail() {
+  printf '{"ok":false,"stage":"%s"}\n' "${current_stage:-unknown}" > "$status_dir/mos-image.json"
+  sync
+  umount "$status_dir" 2>/dev/null || true
+  systemctl poweroff --no-block
+}
+trap fail ERR
+
+stage() { current_stage="$1"; log "$1"; }
+
+export DEBIAN_FRONTEND=noninteractive
+
+stage 'Installing the tools the first-boot units need'
+apt-get update
+apt-get install -y --no-install-recommends gdisk cloud-guest-utils parted
+
+stage 'Rebuilding the initramfs with the full driver set'
+if grep -q '^MODULES=' /etc/initramfs-tools/initramfs.conf; then
+  sed -i 's/^MODULES=.*/MODULES=most/' /etc/initramfs-tools/initramfs.conf
+else
+  printf 'MODULES=most\n' >> /etc/initramfs-tools/initramfs.conf
+fi
+update-initramfs -u -k all
+
+stage 'Writing the bootloader to the removable-media fallback path'
+# A machine that has never seen this disk has no NVRAM entry pointing at
+# EFI/ubuntu, so the only path its firmware will try is EFI/BOOT/BOOTX64.EFI.
+grub-install --target=x86_64-efi --efi-directory="$esp" --removable --recheck
+if [ -d "$esp/EFI/ubuntu" ]; then
+  install -D -m 0644 "$esp/EFI/ubuntu/grub.cfg" "$esp/EFI/BOOT/grub.cfg"
+  for efi_file in shimx64.efi grubx64.efi mmx64.efi; do
+    if [ -f "$esp/EFI/ubuntu/$efi_file" ]; then
+      install -D -m 0644 "$esp/EFI/ubuntu/$efi_file" "$esp/EFI/BOOT/$efi_file"
+    fi
+  done
+  if [ -f "$esp/EFI/ubuntu/shimx64.efi" ]; then
+    install -D -m 0644 "$esp/EFI/ubuntu/shimx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
+  fi
+fi
+sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2/' /etc/default/grub
+sed -i 's/\bconsole=ttyS0[^ "]*//g' /etc/default/grub
+update-grub
+
+stage 'Making the network configuration hardware-independent'
+# The bake VM's NIC name is not the target machine's NIC name.
+rm -f /etc/netplan/*.yaml
+cat > /etc/netplan/01-mos.yaml <<'NETPLAN'
+network:
+  version: 2
+  ethernets:
+    mos-ethernet:
+      match:
+        name: "e*"
+      dhcp4: true
+      dhcp6: false
+      optional: true
+NETPLAN
+chmod 0600 /etc/netplan/01-mos.yaml
+netplan generate
+
+stage 'Replacing the login message'
+# `00-mos` was written by cloud-init on the previous boot; everything else in
+# here is Canonical's, and it is removed rather than reordered. See the header of
+# /etc/update-motd.d/00-mos for what those scripts do and why none of it is
+# right on this machine. `find` rather than a glob so our own file survives.
+find /etc/update-motd.d -maxdepth 1 -type f ! -name '00-mos' -delete
+if [ ! -f /etc/update-motd.d/00-mos ]; then
+  # `false` rather than `exit`: the ERR trap is what records the failed stage and
+  # powers the VM off, and an `exit` here would leave the bake waiting for a
+  # machine that is never coming back.
+  log 'The MOS motd is missing — cloud-init did not write it.'
+  false
+fi
+# The news fetcher is a timer, not just a motd script, so deleting the script
+# leaves it running. Turned off in both places because a host OS upgrade that
+# restores the unit would otherwise silently restore the outbound call too.
+systemctl disable --now motd-news.timer motd-news.service >/dev/null 2>&1 || true
+systemctl mask motd-news.service >/dev/null 2>&1 || true
+if [ -f /etc/default/motd-news ]; then
+  sed -i 's/^ENABLED=.*/ENABLED=0/' /etc/default/motd-news
+fi
+
+stage 'Naming the system'
+# So a shell, a support request or anything reading os-release says what this
+# machine is. `ID` stays `ubuntu` deliberately: apt, dpkg, unattended-upgrades
+# and every install script in the world branch on it, and this is a stock Ubuntu
+# base — only the human-facing name is ours. `/etc/os-release` is a symlink into
+# /usr/lib on Ubuntu, so it is replaced with a real file rather than edited
+# through, which is the documented way to override it.
+if [ -L /etc/os-release ]; then
+  cp --remove-destination "$(readlink -f /etc/os-release)" /etc/os-release
+fi
+os_version="$(awk -F= '/^VERSION_ID=/ { gsub(/"/, "", $2); print $2 }' /etc/os-release)"
+sed -i "s|^PRETTY_NAME=.*|PRETTY_NAME=\"My Own Suite (Ubuntu ${os_version:-24.04})\"|" /etc/os-release
+printf 'VARIANT="My Own Suite"\nVARIANT_ID=mos\n' >> /etc/os-release
+
+stage 'Disabling cloud-init'
+# Everything it would do has already been done at bake time. Left enabled it
+# would hunt for a datasource on every first boot and stall for minutes.
+touch /etc/cloud/cloud-init.disabled
+rm -rf /var/lib/cloud/instance /var/lib/cloud/instances /var/lib/cloud/data
+
+stage 'Resetting the server login so every machine generates its own'
+rm -f "$state_dir/console-login.json" "$state_dir/console-login.acknowledged"
+usermod -p '!' "$username"
+if [ -f /etc/issue ]; then
+  awk -v b='@@ISSUE_BEGIN@@' -v e='@@ISSUE_END@@' \
+    'index($0, b) { skip = 1 } !skip { print } index($0, e) { skip = 0 }' /etc/issue > /etc/issue.next
+  mv /etc/issue.next /etc/issue
+  chmod 0644 /etc/issue
+fi
+
+stage 'Arming the first-boot units'
+systemctl daemon-reload
+systemctl enable mos-ssh-hostkeys.service mos-self-install.service mos-grow-root.service mos-first-boot.service
+systemctl disable mos-image-finalize.service
+
+stage 'Pruning container build cache'
+docker builder prune -af >/dev/null 2>&1 || true
+docker image prune -f >/dev/null 2>&1 || true
+
+stage 'Removing the swapfile'
+# 2 GB of an image that every downloader pays for, to carry zeroes. The target
+# machine makes its own on first boot, sized to a disk this build cannot know.
+swapoff -a || true
+rm -f /swap.img
+sed -i '/swap\.img/d' /etc/fstab
+
+stage 'Clearing build logs and caches'
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+journalctl --rotate >/dev/null 2>&1 || true
+journalctl --vacuum-time=1s >/dev/null 2>&1 || true
+find /var/log -type f -exec truncate -s 0 {} + || true
+rm -f /root/.bash_history "/home/$username/.bash_history"
+
+stage 'Removing machine identity'
+rm -f /etc/ssh/ssh_host_*
+truncate -s 0 /etc/machine-id
+rm -f /var/lib/dbus/machine-id
+
+stage 'Zeroing free space so the image compresses'
+fstrim -av || true
+
+printf '{"ok":true,"builtAt":"%s","repoRef":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '@@REPO_REF@@' > "$esp/mos-image.json"
+cp -f "$esp/mos-image.json" "$status_dir/mos-image.json" 2>/dev/null || true
+log 'Image finalized. Powering off.'
+sync
+umount "$status_dir" 2>/dev/null || true
+systemctl poweroff --no-block

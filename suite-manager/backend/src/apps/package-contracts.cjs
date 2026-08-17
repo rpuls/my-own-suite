@@ -30,7 +30,7 @@ const CATALOG_REFRESH_POLICY = Object.freeze({
   cacheStaleAfterMs: 24 * 60 * 60 * 1000,
   catalogIntervalMs: 6 * 60 * 60 * 1000,
   jitterRatio: 0.1,
-  manualMinimumIntervalMs: 30 * 1000,
+  reuseWindowMs: 30 * 1000, // resolving the branch tip spends one of api.github.com's 60 unauthenticated calls/hour
 });
 
 class AppPackageContractError extends Error {

@@ -1683,6 +1683,49 @@
   color: var(--mos-color-text-muted);
 }
 
+.suite-app-requirements {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--mos-space-2);
+  margin: 0;
+}
+
+.suite-app-requirements > div {
+  display: grid;
+  gap: 0.15rem;
+  padding: var(--mos-space-3) var(--mos-space-4);
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface-muted);
+}
+
+.suite-app-requirements dt {
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--mos-color-text-muted);
+}
+
+.suite-app-requirements dd {
+  display: grid;
+  gap: 0.1rem;
+  margin: 0;
+}
+
+.suite-app-requirements dd strong {
+  font-size: 1.15rem;
+  color: var(--mos-color-text-strong);
+}
+
+.suite-app-requirements dd span {
+  font-size: 0.85rem;
+  color: var(--mos-color-text-muted);
+}
+
+.suite-app-service-requires {
+  color: var(--mos-color-text-muted);
+}
+
 .suite-app-service-list {
   display: grid;
   gap: var(--mos-space-2);

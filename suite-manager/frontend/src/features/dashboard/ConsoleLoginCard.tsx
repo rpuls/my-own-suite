@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { Checkbox, Dialog, Icon, Notice, Spinner } from '../../components/ui';
 
-type ConsoleLoginStatus = { acknowledged: boolean; pending: boolean; username: string };
+type ConsoleLoginStatus = { acknowledged: boolean; pending: boolean; unreadable?: boolean; username: string };
 type ConsoleLoginSecret = { password: string; username: string };
 
 async function readStatus(): Promise<ConsoleLoginStatus> {
@@ -92,6 +92,24 @@ export function ConsoleLoginCard() {
       setRevealed(true);
       setError('This browser will not copy from an insecure page. Select the password above and copy it by hand.');
     }
+  }
+
+  // A handover that exists but cannot be opened has no panel to offer, and
+  // saying nothing would present a stranded password as a finished one. The
+  // owner cannot fix this from here, so it points at the one thing that can.
+  if (status?.unreadable) {
+    return <section className="mos-panel suite-card suite-console-login-card">
+      <h2 className="mos-card-title">Save your server login</h2>
+      <p className="suite-meta mos-meta">One-time handover</p>
+      <Notice title="This server login cannot be shown" variant="warning">
+        <p>
+          This machine generated its own login the first time it booted, but My Own Suite is not
+          allowed to read the file it was stored in. The login itself still works &mdash; it just
+          cannot be handed over here. See <a href="https://myownsuite.org/docs/install/own-hardware/">
+          the install guide</a> for how to recover it.
+        </p>
+      </Notice>
+    </section>;
   }
 
   if (!status?.pending) return null;

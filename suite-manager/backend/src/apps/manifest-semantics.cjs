@@ -111,6 +111,17 @@ function validateResourceSemantics(manifest, packageDir, errors) {
         volumeNames.set(name, serviceId);
       }
     }
+    // A peak below the resting figure would make capacity advice contradict
+    // itself, and reads as a transposed pair rather than a deliberate claim.
+    if (isRecord(service.requires)) {
+      for (const [peakKey, restKey] of [['cpuPeakCores', 'cpuCores'], ['memoryPeakMb', 'memoryMb']]) {
+        const peak = service.requires[peakKey];
+        const rest = service.requires[restKey];
+        if (typeof peak === 'number' && typeof rest === 'number' && peak < rest) {
+          errors.push(`${prefix}.requires.${peakKey} must be at least ${restKey} (${rest}), got ${peak}.`);
+        }
+      }
+    }
   }
 }
 

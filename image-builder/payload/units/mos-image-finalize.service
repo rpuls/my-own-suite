@@ -1,0 +1,14 @@
+[Unit]
+Description=Finalize this bake VM into a My Own Suite disk image
+After=multi-user.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/mos-image-finalize
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=3600
+
+[Install]
+WantedBy=multi-user.target

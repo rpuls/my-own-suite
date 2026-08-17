@@ -1026,7 +1026,7 @@ test('a crash between snapshot promotion and the durable commit is committed by 
   };
   const entries = [];
   const homepageService = {
-    async add(body) { entries.push(body.entry); return { revision: `revision-${entries.length}` }; },
+    async addManagedApp(body) { entries.push(body.entry); return { revision: `revision-${entries.length}` }; },
     async read() { return { revision: `revision-${entries.length}` }; },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
@@ -1639,7 +1639,7 @@ test('app updates replace an applied Homepage entry and retain its applied proje
   store.applyAppProjection({ at: new Date().toISOString(), instanceId: installed.id, kind: 'homepage', operationId: 'homepage-applied' });
   const entries = [];
   const homepageService = {
-    async add(body) { entries.push(body.entry); return { revision: `revision-${entries.length}` }; },
+    async addManagedApp(body) { entries.push(body.entry); return { revision: `revision-${entries.length}` }; },
     async read() { return { revision: `revision-${entries.length}` }; },
   };
   const comparison = await service.preparePackageUpdate('stirling-pdf');
@@ -1813,7 +1813,7 @@ test('public URL reconciliation reapplies installed app routes and Homepage app 
   };
   const homepageCalls = [];
   const homepageService = {
-    async add(body) {
+    async addManagedApp(body) {
       homepageCalls.push(['add', body.entry]);
       return { changed: true, revision: 'sha256:next' };
     },
@@ -1846,10 +1846,9 @@ test('public URL reconciliation reapplies installed app routes and Homepage app 
 
   assert.equal(calls.at(-1).appHost, 'stirling-pdf.example.test');
   assert.equal(calls.at(-1).publicUrl, 'https://stirling-pdf.example.test/');
-  assert.deepEqual(homepageCalls.at(-1)[1], [{
-    href: 'https://stirling-pdf.example.test/',
-    id: store.getAppInstanceByPackageId('stirling-pdf').id,
-  }]);
+  // No href travels with a reconciled tile: it is derived from the entry id, so
+  // the dashboard is correct through whichever door the visitor arrives by.
+  assert.deepEqual(homepageCalls.at(-1)[1], [{ id: store.getAppInstanceByPackageId('stirling-pdf').id }]);
 
   store.close();
 });
@@ -1869,7 +1868,7 @@ test('public URL reconciliation keeps Homepage regeneration separate from per-ap
   };
   const homepageCalls = [];
   const homepageService = {
-    async add(body) {
+    async addManagedApp(body) {
       return { changed: true, revision: 'sha256:next', requestId: body.requestId };
     },
     async read() {
@@ -1902,13 +1901,49 @@ test('public URL reconciliation keeps Homepage regeneration separate from per-ap
   const result = await service.reconcilePublicUrls(homepageService, requestContext());
 
   assert.equal(result.status, 'partial');
-  assert.deepEqual(homepageCalls.at(-1).map((entry) => entry.href).sort(), [
-    'https://stirling-pdf.example.test/',
-    'https://vaultwarden.example.test/',
-  ]);
+  assert.deepEqual(homepageCalls.at(-1).map((entry) => entry.id).sort(), ['stirling-pdf', 'vaultwarden']
+    .map((packageId) => store.getAppInstanceByPackageId(packageId).id).sort());
   assert.equal(result.runtime.find((item) => item.packageId === 'stirling-pdf').status, 'applied');
   assert.equal(result.runtime.find((item) => item.packageId === 'vaultwarden').status, 'failed');
   assert.equal(result.runtime.find((item) => item.packageId === 'vaultwarden').errorCode, 'APP_SECRET_UNAVAILABLE');
+
+  store.close();
+});
+
+// The startup re-stamp exists for installs updated from before tile hrefs went
+// relative. Applying a real domain was the only other path that rewrote them. It
+// sends ids and nothing else: hrefs come from the id, and a migration is not an
+// address change, so widget endpoints are already correct.
+test('startup re-stamps dashboard links from ids alone, without touching any app runtime', async () => {
+  const calls = [];
+  const appAgent = {
+    async snapshotPackage(input) { return snapshotResult(input); },
+    async apply(input) { calls.push(input); return { status: 'applied', steps: [] }; },
+    async checkHealth() { return { status: 'healthy' }; },
+  };
+  const reconciled = [];
+  const homepageService = {
+    async addManagedApp(body) { return { changed: true, requestId: body.requestId, revision: 'sha256:next' }; },
+    async read() { return { content: '[]', revision: 'sha256:current' }; },
+    async reconcileUrls(body) { reconciled.push(body.entries); return { changed: true, revision: 'sha256:reconciled' }; },
+  };
+  const store = new SuiteManagerStore(await tempStateDir());
+  const service = new AppPackageService({ agent: appAgent, appsDir: v2AppsDir, store });
+
+  // Nothing on the dashboard yet, so startup has nothing to say.
+  assert.deepEqual(await service.reconcileDashboardLinks(homepageService), { changed: false, status: 'skipped' });
+
+  const context = { appHost: 'stirling-pdf.mos.home', baseHost: 'mos.home', publicUrl: 'http://stirling-pdf.mos.home/', scheme: 'http' };
+  await service.installPackage('stirling-pdf');
+  await service.applyPackageRuntime('stirling-pdf', context);
+  await service.addPackageToHomepage('stirling-pdf', homepageService, context);
+  const applyCount = calls.length;
+
+  const result = await service.reconcileDashboardLinks(homepageService);
+
+  assert.equal(result.status, 'applied');
+  assert.deepEqual(reconciled.at(-1), [{ id: store.getAppInstanceByPackageId('stirling-pdf').id }]);
+  assert.equal(calls.length, applyCount, 'a tile href never reaches a container');
 
   store.close();
 });

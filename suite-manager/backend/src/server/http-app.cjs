@@ -10,6 +10,7 @@ const { HomepageService } = require('../homepage/homepage-service.cjs');
 const { ConsoleLoginError, ConsoleLoginService } = require('../settings/console-login-service.cjs');
 const { HttpsAgentClient } = require('../settings/https-agent-client.cjs');
 const { HttpsSettingsError } = require('../../../../shared/https-contract.cjs');
+const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
 const { HttpsSettingsService } = require('../settings/https-settings-service.cjs');
 const { LabResetAgentClient } = require('../lab/lab-reset-agent-client.cjs');
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
@@ -33,6 +34,7 @@ const DEFAULT_APPS_DIR = path.resolve(__dirname, '..', '..', '..', '..', 'apps')
 const SUITE_MANAGER_BASE_PATH = '/suite-manager/';
 const SUITE_MANAGER_API_PREFIX = `${SUITE_MANAGER_BASE_PATH}api`;
 const FRONTEND_ASSET_PREFIX = `${SUITE_MANAGER_BASE_PATH}assets/`;
+const MANAGED_APP_HREF_PATTERN = new RegExp(`^${MANAGED_APP_HREF_PREFIX}([0-9a-f-]{36})$`, 'u');
 
 const MIME_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'],
@@ -850,14 +852,14 @@ function createMOSServer({
           return;
         }
         try {
-          const result = await catalogService.refresh({ manual: true });
+          const result = await catalogService.refresh();
           jsonResponse(response, 200, result);
         } catch (error) {
           if (!(error instanceof OfficialCatalogError)) throw error;
-          jsonResponse(response, error.code === 'CATALOG_REFRESH_THROTTLED' ? 429 : 502, {
-            catalog: error.catalogStatus || catalogService.status(),
+          jsonResponse(response, 502, {
             code: error.code,
             error: error.message,
+            status: error.catalogStatus || catalogService.status(),
           });
         }
         return;
@@ -1124,6 +1126,28 @@ function createMOSServer({
         return;
       }
 
+      // What every managed dashboard tile links to. The target is built from
+      // this request's own Host plus the app the id resolves to, so one tile is
+      // correct on every door the box answers on — and nothing in the URL or
+      // query can steer it, which is what keeps this from being an open
+      // redirector. Deliberately not behind sign-in: an app handles its own auth,
+      // and a tile that only works for a signed-in owner is a broken tile.
+      const appOpenMatch = url.pathname.match(MANAGED_APP_HREF_PATTERN);
+      if (request.method === 'GET' && appOpenMatch) {
+        const packageId = appPackages.installedPackageIdForInstance(appOpenMatch[1]);
+        const appHost = packageId ? appHostFor(packageId) : null;
+        if (!appHost) {
+          jsonResponse(response, 404, { code: 'APP_NOT_INSTALLED', error: 'That app is not installed on this server.' });
+          return;
+        }
+        response.writeHead(302, {
+          'Cache-Control': 'no-store',
+          Location: appPublicUrlFor(request, packageId, httpsSettings, appHostFor).publicUrl,
+        });
+        response.end();
+        return;
+      }
+
       if (request.method === 'GET' && url.pathname.startsWith(FRONTEND_ASSET_PREFIX)) {
         if (serveFrontendAsset(response, frontendDistDir, url.pathname)) {
           return;
@@ -1190,6 +1214,10 @@ function createMOSServer({
   server.recoverAppPackageUpdates = () => appPackages.recoverInterruptedUpdates({
     publicUrlFor: appPublicUrlResolverAtBoot(homeHost, httpsSettings),
   });
+  // Carries an install updated from before the dashboard became door-agnostic
+  // over to relative tile links. Applying a real domain was the only other path
+  // that re-stamped them, and most installs never take it.
+  server.reconcileDashboardLinks = () => appPackages.reconcileDashboardLinks(homepageConfig);
   // Candidate downloads from a Suite Manager that was killed mid-operation are
   // owned by nobody once it restarts. Downloads sweep before they run, so this is
   // about reclaiming the disk now rather than at whatever point someone next

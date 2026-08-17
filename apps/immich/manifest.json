@@ -2,19 +2,26 @@
   "manifestVersion": 1,
   "id": "immich",
   "name": "Immich",
-  "version": "0.5.1",
+  "version": "0.7.0",
   "minimumMosVersion": "0.18.0",
   "architectures": [
     "amd64"
   ],
   "packageFiles": [
-    "immich-config.json"
+    "immich-config.json",
+    "screenshots/timeline.png",
+    "screenshots/search.png",
+    "screenshots/map.png",
+    "screenshots/people.png",
+    "screenshots/detail.png",
+    "screenshots/albums.png",
+    "screenshots/CREDITS.md"
   ],
-  "summary": "High performance self-hosted photo and video backup solution.",
+  "summary": "Every photo and video you own, backed up off your phone and searchable, on your own server.",
   "category": "media",
   "icon": "icon.png",
   "catalog": {
-    "description": "Immich is a self-hosted photo and video management server with automatic backup from mobile devices, facial recognition, object detection, and album organization.",
+    "description": "Immich is the photo app you already know how to use, running on a machine you own. It empties your phone in the background at full resolution and hands back everything that made a cloud photo service worth putting up with: a timeline you scroll by year, a map of everywhere you have been, faces it learns and groups on its own, and a search box that finds the red bike in the rain in a library you never tagged. The machine learning that does all of that runs on your server too, so nothing about your family album is read anywhere else - and nothing gets compressed, hidden behind a storage tier or deleted because a subscription lapsed.",
     "demoDeployTargets": [
       {
         "provider": "railway",
@@ -28,28 +35,76 @@
       "Amazon Photos",
       "Flickr",
       "SmugMug",
-      "Synology Photos"
+      "Synology Photos",
+      "Ente Photos",
+      "QNAP QuMagie"
+    ],
+    "screenshots": [
+      {
+        "src": "screenshots/timeline.png",
+        "alt": "The Immich timeline showing a day from a trip to Krakow as a dense grid of photos, with a year scrubber down the right edge",
+        "caption": "Every photo you own, in one scroll back through the years"
+      },
+      {
+        "src": "screenshots/search.png",
+        "alt": "Immich search results for the phrase 'a dog in the garden', showing photos of a beagle outdoors that were never tagged",
+        "caption": "Describe what you remember and it finds the photo"
+      },
+      {
+        "src": "screenshots/map.png",
+        "alt": "The Immich map of Europe with photo clusters over England, Denmark, the Netherlands, Poland, the Alps and Spain",
+        "caption": "Everywhere you have been, read from the photos themselves"
+      },
+      {
+        "src": "screenshots/people.png",
+        "alt": "The Immich people page showing three named faces the server grouped on its own",
+        "caption": "Faces grouped without being asked, named once"
+      },
+      {
+        "src": "screenshots/detail.png",
+        "alt": "A photo open in Immich with the info panel showing the people in it, the date, the filename, the camera, the exposure and the place it was taken",
+        "caption": "The original file, and everything it knows about itself"
+      },
+      {
+        "src": "screenshots/albums.png",
+        "alt": "The Immich albums page grouped by year, each album showing a cover photo, its date range and how many items it holds",
+        "caption": "Trips and years, filed the way you would file them"
+      }
     ],
     "tags": [
       "photos",
       "videos",
       "backup",
       "gallery",
+      "timeline",
+      "map",
+      "memories",
       "facial-recognition",
-      "google-photos-alternative"
+      "smart-search",
+      "raw",
+      "google-photos-alternative",
+      "icloud-photos-alternative"
     ],
     "features": [
       {
-        "title": "Automatic mobile backup",
-        "body": "Backup photos and videos automatically from your phone using the official Immich mobile app."
+        "title": "Your phone empties itself",
+        "body": "The Immich app uploads new photos and videos in the background, at the resolution your camera actually shot them - RAW files, Live Photos and 4K video included. Nothing is re-encoded on the way in, so the file sitting on your server is the file your camera wrote."
       },
       {
-        "title": "Facial recognition",
-        "body": "Automatically organize photos by people using on-device machine learning."
+        "title": "Find it without ever having tagged it",
+        "body": "Describe what you remember - a red bike in the rain, the cake with the sparklers - and Immich finds the photo. It reads text inside pictures too, so the screenshot of a boarding pass turns up when you search the flight number printed on it."
       },
       {
-        "title": "Smart search",
-        "body": "Search photos by objects, locations, dates, and people."
+        "title": "The people and places come back to you",
+        "body": "Faces are grouped on their own and you name each person once. A world map pins every photo that recorded where it was taken, and each morning Immich shows you the same week from the years before."
+      },
+      {
+        "title": "Share an album, not your library",
+        "body": "Send an album to people who have no account and no app, or give a partner a standing view of your photos inside their own timeline. Both are links served off your server rather than a copy uploaded to somebody else's."
+      },
+      {
+        "title": "The clever part runs on your hardware",
+        "body": "Face recognition, natural-language search and text reading happen in a container beside the photos. The models are downloaded once, and after that your library never leaves the server in order to be understood."
       }
     ],
     "resourceHint": {
