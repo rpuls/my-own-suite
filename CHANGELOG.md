@@ -4,6 +4,8 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-08-17
+
 ### Added
 
 - A home-server install now has two ways in, and the screen shown when the install finishes offers both: `http://home.mos.home`, which needs a `*.mos.home` rule in your own router or Pi-hole, and `http://home.<your-lan-ip-with-dashes>.local.myownsuite.org` — for example `home.192-168-123-45.local.myownsuite.org` — which needs nothing set up on any device. Installed apps answer under whichever you use, neither address is a setting, and dashboard tiles now open the app through the address you arrived on instead of the one that installed it. **The second address sends DNS lookups for your app subdomains to MOS-operated nameservers, which do not log queries; the first never involves MOS infrastructure.** It contains your server's LAN address, so set a DHCP reservation — both addresses need one, and if it changes, saved links and app addresses break until each app is applied again. Applying your own domain with HTTPS stops the second address being served, and cloud/VPS installs are unaffected.
