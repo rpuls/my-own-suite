@@ -208,6 +208,114 @@ jobs:
           echo "Published to https://${DOWNLOAD_HOST}/${PREFIX}/${image}"
           ls -lh
 
+      # A step log is the one place nobody looks. GitHub renders this at the top
+      # of the run page, so the notification that the build finished lands one
+      # click away from the link, the checksum and the commit it came from.
+      - name: Write the download to the run summary
+        env:
+          PREFIX: ${{ steps.target.outputs.prefix }}
+        run: |
+          cd image-builder/.work/out
+          image="my-own-suite-${GITHUB_REF_NAME}.img.xz"
+          url="https://${DOWNLOAD_HOST}/${PREFIX}/${image}"
+          sha="$(awk -v f="$image" '$2 == f { print $1 }' SHA256SUMS)"
+          {
+            echo "## Disk image"
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| Download | <${url}> |"
+            echo "| SHA256 | \`${sha}\` |"
+            echo "| Size | $(du -h "$image" | cut -f1) |"
+            echo "| Built from | \`${GITHUB_REF_NAME}\` @ \`${GITHUB_SHA:0:12}\` |"
+            echo "| Built at | $(date -u '+%Y-%m-%d %H:%M UTC') |"
+            echo
+            if [ "$PREFIX" = 'dry-run' ]; then
+              echo "Not a release. The next tagged release deletes this prefix."
+            fi
+            echo "Same link, always current: <https://${DOWNLOAD_HOST}/builds/index.html>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # An unlisted index on the download host itself, so a maintainer has one
+      # bookmark instead of the Cloudflare dashboard. It lives here rather than
+      # in `site/` for three reasons: same origin as the artifact, so it needs no
+      # CORS rule; it never enters the public site build or `main`; and it is
+      # rewritten by the build that publishes the image, so it cannot describe
+      # one that was never uploaded. Every CI build overwrites it, so after a
+      # release it names the release image rather than a staging one the prune
+      # step below is about to delete.
+      - name: Refresh the unlisted build index
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          PREFIX: ${{ steps.target.outputs.prefix }}
+        run: |
+          cd image-builder/.work/out
+          image="my-own-suite-${GITHUB_REF_NAME}.img.xz"
+          url="https://${DOWNLOAD_HOST}/${PREFIX}/${image}"
+          sha="$(awk -v f="$image" '$2 == f { print $1 }' SHA256SUMS)"
+          size="$(du -h "$image" | cut -f1)"
+          built="$(date -u '+%Y-%m-%d %H:%M UTC')"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [ "$PREFIX" = 'dry-run' ]; then
+            kind='Staging build'
+            note='Not a release, and not for anyone else to install. The next tagged release deletes this file.'
+          else
+            kind='Release build'
+            note='This is the published release image. It stays until two newer releases exist.'
+          fi
+
+          cat > index.html <<HTML
+          <!doctype html>
+          <html lang="en">
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <meta name="robots" content="noindex, nofollow">
+          <title>MOS CI builds</title>
+          <style>
+            :root { color-scheme: light dark; }
+            body { margin: 0; padding: 2.5rem 1.25rem; font: 16px/1.6 ui-sans-serif, system-ui, sans-serif; }
+            main { max-width: 46rem; margin: 0 auto; }
+            h1 { font-size: 1.35rem; margin: 0 0 .25rem; }
+            p.sub { margin: 0 0 2rem; opacity: .7; }
+            table { border-collapse: collapse; width: 100%; margin: 0 0 1.5rem; }
+            th, td { text-align: left; padding: .55rem .5rem; border-bottom: 1px solid rgba(128,128,128,.28); vertical-align: top; }
+            th { width: 9.5rem; font-weight: 600; opacity: .75; }
+            code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .87em; word-break: break-all; }
+            a.dl { display: inline-block; font-weight: 600; }
+            .note { padding: .85rem 1rem; border-left: 3px solid rgba(128,128,128,.5); opacity: .85; margin: 0 0 1.5rem; }
+            footer { margin-top: 2.5rem; font-size: .85rem; opacity: .6; }
+          </style>
+          </head>
+          <body>
+          <main>
+            <h1>My Own Suite &mdash; CI builds</h1>
+            <p class="sub">Unlisted. This page is written by the release workflow and is not linked from anywhere.</p>
+            <p class="note">${kind}. ${note}</p>
+            <table>
+              <tr><th>Download</th><td><a class="dl" href="${url}">${image}</a></td></tr>
+              <tr><th>SHA256</th><td><code>${sha}</code></td></tr>
+              <tr><th>Size</th><td>${size}</td></tr>
+              <tr><th>Built from</th><td><code>${GITHUB_REF_NAME}</code> @ <code>${GITHUB_SHA}</code></td></tr>
+              <tr><th>Built at</th><td>${built}</td></tr>
+              <tr><th>Workflow run</th><td><a href="${run_url}">#${GITHUB_RUN_NUMBER}</a></td></tr>
+            </table>
+            <p>Verify before flashing:</p>
+            <p><code>shasum -a 256 ${image}</code> &nbsp;/&nbsp; <code>certutil -hashfile ${image} SHA256</code></p>
+            <footer>Looking for the supported download? <a href="https://myownsuite.org/docs/install/own-hardware/">myownsuite.org</a></footer>
+          </main>
+          </body>
+          </html>
+          HTML
+
+          aws s3 cp index.html "s3://${R2_BUCKET}/builds/index.html" \
+            --endpoint-url "$R2_ENDPOINT" --checksum-algorithm CRC32 \
+            --content-type 'text/html; charset=utf-8' --cache-control 'no-cache'
+          echo "Build index: https://${DOWNLOAD_HOST}/builds/index.html"
+
       # The checksum belongs on GitHub rather than beside the image: one served
       # from the same host as the bytes it describes proves only that the host is
       # consistent with itself.
@@ -323,12 +431,16 @@ jobs:
             | awk '$1 == "PRE" { sub(/\/$/, "", $2); print $2 }' | sort > all-prefixes
 
           # Version-sorted, so the window follows releases rather than upload
-          # order. Anything that is not a version — `dry-run/` — is never kept.
-          grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' all-prefixes | sort -V | tail -n "$KEEP" > keep
+          # order. Anything that is not a version — `dry-run/` — is never kept,
+          # with one exception: `builds/` holds the unlisted index page and no
+          # artifacts, so it costs kilobytes rather than gigabytes and deleting
+          # it would break a bookmark on every release.
+          grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' all-prefixes | sort -V | tail -n "$KEEP" > keep-images
+          { cat keep-images; echo builds; } | sort -u > keep
           comm -23 all-prefixes <(sort keep) > remove
 
           if [ ! -s remove ]; then
-            echo "Nothing to prune. Hosted: $(paste -sd' ' keep)"
+            echo "Nothing to prune. Hosted: $(paste -sd' ' keep-images)"
             exit 0
           fi
 
@@ -337,7 +449,7 @@ jobs:
             aws s3 rm "s3://${R2_BUCKET}/${prefix}/" --recursive --endpoint-url "$R2_ENDPOINT"
           done < remove
 
-          echo "Hosted: $(paste -sd' ' keep)"
+          echo "Hosted: $(paste -sd' ' keep-images)"
           echo "removed=$(grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' remove | paste -sd' ' || true)" >> "$GITHUB_OUTPUT"
 
       # A deleted image leaves a download link on a published release page that

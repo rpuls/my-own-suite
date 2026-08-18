@@ -109,7 +109,7 @@ setup, and never waits at a screen that looks hung.
   "on the way". Hosting must respect the page's own privacy claim — self-hosted file or a no-cookie
   embed, not a plain YouTube iframe. *(Owner-run)*
 - **C6 — Record the own-hardware install walkthrough.** The second video: download → Etcher → boot →
-  type `YES` → save the server login → owner account. Unblocked — the disk image is the flow we intend
+  choose 1 and confirm → save the server login → owner account. Unblocked — the disk image is the flow we intend
   to keep — but it needs a release first, because the walkthrough films a published download and not a
   branch. *(Owner-run)*
 - **C2 — "What it costs" docs page.** Apps running × VPS size × monthly range, provider-neutral, with

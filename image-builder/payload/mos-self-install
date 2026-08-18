@@ -40,7 +40,8 @@ printf '  ----------------------\n\n'
 if [ "${#candidates[@]}" -eq 0 ]; then
   printf '  No internal disk large enough for this image was found.\n'
   printf '  This image needs at least %s GB.\n\n' "$((source_bytes / 1000000000 + 1))"
-  printf '  Press Enter to continue booting from the USB stick instead.\n'
+  printf '  Press Enter to continue booting from the USB stick. Nothing will be\n'
+  printf '  installed, and this machine will not boot once the stick is removed.\n'
   read -r _ || true
   exit 0
 fi
@@ -49,23 +50,61 @@ if [ "${#candidates[@]}" -gt 1 ]; then
   printf '  This machine has more than one internal disk:\n\n'
   lsblk -dno NAME,SIZE,MODEL "${candidates[@]}" | sed 's/^/    /'
   printf '\n  Refusing to guess which one to erase. Disconnect the disks you want\n'
-  printf '  to keep, then reboot. Press Enter to continue from the USB stick.\n'
+  printf '  to keep, then reboot.\n\n'
+  printf '  Press Enter to continue from the USB stick. Nothing will be installed,\n'
+  printf '  and this machine will not boot once the stick is removed.\n'
   read -r _ || true
   exit 0
 fi
 
 target="${candidates[0]}"
+target_name="$(basename "$target")"
 target_description="$(lsblk -dno NAME,SIZE,MODEL "$target" | sed 's/  */ /g')"
 
-printf '  Everything on this disk will be erased:\n\n'
+printf '  This machine has one disk My Own Suite can install onto:\n\n'
 printf '      %s\n\n' "$target_description"
-printf '  Type YES to install My Own Suite onto it, or press Enter to cancel.\n'
-printf '  > '
-read -r answer || answer=''
-if [ "$answer" != "YES" ]; then
-  printf '\n  Cancelled. Continuing to boot from the USB stick.\n\n'
-  exit 0
-fi
+printf '  1) Install onto %s  -  ERASES EVERYTHING on that disk\n' "$target_name"
+printf "  2) Don't install  -  run from this USB stick (advanced / recovery)\n\n"
+
+# The answer is a digit and anything unrecognised asks again, because the
+# previous prompt treated every answer that was not exactly `YES` as "do not
+# install". One mistyped character then produced a suite running from the stick
+# that looked like a finished install, on a machine that would not boot without
+# it. Not installing has to be chosen, never arrived at.
+while :; do
+  printf '  Choose 1 or 2, then press Enter.\n'
+  printf '  > '
+  if ! read -r answer; then
+    printf '\n  No console input. Continuing to boot from the USB stick.\n\n'
+    exit 0
+  fi
+  case "$answer" in
+    2)
+      printf '\n  Not installing.\n\n'
+      printf '  This machine runs My Own Suite from the USB stick. Nothing is installed\n'
+      printf '  on %s, and it will not boot once the stick is removed. Reboot with the\n' "$target_name"
+      printf '  stick attached to install.\n\n'
+      exit 0
+      ;;
+    1)
+      printf '\n  Everything on this disk will be erased:\n\n'
+      printf '      %s\n\n' "$target_description"
+      printf '  Type ERASE to confirm, or press Enter to go back.\n'
+      printf '  > '
+      read -r confirm || confirm=''
+      if [ "${confirm,,}" = 'erase' ]; then
+        break
+      fi
+      printf '\n  Not confirmed, nothing has changed.\n\n'
+      ;;
+    '')
+      printf '\n  Nothing entered.\n\n'
+      ;;
+    *)
+      printf '\n  "%s" is not 1 or 2.\n\n' "$answer"
+      ;;
+  esac
+done
 
 printf '\n  Copying. This takes a few minutes and must not be interrupted.\n\n'
 sync

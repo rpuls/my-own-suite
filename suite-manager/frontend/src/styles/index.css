@@ -842,14 +842,20 @@
   outline: none;
 }
 
+/* Status pill. The tint is deliberately light, so the blur is part of the
+   primitive rather than a hero special case: it is the blur, not the fill,
+   that keeps the label readable when the pill sits on a screenshot. */
 .suite-app-health-indicator {
   display: inline-flex;
   align-items: center;
+  gap: 0.4rem;
   width: fit-content;
   min-height: 1.8rem;
   padding: 0.22rem 0.55rem;
   border: 1px solid var(--mos-color-surface-border);
   border-radius: var(--mos-radius-pill);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   color: var(--mos-color-text-muted);
   font-size: var(--mos-text-label);
   font-weight: 800;
@@ -875,6 +881,14 @@
   border-color: var(--mos-color-surface-border);
   background: var(--mos-color-surface);
   color: var(--mos-color-text);
+}
+
+/* Inside the pill the LED is a colour anchor next to the label, not the
+   standalone dot it is on the cards, so it drops the halo and scales down. */
+.suite-app-health-indicator .suite-app-health-led {
+  width: 0.5rem;
+  height: 0.5rem;
+  box-shadow: none;
 }
 
 .suite-app-health-led-wrap {
@@ -1171,15 +1185,15 @@
   gap: var(--mos-space-5);
   min-height: 0;
   overflow: auto;
-  padding: 0 var(--mos-space-6) var(--mos-space-6);
+  padding: var(--mos-space-5) var(--mos-space-6) var(--mos-space-6);
 }
 
 /* App detail hero — the package's first screenshot fills the top of the
-   drawer and fades into the drawer surface, with the logo, name, and what it
-   replaces sitting on the faded end of it. --suite-sheet is the colour the
-   drawer's frost actually resolves to over the dimmed page behind it, so the
-   fade lands on the drawer surface without a seam in either theme; the same
-   colour backs the sticky action bar. */
+   drawer and fades into the drawer surface, with the logo, name, what it
+   replaces, and the action row sitting on the faded end of it. --suite-sheet
+   is the colour the drawer's frost actually resolves to over the dimmed page
+   behind it, so the fade lands on the drawer surface without a seam in either
+   theme. */
 .suite-app-detail {
   --suite-sheet-rgb: 8 26 46;
   --suite-sheet: rgb(var(--suite-sheet-rgb));
@@ -1193,13 +1207,13 @@
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   isolation: isolate;
-  min-height: 12rem;
+  min-height: 16.5rem;
 }
 
 .suite-app-detail-hero.has-cover {
-  min-height: 18rem;
+  min-height: 23rem;
 }
 
 .suite-app-detail-cover {
@@ -1219,11 +1233,12 @@
   inset: 0;
   background: linear-gradient(
     to bottom,
-    rgb(var(--suite-sheet-rgb) / 0.3) 0%,
-    rgb(var(--suite-sheet-rgb) / 0) 40%,
-    rgb(var(--suite-sheet-rgb) / 0.55) 56%,
-    rgb(var(--suite-sheet-rgb) / 0.92) 70%,
-    var(--suite-sheet) 84%,
+    rgb(var(--suite-sheet-rgb) / 0.32) 0%,
+    rgb(var(--suite-sheet-rgb) / 0) 32%,
+    rgb(var(--suite-sheet-rgb) / 0.2) 50%,
+    rgb(var(--suite-sheet-rgb) / 0.62) 66%,
+    rgb(var(--suite-sheet-rgb) / 0.9) 80%,
+    var(--suite-sheet) 91%,
     var(--suite-sheet) 100%
   );
 }
@@ -1235,8 +1250,8 @@
   padding: var(--mos-space-4);
 }
 
-/* No bottom padding: the sticky action bar's own top padding is the whole
-   gap between the name and the first action. */
+/* No bottom padding: the action row's own top padding is the whole gap
+   between the name and the first action. */
 .suite-app-detail-hero-bottom {
   display: grid;
   align-content: end;
@@ -1334,7 +1349,7 @@
 }
 
 .suite-app-detail-hero.has-cover .suite-app-detail-heading h2 {
-  text-shadow: 0 2px 12px rgb(var(--suite-sheet-rgb) / 0.55);
+  text-shadow: 0 1px 3px rgb(var(--suite-sheet-rgb) / 0.7), 0 2px 14px rgb(var(--suite-sheet-rgb) / 0.85);
 }
 
 .suite-app-detail-replaces {
@@ -1373,20 +1388,16 @@
   line-height: 1.6;
 }
 
-/* Sticky action bar directly under the hero. It carries the drawer's own
-   opaque colour so the content scrolling beneath it stays hidden, and its
-   padding replaces the scroll container's missing top padding. */
+/* The action row is the hero's last band, so the screenshot runs behind it
+   and the fade finishes underneath it. The hero never scrolls, so it stays in
+   view without needing to be sticky. */
 .suite-app-action-bar {
-  position: sticky;
-  top: 0;
-  z-index: 3;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--mos-space-3);
-  padding: var(--mos-space-4) 0;
+  padding: var(--mos-space-4) var(--mos-space-6);
   border-bottom: var(--mos-border-hairline);
-  background: var(--suite-sheet);
 }
 
 .suite-app-action-spacer {
@@ -1671,19 +1682,30 @@
   background: var(--mos-color-warning);
 }
 
-.suite-app-gallery-dialog {
-  width: min(100%, 720px);
+/* Screens gallery — the screenshot is the point of this dialog, so it takes
+   the whole window it can get: the frame is the one flexible row between the
+   header and the nav, and the image scales to fit inside it rather than the
+   dialog growing a scrollbar. The .suite-dialog base rule is declared later
+   in this file, so the selector needs both classes to win on width. */
+.suite-dialog.suite-app-gallery-dialog {
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(100%, 1240px);
+  max-height: min(92vh, 1080px);
 }
 
 .suite-app-gallery {
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: var(--mos-space-3);
+  min-height: 0;
   margin: 0;
 }
 
 .suite-app-gallery-frame {
+  display: grid;
+  place-items: center;
+  min-height: 0;
   overflow: hidden;
-  aspect-ratio: 16 / 10;
   border: 1px solid var(--mos-color-surface-border);
   border-radius: var(--mos-radius-sm);
   background: var(--mos-color-surface-muted);
@@ -1691,8 +1713,8 @@
 
 .suite-app-gallery-frame img {
   display: block;
-  width: 100%;
-  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
 }
 
@@ -2496,9 +2518,11 @@
     min-width: 0;
     border-left: 0;
   }
-  .suite-app-detail-hero.has-cover { min-height: 15.5rem; }
+  .suite-app-detail-hero { min-height: 14.5rem; }
+  .suite-app-detail-hero.has-cover { min-height: 20.5rem; }
   .suite-app-detail-hero-bottom { padding: var(--mos-space-4) var(--mos-space-4) 0; }
-  .suite-app-detail-scroll { padding: 0 var(--mos-space-4) var(--mos-space-5); }
+  .suite-app-action-bar { padding: var(--mos-space-4); }
+  .suite-app-detail-scroll { padding: var(--mos-space-5) var(--mos-space-4); }
   .suite-app-detail-heading h2 { font-size: 1.7rem; }
   .suite-app-detail-title-row {
     align-items: flex-start;

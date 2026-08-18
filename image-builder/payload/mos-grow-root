@@ -11,6 +11,17 @@ root_disk="/dev/$root_parent"
 partition_number="$(printf '%s' "$root_source" | grep -oE '[0-9]+$' || true)"
 [ -n "$partition_number" ] || exit 0
 
+# Never grow the installer stick. This unit runs after mos-self-install, which
+# reboots when it installs — so reaching here on removable media means the owner
+# is running from the stick, and expanding it costs them the installer: the copy
+# to the target then has to move the whole stick rather than the image, and
+# mos-self-install starts refusing internal disks smaller than the grown stick.
+transport="$(lsblk -dno TRAN "$root_disk" 2>/dev/null | tr -d ' ' || true)"
+removable="$(cat "/sys/block/$root_parent/removable" 2>/dev/null || echo 0)"
+if [ "$transport" = "usb" ] || [ "$removable" = "1" ]; then
+  exit 0
+fi
+
 sgdisk -e "$root_disk" >/dev/null 2>&1 || true
 partprobe "$root_disk" >/dev/null 2>&1 || true
 growpart "$root_disk" "$partition_number" >/dev/null 2>&1 || true

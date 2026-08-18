@@ -136,12 +136,21 @@ are the cost of an offline first boot, and they are worth it.
 Written to a USB stick with Rufus (DD mode) or balenaEtcher, and booted:
 
 - `mos-self-install` sees it is running from removable media, finds the single
-  internal disk, asks for `YES`, copies itself over, expands to fill the disk, and
-  asks you to remove the stick and reboot.
+  internal disk, and offers two numbered choices: install onto it, or run from the
+  stick. `1` then `ERASE` copies itself over, expands to fill the disk, and asks
+  you to remove the stick and reboot. Anything it does not recognise asks again —
+  **not installing has to be chosen, never arrived at.** The prompt this replaced
+  compared the answer to `YES` exactly, so a lowercase `yes` cancelled, the suite
+  came up on the stick looking installed, and the machine stopped booting the
+  moment the stick came out.
 - On the internal disk it sees non-removable media and does nothing, so the same
   image is both the installer and the installed system.
 - `mos-ssh-hostkeys`, `mos-grow-root` and `mos-first-boot` give the machine its own
-  identity, its full disk, and its own server login.
+  identity, its full disk, and its own server login. `mos-grow-root` skips
+  removable media, so choosing not to install leaves the stick a working installer
+  rather than expanding it to fill itself.
+- Running from the stick, `mos-first-boot` leads with **RUNNING FROM THE USB
+  STICK** and says nothing is installed, instead of the completion banner below.
 - `mos-first-boot` then writes the completion banner to `/etc/issue.d/`. It states
   the address reservation both doors need, then offers each door in one line, and
   points at the docs for the rest; a login screen is the wrong place for a guide.

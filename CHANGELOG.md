@@ -4,6 +4,10 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+### Fixed
+
+- The own-hardware installer no longer turns a mistyped answer into a silent non-install. It names the disk it found, offers a numbered choice between installing onto it and running from the stick, takes the erase confirmation as a separate step, and asks again on anything it does not recognise. Previously any answer other than exactly `YES` — a lowercase `yes` included — continued booting from the USB stick and brought the suite up there, which looked like a finished install on a machine that stopped booting the moment the stick came out. A machine running from the stick now says so on its console instead of reporting itself installed, and the stick is no longer expanded to fill itself, so it stays usable as an installer.
+
 ## [0.18.0] - 2026-08-17
 
 ### Added

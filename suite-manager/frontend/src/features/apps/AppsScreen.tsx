@@ -306,7 +306,10 @@ function AppHealthIndicator({ app, ledVariant = false }: { app: AppPackageSummar
       <span className="suite-app-health-tooltip" id={tooltipId} role="tooltip">{status.label}</span>
     </span>;
   }
-  return <span className={`suite-app-health-indicator ${status.className}`}>{status.label}</span>;
+  return <span className={`suite-app-health-indicator ${status.className}`}>
+    <span aria-hidden="true" className={`suite-app-health-led ${status.className}`} />
+    {status.label}
+  </span>;
 }
 
 function resourceLabel(app: AppPackageSummary) {
@@ -786,17 +789,19 @@ function AppDetail({
             </p>
           </div>
         </div>
-      </header>
-
-      <div className="suite-app-detail-scroll">
-        {/* Sticky under the hero image: the app's own front door stays reachable
-            however far down the owner has read. */}
+        {/* The app's own front door, on the faded end of the screenshot. The
+            hero never scrolls, so these stay reachable however far down the
+            owner has read. */}
         <div className="suite-app-action-bar">
           {updateWaiting ? <>
             <button className="mos-btn mos-btn-primary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking update...' : 'Review update'}</button>
             {primaryDestination ? <a className="mos-btn mos-btn-secondary" href={url}>Open {app.name}</a> : null}
           </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : needsPreparation && !setupOpen ? <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setSetupOpen(true)} type="button">Prepare</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={submitInstall} type="button">{installing ? 'Installing...' : 'Install'}</button>}
           {ready && hasGuide(app) && !guideCompleted ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
+          {homepageAvailable && !ready && !disabled && !uninstalled ? <label className="suite-app-homepage-option">
+            <input checked={showOnHomepage} disabled={installing} onChange={(event) => setShowOnHomepage(event.currentTarget.checked)} type="checkbox" />
+            <span>Add shortcut to Homepage</span>
+          </label> : null}
           <span className="suite-app-action-spacer" />
           {maintenanceActions.length ? <ActionMenu ariaLabel="More app actions" disabled={installing || guideUpdating} items={maintenanceActions} /> : null}
           {confirmUninstall ? <Dialog
@@ -811,11 +816,9 @@ function AppDetail({
             <p className="suite-meta">If you only want the app offline, use Stop instead &mdash; it keeps all data and settings.</p>
           </Dialog> : null}
         </div>
+      </header>
 
-        {homepageAvailable && !ready && !disabled && !uninstalled ? <label className="suite-app-homepage-option">
-          <input checked={showOnHomepage} disabled={installing} onChange={(event) => setShowOnHomepage(event.currentTarget.checked)} type="checkbox" />
-          <span>Add shortcut to Homepage</span>
-        </label> : null}
+      <div className="suite-app-detail-scroll">
         {setupOpen && needsPreparation ? <AppSetupPanel
           disabled={installing}
           fields={inputFields}
@@ -1150,12 +1153,12 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
             </p>
           </div>
         </div>
-      </header>
-
-      <div className="suite-app-detail-scroll">
         <div className="suite-app-action-bar">
           <button className="mos-btn mos-btn-primary" disabled={!canInstall} onClick={() => onInstall(resolved, { ...setupConfig })} type="button">{installing ? 'Installing...' : 'Install'}</button>
         </div>
+      </header>
+
+      <div className="suite-app-detail-scroll">
         <p className="suite-app-detail-description">{externalDescription(card)}</p>
         {inputFields.length ? <AppSetupPanel
           disabled={installing}
