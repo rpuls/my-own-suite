@@ -135,10 +135,13 @@ are the cost of an offline first boot, and they are worth it.
 
 Written to a USB stick with Rufus (DD mode) or balenaEtcher, and booted:
 
-- `mos-self-install` sees it is running from removable media, finds the single
-  internal disk, and offers two numbered choices: install onto it, or run from the
-  stick. `1` then `ERASE` copies itself over, expands to fill the disk, and asks
-  you to remove the stick and reboot. Anything it does not recognise asks again —
+- `mos-self-install` sees it is running from removable media and lists every
+  internal disk big enough, in kernel-name order so the numbers do not move
+  between boots, each annotated with what it already holds — a picker that printed
+  only NAME/SIZE/MODEL would trade a safe refusal for a confident mistake. The
+  last option declines. A number then `ERASE` copies the image over, expands it to
+  fill the disk, and asks you to remove the stick and reboot. Anything it does not
+  recognise asks again —
   **not installing has to be chosen, never arrived at.** The prompt this replaced
   compared the answer to `YES` exactly, so a lowercase `yes` cancelled, the suite
   came up on the stick looking installed, and the machine stopped booting the
@@ -201,8 +204,14 @@ resolvable name stops being served.
   across four attempts, which nearly justified an MBR image; it turned out to be
   stale firmware state, and **Apply Factory Defaults** cleared it with every
   setting already correct. Suspect NVRAM before suspecting the layout.
-- **Single internal disk only.** With more than one it refuses rather than guesses.
-  Roadmap H4 decides what the confirmation should look like.
+- **No boot entry is created for the disk that was written.** `mos-image-finalize`
+  uses `grub-install --removable`, which writes `EFI/BOOT/BOOTX64.EFI` and
+  deliberately no NVRAM entry, so the target boots only on firmware that tries the
+  removable-media path on a fixed disk. Most do. The ones that do not report *no
+  bootable drive* with the stick removed and boot fine with it in, which is
+  indistinguishable from a failed install. Now that a machine can have several
+  disks the firmware also has more places to guess wrong, so `mos-self-install`
+  should add an `efibootmgr` entry for the disk it just wrote.
 - `mos-self-install` copies a mounted root filesystem after a best-effort
   read-only remount and repairs the copy with `e2fsck -fy`. Quiescing it properly
   is a real fix, not a PoC one.

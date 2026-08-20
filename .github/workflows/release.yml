@@ -361,10 +361,16 @@ jobs:
             echo "## Install on your own hardware"
             echo
             echo "This is a finished server, not an installer: the machine was installed and tested"
-            echo "in CI, and you flash the result. Write it to a USB stick with"
-            echo "[balenaEtcher](https://etcher.balena.io/) and boot your server from it. It names the"
-            echo "disk it found, asks you to type \`YES\`, and is running a few minutes later with"
-            echo "nothing downloaded."
+            echo "in CI, and you flash the result. Write it to a USB stick:"
+            echo
+            echo "- **Windows:** [Rufus](https://rufus.ie/), in **DD mode**. Decompress the \`.xz\` first"
+            echo "  if Rufus will not open it directly."
+            echo "- **macOS and Linux:** [balenaEtcher](https://etcher.balena.io/), which reads the"
+            echo "  compressed file as it is."
+            echo
+            echo "Boot your server from the stick. It lists the disks it can install onto and what each"
+            echo "one already holds, erases only the disk you pick and confirm, and is running a few"
+            echo "minutes later with nothing downloaded."
             echo
             echo "**[Download ${image}](${url})** (~2 GB)"
             echo
@@ -376,7 +382,7 @@ jobs:
             echo "\`certutil -hashfile ${image} SHA256\` on Windows. The checksum is also attached"
             echo "to this release, which is the copy to trust."
             echo
-            echo "Requires a machine that boots in **UEFI** mode with a single internal disk. The"
+            echo "Requires a machine that boots in **UEFI** mode. The"
             echo "image contains no password: your server generates its own login the first time it"
             echo "boots, shows it on its screen and in Suite Manager, and forgets it once you confirm"
             echo "you have saved it."

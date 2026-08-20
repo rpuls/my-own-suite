@@ -4,9 +4,13 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+### Added
+
+- Own-hardware installs now work on machines with more than one internal disk, which the installer previously refused outright. It lists every disk large enough in a stable order and says what each already holds — `empty - no partitions`, or `NOT EMPTY` with the filesystems and labels it found — so the spare drive is distinguishable from the one with your photos on it. Only the disk you pick is touched; the confirmation names it and its contents again before anything is erased.
+
 ### Fixed
 
-- The own-hardware installer no longer turns a mistyped answer into a silent non-install. It names the disk it found, offers a numbered choice between installing onto it and running from the stick, takes the erase confirmation as a separate step, and asks again on anything it does not recognise. Previously any answer other than exactly `YES` — a lowercase `yes` included — continued booting from the USB stick and brought the suite up there, which looked like a finished install on a machine that stopped booting the moment the stick came out. A machine running from the stick now says so on its console instead of reporting itself installed, and the stick is no longer expanded to fill itself, so it stays usable as an installer.
+- The own-hardware installer no longer turns a mistyped answer into a silent non-install. It numbers the choices, takes the erase confirmation as a separate step, and asks again on anything it does not recognise. Previously any answer other than exactly `YES` — a lowercase `yes` included — continued booting from the USB stick and brought the suite up there, which looked like a finished install on a machine that stopped booting the moment the stick came out. A machine running from the stick now says so on its console instead of reporting itself installed, and the stick is no longer expanded to fill itself, so it stays usable as an installer.
 
 ## [0.18.0] - 2026-08-17
 

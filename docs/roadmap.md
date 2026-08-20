@@ -141,12 +141,14 @@ theme retires.
 
 **The download is now a prebuilt disk image, and the ISO installer is retired as a download** — the
 2026-08-16 decision records the contract. What is left in this theme is the part an image cannot fix
-on its own: machines it refuses to install on, and reaching the suite once it is running.
+on its own: machines that install but will not boot, and reaching the suite once it is running.
 
-- **H4 — Multi-disk machines cannot install at all.** The image refuses rather than guessing, which is
-  the right default and not an answer: an old desktop with an SSD and a spare HDD is exactly the
-  hardware this theme is for. Needs a target picker on the console, which is the one screen in the
-  product with no browser and no shared UI to build from. *(Small — needs a decision first)*
+- **H10 — The installer writes no boot entry for the disk it just wrote.** `mos-image-finalize` uses
+  `grub-install --removable`, which is right for a stick and leaves a fixed disk depending on firmware
+  that tries `EFI/BOOT/BOOTX64.EFI` on its own. The ones that do not say *no bootable drive* with the
+  stick out and boot normally with it in — which reads as a failed install and is what the multi-disk
+  picker now makes more likely, since the firmware has more disks to guess between. `mos-self-install`
+  should add an `efibootmgr` entry for the disk it wrote. *(Small)*
 - **H9 — Re-render app routes when the machine's address changes.** The Easy Door name encodes the LAN
   IP. Suite Manager survives a DHCP move because its site block matches any private address, but every
   installed app's route names one exact host and is only re-rendered when that app is next applied — so
