@@ -4,73 +4,39 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+const TEMP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-inventory-'));
 const servicePath = require.resolve('../src/backups/backup-inventory-service.cjs');
 
-const dependencyRequests = {
-  manifest: '../apps/package-manifest.cjs',
-  contracts: '../apps/package-contracts.cjs',
-  suite: '../state/suite-manager-store.cjs',
-  persistent: '../../../../infrastructure/persistent-state.cjs',
-};
+const { BackupInventoryService, DEFAULT_CADDY_FILES, DEFAULT_HTTPS_SECRET_PATH, HOMEPAGE_CONFIG_FILES, uniqueVolumesFor } = require(servicePath);
+const { digestAppPackage } = require('../src/apps/package-contracts.cjs');
 
-function withService(overrides, callback) {
-  const resolved = {};
-  for (const [name, request] of Object.entries(dependencyRequests)) {
-    resolved[name] = require.resolve(request, { paths: [path.dirname(servicePath)] });
-  }
-
-  const saved = {};
-  for (const [name, resolvedPath] of Object.entries(resolved)) {
-    saved[name] = require.cache[resolvedPath];
-  }
-
-  const defaults = {
-    manifest: {
-      readAppPackageManifest() {
-        throw new Error('readAppPackageManifest() was called without a test stub');
-      },
-    },
-    contracts: {
-      digestAppPackage() {
-        return 'digest';
-      },
-    },
-    suite: {
-      DATABASE_FILENAME: 'mos.db',
-    },
-    persistent: {
-      appVolumeName(packageId, volumeName) {
-        return `${packageId}-${volumeName}`;
-      },
-    },
+function setupSnapshot(manifestObj) {
+  const snapshotPath = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-snap-'));
+  
+  // Create a valid default manifest that passes all schema validation rules
+  const defaultManifest = {
+    manifestVersion: 1,
+    name: 'Test App',
+    minimumMosVersion: '1.0.0',
+    summary: 'A test app',
+    category: 'utilities',
+    health: { type: 'http', url: 'http://app/' },
+    resources: { services: { main: { image: 'test-image' } } },
+    version: '1.0.0'
   };
-
-  for (const name of Object.keys(dependencyRequests)) {
-    const resolvedPath = resolved[name];
-    require.cache[resolvedPath] = {
-      id: resolvedPath,
-      filename: resolvedPath,
-      loaded: true,
-      exports: {
-        ...defaults[name],
-        ...(overrides[name] || {}),
-      },
-    };
-  }
-
-  delete require.cache[servicePath];
-  const service = require(servicePath);
-
-  try {
-    return callback(service);
-  } finally {
-    delete require.cache[servicePath];
-    for (const name of Object.keys(dependencyRequests)) {
-      const resolvedPath = resolved[name];
-      delete require.cache[resolvedPath];
-      if (saved[name]) require.cache[resolvedPath] = saved[name];
-    }
-  }
+  
+  // Merge the provided manifestObj over the defaults
+  const fullManifest = {
+    ...defaultManifest,
+    ...manifestObj,
+    // Deep merge resources to avoid wiping out the valid default if resources is partially specified
+    resources: manifestObj?.resources || defaultManifest.resources
+  };
+  
+  fs.writeFileSync(path.join(snapshotPath, 'manifest.json'), JSON.stringify(fullManifest));
+  fs.writeFileSync(path.join(snapshotPath, 'Dockerfile'), ''); // write empty dockerfile so validation passes
+  const digest = digestAppPackage(snapshotPath);
+  return { snapshotPath, digest };
 }
 
 function makeInstance(overrides = {}) {
@@ -101,69 +67,57 @@ function makeStore(instances, relationships = []) {
 }
 
 test('exports the expected default backup inventory constants', () => {
-  withService({}, (module) => {
-    assert.deepEqual(module.DEFAULT_CADDY_FILES, [
-      '/etc/caddy/Caddyfile',
-      '/etc/caddy/mos-homepage-routes.caddy',
-      '/etc/caddy/mos-app-routes.caddy',
-    ]);
-    assert.equal(module.DEFAULT_HTTPS_SECRET_PATH, '/etc/mos/secrets/caddy-cloudflare.env');
-    assert.deepEqual(module.HOMEPAGE_CONFIG_FILES, [
-      'services.template.yaml',
-      'bookmarks.yaml',
-      'settings.yaml',
-      'widgets.yaml',
-      'custom.css',
-      'custom.js',
-      'images',
-    ]);
-  });
+  assert.deepEqual(DEFAULT_CADDY_FILES, [
+    '/etc/caddy/Caddyfile',
+    '/etc/caddy/mos-homepage-routes.caddy',
+    '/etc/caddy/mos-app-routes.caddy',
+  ]);
+  assert.equal(DEFAULT_HTTPS_SECRET_PATH, '/etc/mos/secrets/caddy-cloudflare.env');
+  assert.deepEqual(HOMEPAGE_CONFIG_FILES, [
+    'services.template.yaml',
+    'bookmarks.yaml',
+    'settings.yaml',
+    'widgets.yaml',
+    'custom.css',
+    'custom.js',
+    'images',
+  ]);
 });
 
 test('uniqueVolumesFor deduplicates volumes and sorts by docker volume name', () => {
-  withService(
-    { persistent: { appVolumeName: (pkg, volume) => `${pkg}:${volume}` } },
-    ({ uniqueVolumesFor }) => {
-      const manifest = {
-        id: 'pkg-a',
-        resources: {
-          services: {
-            api: { volumes: ['data:/var/data', ' logs :/var/logs'] },
-            worker: { volumes: ['data:/var/data', 'cache:/var/cache'] },
-          },
-        },
-      };
-
-      assert.deepEqual(uniqueVolumesFor(manifest), [
-        { declaredName: 'cache', dockerVolume: 'pkg-a:cache', backupClass: 'data', requiredOnRestore: true },
-        { declaredName: 'data', dockerVolume: 'pkg-a:data', backupClass: 'data', requiredOnRestore: true },
-        { declaredName: 'logs', dockerVolume: 'pkg-a:logs', backupClass: 'data', requiredOnRestore: true },
-      ]);
+  const manifest = {
+    id: 'pkg-a',
+    resources: {
+      services: {
+        api: { volumes: ['data:/var/data', ' logs :/var/logs'] },
+        worker: { volumes: ['data:/var/data', 'cache:/var/cache'] },
+      },
     },
-  );
+  };
+
+  assert.deepEqual(uniqueVolumesFor(manifest), [
+    { declaredName: 'cache', dockerVolume: 'mos-app-pkg-a-cache', backupClass: 'data', requiredOnRestore: true },
+    { declaredName: 'data', dockerVolume: 'mos-app-pkg-a-data', backupClass: 'data', requiredOnRestore: true },
+    { declaredName: 'logs', dockerVolume: 'mos-app-pkg-a-logs', backupClass: 'data', requiredOnRestore: true },
+  ]);
 });
 
 test('uniqueVolumesFor ignores empty or malformed volume declarations', () => {
-  withService({}, ({ uniqueVolumesFor }) => {
-    const manifest = {
-      id: 'pkg-empty',
-      resources: { services: { app: { volumes: [null, '', ':', '   '] } } },
-    };
-    assert.deepEqual(uniqueVolumesFor(manifest), []);
-  });
+  const manifest = {
+    id: 'pkg-empty',
+    resources: { services: { app: { volumes: [null, '', ':', '   '] } } },
+  };
+  assert.deepEqual(uniqueVolumesFor(manifest), []);
 });
 
 test('uniqueVolumesFor handles manifests without services', () => {
-  withService({}, ({ uniqueVolumesFor }) => {
-    assert.deepEqual(uniqueVolumesFor({ id: 'no-services', resources: {} }), []);
-  });
+  assert.deepEqual(uniqueVolumesFor({ id: 'no-services', resources: {} }), []);
 });
 
 test('constructor uses MOS_STATE_ROOT when present', () => {
   const previous = process.env.MOS_STATE_ROOT;
   process.env.MOS_STATE_ROOT = '/tmp/mos-state';
   try {
-    withService({}, ({ BackupInventoryService }) => {
       const service = new BackupInventoryService({
         stateDir: '/tmp/state/suite-manager',
         store: {},
@@ -173,8 +127,7 @@ test('constructor uses MOS_STATE_ROOT when present', () => {
         service.homepageConfigRoot,
         path.join('/tmp/mos-state', 'homepage', 'config'),
       );
-    });
-  } finally {
+      } finally {
     if (previous === undefined) delete process.env.MOS_STATE_ROOT;
     else process.env.MOS_STATE_ROOT = previous;
   }
@@ -184,14 +137,12 @@ test('constructor defaults stateRoot to parent when stateDir is suite-manager', 
   const previous = process.env.MOS_STATE_ROOT;
   delete process.env.MOS_STATE_ROOT;
   try {
-    withService({}, ({ BackupInventoryService }) => {
       const service = new BackupInventoryService({
-        stateDir: '/tmp/mos/suite-manager',
+        stateDir: path.join(TEMP_ROOT, 'suite-manager'),
         store: {},
       });
-      assert.equal(service.stateRoot, '/tmp/mos');
-    });
-  } finally {
+      assert.equal(service.stateRoot, TEMP_ROOT);
+      } finally {
     if (previous === undefined) delete process.env.MOS_STATE_ROOT;
     else process.env.MOS_STATE_ROOT = previous;
   }
@@ -201,32 +152,24 @@ test('constructor resolves stateRoot to parent for non-suite-manager state dirs'
   const previous = process.env.MOS_STATE_ROOT;
   delete process.env.MOS_STATE_ROOT;
   try {
-    withService({}, ({ BackupInventoryService }) => {
       const service = new BackupInventoryService({
-        stateDir: '/tmp/mos/state-dir',
+        stateDir: path.join(TEMP_ROOT, 'state-dir'),
         store: {},
       });
-      assert.equal(service.stateRoot, '/tmp/mos');
-    });
-  } finally {
+      assert.equal(service.stateRoot, TEMP_ROOT);
+      } finally {
     if (previous === undefined) delete process.env.MOS_STATE_ROOT;
     else process.env.MOS_STATE_ROOT = previous;
   }
 });
 
 test('constructor applies default caddy and secret paths', () => {
-  withService(
-    {},
-    ({ BackupInventoryService, DEFAULT_CADDY_FILES, DEFAULT_HTTPS_SECRET_PATH }) => {
-      const service = new BackupInventoryService({ stateDir: '/tmp/mos', store: {} });
-      assert.deepEqual(service.caddyFiles, DEFAULT_CADDY_FILES);
-      assert.equal(service.httpsSecretPath, DEFAULT_HTTPS_SECRET_PATH);
-    },
-  );
+  const service = new BackupInventoryService({ stateDir: TEMP_ROOT, store: {} });
+  assert.deepEqual(service.caddyFiles, DEFAULT_CADDY_FILES);
+  assert.equal(service.httpsSecretPath, DEFAULT_HTTPS_SECRET_PATH);
 });
 
 test('inventory summarizes an empty store', () => {
-  withService({}, ({ BackupInventoryService }) => {
     const service = new BackupInventoryService({
       stateDir: '/tmp/empty-state',
       store: makeStore([]),
@@ -250,7 +193,6 @@ test('inventory summarizes an empty store', () => {
     assert.equal(typeof result.checkedAt, 'string');
     assert.equal(Number.isNaN(Date.parse(result.checkedAt)), false);
   });
-});
 
 test('inventory reports missing snapshot warnings for uninstalled snapshot states', () => {
   const instance = makeInstance({
@@ -260,7 +202,6 @@ test('inventory reports missing snapshot warnings for uninstalled snapshot state
     snapshotPath: '/does/not/exist',
   });
 
-  withService({}, ({ BackupInventoryService }) => {
     const service = new BackupInventoryService({
       stateDir: '/tmp/state',
       store: makeStore([instance]),
@@ -278,24 +219,14 @@ test('inventory reports missing snapshot warnings for uninstalled snapshot state
     assert.equal(result.summary.warningCount, 1);
     assert.deepEqual(result.packageManifestDigests, []);
   });
-});
 
 test('inventory treats manifest read failures as invalid snapshots', () => {
   const instance = makeInstance({
     packageId: 'app-1',
     snapshotState: 'installed',
-    snapshotPath: '/snap/app-1',
+    snapshotPath: '/snap/app-1', // will fail to read since it doesn't exist
   });
 
-  withService(
-    {
-      manifest: {
-        readAppPackageManifest() {
-          throw new Error('boom');
-        },
-      },
-    },
-    ({ BackupInventoryService }) => {
       const service = new BackupInventoryService({
         stateDir: '/tmp/state',
         store: makeStore([instance]),
@@ -306,43 +237,24 @@ test('inventory treats manifest read failures as invalid snapshots', () => {
       assert.equal(result.packages[0].snapshot.verified, false);
       assert.deepEqual(result.packages[0].declaredVolumes, []);
       assert.equal(result.summary.warningCount, 1);
-    },
-  );
-});
+    });
 
 test('inventory maps a verified installed package and its declared volumes', () => {
+  const { snapshotPath, digest } = setupSnapshot({
+    id: 'app-1',
+    resources: { services: { app: { dockerfile: 'Dockerfile', internalPort: 8080, volumes: ['data:/data'] } } },
+    version: '1.0.0',
+  });
+
   const instance = makeInstance({
     packageId: 'app-1',
+    packageVersion: '1.0.0',
     manifestDigest: 'manifest-digest-1',
-    packageDigest: 'package-digest-1',
-    snapshotPath: '/snap/app-1',
+    packageDigest: digest,
+    snapshotPath,
     snapshotState: 'installed',
   });
 
-  withService(
-    {
-      manifest: {
-        readAppPackageManifest(snapshotPath) {
-          assert.equal(snapshotPath, '/snap/app-1');
-          return {
-            manifest: {
-              id: 'app-1',
-              resources: { services: { app: { volumes: ['data:/data'] } } },
-            },
-          };
-        },
-      },
-      contracts: {
-        digestAppPackage(snapshotPath) {
-          assert.equal(snapshotPath, '/snap/app-1');
-          return 'package-digest-1';
-        },
-      },
-      persistent: {
-        appVolumeName: (pkg, volume) => `${pkg}:${volume}`,
-      },
-    },
-    ({ BackupInventoryService }) => {
       const service = new BackupInventoryService({
         stateDir: '/tmp/state',
         store: makeStore([instance]),
@@ -354,7 +266,7 @@ test('inventory maps a verified installed package and its declared volumes', () 
       assert.equal(pkg.manifestPresent, true);
       assert.equal(pkg.snapshot.verified, true);
       assert.deepEqual(pkg.declaredVolumes, [
-        { declaredName: 'data', dockerVolume: 'app-1:data', backupClass: 'data', requiredOnRestore: true },
+        { declaredName: 'data', dockerVolume: 'mos-app-app-1-data', backupClass: 'data', requiredOnRestore: true },
       ]);
       assert.deepEqual(pkg.warnings, [
         'Package declares volumes but no explicit backup metadata yet.',
@@ -364,31 +276,18 @@ test('inventory maps a verified installed package and its declared volumes', () 
       assert.deepEqual(result.packageManifestDigests, [
         { digest: 'manifest-digest-1', packageId: 'app-1', version: '1.0.0' },
       ]);
-    },
-  );
-});
+    });
 
 test('inventory marks snapshot unverified when manifest id does not match package id', () => {
+  const { snapshotPath, digest } = setupSnapshot({ id: 'app-2', resources: { services: { app: { dockerfile: 'Dockerfile', internalPort: 8080 } } } });
+  
   const instance = makeInstance({
     packageId: 'app-1',
+    packageDigest: digest,
     snapshotState: 'installed',
-    snapshotPath: '/snap/app-1',
+    snapshotPath,
   });
 
-  withService(
-    {
-      manifest: {
-        readAppPackageManifest() {
-          return { manifest: { id: 'app-2', resources: { services: {} } } };
-        },
-      },
-      contracts: {
-        digestAppPackage() {
-          return 'package-digest-1';
-        },
-      },
-    },
-    ({ BackupInventoryService }) => {
       const service = new BackupInventoryService({
         stateDir: '/tmp/state',
         store: makeStore([instance]),
@@ -401,32 +300,18 @@ test('inventory marks snapshot unverified when manifest id does not match packag
       assert.deepEqual(pkg.warnings, [
         'Installed package snapshot is missing or invalid; restore compatibility cannot be guaranteed.',
       ]);
-    },
-  );
-});
+    });
 
 test('inventory marks snapshot unverified when package digest does not match', () => {
+  const { snapshotPath, digest } = setupSnapshot({ id: 'app-1', resources: { services: { app: { dockerfile: 'Dockerfile', internalPort: 8080 } } } });
+  
   const instance = makeInstance({
     packageId: 'app-1',
-    packageDigest: 'expected-digest',
+    packageDigest: 'wrong-digest',
     snapshotState: 'installed',
-    snapshotPath: '/snap/app-1',
+    snapshotPath,
   });
 
-  withService(
-    {
-      manifest: {
-        readAppPackageManifest() {
-          return { manifest: { id: 'app-1', resources: { services: {} } } };
-        },
-      },
-      contracts: {
-        digestAppPackage() {
-          return 'wrong-digest';
-        },
-      },
-    },
-    ({ BackupInventoryService }) => {
       const service = new BackupInventoryService({
         stateDir: '/tmp/state',
         store: makeStore([instance]),
@@ -438,9 +323,7 @@ test('inventory marks snapshot unverified when package digest does not match', (
       assert.deepEqual(pkg.warnings, [
         'Installed package snapshot is missing or invalid; restore compatibility cannot be guaranteed.',
       ]);
-    },
-  );
-});
+    });
 
 test('inventory aggregates relationship statuses', () => {
   const relationships = [
@@ -449,7 +332,6 @@ test('inventory aggregates relationship statuses', () => {
     { status: 'disabled' },
   ];
 
-  withService({}, ({ BackupInventoryService }) => {
     const service = new BackupInventoryService({
       stateDir: '/tmp/state',
       store: makeStore([], relationships),
@@ -466,7 +348,6 @@ test('inventory aggregates relationship statuses', () => {
     });
     assert.equal(result.summary.relationshipCount, 3);
   });
-});
 
 test('inventory reports filesystem path states for contents', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-inventory-'));
@@ -480,9 +361,6 @@ test('inventory reports filesystem path states for contents', () => {
     const homepageConfigRoot = path.join(root, 'homepage', 'config');
     fs.mkdirSync(homepageConfigRoot, { recursive: true });
 
-    withService(
-      { suite: { DATABASE_FILENAME: 'suite.db' } },
-      ({ BackupInventoryService, HOMEPAGE_CONFIG_FILES }) => {
         const service = new BackupInventoryService({
           stateDir,
           homepageConfigRoot,
@@ -507,14 +385,12 @@ test('inventory reports filesystem path states for contents', () => {
         );
         assert.deepEqual(result.contents.suiteManager, {
           appSecrets: { exists: false, kind: 'missing', path: path.join(stateDir, 'app-secrets') },
-          database: { exists: false, kind: 'missing', path: path.join(stateDir, 'suite.db') },
-          databaseShm: { exists: false, kind: 'missing', path: path.join(stateDir, 'suite.db-shm') },
-          databaseWal: { exists: false, kind: 'missing', path: path.join(stateDir, 'suite.db-wal') },
+          database: { exists: false, kind: 'missing', path: path.join(stateDir, 'suite-manager.sqlite') },
+          databaseShm: { exists: false, kind: 'missing', path: path.join(stateDir, 'suite-manager.sqlite-shm') },
+          databaseWal: { exists: false, kind: 'missing', path: path.join(stateDir, 'suite-manager.sqlite-wal') },
           stateDir,
         });
-      },
-    );
-  } finally {
+        } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
