@@ -8,7 +8,6 @@ const targetPath = require.resolve('../src/settings/https-settings-service.cjs')
 const target = require(targetPath);
 const sharedDir = path.resolve(path.dirname(targetPath), '../../../../shared');
 const { HttpsSettingsError } = require(path.join(sharedDir, 'https-contract.cjs'));
-const { easyDoorHomeHost } = require(path.join(sharedDir, 'easy-door.cjs'));
 
 const {
   HttpsSettingsService,
@@ -174,7 +173,7 @@ test('easyDoorHost is derived from the current detected address for non-cloudfla
 
   assert.equal(
     service.easyDoorHost({ tlsMode: 'http' }),
-    easyDoorHomeHost('10.0.1.30'),
+    'home.10-0-1-30.local.myownsuite.org',
   );
 });
 
@@ -195,10 +194,10 @@ test('allowedHosts includes bootstrap, active home, pending home, and easy door 
 
   const expected = [
     'bootstrap.test',
-    homeHostFor('example.com'),
-    homeHostFor('pending.example.com'),
-    easyDoorHomeHost('10.0.1.40'),
-  ].filter(Boolean);
+    'home.example.com',
+    'home.pending.example.com',
+    'home.10-0-1-40.local.myownsuite.org',
+  ];
 
   assert.deepEqual([...service.allowedHosts()].sort(), expected.sort());
 });
