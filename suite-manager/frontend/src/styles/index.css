@@ -1435,33 +1435,6 @@
   flex: 1 1 auto;
 }
 
-.suite-app-homepage-option {
-  display: inline-flex;
-  gap: var(--mos-space-2);
-  align-items: center;
-  min-height: 2.75rem;
-  color: var(--mos-color-text);
-  cursor: pointer;
-  font-size: 0.92rem;
-  font-weight: 700;
-}
-
-.suite-app-homepage-option input {
-  width: 1.05rem;
-  height: 1.05rem;
-  margin: 0;
-  accent-color: var(--mos-color-accent);
-}
-
-.suite-app-homepage-option span {
-  color: var(--mos-color-text-strong);
-}
-
-.suite-app-homepage-option:has(input:disabled) {
-  cursor: progress;
-  opacity: 0.72;
-}
-
 .suite-app-setup-panel {
   display: grid;
   grid-column: 1 / -1;
@@ -2949,6 +2922,19 @@
   line-height: 1.6;
 }
 
+/* Shown only when this instance carries owner-set configuration the published
+   assessment could not have taken into account. Warning-toned rather than
+   danger-toned: it is a scope note, not a fault. */
+.suite-privacy-override {
+  margin: 0;
+  padding: var(--mos-space-3);
+  border: 1px solid var(--mos-color-warning-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-warning-soft);
+  color: var(--mos-color-text);
+  line-height: 1.55;
+}
+
 .suite-privacy-rows { display: grid; }
 
 .suite-privacy-row {
@@ -3205,3 +3191,52 @@
 }
 
 .suite-privacy-change:not(.is-changed) p { color: var(--mos-color-text-muted); }
+
+/* Per-app configuration dialog. Everything inside it is the shared .mos-row*
+   primitive; what belongs here is only where those rows sit — the dialog's own
+   width, the space around a group, and the two-column split the environment
+   editor needs that a plain label/value row does not.
+
+   Narrower than the default dialog on purpose: a list of rows reads down, and
+   760px of row leaves the value stranded a long way from its label. */
+.suite-dialog.suite-app-config-dialog {
+  gap: var(--mos-space-5);
+  width: min(100%, 560px);
+  padding: var(--mos-space-6);
+}
+
+.suite-app-config-lede {
+  margin: 0;
+  color: var(--mos-color-text-muted);
+  line-height: 1.5;
+}
+
+.suite-app-config-group {
+  display: grid;
+  gap: var(--mos-space-2);
+}
+
+.suite-app-config-group-title {
+  margin: 0;
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+}
+
+/* The disclosure carries the row's hairline itself, so the panel's own rule
+   above it would draw a second one a rem away. */
+.suite-advanced.mos-row-disclosure {
+  padding-top: 0;
+}
+
+/* A variable is a name and a value, both editable, which is the one row that
+   needs its left side to be a field rather than a label — and the only one
+   whose right side has to grow, since a value is typed rather than read. */
+.suite-env-name {
+  flex: 1 1 40%;
+}
+
+.suite-env-name + .mos-row-trailing {
+  flex: 1 1 60%;
+}
+
+.suite-env-paste { display: grid; gap: var(--mos-space-3); }

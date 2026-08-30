@@ -1,4 +1,4 @@
-import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
 export type IconName = 'apps' | 'backup' | 'check' | 'chevron-right' | 'copy' | 'customize' | 'dashboard' | 'external' | 'eye' | 'eye-off' | 'hard-drive' | 'menu' | 'more' | 'network-drive' | 'refresh' | 'screens' | 'settings' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'x';
@@ -131,6 +131,72 @@ export function Switch({ description, label, ...props }: Omit<InputHTMLAttribute
   </label>;
 }
 
+// The settings row: label left, value right, hairline between neighbours. One
+// element covers every line of app configuration, and the only distinction it
+// draws is colour â€” a value in text-strong can be typed into, a value in
+// text-muted is a fact. Deliberately not a disabled input for the read-only
+// case: a disabled field says "not yet", and these values need to say "this is
+// how it is". Its look lives in the shared branding stylesheet as .mos-row*, so
+// the same row appears identically wherever it is used.
+export function Rows({ children, lead = false }: { children: ReactNode; lead?: boolean }) {
+  return <div className={`mos-rows${lead ? ' mos-rows-lead' : ''}`}>{children}</div>;
+}
+
+export function Row({ children, help, helpTone = 'muted', label, layout = 'inline' }: {
+  children?: ReactNode;
+  help?: ReactNode;
+  helpTone?: 'invalid' | 'muted' | 'permanent';
+  label: ReactNode;
+  // "stacked" puts the label on its own line above a full-width control. Use it
+  // for a row the owner types into; a row that only shows a value, or carries a
+  // switch or a button, stays inline.
+  layout?: 'inline' | 'stacked';
+}) {
+  return <div className={`mos-row${layout === 'stacked' ? ' mos-row-stacked' : ''}`}>
+    <div className="mos-row-main"><span className="mos-row-label">{label}</span>{children}</div>
+    {help ? <p className={`mos-row-help${helpTone === 'permanent' ? ' mos-row-help-permanent' : ''}${helpTone === 'invalid' ? ' mos-row-invalid' : ''}`} role={helpTone === 'invalid' ? 'alert' : undefined}>{help}</p> : null}
+  </div>;
+}
+
+// Groups a value with the controls that act on it, so the pair stays one
+// right-hand item however narrow the row gets.
+export function RowTrailing({ children }: { children: ReactNode }) {
+  return <span className="mos-row-trailing">{children}</span>;
+}
+
+export function RowValue({ children, code, mask }: { children?: ReactNode; code?: boolean; mask?: boolean }) {
+  return <span className={`mos-row-value${code ? ' mos-row-code' : ''}${mask ? ' mos-row-mask' : ''}`}>
+    {mask ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : children}
+  </span>;
+}
+
+// `state` is for a field the form is actually waiting on: "missing" marks one
+// that is required and still empty, "filled" one that is required and given, so
+// a glance at the dialog says what is left to do. A field nothing is blocked on
+// passes no state and stays neutral — colouring those too would make the two
+// that matter disappear into the noise.
+export function RowInput({ code, state, ...props }: InputHTMLAttributes<HTMLInputElement> & { code?: boolean; state?: 'filled' | 'missing' }) {
+  return <input className={`mos-row-input${code ? ' mos-row-code' : ''}${state ? ` mos-row-input-${state}` : ''}`} {...props} />;
+}
+
+export function RowAction({ danger, icon, label, ...props }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'> & { danger?: boolean; icon: IconName; label: string }) {
+  return <button aria-label={label} className={`mos-row-action${danger ? ' mos-row-action-danger' : ''}`} title={label} type="button" {...props}><Icon name={icon} /></button>;
+}
+
+// A switch row: the whole row is the hit target, which is why this renders a
+// <label> rather than composing Row. Same track and knob as the boxed Switch â€”
+// only the surround differs, so "on" reads the same everywhere.
+export function RowSwitch({ description, label, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { description?: ReactNode; label: ReactNode }) {
+  return <label className="mos-row">
+    <span className="mos-row-main">
+      <span className="mos-row-label">{label}</span>
+      <input className="mos-switch-input" role="switch" type="checkbox" {...props} />
+      <span aria-hidden="true" className="mos-switch-track"><span className="mos-switch-knob" /></span>
+    </span>
+    {description ? <span className="mos-row-help">{description}</span> : null}
+  </label>;
+}
+
 export function Notice({ children, title, variant = 'info' }: { children: ReactNode; title: ReactNode; variant?: 'error' | 'info' | 'success' | 'warning' }) {
   return <div className={`suite-notice suite-notice-${variant}`} role={variant === 'error' ? 'alert' : 'status'}><strong>{title}</strong><div>{children}</div></div>;
 }
@@ -185,6 +251,7 @@ export function AdvancedPanel({
   className,
   copyText,
   facts,
+  layout = 'block',
   output,
   reveal,
   summary = 'Advanced details',
@@ -193,6 +260,11 @@ export function AdvancedPanel({
   className?: string;
   copyText?: string | (() => string);
   facts?: AdvancedFact[];
+  // "row" makes the disclosure one more line in a list of Rows — same height,
+  // same hairline, chevron where a value would be. A variant of the shared
+  // panel rather than a hand-rolled disclosure beside it, so a screen built
+  // from rows does not have to choose between the row shape and this gating.
+  layout?: 'block' | 'row';
   output?: string;
   reveal: 'on-failure' | 'technical-mode';
   summary?: string;
@@ -228,8 +300,10 @@ export function AdvancedPanel({
     }
   }
 
-  return <details className={`suite-advanced${className ? ` ${className}` : ''}`}>
-    <summary>{summary}</summary>
+  return <details className={`suite-advanced${layout === 'row' ? ' mos-row-disclosure' : ''}${className ? ` ${className}` : ''}`}>
+    <summary>
+      {layout === 'row' ? <><span className="mos-row-label">{summary}</span><span className="mos-row-chevron"><Icon name="chevron-right" /></span></> : summary}
+    </summary>
     <div className="suite-advanced-body">
       {copyable ? <div className="suite-advanced-actions">
         <span className="suite-advanced-copy-state" role="status">{copyState === 'copied' ? 'Copied' : copyState === 'unavailable' ? 'Could not copy. Select the text instead.' : ''}</span>

@@ -20,8 +20,11 @@ const {
   integrationConfigKey,
   integrationSlots,
   loopbackPortFor,
+  managedEnvNames,
   materializeRuntimeCaddy,
   materializeRuntimeCompose,
+  OWNER_ENV_NAME_PATTERN,
+  ownerEnvSecretKey,
   primaryProjectedRoute,
   privacyReviewPresentation,
   publicInstance,
@@ -36,6 +39,7 @@ const {
   runtimeConnectionState,
   runtimeRouteApplied,
   secretFilePath,
+  writeSecretFile,
 } = require('./app-package-internals.cjs');
 const { AppOperationLimiter } = require('./app-operation-limits.cjs');
 const { AppUpdateService } = require('./app-update-service.cjs');
@@ -52,6 +56,14 @@ const {
   publicPackageSummary,
   readAppPackageManifest,
 } = require('./package-manifest.cjs');
+
+// How long MOS waits for an app to come back healthy after an owner environment
+// change before treating the change as the reason it did not. 90 s is
+// HEALTH_TIMEOUT_MS in system-agents/apps/system-adapter.cjs — the only figure
+// in this codebase that states how long an app may take to become healthy — so
+// the verification can never be stricter than the apply it verifies.
+const OWNER_ENV_HEALTH_TIMEOUT_MS = 90_000;
+const OWNER_ENV_HEALTH_BACKOFF_MS = [2_000, 4_000, 8_000, 10_000];
 
 class AppPackageService {
   constructor({
@@ -242,6 +254,26 @@ class AppPackageService {
     return instance && instance.status === 'installed' ? instance.packageId : null;
   }
 
+  // Owner env rows with their secret values read from disk, in the shape
+  // materializeRuntimeCompose expects. Every path that turns stored projections
+  // into a runtime needs the same read, so it lives here rather than inline in
+  // three of them.
+  //
+  // `tolerateMissing` is for the update rollback, which needs the candidate's
+  // service identities to tear it down and not its values; everywhere else a
+  // secret that cannot be read is a hard failure, exactly as it is for config.
+  ownerEnvWithSecrets(instanceId, { tolerateMissing = false } = {}) {
+    return this.store.getAppEnv(instanceId).map((row) => {
+      if (!row.secretRef) return row;
+      if (!tolerateMissing) return { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) };
+      try {
+        return { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) };
+      } catch {
+        return row;
+      }
+    });
+  }
+
   async applyPackageRuntime(packageId, requestContext = {}, options = {}) {
     if (!this.agent) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
@@ -256,6 +288,7 @@ class AppPackageService {
     const configRows = this.store.getAppConfig(instance.id).map((row) => (
       row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
     ));
+    const envRows = this.ownerEnvWithSecrets(instance.id);
     const composeProjection = projections.find((projection) => projection.kind === 'compose');
     const caddyProjection = projections.find((projection) => projection.kind === 'caddy');
     const healthProjection = projections.find((projection) => projection.kind === 'health');
@@ -273,7 +306,7 @@ class AppPackageService {
     const result = await this.agent.apply({
       appHost,
       caddy: materializeRuntimeCaddy(caddyProjection.content, configRows),
-      compose: materializeRuntimeCompose(composeProjection.content, configRows),
+      compose: materializeRuntimeCompose(composeProjection.content, configRows, envRows),
       health: healthProjection.content,
       instanceId: instance.id,
       packageDigest: instance.packageDigest,
@@ -307,6 +340,7 @@ class AppPackageService {
         this.store.getAppInstanceByPackageId(packageId),
         this.store.getAppProjections(instance.id),
         this.store.getAppConfig(instance.id),
+        this.store.getAppEnv(instance.id),
       ),
     };
   }
@@ -389,6 +423,7 @@ class AppPackageService {
         ...this.store.getAppIntegrations(),
         { consumerInstanceId: consumer.id, consumerIntegrationSlot: slotId, status: 'applying' },
       ],
+      ownerEnv: this.store.getAppEnv(consumer.id),
       packageId: consumer.packageId,
     });
     const composeDigest = nextProjections.find((projection) => projection.kind === 'compose')?.digest || null;
@@ -572,6 +607,7 @@ class AppPackageService {
           this.store.getAppInstanceByPackageId(packageId),
           this.store.getAppProjections(instance.id),
           this.store.getAppConfig(instance.id),
+          this.store.getAppEnv(instance.id),
         ),
       };
     } catch (error) {
@@ -615,6 +651,259 @@ class AppPackageService {
       ...applied,
       integrations: await this.reconcilePackageIntegrations(packageId, requestContext),
     };
+  }
+
+  // The service an owner variable lands on when the request does not name one:
+  // the service the app is reached at, which is the one an owner means by "this
+  // app" for every package MOS ships.
+  ownerEnvDefaultService(manifest) {
+    return manifest.routes?.[0]?.service || Object.keys(manifest.resources?.services || {})[0] || null;
+  }
+
+  // Validation is collected rather than thrown on the first problem, so the
+  // dialog can render every rejected name against its own row instead of
+  // showing one error at a time.
+  validateOwnerEnvSubmission({ configRows, entries, instance, integrations, manifest, previousRows }) {
+    const details = [];
+    const defaultService = this.ownerEnvDefaultService(manifest);
+    const seen = new Set();
+    const managed = new Map();
+    const validated = [];
+    for (const [index, entry] of entries.entries()) {
+      const name = typeof entry?.name === 'string' ? entry.name.trim() : '';
+      const service = typeof entry?.service === 'string' && entry.service ? entry.service : defaultService;
+      const reject = (message) => details.push({ index, message, name, service });
+      if (!name) {
+        reject('Give this variable a name, or remove the row.');
+        continue;
+      }
+      if (!OWNER_ENV_NAME_PATTERN.test(name)) {
+        reject(`${name} is not a valid environment variable name. Use letters, digits and underscores, starting with a letter or underscore.`);
+        continue;
+      }
+      if (!manifest.resources?.services?.[service]) {
+        reject(`${name} names a service this app does not have.`);
+        continue;
+      }
+      if (seen.has(`${service} ${name}`)) {
+        reject(`${name} is listed more than once.`);
+        continue;
+      }
+      seen.add(`${service} ${name}`);
+      if (!managed.has(service)) managed.set(service, managedEnvNames(manifest, configRows, integrations, instance.id, service));
+      if (managed.get(service).has(name)) {
+        reject(`${name} is set by MOS and cannot be overridden here.`);
+        continue;
+      }
+      const secret = entry?.secret === true;
+      const held = previousRows.find((row) => row.service === service && row.name === name);
+      const hasValue = typeof entry?.value === 'string';
+      // A hidden value submitted without one means "keep the stored one" —
+      // opening this dialog and pressing Save must never destroy a secret the
+      // owner cannot retype. There has to be a stored one to keep.
+      if (secret && !hasValue) {
+        if (!held?.secretRef) {
+          reject(`${name} is hidden, so it needs a value the first time it is saved.`);
+          continue;
+        }
+        validated.push({ held, name, secret: true, service, value: undefined });
+        continue;
+      }
+      if (!hasValue) {
+        reject(`${name} needs a value.`);
+        continue;
+      }
+      validated.push({ held, name, secret, service, value: entry.value });
+    }
+    if (details.length) {
+      const error = new AppPackageServiceError('APP_ENV_INVALID', 'Some of these variables cannot be saved.', 400);
+      error.details = details;
+      throw error;
+    }
+    return validated;
+  }
+
+  // Environment variables an owner set on an installed app, for values the
+  // package never asked for and MOS has no reason to know about. The submitted
+  // set replaces the stored one.
+  //
+  // Holds the same per-app operation key as restart, enable, disable and
+  // uninstall: an env save landing inside an update's activate-to-commit window
+  // would write projections that update is in the middle of replacing.
+  async savePackageEnvironment(packageId, input = {}, requestContext = {}) {
+    return this.limiter.runExclusive(packageId, () => this.performSavePackageEnvironment(packageId, input, requestContext));
+  }
+
+  async performSavePackageEnvironment(packageId, input = {}, requestContext = {}) {
+    // Checked before anything is written: without an agent the apply cannot run,
+    // and neither can the rollback that would put things back — which would turn
+    // an unavailable agent into "MOS could not restore your app".
+    if (!this.agent) {
+      throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
+    }
+    const instance = this.store.getAppInstanceByPackageId(packageId);
+    if (!instance || instance.status !== 'installed') {
+      throw new AppPackageServiceError('APP_NOT_INSTALLED', 'Start this app before changing its environment variables.', 409);
+    }
+    const previousProjections = this.store.getAppProjections(instance.id);
+    if (!runtimeRouteApplied(previousProjections)) {
+      throw new AppPackageServiceError('APP_RUNTIME_NOT_APPLIED', 'Start this app before changing its environment variables.', 409);
+    }
+
+    const { manifest } = this.installedPackageFor(instance);
+    const configRows = this.store.getAppConfig(instance.id);
+    const integrations = this.store.getAppIntegrations();
+    const previousRows = this.store.getAppEnv(instance.id);
+    const entries = Array.isArray(input.entries) ? input.entries : [];
+    const validated = this.validateOwnerEnvSubmission({ configRows, entries, instance, integrations, manifest, previousRows });
+
+    // Every stored secret is read into memory before any of them is overwritten.
+    // A secret file is keyed by its name, so saving a new value for a name that
+    // already had one destroys the old file — and a rollback that cannot put the
+    // previous value back is not a rollback.
+    const heldSecrets = new Map();
+    for (const row of previousRows) {
+      if (!row.secretRef) continue;
+      try { heldSecrets.set(ownerEnvSecretKey(row.service, row.name), readSecretValue(this.secretDir, row.secretRef)); } catch {}
+    }
+
+    const rows = validated.map((entry) => {
+      const key = ownerEnvSecretKey(entry.service, entry.name);
+      if (entry.secret && entry.value === undefined) {
+        return { fingerprint: entry.held.fingerprint, name: entry.name, secret: true, secretRef: entry.held.secretRef, service: entry.service };
+      }
+      if (entry.secret) {
+        return {
+          fingerprint: fingerprintFor(entry.value),
+          name: entry.name,
+          secret: true,
+          secretRef: writeSecretFile(this.secretDir, instance.id, key, entry.value),
+          service: entry.service,
+        };
+      }
+      return { name: entry.name, secret: false, service: entry.service, value: entry.value };
+    });
+
+    // Rendered fresh through the one render path rather than patched over the
+    // stored projections, for the same reason connectPackages does: stored
+    // projections stay a pure function of manifest + config + relationships +
+    // owner env, so an app update re-renders them without losing this change.
+    const nextProjections = renderInstanceProjections(manifest, configRows, {
+      instanceId: instance.id,
+      integrations,
+      ownerEnv: rows,
+      packageId: instance.packageId,
+    });
+    const restoreProjections = previousProjections
+      .filter((projection) => nextProjections.some((next) => next.kind === projection.kind))
+      .map((projection) => ({ contentJson: stableJson(projection.content), digest: projection.digest, kind: projection.kind }));
+
+    const at = this.now().toISOString();
+    this.store.transaction(() => {
+      this.store.replaceAppEnvRows({ at, instanceId: instance.id, rows });
+      this.store.replaceAppProjections({ at, instanceId: instance.id, projections: nextProjections });
+    });
+
+    try {
+      await this.applyPackageRuntime(packageId, requestContext);
+      await this.waitForPackageHealth(packageId);
+    } catch (error) {
+      const rollback = await this.rollbackPackageEnvironment({
+        heldSecrets,
+        instance,
+        packageId,
+        previousRows,
+        projections: restoreProjections,
+        requestContext,
+        rows,
+      });
+      if (!rollback.restored) {
+        // Naming both attempts is the point: an owner has to be able to tell a
+        // change that was refused from an app that is now in neither state.
+        throw new AppPackageServiceError(
+          'APP_ENV_ROLLBACK_FAILED',
+          `Your changes stopped ${manifest.name} from starting (${error.code || 'APP_ENV_APPLY_FAILED'}), and MOS could not put the previous settings back either (${rollback.errorCode}). The previous settings are recorded again; restart the app, and restore a backup if it does not come back.`,
+          500,
+        );
+      }
+      return {
+        errorCode: error.code || 'APP_ENV_APPLY_FAILED',
+        instance: publicInstance(
+          this.store.getAppInstanceByPackageId(packageId),
+          this.store.getAppProjections(instance.id),
+          this.store.getAppConfig(instance.id),
+          this.store.getAppEnv(instance.id),
+        ),
+        reason: `Your changes stopped ${manifest.name} from starting, so MOS put the previous settings back.`,
+        status: 'rolled-back',
+      };
+    }
+
+    // Only once the app is known good: a secret file removed before that is a
+    // secret the rollback could not have restored.
+    const keptKeys = new Set(rows.filter((row) => row.secret).map((row) => ownerEnvSecretKey(row.service, row.name)));
+    for (const key of heldSecrets.keys()) {
+      if (!keptKeys.has(key)) fs.rmSync(secretFilePath(this.secretDir, instance.id, key), { force: true });
+    }
+
+    return {
+      instance: publicInstance(
+        this.store.getAppInstanceByPackageId(packageId),
+        this.store.getAppProjections(instance.id),
+        this.store.getAppConfig(instance.id),
+        this.store.getAppEnv(instance.id),
+      ),
+      // Integrations are reconciled for the same reason a restart reconciles
+      // them: applying recreates this app's containers, so a connected peer's
+      // network attachment has to be re-made. It reports per relationship and
+      // never throws, so it cannot turn a successful save into a failure.
+      integrations: await this.reconcilePackageIntegrations(packageId, requestContext),
+      status: 'applied',
+    };
+  }
+
+  // Puts the instance back the way it was: the previous env rows, their previous
+  // secret values, and the previous projections, then the runtime built from
+  // them. Reports rather than throws, because the caller has to be able to tell
+  // "your change was refused" from "and the app is in neither state".
+  async rollbackPackageEnvironment({ heldSecrets, instance, packageId, previousRows, projections, requestContext, rows }) {
+    try {
+      for (const row of rows) {
+        if (!row.secret) continue;
+        const key = ownerEnvSecretKey(row.service, row.name);
+        if (heldSecrets.has(key)) writeSecretFile(this.secretDir, instance.id, key, heldSecrets.get(key));
+        else fs.rmSync(secretFilePath(this.secretDir, instance.id, key), { force: true });
+      }
+      const at = this.now().toISOString();
+      this.store.transaction(() => {
+        this.store.replaceAppEnvRows({ at, instanceId: instance.id, rows: previousRows });
+        this.store.replaceAppProjections({ at, instanceId: instance.id, projections });
+      });
+      await this.applyPackageRuntime(packageId, requestContext);
+      await this.waitForPackageHealth(packageId);
+      return { restored: true };
+    } catch (error) {
+      return { errorCode: error.code || 'APP_ENV_ROLLBACK_FAILED', restored: false };
+    }
+  }
+
+  // Confirms the app is still answering after a change was applied. The agent's
+  // own apply already gates on the health target, so this catches the app that
+  // answered once and then died — a real outcome for a wrong environment value,
+  // because the container is restarted rather than left down.
+  async waitForPackageHealth(packageId) {
+    const deadline = this.now().getTime() + OWNER_ENV_HEALTH_TIMEOUT_MS;
+    let attempt = 0;
+    for (;;) {
+      try {
+        return await this.refreshPackageRuntimeStatus(packageId);
+      } catch (error) {
+        const wait = OWNER_ENV_HEALTH_BACKOFF_MS[Math.min(attempt, OWNER_ENV_HEALTH_BACKOFF_MS.length - 1)];
+        attempt += 1;
+        if (this.now().getTime() + wait >= deadline) throw error;
+        await new Promise((resolve) => { setTimeout(resolve, wait); });
+      }
+    }
   }
 
   packagePrivacyFor(instance, packageId, candidateVersion) {
@@ -693,6 +982,7 @@ class AppPackageService {
           : candidatesByPackage.get(packageId));
       const projections = instance ? this.store.getAppProjections(instance.id) : [];
       const config = instance ? this.store.getAppConfig(instance.id) : [];
+      const env = instance ? this.store.getAppEnv(instance.id) : [];
       const guideState = instance ? this.store.getAppGuideState(instance.id) : null;
       return {
         ...summary,
@@ -704,7 +994,7 @@ class AppPackageService {
         // API path the UI calls back on must address it by that id.
         id: packageId,
         installStatus: instance?.status || 'not-installed',
-        instance: publicInstance(instance ? { ...instance, guideState } : null, projections, config),
+        instance: publicInstance(instance ? { ...instance, guideState } : null, projections, config, env),
         // Trust comes from the recorded source, never from package metadata, so
         // an installed external app keeps visible unverified status.
         mosReviewed: (instance?.sourceTrust || 'mos-reviewed') === 'mos-reviewed',
@@ -826,7 +1116,7 @@ class AppPackageService {
         fs.rmSync(path.join(this.secretDir, current.id), { recursive: true, force: true });
         this.store.deleteAppInstance({ instanceId: current.id });
       } else {
-        return publicInstance(this.withGuideState(current), this.store.getAppProjections(current.id), this.store.getAppConfig(current.id));
+        return publicInstance(this.withGuideState(current), this.store.getAppProjections(current.id), this.store.getAppConfig(current.id), this.store.getAppEnv(current.id));
       }
     }
 
@@ -964,6 +1254,7 @@ class AppPackageService {
       this.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
       this.store.getAppProjections(instance.id),
       this.store.getAppConfig(instance.id),
+      this.store.getAppEnv(instance.id),
     );
   }
 
@@ -1016,7 +1307,7 @@ class AppPackageService {
         fs.rmSync(path.join(this.secretDir, current.id), { recursive: true, force: true });
         this.store.deleteAppInstance({ instanceId: current.id });
       } else {
-        return publicInstance(this.withGuideState(current), this.store.getAppProjections(current.id), this.store.getAppConfig(current.id));
+        return publicInstance(this.withGuideState(current), this.store.getAppProjections(current.id), this.store.getAppConfig(current.id), this.store.getAppEnv(current.id));
       }
     }
     if (!this.agent?.snapshotExternalPackage) {
@@ -1086,6 +1377,7 @@ class AppPackageService {
         { ...this.store.getAppInstanceByPackageId(packageId), guideState },
         this.store.getAppProjections(instance.id),
         this.store.getAppConfig(instance.id),
+        this.store.getAppEnv(instance.id),
       ),
     };
   }
@@ -1134,6 +1426,7 @@ class AppPackageService {
         this.store.getAppInstanceByPackageId(packageId),
         this.store.getAppProjections(instance.id),
         this.store.getAppConfig(instance.id),
+        this.store.getAppEnv(instance.id),
       ),
     };
   }
@@ -1261,7 +1554,7 @@ class AppPackageService {
       return {
         agent: { status: 'skipped', steps: [] },
         homepage: { skipped: true },
-        instance: publicInstance(instance, this.store.getAppProjections(instance.id), this.store.getAppConfig(instance.id)),
+        instance: publicInstance(instance, this.store.getAppProjections(instance.id), this.store.getAppConfig(instance.id), this.store.getAppEnv(instance.id)),
       };
     }
     if (instance.status !== 'installed') {
@@ -1291,6 +1584,7 @@ class AppPackageService {
         this.store.getAppInstanceByPackageId(packageId),
         this.store.getAppProjections(instance.id),
         this.store.getAppConfig(instance.id),
+        this.store.getAppEnv(instance.id),
       ),
     };
   }
@@ -1334,6 +1628,7 @@ class AppPackageService {
         this.store.getAppInstanceByPackageId(packageId),
         this.store.getAppProjections(instance.id),
         this.store.getAppConfig(instance.id),
+        this.store.getAppEnv(instance.id),
       ),
     };
   }

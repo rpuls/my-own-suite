@@ -137,9 +137,6 @@ async function openAppDetails(page, app) {
 
 async function installAppViaUi(page, app, env) {
   const details = await openAppDetails(page, app);
-  const config = setupConfigFor(app, env);
-  const prepare = details.getByRole('button', { name: /^Prepare$/iu });
-  if (await prepare.isVisible().catch(() => false)) await prepare.click();
 
   // Marketing shot of the pre-install detail view in its untouched state:
   // product prefills, posture-grade tile, and the Install action.
@@ -147,20 +144,33 @@ async function installAppViaUi(page, app, env) {
     await capturePageShot(page, 'app-detail-install');
   }
 
-  for (const [fieldId, value] of Object.entries(config)) {
-    const field = app.setup?.fields?.find((item) => item.id === fieldId);
-    if (!field || field.generated) continue;
-    const input = details.getByLabel(new RegExp(`^${escapeRegex(field.label)}`, 'iu')).first();
-    if (await input.isVisible().catch(() => false)) await input.fill(value);
-  }
-
-  const shortcut = details.getByLabel('Add shortcut to Homepage');
-  if (await shortcut.isVisible().catch(() => false)) await shortcut.check();
-
   const install = details.getByRole('button', { name: /^Install$/iu });
   if (await install.isVisible().catch(() => false)) {
     await install.click();
-    await expect(details.getByText(/Starting containers|Add shortcut|Ready to open|Install complete|Preparing app/i).first()).toBeVisible({ timeout: 30000 });
+
+    // Install opens the same review dialog for every app now, whichever way
+    // the detail page looked before it: what the app asks for, the address it
+    // will get, and the Homepage shortcut all live there rather than on the
+    // page behind it. The dialog is portalled to <body>, so it is reached
+    // from the page and not through the details locator.
+    const config = page.getByRole('dialog', { name: `Install ${app.name}` });
+    await expect(config).toBeVisible({ timeout: 30000 });
+
+    for (const [fieldId, value] of Object.entries(setupConfigFor(app, env))) {
+      const field = app.setup?.fields?.find((item) => item.id === fieldId);
+      if (!field || field.generated) continue;
+      await config.getByLabel(field.label, { exact: true }).fill(value);
+    }
+
+    const shortcut = config.getByRole('switch', { name: 'Show on Homepage' });
+    if (await shortcut.isVisible().catch(() => false)) await shortcut.check();
+
+    await config.getByRole('button', { name: /^Install$/iu }).click();
+    await expect(config).toBeHidden({ timeout: 30000 });
+
+    // Progress stays on the detail page for the whole install, which is why
+    // the dialog hands over and closes rather than reporting it itself.
+    await expect(details.getByText(/Preparing app|Starting app|Homepage shortcut|Ready to open|Install complete/iu).first()).toBeVisible({ timeout: 30000 });
     if (!capturedOnce.has('app-install-progress')) {
       capturedOnce.add('app-install-progress');
       await capturePageShot(page, 'app-install-progress');

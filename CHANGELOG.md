@@ -7,7 +7,13 @@ Updater-facing software changes only — documentation, site, repository, and co
 ### Added
 
 - Suite Manager keeps technical detail out of the way until you ask for it. Package ids, digests, ports, volume names, generated configuration and raw logs are no longer shown on healthy screens; **Settings → Technical controls** brings them all back, per owner and off by default. Diagnostics on a screen that is reporting a failure stay visible either way, so a bug report can still quote them.
+- Installed apps can now take environment variables you set yourself, under **Advanced details** in an app's **Settings** dialog. It is for values an app's own documentation asks for that MOS never knew to ask about — an upstream API credential, a feature switch — and it needs **Settings → Technical controls** switched on. Names MOS already manages are refused by name rather than silently ignored, hidden values are stored like any other app secret and never shown again, and MOS restarts the app and waits for it to answer: a value that stops it starting is rolled back to the previous environment on its own. Your variables survive app updates. **Compatibility:** a published privacy assessment describes an app as MOS ships it, so an app carrying your own variables says so on its posture panel.
 - Own-hardware installs now work on machines with more than one internal disk, which the installer previously refused outright. It lists every disk large enough in a stable order and says what each already holds — `empty - no partitions`, or `NOT EMPTY` with the filesystems and labels it found — so the spare drive is distinguishable from the one with your photos on it. Only the disk you pick is touched; the confirmation names it and its contents again before anything is erased.
+
+### Changed
+
+- Installing an app now opens the same review dialog for every app in the catalog, replacing the **Prepare** panel some apps showed and the bare **Install** button the rest had. It lists whatever the app needs from you, the web address it will get, and whether to put a shortcut on Homepage. Apps that need nothing say so rather than installing on the first click.
+- That dialog reopens as **Settings** once an app is running, and is no longer hidden behind technical controls. The values you gave at install are shown there as facts rather than editable fields: most are read only once, when the app first starts, so changing them afterwards would either do nothing or stop the app reaching its own data. Change them from inside the app itself.
 
 ### Fixed
 

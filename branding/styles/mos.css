@@ -489,6 +489,252 @@ label:hover > .mos-switch-input:enabled + .mos-switch-track {
   }
 }
 
+/* Settings row: the single element app configuration is built from. Label on
+   the left, value on the right, a hairline between neighbours.
+
+   The whole vocabulary is one distinction: a value in text-strong can be typed
+   into, a value in text-muted is a fact the owner cannot change. That is why
+   there is no separate read-only control here â€” a disabled field says "not
+   yet", and a fact has to say "this is how it is". Nothing is boxed, nothing is
+   uppercase, and everything that is not the dialog title is one size. */
+.mos-rows {
+  display: grid;
+}
+
+.mos-row {
+  display: grid;
+  gap: var(--mos-space-1);
+  padding: var(--mos-space-3) 0;
+  /* Containing block for the visually hidden switch input, so focusing one
+     inside a scrollable dialog cannot scroll the dialog somewhere else. */
+  position: relative;
+  border-top: var(--mos-border-hairline);
+}
+
+/* Only the first row of the first group opens without a rule above it; a later
+   group still starts with one, so the hairlines read as one continuous list
+   however the groups are divided. */
+.mos-rows-lead > .mos-row:first-child {
+  border-top: 0;
+}
+
+label.mos-row {
+  cursor: pointer;
+}
+
+.mos-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mos-space-4);
+  min-height: 3rem;
+}
+
+/* A row carrying a reason line gives the height to the line instead. */
+.mos-row-main:not(:only-child) {
+  min-height: 2.4rem;
+}
+
+.mos-row-label {
+  flex: 0 0 auto;
+  color: var(--mos-color-text-strong);
+}
+
+.mos-row-trailing {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+  min-width: 0;
+}
+
+.mos-row-value {
+  min-width: 0;
+  color: var(--mos-color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mos-row-code {
+  font-family: var(--mos-font-mono);
+  font-size: var(--mos-text-small);
+}
+
+.mos-row-mask {
+  letter-spacing: 0.14em;
+}
+
+/* Editable: a real field, boxed like every other input in MOS. A row that is
+   waiting for something the owner has not typed yet has to look unfinished,
+   and a borderless value cannot — you cannot see the absence of a box that was
+   never there. Facts stay plain text, so the box itself now carries the
+   editable/fact distinction that colour alone used to. */
+.mos-row-input {
+  flex: 1 1 14rem;
+  min-width: 0;
+  min-height: 2.9rem;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface-strong);
+  color: var(--mos-color-text-strong);
+  font: inherit;
+  transition:
+    border-color var(--mos-transition),
+    background var(--mos-transition);
+}
+
+.mos-row-input::placeholder {
+  color: var(--mos-color-text-muted);
+  opacity: 1;
+}
+
+.mos-row-input:focus-visible {
+  outline: 3px solid var(--mos-color-focus-visible);
+  outline-offset: 2px;
+}
+
+/* Required and still empty: the reason the primary button is refusing. Warning
+   rather than danger — nothing is wrong yet, there is just something left. */
+.mos-row-input-missing {
+  border-color: var(--mos-color-warning-border);
+  background: var(--mos-color-warning-soft);
+}
+
+/* Required and given. The same accent the primary button uses, so a form that
+   is ready to submit and the button that submits it agree. */
+.mos-row-input-filled {
+  border-color: var(--mos-color-accent-border);
+  background: var(--mos-color-accent-soft);
+}
+
+/* A row the owner types into puts its label on its own line and gives the whole
+   width to the box. Beside the label instead, the field is sized by whatever
+   the label happens to be — a long one leaves a stub to type in, a short one a
+   field wider than anything that goes in it — and the boxes stop lining up with
+   each other, which is what made a list of them hard to read. */
+.mos-row-stacked > .mos-row-main {
+  display: grid;
+  /* Explicit, because the inline layout's justify-content: space-between would
+     otherwise size this single column to its contents and leave the field as
+     wide as whatever happens to be typed in it. minmax(0, 1fr) fills the row
+     and still lets a long value scroll inside rather than push the row wider. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--mos-space-2);
+  min-height: 0;
+}
+
+/* Rows that stay side by side still let a boxed field drop to its own line
+   rather than be squeezed to nothing. */
+.mos-row-main:has(.mos-row-input) {
+  flex-wrap: wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mos-row-input {
+    transition: none;
+  }
+}
+
+.mos-row-help {
+  display: block;
+  margin: 0;
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+  line-height: 1.4;
+}
+
+/* The line that stops an owner typing a password they can never change. */
+.mos-row-help-permanent {
+  color: var(--mos-color-warning);
+}
+
+.mos-row-invalid {
+  color: var(--mos-color-danger);
+}
+
+/* Inline action inside a row â€” copy, reveal, remove. Quiet enough that a row
+   full of them still reads as a list of values rather than a toolbar. */
+.mos-row-action {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: var(--mos-radius-sm);
+  background: transparent;
+  color: var(--mos-color-text-muted);
+  cursor: pointer;
+  transition:
+    background var(--mos-transition),
+    color var(--mos-transition);
+}
+
+.mos-row-action:hover {
+  background: var(--mos-color-surface-muted);
+  color: var(--mos-color-accent);
+}
+
+.mos-row-action-danger:hover {
+  color: var(--mos-color-danger);
+}
+
+.mos-row-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* The whole row is the hit target for a switch, so the hover affordance comes
+   from the row rather than from the track's own three rem. */
+label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
+  border-color: var(--mos-color-accent-border);
+}
+
+/* A disclosure wearing the row's clothes: same height, same hairline, chevron
+   where a value would be. Used so "Advanced details" is one more row in the
+   list rather than a differently shaped thing bolted underneath it. */
+.mos-row-disclosure {
+  border-top: var(--mos-border-hairline);
+  padding-top: 0;
+}
+
+.mos-row-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mos-space-4);
+  min-height: 3rem;
+  padding: var(--mos-space-3) 0;
+  color: var(--mos-color-text-strong);
+  font-weight: var(--mos-weight-regular);
+  list-style: none;
+  cursor: pointer;
+}
+
+.mos-row-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.mos-row-chevron {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--mos-color-text-muted);
+  transition: transform var(--mos-transition);
+}
+
+.mos-row-disclosure[open] > summary .mos-row-chevron {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mos-row-action,
+  .mos-row-chevron {
+    transition: none;
+  }
+}
+
 .mos-panel {
   border: var(--mos-border-strong);
   border-radius: var(--mos-radius-md);

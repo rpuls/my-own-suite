@@ -88,11 +88,17 @@ function AdvisoryNotices({ advisories }: { advisories: PrivacyAdvisory[] }) {
   </div>;
 }
 
-export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSESSMENT_DOCS_URL, onClose, packageId, packageVersion, privacy }: {
+export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSESSMENT_DOCS_URL, onClose, overrideNotice = null, packageId, packageVersion, privacy }: {
   advisories?: PrivacyAdvisory[] | null;
   appName: string;
   assessmentUrl?: string;
   onClose: () => void;
+  // One scoped line, shown only when this instance carries owner-set
+  // configuration that MOS's assessment could not have taken into account. It
+  // has no sibling on the public site because a published page describes a
+  // package rather than somebody's running instance, so there is nothing to
+  // mirror and this stays a Suite Manager-only addition.
+  overrideNotice?: string | null;
   // Used only to link out to the published assessment. The posture sentence
   // promises the evidence names what leaves and who receives it, so the
   // dialog has to be able to reach it.
@@ -118,6 +124,7 @@ export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSE
     title={`${appName} privacy`}
   >
     <p className="suite-privacy-sentence">{posture.sentence}</p>
+    {overrideNotice ? <p className="suite-privacy-override">{overrideNotice}</p> : null}
     <div className="suite-privacy-rows">
       {dimensionRowsFor(privacy).map((row) => <div className="suite-privacy-row" key={row.key}>
         <span className="suite-privacy-row-icon"><Glyph path={row.iconPath} /></span>

@@ -38,7 +38,7 @@ function updateRecoveryStateForStage(stage) {
   return ROLLBACK_REQUIRED_STAGES.includes(stage) ? 'rollback-required' : 'retry-safe';
 }
 
-function updateRuntimeRequest({ config, expectedInstalledDigest, instance, manifest, packageDigest, projections, requestContext, sourceRevision }) {
+function updateRuntimeRequest({ config, env = [], expectedInstalledDigest, instance, manifest, packageDigest, projections, requestContext, sourceRevision }) {
   const compose = projections.find((item) => item.kind === 'compose');
   const caddy = projections.find((item) => item.kind === 'caddy');
   const health = projections.find((item) => item.kind === 'health');
@@ -46,7 +46,7 @@ function updateRuntimeRequest({ config, expectedInstalledDigest, instance, manif
   return {
     appHost: requestContext.appHost,
     caddy: materializeRuntimeCaddy(caddy.content, config),
-    compose: materializeRuntimeCompose(compose.content, config),
+    compose: materializeRuntimeCompose(compose.content, config, env),
     ...(expectedInstalledDigest ? { expectedInstalledDigest } : {}),
     health: health.content,
     instanceId: instance.id,
@@ -232,6 +232,7 @@ class AppUpdateService {
     const projections = renderInstanceProjections(manifest, [...this.store.getAppConfig(instance.id), ...addedConfig], {
       instanceId: instance.id,
       integrations: this.store.getAppIntegrations(),
+      ownerEnv: this.store.getAppEnv(instance.id),
       packageId: instance.packageId,
     });
     const homepageApplied = homepageProjectionApplied(this.store.getAppProjections(instance.id));
@@ -290,6 +291,7 @@ class AppUpdateService {
           this.apps.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
           this.store.getAppProjections(instance.id),
           this.store.getAppConfig(instance.id),
+          this.store.getAppEnv(instance.id),
         ),
         integrations,
         operation: committed,
@@ -324,8 +326,14 @@ class AppUpdateService {
       try { return { ...base, rawValue: readSecretValue(this.secretDir, row.secretRef) }; } catch { return base; }
     });
     const installedProjections = this.store.getAppProjections(instance.id);
+    // A missing owner env secret is tolerated for the same reason a missing
+    // collected one is: the rollback needs the candidate's service identities to
+    // tear it down, and the installed runtime it restores is re-applied from
+    // stored projections afterwards either way.
+    const recoveryEnvRows = this.apps.ownerEnvWithSecrets(instance.id, { tolerateMissing: true });
     const installedRuntime = updateRuntimeRequest({
       config: configRows,
+      env: recoveryEnvRows,
       instance,
       manifest: installedPackage.manifest,
       packageDigest: instance.packageDigest,
@@ -335,6 +343,7 @@ class AppUpdateService {
     });
     const candidateRuntime = updateRuntimeRequest({
       config: [...configRows, ...addedConfig],
+      env: recoveryEnvRows,
       expectedInstalledDigest: instance.packageDigest,
       instance,
       manifest: { version: operation.request.packageVersion },
@@ -369,6 +378,7 @@ class AppUpdateService {
         this.apps.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
         this.store.getAppProjections(instance.id),
         this.store.getAppConfig(instance.id),
+        this.store.getAppEnv(instance.id),
       ),
       integrations,
     };
@@ -495,6 +505,7 @@ class AppUpdateService {
       const installedConfigRows = this.store.getAppConfig(instance.id).map((row) => (
         row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
       ));
+      const envRows = this.apps.ownerEnvWithSecrets(instance.id);
       // Setup values the candidate newly requires are collected in the update
       // dialog and become config rows here. Only fields the instance does not
       // already hold are created, so an update never rotates a generated secret or
@@ -531,6 +542,10 @@ class AppUpdateService {
       const candidateProjections = renderInstanceProjections(candidate.manifest, candidateConfig, {
         instanceId: instance.id,
         integrations: this.store.getAppIntegrations(),
+        // Owner env is an input to the render exactly like config and
+        // relationships, so an update re-renders it into the candidate instead
+        // of dropping the variables the owner set on the version being replaced.
+        ownerEnv: envRows,
         packageId: instance.packageId,
       });
       const composeProjection = candidateProjections.find((projection) => projection.kind === 'compose');
@@ -617,6 +632,10 @@ class AppUpdateService {
       const homepageWasApplied = homepageProjectionApplied(installedProjections);
       const installedRuntime = updateRuntimeRequest({
         config: installedConfig,
+        // Owner env belongs to the instance rather than to either package
+        // version, so both sides of the activate carry the same set and a
+        // rollback restores the runtime the owner was actually running.
+        env: envRows,
         instance,
         manifest: installedPackage.manifest,
         packageDigest: instance.packageDigest,
@@ -626,6 +645,7 @@ class AppUpdateService {
       });
       const candidateRuntime = updateRuntimeRequest({
         config: candidateConfig,
+        env: envRows,
         expectedInstalledDigest: instance.packageDigest,
         instance,
         manifest: candidate.manifest,

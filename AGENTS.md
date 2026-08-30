@@ -318,6 +318,7 @@ The manifest shape (generation 1, `manifestVersion: 1`) is a locked public contr
 - A package using a newly added field must raise its `minimumMosVersion` to the release that introduced the field.
 - New template namespaces (for example a future `${smtp.*}`) follow the same rule: added to the validator and schema together, gated by `minimumMosVersion`.
 - Fields documented as provisional (`role`, `exports`, `integrations`, `configTargets`, `usefulness`, `homepage.widget`, `routes[].internalIcalBridge`) are outside the lock and may still change; do not present them to external authors as stable.
+- `${ownerEnv.*}` is a projection-only namespace that MOS generates into runtime projections for owner-set environment variables. It is not part of the manifest contract: package authors may never reference it, it stays out of `KNOWN_NAMESPACES` and the schema, and an authored manifest using it must keep failing validation.
 - Schema and validator move together: any change to `apps/manifest.schema.json` requires updating the manifest reference page and running `npm run apps:manifest:check` plus the backend unit tests.
 
 ### Catalog Privacy-Review Requirement

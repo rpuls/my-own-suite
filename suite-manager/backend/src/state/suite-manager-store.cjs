@@ -332,6 +332,31 @@ const MIGRATIONS = [
     `,
     version: 14,
   },
+  {
+    // Environment variables an owner set on an installed app, for values the
+    // package never asked for. Deliberately its own table rather than rows in
+    // app_instance_config: that table is keyed by manifest setup-field ids,
+    // whose grammar is `[a-z][A-Za-z0-9]*`, and an environment variable name is
+    // UPPER_SNAKE_CASE. Owner environment is also a different thing — a
+    // different key space, owned by the owner rather than by the package, kept
+    // per service, and replaced as a whole set rather than merged.
+    name: 'app-instance-owner-env',
+    sql: `
+      CREATE TABLE app_instance_env (
+        instance_id TEXT NOT NULL,
+        service TEXT NOT NULL,
+        name TEXT NOT NULL,
+        value_json TEXT,
+        secret INTEGER NOT NULL CHECK (secret IN (0, 1)),
+        secret_ref TEXT,
+        fingerprint TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (instance_id, service, name),
+        FOREIGN KEY (instance_id) REFERENCES app_instances(id) ON DELETE CASCADE
+      ) STRICT;
+    `,
+    version: 15,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -782,6 +807,61 @@ class SuiteManagerStore {
       value: row.valueJson === null || row.valueJson === undefined ? undefined : JSON.parse(row.valueJson),
       valueJson: undefined,
     }));
+  }
+
+  // Owner-set environment for one instance, ordered so a stored set renders in
+  // the same order every time. `secret` is the stored column rather than a
+  // derivation of secret_ref, because a secret whose file is missing is still a
+  // secret row and must not read as a plain value.
+  getAppEnv(instanceId) {
+    return this.database.prepare(`
+      SELECT
+        fingerprint,
+        name,
+        secret,
+        secret_ref AS secretRef,
+        service,
+        updated_at AS updatedAt,
+        value_json AS valueJson
+      FROM app_instance_env
+      WHERE instance_id = ?
+      ORDER BY service, name
+    `).all(instanceId).map((row) => ({
+      ...row,
+      secret: row.secret === 1,
+      value: row.valueJson === null || row.valueJson === undefined ? undefined : JSON.parse(row.valueJson),
+      valueJson: undefined,
+    }));
+  }
+
+  // The submitted set replaces the stored one outright: a name the owner removed
+  // from the dialog is a name they deleted, and merging would make removal
+  // impossible without a second verb.
+  //
+  // Values are serialized here rather than by the caller, so a row read back out
+  // of getAppEnv can be written straight back in — which is exactly what a
+  // rollback does, and what silently stored NULL when the caller owned the JSON.
+  // An owner env value is always a string, so JSON.stringify is the whole
+  // encoding.
+  replaceAppEnvRows({ at, instanceId, rows }) {
+    this.database.prepare('DELETE FROM app_instance_env WHERE instance_id = ?').run(instanceId);
+    for (const row of rows) {
+      this.database.prepare(`
+        INSERT INTO app_instance_env (
+          instance_id, service, name, value_json, secret, secret_ref, fingerprint, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        instanceId,
+        row.service,
+        row.name,
+        row.value === undefined || row.value === null ? null : JSON.stringify(row.value),
+        row.secret ? 1 : 0,
+        row.secretRef ?? null,
+        row.fingerprint ?? null,
+        at,
+      );
+    }
   }
 
   getAppGuideState(instanceId) {

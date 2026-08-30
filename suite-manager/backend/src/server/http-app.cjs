@@ -1096,6 +1096,21 @@ function createMOSServer({
         return;
       }
 
+      const appEnvMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/env$/u);
+      if (request.method === 'POST' && appEnvMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change app environment variables.' });
+          return;
+        }
+        const packageId = decodeURIComponent(appEnvMatch[1]);
+        const body = await readJsonBody(request, 64 * 1024);
+        jsonResponse(response, 200, await appPackages.savePackageEnvironment(packageId, body, {
+          ...appPublicUrlFor(request, packageId, httpsSettings, appHostFor),
+          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
+        }));
+        return;
+      }
+
       const appUninstallMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/uninstall$/u);
       if (request.method === 'POST' && appUninstallMatch) {
         if (!isSignedIn(setup, sessionToken)) {

@@ -1,7 +1,9 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 
 import { ActionMenu, AdvancedPanel, AppConnect, Dialog, Icon, Notice, TextInput, type AdvancedFact } from '../../components/ui';
+import { AppConfigDialog, initialSetupConfig, ownerDefault, requiredSetupMissing, setupFieldsNeedInput, type InstanceConfigEntry, type OwnerEnvEntry, type SetupField } from './AppConfigDialog';
 import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
+import { ProgressSteps, setStep, type ProgressStep } from './ProgressSteps';
 import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture';
 import type { Owner } from '../setup/types';
 
@@ -75,8 +77,11 @@ type AppPackageSummary = {
   icon: string;
   iconUrl: string;
   instance: {
-    config?: Array<{ fingerprint: string | null; generated: boolean; key: string; redactedLabel: string | null; secret: boolean; source: string; updatedAt: string; value?: unknown }>;
+    config?: InstanceConfigEntry[];
     enabled: boolean;
+    // Environment variables the owner set on this instance, never the package.
+    // A hidden one carries a fingerprint and a label instead of its value.
+    env?: OwnerEnvEntry[];
     guideState?: { completedAt: string | null; firstViewedAt: string | null; manifestDigest: string; skippedAt: string | null; status: 'not-started' | 'viewed' | 'completed' | 'skipped'; updatedAt: string } | null;
     id: string;
     installedAt: string;
@@ -113,7 +118,7 @@ type AppPackageSummary = {
   routes: Array<{ host: string; service: string }>;
   role: 'standalone' | 'capability-provider' | string;
   services: Array<{ dockerfile: string | null; id: string; internalPort: number | null; requires: ServiceRequires | null; volumes: string[] }>;
-  setup: { fieldCount: number; fields: Array<{ default?: unknown; generated: boolean; id: string; label: string; required: boolean; secret: boolean; type: string }> };
+  setup: { fieldCount: number; fields: SetupField[] };
   summary: string;
   validation: { errors: string[]; valid: boolean };
   version: string;
@@ -141,12 +146,7 @@ type ExternalResolveResponse = {
   source: ExternalSourceCoordinates;
 };
 
-type InstallStep = {
-  detail: string;
-  id: 'prepare' | 'runtime' | 'homepage' | 'ready';
-  label: string;
-  status: 'complete' | 'failed' | 'pending' | 'running' | 'skipped';
-};
+type InstallStep = ProgressStep & { id: 'prepare' | 'runtime' | 'homepage' | 'ready' };
 
 const INSTALL_STEP_MIN_MS = 1000;
 
@@ -228,6 +228,13 @@ function appUrl(app: AppPackageSummary) {
   return `${window.location.protocol}//${route.host}.${baseHost()}/`;
 }
 
+// The address as it is spoken and typed, which is what the settings dialog
+// shows; appUrl() is for following, this is for reading and copying.
+function appAddress(app: AppPackageSummary) {
+  const route = app.routes[0];
+  return route?.host ? `${route.host}.${baseHost()}` : '';
+}
+
 function hasGuide(app: AppPackageSummary) {
   return Boolean(app.onboarding && (app.onboarding.sections?.length || 0) > 0);
 }
@@ -250,33 +257,9 @@ function statusFor(app: AppPackageSummary) {
   return { className: 'is-available', label: 'Available', tone: 'info' };
 }
 
-// Setup fields read the same way for a catalog package and a pasted external
-// one, so these take anything carrying a setup schema.
-type SetupSource = Pick<AppPackageSummary, 'setup'>;
-
-function setupFieldsNeedInput(app: SetupSource) {
-  return app.setup.fields.filter((field) => !field.generated);
-}
-
-// Non-secret manifest defaults may reference the signed-in owner
-// (`${owner.name}`, `${owner.email}`) so setup forms open personalized.
-function ownerDefault(value: string, owner: Owner) {
-  return value.replace(/\$\{owner\.email\}/gu, owner.email).replace(/\$\{owner\.name\}/gu, owner.name);
-}
-
-function initialSetupConfig(app: SetupSource, owner: Owner) {
-  return Object.fromEntries(
-    setupFieldsNeedInput(app).map((field) => [
-      field.id,
-      typeof field.default === 'string' ? ownerDefault(field.default, owner) : field.type === 'email' ? owner.email : '',
-    ]),
-  );
-}
-
-function requiredSetupMissing(app: SetupSource, setupConfig: Record<string, string>) {
-  return setupFieldsNeedInput(app).some((field) => field.required && !String(setupConfig[field.id] || '').trim());
-}
-
+// The pasted-external install keeps its own boxed setup form: that flow is
+// deliberately a different, more cautious thing than installing a reviewed
+// catalog app, and it has no instance to show settings for afterwards.
 function AppSetupPanel({ disabled, fields, onChange, values }: {
   disabled: boolean;
   fields: AppPackageSummary['setup']['fields'];
@@ -401,10 +384,6 @@ function defaultInstallSteps(showOnHomepage = true): InstallStep[] {
   ];
 }
 
-function setStep(steps: InstallStep[], id: InstallStep['id'], status: InstallStep['status']) {
-  return steps.map((step) => (step.id === id ? { ...step, status } : step));
-}
-
 function sleep(ms: number) {
   return new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms);
@@ -425,19 +404,6 @@ async function jsonResponse<T>(response: Response, fallback: string): Promise<T>
   const body = await response.json().catch(() => ({})) as T & { error?: string };
   if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : fallback);
   return body;
-}
-
-function InstallProgress({ error, steps }: { error: string; steps: InstallStep[] }) {
-  if (!steps.length) return null;
-  return <div className="suite-app-install-progress" role="status" aria-live="polite">
-    <ol>
-      {steps.map((step) => <li className={`is-${step.status}`} key={step.id}>
-        <span className="suite-app-step-dot" aria-hidden="true" />
-        <span><strong>{step.label}</strong><small>{step.detail}</small></span>
-      </li>)}
-    </ol>
-    {error ? <Notice title="Install needs attention" variant="error"><p>{error}</p></Notice> : null}
-  </div>;
 }
 
 function resolveGuideValue(app: AppPackageSummary, value: string) {
@@ -614,11 +580,12 @@ function AppDetail({
   guideUpdating: boolean;
   owner: Owner;
 }) {
-  const [showOnHomepage, setShowOnHomepage] = useState(true);
-  const [setupOpen, setSetupOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [confirmUninstall, setConfirmUninstall] = useState(false);
-  const [setupConfig, setSetupConfig] = useState<Record<string, string>>(() => initialSetupConfig(app, owner));
+  // One dialog for install and for settings afterwards, so an app is configured
+  // in a single place rather than in a "Prepare" panel before and a separate
+  // technical dialog after.
+  const [configOpen, setConfigOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [slideIdx, setSlideIdx] = useState(0);
@@ -641,13 +608,10 @@ function AppDetail({
   const screenshots = app.catalog.screenshots;
   const cover = screenshots[0];
   const guideCompleted = app.instance?.guideState?.status === 'completed';
-  const inputFields = setupFieldsNeedInput(app);
-  const needsPreparation = !app.instance && inputFields.length > 0;
   const relatedIds = app.catalog.related.length
     ? app.catalog.related
     : packages.filter((item) => primaryCategory(item) === primaryCategory(app) && item.id !== app.id).slice(0, 3).map((item) => item.id);
   const related = relatedIds.map((id) => packages.find((item) => item.id === id)).filter(Boolean) as AppPackageSummary[];
-  const canInstall = app.validation.valid && !requiredSetupMissing(app, setupConfig) && !installing;
   // An update applies only when there is a newer package to apply, MOS can apply
   // it safely, and every value the new version newly requires has been given.
   const canApplyUpdate = Boolean(comparison)
@@ -660,11 +624,9 @@ function AppDetail({
   const installedCompatiblePeers = packages.filter((item) => item.id !== app.id && item.instance && item.capabilities.exports.some((capability) => app.capabilities.usefulness.requiresOneOf.includes(capability.type)));
 
   useEffect(() => {
-    setShowOnHomepage(hasHomepageContribution(app));
-    setSetupOpen(false);
     setGuideOpen(false);
-    setSetupConfig(initialSetupConfig(app, owner));
     setPrivacyOpen(false);
+    setConfigOpen(false);
     setGalleryOpen(false);
     setSlideIdx(0);
     setResourcesOpen(false);
@@ -728,13 +690,11 @@ function AppDetail({
     } finally { setRecovering(false); }
   }
 
-  function submitInstall() {
-    const config = { ...setupConfig };
-    onInstall(app, { config, showOnHomepage: homepageAvailable && showOnHomepage });
-    setSetupConfig((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => {
-      const field = app.setup.fields.find((item) => item.id === key);
-      return [key, field?.secret ? '' : value];
-    })));
+  // The dialog hands over what the owner filled in and closes; progress belongs
+  // on the detail page behind it, where it stays visible for the whole install.
+  function submitInstall(options: { config: Record<string, string>; showOnHomepage: boolean }) {
+    setConfigOpen(false);
+    onInstall(app, options);
   }
 
   function openGuide() {
@@ -750,8 +710,14 @@ function AppDetail({
   // stays one button away.
   const updateWaiting = Boolean(ready && app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available && !app.instance?.updateRecovery);
   const canRestartRuntime = Boolean(runtimeRouteApplied(app) && !disabled && !uninstalled);
+  const ownerEnv = app.instance?.env || [];
   const maintenanceActions = [
     ...(ready && hasGuide(app) && guideCompleted ? [{ label: 'Setup guide', onSelect: openGuide }] : []),
+    // Unconditional: the dialog now leads with what the owner was asked for
+    // when the app was created, in plain language. The technical half — MOS's
+    // generated values and the environment editor — is behind an AdvancedPanel
+    // inside it, which gates itself.
+    ...(app.instance && !uninstalled ? [{ label: 'Settings', onSelect: () => setConfigOpen(true) }] : []),
     ...(canRestartRuntime ? [{ label: 'Restart', onSelect: () => onLifecycle(app, 'restart') }] : []),
     ...(ready ? [{ label: 'Stop (keeps data)', onSelect: () => onLifecycle(app, 'stop') }] : []),
     ...(disabled ? [{ label: 'Start', onSelect: () => onLifecycle(app, 'enable') }] : []),
@@ -795,12 +761,8 @@ function AppDetail({
           {updateWaiting ? <>
             <button className="mos-btn mos-btn-primary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking update...' : 'Review update'}</button>
             {primaryDestination ? <a className="mos-btn mos-btn-secondary" href={url}>Open {app.name}</a> : null}
-          </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : needsPreparation && !setupOpen ? <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setSetupOpen(true)} type="button">Prepare</button> : <button className="mos-btn mos-btn-primary" disabled={!canInstall || uninstalled} onClick={submitInstall} type="button">{installing ? 'Installing...' : 'Install'}</button>}
+          </> : ready && primaryDestination ? <a className="mos-btn mos-btn-primary" href={url}>Open {app.name}</a> : ready && isCompanionApp(app) && installedCompatiblePeers.length ? <button className="mos-btn mos-btn-primary" onClick={() => onSelect(installedCompatiblePeers[0]!)} type="button">View compatible app</button> : ready && isCompanionApp(app) ? <button className="mos-btn mos-btn-primary" disabled type="button">Install compatible app</button> : disabled ? <button className="mos-btn mos-btn-primary" disabled={installing} onClick={() => onLifecycle(app, 'enable')} type="button">{installing ? 'Starting...' : 'Start'}</button> : <button className="mos-btn mos-btn-primary" disabled={!app.validation.valid || uninstalled || installing} onClick={() => setConfigOpen(true)} type="button">{installing ? 'Installing...' : 'Install'}</button>}
           {ready && hasGuide(app) && !guideCompleted ? <button className="mos-btn mos-btn-secondary" disabled={guideUpdating} onClick={openGuide} type="button">{guideStatusLabel(app)}</button> : null}
-          {homepageAvailable && !ready && !disabled && !uninstalled ? <label className="suite-app-homepage-option">
-            <input checked={showOnHomepage} disabled={installing} onChange={(event) => setShowOnHomepage(event.currentTarget.checked)} type="checkbox" />
-            <span>Add shortcut to Homepage</span>
-          </label> : null}
           <span className="suite-app-action-spacer" />
           {maintenanceActions.length ? <ActionMenu ariaLabel="More app actions" disabled={installing || guideUpdating} items={maintenanceActions} /> : null}
           {confirmUninstall ? <Dialog
@@ -818,13 +780,6 @@ function AppDetail({
       </header>
 
       <div className="suite-app-detail-scroll">
-        {setupOpen && needsPreparation ? <AppSetupPanel
-          disabled={installing}
-          fields={inputFields}
-          onChange={(id, value) => setSetupConfig((current) => ({ ...current, [id]: value }))}
-          values={setupConfig}
-        /> : null}
-
         {app.instance?.updateRecovery ? <Notice title="App update needs attention" variant="warning">
           <p>{app.instance.updateRecovery.state === 'retry-safe'
             ? 'The update stopped before changing the running app. Review the latest update and try again.'
@@ -840,7 +795,7 @@ function AppDetail({
           <AdvancedPanel copyText={app.instance.updateRecovery.errorCode} reveal="on-failure"><code>{app.instance.updateRecovery.errorCode}</code></AdvancedPanel>
         </Notice> : null}
 
-        <InstallProgress error={installError} steps={installSteps} />
+        <ProgressSteps error={installError} errorTitle="Install needs attention" steps={installSteps} />
 
         {!app.validation.valid ? <Notice title="This package cannot be installed yet" variant="warning"><ul>{app.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul></Notice> : null}
         {missingUsefulPeers.length ? <Notice title="Needs a compatible app" variant="info"><p>{missingUsefulPeers[0]!.message}</p></Notice> : null}
@@ -941,7 +896,36 @@ function AppDetail({
         <AdvancedPanel className="suite-app-advanced" facts={appAdvancedFacts(app)} reveal="technical-mode" />
       </div>
     </aside>
-    {privacyOpen ? <PrivacyPostureDialog advisories={app.advisories} appName={app.name} onClose={() => setPrivacyOpen(false)} packageId={app.id} packageVersion={app.instance?.packageVersion || app.version} privacy={app.privacy} /> : null}
+    {privacyOpen ? <PrivacyPostureDialog
+      advisories={app.advisories}
+      appName={app.name}
+      onClose={() => setPrivacyOpen(false)}
+      // A published assessment describes the app as MOS ships it. Owner-set
+      // environment can change what leaves the server, so an instance that has
+      // any says so — a fact about this owner's own data, which is why it is not
+      // behind technical controls.
+      overrideNotice={ownerEnv.length ? 'You have changed this app’s configuration. The assessment below describes it as MOS ships it.' : null}
+      packageId={app.id}
+      packageVersion={app.instance?.packageVersion || app.version}
+      privacy={app.privacy}
+    /> : null}
+    {configOpen ? <AppConfigDialog
+      appName={app.name}
+      config={app.instance?.config || []}
+      entries={ownerEnv}
+      fields={app.setup.fields}
+      homepageAvailable={homepageAvailable}
+      installed={Boolean(app.instance) && !uninstalled}
+      installing={installing}
+      onClose={() => setConfigOpen(false)}
+      onInstall={submitInstall}
+      onSaved={onUpdated}
+      owner={owner}
+      packageId={app.id}
+      running={ready}
+      service={app.routes[0]?.service || app.services[0]?.id || app.id}
+      webAddress={appAddress(app)}
+    /> : null}
     {galleryOpen && app.catalog.screenshots.length ? <Dialog className="suite-app-gallery-dialog" closeOnBackdrop onClose={() => setGalleryOpen(false)} title={`${app.name} screens`}>
       <figure className="suite-app-gallery">
         <div className="suite-app-gallery-frame">
@@ -1044,7 +1028,7 @@ function AppDetail({
         <PrivacyChangeRow candidate={comparison.candidate.privacy} candidateVersion={comparison.candidate.packageVersion} installed={comparison.installed.privacy} installedVersion={comparison.installed.packageVersion} />
         <dl><dt>Backup</dt><dd>{comparison.metadata.backupRequired ? 'Required' : 'Not declared as required'}</dd><dt>Downtime</dt><dd>{comparison.metadata.downtime}</dd><dt>Rollback</dt><dd>{comparison.metadata.rollback}</dd></dl>
         {comparison.changes.length ? <ul>{comparison.changes.map((change, index) => <li key={`${change.area}-${index}`}><strong>{change.area}</strong>: {change.summary}</li>)}</ul> : <p>No structural changes detected.</p>}
-        {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} disabled={applying} key={field.id} label={field.label} onChange={(event) => setUpdateInput((current) => ({ ...current, [field.id]: event.currentTarget.value }))} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}
+        {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} disabled={applying} key={field.id} label={field.label} onChange={(event) => { const { value } = event.currentTarget; setUpdateInput((current) => ({ ...current, [field.id]: value })); }} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}
         {comparison.requiredInput.length ? <p className="suite-meta">{app.name} needs these values before it can start on the new version. They are stored with this app the same way its other settings are.</p> : null}
         {applyError ? <Notice title="The update did not finish" variant="warning"><p>{applyError}</p></Notice> : null}
         <AdvancedPanel output={JSON.stringify(comparison, null, 2)} reveal="technical-mode" />

@@ -129,11 +129,6 @@ act on.
   question inside this item is settled: accepting the terms lands the owner on Suite Manager, because
   first run is the only moment with a server login to hand over, and ordinary sign-ins go on to the
   Homepage dashboard as before. *(Medium)*
-- **C7 — Technical controls behind an owner opt-in.** `#124`, absorbing `#236`. Eight hand-rolled
-  `Advanced details` disclosures put package ids, digests, ports, volumes, and raw logs in front of
-  every owner on healthy screens. One shared self-gating panel plus one Settings toggle makes the
-  default view plain and gives every future escape hatch a home that costs the other audience
-  nothing. *(Medium)*
 
 ### H. Install media people can just flash
 
@@ -240,6 +235,28 @@ change that on their own, before any of the rest exists.
   owner can open it and read what they are about to send, with a plain-language summary and a redaction
   report that proves masking ran. The decision worth making deliberately is hostnames and IP addresses:
   not secret, but identifying. *(Medium)*
+
+### J. Configuration an owner can reach
+
+**Gate:** an owner can change an installed app's configuration from Suite Manager — both the settings
+MOS asked for at install and the ones it never knew existed — without SSH, and without a wrong value
+leaving the app dead.
+
+Config is captured once, at install, and never again. There is no reconfigure path of any kind, so
+correcting a mistyped time zone means reinstalling, and anything the package did not think to ask for
+is unreachable except by editing generated compose over SSH. The wall a tester actually hits is
+Paperless and a Microsoft mailbox: Outlook consumer IMAP is OAuth-only, which needs two upstream
+environment variables MOS has no reason to know about.
+
+- **J1 — Custom environment variables per installed app.** An app-agnostic escape hatch, behind
+  technical controls in a per-app settings dialog, never in the install flow — the values cannot exist
+  before the app has a URL. Owner-set names are rejected on collision with MOS-managed ones rather
+  than silently losing, and a change that fails its health probe rolls back to the previous
+  environment automatically. Recurring variables graduate into package setup fields; the hatch is for
+  what MOS does not yet know. *(Medium)*
+- **J2 — Re-editable setup fields after install.** The same dialog, holding what the package asked for
+  at install so it can be corrected without a reinstall. Needs the secret rows to round-trip without
+  being re-entered, which is the reason it is not folded into **J1**. *(Medium)*
 
 ---
 

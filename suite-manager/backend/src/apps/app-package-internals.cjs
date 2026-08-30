@@ -20,6 +20,19 @@ const {
 const APP_LOOPBACK_PORT_BASE = 18000;
 const APP_LOOPBACK_PORT_SPAN = 1000;
 
+// A POSIX environment variable name. Deliberately wider than the manifest's own
+// upper-case-only rule: owner environment exists for what upstream projects
+// actually document, and a handful of them ship lower-case names.
+const OWNER_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
+
+// The key an owner env secret is stored under in the instance's secret
+// directory. Namespaced so it cannot collide with a config row's key, whose
+// grammar has no dots, and so the uninstall cleanup that removes the whole
+// instance directory keeps covering it.
+function ownerEnvSecretKey(service, name) {
+  return `env.${service}.${name}`;
+}
+
 class AppPackageServiceError extends Error {
   constructor(code, message, statusCode = 400) {
     super(message);
@@ -99,7 +112,15 @@ function configValueMap(configRows, { includeSecrets = false } = {}) {
   return map;
 }
 
-function resolveConfigTemplate(value, configRows, { app = {}, includeSecrets = false } = {}) {
+// `ownerEnv` is a projection-only namespace: MOS writes ${ownerEnv.NAME} into
+// stored projections and resolves it here at materialize time, exactly as
+// integration env does with ${config.*}/${secret.*}. It is deliberately absent
+// from KNOWN_NAMESPACES in manifest-semantics.cjs, so an authored manifest that
+// references it still fails validation — package authors must never see it.
+//
+// Resolved last, and in a single pass over the original string, so an owner's
+// value is inserted as literal text and can never be re-read as a template.
+function resolveConfigTemplate(value, configRows, { app = {}, includeSecrets = false, ownerEnv = null } = {}) {
   if (typeof value !== 'string') return value;
   const values = configValueMap(configRows, { includeSecrets });
   return value
@@ -107,7 +128,8 @@ function resolveConfigTemplate(value, configRows, { app = {}, includeSecrets = f
     .replace(/\$\{app\.host\}/gu, () => (typeof app.host === 'string' ? app.host : '${app.host}'))
     .replace(/\$\{app\.scheme\}/gu, () => (typeof app.scheme === 'string' ? app.scheme : '${app.scheme}'))
     .replace(/\$\{config\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (values.has(key) ? String(values.get(key)) : match))
-    .replace(/\$\{secret\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (values.has(key) ? String(values.get(key)) : match));
+    .replace(/\$\{secret\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (values.has(key) ? String(values.get(key)) : match))
+    .replace(/\$\{ownerEnv\.([A-Za-z_][A-Za-z0-9_]*)\}/gu, (match, name) => (ownerEnv?.has(name) ? String(ownerEnv.get(name)) : match));
 }
 
 function renderEnvironment(environment, configRows, options = {}) {
@@ -200,11 +222,26 @@ function publicConfig(configRows = []) {
   }));
 }
 
-function publicInstance(instance, projections = [], configRows = []) {
+// The same shape as publicConfig, for the same reason: a secret row exposes its
+// fingerprint and a label to render, never its value.
+function publicEnv(envRows = []) {
+  return envRows.map((row) => ({
+    fingerprint: row.fingerprint || null,
+    name: row.name,
+    redactedLabel: row.secret === true ? 'Hidden value' : null,
+    secret: row.secret === true,
+    service: row.service,
+    updatedAt: row.updatedAt,
+    ...(row.secret === true ? {} : { value: row.value }),
+  }));
+}
+
+function publicInstance(instance, projections = [], configRows = [], envRows = []) {
   if (!instance) return null;
   return {
     config: publicConfig(configRows),
     enabled: instance.enabled,
+    env: publicEnv(envRows),
     id: instance.id,
     installedAt: instance.installedAt,
     manifestDigest: instance.manifestDigest,
@@ -348,12 +385,32 @@ function createConfigRows({ input = {}, instanceId, manifest, secretDir }) {
   }
 }
 
-function materializeRuntimeCompose(compose, configRows) {
+// Owner env is resolved per service, because two services may each hold a name
+// of their own and the projection carries only the reference. Secret values are
+// read from disk by the caller and arrive here as `rawValue`, so this stays the
+// one place a stored projection turns into something with secrets in it.
+function ownerEnvValueMap(envRows, service) {
+  const map = new Map();
+  for (const row of envRows || []) {
+    if (row.service !== service) continue;
+    if (row.secret) {
+      if (typeof row.rawValue === 'string') map.set(row.name, row.rawValue);
+      continue;
+    }
+    if (row.value !== undefined) map.set(row.name, row.value);
+  }
+  return map;
+}
+
+function materializeRuntimeCompose(compose, configRows, envRows = []) {
   return {
     ...compose,
     services: compose.services.map((service) => ({
       ...service,
-      environment: renderEnvironment(service.environment, configRows, { includeSecrets: true }),
+      environment: renderEnvironment(service.environment, configRows, {
+        includeSecrets: true,
+        ownerEnv: ownerEnvValueMap(envRows, service.id),
+      }),
     })),
   };
 }
@@ -503,7 +560,11 @@ function resolveCapabilityValue(value, { consumerExport, providerCapability, pro
     });
 }
 
-function cloneProjectionWithIntegrationEnv(projections, targetService, values) {
+// Patch one service's compose environment and re-digest every projection.
+// Shared by the two things that add env to a rendered projection — a connected
+// integration and an owner's own variables — so both produce byte-identical
+// projection shapes and neither can drift into its own copy.
+function cloneProjectionWithServiceEnv(projections, targetService, values) {
   return projections.map((projection) => {
     if (projection.kind !== 'compose') {
       return {
@@ -561,10 +622,50 @@ function integrationEnvPatches(manifest, configRows, integrations, instanceId) {
 // through here, so that stored projections are always reproducible from their
 // inputs and an update rendered from the candidate manifest cannot lose the
 // integration env a connect once carried.
-function renderInstanceProjections(manifest, configRows = [], { instanceId, integrations = [], packageId = manifest.id } = {}) {
-  let projections = renderDryRunProjections(manifest, configRows, { packageId });
+// Every environment variable name on a service that MOS itself decides: the
+// keys the manifest declares, plus the keys a connected integration contributes
+// to that service for this instance. Computed rather than listed, so a package
+// that adds a variable, or an integration that is connected later, narrows the
+// owner's key space without anyone remembering to update a table.
+function managedEnvNames(manifest, configRows, integrations, instanceId, service) {
+  const declared = manifest.resources?.services?.[service]?.env;
+  const names = new Set(Object.keys(isRecord(declared) ? declared : {}));
   for (const patch of integrationEnvPatches(manifest, configRows, integrations, instanceId)) {
-    projections = cloneProjectionWithIntegrationEnv(projections, patch.service, patch.values);
+    if (patch.service !== service) continue;
+    for (const key of Object.keys(patch.values)) names.add(key);
+  }
+  return names;
+}
+
+// Owner env as compose patches. Values stay `${ownerEnv.NAME}` references, so
+// the stored projection is reproducible and secret-free exactly as integration
+// env is, and a value the owner edits does not have to be re-rendered anywhere
+// else. Names MOS manages are dropped rather than applied: the save path
+// refuses them with a message naming the key, and this makes it structurally
+// impossible for a stale owner row to shadow a manifest or integration value if
+// the managed set later grows over it.
+function ownerEnvPatches(manifest, configRows, integrations, instanceId, envRows) {
+  const services = new Map();
+  for (const row of envRows || []) {
+    if (!manifest.resources?.services?.[row.service]) continue;
+    if (managedEnvNames(manifest, configRows, integrations, instanceId, row.service).has(row.name)) continue;
+    const values = services.get(row.service) || {};
+    values[row.name] = `\${ownerEnv.${row.name}}`;
+    services.set(row.service, values);
+  }
+  return [...services].map(([service, values]) => ({ service, values }));
+}
+
+function renderInstanceProjections(manifest, configRows = [], { instanceId, integrations = [], ownerEnv = [], packageId = manifest.id } = {}) {
+  let projections = renderDryRunProjections(manifest, configRows, { packageId });
+  // Owner env first, integration env second: a later patch wins the key, so
+  // this ordering is the second half of the guarantee that a MOS-managed name
+  // is never overridden by an owner-set one.
+  for (const patch of ownerEnvPatches(manifest, configRows, integrations, instanceId, ownerEnv)) {
+    projections = cloneProjectionWithServiceEnv(projections, patch.service, patch.values);
+  }
+  for (const patch of integrationEnvPatches(manifest, configRows, integrations, instanceId)) {
+    projections = cloneProjectionWithServiceEnv(projections, patch.service, patch.values);
   }
   return projections;
 }
@@ -587,6 +688,7 @@ module.exports = {
   APP_LOOPBACK_PORT_BASE,
   APP_LOOPBACK_PORT_SPAN,
   AppPackageServiceError,
+  OWNER_ENV_NAME_PATTERN,
   appPublicIdentity,
   appRouteForHomepage,
   primaryProjectedRoute,
@@ -603,9 +705,12 @@ module.exports = {
   integrationSlots,
   isRecord,
   loopbackPortFor,
+  managedEnvNames,
   materializeRuntimeCaddy,
   materializeRuntimeCompose,
+  ownerEnvSecretKey,
   privacyReviewPresentation,
+  publicEnv,
   publicInstance,
   readSecretValue,
   renderDryRunProjections,
@@ -619,4 +724,5 @@ module.exports = {
   runtimeRouteApplied,
   secretFilePath,
   setupFields,
+  writeSecretFile,
 };

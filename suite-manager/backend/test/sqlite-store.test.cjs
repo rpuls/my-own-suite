@@ -52,6 +52,7 @@ test('fresh state creates the SQLite schema and records every migration', async 
 
   assert.deepEqual(tables, [
     'app_instance_config',
+    'app_instance_env',
     'app_instance_guides',
     'app_instance_projections',
     'app_instances',
@@ -274,6 +275,7 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'security-event-subjects',
     'owner-terms-acceptance',
     'owner-preferences',
+    'app-instance-owner-env',
   ]);
   upgraded.close();
 });
