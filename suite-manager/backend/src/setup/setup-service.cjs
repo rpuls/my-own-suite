@@ -12,6 +12,14 @@ const MIN_PASSWORD_LENGTH = 12;
 // it here: a new version is a new acceptance, and every install is asked again.
 const TERMS_VERSION = '2026-07';
 
+// Owner preferences and the value each one has when nothing is stored. This
+// object is the whole contract: it decides the default in one place rather than
+// at each call site, and a key that is not in it is not a preference — the write
+// route rejects it, and a row left behind by another release is ignored.
+const OWNER_PREFERENCE_DEFAULTS = Object.freeze({
+  technicalControls: false,
+});
+
 class SetupError extends Error {
   constructor(code, message) {
     super(message);
@@ -70,10 +78,41 @@ class SetupService {
     }
 
     if (session) {
-      return { owner: publicOwner(owner), status: 'signed-in', ...this.termsState() };
+      // Preferences ride on the bootstrap payload so Suite Manager knows them
+      // before its first paint, and only here: a signed-out or needs-owner
+      // caller is told nothing about the owner beyond their name and email.
+      return { owner: publicOwner(owner), preferences: this.preferences(), status: 'signed-in', ...this.termsState() };
     }
 
     return { owner: publicOwner(owner), status: 'signed-out', ...this.termsState() };
+  }
+
+  preferences() {
+    const owner = this.store.getOwner();
+    const stored = owner ? this.store.getOwnerPreferences(owner.id) : {};
+    return Object.fromEntries(Object.entries(OWNER_PREFERENCE_DEFAULTS).map(([key, fallback]) => [
+      key,
+      typeof stored[key] === typeof fallback ? stored[key] : fallback,
+    ]));
+  }
+
+  setPreference(input) {
+    const owner = this.store.getOwner();
+    if (!owner) {
+      throw new SetupError('OWNER_NOT_CREATED', 'Create the MOS owner account first.');
+    }
+
+    const key = String(input?.key || '');
+    if (!Object.hasOwn(OWNER_PREFERENCE_DEFAULTS, key)) {
+      throw new SetupError('UNKNOWN_PREFERENCE', 'That is not a Suite Manager preference.');
+    }
+
+    if (typeof input?.value !== typeof OWNER_PREFERENCE_DEFAULTS[key]) {
+      throw new SetupError('INVALID_PREFERENCE_VALUE', `Preference ${key} must be a ${typeof OWNER_PREFERENCE_DEFAULTS[key]}.`);
+    }
+
+    this.store.setOwnerPreference({ at: this.now().toISOString(), key, ownerId: owner.id, value: input.value });
+    return this.preferences();
   }
 
   termsState() {

@@ -61,6 +61,7 @@ test('fresh state creates the SQLite schema and records every migration', async 
     'homepage_operations',
     'homepage_revisions',
     'https_settings',
+    'owner_preferences',
     'owner_terms_acceptances',
     'owners',
     'schema_migrations',
@@ -68,6 +69,38 @@ test('fresh state creates the SQLite schema and records every migration', async 
     'sessions',
   ]);
   assert.deepEqual(migrations, MIGRATIONS.map(({ name, version }) => ({ name, version })));
+});
+
+test('owner preferences round-trip per key, survive restart, and belong to an owner that exists', async () => {
+  const stateDir = await tempStateDir();
+  let store = new SuiteManagerStore(stateDir);
+  store.createOwnerAndSession(owner(), session());
+  const ownerId = store.getOwner().id;
+
+  assert.deepEqual(store.getOwnerPreferences(ownerId), {});
+  store.setOwnerPreference({ at: '2026-08-30T10:00:00.000Z', key: 'technicalControls', ownerId, value: true });
+  store.setOwnerPreference({ at: '2026-08-30T10:01:00.000Z', key: 'technicalControls', ownerId, value: false });
+  assert.deepEqual(store.getOwnerPreferences(ownerId), { technicalControls: false });
+
+  // The row is owner-scoped for real, not by convention.
+  assert.throws(() => store.setOwnerPreference({ at: '2026-08-30T10:02:00.000Z', key: 'technicalControls', ownerId: 2, value: true }));
+  store.close();
+
+  store = new SuiteManagerStore(stateDir);
+  assert.deepEqual(store.getOwnerPreferences(ownerId), { technicalControls: false });
+  store.close();
+
+  // A row written by a release this one does not understand is skipped, not
+  // thrown on: one unreadable preference must not take the readable ones with it.
+  const database = new DatabaseSync(path.join(stateDir, DATABASE_FILENAME));
+  database.prepare(`
+    INSERT INTO owner_preferences (owner_id, key, value_json, updated_at) VALUES (?, ?, ?, ?)
+  `).run(ownerId, 'fromALaterRelease', 'not json', '2026-08-30T10:03:00.000Z');
+  database.close();
+
+  store = new SuiteManagerStore(stateDir);
+  assert.deepEqual(store.getOwnerPreferences(ownerId), { technicalControls: false });
+  store.close();
 });
 
 test('HTTPS settings keep pending state separate and never persist the Cloudflare token', async () => {
@@ -240,6 +273,7 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'external-app-sources',
     'security-event-subjects',
     'owner-terms-acceptance',
+    'owner-preferences',
   ]);
   upgraded.close();
 });

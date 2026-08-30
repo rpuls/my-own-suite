@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
-export type IconName = 'apps' | 'backup' | 'check' | 'chevron-right' | 'customize' | 'dashboard' | 'external' | 'eye' | 'eye-off' | 'hard-drive' | 'menu' | 'more' | 'network-drive' | 'refresh' | 'screens' | 'settings' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'x';
+export type IconName = 'apps' | 'backup' | 'check' | 'chevron-right' | 'copy' | 'customize' | 'dashboard' | 'external' | 'eye' | 'eye-off' | 'hard-drive' | 'menu' | 'more' | 'network-drive' | 'refresh' | 'screens' | 'settings' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'x';
 
 export function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -9,6 +9,7 @@ export function Icon({ name }: { name: IconName }) {
     backup: <><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" /><path d="M8 15h8M9 9h6M9 12h6" /></>,
     check: <path d="M5 13l4 4 10-10" />,
     'chevron-right': <path d="M9 6l6 6-6 6" />,
+    copy: <><rect height="14" rx="2" ry="2" width="14" x="8" y="8" /><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2" /></>,
     customize: <><path d="M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></>,
     dashboard: <><rect height="7" rx="1" width="7" x="3" y="3" /><rect height="7" rx="1" width="7" x="14" y="3" /><rect height="7" rx="1" width="7" x="3" y="14" /><rect height="7" rx="1" width="7" x="14" y="14" /></>,
     external: <path d="M7 17L17 7M9 7h8v8" />,
@@ -107,8 +108,138 @@ export function Checkbox({ children, ...props }: Omit<InputHTMLAttributes<HTMLIn
   return <label className="suite-confirm"><input className="suite-confirm-box" type="checkbox" {...props} /><span>{children}</span></label>;
 }
 
+// The shared setting switch: label and optional description on the left, the
+// switch on the right, the whole row a hit target. Use it for a preference that
+// takes effect the moment it is flipped.
+//
+// Deliberately a different control from Checkbox rather than a restyling of it.
+// A checkbox is a deliberate acknowledgement that gates something else and is
+// submitted with it ("I have read this"); a switch *is* the change, with no
+// submit step to follow. Keeping the two distinct is what stops a third
+// almost-fitting control appearing the next time neither is quite right.
+export function Switch({ description, label, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { description?: ReactNode; label: ReactNode }) {
+  return <label className="suite-switch">
+    <span className="suite-switch-copy">
+      <span className="suite-switch-label">{label}</span>
+      {description ? <span className="suite-switch-help">{description}</span> : null}
+    </span>
+    {/* A real checkbox, only repainted: keyboard, focus and form semantics stay
+        the platform's. The decorative track must remain its immediate sibling —
+        the shared .mos-switch-* rules are written against that order. */}
+    <input className="mos-switch-input" role="switch" type="checkbox" {...props} />
+    <span aria-hidden="true" className="mos-switch-track"><span className="mos-switch-knob" /></span>
+  </label>;
+}
+
 export function Notice({ children, title, variant = 'info' }: { children: ReactNode; title: ReactNode; variant?: 'error' | 'info' | 'success' | 'warning' }) {
   return <div className={`suite-notice suite-notice-${variant}`} role={variant === 'error' ? 'alert' : 'status'}><strong>{title}</strong><div>{children}</div></div>;
+}
+
+export type AdvancedFact = { code?: boolean; label: string; value: string };
+
+type TechnicalControls = { enabled: boolean; setEnabled: (next: boolean) => Promise<void> };
+
+// Defaulting to off rather than throwing is deliberate: a subtree rendered
+// outside the provider hides its technical surface instead of crashing, so the
+// failure mode of a wiring mistake is the safe direction.
+const TechnicalControlsContext = createContext<TechnicalControls>({ enabled: false, setEnabled: async () => {} });
+
+export function TechnicalControlsProvider({ children, enabled, setEnabled }: { children: ReactNode; enabled: boolean; setEnabled: (next: boolean) => Promise<void> }) {
+  const value = useMemo<TechnicalControls>(() => ({ enabled, setEnabled }), [enabled, setEnabled]);
+  return <TechnicalControlsContext.Provider value={value}>{children}</TechnicalControlsContext.Provider>;
+}
+
+// Reading the preference directly is the exception, not the rule. AdvancedPanel
+// gates itself, so a screen never writes `{enabled ? ... : null}` around a
+// disclosure and a new advanced surface cannot leak because someone forgot to.
+// Reach for this hook only when an entire section rather than a disclosure is
+// technical-only, and say in a comment why the panel was not enough — otherwise
+// the gating scatters back across the screens this component collected it from.
+export function useTechnicalControls(): TechnicalControls {
+  return useContext(TechnicalControlsContext);
+}
+
+// The one place Suite Manager shows technical surface: package ids, digests,
+// ports, generated configuration, raw logs, and the manual overrides an owner
+// owns. It decides its own visibility, which is why no call site may hand-roll
+// a .suite-advanced disclosure — a unit test enforces that.
+//
+// `reveal` has no default because it is a judgement the author has to make.
+// "on-failure" renders whatever the preference says, and is legal only where
+// the surrounding UI is already reporting that something went wrong: a broken
+// screen is the one place diagnostics help rather than intimidate, and
+// CONTRIBUTING.md asks bug reporters to paste what is under this disclosure.
+// "technical-mode" is everything else, and renders nothing at all — no hidden
+// markup, nothing in the accessibility tree — until the owner opts in.
+//
+// `facts` and `output` take strings so the copy text can be derived from the
+// same values that are displayed; a hand-passed `copyText` is a second copy of
+// the same data waiting to go stale, so it stays an override for content that
+// is neither. `children` renders below both and takes anything — a form, a
+// textarea, a whole feature. The body is a grid, so a child gets the panel's own
+// spacing and fills its width: right for a field or a fieldset, and the reason a
+// row of buttons belongs in a .suite-editor-actions wrapper rather than loose in
+// the panel.
+export function AdvancedPanel({
+  children,
+  className,
+  copyText,
+  facts,
+  output,
+  reveal,
+  summary = 'Advanced details',
+}: {
+  children?: ReactNode;
+  className?: string;
+  copyText?: string | (() => string);
+  facts?: AdvancedFact[];
+  output?: string;
+  reveal: 'on-failure' | 'technical-mode';
+  summary?: string;
+}) {
+  const { enabled } = useTechnicalControls();
+  const [copyState, setCopyState] = useState<'' | 'copied' | 'unavailable'>('');
+  useEffect(() => {
+    if (!copyState) return undefined;
+    const timer = window.setTimeout(() => setCopyState(''), 2_000);
+    return () => window.clearTimeout(timer);
+  }, [copyState]);
+
+  if (reveal === 'technical-mode' && !enabled) return null;
+
+  // Readable label/value lines rather than JSON: this text exists to be pasted
+  // into a bug report and read by a person.
+  const derived = [
+    (facts || []).map((fact) => `${fact.label}: ${fact.value}`).join('\n'),
+    output || '',
+  ].filter(Boolean).join('\n\n');
+  const resolveCopyText = () => (typeof copyText === 'function' ? copyText() : copyText ?? derived);
+  const copyable = typeof copyText === 'function' || Boolean(copyText) || Boolean(derived);
+
+  // MOS on plain HTTP is a non-secure origin with no navigator.clipboard, which
+  // is the normal state of a fresh install rather than an edge case. Failing
+  // visibly and leaving the text selectable is the whole recovery.
+  async function copy(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(resolveCopyText());
+      setCopyState('copied');
+    } catch {
+      setCopyState('unavailable');
+    }
+  }
+
+  return <details className={`suite-advanced${className ? ` ${className}` : ''}`}>
+    <summary>{summary}</summary>
+    <div className="suite-advanced-body">
+      {copyable ? <div className="suite-advanced-actions">
+        <span className="suite-advanced-copy-state" role="status">{copyState === 'copied' ? 'Copied' : copyState === 'unavailable' ? 'Could not copy. Select the text instead.' : ''}</span>
+        <button aria-label={`Copy ${summary.toLowerCase()}`} className="suite-icon-button" onClick={() => void copy()} title="Copy" type="button"><Icon name="copy" /></button>
+      </div> : null}
+      {facts?.length ? <dl>{facts.map((fact) => <Fragment key={fact.label}><dt>{fact.label}</dt><dd>{fact.code ? <code>{fact.value}</code> : fact.value}</dd></Fragment>)}</dl> : null}
+      {output ? <pre>{output}</pre> : null}
+      {children}
+    </div>
+  </details>;
 }
 
 export function Dialog({ children, className, closeOnBackdrop = false, footer, header, onClose, title }: { children: ReactNode; className?: string; closeOnBackdrop?: boolean; footer?: ReactNode; header?: ReactNode; onClose: () => void; title: string }) {

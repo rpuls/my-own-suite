@@ -17,7 +17,7 @@ Suite Manager is where you run your suite. It lives at `home.<your-domain>/suite
 
 ## Conventions worth knowing
 
-**Plain language first, details on demand.** Every screen explains its state in normal words. The raw material — logs, generated configuration, IDs, technical output — is always there too, tucked behind an **Advanced details** disclosure. You never need it; it's never hidden from you.
+**Plain language first, details on demand.** Every screen explains its state in normal words. The raw material — logs, generated configuration, IDs, technical output — is there when you want it, but it stays out of the way until you ask: turn on **Show technical controls** in **Settings → Technical controls** and an **Advanced details** panel appears wherever there is something to show. It is off by default, it is remembered for your account rather than for one browser, and turning it off again hides those panels without changing anything else. When a screen is reporting a failure it shows its diagnostics either way, so you always have something to paste into a bug report.
 
 **Nothing happens silently.** Actions that change your machine show progress while they run and report honestly when something fails. Destructive actions (uninstalling an app, restoring a backup) require explicit confirmation and say exactly what will be lost.
 

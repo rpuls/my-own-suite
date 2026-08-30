@@ -506,6 +506,37 @@
   cursor: pointer;
 }
 
+/* Setting row: copy on the left, the brand switch on the right, the whole row
+   a hit target. Same boxed surface as .suite-confirm so a screen that has both
+   reads as one set of controls. */
+.suite-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mos-space-4);
+  padding: var(--mos-space-4);
+  border: var(--mos-border-subtle);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface);
+  cursor: pointer;
+}
+
+.suite-switch-copy {
+  display: grid;
+  gap: var(--mos-space-1);
+}
+
+.suite-switch-label {
+  color: var(--mos-color-text-strong);
+  font-weight: var(--mos-weight-bold);
+}
+
+.suite-switch-help {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+  line-height: 1.45;
+}
+
 .suite-confirm-box {
   flex: 0 0 auto;
   margin-top: 0.15rem;
@@ -2478,6 +2509,34 @@
 .suite-advanced dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+/* AdvancedPanel body: one grid so the gaps between a fact list, raw output, and
+   whatever a feature composes in (a form, a textarea, buttons) are the panel's
+   to decide rather than each block's own margins. */
+.suite-advanced-body {
+  display: grid;
+  gap: var(--mos-space-3);
+  margin-top: var(--mos-space-3);
+}
+
+.suite-advanced-body > dl,
+.suite-advanced-body > pre {
+  margin: 0;
+}
+
+.suite-advanced-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--mos-space-3);
+}
+
+.suite-advanced-copy-state {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+  text-align: right;
 }
 
 @media (max-width: 720px) {

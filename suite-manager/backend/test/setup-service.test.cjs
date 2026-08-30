@@ -175,6 +175,55 @@ test('terms acceptance persists across restart and only for the version shown', 
   reloaded.close();
 });
 
+test('owner preferences default off, persist, and reach only a signed-in caller', async () => {
+  const stateDir = await tempStateDir();
+  const service = new SetupService({ stateDir });
+  const created = service.createOwner({
+    email: 'owner@example.com',
+    name: 'Suite Owner',
+    password: 'correct horse battery',
+  });
+
+  assert.deepEqual(service.status(created.sessionToken).preferences, { technicalControls: false });
+  // A caller who is not signed in is told nothing about how the owner has set
+  // up their own Suite Manager.
+  assert.equal(service.status().preferences, undefined);
+  assert.equal(service.status('not-a-session').preferences, undefined);
+
+  assert.deepEqual(service.setPreference({ key: 'technicalControls', value: true }), { technicalControls: true });
+  assert.deepEqual(service.status(created.sessionToken).preferences, { technicalControls: true });
+  service.close();
+
+  const reloaded = new SetupService({ stateDir });
+  assert.deepEqual(reloaded.status(created.sessionToken).preferences, { technicalControls: true });
+  assert.deepEqual(reloaded.setPreference({ key: 'technicalControls', value: false }), { technicalControls: false });
+  reloaded.close();
+});
+
+test('only known preference keys with the right type are stored', async () => {
+  const stateDir = await tempStateDir();
+  const service = new SetupService({ stateDir });
+
+  assert.throws(
+    () => service.setPreference({ key: 'technicalControls', value: true }),
+    (error) => error instanceof SetupError && error.code === 'OWNER_NOT_CREATED',
+  );
+
+  service.createOwner({ email: 'owner@example.com', name: 'Suite Owner', password: 'correct horse battery' });
+
+  assert.throws(
+    () => service.setPreference({ key: 'showEverything', value: true }),
+    (error) => error instanceof SetupError && error.code === 'UNKNOWN_PREFERENCE',
+  );
+  for (const value of ['true', 1, null, undefined, { enabled: true }]) {
+    assert.throws(
+      () => service.setPreference({ key: 'technicalControls', value }),
+      (error) => error instanceof SetupError && error.code === 'INVALID_PREFERENCE_VALUE',
+    );
+  }
+  service.close();
+});
+
 test('changing the owner password ends every session and issues a fresh one', async () => {
   const stateDir = await tempStateDir();
   const service = new SetupService({ stateDir });

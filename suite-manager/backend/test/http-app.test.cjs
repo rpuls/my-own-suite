@@ -133,6 +133,56 @@ async function createOwner(baseUrl, host = 'home.test') {
   return response.headers['set-cookie'][0];
 }
 
+test('the owner preference route is authenticated, validated, and reflected in setup status', async () => {
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
+      body: JSON.stringify({ key: 'technicalControls', value: true }),
+      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(denied.status, 401);
+    assert.equal(denied.json().code, 'AUTH_REQUIRED');
+
+    const cookie = await createOwner(baseUrl);
+    const signedOutStatus = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Host: 'home.test' } });
+    assert.equal(signedOutStatus.json().preferences, undefined);
+
+    const before = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } });
+    assert.deepEqual(before.json().preferences, { technicalControls: false });
+
+    const saved = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
+      body: JSON.stringify({ key: 'technicalControls', value: true }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(saved.status, 200);
+    assert.deepEqual(saved.json().preferences, { technicalControls: true });
+
+    const after = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } });
+    assert.deepEqual(after.json().preferences, { technicalControls: true });
+
+    const wrongType = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
+      body: JSON.stringify({ key: 'technicalControls', value: 'yes' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(wrongType.status, 400);
+    assert.equal(wrongType.json().code, 'INVALID_PREFERENCE_VALUE');
+
+    const unknownKey = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
+      body: JSON.stringify({ key: 'showEverything', value: true }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(unknownKey.status, 400);
+    assert.equal(unknownKey.json().code, 'UNKNOWN_PREFERENCE');
+
+    // A rejected write changes nothing.
+    const unchanged = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } });
+    assert.deepEqual(unchanged.json().preferences, { technicalControls: true });
+  }, { homeHost: 'home.test' });
+});
+
 test('Home serves Suite Manager but blocks its dashboard until authentication', async () => {
   await withServer(async (baseUrl) => {
     const setupResponse = await hostRequest(baseUrl, '/suite-manager/', { headers: { Host: 'home.test' } });

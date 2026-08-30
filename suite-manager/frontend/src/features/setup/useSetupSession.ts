@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import type { Owner, SetupSessionState, SetupStatusResponse, TermsState } from './types';
+import type { Owner, OwnerPreferences, SetupSessionState, SetupStatusResponse, TermsState } from './types';
 
 const UNKNOWN_TERMS: TermsState = { accepted: false, acceptedAt: null, version: '' };
+// What a backend that predates owner preferences implies, and what a fresh
+// install starts from. Off is the default everywhere: the backend decides it for
+// storage, this decides it for a payload that arrived without the field.
+const DEFAULT_PREFERENCES: OwnerPreferences = { technicalControls: false };
 
 type ApiErrorBody = {
   error?: string;
@@ -44,7 +48,12 @@ function stateFromStatus(status: SetupStatusResponse): SetupSessionState {
   }
 
   if (status.status === 'signed-in') {
-    return { kind: 'signed-in', owner: status.owner, terms: status.terms || UNKNOWN_TERMS };
+    return {
+      kind: 'signed-in',
+      owner: status.owner,
+      preferences: status.preferences || DEFAULT_PREFERENCES,
+      terms: status.terms || UNKNOWN_TERMS,
+    };
   }
 
   return { kind: 'signed-out', error: null, owner: status.owner };
@@ -156,6 +165,29 @@ export function useSetupSession() {
     await refresh();
   }
 
+  // Optimistic because the toggle is a visibility switch and nothing is at risk
+  // if it is briefly wrong: the panels appear as the owner clicks rather than
+  // after a round trip. A rejected write puts the visible state back and raises,
+  // so the Settings card can say what happened. useCallback because this goes
+  // into a React context value that would otherwise change on every render.
+  const setTechnicalControls = useCallback(async (enabled: boolean): Promise<void> => {
+    const applyLocally = (value: boolean) => setState((current) => (current.kind === 'signed-in'
+      ? { ...current, preferences: { ...current.preferences, technicalControls: value } }
+      : current));
+
+    applyLocally(enabled);
+    const response = await fetch('/suite-manager/api/settings/preferences', {
+      body: JSON.stringify({ key: 'technicalControls', value: enabled }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    }).catch(() => null);
+
+    if (response?.ok) return;
+    applyLocally(!enabled);
+    const body = response ? await readJson<ApiErrorBody>(response).catch(() => ({})) : {};
+    throw new Error(errorMessage(body, 'Your preference could not be saved.'));
+  }, []);
+
   function clearOwnerError(): void {
     setState((current) => (current.kind === 'needs-owner' && current.error ? { ...current, error: null } : current));
   }
@@ -179,6 +211,7 @@ export function useSetupSession() {
     login,
     logout,
     refresh,
+    setTechnicalControls,
     state,
   };
 }

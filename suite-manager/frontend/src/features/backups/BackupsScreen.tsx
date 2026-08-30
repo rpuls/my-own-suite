@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { ActionMenu, Dialog, Icon, Notice, TextInput } from '../../components/ui';
+import { ActionMenu, AdvancedPanel, Dialog, Icon, Notice, TextInput } from '../../components/ui';
 
 type BackupDestination = {
   availableBytes: number | null;
@@ -519,15 +519,12 @@ export function BackupsScreen() {
           </div>
         </section>
 
-        <details className="suite-advanced suite-backup-advanced">
-          <summary>Advanced details</summary>
-          <dl>
-            <dt>Detected apps</dt><dd>{status.inventory?.summary.appCount ?? 0}</dd>
-            <dt>Detected app data stores</dt><dd>{status.inventory?.summary.declaredVolumeCount ?? 0}</dd>
-            <dt>App connections</dt><dd>{status.inventory?.summary.relationshipCount ?? 0}</dd>
-            <dt>Warnings</dt><dd>{status.inventory?.warnings.map((warning) => `${warning.packageId}: ${warning.message}`).join(', ') || 'None'}</dd>
-          </dl>
-        </details>
+        <AdvancedPanel className="suite-backup-advanced" facts={[
+          { label: 'Detected apps', value: String(status.inventory?.summary.appCount ?? 0) },
+          { label: 'Detected app data stores', value: String(status.inventory?.summary.declaredVolumeCount ?? 0) },
+          { label: 'App connections', value: String(status.inventory?.summary.relationshipCount ?? 0) },
+          { label: 'Warnings', value: status.inventory?.warnings.map((warning) => `${warning.packageId}: ${warning.message}`).join(', ') || 'None' },
+        ]} reveal="technical-mode" />
       </div> : null}
 
       {noteEditor ? <Dialog

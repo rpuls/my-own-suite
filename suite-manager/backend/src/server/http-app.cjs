@@ -545,6 +545,19 @@ function createMOSServer({
         return;
       }
 
+      // Owner preferences are one keyed route rather than one route each, so a
+      // new preference is a key in setup-service rather than another endpoint.
+      // The service owns the closed set of keys and their types; an unknown key
+      // or a value of the wrong type is a 400, never a stored row.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/preferences`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change your Suite Manager preferences.' });
+          return;
+        }
+        jsonResponse(response, 200, { preferences: setup.setPreference(await readJsonBody(request, 4 * 1024)) });
+        return;
+      }
+
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/security-events`) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review security activity.' });

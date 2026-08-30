@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { parseDocument } from 'yaml';
 import { CustomizeYamlNotice } from '../../components/disclaimers';
-import { Notice } from '../../components/ui';
+import { AdvancedPanel, Notice } from '../../components/ui';
 import { AddHomepageItemDialog } from './AddHomepageItemDialog';
 import { CodeEditor } from './CodeEditor';
 
@@ -128,7 +128,7 @@ export function CustomizeScreen() {
               <button className="mos-btn mos-btn-secondary" disabled={busy} onClick={() => void load()} type="button">Discard my changes and reload</button>
             </div> : null}
           </Notice> : null}
-          {steps.length ? <><Notice title="Homepage updated" variant="success"><p>The saved dashboard configuration is active.</p></Notice><details className="suite-advanced"><summary>Advanced details</summary><pre>{steps.join('\n')}</pre></details></> : null}
+          {steps.length ? <><Notice title="Homepage updated" variant="success"><p>The saved dashboard configuration is active.</p></Notice><AdvancedPanel output={steps.join('\n')} reveal="technical-mode" /></> : null}
           <div className="suite-editor-actions"><button className="mos-btn mos-btn-primary" disabled={busy || !dirty || !agentAvailable} onClick={() => void save()} type="button">{busy ? 'Saving...' : 'Save and apply'}</button></div>
           {busy && !content ? <p className="suite-meta">Loading Homepage configuration...</p> : <CodeEditor key={file} value={content} onChange={(value) => { setContent(value); setError(null); setSteps([]); }} />}
         </div>

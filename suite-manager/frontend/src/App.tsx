@@ -1,3 +1,4 @@
+import { TechnicalControlsProvider } from './components/ui';
 import { AppShell } from './features/app-shell/AppShell';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { OwnerSetupScreen } from './features/setup/OwnerSetupScreen';
@@ -5,7 +6,7 @@ import { TermsGateScreen } from './features/setup/TermsGateScreen';
 import { useSetupSession } from './features/setup/useSetupSession';
 
 export default function App() {
-  const { acceptTerms, clearOwnerError, createOwner, login, logout, state } = useSetupSession();
+  const { acceptTerms, clearOwnerError, createOwner, login, logout, setTechnicalControls, state } = useSetupSession();
 
   if (state.kind === 'loading') {
     return (
@@ -54,5 +55,13 @@ export default function App() {
     return <TermsGateScreen onAccept={acceptTerms} onLogout={logout} owner={state.owner} terms={state.terms} />;
   }
 
-  return <AppShell onLogout={logout} owner={state.owner} />;
+  // The provider wraps the whole signed-in tree and nothing above it, and this
+  // component has already returned for `loading`, so every screen knows whether
+  // technical controls are on before its first paint. No second fetch, and no
+  // advanced panel that appears a moment after the page settles.
+  return (
+    <TechnicalControlsProvider enabled={state.preferences.technicalControls} setEnabled={setTechnicalControls}>
+      <AppShell onLogout={logout} owner={state.owner} />
+    </TechnicalControlsProvider>
+  );
 }

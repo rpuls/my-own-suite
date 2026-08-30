@@ -410,6 +410,90 @@ summary:focus-visible {
   transform: none;
 }
 
+/* Switch: a setting that applies the moment it is flipped. Deliberately not
+   the same control as a confirmation checkbox — a checkbox is an
+   acknowledgement submitted with something else, a switch is the change
+   itself, which is why it carries the accent gradient of a primary action
+   rather than a tick.
+
+   Structure contract: a visually hidden <input type="checkbox" role="switch">
+   immediately followed by the decorative track, both inside the <label> that
+   carries the copy. The input stays a real checkbox so keyboard, focus, and
+   form semantics are the platform's; only its appearance is ours. */
+.mos-switch-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mos-switch-track {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  width: 3rem;
+  height: 1.75rem;
+  padding: 0.25rem;
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-surface-strong);
+  transition:
+    background var(--mos-transition),
+    border-color var(--mos-transition),
+    box-shadow var(--mos-transition);
+}
+
+.mos-switch-knob {
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-text-muted);
+  transition:
+    background var(--mos-transition),
+    transform var(--mos-transition);
+}
+
+/* The gradient and its ink are the primary button's, so "on" reads as the same
+   affirmative the rest of the product uses. */
+.mos-switch-input:checked + .mos-switch-track {
+  border-color: var(--mos-color-accent-border);
+  background: linear-gradient(160deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+  box-shadow: var(--mos-shadow-soft);
+}
+
+/* Track 3rem wide with 0.25rem of padding and a 1px border around a 1.125rem
+   knob leaves exactly 1.25rem of travel. */
+.mos-switch-input:checked + .mos-switch-track .mos-switch-knob {
+  background: var(--mos-color-button-primary-text);
+  transform: translateX(1.25rem);
+}
+
+/* The whole enclosing label is the hit target, so the hover affordance has to
+   come from the label rather than from the track's own three rem. */
+label:hover > .mos-switch-input:enabled + .mos-switch-track {
+  border-color: var(--mos-color-accent-border);
+}
+
+.mos-switch-input:focus-visible + .mos-switch-track {
+  outline: 3px solid var(--mos-color-focus-visible);
+  outline-offset: 2px;
+}
+
+.mos-switch-input:disabled + .mos-switch-track {
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mos-switch-track,
+  .mos-switch-knob {
+    transition: none;
+  }
+}
+
 .mos-panel {
   border: var(--mos-border-strong);
   border-radius: var(--mos-radius-md);

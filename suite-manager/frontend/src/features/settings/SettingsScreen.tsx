@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 
-import { Notice, TextInput } from '../../components/ui';
+import { AdvancedPanel, Notice, Switch, TextInput, useTechnicalControls } from '../../components/ui';
 
 type HttpsStatus = {
   acmeEmail: string | null;
@@ -56,8 +56,21 @@ function LocalDnsInstructions({ homeHost, serverAddress }: { homeHost: string; s
   </>;
 }
 
-function AdvancedDetails({ status }: { status: HttpsStatus }) {
-  return <details className="suite-advanced"><summary>Advanced details</summary><dl><dt>Bootstrap recovery URL</dt><dd>{status.bootstrapUrl}</dd><dt>Active Home URL</dt><dd>{status.activeHomeUrl}</dd><dt>Install context</dt><dd>{status.installContext}</dd><dt>Detected server IP</dt><dd>{status.serverAddress || 'Not detected'}</dd><dt>TLS mode</dt><dd>{status.tlsMode}</dd><dt>Provider</dt><dd>{status.provider || 'Not configured'}</dd><dt>Last apply</dt><dd>{status.lastApply.status}{status.lastApply.errorCode ? ` (${status.lastApply.errorCode})` : ''}</dd>{status.lastApply.diagnostics ? <><dt>Sanitized diagnostics</dt><dd>{status.lastApply.diagnostics}</dd></> : null}</dl></details>;
+// The one panel on this screen that renders in both contexts: diagnostics when
+// an HTTPS apply failed, and ambient detail when it did not. Composing the
+// shared panel rather than repeating it keeps the two call sites below —
+// provider-managed HTTPS and private LAN HTTPS — showing the same facts.
+function HttpsDiagnostics({ status }: { status: HttpsStatus }) {
+  return <AdvancedPanel facts={[
+    { label: 'Bootstrap recovery URL', value: status.bootstrapUrl },
+    { label: 'Active Home URL', value: status.activeHomeUrl },
+    { label: 'Install context', value: status.installContext },
+    { label: 'Detected server IP', value: status.serverAddress || 'Not detected' },
+    { label: 'TLS mode', value: status.tlsMode },
+    { label: 'Provider', value: status.provider || 'Not configured' },
+    { label: 'Last apply', value: `${status.lastApply.status}${status.lastApply.errorCode ? ` (${status.lastApply.errorCode})` : ''}` },
+    ...(status.lastApply.diagnostics ? [{ label: 'Sanitized diagnostics', value: status.lastApply.diagnostics }] : []),
+  ]} reveal={status.lastApply.status === 'failed' ? 'on-failure' : 'technical-mode'} />;
 }
 
 function AppReconciliationNotice({ reconciliation }: { reconciliation?: AppReconciliationResult }) {
@@ -128,6 +141,35 @@ function OwnerAccountPanel() {
       {changed ? <Notice title="Password changed" variant="success"><p>Your new password is active. Every other signed-in browser was signed out; this one stays signed in.</p></Notice> : null}
       <button className="mos-btn mos-btn-primary" disabled={!canSubmit} type="submit">{saving ? 'Changing password...' : 'Change password'}</button>
     </form>
+  </div>;
+}
+
+// The one place the technical-controls preference is written, and the only way
+// an owner discovers the mode exists — nothing hints at it from the app pages,
+// because a standing hint on every screen is the clutter this preference
+// removes. The hook rather than a panel here because the control *is* the
+// preference; it obviously cannot gate itself on being enabled.
+function TechnicalControlsPanel() {
+  const { enabled, setEnabled } = useTechnicalControls();
+  const [error, setError] = useState('');
+
+  return <div className="mos-panel suite-card suite-settings-panel">
+    <div>
+      <h2 className="mos-card-title">Technical controls</h2>
+      <p className="suite-meta">Everything MOS does works the same either way; this only changes what you can see. You can turn it off again at any time without losing anything.</p>
+    </div>
+    <Switch
+      checked={enabled}
+      description="Adds panels showing what MOS generated for your apps and system — package details, addresses, configuration and raw logs — plus manual overrides."
+      label="Show technical controls"
+      onChange={(event) => {
+        setError('');
+        void setEnabled(event.currentTarget.checked).catch((caught: unknown) => {
+          setError(caught instanceof Error ? caught.message : 'Your preference could not be saved.');
+        });
+      }}
+    />
+    {error ? <Notice title="Your preference was not saved" variant="error"><p>{error}</p></Notice> : null}
   </div>;
 }
 
@@ -260,7 +302,7 @@ export function SettingsScreen() {
     {status ? !status.privateHttpsAvailable ? <div className="mos-panel suite-card suite-settings-panel">
       <div><h2 className="mos-card-title">Custom domains are handled by your provider</h2><p className="suite-meta">This install looks like it is hosted on an external provider. MOS does not manage public DNS, provider routing, or public TLS from here.</p></div>
       <Notice title="Use your provider guide" variant="info"><p>To use a real domain with this cloud install, follow your hosting provider's custom-domain and HTTPS instructions, then point that domain at the provider endpoint or server they give you.</p></Notice>
-      <AdvancedDetails status={status} />
+      <HttpsDiagnostics status={status} />
     </div> : <div className="mos-panel suite-card suite-settings-panel">
       <div><h2 className="mos-card-title">Private LAN HTTPS with Cloudflare DNS</h2><p className="suite-meta">Use DNS-01 to get a trusted certificate for private local access to <strong>home.&lt;your-domain&gt;</strong>. This does not publish MOS to the internet or configure public access.</p></div>
       {!status.agentAvailable ? <Notice title="HTTPS agent unavailable" variant="warning"><p>You can review and validate the form, but applying requires the installed MOS HTTPS agent and Cloudflare-capable Caddy build.</p></Notice> : null}
@@ -274,8 +316,9 @@ export function SettingsScreen() {
         <button className="mos-btn mos-btn-primary" disabled={!canApplyHttps} type="submit">{applying ? 'Applying securely...' : 'Apply HTTPS settings'}</button>
       </form>
       {!result && status.lastApply.status === 'applied' && activeHomeHost ? <Notice title="HTTPS is configured" variant="success"><p>Active Home URL: <a href={status.activeHomeUrl}>{status.activeHomeUrl}</a>.</p><LocalDnsInstructions homeHost={activeHomeHost} serverAddress={dnsAddress} /></Notice> : null}
-      <AdvancedDetails status={status} />
+      <HttpsDiagnostics status={status} />
     </div> : <p className="suite-meta">Loading HTTPS settings...</p>}
+    <TechnicalControlsPanel />
     <OwnerAccountPanel />
     <SecurityActivity error={securityError} summary={securitySummary} />
   </section>;

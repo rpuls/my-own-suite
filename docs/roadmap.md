@@ -102,7 +102,8 @@ domain, and "what if myownsuite.org disappears" has a published answer.
 ### C. What a tester hits in the first hour
 
 **Gate:** a friend-tester can predict the cost and the install time, knows where they land after
-setup, and never waits at a screen that looks hung.
+setup, never waits at a screen that looks hung, and is never shown a technical surface they cannot
+act on.
 
 - **C1 — Record and embed the install walkthrough video.** Provider web console → one command → the
   printed Finish-setup link → owner account → first app. Three site spots currently promise it as
@@ -128,6 +129,11 @@ setup, and never waits at a screen that looks hung.
   question inside this item is settled: accepting the terms lands the owner on Suite Manager, because
   first run is the only moment with a server login to hand over, and ordinary sign-ins go on to the
   Homepage dashboard as before. *(Medium)*
+- **C7 — Technical controls behind an owner opt-in.** `#124`, absorbing `#236`. Eight hand-rolled
+  `Advanced details` disclosures put package ids, digests, ports, volumes, and raw logs in front of
+  every owner on healthy screens. One shared self-gating panel plus one Settings toggle makes the
+  default view plain and gives every future escape hatch a home that costs the other audience
+  nothing. *(Medium)*
 
 ### H. Install media people can just flash
 
@@ -374,12 +380,6 @@ the update or install path requires SSH.
 - **L1 — Restore the shared SMTP relay.** A MOS1 capability (v0.9.0) absent in MOS2; apps half-work
   without outbound mail — Vaultwarden hints at it, Seafile notifications are off. Relay presets only,
   explicitly **not** a mail server. *(Medium)*
-- **L2 — Advanced User mode.** `#124`. A project-wide opt-in for technical and experimental controls.
-  Needs a first real candidate before it is buildable: the Homepage escape hatches it was conceived
-  around (`custom.css`, `custom.js`, `docker.yaml`) were removed rather than hidden, so `HOMEPAGE_FILES`
-  now exposes only the four dashboard files and there is nothing left there to put behind a mode.
-  Overlaps the existing "Advanced details" convention in `AGENTS.md`; unify rather than add a second
-  concept. *(Medium)*
 - **L3 — Communicate capacity in-product.** See **OQ2**. Folds in resource estimation/preflight for
   Immich, Seafile, and ONLYOFFICE. *(Medium)*
 - **L4 — One proven local VM/filesystem snapshot integration.** Fast same-machine rollback; never a

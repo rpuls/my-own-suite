@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 
-import { ActionMenu, AppConnect, Dialog, Icon, Notice, TextInput } from '../../components/ui';
+import { ActionMenu, AdvancedPanel, AppConnect, Dialog, Icon, Notice, TextInput, type AdvancedFact } from '../../components/ui';
 import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './PrivacyPosture';
 import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture';
 import type { Owner } from '../setup/types';
@@ -534,21 +534,20 @@ function AppGuidePanel({
   </aside>;
 }
 
-function AdvancedDetails({ app }: { app: AppPackageSummary }) {
+function appAdvancedFacts(app: AppPackageSummary): AdvancedFact[] {
   const projections = app.instance?.projections || [];
-  return <details className="suite-advanced suite-app-advanced">
-    <summary>Advanced details</summary>
-    <dl>
-      <dt>Package id</dt><dd>{app.id}</dd>
-      <dt>Version</dt><dd>{app.version}</dd>
-      <dt>Service</dt><dd>{app.services.map((service) => `${service.id}:${service.internalPort ?? '?'}`).join(', ') || 'None'}</dd>
-      <dt>Route</dt><dd>{app.routes.map((route) => `${route.host} -> ${route.service}`).join(', ') || 'None'}</dd>
-      <dt>Volumes</dt><dd>{app.services.flatMap((service) => service.volumes).join(', ') || 'None'}</dd>
-      <dt>Health</dt><dd>{app.health ? `${app.health.type}: ${app.health.url}` : 'None'}</dd>
-      <dt>Projections</dt><dd>{projections.length ? projections.map((projection) => `${projection.kind}: ${projection.status}`).join(', ') : 'Rendered during install'}</dd>
-      {app.instance?.config?.length ? <><dt>Config</dt><dd>{app.instance.config.map((item) => `${item.key}: ${item.secret ? item.redactedLabel || 'secret stored' : item.value}`).join(', ')}</dd></> : null}
-    </dl>
-  </details>;
+  return [
+    { label: 'Package id', value: app.id },
+    { label: 'Version', value: app.version },
+    { label: 'Service', value: app.services.map((service) => `${service.id}:${service.internalPort ?? '?'}`).join(', ') || 'None' },
+    { label: 'Route', value: app.routes.map((route) => `${route.host} -> ${route.service}`).join(', ') || 'None' },
+    { label: 'Volumes', value: app.services.flatMap((service) => service.volumes).join(', ') || 'None' },
+    { label: 'Health', value: app.health ? `${app.health.type}: ${app.health.url}` : 'None' },
+    { label: 'Projections', value: projections.length ? projections.map((projection) => `${projection.kind}: ${projection.status}`).join(', ') : 'Rendered during install' },
+    ...(app.instance?.config?.length
+      ? [{ label: 'Config', value: app.instance.config.map((item) => `${item.key}: ${item.secret ? item.redactedLabel || 'secret stored' : item.value}`).join(', ') }]
+      : []),
+  ];
 }
 
 function AppIcon({ app, large = false }: { app: AppPackageSummary; large?: boolean }) {
@@ -838,7 +837,7 @@ function AppDetail({
             </button>
           </p> : null}
           {recoverError ? <p role="alert">{recoverError}</p> : null}
-          <details className="suite-advanced"><summary>Advanced details</summary><code>{app.instance.updateRecovery.errorCode}</code></details>
+          <AdvancedPanel copyText={app.instance.updateRecovery.errorCode} reveal="on-failure"><code>{app.instance.updateRecovery.errorCode}</code></AdvancedPanel>
         </Notice> : null}
 
         <InstallProgress error={installError} steps={installSteps} />
@@ -939,7 +938,7 @@ function AppDetail({
           {related.length ? <div className="suite-app-related-list">{related.map((item) => <button key={item.id} onClick={() => onSelect(item)} type="button"><AppIcon app={item} /><span><strong>{item.name}</strong><small>{summaryFor(item)}</small></span></button>)}</div> : null}
         </section> : null}
 
-        <AdvancedDetails app={app} />
+        <AdvancedPanel className="suite-app-advanced" facts={appAdvancedFacts(app)} reveal="technical-mode" />
       </div>
     </aside>
     {privacyOpen ? <PrivacyPostureDialog advisories={app.advisories} appName={app.name} onClose={() => setPrivacyOpen(false)} packageId={app.id} packageVersion={app.instance?.packageVersion || app.version} privacy={app.privacy} /> : null}
@@ -1048,7 +1047,7 @@ function AppDetail({
         {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} disabled={applying} key={field.id} label={field.label} onChange={(event) => setUpdateInput((current) => ({ ...current, [field.id]: event.currentTarget.value }))} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}
         {comparison.requiredInput.length ? <p className="suite-meta">{app.name} needs these values before it can start on the new version. They are stored with this app the same way its other settings are.</p> : null}
         {applyError ? <Notice title="The update did not finish" variant="warning"><p>{applyError}</p></Notice> : null}
-        <details className="suite-advanced"><summary>Advanced details</summary><pre>{JSON.stringify(comparison, null, 2)}</pre></details>
+        <AdvancedPanel output={JSON.stringify(comparison, null, 2)} reveal="technical-mode" />
       </div>
     </Dialog> : null}
   </div>;
@@ -1192,17 +1191,14 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
           <div><span>Source</span><strong>{externalSourceLabel(source.repository)}</strong></div>
         </section>
 
-        <details className="suite-advanced suite-app-advanced">
-          <summary>Advanced details</summary>
-          <dl>
-            <dt>Repository</dt><dd>{source.repository}</dd>
-            <dt>Revision</dt><dd><code>{source.revision.slice(0, 12)}</code></dd>
-            <dt>Package id</dt><dd>{source.packageId}</dd>
-            <dt>Package digest</dt><dd><code>{resolved.packageDigest}</code></dd>
-            <dt>Services</dt><dd>{card.services.map((service) => `${service.id}:${service.internalPort ?? '?'}`).join(', ') || 'None'}</dd>
-            <dt>Routes</dt><dd>{card.routes.map((route) => `${route.host} -> ${route.service}`).join(', ') || 'None'}</dd>
-          </dl>
-        </details>
+        <AdvancedPanel className="suite-app-advanced" facts={[
+          { label: 'Repository', value: source.repository },
+          { code: true, label: 'Revision', value: source.revision.slice(0, 12) },
+          { label: 'Package id', value: source.packageId },
+          { code: true, label: 'Package digest', value: resolved.packageDigest },
+          { label: 'Services', value: card.services.map((service) => `${service.id}:${service.internalPort ?? '?'}`).join(', ') || 'None' },
+          { label: 'Routes', value: card.routes.map((route) => `${route.host} -> ${route.service}`).join(', ') || 'None' },
+        ]} reveal="technical-mode" />
       </div>
     </aside>
   </div>;

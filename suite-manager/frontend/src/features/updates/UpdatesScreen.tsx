@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { Notice, Select, Spinner } from '../../components/ui';
+import { AdvancedPanel, Notice, Select, Spinner } from '../../components/ui';
 
 type UpdateJob = {
   error: string | null;
@@ -53,6 +53,24 @@ function currentLabel(status: UpdateStatus) {
 
 function isRunning(job: UpdateJob | null) {
   return Boolean(job && (job.status === 'queued' || job.status === 'running'));
+}
+
+// The tail of the update log. It is a `reveal` computed per render for the
+// reason the prop is a runtime value at all: the same panel is a diagnostic on
+// a failed job and ambient detail on a job that worked. The rendered lines and
+// the copied text come from the same array, so a bug report cannot quote
+// something the screen never showed.
+function UpdateJobLog({ job }: { job: UpdateJob }) {
+  const entries = (job.logs || []).slice(-12);
+  if (!entries.length) return null;
+  return <AdvancedPanel
+    copyText={() => entries.map((entry) => `${formatDate(entry.at || null)}  ${entry.message || 'No message'}`).join('\n')}
+    reveal={job.status === 'failed' ? 'on-failure' : 'technical-mode'}
+  >
+    <ol className="suite-updates-log">
+      {entries.map((entry, index) => <li key={`${entry.at || 'log'}-${index}`}><span>{formatDate(entry.at || null)}</span><code>{entry.message || 'No message'}</code></li>)}
+    </ol>
+  </AdvancedPanel>;
 }
 
 type TrackChoice = 'stable' | 'main' | 'staging';
@@ -173,12 +191,7 @@ export function UpdatesScreen() {
         <h2 className="mos-card-title">Update activity</h2>
         <p>{status.currentJob.status === 'failed' ? 'The last update failed.' : status.currentJob.status === 'succeeded' ? 'The last update finished.' : status.currentJob.stage || 'Update activity received.'}</p>
         {status.currentJob.error ? <p className="suite-error">{status.currentJob.error}</p> : null}
-        {status.currentJob.logs?.length ? <details className="suite-advanced">
-          <summary>Advanced details</summary>
-          <ol className="suite-updates-log">
-            {status.currentJob.logs.slice(-12).map((entry, index) => <li key={`${entry.at || 'log'}-${index}`}><span>{formatDate(entry.at || null)}</span><code>{entry.message || 'No message'}</code></li>)}
-          </ol>
-        </details> : null}
+        <UpdateJobLog job={status.currentJob} />
       </section> : null}
     </div> : <p className="suite-meta">Loading update status...</p>}
   </section>;

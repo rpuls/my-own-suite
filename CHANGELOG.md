@@ -6,6 +6,7 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ### Added
 
+- Suite Manager keeps technical detail out of the way until you ask for it. Package ids, digests, ports, volume names, generated configuration and raw logs are no longer shown on healthy screens; **Settings → Technical controls** brings them all back, per owner and off by default. Diagnostics on a screen that is reporting a failure stay visible either way, so a bug report can still quote them.
 - Own-hardware installs now work on machines with more than one internal disk, which the installer previously refused outright. It lists every disk large enough in a stable order and says what each already holds — `empty - no partitions`, or `NOT EMPTY` with the filesystems and labels it found — so the spare drive is distinguishable from the one with your photos on it. Only the disk you pick is touched; the confirmation names it and its contents again before anything is erased.
 
 ### Fixed

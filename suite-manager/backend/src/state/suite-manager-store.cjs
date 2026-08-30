@@ -314,6 +314,24 @@ const MIGRATIONS = [
     `,
     version: 13,
   },
+  {
+    // Owner preferences as rows rather than columns: the next preference is an
+    // insert, not a migration. Values are stored as JSON so a preference is not
+    // limited to the shape SQLite has a column type for, and an absent row means
+    // the default the reading service documents.
+    name: 'owner-preferences',
+    sql: `
+      CREATE TABLE owner_preferences (
+        owner_id INTEGER NOT NULL,
+        key TEXT NOT NULL,
+        value_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (owner_id, key),
+        FOREIGN KEY (owner_id) REFERENCES owners(id) ON DELETE CASCADE
+      ) STRICT;
+    `,
+    version: 14,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -455,6 +473,35 @@ class SuiteManagerStore {
       VALUES (?, ?)
       ON CONFLICT (terms_version) DO NOTHING
     `).run(termsVersion, acceptedAt);
+  }
+
+  // Every stored preference for one owner, decoded. A row this MOS no longer
+  // recognises is skipped rather than thrown on: a preference written by a newer
+  // release must not stop an older one from reading the rest.
+  getOwnerPreferences(ownerId) {
+    const rows = this.database.prepare(`
+      SELECT key, value_json AS valueJson
+      FROM owner_preferences
+      WHERE owner_id = ?
+    `).all(ownerId);
+    const preferences = {};
+    for (const row of rows) {
+      try {
+        preferences[row.key] = JSON.parse(row.valueJson);
+      } catch {
+        continue;
+      }
+    }
+    return preferences;
+  }
+
+  setOwnerPreference({ at, key, ownerId, value }) {
+    this.database.prepare(`
+      INSERT INTO owner_preferences (owner_id, key, value_json, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT (owner_id, key) DO UPDATE
+        SET value_json = excluded.value_json, updated_at = excluded.updated_at
+    `).run(ownerId, key, JSON.stringify(value), at);
   }
 
   // Rotating the owner password ends every session in the same transaction that
