@@ -454,55 +454,67 @@ export function AppConfigDialog({
           {generatedFields.map((field) => <Row key={field.id} label={splitFieldLabel(field.label).label}>
             {factValue(field, storedFor(field.id))}
           </Row>)}
-          {rows.map((row, index) => <div className="mos-row" key={row.key}>
-            <div className="mos-row-main">
-              <input
-                aria-label="Variable name"
-                autoComplete="off"
-                className="mos-row-input suite-env-name"
-                disabled={busy}
-                // A name that reads like a credential starts masked, until the
-                // owner says otherwise with the eye control beside it.
-                onChange={(event) => update(index, {
-                  name: event.currentTarget.value,
-                  ...(row.secretTouched ? {} : { secret: SECRET_LOOKING_NAME.test(event.currentTarget.value) }),
-                })}
-                placeholder="EXAMPLE_API_KEY"
-                spellCheck={false}
-                value={row.name}
-              />
-              <RowTrailing>
-                {row.secret && row.stored && !row.value ? <>
-                  <RowValue mask />
-                  <RowValue code>{fingerprintTail(row.stored)}</RowValue>
-                  <RowAction disabled={busy} icon="refresh" label={`Replace ${row.name || 'this value'}`} onClick={() => update(index, { stored: null })} />
-                </> : <RowInput
-                  aria-label="Variable value"
+          {rows.map((row, index) => {
+            // MOS never gets a stored secret back from the server, so this row
+            // has nothing to reveal and no box to put it in: it states what it
+            // holds, and Replace is the only way to change it.
+            const held = row.secret && row.stored && !row.value;
+            return <div className="mos-row suite-env-row" key={row.key}>
+              <div className="mos-row-main">
+                <RowInput
+                  aria-label="Variable name"
                   autoComplete="off"
                   code
                   disabled={busy}
-                  onChange={(event) => update(index, { value: event.currentTarget.value })}
+                  // A name that reads like a credential starts masked, until the
+                  // owner says otherwise with the eye control beside it.
+                  onChange={(event) => update(index, {
+                    name: event.currentTarget.value,
+                    ...(row.secretTouched ? {} : { secret: SECRET_LOOKING_NAME.test(event.currentTarget.value) }),
+                  })}
+                  placeholder="EXAMPLE_API_KEY"
                   spellCheck={false}
-                  type={row.secret ? 'password' : 'text'}
-                  value={row.value}
-                />}
-                <RowAction
-                  disabled={busy}
-                  icon={row.secret ? 'eye-off' : 'eye'}
-                  label={row.secret ? `Stop hiding ${row.name || 'this value'}` : `Hide ${row.name || 'this value'}`}
-                  onClick={() => update(index, { secret: !row.secret, secretTouched: true, stored: null, value: row.stored ? '' : row.value })}
+                  value={row.name}
                 />
-                <RowAction
-                  danger
-                  disabled={busy}
-                  icon="x"
-                  label={`Remove ${row.name || 'this variable'}`}
-                  onClick={() => setRows((current) => current.filter((_item, position) => position !== index))}
-                />
-              </RowTrailing>
-            </div>
-            {rowErrors[index] ? <p className="mos-row-help mos-row-invalid" role="alert">{rowErrors[index]}</p> : null}
-          </div>)}
+                <RowTrailing>
+                  {held ? <>
+                    {/* Said the way the generated rows above say it, and for the
+                        same reason: bullets followed by characters read as the
+                        tail of the value itself, and this is a fingerprint —
+                        enough to tell two stored secrets apart, and no part of
+                        either one. */}
+                    <RowValue>{`Hidden value · ${fingerprintTail(row.stored)}`}</RowValue>
+                    <RowAction disabled={busy} icon="refresh" label={`Replace ${row.name || 'this value'}`} onClick={() => update(index, { stored: null })} />
+                  </> : <>
+                    <RowInput
+                      aria-label="Variable value"
+                      autoComplete="off"
+                      code
+                      disabled={busy}
+                      onChange={(event) => update(index, { value: event.currentTarget.value })}
+                      spellCheck={false}
+                      type={row.secret ? 'password' : 'text'}
+                      value={row.value}
+                    />
+                    <RowAction
+                      disabled={busy}
+                      icon={row.secret ? 'eye-off' : 'eye'}
+                      label={row.secret ? `Stop hiding ${row.name || 'this value'}` : `Hide ${row.name || 'this value'}`}
+                      onClick={() => update(index, { secret: !row.secret, secretTouched: true })}
+                    />
+                  </>}
+                  <RowAction
+                    danger
+                    disabled={busy}
+                    icon="x"
+                    label={`Remove ${row.name || 'this variable'}`}
+                    onClick={() => setRows((current) => current.filter((_item, position) => position !== index))}
+                  />
+                </RowTrailing>
+              </div>
+              {rowErrors[index] ? <p className="mos-row-help mos-row-invalid" role="alert">{rowErrors[index]}</p> : null}
+            </div>;
+          })}
         </Rows> : null}
 
         <p className="mos-row-help">

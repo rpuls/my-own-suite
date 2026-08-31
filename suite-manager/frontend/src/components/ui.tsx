@@ -316,7 +316,7 @@ export function AdvancedPanel({
   </details>;
 }
 
-export function Dialog({ children, className, closeOnBackdrop = false, footer, header, onClose, title }: { children: ReactNode; className?: string; closeOnBackdrop?: boolean; footer?: ReactNode; header?: ReactNode; onClose: () => void; title: string }) {
+export function Dialog({ children, className, footer, header, onClose, title }: { children: ReactNode; className?: string; footer?: ReactNode; header?: ReactNode; onClose: () => void; title: string }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const onCloseRef = useRef(onClose);
@@ -329,13 +329,18 @@ export function Dialog({ children, className, closeOnBackdrop = false, footer, h
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
+  // Escape and a click on the backdrop both close every dialog, with no opt-out:
+  // a dismissal that works on some dialogs and not others is a worse trap than
+  // either rule on its own. A dialog that must not be dismissed mid-flight
+  // guards its own onClose, the way AppConfigDialog does while it is saving.
+  //
   // Portalled to <body> for the same reason as Drawer and ActionMenu: a dialog
   // opened from inside a frosted surface (the app detail slide-over, any
   // .mos-panel) would otherwise take that ancestor as its containing block, so
   // `position: fixed` centres it on the panel instead of the screen and its
   // frost blurs nothing. Screen-centred and frosted is the only correct result.
   return createPortal(
-    <div className="suite-modal-backdrop" onClick={closeOnBackdrop ? (event) => { if (event.target === event.currentTarget) onCloseRef.current(); } : undefined} role="presentation"><section ref={dialogRef} aria-label={title} aria-modal="true" className={`suite-dialog mos-panel${className ? ` ${className}` : ''}`} role="dialog"><div className="suite-dialog-header">{header ?? <h2>{title}</h2>}<button ref={closeRef} aria-label={`Close ${title}`} className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button></div>{children}{footer ? <div className="suite-dialog-footer">{footer}</div> : null}</section></div>,
+    <div className="suite-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) onCloseRef.current(); }} role="presentation"><section ref={dialogRef} aria-label={title} aria-modal="true" className={`suite-dialog mos-panel${className ? ` ${className}` : ''}`} role="dialog"><div className="suite-dialog-header">{header ?? <h2>{title}</h2>}<button ref={closeRef} aria-label={`Close ${title}`} className="suite-icon-button" onClick={onClose} type="button"><Icon name="x" /></button></div>{children}{footer ? <div className="suite-dialog-footer">{footer}</div> : null}</section></div>,
     document.body,
   );
 }

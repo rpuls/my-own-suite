@@ -3198,10 +3198,12 @@
    editor needs that a plain label/value row does not.
 
    Narrower than the default dialog on purpose: a list of rows reads down, and
-   760px of row leaves the value stranded a long way from its label. */
+   760px of row leaves the value stranded a long way from its label. Not as
+   narrow as a pure label/value list would want, because the environment editor
+   puts two fields on one row and they have to fit side by side. */
 .suite-dialog.suite-app-config-dialog {
   gap: var(--mos-space-5);
-  width: min(100%, 560px);
+  width: min(100%, 640px);
   padding: var(--mos-space-6);
 }
 
@@ -3230,13 +3232,35 @@
 
 /* A variable is a name and a value, both editable, which is the one row that
    needs its left side to be a field rather than a label — and the only one
-   whose right side has to grow, since a value is typed rather than read. */
-.suite-env-name {
-  flex: 1 1 40%;
+   whose right side has to grow, since a value is typed rather than read.
+
+   Two columns rather than the row's usual flex, because flex lets the pair wrap
+   and the wrapped result is unreadable: four identical boxes down the dialog,
+   with nothing to say which value belongs to which name. A grid keeps each pair
+   on its own line at every width the dialog has. The name column is the wider
+   of the two because it is the identifier: two variables from the same upstream
+   service differ at the end of a long shared prefix. */
+.suite-env-row > .mos-row-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: var(--mos-space-3);
+  align-items: center;
 }
 
-.suite-env-name + .mos-row-trailing {
-  flex: 1 1 60%;
+/* The row's own columns already size these; the primitive's 14rem basis is for
+   a field that has a whole row to itself and would force this pair to wrap. */
+.suite-env-row .mos-row-input {
+  flex: 1 1 4rem;
+}
+
+/* Too narrow for two fields to say anything side by side. Stacked, the row's
+   own hairline is what separates one pair from the next, which is the same job
+   it does everywhere else in the dialog. */
+@media (max-width: 34rem) {
+  .suite-env-row > .mos-row-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--mos-space-2);
+  }
 }
 
 .suite-env-paste { display: grid; gap: var(--mos-space-3); }

@@ -589,6 +589,14 @@ label.mos-row {
     background var(--mos-transition);
 }
 
+/* `font: inherit` above resets family and size together, so the code variant
+   has to restate both for a field — otherwise a monospace value silently comes
+   out in the body face. */
+.mos-row-input.mos-row-code {
+  font-family: var(--mos-font-mono);
+  font-size: var(--mos-text-small);
+}
+
 .mos-row-input::placeholder {
   color: var(--mos-color-text-muted);
   opacity: 1;

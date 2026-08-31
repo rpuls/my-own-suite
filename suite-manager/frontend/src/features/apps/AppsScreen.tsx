@@ -926,7 +926,7 @@ function AppDetail({
       service={app.routes[0]?.service || app.services[0]?.id || app.id}
       webAddress={appAddress(app)}
     /> : null}
-    {galleryOpen && app.catalog.screenshots.length ? <Dialog className="suite-app-gallery-dialog" closeOnBackdrop onClose={() => setGalleryOpen(false)} title={`${app.name} screens`}>
+    {galleryOpen && app.catalog.screenshots.length ? <Dialog className="suite-app-gallery-dialog" onClose={() => setGalleryOpen(false)} title={`${app.name} screens`}>
       <figure className="suite-app-gallery">
         <div className="suite-app-gallery-frame">
           <img alt={app.catalog.screenshots[slideIdx]?.alt || `${app.name} screenshot ${slideIdx + 1}`} src={app.catalog.screenshots[slideIdx]?.src || app.catalog.screenshots[0]!.src} />
@@ -945,7 +945,6 @@ function AppDetail({
     </Dialog> : null}
     {resourcesOpen ? <Dialog
       className="suite-app-resources-dialog"
-      closeOnBackdrop
       footer={<button className="mos-btn mos-btn-secondary" onClick={() => setResourcesOpen(false)} type="button">Close</button>}
       onClose={() => setResourcesOpen(false)}
       title="What runs on your server"

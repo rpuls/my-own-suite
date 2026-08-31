@@ -111,7 +111,6 @@ export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSE
   const gradeScale = gradeScaleLabel(privacy);
   return <Dialog
     className="suite-privacy-dialog"
-    closeOnBackdrop
     header={<div className="suite-privacy-dialog-heading">
       <PrivacyShieldBadge privacy={privacy} size="dialog" />
       <div>
