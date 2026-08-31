@@ -294,6 +294,24 @@
   padding: var(--mos-space-7) 0 var(--mos-space-8);
 }
 
+/* Between the header and whatever page is open, so an update that landed while
+   someone was reading is visible wherever they are rather than only on Updates.
+   It carries the shell width itself because the main element below it has none
+   — each screen brings its own. */
+.suite-shell-stale {
+  padding-top: var(--mos-space-6);
+}
+
+/* The one notice that carries an action rather than only telling you something,
+   so its body has to lay the button out. Scoped here rather than added to every
+   notice, because giving the shared body a grid changes how existing text-only
+   notices wrap. */
+.suite-shell-stale .suite-notice > div {
+  display: grid;
+  justify-items: start;
+  gap: var(--mos-space-3);
+}
+
 .suite-dashboard {
   display: grid;
   gap: var(--mos-space-7);

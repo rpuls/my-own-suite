@@ -56,9 +56,10 @@ function jsonResponse(response, statusCode, payload, headers = {}) {
   response.end(`${JSON.stringify(payload)}\n`);
 }
 
-function htmlResponse(response, statusCode, html) {
+function htmlResponse(response, statusCode, html, headers = {}) {
   response.writeHead(statusCode, {
     'Content-Type': 'text/html; charset=utf-8',
+    ...headers,
   });
   response.end(html);
 }
@@ -70,10 +71,11 @@ function textResponse(response, statusCode, text) {
   response.end(text);
 }
 
-function fileResponse(response, filePath) {
+function fileResponse(response, filePath, headers = {}) {
   const extension = path.extname(filePath).toLowerCase();
   response.writeHead(200, {
     'Content-Type': MIME_TYPES.get(extension) || 'application/octet-stream',
+    ...headers,
   });
   fs.createReadStream(filePath).pipe(response);
 }
@@ -220,6 +222,27 @@ function readFrontendHtml(frontendDistDir) {
   return fs.readFileSync(indexPath, 'utf8');
 }
 
+// Which build of the frontend this server is serving. It is a hash of the built
+// index.html, so it changes exactly when the bundle it points at changes: a
+// restart that shipped no new frontend keeps the same id, and a browser holding
+// an older one knows it is running code this server no longer serves.
+//
+// Cached against the file's mtime and size rather than recomputed, because the
+// running frontend asks for it on a timer.
+let frontendBuildCache = null;
+function frontendBuildId(frontendDistDir) {
+  const indexPath = path.join(frontendDistDir, 'index.html');
+  let stats = null;
+  try { stats = fs.statSync(indexPath); } catch { return ''; }
+  const stamp = `${stats.mtimeMs}:${stats.size}`;
+  if (frontendBuildCache?.stamp === stamp) return frontendBuildCache.id;
+  const html = readFrontendHtml(frontendDistDir);
+  if (html === null) return '';
+  const id = crypto.createHash('sha256').update(html).digest('hex').slice(0, 16);
+  frontendBuildCache = { id, stamp };
+  return id;
+}
+
 function normalizedHost(request) {
   return String(request.headers.host || '').toLowerCase().replace(/:\d+$/, '');
 }
@@ -283,6 +306,16 @@ function isSignedIn(setup, sessionToken) {
   return setup.status(sessionToken).status === 'signed-in';
 }
 
+// The build output directory holds nothing but bundles whose filename contains
+// their own content hash, so a year is safe and a new build is a new URL.
+// Everything else served from here — the brand marks, the favicons, the fonts —
+// keeps its filename across a rebrand, so it gets an hour instead of forever.
+function assetCacheControl(relativePath) {
+  return relativePath.startsWith('assets/')
+    ? 'public, max-age=31536000, immutable'
+    : 'public, max-age=3600';
+}
+
 function serveFrontendAsset(response, frontendDistDir, pathname) {
   const relativePath = pathname.slice(FRONTEND_ASSET_PREFIX.length);
   const staticPath = resolveStaticPath(frontendDistDir, relativePath);
@@ -290,14 +323,22 @@ function serveFrontendAsset(response, frontendDistDir, pathname) {
     return false;
   }
 
-  fileResponse(response, staticPath);
+  fileResponse(response, staticPath, { 'Cache-Control': assetCacheControl(relativePath) });
   return true;
 }
 
 function serveFrontend(response, frontendDistDir) {
   const html = readFrontendHtml(frontendDistDir);
   if (html) {
-    htmlResponse(response, 200, html);
+    const buildId = frontendBuildId(frontendDistDir);
+    // Never cached, and it is the one response that must not be: the bundles it
+    // names are immutable and permanently cacheable precisely because this
+    // document is the thing that says which ones to load. A stale copy of it
+    // pins a browser to the previous build with no way to find out.
+    htmlResponse(response, 200, buildId
+      ? html.replace('</head>', `  <meta name="mos-build" content="${buildId}" />
+  </head>`)
+      : html, { 'Cache-Control': 'no-store' });
     return;
   }
 
@@ -415,6 +456,15 @@ function createMOSServer({
           ownerClaimRequired: Boolean(ownerClaimToken),
           secureTransport: isHttpsRequest(request),
         });
+        return;
+      }
+
+      // Unauthenticated because the frontend it identifies is served to anyone
+      // who can reach this port, so the hash of it reveals nothing that the
+      // bundle does not. The sign-in screen is left running across an update the
+      // same as any other screen, and needs the same way to notice.
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/build`) {
+        jsonResponse(response, 200, { id: frontendBuildId(frontendDistDir) }, { 'Cache-Control': 'no-store' });
         return;
       }
 

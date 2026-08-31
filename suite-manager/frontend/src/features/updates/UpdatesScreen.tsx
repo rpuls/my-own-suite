@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { AdvancedPanel, Notice, Select, Spinner } from '../../components/ui';
+import { buildChanged, servedBuildId } from '../../frontend-build';
 
 type UpdateJob = {
   error: string | null;
@@ -85,8 +86,10 @@ export function UpdatesScreen() {
   const [track, setTrack] = useState<TrackChoice>('stable');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+  const [reloading, setReloading] = useState(false);
   const running = isRunning(status?.currentJob || null);
   const updating = running || busy === 'update';
+  const jobStatus = status?.currentJob?.status || null;
 
   async function load() {
     const next = await jsonResponse<UpdateStatus>(await fetch('/suite-manager/api/updates/status'), 'Unable to load update status.');
@@ -100,6 +103,24 @@ export function UpdatesScreen() {
     const timer = window.setInterval(() => { void load().catch(() => undefined); }, 4000);
     return () => window.clearInterval(timer);
   }, [updating]);
+
+  // The update finished with the owner on this screen watching it, which is the
+  // one place a reload is unambiguously wanted: they started it, nothing here is
+  // half-typed, and the screen is otherwise left reporting success from the code
+  // the update just replaced. Only when the bundle actually changed — an update
+  // that shipped no new frontend has nothing to reload for. The delay is so the
+  // outcome is readable before the page goes.
+  useEffect(() => {
+    if (jobStatus !== 'succeeded') return undefined;
+    let cancelled = false;
+    let timer = 0;
+    void servedBuildId().then((served) => {
+      if (cancelled || !buildChanged(served)) return;
+      setReloading(true);
+      timer = window.setTimeout(() => window.location.reload(), 4000);
+    }).catch(() => undefined);
+    return () => { cancelled = true; if (timer) window.clearTimeout(timer); };
+  }, [jobStatus]);
 
   async function runAction(name: string, action: () => Promise<void>) {
     setBusy(name);
@@ -137,6 +158,9 @@ export function UpdatesScreen() {
     </div>
 
     {error ? <Notice title="Updates need attention" variant="error"><p>{error}</p></Notice> : null}
+    {reloading ? <Notice title={<span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Spinner />Reloading Suite Manager</span>} variant="success">
+      <p>The update brought a new version of this interface. Reloading so you are looking at it.</p>
+    </Notice> : null}
     {status && !status.serviceAvailable ? <Notice title="Update agent unavailable" variant="warning"><p>This install does not expose the MOS update agent to Suite Manager yet. Install or repair the host services before using in-app updates.</p></Notice> : null}
     {updating ? <Notice title={<span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Spinner />{busy === 'update' && !running ? 'Starting update' : 'Update in progress'}</span>} variant="info"><p>Suite Manager may briefly reconnect while the host refreshes repo-owned services and agents.</p></Notice> : null}
     {updating ? <div className="suite-updates-progress" role="status" aria-live="polite">

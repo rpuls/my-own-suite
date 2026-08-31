@@ -106,6 +106,37 @@ test('first visit serves the built Suite Manager frontend', async () => {
   });
 });
 
+// The whole point of the build stamp is that a running frontend can tell it has
+// been replaced, and a document served from cache defeats that on its own.
+test('the served document names its build, is never cached, and the API agrees', async () => {
+  await withServer(async (baseUrl) => {
+    const document = await fetch(`${baseUrl}/`);
+    const html = await document.text();
+    const stamped = /<meta name="mos-build" content="([0-9a-f]{16})" \/>/u.exec(html);
+
+    assert.equal(document.headers.get('cache-control'), 'no-store');
+    assert.ok(stamped, 'the served document carries its build id');
+
+    const build = await fetch(`${baseUrl}/suite-manager/api/build`);
+    assert.equal(build.status, 200);
+    assert.equal(build.headers.get('cache-control'), 'no-store');
+    assert.equal((await build.json()).id, stamped[1]);
+  });
+});
+
+test('build output is cached forever and everything else is not', async () => {
+  await withServer(async (baseUrl) => {
+    // Vite puts the content hash in the filename, so a new build is a new URL
+    // and the old one can never be the wrong answer.
+    const bundle = await fetch(`${baseUrl}/suite-manager/assets/assets/index.js`);
+    // A brand mark keeps its name across a rebrand, so it must not.
+    const brand = await fetch(`${baseUrl}/suite-manager/assets/brand/my-own-suite-mark.png`);
+
+    assert.equal(bundle.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.equal(brand.headers.get('cache-control'), 'public, max-age=3600');
+  });
+});
+
 test('static frontend assets are served from the reserved asset namespace', async () => {
   await withServer(async (baseUrl) => {
     const scriptResponse = await fetch(`${baseUrl}/suite-manager/assets/assets/index.js`);

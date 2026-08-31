@@ -1,6 +1,7 @@
 import { Component, useCallback, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
 
-import { Drawer, Icon } from '../../components/ui';
+import { Drawer, Icon, Notice } from '../../components/ui';
+import { useStaleFrontend } from '../../frontend-build';
 import { AppsScreen } from '../apps/AppsScreen';
 import { BackupsScreen } from '../backups/BackupsScreen';
 import { DashboardScreen } from '../dashboard/DashboardScreen';
@@ -26,6 +27,7 @@ class RouteBoundary extends Component<{ children: ReactNode }, { failed: boolean
 
 export function AppShell({ onLogout, owner }: AppShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const staleFrontend = useStaleFrontend();
   const routeForPath = () => window.location.pathname.endsWith('/settings') ? 'settings' : window.location.pathname.endsWith('/updates') ? 'updates' : window.location.pathname.endsWith('/backups') ? 'backups' : window.location.pathname.endsWith('/customize') ? 'customize' : window.location.pathname.endsWith('/apps') ? 'apps' : 'dashboard';
   const [route, setRoute] = useState(routeForPath);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
@@ -75,6 +77,17 @@ export function AppShell({ onLogout, owner }: AppShellProps) {
         <button aria-current={route === 'settings' ? 'page' : undefined} onClick={() => navigate('settings', '/suite-manager/settings')} type="button"><Icon name="settings" />Settings</button>
         <button onClick={() => { closeMenu(); void onLogout(); }} type="button"><Icon name="sign-out" />Sign out</button>
       </nav></Drawer>
+
+      {/* Offered rather than done: this tab did not ask for the update and may
+          be in the middle of an install or a half-typed dialog, and reloading
+          it from under someone throws that away. The Updates screen reloads
+          itself instead, because there the owner started it and is watching. */}
+      {staleFrontend ? <div className="mos-shell suite-shell-stale">
+        <Notice title="MOS was updated" variant="info">
+          <p>This page is still running the version it was opened with. Reload to pick up the new one.</p>
+          <button className="mos-btn mos-btn-primary" onClick={() => window.location.reload()} type="button">Reload</button>
+        </Notice>
+      </div> : null}
 
       <main className="suite-shell-main">
         <RouteBoundary key={route}>{route === 'settings' ? <SettingsScreen /> : route === 'updates' ? <UpdatesScreen /> : route === 'backups' ? <BackupsScreen /> : route === 'customize' ? <CustomizeScreen /> : route === 'apps' ? <AppsScreen owner={owner} /> : (
