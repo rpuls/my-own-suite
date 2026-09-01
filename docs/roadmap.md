@@ -237,7 +237,7 @@ privileged command that failed.
 
 Most of this theme has landed and its contracts are in `docs/decisions.md` (2026-09-01, both entries):
 the logging format, the persisted app-operation failure, container log caps and journald bounds, the
-root diagnostics agent, and the owner-facing export in **Settings → Get help with a problem**. What is
+root diagnostics agent, and the owner-facing export in **Settings → When something is not working**. What is
 left is the one hole that stops the bundle being complete.
 
 - **I2 — Capture failed-command output in the host agents.** `#247`. The agents still run privileged

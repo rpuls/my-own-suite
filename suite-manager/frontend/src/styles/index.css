@@ -67,6 +67,22 @@
   gap: var(--mos-space-4);
 }
 
+/* A settings panel stacks its blocks, and this gap is the only thing that spaces
+   them. The class existed with no rule at all, so spacing came from whatever
+   margins each child happened to carry: a heading block ended in a paragraph and
+   got one, a notice did not, and a button after a notice sat flush against it. */
+.suite-settings-panel {
+  display: grid;
+  gap: var(--mos-space-4);
+  align-content: start;
+}
+
+/* A grid item's margins no longer collapse out of it, so a heading block's
+   trailing paragraph margin would add to the gap above rather than being it. */
+.suite-settings-panel > div > p:last-child {
+  margin-bottom: 0;
+}
+
 .suite-auth-field {
   display: grid;
   gap: var(--mos-space-2);

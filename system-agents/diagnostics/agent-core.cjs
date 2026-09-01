@@ -43,8 +43,39 @@ const LIMITS = {
   containers: 24,
   healthyLines: 40,
   sectionChars: 24_000,
+  // A ceiling on the whole collection, not just on each part of it. Per-section
+  // caps alone bound nothing useful: nine units and twenty-four containers at
+  // 24 000 characters each is 770 KB, which is a file nobody reads and roughly
+  // 200 000 tokens — past what many readers can hold at all. The point of the
+  // export is that it can be read in full, so the total is the number that has
+  // to be true. 180 000 characters is about 45 000 tokens.
+  totalLogChars: 180_000,
+  // No section is starved to nothing. Below this a log says less than the
+  // status line above it already did.
+  minLogChars: 800,
   troubledLines: 400,
 };
+
+// Trims logs so the collection as a whole fits, sacrificing healthy sections
+// before troubled ones.
+//
+// Weighted rather than equal shares, because "twenty apps installed" and
+// "twenty apps broken" want very different files. On a mostly-healthy machine
+// the healthy sections are small already and the budget never binds; when it
+// does bind, the four-to-one weighting spends it on the things that look wrong.
+function fitLogsToBudget(units = [], containers = [], budget = LIMITS.totalLogChars) {
+  const entries = [...units, ...containers];
+  const used = entries.reduce((total, entry) => total + (entry.log?.length || 0), 0);
+  if (used <= budget) return { budgetApplied: false, containers, units };
+
+  const weightOf = (entry) => (entry.troubled ? 4 : 1);
+  const totalWeight = entries.reduce((total, entry) => total + weightOf(entry), 0);
+  const trim = (list) => list.map((entry) => ({
+    ...entry,
+    log: boundText(entry.log, Math.max(LIMITS.minLogChars, Math.floor((budget * weightOf(entry)) / totalWeight))),
+  }));
+  return { budgetApplied: true, containers: trim(containers), units: trim(units) };
+}
 
 // Bounded-concurrency map, preserving input order in the result.
 async function mapWithLimit(items, limit, task) {
@@ -135,7 +166,15 @@ class DiagnosticsAgentCore {
       )),
     ]);
 
-    return { collectedAt: new Date().toISOString(), containers, host, incomplete, units };
+    const fitted = fitLogsToBudget(units, containers);
+    return {
+      budgetApplied: fitted.budgetApplied,
+      collectedAt: new Date().toISOString(),
+      containers: fitted.containers,
+      host,
+      incomplete,
+      units: fitted.units,
+    };
   }
 }
 
@@ -147,6 +186,7 @@ module.exports = {
   PRIMARY_UNIT,
   boundText,
   containerLooksTroubled,
+  fitLogsToBudget,
   mapWithLimit,
   unitLooksTroubled,
 };

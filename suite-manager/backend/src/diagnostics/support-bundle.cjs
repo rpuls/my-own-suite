@@ -126,19 +126,21 @@ function buildSupportBundle({
   const trouble = summarizeTrouble({ apps, collection });
 
   const body = [
-    'MY OWN SUITE — DIAGNOSTICS\n',
-    `Created ${createdAt}\n`,
-    `MOS version ${platform.version || 'unknown'}  ·  server ${homeHost || 'unknown'}\n`,
-    '\n',
-    'This file was created by the owner of a My Own Suite server so that someone\n',
-    'can help them with a problem. Passwords, tokens and app secrets have been\n',
-    'replaced with [redacted] before it was written. Server and app names, and\n',
-    'local network addresses, are kept: they are not secret, and a route problem\n',
-    'cannot be diagnosed without them.\n',
-    '\n',
-    'It is deliberately bounded. Logs are newest-first and older lines are dropped,\n',
-    'so this stays small enough to read in full.\n',
-    '\n',
+`MY OWN SUITE — DIAGNOSTICS
+Created ${createdAt}
+MOS version ${platform.version || 'unknown'}  ·  server ${homeHost || 'unknown'}
+
+This file describes one My Own Suite server: what it is running, what has failed
+recently, and why. Start with WHAT LOOKS WRONG below — everything after it is
+the evidence behind it.
+
+Passwords, tokens and app secrets have been replaced with [redacted]. Server and
+app names, and local network addresses, are kept: they are not secret, and an
+address that stopped working cannot be diagnosed without them.
+
+Logs are shortened newest-first, so this stays small enough to read in full.
+
+`,
     section('WHAT LOOKS WRONG', trouble.length
       ? trouble.map((line) => `  • ${line}`).join('\n')
       : '  Nothing obviously wrong was detected. The detail below is the evidence\n  for that, and the problem may still be in it.'),
@@ -170,6 +172,9 @@ function buildSupportBundle({
     `Known secrets checked for   ${candidateCount}`,
     `Values masked in this file  ${maskedCount}`,
     collection.incomplete?.length ? `Could not collect           ${collection.incomplete.join(', ')}` : 'Could not collect           nothing — every source answered',
+    collection.budgetApplied
+      ? 'Logs were shortened         yes — the most recent lines were kept, and the sections that look wrong kept the most'
+      : 'Logs were shortened         no — every section is here in full',
     '',
     candidateCount === 0
       ? 'WARNING: no secrets were known to this export, so nothing could be masked.\nTreat this file as unredacted and review it before sending it.'

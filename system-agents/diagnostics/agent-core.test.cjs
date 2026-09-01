@@ -9,6 +9,7 @@ const {
   MOS_UNITS,
   boundText,
   containerLooksTroubled,
+  fitLogsToBudget,
   mapWithLimit,
   unitLooksTroubled,
 } = require('./agent-core.cjs');
@@ -148,4 +149,56 @@ test('bounded mapping preserves input order', async () => {
   });
 
   assert.deepEqual(order, [5, 1, 4, 2, 3]);
+});
+
+test('the whole collection is bounded, not merely each section of it', async () => {
+  // Twenty-four containers and nine units at the per-section cap is 770 KB —
+  // a file nobody reads, and past what many readers can hold at all. The size
+  // that has to be true is the total.
+  const noisy = 'x'.repeat(LIMITS.sectionChars);
+  const core = new DiagnosticsAgentCore(adapter({
+    containerLog: async () => noisy,
+    containers: async () => Array.from({ length: LIMITS.containers }, (unused, index) => ({
+      name: `mos-app-${index}`,
+      state: 'running',
+      status: 'Up 2 hours',
+    })),
+    journal: async () => noisy,
+  }));
+
+  const result = await core.collect();
+  const total = [...result.units, ...result.containers].reduce((sum, entry) => sum + entry.log.length, 0);
+
+  assert.equal(result.budgetApplied, true);
+  assert.ok(total <= LIMITS.totalLogChars * 1.1, `collected ${total} characters`);
+});
+
+test('a quiet machine keeps every log in full', async () => {
+  const core = new DiagnosticsAgentCore(adapter({
+    containers: async () => [{ name: 'mos-app-example', state: 'running', status: 'Up' }],
+  }));
+
+  const result = await core.collect();
+
+  assert.equal(result.budgetApplied, false);
+  assert.equal(result.containers[0].log, 'log for mos-app-example (40 lines)');
+});
+
+test('the budget is spent on what looks wrong, not shared out equally', () => {
+  const noisy = (troubled, name) => ({ log: 'x'.repeat(50_000), name, troubled });
+  const { budgetApplied, containers, units } = fitLogsToBudget(
+    [noisy(true, 'broken.service')],
+    [noisy(false, 'mos-app-a'), noisy(false, 'mos-app-b'), noisy(false, 'mos-app-c')],
+    20_000,
+  );
+
+  assert.equal(budgetApplied, true);
+  assert.ok(units[0].log.length > containers[0].log.length, 'the failed unit should keep more than a healthy container');
+});
+
+test('no section is starved below the point of being worth reading', () => {
+  const many = Array.from({ length: 200 }, (unused, index) => ({ log: 'x'.repeat(10_000), name: `mos-app-${index}`, troubled: false }));
+  const { containers } = fitLogsToBudget([], many, 1_000);
+
+  assert.ok(containers.every((entry) => entry.log.length >= LIMITS.minLogChars));
 });

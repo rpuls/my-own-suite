@@ -198,6 +198,10 @@ function SecurityActivity({ error, summary }: { error: string; summary: Security
 // what is wrong, which is exactly the owner who will never have found a
 // technical toggle — gating it would hide the feature from its only user.
 // Nothing here is technical to look at: one sentence, one button, one file.
+//
+// The copy names all three readers on purpose. An owner who can debug their own
+// server is as likely to press this as one who cannot, and wording that assumed
+// somebody was being asked for help read as strange to everyone else.
 function GetHelpPanel() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
@@ -234,11 +238,11 @@ function GetHelpPanel() {
 
   return <div className="mos-panel suite-card suite-settings-panel">
     <div>
-      <h2 className="mos-card-title">Get help with a problem</h2>
-      <p className="suite-meta">If something is not working, MOS can put everything a helper needs into one file: what is running, what failed recently, and why. Passwords and app secrets are removed before the file is written.</p>
+      <h2 className="mos-card-title">When something is not working</h2>
+      <p className="suite-meta">MOS can gather what it knows about the problem into one file: what is running, what failed recently, and why. Read it yourself, send it to someone helping you, or give it to an AI assistant. Passwords and app secrets are removed before the file is written.</p>
     </div>
     {error ? <Notice title="The file could not be created" variant="error"><p>{error}</p></Notice> : null}
-    {created ? <Notice title="File saved to your downloads" variant="success"><p>Send <strong>{created}</strong> to whoever is helping you.</p></Notice> : null}
+    {created ? <Notice title="Saved to your downloads" variant="success"><p><strong>{created}</strong> is plain text, so you can open and read it yourself, pass it on, or paste it somewhere that can help.</p></Notice> : null}
     <button className="mos-btn mos-btn-primary" disabled={creating} onClick={() => void create()} type="button">{creating ? 'Collecting...' : 'Create diagnostics file'}</button>
   </div>;
 }
