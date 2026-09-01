@@ -6,6 +6,7 @@ import { PrivacyChangeRow, PrivacyFactsTile, PrivacyPostureDialog } from './Priv
 import { ProgressSteps, setStep, type ProgressStep } from './ProgressSteps';
 import type { PrivacyAdvisory, PrivacyReviewSummary } from './privacy-posture';
 import type { Owner } from '../setup/types';
+import { jsonResponse } from '../../lib/api';
 
 // What one service needs. The resting pair is always present when the package
 // declares anything; the peaks are stated only where a service has a heavy job
@@ -85,6 +86,10 @@ type AppPackageSummary = {
     guideState?: { completedAt: string | null; firstViewedAt: string | null; manifestDigest: string; skippedAt: string | null; status: 'not-started' | 'viewed' | 'completed' | 'skipped'; updatedAt: string } | null;
     id: string;
     installedAt: string;
+    // The last operation on this app, if it failed and nothing has succeeded
+    // since. Present so the screen can say what went wrong instead of leaving
+    // the owner with a status that never changed and no reason.
+    lastFailure?: { completedAt: string | null; diagnostics: string | null; errorCode: string | null; kind: string; startedAt: string } | null;
     packageId: string;
     packageVersion: string;
     projections: Array<{ appliedDigest: string | null; content: unknown; digest: string; kind: string; status: string; updatedAt?: string }>;
@@ -209,6 +214,37 @@ function runtimeRouteApplied(app: AppPackageSummary) {
 
 function healthFailed(app: AppPackageSummary) {
   return app.instance?.projections.some((item) => item.kind === 'health' && item.status === 'failed') === true;
+}
+
+// A title and one sentence per failure, in the owner's terms and ending in what
+// to do about it. Both, because the two are not interchangeable: an app that is
+// running but unreachable and an app that never started need different headings,
+// and a single "did not start" would have contradicted half of these bodies. The
+// agent's own message says what broke and stays in the panel below with the
+// code; this is the half a person who did not build MOS can act on.
+const FAILURE_COPY: Record<string, { detail: string; title: string }> = {
+  APP_AGENT_TIMEOUT: { detail: 'Heavy apps can need around ten minutes the first time they start, so try again before assuming it is broken.', title: 'This app took too long to start' },
+  APP_AGENT_UNAVAILABLE: { detail: 'The part of MOS that starts apps is not responding. Restarting the server usually clears this.', title: 'MOS could not reach its own app service' },
+  APP_BUILD_FAILED: { detail: 'This is most often the server running out of disk space, or a download that failed part way.', title: 'This app could not be prepared' },
+  APP_CADDY_RELOAD_FAILED: { detail: 'The app itself is running, and other apps are unaffected. Applying it again usually publishes the address.', title: 'This app is running but has no web address' },
+  APP_CADDY_VALIDATION_FAILED: { detail: 'The address came out wrong, so MOS left it unpublished rather than risk the addresses that already work.', title: 'This app is running but has no web address' },
+  APP_HEALTH_FAILED: { detail: 'It started but never reported itself ready, which usually means it needs more memory than this server has free.', title: 'This app started but never became ready' },
+  APP_NETWORK_CONNECT_FAILED: { detail: 'This app could not be connected to the app it depends on. Check that the other app is running.', title: 'This app could not reach the app it depends on' },
+  APP_PACKAGE_SNAPSHOT_FAILED: { detail: 'The app package could not be saved to disk. Check that the server has free space.', title: 'This app could not be saved to disk' },
+  APP_ROUTE_WRITE_FAILED: { detail: 'The app itself is running. Applying it again usually publishes the address.', title: 'This app is running but has no web address' },
+  APP_RUNTIME_REMOVE_FAILED: { detail: 'Parts of it may still be on the server. Removing it again is safe.', title: 'This app was not fully removed' },
+  APP_RUNTIME_STOP_FAILED: { detail: 'It may still be running. Stopping it again is safe.', title: 'This app did not stop cleanly' },
+  APP_RUN_FAILED: { detail: 'It was prepared successfully but would not start.', title: 'This app did not start' },
+  APP_VOLUME_STALE: { detail: 'Data from an earlier installation is still on the server. Restore it or remove it before installing again.', title: 'This app has data from a previous install' },
+};
+
+const UNKNOWN_FAILURE = {
+  detail: 'MOS did not finish what it was asked to do. Trying again is safe.',
+  title: 'Something went wrong with this app',
+};
+
+function failureCopy(errorCode: string | null) {
+  return (errorCode && FAILURE_COPY[errorCode]) || UNKNOWN_FAILURE;
 }
 
 function initialsFor(name: string) {
@@ -400,11 +436,6 @@ async function withMinimumInstallStep<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-async function jsonResponse<T>(response: Response, fallback: string): Promise<T> {
-  const body = await response.json().catch(() => ({})) as T & { error?: string };
-  if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : fallback);
-  return body;
-}
 
 function resolveGuideValue(app: AppPackageSummary, value: string) {
   const config = new Map((app.instance?.config || [])
@@ -793,6 +824,27 @@ function AppDetail({
           </p> : null}
           {recoverError ? <p role="alert">{recoverError}</p> : null}
           <AdvancedPanel copyText={app.instance.updateRecovery.errorCode} reveal="on-failure"><code>{app.instance.updateRecovery.errorCode}</code></AdvancedPanel>
+        </Notice> : null}
+
+        {/* Only while the failure is still the last word on this app: the store
+            stops reporting it as soon as anything succeeds, so a notice can
+            never outlive the problem it describes. The plain sentence is the
+            whole message for most owners; the code and the agent's own output
+            sit in the panel, which is where a bug report copies them from.
+            Suppressed while `installError` is set, because a failed install
+            reloads the app and would otherwise say the same thing twice — once
+            live in the stepper above and once from the record it just wrote. */}
+        {app.instance?.lastFailure && !app.instance.updateRecovery && !installError ? <Notice title={failureCopy(app.instance.lastFailure.errorCode).title} variant="warning">
+          <p>{failureCopy(app.instance.lastFailure.errorCode).detail}</p>
+          <AdvancedPanel
+            facts={[
+              ...(app.instance.lastFailure.errorCode ? [{ label: 'Error code', value: app.instance.lastFailure.errorCode }] : []),
+              { label: 'Operation', value: app.instance.lastFailure.kind },
+              { label: 'When', value: app.instance.lastFailure.completedAt || app.instance.lastFailure.startedAt },
+            ]}
+            output={app.instance.lastFailure.diagnostics || undefined}
+            reveal="on-failure"
+          />
         </Notice> : null}
 
         <ProgressSteps error={installError} errorTitle="Install needs attention" steps={installSteps} />

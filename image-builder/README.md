@@ -204,14 +204,18 @@ resolvable name stops being served.
   across four attempts, which nearly justified an MBR image; it turned out to be
   stale firmware state, and **Apply Factory Defaults** cleared it with every
   setting already correct. Suspect NVRAM before suspecting the layout.
-- **No boot entry is created for the disk that was written.** `mos-image-finalize`
-  uses `grub-install --removable`, which writes `EFI/BOOT/BOOTX64.EFI` and
-  deliberately no NVRAM entry, so the target boots only on firmware that tries the
-  removable-media path on a fixed disk. Most do. The ones that do not report *no
-  bootable drive* with the stick removed and boot fine with it in, which is
-  indistinguishable from a failed install. Now that a machine can have several
-  disks the firmware also has more places to guess wrong, so `mos-self-install`
-  should add an `efibootmgr` entry for the disk it just wrote.
+- **The image itself still carries no boot entry.** `mos-image-finalize` uses
+  `grub-install --removable`, which writes `EFI/BOOT/BOOTX64.EFI` and deliberately
+  no NVRAM entry, so an image flashed straight to an internal disk boots only on
+  firmware that tries the removable-media path on a fixed disk. Most do. The ones
+  that do not report *no bootable drive* with the stick removed and boot fine with
+  it in, which is indistinguishable from a failed install. `mos-self-install` now
+  closes this for the path owners actually take: after writing the target it
+  registers a **My Own Suite** entry with `efibootmgr`, replacing any entry of that
+  label from an earlier install so a re-install does not stack duplicates. It is
+  best-effort by design — no EFI runtime, no `efibootmgr`, no identifiable ESP, or
+  firmware that refuses the write all leave the removable path as the fallback, and
+  the closing screen then names the disk to pick in the BIOS/UEFI setup screen.
 - `mos-self-install` copies a mounted root filesystem after a best-effort
   read-only remount and repairs the copy with `e2fsck -fy`. Quiescing it properly
   is a real fix, not a PoC one.

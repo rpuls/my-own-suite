@@ -30,6 +30,14 @@ cmd /c npm test
 
 `dev` builds the frontend, starts the backend, and serves Suite Manager at `http://home.localhost:3100/suite-manager/`. Use `home.localhost`, not `127.0.0.1`, because the local backend validates the configured Home host.
 
+## Logging and diagnostics
+
+The backend writes one JSON object per line to stdout and owns no log files: journald captures a systemd service's stdout, so `journalctl -u mos-suite-manager` is the reader. Every record carries `ts`, `level` and `event`, and a caller cannot overwrite those three. Fields are bounded — 2 000 characters each, 12 stack frames, 16 000 per record — and truncation states how much it removed. `MOS_LOG_LEVEL` selects the threshold (`debug`, `info`, `warn`, `error`) and defaults to `info`. When stdout is a terminal the same records are written as readable lines instead, so local development is legible; an installed server is never a terminal and always writes JSON.
+
+The top-level request handler logs internal errors — those with no explicit `statusCode` that resolve to 5xx — with the method, `url.pathname` and a bounded stack, and returns an eight-character `reference` in the response body that matches the logged record. The query string is never logged, because it carries claim tokens. Expected client errors are answered with their own message and are not logged.
+
+A failed app operation is written to `app_operations` with its stage error code and bounded free-text diagnostics, redacted by exact secret value **before** storage: this text reaches SQLite and therefore every backup bundle. `src/redaction.cjs` is the only implementation of that masking, and it runs on each value before serialization and before truncation — JSON-escaping a secret containing a quote or backslash would otherwise defeat the exact-value match, and truncating first would leave a straddling secret as a readable fragment.
+
 ## Persistence
 
 SQLite is Suite Manager's durable source of truth. The database is `suite-manager.sqlite` under the configurable `MOS_STATE_DIR`; installed control planes use `/var/lib/mos/suite-manager/suite-manager.sqlite`, while local development defaults to `.state/suite-manager.sqlite` relative to the working directory.

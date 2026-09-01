@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { AdvancedPanel, Notice, Select, Spinner } from '../../components/ui';
 import { buildChanged, servedBuildId } from '../../frontend-build';
+import { jsonResponse } from '../../lib/api';
 
 type UpdateJob = {
   error: string | null;
@@ -27,11 +28,6 @@ type UpdateStatus = {
   updateAvailable: boolean;
 };
 
-async function jsonResponse<T>(response: Response, fallback: string): Promise<T> {
-  const body = await response.json().catch(() => ({})) as T & { error?: string };
-  if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : fallback);
-  return body;
-}
 
 function formatDate(value: string | null) {
   if (!value) return 'Not available';

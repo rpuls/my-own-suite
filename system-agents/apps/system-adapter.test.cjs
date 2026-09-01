@@ -290,7 +290,13 @@ test('system adapter builds, runs, health-checks, writes routes, and reloads Cad
   assert.equal(commands[2].args.at(-1), 'mos-app-example-tool-configs');
   assert.ok(commands[2].args.includes('mos.owned=true'));
   assert.ok(commands[2].args.includes(`mos.instance=${instanceId}`));
-  assert.deepEqual(commands[3].args.slice(0, 8), ['run', '--detach', '--name', 'mos-app-example-tool', '--restart', 'unless-stopped', '--publish', '127.0.0.1:18123:3000']);
+  assert.deepEqual(commands[3].args.slice(0, 6), ['run', '--detach', '--name', 'mos-app-example-tool', '--restart', 'unless-stopped']);
+  assert.ok(commands[3].args.join(' ').includes('--publish 127.0.0.1:18123:3000'));
+  // An app that logs on a loop must not be able to fill the root disk and take
+  // the whole suite down; asserted by content rather than position so the next
+  // flag added to the run does not break this.
+  assert.ok(commands[3].args.join(' ').includes('--log-opt max-size=10m'));
+  assert.ok(commands[3].args.join(' ').includes('--log-opt max-file=3'));
   assert.ok(commands[3].args.includes('SERVER_HOST=http://example-tool.mos.home/'));
   assert.ok(commands[3].args.includes('mos.package-version=0.1.0'));
   assert.ok(commands[3].args.includes(`mos.package-digest=${packageDigest}`));
@@ -1018,4 +1024,34 @@ test('system adapter creates labeled app volumes and refuses stale data from ano
   });
   await legacyAdapter.ensureAppVolumes({ instanceId: 'cccc-3333', packageId: 'legacy-app', services: [{ volumes: ['data:/data'] }] });
   assert.equal(commands.slice(before).some((command) => command.args[1] === 'create'), false);
+});
+
+// The update and rollback paths start containers through their own call rather
+// than through applyAppService, so the log caps have to be asserted here too:
+// an app that escaped them on update would fill the root disk just as well.
+test('containers started by the update path carry the same log caps', async () => {
+  const root = await tempDir();
+  const commands = [];
+  const adapter = new SystemAppAdapter({
+    appsRoot: root,
+    appPackageRoot: path.join(root, 'packages'),
+    caddyBinary: 'caddy',
+    dockerBinary: 'docker',
+    routesPath: path.join(root, 'routes.caddy'),
+    async execute(file, args) { commands.push({ args, file }); },
+  });
+
+  await adapter.startPackageContainers({
+    instanceId: '12345678-1234-4123-8123-123456789abc',
+    packageDigest: `sha256:${'a'.repeat(64)}`,
+    packageId: 'example-tool',
+    packageVersion: '0.2.0',
+    services: [{ environment: {}, id: 'app', imageTag: 'mos-app-example-tool:0.2.0', internalPort: 3000, loopbackPort: 18123, public: true, volumes: [] }],
+    sourceRevision: '0123456789abcdef0123456789abcdef01234567',
+  });
+
+  const run = commands.find((command) => command.args[0] === 'run');
+  assert.ok(run, 'expected the update path to start a container');
+  assert.ok(run.args.join(' ').includes('--log-opt max-size=10m'));
+  assert.ok(run.args.join(' ').includes('--log-opt max-file=3'));
 });

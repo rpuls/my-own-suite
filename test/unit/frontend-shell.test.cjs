@@ -136,3 +136,32 @@ test('Apps catalog separates companion apps and hides Homepage controls when abs
   assert.match(configDialog, /homepageAvailable && !running \?/u);
   assert.match(apps, /hasPrimaryAppDestination/u);
 });
+
+function frontendSources(directory) {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const fullPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) return frontendSources(fullPath);
+    return /\.tsx?$/u.test(entry.name) ? [fullPath] : [];
+  });
+}
+
+// Four screens each held a byte-identical copy of this. That is how the
+// reference below came to be returned by the API and rendered by nothing: a
+// change would have had to be made in four places to take effect, so it was
+// made in none of them.
+test('reading an API response has exactly one implementation', () => {
+  const owner = path.join(frontendRoot, 'lib', 'api.ts');
+  const definitions = frontendSources(frontendRoot)
+    .filter((file) => /(?:export )?async function jsonResponse/u.test(fs.readFileSync(file, 'utf8')));
+  assert.deepEqual(definitions, [owner], 'jsonResponse must be defined only in lib/api.ts');
+});
+
+// An internal error tells the owner nothing on purpose — every one of them reads
+// "Internal server error." — so the reference is the only thing that ties the
+// screen they are looking at to the line the server wrote. CONTRIBUTING.md asks
+// bug reporters for it by name, which is only honest while it is displayed.
+test('an internal error surfaces the reference the server logged', () => {
+  const api = fs.readFileSync(path.join(frontendRoot, 'lib', 'api.ts'), 'utf8');
+  assert.match(api, /body\.reference/u);
+  assert.match(api, /reference \$\{reference\}/u);
+});

@@ -1327,10 +1327,41 @@ class SuiteManagerStore {
       SELECT id, instance_id AS instanceId, kind, status, stage,
              expected_installed_digest AS expectedInstalledDigest,
              candidate_digest AS candidateDigest, error_code AS errorCode,
-             started_at AS startedAt, completed_at AS completedAt
+             diagnostics, started_at AS startedAt, completed_at AS completedAt
       FROM app_operations WHERE id = ?
     `).get(operationId);
     return row || null;
+  }
+
+  // The operation that failed used to leave nothing behind: the reason reached
+  // the owner's screen once and was never written down, so by the time anyone
+  // asked what happened there was only the error code. `diagnostics` is expected
+  // to arrive already redacted and bounded — once it is here it is also in every
+  // backup bundle, which is why cleaning it on the way out would be too late.
+  recordFailedAppOperation({ at, diagnostics = null, errorCode, instanceId, kind, operationId, request = {} }) {
+    this.database.prepare(`
+      INSERT INTO app_operations (
+        id, instance_id, kind, status, error_code, diagnostics, request_json, started_at, completed_at
+      )
+      VALUES (?, ?, ?, 'failed', ?, ?, ?, ?, ?)
+    `).run(operationId, instanceId, kind, errorCode, diagnostics, JSON.stringify(request), at, at);
+    return this.getAppOperation(operationId);
+  }
+
+  // Only failures that are still the latest word on an instance are worth
+  // showing: a failed apply followed by a successful one is history, and a
+  // screen that kept surfacing it would be reporting a problem the owner has
+  // already fixed.
+  latestFailedAppOperation(instanceId) {
+    const row = this.database.prepare(`
+      SELECT id, instance_id AS instanceId, kind, status, stage, error_code AS errorCode,
+             diagnostics, started_at AS startedAt, completed_at AS completedAt
+      FROM app_operations
+      WHERE instance_id = ?
+      ORDER BY started_at DESC, rowid DESC
+      LIMIT 1
+    `).get(instanceId);
+    return row && row.status === 'failed' ? row : null;
   }
 
   applyAppProjections({ at, instanceId, kinds, operationId, request = {} }) {

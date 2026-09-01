@@ -248,6 +248,10 @@ function publicInstance(instance, projections = [], configRows = [], envRows = [
     packageId: instance.packageId,
     packageVersion: instance.packageVersion,
     guideState: instance.guideState || null,
+    // Attached by the caller that looked it up rather than fetched here, so the
+    // serializer stays a pure projection of what it was handed. Absent on every
+    // path that has no reason to ask, which is most of them.
+    lastFailure: instance.lastFailure || null,
     projections: projections.map((projection) => ({
       appliedDigest: projection.appliedDigest,
       content: projection.content,

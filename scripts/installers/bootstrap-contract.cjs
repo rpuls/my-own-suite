@@ -183,6 +183,14 @@ echo "[mos] App choices happen in Suite Manager after install."
 
 export DEBIAN_FRONTEND=noninteractive
 
+# Rendered from the same definition reconcile-system.cjs writes on every managed
+# update, so a machine that was updated rather than reflashed ends up with the
+# identical journal settings. See control-plane-runtime.cjs for why.
+mkdir -p ${JOURNALD_CONFIG_PATH.slice(0, JOURNALD_CONFIG_PATH.lastIndexOf('/'))}
+cat > ${JOURNALD_CONFIG_PATH} <<'MOS_JOURNALD'
+${renderJournaldConfig()}MOS_JOURNALD
+systemctl restart systemd-journald || true
+
 if ! command -v caddy >/dev/null 2>&1; then
   rm -f /etc/apt/sources.list.d/caddy-stable.list
 fi
@@ -666,7 +674,9 @@ module.exports = {
 const {
   HOMEPAGE_IMAGE,
   HOMEPAGE_PORT,
+  JOURNALD_CONFIG_PATH,
   renderCaddyfile,
   renderHomepageSystemdUnit,
+  renderJournaldConfig,
   renderPublicCloudCaddyfile,
 } = require('../../infrastructure/control-plane-runtime.cjs');

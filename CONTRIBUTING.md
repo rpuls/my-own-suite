@@ -17,6 +17,7 @@ A good report has:
 - how MOS was installed (cloud provider, own hardware, USB installer) and whether HTTPS is configured
 - the MOS version from the **Updates** screen, or the `VERSION` file
 - any error text Suite Manager showed, including what is under **Advanced details** on the screen that failed — that panel is shown whenever something has gone wrong, so you always have something to paste
+- the reference code, if the screen showed one. An "Internal server error." comes with a short code like `a1b2c3d4`, and it is the one thing that finds the matching line in the server's own log
 
 Please scrub secrets before pasting: API tokens, passwords, and the one-time owner setup key.
 

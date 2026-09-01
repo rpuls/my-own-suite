@@ -2,6 +2,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { buildAppOperationDiagnostics } = require('./app-operation-diagnostics.cjs');
+
 const {
   APP_LOOPBACK_PORT_BASE,
   APP_LOOPBACK_PORT_SPAN,
@@ -303,18 +305,47 @@ class AppPackageService {
     // sites the agent renders, for every caller (request, boot reconcile, HTTPS
     // re-apply, restore) at once.
     const { appHost, publicUrl } = appPublicIdentity(projections, requestContextForPackage(packageId, requestContext));
-    const result = await this.agent.apply({
-      appHost,
-      caddy: materializeRuntimeCaddy(caddyProjection.content, configRows),
-      compose: materializeRuntimeCompose(composeProjection.content, configRows, envRows),
-      health: healthProjection.content,
-      instanceId: instance.id,
-      packageDigest: instance.packageDigest,
-      packageId: instance.packageId,
-      packageVersion: instance.packageVersion,
-      publicUrl,
-      sourceRevision: instance.sourceRevision,
-    });
+    let result;
+    try {
+      result = await this.agent.apply({
+        appHost,
+        caddy: materializeRuntimeCaddy(caddyProjection.content, configRows),
+        compose: materializeRuntimeCompose(composeProjection.content, configRows, envRows),
+        health: healthProjection.content,
+        instanceId: instance.id,
+        packageDigest: instance.packageDigest,
+        packageId: instance.packageId,
+        packageVersion: instance.packageVersion,
+        publicUrl,
+        sourceRevision: instance.sourceRevision,
+      });
+    } catch (error) {
+      // The failure is recorded and then rethrown unchanged: the caller's
+      // contract does not move, but the reason now survives the response that
+      // carried it. Secrets are passed by value so the redaction is exact —
+      // Suite Manager holds the plaintext of everything it could leak here.
+      //
+      // Recording is best-effort on purpose. The row is bound to the instance by
+      // a foreign key, so an apply racing an uninstall can fail to write it, and
+      // a recorder that threw would replace the real failure with its own — the
+      // one outcome worse than not recording at all.
+      try {
+        this.store.recordFailedAppOperation({
+          at: this.now().toISOString(),
+          instanceId: instance.id,
+          kind: 'apply',
+          operationId: crypto.randomUUID(),
+          request: { packageId: manifest.id, target: 'runtime' },
+          ...buildAppOperationDiagnostics(error, {
+            secrets: [
+              ...configRows.map((row) => row.rawValue),
+              ...envRows.map((row) => row.rawValue ?? row.value),
+            ].filter((value) => typeof value === 'string'),
+          }),
+        });
+      } catch { /* the original failure is the one that matters */ }
+      throw error;
+    }
 
     const at = this.now().toISOString();
     const operationId = crypto.randomUUID();
@@ -994,7 +1025,7 @@ class AppPackageService {
         // API path the UI calls back on must address it by that id.
         id: packageId,
         installStatus: instance?.status || 'not-installed',
-        instance: publicInstance(instance ? { ...instance, guideState } : null, projections, config, env),
+        instance: publicInstance(instance ? { ...instance, guideState, lastFailure: this.store.latestFailedAppOperation(instance.id) } : null, projections, config, env),
         // Trust comes from the recorded source, never from package metadata, so
         // an installed external app keeps visible unverified status.
         mosReviewed: (instance?.sourceTrust || 'mos-reviewed') === 'mos-reviewed',

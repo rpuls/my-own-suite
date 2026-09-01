@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 
 import { AdvancedPanel, Notice, Switch, TextInput, useTechnicalControls } from '../../components/ui';
+import { jsonResponse } from '../../lib/api';
 
 type HttpsStatus = {
   acmeEmail: string | null;
@@ -41,11 +42,6 @@ type ApplyResult = {
   status: string;
 };
 
-async function jsonResponse<T>(response: Response, fallback: string): Promise<T> {
-  const body = await response.json().catch(() => ({})) as T & { error?: string };
-  if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : fallback);
-  return body;
-}
 
 function LocalDnsInstructions({ homeHost, serverAddress }: { homeHost: string; serverAddress: string }) {
   return <>

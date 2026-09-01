@@ -10,6 +10,7 @@ const { loopbackPortFor } = require('../src/apps/app-package-service.cjs');
 const { LoginThrottle } = require('../src/auth/login-throttle.cjs');
 
 const { createMOSServer } = require('../src/server/http-app.cjs');
+const { createLogger } = require('../src/server/logger.cjs');
 const { TERMS_VERSION } = require('../src/setup/setup-service.cjs');
 const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
 const { ExternalSourceService } = require('../src/apps/external-source-service.cjs');
@@ -2386,3 +2387,164 @@ test('session cookies become Secure only for HTTPS forwarded requests', async ()
     assert.match(httpsLogin.headers['set-cookie'][0], /; Secure/u);
   }, { homeHost: 'home.test' });
 });
+
+// The owner is told "Internal server error." on purpose, so unless the reason is
+// written down here it exists nowhere at all — which is exactly the state this
+// replaced. The reference is what lets a screenshot and a journal line be
+// matched without guessing at timestamps.
+test('an internal error is logged with a reference the response also carries', async () => {
+  const lines = [];
+  const logger = createLogger({
+    stream: { write: (chunk) => lines.push(JSON.parse(String(chunk))) },
+  });
+
+  await withServer(async (baseUrl) => {
+    const response = await hostRequest(baseUrl, '/suite-manager/api/auth/login', {
+      body: JSON.stringify({ email: 'owner@example.com', password: 'whatever' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    assert.equal(response.status, 500);
+    const body = response.json();
+    // The owner still learns nothing about the internals.
+    assert.equal(body.error, 'Internal server error.');
+    assert.match(body.reference, /^[0-9a-f]{8}$/u);
+
+    const logged = lines.filter((line) => line.event === 'request-failed');
+    assert.equal(logged.length, 1);
+    assert.equal(logged[0].reference, body.reference);
+    assert.equal(logged[0].level, 'error');
+    assert.equal(logged[0].method, 'POST');
+    assert.equal(logged[0].path, '/suite-manager/api/auth/login');
+    assert.equal(logged[0].statusCode, 500);
+    assert.equal(logged[0].error.message, 'throttle store unavailable');
+    assert.ok(logged[0].error.stack.includes('throttle store unavailable'));
+  }, {
+    logger,
+    loginThrottle: {
+      recordFailure() {},
+      recordSuccess() {},
+      retryAfterMs() { throw new Error('throttle store unavailable'); },
+    },
+  });
+});
+
+// A handled error already reaches the owner with its own message, so logging it
+// would be noise on every mistyped password rather than a signal.
+test('an expected client error is answered without a reference and without a log line', async () => {
+  const lines = [];
+  const logger = createLogger({ stream: { write: (chunk) => lines.push(JSON.parse(String(chunk))) } });
+
+  await withServer(async (baseUrl) => {
+    const response = await hostRequest(baseUrl, '/suite-manager/api/auth/login', {
+      body: JSON.stringify({ email: 'owner@example.com', password: 'whatever' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    assert.equal(response.status, 401);
+    assert.equal(response.json().reference, undefined);
+    assert.deepEqual(lines.filter((line) => line.event === 'request-failed'), []);
+  }, { logger });
+});
+
+// The whole of I3 in one pass: a runtime apply fails, the reason survives the
+// response that carried it, and the app screen can read it back. The secret is
+// what makes this worth asserting end to end — diagnostics land in SQLite, and
+// SQLite lands in every backup bundle, so a secret that reaches this text is
+// there permanently. Vaultwarden generates one at install, so the redaction is
+// tested against a real value rather than a fixture.
+test('a failed runtime apply is recorded, readable on the app, and carries no secret', async () => {
+  let generatedToken = '';
+  const appAgent = {
+    async apply(input) {
+      generatedToken = input.compose.services[0].environment.ADMIN_TOKEN;
+      const error = new Error('The app image could not be built.');
+      error.code = 'APP_BUILD_FAILED';
+      error.statusCode = 502;
+      // A stand-in for the shape I2 will make routine: the failing command's
+      // own text, carrying the materialized secret it was invoked with.
+      error.details = [`no space left on device while starting with ADMIN_TOKEN=${generatedToken}`];
+      throw error;
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+
+    const applied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    // The failure is recorded, and then rethrown unchanged: recording must not
+    // alter what the caller was already promised.
+    assert.equal(applied.status, 502);
+
+    const packages = await hostRequest(baseUrl, '/suite-manager/api/apps/packages', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    const vaultwarden = packages.json().packages.find((item) => item.id === 'vaultwarden');
+    const failure = vaultwarden.instance.lastFailure;
+
+    assert.ok(failure, 'the app must report the failure that just happened');
+    assert.equal(failure.kind, 'apply');
+    assert.equal(failure.errorCode, 'APP_BUILD_FAILED');
+    assert.match(failure.diagnostics, /The app image could not be built\./u);
+    assert.match(failure.diagnostics, /no space left on device/u);
+
+    assert.ok(generatedToken.length > 20, 'the install must have generated a real secret');
+    assert.ok(!failure.diagnostics.includes(generatedToken), 'the secret must not reach the stored diagnostics');
+    assert.match(failure.diagnostics, /ADMIN_TOKEN=\[redacted\]/u);
+    assert.doesNotMatch(packages.body, new RegExp(generatedToken, 'u'));
+  }, { appAgent, homeHost: 'home.test' });
+});
+
+// A screen that kept showing the old reason would be reporting a problem the
+// owner has already fixed.
+test('a recorded failure stops being reported once the app applies successfully', async () => {
+  let shouldFail = true;
+  const appAgent = {
+    async apply(input) {
+      if (shouldFail) {
+        const error = new Error('The app container could not be started.');
+        error.code = 'APP_RUN_FAILED';
+        error.statusCode = 502;
+        throw error;
+      }
+      return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+
+    const readFailure = async () => {
+      const packages = await hostRequest(baseUrl, '/suite-manager/api/apps/packages', {
+        headers: { Cookie: cookie, Host: 'home.test' },
+      });
+      return packages.json().packages.find((item) => item.id === 'vaultwarden').instance.lastFailure;
+    };
+
+    const apply = () => hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+
+    await apply();
+    assert.equal((await readFailure()).errorCode, 'APP_RUN_FAILED');
+
+    shouldFail = false;
+    assert.equal((await apply()).status, 200);
+    assert.equal(await readFailure(), null);
+  }, { appAgent, homeHost: 'home.test' });
+});
+

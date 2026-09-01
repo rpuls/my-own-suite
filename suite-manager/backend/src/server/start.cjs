@@ -3,6 +3,7 @@
 const path = require('node:path');
 
 const { createMOSServer } = require('./http-app.cjs');
+const { createLogger } = require('./logger.cjs');
 
 const port = Number(process.env.PORT || process.env.MOS_SUITE_MANAGER_PORT || '3100');
 const host = process.env.HOST || process.env.MOS_SUITE_MANAGER_HOST || '127.0.0.1';
@@ -11,42 +12,54 @@ const stateDir = process.env.MOS_STATE_DIR || path.resolve(process.cwd(), '.stat
 const frontendDistDir = process.env.MOS_FRONTEND_DIST_DIR
   || path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
 
-const server = createMOSServer({ frontendDistDir, homeHost, stateDir });
+const logger = createLogger();
+const server = createMOSServer({ frontendDistDir, homeHost, logger, stateDir });
 
 async function start() {
   const migrations = await server.migrateAppPackages();
-  for (const migration of migrations) console.log(`[mos-suite-manager] App package migration ${migration.packageId}: ${migration.status}`);
+  for (const migration of migrations) logger.info('app-package-migrated', { packageId: migration.packageId, status: migration.status });
   const recoveries = await server.recoverAppPackageUpdates();
-  for (const recovery of recoveries) console.log(`[mos-suite-manager] App update recovery ${recovery.instanceId}: ${recovery.recoveryState}`);
+  for (const recovery of recoveries) logger.info('app-update-recovered', { instanceId: recovery.instanceId, recoveryState: recovery.recoveryState });
   const dashboardLinks = await server.reconcileDashboardLinks();
-  if (dashboardLinks.status !== 'skipped') console.log(`[mos-suite-manager] Dashboard app links: ${dashboardLinks.status}${dashboardLinks.errorCode ? ` (${dashboardLinks.errorCode})` : ''}`);
+  if (dashboardLinks.status !== 'skipped') logger.info('dashboard-links-reconciled', { errorCode: dashboardLinks.errorCode || undefined, status: dashboardLinks.status });
   const sweptCandidates = server.sweepAppCandidates();
-  if (sweptCandidates.length) console.log(`[mos-suite-manager] Reclaimed ${sweptCandidates.length} abandoned app package candidate download(s).`);
+  if (sweptCandidates.length) logger.info('app-candidates-reclaimed', { count: sweptCandidates.length });
   void server.startCatalogRefresh();
   server.listen(port, host, () => {
-    console.log(`[mos-suite-manager] Listening on http://${host}:${port}`);
-    console.log(`[mos-suite-manager] Open http://${homeHost}:${port}/suite-manager/`);
-    console.log(`[mos-suite-manager] State directory: ${stateDir}`);
+    logger.info('listening', {
+      host,
+      openUrl: `http://${homeHost}:${port}/suite-manager/`,
+      port,
+      stateDir,
+    });
   });
 }
 
 start().catch((error) => {
-  console.error(error);
+  logger.error('start-failed', { error });
   process.exit(1);
 });
 
 server.on('error', (error) => {
   if (error.code === 'EADDRINUSE') {
-    console.error(`[mos-suite-manager] Port ${port} is already in use. Set MOS_SUITE_MANAGER_PORT to choose another port.`);
+    logger.error('port-in-use', { hint: 'Set MOS_SUITE_MANAGER_PORT to choose another port.', port });
     process.exit(1);
   }
 
-  console.error(error);
+  logger.error('server-error', { error });
+  process.exit(1);
+});
+
+// An uncaught rejection is the failure mode that takes the process down with no
+// record of what threw; systemd restarts it and the reason is gone.
+process.on('unhandledRejection', (error) => { logger.error('unhandled-rejection', { error }); });
+process.on('uncaughtException', (error) => {
+  logger.error('uncaught-exception', { error });
   process.exit(1);
 });
 
 function shutdown(signal) {
-  console.log(`[mos-suite-manager] Received ${signal}; shutting down.`);
+  logger.info('shutting-down', { signal });
   server.close(() => {
     process.exit(0);
   });

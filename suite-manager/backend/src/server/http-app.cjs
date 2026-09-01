@@ -14,6 +14,7 @@ const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contrac
 const { HttpsSettingsService } = require('../settings/https-settings-service.cjs');
 const { LabResetAgentClient } = require('../lab/lab-reset-agent-client.cjs');
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
+const { createLogger, requestId } = require('./logger.cjs');
 const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
 const { OfficialCatalogError, OfficialCatalogService } = require('../apps/official-catalog-service.cjs');
@@ -359,7 +360,8 @@ function createMOSServer({
   homepageUpstream = process.env.MOS_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
   disposableLab = process.env.MOS_DISPOSABLE_LAB === '1',
   loginThrottle = new LoginThrottle(),
-  securityLogger = (event) => console.warn(JSON.stringify(event)),
+  logger = createLogger(),
+  securityLogger = (event) => logger.warn('security-event', event),
   securityEventRecorder = null,
   ownerClaimToken = process.env.MOS_OWNER_CLAIM_TOKEN || '',
   stateDir = path.join(process.cwd(), '.state'),
@@ -681,6 +683,9 @@ function createMOSServer({
             publicUrlFor: appPublicUrlResolverForBase(baseDomain, 'https', appHostFor),
           });
         } catch (error) {
+          // The owner is handed a code and the apply still reports success, so
+          // without this the reason every app kept its old address is gone.
+          logger.error('app-public-url-reconcile-failed', { error });
           appReconciliation = {
             errorCode: error.code || 'APP_PUBLIC_URL_RECONCILE_FAILED',
             skipped: false,
@@ -750,6 +755,10 @@ function createMOSServer({
             serviceAvailable: true,
           });
         } catch (error) {
+          // Answered 200 with serviceAvailable:false, which is right for the
+          // screen and means a genuine fault here looks identical to an agent
+          // that is simply not running.
+          logger.warn('backup-agent-unavailable', { error });
           jsonResponse(response, 200, {
             backups: [],
             currentJob: null,
@@ -1260,10 +1269,28 @@ function createMOSServer({
     } catch (error) {
       const statusCode = errorStatus(error);
       const internal = statusCode >= 500 && !Number.isInteger(error.statusCode);
+      // An internal error is the one class nobody can reconstruct afterwards:
+      // the owner is told "Internal server error." on purpose, so unless the
+      // reason is written down here it exists nowhere at all. The reference goes
+      // out with the response so the line in the journal and the screenshot in
+      // the bug report can be matched without guessing at timestamps.
+      const reference = internal ? requestId() : null;
+      if (internal) {
+        logger.error('request-failed', {
+          error,
+          method: request.method,
+          // Query strings carry claim tokens and search terms; the path alone
+          // is what identifies the route that broke.
+          path: url.pathname,
+          reference,
+          statusCode,
+        });
+      }
       jsonResponse(response, statusCode, {
         code: error.code || 'INTERNAL_ERROR',
         ...(!internal && Array.isArray(error.details) && error.details.length ? { details: error.details } : {}),
         error: internal ? 'Internal server error.' : error.message || 'Internal server error.',
+        ...(reference ? { reference } : {}),
       });
     }
   });

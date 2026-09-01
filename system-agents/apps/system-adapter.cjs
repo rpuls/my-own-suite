@@ -14,6 +14,16 @@ const APP_CANDIDATE_ROOT = process.env.MOS_APP_CANDIDATE_ROOT || '/var/lib/mos/s
 const APP_ROUTES_PATH = process.env.MOS_APP_ROUTES_PATH || '/etc/caddy/mos-app-routes.caddy';
 const CADDY_BINARY = process.env.MOS_CADDY_BINARY || '/usr/local/libexec/mos/caddy';
 const DOCKER_BINARY = process.env.MOS_DOCKER_BINARY || '/usr/bin/docker';
+// Docker's json-file driver is unbounded by default, so an app that logs on a
+// loop fills the root disk and takes the whole suite down with it — MOS, every
+// other app, and the backup that would have recovered it. Per container rather
+// than a daemon-wide default in daemon.json, because changing that needs a
+// docker restart, which stops every running app: this applies to each container
+// as it is created, and an existing one picks it up the next time its app is
+// applied or updated. 30 MB is three files of 10, which is enough history to
+// diagnose a crash loop and small enough that fifty containers cannot fill a
+// modest disk.
+const CONTAINER_LOG_ARGS = ['--log-opt', 'max-size=10m', '--log-opt', 'max-file=3'];
 const HEALTH_TIMEOUT_MS = 90_000;
 const HEALTH_REFRESH_TIMEOUT_MS = 5_000;
 const EMPTY_APP_ROUTES = '# No app runtime routes.\n';
@@ -491,6 +501,7 @@ class SystemAppAdapter {
       }
       await this.execute(this.dockerBinary, [
         'run', '--detach', '--name', this.containerName(packageId, service.id, serviceCount), '--restart', 'unless-stopped',
+        ...CONTAINER_LOG_ARGS,
         ...(serviceCount > 1 ? ['--network', networkName, '--network-alias', service.id] : []),
         ...(service.public ? ['--publish', `127.0.0.1:${service.loopbackPort}:${service.internalPort}`] : []),
         '--label', `mos.package=${packageId}`,
@@ -768,6 +779,7 @@ class SystemAppAdapter {
           '--detach',
           '--name', containerName,
           '--restart', 'unless-stopped',
+          ...CONTAINER_LOG_ARGS,
           ...(serviceCount > 1 ? ['--network', networkName, '--network-alias', service.id] : []),
           ...(service.public ? ['--publish', `127.0.0.1:${service.loopbackPort}:${service.internalPort}`] : []),
           '--label', `mos.package=${packageId}`,

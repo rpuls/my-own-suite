@@ -9,6 +9,8 @@ const {
   resolveRuntimeConfig,
   suiteManagerUnit,
 } = require('../../scripts/reconcile-system.cjs');
+const { JOURNALD_CONFIG_PATH, renderJournaldConfig } = require('../../infrastructure/control-plane-runtime.cjs');
+const { renderBootstrapPlan } = require('../../scripts/installers/bootstrap-contract.cjs');
 
 test('system reconciliation preserves the installed Home host from the bootstrap contract', (context) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-reconcile-'));
@@ -60,4 +62,35 @@ test('system reconciliation provisions the app package root readable by Suite Ma
   assert.match(script, /run\('chown', \['root:mos-agent', `\$\{stateRoot\}\/app-packages`\]\)/u);
   // Applied after the chown, which can clear the setgid bit.
   assert.match(script, /chmodSync\(`\$\{stateRoot\}\/app-packages`, 0o2750\)/u);
+});
+
+// AGENTS.md rule 7: a managed update must not leave a machine running old
+// platform-owned state after reporting success. Host settings have two owners —
+// the installer, which a machine that already exists never runs again, and this
+// reconciler, which every managed update runs — so a setting written by only one
+// of them silently reaches only reflashed machines or only updated ones. This
+// asserts both paths emit the identical journald configuration from the one
+// shared definition, which is the property that made the split safe.
+test('the installer and a managed update write the identical journald configuration', () => {
+  const rendered = renderJournaldConfig();
+  const installer = renderBootstrapPlan({}).sshBootstrap;
+
+  assert.match(rendered, /^\[Journal\]$/mu);
+  // Stated rather than left to `Storage=auto`, which is persistent only for as
+  // long as /var/log/journal happens to exist.
+  assert.match(rendered, /^Storage=persistent$/mu);
+  // The half that was actually missing: upstream leaves SystemMaxUse unset, so
+  // the journal may grow to a tenth of the disk the apps are also using.
+  assert.match(rendered, /^SystemMaxUse=\d+M$/mu);
+
+  assert.ok(
+    installer.includes(`cat > ${JOURNALD_CONFIG_PATH} <<'MOS_JOURNALD'\n${rendered}MOS_JOURNALD`),
+    'the installer must write the shared journald definition verbatim',
+  );
+
+  const reconciler = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8');
+  assert.ok(
+    reconciler.includes('writeFile(JOURNALD_CONFIG_PATH, renderJournaldConfig()'),
+    'the managed-update path must write the same shared definition, not a copy of it',
+  );
 });

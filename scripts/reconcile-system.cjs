@@ -6,8 +6,10 @@ const { execFileSync } = require('node:child_process');
 
 const {
   HOMEPAGE_IMAGE,
+  JOURNALD_CONFIG_PATH,
   renderCaddyfile,
   renderHomepageSystemdUnit,
+  renderJournaldConfig,
 } = require('../infrastructure/control-plane-runtime.cjs');
 
 function parseEnvFile(filePath) {
@@ -86,10 +88,21 @@ function writeFile(filePath, content, mode) {
   if (mode) fs.chmodSync(filePath, mode);
 }
 
+// Fatal by default: every other step here is something the control plane cannot
+// run without, so a failure has to stop the update rather than let it report
+// success over a half-applied machine. `allowFailure` is for the exceptions
+// where the file is already written and the command only brings it forward —
+// failing the whole update over one of those would be the worse outcome.
 function run(command, args, options = {}) {
   log(`${command} ${args.join(' ')}`);
   if (dryRun) return '';
-  return execFileSync(command, args, { encoding: 'utf8', stdio: options.stdio || 'inherit' });
+  try {
+    return execFileSync(command, args, { encoding: 'utf8', stdio: options.stdio || 'inherit' });
+  } catch (error) {
+    if (!options.allowFailure) throw error;
+    log(`${command} failed (${error.message}); continuing`);
+    return '';
+  }
 }
 
 function canRun(command, args) {
@@ -247,6 +260,12 @@ function main() {
   for (const socketDir of ['https', 'homepage', 'app', 'backup', 'update', 'lab-reset']) {
     installSocketDir(`/run/mos-${socketDir}-agent`);
   }
+
+  // Rewritten on every managed update rather than only at install, because the
+  // installer is the one path a machine that already exists never runs again.
+  // A setting applied only there would reach reflashed machines and no others.
+  writeFile(JOURNALD_CONFIG_PATH, renderJournaldConfig(), 0o644);
+  if (!dryRun) run('systemctl', ['restart', 'systemd-journald'], { allowFailure: true });
 
   refreshCaddyBinary();
   writeFile('/etc/systemd/system/caddy.service.d/mos.conf', `[Service]

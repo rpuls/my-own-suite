@@ -188,8 +188,61 @@ if [ -n "$last_partition" ]; then
 fi
 sync
 
+# The image carries its bootloader at the removable-media fallback path only, so
+# a fixed disk boots solely on firmware that tries EFI/BOOT/BOOTX64.EFI unasked.
+# The ones that do not say "no bootable drive" with the stick out and boot
+# normally with it in, which reads as a failed install rather than a missing
+# NVRAM entry. Naming the loader here is what tells that firmware where to look.
+register_boot_entry() {
+  [ -d /sys/firmware/efi ] || return 1
+  command -v efibootmgr >/dev/null 2>&1 || return 1
+
+  local esp_partition esp_number existing
+  esp_partition="$(lsblk -nrpo NAME,PARTTYPE "$target" 2>/dev/null \
+    | awk '$2 == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" { print $1 }' | head -n1)"
+  if [ -z "$esp_partition" ]; then
+    esp_partition="$(lsblk -nrpo NAME,FSTYPE "$target" 2>/dev/null \
+      | awk '$2 == "vfat" { print $1 }' | head -n1)"
+  fi
+  [ -n "$esp_partition" ] || return 1
+  esp_number="$(printf '%s' "$esp_partition" | grep -oE '[0-9]+$' || true)"
+  [ -n "$esp_number" ] || return 1
+
+  # Installing a second time, or onto a different disk, must not leave the
+  # firmware choosing between this entry and one naming a disk that is gone.
+  while read -r existing; do
+    [ -n "$existing" ] || continue
+    efibootmgr --delete-bootnum --bootnum "$existing" >/dev/null 2>&1 || true
+  done < <(efibootmgr 2>/dev/null | awk '
+    /^Boot[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]/ {
+      num = substr($0, 5, 4)
+      rest = substr($0, 9)
+      sub(/^\*/, "", rest)
+      sub(/^[ \t]+/, "", rest)
+      sub(/\t.*$/, "", rest)
+      sub(/[ \t]+$/, "", rest)
+      if (rest == "My Own Suite") print num
+    }')
+
+  # Prepended to BootOrder by efibootmgr, so the installed disk is tried before
+  # whatever the firmware was booting before.
+  efibootmgr --create --disk "$target" --part "$esp_number" \
+    --loader '\EFI\BOOT\BOOTX64.EFI' --label 'My Own Suite' >/dev/null 2>&1 || return 1
+}
+
+printf '\n  Registering the disk with this machine'"'"'s firmware.\n'
+if register_boot_entry; then
+  boot_entry_registered=1
+else
+  boot_entry_registered=0
+fi
+
 printf '\n'
 printf '  Done.\n\n'
+if [ "$boot_entry_registered" -eq 0 ]; then
+  printf '  This machine'"'"'s firmware would not take a boot entry, so it may still\n'
+  printf '  need %s selected as its boot device in the BIOS/UEFI setup screen.\n\n' "$target_name"
+fi
 printf '  Remove the USB stick now, then press Enter to restart.\n'
 printf '  > '
 read -r _ || true

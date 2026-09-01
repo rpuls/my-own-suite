@@ -742,3 +742,84 @@ test('external sources persist separately and removing one never uninstalls its 
   assert.equal(instance.sourceTrust, 'unverified');
   store.close();
 });
+
+async function storeWithInstalledApp() {
+  const store = new SuiteManagerStore(await tempStateDir());
+  store.installAppInstance({
+    at: '2026-09-01T10:00:00.000Z',
+    instance: {
+      categorySnapshot: 'tools',
+      displayNameSnapshot: 'Example App',
+      id: 'instance-one',
+      manifestDigest: 'sha256:manifest',
+      packageDigest: `sha256:${'a'.repeat(64)}`,
+      packageId: 'example-app',
+      packageVersion: '0.1.0',
+      privacy: { posture: 'privacy-configured', reviewedAt: '2026-08-30T10:00:00.000Z', status: 'reviewed' },
+      snapshotPath: '/var/lib/mos/app-packages/instance-one/installed',
+      snapshotState: 'installed',
+      source: {
+        kind: 'official-git',
+        path: 'apps/example-app',
+        repository: 'https://github.com/rpuls/my-own-suite',
+        revision: '0123456789abcdef0123456789abcdef01234567',
+        trust: 'mos-reviewed',
+      },
+    },
+    operationId: 'operation-install',
+    projections: [{ contentJson: '{"services":[]}', digest: 'sha256:compose', kind: 'compose' }],
+    request: {},
+  });
+  return store;
+}
+
+test('a failed app operation records the reason instead of discarding it', async () => {
+  const store = await storeWithInstalledApp();
+  const recorded = store.recordFailedAppOperation({
+    at: '2026-09-01T10:05:00.000Z',
+    diagnostics: 'The app image could not be built.\n\nDetails:\n- no space left on device',
+    errorCode: 'APP_BUILD_FAILED',
+    instanceId: 'instance-one',
+    kind: 'apply',
+    operationId: 'operation-failed',
+    request: { packageId: 'example-app', target: 'runtime' },
+  });
+
+  assert.equal(recorded.status, 'failed');
+  assert.equal(recorded.errorCode, 'APP_BUILD_FAILED');
+  assert.match(recorded.diagnostics, /no space left on device/u);
+  assert.equal(store.getAppOperation('operation-failed').diagnostics, recorded.diagnostics);
+  store.close();
+});
+
+test('the latest failure is reported only while it is still the last word on the app', async () => {
+  const store = await storeWithInstalledApp();
+  store.recordFailedAppOperation({
+    at: '2026-09-01T10:05:00.000Z',
+    diagnostics: 'The app container could not be started.',
+    errorCode: 'APP_RUN_FAILED',
+    instanceId: 'instance-one',
+    kind: 'apply',
+    operationId: 'operation-failed',
+    request: {},
+  });
+  assert.equal(store.latestFailedAppOperation('instance-one').errorCode, 'APP_RUN_FAILED');
+
+  // A successful apply after the failure means the owner already fixed it, and
+  // a screen that kept showing the old reason would be reporting a live problem.
+  store.applyAppProjections({
+    at: '2026-09-01T10:10:00.000Z',
+    instanceId: 'instance-one',
+    kinds: ['compose'],
+    operationId: 'operation-recovered',
+    request: { target: 'runtime' },
+  });
+  assert.equal(store.latestFailedAppOperation('instance-one'), null);
+  store.close();
+});
+
+test('an app with no failure on record reports none', async () => {
+  const store = await storeWithInstalledApp();
+  assert.equal(store.latestFailedAppOperation('instance-one'), null);
+  store.close();
+});
