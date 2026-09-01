@@ -193,6 +193,7 @@ Environment=MOS_APP_AGENT_SOCKET=/run/mos-app-agent/agent.sock
 Environment=MOS_APP_PACKAGE_ROOT=${config.stateRoot}/app-packages
 Environment=MOS_BACKUP_AGENT_SOCKET=/run/mos-backup-agent/agent.sock
 Environment=MOS_UPDATE_AGENT_SOCKET=/run/mos-update-agent/agent.sock
+Environment=MOS_DIAGNOSTICS_AGENT_SOCKET=/run/mos-diagnostics-agent/agent.sock
 Environment=MOS_DISPOSABLE_LAB=${config.disposableLab}
 Environment=MOS_LAB_RESET_AGENT_SOCKET=/run/mos-lab-reset-agent/agent.sock
 EnvironmentFile=-/etc/mos/secrets/owner-claim.env
@@ -257,7 +258,7 @@ function main() {
   }
   installDir(`${stateRoot}/update-agent/jobs`, 0o700);
 
-  for (const socketDir of ['https', 'homepage', 'app', 'backup', 'update', 'lab-reset']) {
+  for (const socketDir of ['https', 'homepage', 'app', 'backup', 'update', 'diagnostics', 'lab-reset']) {
     installSocketDir(`/run/mos-${socketDir}-agent`);
   }
 
@@ -329,6 +330,14 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
     script: 'system-agents/update/agent.cjs',
     wants: 'network-online.target docker.service',
   }));
+  unit('mos-diagnostics-agent.service', agentUnit({
+    after: 'network-online.target docker.service',
+    description: 'MOS read-only diagnostics collection agent',
+    env: { MOS_DIAGNOSTICS_AGENT_SOCKET: '/run/mos-diagnostics-agent/agent.sock' },
+    name: 'mos-diagnostics-agent.service',
+    script: 'system-agents/diagnostics/agent.cjs',
+    wants: 'network-online.target docker.service',
+  }));
   unit('mos-lab-reset-agent.service', agentUnit({
     after: 'network-online.target docker.service',
     description: 'MOS lab reset agent',
@@ -343,7 +352,7 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
   if (!fs.existsSync('/etc/caddy/mos-app-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-app-routes.caddy', '# No app runtime routes.\n', 0o644);
 
   run('systemctl', ['daemon-reload']);
-  for (const service of ['mos-homepage.service', 'mos-suite-manager.service', 'caddy.service', 'mos-https-agent.service', 'mos-homepage-agent.service', 'mos-app-agent.service', 'mos-backup-agent.service', 'mos-update-agent.service']) {
+  for (const service of ['mos-homepage.service', 'mos-suite-manager.service', 'caddy.service', 'mos-https-agent.service', 'mos-homepage-agent.service', 'mos-app-agent.service', 'mos-backup-agent.service', 'mos-update-agent.service', 'mos-diagnostics-agent.service']) {
     run('systemctl', ['enable', service]);
     run('systemctl', ['restart', service]);
   }

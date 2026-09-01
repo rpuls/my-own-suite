@@ -21,16 +21,38 @@ const REDACTION_MARKER = '[redacted]';
 // while telling an attacker nothing they could not already guess.
 const MIN_REDACTABLE_SECRET_CHARS = 6;
 
-function redactValues(text, secrets = []) {
-  if (!text || !Array.isArray(secrets) || !secrets.length) return text;
-  const candidates = [...new Set(secrets)]
+function redactableSecrets(secrets = []) {
+  if (!Array.isArray(secrets)) return [];
+  return [...new Set(secrets)]
     .filter((value) => typeof value === 'string' && value.length >= MIN_REDACTABLE_SECRET_CHARS)
     // Longest first, so a secret that contains another is masked whole rather
     // than leaving a recognisable fragment around the inner match.
     .sort((left, right) => right.length - left.length);
+}
+
+function redactValues(text, secrets = []) {
+  if (!text || !secrets?.length) return text;
   let result = text;
-  for (const secret of candidates) result = result.split(secret).join(REDACTION_MARKER);
+  for (const secret of redactableSecrets(secrets)) result = result.split(secret).join(REDACTION_MARKER);
   return result;
+}
+
+// Same masking, plus a count of what it replaced. The count exists so a
+// diagnostics bundle can prove redaction ran rather than asking its reader to
+// take it on trust — a bundle that masked nothing because the secret set arrived
+// empty is indistinguishable from one that had nothing to mask, and those are
+// very different situations. Counts only: reporting which values matched, or how
+// long they were, would rebuild the secret from the report.
+function redactValuesWithReport(text, secrets = []) {
+  const candidates = redactableSecrets(secrets);
+  let result = String(text || '');
+  let maskedCount = 0;
+  for (const secret of candidates) {
+    const parts = result.split(secret);
+    maskedCount += parts.length - 1;
+    result = parts.join(REDACTION_MARKER);
+  }
+  return { candidateCount: candidates.length, maskedCount, text: result };
 }
 
 // The logger redacts every value it writes, so it reads the secrets lazily
@@ -59,4 +81,6 @@ module.exports = {
   REDACTION_MARKER,
   createRedactor,
   redactValues,
+  redactValuesWithReport,
+  redactableSecrets,
 };

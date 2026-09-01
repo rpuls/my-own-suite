@@ -2548,3 +2548,65 @@ test('a recorded failure stops being reported once the app applies successfully'
   }, { appAgent, homeHost: 'home.test' });
 });
 
+
+test('the diagnostics export needs a signed-in owner', async () => {
+  await withServer(async (baseUrl) => {
+    const response = await hostRequest(baseUrl, '/suite-manager/api/support/bundle', { headers: { Host: 'home.test' } });
+
+    assert.equal(response.status, 401);
+    assert.equal(response.json().code, 'AUTH_REQUIRED');
+  }, { homeHost: 'home.test' });
+});
+
+test('the diagnostics export is one downloadable text file that leads with the problem', async () => {
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const response = await hostRequest(baseUrl, '/suite-manager/api/support/bundle', { headers: { Cookie: cookie, Host: 'home.test' } });
+    const text = response.body;
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers['content-type'], /^text\/plain/u);
+    assert.match(response.headers['content-disposition'], /^attachment; filename="mos-diagnostics-[\d-]+\.txt"$/u);
+    assert.ok(text.startsWith('MY OWN SUITE — DIAGNOSTICS'));
+    assert.ok(text.includes('WHAT LOOKS WRONG'));
+    assert.ok(text.includes('COLLECTION NOTES'));
+  }, {
+    homeHost: 'home.test',
+    diagnosticsAgent: {
+      async collect() {
+        return {
+          collectedAt: '2026-09-01T12:00:00.000Z',
+          containers: [{ image: 'mos-app-example:1', labels: {}, log: 'boom', name: 'mos-app-example', state: 'exited', status: 'Exited (1)', troubled: true }],
+          host: {},
+          incomplete: [],
+          units: [{ active: 'active', enabled: 'enabled', log: 'ready', name: 'mos-suite-manager.service', sub: 'running', troubled: false }],
+        };
+      },
+    },
+  });
+});
+
+// The owner asking for this file is disproportionately likely to be the owner
+// whose machine is too broken to answer. An export that 500s at exactly that
+// moment would be worse than useless, so the unreachable agent has to become a
+// line in the file rather than an error page.
+test('the diagnostics export still produces a file when the agent is unreachable', async () => {
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const response = await hostRequest(baseUrl, '/suite-manager/api/support/bundle', { headers: { Cookie: cookie, Host: 'home.test' } });
+    const text = response.body;
+
+    assert.equal(response.status, 200);
+    assert.ok(text.includes('diagnostics agent unreachable (DIAGNOSTICS_AGENT_UNAVAILABLE)'));
+    assert.ok(text.includes('Some information could not be collected'));
+  }, {
+    homeHost: 'home.test',
+    diagnosticsAgent: {
+      async collect() {
+        const error = new Error('The diagnostics system agent is unavailable.');
+        error.code = 'DIAGNOSTICS_AGENT_UNAVAILABLE';
+        throw error;
+      },
+    },
+  });
+});

@@ -94,3 +94,39 @@ test('the installer and a managed update write the identical journald configurat
     'the managed-update path must write the same shared definition, not a copy of it',
   );
 });
+
+// The same rule-7 hazard for a whole unit rather than a config file. A new agent
+// wired into the installer alone would exist on reflashed machines and nowhere
+// else, and the feature that depends on it — the diagnostics export — would fail
+// only for the owners who have been running MOS the longest.
+test('a managed update installs the diagnostics agent, not just a fresh install', () => {
+  const installer = renderBootstrapPlan({}).sshBootstrap;
+  const reconciler = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8');
+
+  for (const source of [installer, reconciler]) {
+    assert.ok(source.includes('system-agents/diagnostics/agent.cjs'), 'both paths must install the diagnostics agent unit');
+    assert.ok(source.includes('/run/mos-diagnostics-agent'), 'both paths must provision the agent socket directory');
+    assert.ok(
+      source.includes('MOS_DIAGNOSTICS_AGENT_SOCKET=/run/mos-diagnostics-agent/agent.sock'),
+      'both paths must tell Suite Manager where the socket is',
+    );
+  }
+
+  // Enabled and started, not merely written: a unit file nobody starts is the
+  // partially applied update this rule exists to prevent.
+  assert.ok(installer.includes('systemctl enable mos-diagnostics-agent.service'));
+  assert.ok(reconciler.includes("'mos-diagnostics-agent.service'"));
+});
+
+// The socket is the only door to a root process that reads host state, so its
+// group and mode are the whole access control. Suite Manager reaches it as a
+// member of mos-agent; nothing else on the machine should.
+test('the diagnostics agent socket is owned by root and reachable only through mos-agent', () => {
+  const installer = renderBootstrapPlan({}).sshBootstrap;
+
+  assert.ok(installer.includes('install -d -m 2770 -o root -g mos-agent /run/mos-diagnostics-agent'));
+  const unit = installer.slice(installer.indexOf('mos-diagnostics-agent.service <<'), installer.indexOf('MOS_DIAGNOSTICS_AGENT_UNIT\n\n'));
+  assert.match(unit, /^User=root$/mu);
+  assert.match(unit, /^Group=mos-agent$/mu);
+  assert.match(unit, /^UMask=0007$/mu);
+});

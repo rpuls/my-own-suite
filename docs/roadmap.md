@@ -232,41 +232,23 @@ the project ships, which is what makes **E3** load-bearing rather than aspiratio
 
 ### I. Knowing why something broke
 
-**Gate:** a tester who hits a failure can hand over one file that contains the reason — and MOS wrote
-that reason down before anyone thought to go looking for it.
+**Gate:** the one file an owner hands over contains the reason for *every* failure class, including a
+privileged command that failed.
 
-MOS was blind, and more completely than "we should add an export button" suggests. Recording is now
-real — the logging format, the persisted app-operation failure, the container log caps and journald
-persistence are contracts in `docs/decisions.md` (2026-09-01). What is left is the half a tester
-actually touches: the host agents still discard the reason a privileged command failed, nothing can
-read host state, and there is still no one file to hand over.
+Most of this theme has landed and its contracts are in `docs/decisions.md` (2026-09-01, both entries):
+the logging format, the persisted app-operation failure, container log caps and journald bounds, the
+root diagnostics agent, and the owner-facing export in **Settings → Get help with a problem**. What is
+left is the one hole that stops the bundle being complete.
 
-This lands in **Now** rather than at the alpha gate for a reason that is about the calendar, not the
-code: the whole point of the beta window is friend-testers hitting failures on machines nobody can SSH
-into. Every week without the remaining three converts a bug report into a shrug.
-
-- **I2 — Capture failed-command output in the host agents.** `#247`. This **amends a stated security
-  property** — `system-agents/README.md` promises logs never include command output — so it should be
-  argued before it is built and recorded in `docs/decisions.md` after. The real hazard is not stderr but
-  the command line: app containers are started with materialized secrets on the argv, so any error path
-  that echoes what it tried to run leaks every app secret at once. Capture output, never arguments.
+- **I2 — Capture failed-command output in the host agents.** `#247`. The agents still run privileged
+  commands with `stdio: 'ignore'`, so a package's failed `docker build` discards its reason and the
+  bundle carries the failure without the cause. This **amends a stated security property** —
+  `system-agents/README.md` promises the HTTPS agent's logs never include command output — so it is
+  argued before it is built and recorded in `docs/decisions.md` after. The real hazard is not stderr
+  but the command line: app containers are started with materialized secrets on the argv, so any error
+  path that echoes what it tried to run leaks every app secret at once. Capture output, never
+  arguments. The diagnostics agent already sets the precedent for the safe half of this.
   *(Medium — posture change)*
-- **I6 — A diagnostics agent that can read host state.** `#251`. Suite Manager is unprivileged, so
-  collection has to be an agent. Its own socket rather than a new operation on the app agent, because
-  reading arbitrary host state is a different kind of power and should be auditable as one thing. The
-  collector list is data, modelled on `managedStateTargets`. Container labels already carry package
-  version and digest, so every collected log stamps itself. *(Medium)*
-- **I7 — Export a redacted diagnostics bundle from Settings.** `#252`. MOS can redact by **exact
-  value** rather than by guessing at token shapes, because Suite Manager holds the plaintext of every
-  app secret — an unusually strong position, and the reason this is safe to ship. This is where the
-  logger's unwired `secretProvider` hook gets wired: per-export is where enumerating every secret is
-  affordable, and per-log-line is not. A streamed zip, so the owner can open it and read what they are
-  about to send, with a plain-language summary and a redaction report that proves masking ran. The
-  decision worth making deliberately is hostnames and IP addresses: not secret, but identifying.
-  **The bundle is sized for a reader with a context window.** Handing a failure to an AI is now a
-  first-class way owners will get help, and a bundle that is a raw journal dump cannot be read by one.
-  It needs a selected, bounded, newest-first shape — the structured records already truncate
-  themselves — and a summary that leads. *(Medium)*
 
 ### J. Configuration an owner can reach
 

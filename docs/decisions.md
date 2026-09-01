@@ -4,6 +4,26 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-09-01: One File An Owner Can Hand Over, Collected By A Root Agent That Takes No Instructions
+
+Decision: A new root agent, `system-agents/diagnostics/`, runs on `/run/mos-diagnostics-agent/agent.sock` under `root:mos-agent` with mode `2770`. It exposes status and one `collect` operation, and that operation takes **no request body**. The collector list — MOS unit journals, `mos-*` container logs, and fixed host facts — is compiled into `agent-core.cjs`. Suite Manager merges the result with what only it knows, redacts by exact value, and serves it from `GET /suite-manager/api/support/bundle` as one `text/plain` attachment. Settings leads with a **Get help with a problem** panel that is deliberately not behind Technical controls.
+
+Reason: The support flow this exists for is an owner who cannot describe what is wrong being told "open Settings, click this, send me the file", and a maintainer feeding that file to an AI agent. Every part of the design falls out of those two sentences. It is one text file rather than an archive because attaching it is the fragile step and because the reader needs no unpacking step. It leads with a derived `WHAT LOOKS WRONG` summary because a raw journal dump cannot be read by a person in a hurry or by a model with a context window. Healthy units and containers contribute a status line and a forty-line tail while troubled ones get four hundred, so a bundle from a working machine is small and a bundle from a broken one spends its budget on the broken part.
+
+The agent taking no input is the whole security argument, not an ergonomic choice. A root process that reads arbitrary host state on behalf of an unprivileged web app is an arbitrary-file-read primitive the moment a request can steer it, so the list is compiled in and a unit test asserts `collect` has no parameters. It deliberately captures command *output*, which the other agents do not — that output is the diagnostic — but still never captures command *arguments*, because app containers are started with materialized secrets on their argv.
+
+Consequences:
+
+- A new privileged surface exists on every install. It is read-only, unsteerable, and its socket is reachable only through `mos-agent`, but it is privileged and should be reviewed as such.
+- The agent performs no redaction, by design: Suite Manager holds the plaintext of every app secret and is the only component that can mask by exact value. Nothing the agent returns reaches disk or a log line before that runs.
+- This wires the `secretProvider` hook the logger left unwired. `collectRedactionSecrets` walks the secret files on disk rather than joining across config and env rows, so a secret belonging to an instance whose rows were deleted is still masked — exactly the one a stale log line carries.
+- Redaction runs once over the finished text. That is safe here and would not be in the logger: plain text has escaped nothing on the way in, so an exact-value match still matches.
+- The file reports how many secrets were checked for and how many values were masked. A bundle whose secret set arrived empty says so in capitals rather than implying it masked something.
+- **Hostnames and local IP addresses are kept.** They are identifying but not secret, and a route failure cannot be diagnosed without them. The file states this in its own header, so an owner knows what they are sending before they send it.
+- The endpoint requires a signed-in owner. An owner locked out of Suite Manager cannot produce a bundle; an unauthenticated export describing the machine would be a reconnaissance endpoint, and that trade is made deliberately in favour of the latter risk.
+- Both install paths install and start the agent — the bootstrap for new machines and `reconcile-system.cjs` for every managed update — with a test asserting it, because a new unit wired into the installer alone would exist only on reflashed machines.
+- The five `cloud-path-lock` digests moved again. Verified the same way: every rendered installer changed in bytes and not one `echo` line did.
+
 ## 2026-09-01: MOS Writes Down Why Something Broke, In One Bounded Machine-Readable Format
 
 Decision: Suite Manager logs one JSON object per line to stdout and nothing else. journald captures it, so MOS owns no log files and no rotation. Every record carries `ts`, `level` and `event`, and a caller cannot overwrite those three. Fields are bounded — 2 000 characters each, 12 stack frames, 16 000 characters per record — and truncation states how much it removed rather than cutting silently. The catch-all request handler, which previously classified an internal error, returned `Internal server error.` and wrote it nowhere, now logs it with the method and the path and mints an eight-character `reference` that goes out in the response body, so a screenshot and a journal line can be matched without guessing at timestamps. The query string is never logged, because it carries claim tokens.

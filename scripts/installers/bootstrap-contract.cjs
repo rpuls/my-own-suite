@@ -276,6 +276,7 @@ install -d -m 2770 -o root -g mos-agent /run/mos-homepage-agent
 install -d -m 2770 -o root -g mos-agent /run/mos-app-agent
 install -d -m 2770 -o root -g mos-agent /run/mos-backup-agent
 install -d -m 2770 -o root -g mos-agent /run/mos-update-agent
+install -d -m 2770 -o root -g mos-agent /run/mos-diagnostics-agent
 install -d -m 2770 -o root -g mos-agent /run/mos-lab-reset-agent
 install -d -m 0700 /var/lib/mos/https-agent/transactions
 install -d -m 0700 /var/lib/mos/homepage-agent/transactions /var/lib/mos/homepage-agent/history
@@ -474,6 +475,28 @@ RestartSec=3
 WantedBy=multi-user.target
 MOS_UPDATE_AGENT_UNIT
 
+cat > /etc/systemd/system/mos-diagnostics-agent.service <<MOS_DIAGNOSTICS_AGENT_UNIT
+[Unit]
+Description=MOS read-only diagnostics collection agent
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+User=root
+Group=mos-agent
+UMask=0007
+WorkingDirectory=$MOS_INSTALL_ROOT/repo
+Environment=NODE_ENV=production
+Environment=MOS_DIAGNOSTICS_AGENT_SOCKET=/run/mos-diagnostics-agent/agent.sock
+ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/diagnostics/agent.cjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+MOS_DIAGNOSTICS_AGENT_UNIT
+
 cat > /etc/systemd/system/mos-lab-reset-agent.service <<MOS_LAB_RESET_AGENT_UNIT
 [Unit]
 Description=MOS lab reset agent
@@ -545,6 +568,8 @@ systemctl enable mos-backup-agent.service
 systemctl restart mos-backup-agent.service
 systemctl enable mos-update-agent.service
 systemctl restart mos-update-agent.service
+systemctl enable mos-diagnostics-agent.service
+systemctl restart mos-diagnostics-agent.service
 if [ "$MOS_DISPOSABLE_LAB" = '1' ]; then
   systemctl enable mos-lab-reset-agent.service
   systemctl restart mos-lab-reset-agent.service

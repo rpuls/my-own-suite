@@ -193,6 +193,56 @@ function SecurityActivity({ error, summary }: { error: string; summary: Security
   </div>;
 }
 
+// Deliberately not behind Technical controls, and the one place in Suite Manager
+// where that is the whole point. This exists for an owner who cannot describe
+// what is wrong, which is exactly the owner who will never have found a
+// technical toggle — gating it would hide the feature from its only user.
+// Nothing here is technical to look at: one sentence, one button, one file.
+function GetHelpPanel() {
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState('');
+  const [created, setCreated] = useState('');
+
+  async function create() {
+    setCreating(true);
+    setError('');
+    setCreated('');
+    try {
+      const response = await fetch('/suite-manager/api/support/bundle');
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error || 'The diagnostics file could not be created.');
+      }
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const filename = /filename="([^"]+)"/u.exec(disposition)?.[1] || 'mos-diagnostics.txt';
+      const blob = await response.blob();
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = href;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(href);
+      setCreated(filename);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The diagnostics file could not be created.');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return <div className="mos-panel suite-card suite-settings-panel">
+    <div>
+      <h2 className="mos-card-title">Get help with a problem</h2>
+      <p className="suite-meta">If something is not working, MOS can put everything a helper needs into one file: what is running, what failed recently, and why. Passwords and app secrets are removed before the file is written.</p>
+    </div>
+    {error ? <Notice title="The file could not be created" variant="error"><p>{error}</p></Notice> : null}
+    {created ? <Notice title="File saved to your downloads" variant="success"><p>Send <strong>{created}</strong> to whoever is helping you.</p></Notice> : null}
+    <button className="mos-btn mos-btn-primary" disabled={creating} onClick={() => void create()} type="button">{creating ? 'Collecting...' : 'Create diagnostics file'}</button>
+  </div>;
+}
+
 export function SettingsScreen() {
   const [status, setStatus] = useState<HttpsStatus | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -294,6 +344,7 @@ export function SettingsScreen() {
 
   return <section className="mos-shell mos-page">
     <div className="suite-hero"><h1>Settings</h1><p className="suite-lead mos-body-lg">Manage how this MOS Home is reached from your browser, and the owner account that controls it.</p></div>
+    <GetHelpPanel />
     {loadError ? <Notice title="Settings unavailable" variant="error"><p>{loadError}</p></Notice> : null}
     {status ? !status.privateHttpsAvailable ? <div className="mos-panel suite-card suite-settings-panel">
       <div><h2 className="mos-card-title">Custom domains are handled by your provider</h2><p className="suite-meta">This install looks like it is hosted on an external provider. MOS does not manage public DNS, provider routing, or public TLS from here.</p></div>

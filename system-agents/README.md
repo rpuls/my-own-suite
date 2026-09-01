@@ -40,6 +40,16 @@ The first apply path is branch-track reconciliation for MOS lab installs. The ag
 
 Installed app runtimes are decoupled from the moving repository checkout. Core managed updates refresh every repo-owned host agent, while each installed app continues to run and be managed from its preserved snapshot. Package updates are discovered and applied independently through the app update transaction; a core update does not silently rebuild apps from newer repository package files.
 
+## Diagnostics Agent
+
+`diagnostics/agent.cjs` runs over `/run/mos-diagnostics-agent/agent.sock`. It exposes only status and a single `collect` operation, and that operation **takes no request body at all**: the collector list is compiled into `diagnostics/agent-core.cjs`, so a caller cannot name a unit, container, path, or line count. This is the security argument for the agent, not a convenience — a root process that reads host state on behalf of an unprivileged web app must not be steerable by it, or it is an arbitrary-file-read primitive. Adding a source means editing the list and shipping it. A unit test asserts `collect` has no parameters, so widening it cannot pass unnoticed.
+
+It reads systemd unit states and journals for MOS-owned units, `docker ps` and per-container logs for containers named `mos-*`, and fixed host facts (`uname`, `uptime`, `df`, `free`, `docker system df`). Unlike the other agents it deliberately **captures command output**, because that output is the diagnostic. It still never captures command arguments: app containers are started with materialized secrets on their argv, so an error path that echoed what it tried to run would leak every app secret at once.
+
+Collection is best-effort per source. This runs on a machine that is by definition not well, so a collector that fails is an expected outcome, not an exceptional one; each failure is named in `incomplete` and the rest of the bundle is still returned. A collection already in flight is joined rather than duplicated.
+
+The agent performs no redaction. It returns raw text to Suite Manager, which holds the plaintext of every app secret and is therefore the only component that can mask by exact value. Nothing the agent returns reaches disk or a log line before that redaction runs.
+
 ## Lab Reset Agent
 
 `lab-reset/agent.cjs` runs over `/run/mos-lab-reset-agent/agent.sock` only on USB/Hyper-V lab installs where `MOS_LAB_RESET_ENABLED=1`. Suite Manager exposes `/suite-manager/api/lab/reset` only when that flag is set; non-lab installs return `LAB_RESET_DISABLED`.

@@ -17,6 +17,8 @@ const { createHomepageProxy } = require('./homepage-proxy.cjs');
 const { createLogger, requestId } = require('./logger.cjs');
 const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
+const { DiagnosticsAgentClient } = require('../diagnostics/diagnostics-agent-client.cjs');
+const { assembleSupportBundle } = require('../diagnostics/support-bundle.cjs');
 const { OfficialCatalogError, OfficialCatalogService } = require('../apps/official-catalog-service.cjs');
 const { ExternalSourceClient } = require('../apps/external-source-client.cjs');
 const { AppOperationLimiter } = require('../apps/app-operation-limits.cjs');
@@ -349,6 +351,7 @@ function serveFrontend(response, frontendDistDir) {
 function createMOSServer({
   appAgent = new AppAgentClient(),
   backupAgent = new BackupAgentClient(),
+  diagnosticsAgent = new DiagnosticsAgentClient(),
   appsDir = DEFAULT_APPS_DIR,
   homepageAgent = new HomepageAgentClient(),
   httpsAgent = new HttpsAgentClient(),
@@ -863,6 +866,31 @@ function createMOSServer({
           contentLength,
           destinationId: String(url.searchParams.get('destinationId') || ''),
         }));
+        return;
+      }
+
+      // One file an owner can hand to whoever is helping them. Signed in only:
+      // it reports the shape of the machine, and an export anyone could fetch
+      // would be a reconnaissance endpoint on an unauthenticated port.
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/support/bundle`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to create a diagnostics file.' });
+          return;
+        }
+        const bundle = await assembleSupportBundle({
+          agent: diagnosticsAgent,
+          frontDoor,
+          homeHost,
+          platformVersion: catalogService.platformVersion,
+          secretDir: appPackages.secretDir,
+          store: setup.store,
+          updateStatus: await updates.status().catch(() => null),
+        });
+        response.writeHead(200, {
+          'Content-Disposition': `attachment; filename="${bundle.filename}"`,
+          'Content-Type': 'text/plain; charset=utf-8',
+        });
+        response.end(bundle.text);
         return;
       }
 
