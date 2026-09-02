@@ -29,7 +29,13 @@ export async function exportDiagnosticsBundle(page, entryUrl = '/') {
   const savedPath = await download.path();
   const bundle = await fs.readFile(savedPath, 'utf8');
 
-  await expect(page.getByRole('heading', { name: 'Saved to your downloads' })).toBeVisible();
+  // Notice renders its title as <strong>, not a heading, so this is located by
+  // its success variant and text. Asserting the filename too checks the thing
+  // that actually matters to an owner: the name the screen tells them to send is
+  // the name the browser saved.
+  const saved = page.locator('.suite-notice-success').filter({ hasText: 'Saved to your downloads' });
+  await expect(saved).toBeVisible();
+  await expect(saved).toContainText(download.suggestedFilename());
 
   return bundle;
 }

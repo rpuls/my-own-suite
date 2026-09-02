@@ -7,6 +7,13 @@ import { inspectLogSurface } from './log-surface-rules.mjs';
 export async function assertLogSurface(bundle, env) {
   const { failures, inventory } = inspectLogSurface(bundle, env);
 
+  // The bundle is the artifact under test, so it is attached whatever the
+  // outcome. Without it a failure here says a section was wrong and throws away
+  // the only copy of what it actually contained, leaving nothing to diagnose
+  // from but the assertion text. It is redacted and bounded by construction,
+  // which is what makes attaching it safe.
+  await test.info().attach('diagnostics-bundle.txt', { body: bundle, contentType: 'text/plain' });
+
   // Attached rather than asserted. A committed baseline of third-party log
   // wording would go stale on every package bump, and a test everyone overrides
   // is worse than no test — so drift is reported for a human to compare between

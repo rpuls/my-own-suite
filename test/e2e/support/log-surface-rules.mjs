@@ -140,7 +140,16 @@ export function inspectLogSurface(input = '', env = {}) {
   // If the logger ever fell back to human-readable output on an installed server
   // — journald is not a terminal, so it must not — there would be no parseable
   // records at all, and every downstream reader would silently degrade to grep.
-  if (!records.length) failures.push('no structured log records were found: Suite Manager is not writing JSON to the journal.');
+  if (!records.length) {
+    // Three very different causes produce zero records — the logger not writing
+    // JSON, journalctl returning nothing for the unit, or the collector never
+    // reaching it — so quote what the section actually held rather than making
+    // the reader guess from an assertion message.
+    const services = sectionOf(bundle, 'SERVICES');
+    const suiteManager = services.slice(services.indexOf('mos-suite-manager.service'));
+    const sample = (suiteManager || services).split('\n').slice(0, 6).join(' / ').slice(0, 400);
+    failures.push(`no structured log records were found: Suite Manager is not writing JSON to the journal. The SERVICES section began: ${sample || '(the section was empty)'}`);
+  }
 
   // Counted per container rather than searched for as indented text: every
   // container block carries indented `image` and `package` lines whether or not
