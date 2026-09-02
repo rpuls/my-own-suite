@@ -776,9 +776,15 @@ test('a failure after activation rolls the old runtime back and closes the updat
   const service = new AppPackageService({
     agent: {
       ...externalUpdateAgent(root, calls, next.packageDir),
+      async apply(input) { calls.push(['apply', input]); return { publicUrl: input.publicUrl, status: 'applied', steps: [] }; },
+      async checkHealth() { return { status: 'healthy' }; },
       async promotePackageUpdate(input) {
         calls.push(['promote', input]);
-        throw Object.assign(new Error('The app package snapshot could not be promoted.'), { code: 'APP_UPDATE_PROMOTION_FAILED', statusCode: 502 });
+        throw Object.assign(new Error('The app package snapshot could not be promoted.'), {
+          code: 'APP_UPDATE_PROMOTION_FAILED',
+          details: ['mv for the candidate snapshot exited with code 1.', 'Last output:\n  mv: cannot move: No space left on device\n  NOTES_API_TOKEN=notes-token-9f8e7d6c5b4a'],
+          statusCode: 502,
+        });
       },
     },
     appsDir: v2AppsDir,
@@ -787,6 +793,10 @@ test('a failure after activation rolls the old runtime back and closes the updat
   });
   await service.installExternalPackage({ candidate: installedPackage });
   registerSource(store);
+  await service.applyPackageRuntime('x-abcdef01-community-notes', requestContext().publicUrlFor('notes'));
+  await service.savePackageEnvironment('x-abcdef01-community-notes', {
+    entries: [{ name: 'NOTES_API_TOKEN', secret: true, value: 'notes-token-9f8e7d6c5b4a' }],
+  }, requestContext().publicUrlFor('notes'));
   const installed = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
   const comparison = await service.preparePackageUpdate('x-abcdef01-community-notes');
 
@@ -794,6 +804,16 @@ test('a failure after activation rolls the old runtime back and closes the updat
     () => service.stagePackageUpdate('x-abcdef01-community-notes', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('notes')),
     (error) => error.code === 'APP_UPDATE_PROMOTION_FAILED',
   );
+
+  // The closed operation keeps the agent's reason, with the owner's secret
+  // masked before it reached the record.
+  const failure = store.latestFailedAppOperation(installed.id);
+  assert.equal(failure.kind, 'update');
+  assert.equal(failure.errorCode, 'APP_UPDATE_PROMOTION_FAILED');
+  assert.match(failure.diagnostics, /The app package snapshot could not be promoted\./u);
+  assert.match(failure.diagnostics, /No space left on device/u);
+  assert.ok(!failure.diagnostics.includes('notes-token-9f8e7d6c5b4a'));
+  assert.match(failure.diagnostics, /NOTES_API_TOKEN=\[redacted\]/u);
 
   // The agent was asked to restore exactly the runtime that was serving before.
   const [, rollback] = calls.find(([kind]) => kind === 'rollback');
@@ -1111,7 +1131,13 @@ test('the recovery action restores the recorded runtime after a failed rollback'
     async rollbackPackageUpdate(input) {
       rollbackAttempts += 1;
       calls.push(['rollback', input]);
-      if (rollbackAttempts === 1) throw Object.assign(new Error('The previous runtime could not be restored.'), { code: 'APP_UPDATE_ROLLBACK_FAILED', statusCode: 502 });
+      if (rollbackAttempts === 1) {
+        throw Object.assign(new Error('The previous runtime could not be restored.'), {
+          code: 'APP_UPDATE_ROLLBACK_FAILED',
+          details: ['docker run for service "stirling-pdf" exited with code 125.', 'Last output:\n  Bind for 127.0.0.1:18101 failed: port is already allocated.'],
+          statusCode: 502,
+        });
+      }
       return { status: 'installed-restored' };
     },
     async snapshotPackage(input) { return snapshotResult(input); },
@@ -1134,6 +1160,21 @@ test('the recovery action restores the recorded runtime after a failed rollback'
     (error) => error.code === 'APP_UPDATE_ROLLBACK_FAILED',
   );
   assert.equal(store.getAppInstanceByPackageId('stirling-pdf').updateRecoveryState, 'rollback-required');
+  // A failed rollback replaced the error but not the reason: the record reads
+  // why the update failed, then why the restore did.
+  const rollbackFailure = store.latestFailedAppOperation(installed.id);
+  assert.equal(rollbackFailure.errorCode, 'APP_UPDATE_ROLLBACK_FAILED');
+  assert.equal(rollbackFailure.diagnostics, [
+    'The app update failed and the previous runtime could not be restored. Recovery is required.',
+    '',
+    'Details:',
+    '- The app package snapshot could not be promoted.',
+    '- Restoring the previous version then failed too:',
+    '- The previous runtime could not be restored.',
+    '- docker run for service "stirling-pdf" exited with code 125.',
+    '- Last output:',
+    '    Bind for 127.0.0.1:18101 failed: port is already allocated.',
+  ].join('\n'));
   await assert.rejects(
     () => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf')),
     (error) => error.code === 'APP_UPDATE_RECOVERY_REQUIRED',

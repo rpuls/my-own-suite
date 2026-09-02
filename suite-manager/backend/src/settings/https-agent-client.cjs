@@ -1,5 +1,18 @@
 const http = require('node:http');
 
+// What the HTTPS agent answered, or why it could not be asked. `details` is
+// the agent's own explanation of a failure — the failing command's last output,
+// what Cloudflare replied — already masked of the token before it left root.
+class HttpsAgentError extends Error {
+  constructor(code, message, { details = [], statusCode = 502 } = {}) {
+    super(message);
+    this.name = 'HttpsAgentError';
+    this.code = code;
+    this.details = details;
+    this.statusCode = statusCode;
+  }
+}
+
 class HttpsAgentClient {
   constructor({ socketPath = process.env.MOS_HTTPS_AGENT_SOCKET || '/run/mos-https-agent/agent.sock', timeoutMs = 120000 } = {}) {
     this.socketPath = socketPath;
@@ -26,11 +39,15 @@ class HttpsAgentClient {
             resolve(parsed);
             return;
           }
-          reject(new Error('HTTPS_AGENT_REJECTED'));
+          reject(new HttpsAgentError(
+            typeof parsed.code === 'string' ? parsed.code : 'HTTPS_AGENT_REJECTED',
+            typeof parsed.error === 'string' ? parsed.error : 'The HTTPS system agent rejected the request.',
+            { details: Array.isArray(parsed.details) ? parsed.details.filter((detail) => typeof detail === 'string') : [], statusCode: response.statusCode },
+          ));
         });
       });
-      request.on('error', () => reject(new Error('HTTPS_AGENT_UNAVAILABLE')));
-      request.on('timeout', () => request.destroy(new Error('HTTPS_AGENT_TIMEOUT')));
+      request.on('error', (cause) => reject(cause instanceof HttpsAgentError ? cause : new HttpsAgentError('HTTPS_AGENT_UNAVAILABLE', 'The HTTPS system agent did not answer.', { statusCode: 503 })));
+      request.on('timeout', () => request.destroy(new HttpsAgentError('HTTPS_AGENT_TIMEOUT', 'The HTTPS system agent did not finish in time.', { statusCode: 504 })));
       if (payload) request.write(payload);
       request.end();
     });
@@ -42,4 +59,4 @@ class HttpsAgentClient {
   rollback(rollbackId) { return this.request('POST', '/v1/https/rollback', { rollbackId }); }
 }
 
-module.exports = { HttpsAgentClient };
+module.exports = { HttpsAgentClient, HttpsAgentError };

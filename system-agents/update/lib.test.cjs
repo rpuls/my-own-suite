@@ -5,7 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { execFileSync } = require('node:child_process');
 
-const { buildPaths, collectStatus, runApply, writeUpdateTrack } = require('./lib.cjs');
+const { StepFailure, buildPaths, collectStatus, runApply, summarizeJob, writeUpdateTrack } = require('./lib.cjs');
 
 function run(cwd, args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -197,4 +197,41 @@ test('apply installs dependencies from lockfile without dirtying package-lock', 
 
   assert(logs.some((message) => /npm ci --include=dev/u.test(message)));
   assert.equal(run(repo, ['status', '--porcelain']), '');
+});
+
+// The reason an update failed used to live only in the journal of a transient
+// unit. It now rides on the job: a sentence naming the step, and the last lines
+// the step wrote.
+test('a failing apply step names itself and keeps the tail of what it wrote', async () => {
+  const repo = makeRepo();
+  const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-state-'));
+  const paths = buildPaths(repo, stateRoot);
+  const manifest = JSON.parse(fs.readFileSync(path.join(repo, 'package.json'), 'utf8'));
+  manifest.scripts['build:client'] = 'node -e "console.error(\'vite: JavaScript heap out of memory\'); process.exit(3)"';
+  write(path.join(repo, 'package.json'), JSON.stringify(manifest));
+  run(repo, ['add', '.']);
+  run(repo, ['commit', '-m', 'break the build']);
+  const remote = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mos-update-remote-')), 'origin.git');
+  execFileSync('git', ['clone', '--bare', repo, remote], { encoding: 'utf8' });
+  run(repo, ['remote', 'set-url', 'origin', remote]);
+  run(repo, ['reset', '--hard', 'HEAD~1']);
+
+  process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP = '1';
+  try {
+    await assert.rejects(() => runApply(paths, { log() {} }), (error) => {
+      assert.ok(error instanceof StepFailure);
+      assert.equal(error.message, 'npm run build:client exited with code 3.');
+      assert.match(error.output, /heap out of memory/u);
+      return true;
+    });
+  } finally {
+    delete process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP;
+  }
+});
+
+test('a job summary carries the failure output only when there is one', () => {
+  assert.equal(summarizeJob(null), null);
+  assert.equal(summarizeJob({ id: 'a', status: 'succeeded' }).output, null);
+  assert.equal(summarizeJob({ id: 'a', output: '', status: 'failed' }).output, null);
+  assert.equal(summarizeJob({ id: 'a', output: 'npm ERR! 404', status: 'failed' }).output, 'npm ERR! 404');
 });

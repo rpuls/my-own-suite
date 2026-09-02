@@ -2,7 +2,6 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { buildAppOperationDiagnostics } = require('./app-operation-diagnostics.cjs');
 
 const {
   APP_LOOPBACK_PORT_BASE,
@@ -31,6 +30,7 @@ const {
   privacyReviewPresentation,
   publicInstance,
   readSecretValue,
+  redactionSecretsFor,
   renderDryRunProjections,
   renderInstanceProjections,
   requestContextForPackage,
@@ -58,6 +58,7 @@ const {
   publicPackageSummary,
   readAppPackageManifest,
 } = require('./package-manifest.cjs');
+const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnostics.cjs');
 
 // How long MOS waits for an app to come back healthy after an owner environment
 // change before treating the change as the reason it did not. 90 s is
@@ -336,12 +337,7 @@ class AppPackageService {
           kind: 'apply',
           operationId: crypto.randomUUID(),
           request: { packageId: manifest.id, target: 'runtime' },
-          ...buildAppOperationDiagnostics(error, {
-            secrets: [
-              ...configRows.map((row) => row.rawValue),
-              ...envRows.map((row) => row.rawValue ?? row.value),
-            ].filter((value) => typeof value === 'string'),
-          }),
+          ...buildOperationDiagnostics(error, { fallbackCode: 'APP_RUNTIME_APPLY_FAILED', secrets: redactionSecretsFor(configRows, envRows) }),
         });
       } catch { /* the original failure is the one that matters */ }
       throw error;

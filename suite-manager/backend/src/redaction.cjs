@@ -8,11 +8,12 @@
 // that every caller must hand over the values, which is why this is a function
 // of (text, secrets) rather than something clever that inspects the text.
 //
-// It lives on its own because it has two callers that must not drift apart —
-// the logger, which redacts before a line reaches the journal, and app operation
-// diagnostics, which redacts before text reaches SQLite and therefore every
-// backup bundle. A second copy of this that disagreed about the minimum length
-// would leak on exactly the secrets the other one masked.
+// It lives on its own because its callers must not drift apart — the logger,
+// which redacts before a line reaches the journal; operation diagnostics, which
+// redact before text reaches SQLite and therefore every backup bundle; and the
+// support bundle, which redacts the finished file. A second copy of this that
+// disagreed about the minimum length would leak on exactly the secrets the
+// other one masked.
 
 const REDACTION_MARKER = '[redacted]';
 

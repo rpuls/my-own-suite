@@ -2463,8 +2463,8 @@ test('a failed runtime apply is recorded, readable on the app, and carries no se
       const error = new Error('The app image could not be built.');
       error.code = 'APP_BUILD_FAILED';
       error.statusCode = 502;
-      // A stand-in for the shape I2 will make routine: the failing command's
-      // own text, carrying the materialized secret it was invoked with.
+      // The shape the agent's command runner produces: the failing command's
+      // own output, carrying the materialized secret it was invoked with.
       error.details = [`no space left on device while starting with ADMIN_TOKEN=${generatedToken}`];
       throw error;
     },

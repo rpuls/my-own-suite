@@ -222,6 +222,16 @@ function publicConfig(configRows = []) {
   }));
 }
 
+// Every value these rows could leak into free text, for redaction by exact
+// value. All of them, not only the rows marked secret: an owner-set plain
+// variable is theirs to see, but a generated value is never worth quoting.
+function redactionSecretsFor(configRows = [], envRows = []) {
+  return [
+    ...configRows.map((row) => row.rawValue),
+    ...envRows.map((row) => row.rawValue ?? row.value),
+  ].filter((value) => typeof value === 'string');
+}
+
 // The same shape as publicConfig, for the same reason: a secret row exposes its
 // fingerprint and a label to render, never its value.
 function publicEnv(envRows = []) {
@@ -717,6 +727,7 @@ module.exports = {
   publicEnv,
   publicInstance,
   readSecretValue,
+  redactionSecretsFor,
   renderDryRunProjections,
   renderInstanceProjections,
   requestContextForPackage,

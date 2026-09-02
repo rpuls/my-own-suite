@@ -8,6 +8,7 @@ const targetPath = require.resolve('../src/settings/https-settings-service.cjs')
 const target = require(targetPath);
 const sharedDir = path.resolve(path.dirname(targetPath), '../../../../shared');
 const { HttpsSettingsError } = require(path.join(sharedDir, 'https-contract.cjs'));
+const { HttpsAgentError } = require('../src/settings/https-agent-client.cjs');
 
 const {
   HttpsSettingsService,
@@ -379,7 +380,81 @@ test('apply records failure and throws HTTPS_APPLY_FAILED when the agent fails',
   assert.equal(storeCalls.begin.length, 1);
   assert.equal(storeCalls.fail.length, 1);
   assert.equal(storeCalls.fail[0].errorCode, 'HTTPS_APPLY_FAILED');
+  assert.equal(storeCalls.fail[0].diagnostics, 'HTTPS could not be applied.\n\nDetails:\n- agent unavailable');
   assert.equal(agentCalls.rollback.length, 0);
+});
+
+test('a failure the agent explained keeps its code, its sentence, and its reason, minus the token', async () => {
+  const { store, calls: storeCalls } = makeStore();
+  const { agent } = makeAgent();
+  const input = validHttpsInput();
+
+  agent.apply = async () => {
+    throw new HttpsAgentError('HTTPS_CADDY_VALIDATION_FAILED', 'Caddy rejected the new configuration.', {
+      details: [
+        'caddy validate for the new configuration exited with code 1.',
+        `Last output:\n  Error: adapting config using caddyfile: /etc/caddy/Caddyfile:14: unrecognized directive: tls_dns\n  environment: CLOUDFLARE_API_TOKEN=${input.cloudflareApiToken}`,
+      ],
+    });
+  };
+
+  const service = new HttpsSettingsService({
+    agent,
+    bootstrapHost: 'bootstrap.test',
+    frontDoor: 'ssh-bootstrap',
+    now: () => new Date('2024-01-01T00:00:00.000Z'),
+    store,
+  });
+
+  await assert.rejects(
+    service.apply(input),
+    (error) =>
+      error instanceof HttpsSettingsError &&
+      error.code === 'HTTPS_CADDY_VALIDATION_FAILED' &&
+      error.statusCode === 502 &&
+      error.message === 'Caddy rejected the new configuration. The previous configuration remains active.',
+  );
+
+  const [failure] = storeCalls.fail;
+  assert.equal(failure.errorCode, 'HTTPS_CADDY_VALIDATION_FAILED');
+  assert.equal(failure.diagnostics, [
+    'Caddy rejected the new configuration.',
+    '',
+    'Details:',
+    '- caddy validate for the new configuration exited with code 1.',
+    '- Last output:',
+    '    Error: adapting config using caddyfile: /etc/caddy/Caddyfile:14: unrecognized directive: tls_dns',
+    '    environment: CLOUDFLARE_API_TOKEN=[redacted]',
+  ].join('\n'));
+  assert.ok(!failure.diagnostics.includes(input.cloudflareApiToken));
+});
+
+test('a Cloudflare refusal is the owner\'s to fix, so it comes back as their error rather than a gateway one', async () => {
+  const { store, calls: storeCalls } = makeStore();
+  const { agent } = makeAgent();
+
+  agent.apply = async () => {
+    throw new HttpsAgentError('CLOUDFLARE_ACCESS_DENIED', 'Cloudflare rejected the API token.', {
+      details: ['Cloudflare answered the zone lookup for "example.com" with HTTP 400 and error code 6003.', 'Cloudflare said: Invalid request headers'],
+      statusCode: 400,
+    });
+  };
+
+  const service = new HttpsSettingsService({
+    agent,
+    bootstrapHost: 'bootstrap.test',
+    frontDoor: 'ssh-bootstrap',
+    now: () => new Date('2024-01-01T00:00:00.000Z'),
+    store,
+  });
+
+  await assert.rejects(
+    service.apply(validHttpsInput()),
+    (error) => error.code === 'CLOUDFLARE_ACCESS_DENIED' && error.statusCode === 400,
+  );
+  assert.equal(storeCalls.fail[0].errorCode, 'CLOUDFLARE_ACCESS_DENIED');
+  assert.match(storeCalls.fail[0].diagnostics, /error code 6003/u);
+  assert.match(storeCalls.fail[0].diagnostics, /Cloudflare said: Invalid request headers/u);
 });
 
 test('apply treats an agent response without a rollback id as a failure', async () => {

@@ -1207,13 +1207,13 @@ class SuiteManagerStore {
     return this.getAppOperation(operationId);
   }
 
-  failAppUpdate({ at, errorCode, instanceId, operationId, recoveryState = 'none', stage }) {
+  failAppUpdate({ at, diagnostics = null, errorCode, instanceId, operationId, recoveryState = 'none', stage }) {
     this.transaction(() => {
       this.database.prepare(`
         UPDATE app_operations
-        SET status = 'failed', stage = ?, error_code = ?, completed_at = ?
+        SET status = 'failed', stage = ?, error_code = ?, diagnostics = ?, completed_at = ?
         WHERE id = ? AND instance_id = ? AND kind = 'update' AND status = 'running'
-      `).run(stage, errorCode, at, operationId, instanceId);
+      `).run(stage, errorCode, diagnostics, at, operationId, instanceId);
       this.database.prepare(`
         UPDATE app_instances SET update_recovery_state = ?, update_recovery_error = ?, updated_at = ? WHERE id = ?
       `).run(recoveryState, recoveryState === 'none' ? null : errorCode, at, instanceId);

@@ -2,7 +2,7 @@
 
 const path = require('node:path');
 
-const { buildPaths, collectStatus, readJson, runApply, writeJson } = require('./lib.cjs');
+const { buildPaths, collectStatus, readJson, runApply, summarizeJob, writeJson } = require('./lib.cjs');
 
 function argValue(name) {
   const index = process.argv.indexOf(name);
@@ -22,19 +22,6 @@ function updateJob(patch) {
   return next;
 }
 
-function summarizeJob(job) {
-  return {
-    completedAt: job.completedAt || null,
-    error: typeof job.error === 'string' ? job.error : null,
-    id: job.id,
-    logs: Array.isArray(job.logs) ? job.logs.slice(-30) : [],
-    stage: job.stage || null,
-    status: job.status || null,
-    target: job.target || null,
-    updatedAt: job.updatedAt || null,
-  };
-}
-
 function mapStage(message) {
   if (/Fetching|checkout|Fast-forwarding|Repository/u.test(message)) return 'updating-checkout';
   if (/dependencies/u.test(message)) return 'installing-dependencies';
@@ -42,6 +29,16 @@ function mapStage(message) {
   if (/Reconciling/u.test(message)) return 'reconciling-system';
   if (/completed/u.test(message)) return 'succeeded';
   return 'running';
+}
+
+function failJob(error) {
+  updateJob({
+    completedAt: new Date().toISOString(),
+    error: error instanceof Error ? error.message : String(error),
+    output: typeof error?.output === 'string' && error.output ? error.output : null,
+    stage: 'failed',
+    status: 'failed',
+  });
 }
 
 async function main() {
@@ -65,24 +62,12 @@ async function main() {
       updaterStatus: finalStatus,
     });
   } catch (error) {
-    updateJob({
-      completedAt: new Date().toISOString(),
-      error: error instanceof Error ? error.message : String(error),
-      stage: 'failed',
-      status: 'failed',
-    });
+    failJob(error);
     process.exitCode = 1;
   }
 }
 
 main().catch((error) => {
-  try {
-    updateJob({
-      completedAt: new Date().toISOString(),
-      error: error instanceof Error ? error.message : String(error),
-      stage: 'failed',
-      status: 'failed',
-    });
-  } catch {}
+  try { failJob(error); } catch {}
   process.exitCode = 1;
 });

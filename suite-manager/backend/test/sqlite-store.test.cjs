@@ -421,8 +421,9 @@ test('app update operations persist digest-bound stages and reject overlap', asy
   assert.equal(operation.stage, 'candidate-staged');
   assert.equal(operation.expectedInstalledDigest, `sha256:${'a'.repeat(64)}`);
   assert.equal(operation.candidateDigest, `sha256:${'b'.repeat(64)}`);
-  reopened.failAppUpdate({ at, errorCode: 'APP_UPDATE_INTERRUPTED', instanceId: 'update-instance', operationId: 'update-one', stage: 'recovery-required' });
+  reopened.failAppUpdate({ at, diagnostics: 'Suite Manager restarted while this update was running.', errorCode: 'APP_UPDATE_INTERRUPTED', instanceId: 'update-instance', operationId: 'update-one', stage: 'recovery-required' });
   assert.equal(reopened.getAppOperation('update-one').status, 'failed');
+  assert.equal(reopened.latestFailedAppOperation('update-instance').diagnostics, 'Suite Manager restarted while this update was running.');
   reopened.close();
 });
 

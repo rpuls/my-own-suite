@@ -6,7 +6,7 @@ const http = require('node:http');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 
-const { buildPaths, collectStatus, readJson, repoRootFrom, writeJson, writeUpdateTrack } = require('./lib.cjs');
+const { buildPaths, collectStatus, readJson, repoRootFrom, summarizeJob, writeJson, writeUpdateTrack } = require('./lib.cjs');
 
 const repoRoot = process.env.MOS_REPO_DIR || repoRootFrom(process.cwd());
 const stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos';
@@ -36,20 +36,6 @@ function readBody(request) {
 function listJobFiles() {
   fs.mkdirSync(paths.jobsDir, { recursive: true });
   return fs.readdirSync(paths.jobsDir).filter((name) => name.endsWith('.json')).map((name) => path.join(paths.jobsDir, name));
-}
-
-function summarizeJob(job) {
-  if (!job) return null;
-  return {
-    completedAt: job.completedAt || null,
-    error: typeof job.error === 'string' ? job.error : null,
-    id: job.id,
-    logs: Array.isArray(job.logs) ? job.logs.slice(-30) : [],
-    stage: job.stage || null,
-    status: job.status || null,
-    target: job.target || null,
-    updatedAt: job.updatedAt || null,
-  };
 }
 
 function jobUnitName(jobId) {

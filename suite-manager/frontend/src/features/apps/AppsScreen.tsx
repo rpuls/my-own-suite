@@ -243,7 +243,23 @@ const UNKNOWN_FAILURE = {
   title: 'Something went wrong with this app',
 };
 
-function failureCopy(errorCode: string | null) {
+// A failed update that needed no recovery left the old version running, which
+// is the one fact every one of these has to lead with: the install copy above
+// would tell the owner of a running app that it "did not start".
+const UPDATE_FAILURE_COPY: Record<string, { detail: string; title: string }> = {
+  APP_BUILD_FAILED: { detail: 'The new version could not be prepared, most often because the server ran out of disk space or a download failed part way. The installed version keeps running.', title: 'The update could not be prepared' },
+  APP_UPDATE_ACTIVATION_FAILED: { detail: 'The new version would not start or never became ready, so the version you had was put back and keeps running.', title: 'The new version did not start' },
+  APP_UPDATE_IDENTITY_CHANGED: { detail: 'What the source offers changed while the update was being applied. The installed version keeps running; review the update again.', title: 'The update changed underneath MOS' },
+  APP_UPDATE_PROMOTION_FAILED: { detail: 'The new version ran but could not be saved as the installed one, so the version you had was put back.', title: 'The update could not be saved to disk' },
+};
+
+const UNKNOWN_UPDATE_FAILURE = {
+  detail: 'The installed version keeps running. Trying the update again is safe.',
+  title: 'This app could not be updated',
+};
+
+function failureCopy({ errorCode, kind }: { errorCode: string | null; kind: string }) {
+  if (kind === 'update') return (errorCode && UPDATE_FAILURE_COPY[errorCode]) || UNKNOWN_UPDATE_FAILURE;
   return (errorCode && FAILURE_COPY[errorCode]) || UNKNOWN_FAILURE;
 }
 
@@ -823,7 +839,16 @@ function AppDetail({
             </button>
           </p> : null}
           {recoverError ? <p role="alert">{recoverError}</p> : null}
-          <AdvancedPanel copyText={app.instance.updateRecovery.errorCode} reveal="on-failure"><code>{app.instance.updateRecovery.errorCode}</code></AdvancedPanel>
+          {/* The failed update is the latest operation on record, so its
+              diagnostics are the reason this notice exists. */}
+          <AdvancedPanel
+            facts={[
+              { label: 'Error code', value: app.instance.updateRecovery.errorCode },
+              ...(app.instance.lastFailure?.kind === 'update' ? [{ label: 'When', value: app.instance.lastFailure.completedAt || app.instance.lastFailure.startedAt }] : []),
+            ]}
+            output={app.instance.lastFailure?.kind === 'update' ? app.instance.lastFailure.diagnostics || undefined : undefined}
+            reveal="on-failure"
+          />
         </Notice> : null}
 
         {/* Only while the failure is still the last word on this app: the store
@@ -834,8 +859,8 @@ function AppDetail({
             Suppressed while `installError` is set, because a failed install
             reloads the app and would otherwise say the same thing twice — once
             live in the stepper above and once from the record it just wrote. */}
-        {app.instance?.lastFailure && !app.instance.updateRecovery && !installError ? <Notice title={failureCopy(app.instance.lastFailure.errorCode).title} variant="warning">
-          <p>{failureCopy(app.instance.lastFailure.errorCode).detail}</p>
+        {app.instance?.lastFailure && !app.instance.updateRecovery && !installError ? <Notice title={failureCopy(app.instance.lastFailure).title} variant="warning">
+          <p>{failureCopy(app.instance.lastFailure).detail}</p>
           <AdvancedPanel
             facts={[
               ...(app.instance.lastFailure.errorCode ? [{ label: 'Error code', value: app.instance.lastFailure.errorCode }] : []),

@@ -14,6 +14,11 @@ const FILES = [
 ];
 
 type ApiError = Error & { code?: string; details?: string[] };
+
+// A validation error's details are sentences for the owner: which line, which
+// field. An apply failure's details are what caddy or systemd wrote, which
+// belong behind the disclosure the rest of Suite Manager uses for such output.
+const APPLY_FAILURE = /^HOMEPAGE_[A-Z_]*_FAILED$/u;
 type FileResult = { content: string; file: string; revision: string };
 type ApplyResult = { revision: string; steps?: string[] };
 
@@ -119,7 +124,7 @@ export function CustomizeScreen() {
         <div className="suite-editor-column">
           {error ? <Notice title="Could not save" variant="error">
             <p>{error.message}</p>
-            {error.details?.map((detail) => <p key={detail}>{detail}</p>)}
+            {!APPLY_FAILURE.test(error.code || '') ? error.details?.map((detail) => <p key={detail}>{detail}</p>) : null}
             {/* The only way this file changes underneath the editor is something
                 else writing it — installing an app adds its Homepage tile — so
                 the way out of a conflict is offered here, when it happens,
@@ -127,6 +132,9 @@ export function CustomizeScreen() {
             {error.code === 'HOMEPAGE_REVISION_CONFLICT' ? <div className="suite-editor-actions">
               <button className="mos-btn mos-btn-secondary" disabled={busy} onClick={() => void load()} type="button">Discard my changes and reload</button>
             </div> : null}
+            {APPLY_FAILURE.test(error.code || '') && error.details?.length
+              ? <AdvancedPanel facts={[{ label: 'Error code', value: error.code || '' }]} output={error.details.join('\n\n')} reveal="on-failure" />
+              : null}
           </Notice> : null}
           {steps.length ? <><Notice title="Homepage updated" variant="success"><p>The saved dashboard configuration is active.</p></Notice><AdvancedPanel output={steps.join('\n')} reveal="technical-mode" /></> : null}
           <div className="suite-editor-actions"><button className="mos-btn mos-btn-primary" disabled={busy || !dirty || !agentAvailable} onClick={() => void save()} type="button">{busy ? 'Saving...' : 'Save and apply'}</button></div>

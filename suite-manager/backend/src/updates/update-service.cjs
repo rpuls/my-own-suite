@@ -1,3 +1,7 @@
+// The update agent already trims a failed step's output to its last lines;
+// this is the ceiling on what a status poll carries should that ever change.
+const OUTPUT_LIMIT_CHARS = 20_000;
+
 function capabilityAvailable(capabilities, resource, capability) {
   const value = capabilities?.[resource];
   if (Array.isArray(value)) return value.includes(capability);
@@ -11,6 +15,7 @@ function normalizeJob(job) {
     error: typeof job.error === 'string' ? job.error : null,
     id: typeof job.id === 'string' ? job.id : '',
     logs: Array.isArray(job.logs) ? job.logs.filter((entry) => entry && typeof entry.message === 'string').slice(-30) : [],
+    output: typeof job.output === 'string' && job.output ? job.output.slice(-OUTPUT_LIMIT_CHARS) : null,
     stage: typeof job.stage === 'string' ? job.stage : null,
     status: typeof job.status === 'string' ? job.status : null,
     target: typeof job.target === 'string' ? job.target : null,

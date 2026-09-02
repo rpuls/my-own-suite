@@ -3,7 +3,8 @@ const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { HOMEPAGE_RESTART_TIMEOUT_MS, SystemHomepageAdapter } = require('./system-adapter.cjs');
+const { HOMEPAGE_RESTART_TIMEOUT_MS, HomepageApplyError, SystemHomepageAdapter } = require('./system-adapter.cjs');
+const { runCommand } = require('../lib/command-output.cjs');
 
 async function fixture(failAt = '') {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-homepage-agent-'));
@@ -67,3 +68,54 @@ for (const [failure, errorCode] of [
     assert.equal(await fsp.readFile(value.routesPath, 'utf8'), 'old routes\n');
   });
 }
+
+// Real processes standing in for caddy, systemctl and journalctl, so the
+// reasons come from the shared runner exactly as they would on a server.
+const FAKE_TOOLS = String.raw`
+const [program, command, unit] = process.argv.slice(2);
+if (program === 'caddy') {
+  process.stderr.write('Error: adapting config using caddyfile: routes.caddy:3: unrecognized directive: reverse_proxi\n');
+  process.exitCode = 1;
+} else if (program === 'systemctl' && command === 'restart') {
+  process.stderr.write('Job for mos-homepage.service failed because the control process exited with error code.\n');
+  process.exitCode = 1;
+} else if (program === 'journalctl') {
+  process.stdout.write('services.yaml: bad indentation of a mapping entry (12:5)\n');
+}
+`;
+
+async function realToolsFixture() {
+  const value = await fixture();
+  const fakeTools = path.join(value.root, 'fake-tools.cjs');
+  await fsp.writeFile(fakeTools, FAKE_TOOLS);
+  value.adapter.execute = (file, args, options = {}) => runCommand(process.execPath, [fakeTools, path.basename(file), ...args], options);
+  return value;
+}
+
+test('a validation failure carries what caddy wrote, and not the command line', async () => {
+  const value = await realToolsFixture();
+  await assert.rejects(() => value.adapter.applyTransaction({ caddyRoutes: 'new routes\n', files: {}, restartHomepage: false }), (error) => {
+    assert.ok(error instanceof HomepageApplyError);
+    assert.equal(error.code, 'HOMEPAGE_CADDY_VALIDATION_FAILED');
+    assert.deepEqual(error.details, [
+      'caddy validate for the home-service routes exited with code 1.',
+      'Last output:\n  Error: adapting config using caddyfile: routes.caddy:3: unrecognized directive: reverse_proxi',
+    ]);
+    assert.ok(!error.details.join('\n').includes('--config'));
+    return true;
+  });
+});
+
+test('a restart failure quotes the Homepage unit log, where the bad YAML is named', async () => {
+  const value = await realToolsFixture();
+  await assert.rejects(() => value.adapter.applyTransaction({ caddyRoutes: null, files: { 'services.yaml': 'new projection\n' }, restartHomepage: true }), (error) => {
+    assert.equal(error.code, 'HOMEPAGE_RESTART_FAILED');
+    assert.deepEqual(error.details, [
+      'systemctl restart mos-homepage.service exited with code 1.',
+      'Last output:\n  Job for mos-homepage.service failed because the control process exited with error code.',
+      'Last lines of mos-homepage.service:\n  services.yaml: bad indentation of a mapping entry (12:5)',
+    ]);
+    return true;
+  });
+  assert.equal(await fsp.readFile(path.join(value.configRoot, 'services.yaml'), 'utf8'), 'old projection\n');
+});

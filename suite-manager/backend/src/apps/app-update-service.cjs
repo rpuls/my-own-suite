@@ -14,6 +14,7 @@ const {
   materializeRuntimeCompose,
   publicInstance,
   readSecretValue,
+  redactionSecretsFor,
   renderInstanceProjections,
   setupFields,
 } = require('./app-package-internals.cjs');
@@ -21,6 +22,7 @@ const { compareAppPackages } = require('./app-update-comparison.cjs');
 const { digestAppPackage, parseNamespacedPackageId, validatePrivacyBinding } = require('./package-contracts.cjs');
 const { instanceSourceId, sourceInstallable } = require('./external-source-registry.cjs');
 const { readAppPackageManifest } = require('./package-manifest.cjs');
+const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnostics.cjs');
 
 // What an interrupted update saga left behind, decided from the last stage it
 // durably recorded. Every stage from `candidate-built` onward is past the point
@@ -448,6 +450,7 @@ class AppUpdateService {
     let activatedRuntimes = null;
     let snapshotPromoted = false;
     let addedConfig = [];
+    let secrets = [];
     try {
       candidate = await this.downloadUpdateCandidate(instance);
       const agentStatus = await this.agent.status();
@@ -518,6 +521,7 @@ class AppUpdateService {
         secretDir: this.secretDir,
       });
       const candidateConfig = [...installedConfigRows, ...addedConfig];
+      secrets = redactionSecretsFor(candidateConfig, envRows);
       let candidatePrivacy = { posture: null, reviewedAt: null, status: 'review-required' };
       const candidateReviewPath = path.join(candidate.packageDir, 'privacy-review.json');
       // A package-shipped review counts as a review only from a MOS-reviewed
@@ -736,7 +740,11 @@ class AppUpdateService {
         integrations = [{ errorCode: reconcileError.code || 'APP_INTEGRATION_REAPPLY_FAILED', status: 'failed' }];
       }
       return { activated, built, comparison, homepage, integrations, operation, promoted, staged };
-    } catch (error) {
+    } catch (caught) {
+      // A rollback that fails replaces the error but not the reason: the record
+      // keeps why the update failed and then why the restore did, in that order.
+      let error = caught;
+      const failedBecause = (failure) => [failure.message, ...(Array.isArray(failure.details) ? failure.details : [])];
       if (activatedRuntimes && !snapshotPromoted) {
         try {
           await this.agent.rollbackPackageUpdate(activatedRuntimes);
@@ -747,6 +755,7 @@ class AppUpdateService {
             502,
           );
           error.cause = rollbackError;
+          error.details = [...failedBecause(caught), 'Restoring the previous version then failed too:', ...failedBecause(rollbackError)];
         }
       }
       // Once the snapshot is promoted the candidate is the installed package;
@@ -767,6 +776,7 @@ class AppUpdateService {
             502,
           );
           error.cause = rollbackError;
+          error.details = [...failedBecause(caught), 'Restoring the previous Homepage entry then failed too:', ...failedBecause(rollbackError)];
         }
       }
       let recoveryState = 'none';
@@ -778,11 +788,11 @@ class AppUpdateService {
             : 'none';
         this.store.failAppUpdate({
           at: this.now().toISOString(),
-          errorCode: error.code || 'APP_UPDATE_STAGE_FAILED',
           instanceId: instance.id,
           operationId,
           recoveryState,
           stage: lastDurableStage ? `${lastDurableStage}-failed` : 'candidate-stage-failed',
+          ...buildOperationDiagnostics(error, { fallbackCode: 'APP_UPDATE_STAGE_FAILED', secrets }),
         });
       }
       // Collected secret files are deleted only when nothing can still need

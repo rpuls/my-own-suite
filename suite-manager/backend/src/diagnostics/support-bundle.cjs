@@ -57,8 +57,10 @@ function fullFilesystems(dfOutput) {
 // The section that leads the file. Everything below it is evidence; this is the
 // part a helper — or the AI they paste it into — reads first, and the reason the
 // bundle is worth more than a folder of raw logs.
-function summarizeTrouble({ apps = [], collection = {} }) {
+function summarizeTrouble({ apps = [], collection = {}, platform = {} }) {
   const trouble = [];
+  if (platform.lastUpdate?.status === 'failed') trouble.push(`The last platform update failed at ${platform.lastUpdate.at || 'an unknown time'}: ${platform.lastUpdate.error || 'no reason was recorded.'}`);
+  if (platform.lastHttpsApply?.status === 'failed') trouble.push(`The last HTTPS apply failed: ${platform.lastHttpsApply.errorCode || 'unknown error'} at ${platform.lastHttpsApply.at || 'an unknown time'}.`);
   for (const unit of collection.units || []) {
     if (unit.active !== 'active') trouble.push(`Service ${unit.name} is ${unit.active}${unit.sub && unit.sub !== unit.active ? ` (${unit.sub})` : ''}.`);
   }
@@ -78,6 +80,29 @@ function section(title, body) {
   return `${RULE}\n${title}\n${RULE}\n${content || '(nothing recorded)'}\n\n`;
 }
 
+function indent(text, depth = 2) {
+  return String(text).split('\n').map((line) => `${' '.repeat(depth)}${line}`).join('\n');
+}
+
+// The latest platform update, as one line, with the reason and the failing
+// step's last output under it when it failed.
+function lastUpdateLines(job) {
+  if (!job?.status) return ['Last update        none recorded'];
+  const lines = [`Last update        ${job.status}${job.stage && job.stage !== job.status ? ` (${job.stage})` : ''} at ${job.at || 'an unknown time'}`];
+  if (job.status === 'failed') {
+    lines.push(indent(job.error || 'No reason was recorded.'));
+    if (job.output) lines.push(indent(job.output, 4));
+  }
+  return lines;
+}
+
+function lastHttpsApplyLines(apply) {
+  if (!apply?.status) return ['Last HTTPS apply   never'];
+  const lines = [`Last HTTPS apply   ${apply.status}${apply.errorCode ? ` (${apply.errorCode})` : ''} at ${apply.at || 'an unknown time'}`];
+  if (apply.status === 'failed' && apply.diagnostics) lines.push(indent(apply.diagnostics));
+  return lines;
+}
+
 function appLines(apps) {
   if (!apps.length) return 'No apps are installed.';
   return apps.map((app) => {
@@ -87,7 +112,7 @@ function appLines(apps) {
     ];
     if (app.lastFailure) {
       lines.push(`  LAST FAILURE  ${app.lastFailure.errorCode}  ·  ${app.lastFailure.kind}  ·  ${app.lastFailure.completedAt || app.lastFailure.startedAt}`);
-      if (app.lastFailure.diagnostics) lines.push(String(app.lastFailure.diagnostics).split('\n').map((line) => `    ${line}`).join('\n'));
+      if (app.lastFailure.diagnostics) lines.push(indent(app.lastFailure.diagnostics, 4));
     }
     return lines.join('\n');
   }).join('\n\n');
@@ -96,7 +121,7 @@ function appLines(apps) {
 function unitLines(units) {
   return (units || []).map((unit) => [
     `${unit.name}  ·  ${unit.active}${unit.sub && unit.sub !== unit.active ? `/${unit.sub}` : ''}  ·  ${unit.enabled}`,
-    unit.log ? String(unit.log).split('\n').map((line) => `  ${line}`).join('\n') : '  (no log lines)',
+    unit.log ? indent(unit.log) : '  (no log lines)',
   ].join('\n')).join('\n\n');
 }
 
@@ -106,7 +131,7 @@ function containerLines(containers) {
     `${container.name}  ·  ${container.status || container.state}`,
     `  image ${container.image}`,
     container.labels?.['mos.package'] ? `  package ${container.labels['mos.package']} ${container.labels['mos.package-version'] || ''}`.trimEnd() : null,
-    container.log ? String(container.log).split('\n').map((line) => `  ${line}`).join('\n') : '  (no log lines)',
+    container.log ? indent(container.log) : '  (no log lines)',
   ].filter(Boolean).join('\n')).join('\n\n');
 }
 
@@ -123,7 +148,7 @@ function buildSupportBundle({
   secrets = [],
 } = {}) {
   const createdAt = now().toISOString();
-  const trouble = summarizeTrouble({ apps, collection });
+  const trouble = summarizeTrouble({ apps, collection, platform });
 
   const body = [
 `MY OWN SUITE — DIAGNOSTICS
@@ -151,6 +176,8 @@ Logs are shortened newest-first, so this stays small enough to read in full.
       `HTTPS mode         ${platform.tlsMode || 'unknown'}`,
       `Home host          ${homeHost || 'unknown'}`,
       `Collected at       ${collection.collectedAt || 'not collected'}`,
+      ...lastUpdateLines(platform.lastUpdate),
+      ...lastHttpsApplyLines(platform.lastHttpsApply),
     ].join('\n')),
     section('HOST', [
       collection.host?.kernel && `Kernel:\n${collection.host.kernel}`,
@@ -228,8 +255,21 @@ async function assembleSupportBundle({
     now,
     platform: {
       frontDoor,
+      lastHttpsApply: {
+        at: https.lastApplyAt || null,
+        diagnostics: https.lastApplyDiagnostics || null,
+        errorCode: https.lastApplyErrorCode || null,
+        status: https.lastApplyStatus || null,
+      },
+      lastUpdate: updateStatus?.currentJob ? {
+        at: updateStatus.currentJob.completedAt || updateStatus.currentJob.updatedAt || null,
+        error: updateStatus.currentJob.error || null,
+        output: updateStatus.currentJob.output || null,
+        stage: updateStatus.currentJob.stage || null,
+        status: updateStatus.currentJob.status || null,
+      } : null,
       tlsMode: https.tlsMode || 'unknown',
-      updateTrack: updateStatus?.track ? `${updateStatus.track.track || ''} ${updateStatus.track.ref || ''}`.trim() : 'unknown',
+      updateTrack: updateStatus?.track?.label || 'unknown',
       version: platformVersion,
     },
     secrets: collectRedactionSecrets({ secretDir }),

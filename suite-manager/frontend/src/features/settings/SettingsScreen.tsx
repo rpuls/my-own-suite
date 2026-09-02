@@ -64,9 +64,8 @@ function HttpsDiagnostics({ status }: { status: HttpsStatus }) {
     { label: 'Detected server IP', value: status.serverAddress || 'Not detected' },
     { label: 'TLS mode', value: status.tlsMode },
     { label: 'Provider', value: status.provider || 'Not configured' },
-    { label: 'Last apply', value: `${status.lastApply.status}${status.lastApply.errorCode ? ` (${status.lastApply.errorCode})` : ''}` },
-    ...(status.lastApply.diagnostics ? [{ label: 'Sanitized diagnostics', value: status.lastApply.diagnostics }] : []),
-  ]} reveal={status.lastApply.status === 'failed' ? 'on-failure' : 'technical-mode'} />;
+    { label: 'Last apply', value: `${status.lastApply.status || 'never'}${status.lastApply.errorCode ? ` (${status.lastApply.errorCode})` : ''}${status.lastApply.at ? ` at ${status.lastApply.at}` : ''}` },
+  ]} output={status.lastApply.diagnostics || undefined} reveal={status.lastApply.status === 'failed' ? 'on-failure' : 'technical-mode'} />;
 }
 
 function AppReconciliationNotice({ reconciliation }: { reconciliation?: AppReconciliationResult }) {

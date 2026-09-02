@@ -230,26 +230,6 @@ on its own: machines that install but will not boot, and reaching the suite once
 A flashable image that installs an OS and then runs a root shell script is the highest-trust artifact
 the project ships, which is what makes **E3** load-bearing rather than aspirational.
 
-### I. Knowing why something broke
-
-**Gate:** the one file an owner hands over contains the reason for *every* failure class, including a
-privileged command that failed.
-
-Most of this theme has landed and its contracts are in `docs/decisions.md` (2026-09-01, both entries):
-the logging format, the persisted app-operation failure, container log caps and journald bounds, the
-root diagnostics agent, and the owner-facing export in **Settings → When something is not working**. What is
-left is the one hole that stops the bundle being complete.
-
-- **I2 — Capture failed-command output in the host agents.** `#247`. The agents still run privileged
-  commands with `stdio: 'ignore'`, so a package's failed `docker build` discards its reason and the
-  bundle carries the failure without the cause. This **amends a stated security property** —
-  `system-agents/README.md` promises the HTTPS agent's logs never include command output — so it is
-  argued before it is built and recorded in `docs/decisions.md` after. The real hazard is not stderr
-  but the command line: app containers are started with materialized secrets on the argv, so any error
-  path that echoes what it tried to run leaks every app secret at once. Capture output, never
-  arguments. The diagnostics agent already sets the precedent for the safe half of this.
-  *(Medium — posture change)*
-
 ### J. Configuration an owner can reach
 
 **Gate:** an owner can change an installed app's configuration from Suite Manager — both the settings
