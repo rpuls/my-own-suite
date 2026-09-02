@@ -16,6 +16,7 @@ type UpdateJob = {
 
 type UpdateStatus = {
   changeSummary: { items: string[]; source: string | null; title: string };
+  checkFailure: { diagnostics: string | null; errorCode: string; reason: string } | null;
   checkedAt: string;
   currentJob: UpdateJob | null;
   error: string | null;
@@ -26,7 +27,7 @@ type UpdateStatus = {
   serviceAvailable: boolean;
   track: { currentBranch: string | null; currentCommit: string | null; label: string | null; ref: string | null; type: 'branch' | 'stable' | null };
   trackConfigurationAvailable: boolean;
-  updateAvailable: boolean;
+  updateAvailable: boolean | null;
 };
 
 
@@ -41,7 +42,14 @@ function shortCommit(value: string | null) {
 }
 
 function targetLabel(status: UpdateStatus) {
+  if (status.updateAvailable === null) return 'Not checked';
   return status.track.type === 'branch' ? shortCommit(status.latestRevision) : status.latestRelease.version || 'Unknown';
+}
+
+function updateButtonLabel(status: UpdateStatus, updating: boolean) {
+  if (updating) return 'Updating...';
+  if (status.updateAvailable === null) return 'Could not check';
+  return status.updateAvailable ? 'Update now' : 'Already up to date';
 }
 
 function currentLabel(status: UpdateStatus) {
@@ -87,6 +95,7 @@ export function UpdatesScreen() {
   const [track, setTrack] = useState<TrackChoice>('stable');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+  const [checking, setChecking] = useState(false);
   const [reloading, setReloading] = useState(false);
   const running = isRunning(status?.currentJob || null);
   const updating = running || busy === 'update';
@@ -122,6 +131,20 @@ export function UpdatesScreen() {
     }).catch(() => undefined);
     return () => { cancelled = true; if (timer) window.clearTimeout(timer); };
   }, [jobStatus]);
+
+  // A check takes seconds when the origin does not answer, and the agent retries
+  // before giving up, so the button says it is working rather than seeming dead.
+  async function checkAgain() {
+    setChecking(true);
+    setError('');
+    try {
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to load update status.');
+    } finally {
+      setChecking(false);
+    }
+  }
 
   async function runAction(name: string, action: () => Promise<void>) {
     setBusy(name);
@@ -179,7 +202,7 @@ export function UpdatesScreen() {
             <h2 className="mos-card-title">Control-plane update</h2>
             <p className="suite-meta">Checked {formatDate(status.checkedAt)}</p>
           </div>
-          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => void load()} type="button">Check again</button>
+          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running || checking} onClick={() => void checkAgain()} type="button">{checking ? 'Checking...' : 'Check again'}</button>
         </div>
 
         <dl className="suite-updates-facts">
@@ -188,6 +211,11 @@ export function UpdatesScreen() {
           <div><dt>Target</dt><dd>{targetLabel(status)}</dd></div>
           <div><dt>Updater</dt><dd>{status.managedApplyAvailable ? 'Ready' : 'Unavailable'}</dd></div>
         </dl>
+
+        {status.serviceAvailable && status.checkFailure ? <Notice title="Could not check for updates" variant="warning">
+          <p>{status.checkFailure.reason}</p>
+          <AdvancedPanel facts={[{ label: 'Checked', value: formatDate(status.checkedAt) }]} output={status.checkFailure.diagnostics || undefined} reveal="on-failure" />
+        </Notice> : null}
 
         {status.trackConfigurationAvailable ? <div className="suite-updates-track">
           <Select disabled={Boolean(busy) || running} helperText="Stable follows official tagged releases and is the default for fresh installs. Main carries reviewed changes ahead of the next release. Staging receives changes earlier for testing." label="Update track" onChange={(event) => setTrack(event.currentTarget.value === 'stable' ? 'stable' : event.currentTarget.value === 'staging' ? 'staging' : 'main')} value={track}>
@@ -198,8 +226,8 @@ export function UpdatesScreen() {
           <button className="mos-btn mos-btn-secondary" disabled={busy === 'track' || updating || track === selectedTrack(status)} onClick={() => void switchTrack()} type="button">{busy === 'track' ? 'Switching...' : 'Switch track'}</button>
         </div> : null}
 
-        <button className="mos-btn mos-btn-primary" disabled={!status.managedApplyAvailable || !status.updateAvailable || Boolean(busy) || running} onClick={() => void startUpdate()} type="button">
-          {updating ? 'Updating...' : status.updateAvailable ? 'Update now' : 'Already up to date'}
+        <button className="mos-btn mos-btn-primary" disabled={!status.managedApplyAvailable || !status.updateAvailable || Boolean(busy) || running || checking} onClick={() => void startUpdate()} type="button">
+          {updateButtonLabel(status, updating)}
         </button>
         <p className="suite-meta">A platform update refreshes MOS services and host agents. Installed apps keep running from their installed package snapshots; app updates are applied separately from the Apps screen.</p>
       </section>
@@ -208,7 +236,6 @@ export function UpdatesScreen() {
         <h2 className="mos-card-title">{status.changeSummary.title}</h2>
         {status.changeSummary.source ? <p className="suite-meta">From {status.changeSummary.source}</p> : null}
         {status.changeSummary.items.length ? <ul className="suite-updates-change-list">{status.changeSummary.items.map((item) => <li key={item}>{item}</li>)}</ul> : <p className="suite-meta">No local changelog summary is available for this target.</p>}
-        {status.error ? <Notice title="Lookup warning" variant="warning"><p>{status.error}</p></Notice> : null}
       </section>
 
 

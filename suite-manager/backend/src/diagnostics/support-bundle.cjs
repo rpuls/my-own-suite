@@ -59,6 +59,7 @@ function fullFilesystems(dfOutput) {
 // bundle is worth more than a folder of raw logs.
 function summarizeTrouble({ apps = [], collection = {}, platform = {} }) {
   const trouble = [];
+  if (platform.lastCheck?.reason) trouble.push(`The last update check failed: ${platform.lastCheck.reason}`);
   if (platform.lastUpdate?.status === 'failed') trouble.push(`The last platform update failed at ${platform.lastUpdate.at || 'an unknown time'}: ${platform.lastUpdate.error || 'no reason was recorded.'}`);
   if (platform.lastHttpsApply?.status === 'failed') trouble.push(`The last HTTPS apply failed: ${platform.lastHttpsApply.errorCode || 'unknown error'} at ${platform.lastHttpsApply.at || 'an unknown time'}.`);
   for (const unit of collection.units || []) {
@@ -82,6 +83,16 @@ function section(title, body) {
 
 function indent(text, depth = 2) {
   return String(text).split('\n').map((line) => `${' '.repeat(depth)}${line}`).join('\n');
+}
+
+// The last time the update agent asked its origin what is new. When that
+// failed, what the agent found out about why goes under it: the origin's own
+// answer to a plain request, and the login sources git on the server could
+// have used.
+function lastCheckLines(check) {
+  if (!check?.at) return ['Update check       not available'];
+  if (!check.reason) return [`Update check       ok at ${check.at}`];
+  return [`Update check       failed at ${check.at}`, indent(check.diagnostics || check.reason)];
 }
 
 // The latest platform update, as one line, with the reason and the failing
@@ -176,6 +187,7 @@ Logs are shortened newest-first, so this stays small enough to read in full.
       `HTTPS mode         ${platform.tlsMode || 'unknown'}`,
       `Home host          ${homeHost || 'unknown'}`,
       `Collected at       ${collection.collectedAt || 'not collected'}`,
+      ...lastCheckLines(platform.lastCheck),
       ...lastUpdateLines(platform.lastUpdate),
       ...lastHttpsApplyLines(platform.lastHttpsApply),
     ].join('\n')),
@@ -261,6 +273,11 @@ async function assembleSupportBundle({
         errorCode: https.lastApplyErrorCode || null,
         status: https.lastApplyStatus || null,
       },
+      lastCheck: updateStatus?.serviceAvailable ? {
+        at: updateStatus.checkedAt || null,
+        diagnostics: updateStatus.checkFailure?.diagnostics || null,
+        reason: updateStatus.checkFailure?.reason || null,
+      } : null,
       lastUpdate: updateStatus?.currentJob ? {
         at: updateStatus.currentJob.completedAt || updateStatus.currentJob.updatedAt || null,
         error: updateStatus.currentJob.error || null,

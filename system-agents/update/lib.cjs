@@ -4,11 +4,16 @@ const https = require('node:https');
 const { execFileSync } = require('node:child_process');
 
 const { CommandFailure, describeFailure, runCommand: runCaptured } = require('../lib/command-output.cjs');
+const { explainFetchFailure } = require('./origin-probe.cjs');
 
 const DEFAULT_REPO = 'rpuls/my-own-suite';
 // No apply step has a reason to run this long; one that does is stuck, and a
 // stuck step used to hold the job open forever.
 const STEP_TIMEOUT_MS = 60 * 60_000;
+// A fetch that fails is tried again shortly: a dropped connection or a
+// momentary refusal from GitHub should not become a failed check.
+const FETCH_RETRY_DELAYS_MS = [1_000, 3_000];
+const FETCH_TIMEOUT_MS = 60_000;
 const DEFAULT_BRANCH_REF = 'main';
 const SAFE_BRANCH_REF = /^[A-Za-z0-9._/-]+$/u;
 const SAFE_RELEASE_VERSION = /^\d+\.\d+\.\d+$/u;
@@ -51,10 +56,28 @@ function buildPaths(repoRoot = repoRootFrom(process.cwd()), stateRoot = process.
   };
 }
 
+// GitHub's default smart-HTTP transport (protocol v2 over HTTP/2) is truncated
+// intermittently on some networks: the v2 ref advertisement arrives without its
+// terminating flush, git reads that as an auth challenge and falls back to
+// prompting for a login it never needed. Pinning protocol v0 over HTTP/1.1 makes
+// the fetch deterministic; both are inert for git commands that touch no network.
+const GIT_TRANSPORT = ['-c', 'protocol.version=0', '-c', 'http.version=HTTP/1.1'];
+
+// Nothing the updater runs has a terminal, so git must never wait on one:
+// with the prompt off, an HTTP 401 is a plain failure that says so.
+function commandEnv() {
+  return { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function runCommand(cwd, command, args, options = {}) {
   const result = execFileSync(command, args, {
     cwd,
     encoding: 'utf8',
+    env: commandEnv(),
     stdio: options.stdio || ['ignore', 'pipe', 'pipe'],
   });
   return typeof result === 'string' ? result.trim() : '';
@@ -84,7 +107,7 @@ class StepFailure extends Error {
 // takes a secret as an argument.
 async function runStep(cwd, what, command, args) {
   try {
-    await runCaptured(command, args, { cwd, echo: true, timeoutMs: STEP_TIMEOUT_MS });
+    await runCaptured(command, args, { cwd, echo: true, env: commandEnv(), timeoutMs: STEP_TIMEOUT_MS });
   } catch (error) {
     throw new StepFailure(describeFailure(error, what)[0], error instanceof CommandFailure ? error.output : '');
   }
@@ -194,12 +217,24 @@ function readRemoteBranchHead(repoRoot, ref) {
   return result.ok && result.value ? result.value : null;
 }
 
-function refreshRemoteBranch(repoRoot, ref) {
-  const fetch = safeRunCommand(repoRoot, 'git', ['fetch', '--quiet', 'origin', ref]);
-  return {
-    error: fetch.ok ? null : fetch.error,
-    latestCommit: readRemoteBranchHead(repoRoot, ref),
-  };
+// The remote head after a fresh fetch, or the reason there is none. A failed
+// fetch yields no commit rather than the one already on disk: that one is
+// what the machine runs, and reporting it as the target is how a check that
+// could not run used to say "already up to date".
+async function refreshRemoteBranch(paths, ref, { retryDelaysMs = FETCH_RETRY_DELAYS_MS } = {}) {
+  const started = Date.now();
+  let failure = null;
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    if (attempt > 0) await sleep(retryDelaysMs[attempt - 1]);
+    try {
+      await runCaptured('git', [...GIT_TRANSPORT, 'fetch', '--quiet', 'origin', ref], { cwd: paths.repoRoot, env: commandEnv(), timeoutMs: FETCH_TIMEOUT_MS });
+      return { failure: null, latestCommit: readRemoteBranchHead(paths.repoRoot, ref) };
+    } catch (error) {
+      failure = error;
+    }
+  }
+  const explained = await explainFetchFailure(paths, ref, failure, { attempts: retryDelaysMs.length + 1, elapsedMs: Date.now() - started, env: commandEnv() });
+  return { failure: explained, latestCommit: null };
 }
 
 function parsePackageRepo(paths) {
@@ -211,6 +246,21 @@ function parsePackageRepo(paths) {
   } catch {
     return DEFAULT_REPO;
   }
+}
+
+// GitHub's API says why it refused — a rate limit names the address and the
+// reset time — so the refusal is kept in its words, with the request id.
+function describeReleaseRefusal(response, raw) {
+  let message = '';
+  try { message = String(JSON.parse(raw).message || ''); } catch { message = String(raw || '').replace(/\s+/gu, ' ').trim().slice(0, 200); }
+  const requestId = response.headers['x-github-request-id'];
+  const remaining = response.headers['x-ratelimit-remaining'];
+  const facts = [
+    message ? `"${message}"` : '',
+    remaining !== undefined ? `${remaining} requests left before the limit` : '',
+    requestId ? `request ${requestId}` : '',
+  ].filter(Boolean).join('; ');
+  return `GitHub answered the release lookup with HTTP ${response.statusCode}${facts ? `: ${facts}` : ''}.`;
 }
 
 function fetchLatestRelease(repo) {
@@ -225,7 +275,7 @@ function fetchLatestRelease(repo) {
       response.on('data', (chunk) => { raw += chunk; });
       response.on('end', () => {
         if (response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new Error(`GitHub release check failed with status ${response.statusCode}.`));
+          reject(new Error(describeReleaseRefusal(response, raw)));
           return;
         }
         try {
@@ -299,50 +349,62 @@ async function ensureCleanWorkingTree(paths) {
   }
 }
 
-async function collectStatus(paths = buildPaths(), { releaseLookup = fetchLatestRelease } = {}) {
+// The check behind the Updates screen. `updateAvailable` is true, false, or
+// null for a check that could not be completed, with `checkFailure` saying
+// why; a branch track asks the origin for the branch head, a stable track asks
+// GitHub for the latest release, and neither asks for what it does not show.
+async function collectStatus(paths = buildPaths(), { releaseLookup = fetchLatestRelease, retryDelaysMs } = {}) {
   ensurePrerequisites(paths);
   const track = resolveTrack(paths);
   const githubRepo = parsePackageRepo(paths);
   const installedVersion = readInstalledVersion(paths);
   let latestRelease = null;
   let latestRevision = null;
-  const errors = [];
+  let checkFailure = null;
 
   if (track.type === 'branch') {
-    const cached = readRemoteBranchHead(paths.repoRoot, track.ref);
-    const refreshed = refreshRemoteBranch(paths.repoRoot, track.ref);
-    latestRevision = refreshed.latestCommit || cached;
-    if (refreshed.error) errors.push(refreshed.error);
-    if (process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP !== '1') {
-      try { latestRelease = await releaseLookup(githubRepo); } catch (error) { errors.push(`Stable release lookup: ${error.message}`); }
-    }
-  } else {
-    if (process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP !== '1') {
-      try { latestRelease = await releaseLookup(githubRepo); } catch (error) { errors.push(error.message); }
+    const refreshed = await refreshRemoteBranch(paths, track.ref, retryDelaysMs ? { retryDelaysMs } : {});
+    latestRevision = refreshed.latestCommit;
+    checkFailure = refreshed.failure;
+  } else if (process.env.MOS_UPDATE_SKIP_RELEASE_LOOKUP !== '1') {
+    try {
+      latestRelease = await releaseLookup(githubRepo);
+    } catch (error) {
+      checkFailure = { details: [], reason: error instanceof Error ? error.message : String(error) };
     }
   }
 
   const status = {
+    checkFailure: checkFailure ? { at: now(), ...checkFailure } : null,
     checkedAt: now(),
     changeSummary: buildChangeSummary(paths, track.type, latestRelease),
-    error: errors.length ? errors.join(' ') : null,
+    error: checkFailure ? checkFailure.reason : null,
     githubRepo,
     installedVersion,
     latestRelease,
     latestRevision,
     service: 'mos-update-agent',
     track,
-    updateAvailable: track.type === 'branch'
-      ? Boolean(track.currentCommit && latestRevision && track.currentCommit !== latestRevision)
-      : Boolean(latestRelease?.version && latestRelease.version !== installedVersion),
+    updateAvailable: checkFailure
+      ? null
+      : track.type === 'branch'
+        ? Boolean(track.currentCommit && latestRevision && track.currentCommit !== latestRevision)
+        : Boolean(latestRelease?.version && latestRelease.version !== installedVersion),
   };
   writeJson(path.join(paths.updateStateDir, 'state.json'), status);
   return status;
 }
 
+// The last check written by collectStatus, for a status poll that must not
+// run a new one — the Updates screen polls every few seconds while an update
+// is in progress, and each check is a request to GitHub.
+function readLastStatus(paths) {
+  try { return readJson(path.join(paths.updateStateDir, 'state.json')); } catch { return null; }
+}
+
 async function checkoutBranch(paths, ref, log) {
   log(`Fetching latest commit for ${ref}`);
-  await runStep(paths.repoRoot, `git fetch origin ${ref}`, 'git', ['fetch', 'origin', ref]);
+  await runStep(paths.repoRoot, `git fetch origin ${ref}`, 'git', [...GIT_TRANSPORT, 'fetch', 'origin', ref]);
   // checkout -B lands exactly on the remote head even when the local branch
   // diverged (for example after the tracked branch was force-rewritten); the
   // checkout is platform-owned and the working tree was verified clean above.
@@ -356,7 +418,7 @@ async function checkoutReleaseTag(paths, version, log) {
   }
   const tag = `v${version}`;
   log(`Fetching release tag ${tag}`);
-  await runStep(paths.repoRoot, `git fetch origin ${tag}`, 'git', ['fetch', '--force', 'origin', `refs/tags/${tag}:refs/tags/${tag}`]);
+  await runStep(paths.repoRoot, `git fetch origin ${tag}`, 'git', [...GIT_TRANSPORT, 'fetch', '--force', 'origin', `refs/tags/${tag}:refs/tags/${tag}`]);
   log(`Checking out release tag ${tag}`);
   await runStep(paths.repoRoot, `git checkout ${tag}`, 'git', ['checkout', '--detach', `refs/tags/${tag}`]);
 }
@@ -365,6 +427,7 @@ async function runApply(paths, { log = () => {}, releaseLookup } = {}) {
   ensurePrerequisites(paths);
   await ensureCleanWorkingTree(paths);
   const status = await collectStatus(paths, { releaseLookup });
+  if (status.updateAvailable === null) throw new Error(status.checkFailure?.reason || 'The update check could not be completed.');
   if (!status.updateAvailable) throw new Error('This machine is already up to date on its current track.');
 
   log(`Repository before update: ${shortCommit(status.track.currentCommit) || 'unknown'}`);
@@ -390,6 +453,7 @@ module.exports = {
   collectStatus,
   currentGitState,
   readJson,
+  readLastStatus,
   repoRootFrom,
   runApply,
   shortCommit,

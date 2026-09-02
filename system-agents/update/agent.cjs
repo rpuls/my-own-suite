@@ -6,7 +6,7 @@ const http = require('node:http');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 
-const { buildPaths, collectStatus, readJson, repoRootFrom, summarizeJob, writeJson, writeUpdateTrack } = require('./lib.cjs');
+const { buildPaths, collectStatus, readJson, readLastStatus, repoRootFrom, summarizeJob, writeJson, writeUpdateTrack } = require('./lib.cjs');
 
 const repoRoot = process.env.MOS_REPO_DIR || repoRootFrom(process.cwd());
 const stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos';
@@ -99,6 +99,24 @@ function createJob(payload) {
   return job;
 }
 
+// While a job runs, the worker is the one talking to the origin; a poll gets
+// the check the job started from instead of a new one.
+async function currentStatus(currentJob) {
+  if (isActive(currentJob)) {
+    const last = readLastStatus(paths);
+    if (last) return last;
+  }
+  return collectStatus(paths).catch((error) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      checkFailure: { at: new Date().toISOString(), details: [], reason },
+      checkedAt: new Date().toISOString(),
+      error: reason,
+      updateAvailable: null,
+    };
+  });
+}
+
 function startWorker(job) {
   const workerArgs = [path.join(__dirname, 'worker.cjs'), '--job-file', path.join(paths.jobsDir, `${job.id}.json`)];
   const workerCwd = repoRoot;
@@ -138,18 +156,15 @@ const server = http.createServer(async (request, response) => {
       return;
     }
     if (request.method === 'GET' && url.pathname === '/v1/status') {
+      const currentJob = readCurrentJob();
       respond(response, 200, {
         capabilities: { updates: { capabilities: ['apply', 'configure-track'] } },
-        currentJob: summarizeJob(readCurrentJob()),
+        currentJob: summarizeJob(currentJob),
         lastJob: summarizeJob(readLatestJob()),
         repoDir: repoRoot,
         service: 'mos-update-agent',
         socketPath,
-        updaterStatus: await collectStatus(paths).catch((error) => ({
-          checkedAt: new Date().toISOString(),
-          error: error instanceof Error ? error.message : String(error),
-          updateAvailable: false,
-        })),
+        updaterStatus: await currentStatus(currentJob),
       });
       return;
     }

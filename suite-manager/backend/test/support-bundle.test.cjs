@@ -147,6 +147,7 @@ test('a failed platform update and a failed HTTPS apply lead the summary, with t
     collection: healthyCollection(),
     now,
     platform: {
+      lastCheck: { at: '2026-09-02T07:00:00.000Z', diagnostics: 'github.com answered a plain request from this server for this repository with HTTP 401 "Repository not found.".\n\nDetails:\n- plain request from this server, no login: GET https://github.com/rpuls/my-own-suite.git/info/refs?service=git-upload-pack\n  HTTP 401 Unauthorized', reason: 'github.com answered a plain request from this server for this repository with HTTP 401 "Repository not found.".' },
       lastHttpsApply: { at: '2026-08-30T09:00:00.000Z', diagnostics: 'Caddy rejected the new configuration.\n\nDetails:\n- caddy validate for the new configuration exited with code 1.', errorCode: 'HTTPS_CADDY_VALIDATION_FAILED', status: 'failed' },
       lastUpdate: { at: '2026-09-01T11:00:00.000Z', error: 'npm run build:client exited with code 3.', output: 'vite: JavaScript heap out of memory', stage: 'failed', status: 'failed' },
       version: '0.17.0',
@@ -155,9 +156,12 @@ test('a failed platform update and a failed HTTPS apply lead the summary, with t
   });
 
   const summary = text.slice(text.indexOf('WHAT LOOKS WRONG'), text.indexOf('PLATFORM'));
+  assert.ok(summary.includes('The last update check failed: github.com answered a plain request from this server for this repository with HTTP 401 "Repository not found.".'));
   assert.ok(summary.includes('The last platform update failed at 2026-09-01T11:00:00.000Z: npm run build:client exited with code 3.'));
   assert.ok(summary.includes('The last HTTPS apply failed: HTTPS_CADDY_VALIDATION_FAILED at 2026-08-30T09:00:00.000Z.'));
   const platform = text.slice(text.indexOf('PLATFORM'), text.indexOf('HOST'));
+  assert.ok(platform.includes('Update check       failed at 2026-09-02T07:00:00.000Z\n  github.com answered a plain request'));
+  assert.ok(platform.includes('  Details:\n  - plain request from this server, no login: GET https://github.com/rpuls/my-own-suite.git/info/refs?service=git-upload-pack\n    HTTP 401 Unauthorized'));
   assert.ok(platform.includes('Last update        failed at 2026-09-01T11:00:00.000Z\n  npm run build:client exited with code 3.\n    vite: JavaScript heap out of memory'));
   assert.ok(platform.includes('Last HTTPS apply   failed (HTTPS_CADDY_VALIDATION_FAILED) at 2026-08-30T09:00:00.000Z\n  Caddy rejected the new configuration.'));
 });
@@ -166,10 +170,10 @@ test('an update that worked and HTTPS that was never applied are one line each, 
   const { text } = buildSupportBundle({
     collection: healthyCollection(),
     now,
-    platform: { lastHttpsApply: { status: null }, lastUpdate: { at: '2026-09-01T11:00:00.000Z', stage: 'succeeded', status: 'succeeded' } },
+    platform: { lastCheck: { at: '2026-09-02T07:00:00.000Z', diagnostics: null, reason: null }, lastHttpsApply: { status: null }, lastUpdate: { at: '2026-09-01T11:00:00.000Z', stage: 'succeeded', status: 'succeeded' } },
     secrets: ['x'],
   });
 
   assert.ok(text.includes('Nothing obviously wrong was detected'));
-  assert.ok(text.includes('Last update        succeeded at 2026-09-01T11:00:00.000Z\nLast HTTPS apply   never\n'));
+  assert.ok(text.includes('Update check       ok at 2026-09-02T07:00:00.000Z\nLast update        succeeded at 2026-09-01T11:00:00.000Z\nLast HTTPS apply   never\n'));
 });
