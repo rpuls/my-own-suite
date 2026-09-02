@@ -4,6 +4,23 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-09-02: A Marketing Screenshot May Arrange Which Release A Machine Is On, And Nothing Else
+
+Decision: The E2E capture run may photograph a screen whose API response was intercepted and rewritten, under an enforced allow-list. `test/e2e/support/screenshot-stubs.mjs` fetches the live response through Playwright's `page.route`, rewrites a named set of fields, and serves the result to the browser. Suite Manager is unchanged: no stub mode, no fixture flag, no env var, no branch. The stubbable set is version numbers, update availability, track identity, and the changelog summary that follows from them. Privacy posture, review status, permission diffs, structural change lists, package digests, compatibility verdicts, app counts, and catalog freshness are not stubbable, and every field a transform touched is diffed against the list so an unlisted path throws rather than reaching a screenshot.
+
+Reason: Two screens the public site needs pictures of describe states the capture lab structurally cannot reach. The Hyper-V VM installs official packages from its own `staging` checkout while the catalog is read from `main`, so `staging` always leads and no installed app is ever behind its catalog entry — `app-update-review.png` has never existed in git history, and Tour entry #6 has therefore never rendered. The same VM follows a branch track, so its Updates screen reads "Staging branch" and a commit hash rather than the release numbers an owner sees. Neither is a lab misconfiguration; both follow from how the lab has to work.
+
+The line drawn is that the **UI must be genuine and the data shape must be one the server really produces; only which release the machine happens to be on is arranged.** That is the standard a product demo is held to, and it is the standard MOS can defend: the screenshot shows the real components, the real styling, and a payload the backend genuinely emits. It is *not* acceptable for anything the screenshot asserts as a claim about MOS — a privacy grade, an app's permission diff, how many apps are reviewed. Those are the claims the site is making, and a picture of a claim MOS did not produce is a false claim however the pixels were made.
+
+Consequences:
+
+- The allow-list is code, checked on every stub, and asserted field-by-field in `test/unit/screenshot-stubs.test.mjs`. Widening what a screenshot may fake requires editing both, which is the point.
+- The stable-track capture reads the repository's own `CHANGELOG.md` — newest released section as the target, the one before it as installed, its bullets as the release notes — so the release notes on the public site are MOS's real release notes for a real release.
+- The app update review dialog shows the real comparison of the real package pair. For two identical packages that means "No structural changes detected", which is honest; the changes list is never synthesized to make the screenshot busier.
+- A run that finds a genuine update photographs it without arranging anything, and says nothing. Arranged captures announce themselves in the run output, so the two are distinguishable after the fact.
+- A transform whose input lacks what it needs throws, the capture logs a warning, and no file is written. A Tour entry with no screenshot does not render, so the failure mode is a missing section rather than a wrong one.
+- Stubbing is scoped to one capture and unrouted immediately, and each capture reloads its screen against real responses before the run continues. No assertion in the regression may read arranged data; if one ever does, the suite is reporting on a machine that does not exist.
+
 ## 2026-09-01: One File An Owner Can Hand Over, Collected By A Root Agent That Takes No Instructions
 
 Decision: A new root agent, `system-agents/diagnostics/`, runs on `/run/mos-diagnostics-agent/agent.sock` under `root:mos-agent` with mode `2770`. It exposes status and one `collect` operation, and that operation takes **no request body**. The collector list — MOS unit journals, `mos-*` container logs, and fixed host facts — is compiled into `agent-core.cjs`. Suite Manager merges the result with what only it knows, redacts by exact value, and serves it from `GET /suite-manager/api/support/bundle` as one `text/plain` attachment. Settings leads with a **When something is not working** panel that is deliberately not behind Technical controls. Its copy names three readers — the owner, someone they ask, an AI assistant — because an owner who can debug their own server is as likely to press it as one who cannot.

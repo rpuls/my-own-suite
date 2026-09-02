@@ -106,7 +106,7 @@ The E2E command reads ignored local config from `test/e2e/.env`, never creates o
 
 ### Marketing screenshot pipeline
 
-The full Hyper-V E2E run doubles as the source of the public site's product screenshots. Capture hooks in `test/e2e/support/screenshots.mjs` and the app/backup flows save stable-named PNGs (app catalog, pre-install app detail, install progress, privacy posture dialog, Connect section, setup guide, backups screen, and — when the lab has a compatible app update pending — the update review dialog) into the ignored `test/e2e/screenshots/` folder. Captures are best-effort and never fail the regression.
+The full Hyper-V E2E run doubles as the source of the public site's product screenshots. Capture hooks in `test/e2e/support/screenshots.mjs` and the app/backup/update flows save stable-named PNGs (app catalog, pre-install app detail, install progress, privacy posture dialog, Connect section, setup guide, app update review, platform update, backups screen) into the ignored `test/e2e/screenshots/` folder. Captures are best-effort and never fail the regression.
 
 Refreshing the site's screenshots after a UI change is one human-run E2E pass plus one command:
 
@@ -116,6 +116,24 @@ cmd /c npm run screenshots:update
 ```
 
 `screenshots:update` copies the last run's captures into `site/src/assets/screenshots/` under the same filenames, reports what was updated and what still carries an older capture, and leaves the changes uncommitted for review. The landing Tour picks up known filenames automatically — a Tour entry whose screenshot has not been captured yet simply does not render, so a partial set never breaks the site build. Run the capture lab with a presentable owner email (the defaults like `owner@example.com` are fine): whatever the lab shows on screen ends up in the published images. Set `MOS_E2E_SCREENSHOT_APP` to change which app's detail view becomes `app-detail-install.png` (default `seafile`).
+
+**Screenshots of states the lab cannot reach.** Two update screens describe a state the capture lab is never in, and neither is fixable by running the lab differently:
+
+- The VM installs official packages from its own `staging` checkout while the app catalog is read from `main`. `staging` leads, so no installed app is ever *behind* its catalog entry and the app update review dialog never opens.
+- The VM follows a branch track, so the platform Updates screen reads "Staging branch" and a commit hash rather than the stable-release numbers an owner's machine shows.
+
+`test/e2e/support/screenshot-stubs.mjs` closes both by intercepting the response on its way to the browser (Playwright `page.route`), fetching the real one, and rewriting a few values in it. Nothing in Suite Manager changes: the UI, the components, the styling, and the response shape on the screenshot are all genuine, and only which release the machine happens to be on is arranged. `docs/decisions.md` records why that is acceptable and where the line is.
+
+Four rules hold it in place:
+
+- **Derived, never authored.** Every stub starts from the live response. A hand-written payload drifts from the API and the screenshot silently starts showing a state the product can no longer produce.
+- **Bounded by an enforced allow-list.** `STUBBABLE_PATHS` names the exact fields each endpoint may arrange, and every changed field is diffed against it — an unlisted path throws. Version numbers, update availability, track identity, and the changelog summary are stubbable. Privacy posture, permission diffs, structural change lists, package digests, compatibility verdicts, and app counts are not, because a marketing screenshot presents those as facts about MOS.
+- **Scoped and reversible.** Routes are installed for one capture and removed immediately after, and the capture re-opens the screen against the real responses before the run continues, so no later assertion can read arranged data.
+- **Loud.** Each arranged response logs `[screenshots] arranged <endpoint> …` and each arranged capture logs `[screenshots] <name>.png was ARRANGED: …`, so a reader of the run output can tell arranged captures from real ones. A run that finds a real app update photographs that instead and logs nothing.
+
+A transform whose input is missing what it needs throws rather than half-arranging, and the capture then logs a warning and produces no file — a missing screenshot is a Tour entry that does not render, which is safe, while a wrong one is not. The transforms are pure and unit tested in `test/unit/screenshot-stubs.test.mjs`, with fixtures built by the real producers (`collectStatus` from the update agent, `normalizeStatus` from Suite Manager, `compareAppPackages` from the app update service) rather than hand-written approximations.
+
+The stable-track capture reads the repository's own `CHANGELOG.md`: the newest released section becomes the target version, the one before it becomes the installed version, and its bullets become the release notes — so the release notes in the screenshot are MOS's real release notes. Set `MOS_E2E_SCREENSHOT_UPDATE_APP` to choose which installed app's update review becomes `app-update-review.png` (default order: Vaultwarden, Seafile, Radicale, Stirling PDF).
 
 Inputs are optional and come from `infrastructure/self-host/autoinstall/installer-config/selfhost-installer.env` (or matching `MOS_`-prefixed environment variables such as `MOS_HOSTNAME` and `MOS_STACK_DOMAIN`; bare names like `HOSTNAME` are deliberately ignored because shells export them ambiently) when the file exists:
 

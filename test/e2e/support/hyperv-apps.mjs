@@ -3,6 +3,14 @@ import { expect } from '@playwright/test';
 import { apiJson } from './hyperv-api.mjs';
 import { waitForHomepageAvailable } from './hyperv-homepage.mjs';
 import { openSuiteManager } from './hyperv-navigation.mjs';
+import {
+  announceArrangedCapture,
+  apiPathPredicate,
+  nextPackageVersion,
+  stubPackagesUpdateAvailable,
+  stubUpdateComparison,
+  withStubbedApi,
+} from './screenshot-stubs.mjs';
 import { captureElementShot, capturePageShot } from './screenshots.mjs';
 
 const runtimeKinds = new Set(['compose', 'caddy', 'health']);
@@ -11,6 +19,13 @@ const runtimeKinds = new Set(['compose', 'caddy', 'health']);
 // app-detail-install.png shot. Seafile is in the default post-DNS set and
 // its detail view shows setup fields, the posture-grade tile, and Install.
 const showcaseDetailAppId = () => process.env.MOS_E2E_SCREENSHOT_APP || 'seafile';
+
+// Preference order for the app whose update review becomes
+// app-update-review.png when the lab has no real update to photograph. Any
+// installed app with a catalog candidate works; these just read well.
+const updateShowcaseAppIds = () => (process.env.MOS_E2E_SCREENSHOT_UPDATE_APP
+  ? [process.env.MOS_E2E_SCREENSHOT_UPDATE_APP]
+  : ['vaultwarden', 'seafile', 'radicale', 'stirling-pdf']);
 
 // One-per-run guards for captures hooked into repeated flows.
 const capturedOnce = new Set();
@@ -288,34 +303,79 @@ export async function captureMarketingScreenshots(page, env, entryUrl = '/') {
   }
 }
 
-// The update-review dialog only exists when the lab actually has a newer
-// compatible package for an installed app, so this shot refreshes
-// opportunistically: any run that encounters a real update captures it,
-// and runs without one leave the previous capture in place.
+// Opens one app's update review dialog and photographs it. `beforeShot` runs
+// with the dialog on screen and may refuse the capture — that is where an
+// arranged run checks it is really looking at arranged state.
+async function captureUpdateReviewDialog(page, app, entryUrl, beforeShot) {
+  await verifyAppsPage(page, entryUrl);
+  const details = await openAppDetails(page, app);
+  const review = details.getByRole('button', { name: /^Review update$/iu });
+  if (!(await visible(review))) throw new Error(`${app.id} detail view offers no Review update action.`);
+  await review.click();
+  const dialog = page.getByRole('dialog', { name: `Review ${app.name} update` });
+  await expect(dialog).toBeVisible({ timeout: 30000 });
+  await beforeShot?.();
+  await capturePageShot(page, 'app-update-review');
+  await dialog.getByRole('button', { name: /^(Cancel|Close)$/u }).click();
+  await expect(dialog).toBeHidden({ timeout: 15000 });
+  await closeAppDetails(page, details);
+}
+
+// The lab installs official packages from its own `staging` checkout while the
+// catalog is read from `main`, so `staging` leads and no installed app is ever
+// behind its catalog entry. A real update is therefore something this run may
+// encounter but cannot arrange for itself. Any installed app carrying a real
+// catalog candidate can stand in: its own candidate is dated one release
+// forward and the dialog compares the real package pair (see
+// support/screenshot-stubs.mjs).
 export async function captureUpdateReviewIfAvailable(page, entryUrl = '/') {
+  let arranged = false;
   try {
     const packages = await listPackages(page);
-    const candidate = packages.find((item) => item.instance
+    const real = packages.find((item) => item.instance
       && item.catalogUpdate?.status === 'update-available'
       && item.catalogUpdate.available?.compatibility === 'compatible');
-    if (!candidate) {
-      console.log('[screenshots] no compatible app update in this lab; app-update-review.png not refreshed');
+    if (real) {
+      await captureUpdateReviewDialog(page, real, entryUrl);
       return;
     }
-    await verifyAppsPage(page, entryUrl);
-    const details = await openAppDetails(page, candidate);
-    const review = details.getByRole('button', { name: /^Review update$/iu });
-    if (await visible(review)) {
-      await review.click();
-      const dialog = page.getByRole('dialog', { name: `Review ${candidate.name} update` });
-      await expect(dialog).toBeVisible({ timeout: 30000 });
-      await capturePageShot(page, 'app-update-review');
-      await dialog.getByRole('button', { name: /^(Cancel|Close)$/u }).click();
-      await expect(dialog).toBeHidden({ timeout: 15000 });
+
+    const installed = updateShowcaseAppIds()
+      .map((id) => packages.find((item) => item.id === id))
+      .find((item) => item?.instance && item.catalogUpdate?.available && item.catalogUpdate.installed?.packageVersion);
+    if (!installed) {
+      console.log('[screenshots] no installed app carries a catalog candidate; app-update-review.png not refreshed');
+      return;
     }
-    await closeAppDetails(page, details);
+
+    const from = installed.catalogUpdate.installed.packageVersion;
+    const availableVersion = nextPackageVersion(from);
+    arranged = true;
+    await withStubbedApi(page, {
+      label: 'app-update-review',
+      routes: [
+        {
+          endpoint: 'apps/packages',
+          predicate: apiPathPredicate('/suite-manager/api/apps/packages'),
+          transform: (body) => stubPackagesUpdateAvailable(body, { availableVersion, packageId: installed.id }),
+        },
+        {
+          endpoint: 'apps/packages/:id/prepare-update',
+          predicate: apiPathPredicate(`/suite-manager/api/apps/packages/${encodeURIComponent(installed.id)}/prepare-update`),
+          transform: (body) => stubUpdateComparison(body, { availableVersion }),
+        },
+      ],
+    }, async (stub) => {
+      await captureUpdateReviewDialog(page, installed, entryUrl, () => stub.assertArranged());
+      announceArrangedCapture('app-update-review', `${installed.name} dated forward from ${from} to ${availableVersion}`);
+    });
   } catch (error) {
     console.warn(`[screenshots] update review capture skipped: ${error.message}`);
+  } finally {
+    // Nothing after this may read the arranged catalog, and a capture that
+    // failed part-way leaves a dialog open over it, so the screen is always
+    // reloaded against the real responses before the run continues.
+    if (arranged) await verifyAppsPage(page, entryUrl).catch(() => undefined);
   }
 }
 

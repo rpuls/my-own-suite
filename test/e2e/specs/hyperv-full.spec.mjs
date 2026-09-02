@@ -9,6 +9,7 @@ import { assertLogSurface } from '../support/hyperv-log-assertions.mjs';
 import { customizeHomepage, verifyHomepageCustomization, waitForHomepageAvailable } from '../support/hyperv-homepage.mjs';
 import { applyDns01IfConfigured } from '../support/hyperv-https.mjs';
 import { resetLabIfConfigured } from '../support/hyperv-lab-reset.mjs';
+import { capturePlatformUpdateScreenshot } from '../support/hyperv-updates.mjs';
 import {
   captureMarketingScreenshots,
   captureUpdateReviewIfAvailable,
@@ -88,6 +89,7 @@ test('Hyper-V MOS full platform regression', async ({ browser, page }) => {
   await test.step('capture marketing screenshots', async () => {
     await captureMarketingScreenshots(page, env, dns01?.homeUrl || '/');
     await captureUpdateReviewIfAvailable(page, dns01?.homeUrl || '/');
+    await capturePlatformUpdateScreenshot(page, dns01?.homeUrl || '/');
   });
 
   await test.step('verify Homepage app tiles', async () => {
