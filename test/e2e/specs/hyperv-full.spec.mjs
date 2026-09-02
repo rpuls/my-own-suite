@@ -3,7 +3,9 @@ import { test } from '@playwright/test';
 import { expectSignedInApi } from '../support/hyperv-api.mjs';
 import { ensureOwnerSession } from '../support/hyperv-auth.mjs';
 import { createBackupIfAvailable, restoreBackupIfAvailable } from '../support/hyperv-backups.mjs';
+import { exportDiagnosticsBundle, verifyDiagnosticsBundle } from '../support/hyperv-diagnostics.mjs';
 import { loadHypervEnv } from '../support/hyperv-env.mjs';
+import { assertLogSurface } from '../support/hyperv-log-assertions.mjs';
 import { customizeHomepage, verifyHomepageCustomization, waitForHomepageAvailable } from '../support/hyperv-homepage.mjs';
 import { applyDns01IfConfigured } from '../support/hyperv-https.mjs';
 import { resetLabIfConfigured } from '../support/hyperv-lab-reset.mjs';
@@ -99,6 +101,16 @@ test('Hyper-V MOS full platform regression', async ({ browser, page }) => {
   await test.step('verify app routes', async () => {
     await waitForHomepageAvailable(page, dns01?.homeUrl || '/');
     await verifyAppRoutes(page);
+  });
+
+  // Placed after the apps are installed and routed, because that is the state
+  // the export has to describe: containers to collect, secrets to redact
+  // against, and a machine that got here by managed update rather than a
+  // reinstall.
+  await test.step('export a diagnostics bundle and inspect what this run left in the logs', async () => {
+    const bundle = await exportDiagnosticsBundle(page, dns01?.homeUrl || '/');
+    await verifyDiagnosticsBundle(bundle);
+    await assertLogSurface(bundle, env);
   });
 
   await test.step('optional lifecycle smoke', async () => {
