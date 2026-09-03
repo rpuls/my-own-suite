@@ -4,8 +4,8 @@
   "reviewedAt": "2026-08-11T00:00:00.000Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.7.0",
-    "packageDigest": "sha256:909a0f326eb7dfb4c5365cf0616940724b7815bd684878d98ae6c8b842eb86d4",
+    "packageVersion": "0.8.0",
+    "packageDigest": "sha256:c23fb9c922cac0f9d013a6f337d3a5e0e60c39639ad3efd89170fb6ba6b2f6c0",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -172,6 +172,11 @@
       "type": "configured",
       "claim": "The photo and video library, database, thumbnail cache, and machine learning model cache persist to package-owned volumes, and DISABLE_MACHINE_LEARNING=false runs a local machine-learning service so facial recognition and smart-search inference execute on the MOS server.",
       "source": "apps/immich/manifest.json and apps/immich/README.md"
+    },
+    {
+      "type": "configured",
+      "claim": "MOS wires Immich's notification email to the shared, optional MOS email relay, which the entrypoint writes into Immich's notifications.smtp configuration only when the owner has set a relay under Settings → Email relay; otherwise it is absent and Immich sends no mail. When set, album invitations and notifications go through the owner's own chosen provider; MOS never uses the relay itself, and this path is unrelated to the map-tile dependency described above.",
+      "source": "apps/immich/entrypoint.sh and apps/immich/manifest.json"
     }
   ],
   "telemetryControls": [

@@ -66,6 +66,7 @@ export default defineConfig({
             'docs/guides/apps',
             'docs/guides/customize-homepage',
             'docs/guides/https-domain',
+            'docs/guides/email-relay',
             'docs/guides/backup-restore',
             'docs/guides/updates'
           ]

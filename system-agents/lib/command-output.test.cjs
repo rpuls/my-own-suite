@@ -49,13 +49,19 @@ test('the attached output is the newest lines, bounded, and says how much was dr
   });
 });
 
+// A generous budget on purpose: the child cold-starts a Node interpreter and has
+// to flush its first line before the deadline, which under the full parallel test
+// run can take over a second on a loaded box. The command overruns by 30 s
+// regardless, so the timeout path runs either way — a tight budget only bought a
+// flake. The exact duration rendering is pinned by the describeDuration tests, so
+// this one asserts the sentence shape rather than the number.
 test('a command that overruns its budget is stopped and reports what it managed to write', async () => {
   const [file, args] = script('console.log("still working"); setTimeout(() => {}, 30000);');
-  await assert.rejects(runCommand(file, args, { timeoutMs: 300 }), (error) => {
+  await assert.rejects(runCommand(file, args, { timeoutMs: 2_000 }), (error) => {
     assert.equal(error.message, 'COMMAND_TIMEOUT');
     assert.equal(error.timedOut, true);
     assert.match(error.output, /still working/u);
-    assert.match(describeFailure(error, 'the health probe')[0], /did not finish within 300 ms and was stopped/u);
+    assert.match(describeFailure(error, 'the health probe')[0], /^the health probe did not finish within .+ and was stopped\.$/u);
     return true;
   });
 });
@@ -91,7 +97,9 @@ test('a command that overruns its deadline is stopped along with the children ho
     child.on("exit", () => process.exit(0));
   `);
   const started = Date.now();
-  await assert.rejects(runCommand(file, args, { timeoutMs: 500 }), (error) => {
+  // Same generous budget as above: two Node cold-starts (this child and its
+  // grandchild) must both come up and the grandchild print before the deadline.
+  await assert.rejects(runCommand(file, args, { timeoutMs: 2_000 }), (error) => {
     assert.equal(error.message, 'COMMAND_TIMEOUT');
     assert.match(error.output, /grandchild up/u);
     return true;

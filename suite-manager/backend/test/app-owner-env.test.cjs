@@ -363,7 +363,7 @@ test('an app update re-renders the owner environment instead of dropping it', as
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { advisoriesFor: () => [], platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    catalogService: { advisoriesFor: () => [], platformVersion: '0.19.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
     store,
   });
   await service.installPackage('paperless-ngx', PAPERLESS_SETUP);
@@ -437,6 +437,6 @@ test('an app package cannot reference the ownerEnv namespace', () => {
   };
 
   assert.deepEqual(validateAppPackageManifest(manifest), [
-    'resources.services.example-app.env.LEAK references unknown template namespace "ownerEnv" in ${ownerEnv.SOME_NAME}. Known namespaces: app, config, export, import, owner, secret.',
+    'resources.services.example-app.env.LEAK references unknown template namespace "ownerEnv" in ${ownerEnv.SOME_NAME}. Known namespaces: app, config, export, import, owner, secret, smtp.',
   ]);
 });

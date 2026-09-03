@@ -1,0 +1,61 @@
+---
+title: Send email from your apps
+description: Point My Own Suite at one outgoing mail server so your apps can send password resets, invitations and notifications — through a provider you choose, off by default.
+---
+
+import { Steps } from '@astrojs/starlight/components'
+
+Some apps need to send email: a password reset, an invitation to share a file, a calendar notice, a "your import finished" note. My Own Suite does not run a mail server of its own — a server the rest of the internet will trust not to be a source of spam is genuinely hard to operate, and getting it wrong means your apps' mail quietly lands in people's spam folders. Instead, you point MOS at **one outgoing mail server you already have**, and every app that sends mail uses it.
+
+This is entirely **optional and off by default**. With no mail server set, nothing sends, and your suite behaves exactly as it did before.
+
+## What it means for your privacy
+
+MOS treats email the way it treats everything else: **you decide, and nothing leaves until you do.**
+
+- **It's a door you open yourself.** By default there is no relay and your apps send no mail. Setting one up is a deliberate choice — and the app privacy grades in the catalog don't change because of it, since MOS still sends nothing on its own.
+- **You choose the provider, on your own account.** Apps send through the server *you* entered — your mailbox provider, or a sending service such as Resend, Fastmail or Mailgun. MOS never picks a third party for you.
+- **That provider handles the mail.** Whoever runs the mail server can see the messages your apps send through it, exactly as they can see any other mail you send — because it is your account with them. That is the third party you are integrating with, and it is one you already trust with your email.
+- **MOS never uses it for itself.** There is no MOS newsletter, no telemetry email, no "phone home." The relay exists only so *your* apps can reach *your* people.
+
+In short: MOS is not opening a door for anyone. It is letting you open one yourself, to a provider you control, if and when you need it.
+
+## What you need
+
+- An **outgoing mail (SMTP) server** you can send through. Two common choices:
+  - your **mailbox provider's** SMTP settings — look for "outgoing mail" or "SMTP" in their help pages, or
+  - a **sending service** such as Resend, Fastmail or Mailgun, which are built for application email and tend to reach inboxes more reliably.
+- Its **host** and **port**, a **username** and **password** (often an app-specific password or API key rather than your main login), and a **From address** you are allowed to send as. Sending services usually require you to verify your domain first.
+
+## Set it up
+
+<Steps>
+
+1. **Get your provider's SMTP details.** You need the server host (for example `smtp.yourprovider.example`), the port, your username, and the password or API key. Providers list these under "SMTP" or "outgoing mail."
+
+2. **Enter them in Suite Manager.** Go to **Settings → Email relay** and fill in the host, port, username, password, and the **From address** (plus an optional From name your recipients will see). Leave **encryption** on **Automatic** — MOS matches it to the port your provider gave you, so there is nothing to look up.
+
+3. **Save.** MOS connects to the server and checks the login before storing anything. The password is kept like any app secret — in a root-only file on your server, and never shown again.
+
+4. **Send a test message.** Use **Send test email** to mail yourself, and confirm it arrives (check the spam folder the first time). If it does not, the screen shows what the server reported.
+
+</Steps>
+
+That's it — apps that send mail now use this server.
+
+## Which apps use it, and for what
+
+Setting a relay does not make apps start emailing on their own; each only sends when its own features call for it:
+
+- **Vaultwarden** — invitations, address verification, and two-factor codes.
+- **Immich** — album invitations and notifications.
+- **Paperless-ngx** — password resets, share links, and workflow notifications.
+- **Seafile** — password resets, invitations, share links, and notices.
+- **Radicale** — notices to the attendees of a calendar event.
+
+## Good to know
+
+- **Remove it any time.** Clear the relay and every app stops sending — nothing is left behind.
+- **A running app picks up a change on its next restart or update.** If you set the relay after an app is already installed, restart or update that app for it to start using it; newly installed apps use whatever relay is set at the time.
+- **From address.** Most providers only let you send "from" an address you own or have verified — especially sending services, which verify the whole domain.
+- **Encryption is automatic.** Port 465 uses TLS from the first moment; 587 and most others start plain and upgrade to TLS as they connect. You do not need to know which — just enter the port your provider gave you.

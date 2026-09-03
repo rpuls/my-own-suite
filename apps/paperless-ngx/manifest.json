@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "paperless-ngx",
   "name": "Paperless-ngx",
-  "version": "0.1.2",
-  "minimumMosVersion": "0.18.0",
+  "version": "0.2.0",
+  "minimumMosVersion": "0.19.0",
   "summary": "A searchable archive of every letter, invoice and contract you own.",
   "category": "office",
   "icon": "icon.png",
@@ -163,7 +163,14 @@
           "PAPERLESS_ADMIN_USER": "${config.adminUsername}",
           "PAPERLESS_ADMIN_PASSWORD": "${secret.adminPassword}",
           "PAPERLESS_OCR_LANGUAGE": "${config.ocrLanguage}",
-          "PAPERLESS_TIME_ZONE": "${config.timeZone}"
+          "PAPERLESS_TIME_ZONE": "${config.timeZone}",
+          "PAPERLESS_EMAIL_HOST": "${smtp.host}",
+          "PAPERLESS_EMAIL_PORT": "${smtp.port}",
+          "PAPERLESS_EMAIL_HOST_USER": "${smtp.username}",
+          "PAPERLESS_EMAIL_HOST_PASSWORD": "${smtp.password}",
+          "PAPERLESS_EMAIL_FROM": "${smtp.fromAddress}",
+          "PAPERLESS_EMAIL_USE_TLS": "${smtp.startTls}",
+          "PAPERLESS_EMAIL_USE_SSL": "${smtp.implicitTls}"
         },
         "volumes": [
           "data:/usr/src/paperless/data",

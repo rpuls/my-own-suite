@@ -4,8 +4,8 @@
   "reviewedAt": "2026-07-23T00:00:00.000Z",
   "expiresAt": "2027-01-23T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.2.6",
-    "packageDigest": "sha256:ebc56a4112a8ec10e394b86c737b6ad1bfba8b604e07fb85149a9e56ebb05d5b",
+    "packageVersion": "0.3.0",
+    "packageDigest": "sha256:b30c51017bb270bd3c2a1191e8c3cef764d97d574bbf9576f249c84e2fbed211",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -70,6 +70,11 @@
       "source": "Vaultwarden .env.template (v1.36.0)",
       "url": "https://raw.githubusercontent.com/dani-garcia/vaultwarden/1.36.0/.env.template",
       "retrievedAt": "2026-07-23"
+    },
+    {
+      "type": "configured",
+      "claim": "MOS wires Vaultwarden's SMTP settings to the shared, optional MOS email relay, used for invitations, address verification and two-factor codes. They are empty and inactive unless the owner configures a relay under Settings → Email relay; when set, that mail goes through the owner's own chosen provider. This is separate from the website-icon fetch described above, and MOS never uses the relay itself.",
+      "source": "apps/vaultwarden/entrypoint.sh and apps/vaultwarden/manifest.json"
     }
   ],
   "telemetryControls": [

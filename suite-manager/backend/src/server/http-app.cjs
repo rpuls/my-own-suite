@@ -10,8 +10,10 @@ const { HomepageService } = require('../homepage/homepage-service.cjs');
 const { ConsoleLoginError, ConsoleLoginService } = require('../settings/console-login-service.cjs');
 const { HttpsAgentClient } = require('../settings/https-agent-client.cjs');
 const { HttpsSettingsError } = require('../../../../shared/https-contract.cjs');
+const { SmtpSettingsError } = require('../../../../shared/smtp-contract.cjs');
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
 const { HttpsSettingsService } = require('../settings/https-settings-service.cjs');
+const { SmtpSettingsService } = require('../settings/smtp-settings-service.cjs');
 const { LabResetAgentClient } = require('../lab/lab-reset-agent-client.cjs');
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
 const { createLogger, requestId } = require('./logger.cjs');
@@ -185,6 +187,9 @@ function errorStatus(error) {
     return EXTERNAL_SOURCE_STATUS[error.code] || 400;
   }
   if (error instanceof HttpsSettingsError) {
+    return error.statusCode;
+  }
+  if (error instanceof SmtpSettingsError) {
     return error.statusCode;
   }
   if (!(error instanceof SetupError)) {
@@ -423,6 +428,13 @@ function createMOSServer({
     catalogService,
     externalClient: externalSourceClient,
     limiter: appOperationLimiter,
+    store: setup.store,
+  });
+  // The owner's shared outbound email relay. Reads and writes the same secret
+  // directory the app runtimes read ${smtp.*} from, so a relay saved here is the
+  // relay apps send through.
+  const smtpSettings = new SmtpSettingsService({
+    secretDir: appPackages.secretDir,
     store: setup.store,
   });
   // Resolves an installed app's real host label, so every public URL this layer
@@ -696,6 +708,43 @@ function createMOSServer({
           };
         }
         jsonResponse(response, 200, { ...applied, appReconciliation });
+        return;
+      }
+
+      if (url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/smtp` && ['DELETE', 'GET', 'POST'].includes(request.method)) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the email relay.' });
+          return;
+        }
+        if (request.method === 'GET') {
+          jsonResponse(response, 200, smtpSettings.status());
+          return;
+        }
+        if (request.method === 'DELETE') {
+          jsonResponse(response, 200, smtpSettings.remove());
+          return;
+        }
+        const body = await readJsonBody(request, 16 * 1024);
+        jsonResponse(response, 200, await smtpSettings.save(body));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/smtp/verify`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the email relay.' });
+          return;
+        }
+        jsonResponse(response, 200, { status: smtpSettings.status(), verify: await smtpSettings.verify() });
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/smtp/test`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the email relay.' });
+          return;
+        }
+        const body = await readJsonBody(request, 4 * 1024);
+        jsonResponse(response, 200, await smtpSettings.sendTest({ to: body?.to }));
         return;
       }
 

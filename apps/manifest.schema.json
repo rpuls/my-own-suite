@@ -236,7 +236,7 @@
                     "^[A-Z_][A-Z0-9_]*$": { "type": "string" }
                   },
                   "additionalProperties": false,
-                  "description": "Environment for the service. Values are template strings; see the template grammar. Startup order is not guaranteed - services must tolerate their dependencies starting later and retry."
+                  "description": "Environment for the service. Values are template strings; see the template grammar. May reference the owner's shared outbound email relay as ${smtp.host|port|security|username|password|fromAddress|fromName} (added in MOS 0.19.0; a package using it must set minimumMosVersion to 0.19.0). Startup order is not guaranteed - services must tolerate their dependencies starting later and retry."
                 },
                 "volumes": {
                   "type": "array",

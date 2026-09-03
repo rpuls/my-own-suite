@@ -120,7 +120,13 @@ function configValueMap(configRows, { includeSecrets = false } = {}) {
 //
 // Resolved last, and in a single pass over the original string, so an owner's
 // value is inserted as literal text and can never be re-read as a template.
-function resolveConfigTemplate(value, configRows, { app = {}, includeSecrets = false, ownerEnv = null } = {}) {
+// `smtp` is the owner's shared outbound email relay, a Map of ${smtp.*} values.
+// Like `secret` and `ownerEnv` it is resolved only when supplied — the store-time
+// render passes none, so ${smtp.*} stays a literal reference in the stored
+// projection and the digest, and the real host and password appear only in the
+// materialized runtime handed to the agent. An unconfigured relay (null map)
+// leaves the reference untouched, exactly as an unset owner-env name does.
+function resolveConfigTemplate(value, configRows, { app = {}, includeSecrets = false, ownerEnv = null, smtp = null } = {}) {
   if (typeof value !== 'string') return value;
   const values = configValueMap(configRows, { includeSecrets });
   return value
@@ -129,6 +135,7 @@ function resolveConfigTemplate(value, configRows, { app = {}, includeSecrets = f
     .replace(/\$\{app\.scheme\}/gu, () => (typeof app.scheme === 'string' ? app.scheme : '${app.scheme}'))
     .replace(/\$\{config\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (values.has(key) ? String(values.get(key)) : match))
     .replace(/\$\{secret\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (values.has(key) ? String(values.get(key)) : match))
+    .replace(/\$\{smtp\.([a-z][A-Za-z0-9]*)\}/gu, (match, key) => (smtp?.has(key) ? String(smtp.get(key)) : match))
     .replace(/\$\{ownerEnv\.([A-Za-z_][A-Za-z0-9_]*)\}/gu, (match, name) => (ownerEnv?.has(name) ? String(ownerEnv.get(name)) : match));
 }
 
@@ -416,7 +423,7 @@ function ownerEnvValueMap(envRows, service) {
   return map;
 }
 
-function materializeRuntimeCompose(compose, configRows, envRows = []) {
+function materializeRuntimeCompose(compose, configRows, envRows = [], { smtp = null } = {}) {
   return {
     ...compose,
     services: compose.services.map((service) => ({
@@ -424,6 +431,7 @@ function materializeRuntimeCompose(compose, configRows, envRows = []) {
       environment: renderEnvironment(service.environment, configRows, {
         includeSecrets: true,
         ownerEnv: ownerEnvValueMap(envRows, service.id),
+        smtp,
       }),
     })),
   };

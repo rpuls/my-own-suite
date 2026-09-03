@@ -4,8 +4,8 @@
   "reviewedAt": "2026-07-31T00:00:00.000Z",
   "expiresAt": "2027-01-31T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.4.3",
-    "packageDigest": "sha256:1a6c65be9b93f560ba66517243bcd40af449e30fa308dd11b4d714744f003652",
+    "packageVersion": "0.5.0",
+    "packageDigest": "sha256:12c1f7a5addd9b8708009267472f6d2cb672505c8982278a500d8b7914592de5",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -62,7 +62,7 @@
     },
     {
       "type": "documented",
-      "claim": "Radicale supports optional IMAP, LDAP, OAuth2, and SMTP authentication backends that would contact an external server, and 3.7.6 adds an imap_append_domain option to the IMAP backend. None are reachable in this package: the entrypoint pins auth type to htpasswd against a local file, and no manifest field exposes an alternative backend.",
+      "claim": "Radicale supports optional IMAP, LDAP, OAuth2, and SMTP authentication backends that would contact an external server, and 3.7.6 adds an imap_append_domain option to the IMAP backend. None are reachable in this package: the entrypoint pins auth type to htpasswd against a local file, and no manifest field exposes an alternative authentication backend.",
       "source": "Radicale project documentation (v3) and apps/radicale/entrypoint.sh",
       "url": "https://radicale.org/v3.html",
       "retrievedAt": "2026-07-24"
@@ -84,6 +84,11 @@
       "source": "tomsquest/docker-radicale issue 238, maintainer reply",
       "url": "https://github.com/tomsquest/docker-radicale/issues/238",
       "retrievedAt": "2026-07-31"
+    },
+    {
+      "type": "configured",
+      "claim": "MOS wires Radicale's [hook] email notifications to the shared, optional MOS email relay. Radicale can email the attendees of a calendar event when it changes; the entrypoint writes this [hook] configuration only when the owner has set a relay under Settings → Email relay, and removes it when they have not, so Radicale sends no mail by default. When set, notices go through the owner's own chosen provider. This is the narrowest of Radicale's outbound features — attendee notices only — and is separate from the authentication backends above; MOS never uses the relay itself.",
+      "source": "apps/radicale/entrypoint.sh and apps/radicale/manifest.json"
     }
   ],
   "telemetryControls": [

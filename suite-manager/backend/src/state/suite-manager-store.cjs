@@ -357,6 +357,31 @@ const MIGRATIONS = [
     `,
     version: 15,
   },
+  {
+    name: 'smtp-settings',
+    sql: `
+      CREATE TABLE smtp_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        host TEXT,
+        port INTEGER,
+        security TEXT NOT NULL DEFAULT 'starttls' CHECK (security IN ('none', 'starttls', 'tls')),
+        username TEXT,
+        from_address TEXT,
+        from_name TEXT,
+        allow_invalid_cert INTEGER NOT NULL DEFAULT 0 CHECK (allow_invalid_cert IN (0, 1)),
+        password_ref TEXT,
+        configured_at TEXT,
+        updated_at TEXT NOT NULL,
+        last_verify_status TEXT NOT NULL DEFAULT 'never' CHECK (last_verify_status IN ('never', 'verifying', 'verified', 'failed')),
+        last_verify_at TEXT,
+        last_verify_error_code TEXT,
+        last_verify_diagnostics TEXT
+      ) STRICT;
+
+      INSERT INTO smtp_settings (id, updated_at) VALUES (1, CURRENT_TIMESTAMP);
+    `,
+    version: 16,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -591,6 +616,99 @@ class SuiteManagerStore {
           last_apply_error_code = ?, last_apply_diagnostics = ?, updated_at = ?
       WHERE id = 1
     `).run(at, errorCode, diagnostics, at);
+  }
+
+  getSmtpSettings() {
+    return this.database.prepare(`
+      SELECT
+        allow_invalid_cert AS allowInvalidCert,
+        configured_at AS configuredAt,
+        from_address AS fromAddress,
+        from_name AS fromName,
+        host,
+        last_verify_at AS lastVerifyAt,
+        last_verify_diagnostics AS lastVerifyDiagnostics,
+        last_verify_error_code AS lastVerifyErrorCode,
+        last_verify_status AS lastVerifyStatus,
+        password_ref AS passwordRef,
+        port,
+        security,
+        updated_at AS updatedAt,
+        username
+      FROM smtp_settings
+      WHERE id = 1
+    `).get();
+  }
+
+  // Writes the relay an owner configured. `passwordRef` is the secret-file
+  // reference or null; it is only ever changed when a new password was supplied,
+  // so an edit that left the password field blank keeps the stored secret. Any
+  // save resets verification to 'never' because the thing that was verified may
+  // no longer be what is stored.
+  saveSmtpSettings({ allowInvalidCert = false, at, fromAddress, fromName = null, host, keepPasswordRef = false, passwordRef = null, port, security, username = null }) {
+    const passwordClause = keepPasswordRef ? '' : 'password_ref = ?,';
+    const bindings = [
+      host,
+      port,
+      security,
+      username || null,
+      fromAddress,
+      fromName || null,
+      allowInvalidCert ? 1 : 0,
+      ...(keepPasswordRef ? [] : [passwordRef]),
+      at,
+      at,
+    ];
+    this.database.prepare(`
+      UPDATE smtp_settings
+      SET host = ?, port = ?, security = ?, username = ?, from_address = ?, from_name = ?,
+          allow_invalid_cert = ?, ${passwordClause}
+          configured_at = COALESCE(configured_at, ?), updated_at = ?,
+          last_verify_status = 'never', last_verify_at = NULL,
+          last_verify_error_code = NULL, last_verify_diagnostics = NULL
+      WHERE id = 1
+    `).run(...bindings);
+  }
+
+  beginSmtpVerify(at) {
+    this.database.prepare(`
+      UPDATE smtp_settings
+      SET last_verify_status = 'verifying', last_verify_at = ?, updated_at = ?,
+          last_verify_error_code = NULL, last_verify_diagnostics = NULL
+      WHERE id = 1
+    `).run(at, at);
+  }
+
+  completeSmtpVerify(at) {
+    this.database.prepare(`
+      UPDATE smtp_settings
+      SET last_verify_status = 'verified', last_verify_at = ?, updated_at = ?,
+          last_verify_error_code = NULL, last_verify_diagnostics = NULL
+      WHERE id = 1
+    `).run(at, at);
+  }
+
+  failSmtpVerify({ at, diagnostics = null, errorCode }) {
+    this.database.prepare(`
+      UPDATE smtp_settings
+      SET last_verify_status = 'failed', last_verify_at = ?, updated_at = ?,
+          last_verify_error_code = ?, last_verify_diagnostics = ?
+      WHERE id = 1
+    `).run(at, at, errorCode, diagnostics);
+  }
+
+  // Forgets the relay entirely, back to a never-configured row. The password
+  // secret file is deleted by the caller; this clears the reference to it.
+  clearSmtpSettings(at) {
+    this.database.prepare(`
+      UPDATE smtp_settings
+      SET host = NULL, port = NULL, security = 'starttls', username = NULL,
+          from_address = NULL, from_name = NULL, allow_invalid_cert = 0,
+          password_ref = NULL, configured_at = NULL, updated_at = ?,
+          last_verify_status = 'never', last_verify_at = NULL,
+          last_verify_error_code = NULL, last_verify_diagnostics = NULL
+      WHERE id = 1
+    `).run(at);
   }
 
   recordHomepageRevision({ at, file, revision }) {

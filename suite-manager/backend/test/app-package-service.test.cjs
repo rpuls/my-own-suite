@@ -867,7 +867,7 @@ test('updating an integration consumer keeps its integration env and reconciles 
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    catalogService: { platformVersion: '0.19.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
     store,
   });
   await service.installPackage('seafile', { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' });

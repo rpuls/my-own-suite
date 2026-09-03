@@ -4,8 +4,8 @@
   "reviewedAt": "2026-07-23T00:00:00.000Z",
   "expiresAt": "2027-01-23T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.2.5",
-    "packageDigest": "sha256:27e3cda2a671e7e0f1416a7baf25b522cd68445517e160a3285d77d3e4686da4",
+    "packageVersion": "0.3.0",
+    "packageDigest": "sha256:34147c4f61ed9f44141edadd29bfc6429620700bd5f46b678b47c75e013bfb3e",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -51,7 +51,7 @@
   "evidence": [
     {
       "type": "configured",
-      "claim": "The MOS package projects only database, cache, admin-initialisation, JWT, hostname/protocol, and timezone environment into the seafile service and defines no SMTP, object-storage, analytics, or telemetry variables; ONLYOFFICE integration variables are absent until an operator explicitly connects a document editor.",
+      "claim": "The MOS package projects database, cache, admin-initialisation, JWT, hostname/protocol and timezone environment into the seafile service, and defines no object-storage, analytics or telemetry variables. It also wires Seafile's SMTP to the shared, optional MOS email relay, which resolves empty unless the owner configures one under Settings → Email relay, so Seafile sends no mail by default. ONLYOFFICE integration variables are absent until an operator explicitly connects a document editor.",
       "source": "apps/seafile/manifest.json"
     },
     {
@@ -87,7 +87,7 @@
     },
     {
       "type": "documented",
-      "claim": "External integrations that would produce outbound traffic - SMTP email, ONLYOFFICE/Collabora editing, S3/object-storage backends, LDAP/Active Directory, external SSO, Google Maps, and the image's own Let's Encrypt provisioning (SEAFILE_SERVER_LETSENCRYPT, default false) - are all off by default and are not enabled by the MOS package, which terminates TLS at Caddy.",
+      "claim": "External integrations that would produce outbound traffic - ONLYOFFICE/Collabora editing, S3/object-storage backends, LDAP/Active Directory, external SSO, Google Maps, and the image's own Let's Encrypt provisioning (SEAFILE_SERVER_LETSENCRYPT, default false) - are all off by default and are not enabled by the MOS package, which terminates TLS at Caddy. SMTP email is likewise off by default: MOS wires it to the shared optional email relay, which is unset unless the owner configures one, so Seafile sends no mail until they do.",
       "source": "Seafile 13.0 configuration and Docker deployment documentation, correlated with apps/seafile/manifest.json",
       "url": "https://manual.seafile.com/13.0/config/seahub_settings_py/",
       "retrievedAt": "2026-07-23"

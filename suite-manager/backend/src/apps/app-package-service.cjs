@@ -59,6 +59,7 @@ const {
   readAppPackageManifest,
 } = require('./package-manifest.cjs');
 const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnostics.cjs');
+const { readStoredRelay, smtpTemplateValues } = require('../settings/smtp-relay.cjs');
 
 // How long MOS waits for an app to come back healthy after an owner environment
 // change before treating the change as the reason it did not. 90 s is
@@ -277,6 +278,18 @@ class AppPackageService {
     });
   }
 
+  // The ${smtp.*} values for a runtime materialize, or null when no relay is
+  // configured. Read at materialize time from the single stored relay, so every
+  // app that references it gets the current relay and an app that does not is
+  // unaffected — the map is applied to a compose with no ${smtp.*} tokens and
+  // changes nothing. The password is read the same way an app secret is; a
+  // relay whose secret cannot be read fails the apply rather than silently
+  // sending mail with a blank password.
+  smtpRuntimeValues() {
+    const { relay } = readStoredRelay(this.store, (ref) => readSecretValue(this.secretDir, ref));
+    return smtpTemplateValues(relay);
+  }
+
   async applyPackageRuntime(packageId, requestContext = {}, options = {}) {
     if (!this.agent) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App runtime system agent is unavailable.', 503);
@@ -311,7 +324,7 @@ class AppPackageService {
       result = await this.agent.apply({
         appHost,
         caddy: materializeRuntimeCaddy(caddyProjection.content, configRows),
-        compose: materializeRuntimeCompose(composeProjection.content, configRows, envRows),
+        compose: materializeRuntimeCompose(composeProjection.content, configRows, envRows, { smtp: this.smtpRuntimeValues() }),
         health: healthProjection.content,
         instanceId: instance.id,
         packageDigest: instance.packageDigest,
@@ -337,7 +350,7 @@ class AppPackageService {
           kind: 'apply',
           operationId: crypto.randomUUID(),
           request: { packageId: manifest.id, target: 'runtime' },
-          ...buildOperationDiagnostics(error, { fallbackCode: 'APP_RUNTIME_APPLY_FAILED', secrets: redactionSecretsFor(configRows, envRows) }),
+          ...buildOperationDiagnostics(error, { fallbackCode: 'APP_RUNTIME_APPLY_FAILED', secrets: [...redactionSecretsFor(configRows, envRows), this.smtpRuntimeValues()?.get('password')].filter(Boolean) }),
         });
       } catch { /* the original failure is the one that matters */ }
       throw error;

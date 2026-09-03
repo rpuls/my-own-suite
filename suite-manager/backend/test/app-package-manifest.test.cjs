@@ -490,8 +490,18 @@ test('manifest validation enforces the template grammar', () => {
   assert.deepEqual(validateAppPackageManifest(withField({ SECRET_AS_CONFIG: '${config.adminToken}' })), [
     'resources.services.example-app.env.SECRET_AS_CONFIG references ${config.adminToken}, which is not a declared non-secret setup field.',
   ]);
-  assert.deepEqual(validateAppPackageManifest(withField({ UNKNOWN: '${smtp.host}' })), [
-    'resources.services.example-app.env.UNKNOWN references unknown template namespace "smtp" in ${smtp.host}. Known namespaces: app, config, export, import, owner, secret.',
+  assert.deepEqual(validateAppPackageManifest(withField({ UNKNOWN: '${mailer.host}' })), [
+    'resources.services.example-app.env.UNKNOWN references unknown template namespace "mailer" in ${mailer.host}. Known namespaces: app, config, export, import, owner, secret, smtp.',
+  ]);
+  // The shared SMTP relay resolves at runtime, so it is valid in service env.
+  assert.deepEqual(validateAppPackageManifest(withField({
+    MAIL_FROM: '${smtp.fromAddress}',
+    MAIL_HOST: '${smtp.host}',
+    MAIL_PASS: '${smtp.password}',
+    MAIL_PORT: '${smtp.port}',
+  })), []);
+  assert.deepEqual(validateAppPackageManifest(withField({ BAD_SMTP_KEY: '${smtp.hostname}' })), [
+    'resources.services.example-app.env.BAD_SMTP_KEY references ${smtp.hostname}; supported smtp keys are allowInvalidCert, configured, fromAddress, fromName, host, implicitTls, password, port, security, startTls, username.',
   ]);
   assert.deepEqual(validateAppPackageManifest(withField({ BAD_APP_KEY: '${app.port}' })), [
     'resources.services.example-app.env.BAD_APP_KEY references ${app.port}; supported app keys are host, publicUrl, scheme.',
@@ -500,6 +510,14 @@ test('manifest validation enforces the template grammar', () => {
   // defaults — never in runtime projections.
   assert.deepEqual(validateAppPackageManifest(withField({ OWNER: '${owner.email}' })), [
     'resources.services.example-app.env.OWNER must not reference ${owner.*}.',
+  ]);
+  // ${smtp.*} resolves only in service env, so it is refused in a field default
+  // — the one place a template lives that never becomes runtime environment.
+  const smtpInDefault = validManifest({
+    setup: { fields: [{ default: '${smtp.host}', id: 'relay', label: 'Relay', type: 'text' }] },
+  });
+  assert.deepEqual(validateAppPackageManifest(smtpInDefault), [
+    'setup.fields[0].default must not reference ${smtp.*}.',
   ]);
 
   const ownerDefault = validManifest({

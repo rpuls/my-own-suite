@@ -40,7 +40,7 @@ function updateRecoveryStateForStage(stage) {
   return ROLLBACK_REQUIRED_STAGES.includes(stage) ? 'rollback-required' : 'retry-safe';
 }
 
-function updateRuntimeRequest({ config, env = [], expectedInstalledDigest, instance, manifest, packageDigest, projections, requestContext, sourceRevision }) {
+function updateRuntimeRequest({ config, env = [], expectedInstalledDigest, instance, manifest, packageDigest, projections, requestContext, smtp = null, sourceRevision }) {
   const compose = projections.find((item) => item.kind === 'compose');
   const caddy = projections.find((item) => item.kind === 'caddy');
   const health = projections.find((item) => item.kind === 'health');
@@ -48,7 +48,7 @@ function updateRuntimeRequest({ config, env = [], expectedInstalledDigest, insta
   return {
     appHost: requestContext.appHost,
     caddy: materializeRuntimeCaddy(caddy.content, config),
-    compose: materializeRuntimeCompose(compose.content, config, env),
+    compose: materializeRuntimeCompose(compose.content, config, env, { smtp }),
     ...(expectedInstalledDigest ? { expectedInstalledDigest } : {}),
     health: health.content,
     instanceId: instance.id,
@@ -341,6 +341,7 @@ class AppUpdateService {
       packageDigest: instance.packageDigest,
       projections: installedProjections,
       requestContext,
+      smtp: this.apps.smtpRuntimeValues(),
       sourceRevision: instance.sourceRevision,
     });
     const candidateRuntime = updateRuntimeRequest({
@@ -352,6 +353,7 @@ class AppUpdateService {
       packageDigest: operation.candidateDigest,
       projections: recovery.candidateProjections.map((projection) => ({ ...projection, content: JSON.parse(projection.contentJson) })),
       requestContext,
+      smtp: this.apps.smtpRuntimeValues(),
       sourceRevision: recovery.candidateSource?.revision,
     });
     await this.agent.rollbackPackageUpdate({ candidate: candidateRuntime, installed: installedRuntime });
@@ -645,6 +647,7 @@ class AppUpdateService {
         packageDigest: instance.packageDigest,
         projections: installedProjections,
         requestContext,
+        smtp: this.apps.smtpRuntimeValues(),
         sourceRevision: instance.sourceRevision,
       });
       const candidateRuntime = updateRuntimeRequest({
@@ -656,6 +659,7 @@ class AppUpdateService {
         packageDigest: candidate.packageDigest,
         projections: candidateProjections,
         requestContext,
+        smtp: this.apps.smtpRuntimeValues(),
         sourceRevision: candidate.source.revision,
       });
       const activated = await this.agent.activatePackageUpdate({ candidate: candidateRuntime, installed: installedRuntime });

@@ -170,11 +170,30 @@ A reference is recognized only when the namespace is a lowercase word followed b
 | `${secret.<fieldId>}` | A secret setup field's value | Service env and provisional areas only — never onboarding, never catalog |
 | `${app.host}` / `${app.scheme}` / `${app.publicUrl}` | The app's public hostname, scheme, and base URL — `publicUrl` always ends in `/` | Service env, onboarding `values[].value`, provisional areas |
 | `${owner.name}` / `${owner.email}` | The suite owner's profile | `setup.fields[].default` only |
+| `${smtp.*}` | The owner's shared outbound email relay | Service env and provisional areas |
 | `${import.*}` / `${export.*}` | Capability wiring | The provisional capability system only |
 
 Because `${app.publicUrl}` ends in `/`, it concatenates cleanly with a path (`${app.publicUrl}welcome/`) but is the wrong value for a variable that wants a bare origin — some servers reject an origin carrying a path and refuse to start. Compose those as `${app.scheme}://${app.host}`.
 
-**Every reference is validated.** A typo like `${config.adminUserName}` fails validation instead of shipping verbatim into a container env var and failing silently on someone else's machine. An unknown namespace is an error too — future namespaces (an SMTP relay would introduce `${smtp.*}`) are reserved and arrive gated by `minimumMosVersion`.
+### The SMTP relay namespace
+
+`${smtp.*}` projects the single outbound email relay an owner configures once in **Settings → Email relay** into any app that sends mail. The keys are `host`, `port`, `username`, `password`, `fromAddress`, `fromName`, and the encryption in whichever shape the app wants: `security` (the word `none` \| `starttls` \| `tls`, for an app that takes one string) or the pair `startTls` and `implicitTls` (each `true` \| `false`, for an app that takes two booleans like Django's `EMAIL_USE_TLS` / `EMAIL_USE_SSL`). All are derived from the owner's single choice, so no app's own vocabulary leaks into MOS. An app opts in simply by referencing them in its service env — MOS never sends the relay to an app that does not:
+
+```json
+"env": {
+  "MAILER_HOST": "${smtp.host}",
+  "MAILER_PORT": "${smtp.port}",
+  "MAILER_USER": "${smtp.username}",
+  "MAILER_PASS": "${smtp.password}",
+  "MAILER_FROM": "${smtp.fromAddress}"
+}
+```
+
+`${smtp.configured}` is `true` only when a relay is set; use it for an app with an explicit on/off switch. `${smtp.allowInvalidCert}` is `true` when the owner accepted a relay with an untrusted TLS certificate, so an app connecting to the same relay can make the same choice (its own `ignore-cert` / `accept-invalid-certs` flag) instead of failing where MOS succeeded. When no relay is configured every other key resolves to the empty string — never the literal `${smtp.host}` text — so an app that gates on a non-empty host simply stays off. An app whose settings are written by its own package entrypoint should guard on a non-empty `${smtp.host}` before writing them.
+
+`${smtp.password}` is secret-grade: like `${secret.*}` it resolves only when a runtime is materialized, never enters a stored projection or a package digest, and is redacted from logs and diagnostics. Because the relay resolves at materialize time, changing it does not alter any app's digest — installed apps pick up a changed relay the next time they are updated or restarted. The namespace was added in **MOS 0.19.0**; a package that references it must set `minimumMosVersion` to `0.19.0`, so an older MOS refuses it rather than shipping a literal `${smtp.host}` into a container.
+
+**Every reference is validated.** A typo like `${config.adminUserName}` fails validation instead of shipping verbatim into a container env var and failing silently on someone else's machine. An unknown namespace is an error too — a still-future namespace is reserved and arrives gated by `minimumMosVersion`.
 
 ## Provisional areas — outside the lock
 
