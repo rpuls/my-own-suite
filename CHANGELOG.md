@@ -4,6 +4,8 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-04
+
 ### Contributors
 
 - This release carries My Own Suite's first community contribution. **[@okeycj](https://github.com/okeycj)** added backend test coverage for the HTTPS settings and backup-inventory services (#259), thank you. 
