@@ -38,12 +38,12 @@ function readStoredRelay(store, readSecret) {
 // becomes its decimal text.
 //
 // It always returns a full map — even for no relay, where every value is empty
-// and `configured` is "false". That is deliberate and different from an unset
-// owner-env name: an app wired to ${smtp.host} must see an empty host when there
-// is no relay (so its own mailer stays off), never the literal reference text.
-// Materialize passes this map; the store-time render passes no smtp option at
-// all, which is what keeps ${smtp.*} literal in the stored projection and out of
-// the digest.
+// and `configured` is "false", never the literal reference text. `configured`
+// is the signal renderEnvironment reads to drop the app's ${smtp.*} env entirely
+// when no relay is set, so the app sees those vars unset (its mailer cleanly off)
+// rather than empty, which some apps validate and refuse to boot on. Materialize
+// passes this map; the store-time render passes no smtp option at all, which is
+// what keeps ${smtp.*} literal in the stored projection and out of the digest.
 function smtpTemplateValues(relay) {
   const configured = Boolean(relay);
   const security = relay?.security || 'starttls';

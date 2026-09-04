@@ -84,6 +84,26 @@ test('materialize resolves ${smtp.*} per service and leaves shell ${VAR} alone',
   });
 });
 
+// The property that keeps the pure-env apps (Vaultwarden, Paperless) booting when
+// no relay is set: their ${smtp.*} env is dropped, not handed over empty. An
+// empty SMTP_HOST is a value some apps validate and refuse to start on, where an
+// unset one leaves the mailer cleanly off — exactly as before the wiring existed.
+test('with no relay, an app\'s ${smtp.*} env is omitted rather than emptied', () => {
+  const compose = { services: [{ id: 'web', environment: {
+    KEEP: 'value',
+    MOS_SMTP_START_TLS: '${smtp.startTls}',
+    SMTP_ACCEPT_INVALID_CERTS: '${smtp.allowInvalidCert}',
+    SMTP_HOST: '${smtp.host}',
+    SMTP_PORT: '${smtp.port}',
+    SHELL_STYLE: 'literal ${HOME}',
+  } }] };
+  const out = materializeRuntimeCompose(compose, [], [], { smtp: smtpTemplateValues(null) });
+  // Only the non-relay vars survive; even smtp.startTls/allowInvalidCert ("false",
+  // not empty) are dropped, so the unconfigured app is byte-identical to the
+  // pre-wiring one.
+  assert.deepEqual(out.services[0].environment, { KEEP: 'value', SHELL_STYLE: 'literal ${HOME}' });
+});
+
 // The reason this whole change is additive: an app that never references the
 // namespace materializes to exactly the same bytes whether or not a relay is
 // configured. Every already-installed app is in this set.

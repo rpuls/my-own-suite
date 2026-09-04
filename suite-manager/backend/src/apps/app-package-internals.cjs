@@ -139,9 +139,20 @@ function resolveConfigTemplate(value, configRows, { app = {}, includeSecrets = f
     .replace(/\$\{ownerEnv\.([A-Za-z_][A-Za-z0-9_]*)\}/gu, (match, name) => (ownerEnv?.has(name) ? String(ownerEnv.get(name)) : match));
 }
 
+// When a relay is present but unconfigured, an env var that references ${smtp.*}
+// is dropped rather than resolved to an empty string. An unset SMTP_HOST is how
+// an app looked before the relay wiring existed and leaves its mailer cleanly
+// off; an *empty* SMTP_HOST is a value some apps validate on startup and refuse
+// to boot on, reading it as a configured host with no from-address. The relay is
+// a Map only on the materialize path; the stored render passes none and keeps
+// ${smtp.*} literal, and a configured relay resolves every reference as usual.
 function renderEnvironment(environment, configRows, options = {}) {
+  const { smtp = null } = options;
+  const relayUnconfigured = smtp instanceof Map && smtp.get('configured') !== 'true';
   return Object.fromEntries(
-    Object.entries(environment || {}).map(([key, value]) => [key, resolveConfigTemplate(value, configRows, options)]),
+    Object.entries(environment || {})
+      .filter(([, value]) => !(relayUnconfigured && /\$\{smtp\./u.test(String(value))))
+      .map(([key, value]) => [key, resolveConfigTemplate(value, configRows, options)]),
   );
 }
 
