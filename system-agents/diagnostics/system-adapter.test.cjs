@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { MAX_CAPTURE_BYTES, SystemDiagnosticsAdapter, capture, parseLabels, parseShowOutput } = require('./system-adapter.cjs');
+const { MAX_CAPTURE_BYTES, SystemDiagnosticsAdapter, capture, parseLabels, parseShowOutput, serializeJournal } = require('./system-adapter.cjs');
 
 test('systemctl show output is read as key/value, ignoring anything else', () => {
   const values = parseShowOutput('ActiveState=failed\nSubState=failed\nUnitFileState=enabled\n\ngarbage line\n');
@@ -76,4 +76,40 @@ test('a host fact whose binary is missing costs that fact and no other', async (
   // to docker being installed.
   assert.equal(typeof facts, 'object');
   assert.ok(!Object.values(facts).some((value) => value === undefined));
+});
+
+test('journal reads are serialised so none overlap', async () => {
+  // The property behind the fix: journald hands back an empty result — exit
+  // zero, nothing on stderr — for some unit when several `journalctl -u` reads
+  // run at once, silently dropping that unit's logs. Modelled here without
+  // spawning: tasks pushed through serializeJournal at the same moment must run
+  // strictly one at a time, in the order they were queued.
+  let active = 0;
+  let maxActive = 0;
+  const order = [];
+  const task = (id) => async () => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    order.push(id);
+    active -= 1;
+    return id;
+  };
+  const results = await Promise.all([0, 1, 2, 3, 4, 5].map((id) => serializeJournal(task(id))));
+
+  assert.equal(maxActive, 1, 'two journal reads ran at the same time');
+  assert.deepEqual(results, [0, 1, 2, 3, 4, 5]);
+  assert.deepEqual(order, [0, 1, 2, 3, 4, 5], 'reads did not run in the order they were requested');
+});
+
+test('a failing journal read does not stall the ones queued behind it', async () => {
+  const settled = [];
+  const first = serializeJournal(async () => { settled.push('first'); return 'first'; });
+  const boom = serializeJournal(async () => { throw new Error('journalctl fell over'); });
+  const third = serializeJournal(async () => { settled.push('third'); return 'third'; });
+
+  await assert.rejects(() => boom);
+  assert.equal(await first, 'first');
+  assert.equal(await third, 'third');
+  assert.deepEqual(settled, ['first', 'third'], 'a read after a failed one must still run');
 });

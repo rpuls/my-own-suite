@@ -49,6 +49,21 @@ function capture(file, args) {
   });
 }
 
+// journalctl reads are run one at a time, never concurrently. Several
+// `journalctl -u` invocations in flight at once make journald hand some of them
+// an empty result — exit 0, nothing on stderr, just no lines — for a different
+// unit on each run, which silently drops that unit's logs from the bundle.
+// Reproduced on systemd 255: six concurrent reads lose two units per pass; one
+// at a time never does. This serialises only journalctl; systemctl and docker
+// reads stay concurrent, so the collection is still bounded by a single slow
+// journal rather than by all of them in series.
+let journalQueue = Promise.resolve();
+function serializeJournal(task) {
+  const run = journalQueue.then(task, task);
+  journalQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
+
 function parseShowOutput(text) {
   const values = {};
   for (const line of String(text || '').split('\n')) {
@@ -111,7 +126,7 @@ class SystemDiagnosticsAdapter {
   // `--no-hostname` and message-only-plus-timestamp keep the per-line overhead
   // low enough that the line budget buys log rather than prefix.
   journal(unit, lines) {
-    return capture(JOURNALCTL_BINARY, ['-u', unit, '-n', String(lines), '--no-pager', '--no-hostname', '-o', 'short-iso']);
+    return serializeJournal(() => capture(JOURNALCTL_BINARY, ['-u', unit, '-n', String(lines), '--no-pager', '--no-hostname', '-o', 'short-iso']));
   }
 
   async containers() {
@@ -138,4 +153,4 @@ class SystemDiagnosticsAdapter {
   }
 }
 
-module.exports = { MAX_CAPTURE_BYTES, SystemDiagnosticsAdapter, capture, parseLabels, parseShowOutput };
+module.exports = { MAX_CAPTURE_BYTES, SystemDiagnosticsAdapter, capture, parseLabels, parseShowOutput, serializeJournal };
