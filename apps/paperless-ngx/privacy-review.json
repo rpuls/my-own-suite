@@ -4,8 +4,8 @@
   "reviewedAt": "2026-08-11T00:00:00.000Z",
   "expiresAt": "2027-02-11T00:00:00.000Z",
   "scope": {
-    "packageVersion": "0.1.2",
-    "packageDigest": "sha256:92c7493b1794f76569da0d83ef566b9bb6086b88f45c197e064c6083d646aa23",
+    "packageVersion": "0.2.0",
+    "packageDigest": "sha256:4025a45f4f73973eed773749aca1012963abe6b667a43a6e799a442c492c634a",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -133,6 +133,11 @@
       "source": "repository contents at tag v3.0.5 and the paperless-ngx GitHub organisation record",
       "url": "https://github.com/paperless-ngx/paperless-ngx/blob/v3.0.5/LICENSE",
       "retrievedAt": "2026-08-11"
+    },
+    {
+      "type": "configured",
+      "claim": "MOS wires Paperless's outbound email settings (PAPERLESS_EMAIL_HOST and related) to the shared, optional MOS email relay. They resolve empty unless the owner configures a relay under Settings → Email relay, so Paperless sends no mail by default, and the ten-minute mail-account job remains inbound-only and unaffected. When a relay is set, Paperless sends password-reset, share and workflow mail through the owner's own chosen provider, which handles that mail; MOS never uses the relay itself.",
+      "source": "apps/paperless-ngx/manifest.json"
     }
   ],
   "telemetryControls": [

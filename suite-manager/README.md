@@ -30,6 +30,20 @@ cmd /c npm test
 
 `dev` builds the frontend, starts the backend, and serves Suite Manager at `http://home.localhost:3100/suite-manager/`. Use `home.localhost`, not `127.0.0.1`, because the local backend validates the configured Home host.
 
+## Logging and diagnostics
+
+The backend writes one JSON object per line to stdout and owns no log files: journald captures a systemd service's stdout, so `journalctl -u mos-suite-manager` is the reader. Every record carries `ts`, `level` and `event`, and a caller cannot overwrite those three. Fields are bounded — 2 000 characters each, 12 stack frames, 16 000 per record — and truncation states how much it removed. `MOS_LOG_LEVEL` selects the threshold (`debug`, `info`, `warn`, `error`) and defaults to `info`. When stdout is a terminal the same records are written as readable lines instead, so local development is legible; an installed server is never a terminal and always writes JSON.
+
+The top-level request handler logs internal errors — those with no explicit `statusCode` that resolve to 5xx — with the method, `url.pathname` and a bounded stack, and returns an eight-character `reference` in the response body that matches the logged record. The query string is never logged, because it carries claim tokens. Expected client errors are answered with their own message and are not logged.
+
+A failed app operation is written to `app_operations`, and a failed HTTPS apply to `https_settings`, with the stage error code and bounded free-text diagnostics — the agent's sentence and the failing command's last output — redacted by exact secret value **before** storage: this text reaches SQLite and therefore every backup bundle. `src/redaction.cjs` is the only implementation of that masking, and it runs on each value before serialization and before truncation — JSON-escaping a secret containing a quote or backslash would otherwise defeat the exact-value match, and truncating first would leave a straddling secret as a readable fragment.
+
+`GET /suite-manager/api/support/bundle` returns the owner-facing diagnostics export as one `text/plain` attachment. It merges what only Suite Manager knows — installed apps, their versions and their persisted last failure, platform version, update track, TLS mode — with what only the root diagnostics agent can read, and leads with a derived `WHAT LOOKS WRONG` summary: units that are not active, containers that are not running, apps carrying a failure, and filesystems at 90% or more. One text file rather than an archive, because the fragile step is an owner attaching it to a message, and because the reader is increasingly an AI agent that would otherwise need an unpacking step.
+
+The export is where the logger's deliberately unwired `secretProvider` is realised: `collectRedactionSecrets` walks the app secret directory — the files on disk, so secrets belonging to an instance whose rows were deleted are still masked — and adds the Cloudflare token when the file happens to be readable. Redaction runs once over the finished text, which is safe here in a way it is not in the logger, because plain text has escaped nothing on the way in. The file ends with a count of secrets checked for and values masked, so a reader can tell a bundle with nothing to mask from one whose secret set arrived empty; the latter says so in capitals. Server and app hostnames are deliberately kept — not secret, and a route failure cannot be diagnosed without them — and the file says so in its own header, so an owner knows what they are sending.
+
+The endpoint requires a signed-in owner. That is a real limit worth knowing: an owner who cannot sign in cannot produce a bundle, and the alternative — an unauthenticated export describing the machine — would be a reconnaissance endpoint.
+
 ## Persistence
 
 SQLite is Suite Manager's durable source of truth. The database is `suite-manager.sqlite` under the configurable `MOS_STATE_DIR`; installed control planes use `/var/lib/mos/suite-manager/suite-manager.sqlite`, while local development defaults to `.state/suite-manager.sqlite` relative to the working directory.

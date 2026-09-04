@@ -52,6 +52,7 @@ test('fresh state creates the SQLite schema and records every migration', async 
 
   assert.deepEqual(tables, [
     'app_instance_config',
+    'app_instance_env',
     'app_instance_guides',
     'app_instance_projections',
     'app_instances',
@@ -61,13 +62,47 @@ test('fresh state creates the SQLite schema and records every migration', async 
     'homepage_operations',
     'homepage_revisions',
     'https_settings',
+    'owner_preferences',
     'owner_terms_acceptances',
     'owners',
     'schema_migrations',
     'security_events',
     'sessions',
+    'smtp_settings',
   ]);
   assert.deepEqual(migrations, MIGRATIONS.map(({ name, version }) => ({ name, version })));
+});
+
+test('owner preferences round-trip per key, survive restart, and belong to an owner that exists', async () => {
+  const stateDir = await tempStateDir();
+  let store = new SuiteManagerStore(stateDir);
+  store.createOwnerAndSession(owner(), session());
+  const ownerId = store.getOwner().id;
+
+  assert.deepEqual(store.getOwnerPreferences(ownerId), {});
+  store.setOwnerPreference({ at: '2026-08-30T10:00:00.000Z', key: 'technicalControls', ownerId, value: true });
+  store.setOwnerPreference({ at: '2026-08-30T10:01:00.000Z', key: 'technicalControls', ownerId, value: false });
+  assert.deepEqual(store.getOwnerPreferences(ownerId), { technicalControls: false });
+
+  // The row is owner-scoped for real, not by convention.
+  assert.throws(() => store.setOwnerPreference({ at: '2026-08-30T10:02:00.000Z', key: 'technicalControls', ownerId: 2, value: true }));
+  store.close();
+
+  store = new SuiteManagerStore(stateDir);
+  assert.deepEqual(store.getOwnerPreferences(ownerId), { technicalControls: false });
+  store.close();
+
+  // A row written by a release this one does not understand is skipped, not
+  // thrown on: one unreadable preference must not take the readable ones with it.
+  const database = new DatabaseSync(path.join(stateDir, DATABASE_FILENAME));
+  database.prepare(`
+    INSERT INTO owner_preferences (owner_id, key, value_json, updated_at) VALUES (?, ?, ?, ?)
+  `).run(ownerId, 'fromALaterRelease', 'not json', '2026-08-30T10:03:00.000Z');
+  database.close();
+
+  store = new SuiteManagerStore(stateDir);
+  assert.deepEqual(store.getOwnerPreferences(ownerId), { technicalControls: false });
+  store.close();
 });
 
 test('HTTPS settings keep pending state separate and never persist the Cloudflare token', async () => {
@@ -240,6 +275,9 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'external-app-sources',
     'security-event-subjects',
     'owner-terms-acceptance',
+    'owner-preferences',
+    'app-instance-owner-env',
+    'smtp-settings',
   ]);
   upgraded.close();
 });
@@ -385,8 +423,9 @@ test('app update operations persist digest-bound stages and reject overlap', asy
   assert.equal(operation.stage, 'candidate-staged');
   assert.equal(operation.expectedInstalledDigest, `sha256:${'a'.repeat(64)}`);
   assert.equal(operation.candidateDigest, `sha256:${'b'.repeat(64)}`);
-  reopened.failAppUpdate({ at, errorCode: 'APP_UPDATE_INTERRUPTED', instanceId: 'update-instance', operationId: 'update-one', stage: 'recovery-required' });
+  reopened.failAppUpdate({ at, diagnostics: 'Suite Manager restarted while this update was running.', errorCode: 'APP_UPDATE_INTERRUPTED', instanceId: 'update-instance', operationId: 'update-one', stage: 'recovery-required' });
   assert.equal(reopened.getAppOperation('update-one').status, 'failed');
+  assert.equal(reopened.latestFailedAppOperation('update-instance').diagnostics, 'Suite Manager restarted while this update was running.');
   reopened.close();
 });
 
@@ -704,5 +743,86 @@ test('external sources persist separately and removing one never uninstalls its 
   assert.equal(instance.status, 'installed');
   assert.equal(instance.snapshotState, 'installed');
   assert.equal(instance.sourceTrust, 'unverified');
+  store.close();
+});
+
+async function storeWithInstalledApp() {
+  const store = new SuiteManagerStore(await tempStateDir());
+  store.installAppInstance({
+    at: '2026-09-01T10:00:00.000Z',
+    instance: {
+      categorySnapshot: 'tools',
+      displayNameSnapshot: 'Example App',
+      id: 'instance-one',
+      manifestDigest: 'sha256:manifest',
+      packageDigest: `sha256:${'a'.repeat(64)}`,
+      packageId: 'example-app',
+      packageVersion: '0.1.0',
+      privacy: { posture: 'privacy-configured', reviewedAt: '2026-08-30T10:00:00.000Z', status: 'reviewed' },
+      snapshotPath: '/var/lib/mos/app-packages/instance-one/installed',
+      snapshotState: 'installed',
+      source: {
+        kind: 'official-git',
+        path: 'apps/example-app',
+        repository: 'https://github.com/rpuls/my-own-suite',
+        revision: '0123456789abcdef0123456789abcdef01234567',
+        trust: 'mos-reviewed',
+      },
+    },
+    operationId: 'operation-install',
+    projections: [{ contentJson: '{"services":[]}', digest: 'sha256:compose', kind: 'compose' }],
+    request: {},
+  });
+  return store;
+}
+
+test('a failed app operation records the reason instead of discarding it', async () => {
+  const store = await storeWithInstalledApp();
+  const recorded = store.recordFailedAppOperation({
+    at: '2026-09-01T10:05:00.000Z',
+    diagnostics: 'The app image could not be built.\n\nDetails:\n- no space left on device',
+    errorCode: 'APP_BUILD_FAILED',
+    instanceId: 'instance-one',
+    kind: 'apply',
+    operationId: 'operation-failed',
+    request: { packageId: 'example-app', target: 'runtime' },
+  });
+
+  assert.equal(recorded.status, 'failed');
+  assert.equal(recorded.errorCode, 'APP_BUILD_FAILED');
+  assert.match(recorded.diagnostics, /no space left on device/u);
+  assert.equal(store.getAppOperation('operation-failed').diagnostics, recorded.diagnostics);
+  store.close();
+});
+
+test('the latest failure is reported only while it is still the last word on the app', async () => {
+  const store = await storeWithInstalledApp();
+  store.recordFailedAppOperation({
+    at: '2026-09-01T10:05:00.000Z',
+    diagnostics: 'The app container could not be started.',
+    errorCode: 'APP_RUN_FAILED',
+    instanceId: 'instance-one',
+    kind: 'apply',
+    operationId: 'operation-failed',
+    request: {},
+  });
+  assert.equal(store.latestFailedAppOperation('instance-one').errorCode, 'APP_RUN_FAILED');
+
+  // A successful apply after the failure means the owner already fixed it, and
+  // a screen that kept showing the old reason would be reporting a live problem.
+  store.applyAppProjections({
+    at: '2026-09-01T10:10:00.000Z',
+    instanceId: 'instance-one',
+    kinds: ['compose'],
+    operationId: 'operation-recovered',
+    request: { target: 'runtime' },
+  });
+  assert.equal(store.latestFailedAppOperation('instance-one'), null);
+  store.close();
+});
+
+test('an app with no failure on record reports none', async () => {
+  const store = await storeWithInstalledApp();
+  assert.equal(store.latestFailedAppOperation('instance-one'), null);
   store.close();
 });

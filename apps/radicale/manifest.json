@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "radicale",
   "name": "Radicale",
-  "version": "0.4.3",
-  "minimumMosVersion": "0.18.0",
+  "version": "0.5.0",
+  "minimumMosVersion": "0.19.0",
   "packageFiles": [
     "entrypoint.sh"
   ],
@@ -121,7 +121,14 @@
         "env": {
           "RADICALE_ADMIN_USERNAME": "${config.adminUsername}",
           "RADICALE_ADMIN_PASSWORD": "${secret.adminPassword}",
-          "RADICALE_CALENDAR_DISPLAYNAME": "${config.calendarName}"
+          "RADICALE_CALENDAR_DISPLAYNAME": "${config.calendarName}",
+          "MOS_SMTP_HOST": "${smtp.host}",
+          "MOS_SMTP_PORT": "${smtp.port}",
+          "MOS_SMTP_USERNAME": "${smtp.username}",
+          "MOS_SMTP_PASSWORD": "${smtp.password}",
+          "MOS_SMTP_FROM": "${smtp.fromAddress}",
+          "MOS_SMTP_SECURITY": "${smtp.security}",
+          "MOS_SMTP_ALLOW_INVALID_CERT": "${smtp.allowInvalidCert}"
         },
         "volumes": [
           "data:/data"

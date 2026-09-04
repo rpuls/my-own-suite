@@ -72,9 +72,51 @@ function assertFile(filePath, label) {
   }
 }
 
+// Node 19 made `keepAlive` the default on the global agent. A pooled socket the
+// far end has already closed is not retried — the next request on it fails with
+// `socket hang up` — and this script's requests are minutes apart around a
+// multi-gigabyte transfer, which is exactly when that happens. Every request
+// gets its own connection instead.
+const REQUEST_OPTIONS = { agent: false };
+
+const TRANSIENT_NETWORK_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'EAI_AGAIN',
+  'ENOTFOUND',
+  'EPIPE',
+  'ERR_STREAM_PREMATURE_CLOSE',
+  'ETIMEDOUT',
+  'UND_ERR_SOCKET',
+]);
+
+function isTransientNetworkError(error) {
+  if (!error) return false;
+  if (TRANSIENT_NETWORK_CODES.has(error.code)) return true;
+  return /socket hang up|timed? ?out|ECONNRESET/iu.test(error.message || '');
+}
+
+// A build that has already spent eight minutes downloading should not be thrown
+// away by one dropped connection.
+async function withRetry(label, attempt, attempts = 4) {
+  for (let tryNumber = 1; ; tryNumber += 1) {
+    try {
+      return await attempt();
+    } catch (error) {
+      if (tryNumber >= attempts || !isTransientNetworkError(error)) throw error;
+      const waitSeconds = 2 ** tryNumber;
+      console.log(`${label} failed: ${error.message || String(error)}`);
+      console.log(`Retrying in ${waitSeconds}s (attempt ${tryNumber + 1} of ${attempts}).`);
+      await new Promise((resolve) => {
+        setTimeout(resolve, waitSeconds * 1000);
+      });
+    }
+  }
+}
+
 function fetchUrl(url, redirectCount = 0) {
   return new Promise((resolve, reject) => {
-    const request = https.get(url, (response) => {
+    const request = https.get(url, REQUEST_OPTIONS, (response) => {
       const statusCode = response.statusCode || 0;
 
       if (statusCode >= 300 && statusCode < 400 && response.headers.location) {
@@ -146,6 +188,17 @@ async function downloadFile(url, destinationPath) {
 
     response.pipe(output);
   });
+
+  // `finish` only reports that the bytes which arrived were written, so a
+  // connection that ends early still fires it. Without this the truncated file
+  // reaches the checksum and reads as corruption rather than as the retryable
+  // network failure it actually is.
+  if (totalBytes > 0 && downloadedBytes !== totalBytes) {
+    throw Object.assign(
+      new Error(`Download ended early: ${downloadedBytes} of ${totalBytes} bytes from ${url}`),
+      { code: 'ERR_STREAM_PREMATURE_CLOSE' },
+    );
+  }
 }
 
 async function sha256File(filePath) {
@@ -164,21 +217,33 @@ async function ensureOfficialUbuntuIso(isoDropDir) {
   console.log(`Downloading the official supported image: ${SUPPORTED_UBUNTU_RELEASE.label}`);
   console.log(`Source: ${SUPPORTED_UBUNTU_RELEASE.isoUrl}`);
 
-  await downloadFile(SUPPORTED_UBUNTU_RELEASE.isoUrl, isoTargetPath);
-
-  const sha256Sums = await fetchText(SUPPORTED_UBUNTU_RELEASE.sha256Url);
+  // The checksum list comes first deliberately. It is a few hundred bytes, so a
+  // network problem costs a second instead of the eight minutes the ISO takes —
+  // and nothing has to open a fresh connection immediately after a
+  // multi-gigabyte transfer, which is where this used to fail.
+  const sha256Sums = await withRetry(
+    'Checksum download',
+    () => fetchText(SUPPORTED_UBUNTU_RELEASE.sha256Url),
+  );
   const expectedLine = sha256Sums
     .split(/\r?\n/)
     .find((line) => line.trim().endsWith(` ${SUPPORTED_UBUNTU_RELEASE.fileName}`) || line.trim().endsWith(`*${SUPPORTED_UBUNTU_RELEASE.fileName}`));
 
   if (!expectedLine) {
-    await fs.promises.rm(isoTargetPath, { force: true });
     console.error(`WARNING: checksum entry not found for ${SUPPORTED_UBUNTU_RELEASE.fileName}`);
     console.error(`Checksum source: ${SUPPORTED_UBUNTU_RELEASE.sha256Url}`);
     process.exit(1);
   }
 
   const expectedHash = expectedLine.trim().split(/\s+/)[0].toLowerCase();
+
+  // A retried attempt truncates the file it is rewriting, so a partial download
+  // is replaced rather than appended to.
+  await withRetry(
+    'ISO download',
+    () => downloadFile(SUPPORTED_UBUNTU_RELEASE.isoUrl, isoTargetPath),
+  );
+
   const actualHash = await sha256File(isoTargetPath);
 
   if (actualHash !== expectedHash) {

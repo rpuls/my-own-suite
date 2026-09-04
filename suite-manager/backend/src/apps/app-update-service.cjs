@@ -14,6 +14,7 @@ const {
   materializeRuntimeCompose,
   publicInstance,
   readSecretValue,
+  redactionSecretsFor,
   renderInstanceProjections,
   setupFields,
 } = require('./app-package-internals.cjs');
@@ -21,6 +22,7 @@ const { compareAppPackages } = require('./app-update-comparison.cjs');
 const { digestAppPackage, parseNamespacedPackageId, validatePrivacyBinding } = require('./package-contracts.cjs');
 const { instanceSourceId, sourceInstallable } = require('./external-source-registry.cjs');
 const { readAppPackageManifest } = require('./package-manifest.cjs');
+const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnostics.cjs');
 
 // What an interrupted update saga left behind, decided from the last stage it
 // durably recorded. Every stage from `candidate-built` onward is past the point
@@ -38,7 +40,7 @@ function updateRecoveryStateForStage(stage) {
   return ROLLBACK_REQUIRED_STAGES.includes(stage) ? 'rollback-required' : 'retry-safe';
 }
 
-function updateRuntimeRequest({ config, expectedInstalledDigest, instance, manifest, packageDigest, projections, requestContext, sourceRevision }) {
+function updateRuntimeRequest({ config, env = [], expectedInstalledDigest, instance, manifest, packageDigest, projections, requestContext, smtp = null, sourceRevision }) {
   const compose = projections.find((item) => item.kind === 'compose');
   const caddy = projections.find((item) => item.kind === 'caddy');
   const health = projections.find((item) => item.kind === 'health');
@@ -46,7 +48,7 @@ function updateRuntimeRequest({ config, expectedInstalledDigest, instance, manif
   return {
     appHost: requestContext.appHost,
     caddy: materializeRuntimeCaddy(caddy.content, config),
-    compose: materializeRuntimeCompose(compose.content, config),
+    compose: materializeRuntimeCompose(compose.content, config, env, { smtp }),
     ...(expectedInstalledDigest ? { expectedInstalledDigest } : {}),
     health: health.content,
     instanceId: instance.id,
@@ -232,6 +234,7 @@ class AppUpdateService {
     const projections = renderInstanceProjections(manifest, [...this.store.getAppConfig(instance.id), ...addedConfig], {
       instanceId: instance.id,
       integrations: this.store.getAppIntegrations(),
+      ownerEnv: this.store.getAppEnv(instance.id),
       packageId: instance.packageId,
     });
     const homepageApplied = homepageProjectionApplied(this.store.getAppProjections(instance.id));
@@ -290,6 +293,7 @@ class AppUpdateService {
           this.apps.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
           this.store.getAppProjections(instance.id),
           this.store.getAppConfig(instance.id),
+          this.store.getAppEnv(instance.id),
         ),
         integrations,
         operation: committed,
@@ -324,23 +328,32 @@ class AppUpdateService {
       try { return { ...base, rawValue: readSecretValue(this.secretDir, row.secretRef) }; } catch { return base; }
     });
     const installedProjections = this.store.getAppProjections(instance.id);
+    // A missing owner env secret is tolerated for the same reason a missing
+    // collected one is: the rollback needs the candidate's service identities to
+    // tear it down, and the installed runtime it restores is re-applied from
+    // stored projections afterwards either way.
+    const recoveryEnvRows = this.apps.ownerEnvWithSecrets(instance.id, { tolerateMissing: true });
     const installedRuntime = updateRuntimeRequest({
       config: configRows,
+      env: recoveryEnvRows,
       instance,
       manifest: installedPackage.manifest,
       packageDigest: instance.packageDigest,
       projections: installedProjections,
       requestContext,
+      smtp: this.apps.smtpRuntimeValues(),
       sourceRevision: instance.sourceRevision,
     });
     const candidateRuntime = updateRuntimeRequest({
       config: [...configRows, ...addedConfig],
+      env: recoveryEnvRows,
       expectedInstalledDigest: instance.packageDigest,
       instance,
       manifest: { version: operation.request.packageVersion },
       packageDigest: operation.candidateDigest,
       projections: recovery.candidateProjections.map((projection) => ({ ...projection, content: JSON.parse(projection.contentJson) })),
       requestContext,
+      smtp: this.apps.smtpRuntimeValues(),
       sourceRevision: recovery.candidateSource?.revision,
     });
     await this.agent.rollbackPackageUpdate({ candidate: candidateRuntime, installed: installedRuntime });
@@ -369,6 +382,7 @@ class AppUpdateService {
         this.apps.withGuideState(this.store.getAppInstanceByPackageId(packageId)),
         this.store.getAppProjections(instance.id),
         this.store.getAppConfig(instance.id),
+        this.store.getAppEnv(instance.id),
       ),
       integrations,
     };
@@ -438,6 +452,7 @@ class AppUpdateService {
     let activatedRuntimes = null;
     let snapshotPromoted = false;
     let addedConfig = [];
+    let secrets = [];
     try {
       candidate = await this.downloadUpdateCandidate(instance);
       const agentStatus = await this.agent.status();
@@ -495,6 +510,7 @@ class AppUpdateService {
       const installedConfigRows = this.store.getAppConfig(instance.id).map((row) => (
         row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
       ));
+      const envRows = this.apps.ownerEnvWithSecrets(instance.id);
       // Setup values the candidate newly requires are collected in the update
       // dialog and become config rows here. Only fields the instance does not
       // already hold are created, so an update never rotates a generated secret or
@@ -507,6 +523,7 @@ class AppUpdateService {
         secretDir: this.secretDir,
       });
       const candidateConfig = [...installedConfigRows, ...addedConfig];
+      secrets = redactionSecretsFor(candidateConfig, envRows);
       let candidatePrivacy = { posture: null, reviewedAt: null, status: 'review-required' };
       const candidateReviewPath = path.join(candidate.packageDir, 'privacy-review.json');
       // A package-shipped review counts as a review only from a MOS-reviewed
@@ -531,6 +548,10 @@ class AppUpdateService {
       const candidateProjections = renderInstanceProjections(candidate.manifest, candidateConfig, {
         instanceId: instance.id,
         integrations: this.store.getAppIntegrations(),
+        // Owner env is an input to the render exactly like config and
+        // relationships, so an update re-renders it into the candidate instead
+        // of dropping the variables the owner set on the version being replaced.
+        ownerEnv: envRows,
         packageId: instance.packageId,
       });
       const composeProjection = candidateProjections.find((projection) => projection.kind === 'compose');
@@ -617,21 +638,28 @@ class AppUpdateService {
       const homepageWasApplied = homepageProjectionApplied(installedProjections);
       const installedRuntime = updateRuntimeRequest({
         config: installedConfig,
+        // Owner env belongs to the instance rather than to either package
+        // version, so both sides of the activate carry the same set and a
+        // rollback restores the runtime the owner was actually running.
+        env: envRows,
         instance,
         manifest: installedPackage.manifest,
         packageDigest: instance.packageDigest,
         projections: installedProjections,
         requestContext,
+        smtp: this.apps.smtpRuntimeValues(),
         sourceRevision: instance.sourceRevision,
       });
       const candidateRuntime = updateRuntimeRequest({
         config: candidateConfig,
+        env: envRows,
         expectedInstalledDigest: instance.packageDigest,
         instance,
         manifest: candidate.manifest,
         packageDigest: candidate.packageDigest,
         projections: candidateProjections,
         requestContext,
+        smtp: this.apps.smtpRuntimeValues(),
         sourceRevision: candidate.source.revision,
       });
       const activated = await this.agent.activatePackageUpdate({ candidate: candidateRuntime, installed: installedRuntime });
@@ -716,7 +744,11 @@ class AppUpdateService {
         integrations = [{ errorCode: reconcileError.code || 'APP_INTEGRATION_REAPPLY_FAILED', status: 'failed' }];
       }
       return { activated, built, comparison, homepage, integrations, operation, promoted, staged };
-    } catch (error) {
+    } catch (caught) {
+      // A rollback that fails replaces the error but not the reason: the record
+      // keeps why the update failed and then why the restore did, in that order.
+      let error = caught;
+      const failedBecause = (failure) => [failure.message, ...(Array.isArray(failure.details) ? failure.details : [])];
       if (activatedRuntimes && !snapshotPromoted) {
         try {
           await this.agent.rollbackPackageUpdate(activatedRuntimes);
@@ -727,6 +759,7 @@ class AppUpdateService {
             502,
           );
           error.cause = rollbackError;
+          error.details = [...failedBecause(caught), 'Restoring the previous version then failed too:', ...failedBecause(rollbackError)];
         }
       }
       // Once the snapshot is promoted the candidate is the installed package;
@@ -747,6 +780,7 @@ class AppUpdateService {
             502,
           );
           error.cause = rollbackError;
+          error.details = [...failedBecause(caught), 'Restoring the previous Homepage entry then failed too:', ...failedBecause(rollbackError)];
         }
       }
       let recoveryState = 'none';
@@ -758,11 +792,11 @@ class AppUpdateService {
             : 'none';
         this.store.failAppUpdate({
           at: this.now().toISOString(),
-          errorCode: error.code || 'APP_UPDATE_STAGE_FAILED',
           instanceId: instance.id,
           operationId,
           recoveryState,
           stage: lastDurableStage ? `${lastDurableStage}-failed` : 'candidate-stage-failed',
+          ...buildOperationDiagnostics(error, { fallbackCode: 'APP_UPDATE_STAGE_FAILED', secrets }),
         });
       }
       // Collected secret files are deleted only when nothing can still need

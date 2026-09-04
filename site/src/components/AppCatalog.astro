@@ -208,19 +208,12 @@ const appsJson = JSON.stringify(
   function openDrawer(app: AppData, opener: HTMLElement | null) {
     lastOpener = opener
     returnPrivacyTile()
-    const screensTile = app.screenshots.length
-      ? `<button type="button" class="app-tile app-screens-tile" id="appDrawerScreens" aria-label="Preview ${app.screenshots.length === 1 ? '1 screen' : `${app.screenshots.length} screens`} of ${esc(app.name)}">
-          <img src="${esc(app.screenshots[0].src)}" alt="" loading="lazy" />
-          <span class="app-screens-head" aria-hidden="true"><span class="k">Screens</span><span class="app-screens-count">(${app.screenshots.length})</span></span>
-        </button>`
-      : ''
     const resourcesTile = `<button type="button" class="app-tile app-resources-tile" id="appDrawerResources">
         <span class="k">Resources</span>
         <span class="app-resources-line">${meter(app.resourceLevel)}<strong>${esc(app.resources || 'Resource use varies')}</strong></span>
         <span class="app-tile-meta">${app.requirements ? `${esc(app.requirements.memory)} memory` : app.services.length === 1 ? 'Runs as 1 service' : app.services.length ? `Runs as ${app.services.length} services` : 'Details unavailable'}${chevron}</span>
       </button>`
     const tiles = `<div class="app-drawer-tiles">
-        ${screensTile}
         <span id="appDrawerPrivacy" style="display:contents"></span>
         ${resourcesTile}
       </div>`
@@ -248,14 +241,34 @@ const appsJson = JSON.stringify(
       ? `<a class="mos-btn mos-btn-primary" href="/docs/apps/${esc(app.id)}/#try-outside-mos" style="width:100%">Try ${esc(app.name)}</a>`
       : ''
 
-    drawer.innerHTML = `<button type="button" class="app-drawer-close" aria-label="Close" id="appDrawerClose"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-x"/></svg></button>
-<div class="app-drawer-head">${icon(app)}<div><h3 style="margin:0;font-size:1.5rem;color:var(--mos-color-text-strong)">${esc(app.name)}</h3><span class="app-sub">${esc(app.category)}</span>${app.replacesShort ? `<span class="app-drawer-replaces"><span>Replaces</span><strong>${esc(app.replacesShort)}</strong></span>` : ''}</div></div>
+    // The package's first screenshot is the drawer hero, with the logo, name
+    // and what it replaces sitting on its faded lower end — the same
+    // arrangement as the Suite Manager app detail. A package without
+    // screenshots keeps the arrangement on the plain drawer surface.
+    const hero = `<header class="app-drawer-hero${app.screenshots.length ? ' has-cover' : ''}">
+  ${app.screenshots.length ? `<img class="app-drawer-cover" src="${esc(app.screenshots[0].src)}" alt="" loading="lazy" />` : ''}
+  <div class="app-drawer-hero-top">
+    ${app.screenshots.length ? `<button type="button" class="app-hero-pill" id="appDrawerScreens" aria-label="Preview ${app.screenshots.length === 1 ? '1 screen' : `${app.screenshots.length} screens`} of ${esc(app.name)}"><svg width="15" height="15" viewBox="0 0 24 24"><use href="#i-screens"/></svg>${app.screenshots.length === 1 ? '1 screen' : `${app.screenshots.length} screens`}</button>` : ''}
+    <button type="button" class="app-hero-pill is-round" aria-label="Close" id="appDrawerClose"><svg width="15" height="15" viewBox="0 0 24 24"><use href="#i-x"/></svg></button>
+  </div>
+  <div class="app-drawer-hero-bottom">
+    ${icon(app)}
+    <div class="app-drawer-headline">
+      <h3>${esc(app.name)}</h3>
+      <p class="app-drawer-replaces">${app.replacesShort ? `<span class="app-drawer-replaces-label">Replaces</span><strong>${esc(app.replacesShort)}</strong>` : ''}<span class="app-drawer-category">${esc(app.category)}</span></p>
+    </div>
+  </div>
+</header>`
+
+    drawer.innerHTML = `${hero}
+<div class="app-drawer-body">
 ${tryAction ? `<div class="app-drawer-primary-actions">${tryAction}</div>` : ''}
 ${tiles}
 <p class="mos-meta" style="margin:0 0 var(--mos-space-5)">${esc(app.description)}</p>
 ${features}
 ${privacy}
-${links ? `<div class="app-drawer-section"><span class="mos-eyebrow">Links</span><div class="app-drawer-links">${links}</div></div>` : ''}`
+${links ? `<div class="app-drawer-section"><span class="mos-eyebrow">Links</span><div class="app-drawer-links">${links}</div></div>` : ''}
+</div>`
 
     placePrivacyTile(app.id, document.getElementById('appDrawerPrivacy')!)
 

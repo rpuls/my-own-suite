@@ -67,6 +67,22 @@
   gap: var(--mos-space-4);
 }
 
+/* A settings panel stacks its blocks, and this gap is the only thing that spaces
+   them. The class existed with no rule at all, so spacing came from whatever
+   margins each child happened to carry: a heading block ended in a paragraph and
+   got one, a notice did not, and a button after a notice sat flush against it. */
+.suite-settings-panel {
+  display: grid;
+  gap: var(--mos-space-4);
+  align-content: start;
+}
+
+/* A grid item's margins no longer collapse out of it, so a heading block's
+   trailing paragraph margin would add to the gap above rather than being it. */
+.suite-settings-panel > div > p:last-child {
+  margin-bottom: 0;
+}
+
 .suite-auth-field {
   display: grid;
   gap: var(--mos-space-2);
@@ -294,6 +310,24 @@
   padding: var(--mos-space-7) 0 var(--mos-space-8);
 }
 
+/* Between the header and whatever page is open, so an update that landed while
+   someone was reading is visible wherever they are rather than only on Updates.
+   It carries the shell width itself because the main element below it has none
+   — each screen brings its own. */
+.suite-shell-stale {
+  padding-top: var(--mos-space-6);
+}
+
+/* The one notice that carries an action rather than only telling you something,
+   so its body has to lay the button out. Scoped here rather than added to every
+   notice, because giving the shared body a grid changes how existing text-only
+   notices wrap. */
+.suite-shell-stale .suite-notice > div {
+  display: grid;
+  justify-items: start;
+  gap: var(--mos-space-3);
+}
+
 .suite-dashboard {
   display: grid;
   gap: var(--mos-space-7);
@@ -504,6 +538,37 @@
   border-radius: var(--mos-radius-sm);
   background: var(--mos-color-surface);
   cursor: pointer;
+}
+
+/* Setting row: copy on the left, the brand switch on the right, the whole row
+   a hit target. Same boxed surface as .suite-confirm so a screen that has both
+   reads as one set of controls. */
+.suite-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mos-space-4);
+  padding: var(--mos-space-4);
+  border: var(--mos-border-subtle);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface);
+  cursor: pointer;
+}
+
+.suite-switch-copy {
+  display: grid;
+  gap: var(--mos-space-1);
+}
+
+.suite-switch-label {
+  color: var(--mos-color-text-strong);
+  font-weight: var(--mos-weight-bold);
+}
+
+.suite-switch-help {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+  line-height: 1.45;
 }
 
 .suite-confirm-box {
@@ -794,7 +859,6 @@
 }
 
 .suite-app-card-actions,
-.suite-app-primary-actions,
 .suite-app-link-row {
   display: flex;
   flex-wrap: wrap;
@@ -843,14 +907,20 @@
   outline: none;
 }
 
+/* Status pill. The tint is deliberately light, so the blur is part of the
+   primitive rather than a hero special case: it is the blur, not the fill,
+   that keeps the label readable when the pill sits on a screenshot. */
 .suite-app-health-indicator {
   display: inline-flex;
   align-items: center;
+  gap: 0.4rem;
   width: fit-content;
   min-height: 1.8rem;
   padding: 0.22rem 0.55rem;
   border: 1px solid var(--mos-color-surface-border);
   border-radius: var(--mos-radius-pill);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   color: var(--mos-color-text-muted);
   font-size: var(--mos-text-label);
   font-weight: 800;
@@ -876,6 +946,14 @@
   border-color: var(--mos-color-surface-border);
   background: var(--mos-color-surface);
   color: var(--mos-color-text);
+}
+
+/* Inside the pill the LED is a colour anchor next to the label, not the
+   standalone dot it is on the cards, so it drops the halo and scales down. */
+.suite-app-health-indicator .suite-app-health-led {
+  width: 0.5rem;
+  height: 0.5rem;
+  box-shadow: none;
 }
 
 .suite-app-health-led-wrap {
@@ -1175,29 +1253,145 @@
   padding: var(--mos-space-5) var(--mos-space-6) var(--mos-space-6);
 }
 
-.suite-app-detail-hero {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--mos-space-4);
-  position: relative;
-  z-index: 1;
-  padding: var(--mos-space-6) var(--mos-space-6) var(--mos-space-5);
-  border-bottom: var(--mos-border-hairline);
-  background: var(--mos-color-frost);
-  -webkit-backdrop-filter: var(--mos-frost-filter);
-  backdrop-filter: var(--mos-frost-filter);
+/* App detail hero — the package's first screenshot fills the top of the
+   drawer and fades into the drawer surface, with the logo, name, what it
+   replaces, and the action row sitting on the faded end of it. --suite-sheet
+   is the colour the drawer's frost actually resolves to over the dimmed page
+   behind it, so the fade lands on the drawer surface without a seam in either
+   theme. */
+.suite-app-detail {
+  --suite-sheet-rgb: 8 26 46;
+  --suite-sheet: rgb(var(--suite-sheet-rgb));
 }
 
-.suite-app-detail-close {
+[data-theme='light'] .suite-app-detail {
+  --suite-sheet-rgb: 244 245 246;
+}
+
+.suite-app-detail-hero {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  isolation: isolate;
+  min-height: 16.5rem;
+}
+
+.suite-app-detail-hero.has-cover {
+  min-height: 23rem;
+}
+
+.suite-app-detail-cover {
   position: absolute;
-  top: var(--mos-space-6);
-  right: var(--mos-space-6);
+  z-index: -1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: left top;
+}
+
+.suite-app-detail-hero.has-cover::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--suite-sheet-rgb) / 0.32) 0%,
+    rgb(var(--suite-sheet-rgb) / 0) 32%,
+    rgb(var(--suite-sheet-rgb) / 0.2) 50%,
+    rgb(var(--suite-sheet-rgb) / 0.62) 66%,
+    rgb(var(--suite-sheet-rgb) / 0.9) 80%,
+    var(--suite-sheet) 91%,
+    var(--suite-sheet) 100%
+  );
+}
+
+.suite-app-detail-hero-top {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--mos-space-2);
+  padding: var(--mos-space-4);
+}
+
+/* No bottom padding: the action row's own top padding is the whole gap
+   between the name and the first action. */
+.suite-app-detail-hero-bottom {
+  display: grid;
+  align-content: end;
+  justify-items: start;
+  gap: var(--mos-space-3);
+  padding: var(--mos-space-5) var(--mos-space-6) 0;
+}
+
+/* Floating controls sit on the unfaded part of the screenshot, which can be
+   any brightness, so they carry their own dark chip in both themes. Without a
+   cover they fall back to the ordinary surface chip. */
+.suite-app-hero-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.35rem;
+  padding: 0 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: var(--mos-radius-pill);
+  background: rgba(6, 21, 38, 0.55);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+.suite-app-hero-pill:hover {
+  background: rgba(6, 21, 38, 0.78);
+  transform: translateY(-1px);
+}
+
+.suite-app-hero-pill:focus-visible {
+  outline: var(--mos-focus-ring);
+}
+
+.suite-app-hero-pill.is-round {
+  width: 2.35rem;
+  padding: 0;
+  justify-content: center;
+}
+
+.suite-app-hero-pill .suite-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex: 0 0 auto;
+}
+
+.suite-app-detail-hero:not(.has-cover) .suite-app-hero-pill {
+  border: 1px solid var(--mos-color-surface-border);
+  background: var(--mos-color-surface);
+  color: var(--mos-color-text);
+}
+
+.suite-app-detail-hero:not(.has-cover) .suite-app-hero-pill:hover {
+  background: var(--mos-color-surface-strong);
+}
+
+/* The logo keeps a light tile of its own: package icons are drawn for light
+   backgrounds and would disappear into the screenshot behind them. */
+.suite-app-detail-hero .suite-app-icon-large {
+  width: 5.25rem;
+  height: 5.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 1.25rem 2.5rem rgba(3, 10, 20, 0.45);
 }
 
 .suite-app-detail-heading {
   display: grid;
-  gap: var(--mos-space-3);
-  padding-right: 3.5rem;
+  gap: 0.45rem;
+  min-width: 0;
 }
 
 .suite-app-detail-title-row {
@@ -1212,24 +1406,26 @@
   min-width: 0;
   margin: 0;
   color: var(--mos-color-text-strong);
-  font-size: 2rem;
+  font-size: 2.1rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
   line-height: var(--mos-line-height-tight);
   overflow-wrap: anywhere;
 }
 
-.suite-app-detail-title-row .suite-app-health-indicator {
-  margin-left: auto;
+.suite-app-detail-hero.has-cover .suite-app-detail-heading h2 {
+  text-shadow: 0 1px 3px rgb(var(--suite-sheet-rgb) / 0.7), 0 2px 14px rgb(var(--suite-sheet-rgb) / 0.85);
 }
 
 .suite-app-detail-replaces {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.5rem;
   margin: 0;
 }
 
-.suite-app-detail-replaces span {
+.suite-app-detail-replaces-label {
   color: var(--mos-color-text-muted);
   font-size: var(--mos-text-label);
   font-weight: 800;
@@ -1239,6 +1435,7 @@
 
 .suite-app-detail-replaces strong {
   color: var(--mos-color-text);
+  font-weight: 600;
 }
 
 .suite-app-detail-heading p,
@@ -1256,36 +1453,20 @@
   line-height: 1.6;
 }
 
-.suite-app-primary-actions {
-  grid-column: 1 / -1;
+/* The action row is the hero's last band, so the screenshot runs behind it
+   and the fade finishes underneath it. The hero never scrolls, so it stays in
+   view without needing to be sticky. */
+.suite-app-action-bar {
+  display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: var(--mos-space-3);
+  padding: var(--mos-space-4) var(--mos-space-6);
+  border-bottom: var(--mos-border-hairline);
 }
 
-.suite-app-homepage-option {
-  display: inline-flex;
-  gap: var(--mos-space-2);
-  align-items: center;
-  min-height: 2.75rem;
-  color: var(--mos-color-text);
-  cursor: pointer;
-  font-size: 0.92rem;
-  font-weight: 700;
-}
-
-.suite-app-homepage-option input {
-  width: 1.05rem;
-  height: 1.05rem;
-  margin: 0;
-  accent-color: var(--mos-color-accent);
-}
-
-.suite-app-homepage-option span {
-  color: var(--mos-color-text-strong);
-}
-
-.suite-app-homepage-option:has(input:disabled) {
-  cursor: progress;
-  opacity: 0.72;
+.suite-app-action-spacer {
+  flex: 1 1 auto;
 }
 
 .suite-app-setup-panel {
@@ -1438,14 +1619,13 @@
    SIBLING STYLES — the public site's app drawer mirrors these tiles and the
    gallery/services dialogs below as the .app-tile/.app-gallery/.app-service
    rules in site/src/styles/landing.css; keep look and copy in sync. */
+/* Three columns for two tiles: the row is sized for the facts MOS can state
+   about any package, and the free column keeps that width honest rather than
+   stretching two tiles to fill it. */
 .suite-app-tiles {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--mos-space-3);
-}
-
-.suite-app-tiles.has-screens {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--mos-space-3);
 }
 
 .suite-app-tiles > button {
@@ -1498,55 +1678,6 @@
   flex: 0 0 auto;
 }
 
-/* The child combinator keeps this heavier than the shared
-   .suite-app-tiles > button padding it must cancel. */
-.suite-app-tiles > button.suite-app-screens-tile {
-  position: relative;
-  align-content: start;
-  padding: 0;
-  overflow: hidden;
-}
-
-.suite-app-screens-tile img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top;
-}
-
-/* The cover screenshot can be any brightness, so the label sits on its own
-   darkened band that fades out. Padding matches the sibling tiles so the
-   label lines up with Posture grade and Resources. The band stays the brand
-   navy (rgba of --mos-color-bg's dark value) in every theme — a token here
-   would flip light and lose the guaranteed contrast over the image. */
-.suite-app-screens-head {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  width: 100%;
-  padding: var(--mos-space-3) var(--mos-space-3) 1.2rem;
-  background: linear-gradient(180deg, rgba(6, 21, 38, 0.85) 0%, rgba(6, 21, 38, 0.6) 62%, rgba(6, 21, 38, 0) 100%);
-}
-
-/* Text on the fixed-dark band is pinned to the dark theme's muted color so
-   it matches the sibling tile labels today and stays readable if a light
-   theme ever reaches this screen. */
-.suite-app-screens-head .suite-app-tile-label,
-.suite-app-screens-count {
-  color: #b8c9de;
-}
-
-.suite-app-screens-count {
-  font-size: var(--mos-text-label);
-  font-weight: 800;
-  letter-spacing: var(--mos-letter-spacing-label);
-}
-
 .suite-app-resources-line {
   display: flex;
   align-items: center;
@@ -1589,19 +1720,30 @@
   background: var(--mos-color-warning);
 }
 
-.suite-app-gallery-dialog {
-  width: min(100%, 720px);
+/* Screens gallery — the screenshot is the point of this dialog, so it takes
+   the whole window it can get: the frame is the one flexible row between the
+   header and the nav, and the image scales to fit inside it rather than the
+   dialog growing a scrollbar. The .suite-dialog base rule is declared later
+   in this file, so the selector needs both classes to win on width. */
+.suite-dialog.suite-app-gallery-dialog {
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(100%, 1240px);
+  max-height: min(92vh, 1080px);
 }
 
 .suite-app-gallery {
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: var(--mos-space-3);
+  min-height: 0;
   margin: 0;
 }
 
 .suite-app-gallery-frame {
+  display: grid;
+  place-items: center;
+  min-height: 0;
   overflow: hidden;
-  aspect-ratio: 16 / 10;
   border: 1px solid var(--mos-color-surface-border);
   border-radius: var(--mos-radius-sm);
   background: var(--mos-color-surface-muted);
@@ -1609,8 +1751,8 @@
 
 .suite-app-gallery-frame img {
   display: block;
-  width: 100%;
-  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
 }
 
@@ -2376,6 +2518,34 @@
   overflow-wrap: anywhere;
 }
 
+/* AdvancedPanel body: one grid so the gaps between a fact list, raw output, and
+   whatever a feature composes in (a form, a textarea, buttons) are the panel's
+   to decide rather than each block's own margins. */
+.suite-advanced-body {
+  display: grid;
+  gap: var(--mos-space-3);
+  margin-top: var(--mos-space-3);
+}
+
+.suite-advanced-body > dl,
+.suite-advanced-body > pre {
+  margin: 0;
+}
+
+.suite-advanced-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--mos-space-3);
+}
+
+.suite-advanced-copy-state {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+  text-align: right;
+}
+
 @media (max-width: 720px) {
   .suite-shell-header,
   .suite-dashboard-grid {
@@ -2394,7 +2564,6 @@
     align-items: stretch;
   }
   .suite-app-card-main,
-  .suite-app-detail-hero,
   .suite-app-connection,
   .suite-app-related-list button {
     grid-template-columns: 1fr;
@@ -2415,26 +2584,21 @@
     min-width: 0;
     border-left: 0;
   }
-  .suite-app-detail-hero { padding: var(--mos-space-5) var(--mos-space-4); }
-  .suite-app-detail-scroll { padding: var(--mos-space-4) var(--mos-space-4) var(--mos-space-5); }
-  .suite-app-detail-close {
-    top: var(--mos-space-5);
-    right: var(--mos-space-4);
-  }
-  .suite-app-detail-heading { padding-right: 3.25rem; }
+  .suite-app-detail-hero { min-height: 14.5rem; }
+  .suite-app-detail-hero.has-cover { min-height: 20.5rem; }
+  .suite-app-detail-hero-bottom { padding: var(--mos-space-4) var(--mos-space-4) 0; }
+  .suite-app-action-bar { padding: var(--mos-space-4); }
+  .suite-app-detail-scroll { padding: var(--mos-space-5) var(--mos-space-4); }
+  .suite-app-detail-heading h2 { font-size: 1.7rem; }
   .suite-app-detail-title-row {
     align-items: flex-start;
   }
   .suite-app-facts,
   .suite-app-tiles,
-  .suite-app-tiles.has-screens,
   .suite-updates-facts,
   .suite-backup-destination-card,
   .suite-backup-bundle-list article {
     grid-template-columns: 1fr;
-  }
-  .suite-app-screens-tile {
-    min-height: 9rem;
   }
   .suite-updates-header,
   .suite-updates-track {
@@ -2792,6 +2956,19 @@
   line-height: 1.6;
 }
 
+/* Shown only when this instance carries owner-set configuration the published
+   assessment could not have taken into account. Warning-toned rather than
+   danger-toned: it is a scope note, not a fault. */
+.suite-privacy-override {
+  margin: 0;
+  padding: var(--mos-space-3);
+  border: 1px solid var(--mos-color-warning-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-warning-soft);
+  color: var(--mos-color-text);
+  line-height: 1.55;
+}
+
 .suite-privacy-rows { display: grid; }
 
 .suite-privacy-row {
@@ -3048,3 +3225,76 @@
 }
 
 .suite-privacy-change:not(.is-changed) p { color: var(--mos-color-text-muted); }
+
+/* Per-app configuration dialog. Everything inside it is the shared .mos-row*
+   primitive; what belongs here is only where those rows sit — the dialog's own
+   width, the space around a group, and the two-column split the environment
+   editor needs that a plain label/value row does not.
+
+   Narrower than the default dialog on purpose: a list of rows reads down, and
+   760px of row leaves the value stranded a long way from its label. Not as
+   narrow as a pure label/value list would want, because the environment editor
+   puts two fields on one row and they have to fit side by side. */
+.suite-dialog.suite-app-config-dialog {
+  gap: var(--mos-space-5);
+  width: min(100%, 640px);
+  padding: var(--mos-space-6);
+}
+
+.suite-app-config-lede {
+  margin: 0;
+  color: var(--mos-color-text-muted);
+  line-height: 1.5;
+}
+
+.suite-app-config-group {
+  display: grid;
+  gap: var(--mos-space-2);
+}
+
+.suite-app-config-group-title {
+  margin: 0;
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-small);
+}
+
+/* The disclosure carries the row's hairline itself, so the panel's own rule
+   above it would draw a second one a rem away. */
+.suite-advanced.mos-row-disclosure {
+  padding-top: 0;
+}
+
+/* A variable is a name and a value, both editable, which is the one row that
+   needs its left side to be a field rather than a label — and the only one
+   whose right side has to grow, since a value is typed rather than read.
+
+   Two columns rather than the row's usual flex, because flex lets the pair wrap
+   and the wrapped result is unreadable: four identical boxes down the dialog,
+   with nothing to say which value belongs to which name. A grid keeps each pair
+   on its own line at every width the dialog has. The name column is the wider
+   of the two because it is the identifier: two variables from the same upstream
+   service differ at the end of a long shared prefix. */
+.suite-env-row > .mos-row-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: var(--mos-space-3);
+  align-items: center;
+}
+
+/* The row's own columns already size these; the primitive's 14rem basis is for
+   a field that has a whole row to itself and would force this pair to wrap. */
+.suite-env-row .mos-row-input {
+  flex: 1 1 4rem;
+}
+
+/* Too narrow for two fields to say anything side by side. Stacked, the row's
+   own hairline is what separates one pair from the next, which is the same job
+   it does everywhere else in the dialog. */
+@media (max-width: 34rem) {
+  .suite-env-row > .mos-row-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--mos-space-2);
+  }
+}
+
+.suite-env-paste { display: grid; gap: var(--mos-space-3); }

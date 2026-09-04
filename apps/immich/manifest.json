@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "immich",
   "name": "Immich",
-  "version": "0.7.0",
-  "minimumMosVersion": "0.18.0",
+  "version": "0.8.0",
+  "minimumMosVersion": "0.19.0",
   "architectures": [
     "amd64"
   ],
@@ -205,7 +205,15 @@
           "PUBLIC_PROTOCOL": "${app.scheme}",
           "TZ": "UTC",
           "DISABLE_MACHINE_LEARNING": "false",
-          "IMMICH_CONFIG_FILE": "/etc/immich/immich-config.json"
+          "IMMICH_CONFIG_FILE": "/etc/immich/immich-config.json",
+          "MOS_SMTP_HOST": "${smtp.host}",
+          "MOS_SMTP_PORT": "${smtp.port}",
+          "MOS_SMTP_USERNAME": "${smtp.username}",
+          "MOS_SMTP_PASSWORD": "${smtp.password}",
+          "MOS_SMTP_FROM": "${smtp.fromAddress}",
+          "MOS_SMTP_FROM_NAME": "${smtp.fromName}",
+          "MOS_SMTP_IMPLICIT_TLS": "${smtp.implicitTls}",
+          "MOS_SMTP_ALLOW_INVALID_CERT": "${smtp.allowInvalidCert}"
         },
         "volumes": [
           "library:/usr/src/app/upload",

@@ -12,12 +12,12 @@ What you download is not an installer — it is a **finished server**. The machi
 Inside it is a stock **Ubuntu Server 24.04 LTS** with My Own Suite installed on top — an ordinary Linux machine you fully control, not a locked-down appliance.
 
 :::danger[Use a dedicated machine]
-This **erases the internal disk** of the machine you boot it on. It asks you to type `YES` first, and it refuses to guess when a machine has more than one internal disk — but do not use your everyday computer, and disconnect any drives you are unwilling to lose.
+This **erases the disk you pick** on the machine you boot it on. It lists every disk it could install onto, says what is already on each one, and makes you choose and confirm — but do not use your everyday computer, and be certain about which disk you point it at.
 :::
 
 **What you need**
 
-- **The server-to-be:** a 64-bit PC, mini PC, or old laptop with 4 GB+ RAM, **one internal disk**, and firmware set to boot in **UEFI** mode (not legacy/CSM). Old machines work well — this is a great second life for retired hardware.
+- **The server-to-be:** a 64-bit PC, mini PC, or old laptop with 4 GB+ RAM and firmware set to boot in **UEFI** mode (not legacy/CSM). More than one internal disk is fine — the installer asks which one to use. Old machines work well — this is a great second life for retired hardware.
 - **A USB stick:** 8 GB or larger (it will be overwritten).
 - **Your everyday computer**, plus a free utility to write the stick: [balenaEtcher](https://etcher.balena.io/) on Windows, macOS or Linux — it reads the compressed download directly. [Rufus](https://rufus.ie/) also works on Windows if you decompress the file first and choose **DD mode**. Nothing else is needed.
 
@@ -63,7 +63,7 @@ The result lands in `image-builder/.work/out/`. The build boots the image it pro
 
 2. **Boot from the USB stick.** Plug it in, power on, and open the boot menu — usually by tapping **F12**, **F2**, or **Del** right after power-on (the exact key flashes on screen or is in the machine's manual). Pick the USB stick.
 
-3. **Type `YES` when it asks.** The machine finds its internal disk and shows you which one it is. This is the point of no return for that disk's old contents; anything else you type stops the install with nothing changed.
+3. **Pick the disk by number, then type `ERASE`.** The machine lists every disk it can install onto, with what each already holds — `empty - no partitions`, or `NOT EMPTY` and the filesystems it found — plus a last option to run from the stick without installing. Confirming is the point of no return for that disk's contents, and the confirmation names the disk and its contents again. Anything the machine does not recognise simply asks again, so a typo cannot start or abandon an install.
 
 4. **Remove the stick and reboot** when it tells you to. It copies itself across in a few minutes, with nothing downloaded and nothing to answer.
 
@@ -86,7 +86,8 @@ Continue with [Your first sign-in](/docs/install/first-start/).
 
 ## Good to know
 
-- **Nothing is erased without you typing `YES`.** Booting the stick does not start an install on its own, and a machine with more than one internal disk is refused rather than guessed at — so plug in the second drive after the install, not before.
+- **Nothing is erased unless you choose it and confirm it.** Booting the stick does not start an install on its own. On a machine with several disks the installer never guesses: it lists them in a stable order, marks which are `NOT EMPTY` and with what, and erases only the one you pick and confirm by name.
+- **If you choose not to install, the machine runs from the stick.** That is deliberate — it is how you try MOS without committing a disk, and how you reach a suite when the internal disk has died — but nothing is installed, so the machine stops booting the moment you unplug the stick. The screen says so on every boot when this is the case.
 - **The machine must boot in UEFI mode.** The image ships one disk layout, decided when it was built, and legacy/CSM firmware cannot boot it. If a machine refuses to boot the stick, check that Secure Boot's CSM/legacy option is off — and if it still refuses, load **factory defaults** in the firmware setup before concluding it cannot: stale settings look exactly like a machine that will not do UEFI.
 - **Booting it on a machine that already runs MOS does nothing.** The image only installs when it is running from removable media, so the same file is both the installer and the installed system.
 - **The `local.myownsuite.org` address does not resolve?** Some routers and DNS filters — Fritz!Box, OpenWRT, pfSense, Pi-hole, AdGuard Home — refuse answers that point into your own network. It is called DNS rebinding protection, and whether it bites can differ between devices on the same network, because iPhone Private Relay and Android Private DNS send lookups past your router entirely. Use `home.mos.home` instead, or add `local.myownsuite.org` to your router's rebinding exception list.

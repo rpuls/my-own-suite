@@ -12,9 +12,16 @@ export type TermsState = {
   version: string;
 };
 
+// Owner-scoped Suite Manager preferences. Sent only in the signed-in status
+// payload, so the first paint of every screen already knows them.
+export type OwnerPreferences = {
+  technicalControls: boolean;
+};
+
 export type SetupStatusResponse = {
   owner: Owner | null;
   ownerClaimRequired?: boolean;
+  preferences?: OwnerPreferences;
   secureTransport?: boolean;
   status: SetupStatus;
   terms?: TermsState;
@@ -25,4 +32,4 @@ export type SetupSessionState =
   | { kind: 'error'; message: string }
   | { kind: 'needs-owner'; error: string | null; ownerClaimRequired: boolean }
   | { kind: 'signed-out'; error: string | null; owner: Owner }
-  | { kind: 'signed-in'; owner: Owner; terms: TermsState };
+  | { kind: 'signed-in'; owner: Owner; preferences: OwnerPreferences; terms: TermsState };

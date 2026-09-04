@@ -10,6 +10,7 @@ const { loopbackPortFor } = require('../src/apps/app-package-service.cjs');
 const { LoginThrottle } = require('../src/auth/login-throttle.cjs');
 
 const { createMOSServer } = require('../src/server/http-app.cjs');
+const { createLogger } = require('../src/server/logger.cjs');
 const { TERMS_VERSION } = require('../src/setup/setup-service.cjs');
 const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
 const { ExternalSourceService } = require('../src/apps/external-source-service.cjs');
@@ -106,6 +107,37 @@ test('first visit serves the built Suite Manager frontend', async () => {
   });
 });
 
+// The whole point of the build stamp is that a running frontend can tell it has
+// been replaced, and a document served from cache defeats that on its own.
+test('the served document names its build, is never cached, and the API agrees', async () => {
+  await withServer(async (baseUrl) => {
+    const document = await fetch(`${baseUrl}/`);
+    const html = await document.text();
+    const stamped = /<meta name="mos-build" content="([0-9a-f]{16})" \/>/u.exec(html);
+
+    assert.equal(document.headers.get('cache-control'), 'no-store');
+    assert.ok(stamped, 'the served document carries its build id');
+
+    const build = await fetch(`${baseUrl}/suite-manager/api/build`);
+    assert.equal(build.status, 200);
+    assert.equal(build.headers.get('cache-control'), 'no-store');
+    assert.equal((await build.json()).id, stamped[1]);
+  });
+});
+
+test('build output is cached forever and everything else is not', async () => {
+  await withServer(async (baseUrl) => {
+    // Vite puts the content hash in the filename, so a new build is a new URL
+    // and the old one can never be the wrong answer.
+    const bundle = await fetch(`${baseUrl}/suite-manager/assets/assets/index.js`);
+    // A brand mark keeps its name across a rebrand, so it must not.
+    const brand = await fetch(`${baseUrl}/suite-manager/assets/brand/my-own-suite-mark.png`);
+
+    assert.equal(bundle.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.equal(brand.headers.get('cache-control'), 'public, max-age=3600');
+  });
+});
+
 test('static frontend assets are served from the reserved asset namespace', async () => {
   await withServer(async (baseUrl) => {
     const scriptResponse = await fetch(`${baseUrl}/suite-manager/assets/assets/index.js`);
@@ -132,6 +164,56 @@ async function createOwner(baseUrl, host = 'home.test') {
   });
   return response.headers['set-cookie'][0];
 }
+
+test('the owner preference route is authenticated, validated, and reflected in setup status', async () => {
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
+      body: JSON.stringify({ key: 'technicalControls', value: true }),
+      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(denied.status, 401);
+    assert.equal(denied.json().code, 'AUTH_REQUIRED');
+
+    const cookie = await createOwner(baseUrl);
+    const signedOutStatus = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Host: 'home.test' } });
+    assert.equal(signedOutStatus.json().preferences, undefined);
+
+    const before = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } });
+    assert.deepEqual(before.json().preferences, { technicalControls: false });
+
+    const saved = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
+      body: JSON.stringify({ key: 'technicalControls', value: true }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(saved.status, 200);
+    assert.deepEqual(saved.json().preferences, { technicalControls: true });
+
+    const after = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } });
+    assert.deepEqual(after.json().preferences, { technicalControls: true });
+
+    const wrongType = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
+      body: JSON.stringify({ key: 'technicalControls', value: 'yes' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(wrongType.status, 400);
+    assert.equal(wrongType.json().code, 'INVALID_PREFERENCE_VALUE');
+
+    const unknownKey = await hostRequest(baseUrl, '/suite-manager/api/settings/preferences', {
+      body: JSON.stringify({ key: 'showEverything', value: true }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(unknownKey.status, 400);
+    assert.equal(unknownKey.json().code, 'UNKNOWN_PREFERENCE');
+
+    // A rejected write changes nothing.
+    const unchanged = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } });
+    assert.deepEqual(unchanged.json().preferences, { technicalControls: true });
+  }, { homeHost: 'home.test' });
+});
 
 test('Home serves Suite Manager but blocks its dashboard until authentication', async () => {
   await withServer(async (baseUrl) => {
@@ -2304,4 +2386,227 @@ test('session cookies become Secure only for HTTPS forwarded requests', async ()
     });
     assert.match(httpsLogin.headers['set-cookie'][0], /; Secure/u);
   }, { homeHost: 'home.test' });
+});
+
+// The owner is told "Internal server error." on purpose, so unless the reason is
+// written down here it exists nowhere at all — which is exactly the state this
+// replaced. The reference is what lets a screenshot and a journal line be
+// matched without guessing at timestamps.
+test('an internal error is logged with a reference the response also carries', async () => {
+  const lines = [];
+  const logger = createLogger({
+    stream: { write: (chunk) => lines.push(JSON.parse(String(chunk))) },
+  });
+
+  await withServer(async (baseUrl) => {
+    const response = await hostRequest(baseUrl, '/suite-manager/api/auth/login', {
+      body: JSON.stringify({ email: 'owner@example.com', password: 'whatever' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    assert.equal(response.status, 500);
+    const body = response.json();
+    // The owner still learns nothing about the internals.
+    assert.equal(body.error, 'Internal server error.');
+    assert.match(body.reference, /^[0-9a-f]{8}$/u);
+
+    const logged = lines.filter((line) => line.event === 'request-failed');
+    assert.equal(logged.length, 1);
+    assert.equal(logged[0].reference, body.reference);
+    assert.equal(logged[0].level, 'error');
+    assert.equal(logged[0].method, 'POST');
+    assert.equal(logged[0].path, '/suite-manager/api/auth/login');
+    assert.equal(logged[0].statusCode, 500);
+    assert.equal(logged[0].error.message, 'throttle store unavailable');
+    assert.ok(logged[0].error.stack.includes('throttle store unavailable'));
+  }, {
+    logger,
+    loginThrottle: {
+      recordFailure() {},
+      recordSuccess() {},
+      retryAfterMs() { throw new Error('throttle store unavailable'); },
+    },
+  });
+});
+
+// A handled error already reaches the owner with its own message, so logging it
+// would be noise on every mistyped password rather than a signal.
+test('an expected client error is answered without a reference and without a log line', async () => {
+  const lines = [];
+  const logger = createLogger({ stream: { write: (chunk) => lines.push(JSON.parse(String(chunk))) } });
+
+  await withServer(async (baseUrl) => {
+    const response = await hostRequest(baseUrl, '/suite-manager/api/auth/login', {
+      body: JSON.stringify({ email: 'owner@example.com', password: 'whatever' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    assert.equal(response.status, 401);
+    assert.equal(response.json().reference, undefined);
+    assert.deepEqual(lines.filter((line) => line.event === 'request-failed'), []);
+  }, { logger });
+});
+
+// The whole of I3 in one pass: a runtime apply fails, the reason survives the
+// response that carried it, and the app screen can read it back. The secret is
+// what makes this worth asserting end to end — diagnostics land in SQLite, and
+// SQLite lands in every backup bundle, so a secret that reaches this text is
+// there permanently. Vaultwarden generates one at install, so the redaction is
+// tested against a real value rather than a fixture.
+test('a failed runtime apply is recorded, readable on the app, and carries no secret', async () => {
+  let generatedToken = '';
+  const appAgent = {
+    async apply(input) {
+      generatedToken = input.compose.services[0].environment.ADMIN_TOKEN;
+      const error = new Error('The app image could not be built.');
+      error.code = 'APP_BUILD_FAILED';
+      error.statusCode = 502;
+      // The shape the agent's command runner produces: the failing command's
+      // own output, carrying the materialized secret it was invoked with.
+      error.details = [`no space left on device while starting with ADMIN_TOKEN=${generatedToken}`];
+      throw error;
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+
+    const applied = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    // The failure is recorded, and then rethrown unchanged: recording must not
+    // alter what the caller was already promised.
+    assert.equal(applied.status, 502);
+
+    const packages = await hostRequest(baseUrl, '/suite-manager/api/apps/packages', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    const vaultwarden = packages.json().packages.find((item) => item.id === 'vaultwarden');
+    const failure = vaultwarden.instance.lastFailure;
+
+    assert.ok(failure, 'the app must report the failure that just happened');
+    assert.equal(failure.kind, 'apply');
+    assert.equal(failure.errorCode, 'APP_BUILD_FAILED');
+    assert.match(failure.diagnostics, /The app image could not be built\./u);
+    assert.match(failure.diagnostics, /no space left on device/u);
+
+    assert.ok(generatedToken.length > 20, 'the install must have generated a real secret');
+    assert.ok(!failure.diagnostics.includes(generatedToken), 'the secret must not reach the stored diagnostics');
+    assert.match(failure.diagnostics, /ADMIN_TOKEN=\[redacted\]/u);
+    assert.doesNotMatch(packages.body, new RegExp(generatedToken, 'u'));
+  }, { appAgent, homeHost: 'home.test' });
+});
+
+// A screen that kept showing the old reason would be reporting a problem the
+// owner has already fixed.
+test('a recorded failure stops being reported once the app applies successfully', async () => {
+  let shouldFail = true;
+  const appAgent = {
+    async apply(input) {
+      if (shouldFail) {
+        const error = new Error('The app container could not be started.');
+        error.code = 'APP_RUN_FAILED';
+        error.statusCode = 502;
+        throw error;
+      }
+      return { publicUrl: input.publicUrl, status: 'applied', steps: ['built', 'started', 'healthy'] };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+
+    const readFailure = async () => {
+      const packages = await hostRequest(baseUrl, '/suite-manager/api/apps/packages', {
+        headers: { Cookie: cookie, Host: 'home.test' },
+      });
+      return packages.json().packages.find((item) => item.id === 'vaultwarden').instance.lastFailure;
+    };
+
+    const apply = () => hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/apply-runtime', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+
+    await apply();
+    assert.equal((await readFailure()).errorCode, 'APP_RUN_FAILED');
+
+    shouldFail = false;
+    assert.equal((await apply()).status, 200);
+    assert.equal(await readFailure(), null);
+  }, { appAgent, homeHost: 'home.test' });
+});
+
+
+test('the diagnostics export needs a signed-in owner', async () => {
+  await withServer(async (baseUrl) => {
+    const response = await hostRequest(baseUrl, '/suite-manager/api/support/bundle', { headers: { Host: 'home.test' } });
+
+    assert.equal(response.status, 401);
+    assert.equal(response.json().code, 'AUTH_REQUIRED');
+  }, { homeHost: 'home.test' });
+});
+
+test('the diagnostics export is one downloadable text file that leads with the problem', async () => {
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const response = await hostRequest(baseUrl, '/suite-manager/api/support/bundle', { headers: { Cookie: cookie, Host: 'home.test' } });
+    const text = response.body;
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers['content-type'], /^text\/plain/u);
+    assert.match(response.headers['content-disposition'], /^attachment; filename="mos-diagnostics-[\d-]+\.txt"$/u);
+    assert.ok(text.startsWith('MY OWN SUITE — DIAGNOSTICS'));
+    assert.ok(text.includes('WHAT LOOKS WRONG'));
+    assert.ok(text.includes('COLLECTION NOTES'));
+  }, {
+    homeHost: 'home.test',
+    diagnosticsAgent: {
+      async collect() {
+        return {
+          collectedAt: '2026-09-01T12:00:00.000Z',
+          containers: [{ image: 'mos-app-example:1', labels: {}, log: 'boom', name: 'mos-app-example', state: 'exited', status: 'Exited (1)', troubled: true }],
+          host: {},
+          incomplete: [],
+          units: [{ active: 'active', enabled: 'enabled', log: 'ready', name: 'mos-suite-manager.service', sub: 'running', troubled: false }],
+        };
+      },
+    },
+  });
+});
+
+// The owner asking for this file is disproportionately likely to be the owner
+// whose machine is too broken to answer. An export that 500s at exactly that
+// moment would be worse than useless, so the unreachable agent has to become a
+// line in the file rather than an error page.
+test('the diagnostics export still produces a file when the agent is unreachable', async () => {
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const response = await hostRequest(baseUrl, '/suite-manager/api/support/bundle', { headers: { Cookie: cookie, Host: 'home.test' } });
+    const text = response.body;
+
+    assert.equal(response.status, 200);
+    assert.ok(text.includes('diagnostics agent unreachable (DIAGNOSTICS_AGENT_UNAVAILABLE)'));
+    assert.ok(text.includes('Some information could not be collected'));
+  }, {
+    homeHost: 'home.test',
+    diagnosticsAgent: {
+      async collect() {
+        const error = new Error('The diagnostics system agent is unavailable.');
+        error.code = 'DIAGNOSTICS_AGENT_UNAVAILABLE';
+        throw error;
+      },
+    },
+  });
 });

@@ -1,3 +1,9 @@
+const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnostics.cjs');
+
+// The update agent already trims a failed step's output to its last lines;
+// this is the ceiling on what a status poll carries should that ever change.
+const OUTPUT_LIMIT_CHARS = 20_000;
+
 function capabilityAvailable(capabilities, resource, capability) {
   const value = capabilities?.[resource];
   if (Array.isArray(value)) return value.includes(capability);
@@ -11,6 +17,7 @@ function normalizeJob(job) {
     error: typeof job.error === 'string' ? job.error : null,
     id: typeof job.id === 'string' ? job.id : '',
     logs: Array.isArray(job.logs) ? job.logs.filter((entry) => entry && typeof entry.message === 'string').slice(-30) : [],
+    output: typeof job.output === 'string' && job.output ? job.output.slice(-OUTPUT_LIMIT_CHARS) : null,
     stage: typeof job.stage === 'string' ? job.stage : null,
     status: typeof job.status === 'string' ? job.status : null,
     target: typeof job.target === 'string' ? job.target : null,
@@ -18,10 +25,25 @@ function normalizeJob(job) {
   };
 }
 
+// A check that could not be completed, with what the agent found out about
+// why. The text is bounded and redacted here for the same reason an app
+// operation's is: it ends up in the diagnostics bundle.
+function normalizeCheckFailure(checkFailure) {
+  if (!checkFailure || typeof checkFailure.reason !== 'string' || !checkFailure.reason) return null;
+  const { diagnostics, errorCode } = buildOperationDiagnostics(
+    { code: 'UPDATE_CHECK_FAILED', details: checkFailure.details, message: checkFailure.reason },
+  );
+  return { diagnostics, errorCode, reason: checkFailure.reason };
+}
+
+// updateAvailable is three-valued: null means the last check did not
+// complete, which is neither "up to date" nor "an update is waiting".
 function normalizeStatus(agentPayload, serviceAvailable) {
   const updaterStatus = agentPayload?.updaterStatus || {};
   const track = updaterStatus.track || {};
   const latestRelease = updaterStatus.latestRelease || {};
+  const checkFailure = normalizeCheckFailure(updaterStatus.checkFailure
+    || (typeof updaterStatus.error === 'string' && updaterStatus.error ? { details: [], reason: updaterStatus.error } : null));
   return {
     changeSummary: {
       items: Array.isArray(updaterStatus.changeSummary?.items)
@@ -30,6 +52,7 @@ function normalizeStatus(agentPayload, serviceAvailable) {
       source: typeof updaterStatus.changeSummary?.source === 'string' ? updaterStatus.changeSummary.source : null,
       title: typeof updaterStatus.changeSummary?.title === 'string' ? updaterStatus.changeSummary.title : 'Changes in this update',
     },
+    checkFailure,
     checkedAt: typeof updaterStatus.checkedAt === 'string' ? updaterStatus.checkedAt : new Date().toISOString(),
     currentJob: normalizeJob(agentPayload?.currentJob),
     error: typeof updaterStatus.error === 'string' ? updaterStatus.error : null,
@@ -52,7 +75,7 @@ function normalizeStatus(agentPayload, serviceAvailable) {
       type: track.type === 'branch' || track.type === 'stable' ? track.type : null,
     },
     trackConfigurationAvailable: capabilityAvailable(agentPayload?.capabilities, 'updates', 'configure-track'),
-    updateAvailable: updaterStatus.updateAvailable === true,
+    updateAvailable: checkFailure ? null : updaterStatus.updateAvailable === true ? true : updaterStatus.updateAvailable === false ? false : null,
   };
 }
 
@@ -65,11 +88,13 @@ class UpdateService {
     try {
       return normalizeStatus(await this.agent.status(), true);
     } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Update system agent is unavailable.';
       return normalizeStatus({
         updaterStatus: {
+          checkFailure: { details: [], reason },
           checkedAt: new Date().toISOString(),
-          error: error instanceof Error ? error.message : 'Update system agent is unavailable.',
-          updateAvailable: false,
+          error: reason,
+          updateAvailable: null,
         },
       }, false);
     }
@@ -84,6 +109,11 @@ class UpdateService {
     }
     if (status.currentJob && (status.currentJob.status === 'queued' || status.currentJob.status === 'running')) {
       const error = new Error('An update job is already running.');
+      error.statusCode = 409;
+      throw error;
+    }
+    if (status.updateAvailable === null) {
+      const error = new Error(`Could not check for updates: ${status.checkFailure?.reason || 'the last check did not complete.'}`);
       error.statusCode = 409;
       throw error;
     }

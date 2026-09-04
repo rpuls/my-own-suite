@@ -36,7 +36,6 @@ export function DisclaimerNotice({ copy, details, variant = 'warning' }: {
       </div>
     </Notice>
     {detailsOpen ? <Dialog
-      closeOnBackdrop
       footer={<button className="mos-btn mos-btn-primary" onClick={() => setDetailsOpen(false)} type="button">{copy.dismissLabel}</button>}
       onClose={() => setDetailsOpen(false)}
       title={copy.dialogTitle}

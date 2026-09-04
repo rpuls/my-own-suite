@@ -135,13 +135,25 @@ are the cost of an offline first boot, and they are worth it.
 
 Written to a USB stick with Rufus (DD mode) or balenaEtcher, and booted:
 
-- `mos-self-install` sees it is running from removable media, finds the single
-  internal disk, asks for `YES`, copies itself over, expands to fill the disk, and
-  asks you to remove the stick and reboot.
+- `mos-self-install` sees it is running from removable media and lists every
+  internal disk big enough, in kernel-name order so the numbers do not move
+  between boots, each annotated with what it already holds — a picker that printed
+  only NAME/SIZE/MODEL would trade a safe refusal for a confident mistake. The
+  last option declines. A number then `ERASE` copies the image over, expands it to
+  fill the disk, and asks you to remove the stick and reboot. Anything it does not
+  recognise asks again —
+  **not installing has to be chosen, never arrived at.** The prompt this replaced
+  compared the answer to `YES` exactly, so a lowercase `yes` cancelled, the suite
+  came up on the stick looking installed, and the machine stopped booting the
+  moment the stick came out.
 - On the internal disk it sees non-removable media and does nothing, so the same
   image is both the installer and the installed system.
 - `mos-ssh-hostkeys`, `mos-grow-root` and `mos-first-boot` give the machine its own
-  identity, its full disk, and its own server login.
+  identity, its full disk, and its own server login. `mos-grow-root` skips
+  removable media, so choosing not to install leaves the stick a working installer
+  rather than expanding it to fill itself.
+- Running from the stick, `mos-first-boot` leads with **RUNNING FROM THE USB
+  STICK** and says nothing is installed, instead of the completion banner below.
 - `mos-first-boot` then writes the completion banner to `/etc/issue.d/`. It states
   the address reservation both doors need, then offers each door in one line, and
   points at the docs for the rest; a login screen is the wrong place for a guide.
@@ -192,8 +204,18 @@ resolvable name stops being served.
   across four attempts, which nearly justified an MBR image; it turned out to be
   stale firmware state, and **Apply Factory Defaults** cleared it with every
   setting already correct. Suspect NVRAM before suspecting the layout.
-- **Single internal disk only.** With more than one it refuses rather than guesses.
-  Roadmap H4 decides what the confirmation should look like.
+- **The image itself still carries no boot entry.** `mos-image-finalize` uses
+  `grub-install --removable`, which writes `EFI/BOOT/BOOTX64.EFI` and deliberately
+  no NVRAM entry, so an image flashed straight to an internal disk boots only on
+  firmware that tries the removable-media path on a fixed disk. Most do. The ones
+  that do not report *no bootable drive* with the stick removed and boot fine with
+  it in, which is indistinguishable from a failed install. `mos-self-install` now
+  closes this for the path owners actually take: after writing the target it
+  registers a **My Own Suite** entry with `efibootmgr`, replacing any entry of that
+  label from an earlier install so a re-install does not stack duplicates. It is
+  best-effort by design — no EFI runtime, no `efibootmgr`, no identifiable ESP, or
+  firmware that refuses the write all leave the removable path as the fallback, and
+  the closing screen then names the disk to pick in the BIOS/UEFI setup screen.
 - `mos-self-install` copies a mounted root filesystem after a best-effort
   read-only remount and repairs the copy with `e2fsck -fy`. Quiescing it properly
   is a real fix, not a PoC one.

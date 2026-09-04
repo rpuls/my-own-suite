@@ -10,12 +10,17 @@ const { HomepageService } = require('../homepage/homepage-service.cjs');
 const { ConsoleLoginError, ConsoleLoginService } = require('../settings/console-login-service.cjs');
 const { HttpsAgentClient } = require('../settings/https-agent-client.cjs');
 const { HttpsSettingsError } = require('../../../../shared/https-contract.cjs');
+const { SmtpSettingsError } = require('../../../../shared/smtp-contract.cjs');
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
 const { HttpsSettingsService } = require('../settings/https-settings-service.cjs');
+const { SmtpSettingsService } = require('../settings/smtp-settings-service.cjs');
 const { LabResetAgentClient } = require('../lab/lab-reset-agent-client.cjs');
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
+const { createLogger, requestId } = require('./logger.cjs');
 const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
+const { DiagnosticsAgentClient } = require('../diagnostics/diagnostics-agent-client.cjs');
+const { assembleSupportBundle } = require('../diagnostics/support-bundle.cjs');
 const { OfficialCatalogError, OfficialCatalogService } = require('../apps/official-catalog-service.cjs');
 const { ExternalSourceClient } = require('../apps/external-source-client.cjs');
 const { AppOperationLimiter } = require('../apps/app-operation-limits.cjs');
@@ -56,9 +61,10 @@ function jsonResponse(response, statusCode, payload, headers = {}) {
   response.end(`${JSON.stringify(payload)}\n`);
 }
 
-function htmlResponse(response, statusCode, html) {
+function htmlResponse(response, statusCode, html, headers = {}) {
   response.writeHead(statusCode, {
     'Content-Type': 'text/html; charset=utf-8',
+    ...headers,
   });
   response.end(html);
 }
@@ -70,10 +76,11 @@ function textResponse(response, statusCode, text) {
   response.end(text);
 }
 
-function fileResponse(response, filePath) {
+function fileResponse(response, filePath, headers = {}) {
   const extension = path.extname(filePath).toLowerCase();
   response.writeHead(200, {
     'Content-Type': MIME_TYPES.get(extension) || 'application/octet-stream',
+    ...headers,
   });
   fs.createReadStream(filePath).pipe(response);
 }
@@ -182,6 +189,9 @@ function errorStatus(error) {
   if (error instanceof HttpsSettingsError) {
     return error.statusCode;
   }
+  if (error instanceof SmtpSettingsError) {
+    return error.statusCode;
+  }
   if (!(error instanceof SetupError)) {
     return 500;
   }
@@ -218,6 +228,27 @@ function readFrontendHtml(frontendDistDir) {
   }
 
   return fs.readFileSync(indexPath, 'utf8');
+}
+
+// Which build of the frontend this server is serving. It is a hash of the built
+// index.html, so it changes exactly when the bundle it points at changes: a
+// restart that shipped no new frontend keeps the same id, and a browser holding
+// an older one knows it is running code this server no longer serves.
+//
+// Cached against the file's mtime and size rather than recomputed, because the
+// running frontend asks for it on a timer.
+let frontendBuildCache = null;
+function frontendBuildId(frontendDistDir) {
+  const indexPath = path.join(frontendDistDir, 'index.html');
+  let stats = null;
+  try { stats = fs.statSync(indexPath); } catch { return ''; }
+  const stamp = `${stats.mtimeMs}:${stats.size}`;
+  if (frontendBuildCache?.stamp === stamp) return frontendBuildCache.id;
+  const html = readFrontendHtml(frontendDistDir);
+  if (html === null) return '';
+  const id = crypto.createHash('sha256').update(html).digest('hex').slice(0, 16);
+  frontendBuildCache = { id, stamp };
+  return id;
 }
 
 function normalizedHost(request) {
@@ -283,6 +314,16 @@ function isSignedIn(setup, sessionToken) {
   return setup.status(sessionToken).status === 'signed-in';
 }
 
+// The build output directory holds nothing but bundles whose filename contains
+// their own content hash, so a year is safe and a new build is a new URL.
+// Everything else served from here — the brand marks, the favicons, the fonts —
+// keeps its filename across a rebrand, so it gets an hour instead of forever.
+function assetCacheControl(relativePath) {
+  return relativePath.startsWith('assets/')
+    ? 'public, max-age=31536000, immutable'
+    : 'public, max-age=3600';
+}
+
 function serveFrontendAsset(response, frontendDistDir, pathname) {
   const relativePath = pathname.slice(FRONTEND_ASSET_PREFIX.length);
   const staticPath = resolveStaticPath(frontendDistDir, relativePath);
@@ -290,14 +331,22 @@ function serveFrontendAsset(response, frontendDistDir, pathname) {
     return false;
   }
 
-  fileResponse(response, staticPath);
+  fileResponse(response, staticPath, { 'Cache-Control': assetCacheControl(relativePath) });
   return true;
 }
 
 function serveFrontend(response, frontendDistDir) {
   const html = readFrontendHtml(frontendDistDir);
   if (html) {
-    htmlResponse(response, 200, html);
+    const buildId = frontendBuildId(frontendDistDir);
+    // Never cached, and it is the one response that must not be: the bundles it
+    // names are immutable and permanently cacheable precisely because this
+    // document is the thing that says which ones to load. A stale copy of it
+    // pins a browser to the previous build with no way to find out.
+    htmlResponse(response, 200, buildId
+      ? html.replace('</head>', `  <meta name="mos-build" content="${buildId}" />
+  </head>`)
+      : html, { 'Cache-Control': 'no-store' });
     return;
   }
 
@@ -307,6 +356,7 @@ function serveFrontend(response, frontendDistDir) {
 function createMOSServer({
   appAgent = new AppAgentClient(),
   backupAgent = new BackupAgentClient(),
+  diagnosticsAgent = new DiagnosticsAgentClient(),
   appsDir = DEFAULT_APPS_DIR,
   homepageAgent = new HomepageAgentClient(),
   httpsAgent = new HttpsAgentClient(),
@@ -318,7 +368,8 @@ function createMOSServer({
   homepageUpstream = process.env.MOS_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
   disposableLab = process.env.MOS_DISPOSABLE_LAB === '1',
   loginThrottle = new LoginThrottle(),
-  securityLogger = (event) => console.warn(JSON.stringify(event)),
+  logger = createLogger(),
+  securityLogger = (event) => logger.warn('security-event', event),
   securityEventRecorder = null,
   ownerClaimToken = process.env.MOS_OWNER_CLAIM_TOKEN || '',
   stateDir = path.join(process.cwd(), '.state'),
@@ -379,6 +430,13 @@ function createMOSServer({
     limiter: appOperationLimiter,
     store: setup.store,
   });
+  // The owner's shared outbound email relay. Reads and writes the same secret
+  // directory the app runtimes read ${smtp.*} from, so a relay saved here is the
+  // relay apps send through.
+  const smtpSettings = new SmtpSettingsService({
+    secretDir: appPackages.secretDir,
+    store: setup.store,
+  });
   // Resolves an installed app's real host label, so every public URL this layer
   // builds names the address the app actually serves rather than its package id.
   const appHostFor = (packageId) => appPackages.publicRouteHostFor(packageId);
@@ -415,6 +473,15 @@ function createMOSServer({
           ownerClaimRequired: Boolean(ownerClaimToken),
           secureTransport: isHttpsRequest(request),
         });
+        return;
+      }
+
+      // Unauthenticated because the frontend it identifies is served to anyone
+      // who can reach this port, so the hash of it reveals nothing that the
+      // bundle does not. The sign-in screen is left running across an update the
+      // same as any other screen, and needs the same way to notice.
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/build`) {
+        jsonResponse(response, 200, { id: frontendBuildId(frontendDistDir) }, { 'Cache-Control': 'no-store' });
         return;
       }
 
@@ -545,6 +612,19 @@ function createMOSServer({
         return;
       }
 
+      // Owner preferences are one keyed route rather than one route each, so a
+      // new preference is a key in setup-service rather than another endpoint.
+      // The service owns the closed set of keys and their types; an unknown key
+      // or a value of the wrong type is a 400, never a stored row.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/preferences`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change your Suite Manager preferences.' });
+          return;
+        }
+        jsonResponse(response, 200, { preferences: setup.setPreference(await readJsonBody(request, 4 * 1024)) });
+        return;
+      }
+
       if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/security-events`) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review security activity.' });
@@ -618,6 +698,9 @@ function createMOSServer({
             publicUrlFor: appPublicUrlResolverForBase(baseDomain, 'https', appHostFor),
           });
         } catch (error) {
+          // The owner is handed a code and the apply still reports success, so
+          // without this the reason every app kept its old address is gone.
+          logger.error('app-public-url-reconcile-failed', { error });
           appReconciliation = {
             errorCode: error.code || 'APP_PUBLIC_URL_RECONCILE_FAILED',
             skipped: false,
@@ -625,6 +708,43 @@ function createMOSServer({
           };
         }
         jsonResponse(response, 200, { ...applied, appReconciliation });
+        return;
+      }
+
+      if (url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/smtp` && ['DELETE', 'GET', 'POST'].includes(request.method)) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the email relay.' });
+          return;
+        }
+        if (request.method === 'GET') {
+          jsonResponse(response, 200, smtpSettings.status());
+          return;
+        }
+        if (request.method === 'DELETE') {
+          jsonResponse(response, 200, smtpSettings.remove());
+          return;
+        }
+        const body = await readJsonBody(request, 16 * 1024);
+        jsonResponse(response, 200, await smtpSettings.save(body));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/smtp/verify`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the email relay.' });
+          return;
+        }
+        jsonResponse(response, 200, { status: smtpSettings.status(), verify: await smtpSettings.verify() });
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/smtp/test`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the email relay.' });
+          return;
+        }
+        const body = await readJsonBody(request, 4 * 1024);
+        jsonResponse(response, 200, await smtpSettings.sendTest({ to: body?.to }));
         return;
       }
 
@@ -687,6 +807,10 @@ function createMOSServer({
             serviceAvailable: true,
           });
         } catch (error) {
+          // Answered 200 with serviceAvailable:false, which is right for the
+          // screen and means a genuine fault here looks identical to an agent
+          // that is simply not running.
+          logger.warn('backup-agent-unavailable', { error });
           jsonResponse(response, 200, {
             backups: [],
             currentJob: null,
@@ -791,6 +915,31 @@ function createMOSServer({
           contentLength,
           destinationId: String(url.searchParams.get('destinationId') || ''),
         }));
+        return;
+      }
+
+      // One file an owner can hand to whoever is helping them. Signed in only:
+      // it reports the shape of the machine, and an export anyone could fetch
+      // would be a reconnaissance endpoint on an unauthenticated port.
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/support/bundle`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to create a diagnostics file.' });
+          return;
+        }
+        const bundle = await assembleSupportBundle({
+          agent: diagnosticsAgent,
+          frontDoor,
+          homeHost,
+          platformVersion: catalogService.platformVersion,
+          secretDir: appPackages.secretDir,
+          store: setup.store,
+          updateStatus: await updates.status().catch(() => null),
+        });
+        response.writeHead(200, {
+          'Content-Disposition': `attachment; filename="${bundle.filename}"`,
+          'Content-Type': 'text/plain; charset=utf-8',
+        });
+        response.end(bundle.text);
         return;
       }
 
@@ -1083,6 +1232,21 @@ function createMOSServer({
         return;
       }
 
+      const appEnvMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/env$/u);
+      if (request.method === 'POST' && appEnvMatch) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change app environment variables.' });
+          return;
+        }
+        const packageId = decodeURIComponent(appEnvMatch[1]);
+        const body = await readJsonBody(request, 64 * 1024);
+        jsonResponse(response, 200, await appPackages.savePackageEnvironment(packageId, body, {
+          ...appPublicUrlFor(request, packageId, httpsSettings, appHostFor),
+          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
+        }));
+        return;
+      }
+
       const appUninstallMatch = url.pathname.match(/^\/suite-manager\/api\/apps\/packages\/([^/]+)\/uninstall$/u);
       if (request.method === 'POST' && appUninstallMatch) {
         if (!isSignedIn(setup, sessionToken)) {
@@ -1182,10 +1346,28 @@ function createMOSServer({
     } catch (error) {
       const statusCode = errorStatus(error);
       const internal = statusCode >= 500 && !Number.isInteger(error.statusCode);
+      // An internal error is the one class nobody can reconstruct afterwards:
+      // the owner is told "Internal server error." on purpose, so unless the
+      // reason is written down here it exists nowhere at all. The reference goes
+      // out with the response so the line in the journal and the screenshot in
+      // the bug report can be matched without guessing at timestamps.
+      const reference = internal ? requestId() : null;
+      if (internal) {
+        logger.error('request-failed', {
+          error,
+          method: request.method,
+          // Query strings carry claim tokens and search terms; the path alone
+          // is what identifies the route that broke.
+          path: url.pathname,
+          reference,
+          statusCode,
+        });
+      }
       jsonResponse(response, statusCode, {
         code: error.code || 'INTERNAL_ERROR',
         ...(!internal && Array.isArray(error.details) && error.details.length ? { details: error.details } : {}),
         error: internal ? 'Internal server error.' : error.message || 'Internal server error.',
+        ...(reference ? { reference } : {}),
       });
     }
   });

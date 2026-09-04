@@ -314,6 +314,74 @@ const MIGRATIONS = [
     `,
     version: 13,
   },
+  {
+    // Owner preferences as rows rather than columns: the next preference is an
+    // insert, not a migration. Values are stored as JSON so a preference is not
+    // limited to the shape SQLite has a column type for, and an absent row means
+    // the default the reading service documents.
+    name: 'owner-preferences',
+    sql: `
+      CREATE TABLE owner_preferences (
+        owner_id INTEGER NOT NULL,
+        key TEXT NOT NULL,
+        value_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (owner_id, key),
+        FOREIGN KEY (owner_id) REFERENCES owners(id) ON DELETE CASCADE
+      ) STRICT;
+    `,
+    version: 14,
+  },
+  {
+    // Environment variables an owner set on an installed app, for values the
+    // package never asked for. Deliberately its own table rather than rows in
+    // app_instance_config: that table is keyed by manifest setup-field ids,
+    // whose grammar is `[a-z][A-Za-z0-9]*`, and an environment variable name is
+    // UPPER_SNAKE_CASE. Owner environment is also a different thing — a
+    // different key space, owned by the owner rather than by the package, kept
+    // per service, and replaced as a whole set rather than merged.
+    name: 'app-instance-owner-env',
+    sql: `
+      CREATE TABLE app_instance_env (
+        instance_id TEXT NOT NULL,
+        service TEXT NOT NULL,
+        name TEXT NOT NULL,
+        value_json TEXT,
+        secret INTEGER NOT NULL CHECK (secret IN (0, 1)),
+        secret_ref TEXT,
+        fingerprint TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (instance_id, service, name),
+        FOREIGN KEY (instance_id) REFERENCES app_instances(id) ON DELETE CASCADE
+      ) STRICT;
+    `,
+    version: 15,
+  },
+  {
+    name: 'smtp-settings',
+    sql: `
+      CREATE TABLE smtp_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        host TEXT,
+        port INTEGER,
+        security TEXT NOT NULL DEFAULT 'starttls' CHECK (security IN ('none', 'starttls', 'tls')),
+        username TEXT,
+        from_address TEXT,
+        from_name TEXT,
+        allow_invalid_cert INTEGER NOT NULL DEFAULT 0 CHECK (allow_invalid_cert IN (0, 1)),
+        password_ref TEXT,
+        configured_at TEXT,
+        updated_at TEXT NOT NULL,
+        last_verify_status TEXT NOT NULL DEFAULT 'never' CHECK (last_verify_status IN ('never', 'verifying', 'verified', 'failed')),
+        last_verify_at TEXT,
+        last_verify_error_code TEXT,
+        last_verify_diagnostics TEXT
+      ) STRICT;
+
+      INSERT INTO smtp_settings (id, updated_at) VALUES (1, CURRENT_TIMESTAMP);
+    `,
+    version: 16,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -457,6 +525,35 @@ class SuiteManagerStore {
     `).run(termsVersion, acceptedAt);
   }
 
+  // Every stored preference for one owner, decoded. A row this MOS no longer
+  // recognises is skipped rather than thrown on: a preference written by a newer
+  // release must not stop an older one from reading the rest.
+  getOwnerPreferences(ownerId) {
+    const rows = this.database.prepare(`
+      SELECT key, value_json AS valueJson
+      FROM owner_preferences
+      WHERE owner_id = ?
+    `).all(ownerId);
+    const preferences = {};
+    for (const row of rows) {
+      try {
+        preferences[row.key] = JSON.parse(row.valueJson);
+      } catch {
+        continue;
+      }
+    }
+    return preferences;
+  }
+
+  setOwnerPreference({ at, key, ownerId, value }) {
+    this.database.prepare(`
+      INSERT INTO owner_preferences (owner_id, key, value_json, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT (owner_id, key) DO UPDATE
+        SET value_json = excluded.value_json, updated_at = excluded.updated_at
+    `).run(ownerId, key, JSON.stringify(value), at);
+  }
+
   // Rotating the owner password ends every session in the same transaction that
   // stores the new hash: a password changed because it may have leaked has to
   // take the sessions that password opened with it. The caller signs back in
@@ -519,6 +616,99 @@ class SuiteManagerStore {
           last_apply_error_code = ?, last_apply_diagnostics = ?, updated_at = ?
       WHERE id = 1
     `).run(at, errorCode, diagnostics, at);
+  }
+
+  getSmtpSettings() {
+    return this.database.prepare(`
+      SELECT
+        allow_invalid_cert AS allowInvalidCert,
+        configured_at AS configuredAt,
+        from_address AS fromAddress,
+        from_name AS fromName,
+        host,
+        last_verify_at AS lastVerifyAt,
+        last_verify_diagnostics AS lastVerifyDiagnostics,
+        last_verify_error_code AS lastVerifyErrorCode,
+        last_verify_status AS lastVerifyStatus,
+        password_ref AS passwordRef,
+        port,
+        security,
+        updated_at AS updatedAt,
+        username
+      FROM smtp_settings
+      WHERE id = 1
+    `).get();
+  }
+
+  // Writes the relay an owner configured. `passwordRef` is the secret-file
+  // reference or null; it is only ever changed when a new password was supplied,
+  // so an edit that left the password field blank keeps the stored secret. Any
+  // save resets verification to 'never' because the thing that was verified may
+  // no longer be what is stored.
+  saveSmtpSettings({ allowInvalidCert = false, at, fromAddress, fromName = null, host, keepPasswordRef = false, passwordRef = null, port, security, username = null }) {
+    const passwordClause = keepPasswordRef ? '' : 'password_ref = ?,';
+    const bindings = [
+      host,
+      port,
+      security,
+      username || null,
+      fromAddress,
+      fromName || null,
+      allowInvalidCert ? 1 : 0,
+      ...(keepPasswordRef ? [] : [passwordRef]),
+      at,
+      at,
+    ];
+    this.database.prepare(`
+      UPDATE smtp_settings
+      SET host = ?, port = ?, security = ?, username = ?, from_address = ?, from_name = ?,
+          allow_invalid_cert = ?, ${passwordClause}
+          configured_at = COALESCE(configured_at, ?), updated_at = ?,
+          last_verify_status = 'never', last_verify_at = NULL,
+          last_verify_error_code = NULL, last_verify_diagnostics = NULL
+      WHERE id = 1
+    `).run(...bindings);
+  }
+
+  beginSmtpVerify(at) {
+    this.database.prepare(`
+      UPDATE smtp_settings
+      SET last_verify_status = 'verifying', last_verify_at = ?, updated_at = ?,
+          last_verify_error_code = NULL, last_verify_diagnostics = NULL
+      WHERE id = 1
+    `).run(at, at);
+  }
+
+  completeSmtpVerify(at) {
+    this.database.prepare(`
+      UPDATE smtp_settings
+      SET last_verify_status = 'verified', last_verify_at = ?, updated_at = ?,
+          last_verify_error_code = NULL, last_verify_diagnostics = NULL
+      WHERE id = 1
+    `).run(at, at);
+  }
+
+  failSmtpVerify({ at, diagnostics = null, errorCode }) {
+    this.database.prepare(`
+      UPDATE smtp_settings
+      SET last_verify_status = 'failed', last_verify_at = ?, updated_at = ?,
+          last_verify_error_code = ?, last_verify_diagnostics = ?
+      WHERE id = 1
+    `).run(at, at, errorCode, diagnostics);
+  }
+
+  // Forgets the relay entirely, back to a never-configured row. The password
+  // secret file is deleted by the caller; this clears the reference to it.
+  clearSmtpSettings(at) {
+    this.database.prepare(`
+      UPDATE smtp_settings
+      SET host = NULL, port = NULL, security = 'starttls', username = NULL,
+          from_address = NULL, from_name = NULL, allow_invalid_cert = 0,
+          password_ref = NULL, configured_at = NULL, updated_at = ?,
+          last_verify_status = 'never', last_verify_at = NULL,
+          last_verify_error_code = NULL, last_verify_diagnostics = NULL
+      WHERE id = 1
+    `).run(at);
   }
 
   recordHomepageRevision({ at, file, revision }) {
@@ -735,6 +925,61 @@ class SuiteManagerStore {
       value: row.valueJson === null || row.valueJson === undefined ? undefined : JSON.parse(row.valueJson),
       valueJson: undefined,
     }));
+  }
+
+  // Owner-set environment for one instance, ordered so a stored set renders in
+  // the same order every time. `secret` is the stored column rather than a
+  // derivation of secret_ref, because a secret whose file is missing is still a
+  // secret row and must not read as a plain value.
+  getAppEnv(instanceId) {
+    return this.database.prepare(`
+      SELECT
+        fingerprint,
+        name,
+        secret,
+        secret_ref AS secretRef,
+        service,
+        updated_at AS updatedAt,
+        value_json AS valueJson
+      FROM app_instance_env
+      WHERE instance_id = ?
+      ORDER BY service, name
+    `).all(instanceId).map((row) => ({
+      ...row,
+      secret: row.secret === 1,
+      value: row.valueJson === null || row.valueJson === undefined ? undefined : JSON.parse(row.valueJson),
+      valueJson: undefined,
+    }));
+  }
+
+  // The submitted set replaces the stored one outright: a name the owner removed
+  // from the dialog is a name they deleted, and merging would make removal
+  // impossible without a second verb.
+  //
+  // Values are serialized here rather than by the caller, so a row read back out
+  // of getAppEnv can be written straight back in — which is exactly what a
+  // rollback does, and what silently stored NULL when the caller owned the JSON.
+  // An owner env value is always a string, so JSON.stringify is the whole
+  // encoding.
+  replaceAppEnvRows({ at, instanceId, rows }) {
+    this.database.prepare('DELETE FROM app_instance_env WHERE instance_id = ?').run(instanceId);
+    for (const row of rows) {
+      this.database.prepare(`
+        INSERT INTO app_instance_env (
+          instance_id, service, name, value_json, secret, secret_ref, fingerprint, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        instanceId,
+        row.service,
+        row.name,
+        row.value === undefined || row.value === null ? null : JSON.stringify(row.value),
+        row.secret ? 1 : 0,
+        row.secretRef ?? null,
+        row.fingerprint ?? null,
+        at,
+      );
+    }
   }
 
   getAppGuideState(instanceId) {
@@ -1080,13 +1325,13 @@ class SuiteManagerStore {
     return this.getAppOperation(operationId);
   }
 
-  failAppUpdate({ at, errorCode, instanceId, operationId, recoveryState = 'none', stage }) {
+  failAppUpdate({ at, diagnostics = null, errorCode, instanceId, operationId, recoveryState = 'none', stage }) {
     this.transaction(() => {
       this.database.prepare(`
         UPDATE app_operations
-        SET status = 'failed', stage = ?, error_code = ?, completed_at = ?
+        SET status = 'failed', stage = ?, error_code = ?, diagnostics = ?, completed_at = ?
         WHERE id = ? AND instance_id = ? AND kind = 'update' AND status = 'running'
-      `).run(stage, errorCode, at, operationId, instanceId);
+      `).run(stage, errorCode, diagnostics, at, operationId, instanceId);
       this.database.prepare(`
         UPDATE app_instances SET update_recovery_state = ?, update_recovery_error = ?, updated_at = ? WHERE id = ?
       `).run(recoveryState, recoveryState === 'none' ? null : errorCode, at, instanceId);
@@ -1200,10 +1445,41 @@ class SuiteManagerStore {
       SELECT id, instance_id AS instanceId, kind, status, stage,
              expected_installed_digest AS expectedInstalledDigest,
              candidate_digest AS candidateDigest, error_code AS errorCode,
-             started_at AS startedAt, completed_at AS completedAt
+             diagnostics, started_at AS startedAt, completed_at AS completedAt
       FROM app_operations WHERE id = ?
     `).get(operationId);
     return row || null;
+  }
+
+  // The operation that failed used to leave nothing behind: the reason reached
+  // the owner's screen once and was never written down, so by the time anyone
+  // asked what happened there was only the error code. `diagnostics` is expected
+  // to arrive already redacted and bounded — once it is here it is also in every
+  // backup bundle, which is why cleaning it on the way out would be too late.
+  recordFailedAppOperation({ at, diagnostics = null, errorCode, instanceId, kind, operationId, request = {} }) {
+    this.database.prepare(`
+      INSERT INTO app_operations (
+        id, instance_id, kind, status, error_code, diagnostics, request_json, started_at, completed_at
+      )
+      VALUES (?, ?, ?, 'failed', ?, ?, ?, ?, ?)
+    `).run(operationId, instanceId, kind, errorCode, diagnostics, JSON.stringify(request), at, at);
+    return this.getAppOperation(operationId);
+  }
+
+  // Only failures that are still the latest word on an instance are worth
+  // showing: a failed apply followed by a successful one is history, and a
+  // screen that kept surfacing it would be reporting a problem the owner has
+  // already fixed.
+  latestFailedAppOperation(instanceId) {
+    const row = this.database.prepare(`
+      SELECT id, instance_id AS instanceId, kind, status, stage, error_code AS errorCode,
+             diagnostics, started_at AS startedAt, completed_at AS completedAt
+      FROM app_operations
+      WHERE instance_id = ?
+      ORDER BY started_at DESC, rowid DESC
+      LIMIT 1
+    `).get(instanceId);
+    return row && row.status === 'failed' ? row : null;
   }
 
   applyAppProjections({ at, instanceId, kinds, operationId, request = {} }) {

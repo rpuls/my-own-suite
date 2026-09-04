@@ -9,6 +9,8 @@ const {
   resolveRuntimeConfig,
   suiteManagerUnit,
 } = require('../../scripts/reconcile-system.cjs');
+const { JOURNALD_CONFIG_PATH, renderJournaldConfig } = require('../../infrastructure/control-plane-runtime.cjs');
+const { renderBootstrapPlan } = require('../../scripts/installers/bootstrap-contract.cjs');
 
 test('system reconciliation preserves the installed Home host from the bootstrap contract', (context) => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-reconcile-'));
@@ -60,4 +62,71 @@ test('system reconciliation provisions the app package root readable by Suite Ma
   assert.match(script, /run\('chown', \['root:mos-agent', `\$\{stateRoot\}\/app-packages`\]\)/u);
   // Applied after the chown, which can clear the setgid bit.
   assert.match(script, /chmodSync\(`\$\{stateRoot\}\/app-packages`, 0o2750\)/u);
+});
+
+// AGENTS.md rule 7: a managed update must not leave a machine running old
+// platform-owned state after reporting success. Host settings have two owners —
+// the installer, which a machine that already exists never runs again, and this
+// reconciler, which every managed update runs — so a setting written by only one
+// of them silently reaches only reflashed machines or only updated ones. This
+// asserts both paths emit the identical journald configuration from the one
+// shared definition, which is the property that made the split safe.
+test('the installer and a managed update write the identical journald configuration', () => {
+  const rendered = renderJournaldConfig();
+  const installer = renderBootstrapPlan({}).sshBootstrap;
+
+  assert.match(rendered, /^\[Journal\]$/mu);
+  // Stated rather than left to `Storage=auto`, which is persistent only for as
+  // long as /var/log/journal happens to exist.
+  assert.match(rendered, /^Storage=persistent$/mu);
+  // The half that was actually missing: upstream leaves SystemMaxUse unset, so
+  // the journal may grow to a tenth of the disk the apps are also using.
+  assert.match(rendered, /^SystemMaxUse=\d+M$/mu);
+
+  assert.ok(
+    installer.includes(`cat > ${JOURNALD_CONFIG_PATH} <<'MOS_JOURNALD'\n${rendered}MOS_JOURNALD`),
+    'the installer must write the shared journald definition verbatim',
+  );
+
+  const reconciler = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8');
+  assert.ok(
+    reconciler.includes('writeFile(JOURNALD_CONFIG_PATH, renderJournaldConfig()'),
+    'the managed-update path must write the same shared definition, not a copy of it',
+  );
+});
+
+// The same rule-7 hazard for a whole unit rather than a config file. A new agent
+// wired into the installer alone would exist on reflashed machines and nowhere
+// else, and the feature that depends on it — the diagnostics export — would fail
+// only for the owners who have been running MOS the longest.
+test('a managed update installs the diagnostics agent, not just a fresh install', () => {
+  const installer = renderBootstrapPlan({}).sshBootstrap;
+  const reconciler = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8');
+
+  for (const source of [installer, reconciler]) {
+    assert.ok(source.includes('system-agents/diagnostics/agent.cjs'), 'both paths must install the diagnostics agent unit');
+    assert.ok(source.includes('/run/mos-diagnostics-agent'), 'both paths must provision the agent socket directory');
+    assert.ok(
+      source.includes('MOS_DIAGNOSTICS_AGENT_SOCKET=/run/mos-diagnostics-agent/agent.sock'),
+      'both paths must tell Suite Manager where the socket is',
+    );
+  }
+
+  // Enabled and started, not merely written: a unit file nobody starts is the
+  // partially applied update this rule exists to prevent.
+  assert.ok(installer.includes('systemctl enable mos-diagnostics-agent.service'));
+  assert.ok(reconciler.includes("'mos-diagnostics-agent.service'"));
+});
+
+// The socket is the only door to a root process that reads host state, so its
+// group and mode are the whole access control. Suite Manager reaches it as a
+// member of mos-agent; nothing else on the machine should.
+test('the diagnostics agent socket is owned by root and reachable only through mos-agent', () => {
+  const installer = renderBootstrapPlan({}).sshBootstrap;
+
+  assert.ok(installer.includes('install -d -m 2770 -o root -g mos-agent /run/mos-diagnostics-agent'));
+  const unit = installer.slice(installer.indexOf('mos-diagnostics-agent.service <<'), installer.indexOf('MOS_DIAGNOSTICS_AGENT_UNIT\n\n'));
+  assert.match(unit, /^User=root$/mu);
+  assert.match(unit, /^Group=mos-agent$/mu);
+  assert.match(unit, /^UMask=0007$/mu);
 });

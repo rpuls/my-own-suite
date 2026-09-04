@@ -1,4 +1,3 @@
-const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
@@ -7,6 +6,7 @@ const path = require('node:path');
 const { packageImageTag } = require('./agent-core.cjs');
 const { appVolumeLabels, appVolumeName, OWNERSHIP_LABELS } = require('../../infrastructure/persistent-state.cjs');
 const { collectPackageFiles, digestAppPackage, parseNamespacedPackageId, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
+const { describeDuration, describeFailure, indent, maskValues, runCommand, tailOutput } = require('../lib/command-output.cjs');
 
 const APPS_ROOT = process.env.MOS_APPS_ROOT || path.resolve(process.cwd(), 'apps');
 const APP_PACKAGE_ROOT = process.env.MOS_APP_PACKAGE_ROOT || '/var/lib/mos/app-packages';
@@ -14,8 +14,29 @@ const APP_CANDIDATE_ROOT = process.env.MOS_APP_CANDIDATE_ROOT || '/var/lib/mos/s
 const APP_ROUTES_PATH = process.env.MOS_APP_ROUTES_PATH || '/etc/caddy/mos-app-routes.caddy';
 const CADDY_BINARY = process.env.MOS_CADDY_BINARY || '/usr/local/libexec/mos/caddy';
 const DOCKER_BINARY = process.env.MOS_DOCKER_BINARY || '/usr/bin/docker';
+// Docker's json-file driver is unbounded by default, so an app that logs on a
+// loop fills the root disk and takes the whole suite down with it — MOS, every
+// other app, and the backup that would have recovered it. Per container rather
+// than a daemon-wide default in daemon.json, because changing that needs a
+// docker restart, which stops every running app: this applies to each container
+// as it is created, and an existing one picks it up the next time its app is
+// applied or updated. 30 MB is three files of 10, which is enough history to
+// diagnose a crash loop and small enough that fifty containers cannot fill a
+// modest disk.
+const CONTAINER_LOG_ARGS = ['--log-opt', 'max-size=10m', '--log-opt', 'max-file=3'];
 const HEALTH_TIMEOUT_MS = 90_000;
 const HEALTH_REFRESH_TIMEOUT_MS = 5_000;
+// What a failure report quotes from each container's own log. A crash loop
+// prints its reason in its last few lines; the full log stays in the
+// diagnostics bundle.
+const CONTAINER_LOG_TAIL_LINES = 25;
+const CONTAINER_LOG_TAIL_CHARS = 2_500;
+// Environment values this agent put on a container's command line and can
+// therefore recognise in whatever echoes them back. Chosen by key shape: the
+// agent is not told which values Suite Manager holds as secrets, and masking
+// every value would hide the NODE_ENV=production that explains a failure.
+// Suite Manager masks again, by exact value against its full secret set.
+const SECRET_SHAPED_KEY = /PASS|SECRET|TOKEN|KEY|CREDENTIAL|SALT|PRIVATE/iu;
 const EMPTY_APP_ROUTES = '# No app runtime routes.\n';
 // Where a promotion parks the outgoing installed snapshot between its two
 // renames. Deterministic on purpose: a process killed between the renames is
@@ -47,13 +68,58 @@ const FAILURE_MESSAGES = {
   writing: ['APP_ROUTE_WRITE_FAILED', 'The app route could not be installed.'],
 };
 
+// How a failure report names the command that failed. The command line itself
+// never appears in a report, so this is the only name it gets.
+const STAGE_ACTIVITY = {
+  build: 'docker build',
+  'caddy-reload': 'reloading Caddy',
+  'caddy-validation': 'caddy validate for the new app route',
+  health: 'the health check',
+  network: 'docker network connect',
+  remove: 'removing the app runtime',
+  run: 'docker run',
+  snapshot: 'snapshotting the package',
+  stop: 'stopping the app runtime',
+  writing: 'writing the app route',
+};
+
+// `details` carries what the agent can say about why: command output, never
+// a command line (see ../lib/command-output.cjs). The message stays fixed per
+// stage so it is safe to log anywhere.
 class AppApplyError extends Error {
-  constructor(stage) {
+  constructor(stage, details = []) {
     const [code, message] = FAILURE_MESSAGES[stage] || ['APP_RUNTIME_APPLY_FAILED', 'The app runtime operation failed.'];
     super(message);
     this.code = code;
+    this.details = details;
     this.statusCode = 502;
   }
+}
+
+function environmentSecrets(services = []) {
+  return services.flatMap((service) => Object.entries(service.environment || {})
+    .filter(([key]) => SECRET_SHAPED_KEY.test(key))
+    .map(([, value]) => String(value)));
+}
+
+// A container's state in the words an owner would use, from the State object
+// `docker inspect` reports.
+function describeContainerState(state) {
+  if (!state) return 'is not present';
+  const parts = [];
+  if (state.Status === 'running') parts.push(state.Health?.Status ? `is running, health ${state.Health.Status}` : 'is running');
+  else if (state.Status === 'exited') parts.push(`exited with code ${state.ExitCode}`);
+  else if (state.Status === 'restarting') parts.push(`keeps restarting, last exit code ${state.ExitCode}`);
+  else parts.push(`is ${state.Status || 'in an unknown state'}`);
+  if (state.OOMKilled) parts.push('was killed for running out of memory');
+  if (state.Error) parts.push(`reported: ${state.Error}`);
+  return parts.join(', ');
+}
+
+// The health probe's own verdict, in one line.
+function describeProbe(error, healthTarget) {
+  if (error?.message !== 'HEALTH_TIMEOUT') return String(error?.message || 'The health check failed.');
+  return `No healthy answer from ${healthTarget} in ${describeDuration(error.waitedMs || HEALTH_TIMEOUT_MS)}; the last probe got: ${error.lastProbe || 'no answer'}.`;
 }
 
 // Suite Manager re-verifies snapshot identity and digest on every read, so it
@@ -77,62 +143,8 @@ async function applyAgentGroup(root, gid) {
   }
 }
 
-// `exec` ignores output on purpose; volume-label inspection is the one place
-// the adapter needs a command's stdout, so it gets its own injectable runner.
-function execCapture(file, args, { cwd = undefined, timeoutMs = 120000 } = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(file, args, { cwd, stdio: ['ignore', 'pipe', 'ignore'] });
-    let settled = false;
-    let output = '';
-    const finish = (callback, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      callback(value);
-    };
-    const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      finish(reject, new Error('COMMAND_TIMEOUT'));
-    }, timeoutMs);
-    child.stdout.on('data', (chunk) => { output += chunk; });
-    child.on('error', (error) => {
-      finish(reject, error);
-    });
-    child.on('exit', (code) => {
-      if (code === 0) {
-        finish(resolve, output);
-        return;
-      }
-      finish(reject, new Error('COMMAND_FAILED'));
-    });
-  });
-}
-
-function exec(file, args, { cwd = undefined, timeoutMs = 120000 } = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(file, args, { cwd, stdio: 'ignore' });
-    let settled = false;
-    const finish = (callback, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      callback(value);
-    };
-    const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      finish(reject, new Error('COMMAND_TIMEOUT'));
-    }, timeoutMs);
-    child.on('error', (error) => {
-      finish(reject, error);
-    });
-    child.on('exit', (code) => {
-      if (code === 0) {
-        finish(resolve);
-        return;
-      }
-      finish(reject, new Error('COMMAND_FAILED'));
-    });
-  });
+function exec(file, args, options = {}) {
+  return runCommand(file, args, options);
 }
 
 async function atomicWrite(target, content, mode = 0o644) {
@@ -217,8 +229,11 @@ function removeAppRouteBlock(currentRoutes, packageId) {
   return next ? `${next}\n` : EMPTY_APP_ROUTES;
 }
 
+// Rejects with what the last probe saw on `lastProbe`: a connection refused
+// and an HTTP 503 are different failures with different fixes.
 function waitForHttp(url, { deadlineMs = HEALTH_TIMEOUT_MS } = {}) {
   const started = Date.now();
+  let lastProbe = 'no answer';
   return new Promise((resolve, reject) => {
     const attempt = () => {
       const request = http.get(url, { timeout: 3000 }, (response) => {
@@ -227,14 +242,21 @@ function waitForHttp(url, { deadlineMs = HEALTH_TIMEOUT_MS } = {}) {
           resolve();
           return;
         }
+        lastProbe = `HTTP ${response.statusCode}`;
         retry();
       });
       request.on('timeout', () => request.destroy(new Error('TIMEOUT')));
-      request.on('error', retry);
+      request.on('error', (error) => {
+        lastProbe = error?.message === 'TIMEOUT' ? 'no reply within 3s' : String(error?.code || error?.message || 'connection failed');
+        retry();
+      });
     };
     const retry = () => {
       if (Date.now() - started >= deadlineMs) {
-        reject(new Error('HEALTH_TIMEOUT'));
+        const failure = new Error('HEALTH_TIMEOUT');
+        failure.lastProbe = lastProbe;
+        failure.waitedMs = Date.now() - started;
+        reject(failure);
         return;
       }
       setTimeout(attempt, 1500);
@@ -261,12 +283,15 @@ class SystemAppAdapter {
     this.caddyBinary = caddyBinary;
     this.dockerBinary = dockerBinary;
     this.execute = execute;
-    // A capture runner is only defaulted to the real system when the plain
-    // runner is the real system too. An injected runner without a matching
-    // capture runner reports every volume as absent, so a harness that stubs
-    // only `execute` still sees the explicit labeled `volume create` instead
-    // of this adapter reaching around the stub to the machine it runs on.
-    this.executeCapture = executeCapture || (execute === exec ? execCapture : async () => { throw new Error('COMMAND_FAILED'); });
+    // Derived from the plain runner rather than defaulted to the real system,
+    // so a harness that stubs only `execute` sees the explicit labeled
+    // `volume create` instead of this adapter reaching around the stub to the
+    // machine it runs on: a stub that returns nothing reports every volume absent.
+    this.executeCapture = executeCapture || (async (file, args, options) => {
+      const result = await this.execute(file, args, options);
+      if (typeof result?.stdout !== 'string') throw new Error('COMMAND_FAILED');
+      return result.stdout;
+    });
     this.routesPath = routesPath;
     this.waitForReady = waitForReady;
   }
@@ -453,10 +478,12 @@ class SystemAppAdapter {
     const instanceRoot = path.join(this.appPackageRoot, instanceId);
     const installed = path.join(instanceRoot, 'installed');
     const candidate = path.join(instanceRoot, 'candidate');
+    let activity = STAGE_ACTIVITY.build;
     try {
       verifySnapshotIdentity(installed, { errorMessage: 'INSTALLED_PACKAGE_CHANGED', expectedDigest: expectedInstalledDigest, packageId });
       verifySnapshotIdentity(candidate, { errorMessage: 'CANDIDATE_PACKAGE_CHANGED', expectedDigest: candidateDigest, packageId });
       for (const service of services) {
+        activity = `docker build for service "${service.id}"`;
         await this.execute(this.dockerBinary, [
           'build', '--file', service.dockerfile, '--tag', service.imageTag,
           '--label', `mos.package=${packageId}`,
@@ -468,10 +495,9 @@ class SystemAppAdapter {
       }
       return { steps: ['installed-identity-verified', 'candidate-identity-verified', 'candidate-built'] };
     } catch (error) {
-      const failure = new AppApplyError('build');
+      const failure = new AppApplyError('build', describeFailure(error, activity));
       failure.code = ['INSTALLED_PACKAGE_CHANGED', 'CANDIDATE_PACKAGE_CHANGED'].includes(error?.message) ? 'APP_UPDATE_IDENTITY_CHANGED' : failure.code;
       failure.statusCode = failure.code === 'APP_UPDATE_IDENTITY_CHANGED' ? 409 : failure.statusCode;
-      failure.details = [String(error?.message || 'candidate build failed')];
       throw failure;
     }
   }
@@ -491,6 +517,7 @@ class SystemAppAdapter {
       }
       await this.execute(this.dockerBinary, [
         'run', '--detach', '--name', this.containerName(packageId, service.id, serviceCount), '--restart', 'unless-stopped',
+        ...CONTAINER_LOG_ARGS,
         ...(serviceCount > 1 ? ['--network', networkName, '--network-alias', service.id] : []),
         ...(service.public ? ['--publish', `127.0.0.1:${service.loopbackPort}:${service.internalPort}`] : []),
         '--label', `mos.package=${packageId}`,
@@ -501,8 +528,40 @@ class SystemAppAdapter {
         ...Object.entries(service.environment || {}).sort(([left], [right]) => left.localeCompare(right)).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
         ...volumeArgs,
         service.imageTag,
-      ], { timeoutMs: 60000 });
+      ], { mask: environmentSecrets([service]), timeoutMs: 60000 }).catch((error) => {
+        throw error instanceof AppApplyError ? error : new AppApplyError('run', describeFailure(error, `docker run for service "${service.id}"`));
+      });
     }
+  }
+
+  // What the agent can say about why a step failed, for a failure's details.
+  // A health timeout is the one failure where nothing exited non-zero, so it
+  // is explained from the containers' own state and last log lines instead.
+  async explainFailure(error, { activity, runtime = null, stage }) {
+    if (error instanceof AppApplyError) return error.details;
+    if (stage === 'health' && runtime) {
+      return [describeProbe(error, runtime.healthTarget), ...await this.describeContainers(runtime)];
+    }
+    return describeFailure(error, activity || STAGE_ACTIVITY[stage] || 'the operation');
+  }
+
+  // Each container's state and last log lines, best effort: a container that
+  // never started has nothing to inspect, and that is itself the finding.
+  async describeContainers({ packageId, services }) {
+    const mask = environmentSecrets(services);
+    const details = [];
+    for (const service of services) {
+      const name = this.containerName(packageId, service.id, services.length);
+      const state = await this.execute(this.dockerBinary, ['inspect', '--format', '{{json .State}}', name], { timeoutMs: 10_000 })
+        .then((result) => JSON.parse(String(result?.stdout || '').trim() || 'null'))
+        .catch(() => null);
+      const logs = await this.execute(this.dockerBinary, ['logs', '--tail', String(CONTAINER_LOG_TAIL_LINES), name], { mask, timeoutMs: 10_000 })
+        .then((result) => tailOutput(result?.output || '', { chars: CONTAINER_LOG_TAIL_CHARS, lines: CONTAINER_LOG_TAIL_LINES }))
+        .catch(() => '');
+      const header = maskValues(`Container ${name} ${describeContainerState(state)}.`, mask);
+      details.push(logs ? `${header}\nIts last log lines:\n${indent(logs)}` : `${header}\nIt has written no log lines.`);
+    }
+    return details;
   }
 
   async activateAppPackageUpdate({ candidate, installed }) {
@@ -513,20 +572,25 @@ class SystemAppAdapter {
     let routesChanged = false;
     let candidateStarted = false;
     let oldRuntimeStopped = false;
+    let stage = 'snapshot';
     try {
       verifySnapshotIdentity(installedDir, { errorMessage: 'INSTALLED_PACKAGE_CHANGED', expectedDigest: installed.packageDigest, packageId: installed.packageId });
       verifySnapshotIdentity(candidateDir, { errorMessage: 'CANDIDATE_PACKAGE_CHANGED', expectedDigest: candidate.packageDigest, packageId: candidate.packageId });
 
+      stage = 'stop';
       await this.removePackageContainers({ packageId: installed.packageId, serviceIds: installed.services.map((service) => service.id), serviceCount: installed.services.length });
       oldRuntimeStopped = true;
       candidateStarted = true;
+      stage = 'run';
       await this.startPackageContainers(candidate);
+      stage = 'health';
       await this.waitForReady(candidate.healthTarget);
 
       const currentRoutes = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
       const nextRoutes = upsertAppRouteBlock(currentRoutes, { caddyRoutes: candidate.caddyRoutes, packageId: candidate.packageId });
       routesChanged = currentRoutes !== nextRoutes;
       if (routesChanged) {
+        stage = 'caddy-validation';
         const routeCandidate = `${this.routesPath}.candidate-${process.pid}`;
         try {
           await fsp.writeFile(routeCandidate, nextRoutes);
@@ -535,36 +599,44 @@ class SystemAppAdapter {
           await fsp.rm(routeCandidate, { force: true }).catch(() => {});
         }
         await snapshot(this.routesPath, routeSnapshot);
+        stage = 'writing';
         await atomicWrite(this.routesPath, nextRoutes);
+        stage = 'caddy-reload';
         await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 20000 });
       }
       return { steps: ['installed-identity-verified', 'candidate-identity-verified', 'old-runtime-stopped', 'candidate-started', 'candidate-healthy', ...(routesChanged ? ['route-written', 'caddy-reloaded'] : [])] };
     } catch (error) {
+      // Explained before the candidate is torn down: its containers are the
+      // evidence, and the rollback below removes them.
+      const explanation = await this.explainFailure(error, { runtime: candidate, stage });
       if (routesChanged) {
         await restore(routeSnapshot, this.routesPath).catch(() => {});
         await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 10000 }).catch(() => {});
       }
       if (!oldRuntimeStopped) {
-        const failure = new AppApplyError('snapshot');
+        const failure = new AppApplyError('snapshot', explanation);
         failure.code = 'APP_UPDATE_IDENTITY_CHANGED';
         failure.statusCode = 409;
-        failure.details = [String(error?.message || 'update identity changed')];
         throw failure;
       }
       if (candidateStarted) await this.removePackageContainers({ packageId: candidate.packageId, serviceIds: candidate.services.map((service) => service.id), serviceCount: candidate.services.length }).catch(() => {});
+      let restoring = 'run';
       try {
         await this.startPackageContainers(installed);
+        restoring = 'health';
         await this.waitForReady(installed.healthTarget);
       } catch (rollbackError) {
-        const failure = new AppApplyError('run');
+        const failure = new AppApplyError('run', [
+          ...explanation,
+          'Restarting the previous version then failed too:',
+          ...await this.explainFailure(rollbackError, { runtime: installed, stage: restoring }),
+        ]);
         failure.code = 'APP_UPDATE_ROLLBACK_FAILED';
-        failure.details = [String(error?.message || 'candidate activation failed'), String(rollbackError?.message || 'old runtime restart failed')];
         throw failure;
       }
-      const failure = new AppApplyError(error?.message === 'INSTALLED_PACKAGE_CHANGED' || error?.message === 'CANDIDATE_PACKAGE_CHANGED' ? 'snapshot' : 'run');
+      const failure = new AppApplyError(error?.message === 'INSTALLED_PACKAGE_CHANGED' || error?.message === 'CANDIDATE_PACKAGE_CHANGED' ? 'snapshot' : 'run', [...explanation, 'The previous version was restarted and is running again.']);
       failure.code = ['INSTALLED_PACKAGE_CHANGED', 'CANDIDATE_PACKAGE_CHANGED'].includes(error?.message) ? 'APP_UPDATE_IDENTITY_CHANGED' : 'APP_UPDATE_ACTIVATION_FAILED';
       failure.statusCode = failure.code === 'APP_UPDATE_IDENTITY_CHANGED' ? 409 : 502;
-      failure.details = [String(error?.message || 'candidate activation failed'), 'old-runtime-restored'];
       throw failure;
     } finally {
       await fsp.rm(routeSnapshot, { force: true }).catch(() => {});
@@ -672,21 +744,28 @@ class SystemAppAdapter {
     const instanceRoot = path.join(this.appPackageRoot, installed.instanceId);
     const installedDir = path.join(instanceRoot, 'installed');
     const candidateDir = path.join(instanceRoot, 'candidate');
+    let stage = 'snapshot';
     try {
       await this.repairInterruptedPromotion(instanceRoot).catch(() => {});
       verifySnapshotIdentity(installedDir, { errorMessage: 'INSTALLED_PACKAGE_CHANGED', expectedDigest: installed.packageDigest, packageId: installed.packageId });
       verifySnapshotIdentity(candidateDir, { errorMessage: 'CANDIDATE_PACKAGE_CHANGED', expectedDigest: candidate.packageDigest, packageId: candidate.packageId });
+      stage = 'stop';
       await this.removePackageContainers({ packageId: candidate.packageId, serviceIds: candidate.services.map((service) => service.id), serviceCount: candidate.services.length });
+      stage = 'run';
       await this.startPackageContainers(installed);
+      stage = 'health';
       await this.waitForReady(installed.healthTarget);
       const currentRoutes = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
       const nextRoutes = upsertAppRouteBlock(currentRoutes, { caddyRoutes: installed.caddyRoutes, packageId: installed.packageId });
       if (currentRoutes !== nextRoutes) {
+        stage = 'caddy-validation';
         const routeCandidate = `${this.routesPath}.rollback-${process.pid}`;
         await fsp.writeFile(routeCandidate, nextRoutes);
         await this.execute(this.caddyBinary, ['validate', '--adapter', 'caddyfile', '--config', routeCandidate], { timeoutMs: 20000 });
         await fsp.rm(routeCandidate, { force: true }).catch(() => {});
+        stage = 'writing';
         await atomicWrite(this.routesPath, nextRoutes);
+        stage = 'caddy-reload';
         await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 20000 });
       }
       // The candidate this rollback abandoned never became installed, and the
@@ -695,9 +774,8 @@ class SystemAppAdapter {
       const imagesReclaimed = await this.reclaimImages(candidate.services.map((service) => service.imageTag));
       return { imagesReclaimed, steps: ['candidate-runtime-stopped', 'installed-runtime-started', 'installed-runtime-healthy', 'installed-route-restored', ...(imagesReclaimed ? ['candidate-images-reclaimed'] : [])] };
     } catch (error) {
-      const failure = new AppApplyError('run');
+      const failure = new AppApplyError('run', await this.explainFailure(error, { runtime: installed, stage }));
       failure.code = 'APP_UPDATE_ROLLBACK_FAILED';
-      failure.details = [String(error?.message || 'old runtime restore failed')];
       throw failure;
     }
   }
@@ -729,11 +807,13 @@ class SystemAppAdapter {
     const routeSnapshot = `${this.routesPath}.before-${process.pid}`;
     let routesChanged = false;
     let stage = 'build';
+    let activity = STAGE_ACTIVITY.build;
 
     try {
       verifySnapshotIdentity(packageDir, { errorMessage: 'PACKAGE_SNAPSHOT_MISMATCH', expectedDigest: packageDigest, packageId });
       const serviceCount = services.length;
       for (const service of services) {
+        activity = `docker build for service "${service.id}"`;
         await this.execute(this.dockerBinary, [
           'build',
           '--file', service.dockerfile,
@@ -747,6 +827,7 @@ class SystemAppAdapter {
       }
 
       stage = 'run';
+      activity = STAGE_ACTIVITY.run;
       await this.removePackageContainers({ packageId, serviceIds: services.map((service) => service.id), serviceCount });
       const networkName = this.networkName(packageId);
       if (serviceCount > 1) {
@@ -755,6 +836,7 @@ class SystemAppAdapter {
 
       await this.ensureAppVolumes({ instanceId, packageId, services });
       for (const service of services) {
+        activity = `docker run for service "${service.id}"`;
         const volumeArgs = [];
         for (const volume of service.volumes || []) {
           const separator = String(volume).indexOf(':');
@@ -768,6 +850,7 @@ class SystemAppAdapter {
           '--detach',
           '--name', containerName,
           '--restart', 'unless-stopped',
+          ...CONTAINER_LOG_ARGS,
           ...(serviceCount > 1 ? ['--network', networkName, '--network-alias', service.id] : []),
           ...(service.public ? ['--publish', `127.0.0.1:${service.loopbackPort}:${service.internalPort}`] : []),
           '--label', `mos.package=${packageId}`,
@@ -778,10 +861,11 @@ class SystemAppAdapter {
           ...Object.entries(service.environment || {}).sort(([left], [right]) => left.localeCompare(right)).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
           ...volumeArgs,
           service.imageTag,
-        ], { timeoutMs: 60000 });
+        ], { mask: environmentSecrets([service]), timeoutMs: 60000 });
       }
 
       stage = 'health';
+      activity = STAGE_ACTIVITY.health;
       await this.waitForReady(healthTarget);
 
       const currentRoutes = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
@@ -789,6 +873,7 @@ class SystemAppAdapter {
       routesChanged = currentRoutes !== nextRoutes;
       if (routesChanged) {
         stage = 'caddy-validation';
+        activity = STAGE_ACTIVITY[stage];
         const candidate = `${this.routesPath}.candidate-${process.pid}`;
         try {
           await fsp.writeFile(candidate, nextRoutes);
@@ -799,21 +884,26 @@ class SystemAppAdapter {
         await snapshot(this.routesPath, routeSnapshot);
 
         stage = 'writing';
+        activity = STAGE_ACTIVITY[stage];
         await atomicWrite(this.routesPath, nextRoutes);
 
         stage = 'caddy-reload';
+        activity = STAGE_ACTIVITY[stage];
         await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 20000 });
         await fsp.rm(routeSnapshot, { force: true }).catch(() => {});
         await fsp.rm(`${routeSnapshot}.missing`, { force: true }).catch(() => {});
       }
 
       return { steps: ['built', 'started', 'healthy', ...(routesChanged ? ['route-written', 'caddy-reloaded'] : [])] };
-    } catch {
+    } catch (error) {
+      const failure = error instanceof AppApplyError
+        ? error
+        : new AppApplyError(stage, await this.explainFailure(error, { activity, runtime: { healthTarget, packageId, services }, stage }));
       if (routesChanged) {
         await restore(routeSnapshot, this.routesPath).catch(() => {});
         await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 10000 }).catch(() => {});
       }
-      throw new AppApplyError(stage);
+      throw failure;
     }
   }
 
@@ -821,19 +911,21 @@ class SystemAppAdapter {
     try {
       await this.waitForReady(healthTarget, { deadlineMs: HEALTH_REFRESH_TIMEOUT_MS });
       return { status: 'healthy' };
-    } catch {
-      throw new AppApplyError('health');
+    } catch (error) {
+      throw new AppApplyError('health', [describeProbe(error, healthTarget)]);
     }
   }
 
   async connectPackageNetwork({ consumerPackageId, providerPackageId, providerServiceCount, providerServices }) {
+    const networkName = this.networkName(consumerPackageId);
+    let activity = `docker network inspect for ${networkName}`;
     try {
-      const networkName = this.networkName(consumerPackageId);
       await this.execute(this.dockerBinary, ['network', 'inspect', networkName], { timeoutMs: 30000 });
       for (const serviceId of providerServices) {
         const containerName = this.containerName(providerPackageId, serviceId, providerServiceCount);
         const aliases = [...new Set([providerPackageId, serviceId])].flatMap((alias) => ['--alias', alias]);
         await this.execute(this.dockerBinary, ['network', 'disconnect', networkName, containerName], { timeoutMs: 30000 }).catch(() => {});
+        activity = `docker network connect for ${containerName}`;
         await this.execute(this.dockerBinary, [
           'network',
           'connect',
@@ -843,8 +935,8 @@ class SystemAppAdapter {
         ], { timeoutMs: 30000 });
       }
       return { steps: ['network-connected'] };
-    } catch {
-      throw new AppApplyError('network');
+    } catch (error) {
+      throw new AppApplyError('network', describeFailure(error, activity));
     }
   }
 
@@ -903,6 +995,7 @@ class SystemAppAdapter {
   async removeAppService({ installedSourceRevision, instanceId, packageId, serviceIds = [], volumes = [] }) {
     const routeSnapshot = `${this.routesPath}.before-${process.pid}`;
     let routesChanged = false;
+    let activity = STAGE_ACTIVITY.remove;
     try {
       await this.execute(this.dockerBinary, ['rm', '-f', `mos-app-${packageId}`], { timeoutMs: 30000 }).catch(() => {});
       for (const serviceId of serviceIds) {
@@ -913,6 +1006,7 @@ class SystemAppAdapter {
         const volumeName = appVolumeName(packageId, volume);
         const exists = await this.execute(this.dockerBinary, ['volume', 'inspect', volumeName], { timeoutMs: 30000 }).then(() => true, () => false);
         if (exists) {
+          activity = `docker volume rm for ${volumeName}`;
           await this.execute(this.dockerBinary, ['volume', 'rm', volumeName], { timeoutMs: 120000 });
         }
       }
@@ -921,6 +1015,7 @@ class SystemAppAdapter {
       const nextRoutes = removeAppRouteBlock(currentRoutes, packageId);
       routesChanged = currentRoutes !== nextRoutes;
       if (routesChanged) {
+        activity = STAGE_ACTIVITY['caddy-validation'];
         const candidate = `${this.routesPath}.candidate-${process.pid}`;
         try {
           await fsp.writeFile(candidate, nextRoutes);
@@ -929,7 +1024,9 @@ class SystemAppAdapter {
           await fsp.rm(candidate, { force: true }).catch(() => {});
         }
         await snapshot(this.routesPath, routeSnapshot);
+        activity = STAGE_ACTIVITY.writing;
         await atomicWrite(this.routesPath, nextRoutes);
+        activity = STAGE_ACTIVITY['caddy-reload'];
         await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 20000 });
         await fsp.rm(routeSnapshot, { force: true }).catch(() => {});
         await fsp.rm(`${routeSnapshot}.missing`, { force: true }).catch(() => {});
@@ -950,12 +1047,12 @@ class SystemAppAdapter {
           ...(snapshotRemoved ? ['snapshot-removed'] : []),
         ],
       };
-    } catch {
+    } catch (error) {
       if (routesChanged) {
         await restore(routeSnapshot, this.routesPath).catch(() => {});
         await this.execute('/usr/bin/systemctl', ['reload', 'caddy.service'], { timeoutMs: 10000 }).catch(() => {});
       }
-      throw new AppApplyError('remove');
+      throw new AppApplyError('remove', describeFailure(error, activity));
     }
   }
 }

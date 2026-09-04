@@ -280,22 +280,28 @@ test('system adapter builds, runs, health-checks, writes routes, and reloads Cad
   });
 
   assert.deepEqual(result.steps, ['built', 'started', 'healthy', 'route-written', 'caddy-reloaded']);
-  // build, container rm, labeled volume create, run.
-  assert.deepEqual(commands.map((command) => command.file), ['docker', 'docker', 'docker', 'docker', 'health', 'caddy', '/usr/bin/systemctl']);
+  // build, container rm, volume inspect, labeled volume create, run.
+  assert.deepEqual(commands.map((command) => command.file), ['docker', 'docker', 'docker', 'docker', 'docker', 'health', 'caddy', '/usr/bin/systemctl']);
   assert.equal(commands[0].cwd, packageDir);
   assert.ok(commands[0].args.includes('mos.package-version=0.1.0'));
   assert.ok(commands[0].args.includes(`mos.package-digest=${packageDigest}`));
   assert.ok(commands[0].args.includes('mos.source-revision=0123456789abcdef0123456789abcdef01234567'));
-  assert.deepEqual(commands[2].args.slice(0, 2), ['volume', 'create']);
-  assert.equal(commands[2].args.at(-1), 'mos-app-example-tool-configs');
-  assert.ok(commands[2].args.includes('mos.owned=true'));
-  assert.ok(commands[2].args.includes(`mos.instance=${instanceId}`));
-  assert.deepEqual(commands[3].args.slice(0, 8), ['run', '--detach', '--name', 'mos-app-example-tool', '--restart', 'unless-stopped', '--publish', '127.0.0.1:18123:3000']);
-  assert.ok(commands[3].args.includes('SERVER_HOST=http://example-tool.mos.home/'));
-  assert.ok(commands[3].args.includes('mos.package-version=0.1.0'));
-  assert.ok(commands[3].args.includes(`mos.package-digest=${packageDigest}`));
-  assert.ok(commands[3].args.includes('mos.source-revision=0123456789abcdef0123456789abcdef01234567'));
-  assert.ok(commands[3].args.includes('mos-app-example-tool-configs:/configs'));
+  assert.deepEqual(commands[3].args.slice(0, 2), ['volume', 'create']);
+  assert.equal(commands[3].args.at(-1), 'mos-app-example-tool-configs');
+  assert.ok(commands[3].args.includes('mos.owned=true'));
+  assert.ok(commands[3].args.includes(`mos.instance=${instanceId}`));
+  assert.deepEqual(commands[4].args.slice(0, 6), ['run', '--detach', '--name', 'mos-app-example-tool', '--restart', 'unless-stopped']);
+  assert.ok(commands[4].args.join(' ').includes('--publish 127.0.0.1:18123:3000'));
+  // An app that logs on a loop must not be able to fill the root disk and take
+  // the whole suite down; asserted by content rather than position so the next
+  // flag added to the run does not break this.
+  assert.ok(commands[4].args.join(' ').includes('--log-opt max-size=10m'));
+  assert.ok(commands[4].args.join(' ').includes('--log-opt max-file=3'));
+  assert.ok(commands[4].args.includes('SERVER_HOST=http://example-tool.mos.home/'));
+  assert.ok(commands[4].args.includes('mos.package-version=0.1.0'));
+  assert.ok(commands[4].args.includes(`mos.package-digest=${packageDigest}`));
+  assert.ok(commands[4].args.includes('mos.source-revision=0123456789abcdef0123456789abcdef01234567'));
+  assert.ok(commands[4].args.includes('mos-app-example-tool-configs:/configs'));
   assert.match(await fsp.readFile(routesPath, 'utf8'), /mos-app-route:start example-tool/u);
   assert.match(await fsp.readFile(routesPath, 'utf8'), /reverse_proxy http:\/\/127\.0\.0\.1:18123/u);
 });
@@ -613,7 +619,7 @@ test('system adapter restores the installed runtime when an update candidate fai
   });
   await assert.rejects(
     () => adapter.activateAppPackageUpdate({ candidate: runtime(candidateDir, 'candidate:test', '0.2.0'), installed: runtime(installedDir, 'installed:test', '0.1.0') }),
-    (error) => error.code === 'APP_UPDATE_ACTIVATION_FAILED' && error.details.includes('old-runtime-restored'),
+    (error) => error.code === 'APP_UPDATE_ACTIVATION_FAILED' && error.details.includes('The previous version was restarted and is running again.'),
   );
   const runs = commands.filter((command) => command.args[0] === 'run');
   assert.equal(runs.length, 2);
@@ -1018,4 +1024,152 @@ test('system adapter creates labeled app volumes and refuses stale data from ano
   });
   await legacyAdapter.ensureAppVolumes({ instanceId: 'cccc-3333', packageId: 'legacy-app', services: [{ volumes: ['data:/data'] }] });
   assert.equal(commands.slice(before).some((command) => command.args[1] === 'create'), false);
+});
+
+// The update and rollback paths start containers through their own call rather
+// than through applyAppService, so the log caps have to be asserted here too:
+// an app that escaped them on update would fill the root disk just as well.
+test('containers started by the update path carry the same log caps', async () => {
+  const root = await tempDir();
+  const commands = [];
+  const adapter = new SystemAppAdapter({
+    appsRoot: root,
+    appPackageRoot: path.join(root, 'packages'),
+    caddyBinary: 'caddy',
+    dockerBinary: 'docker',
+    routesPath: path.join(root, 'routes.caddy'),
+    async execute(file, args) { commands.push({ args, file }); },
+  });
+
+  await adapter.startPackageContainers({
+    instanceId: '12345678-1234-4123-8123-123456789abc',
+    packageDigest: `sha256:${'a'.repeat(64)}`,
+    packageId: 'example-tool',
+    packageVersion: '0.2.0',
+    services: [{ environment: {}, id: 'app', imageTag: 'mos-app-example-tool:0.2.0', internalPort: 3000, loopbackPort: 18123, public: true, volumes: [] }],
+    sourceRevision: '0123456789abcdef0123456789abcdef01234567',
+  });
+
+  const run = commands.find((command) => command.args[0] === 'run');
+  assert.ok(run, 'expected the update path to start a container');
+  assert.ok(run.args.join(' ').includes('--log-opt max-size=10m'));
+  assert.ok(run.args.join(' ').includes('--log-opt max-file=3'));
+});
+
+// A stand-in for the docker CLI, run through the real command runner so these
+// tests exercise the actual capture, bounding, and masking path rather than a
+// stub. `run` prints a long pull log, echoes its own argv the way a misbehaving
+// tool might, and fails on a port clash; `inspect` and `logs` answer for a
+// container that exited after printing a credential it was given.
+const FAKE_DOCKER = String.raw`
+const [command, ...rest] = process.argv.slice(2);
+if (command === 'run' && process.env.FAKE_DOCKER_RUN !== 'ok') {
+  for (let index = 0; index < 200; index += 1) process.stdout.write('layer ' + index + ' pulled\n');
+  process.stderr.write('argv: ' + process.argv.slice(2).join(' ') + '\n');
+  process.stderr.write('docker: Error response from daemon: Bind for 127.0.0.1:18123 failed: port is already allocated.\n');
+  process.exitCode = 125;
+} else if (command === 'inspect') {
+  process.stdout.write(JSON.stringify({ Error: '', ExitCode: 1, OOMKilled: false, Status: 'exited' }) + '\n');
+} else if (command === 'logs') {
+  process.stdout.write('connecting to db as app with password hunter2hunter2\n');
+  process.stderr.write('FATAL: database "app" does not exist\n');
+} else if (command === 'volume' && rest[0] === 'inspect') {
+  process.exitCode = 1;
+}
+`;
+
+async function realRunnerAdapter(root, { env = {}, waitForReady } = {}) {
+  const { runCommand } = require('../lib/command-output.cjs');
+  const fakeDocker = path.join(root, 'fake-docker.cjs');
+  await fsp.writeFile(fakeDocker, FAKE_DOCKER);
+  const appPackageRoot = path.join(root, 'packages');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const packageDir = path.join(appPackageRoot, instanceId, 'installed');
+  await fsp.mkdir(packageDir, { recursive: true });
+  await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify({ id: 'example-tool', packageFiles: [] })}\n`);
+  await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
+  const adapter = new SystemAppAdapter({
+    appPackageRoot,
+    dockerBinary: 'docker',
+    routesPath: path.join(root, 'routes.caddy'),
+    execute: (file, args, options = {}) => runCommand(process.execPath, [fakeDocker, ...args], { ...options, env: { ...process.env, ...env } }),
+    ...(waitForReady ? { waitForReady } : {}),
+  });
+  const request = {
+    caddyRoutes: 'http://example-tool.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n',
+    dockerfile: 'Dockerfile',
+    environment: { API_TOKEN: 'tok-0123456789abcdef', DB_PASSWORD: 'hunter2hunter2', SERVER_HOST: 'http://example-tool.mos.home/' },
+    healthTarget: 'http://127.0.0.1:18123/health',
+    imageTag: 'mos-app-example-tool:0.1.0',
+    instanceId,
+    internalPort: 3000,
+    loopbackPort: 18123,
+    packageDigest: digestAppPackage(packageDir),
+    packageId: 'example-tool',
+    packageVersion: '0.1.0',
+    sourceRevision: '0123456789abcdef0123456789abcdef01234567',
+    volumes: [],
+  };
+  return { adapter, request };
+}
+
+test('a failed docker run reports the command output, bounded, and never the command line', async () => {
+  const { adapter, request } = await realRunnerAdapter(await tempDir());
+
+  const error = await adapter.applyAppService(request).then(() => null, (failure) => failure);
+
+  assert.equal(error.code, 'APP_RUN_FAILED');
+  assert.equal(error.details[0], 'docker run for service "example-tool" exited with code 125.');
+  const report = error.details.join('\n');
+  assert.match(report, /port is already allocated/u);
+  assert.match(report, /\[\d+ earlier lines omitted\]/u);
+  assert.equal(report.includes('layer 0 pulled'), false);
+  // The run echoed its argv, so the only thing standing between the secrets on
+  // it and the operation record is the agent's own masking.
+  assert.equal(report.includes('hunter2hunter2'), false);
+  assert.equal(report.includes('tok-0123456789abcdef'), false);
+  assert.match(report, /DB_PASSWORD=\[redacted\]/u);
+  assert.match(report, /SERVER_HOST=http:\/\/example-tool\.mos\.home\//u);
+});
+
+test('a health failure is explained from the containers themselves, with their log masked', async () => {
+  const timeout = Object.assign(new Error('HEALTH_TIMEOUT'), { lastProbe: 'ECONNREFUSED', waitedMs: 90_000 });
+  const { adapter, request } = await realRunnerAdapter(await tempDir(), {
+    env: { FAKE_DOCKER_RUN: 'ok' },
+    async waitForReady() { throw timeout; },
+  });
+
+  const error = await adapter.applyAppService(request).then(() => null, (failure) => failure);
+
+  assert.equal(error.code, 'APP_HEALTH_FAILED');
+  assert.equal(error.details[0], 'No healthy answer from http://127.0.0.1:18123/health in 1 minute 30 seconds; the last probe got: ECONNREFUSED.');
+  assert.match(error.details[1], /^Container mos-app-example-tool exited with code 1\.\nIts last log lines:\n/u);
+  assert.match(error.details[1], /FATAL: database "app" does not exist/u);
+  assert.match(error.details[1], /password \[redacted\]/u);
+  assert.equal(error.details.join('\n').includes('hunter2hunter2'), false);
+});
+
+test('a stale volume refuses the install under its own code instead of as a start failure', async () => {
+  const commands = [];
+  const adapter = new SystemAppAdapter({
+    appPackageRoot: path.join(await tempDir(), 'packages'),
+    dockerBinary: 'docker',
+    async execute(file, args) {
+      commands.push({ args, file });
+      if (args[0] === 'volume' && args[1] === 'inspect') return { exitCode: 0, output: '', stdout: JSON.stringify({ 'mos.instance': 'other-installation', 'mos.owned': 'true', 'mos.package': 'example-tool' }) };
+      return undefined;
+    },
+  });
+  const root = adapter.appPackageRoot;
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const packageDir = path.join(root, instanceId, 'installed');
+  await fsp.mkdir(packageDir, { recursive: true });
+  await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify({ id: 'example-tool', packageFiles: [] })}\n`);
+  await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
+
+  await assert.rejects(
+    () => adapter.applyAppService({ caddyRoutes: '', dockerfile: 'Dockerfile', environment: {}, healthTarget: 'http://127.0.0.1:1/', imageTag: 't', instanceId, internalPort: 1, loopbackPort: 1, packageDigest: digestAppPackage(packageDir), packageId: 'example-tool', packageVersion: '0.1.0', sourceRevision: 'a'.repeat(40), volumes: ['data:/data'] }),
+    (error) => error.code === 'APP_VOLUME_STALE',
+  );
+  assert.equal(commands.some((command) => command.args[0] === 'run'), false);
 });

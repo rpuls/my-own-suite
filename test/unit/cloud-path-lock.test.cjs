@@ -6,6 +6,12 @@
 // A failure here is not a bug in this test. It means the cloud installer changed,
 // and the recording that documents it is now wrong. Update the digest only
 // together with a deliberate decision to re-record.
+//
+// Moved 2026-09-01 for the journald persistence block (roadmap I5). The script
+// bytes changed in all five renderings; not one `echo` line did, so nothing the
+// walkthrough shows on screen moved and no re-recording was needed. That is the
+// bar for updating these without re-recording: compare the echo lines, not the
+// digests, and if any of them differ the recording is genuinely stale.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -19,25 +25,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '6d00a482ac556620f26e97dc96bb8dd908b229931c7fb62ea6ede8c320e8cc1a',
+    digest: '7a3a02d1ec5d4db97e2fa9d62c11658785a0ecdcbe0376506f344b2b292be77f',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '739e8ee647f4bdee152baa8aecfb100a1fb247c53ce023fc656b62b42c455ac5',
+    digest: '123b896d7b2f42d33414cdaf71122085bc8ab2bbf1637e6ac1c7e6a22c805f43',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: '6734d3b0c659eb017ea4913314775ec457b399aaea5ab65500bd39275e626249',
+    digest: 'd5737e21326ec242b86267644fe4beba3c2505a6ca5cf7b9f0de394e6c5ee243',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: '8d8e50d0fff73bb7013269e8969861891142bc5485ec9fc84b255f96a392446f',
+    digest: 'b184cd8b12a89b72c2281ddfe7582ed2b1269e7b846e888be4252954781f3a54',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -47,7 +53,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: 'e0a75190ebc114062df1bb5a697a5de549a0c347984ff5e42fc92f8c93c19be1',
+    digest: '1773a2207e533dcbf15d3925519778994349a8d89d237b2e861df87f7a08bf00',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

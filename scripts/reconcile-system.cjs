@@ -6,8 +6,10 @@ const { execFileSync } = require('node:child_process');
 
 const {
   HOMEPAGE_IMAGE,
+  JOURNALD_CONFIG_PATH,
   renderCaddyfile,
   renderHomepageSystemdUnit,
+  renderJournaldConfig,
 } = require('../infrastructure/control-plane-runtime.cjs');
 
 function parseEnvFile(filePath) {
@@ -86,10 +88,21 @@ function writeFile(filePath, content, mode) {
   if (mode) fs.chmodSync(filePath, mode);
 }
 
+// Fatal by default: every other step here is something the control plane cannot
+// run without, so a failure has to stop the update rather than let it report
+// success over a half-applied machine. `allowFailure` is for the exceptions
+// where the file is already written and the command only brings it forward —
+// failing the whole update over one of those would be the worse outcome.
 function run(command, args, options = {}) {
   log(`${command} ${args.join(' ')}`);
   if (dryRun) return '';
-  return execFileSync(command, args, { encoding: 'utf8', stdio: options.stdio || 'inherit' });
+  try {
+    return execFileSync(command, args, { encoding: 'utf8', stdio: options.stdio || 'inherit' });
+  } catch (error) {
+    if (!options.allowFailure) throw error;
+    log(`${command} failed (${error.message}); continuing`);
+    return '';
+  }
 }
 
 function canRun(command, args) {
@@ -180,6 +193,7 @@ Environment=MOS_APP_AGENT_SOCKET=/run/mos-app-agent/agent.sock
 Environment=MOS_APP_PACKAGE_ROOT=${config.stateRoot}/app-packages
 Environment=MOS_BACKUP_AGENT_SOCKET=/run/mos-backup-agent/agent.sock
 Environment=MOS_UPDATE_AGENT_SOCKET=/run/mos-update-agent/agent.sock
+Environment=MOS_DIAGNOSTICS_AGENT_SOCKET=/run/mos-diagnostics-agent/agent.sock
 Environment=MOS_DISPOSABLE_LAB=${config.disposableLab}
 Environment=MOS_LAB_RESET_AGENT_SOCKET=/run/mos-lab-reset-agent/agent.sock
 EnvironmentFile=-/etc/mos/secrets/owner-claim.env
@@ -244,9 +258,15 @@ function main() {
   }
   installDir(`${stateRoot}/update-agent/jobs`, 0o700);
 
-  for (const socketDir of ['https', 'homepage', 'app', 'backup', 'update', 'lab-reset']) {
+  for (const socketDir of ['https', 'homepage', 'app', 'backup', 'update', 'diagnostics', 'lab-reset']) {
     installSocketDir(`/run/mos-${socketDir}-agent`);
   }
+
+  // Rewritten on every managed update rather than only at install, because the
+  // installer is the one path a machine that already exists never runs again.
+  // A setting applied only there would reach reflashed machines and no others.
+  writeFile(JOURNALD_CONFIG_PATH, renderJournaldConfig(), 0o644);
+  if (!dryRun) run('systemctl', ['restart', 'systemd-journald'], { allowFailure: true });
 
   refreshCaddyBinary();
   writeFile('/etc/systemd/system/caddy.service.d/mos.conf', `[Service]
@@ -310,6 +330,14 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
     script: 'system-agents/update/agent.cjs',
     wants: 'network-online.target docker.service',
   }));
+  unit('mos-diagnostics-agent.service', agentUnit({
+    after: 'network-online.target docker.service',
+    description: 'MOS read-only diagnostics collection agent',
+    env: { MOS_DIAGNOSTICS_AGENT_SOCKET: '/run/mos-diagnostics-agent/agent.sock' },
+    name: 'mos-diagnostics-agent.service',
+    script: 'system-agents/diagnostics/agent.cjs',
+    wants: 'network-online.target docker.service',
+  }));
   unit('mos-lab-reset-agent.service', agentUnit({
     after: 'network-online.target docker.service',
     description: 'MOS lab reset agent',
@@ -324,7 +352,7 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
   if (!fs.existsSync('/etc/caddy/mos-app-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-app-routes.caddy', '# No app runtime routes.\n', 0o644);
 
   run('systemctl', ['daemon-reload']);
-  for (const service of ['mos-homepage.service', 'mos-suite-manager.service', 'caddy.service', 'mos-https-agent.service', 'mos-homepage-agent.service', 'mos-app-agent.service', 'mos-backup-agent.service', 'mos-update-agent.service']) {
+  for (const service of ['mos-homepage.service', 'mos-suite-manager.service', 'caddy.service', 'mos-https-agent.service', 'mos-homepage-agent.service', 'mos-app-agent.service', 'mos-backup-agent.service', 'mos-update-agent.service', 'mos-diagnostics-agent.service']) {
     run('systemctl', ['enable', service]);
     run('systemctl', ['restart', service]);
   }

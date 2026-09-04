@@ -1,5 +1,7 @@
 const { HttpsSettingsError, validateHttpsInput } = require('../../../../shared/https-contract.cjs');
 const { detectServerAddress, easyDoorHomeHost } = require('../../../../shared/easy-door.cjs');
+const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnostics.cjs');
+const { HttpsAgentError } = require('./https-agent-client.cjs');
 
 function homeHostFor(baseDomain) {
   return baseDomain ? `home.${baseDomain}` : null;
@@ -123,12 +125,21 @@ class HttpsSettingsService {
         homeUrl: `https://${homeHostFor(input.baseDomain)}/`,
         status: 'applied',
       };
-    } catch {
+    } catch (error) {
       if (rollbackId && this.store.getHttpsSettings().lastApplyStatus !== 'applied') {
         try { await this.agent.rollback(rollbackId); } catch {}
       }
-      this.store.failHttpsApply({ at: this.now().toISOString(), errorCode: 'HTTPS_APPLY_FAILED' });
-      throw new HttpsSettingsError('HTTPS_APPLY_FAILED', 'HTTPS could not be applied. The previous configuration remains active.', 502);
+      // The agent explains its own failures in fixed sentences. Anything else —
+      // a store write, a malformed reply — stays behind the generic message,
+      // with what went wrong kept for the record.
+      const failure = error instanceof HttpsAgentError
+        ? error
+        : Object.assign(new Error('HTTPS could not be applied.'), { code: 'HTTPS_APPLY_FAILED', details: [String(error?.message || error)] });
+      this.store.failHttpsApply({
+        at: this.now().toISOString(),
+        ...buildOperationDiagnostics(failure, { fallbackCode: 'HTTPS_APPLY_FAILED', secrets: [input.cloudflareApiToken] }),
+      });
+      throw new HttpsSettingsError(failure.code, `${failure.message} The previous configuration remains active.`, failure.statusCode || 502);
     }
   }
 }

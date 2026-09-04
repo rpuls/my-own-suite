@@ -8,6 +8,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { SMTP_TEMPLATE_KEYS } = require('../../../../shared/smtp-contract.cjs');
+
 const APP_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const FIELD_ID_PATTERN = /^[a-z][a-z0-9]*(?:[A-Z][a-z0-9]*)*$/u;
 const ENV_KEY_PATTERN = /^[A-Z_][A-Z0-9_]*$/u;
@@ -17,9 +19,14 @@ const ENV_KEY_PATTERN = /^[A-Z_][A-Z0-9_]*$/u;
 // ${no-dot}, $plain — is literal text and passes through untouched, so shell
 // and app-native ${VAR} syntax in env values keeps working.
 const TEMPLATE_REFERENCE = /\$\{([a-z][a-zA-Z0-9]*)\.([^}]*)\}/gu;
-const KNOWN_NAMESPACES = new Set(['app', 'config', 'export', 'import', 'owner', 'secret']);
+const KNOWN_NAMESPACES = new Set(['app', 'config', 'export', 'import', 'owner', 'secret', 'smtp']);
 const APP_KEYS = new Set(['host', 'publicUrl', 'scheme']);
 const OWNER_KEYS = new Set(['email', 'name']);
+// The owner's shared outbound email relay, projected into a service's runtime
+// environment for apps that send mail. Added in MOS 0.19.0; a package that
+// references it must raise minimumMosVersion to 0.19.0. ${smtp.password} is
+// secret-grade and resolves like ${secret.*}: real only at materialize time.
+const SMTP_KEYS = new Set(SMTP_TEMPLATE_KEYS);
 
 const SUPPORTED_SECRET_SCOPES = new Set(['consumer-instance', 'generated-client', 'provider-instance', 'relationship']);
 const SUPPORTED_INTEGRATION_APPLY_KINDS = new Set(['service-env']);
@@ -229,6 +236,8 @@ function checkTemplateString(value, location, rules, errors) {
       errors.push(`${location.label} references \${app.${rest}}; supported app keys are ${[...APP_KEYS].sort().join(', ')}.`);
     } else if (namespace === 'owner' && !OWNER_KEYS.has(rest)) {
       errors.push(`${location.label} references \${owner.${rest}}; supported owner keys are ${[...OWNER_KEYS].sort().join(', ')}.`);
+    } else if (namespace === 'smtp' && !SMTP_KEYS.has(rest)) {
+      errors.push(`${location.label} references \${smtp.${rest}}; supported smtp keys are ${[...SMTP_KEYS].sort().join(', ')}.`);
     } else if (namespace === 'export' && !rules.exportIds.has(rest.split('.')[0])) {
       errors.push(`${location.label} references \${export.${rest}}, which is not a declared export.`);
     } else if (namespace === 'import' && location.importSlot && rest.split('.')[0] !== location.importSlot) {
@@ -258,6 +267,10 @@ function walkStrings(value, trail, visit) {
 function validateTemplates(manifest, errors) {
   const rules = templateRulesFor(manifest);
   const runtime = new Set(['app', 'config', 'secret']);
+  // ${smtp.*} resolves only where a service's environment is materialized, so it
+  // is allowed there and nowhere else — validating it in a location that never
+  // resolves it (a bridge, a widget, an export) would ship a broken reference.
+  const serviceEnv = new Set([...runtime, 'smtp']);
 
   for (const [index, field] of setupFieldsOf(manifest).entries()) {
     if (typeof field.default === 'string') {
@@ -272,7 +285,7 @@ function validateTemplates(manifest, errors) {
   for (const [serviceId, service] of Object.entries(services)) {
     if (!isRecord(service) || !isRecord(service.env)) continue;
     for (const [key, value] of Object.entries(service.env)) {
-      checkTemplateString(value, { allowed: runtime, label: `resources.services.${serviceId}.env.${key}` }, rules, errors);
+      checkTemplateString(value, { allowed: serviceEnv, label: `resources.services.${serviceId}.env.${key}` }, rules, errors);
     }
   }
 

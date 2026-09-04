@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "vaultwarden",
   "name": "Vaultwarden",
-  "version": "0.2.6",
-  "minimumMosVersion": "0.18.0",
+  "version": "0.3.0",
+  "minimumMosVersion": "0.19.0",
   "summary": "Every password, on every device, in a vault only you hold the key to.",
   "category": "security",
   "icon": "icon.png",
@@ -121,7 +121,16 @@
           "ADMIN_TOKEN": "${secret.adminToken}",
           "DOMAIN": "${app.publicUrl}",
           "SIGNUPS_ALLOWED": "true",
-          "WEBSOCKET_ENABLED": "true"
+          "WEBSOCKET_ENABLED": "true",
+          "SMTP_HOST": "${smtp.host}",
+          "SMTP_PORT": "${smtp.port}",
+          "SMTP_USERNAME": "${smtp.username}",
+          "SMTP_PASSWORD": "${smtp.password}",
+          "SMTP_FROM": "${smtp.fromAddress}",
+          "SMTP_FROM_NAME": "${smtp.fromName}",
+          "SMTP_ACCEPT_INVALID_CERTS": "${smtp.allowInvalidCert}",
+          "MOS_SMTP_START_TLS": "${smtp.startTls}",
+          "MOS_SMTP_IMPLICIT_TLS": "${smtp.implicitTls}"
         },
         "volumes": [
           "data:/data"

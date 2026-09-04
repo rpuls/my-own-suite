@@ -46,7 +46,7 @@
     "smoke:hyperv:reset": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/smoke/hyperv-usb-lab.ps1 reset",
     "test": "npm run typecheck && npm run test:unit && npm run apps:manifest:check && npm run apps:catalog:check && npm run apps:version:check && npm run apps:privacy:check && npm run apps:privacy:monitor && npm run installer:check && npm run release:check && npm run build:client && npm run build",
     "installer:check": "node -e \"require('fs').mkdirSync('.tmp',{recursive:true})\" && npm run install:render -- --target json > .tmp/installer-contract.json",
-    "test:unit": "npm run branding:sync && node --test suite-manager/backend/test/*.test.cjs system-agents/apps/*.test.cjs system-agents/backup/*.test.cjs system-agents/https/*.test.cjs system-agents/homepage/*.test.cjs system-agents/update/*.test.cjs test/unit/*.test.cjs test/unit/*.test.mjs",
+    "test:unit": "npm run branding:sync && node --test suite-manager/backend/test/*.test.cjs system-agents/apps/*.test.cjs system-agents/backup/*.test.cjs system-agents/diagnostics/*.test.cjs system-agents/https/*.test.cjs system-agents/lib/*.test.cjs system-agents/homepage/*.test.cjs system-agents/update/*.test.cjs test/unit/*.test.cjs test/unit/*.test.mjs",
     "typecheck": "tsc --project suite-manager/tsconfig.json"
   },
   "dependencies": {

@@ -183,6 +183,14 @@ echo "[mos] App choices happen in Suite Manager after install."
 
 export DEBIAN_FRONTEND=noninteractive
 
+# Rendered from the same definition reconcile-system.cjs writes on every managed
+# update, so a machine that was updated rather than reflashed ends up with the
+# identical journal settings. See control-plane-runtime.cjs for why.
+mkdir -p ${JOURNALD_CONFIG_PATH.slice(0, JOURNALD_CONFIG_PATH.lastIndexOf('/'))}
+cat > ${JOURNALD_CONFIG_PATH} <<'MOS_JOURNALD'
+${renderJournaldConfig()}MOS_JOURNALD
+systemctl restart systemd-journald || true
+
 if ! command -v caddy >/dev/null 2>&1; then
   rm -f /etc/apt/sources.list.d/caddy-stable.list
 fi
@@ -268,6 +276,7 @@ install -d -m 2770 -o root -g mos-agent /run/mos-homepage-agent
 install -d -m 2770 -o root -g mos-agent /run/mos-app-agent
 install -d -m 2770 -o root -g mos-agent /run/mos-backup-agent
 install -d -m 2770 -o root -g mos-agent /run/mos-update-agent
+install -d -m 2770 -o root -g mos-agent /run/mos-diagnostics-agent
 install -d -m 2770 -o root -g mos-agent /run/mos-lab-reset-agent
 install -d -m 0700 /var/lib/mos/https-agent/transactions
 install -d -m 0700 /var/lib/mos/homepage-agent/transactions /var/lib/mos/homepage-agent/history
@@ -466,6 +475,28 @@ RestartSec=3
 WantedBy=multi-user.target
 MOS_UPDATE_AGENT_UNIT
 
+cat > /etc/systemd/system/mos-diagnostics-agent.service <<MOS_DIAGNOSTICS_AGENT_UNIT
+[Unit]
+Description=MOS read-only diagnostics collection agent
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+User=root
+Group=mos-agent
+UMask=0007
+WorkingDirectory=$MOS_INSTALL_ROOT/repo
+Environment=NODE_ENV=production
+Environment=MOS_DIAGNOSTICS_AGENT_SOCKET=/run/mos-diagnostics-agent/agent.sock
+ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/diagnostics/agent.cjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+MOS_DIAGNOSTICS_AGENT_UNIT
+
 cat > /etc/systemd/system/mos-lab-reset-agent.service <<MOS_LAB_RESET_AGENT_UNIT
 [Unit]
 Description=MOS lab reset agent
@@ -537,6 +568,8 @@ systemctl enable mos-backup-agent.service
 systemctl restart mos-backup-agent.service
 systemctl enable mos-update-agent.service
 systemctl restart mos-update-agent.service
+systemctl enable mos-diagnostics-agent.service
+systemctl restart mos-diagnostics-agent.service
 if [ "$MOS_DISPOSABLE_LAB" = '1' ]; then
   systemctl enable mos-lab-reset-agent.service
   systemctl restart mos-lab-reset-agent.service
@@ -666,7 +699,9 @@ module.exports = {
 const {
   HOMEPAGE_IMAGE,
   HOMEPAGE_PORT,
+  JOURNALD_CONFIG_PATH,
   renderCaddyfile,
   renderHomepageSystemdUnit,
+  renderJournaldConfig,
   renderPublicCloudCaddyfile,
 } = require('../../infrastructure/control-plane-runtime.cjs');

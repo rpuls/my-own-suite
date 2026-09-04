@@ -32,6 +32,32 @@ cfg["auth"]["type"] = "htpasswd"
 cfg["auth"]["htpasswd_filename"] = users_path
 cfg["auth"]["htpasswd_encryption"] = "bcrypt"
 
+# The owner's shared outbound email relay (${smtp.*}), projected in as MOS_SMTP_*.
+# Radicale's only email is the [hook] "email" type: when a calendar object with
+# ATTENDEEs changes, it emails those attendees an iMIP notification. The whole
+# section is owned by MOS and driven purely from env, so it is fully rewritten on
+# every start and removed again the moment the owner clears the relay — a stale
+# hook must never keep trying to send through a relay that is gone.
+smtp_host = os.environ.get("MOS_SMTP_HOST", "").strip()
+if smtp_host:
+    hook = {"type": "email", "smtp_server": smtp_host}
+    port = os.environ.get("MOS_SMTP_PORT", "").strip()
+    if port:
+        hook["smtp_port"] = port
+    hook["smtp_security"] = os.environ.get("MOS_SMTP_SECURITY", "").strip() or "starttls"
+    smtp_user = os.environ.get("MOS_SMTP_USERNAME", "").strip()
+    if smtp_user:
+        hook["smtp_username"] = smtp_user
+        hook["smtp_password"] = os.environ.get("MOS_SMTP_PASSWORD", "")
+    from_email = os.environ.get("MOS_SMTP_FROM", "").strip()
+    if from_email:
+        hook["from_email"] = from_email
+    allow_invalid = os.environ.get("MOS_SMTP_ALLOW_INVALID_CERT", "").strip().lower() in ("1", "true", "yes", "on")
+    hook["smtp_ssl_verify_mode"] = "NONE" if allow_invalid else "REQUIRED"
+    cfg["hook"] = hook
+elif "hook" in cfg and cfg["hook"].get("type") == "email":
+    del cfg["hook"]
+
 with open(config_path, "w", encoding="utf-8") as f:
     cfg.write(f)
 

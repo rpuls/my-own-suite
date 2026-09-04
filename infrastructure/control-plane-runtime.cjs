@@ -74,6 +74,35 @@ import /etc/caddy/mos-app-routes.caddy
 `;
 }
 
+// The journal is where the reason something failed ends up, so both halves of
+// this matter and neither was decided before.
+//
+// Persistence was already true by accident rather than by choice: Ubuntu ships
+// `Storage=auto` and its systemd package creates /var/log/journal, and `auto`
+// means persistent exactly when that directory exists. Stating it removes the
+// dependency on a directory something else created — a restored machine
+// reconstructs its state, and this is not a thing to rediscover then.
+//
+// The cap is the half that was genuinely missing. Upstream leaves SystemMaxUse
+// unset, which means journald may grow to 10% of the filesystem: gigabytes on
+// the small VPS this is most often installed on, on the same disk the apps and
+// their backups need.
+//
+// Written from here by both paths that own host state — the installer at first
+// boot and `reconcile-system.cjs` on every managed update — because a setting
+// only the installer applied would never reach a machine that was updated rather
+// than reflashed.
+const JOURNALD_CONFIG_PATH = '/etc/systemd/journald.conf.d/mos.conf';
+
+function renderJournaldConfig() {
+  return `[Journal]
+Storage=persistent
+SystemMaxUse=200M
+SystemMaxFileSize=20M
+MaxRetentionSec=1month
+`;
+}
+
 function renderHomepageSystemdUnit({
   homeHost = '$MOS_HOME_HOST',
   homepagePort = HOMEPAGE_PORT,
@@ -101,7 +130,9 @@ WantedBy=multi-user.target
 module.exports = {
   HOMEPAGE_IMAGE,
   HOMEPAGE_PORT,
+  JOURNALD_CONFIG_PATH,
   renderCaddyfile,
+  renderJournaldConfig,
   renderHttpsCaddyfile,
   renderHomepageSystemdUnit,
   renderPublicCloudCaddyfile,

@@ -27,7 +27,7 @@ Open it and you get a plain-language summary of what you're about to change befo
 - New settings the app now requires — asked for up front, not halfway through.
 - Whether the [privacy assessment](/docs/privacy/how-we-assess/) changed, and whether the app is asking for more access than it has today.
 
-The raw comparison sits behind **Advanced details** if you want it. When you're happy, you press the button.
+The raw comparison sits behind **Advanced details** if you have [technical controls](/docs/guides/suite-manager/) switched on. When you're happy, you press the button.
 
 ### What happens when you apply one
 
@@ -52,7 +52,7 @@ Be aware of what that warning means: no advisory is not proof that nothing is wr
 
 ## Platform updates
 
-The **Updates** screen shows your update **track**, the version you're running, the newest one available, and whether the updater is ready. **Check again** refreshes; **Update now** applies. You get live progress and a summary of what's changing, with the full technical logs behind **Advanced details**.
+The **Updates** screen shows your update **track**, the version you're running, the newest one available, and whether the updater is ready. **Check again** refreshes; **Update now** applies. You get live progress and a summary of what's changing, with the full technical logs behind **Advanced details** — always there when an update fails, and with [technical controls](/docs/guides/suite-manager/) switched on the rest of the time.
 
 ### Tracks
 

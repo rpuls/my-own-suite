@@ -37,7 +37,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 stage 'Installing the tools the first-boot units need'
 apt-get update
-apt-get install -y --no-install-recommends gdisk cloud-guest-utils parted
+apt-get install -y --no-install-recommends gdisk cloud-guest-utils parted efibootmgr
 
 stage 'Rebuilding the initramfs with the full driver set'
 if grep -q '^MODULES=' /etc/initramfs-tools/initramfs.conf; then

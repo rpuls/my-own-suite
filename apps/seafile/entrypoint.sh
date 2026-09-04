@@ -168,9 +168,56 @@ def _rewrite_onlyoffice_file_url_for_internal_callback(url):\\
   fi
 }
 
+# The owner's shared outbound email relay (${smtp.*}), projected in as MOS_SMTP_*
+# and written into seahub_settings.py as Django email settings. Seahub sends mail
+# for password reset, new-user accounts, share-by-email, group invites and
+# notifications. Written with Python repr() rather than the sed helper above: a
+# relay password may contain quotes or backslashes that would break a
+# hand-quoted Python assignment, and repr() escapes them correctly. The block is
+# MOS-owned and delimited, so every start rewrites it whole and clearing the
+# relay removes it — a stale block must never keep mailing through a relay that
+# is gone. Failure here never blocks startup: Seafile without email still runs.
+patch_seahub_email_settings() {
+  [ -f "$SEAHUB_SETTINGS_FILE" ] || return 0
+  command -v python3 >/dev/null 2>&1 || { echo "MOS: python3 unavailable; skipping SMTP settings"; return 0; }
+  SEAHUB_SETTINGS_FILE="$SEAHUB_SETTINGS_FILE" python3 - <<'PY' || echo "MOS: SMTP settings patch failed; Seafile email left unconfigured"
+import os, re
+path = os.environ["SEAHUB_SETTINGS_FILE"]
+begin, end = "# >>> MOS SMTP (managed) >>>", "# <<< MOS SMTP (managed) <<<"
+try:
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+except OSError:
+    raise SystemExit(0)
+text = re.sub(re.escape(begin) + r".*?" + re.escape(end) + r"\n?", "", text, flags=re.S)
+host = os.environ.get("MOS_SMTP_HOST", "").strip()
+if host:
+    def flag(name):
+        return "True" if os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on") else "False"
+    port = os.environ.get("MOS_SMTP_PORT", "").strip()
+    block = "\n".join([
+        begin,
+        "EMAIL_HOST = %r" % host,
+        "EMAIL_PORT = %d" % (int(port) if port.isdigit() else 587),
+        "EMAIL_HOST_USER = %r" % os.environ.get("MOS_SMTP_USERNAME", ""),
+        "EMAIL_HOST_PASSWORD = %r" % os.environ.get("MOS_SMTP_PASSWORD", ""),
+        "DEFAULT_FROM_EMAIL = %r" % os.environ.get("MOS_SMTP_FROM", ""),
+        "SERVER_EMAIL = %r" % os.environ.get("MOS_SMTP_FROM", ""),
+        "EMAIL_USE_TLS = %s" % flag("MOS_SMTP_START_TLS"),
+        "EMAIL_USE_SSL = %s" % flag("MOS_SMTP_IMPLICIT_TLS"),
+        end,
+        "",
+    ])
+    text = text.rstrip("\n") + "\n" + block
+with open(path, "w", encoding="utf-8") as f:
+    f.write(text)
+PY
+}
+
 patch_seahub_proxy_settings
 patch_seafdav_settings
 patch_seahub_onlyoffice_settings
+patch_seahub_email_settings
 patch_seahub_onlyoffice_runtime
 
 (
@@ -181,6 +228,7 @@ patch_seahub_onlyoffice_runtime
     if [ -f "$SEAHUB_SETTINGS_FILE" ]; then
       patch_seahub_proxy_settings
       patch_seahub_onlyoffice_settings
+      patch_seahub_email_settings
     fi
     patch_seafdav_settings
     if [ -f "$SEAHUB_SETTINGS_FILE" ] && [ -f "$onlyoffice_utils_file" ] && grep -q "_get_onlyoffice_internal_seafile_url" "$onlyoffice_utils_file" && [ -f "$SEAFDAV_SETTINGS_FILE" ] && grep -q "^enabled = true" "$SEAFDAV_SETTINGS_FILE"; then

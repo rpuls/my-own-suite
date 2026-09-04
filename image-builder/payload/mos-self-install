@@ -40,32 +40,129 @@ printf '  ----------------------\n\n'
 if [ "${#candidates[@]}" -eq 0 ]; then
   printf '  No internal disk large enough for this image was found.\n'
   printf '  This image needs at least %s GB.\n\n' "$((source_bytes / 1000000000 + 1))"
-  printf '  Press Enter to continue booting from the USB stick instead.\n'
+  printf '  Press Enter to continue booting from the USB stick. Nothing will be\n'
+  printf '  installed, and this machine will not boot once the stick is removed.\n'
   read -r _ || true
   exit 0
 fi
 
-if [ "${#candidates[@]}" -gt 1 ]; then
-  printf '  This machine has more than one internal disk:\n\n'
-  lsblk -dno NAME,SIZE,MODEL "${candidates[@]}" | sed 's/^/    /'
-  printf '\n  Refusing to guess which one to erase. Disconnect the disks you want\n'
-  printf '  to keep, then reboot. Press Enter to continue from the USB stick.\n'
-  read -r _ || true
-  exit 0
+# NAME/SIZE/MODEL cannot tell the spare disk from the one holding the family
+# photos, so a picker that printed only those would trade a safe refusal for a
+# confident mistake. This is the line that has to carry that: how many
+# partitions, and what the recognisable ones hold.
+describe_contents() {
+  local disk="$1"
+  local rows part_count summary
+  rows="$(paste -d '|' \
+    <(lsblk -nro TYPE "$disk" 2>/dev/null) \
+    <(lsblk -nro FSTYPE "$disk" 2>/dev/null) \
+    <(lsblk -nro LABEL "$disk" 2>/dev/null) 2>/dev/null || true)"
+  part_count="$(printf '%s\n' "$rows" | awk -F '|' '$1 == "part"' | wc -l | tr -d ' ')"
+  if [ "${part_count:-0}" -eq 0 ]; then
+    printf 'empty - no partitions'
+    return 0
+  fi
+  # At most three, because the console has no scrollback and the point is a
+  # verdict rather than an inventory.
+  summary="$(printf '%s\n' "$rows" | awk -F '|' '
+    $1 == "part" && $2 != "" {
+      named += 1
+      if (named <= 3) {
+        entry = $2
+        if ($3 != "") entry = entry " \"" $3 "\""
+        list = list (list == "" ? "" : ", ") entry
+      }
+    }
+    END {
+      if (named > 3) list = list ", and " (named - 3) " more"
+      print list
+    }
+  ')"
+  if [ "$part_count" -eq 1 ]; then
+    printf 'NOT EMPTY - 1 partition'
+  else
+    printf 'NOT EMPTY - %s partitions' "$part_count"
+  fi
+  [ -n "$summary" ] && printf ', %s' "$summary"
+  return 0
+}
+
+if [ "${#candidates[@]}" -eq 1 ]; then
+  printf '  This machine has one disk My Own Suite can install onto:\n\n'
+else
+  printf '  Which disk should My Own Suite be installed onto?\n\n'
 fi
 
-target="${candidates[0]}"
-target_description="$(lsblk -dno NAME,SIZE,MODEL "$target" | sed 's/  */ /g')"
+# Ordered by kernel device name rather than by size or emptiness, so the numbers
+# are the same on the next boot. Someone who reboots to re-read this screen must
+# not find that 2 now means a different disk.
+option=0
+for candidate in "${candidates[@]}"; do
+  option=$((option + 1))
+  printf '  %d) %s\n' "$option" "$(lsblk -dno NAME,SIZE,MODEL "$candidate" | sed 's/  */ /g')"
+  printf '     %s\n\n' "$(describe_contents "$candidate")"
+done
+decline_option=$((option + 1))
+printf "  %d) Don't install  -  run from this USB stick (not recommended)\n\n" "$decline_option"
 
-printf '  Everything on this disk will be erased:\n\n'
-printf '      %s\n\n' "$target_description"
-printf '  Type YES to install My Own Suite onto it, or press Enter to cancel.\n'
-printf '  > '
-read -r answer || answer=''
-if [ "$answer" != "YES" ]; then
-  printf '\n  Cancelled. Continuing to boot from the USB stick.\n\n'
-  exit 0
+if [ "$decline_option" -eq 2 ]; then
+  choice_hint='1 or 2'
+else
+  choice_hint="$(printf '1 to %d' "$decline_option")"
 fi
+
+# The answer is a digit and anything unrecognised asks again, because the
+# previous prompt treated every answer that was not exactly `YES` as "do not
+# install". One mistyped character then produced a suite running from the stick
+# that looked like a finished install, on a machine that would not boot without
+# it. Not installing has to be chosen, never arrived at.
+while :; do
+  printf '  Choose %s, then press Enter.\n' "$choice_hint"
+  printf '  > '
+  if ! read -r answer; then
+    printf '\n  No console input. Continuing to boot from the USB stick.\n\n'
+    exit 0
+  fi
+  case "$answer" in
+    '')
+      printf '\n  Nothing entered.\n\n'
+      continue
+      ;;
+    *[!0-9]*)
+      printf '\n  "%s" is not %s.\n\n' "$answer" "$choice_hint"
+      continue
+      ;;
+  esac
+
+  if [ "$answer" -eq "$decline_option" ]; then
+    printf '\n  Not installing.\n\n'
+    printf '  This machine runs My Own Suite from the USB stick. Nothing is installed\n'
+    printf '  on its internal disks, and it will not boot once the stick is removed.\n'
+    printf '  Reboot with the stick attached to install.\n\n'
+    exit 0
+  fi
+
+  if [ "$answer" -lt 1 ] || [ "$answer" -gt "$decline_option" ]; then
+    printf '\n  "%s" is not %s.\n\n' "$answer" "$choice_hint"
+    continue
+  fi
+
+  target="${candidates[$((answer - 1))]}"
+  target_name="$(basename "$target")"
+  target_description="$(lsblk -dno NAME,SIZE,MODEL "$target" | sed 's/  */ /g')"
+  target_contents="$(describe_contents "$target")"
+
+  printf '\n  Everything on %s will be erased:\n\n' "$target_name"
+  printf '      %s\n' "$target_description"
+  printf '      %s\n\n' "$target_contents"
+  printf '  Type ERASE to confirm, or press Enter to go back.\n'
+  printf '  > '
+  read -r confirm || confirm=''
+  if [ "${confirm,,}" = 'erase' ]; then
+    break
+  fi
+  printf '\n  Not confirmed, nothing has changed.\n\n'
+done
 
 printf '\n  Copying. This takes a few minutes and must not be interrupted.\n\n'
 sync
@@ -91,8 +188,61 @@ if [ -n "$last_partition" ]; then
 fi
 sync
 
+# The image carries its bootloader at the removable-media fallback path only, so
+# a fixed disk boots solely on firmware that tries EFI/BOOT/BOOTX64.EFI unasked.
+# The ones that do not say "no bootable drive" with the stick out and boot
+# normally with it in, which reads as a failed install rather than a missing
+# NVRAM entry. Naming the loader here is what tells that firmware where to look.
+register_boot_entry() {
+  [ -d /sys/firmware/efi ] || return 1
+  command -v efibootmgr >/dev/null 2>&1 || return 1
+
+  local esp_partition esp_number existing
+  esp_partition="$(lsblk -nrpo NAME,PARTTYPE "$target" 2>/dev/null \
+    | awk '$2 == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" { print $1 }' | head -n1)"
+  if [ -z "$esp_partition" ]; then
+    esp_partition="$(lsblk -nrpo NAME,FSTYPE "$target" 2>/dev/null \
+      | awk '$2 == "vfat" { print $1 }' | head -n1)"
+  fi
+  [ -n "$esp_partition" ] || return 1
+  esp_number="$(printf '%s' "$esp_partition" | grep -oE '[0-9]+$' || true)"
+  [ -n "$esp_number" ] || return 1
+
+  # Installing a second time, or onto a different disk, must not leave the
+  # firmware choosing between this entry and one naming a disk that is gone.
+  while read -r existing; do
+    [ -n "$existing" ] || continue
+    efibootmgr --delete-bootnum --bootnum "$existing" >/dev/null 2>&1 || true
+  done < <(efibootmgr 2>/dev/null | awk '
+    /^Boot[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]/ {
+      num = substr($0, 5, 4)
+      rest = substr($0, 9)
+      sub(/^\*/, "", rest)
+      sub(/^[ \t]+/, "", rest)
+      sub(/\t.*$/, "", rest)
+      sub(/[ \t]+$/, "", rest)
+      if (rest == "My Own Suite") print num
+    }')
+
+  # Prepended to BootOrder by efibootmgr, so the installed disk is tried before
+  # whatever the firmware was booting before.
+  efibootmgr --create --disk "$target" --part "$esp_number" \
+    --loader '\EFI\BOOT\BOOTX64.EFI' --label 'My Own Suite' >/dev/null 2>&1 || return 1
+}
+
+printf '\n  Registering the disk with this machine'"'"'s firmware.\n'
+if register_boot_entry; then
+  boot_entry_registered=1
+else
+  boot_entry_registered=0
+fi
+
 printf '\n'
 printf '  Done.\n\n'
+if [ "$boot_entry_registered" -eq 0 ]; then
+  printf '  This machine'"'"'s firmware would not take a boot entry, so it may still\n'
+  printf '  need %s selected as its boot device in the BIOS/UEFI setup screen.\n\n' "$target_name"
+fi
 printf '  Remove the USB stick now, then press Enter to restart.\n'
 printf '  > '
 read -r _ || true

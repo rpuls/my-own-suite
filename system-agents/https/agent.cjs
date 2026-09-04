@@ -4,8 +4,9 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 
-const { HttpsAgentCore } = require('./agent-core.cjs');
+const { HttpsAgentCore, HttpsAgentError } = require('./agent-core.cjs');
 const { SystemHttpsAdapter } = require('./system-adapter.cjs');
+const { HttpsSettingsError } = require('../../shared/https-contract.cjs');
 
 const socketPath = process.env.MOS_HTTPS_AGENT_SOCKET || '/run/mos-https-agent/agent.sock';
 const core = new HttpsAgentCore(new SystemHttpsAdapter());
@@ -53,8 +54,15 @@ const server = http.createServer(async (request, response) => {
       return;
     }
     respond(response, 404, { code: 'NOT_FOUND', error: 'Not found.' });
-  } catch {
-    respond(response, 400, { code: 'HTTPS_AGENT_REQUEST_FAILED', error: 'The HTTPS operation could not be completed.' });
+  } catch (error) {
+    // Only an error the agent authored is worth repeating: its message is a
+    // fixed sentence and its details were masked before they got here.
+    const known = error instanceof HttpsAgentError || error instanceof HttpsSettingsError;
+    respond(response, known ? error.statusCode : 400, {
+      code: known ? error.code : 'HTTPS_AGENT_REQUEST_FAILED',
+      details: known && Array.isArray(error.details) ? error.details : [],
+      error: known ? error.message : 'The HTTPS operation could not be completed.',
+    });
   }
 });
 
