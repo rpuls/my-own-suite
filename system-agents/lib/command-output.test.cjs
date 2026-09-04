@@ -15,10 +15,14 @@ const {
 } = require('./command-output.cjs');
 
 const node = process.execPath;
+// These scripts signal failure with `process.exitCode`, never `process.exit()`:
+// a forced exit quits before Node flushes its async stderr pipe, so under a
+// loaded CI box a flooding child loses lines and the "omitted" count drifts.
+// Setting the code lets the child drain its output and exit on its own.
 const script = (source) => [node, ['-e', source]];
 
 test('a failed command rejects with its exit code and the tail of what it wrote', async () => {
-  const [file, args] = script('console.log("step one"); console.error("ERROR: disk is full"); process.exit(3);');
+  const [file, args] = script('console.log("step one"); console.error("ERROR: disk is full"); process.exitCode = 3;');
   await assert.rejects(runCommand(file, args), (error) => {
     assert.ok(error instanceof CommandFailure);
     assert.equal(error.message, 'COMMAND_FAILED');
@@ -38,7 +42,7 @@ test('a successful command resolves with its stdout separately from the merged o
 });
 
 test('the attached output is the newest lines, bounded, and says how much was dropped', async () => {
-  const [file, args] = script('for (let i = 1; i <= 500; i += 1) console.error(`line ${i}`); process.exit(1);');
+  const [file, args] = script('for (let i = 1; i <= 500; i += 1) console.error(`line ${i}`); process.exitCode = 1;');
   await assert.rejects(runCommand(file, args), (error) => {
     const lines = error.output.split('\n');
     assert.equal(lines.length, OUTPUT_TAIL_LINES + 1);
@@ -72,7 +76,7 @@ test('a command that overruns its budget is stopped and reports what it managed 
 // and the mask is what keeps it there.
 test('a secret on the argv never reaches the failure, even when the command echoes it', async () => {
   const secret = 'hunter2-super-secret-value';
-  const [file, args] = script(`console.error("invalid argument: " + process.argv[1]); process.exit(2);`);
+  const [file, args] = script(`console.error("invalid argument: " + process.argv[1]); process.exitCode = 2;`);
   await assert.rejects(runCommand(file, [...args, `DB_PASSWORD=${secret}`], { mask: [secret] }), (error) => {
     assert.ok(!error.output.includes(secret));
     assert.match(error.output, /invalid argument: DB_PASSWORD=\[redacted\]/u);
