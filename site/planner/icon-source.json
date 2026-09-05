@@ -1,0 +1,5 @@
+{
+  "$comment": "Pinned upstream revision of the Dashboard Icons project (https://github.com/homarr-labs/dashboard-icons). scripts/prepare-assets.mjs fetches exactly this commit at build time and stages the SVG set into public/dashboard-icons/, so no third-party brand artwork is committed to this repository and the published planner never contacts a third-party host. Bump the commit deliberately to refresh the icon set.",
+  "repository": "https://github.com/homarr-labs/dashboard-icons.git",
+  "commit": "d84d00eef4b14084963d5996397b76f9fe22f0c7"
+}
