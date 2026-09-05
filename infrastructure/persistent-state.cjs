@@ -32,11 +32,15 @@ const OWNERSHIP_LABELS = Object.freeze({
   resource: 'mos.resource',
 });
 
-// Backup bundle schema. Version 3 adds the owned-resource inventory,
-// ownership evidence, and space accounting. Restore accepts the declared
-// window only; anything else must fail validation before any mutation.
-const BACKUP_SCHEMA_VERSION = 3;
-const RESTORE_COMPATIBLE_SCHEMA_VERSIONS = Object.freeze([2, 3]);
+// Backup schema. Version 3 adds the owned-resource inventory, ownership
+// evidence, and space accounting. Version 4 replaces the per-backup tar
+// bundle with snapshots in an encrypted, deduplicating repository on the
+// destination, so it records snapshot ids where 3 recorded archive paths and
+// digests. Restore accepts the declared window only; anything else must fail
+// validation before any mutation. Versions 2 and 3 stay in the window because
+// existing installs have those bundles on their drives.
+const BACKUP_SCHEMA_VERSION = 4;
+const RESTORE_COMPATIBLE_SCHEMA_VERSIONS = Object.freeze([2, 3, 4]);
 
 // Beta ceiling for total raw authoritative state in one bundle. Deliberately
 // conservative: the streaming and space-accounting behavior beyond this size

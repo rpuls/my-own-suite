@@ -192,12 +192,10 @@ test('inventory summarizes an empty store', () => {
   assert.deepEqual(result.warnings, []);
   assert.deepEqual(result.relationships, { active: 0, count: 0, statuses: [] });
   assert.deepEqual(result.packageManifestDigests, []);
-  assert.deepEqual(result.actions, {
-    backupEnabled: false,
-    backupLabel: 'Back up everything',
-    backupReason: 'MOS backup inventory is ready, but archive and restore jobs wait for a MOS backup agent.',
-    restoreEnabled: false,
-  });
+  // The inventory describes what is on the machine. What can be done with it
+  // is the backup agent's answer, not this service's.
+  assert.equal(result.actions, undefined);
+  assert.equal(result.destinationModel, undefined);
   assert.equal(typeof result.checkedAt, 'string');
   assert.equal(Number.isNaN(Date.parse(result.checkedAt)), false);
 });

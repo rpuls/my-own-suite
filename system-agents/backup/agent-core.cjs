@@ -22,6 +22,18 @@
 // `packages` = { inventory(), validatePayloads(stagedRoot, apps) }
 // `apps`     = { installedInstances() -> [{ enabled, instanceId, packageId }], reconcile(log) }
 // `jobs`     = { log(file, message), stage(file, name), update(file, mutator) }
+// `engine`   = the backup storage engine (./engines/, fakes in the tests):
+//   openOrCreateRepository({ repositoryPath }) -> repository
+//   snapshotTree({ repository, sourceDir, tags }) -> { snapshotId, sourcePath }
+//   restoreSnapshot({ repository, snapshotId, sourcePath, targetDir })
+//   forgetSnapshots({ repository, snapshotIds })  maintainRepository({ repository })
+//   verifySnapshots({ repository, snapshotIds })  repositoryStats({ repository })
+//
+// New backups are always written as restore points into that repository. The
+// tar adapter methods remain for the three things that are still tar: restoring
+// and validating v2/v3 bundles that existing installs already have, importing
+// an uploaded one, and the pre-restore rescue copy, which targets the system
+// disk and must work with no destination attached at all.
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -36,6 +48,7 @@ const {
 } = require('../../infrastructure/persistent-state.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
+const { openDestinationRepository, repositorySidecarPath, RESTORE_POINTS_DIRNAME, restorePointPath, restorePointsDir } = require('./engines/engine.cjs');
 
 const COMPLETE_MARKER = 'COMPLETE';
 const RESTORE_JOURNAL_FILENAME = 'restore-journal.json';
@@ -52,6 +65,25 @@ function writeJsonAtomic(file, value) {
   const temp = `${file}.next`;
   fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
   fs.renameSync(temp, file);
+}
+
+// A restore point's manifest is its completion marker: it names the snapshots
+// the repository holds for one backup, and nothing lists a restore point until
+// it exists. So it is written whole or not at all — digest first, then an
+// atomic rename of the manifest itself.
+function writeRestorePoint(manifestPath, manifest) {
+  ensureDir(path.dirname(manifestPath));
+  const staged = `${manifestPath}.next`;
+  fs.writeFileSync(staged, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(`${manifestPath}.sha256`, `${sha256(staged)}  ${path.basename(manifestPath)}\n`, 'utf8');
+  fs.renameSync(staged, manifestPath);
+}
+
+function readRestorePoint(manifestPath) {
+  const digestFile = `${manifestPath}.sha256`;
+  if (!fs.existsSync(digestFile)) throw new Error('This restore point is incomplete: the checksum recorded with it is missing.');
+  if (sha256(manifestPath) !== fs.readFileSync(digestFile, 'utf8').trim().split(/\s+/u)[0]) throw new Error('Backup manifest checksum is invalid.');
+  return readJson(manifestPath);
 }
 
 // Hash in fixed-size chunks: volume archives are multi-gigabyte, and reading
@@ -104,9 +136,46 @@ function volumeIdentityFromManifest(volumeEntry, manifestApps) {
   return { instanceId: null, packageId: null };
 }
 
+// A restore point is identified by its manifest file; a legacy bundle by its
+// directory. Both arrive on the wire as one opaque locator, so the shape of
+// what is on disk decides which storage the flow is talking to.
+function isRestorePointPath(target) {
+  return typeof target === 'string' && target.endsWith('.json') && path.basename(path.dirname(target)) === RESTORE_POINTS_DIRNAME;
+}
+
+function destinationOfRestorePoint(manifestPath) {
+  return path.resolve(path.dirname(manifestPath), '..', '..');
+}
+
+function snapshotIdsOfRestorePoint(manifest) {
+  return [manifest.contents?.stateSnapshot?.snapshotId, ...(manifest.contents?.volumes || []).map((volume) => volume.snapshotId)].filter(Boolean);
+}
+
+function existingRestorePoints(destinationId) {
+  try {
+    return fs.readdirSync(restorePointsDir(destinationId)).filter((name) => name.endsWith('.json')).length;
+  } catch {
+    return 0;
+  }
+}
+
+// Room a backup has to see free before it starts. The first backup into a
+// repository stores everything, so it needs everything. Later ones store only
+// what changed, and demanding room for another full copy would refuse the
+// ordinary case outright: a drive that legitimately holds one copy of the data
+// can never fit a second, so every backup after the first would fail on a
+// correctly sized drive. The destination-full drill showed both engines refuse
+// cleanly and leave the repository usable when space does run out, so this
+// check exists to catch the hopeless case rather than to guarantee the write.
+function requiredFreeBytes(estimatedBytes, restorePointsPresent) {
+  if (!restorePointsPresent) return estimatedBytes;
+  return Math.max(1024 * 1024 * 1024, Math.round(estimatedBytes * 0.05));
+}
+
 class BackupAgentCore {
-  constructor({ apps, jobs, packages, paths, system }) {
+  constructor({ apps, engine, jobs, packages, paths, system }) {
     this.apps = apps;
+    this.engine = engine;
     this.jobs = jobs;
     this.packages = packages;
     this.paths = paths;
@@ -186,14 +255,11 @@ class BackupAgentCore {
     const started = jobs.update(jobFile, (job) => { job.status = 'running'; job.stage = 'starting'; });
     if (this.interruptedRestore()) throw new Error('A previous restore did not complete. Acknowledge it before starting new backup or restore work.');
     await this.assertDestinationMounted(started.destinationId, 'The backup destination is not mounted. Reconnect the drive, refresh drives, and try again.');
-    const stamp = new Date().toISOString().replace(/[:.]/gu, '-');
-    const bundleDir = path.join(started.destinationId, 'MOS-backups', `mos-backup-${stamp}-${started.id.slice(0, 8)}`);
     // exFAT and NTFS destinations reject app-packages' setgid mode, so the
     // stage cannot live on the drive.
     const stateStage = path.join(this.paths.agentStateDir, `backup-stage-${started.id}`);
-    const volumesDir = path.join(bundleDir, 'volumes');
 
-    jobs.stage(jobFile, 'Preparing backup bundle');
+    jobs.stage(jobFile, 'Preparing backup');
     const packageInventory = packages.inventory();
     const knownPackageIds = [...new Set(packageInventory.map((item) => item.packageId))];
     const { ambiguous, owned } = classifyVolumes(await system.listVolumes(), knownPackageIds);
@@ -217,9 +283,13 @@ class BackupAgentCore {
     if (estimatedBytes > BACKUP_BETA_MAX_TOTAL_BYTES) {
       throw new Error(`This installation holds about ${formatBytes(estimatedBytes)} of persistent state, above the current backup limit of ${formatBytes(BACKUP_BETA_MAX_TOTAL_BYTES)}.`);
     }
+    const restorePointsPresent = existingRestorePoints(started.destinationId) > 0;
     const freeBytes = await system.availableBytes(started.destinationId);
-    if (freeBytes !== null && freeBytes < estimatedBytes) {
-      throw new Error(`The destination has ${formatBytes(freeBytes)} free but this backup needs up to ${formatBytes(estimatedBytes)}. Free space on the destination and try again.`);
+    const neededBytes = requiredFreeBytes(estimatedBytes, restorePointsPresent);
+    if (freeBytes !== null && freeBytes < neededBytes) {
+      throw new Error(restorePointsPresent
+        ? `The destination has ${formatBytes(freeBytes)} free, too little to add to the backups already on it. Free space on the destination and try again.`
+        : `The destination has ${formatBytes(freeBytes)} free but this backup needs up to ${formatBytes(estimatedBytes)}. Free space on the destination and try again.`);
     }
     ensureDir(this.paths.agentStateDir);
     const localFreeBytes = await system.availableBytes(this.paths.agentStateDir);
@@ -228,12 +298,17 @@ class BackupAgentCore {
     }
     jobs.log(jobFile, `Backing up about ${formatBytes(estimatedBytes)} of persistent state (${owned.length} app volumes).`);
 
-    ensureDir(bundleDir);
-    ensureDir(volumesDir);
-    // The operator's note travels with the bundle from birth; it stays a
-    // sidecar outside the checksummed manifest and downloadable archive.
-    if (started.note) fs.writeFileSync(path.join(bundleDir, 'note.txt'), `${started.note}\n`, 'utf8');
-    jobs.update(jobFile, (job) => { job.outputPath = bundleDir; });
+    jobs.stage(jobFile, 'Opening the backup repository on the destination');
+    const repository = await openDestinationRepository(this.engine, started.destinationId);
+    if (repository.created) jobs.log(jobFile, 'Created a new encrypted backup repository on this drive.');
+    const manifestPath = restorePointPath(started.destinationId, started.id);
+    ensureDir(restorePointsDir(started.destinationId));
+    // The operator's note travels with the restore point from birth; it stays a
+    // sidecar outside the checksummed manifest.
+    if (started.note) fs.writeFileSync(`${manifestPath}.note.txt`, `${started.note}\n`, 'utf8');
+    jobs.update(jobFile, (job) => { job.outputPath = manifestPath; });
+    const storedSnapshotIds = [];
+    let repositoryStoredBytes = null;
     const stoppedContainers = await system.listAppContainers({ runningOnly: true });
     try {
       jobs.stage(jobFile, 'Stopping app runtime for a consistent snapshot');
@@ -251,58 +326,56 @@ class BackupAgentCore {
           await system.snapshotSqlite(path.join(target.path, target.sqliteDatabase), path.join(staged, target.sqliteDatabase));
         }
       }
-      await system.archiveTree(stateStage, path.join(bundleDir, 'state.tar.gz'));
+      const stateSnapshot = await this.engine.snapshotTree({ repository, sourceDir: stateStage, tags: { mosjob: started.id, mosrole: 'state' } });
+      storedSnapshotIds.push(stateSnapshot.snapshotId);
 
-      jobs.stage(jobFile, 'Archiving app volumes');
-      const archivedVolumes = [];
+      jobs.stage(jobFile, 'Storing app volumes');
+      const storedVolumes = [];
       for (const volume of ownedWithMounts) {
-        jobs.log(jobFile, `Archiving ${volume.name}`);
-        const archivePath = path.join(volumesDir, `${volume.name}.tar.gz`);
-        await system.archiveTree(volume.mountpoint, archivePath);
-        archivedVolumes.push({
-          archive: `volumes/${volume.name}.tar.gz`,
-          archiveBytes: fs.statSync(archivePath).size,
-          archiveSha256: sha256(archivePath),
+        jobs.log(jobFile, `Storing ${volume.name}`);
+        const snapshot = await this.engine.snapshotTree({ repository, sourceDir: volume.mountpoint, tags: { mosjob: started.id, mosrole: 'volume', mosvolume: volume.name } });
+        storedSnapshotIds.push(snapshot.snapshotId);
+        storedVolumes.push({
           instanceId: volume.instanceId,
           name: volume.name,
           ownership: volume.ownership,
           packageId: volume.packageId,
           rawBytes: volume.rawBytes,
+          snapshotId: snapshot.snapshotId,
+          sourcePath: snapshot.sourcePath,
         });
       }
 
       jobs.stage(jobFile, 'Writing manifest');
-      const stateArchivePath = path.join(bundleDir, 'state.tar.gz');
-      const producedBytes = fs.statSync(stateArchivePath).size + archivedVolumes.reduce((sum, volume) => sum + volume.archiveBytes, 0);
-      const freeForBundle = await system.availableBytes(started.destinationId);
-      if (freeForBundle !== null && freeForBundle < producedBytes) {
-        throw new Error(`The destination ran out of space for the downloadable bundle copy: ${formatBytes(freeForBundle)} free, ${formatBytes(producedBytes)} needed.`);
-      }
+      repositoryStoredBytes = (await this.engine.repositoryStats({ repository }))?.storedBytes ?? null;
       const manifest = {
-        backup: { createdAt: new Date().toISOString(), id: started.id, kind: 'mos-whole-suite', schemaVersion: BACKUP_SCHEMA_VERSION },
+        backup: {
+          createdAt: new Date().toISOString(),
+          engine: this.engine.name,
+          id: started.id,
+          kind: 'mos-whole-suite',
+          schemaVersion: BACKUP_SCHEMA_VERSION,
+          storage: 'engine-repository',
+        },
         contents: {
           ambiguousVolumes: ambiguous,
           apps: packageInventory,
-          stateArchive: 'state.tar.gz',
-          stateArchiveBytes: fs.statSync(stateArchivePath).size,
-          stateArchiveSha256: sha256(stateArchivePath),
           stateRawBytes,
-          volumes: archivedVolumes,
+          stateSnapshot: { snapshotId: stateSnapshot.snapshotId, sourcePath: stateSnapshot.sourcePath },
+          volumes: storedVolumes,
         },
+        repository: { engineName: this.engine.name, repositoryId: repository.descriptor?.repositoryId || null, repositoryStoredBytes },
         source: await system.sourceInfo(),
       };
-      writeJson(path.join(bundleDir, 'manifest.json'), manifest);
-      fs.writeFileSync(path.join(bundleDir, 'MANIFEST.sha256'), `${sha256(path.join(bundleDir, 'manifest.json'))}  manifest.json\n`);
-      await system.archiveTree(bundleDir, path.join(bundleDir, 'bundle.tar.gz'), { entries: ['manifest.json', 'MANIFEST.sha256', 'state.tar.gz', 'volumes'] });
       // Success requires the destination to still be the mounted drive: if it
       // vanished mid-backup, everything above landed on the system disk and
-      // this bundle must not be reported as a usable backup.
+      // this restore point must not be reported as a usable backup. The
+      // manifest is written only after that holds, so its presence is the
+      // completion marker.
       await this.assertDestinationMounted(started.destinationId, 'The backup destination disappeared while the backup was running. The written data is not a usable backup; reconnect the drive and run a new backup.');
-      fs.writeFileSync(path.join(bundleDir, COMPLETE_MARKER), `${new Date().toISOString()}\n`, 'utf8');
+      writeRestorePoint(manifestPath, manifest);
     } catch (error) {
-      // A partial bundle is never restorable, and when the destination mount
-      // vanished mid-job it sits on the system disk — remove it either way.
-      if (!fs.existsSync(path.join(bundleDir, COMPLETE_MARKER))) fs.rmSync(bundleDir, { force: true, recursive: true });
+      await this.discardFailedBackup({ jobFile, manifestPath, repository, snapshotIds: storedSnapshotIds });
       throw error;
     } finally {
       fs.rmSync(stateStage, { force: true, recursive: true });
@@ -313,25 +386,156 @@ class BackupAgentCore {
     jobs.update(jobFile, (job) => {
       job.stage = 'completed';
       job.status = 'succeeded';
-      job.summary = { ambiguousVolumes: ambiguous.length, appCount: packageInventory.length, estimatedBytes, volumeCount: owned.length };
+      job.summary = { ambiguousVolumes: ambiguous.length, appCount: packageInventory.length, estimatedBytes, storedBytes: repositoryStoredBytes, volumeCount: owned.length };
+    });
+  }
+
+  // A failed backup must leave nothing listed and nothing stranded. Snapshots
+  // this job wrote are forgotten and the space reclaimed; the repository
+  // itself is removed only when this job created it, so a mount check that
+  // reports wrongly can never delete backups that were already on the drive.
+  async discardFailedBackup({ jobFile, manifestPath, repository, snapshotIds }) {
+    for (const suffix of ['', '.sha256', '.next', '.note.txt']) fs.rmSync(`${manifestPath}${suffix}`, { force: true });
+    if (!repository) return;
+    if (snapshotIds.length) {
+      try {
+        await this.engine.forgetSnapshots({ repository, snapshotIds });
+        await this.engine.maintainRepository({ repository });
+      } catch (cleanupError) {
+        this.jobs.log(jobFile, `Some partly written backup data could not be cleaned up: ${cleanupError.message}`);
+      }
+    }
+    if (repository.created) {
+      fs.rmSync(repository.repositoryPath, { force: true, recursive: true });
+      fs.rmSync(repositorySidecarPath(repository.destinationId), { force: true });
+    }
+  }
+
+  // Deleting a restore point forgets its snapshots and then runs repository
+  // maintenance, because unlinking alone reclaims nothing — an owner deleting
+  // a backup to free a full drive would otherwise see no space come back.
+  // A legacy bundle is still just a directory.
+  //
+  // Maintenance rewrites the shared repository with the engine's concurrency
+  // safety off, so a delete must never overlap a job that is writing to it —
+  // it runs only as a queued job through the same one-at-a-time pipeline as
+  // backup and restore (deleteBackupJob), never inline.
+  async deleteBackup(target) {
+    if (!isRestorePointPath(target)) {
+      fs.rmSync(target, { force: true, recursive: true });
+      return { kind: 'bundle', path: target };
+    }
+    let snapshotIds = [];
+    try {
+      snapshotIds = snapshotIdsOfRestorePoint(readRestorePoint(target));
+    } catch {
+      // A restore point whose manifest no longer reads cannot name its
+      // snapshots. Removing it is still the owner's call; the unreferenced
+      // data stays until repository maintenance collects it.
+    }
+    if (snapshotIds.length) {
+      const repository = await openDestinationRepository(this.engine, destinationOfRestorePoint(target), { create: false });
+      await this.engine.forgetSnapshots({ repository, snapshotIds });
+      await this.engine.maintainRepository({ repository });
+    }
+    for (const suffix of ['', '.sha256', '.note.txt']) fs.rmSync(`${target}${suffix}`, { force: true });
+    return { kind: 'restore-point', path: target };
+  }
+
+  async deleteBackupJob(jobFile) {
+    const { jobs } = this;
+    const started = jobs.update(jobFile, (job) => { job.status = 'running'; job.stage = 'starting'; });
+    jobs.stage(jobFile, 'Deleting backup and reclaiming space');
+    const deleted = await this.deleteBackup(started.backupPath);
+    jobs.update(jobFile, (job) => {
+      job.stage = 'completed';
+      job.status = 'succeeded';
+      job.summary = { deletedKind: deleted.kind };
     });
   }
 
   // --- Validation ----------------------------------------------------------
 
-  // Read-only bundle validation: every check restore runs before its first
-  // mutation, callable on its own so an operator can prove a bundle is
-  // restorable without restoring it. Throws on the first failed check;
-  // `keepStagedState` hands the extracted state stage to the caller (restore
-  // reuses it) instead of discarding it.
-  async validateBundle(bundleDir, { keepStagedState = false } = {}) {
-    const { packages, system } = this;
-    const manifestPath = path.join(bundleDir, 'manifest.json');
-    const manifest = readJson(manifestPath);
+  // Read-only validation: every check restore runs before its first mutation,
+  // callable on its own so an operator can prove a backup is restorable
+  // without restoring it. Throws on the first failed check; `keepStagedState`
+  // hands the extracted state stage to the caller (restore reuses it) instead
+  // of discarding it. The locator decides which storage is being validated.
+  async validateBundle(target, options = {}) {
+    return isRestorePointPath(target) ? this.validateRestorePoint(target, options) : this.validateLegacyBundle(target, options);
+  }
+
+  // Restore points live in an encrypted repository, so proving one restorable
+  // means the engine reading back every snapshot this point names, plus the
+  // same package-payload proof the tar path runs against a staged copy of the
+  // state. Corruption fails here, before restore mutates anything. The check
+  // is scoped to this point's snapshots on purpose: a whole-repository read
+  // costs every backup ever taken and sits on the restore path, so it would
+  // grow until validate times out exactly when recovery matters.
+  async validateRestorePoint(manifestPath, { keepStagedState = false } = {}) {
+    const { packages } = this;
+    const destinationId = destinationOfRestorePoint(manifestPath);
+    const manifest = readRestorePoint(manifestPath);
+    this.assertRestorableManifest(manifest);
+    const repository = await openDestinationRepository(this.engine, destinationId, { create: false });
+    try {
+      await this.engine.verifySnapshots({ repository, snapshotIds: snapshotIdsOfRestorePoint(manifest) });
+    } catch (error) {
+      const failure = new Error('This backup failed its integrity check: some of the data it stored is damaged or unreadable, so it cannot be trusted to restore. Nothing on this machine was changed. Take a new backup, and check the drive.');
+      failure.engineOutput = error.engineOutput || null;
+      failure.cause = error;
+      throw failure;
+    }
+    ensureDir(this.paths.agentStateDir);
+    const stagedState = fs.mkdtempSync(path.join(this.paths.agentStateDir, 'restore-'));
+    let keepStaged = false;
+    try {
+      const stateSnapshot = manifest.contents?.stateSnapshot;
+      if (!stateSnapshot?.snapshotId) throw new Error('This restore point does not record the suite state it was supposed to contain.');
+      await this.engine.restoreSnapshot({ repository, snapshotId: stateSnapshot.snapshotId, sourcePath: stateSnapshot.sourcePath, targetDir: stagedState });
+      packages.validatePayloads(stagedState, manifest.contents?.apps);
+      keepStaged = keepStagedState;
+    } finally {
+      if (!keepStaged) fs.rmSync(stagedState, { force: true, recursive: true });
+    }
+    const report = await this.validationReport(manifest, manifestPath, { archivesReadable: true, checksums: true, packagePayloads: true, repositoryIntegrity: true });
+    return { manifest, report, repository, stagedStatePath: keepStaged ? stagedState : null };
+  }
+
+  assertRestorableManifest(manifest) {
     if (manifest.backup?.kind !== 'mos-whole-suite') throw new Error('Backup bundle is not a MOS whole-suite backup.');
     if (!RESTORE_COMPATIBLE_SCHEMA_VERSIONS.includes(manifest.backup?.schemaVersion)) {
       throw new Error(`Backup bundle schema version ${manifest.backup?.schemaVersion ?? 'unknown'} is outside the supported restore window (${RESTORE_COMPATIBLE_SCHEMA_VERSIONS.join(', ')}).`);
     }
+  }
+
+  async validationReport(manifest, locator, checks) {
+    const source = await this.system.sourceInfo();
+    const bundleVersion = manifest.source?.version || null;
+    const currentVersion = source?.version || null;
+    const warnings = [];
+    if (bundleVersion && currentVersion && bundleVersion !== currentVersion) {
+      warnings.push(`This backup was created by MOS ${bundleVersion} but this machine runs MOS ${currentVersion}. Restore reuses the installed MOS software with the backup's validated app packages; recreating the recorded MOS version automatically is not supported yet.`);
+    }
+    return {
+      apps: (manifest.contents?.apps || []).map((app) => ({ instanceId: app.instanceId, packageId: app.packageId, packageVersion: app.packageVersion })),
+      bundlePath: locator,
+      checkedAt: new Date().toISOString(),
+      checks,
+      schemaVersion: manifest.backup.schemaVersion,
+      software: { bundleVersion, currentVersion, matched: !bundleVersion || !currentVersion || bundleVersion === currentVersion },
+      storage: manifest.backup?.storage === 'engine-repository' ? 'engine-repository' : 'tar-bundle',
+      volumes: (manifest.contents?.volumes || []).map((volume) => ({ name: volume.name, rawBytes: volume.rawBytes ?? null })),
+      warnings,
+    };
+  }
+
+  async validateLegacyBundle(bundleDir, { keepStagedState = false } = {}) {
+    const { packages, system } = this;
+    const manifestPath = path.join(bundleDir, 'manifest.json');
+    const manifest = readJson(manifestPath);
+    this.assertRestorableManifest(manifest);
+    if (manifest.backup?.storage === 'engine-repository') throw new Error('This backup is stored in a repository, not a bundle, and cannot be read as one.');
     if (sha256(manifestPath) !== fs.readFileSync(path.join(bundleDir, 'MANIFEST.sha256'), 'utf8').trim().split(/\s+/u)[0]) throw new Error('Backup manifest checksum is invalid.');
     if (sha256(path.join(bundleDir, 'state.tar.gz')) !== manifest.contents?.stateArchiveSha256) throw new Error('Backup state archive checksum is invalid.');
     for (const volume of manifest.contents?.volumes || []) {
@@ -349,23 +553,7 @@ class BackupAgentCore {
     } finally {
       if (!keepStaged) fs.rmSync(stagedState, { force: true, recursive: true });
     }
-    const source = await system.sourceInfo();
-    const bundleVersion = manifest.source?.version || null;
-    const currentVersion = source?.version || null;
-    const warnings = [];
-    if (bundleVersion && currentVersion && bundleVersion !== currentVersion) {
-      warnings.push(`This backup was created by MOS ${bundleVersion} but this machine runs MOS ${currentVersion}. Restore reuses the installed MOS software with the backup's validated app packages; recreating the recorded MOS version automatically is not supported yet.`);
-    }
-    const report = {
-      apps: (manifest.contents?.apps || []).map((app) => ({ instanceId: app.instanceId, packageId: app.packageId, packageVersion: app.packageVersion })),
-      bundlePath: bundleDir,
-      checkedAt: new Date().toISOString(),
-      checks: { archivesReadable: true, checksums: true, packagePayloads: true },
-      schemaVersion: manifest.backup.schemaVersion,
-      software: { bundleVersion, currentVersion, matched: !bundleVersion || !currentVersion || bundleVersion === currentVersion },
-      volumes: (manifest.contents?.volumes || []).map((volume) => ({ name: volume.name, rawBytes: volume.rawBytes ?? null })),
-      warnings,
-    };
+    const report = await this.validationReport(manifest, bundleDir, { archivesReadable: true, checksums: true, packagePayloads: true });
     return { manifest, report, stagedStatePath: keepStaged ? stagedState : null };
   }
 
@@ -451,8 +639,8 @@ class BackupAgentCore {
     if (this.interruptedRestore()) throw new Error('A previous restore did not complete. Acknowledge it before starting a new restore.');
     const bundleDir = started.backupPath;
 
-    jobs.stage(jobFile, 'Validating backup bundle');
-    const { manifest, report, stagedStatePath: stagedState } = await this.validateBundle(bundleDir, { keepStagedState: true });
+    jobs.stage(jobFile, 'Checking the backup');
+    const { manifest, report, repository = null, stagedStatePath: stagedState } = await this.validateBundle(bundleDir, { keepStagedState: true });
     for (const warning of report.warnings) jobs.log(jobFile, warning);
     jobs.update(jobFile, (job) => { job.validation = report; });
     let runtimeStopped = false;
@@ -549,7 +737,9 @@ class BackupAgentCore {
         jobs.log(jobFile, `Restoring ${volume.name}`);
         const identity = volumeIdentityFromManifest(volume, manifest.contents?.apps);
         await system.createVolume(volume.name, appVolumeLabels({ instanceId: identity.instanceId, name: volume.name, packageId: identity.packageId }));
-        await system.extractArchive(path.join(bundleDir, volume.archive), await system.volumeMountpoint(volume.name));
+        const mountpoint = await system.volumeMountpoint(volume.name);
+        if (repository) await this.engine.restoreSnapshot({ repository, snapshotId: volume.snapshotId, sourcePath: volume.sourcePath, targetDir: mountpoint });
+        else await system.extractArchive(path.join(bundleDir, volume.archive), mountpoint);
       }
 
       this.advanceJournal('reconciling-apps');
@@ -618,8 +808,11 @@ class BackupAgentCore {
 module.exports = {
   BackupAgentCore,
   COMPLETE_MARKER,
+  isRestorePointPath,
+  readRestorePoint,
   RESTORE_JOURNAL_FILENAME,
   RESTORE_PHASES,
   sha256,
   validatePackagePayloads,
+  writeRestorePoint,
 };

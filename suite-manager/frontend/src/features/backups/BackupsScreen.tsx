@@ -40,13 +40,18 @@ type BackupJob = {
 
 type BackupBundle = {
   appCount: number;
-  archivePath?: string;
+  archivePath?: string | null;
   createdAt: string | null;
   destinationId: string;
   destinationLabel: string;
+  downloadable?: boolean;
+  encrypted?: boolean;
+  engineName?: string | null;
   id: string;
+  kind?: string;
   note?: string | null;
   path: string;
+  repositoryId?: string | null;
   sizeBytes?: number | null;
   sourceVersion: string | null;
   volumeCount: number;
@@ -72,6 +77,7 @@ type BackupStatus = {
   };
   lastJob: BackupJob | null;
   restoreGuarantee?: string;
+  restoreGuaranteeByKind?: Record<string, string>;
   serviceAvailable: boolean;
 };
 
@@ -95,6 +101,19 @@ function isRunning(job: BackupJob | null) {
   return Boolean(job && (job.status === 'queued' || job.status === 'running'));
 }
 
+const RESTORE_PHASE_WORDS: Record<string, string> = {
+  'reconciling-apps': 'while it was rebuilding your apps',
+  rescue: 'while it was saving a rescue copy of the current state',
+  'restoring-state': 'while it was putting your settings and accounts back',
+  'restoring-volumes': 'while it was putting your app data back',
+  'stopping-runtime': 'before it had changed anything, while it was stopping your apps',
+  verifying: 'while it was checking the result against the backup',
+};
+
+function restorePhaseWords(phase: string | null | undefined) {
+  return RESTORE_PHASE_WORDS[String(phase || '')] || 'at a step it could not name';
+}
+
 function driveIconName(kind: string | null | undefined) {
   if (kind === 'external') return 'usb-drive';
   if (kind === 'network') return 'network-drive';
@@ -105,30 +124,34 @@ function jobMessage(job: BackupJob | null) {
   if (!job) return '';
   if (job.status === 'succeeded') {
     if (job.kind === 'restore') return 'Restore completed.';
-    if (job.kind === 'validate') return 'Backup check passed. Every checksum, archive, and app package in the bundle is valid, so it can be restored.';
+    if (job.kind === 'validate') return 'Backup check passed. The stored data and every app package in this backup are intact, so it can be restored.';
     if (job.kind === 'upload') return 'Backup upload completed. The bundle passed the same checks as a restore preflight and is listed below.';
+    if (job.kind === 'delete') return 'Backup deleted. The space only it was using has been reclaimed.';
     return 'Backup completed.';
   }
   if (job.status === 'failed') {
     if (job.kind === 'restore') return 'Restore failed.';
-    if (job.kind === 'validate') return 'Backup check failed. Do not rely on this bundle for recovery.';
+    if (job.kind === 'validate') return 'Backup check failed. Do not rely on this backup for recovery.';
     if (job.kind === 'upload') return 'Backup upload failed. Nothing was added to the destination.';
+    if (job.kind === 'delete') return 'Delete failed. The other backups on the drive are unaffected.';
     return 'Backup failed.';
   }
-  return job.stage || (job.kind === 'restore' ? 'Restore in progress' : job.kind === 'validate' ? 'Backup check in progress' : job.kind === 'upload' ? 'Backup upload in progress' : 'Backup in progress');
+  return job.stage || (job.kind === 'restore' ? 'Restore in progress' : job.kind === 'validate' ? 'Backup check in progress' : job.kind === 'upload' ? 'Backup upload in progress' : job.kind === 'delete' ? 'Backup delete in progress' : 'Backup in progress');
 }
 
 function operationTitle(job: BackupJob | null, restoreStarted: boolean) {
   if (restoreStarted || job?.kind === 'restore') return 'Restoring your backup';
   if (job?.kind === 'validate') return 'Checking your backup';
   if (job?.kind === 'upload') return 'Adding your uploaded backup';
+  if (job?.kind === 'delete') return 'Deleting the backup';
   return 'Backing up your suite';
 }
 
 function operationMessage(job: BackupJob | null, restoreStarted: boolean) {
   if (restoreStarted || job?.kind === 'restore') return 'MOS is replacing the current install with the selected backup. A large backup can take a long time — leave this page open and it will reconnect by itself. While services restart the suite may briefly look offline, and refreshing can show a temporary server error page even though the restore is running fine.';
-  if (job?.kind === 'validate') return 'MOS is reading the backup and verifying every checksum and app package without changing anything. Apps keep running.';
+  if (job?.kind === 'validate') return 'MOS is reading everything this backup stored and checking it against what was recorded, without changing anything. Apps keep running.';
   if (job?.kind === 'upload') return 'MOS is unpacking the uploaded backup file and verifying every checksum and app package. Apps keep running.';
+  if (job?.kind === 'delete') return 'MOS is removing the backup and reclaiming the space only it was using. Data other backups still need is kept. Apps keep running.';
   return 'MOS is pausing apps, saving their data, and then starting them again. Please wait until the backup finishes.';
 }
 
@@ -192,6 +215,15 @@ export function BackupsScreen() {
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const activeJob = status?.currentJob || null;
   const running = restoreStarted || isRunning(activeJob);
+  const backupList = status?.backups || [];
+  // Download hygiene only applies while an unencrypted bundle is actually
+  // sitting on a drive; once they are gone the warning is noise.
+  const hasDownloadableBundle = backupList.some((backup) => backup.downloadable !== false);
+  const storageSummary = [
+    `${backupList.filter((backup) => backup.encrypted).length} encrypted restore points`,
+    `${backupList.filter((backup) => !backup.encrypted).length} older bundles`,
+    backupList.find((backup) => backup.engineName)?.engineName || null,
+  ].filter(Boolean).join(' · ');
   const restoreInFlight = restoreStarted || (activeJob?.kind === 'restore' && isRunning(activeJob));
   const selectedDestination = status?.destinations.find((destination) => destination.id === selectedDestinationId);
   const buttonState = status ? getBackupButtonState(status.destinations, selectedDestinationId) : { enabled: false, message: '' };
@@ -356,7 +388,7 @@ export function BackupsScreen() {
       <div className="suite-hero">
         <h1>Backup & Restore</h1>
         <p className="suite-lead mos-body-lg">Save a whole-suite copy to storage mounted on this server, then restore it if you need to recover the system.</p>
-        <Notice title="Backups are unencrypted full-secret exports" variant="warning"><p>Each bundle contains app data, owner and app credentials, Suite Manager state, and HTTPS/provider secrets. Use an encrypted, access-controlled destination. Do not leave downloaded bundles in Downloads or upload them to ordinary cloud storage.</p></Notice>
+        <Notice title="A backup holds every secret this server has" variant="warning"><p>Any backup contains app data, owner and app credentials, Suite Manager state, and HTTPS/provider secrets. New backups are encrypted on the drive with a key kept on this server, so the drive alone cannot be read — but that key lives here, so a stolen server is still a stolen backup. Older downloadable bundles are not encrypted at all. Use an access-controlled destination, and do not leave downloaded bundles in Downloads or upload them to ordinary cloud storage.</p></Notice>
       </div>
 
       {error ? <Notice title="Backup needs attention" variant="error"><p>{error}</p></Notice> : null}
@@ -367,7 +399,7 @@ export function BackupsScreen() {
         <button className="mos-btn mos-btn-primary" onClick={() => window.location.reload()} type="button">Go to sign-in</button>
       </Notice> : null}
       {status?.interruptedRestore && !running ? <Notice title="A restore did not finish" variant="error">
-        <p>A restore stopped during "{status.interruptedRestore.phase}", so this system may not match the backup it was restoring. A complete rescue copy of the pre-restore state was kept on the server{status.interruptedRestore.rescuePath ? ` at ${status.interruptedRestore.rescuePath}` : ''}. New backups and restores stay blocked until you dismiss this record; the rescue copy stays on disk either way.</p>
+        <p>A restore stopped {restorePhaseWords(status.interruptedRestore.phase)}, so this system may not match the backup it was restoring. A complete rescue copy of the pre-restore state was kept on the server{status.interruptedRestore.rescuePath ? ` at ${status.interruptedRestore.rescuePath}` : ''}. New backups and restores stay blocked until you dismiss this record; the rescue copy stays on disk either way.</p>
         <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => void acknowledgeInterrupted()} type="button">{busy === 'acknowledge' ? 'Dismissing...' : 'I understand, unblock backups'}</button>
       </Notice> : null}
       {restoreStarted ? <Notice title="Restore started" variant="info"><p>MOS is restoring the selected backup and may be unavailable for a short moment. When Suite Manager starts again you will be asked to sign in with the owner account saved in the backup.</p></Notice> : null}
@@ -476,19 +508,21 @@ export function BackupsScreen() {
 
         <section className="mos-panel suite-card suite-backup-panel">
           <h2 className="mos-card-title">Restore from a backup</h2>
-          {status.restoreGuarantee === 'experimental' ? <p className="suite-meta"><strong>Full restore is experimental.</strong> It replaces the current install with the backup, verifies the result, and keeps a complete rescue copy of the previous state, but it has not yet passed recovery drills on replacement hardware. Keep an independent copy of important data.</p> : <p className="suite-meta">Restore replaces the current install with the backup, verifies the result against it, and keeps a complete rescue copy of the previous state on the server. It has passed recovery drills on this and replacement hardware, including power-loss interruption. Backups are not yet encrypted or scheduled, so keep bundles on protected storage.</p>}
-          <p className="suite-meta"><strong>Before downloading:</strong> this unencrypted bundle contains the suite's data and reusable secrets. Save it only to encrypted, access-controlled storage and remove unneeded browser copies.</p>
+          <p className="suite-meta">Restore replaces the current install with the backup, verifies the result against it, and keeps a complete rescue copy of the previous state on the server.</p>
+          {status.restoreGuarantee === 'verified' ? <p className="suite-meta">It has passed recovery drills on this and replacement hardware, including power-loss interruption.</p> : <p className="suite-meta"><strong>Restoring the new encrypted backups is still being proven.</strong> The safeguards around it — the rescue copy, the checks before anything is changed, the verification afterwards — are unchanged and drill-tested, but the new storage itself has not finished its own recovery drills. Keep an independent copy of anything you cannot lose.</p>}
+          {hasDownloadableBundle ? <p className="suite-meta"><strong>Before downloading an older bundle:</strong> it is unencrypted and contains the suite's data and reusable secrets. Save it only to encrypted, access-controlled storage and remove unneeded browser copies.</p> : null}
           {status.backups.length ? <div className="suite-backup-bundle-list">
             {status.backups.slice(0, visibleBundles).map((backup) => <article key={backup.path}>
               <div>
                 <strong>{backup.createdAt ? formatDate(backup.createdAt) : 'MOS backup'}</strong>
                 {backup.note ? <span className="suite-backup-note">{backup.note}</span> : null}
                 <span>{backupDescription(backup)} · {backup.destinationLabel || 'Backup drive'}</span>
+                <span className="suite-category-pill">{backup.encrypted ? 'Encrypted' : 'Older format'}</span>
               </div>
               <ActionMenu ariaLabel="Backup actions" disabled={Boolean(busy) || running} items={[
                 { label: 'Restore', onSelect: () => { setSelectedRestore(backup); setRestoreConfirmation(''); } },
                 { label: 'Check', onSelect: () => void checkBackup(backup) },
-                { label: 'Download', onSelect: () => window.location.assign(`/suite-manager/api/backups/download?path=${encodeURIComponent(backup.path)}`) },
+                ...(backup.downloadable === false ? [] : [{ label: 'Download', onSelect: () => window.location.assign(`/suite-manager/api/backups/download?path=${encodeURIComponent(backup.path)}`) }]),
                 { label: backup.note ? 'Edit note' : 'Add note', onSelect: () => setNoteEditor({ backup, value: backup.note || '' }) },
                 { label: 'Delete', onSelect: () => setSelectedDelete(backup) },
               ]} />
@@ -500,7 +534,7 @@ export function BackupsScreen() {
             </div> : null}
           </div> : <p className="suite-meta">Backups found on connected drives will appear here.</p>}
           <div className="suite-backup-action-footer">
-            <p className="suite-backup-status-message">Have a downloaded backup file? Upload it to the selected backup drive and it becomes restorable here after passing the same checks.</p>
+            <p className="suite-backup-status-message">Have a backup file downloaded from an older MOS? Upload it to the selected backup drive and it becomes restorable here after passing the same checks. New backups are not downloaded one file at a time — the encrypted store on the drive is the copy you keep.</p>
             <input
               accept=".tar.gz,.tgz,application/gzip"
               hidden
@@ -520,6 +554,8 @@ export function BackupsScreen() {
           { label: 'Detected app data stores', value: String(status.inventory?.summary.declaredVolumeCount ?? 0) },
           { label: 'App connections', value: String(status.inventory?.summary.relationshipCount ?? 0) },
           { label: 'Warnings', value: status.inventory?.warnings.map((warning) => `${warning.packageId}: ${warning.message}`).join(', ') || 'None' },
+          { label: 'Backup storage', value: storageSummary },
+          { label: 'Restore guarantee', value: status.restoreGuarantee || 'unknown' },
         ]} reveal="technical-mode" />
       </div> : null}
 
@@ -550,7 +586,7 @@ export function BackupsScreen() {
         onClose={() => { if (!busy) setSelectedDelete(null); }}
         title="Delete this backup?"
       >
-        <Notice title="This cannot be undone" variant="warning"><p>The backup bundle is permanently removed from the drive. If you need it later, only a copy you downloaded or stored elsewhere can bring it back.</p></Notice>
+        <Notice title="This cannot be undone" variant="warning"><p>{selectedDelete.encrypted ? 'This restore point is permanently removed and the space it alone was using is reclaimed, which can take a moment. Data still needed by other restore points is kept.' : 'The backup bundle is permanently removed from the drive.'} If you need it later, only a copy you downloaded or stored elsewhere can bring it back.</p></Notice>
         <p className="suite-meta">{formatDate(selectedDelete.createdAt)} · {backupDescription(selectedDelete)} · {selectedDelete.destinationLabel || 'backup storage'}</p>
       </Dialog> : null}
 

@@ -7,8 +7,8 @@ import { Steps } from '@astrojs/starlight/components'
 
 MOS creates manual, whole-suite backups on storage that is mounted on the server running MOS. The practical destination depends on where that server lives.
 
-:::danger[Backups are not encrypted]
-Bundles contain your data, credentials, and secrets. Anyone with access can read or reuse them. Keep backups on encrypted, access-controlled storage—never in Downloads or casual cloud storage.
+:::danger[A backup holds every secret your server has]
+Any backup contains your data, credentials, and secrets. New backups are encrypted on the drive with a key held on the server itself, so the drive alone cannot be read—but the key lives on the server, so a stolen server is still a stolen backup, and MOS cannot yet hand you that key to keep elsewhere. Backup bundles you downloaded from an earlier MOS are not encrypted at all. Keep backups on access-controlled storage—never in Downloads or casual cloud storage.
 :::
 
 ## What a backup contains
@@ -35,7 +35,7 @@ Do not save the only backup on the server's internal system disk: a disk failure
 
 A rented server cannot use a USB disk attached to your computer. Attach a separate persistent block-storage volume through your provider, format and mount it on the server, then select that mounted volume in Suite Manager. Provider block storage is billed separately and remains inside the provider's trust boundary; use provider-supported encryption where available.
 
-MOS does not currently upload bundles directly to S3-compatible/object storage, another cloud account, or a backup service. Provider snapshots are outside MOS: they may be useful as an additional recovery layer, but MOS cannot verify their consistency, contents, retention, or restore behavior. They do not replace a tested MOS bundle.
+MOS does not currently copy the backup store to S3-compatible/object storage, another cloud account, or a backup service. Provider snapshots are outside MOS: they may be useful as an additional recovery layer, but MOS cannot verify their consistency, contents, retention, or restore behavior. They do not replace a tested MOS bundle.
 
 ## Taking a backup
 
@@ -47,11 +47,13 @@ MOS does not currently upload bundles directly to S3-compatible/object storage, 
 
 3. Review the full-secret warning, then click **Back up now**. Apps pause while their data is captured and start again when the job finishes.
 
-4. Move or retain the completed bundle only on access-controlled, encrypted storage. If you download a copy through the browser, move it immediately out of Downloads and remove any unneeded browser copy.
+4. Keep the drive itself on access-controlled storage. There is no separate file to download for a new backup—the encrypted store on the drive is the copy you keep. If you still hold a bundle downloaded from an earlier MOS, move it out of Downloads and remove any unneeded browser copy.
 
 </Steps>
 
-Bundles are written under `MOS-backups/` on the selected destination. MOS records and verifies checksums for the bundle payloads before a restore changes running services.
+Backups are written under `MOS-backups/` on the selected destination, into a single encrypted store that every backup on that drive shares. Because the store is content-addressed, a second backup only writes what actually changed, and one drive holds many restore points for far less space than one full copy each. Each restore point records which stored data it needs; MOS checks the store's integrity and re-verifies every app package before a restore changes running services.
+
+One drive holds one store. If you have bundles from an earlier MOS on the same drive, they are listed alongside the new restore points and stay restorable.
 
 :::tip[A workable routine]
 Backups are manual; there is no scheduler or retention policy yet. Take one before updates or uninstalling an app, keep more than one generation, and periodically test that the destination is still readable.
@@ -59,21 +61,22 @@ Backups are manual; there is no scheduler or retention policy yet. Take one befo
 
 ## Restoring
 
-Restore replaces the current suite with a bundle on a machine that already has a compatible MOS installation.
+Restore replaces the current suite with a backup on a machine that already has a compatible MOS installation.
 
-1. Attach or mount the storage containing the bundle, open **Suite Manager → Backup**, and select it.
+1. Attach or mount the storage containing the backup, open **Suite Manager → Backup**, and select it.
 2. Type `RESTORE` to confirm.
-3. MOS verifies the bundle and each saved app-package snapshot before stopping services. It creates a small rescue copy of current state, restores settings, package definitions, and data, then rebuilds the app runtimes.
+3. MOS verifies the stored data and each saved app-package snapshot before stopping services. It creates a small rescue copy of current state, restores settings, package definitions, and data, then rebuilds the app runtimes.
 
 Important boundaries:
 
-- **Match the MOS version.** Each bundle records its source version. Restore onto that version unless a documented compatibility migration says otherwise.
+- **Match the MOS version.** Each backup records its source version. Restore onto that version unless a documented compatibility migration says otherwise.
 - **Restore is whole-suite.** Per-app restore is not supported.
 - **The machine must already run MOS.** Install the compatible MOS version first, then attach the backup destination and restore. Bare-metal recovery has not yet been validated as a single end-to-end workflow.
+- **A replacement machine needs the key as well as the drive.** The encryption key lives on the server that made the backup. Restoring onto the same server is unaffected, but restoring onto a new one currently means copying that key across by hand; a supported way to save and enter it is still being built.
 - **Package snapshots are preserved, registry artifacts are not.** If an upstream registry removes a required digest-pinned image, MOS restores state and reports the affected app as failed rather than substituting another version.
 
 ## Current limitations
 
-Manual only · mounted local/block storage only · no object-storage destination · unencrypted full-secret bundles · whole-suite restore only · version-sensitive restore.
+Manual only · mounted local/block storage only · no object-storage destination · encryption key held only on the server · whole-suite restore only · version-sensitive restore.
 
-Encrypted bundles, scheduled backups with retention, and object-storage destinations are the next things being built here. If you work with backup, storage, encryption, or recovery systems and want to shape how they land, [join us on Discord](https://discord.gg/YMpF6faBCv) or [open a GitHub issue](https://github.com/rpuls/my-own-suite/issues).
+A way to save and re-enter the encryption key, scheduled backups with retention, and object-storage destinations are the next things being built here. If you work with backup, storage, encryption, or recovery systems and want to shape how they land, [join us on Discord](https://discord.gg/YMpF6faBCv) or [open a GitHub issue](https://github.com/rpuls/my-own-suite/issues).

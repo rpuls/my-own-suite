@@ -122,6 +122,105 @@ class FakeSystem {
   async sourceInfo() { return { branch: 'test', commit: 'deadbeef', repoDir: this.root, version: '0.0.0-test' }; }
 }
 
+// Snapshots in the fake repository are the same JSON tree serializations the
+// fake archives use, one file per snapshot, with the repository index holding
+// each snapshot's digest. Integrity checking is therefore real: corrupting a
+// snapshot file is corrupting repository content, and verifyRepository has to
+// find it the way a real engine would.
+class FakeEngine {
+  constructor(name = 'fake') {
+    this.engineName = name;
+    this.events = [];
+    this.counter = 0;
+    this.failNextSnapshot = null;
+  }
+
+  get name() { return this.engineName; }
+
+  repositoryInitialized(repositoryPath) { return fs.existsSync(path.join(repositoryPath, 'index.json')); }
+
+  indexPath(repository) { return path.join(repository.repositoryPath, 'index.json'); }
+  snapshotPath(repository, snapshotId) { return path.join(repository.repositoryPath, 'snapshots', `${snapshotId}.json`); }
+  readIndex(repository) { return readJson(this.indexPath(repository)); }
+  writeIndex(repository, index) { writeJson(this.indexPath(repository), index); }
+
+  async openOrCreateRepository({ repositoryPath }) {
+    const repository = { engineName: this.name, repositoryPath };
+    const created = !fs.existsSync(this.indexPath(repository));
+    ensureDir(path.join(repositoryPath, 'snapshots'));
+    if (created) this.writeIndex(repository, { snapshots: {} });
+    this.events.push(['openOrCreateRepository', repositoryPath, created]);
+    return { ...repository, created };
+  }
+
+  async snapshotTree({ repository, sourceDir, tags = {} }) {
+    if (this.failNextSnapshot) { const error = new Error(this.failNextSnapshot); this.failNextSnapshot = null; throw error; }
+    this.counter += 1;
+    const snapshotId = `snap-${String(this.counter).padStart(4, '0')}`;
+    const file = this.snapshotPath(repository, snapshotId);
+    ensureDir(path.dirname(file));
+    fs.writeFileSync(file, JSON.stringify({ files: serializeTree(sourceDir) }));
+    const index = this.readIndex(repository);
+    index.snapshots[snapshotId] = { digest: sha256(file), sourcePath: path.resolve(sourceDir), tags };
+    this.writeIndex(repository, index);
+    this.events.push(['snapshotTree', sourceDir, snapshotId]);
+    return { snapshotId, sourcePath: path.resolve(sourceDir) };
+  }
+
+  async restoreSnapshot({ repository, snapshotId, targetDir }) {
+    const file = this.snapshotPath(repository, snapshotId);
+    if (!fs.existsSync(file)) throw new Error(`Backup repository is missing snapshot ${snapshotId}.`);
+    const { files } = JSON.parse(fs.readFileSync(file, 'utf8'));
+    ensureDir(targetDir);
+    for (const [relative, base64] of Object.entries(files)) {
+      const absolute = path.join(targetDir, ...relative.split('/'));
+      ensureDir(path.dirname(absolute));
+      fs.writeFileSync(absolute, Buffer.from(base64, 'base64'));
+    }
+    this.events.push(['restoreSnapshot', snapshotId, targetDir]);
+  }
+
+  async listSnapshots({ repository }) {
+    return Object.entries(this.readIndex(repository).snapshots).map(([snapshotId, entry]) => ({ snapshotId, ...entry }));
+  }
+
+  async forgetSnapshots({ repository, snapshotIds }) {
+    const index = this.readIndex(repository);
+    for (const snapshotId of snapshotIds) {
+      delete index.snapshots[snapshotId];
+      fs.rmSync(this.snapshotPath(repository, snapshotId), { force: true });
+    }
+    this.writeIndex(repository, index);
+    this.events.push(['forgetSnapshots', snapshotIds.join(',')]);
+  }
+
+  async maintainRepository({ repository }) { this.events.push(['maintainRepository', repository.repositoryPath]); }
+
+  async verifySnapshots({ repository, snapshotIds }) {
+    const index = this.readIndex(repository);
+    for (const snapshotId of snapshotIds) {
+      const entry = index.snapshots[snapshotId];
+      const file = this.snapshotPath(repository, snapshotId);
+      if (!entry || !fs.existsSync(file)) throw new Error(`Backup repository is missing snapshot ${snapshotId}.`);
+      if (sha256(file) !== entry.digest) throw new Error('Backup repository integrity check failed: stored data does not match what was written.');
+    }
+    this.events.push(['verifySnapshots', snapshotIds.join(',')]);
+  }
+
+  async verifyRepository({ repository }) {
+    for (const [snapshotId, entry] of Object.entries(this.readIndex(repository).snapshots)) {
+      const file = this.snapshotPath(repository, snapshotId);
+      if (!fs.existsSync(file)) throw new Error(`Backup repository is missing snapshot ${snapshotId}.`);
+      if (sha256(file) !== entry.digest) throw new Error('Backup repository integrity check failed: stored data does not match what was written.');
+    }
+    this.events.push(['verifyRepository', repository.repositoryPath]);
+  }
+
+  async repositoryStats({ repository }) {
+    return { storedBytes: Object.values(serializeTree(repository.repositoryPath)).reduce((sum, base64) => sum + Buffer.from(base64, 'base64').length, 0) };
+  }
+}
+
 const PACKAGE_VOLUMES = {
   seafile: ['mysql-data', 'data'],
   'stirling-pdf': ['configs'],
@@ -138,6 +237,7 @@ class FakeWorld {
       stateRoot: path.join(root, 'state-root'),
     };
     this.system = new FakeSystem(root);
+    this.engine = new FakeEngine();
     this.reconcileRuns = [];
     this.jobsDir = path.join(root, 'jobs');
     for (const dir of [this.paths.agentStateDir, this.paths.stateDir, this.jobsDir, path.join(root, 'destination')]) ensureDir(dir);
@@ -197,6 +297,7 @@ class FakeWorld {
           }
         },
       },
+      engine: this.engine,
       jobs: {
         log: (file, message) => this.updateJob(file, (job) => { job.logs.push({ message }); }),
         stage: (file, name) => this.updateJob(file, (job) => { job.stage = name; job.status = 'running'; job.logs.push({ message: name }); }),
@@ -240,7 +341,74 @@ async function world() {
   return new FakeWorld(root);
 }
 
-function bundleDirOf(jobFile) { return readJson(jobFile).outputPath; }
+function restorePointOf(jobFile) { return readJson(jobFile).outputPath; }
+function restorePointManifest(jobFile) { return readJson(restorePointOf(jobFile)); }
+function repositoryOf(w) { return path.join(w.destination(), 'MOS-backups', 'repository'); }
+function snapshotFileOf(w, snapshotId) { return path.join(repositoryOf(w), 'snapshots', `${snapshotId}.json`); }
+
+// Editing a restore point means re-stating its digest, exactly as an attacker
+// or a corruption would have to.
+function rewriteRestorePoint(manifestPath, mutate) {
+  const manifest = readJson(manifestPath);
+  mutate(manifest);
+  writeJson(manifestPath, manifest);
+  fs.writeFileSync(`${manifestPath}.sha256`, `${sha256(manifestPath)}  ${path.basename(manifestPath)}\n`);
+  return manifest;
+}
+
+// MOS no longer writes v2/v3 tar bundles, so the legacy restore and import
+// paths are tested against a fixture of the historical format rather than
+// against something the current code produced. This is what is on the drives
+// of installs that predate the repository.
+async function writeLegacyBundle(w, { id = 'legacy-0001', schemaVersion = 3 } = {}) {
+  const core = w.core();
+  const bundle = path.join(w.destination(), 'MOS-backups', `mos-backup-${id}`);
+  const stage = path.join(w.paths.agentStateDir, `legacy-stage-${id}`);
+  fs.rmSync(stage, { force: true, recursive: true });
+  for (const target of core.stateTargets()) {
+    await w.system.copyTree(target.path, path.join(stage, target.stagePath), { excludeNames: target.exclude || [] });
+    if (target.sqliteDatabase) await w.system.snapshotSqlite(path.join(target.path, target.sqliteDatabase), path.join(stage, target.stagePath, target.sqliteDatabase));
+  }
+  ensureDir(bundle);
+  const statePath = path.join(bundle, 'state.tar.gz');
+  await w.system.archiveTree(stage, statePath);
+  fs.rmSync(stage, { force: true, recursive: true });
+  const apps = w.readDb().filter((instance) => instance.status !== 'uninstalled').map((instance) => ({
+    instanceId: instance.instanceId,
+    manifestDigest: 'test-manifest-digest',
+    packageDigest: 'test-package-digest',
+    packageId: instance.packageId,
+    packageVersion: '1.0.0',
+    payload: [],
+    source: { kind: 'test' },
+  }));
+  const { ambiguous, owned } = classifyVolumes(await w.system.listVolumes(), [...new Set(apps.map((app) => app.packageId))]);
+  const volumes = [];
+  for (const volume of owned) {
+    const archive = `volumes/${volume.name}.tar.gz`;
+    const archivePath = path.join(bundle, archive);
+    await w.system.archiveTree(w.system.volumeDir(volume.name), archivePath);
+    const entry = { archive, archiveBytes: fs.statSync(archivePath).size, archiveSha256: sha256(archivePath), name: volume.name };
+    volumes.push(schemaVersion >= 3 ? { ...entry, instanceId: volume.instanceId, ownership: volume.ownership, packageId: volume.packageId, rawBytes: await w.system.pathBytes(w.system.volumeDir(volume.name)) } : entry);
+  }
+  const manifest = {
+    backup: { createdAt: new Date().toISOString(), id, kind: 'mos-whole-suite', schemaVersion },
+    contents: {
+      apps,
+      stateArchive: 'state.tar.gz',
+      stateArchiveBytes: fs.statSync(statePath).size,
+      stateArchiveSha256: sha256(statePath),
+      volumes,
+      ...(schemaVersion >= 3 ? { ambiguousVolumes: ambiguous, stateRawBytes: 0 } : {}),
+    },
+    source: await w.system.sourceInfo(),
+  };
+  writeJson(path.join(bundle, 'manifest.json'), manifest);
+  fs.writeFileSync(path.join(bundle, 'MANIFEST.sha256'), `${sha256(path.join(bundle, 'manifest.json'))}  manifest.json\n`);
+  await w.system.archiveTree(bundle, path.join(bundle, 'bundle.tar.gz'), { entries: ['manifest.json', 'MANIFEST.sha256', 'state.tar.gz', 'volumes'] });
+  fs.writeFileSync(path.join(bundle, 'COMPLETE'), `${new Date().toISOString()}\n`);
+  return bundle;
+}
 
 const STIRLING = { content: 'stirling-v1', instanceId: 'aaaaaaaa-1111-4111-8111-111111111111', packageId: 'stirling-pdf' };
 const SEAFILE = { content: 'old-mysql-credentials', instanceId: 'bbbbbbbb-2222-4222-8222-222222222222', packageId: 'seafile' };
@@ -256,17 +424,24 @@ test('full restore reconciles absence: post-backup app volumes cannot survive or
 
   const backupJob = w.createJob('backup', { destinationId: w.destination() });
   await core.backup(backupJob);
-  const bundle = bundleDirOf(backupJob);
+  const point = restorePointOf(backupJob);
   assert.equal(readJson(backupJob).status, 'succeeded');
-  assert.ok(fs.existsSync(path.join(bundle, 'COMPLETE')));
-  const manifest = readJson(path.join(bundle, 'manifest.json'));
-  assert.equal(manifest.backup.schemaVersion, 3);
+  // The manifest is the completion marker, and it carries its own digest.
+  assert.ok(fs.existsSync(point));
+  assert.ok(fs.existsSync(`${point}.sha256`));
+  const manifest = readJson(point);
+  assert.equal(manifest.backup.schemaVersion, 4);
+  assert.equal(manifest.backup.storage, 'engine-repository');
+  assert.ok(manifest.contents.stateSnapshot.snapshotId);
+  assert.ok(manifest.contents.volumes[0].snapshotId);
   assert.deepEqual(manifest.contents.volumes.map((volume) => volume.name), ['mos-app-stirling-pdf-configs']);
   assert.equal(manifest.contents.volumes[0].ownership, 'labeled');
   assert.equal(manifest.contents.volumes[0].instanceId, STIRLING.instanceId);
   // The staged state excluded regenerable caches and captured the database.
-  const stateArchive = JSON.parse(fs.readFileSync(path.join(bundle, 'state.tar.gz'), 'utf8'));
-  const stateKeys = Object.keys(stateArchive.files);
+  const stateProbe = path.join(w.root, 'state-probe');
+  const repository = await w.engine.openOrCreateRepository({ repositoryPath: repositoryOf(w) });
+  await w.engine.restoreSnapshot({ repository, snapshotId: manifest.contents.stateSnapshot.snapshotId, targetDir: stateProbe });
+  const stateKeys = Object.keys(serializeTree(stateProbe));
   assert.ok(stateKeys.includes('var-lib-mos/suite-manager/suite-manager.sqlite'));
   assert.ok(!stateKeys.some((key) => key.includes('app-candidates')));
 
@@ -278,10 +453,11 @@ test('full restore reconciles absence: post-backup app volumes cannot survive or
   await w.system.createVolume('mos-app-not-a-package-data', {});
   fs.writeFileSync(path.join(w.system.volumeDir('mos-app-not-a-package-data'), 'keep.txt'), 'untouched');
 
-  const restoreJob = w.createJob('restore', { backupPath: bundle });
+  const restoreJob = w.createJob('restore', { backupPath: point });
   await core.restore(restoreJob);
   const finished = readJson(restoreJob);
   assert.equal(finished.status, 'succeeded');
+  assert.equal(finished.validation.checks.repositoryIntegrity, true);
   assert.equal(finished.verification.apps.matched, true);
   assert.equal(finished.verification.volumes.matched, true);
   assert.equal(finished.validation.checks.checksums, true);
@@ -322,18 +498,7 @@ test('a v2 bundle restores with derived ownership and still reconciles absence',
   const w = await world();
   await w.installApp(STIRLING);
   const core = w.core();
-  const backupJob = w.createJob('backup', { destinationId: w.destination() });
-  await core.backup(backupJob);
-  const bundle = bundleDirOf(backupJob);
-
-  // Rewrite the bundle to the v2 shape: names only, no ownership metadata.
-  const manifest = readJson(path.join(bundle, 'manifest.json'));
-  manifest.backup.schemaVersion = 2;
-  manifest.contents.volumes = manifest.contents.volumes.map(({ archive, archiveBytes, archiveSha256, name }) => ({ archive, archiveBytes, archiveSha256, name }));
-  delete manifest.contents.ambiguousVolumes;
-  delete manifest.contents.stateRawBytes;
-  writeJson(path.join(bundle, 'manifest.json'), manifest);
-  fs.writeFileSync(path.join(bundle, 'MANIFEST.sha256'), `${sha256(path.join(bundle, 'manifest.json'))}  manifest.json\n`);
+  const bundle = await writeLegacyBundle(w, { id: 'v2-fixture', schemaVersion: 2 });
 
   await w.installApp(SEAFILE);
   const restoreJob = w.createJob('restore', { backupPath: bundle });
@@ -353,14 +518,14 @@ test('an interrupted restore is detected, blocks new work, and requires explicit
   const core = w.core();
   const backupJob = w.createJob('backup', { destinationId: w.destination() });
   await core.backup(backupJob);
-  const bundle = bundleDirOf(backupJob);
+  const point = restorePointOf(backupJob);
 
-  const originalExtract = w.system.extractArchive.bind(w.system);
-  w.system.extractArchive = async (archivePath, targetDir) => {
-    if (archivePath.includes('mos-app-stirling-pdf-configs')) throw new Error('disk failure while extracting');
-    return originalExtract(archivePath, targetDir);
+  const originalRestore = w.engine.restoreSnapshot.bind(w.engine);
+  w.engine.restoreSnapshot = async (options) => {
+    if (options.targetDir.includes('mos-app-stirling-pdf-configs')) throw new Error('disk failure while extracting');
+    return originalRestore(options);
   };
-  const restoreJob = w.createJob('restore', { backupPath: bundle });
+  const restoreJob = w.createJob('restore', { backupPath: point });
   await assert.rejects(() => core.restore(restoreJob), /disk failure/u);
 
   const interrupted = core.interruptedRestore();
@@ -370,9 +535,9 @@ test('an interrupted restore is detected, blocks new work, and requires explicit
   assert.ok(fs.existsSync(path.join(interrupted.rescuePath, 'rescue-manifest.json')));
 
   // No new destructive work while the machine sits between two states.
-  w.system.extractArchive = originalExtract;
+  w.engine.restoreSnapshot = originalRestore;
   await assert.rejects(() => core.backup(w.createJob('backup', { destinationId: w.destination() })), /did not complete/u);
-  await assert.rejects(() => core.restore(w.createJob('restore', { backupPath: bundle })), /did not complete/u);
+  await assert.rejects(() => core.restore(w.createJob('restore', { backupPath: point })), /did not complete/u);
 
   assert.throws(() => core.acknowledgeInterruptedRestore({ confirmation: 'yes' }), /ACKNOWLEDGE/u);
   const acknowledged = core.acknowledgeInterruptedRestore({ confirmation: 'ACKNOWLEDGE' });
@@ -380,7 +545,7 @@ test('an interrupted restore is detected, blocks new work, and requires explicit
   assert.equal(core.interruptedRestore(), null);
 
   // With the interruption acknowledged, a clean retry completes.
-  const retryJob = w.createJob('restore', { backupPath: bundle });
+  const retryJob = w.createJob('restore', { backupPath: point });
   await core.restore(retryJob);
   assert.equal(readJson(retryJob).status, 'succeeded');
 });
@@ -401,7 +566,7 @@ test('restore never reports success when verification finds a resource mismatch'
     const name = appVolumeName('stirling-pdf', 'stowaway');
     await w.system.createVolume(name, appVolumeLabels({ instanceId: STIRLING.instanceId, name, packageId: 'stirling-pdf' }));
   };
-  const restoreJob = w.createJob('restore', { backupPath: bundleDirOf(backupJob) });
+  const restoreJob = w.createJob('restore', { backupPath: restorePointOf(backupJob) });
   await assert.rejects(() => core.restore(restoreJob), /verification failed.*unexpected.*stowaway/u);
   const interrupted = core.interruptedRestore();
   assert.ok(interrupted);
@@ -414,14 +579,11 @@ test('a bundle outside the supported schema window is rejected before any mutati
   const core = w.core();
   const backupJob = w.createJob('backup', { destinationId: w.destination() });
   await core.backup(backupJob);
-  const bundle = bundleDirOf(backupJob);
-  const manifest = readJson(path.join(bundle, 'manifest.json'));
-  manifest.backup.schemaVersion = 9;
-  writeJson(path.join(bundle, 'manifest.json'), manifest);
-  fs.writeFileSync(path.join(bundle, 'MANIFEST.sha256'), `${sha256(path.join(bundle, 'manifest.json'))}  manifest.json\n`);
+  const point = restorePointOf(backupJob);
+  rewriteRestorePoint(point, (manifest) => { manifest.backup.schemaVersion = 9; });
 
   w.system.events.length = 0;
-  const restoreJob = w.createJob('restore', { backupPath: bundle });
+  const restoreJob = w.createJob('restore', { backupPath: point });
   await assert.rejects(() => core.restore(restoreJob), /supported restore window/u);
   assert.equal(core.interruptedRestore(), null);
   assert.ok(!w.system.events.some(([event]) => ['removeContainer', 'removeVolume', 'stopService'].includes(event)));
@@ -434,6 +596,31 @@ test('backup refuses an undersized destination before touching the runtime', asy
   w.system.freeBytes.set(w.destination(), 1);
   const backupJob = w.createJob('backup', { destinationId: w.destination() });
   await assert.rejects(() => core.backup(backupJob), /free but this backup needs/u);
+  assert.ok(!w.system.events.some(([event]) => event === 'stopContainer' || event === 'stopService'));
+});
+
+// Deduplication is the point of the repository, so the space check has to
+// reflect it: a drive holding one copy of the data can never fit a second, and
+// demanding room for one would refuse every backup after the first.
+test('a later backup is not refused for lacking room for a whole second copy', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const core = w.core();
+  await core.backup(w.createJob('backup', { destinationId: w.destination() }));
+
+  const rawBytes = await w.system.pathBytes(w.system.volumeDir('mos-app-stirling-pdf-configs'));
+  assert.ok(rawBytes > 0);
+  // Room for what changes, not for everything again.
+  w.system.freeBytes.set(w.destination(), 2 * 1024 * 1024 * 1024);
+  const second = w.createJob('backup', { destinationId: w.destination() });
+  await core.backup(second);
+  assert.equal(readJson(second).status, 'succeeded');
+
+  // A destination with nothing left is still refused, and still before the
+  // runtime is touched.
+  w.system.freeBytes.set(w.destination(), 1);
+  w.system.events.length = 0;
+  await assert.rejects(() => core.backup(w.createJob('backup', { destinationId: w.destination() })), /too little to add to the backups already on it/u);
   assert.ok(!w.system.events.some(([event]) => event === 'stopContainer' || event === 'stopService'));
 });
 
@@ -468,7 +655,7 @@ test('backup classifies volumes by ownership evidence, not bare prefix', async (
   const core = w.core();
   const backupJob = w.createJob('backup', { destinationId: w.destination() });
   await core.backup(backupJob);
-  const manifest = readJson(path.join(bundleDirOf(backupJob), 'manifest.json'));
+  const manifest = restorePointManifest(backupJob);
   const byName = Object.fromEntries(manifest.contents.volumes.map((volume) => [volume.name, volume]));
   assert.equal(byName['mos-app-stirling-pdf-configs'].ownership, 'labeled');
   assert.equal(byName['mos-app-stirling-pdf-legacy'].ownership, 'derived');
@@ -482,7 +669,7 @@ test('a validate job proves a bundle restorable without mutating anything', asyn
   const core = w.core();
   const backupJob = w.createJob('backup', { destinationId: w.destination() });
   await core.backup(backupJob);
-  const bundle = bundleDirOf(backupJob);
+  const bundle = restorePointOf(backupJob);
 
   w.system.events.length = 0;
   const validateJob = w.createJob('validate', { backupPath: bundle });
@@ -500,17 +687,24 @@ test('a validate job proves a bundle restorable without mutating anything', asyn
   assert.ok(!fs.readdirSync(w.paths.agentStateDir).some((entry) => entry.startsWith('restore-')));
 });
 
-test('the read-only check fails on a corrupted volume archive', async () => {
+test('the read-only check refuses a backup whose stored data was corrupted', async () => {
   const w = await world();
   await w.installApp(STIRLING);
   const core = w.core();
   const backupJob = w.createJob('backup', { destinationId: w.destination() });
   await core.backup(backupJob);
-  const bundle = bundleDirOf(backupJob);
-  fs.appendFileSync(path.join(bundle, 'volumes', 'mos-app-stirling-pdf-configs.tar.gz'), ' ');
+  const point = restorePointOf(backupJob);
+  const volumeSnapshot = readJson(point).contents.volumes[0].snapshotId;
+  fs.appendFileSync(snapshotFileOf(w, volumeSnapshot), ' ');
 
-  const validateJob = w.createJob('validate', { backupPath: bundle });
-  await assert.rejects(() => core.validateBackup(validateJob), /volume checksum is invalid/u);
+  const validateJob = w.createJob('validate', { backupPath: point });
+  // What the owner reads says what it means for them; the engine's own words
+  // stay on the error for a support panel.
+  await assert.rejects(() => core.validateBackup(validateJob), (error) => {
+    assert.match(error.message, /failed its integrity check/u);
+    assert.match(error.message, /Nothing on this machine was changed/u);
+    return true;
+  });
 });
 
 test('the read-only check reports a software version mismatch without blocking the bundle', async () => {
@@ -519,13 +713,10 @@ test('the read-only check reports a software version mismatch without blocking t
   const core = w.core();
   const backupJob = w.createJob('backup', { destinationId: w.destination() });
   await core.backup(backupJob);
-  const bundle = bundleDirOf(backupJob);
-  const manifest = readJson(path.join(bundle, 'manifest.json'));
-  manifest.source.version = '9.9.9';
-  writeJson(path.join(bundle, 'manifest.json'), manifest);
-  fs.writeFileSync(path.join(bundle, 'MANIFEST.sha256'), `${sha256(path.join(bundle, 'manifest.json'))}  manifest.json\n`);
+  const point = restorePointOf(backupJob);
+  rewriteRestorePoint(point, (manifest) => { manifest.source.version = '9.9.9'; });
 
-  const validateJob = w.createJob('validate', { backupPath: bundle });
+  const validateJob = w.createJob('validate', { backupPath: point });
   await core.validateBackup(validateJob);
   const finished = readJson(validateJob);
   assert.equal(finished.status, 'succeeded');
@@ -540,7 +731,7 @@ test('the read-only check stays available while an interrupted restore blocks ot
   const core = w.core();
   const backupJob = w.createJob('backup', { destinationId: w.destination() });
   await core.backup(backupJob);
-  const bundle = bundleDirOf(backupJob);
+  const bundle = restorePointOf(backupJob);
 
   core.writeJournal({ backupPath: bundle, jobId: 'j1', phase: 'rescue', startedAt: new Date().toISOString() });
   await assert.rejects(() => core.backup(w.createJob('backup', { destinationId: w.destination() })), /did not complete/u);
@@ -573,12 +764,16 @@ test('importBundle turns a downloaded archive back into a restorable bundle and 
   const w = await world();
   await w.installApp(STIRLING);
   const core = w.core();
+
+  // A note given at backup time is born with the restore point, as a sidecar.
   const backupJob = w.createJob('backup', { destinationId: w.destination(), note: 'before seafile' });
   await core.backup(backupJob);
-  const bundle = bundleDirOf(backupJob);
+  assert.equal(fs.readFileSync(`${restorePointOf(backupJob)}.note.txt`, 'utf8'), 'before seafile\n');
+
+  // Upload speaks the legacy bundle format only: a downloaded bundle from an
+  // earlier MOS is the sole thing an owner can have to upload.
+  const bundle = await writeLegacyBundle(w, { id: 'import-fixture' });
   const originalManifest = readJson(path.join(bundle, 'manifest.json'));
-  // A note given at backup time is born with the bundle, as a sidecar only.
-  assert.equal(fs.readFileSync(path.join(bundle, 'note.txt'), 'utf8'), 'before seafile\n');
 
   // Uploading onto a destination that already holds the same backup refuses.
   const duplicateUpload = path.join(w.destination(), 'MOS-backups', '.upload-dup.tar.gz');
@@ -597,6 +792,7 @@ test('importBundle turns a downloaded archive back into a restorable bundle and 
   const finished = readJson(importJob);
   assert.equal(finished.status, 'succeeded');
   assert.equal(finished.validation.checks.checksums, true);
+  assert.equal(finished.validation.storage, 'tar-bundle');
   const imported = finished.outputPath;
   assert.ok(fs.existsSync(path.join(imported, 'COMPLETE')));
   assert.ok(fs.existsSync(path.join(imported, 'bundle.tar.gz')));
@@ -629,24 +825,157 @@ test('a backup whose destination disappears mid-job fails instead of reporting s
   await w.installApp(STIRLING);
   const core = w.core();
 
-  // The drive detaches while the backup is writing volume archives.
-  const originalArchive = w.system.archiveTree.bind(w.system);
-  w.system.archiveTree = async (sourceDir, archivePath, options) => {
-    await originalArchive(sourceDir, archivePath, options);
+  // The drive detaches while the backup is storing volumes.
+  const originalSnapshot = w.engine.snapshotTree.bind(w.engine);
+  w.engine.snapshotTree = async (options) => {
+    const result = await originalSnapshot(options);
     w.system.destinationMountedResult = false;
+    return result;
   };
   const backupJob = w.createJob('backup', { destinationId: w.destination() });
   await assert.rejects(core.backup(backupJob), /disappeared while the backup was running/u);
-  // The partial bundle is removed outright — nothing can be listed as a
-  // bundle and no orphaned gigabytes stay behind on the system disk.
-  const bundleDir = readJson(backupJob).outputPath;
-  assert.equal(fs.existsSync(bundleDir), false);
+  // Nothing is listed, and the repository this job created is removed, so no
+  // orphaned gigabytes stay behind on the system disk.
+  assert.equal(fs.existsSync(readJson(backupJob).outputPath), false);
+  assert.equal(fs.existsSync(repositoryOf(w)), false);
   // The runtime was restarted despite the failure.
   assert.ok(w.system.events.some(([event, name]) => event === 'startContainer' && name === 'mos-app-stirling-pdf'));
 
   // A backup that starts with the destination already gone fails immediately.
   w.system.destinationMountedResult = false;
-  w.system.archiveTree = originalArchive;
+  w.engine.snapshotTree = originalSnapshot;
   const refusedJob = w.createJob('backup', { destinationId: w.destination() });
   await assert.rejects(core.backup(refusedJob), /not mounted/u);
+});
+
+// The dual-engine phase is temporary, but while it lasts a destination holds
+// one repository in one format. Writing the other engine's snapshots into it
+// would corrupt it, so the refusal happens before the engine is invoked.
+test('a destination written by one storage engine refuses the other', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  await w.core().backup(w.createJob('backup', { destinationId: w.destination() }));
+
+  w.engine = new FakeEngine('other-engine');
+  const core = w.core();
+  w.system.events.length = 0;
+  await assert.rejects(() => core.backup(w.createJob('backup', { destinationId: w.destination() })), /different storage format \(fake\)/u);
+  // Refused before the runtime was touched, so nothing stopped for nothing.
+  assert.ok(!w.system.events.some(([event]) => event === 'stopContainer' || event === 'stopService'));
+});
+
+// Unlinking a snapshot reclaims nothing on its own. An owner deleting a
+// backup to free a full drive has to actually get the space back.
+test('deleting a restore point forgets its snapshots and runs repository maintenance', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const core = w.core();
+  const backupJob = w.createJob('backup', { destinationId: w.destination(), note: 'delete me' });
+  await core.backup(backupJob);
+  const point = restorePointOf(backupJob);
+  const manifest = readJson(point);
+  const snapshotIds = [manifest.contents.stateSnapshot.snapshotId, ...manifest.contents.volumes.map((volume) => volume.snapshotId)];
+  for (const snapshotId of snapshotIds) assert.ok(fs.existsSync(snapshotFileOf(w, snapshotId)));
+
+  w.engine.events.length = 0;
+  const deleted = await core.deleteBackup(point);
+  assert.equal(deleted.kind, 'restore-point');
+  for (const snapshotId of snapshotIds) assert.equal(fs.existsSync(snapshotFileOf(w, snapshotId)), false);
+  assert.ok(w.engine.events.some(([event]) => event === 'maintainRepository'));
+  // The restore point and everything hanging off it are gone.
+  for (const suffix of ['', '.sha256', '.note.txt']) assert.equal(fs.existsSync(`${point}${suffix}`), false);
+  // The repository itself survives: other restore points may still need it.
+  assert.ok(fs.existsSync(repositoryOf(w)));
+});
+
+// Deleting rewrites the shared repository with engine safety off, so it runs
+// through the same one-job-at-a-time pipeline as backup and restore.
+test('a delete job removes the restore point and reports what it deleted', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const core = w.core();
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await core.backup(backupJob);
+  const point = restorePointOf(backupJob);
+
+  const deleteJob = w.createJob('delete', { backupPath: point });
+  await core.deleteBackupJob(deleteJob);
+  const finished = readJson(deleteJob);
+  assert.equal(finished.status, 'succeeded');
+  assert.deepEqual(finished.summary, { deletedKind: 'restore-point' });
+  for (const suffix of ['', '.sha256']) assert.equal(fs.existsSync(`${point}${suffix}`), false);
+  assert.ok(w.engine.events.some(([event]) => event === 'maintainRepository'));
+});
+
+// Installs that predate the repository have tar bundles on the same drive MOS
+// now writes restore points to. Both must stay listable and restorable.
+// A drive whose store was wiped is not an empty drive to start over on; it is
+// a restore point that can no longer be read, and saying so is the whole job.
+test('a restore point is refused when the store it points into is gone', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const core = w.core();
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await core.backup(backupJob);
+  const point = restorePointOf(backupJob);
+  fs.rmSync(repositoryOf(w), { force: true, recursive: true });
+
+  w.system.events.length = 0;
+  await assert.rejects(() => core.validateBackup(w.createJob('validate', { backupPath: point })), /encrypted backup store is missing from this drive/u);
+  await assert.rejects(() => core.restore(w.createJob('restore', { backupPath: point })), /encrypted backup store is missing from this drive/u);
+  assert.equal(core.interruptedRestore(), null);
+  assert.ok(!w.system.events.some(([event]) => ['removeContainer', 'removeVolume', 'stopService'].includes(event)));
+  // It was never quietly recreated to make the error go away.
+  assert.equal(fs.existsSync(repositoryOf(w)), false);
+});
+
+test('a legacy bundle and a restore point coexist on one destination', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const core = w.core();
+  const bundle = await writeLegacyBundle(w, { id: 'coexist' });
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await core.backup(backupJob);
+  const point = restorePointOf(backupJob);
+
+  const bundleCheck = w.createJob('validate', { backupPath: bundle });
+  await core.validateBackup(bundleCheck);
+  assert.equal(readJson(bundleCheck).validation.storage, 'tar-bundle');
+  assert.equal(readJson(bundleCheck).validation.schemaVersion, 3);
+
+  const pointCheck = w.createJob('validate', { backupPath: point });
+  await core.validateBackup(pointCheck);
+  assert.equal(readJson(pointCheck).validation.storage, 'engine-repository');
+  assert.equal(readJson(pointCheck).validation.schemaVersion, 4);
+
+  // Deleting the legacy bundle leaves the repository and its restore point be.
+  assert.equal((await core.deleteBackup(bundle)).kind, 'bundle');
+  assert.equal(fs.existsSync(bundle), false);
+  assert.ok(fs.existsSync(point));
+  const afterJob = w.createJob('restore', { backupPath: point });
+  await core.restore(afterJob);
+  assert.equal(readJson(afterJob).status, 'succeeded');
+});
+
+// A restore point whose manifest was edited is not a restore point any more:
+// the digest beside it is what says the snapshot ids were not swapped.
+test('a restore point with a tampered manifest is refused before any mutation', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const core = w.core();
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await core.backup(backupJob);
+  const point = restorePointOf(backupJob);
+  const manifest = readJson(point);
+  manifest.contents.volumes[0].snapshotId = 'snap-9999';
+  writeJson(point, manifest);
+
+  w.system.events.length = 0;
+  await assert.rejects(() => core.restore(w.createJob('restore', { backupPath: point })), /manifest checksum is invalid/u);
+  assert.equal(core.interruptedRestore(), null);
+  assert.ok(!w.system.events.some(([event]) => ['removeContainer', 'removeVolume', 'stopService'].includes(event)));
+
+  // The same holds when the digest file is missing outright.
+  fs.rmSync(`${point}.sha256`);
+  await assert.rejects(() => core.restore(w.createJob('restore', { backupPath: point })), /checksum recorded with it is missing/u);
 });
