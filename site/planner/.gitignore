@@ -1,0 +1,12 @@
+node_modules
+dist
+.cache/
+
+# Assets staged by scripts/prepare-assets.mjs — never committed. Big Tech
+# brand artwork is fetched at build time from the pinned Dashboard Icons
+# revision and must not enter the repository; brand/ and mos-apps/ are copies
+# of files that already live elsewhere in the repo.
+public/brand/
+public/dashboard-icons/
+public/mos-apps/
+src/generated/

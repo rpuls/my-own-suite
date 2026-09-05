@@ -21,7 +21,7 @@
     "predev": "node ../scripts/sync-branding.cjs",
     "prebuild": "node ../scripts/sync-branding.cjs",
     "dev": "astro dev",
-    "build": "astro build",
+    "build": "astro build && npm --prefix planner run build",
     "preview": "astro preview"
   },
   "dependencies": {

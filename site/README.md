@@ -8,6 +8,24 @@ The visual design comes from the "My Own Suite Design System" project on claude.
 
 The "Explore the apps" section is generated at build time from `apps/*/manifest.json` and `apps/*/icon.png` — the same single source of truth Suite Manager uses. Adding a new app package to the repo adds it to the landing page on the next build; no site change needed. The card/side-panel content uses `name`, `summary`, `category`, and the `catalog` fields (`description`, `replaces`, `resourceHint.label`, `privacy`, `features`, `links`, `demoDeployTargets`, `tags`).
 
+## Digital Independence Planner
+
+`planner/` is a standalone Vite + React sub-app deployed at `/plan/` — a free, browser-only roadmap builder that exports "digital independence journey" graphics. `npm run build` in `site/` builds it into `site/dist/plan` after the Astro build. It deliberately keeps its own toolchain (Tailwind, Base UI) so its styles never fight Starlight's; the brand look comes from the same synced `mos.css`.
+
+Its `prebuild`/`predev` step (`planner/scripts/prepare-assets.mjs`) stages everything that must not live in git:
+
+- Big Tech brand icons are fetched from the exact upstream [Dashboard Icons](https://github.com/homarr-labs/dashboard-icons) commit pinned in `planner/icon-source.json` and served first-party, so no third-party artwork is committed and visitors' browsers only talk to this site. `planner/icon-denylist.json` removes individual logos on request; affected nodes degrade to text labels.
+- The "On My Own Suite" replacement suggestions are generated from `apps/*/manifest.json`, so new catalog apps appear automatically.
+
+```bash
+cd site/planner
+npm install
+npm run dev   # stages assets, then serves the planner alone at http://127.0.0.1:5173/
+npm test      # layout engine + share-link tests
+```
+
+The editor stores plans in `localStorage` only, and share links carry the whole plan compressed in the URL fragment — there is no backend.
+
 ## Local development
 
 ```bash

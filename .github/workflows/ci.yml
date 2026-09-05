@@ -78,7 +78,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: site/package-lock.json
+          cache-dependency-path: |
+            site/package-lock.json
+            site/planner/package-lock.json
 
       - name: Setup npm
         run: npm install -g npm@11.2.0
@@ -87,6 +89,13 @@ jobs:
         run: npm ci
         working-directory: site
 
+      - name: Install planner dependencies
+        run: npm ci
+        working-directory: site/planner
+
+      # `npm run build` also builds the Digital Independence Planner
+      # (site/planner) into site/dist/plan, so the planner's dependencies must
+      # be installed first.
       - name: Build MOS site
         run: npm run build
         working-directory: site

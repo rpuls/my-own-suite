@@ -3,6 +3,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { installEngineBinary } = require('../system-agents/backup/engines/engine-install.cjs');
+const { DEFAULT_ENGINE_NAME, ENGINE_NAMES } = require('../system-agents/backup/engines/engine.cjs');
 
 const {
   HOMEPAGE_IMAGE,
@@ -226,6 +228,42 @@ function refreshCaddyBinary() {
   }
 }
 
+// The backup agent runs from repo source, so a machine that updates rather
+// than reinstalls never runs the installer again. Installing the storage
+// engine here is what keeps an updated machine's agent able to write backups
+// at all, per the rule in infrastructure/control-plane-runtime.cjs.
+//
+// Both engines are installed while MOS is still measuring them; only the
+// chosen one survives that decision.
+// restic ships its Linux builds bzip2-compressed and nothing else, so
+// unpacking the pinned download needs bzip2 on the host. Installs made before
+// this dependency existed gain it on update; without a network, the engine
+// install below reports the real failure.
+function ensureBzip2() {
+  try {
+    execFileSync('which', ['bzip2'], { stdio: 'ignore' });
+    return;
+  } catch {}
+  log('installing bzip2 (needed to unpack the pinned restic download)');
+  run('apt-get', ['install', '-y', 'bzip2'], { allowFailure: true });
+}
+
+function refreshBackupEngines() {
+  installDir('/usr/local/libexec/mos', 0o755);
+  if (!dryRun) ensureBzip2();
+  for (const name of ENGINE_NAMES) {
+    if (dryRun) { log(`would install backup storage engine ${name}`); continue; }
+    try {
+      installEngineBinary({ binaryDir: '/usr/local/libexec/mos', log, name });
+    } catch (error) {
+      // A machine that cannot reach GitHub must still finish reconciling: the
+      // backup agent reports the missing engine when a backup is attempted,
+      // which is a far better failure than a half-configured host.
+      log(`could not install backup storage engine ${name}: ${error.message}`);
+    }
+  }
+}
+
 function main() {
   if (!fs.existsSync(path.join(mosRoot, 'package.json'))) {
     throw new Error(`${mosRoot} does not look like a MOS checkout.`);
@@ -269,6 +307,7 @@ function main() {
   if (!dryRun) run('systemctl', ['restart', 'systemd-journald'], { allowFailure: true });
 
   refreshCaddyBinary();
+  refreshBackupEngines();
   writeFile('/etc/systemd/system/caddy.service.d/mos.conf', `[Service]
 EnvironmentFile=-/etc/mos/secrets/caddy-cloudflare.env
 ExecStart=
@@ -317,7 +356,9 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
   unit('mos-backup-agent.service', agentUnit({
     after: 'network-online.target docker.service',
     description: 'MOS backup and restore agent',
-    env: { MOS_BACKUP_AGENT_SOCKET: '/run/mos-backup-agent/agent.sock', MOS_BACKUP_AGENT_STATE_DIR: `${stateRoot}/backup-agent`, MOS_REPO_DIR: repoRoot, MOS_STATE_DIR: `${stateRoot}/suite-manager`, MOS_STATE_ROOT: stateRoot },
+    // MOS_BACKUP_ENGINE selects the storage engine while both are being
+    // measured. It disappears with the losing engine.
+    env: { MOS_BACKUP_AGENT_SOCKET: '/run/mos-backup-agent/agent.sock', MOS_BACKUP_AGENT_STATE_DIR: `${stateRoot}/backup-agent`, MOS_BACKUP_ENGINE: process.env.MOS_BACKUP_ENGINE || DEFAULT_ENGINE_NAME, MOS_REPO_DIR: repoRoot, MOS_STATE_DIR: `${stateRoot}/suite-manager`, MOS_STATE_ROOT: stateRoot },
     name: 'mos-backup-agent.service',
     script: 'system-agents/backup/agent.cjs',
     wants: 'network-online.target docker.service',

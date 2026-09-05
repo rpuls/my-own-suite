@@ -1,0 +1,131 @@
+---
+// Landing section for the Digital Independence Planner — the free, in-browser
+// roadmap builder deployed as a static sub-app at /plan/ (built from
+// site/planner/ by the same site build).
+import { PLANNER_PATH } from '../lib/links'
+---
+
+<section class="band" id="plan" aria-labelledby="planner-promo-title">
+  <div class="shell">
+    <div class="planner-promo">
+      <div class="planner-promo-copy">
+        <div class="section-head" style="margin-bottom:0">
+          <span class="mos-eyebrow">Free planning tool</span>
+          <h2 class="mos-section-title" id="planner-promo-title">Plan your digital independence</h2>
+          <p class="mos-body-lg planner-promo-intro">
+            Map the Big Tech services you rely on today, pick the open-source apps that will replace
+            them, and watch your journey take shape on a timeline. Then export the graphic and share
+            your plan — or your progress.
+          </p>
+        </div>
+        <ul class="planner-points">
+          <li>No account, nothing to install — it runs entirely in your browser</li>
+          <li>Your plan never leaves your device</li>
+          <li>Export as PNG, WebP, or SVG, or share a link others can remix</li>
+        </ul>
+        <div class="planner-promo-cta">
+          <a class="mos-btn mos-btn-primary" href={PLANNER_PATH}>Open the planner</a>
+        </div>
+      </div>
+      <div class="planner-promo-art" aria-hidden="true">
+        {/* Miniature of the roadmap graphic: two lanes trading places at a crossover. */}
+        <svg viewBox="0 0 360 200" fill="none">
+          <path
+            d="M 10 60 H 130 C 175 60, 185 140, 230 140 H 350"
+            stroke="var(--mos-color-info)"
+            stroke-width="4"
+            stroke-linecap="round"
+          ></path>
+          <path
+            d="M 10 140 H 130 C 175 140, 185 60, 230 60 H 350"
+            stroke="var(--mos-color-accent)"
+            stroke-width="4"
+            stroke-linecap="round"
+          ></path>
+          <circle cx="70" cy="60" r="17" fill="var(--mos-color-bg)" stroke="var(--mos-color-info)" stroke-width="4"></circle>
+          <circle cx="70" cy="140" r="17" fill="var(--mos-color-bg)" stroke="var(--mos-color-accent)" stroke-width="4"></circle>
+          <circle cx="290" cy="60" r="17" fill="var(--mos-color-bg)" stroke="var(--mos-color-accent)" stroke-width="4"></circle>
+          <circle cx="290" cy="140" r="17" fill="var(--mos-color-bg)" stroke="var(--mos-color-info)" stroke-width="4"></circle>
+          <line x1="40" y1="186" x2="320" y2="186" stroke="var(--mos-color-surface-border)" stroke-width="2"></line>
+          <circle cx="70" cy="186" r="5" fill="var(--mos-color-accent)"></circle>
+          <circle cx="180" cy="186" r="5" fill="var(--mos-color-accent)"></circle>
+          <circle cx="290" cy="186" r="5" fill="var(--mos-color-accent)"></circle>
+          <path d="M 180 176 L 173 164 H 187 Z" fill="var(--mos-color-accent)"></path>
+        </svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .planner-promo {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--mos-space-8);
+  }
+
+  .planner-promo-copy {
+    display: grid;
+    gap: var(--mos-space-5);
+  }
+
+  .planner-promo-intro {
+    color: var(--mos-color-text-muted);
+  }
+
+  .planner-points {
+    display: grid;
+    gap: var(--mos-space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .planner-points li {
+    position: relative;
+    padding-left: 1.6rem;
+    line-height: 1.5;
+  }
+
+  .planner-points li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.42em;
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: var(--mos-color-accent);
+  }
+
+  .planner-promo-cta {
+    display: flex;
+    gap: var(--mos-space-3);
+  }
+
+  .planner-promo-art {
+    padding: var(--mos-space-6);
+    border: 1px solid var(--mos-color-surface-border);
+    border-radius: var(--mos-radius-lg);
+    background: var(--mos-color-surface-muted);
+    box-shadow: var(--mos-shadow-soft);
+  }
+
+  .planner-promo-art svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  @media (max-width: 780px) {
+    .planner-promo {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--mos-space-6);
+    }
+
+    .planner-promo-art {
+      max-width: 26rem;
+    }
+  }
+</style>

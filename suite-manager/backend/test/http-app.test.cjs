@@ -565,7 +565,6 @@ test('Backup inventory API requires auth and reports MOS protected state', async
     const vaultwarden = inventory.packages.find((entry) => entry.packageId === 'vaultwarden');
 
     assert.equal(response.status, 200);
-    assert.equal(inventory.actions.backupEnabled, false);
     assert.equal(inventory.contents.suiteManager.database.path, path.join(stateDir, 'suite-manager.sqlite'));
     assert.equal(inventory.contents.suiteManager.database.exists, true);
     assert.equal(inventory.contents.suiteManager.appSecrets.exists, true);

@@ -30,6 +30,7 @@ const { ExternalSourceError } = require('../apps/external-source-registry.cjs');
 const { inspectAppPackages } = require('../apps/package-manifest.cjs');
 const { BackupAgentClient } = require('../backups/backup-agent-client.cjs');
 const { BackupInventoryService } = require('../backups/backup-inventory-service.cjs');
+const { restoreGuaranteeFor } = require('../backups/restore-guarantee.cjs');
 const { UpdateAgentClient } = require('../updates/update-agent-client.cjs');
 const { UpdateService } = require('../updates/update-service.cjs');
 
@@ -795,15 +796,11 @@ function createMOSServer({
           return;
         }
         try {
+          const agentStatus = await backupAgent.status();
           jsonResponse(response, 200, {
-            ...(await backupAgent.status()),
+            ...agentStatus,
             inventory: backupInventory.inventory(),
-            // Exact full restore passed the Phase 4 recovery drills on
-            // 2026-07-20/21: same-machine and replacement-machine restores,
-            // database-backed and multi-GiB workloads, corruption/version/
-            // disk/disconnected-destination refusals, and mid-mutation
-            // power-loss interruption with journaled recovery.
-            restoreGuarantee: 'verified',
+            ...restoreGuaranteeFor(agentStatus),
             serviceAvailable: true,
           });
         } catch (error) {
@@ -819,7 +816,7 @@ function createMOSServer({
             interruptedRestore: null,
             inventory: backupInventory.inventory(),
             lastJob: null,
-            restoreGuarantee: 'verified',
+            ...restoreGuaranteeFor(null),
             serviceAvailable: false,
           });
         }

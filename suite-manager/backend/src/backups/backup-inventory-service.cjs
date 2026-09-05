@@ -129,12 +129,6 @@ class BackupInventoryService {
     })));
 
     return {
-      actions: {
-        backupEnabled: false,
-        backupLabel: 'Back up everything',
-        backupReason: 'MOS backup inventory is ready, but archive and restore jobs wait for a MOS backup agent.',
-        restoreEnabled: false,
-      },
       checkedAt: new Date().toISOString(),
       contents: {
         caddyFiles: this.caddyFiles.map(pathState),
@@ -150,11 +144,6 @@ class BackupInventoryService {
           databaseWal: pathState(path.join(this.stateDir, `${DATABASE_FILENAME}-wal`)),
           stateDir: this.stateDir,
         },
-      },
-      destinationModel: {
-        preferred: ['Connected USB or external drive', 'Local disk path reserved for MOS backups'],
-        status: 'planned',
-        summary: 'The MOS backup agent will discover mounted storage and mountable USB drives before archive jobs are enabled.',
       },
       packages,
       relationships: {

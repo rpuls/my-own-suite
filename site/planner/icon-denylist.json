@@ -1,0 +1,4 @@
+{
+  "$comment": "Icon ids excluded from the staged Dashboard Icons set. If a rights holder objects to their logo appearing in the planner's icon search, add the id here and redeploy — nodes referencing a removed icon degrade to a plain text label, which is all a takedown can ever achieve. Ids match the upstream svg/<id>.svg filenames.",
+  "icons": []
+}
