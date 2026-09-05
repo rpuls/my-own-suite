@@ -11,9 +11,9 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { execFile, execFileSync, spawn } = require('node:child_process');
-const { BackupAgentCore, COMPLETE_MARKER, isRestorePointPath, sha256, validatePackagePayloads } = require('./agent-core.cjs');
+const { BackupAgentCore, COMPLETE_MARKER, isRestorePointPath, restorePublicIdentity, sha256, validatePackagePayloads } = require('./agent-core.cjs');
 const { BackupSystemAdapter } = require('./system-adapter.cjs');
-const { createEngine, engineNameFromEnv, readRepositoryDescriptor, restorePointsDir } = require('./engines/engine.cjs');
+const { createEngine, engineNameFromEnv, readRepositoryDescriptor, repositoryUsage, restorePointsDir } = require('./engines/engine.cjs');
 const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-agent-client.cjs');
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
@@ -326,27 +326,23 @@ function readBootstrapContract() {
     return [match[1], match[2].trim().replace(/^['"]|['"]$/gu, '')];
   }).filter(Boolean));
 }
-function restoreBaseUrl() {
-  const contract = readBootstrapContract();
-  if (process.env.MOS_HOME_HOST) return { homeHost: process.env.MOS_HOME_HOST, scheme: 'http' };
-  if (contract.MOS_HOME_URL) {
-    try {
-      const parsed = new URL(contract.MOS_HOME_URL);
-      return { homeHost: parsed.hostname, scheme: parsed.protocol === 'https:' ? 'https' : 'http' };
-    } catch {}
-  }
-  if (contract.MOS_DOMAIN) return { homeHost: `home.${contract.MOS_DOMAIN}`, scheme: 'http' };
-  return { homeHost: 'home.mos.home', scheme: 'http' };
+// Derived from the restored database first (see restorePublicIdentity): the
+// owner's applied HTTPS domain must win over this machine's install-time env.
+// A backup old enough to predate HTTPS settings falls back to that env.
+function restoreBaseUrl(store) {
+  let httpsSettings = null;
+  try { httpsSettings = store ? store.getHttpsSettings() : null; } catch {}
+  return restorePublicIdentity({ bootstrapContract: readBootstrapContract(), environment: process.env, httpsSettings });
 }
-function restoreRequestContext(packageId) {
-  const { homeHost, scheme } = restoreBaseUrl();
+function restoreRequestContext(packageId, store) {
+  const { homeHost, scheme } = restoreBaseUrl(store);
   const baseHost = homeHost.startsWith('home.') ? homeHost.slice(5) : homeHost;
   const appHost = `${packageId}.${baseHost}`;
   return {
     appHost,
     baseHost,
     publicUrl: `${scheme}://${appHost}/`,
-    publicUrlFor: (nextPackageId) => restoreRequestContext(nextPackageId),
+    publicUrlFor: (nextPackageId) => restoreRequestContext(nextPackageId, store),
     scheme,
   };
 }
@@ -365,7 +361,7 @@ async function reconcileRestoredApps(logMessage) {
     }
     for (const instance of instances) {
       logMessage(`Restoring ${instance.displayNameSnapshot || instance.packageId}`);
-      await appPackages.enablePackage(instance.packageId, restoreRequestContext(instance.packageId));
+      await appPackages.enablePackage(instance.packageId, restoreRequestContext(instance.packageId, store));
     }
   } finally {
     store.close();
@@ -407,7 +403,9 @@ if (require.main === module && process.argv[2] === '--worker') {
     try {
       const url = new URL(request.url || '/', 'http://localhost');
       if (request.method === 'GET' && url.pathname === '/v1/status') {
-        const destinations = await listDestinations();
+        const destinations = (await listDestinations()).map((destination) => (
+          destination.mountPath ? { ...destination, repository: repositoryUsage(destination.mountPath) } : destination
+        ));
         respond(response, 200, {
           backups: listBundles(destinations),
           capabilities: { backups: ['create', 'delete', 'download', 'list', 'upload', 'validate'], destinations: ['list', 'mount'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: engineNameFromEnv(), model: 'engine-repository' } },

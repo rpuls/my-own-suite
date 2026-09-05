@@ -10,7 +10,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { ensureRepositoryKey } = require('./engine-base.cjs');
-const { assertRepositoryEngine, createEngine, DEFAULT_ENGINE_NAME, ENGINE_NAMES, engineNameFromEnv, readRepositoryDescriptor, writeRepositoryDescriptor } = require('./engine.cjs');
+const { assertRepositoryEngine, createEngine, DEFAULT_ENGINE_NAME, ENGINE_NAMES, engineNameFromEnv, readRepositoryDescriptor, repositoryUsage, writeRepositoryDescriptor } = require('./engine.cjs');
 const { assetFor, downloadUrl, ENGINE_RELEASES } = require('./engine-install.cjs');
 const { managedStateTargets } = require('../../../infrastructure/persistent-state.cjs');
 
@@ -45,6 +45,28 @@ test('the repository key is generated once, kept private, and reused', async () 
   assert.match(key, /^[0-9a-f]{64}$/u);
   assert.equal(ensureRepositoryKey(keyFile), key);
   if (process.platform !== 'win32') assert.equal(fs.statSync(keyFile).mode & 0o777, 0o600);
+});
+
+// Restore points share the repository's deduplicated data, so the UI must be
+// able to say what the store actually occupies — from the filesystem alone,
+// with no engine invocation and no key.
+test('repositoryUsage reports the store size and restore point count without an engine', async () => {
+  const root = await scratch();
+  assert.equal(repositoryUsage(root), null);
+
+  writeRepositoryDescriptor(root, { engineName: 'restic', repositoryId: 'r1' });
+  const repoDir = path.join(root, 'MOS-backups', 'repository', 'data');
+  fs.mkdirSync(repoDir, { recursive: true });
+  fs.writeFileSync(path.join(repoDir, 'pack-1'), Buffer.alloc(1000));
+  fs.writeFileSync(path.join(repoDir, 'pack-2'), Buffer.alloc(500));
+  const pointsDir = path.join(root, 'MOS-backups', 'restore-points');
+  fs.mkdirSync(pointsDir, { recursive: true });
+  fs.writeFileSync(path.join(pointsDir, 'job-1.json'), '{}');
+  fs.writeFileSync(path.join(pointsDir, 'job-1.json.sha256'), 'digest');
+  // A manifest without its digest sidecar is incomplete and must not count.
+  fs.writeFileSync(path.join(pointsDir, 'job-2.json'), '{}');
+
+  assert.deepEqual(repositoryUsage(root), { engineName: 'restic', restorePoints: 1, storedBytes: 1500 });
 });
 
 // A key inside a backup would be either circular or, in a legacy unencrypted

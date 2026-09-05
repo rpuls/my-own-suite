@@ -58,6 +58,34 @@ function writeRepositoryDescriptor(destinationId, descriptor) {
   fs.writeFileSync(repositorySidecarPath(destinationId), `${JSON.stringify(descriptor, null, 2)}\n`, 'utf8');
 }
 
+// What the encrypted store on a destination actually occupies, from the
+// filesystem alone — no engine invocation, no key. Restore points share the
+// repository's deduplicated data, so per-point data sizes must never be read
+// as additive; this is the one number that says what the drive really carries.
+function repositoryUsage(destinationId) {
+  const descriptor = readRepositoryDescriptor(destinationId);
+  if (!descriptor) return null;
+  let restorePoints = 0;
+  try {
+    for (const name of fs.readdirSync(restorePointsDir(destinationId))) {
+      if (name.endsWith('.json') && fs.existsSync(path.join(restorePointsDir(destinationId), `${name}.sha256`))) restorePoints += 1;
+    }
+  } catch {}
+  return { engineName: descriptor.engineName || null, restorePoints, storedBytes: treeBytes(repositoryPathFor(destinationId)) };
+}
+
+function treeBytes(root) {
+  let total = 0;
+  try {
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      const absolute = path.join(root, entry.name);
+      if (entry.isDirectory()) total += treeBytes(absolute);
+      else if (entry.isFile()) total += fs.statSync(absolute).size;
+    }
+  } catch {}
+  return total;
+}
+
 function assertRepositoryEngine(destinationId, engineName) {
   const descriptor = readRepositoryDescriptor(destinationId);
   if (!descriptor || descriptor.engineName === engineName) return descriptor;
@@ -107,6 +135,7 @@ module.exports = {
   REPOSITORY_DIRNAME,
   repositoryPathFor,
   repositorySidecarPath,
+  repositoryUsage,
   RESTORE_POINTS_DIRNAME,
   restorePointPath,
   restorePointsDir,

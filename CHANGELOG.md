@@ -8,6 +8,10 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 - Backups are now written into an encrypted, deduplicating store on the backup drive (schema version 4): repeat backups only store what changed, and the drive alone cannot be read without the key held on the server. The per-backup downloadable file is gone — the store on the drive is the copy you keep — while bundles from schema versions 2 and 3 stay listed, restorable, and uploadable, and a drive holding one storage format refuses the other. Until the new storage passes its own recovery drills, MOS describes restoring from it as still being proven rather than verified.
 
+### Fixed
+
+- Restoring a backup now rebuilds apps on the web address recorded in the backup itself. Previously, on a server that got its domain after installation (typical for own-hardware installs), a restore rewrote every app route to the install-time LAN address, leaving all apps unreachable over HTTPS until the owner re-applied their HTTPS settings.
+
 ## [0.19.0] - 2026-09-04
 
 ### Contributors

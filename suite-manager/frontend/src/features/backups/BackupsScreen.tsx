@@ -11,6 +11,7 @@ type BackupDestination = {
   mountBlockedReason?: string | null;
   mountPath: string | null;
   mountState?: 'mounted' | 'unmounted' | 'unsupported-mount';
+  repository?: { engineName: string | null; restorePoints: number; storedBytes: number | null } | null;
   sizeBytes: number | null;
   storageKind?: 'external' | 'local' | 'network' | null;
   writable: boolean;
@@ -160,9 +161,14 @@ function operationStage(job: BackupJob | null, restoreStarted: boolean) {
   return restoreStarted ? 'Starting restore' : 'Starting backup';
 }
 
+// A restore point's size is the suite data it restores, not space it takes on
+// the drive — points share the store's deduplicated data, so sizes are not
+// additive and are worded to not read that way. A bundle's size is its file.
 function backupDescription(backup: BackupBundle) {
   const contents = backup.appCount > 0 ? `${backup.appCount} app${backup.appCount === 1 ? '' : 's'} and ${backup.volumeCount} data store${backup.volumeCount === 1 ? '' : 's'}` : 'No apps in this backup';
-  return Number.isFinite(backup.sizeBytes ?? NaN) ? `${contents} · ${formatBytes(backup.sizeBytes as number)}` : contents;
+  if (!Number.isFinite(backup.sizeBytes ?? NaN)) return contents;
+  const size = formatBytes(backup.sizeBytes as number);
+  return backup.kind === 'restore-point' ? `${contents} · restores ${size}` : `${contents} · ${size}`;
 }
 
 function usagePercent(used: number, total: number) {
@@ -457,6 +463,11 @@ export function BackupsScreen() {
                           <div className="suite-drive-bar">
                             <div className="suite-drive-bar-fill" style={{ width: `${100 - usagePercent(destination.availableBytes, destination.sizeBytes)}%` }} />
                           </div>
+                          {destination.repository && destination.repository.restorePoints > 0 && destination.repository.storedBytes
+                            ? <div className="suite-drive-space">
+                                <span>Encrypted store holds {destination.repository.restorePoints} restore point{destination.repository.restorePoints === 1 ? '' : 's'} in {formatBytes(destination.repository.storedBytes)}</span>
+                              </div>
+                            : null}
                         </>
                       : <div className="suite-drive-status">{mounted ? 'Calculating space...' : destination.mountBlockedReason || 'Drive connected but not available'}</div>
                     }

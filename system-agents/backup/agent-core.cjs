@@ -116,6 +116,27 @@ function validatePackagePayloads(root, packages) {
   }
 }
 
+// The public address apps are rebuilt on during a restore. The restored Suite
+// Manager database is the authority: a domain the owner applied after install
+// exists nowhere else the restore can reach, while MOS_HOME_HOST and the
+// bootstrap contract only describe the install-time address — on a USB install
+// that is the LAN name, and rebuilding routes from it takes every app off its
+// HTTPS address.
+function restorePublicIdentity({ bootstrapContract = {}, environment = {}, httpsSettings = null } = {}) {
+  if (httpsSettings?.tlsMode === 'cloudflare-dns01' && httpsSettings.baseDomain) {
+    return { homeHost: `home.${httpsSettings.baseDomain}`, scheme: 'https' };
+  }
+  if (environment.MOS_HOME_HOST) return { homeHost: environment.MOS_HOME_HOST, scheme: 'http' };
+  if (bootstrapContract.MOS_HOME_URL) {
+    try {
+      const parsed = new URL(bootstrapContract.MOS_HOME_URL);
+      return { homeHost: parsed.hostname, scheme: parsed.protocol === 'https:' ? 'https' : 'http' };
+    } catch {}
+  }
+  if (bootstrapContract.MOS_DOMAIN) return { homeHost: `home.${bootstrapContract.MOS_DOMAIN}`, scheme: 'http' };
+  return { homeHost: 'home.mos.home', scheme: 'http' };
+}
+
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes)) return 'an unknown amount';
   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
@@ -812,6 +833,7 @@ module.exports = {
   readRestorePoint,
   RESTORE_JOURNAL_FILENAME,
   RESTORE_PHASES,
+  restorePublicIdentity,
   sha256,
   validatePackagePayloads,
   writeRestorePoint,

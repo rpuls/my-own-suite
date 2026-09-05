@@ -11,7 +11,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { BackupAgentCore, sha256 } = require('./agent-core.cjs');
+const { BackupAgentCore, restorePublicIdentity, sha256 } = require('./agent-core.cjs');
 const { appVolumeLabels, appVolumeName, classifyVolumes, OWNERSHIP_LABELS } = require('../../infrastructure/persistent-state.cjs');
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
@@ -978,4 +978,32 @@ test('a restore point with a tampered manifest is refused before any mutation', 
   // The same holds when the digest file is missing outright.
   fs.rmSync(`${point}.sha256`);
   await assert.rejects(() => core.restore(w.createJob('restore', { backupPath: point })), /checksum recorded with it is missing/u);
+});
+
+// Rebuilding apps during a restore must use the owner's applied HTTPS domain
+// from the restored database, not this machine's install-time address: on a
+// USB install MOS_HOME_HOST stays the LAN name forever, and deriving from it
+// rewrote every app route off its HTTPS address.
+test('restorePublicIdentity prefers the restored HTTPS settings over install-time env', () => {
+  const environment = { MOS_HOME_HOST: 'home.mos.home' };
+  const bootstrapContract = { MOS_HOME_URL: 'http://home.mos.home/' };
+
+  assert.deepEqual(
+    restorePublicIdentity({ bootstrapContract, environment, httpsSettings: { baseDomain: 'mos.example.net', tlsMode: 'cloudflare-dns01' } }),
+    { homeHost: 'home.mos.example.net', scheme: 'https' },
+  );
+  // A domain merely pending (apply began, never completed) must not win.
+  assert.deepEqual(
+    restorePublicIdentity({ bootstrapContract, environment, httpsSettings: { baseDomain: null, pendingBaseDomain: 'mos.example.net', tlsMode: null } }),
+    { homeHost: 'home.mos.home', scheme: 'http' },
+  );
+  assert.deepEqual(
+    restorePublicIdentity({ bootstrapContract, environment, httpsSettings: null }),
+    { homeHost: 'home.mos.home', scheme: 'http' },
+  );
+  assert.deepEqual(
+    restorePublicIdentity({ bootstrapContract: { MOS_HOME_URL: 'https://home.mos.cloud.example/' }, environment: {}, httpsSettings: null }),
+    { homeHost: 'home.mos.cloud.example', scheme: 'https' },
+  );
+  assert.deepEqual(restorePublicIdentity({}), { homeHost: 'home.mos.home', scheme: 'http' });
 });
