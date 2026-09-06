@@ -11,16 +11,42 @@ export function serializeRoadmapSvg(svg: SVGSVGElement): string {
   const parsed = new DOMParser().parseFromString(xml, 'image/svg+xml');
   if (parsed.querySelector('parsererror'))
     throw new Error('The generated SVG did not pass validation.');
-  if (
-    /\b(?:https?:)?\/\//i.test(
-      xml
-        .replace('http://www.w3.org/2000/svg', '')
-        .replace('http://www.w3.org/1999/xlink', ''),
-    )
-  ) {
-    throw new Error('The generated SVG contains an external resource.');
-  }
+  const external = findExternalReference(parsed.documentElement);
+  if (external)
+    throw new Error(
+      `The generated SVG references an external resource (${external}).`,
+    );
   return `<?xml version="1.0" encoding="UTF-8"?>\n${xml}`;
+}
+
+// Exports must be self-contained: a remote reference would make the file phone
+// home every time somebody opens it. Only places that actually fetch are
+// checked — attribute values and stylesheet text — so a URL a user types into
+// a title stays a harmless string.
+function findExternalReference(root: Element): string | undefined {
+  for (const element of [root, ...Array.from(root.querySelectorAll('*'))]) {
+    for (const attribute of Array.from(element.attributes)) {
+      const name = attribute.name.toLowerCase();
+      if (name === 'xmlns' || name.startsWith('xmlns:')) continue;
+      const found = externalUrlIn(attribute.value);
+      if (found) return found;
+    }
+    if (element.localName?.toLowerCase() === 'style') {
+      const found = externalUrlIn(element.textContent ?? '');
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+// Embedded `data:` payloads are stripped before the scan: base64 uses "/" in
+// its alphabet, so an inlined PNG regularly contains "//" and must not be
+// mistaken for a remote host.
+export function externalUrlIn(value: string): string | undefined {
+  if (!value) return undefined;
+  return value
+    .replace(/data:[^\s'")]*/gi, '')
+    .match(/(?:https?:)?\/\/[^\s'")]+/i)?.[0];
 }
 
 export function downloadText(contents: string, filename: string, type: string) {
