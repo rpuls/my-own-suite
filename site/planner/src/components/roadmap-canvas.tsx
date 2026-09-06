@@ -91,7 +91,7 @@ export const RoadmapCanvas = forwardRef<SVGSVGElement, Props>(
         </desc>
         <defs>
           <style>{`
-          .rm-text{font-family:Inter,"Segoe UI",Arial,sans-serif}.rm-title{font-size:${social ? 64 : 52}px;font-weight:760;letter-spacing:-1.7px;fill:${doc.theme.text}}.rm-subtitle{font-size:${social ? 22 : 18}px;fill:${doc.theme.secondaryText}}.rm-lane{font-size:14px;font-weight:800;letter-spacing:1.5px;fill:${doc.theme.text}}.rm-category{font-size:${social ? 15 : 12}px;font-weight:760;fill:${doc.theme.text}}.rm-node-label{font-size:${social ? 14 : 13}px;font-weight:620;fill:${doc.theme.secondaryText}}.rm-date{font-size:13px;font-weight:750;fill:${doc.theme.text}}.rm-now{font-size:10px;font-weight:850;letter-spacing:.8px;fill:${doc.theme.timeline}}.rm-legend{font-size:${social ? 22 : 14}px;font-weight:780;fill:${doc.theme.text}}.rm-brand{font-size:27px;font-weight:760;fill:${doc.theme.text}}.rm-interactive{cursor:pointer;outline:none}.rm-select-outline{opacity:0;transition:opacity .12s}.rm-interactive:hover .rm-select-outline,.rm-interactive:focus .rm-select-outline{opacity:.55}.rm-select-outline.selected{opacity:.85}
+          .rm-text{font-family:Inter,"Segoe UI",Arial,sans-serif}.rm-title{font-size:${social ? 64 : 52}px;font-weight:760;letter-spacing:-1.7px;fill:${doc.theme.text}}.rm-subtitle{font-size:${social ? 22 : 18}px;fill:${doc.theme.secondaryText}}.rm-lane{font-size:14px;font-weight:800;letter-spacing:1.5px;fill:${doc.theme.text}}.rm-category{font-size:${social ? 15 : 12}px;font-weight:760;fill:${doc.theme.text}}.rm-node-label{font-size:${social ? 14 : 13}px;font-weight:620;fill:${doc.theme.secondaryText}}.rm-date{font-size:13px;font-weight:750;fill:${doc.theme.text}}.rm-now{font-size:10px;font-weight:850;letter-spacing:.8px;fill:${doc.theme.timeline}}.rm-legend{font-size:${social ? 22 : 14}px;font-weight:780;fill:${doc.theme.text}}.rm-brand{font-size:${social ? 27 : 18}px;font-weight:760;fill:${doc.theme.text}}.rm-brand-note{font-size:${social ? 16 : 11}px;font-weight:700;letter-spacing:.5px;fill:${doc.theme.secondaryText}}.rm-interactive{cursor:pointer;outline:none}.rm-select-outline{opacity:0;transition:opacity .12s}.rm-interactive:hover .rm-select-outline,.rm-interactive:focus .rm-select-outline{opacity:.55}.rm-select-outline.selected{opacity:.85}
         `}</style>
         </defs>
         {!doc.theme.transparent && (
@@ -355,25 +355,14 @@ export const RoadmapCanvas = forwardRef<SVGSVGElement, Props>(
           </g>
         )}
 
-        {social && doc.branding.myOwnSuite && (
-          <g
-            transform={`translate(${layout.width - 390},${layout.height - 185})`}
-          >
-            <IconImage
-              icon={{
-                id: 'my-own-suite-mark',
-                name: 'My Own Suite',
-                source: 'library',
-              }}
-              x={0}
-              y={0}
-              size={62}
-              instance="brand-mos"
-            />
-            <text x="78" y="42" className="rm-text rm-brand">
-              {doc.branding.siteLabel}
-            </text>
-          </g>
+        {doc.branding.myOwnSuite && (
+          <BrandSignature
+            label={doc.branding.siteLabel}
+            right={layout.width - doc.layout.outerMargin}
+            centerY={social ? layout.height - 154 : layout.legendY}
+            size={social ? 62 : 40}
+            fontSize={social ? 27 : 18}
+          />
         )}
 
         {doc.layout.showSafeArea && (
@@ -395,6 +384,65 @@ export const RoadmapCanvas = forwardRef<SVGSVGElement, Props>(
     );
   },
 );
+
+const BRAND_NOTE = 'Plan your digital independence at';
+// Cap height of the semi-bold face, as a share of font size.
+const CAP_RATIO = 0.72;
+
+// The invitation every export carries, bottom-right opposite the legend. SVG
+// cannot measure text before layout, so the block is right-aligned from an
+// estimated width; the 0.6 factor matches the semi-bold face and keeps a
+// realistic label inside the margin.
+function BrandSignature({
+  label,
+  right,
+  centerY,
+  size,
+  fontSize,
+}: {
+  label: string;
+  right: number;
+  centerY: number;
+  size: number;
+  fontSize: number;
+}) {
+  const noteSize = fontSize * 0.62;
+  const gap = size * 0.24;
+  const textWidth = Math.max(
+    label.length * fontSize * 0.6,
+    BRAND_NOTE.length * noteSize * 0.6,
+  );
+  // The two lines are optically centred on the mark: the block runs from the
+  // note's cap height down to the label's baseline (descenders are ignored, as
+  // the eye does), so it is that midpoint which has to land on centerY.
+  const lineGap = fontSize * 1.15;
+  const noteBaseline = (noteSize * CAP_RATIO - lineGap) / 2;
+  return (
+    <g transform={`translate(${right - (size + gap + textWidth)},${centerY})`}>
+      <IconImage
+        icon={{
+          id: 'my-own-suite-mark',
+          name: 'My Own Suite',
+          source: 'library',
+        }}
+        x={0}
+        y={-size / 2}
+        size={size}
+        instance="brand-mos"
+      />
+      <text x={size + gap} y={noteBaseline} className="rm-text rm-brand-note">
+        {BRAND_NOTE}
+      </text>
+      <text
+        x={size + gap}
+        y={noteBaseline + lineGap}
+        className="rm-text rm-brand"
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
 
 const CATEGORY_ICON_COMPONENTS: Record<CategoryIconId, LucideIcon> = {
   home: HousePlug,
