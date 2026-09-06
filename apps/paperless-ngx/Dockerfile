@@ -1,5 +1,5 @@
 # Paperless-ngx 3.0.5.
-FROM ghcr.io/paperless-ngx/paperless-ngx@sha256:65a4cabf0169ea7fbd90ab7bb28ba3f8b5909613635acda1a03ad606f34b456b
+FROM ghcr.io/paperless-ngx/paperless-ngx@sha256:49eba766581b9134cfa6b584b9eb718355fb9cfbd44b2a7c9c72a427d4891648
 
 # The upstream image ships Tesseract data for eng, deu, fra, ita and spa only.
 # PAPERLESS_OCR_LANGUAGES installs further languages at every container start,
