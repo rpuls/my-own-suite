@@ -2632,8 +2632,22 @@
 }
 
 .suite-drive-item {
+  position: relative;
   display: grid;
   gap: var(--mos-space-2);
+}
+
+/* The whole card is one button, so a menu cannot be nested inside it. It sits
+   over the card's top-right corner instead, and the card reserves the width so
+   the selected check and long addresses stop short of it. */
+.suite-drive-actions {
+  position: absolute;
+  top: var(--mos-space-3);
+  right: var(--mos-space-3);
+}
+
+.suite-drive-item:has(.suite-drive-actions) .suite-drive-select {
+  padding-right: calc(2.75rem + var(--mos-space-5));
 }
 
 .suite-drive-select {

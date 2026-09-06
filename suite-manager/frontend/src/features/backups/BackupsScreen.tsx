@@ -417,10 +417,12 @@ function DestinationItem({ busy, destination, onDisconnect, onEdit, onMount, onS
     </button>
 
     {destination.kind === 'object'
-      ? <ActionMenu ariaLabel="Storage connection actions" disabled={Boolean(busy) || running} items={[
-          { label: 'Edit connection', onSelect: onEdit },
-          { label: 'Disconnect', onSelect: onDisconnect },
-        ]} />
+      ? <div className="suite-drive-actions">
+          <ActionMenu ariaLabel="Storage connection actions" disabled={Boolean(busy) || running} items={[
+            { label: 'Edit connection', onSelect: onEdit },
+            { label: 'Disconnect', onSelect: onDisconnect },
+          ]} />
+        </div>
       : !destination.ready && destination.canMount
         ? <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={onMount} type="button">
             {busy === `mount:${destination.id}` ? 'Mounting...' : 'Mount'}
