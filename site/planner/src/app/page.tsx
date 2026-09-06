@@ -1829,7 +1829,7 @@ function DesignInspector({
         />
       </section>
       <section className="inspector-section">
-        <p className="eyebrow">SOCIAL FOOTER</p>
+        <p className="eyebrow">EXPORT FOOTER</p>
         <SwitchRow
           label="My Own Suite mark"
           description="Invites others to plan their own journey."
@@ -1853,7 +1853,8 @@ function DesignInspector({
           </Field>
         )}
         <p className="tiny-note">
-          The footer mark appears on tall social canvases only.
+          The mark and website label sit in the bottom-right corner of every
+          export.
         </p>
       </section>
       <section className="inspector-section advanced-section">

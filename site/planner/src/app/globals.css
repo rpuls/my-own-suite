@@ -731,6 +731,8 @@ select:focus {
 .current-icon button {
   width: 17px;
   height: 17px;
+  display: grid;
+  place-items: center;
   padding: 0;
   border: 0;
   background: transparent;
@@ -739,8 +741,12 @@ select:focus {
 .current-icon button:hover {
   color: var(--mos-color-danger);
 }
+/* Height as well as width: the glyph keeps its intrinsic 24px box otherwise
+   and hangs below the button, and inline SVG sits on the text baseline. */
 .current-icon svg {
   width: 12px;
+  height: 12px;
+  display: block;
 }
 .mos-hint {
   display: flex;
