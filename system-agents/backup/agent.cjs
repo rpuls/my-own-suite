@@ -16,7 +16,7 @@ const { BackupSystemAdapter } = require('./system-adapter.cjs');
 const { BackupScheduler } = require('./scheduler.cjs');
 const { DestinationResolver, parseObjectLocator } = require('./destinations.cjs');
 const { isObjectDestinationId, normalizeObjectDestination, ObjectDestinationRegistry, objectRepositorySpec, publicObjectDestination } = require('./object-destinations.cjs');
-const { createEngine, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage } = require('./engines/engine.cjs');
+const { createEngine, ENGINE_MISSING_MESSAGE, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage } = require('./engines/engine.cjs');
 const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-agent-client.cjs');
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
@@ -123,7 +123,12 @@ async function listDestinations() {
         : item.writable ? null : 'This drive is not writable.';
       return { ...item, kind: 'disk', notReadyReason, ready: !notReadyReason };
     });
-  return [...disks, ...await listObjectDestinations()];
+  const destinations = [...disks, ...await listObjectDestinations()];
+  // Without the engine binary nothing can be written anywhere, so it is the
+  // destination that is unusable, not the backup that failed. Reported last so
+  // a drive that is also unplugged still says the thing the owner can fix.
+  if (engine.installed()) return destinations;
+  return destinations.map((item) => ({ ...item, notReadyReason: item.notReadyReason || ENGINE_MISSING_MESSAGE, ready: false }));
 }
 // Configured buckets are destinations whether or not they answer right now: an
 // owner whose connection is down has to be able to see what they connected and

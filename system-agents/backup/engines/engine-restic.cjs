@@ -18,6 +18,11 @@ const path = require('node:path');
 const { execFileSync, spawn } = require('node:child_process');
 
 const ENGINE_BINARY_DIR = '/usr/local/libexec/mos';
+// Named once because it is both what a started job fails with and what every
+// destination reports before one is started: a machine without the engine has
+// no usable destination, and the owner should read that on the screen rather
+// than discover it from a failed backup.
+const ENGINE_MISSING_MESSAGE = 'The backup storage engine is not installed on this machine. Run a platform update to install it, then try again.';
 const REPOSITORY_KEY_FILENAME = 'engine-key';
 const DEFAULT_TIMEOUT_MS = 3_600_000;
 // Reaching a bucket must answer while an owner is still looking at the dialog.
@@ -171,7 +176,7 @@ class ResticEngine {
 
   assertInstalled() {
     if (this.installed()) return;
-    throw new Error('The backup storage engine is not installed on this machine. Run a platform update to install it, then try again.');
+    throw new Error(ENGINE_MISSING_MESSAGE);
   }
 
   cacheDir() { return path.join(this.agentStateDir, 'engine-cache', this.name); }
@@ -477,6 +482,7 @@ class ResticEngine {
 module.exports = {
   DATA_TIMEOUT_MS,
   ENGINE_BINARY_DIR,
+  ENGINE_MISSING_MESSAGE,
   ensureRepositoryKey,
   maskSecrets,
   PROBE_TIMEOUT_MS,

@@ -18,7 +18,7 @@ Rules for editing:
 - When a theme's gate is met, delete the theme and record the contract in `docs/decisions.md`.
 
 Consolidated 2026-07-30 from `pre-beta-checklist.md`, `beta-main-cutover-checklist.md`,
-`backup-restore-reliability-plan.md`, and the app-package refactor plan. Current release: 0.18.0.
+`backup-restore-reliability-plan.md`, and the app-package refactor plan. Current release: 0.19.0.
 
 ---
 
@@ -207,28 +207,6 @@ on its own: machines that install but will not boot, and reaching the suite once
 A flashable image that installs an OS and then runs a root shell script is the highest-trust artifact
 the project ships, which is what makes **E3** load-bearing rather than aspirational.
 
-### J. Configuration an owner can reach
-
-**Gate:** an owner can change an installed app's configuration from Suite Manager — both the settings
-MOS asked for at install and the ones it never knew existed — without SSH, and without a wrong value
-leaving the app dead.
-
-Config is captured once, at install, and never again. There is no reconfigure path of any kind, so
-correcting a mistyped time zone means reinstalling, and anything the package did not think to ask for
-is unreachable except by editing generated compose over SSH. The wall a tester actually hits is
-Paperless and a Microsoft mailbox: Outlook consumer IMAP is OAuth-only, which needs two upstream
-environment variables MOS has no reason to know about.
-
-- **J1 — Custom environment variables per installed app.** An app-agnostic escape hatch, behind
-  technical controls in a per-app settings dialog, never in the install flow — the values cannot exist
-  before the app has a URL. Owner-set names are rejected on collision with MOS-managed ones rather
-  than silently losing, and a change that fails its health probe rolls back to the previous
-  environment automatically. Recurring variables graduate into package setup fields; the hatch is for
-  what MOS does not yet know. *(Medium)*
-- **J2 — Re-editable setup fields after install.** The same dialog, holding what the package asked for
-  at install so it can be corrected without a reinstall. Needs the secret rows to round-trip without
-  being re-entered, which is the reason it is not folded into **J1**. *(Medium)*
-
 ---
 
 ## Alpha gate — the bar before MOS is called an alpha
@@ -373,9 +351,6 @@ the update or install path requires SSH.
 
 ## Later — Bets and deferred
 
-- **L1 — Restore the shared SMTP relay.** A MOS1 capability (v0.9.0) absent in MOS2; apps half-work
-  without outbound mail — Vaultwarden hints at it, Seafile notifications are off. Relay presets only,
-  explicitly **not** a mail server. *(Medium)*
 - **L3 — Communicate capacity in-product.** See **OQ2**. Folds in resource estimation/preflight for
   Immich, Seafile, and ONLYOFFICE. *(Medium)*
 - **L4 — One proven local VM/filesystem snapshot integration.** Fast same-machine rollback; never a
@@ -477,6 +452,13 @@ Owner decisions. Future agents and reviews should not resurface these.
   the household" currently means sharing the credential that can run code as root. That is an access
   fix, not the start of a user system.
 - **Do not chase app-count parity, a DNS-provider matrix, or monitoring graphs.**
+- **Re-editable setup fields after install** — declined, with a named condition. Package setup fields
+  are seed values most apps read once at first boot; the manifest cannot say which, and some feed two
+  services at once, so an edit leaves an app healthy but unable to reach its own data and the health
+  probe does not catch it. They are rendered as facts, and correcting one means reinstalling. Reopen
+  only when a manifest can declare when a field is read, which is a generation event
+  (`docs/decisions.md`, 2026-08-30). The app-agnostic escape hatch for what MOS never knew to ask
+  shipped separately as owner environment variables.
 
 ---
 

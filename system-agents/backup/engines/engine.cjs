@@ -12,7 +12,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { ResticEngine } = require('./engine-restic.cjs');
+const { ENGINE_MISSING_MESSAGE, ResticEngine } = require('./engine-restic.cjs');
 
 const ENGINE_NAME = 'restic';
 const BACKUPS_DIRNAME = 'MOS-backups';
@@ -85,6 +85,7 @@ module.exports = {
   BACKUPS_DIRNAME,
   backupsRoot,
   createEngine,
+  ENGINE_MISSING_MESSAGE,
   ENGINE_NAME,
   readRepositoryDescriptor,
   REPOSITORY_DIRNAME,
