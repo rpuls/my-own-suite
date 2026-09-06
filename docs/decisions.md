@@ -4,6 +4,25 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-09-06: A Bucket Is A Destination, Not A Subsystem — restic Speaks S3, And MOS Speaks None
+
+Decision: An object-storage destination is a stored connection (endpoint, bucket, optional folder, key pair, optional region) that resolves to a restic repository at `s3:<endpoint>/<bucket>/<folder>/MOS-backups/repository`. **MOS implements no part of the S3 protocol.** All bucket traffic is restic's, credentials reach it through `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` in its environment and never on its command line, and they are stored root-only in the backup agent's state directory, which `managedStateTargets` classifies machine-local and never backs up.
+
+A drive and a bucket are the same thing to everything above `system-agents/backup/destinations.cjs`: both answer whether they are there, how much room is left, open a repository, and list, read, write or remove a restore point. The pipeline, the schedule, retention and the delete job were not taught about object storage.
+
+Reason: A request signer written here would be a second, far less exercised implementation of the one detail that must be exactly right for every provider, and it would need its own retry, redirect and error-code handling. restic's S3 backend already works across AWS, Backblaze B2, Wasabi, R2, Tigris, Garage, Ceph and MinIO. The cost of that choice is that MOS cannot put a plain file next to the repository, which is what the next decision follows from.
+
+Consequences:
+
+- **A restore point's manifest is a snapshot in the repository, not a file beside it.** On a drive it stays a checksummed sidecar exactly as before; in a bucket the manifest and the owner's note are stored with `restic backup --stdin`, tagged `mosrole:manifest` and `mosrole:note` alongside `mosjob:<id>`. They inherit the repository's own authentication rather than a checksum stored next to what it protects, and one `forget` removes a restore point whole. Nothing migrates: drive layouts are untouched.
+- **Listing a bucket costs network, so a bucket keeps a local index.** Manifests never change once written, which is what makes the index safe between refreshes; only the snapshot listing is re-read, and a manifest whose snapshot id is unchanged is never fetched again. The index is a cache and never the authority — deleting it rebuilds it from the bucket, which is also how a replacement machine would find backups it never wrote.
+- **A locator is no longer always a path.** A restore point in a bucket is named `object:<id>#<jobId>`. The wire field stays `backupPath`, because job records and the restore journal on installed machines already carry that name.
+- **No free-space precheck, and no liveness proof before the manifest.** Object storage sells what is stored rather than reserving it, so there is no number to refuse a backup against; the provider refuses a write that is genuinely over a limit. A drive must be proved still mounted before its manifest is written, because the directory outlives the mount and the write would silently land on the system disk — a bucket has no such shadow, so probing again there would let one dropped packet discard a backup that had already succeeded.
+- **Each destination is an independent repository.** Backing up to a drive and to a bucket is two backup runs producing two isolated copies, not a mirror; nothing replicates one into the other.
+- **The key still never leaves the machine.** This is the decision's sharp edge: offsite storage is exactly the case where the server is gone, and until the recovery-key lifecycle exists (roadmap **A3**) a bucket's backups can be restored by the machine that wrote them and by nothing else. The connect dialog says so.
+
+Verified 2026-09-06 against MinIO and against a real third-party provider (Tigris) from the lab VM: connect, first backup, integrity check reading every snapshot back, note edit, deduplicated second backup, delete with space reclaimed, a scheduled backup marking itself automatic, index rebuilt from the bucket after being wiped, and a **whole-suite restore from the bucket** that passed verification and removed a marker planted after the backup was taken.
+
 ## 2026-09-06: The Backup Schedule Is The Agent's Clock, And Retention Only Prunes What The Schedule Made
 
 Decision: Automatic backups are driven by a timer inside `mos-backup-agent` (`system-agents/backup/scheduler.cjs`), not by a systemd timer unit and not by Suite Manager. The schedule is one root-owned file, `schedule.json`, in the agent state directory; the agent exposes it on `/v1/status` and takes changes on `POST /v1/schedule`. A due schedule calls the same `createJob('backup', …)` an owner's click calls, then watches the resulting job like any other caller. Times are wall-clock times in a zone stored with the schedule, and each restore point records `backup.initiator` so a scheduled backup is distinguishable from one an owner took.

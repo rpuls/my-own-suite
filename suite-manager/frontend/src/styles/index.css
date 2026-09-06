@@ -2789,6 +2789,12 @@
   flex-wrap: wrap;
 }
 
+.suite-backup-header-actions {
+  display: flex;
+  gap: var(--mos-space-2);
+  flex-wrap: wrap;
+}
+
 .suite-empty-state {
   display: grid;
   gap: var(--mos-space-2);

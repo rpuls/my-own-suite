@@ -833,6 +833,41 @@ function createMOSServer({
         return;
       }
 
+      // Storage credentials pass straight through to the agent, which is the
+      // only component that stores them, and are never held or logged here.
+      // Like the schedule route this forwards by field rather than the body, so
+      // the agent is never handed something the screen did not ask for.
+      if (request.method === 'POST' && (url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/object` || url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/object/test`)) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        const input = {
+          accessKeyId: String(body.accessKeyId || ''),
+          bucket: String(body.bucket || ''),
+          endpoint: String(body.endpoint || ''),
+          folder: String(body.folder || ''),
+          label: String(body.label || ''),
+          region: String(body.region || ''),
+          secretAccessKey: String(body.secretAccessKey || ''),
+          ...(body.id ? { id: String(body.id) } : {}),
+        };
+        const testing = url.pathname.endsWith('/test');
+        jsonResponse(response, 200, testing ? await backupAgent.testObjectDestination(input) : await backupAgent.connectObjectDestination(input));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/object/remove`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.disconnectObjectDestination({ destinationId: String(body.destinationId || '') }));
+        return;
+      }
+
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/start`) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });

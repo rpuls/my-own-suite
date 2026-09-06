@@ -14,7 +14,9 @@ const { execFile, execFileSync, spawn } = require('node:child_process');
 const { BackupAgentCore, isRestorePointPath, restorePublicIdentity, sha256, UNREADABLE_LEGACY_BACKUP, validatePackagePayloads } = require('./agent-core.cjs');
 const { BackupSystemAdapter } = require('./system-adapter.cjs');
 const { BackupScheduler } = require('./scheduler.cjs');
-const { createEngine, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage, restorePointsDir } = require('./engines/engine.cjs');
+const { DestinationResolver, parseObjectLocator } = require('./destinations.cjs');
+const { isObjectDestinationId, normalizeObjectDestination, ObjectDestinationRegistry, objectRepositorySpec, publicObjectDestination } = require('./object-destinations.cjs');
+const { createEngine, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage } = require('./engines/engine.cjs');
 const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-agent-client.cjs');
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
@@ -111,7 +113,65 @@ async function listDestinations() {
     for (const child of device.children || []) visit(child, external);
   }
   for (const device of lsblk?.blockdevices || []) visit(device);
-  return [...candidates.values()].filter((item) => item.mountState === 'mounted' || item.canMount === true);
+  const disks = [...candidates.values()].filter((item) => item.mountState === 'mounted' || item.canMount === true)
+    // `ready` is the single question every destination answers, so nothing
+    // above this has to know that one kind proves itself by being mounted and
+    // another by answering a request.
+    .map((item) => {
+      const notReadyReason = item.mountState !== 'mounted'
+        ? item.mountBlockedReason || 'This drive is not mounted.'
+        : item.writable ? null : 'This drive is not writable.';
+      return { ...item, kind: 'disk', notReadyReason, ready: !notReadyReason };
+    });
+  return [...disks, ...await listObjectDestinations()];
+}
+// Configured buckets are destinations whether or not they answer right now: an
+// owner whose connection is down has to be able to see what they connected and
+// why it is not usable, which dropping it from the list would take away.
+async function listObjectDestinations() {
+  const entries = [];
+  for (const destination of destinationResolver.objectDestinations()) {
+    const health = await destination.health().catch(() => ({ ready: false, reason: 'MOS could not reach this storage.', usage: null }));
+    entries.push({
+      ...publicObjectDestination(destination.record),
+      availableBytes: null,
+      canMount: false,
+      checkedAt: health.checkedAt || null,
+      kind: 'object',
+      mountPath: null,
+      notReadyReason: health.reason || null,
+      ready: health.ready === true,
+      repository: health.usage || null,
+      sizeBytes: null,
+      storageKind: 'object',
+      writable: true,
+    });
+  }
+  return entries;
+}
+// Answers three different things an owner needs told apart: MOS reached the
+// bucket and it already holds backups, MOS reached it and it is empty, or MOS
+// could not get in and here is what the provider said.
+async function testObjectDestination(input) {
+  const record = normalizeObjectDestination(input, input.id ? objectRegistry.get(String(input.id)) : null);
+  const spec = objectRepositorySpec(record);
+  const probe = await engine.probeRepository(spec);
+  if (probe.state === 'unreachable') return { message: probe.message, ok: false };
+  if (probe.state === 'absent') return { message: 'Connected. This bucket holds no MOS backups yet; the first backup creates the encrypted store in it.', ok: true, restorePoints: 0 };
+  // Counted without touching the stored index, because this may be a
+  // connection that has not been saved and must leave nothing behind.
+  let restorePoints = null;
+  try {
+    const snapshots = await engine.listSnapshots({ repository: { engineName: engine.name, localPath: null, ...spec } });
+    restorePoints = snapshots.filter((snapshot) => (snapshot.tags || []).includes('mosrole:manifest')).length;
+  } catch {}
+  return {
+    message: restorePoints === null
+      ? 'Connected. This bucket already holds a MOS backup store.'
+      : `Connected. This bucket already holds ${restorePoints} MOS restore point${restorePoints === 1 ? '' : 's'}, which will be listed here.`,
+    ok: true,
+    restorePoints,
+  };
 }
 function availableBytes(dir) {
   try { const stat = fs.statfsSync(dir); return stat.bavail * stat.bsize; } catch { return null; }
@@ -129,14 +189,14 @@ async function mountDestination(destinationId) {
   if (!mounted) throw new Error('The drive was mounted, but the backup agent could not verify it.');
   return mounted;
 }
-// A destination is a mount path; the directory outlives the mount, so path
-// checks alone would happily aim a backup at the system disk after the drive
-// disappears. Only a currently mounted, writable destination is acceptable.
-async function assertMountedDestination(destinationId) {
-  const mounted = (await listDestinations()).find((item) => item.mountState === 'mounted' && item.mountPath === destinationId);
-  if (!mounted) throw new Error('The selected backup drive is not mounted anymore. Reconnect it, click Refresh drives, and try again.');
-  if (!mounted.writable) throw new Error('The selected backup drive is not writable.');
-  return mounted;
+// A destination id names either a mount path or a configured bucket, and
+// nothing else. A path that is not a mount path is refused because the
+// directory outlives the mount: without this, a backup aimed at a drive that
+// has been unplugged writes silently onto the system disk.
+function normalizeDestinationId(candidate) {
+  const value = String(candidate || '');
+  if (isObjectDestinationId(value)) return objectRegistry.get(value) ? value : null;
+  return normalizeDestination(value);
 }
 function listJobFiles() {
   ensureDir(jobsDir);
@@ -190,14 +250,14 @@ function createJob(kind, payload) {
   if (interrupted && kind !== 'validate') throw new Error(`A restore did not complete (stopped during "${interrupted.phase}"). Acknowledge it before starting new backup or restore work; the pre-restore rescue copy is at ${interrupted.rescuePath || 'the backup agent state directory'}.`);
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
-  const destinationId = kind === 'backup' ? normalizeDestination(payload.destinationId) : null;
-  const backupPath = kind === 'restore' || kind === 'validate' || kind === 'delete' ? normalizeBackupPath(payload.backupPath) : null;
+  const destinationId = kind === 'backup' ? normalizeDestinationId(payload.destinationId) : null;
+  const backupPath = kind === 'restore' || kind === 'validate' || kind === 'delete' ? normalizeBackupLocator(payload.backupPath) : null;
   const note = kind === 'backup' ? String(payload.note || '').trim().slice(0, 500) : '';
-  if (kind === 'backup' && !destinationId) throw new Error('Choose a mounted destination under /media, /mnt, or /run/media.');
-  if ((kind === 'restore' || kind === 'validate' || kind === 'delete') && !backupPath) throw new Error('Choose a detected backup from mounted storage.');
+  if (kind === 'backup' && !destinationId) throw new Error('Choose a connected drive or a storage connection to back up to.');
+  if ((kind === 'restore' || kind === 'validate' || kind === 'delete') && !backupPath) throw new Error('Choose a detected backup from a connected destination.');
   // A leftover backup in the retired tar format can be deleted but never read,
   // so the refusal happens here rather than after a job has been queued.
-  if ((kind === 'restore' || kind === 'validate') && !isRestorePointPath(backupPath)) throw new Error(UNREADABLE_LEGACY_BACKUP);
+  if ((kind === 'restore' || kind === 'validate') && !isRestorePointPath(backupPath) && !parseObjectLocator(backupPath)) throw new Error(UNREADABLE_LEGACY_BACKUP);
   if (kind === 'restore' && payload.confirmation !== 'RESTORE') throw new Error('Type RESTORE to confirm this destructive restore.');
   const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator: payload.initiator === 'schedule' ? 'schedule' : 'owner', kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(note ? { note } : {}) };
   writeJson(jobPath(id), job);
@@ -205,29 +265,27 @@ function createJob(kind, payload) {
   spawn(process.execPath, [__filename, '--worker', jobPath(id)], { cwd: repoDir, detached: true, env: process.env, stdio: 'ignore' }).unref();
   return job;
 }
-// A locator names a restore point: its manifest file inside the destination's
-// restore-points directory. A directory holding a retired tar-format backup
-// still resolves, because deleting one is the only thing MOS can still do with
-// it. Either way the locator must resolve under mounted storage.
-function normalizeBackupPath(candidate) {
-  const resolved = path.resolve(String(candidate || ''));
+// A locator names one backup. On a drive it is the manifest file inside the
+// destination's restore-points directory, and a directory holding a retired
+// tar-format backup still resolves because deleting one is the only thing MOS
+// can still do with it; in a bucket it is the storage connection and the
+// restore point's id. Either way it must resolve to a destination this machine
+// has, which is what stops a locator from the wire naming anything else.
+//
+// The field is still called backupPath on the wire and in job records: those
+// records and the restore journal exist on installed machines, and renaming
+// what they contain would be a migration with nothing to show for it.
+function normalizeBackupLocator(candidate) {
+  const value = String(candidate || '');
+  const object = parseObjectLocator(value);
+  if (object) return objectRegistry.get(object.destinationId) ? value : null;
+  const resolved = path.resolve(value);
   if (!destinationRoots.some((root) => resolved.startsWith(`${root}${path.sep}`))) return null;
   if (isRestorePointPath(resolved)) {
     if (!fs.existsSync(resolved) || !fs.existsSync(`${resolved}.sha256`)) return null;
     return resolved;
   }
   return fs.existsSync(path.join(resolved, 'manifest.json')) ? resolved : null;
-}
-function notePathFor(backupPath) {
-  return isRestorePointPath(backupPath) ? `${backupPath}.note.txt` : path.join(backupPath, 'note.txt');
-}
-// An operator note is a sidecar file, never part of the checksummed manifest —
-// it annotates this destination's copy without touching backup integrity.
-function readNote(backupPath) {
-  try {
-    const note = fs.readFileSync(notePathFor(backupPath), 'utf8').trim();
-    return note || null;
-  } catch { return null; }
 }
 function treeBytes(root) {
   let total = 0;
@@ -243,36 +301,57 @@ function treeBytes(root) {
 // Restore points are the only backups MOS can read. Backups left on a drive in
 // the retired tar format are still listed, marked unrestorable: they occupy
 // real space, and an owner who cannot see them cannot reclaim it.
-function listBackups(destinations) {
+async function listBackups(destinations) {
   const backups = [];
-  for (const destination of destinations) {
-    if (!destination.mountPath) continue;
-    const root = path.join(destination.mountPath, 'MOS-backups');
-    if (!fs.existsSync(root)) continue;
-    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
-      const legacyPath = path.join(root, entry.name);
-      try {
-        const manifest = readJson(path.join(legacyPath, 'manifest.json'));
-        backups.push({ appCount: manifest.contents?.apps?.length || 0, createdAt: manifest.backup?.createdAt || null, destinationId: destination.id, destinationLabel: destination.label, encrypted: false, id: manifest.backup?.id || entry.name, kind: 'legacy-bundle', note: readNote(legacyPath), path: legacyPath, restorable: false, schemaVersion: manifest.backup?.schemaVersion || null, sizeBytes: treeBytes(legacyPath), sourceCommit: manifest.source?.commit || null, sourceVersion: manifest.source?.version || null, volumeCount: manifest.contents?.volumes?.length || 0 });
-      } catch {}
+  for (const entry of destinations) {
+    if (entry.kind === 'disk' && !entry.mountPath) continue;
+    if (entry.kind === 'object' && !entry.ready) continue;
+    let destination;
+    try {
+      destination = destinationResolver.resolve(entry.id);
+    } catch {
+      continue;
     }
-    const descriptor = readRepositoryDescriptor(destination.mountPath);
-    const pointsDir = restorePointsDir(destination.mountPath);
-    if (!fs.existsSync(pointsDir)) continue;
-    for (const name of fs.readdirSync(pointsDir)) {
-      if (!name.endsWith('.json')) continue;
-      const manifestPath = path.join(pointsDir, name);
-      try {
-        if (!fs.existsSync(`${manifestPath}.sha256`)) continue;
-        const manifest = readJson(manifestPath);
-        const volumes = manifest.contents?.volumes || [];
-        const rawBytes = (manifest.contents?.stateRawBytes || 0) + volumes.reduce((sum, volume) => sum + (volume.rawBytes || 0), 0);
-        backups.push({ appCount: manifest.contents?.apps?.length || 0, automatic: manifest.backup?.initiator === 'schedule', createdAt: manifest.backup?.createdAt || null, destinationId: destination.id, destinationLabel: destination.label, encrypted: true, engineName: manifest.backup?.engine || descriptor?.engineName || null, id: manifest.backup?.id || path.basename(name, '.json'), kind: 'restore-point', note: readNote(manifestPath), path: manifestPath, repositoryId: descriptor?.repositoryId || null, restorable: true, schemaVersion: manifest.backup?.schemaVersion || null, sizeBytes: rawBytes, sourceCommit: manifest.source?.commit || null, sourceVersion: manifest.source?.version || null, volumeCount: volumes.length });
-      } catch {}
+    if (entry.mountPath) backups.push(...legacyBundlesOn(entry));
+    const descriptor = entry.mountPath ? readRepositoryDescriptor(entry.mountPath) : null;
+    // A destination that will not answer contributes nothing rather than
+    // failing the whole listing: one unreachable bucket must not hide the
+    // backups on a drive that is plugged in right now.
+    let points = [];
+    try {
+      points = await destination.points.summaries();
+    } catch {}
+    for (const point of points) {
+      backups.push({
+        ...point,
+        destinationId: entry.id,
+        destinationLabel: entry.label,
+        encrypted: true,
+        engineName: point.engineName || descriptor?.engineName || ENGINE_NAME,
+        kind: 'restore-point',
+        path: point.locator,
+        repositoryId: descriptor?.repositoryId || entry.repository?.repositoryId || null,
+        restorable: true,
+      });
     }
   }
   return backups.sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime());
+}
+function legacyBundlesOn(destination) {
+  const found = [];
+  const root = path.join(destination.mountPath, 'MOS-backups');
+  if (!fs.existsSync(root)) return found;
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    const legacyPath = path.join(root, entry.name);
+    try {
+      const manifest = readJson(path.join(legacyPath, 'manifest.json'));
+      let note = null;
+      try { note = fs.readFileSync(path.join(legacyPath, 'note.txt'), 'utf8').trim() || null; } catch {}
+      found.push({ appCount: manifest.contents?.apps?.length || 0, createdAt: manifest.backup?.createdAt || null, destinationId: destination.id, destinationLabel: destination.label, encrypted: false, id: manifest.backup?.id || entry.name, kind: 'legacy-bundle', note, path: legacyPath, restorable: false, schemaVersion: manifest.backup?.schemaVersion || null, sizeBytes: treeBytes(legacyPath), sourceCommit: manifest.source?.commit || null, sourceVersion: manifest.source?.version || null, volumeCount: manifest.contents?.volumes?.length || 0 });
+    } catch {}
+  }
+  return found;
 }
 function updateJob(file, mutator) {
   const job = readJson(file);
@@ -366,45 +445,47 @@ async function reconcileRestoredApps(logMessage) {
 }
 
 // What the schedule needs to know about a destination's restore points: when
-// each was taken and whether the schedule itself took it. Read straight from
-// the manifests rather than from listBackups, because retention must not
+// each was taken and whether the schedule itself took it. Asked of the
+// destination rather than taken from listBackups, because retention must not
 // depend on which drives happen to be mounted.
-function scheduledRestorePoints(destinationId) {
-  const points = [];
-  const pointsDir = restorePointsDir(destinationId);
-  if (!fs.existsSync(pointsDir)) return points;
-  for (const name of fs.readdirSync(pointsDir)) {
-    if (!name.endsWith('.json')) continue;
-    const manifestPath = path.join(pointsDir, name);
-    try {
-      if (!fs.existsSync(`${manifestPath}.sha256`)) continue;
-      const manifest = readJson(manifestPath);
-      points.push({ automatic: manifest.backup?.initiator === 'schedule', createdAt: manifest.backup?.createdAt || null, path: manifestPath });
-    } catch {}
-  }
-  return points;
+async function scheduledRestorePoints(destinationId) {
+  const points = await destinationResolver.resolve(destinationId).points.summaries();
+  return points.map((point) => ({ automatic: point.automatic, createdAt: point.createdAt, path: point.locator }));
 }
+
+const engine = createEngine({ agentStateDir });
+const objectRegistry = new ObjectDestinationRegistry({ agentStateDir });
+const backupSystem = new BackupSystemAdapter({ agentStateDir, repoDir, stateDir, stateRoot });
+const destinationResolver = new DestinationResolver({ agentStateDir, engine, objectRegistry, system: backupSystem });
 
 const scheduler = new BackupScheduler({
   agentStateDir,
   createJob: (kind, payload) => createJob(kind, payload),
-  destinations: async () => (await listDestinations()).filter((destination) => destination.mountState === 'mounted'),
+  destinations: async () => (await listDestinations()).filter((destination) => destination.ready),
   log: (message) => process.stdout.write(`[mos-backup-agent] ${message}\n`),
   // Reconciled first: a worker killed by a power loss leaves its job file
   // saying "running" until something checks, and the scheduler must not wait
   // on that forever just because nobody had the Backups screen open.
   readJob: (id) => { reconcileCurrentJob(); try { return readJson(jobPath(id)); } catch { return null; } },
-  repositoryId: (destinationId) => (destinationId ? readRepositoryDescriptor(destinationId)?.repositoryId || null : null),
+  // A drive is identified by the descriptor MOS wrote beside its repository; a
+  // bucket by the repository's own id, which the connection settings can be
+  // re-entered around without becoming a different destination.
+  repositoryId: (destinationId) => {
+    if (!destinationId) return null;
+    if (isObjectDestinationId(destinationId)) return destinationResolver.resolve(destinationId).descriptorRepositoryId();
+    return readRepositoryDescriptor(destinationId)?.repositoryId || null;
+  },
   restorePoints: scheduledRestorePoints,
 });
 
 const core = new BackupAgentCore({
   apps: { installedInstances: installedAppInstances, reconcile: reconcileRestoredApps },
-  engine: createEngine({ agentStateDir }),
+  destinations: destinationResolver,
+  engine,
   jobs: { log, stage, update: updateJob },
   packages: { inventory: packageBackupInventory, validatePayloads: validatePackagePayloads },
   paths: { agentStateDir, stateDir, stateRoot },
-  system: new BackupSystemAdapter({ agentStateDir, repoDir, stateDir, stateRoot }),
+  system: backupSystem,
 });
 
 if (require.main === module && process.argv[2] === '--worker') {
@@ -436,8 +517,8 @@ if (require.main === module && process.argv[2] === '--worker') {
           destination.mountPath ? { ...destination, repository: repositoryUsage(destination.mountPath) } : destination
         ));
         respond(response, 200, {
-          backups: listBackups(destinations),
-          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['list', 'mount'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
+          backups: await listBackups(destinations),
+          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['connect-object', 'list', 'mount'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
           currentJob: summarizeJob(reconcileCurrentJob()),
           destinations,
           interruptedRestore: core.interruptedRestore(),
@@ -448,10 +529,38 @@ if (require.main === module && process.argv[2] === '--worker') {
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/destinations/mount') { respond(response, 200, { destination: await mountDestination((await readBody(request)).destinationId) }); return; }
+      // Reaching the bucket before anything is stored is the whole point of the
+      // test: an owner who mistyped a key finds out here, from the provider's
+      // own answer, rather than from a backup that fails at three in the
+      // morning. Nothing is written — a repository is created by the first
+      // backup, not by connecting.
+      if (request.method === 'POST' && url.pathname === '/v1/destinations/object/test') {
+        respond(response, 200, { result: await testObjectDestination(await readBody(request)) });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/destinations/object') {
+        const record = objectRegistry.save(await readBody(request));
+        destinationResolver.forget(record.id);
+        respond(response, 200, { destination: publicObjectDestination(record) });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/destinations/object/remove') {
+        const body = await readBody(request);
+        // Disconnecting forgets how to reach the bucket. It never deletes what
+        // is in it: the backups stay, and reconnecting the same bucket lists
+        // them again.
+        if (scheduler.state().destinationId === body.destinationId && scheduler.state().enabled) {
+          throw new Error('Automatic backups are set to use this storage. Turn them off or point them at another destination first.');
+        }
+        const removed = objectRegistry.remove(String(body.destinationId || ''));
+        destinationResolver.forget(removed.id);
+        respond(response, 200, { destination: publicObjectDestination(removed) });
+        return;
+      }
       if (request.method === 'POST' && url.pathname === '/v1/backups') {
         const body = await readBody(request);
-        const destination = normalizeDestination(body.destinationId);
-        if (destination) await assertMountedDestination(destination);
+        const destinationId = normalizeDestinationId(body.destinationId);
+        if (destinationId) await destinationResolver.resolve(destinationId).assertAvailable();
         respond(response, 202, { job: createJob('backup', body) });
         return;
       }
@@ -462,12 +571,19 @@ if (require.main === module && process.argv[2] === '--worker') {
       }
       if (request.method === 'POST' && url.pathname === '/v1/backups/note') {
         const body = await readBody(request);
-        const backupPath = normalizeBackupPath(body.backupPath);
-        if (!backupPath) { respond(response, 400, { code: 'INVALID_BACKUP', error: 'Choose a detected backup from mounted storage.' }); return; }
+        const locator = normalizeBackupLocator(body.backupPath);
+        if (!locator) { respond(response, 400, { code: 'INVALID_BACKUP', error: 'Choose a detected backup from a connected destination.' }); return; }
         const note = String(body.note || '').trim().slice(0, 500);
-        const notePath = notePathFor(backupPath);
-        if (note) fs.writeFileSync(notePath, `${note}\n`, 'utf8');
-        else fs.rmSync(notePath, { force: true });
+        const { destination, kind, pointId } = core.resolveBackup(locator);
+        // A retired-format backup keeps its note as a file inside its own
+        // folder, which is where the MOS that wrote it put one.
+        if (kind === 'legacy-bundle') {
+          const notePath = path.join(locator, 'note.txt');
+          if (note) fs.writeFileSync(notePath, `${note}\n`, 'utf8');
+          else fs.rmSync(notePath, { force: true });
+        } else {
+          await destination.points.writeNote(pointId, note);
+        }
         respond(response, 200, { note: note || null });
         return;
       }

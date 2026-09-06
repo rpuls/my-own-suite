@@ -9,7 +9,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { ensureRepositoryKey } = require('./engine-restic.cjs');
+const { ensureRepositoryKey, maskSecrets, repositoryProbeCause, repositoryProbeVerdict } = require('./engine-restic.cjs');
 const { assertRepositoryEngine, createEngine, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage, writeRepositoryDescriptor } = require('./engine.cjs');
 const { assetFor, downloadUrl, ENGINE_RELEASES } = require('./engine-install.cjs');
 const { managedStateTargets } = require('../../../infrastructure/persistent-state.cjs');
@@ -99,4 +99,67 @@ test('the engine build is pinned to an immutable version and checksum', () => {
     assert.ok(!/latest|release\b/u.test(url.replace('/releases/', '/')));
   }
   assert.throws(() => assetFor(ENGINE_NAME, 'mips'), /No pinned/u);
+});
+
+// Verbatim output captured from restic 0.19.1 against MinIO on the lab VM.
+// These four answers differ by a word or two and mean entirely different
+// things to an owner, so they are pinned rather than paraphrased: the second
+// and third were both read as "connected, no backups here yet" before this,
+// which told someone who had mistyped a bucket name that they were set up.
+const RESTIC_S3_OUTPUT = Object.freeze({
+  missingBucket: [
+    'Stat(<config/>) returned error, retrying after 21.053409241s: Stat: The specified bucket does not exist',
+    'signal terminated received, cleaning up ',
+    'Fatal: unable to open config file: context canceled',
+  ].join('\n'),
+  noRepositoryYet: [
+    'Fatal: repository does not exist: unable to open config file: Stat: The specified key does not exist.',
+    'Is there a repository at the following location?',
+    's3:http://127.0.0.1:9100/mos-lab-backups/probe-a/MOS-backups/repository',
+  ].join('\n'),
+  refused: [
+    'Stat(<config/>) returned error, retrying after 13.430741892s: Stat: The request signature we calculated does not match the signature you provided. Check your key and signing method.',
+    'signal terminated received, cleaning up ',
+    'Fatal: unable to open config file: context canceled',
+  ].join('\n'),
+  unreachable: [
+    'Stat(<config/>) returned error, retrying after 20.909085174s: Stat: Get "http://127.0.0.1:9399/mos-lab-backups/?location=": dial tcp 127.0.0.1:9399: connect: connection refused',
+    'signal terminated received, cleaning up ',
+    'Fatal: unable to open config file: context canceled',
+  ].join('\n'),
+});
+
+test('only an empty destination is read as one MOS may create a repository in', () => {
+  assert.equal(repositoryProbeVerdict(RESTIC_S3_OUTPUT.noRepositoryYet), 'absent');
+  assert.equal(repositoryProbeCause(RESTIC_S3_OUTPUT.noRepositoryYet).cause, 'absent');
+  // Everything else must refuse, because creating a repository is a write and
+  // MOS must never answer "I could not get in" by trying to write.
+  for (const key of ['missingBucket', 'refused', 'unreachable']) {
+    assert.equal(repositoryProbeVerdict(RESTIC_S3_OUTPUT[key]), 'unreachable', key);
+  }
+  assert.equal(repositoryProbeCause(RESTIC_S3_OUTPUT.missingBucket).cause, 'missing-bucket');
+  assert.equal(repositoryProbeCause(RESTIC_S3_OUTPUT.refused).cause, 'rejected-key');
+  assert.equal(repositoryProbeCause(RESTIC_S3_OUTPUT.unreachable).cause, 'unreachable-host');
+});
+
+test('each storage failure carries a sentence naming what to fix', () => {
+  assert.match(repositoryProbeCause(RESTIC_S3_OUTPUT.missingBucket).message, /no bucket with that name/iu);
+  assert.match(repositoryProbeCause(RESTIC_S3_OUTPUT.refused).message, /rejected the access key/iu);
+  assert.match(repositoryProbeCause(RESTIC_S3_OUTPUT.unreachable).message, /could not reach that endpoint/iu);
+  assert.equal(repositoryProbeCause(RESTIC_S3_OUTPUT.noRepositoryYet).message, null);
+  assert.equal(repositoryProbeCause('something nobody predicted').cause, 'unknown');
+});
+
+// A rejected request quotes the key it was signed with, so masking is what
+// stands between an owner's secret and a diagnostics file they email to
+// someone.
+test('storage credentials are masked out of captured output by exact value', () => {
+  const secret = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY';
+  const masked = maskSecrets(`AWSAccessKeyId=AKIAIOSFODNN7EXAMPLE signature for ${secret} rejected`, [secret, 'AKIAIOSFODNN7EXAMPLE']);
+  assert.equal(masked.includes(secret), false);
+  assert.equal(masked.includes('AKIAIOSFODNN7EXAMPLE'), false);
+  assert.match(masked, /signature for •+ rejected/u);
+  // A short or empty value is left alone: blanking it would hide the failure
+  // rather than the secret.
+  assert.equal(maskSecrets('exit status 2', ['2', '']), 'exit status 2');
 });

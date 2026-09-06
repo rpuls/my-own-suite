@@ -701,6 +701,18 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
       calls.push(['schedule', input]);
       return { schedule: { enabled: true } };
     },
+    async connectObjectDestination(input) {
+      calls.push(['connect-object', input]);
+      return { destination: { id: 'object:abc123', label: input.label || 'bucket' } };
+    },
+    async disconnectObjectDestination(input) {
+      calls.push(['disconnect-object', input]);
+      return { destination: { id: input.destinationId } };
+    },
+    async testObjectDestination(input) {
+      calls.push(['test-object', input]);
+      return { result: { message: 'Connected.', ok: true } };
+    },
     async startRestore(input) {
       calls.push(['restore', input]);
       return { job: { id: 'job-restore', status: 'queued' } };
@@ -775,6 +787,37 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
     });
     assert.equal(schedule.status, 200);
 
+    // Storage credentials go to the agent, which is the only component that
+    // keeps them, and only for a signed-in owner.
+    const deniedObject = await hostRequest(baseUrl, '/suite-manager/api/backups/destinations/object', {
+      body: JSON.stringify({ accessKeyId: 'AKIA', bucket: 'b', endpoint: 'https://s3.test', secretAccessKey: 's' }),
+      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(deniedObject.status, 401);
+
+    const connected = await hostRequest(baseUrl, '/suite-manager/api/backups/destinations/object', {
+      body: JSON.stringify({ accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', folder: 'home', initiator: 'smuggled', label: 'Offsite', region: 'eu-central-1', secretAccessKey: 'super-secret-value' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(connected.status, 200);
+
+    const tested = await hostRequest(baseUrl, '/suite-manager/api/backups/destinations/object/test', {
+      body: JSON.stringify({ accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', secretAccessKey: 'super-secret-value' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(tested.status, 200);
+    assert.equal(JSON.parse(tested.body).result.ok, true);
+
+    const disconnected = await hostRequest(baseUrl, '/suite-manager/api/backups/destinations/object/remove', {
+      body: JSON.stringify({ destinationId: 'object:abc123' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(disconnected.status, 200);
+
     // Downloading and uploading a backup went with the tar formats: a backup
     // now lives in the drive's encrypted repository and is never a single file.
     const download = await hostRequest(baseUrl, `/suite-manager/api/backups/download?path=${encodeURIComponent(backupDir)}`, {
@@ -786,6 +829,9 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
       ['backup', { destinationId: '/media/backup', note: '' }],
       ['restore', { backupPath: backupDir, confirmation: 'RESTORE' }],
       ['schedule', { destinationId: '/media/backup', destinationLabel: '', enabled: true, frequency: 'daily', hour: 3, keepLast: 7, minute: 0, timeZone: 'Europe/Amsterdam', weekday: 0 }],
+      ['connect-object', { accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', folder: 'home', label: 'Offsite', region: 'eu-central-1', secretAccessKey: 'super-secret-value' }],
+      ['test-object', { accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', folder: '', label: '', region: '', secretAccessKey: 'super-secret-value' }],
+      ['disconnect-object', { destinationId: 'object:abc123' }],
     ]);
   }, { backupAgent, homeHost: 'home.test' });
 });

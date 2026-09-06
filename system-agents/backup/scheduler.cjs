@@ -17,6 +17,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { DEFAULT_SCHEDULE, dueOccurrence, nextOccurrenceAfter, normalizeSchedule, retentionVictims, systemTimeZone, timingChanged } = require('./schedule.cjs');
+const { isObjectDestinationId } = require('./object-destinations.cjs');
 
 const SCHEDULE_FILENAME = 'schedule.json';
 const TICK_INTERVAL_MS = 30_000;
@@ -25,6 +26,7 @@ const TICK_INTERVAL_MS = 30_000;
 // backup instead of claiming to still be working on it forever.
 const RETENTION_ATTEMPTS = 20;
 const DRIVE_ABSENT = 'The backup drive was not connected, so this backup has not run yet. MOS keeps checking and backs up as soon as the drive is back.';
+const STORAGE_UNREACHABLE = 'The storage bucket could not be reached, so this backup has not run yet. MOS keeps checking and backs up as soon as it answers again.';
 const SUITE_BUSY = 'Another backup or restore was running, so this backup has not started yet. MOS retries shortly.';
 
 function isActive(job) { return Boolean(job && (job.status === 'queued' || job.status === 'running')); }
@@ -144,10 +146,11 @@ class BackupScheduler {
 
   async begin(schedule, occurrence) {
     const destination = await this.scheduledDestination(schedule);
-    // A missing drive is the ordinary case for a backup disk that lives in a
-    // drawer, not a failure: the run stays owed and starts the moment the drive
-    // is back, up until the next occurrence replaces it.
-    if (!destination) return this.recordWaiting(schedule, occurrence, DRIVE_ABSENT);
+    // A destination that is not there is the ordinary case — a backup disk
+    // lives in a drawer, a home connection drops — rather than a failure: the
+    // run stays owed and starts the moment it is back, up until the next
+    // occurrence replaces it.
+    if (!destination) return this.recordWaiting(schedule, occurrence, isObjectDestinationId(schedule.destinationId) ? STORAGE_UNREACHABLE : DRIVE_ABSENT);
     if (!destination.writable) return this.recordWaiting(schedule, occurrence, 'The backup drive is connected but not writable, so this backup has not run.');
     let job = null;
     try {
@@ -196,7 +199,7 @@ class BackupScheduler {
     if (!schedule.keepLast) return this.settle(schedule, { message: 'Automatic backup completed.', status: 'succeeded' });
     let victims = [];
     try {
-      victims = retentionVictims(this.restorePoints(schedule.destinationId), schedule.keepLast);
+      victims = retentionVictims(await this.restorePoints(schedule.destinationId), schedule.keepLast);
     } catch {
       return this.settle(schedule, { message: 'Automatic backup completed.', status: 'succeeded' });
     }
@@ -219,4 +222,4 @@ class BackupScheduler {
   }
 }
 
-module.exports = { BackupScheduler, DRIVE_ABSENT, SCHEDULE_FILENAME, TICK_INTERVAL_MS };
+module.exports = { BackupScheduler, DRIVE_ABSENT, SCHEDULE_FILENAME, STORAGE_UNREACHABLE, TICK_INTERVAL_MS };
