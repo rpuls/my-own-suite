@@ -1,8 +1,13 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
+const { spawnSync } = require('node:child_process');
 const YAML = require('yaml');
 
 const {
+  assertSmokeRepoRefIsPushed,
   consoleLoginAcknowledgedFileName,
   consoleLoginFileName,
   labLinuxPassword,
@@ -11,6 +16,12 @@ const {
   resolveSeedProfile,
   resolveSmokeRepoRef,
 } = require('../../scripts/installers/render-hyperv-usb-seed.cjs');
+
+function run(command, args, options = {}) {
+  const result = spawnSync(command, args, { encoding: 'utf8', ...options });
+  if (result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed: ${result.stderr || result.stdout}`);
+  return result;
+}
 
 function writeFilesOf(rendered) {
   return YAML.parse(rendered.userData).autoinstall['user-data'].write_files || [];
@@ -168,6 +179,34 @@ test('Hyper-V USB seed works without a local installer env and without template 
 
 test('Hyper-V USB seed repo ref is explicit for branch smoke installs', () => {
   assert.equal(resolveSmokeRepoRef({ MOS_SMOKE_REPO_REF: 'feat/root-layout-smoke' }), 'feat/root-layout-smoke');
+});
+
+// The ref defaults to whatever branch happens to be checked out, and the guest
+// gets it by cloning the remote and checking it out there. A branch that exists
+// only on the build machine therefore produces an image that cannot install --
+// which is not visible until the installer has timed out ninety minutes later,
+// because the older content check resolves the ref against local git objects
+// and an unpushed branch passes it.
+test('a repo ref that was never pushed is refused before an image is built', () => {
+  const remote = path.join(os.tmpdir(), `mos-seed-remote-${process.pid}`);
+  fs.rmSync(remote, { force: true, recursive: true });
+  run('git', ['init', '--bare', '--initial-branch=staging', remote]);
+
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-seed-work-'));
+  run('git', ['init', '--initial-branch=staging', work], { cwd: work });
+  fs.writeFileSync(path.join(work, 'README.md'), 'lab');
+  run('git', ['add', '-A'], { cwd: work });
+  run('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-m', 'seed'], { cwd: work });
+  run('git', ['push', remote, 'staging'], { cwd: work });
+
+  assert.doesNotThrow(() => assertSmokeRepoRefIsPushed('staging', remote));
+  assert.throws(
+    () => assertSmokeRepoRefIsPushed('feat/only-on-this-machine', remote),
+    /does not exist there/u,
+  );
+
+  fs.rmSync(remote, { force: true, recursive: true });
+  fs.rmSync(work, { force: true, recursive: true });
 });
 
 test('ambient shell HOSTNAME cannot leak the build machine name into the seed', () => {

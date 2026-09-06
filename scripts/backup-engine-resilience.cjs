@@ -54,7 +54,7 @@ function unseenData(name, megabytes) {
 // synchronously inside its own process, exactly as the backup agent runs it.
 async function snapshotOnly() {
   const active = engine();
-  const repository = await active.openOrCreateRepository({ repositoryPath });
+  const repository = await active.openOrCreateRepository({ localPath: repositoryPath, location: repositoryPath });
   await active.snapshotTree({ repository, sourceDir: arg('source', corpusDir), tags: { mosrole: 'resilience' } });
 }
 
@@ -62,7 +62,7 @@ async function snapshotOnly() {
 // there has to be one to damage.
 async function seedRepository() {
   const active = engine();
-  const repository = await active.openOrCreateRepository({ repositoryPath });
+  const repository = await active.openOrCreateRepository({ localPath: repositoryPath, location: repositoryPath });
   await active.snapshotTree({ repository, sourceDir: corpusDir, tags: { mosrole: 'baseline' } });
   return (await active.listSnapshots({ repository })).length;
 }
@@ -84,7 +84,7 @@ async function afterKillReport() {
   const report = {};
   const active = engine();
   try {
-    const repository = await active.openOrCreateRepository({ repositoryPath });
+    const repository = await active.openOrCreateRepository({ localPath: repositoryPath, location: repositoryPath });
     report.reopened = true;
     report.recreatedInsteadOfReopened = repository.created === true;
     report.snapshotsListed = (await active.listSnapshots({ repository })).length;
@@ -121,7 +121,7 @@ function fillDestination(leaveBytes) {
 async function outOfSpaceReport() {
   const report = {};
   const active = engine();
-  const repository = await active.openOrCreateRepository({ repositoryPath });
+  const repository = await active.openOrCreateRepository({ localPath: repositoryPath, location: repositoryPath });
   const source = unseenData('out-of-space', 300);
   report.filler = fillDestination(24 * 1024 * 1024);
   try {
@@ -135,7 +135,7 @@ async function outOfSpaceReport() {
   fs.rmSync(fillerPath, { force: true });
   report.freeAfterCleanup = freeBytes(destination);
   try {
-    const reopened = await active.openOrCreateRepository({ repositoryPath });
+    const reopened = await active.openOrCreateRepository({ localPath: repositoryPath, location: repositoryPath });
     await active.verifyRepository({ deep: true, repository: reopened });
     report.repositoryUsableAfterwards = true;
   } catch (error) {

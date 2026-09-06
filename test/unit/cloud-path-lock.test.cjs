@@ -12,6 +12,11 @@
 // walkthrough shows on screen moved and no re-recording was needed. That is the
 // bar for updating these without re-recording: compare the echo lines, not the
 // digests, and if any of them differ the recording is genuinely stale.
+//
+// Moved again 2026-09-06 to install the backup storage engine, which only the
+// managed-update path had. One echo line was added and it writes to stderr on a
+// failed download, which a successful walkthrough never reaches; the engine
+// installer's own progress is sent to /dev/null for that reason.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -25,25 +30,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '7a3a02d1ec5d4db97e2fa9d62c11658785a0ecdcbe0376506f344b2b292be77f',
+    digest: '1fec3a6adfde7c53112af99e88054943c85162630592e5724410678d214a7d4e',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '123b896d7b2f42d33414cdaf71122085bc8ab2bbf1637e6ac1c7e6a22c805f43',
+    digest: '83f14f25087d91a7b39cd2d7e1cdf506b06862cda85553d756f46c2ac936be66',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: 'd5737e21326ec242b86267644fe4beba3c2505a6ca5cf7b9f0de394e6c5ee243',
+    digest: 'b72deefcaed4b1e4d08f3e8018abdc509c9e7f50d019f70fc7986534de290806',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: 'b184cd8b12a89b72c2281ddfe7582ed2b1269e7b846e888be4252954781f3a54',
+    digest: 'bd445a81da5fd57a1f9477d895dfd013c2fc445cb4bb1694da90029d106466e0',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -53,7 +58,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '1773a2207e533dcbf15d3925519778994349a8d89d237b2e861df87f7a08bf00',
+    digest: 'f56d85500ca998370b5758b053c9ff4356b0f2e606164825e90e46dc203833e2',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

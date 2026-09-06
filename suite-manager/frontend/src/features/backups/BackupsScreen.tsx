@@ -4,18 +4,43 @@ import { ActionMenu, AdvancedPanel, Dialog, Icon, Notice, Select, Switch, TextIn
 import { jsonResponse } from '../../lib/api';
 
 type BackupDestination = {
+  accessKeyId?: string;
   availableBytes: number | null;
+  bucket?: string;
   canMount?: boolean;
+  checkedAt?: string | null;
+  endpoint?: string;
+  folder?: string;
   id: string;
+  kind?: 'disk' | 'object';
   label: string;
   mountBlockedReason?: string | null;
   mountPath: string | null;
   mountState?: 'mounted' | 'unmounted' | 'unsupported-mount';
+  notReadyReason?: string | null;
+  ready?: boolean;
+  region?: string;
   repository?: { engineName: string | null; restorePoints: number; storedBytes: number | null } | null;
   sizeBytes: number | null;
-  storageKind?: 'external' | 'local' | 'network' | null;
+  storageKind?: 'external' | 'local' | 'network' | 'object' | null;
   writable: boolean;
 };
+
+// What the connect dialog holds while it is open. The secret is write-only: it
+// is sent when the owner types one and never comes back from the server, so an
+// edit that leaves it blank keeps the key already stored.
+type ObjectDraft = {
+  accessKeyId: string;
+  bucket: string;
+  endpoint: string;
+  folder: string;
+  id?: string;
+  label: string;
+  region: string;
+  secretAccessKey: string;
+};
+
+const EMPTY_OBJECT_DRAFT: ObjectDraft = { accessKeyId: '', bucket: '', endpoint: '', folder: '', label: '', region: '', secretAccessKey: '' };
 
 type BackupValidation = {
   apps: Array<{ instanceId: string; packageId: string; packageVersion: string | null }>;
@@ -132,10 +157,24 @@ function restorePhaseWords(phase: string | null | undefined) {
   return RESTORE_PHASE_WORDS[String(phase || '')] || 'at a step it could not name';
 }
 
-function driveIconName(kind: string | null | undefined) {
-  if (kind === 'external') return 'usb-drive';
-  if (kind === 'network') return 'network-drive';
+function driveIconName(destination: BackupDestination) {
+  if (destination.kind === 'object') return 'cloud-storage';
+  if (destination.storageKind === 'external') return 'usb-drive';
+  if (destination.storageKind === 'network') return 'network-drive';
   return 'hard-drive';
+}
+
+function destinationKindLabel(destination: BackupDestination) {
+  if (destination.kind === 'object') return 'Object storage';
+  return destination.storageKind === 'external' ? 'USB' : destination.storageKind === 'network' ? 'Network' : 'Internal';
+}
+
+// Where the backups actually go, in the terms the owner entered them: the
+// bucket and folder, and the host they live on.
+function destinationAddress(destination: BackupDestination) {
+  if (destination.kind !== 'object') return destination.mountPath;
+  const host = (destination.endpoint || '').replace(/^https?:\/\//u, '');
+  return `${destination.bucket || ''}${destination.folder ? `/${destination.folder}` : ''} · ${host}`;
 }
 
 function jobMessage(job: BackupJob | null) {
@@ -243,13 +282,13 @@ function AutomaticBackupsPanel({ busy, destinations, onSave, running, schedule }
 }) {
   const locked = Boolean(busy) || running;
   const zone = schedule.timeZone || browserTimeZone();
-  const usable = destinations.filter((destination) => destination.mountState === 'mounted' && destination.writable);
-  // A drive the schedule targets but that is not connected right now stays in
-  // the list: dropping it would silently repoint the schedule at whichever
-  // drive happened to be plugged in.
+  const usable = destinations.filter((destination) => destination.ready);
+  // A destination the schedule targets but that is not reachable right now
+  // stays in the list: dropping it would silently repoint the schedule at
+  // whichever drive happened to be plugged in.
   const options = usable.some((destination) => destination.id === schedule.destinationId) || !schedule.destinationId
     ? usable.map((destination) => ({ id: destination.id, label: destination.label }))
-    : [...usable.map((destination) => ({ id: destination.id, label: destination.label })), { id: schedule.destinationId, label: `${schedule.destinationLabel || 'Chosen drive'} (not connected)` }];
+    : [...usable.map((destination) => ({ id: destination.id, label: destination.label })), { id: schedule.destinationId, label: `${schedule.destinationLabel || 'Chosen destination'} (not available)` }];
   const canEnable = options.length > 0;
 
   return <section className="mos-panel suite-card suite-backup-panel">
@@ -259,7 +298,7 @@ function AutomaticBackupsPanel({ busy, destinations, onSave, running, schedule }
     </div>
     <Switch
       checked={schedule.enabled}
-      description={canEnable ? 'MOS runs a whole-suite backup on its own and reports the result here.' : 'Connect and select a writable backup drive first.'}
+      description={canEnable ? 'MOS runs a whole-suite backup on its own and reports the result here.' : 'Connect a writable drive or object storage first.'}
       disabled={locked || !canEnable}
       label="Back up automatically"
       onChange={(event) => onSave({ destinationId: schedule.destinationId || options[0]?.id || null, enabled: event.currentTarget.checked })}
@@ -322,33 +361,169 @@ function AutomaticBackupsPanel({ busy, destinations, onSave, running, schedule }
   </section>;
 }
 
+// One row of the destination list. A drive and a bucket are the same kind of
+// thing to choose between, so they share the row and differ only in what they
+// can say about themselves: a drive has space and can be mounted, a bucket has
+// an address and can be edited or disconnected.
+function DestinationItem({ busy, destination, onDisconnect, onEdit, onMount, onSelect, running, selected }: {
+  busy: string;
+  destination: BackupDestination;
+  onDisconnect: () => void;
+  onEdit: () => void;
+  onMount: () => void;
+  onSelect: () => void;
+  running: boolean;
+  selected: boolean;
+}) {
+  const address = destinationAddress(destination);
+  const usage = destination.repository;
+  const spaceKnown = Boolean(destination.sizeBytes && destination.availableBytes);
+  return <div className={`suite-drive-item ${selected ? 'is-selected' : ''}`}>
+    <button className="suite-drive-select" disabled={!destination.ready || running || Boolean(busy)} onClick={onSelect} type="button">
+      <span className="suite-drive-icon"><Icon name={driveIconName(destination)} /></span>
+
+      <div className="suite-drive-info">
+        <div className="suite-drive-header">
+          <strong>{destination.label}</strong>
+          <span className="suite-drive-badges">
+            <span className="suite-category-pill">{destinationKindLabel(destination)}</span>
+            {destination.ready ? <span className="suite-category-pill">{destination.kind === 'object' ? 'Connected' : 'Writable'}</span> : null}
+          </span>
+        </div>
+
+        {address ? <div className="suite-drive-path">{address}</div> : null}
+
+        {destination.ready ? <>
+          {destination.kind !== 'object' && spaceKnown ? <>
+            <div className="suite-drive-space">
+              <span>{formatBytes(destination.availableBytes)} free of {formatBytes(destination.sizeBytes)}</span>
+            </div>
+            <div className="suite-drive-bar">
+              <div className="suite-drive-bar-fill" style={{ width: `${100 - usagePercent(destination.availableBytes as number, destination.sizeBytes as number)}%` }} />
+            </div>
+          </> : null}
+          {destination.kind !== 'object' && !spaceKnown ? <div className="suite-drive-status">Calculating space...</div> : null}
+          {usage && usage.restorePoints > 0
+            ? <div className="suite-drive-space">
+                <span>Encrypted store holds {usage.restorePoints} restore point{usage.restorePoints === 1 ? '' : 's'}{usage.storedBytes ? ` in ${formatBytes(usage.storedBytes)}` : ''}</span>
+              </div>
+            : destination.kind === 'object' ? <div className="suite-drive-space"><span>No backups stored here yet</span></div> : null}
+        </> : <div className="suite-drive-status">{destination.notReadyReason || 'This destination is not available.'}</div>}
+      </div>
+
+      <div className="suite-drive-selector">
+        {selected ? <span className="suite-drive-check">&#10003;</span> : null}
+      </div>
+    </button>
+
+    {destination.kind === 'object'
+      ? <ActionMenu ariaLabel="Storage connection actions" disabled={Boolean(busy) || running} items={[
+          { label: 'Edit connection', onSelect: onEdit },
+          { label: 'Disconnect', onSelect: onDisconnect },
+        ]} />
+      : !destination.ready && destination.canMount
+        ? <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={onMount} type="button">
+            {busy === `mount:${destination.id}` ? 'Mounting...' : 'Mount'}
+          </button>
+        : null}
+  </div>;
+}
+
+function ObjectStorageDialog({ busy, draft, onCancel, onChange, onSave, onTest, testResult }: {
+  busy: string;
+  draft: ObjectDraft;
+  onCancel: () => void;
+  onChange: (next: ObjectDraft) => void;
+  onSave: () => void;
+  onTest: () => void;
+  testResult: { message: string; ok: boolean } | null;
+}) {
+  const editing = Boolean(draft.id);
+  const field = (key: keyof ObjectDraft) => (event: { currentTarget: { value: string } }) => onChange({ ...draft, [key]: event.currentTarget.value });
+  const complete = Boolean(draft.endpoint.trim() && draft.bucket.trim() && draft.accessKeyId.trim() && (draft.secretAccessKey.trim() || editing));
+
+  return <Dialog
+    footer={<>
+      <button className="mos-btn mos-btn-primary" disabled={!complete || Boolean(busy)} onClick={onSave} type="button">
+        {busy === 'object-save' ? 'Saving...' : editing ? 'Save changes' : 'Connect storage'}
+      </button>
+      <button className="mos-btn mos-btn-secondary" disabled={!complete || Boolean(busy)} onClick={onTest} type="button">
+        {busy === 'object-test' ? 'Testing...' : 'Test connection'}
+      </button>
+      <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={onCancel} type="button">Cancel</button>
+    </>}
+    onClose={() => { if (!busy) onCancel(); }}
+    title={editing ? 'Edit storage connection' : 'Connect object storage'}
+  >
+    <Notice title="Your backups are encrypted, but the key stays on this server" variant="warning">
+      <p>MOS encrypts every backup before it leaves this machine, so the storage provider cannot read what you store. The key that opens them is kept here and never uploaded &mdash; so backups in this bucket can be restored by this server, and not yet by a replacement one. Keep a copy on a drive as well until MOS can hand you that key.</p>
+    </Notice>
+    <div className="suite-form-grid">
+      <TextInput
+        helperText="Your provider's S3 address, for example https://s3.eu-central-003.backblazeb2.com."
+        label="Endpoint"
+        onChange={field('endpoint')}
+        placeholder="https://s3.example.com"
+        value={draft.endpoint}
+      />
+      <TextInput
+        helperText="A bucket that already exists. MOS does not create one."
+        label="Bucket"
+        onChange={field('bucket')}
+        placeholder="my-backups"
+        value={draft.bucket}
+      />
+      <TextInput
+        helperText="Optional. Lets one bucket hold the backups of more than one server."
+        label="Folder inside the bucket"
+        onChange={field('folder')}
+        placeholder="home-server"
+        value={draft.folder}
+      />
+      <TextInput
+        helperText="Optional. Some providers need it; leave it empty if yours does not."
+        label="Region"
+        onChange={field('region')}
+        placeholder="eu-central-1"
+        value={draft.region}
+      />
+      <TextInput
+        helperText="Use a key that can only reach this bucket."
+        label="Access key ID"
+        onChange={field('accessKeyId')}
+        value={draft.accessKeyId}
+      />
+      <TextInput
+        helperText={editing ? 'Leave empty to keep the key already saved.' : 'Stored on this server only, readable by root.'}
+        label="Secret access key"
+        onChange={field('secretAccessKey')}
+        placeholder={editing ? 'Unchanged' : ''}
+        type="password"
+        value={draft.secretAccessKey}
+      />
+      <TextInput
+        helperText="Optional. What this connection is called on this screen."
+        label="Name"
+        onChange={field('label')}
+        placeholder="Backblaze B2"
+        value={draft.label}
+      />
+    </div>
+    {testResult ? <Notice title={testResult.ok ? 'Storage reachable' : 'MOS could not use this storage'} variant={testResult.ok ? 'success' : 'error'}>
+      <p>{testResult.message}</p>
+    </Notice> : null}
+  </Dialog>;
+}
+
 function getBackupButtonState(destinations: BackupDestination[], selectedId: string) {
-  const selected = destinations.find(d => d.id === selectedId);
-
-  if (destinations.length === 0) {
-    return { enabled: false, message: 'No backup drives detected.' };
-  }
-
-  if (!selectedId) {
-    return { enabled: false, message: 'Select a backup drive to continue.' };
-  }
-
-  if (!selected) {
-    return { enabled: false, message: 'Select a backup drive to continue.' };
-  }
-
-  if (selected.mountState !== 'mounted') {
-    return { enabled: false, message: 'The selected drive is not mounted.' };
-  }
-
-  if (!selected.writable) {
-    return { enabled: false, message: 'The selected drive is not writable.' };
-  }
-
-  return {
-    enabled: true,
-    message: `Ready to back up to ${selected.label} · ${formatBytes(selected.availableBytes)} available`
-  };
+  const selected = destinations.find((destination) => destination.id === selectedId);
+  if (destinations.length === 0) return { enabled: false, message: 'No backup destinations yet. Connect a drive or object storage.' };
+  if (!selected) return { enabled: false, message: 'Select a backup destination to continue.' };
+  if (!selected.ready) return { enabled: false, message: selected.notReadyReason || 'The selected destination is not ready.' };
+  // Object storage has no free-space figure to quote: providers sell what is
+  // stored rather than reserving a size.
+  const room = selected.kind === 'object' ? '' : ` · ${formatBytes(selected.availableBytes)} available`;
+  return { enabled: true, message: `Ready to back up to ${selected.label}${room}` };
 }
 
 export function BackupsScreen() {
@@ -364,6 +539,9 @@ export function BackupsScreen() {
   const [sessionEnded, setSessionEnded] = useState<'restore' | 'expired' | ''>('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+  const [objectDraft, setObjectDraft] = useState<ObjectDraft | null>(null);
+  const [objectDisconnect, setObjectDisconnect] = useState<BackupDestination | null>(null);
+  const [objectTest, setObjectTest] = useState<{ message: string; ok: boolean } | null>(null);
   const activeJob = status?.currentJob || null;
   const running = restoreStarted || isRunning(activeJob);
   const backupList = status?.backups || [];
@@ -396,8 +574,8 @@ export function BackupsScreen() {
     setBusy('');
     if (!isRunning(next.currentJob) && restoreStarted) setRestoreStarted(false);
     if (!selectedDestinationId) {
-      const firstWritable = next.destinations.find((destination) => destination.mountState === 'mounted' && destination.writable);
-      if (firstWritable) setSelectedDestinationId(firstWritable.id);
+      const firstUsable = next.destinations.find((destination) => destination.ready);
+      if (firstUsable) setSelectedDestinationId(firstUsable.id);
     }
   }
 
@@ -493,6 +671,68 @@ export function BackupsScreen() {
     return status?.destinations.find((destination) => destination.id === destinationId)?.label || null;
   }
 
+  function openObjectDialog(destination?: BackupDestination) {
+    setObjectTest(null);
+    setObjectDraft(destination
+      ? {
+          accessKeyId: destination.accessKeyId || '',
+          bucket: destination.bucket || '',
+          endpoint: destination.endpoint || '',
+          folder: destination.folder || '',
+          id: destination.id,
+          label: destination.label,
+          region: destination.region || '',
+          secretAccessKey: '',
+        }
+      : { ...EMPTY_OBJECT_DRAFT });
+  }
+
+  // The test reports into the dialog rather than the page banner, because it is
+  // an answer about what is on screen and the owner is about to act on it.
+  async function testObjectStorage() {
+    if (!objectDraft) return;
+    setBusy('object-test');
+    setObjectTest(null);
+    try {
+      const response = await jsonResponse<{ result: { message: string; ok: boolean } }>(await fetch('/suite-manager/api/backups/destinations/object/test', {
+        body: JSON.stringify(objectDraft),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Unable to reach this storage.');
+      setObjectTest(response.result);
+    } catch (caught) {
+      setObjectTest({ message: caught instanceof Error ? caught.message : 'Unable to reach this storage.', ok: false });
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function saveObjectStorage() {
+    if (!objectDraft) return;
+    const draft = objectDraft;
+    await runAction('object-save', async () => {
+      await jsonResponse(await fetch('/suite-manager/api/backups/destinations/object', {
+        body: JSON.stringify(draft),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Unable to save this storage connection.');
+      setObjectDraft(null);
+      setObjectTest(null);
+    });
+  }
+
+  async function disconnectObjectStorage(destination: BackupDestination) {
+    setObjectDisconnect(null);
+    await runAction(`disconnect:${destination.id}`, async () => {
+      await jsonResponse(await fetch('/suite-manager/api/backups/destinations/object/remove', {
+        body: JSON.stringify({ destinationId: destination.id }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Unable to disconnect this storage.');
+      if (selectedDestinationId === destination.id) setSelectedDestinationId('');
+    });
+  }
+
   async function acknowledgeInterrupted() {
     await runAction('acknowledge', async () => {
       await jsonResponse(await fetch('/suite-manager/api/backups/restore/acknowledge', {
@@ -561,7 +801,7 @@ export function BackupsScreen() {
     <div className="mos-page">
       <div className="suite-hero">
         <h1>Backup & Restore</h1>
-        <p className="suite-lead mos-body-lg">Save a whole-suite copy to storage mounted on this server, then restore it if you need to recover the system.</p>
+        <p className="suite-lead mos-body-lg">Save a whole-suite copy to a drive on this server or to a storage bucket somewhere else, then restore it if you need to recover the system.</p>
         <Notice title="A backup holds every secret this server has" variant="warning"><p>Any backup contains app data, owner and app credentials, Suite Manager state, and HTTPS/provider secrets. Backups are encrypted on the drive with a key kept on this server, so the drive alone cannot be read — but that key lives here, so a stolen server is still a stolen backup. Use an access-controlled destination.</p></Notice>
       </div>
 
@@ -593,71 +833,36 @@ export function BackupsScreen() {
           <div className="suite-backup-header-row">
             <div>
               <h2 className="mos-card-title">Backup destination</h2>
-              <p className="suite-meta">On own hardware, select an encrypted external drive. On a cloud server, select an encrypted block-storage volume mounted on this server.</p>
+              <p className="suite-meta">A drive attached to this server, or a bucket at a storage provider. A drive is fastest to restore from; a bucket survives the building the server is in.</p>
             </div>
-            <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => void load()} type="button">
-              {busy === 'refresh' ? <span className="suite-spinner" /> : <Icon name="refresh" />}
-              Refresh drives
-            </button>
+            <div className="suite-backup-header-actions">
+              <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => openObjectDialog()} type="button">
+                <Icon name="cloud-storage" />
+                Connect object storage
+              </button>
+              <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => void load()} type="button">
+                {busy === 'refresh' ? <span className="suite-spinner" /> : <Icon name="refresh" />}
+                Refresh drives
+              </button>
+            </div>
           </div>
 
           {status.destinations.length ? <div className="suite-drive-list">
-            {status.destinations.map((destination) => {
-              const mounted = destination.mountState === 'mounted';
-              const selectable = mounted && destination.writable && !running && !busy;
-              const selected = selectedDestinationId === destination.id;
-              const kindLabel = destination.storageKind === 'external' ? 'USB' : destination.storageKind === 'network' ? 'Network' : 'Internal';
-
-              return <div className={`suite-drive-item ${selected ? 'is-selected' : ''}`} key={destination.id}>
-                <button className="suite-drive-select" disabled={!selectable} onClick={() => setSelectedDestinationId(destination.id)} type="button">
-                  <span className="suite-drive-icon"><Icon name={driveIconName(destination.storageKind)} /></span>
-
-                  <div className="suite-drive-info">
-                    <div className="suite-drive-header">
-                      <strong>{destination.label}</strong>
-                        <span className="suite-drive-badges">
-                        <span className="suite-category-pill">{kindLabel}</span>
-                        {destination.writable && mounted ? <span className="suite-category-pill">Writable</span> : null}
-                      </span>
-                    </div>
-
-                    {destination.mountPath ? <div className="suite-drive-path">{destination.mountPath}</div> : null}
-
-                    {mounted && destination.sizeBytes && destination.availableBytes
-                      ? <>
-                          <div className="suite-drive-space">
-                            <span>{formatBytes(destination.availableBytes)} free of {formatBytes(destination.sizeBytes)}</span>
-                          </div>
-                          <div className="suite-drive-bar">
-                            <div className="suite-drive-bar-fill" style={{ width: `${100 - usagePercent(destination.availableBytes, destination.sizeBytes)}%` }} />
-                          </div>
-                          {destination.repository && destination.repository.restorePoints > 0 && destination.repository.storedBytes
-                            ? <div className="suite-drive-space">
-                                <span>Encrypted store holds {destination.repository.restorePoints} restore point{destination.repository.restorePoints === 1 ? '' : 's'} in {formatBytes(destination.repository.storedBytes)}</span>
-                              </div>
-                            : null}
-                        </>
-                      : <div className="suite-drive-status">{mounted ? 'Calculating space...' : destination.mountBlockedReason || 'Drive connected but not available'}</div>
-                    }
-                  </div>
-
-                  <div className="suite-drive-selector">
-                    {selected ? <span className="suite-drive-check">✓</span> : null}
-                  </div>
-                </button>
-
-                {!mounted && destination.canMount
-                  ? <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={() => void mount(destination)} type="button">
-                      {busy === `mount:${destination.id}` ? 'Mounting...' : 'Mount'}
-                    </button>
-                  : null
-                }
-              </div>;
-            })}
+            {status.destinations.map((destination) => <DestinationItem
+              busy={busy}
+              destination={destination}
+              key={destination.id}
+              onDisconnect={() => setObjectDisconnect(destination)}
+              onEdit={() => openObjectDialog(destination)}
+              onMount={() => void mount(destination)}
+              onSelect={() => setSelectedDestinationId(destination.id)}
+              running={running}
+              selected={selectedDestinationId === destination.id}
+            />)}
           </div> :
             <div className="suite-empty-state">
-              <p className="suite-meta">No backup drives detected.</p>
-              <p className="suite-meta">Own hardware: connect an external drive to this machine. Cloud server: attach and mount a provider block-storage volume. Then click Refresh drives.</p>
+              <p className="suite-meta">No backup destinations yet.</p>
+              <p className="suite-meta">Own hardware: connect an external drive to this machine. Cloud server: attach and mount a provider block-storage volume. Then click Refresh drives. Or connect a bucket at a storage provider to keep backups away from this building.</p>
             </div>
           }
 
@@ -732,6 +937,30 @@ export function BackupsScreen() {
           { label: 'Restore guarantee', value: status.restoreGuarantee || 'unknown' },
         ]} reveal="technical-mode" />
       </div> : null}
+
+      {objectDraft ? <ObjectStorageDialog
+        busy={busy}
+        draft={objectDraft}
+        onCancel={() => { setObjectDraft(null); setObjectTest(null); }}
+        onChange={setObjectDraft}
+        onSave={() => void saveObjectStorage()}
+        onTest={() => void testObjectStorage()}
+        testResult={objectTest}
+      /> : null}
+
+      {objectDisconnect ? <Dialog
+        footer={<>
+          <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={() => void disconnectObjectStorage(objectDisconnect)} type="button">
+            {busy === `disconnect:${objectDisconnect.id}` ? 'Disconnecting...' : 'Disconnect'}
+          </button>
+          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => setObjectDisconnect(null)} type="button">Cancel</button>
+        </>}
+        onClose={() => { if (!busy) setObjectDisconnect(null); }}
+        title="Disconnect this storage?"
+      >
+        <Notice title="Your backups stay where they are" variant="info"><p>MOS forgets the address and the key for this bucket, so its backups stop being listed here and no new ones are written to it. Nothing in the bucket is deleted, and connecting it again with the same details brings the list back.</p></Notice>
+        <p className="suite-meta">{objectDisconnect.label} · {destinationAddress(objectDisconnect)}</p>
+      </Dialog> : null}
 
       {noteEditor ? <Dialog
         footer={<>

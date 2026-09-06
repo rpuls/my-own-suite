@@ -18,7 +18,7 @@ Rules for editing:
 - When a theme's gate is met, delete the theme and record the contract in `docs/decisions.md`.
 
 Consolidated 2026-07-30 from `pre-beta-checklist.md`, `beta-main-cutover-checklist.md`,
-`backup-restore-reliability-plan.md`, and the app-package refactor plan. Current release: 0.18.0.
+`backup-restore-reliability-plan.md`, and the app-package refactor plan. Current release: 0.19.0.
 
 ---
 
@@ -32,16 +32,18 @@ the product until 2026-09-06.
 ### A. Recovery an owner can trust without an asterisk
 
 **Gate:** an owner sets a recovery key once, backups run on a schedule with retention to an attached
-disk or an S3-compatible bucket, and no restore screen shows a raw 502 or an internal path. The
-storage engine half of this gate is met (`docs/decisions.md`, 2026-09-06).
+disk or an S3-compatible bucket, and no restore screen shows a raw 502 or an internal path. Everything
+but the recovery key is met (`docs/decisions.md`, 2026-09-06).
 
 The restore contract itself is drill-verified and is not in question (`docs/decisions.md`, 2026-07-30),
 and as of 2026-09-06 so is the storage under it: backups are restic repositories, the engine choice is
 recorded with its measurements, and the drills that earn a `verified` restore guarantee were re-run
 against the encrypted store (`docs/decisions.md`, 2026-09-06). Backups also now run unattended, with
-retention, to an attached disk. What is left in this theme is the rest of the lifecycle around that
-storage — a recovery key an owner actually holds, the pre-update trigger, and a destination that is
-not in the same room.
+retention, to an attached disk or an S3-compatible bucket, the latter drill-verified through a whole-suite
+restore from a real provider (`docs/decisions.md`, 2026-09-06). What is left in this theme is the part of
+the lifecycle that is not about storage at all: **a recovery key an owner actually holds** — which
+off-site backup has now made urgent rather than merely missing, because a bucket is exactly the case
+where the machine holding the key is gone — and the pre-update trigger.
 
 - **A3 — Recovery-key lifecycle.** The engine supplies the cryptography; this is everything around
   it, and it is the half that does not come free. Generate a strong key, present it once, offer an
@@ -57,14 +59,6 @@ not in the same room.
   because a platform update and a per-app update transaction are different things. Worth deciding at
   the same time: a scheduled backup and a platform update can currently overlap, since the agents
   hold separate queues and neither asks the other what it is doing. *(Small)*
-- **A5 — Two destinations: an attached disk, and an S3-compatible bucket.** Absorbs the former
-  **D1**: object storage stops being a new subsystem because restic speaks S3 natively. Exactly two,
-  because every advertised destination needs backup *and* restore drills before it is offered. Needs
-  credential storage, destination UI, and the remote equivalent of the mount-liveness refusal. The
-  server's own system disk may be a staging or replication source but is never offered as the only
-  destination — that shape is what once wrote 13 GiB to the root disk and reported success. See
-  **OQ1** for the remaining choice between one replicated repository and independent repositories per
-  destination. *(Medium)*
 - **A6 — Backup and restore follow-ups from the drills.** Serve a static "MOS is restoring" page from
   Caddy instead of a raw 502 during the control-plane outage; offer Mount for whole-disk filesystems,
   not only partitions, which is also what makes a whole-disk lab drive re-attachable through the UI;
@@ -213,28 +207,6 @@ on its own: machines that install but will not boot, and reaching the suite once
 A flashable image that installs an OS and then runs a root shell script is the highest-trust artifact
 the project ships, which is what makes **E3** load-bearing rather than aspirational.
 
-### J. Configuration an owner can reach
-
-**Gate:** an owner can change an installed app's configuration from Suite Manager — both the settings
-MOS asked for at install and the ones it never knew existed — without SSH, and without a wrong value
-leaving the app dead.
-
-Config is captured once, at install, and never again. There is no reconfigure path of any kind, so
-correcting a mistyped time zone means reinstalling, and anything the package did not think to ask for
-is unreachable except by editing generated compose over SSH. The wall a tester actually hits is
-Paperless and a Microsoft mailbox: Outlook consumer IMAP is OAuth-only, which needs two upstream
-environment variables MOS has no reason to know about.
-
-- **J1 — Custom environment variables per installed app.** An app-agnostic escape hatch, behind
-  technical controls in a per-app settings dialog, never in the install flow — the values cannot exist
-  before the app has a URL. Owner-set names are rejected on collision with MOS-managed ones rather
-  than silently losing, and a change that fails its health probe rolls back to the previous
-  environment automatically. Recurring variables graduate into package setup fields; the hatch is for
-  what MOS does not yet know. *(Medium)*
-- **J2 — Re-editable setup fields after install.** The same dialog, holding what the package asked for
-  at install so it can be corrected without a reinstall. Needs the secret rows to round-trip without
-  being re-entered, which is the reason it is not folded into **J1**. *(Medium)*
-
 ---
 
 ## Alpha gate — the bar before MOS is called an alpha
@@ -294,8 +266,8 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 
 ### Carried in — already tracked above, and alpha gates rather than 1.0 wishes
 
-**A4** the pre-update backup trigger · **A5** an
-off-site destination · **B1** human sign-off on privacy reviews · **E3** signed release and installer
+**A3** the recovery-key lifecycle, which off-site backup has made the gap that matters ·
+**A4** the pre-update backup trigger · **B1** human sign-off on privacy reviews · **E3** signed release and installer
 artifacts · **E4** owner-facing security events · **E5** passkeys and the MFA shape · **F1** runtime
 hardening of app containers · **H8** trusted HTTPS on own hardware. Alpha is where these stop being
 roadmap and become the bar.
@@ -379,9 +351,6 @@ the update or install path requires SSH.
 
 ## Later — Bets and deferred
 
-- **L1 — Restore the shared SMTP relay.** A MOS1 capability (v0.9.0) absent in MOS2; apps half-work
-  without outbound mail — Vaultwarden hints at it, Seafile notifications are off. Relay presets only,
-  explicitly **not** a mail server. *(Medium)*
 - **L3 — Communicate capacity in-product.** See **OQ2**. Folds in resource estimation/preflight for
   Immich, Seafile, and ONLYOFFICE. *(Medium)*
 - **L4 — One proven local VM/filesystem snapshot integration.** Fast same-machine rollback; never a
@@ -407,16 +376,15 @@ the update or install path requires SSH.
 
 Owner decisions pending. Options are already worked out — what is missing is a choice.
 
-**OQ1 — One replicated repository, or independent repositories per destination.** The cloud-backup
-question that used to sit here is answered by **A5**: the engine speaks S3, so object storage becomes
-a destination rather than a subsystem and "attach, format and mount a block-storage volume" stops
-being the cloud instruction. What is left is a real fork. Replication — Kopia's `repository sync-to`,
-or an rsync of a restic repository — is incremental and cheap, but the second copy is a *mirror*: it
-inherits the primary's snapshot set and any corruption in it, and it does not propagate deletions
-unless told to, so retention on the two copies silently diverges. Independent repositories per
-destination give genuinely isolated copies at roughly double the backup work, and need the offline
-drive attached whenever the job runs. Provider snapshots stay outside MOS either way, useful as a
-supplementary layer with the consistency caveat the guide already carries.
+**OQ1 — Whether to add mirroring between destinations.** Shipping settled the default: each
+destination is its own repository, so keeping a drive copy and a bucket copy means two backup runs
+producing two genuinely isolated copies (`docs/decisions.md`, 2026-09-06). The open half is whether to
+also offer replication — Kopia's `repository sync-to`, or an rsync of a restic repository — which is
+incremental and far cheaper than a second run, but produces a *mirror*: it inherits the primary's
+snapshot set and any corruption in it, and does not propagate deletions unless told to, so retention on
+the two copies silently diverges. Worth it only if owners actually find two scheduled runs too
+expensive; nobody has yet, because there is only one schedule. Provider snapshots stay outside MOS
+either way, useful as a supplementary layer with the consistency caveat the guide already carries.
 
 **OQ2 — Communicating per-app resource needs in-product.** **C2** answers sizing *before* install.
 The per-app half is now decided and built: packages declare resting and peak memory/CPU per service
@@ -484,6 +452,13 @@ Owner decisions. Future agents and reviews should not resurface these.
   the household" currently means sharing the credential that can run code as root. That is an access
   fix, not the start of a user system.
 - **Do not chase app-count parity, a DNS-provider matrix, or monitoring graphs.**
+- **Re-editable setup fields after install** — declined, with a named condition. Package setup fields
+  are seed values most apps read once at first boot; the manifest cannot say which, and some feed two
+  services at once, so an edit leaves an app healthy but unable to reach its own data and the health
+  probe does not catch it. They are rendered as facts, and correcting one means reinstalling. Reopen
+  only when a manifest can declare when a field is read, which is a generation event
+  (`docs/decisions.md`, 2026-08-30). The app-agnostic escape hatch for what MOS never knew to ask
+  shipped separately as owner environment variables.
 
 ---
 

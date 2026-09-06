@@ -12,6 +12,8 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { BackupAgentCore, restorePublicIdentity, sha256 } = require('./agent-core.cjs');
+const { DestinationResolver } = require('./destinations.cjs');
+const { ObjectDestinationRegistry } = require('./object-destinations.cjs');
 const { appVolumeLabels, appVolumeName, classifyVolumes, OWNERSHIP_LABELS } = require('../../infrastructure/persistent-state.cjs');
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
@@ -117,17 +119,18 @@ class FakeEngine {
 
   repositoryInitialized(repositoryPath) { return fs.existsSync(path.join(repositoryPath, 'index.json')); }
 
-  indexPath(repository) { return path.join(repository.repositoryPath, 'index.json'); }
-  snapshotPath(repository, snapshotId) { return path.join(repository.repositoryPath, 'snapshots', `${snapshotId}.json`); }
+  indexPath(repository) { return path.join(repository.localPath, 'index.json'); }
+  snapshotPath(repository, snapshotId) { return path.join(repository.localPath, 'snapshots', `${snapshotId}.json`); }
   readIndex(repository) { return readJson(this.indexPath(repository)); }
   writeIndex(repository, index) { writeJson(this.indexPath(repository), index); }
 
-  async openOrCreateRepository({ repositoryPath }) {
-    const repository = { engineName: this.name, repositoryPath };
+  async openOrCreateRepository({ create = true, localPath, location, missingMessage }) {
+    const repository = { engineName: this.name, localPath: localPath || location, location: location || localPath };
     const created = !fs.existsSync(this.indexPath(repository));
-    ensureDir(path.join(repositoryPath, 'snapshots'));
+    if (created && !create) throw Object.assign(new Error(missingMessage || 'no repository'), { repositoryAbsent: true });
+    ensureDir(path.join(repository.localPath, 'snapshots'));
     if (created) this.writeIndex(repository, { snapshots: {} });
-    this.events.push(['openOrCreateRepository', repositoryPath, created]);
+    this.events.push(['openOrCreateRepository', repository.localPath, created]);
     return { ...repository, created };
   }
 
@@ -172,7 +175,7 @@ class FakeEngine {
     this.events.push(['forgetSnapshots', snapshotIds.join(',')]);
   }
 
-  async maintainRepository({ repository }) { this.events.push(['maintainRepository', repository.repositoryPath]); }
+  async maintainRepository({ repository }) { this.events.push(['maintainRepository', repository.localPath]); }
 
   async verifySnapshots({ repository, snapshotIds }) {
     const index = this.readIndex(repository);
@@ -191,11 +194,11 @@ class FakeEngine {
       if (!fs.existsSync(file)) throw new Error(`Backup repository is missing snapshot ${snapshotId}.`);
       if (sha256(file) !== entry.digest) throw new Error('Backup repository integrity check failed: stored data does not match what was written.');
     }
-    this.events.push(['verifyRepository', repository.repositoryPath]);
+    this.events.push(['verifyRepository', repository.localPath]);
   }
 
   async repositoryStats({ repository }) {
-    return { storedBytes: Object.values(serializeTree(repository.repositoryPath)).reduce((sum, base64) => sum + Buffer.from(base64, 'base64').length, 0) };
+    return { storedBytes: Object.values(serializeTree(repository.localPath)).reduce((sum, base64) => sum + Buffer.from(base64, 'base64').length, 0) };
   }
 }
 
@@ -275,6 +278,12 @@ class FakeWorld {
           }
         },
       },
+      destinations: new DestinationResolver({
+        agentStateDir: this.paths.agentStateDir,
+        engine: this.engine,
+        objectRegistry: new ObjectDestinationRegistry({ agentStateDir: this.paths.agentStateDir }),
+        system: this.system,
+      }),
       engine: this.engine,
       jobs: {
         log: (file, message) => this.updateJob(file, (job) => { job.logs.push({ message }); }),
@@ -387,7 +396,7 @@ test('full restore reconciles absence: post-backup app volumes cannot survive or
   assert.equal(manifest.contents.volumes[0].instanceId, STIRLING.instanceId);
   // The staged state excluded regenerable caches and captured the database.
   const stateProbe = path.join(w.root, 'state-probe');
-  const repository = await w.engine.openOrCreateRepository({ repositoryPath: repositoryOf(w) });
+  const repository = await w.engine.openOrCreateRepository({ localPath: repositoryOf(w), location: repositoryOf(w) });
   await w.engine.restoreSnapshot({ repository, snapshotId: manifest.contents.stateSnapshot.snapshotId, targetDir: stateProbe });
   const stateKeys = Object.keys(serializeTree(stateProbe));
   assert.ok(stateKeys.includes('var-lib-mos/suite-manager/suite-manager.sqlite'));

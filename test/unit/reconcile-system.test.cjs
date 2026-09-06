@@ -118,6 +118,24 @@ test('a managed update installs the diagnostics agent, not just a fresh install'
   assert.ok(reconciler.includes("'mos-diagnostics-agent.service'"));
 });
 
+// The mirror of the rule-7 hazard above: a fresh install runs the installer and
+// never the reconciler, so an engine installed only by the reconciler is missing
+// on exactly the machines nobody has updated yet. That shipped — a brand new
+// machine's first backup failed on a missing storage engine — so pin both paths.
+test('a fresh install installs the backup storage engine, not just a managed update', () => {
+  const installer = renderBootstrapPlan({}).sshBootstrap;
+  const reconciler = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8');
+
+  for (const source of [installer, reconciler]) {
+    assert.ok(source.includes('system-agents/backup/engines/engine-install.cjs'), 'both paths must install the engine from the one pinned installer');
+    assert.ok(source.includes('/usr/local/libexec/mos'), 'both paths must place the engine where the backup agent looks for it');
+  }
+  // restic publishes its Linux builds bzip2-compressed and nothing else, and an
+  // Ubuntu server image does not carry bzip2.
+  assert.match(installer, /^apt-get install -y bzip2 /mu);
+  assert.ok(reconciler.includes("run('apt-get', ['install', '-y', 'bzip2']"));
+});
+
 // The socket is the only door to a root process that reads host state, so its
 // group and mode are the whole access control. Suite Manager reaches it as a
 // member of mos-agent; nothing else on the machine should.
