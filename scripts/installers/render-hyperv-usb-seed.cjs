@@ -5,7 +5,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const YAML = require('yaml');
 
-const { renderBootstrapPlan } = require('./bootstrap-contract.cjs');
+const { DEFAULT_REPO_URL, renderBootstrapPlan } = require('./bootstrap-contract.cjs');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const configDir = path.join(repoRoot, 'infrastructure', 'self-host', 'autoinstall', 'installer-config');
@@ -75,6 +75,35 @@ function resolveSmokeRepoRef(env = process.env) {
   if (branch && branch !== 'HEAD' && branch !== 'main') return branch;
 
   return defaultSmokeRepoRef;
+}
+
+// The guest clones MOS_REPO_URL and checks out MOS_REPO_REF, so the ref has to
+// exist on the remote — a branch that only exists on this machine produces an
+// image that cannot possibly install. This is checked separately from the
+// content check below because they fail for opposite reasons and the local one
+// cannot see the difference: `git cat-file` resolves against local objects, so
+// an unpushed branch passes it and then costs ninety minutes of installer
+// timeout to discover.
+function assertSmokeRepoRefIsPushed(repoRef, repoUrl) {
+  const remote = spawnSync('git', ['ls-remote', '--heads', '--tags', repoUrl, repoRef], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  });
+  if (remote.status !== 0) {
+    // Being unable to ask is not the same as a missing ref; say which happened
+    // rather than blaming the branch for the network.
+    console.log(`[mos-smoke] Could not reach ${repoUrl} to confirm '${repoRef}' is pushed; continuing.`);
+    return;
+  }
+  if (String(remote.stdout || '').trim()) return;
+  // A full commit id never appears in ls-remote by name, so it is accepted when
+  // some remote branch already contains it.
+  if (/^[0-9a-f]{7,40}$/iu.test(repoRef) && git(['branch', '--remotes', '--contains', repoRef])) return;
+  throw new Error(
+    `The lab installs by cloning ${repoUrl} and checking out '${repoRef}', which does not exist there. ` +
+    `Push it (git push -u origin ${repoRef}), or build the image against a pushed branch ` +
+    '(MOS_SMOKE_REPO_REF=staging). The ref defaults to the branch you have checked out.',
+  );
 }
 
 function assertSmokeRepoRefContainsRootLayout(repoRef) {
@@ -405,6 +434,7 @@ function renderSeed(config, options = {}) {
 
 function main() {
   const smokeRepoRef = resolveSmokeRepoRef();
+  assertSmokeRepoRefIsPushed(smokeRepoRef, DEFAULT_REPO_URL);
   assertSmokeRepoRefContainsRootLayout(smokeRepoRef);
   const rendered = renderSeed(loadSmokeConfig(), { repoRef: smokeRepoRef });
   fs.rmSync(defaultOutputDir, { force: true, recursive: true });
@@ -449,6 +479,7 @@ if (require.main === module) {
 
 module.exports = {
   assertSmokeRepoRefContainsRootLayout,
+  assertSmokeRepoRefIsPushed,
   consoleLoginAcknowledgedFileName,
   consoleLoginFileName,
   labLinuxPassword,
