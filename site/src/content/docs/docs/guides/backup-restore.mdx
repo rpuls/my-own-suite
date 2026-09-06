@@ -55,8 +55,19 @@ Backups are written under `MOS-backups/` on the selected destination, into a sin
 
 One drive holds one store. Bundles from MOS 0.19 or earlier, in the older unencrypted format, are still listed if they are on the same drive, but this version cannot restore them—restoring one needs MOS 0.19 or earlier. You can delete them here to free the space they take.
 
+## Backing up automatically
+
+The most recent backup you have should not be the one you last remembered to take. Under **Automatic backups** on the same screen, turn on **Back up automatically**, pick the drive, choose daily or weekly and a time, and MOS takes it from there.
+
+- **Times are yours, not the server's.** The time you pick is read in the time zone of the browser you set the schedule from, so 3am means 3am where you are even when the server runs in UTC. The screen names the zone it is using.
+- **A drive that is not connected is not a failure.** If the drive is unplugged when the time comes, MOS says it is waiting and backs up as soon as you reconnect it, up until the next scheduled time.
+- **A server that was switched off catches up.** It takes one backup shortly after starting again, not one for every window it missed.
+- **Retention prunes automatic backups only.** Keeping the last 7 means the eighth automatic backup removes the oldest, once the new one has succeeded. Backups you took yourself are never removed by retention, whatever it is set to—so a copy you took before a risky change stays until you delete it.
+
+Apps pause for a few minutes while a backup runs, which is worth remembering when picking the time.
+
 :::tip[A workable routine]
-Backups are manual; there is no scheduler or retention policy yet. Take one before updates or uninstalling an app, keep more than one generation, and periodically test that the destination is still readable.
+Leave a daily schedule on, and still take one by hand before updates or uninstalling an app—those are the moments worth keeping regardless of what retention removes. Periodically check that the destination is still readable with **Check** on a restore point.
 :::
 
 ## Restoring
@@ -78,6 +89,6 @@ Important boundaries:
 
 ## Current limitations
 
-Manual only · mounted local/block storage only · no object-storage destination · encryption key held only on the server · whole-suite restore only · version-sensitive restore.
+Mounted local/block storage only · no object-storage destination · encryption key held only on the server · whole-suite restore only · version-sensitive restore · no automatic backup before an update.
 
-A way to save and re-enter the encryption key, scheduled backups with retention, and object-storage destinations are the next things being built here. If you work with backup, storage, encryption, or recovery systems and want to shape how they land, [join us on Discord](https://discord.gg/YMpF6faBCv) or [open a GitHub issue](https://github.com/rpuls/my-own-suite/issues).
+A way to save and re-enter the encryption key, a checkpoint taken automatically before every update, and object-storage destinations are the next things being built here. If you work with backup, storage, encryption, or recovery systems and want to shape how they land, [join us on Discord](https://discord.gg/YMpF6faBCv) or [open a GitHub issue](https://github.com/rpuls/my-own-suite/issues).

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { ActionMenu, AdvancedPanel, Dialog, Icon, Notice, TextInput } from '../../components/ui';
+import { ActionMenu, AdvancedPanel, Dialog, Icon, Notice, Select, Switch, TextInput } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
 
 type BackupDestination = {
@@ -57,6 +57,23 @@ type BackupEntry = {
   volumeCount: number;
 };
 
+type BackupSchedule = {
+  destinationId: string | null;
+  destinationLabel: string | null;
+  enabled: boolean;
+  frequency: 'daily' | 'weekly';
+  hour: number;
+  keepLast: number;
+  lastResult: { at: string; message: string; status: string } | null;
+  lastRunAt: string | null;
+  minute: number;
+  nextRunAt: string | null;
+  running: boolean;
+  timeZone: string;
+  waiting: { occurrence: string; reason: string; since: string } | null;
+  weekday: number;
+};
+
 type InterruptedRestore = {
   backupPath: string | null;
   jobId: string | null;
@@ -78,6 +95,7 @@ type BackupStatus = {
   lastJob: BackupJob | null;
   restoreGuarantee?: string;
   restoreGuaranteeByKind?: Record<string, string>;
+  schedule?: BackupSchedule | null;
   serviceAvailable: boolean;
 };
 
@@ -173,6 +191,137 @@ function usagePercent(used: number, total: number) {
   return Math.min(100, Math.max(0, Math.round(((total - used) / total) * 100)));
 }
 
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const RETENTION_OPTIONS = [
+  { label: 'Keep every automatic backup', value: 0 },
+  { label: 'Keep the last 3', value: 3 },
+  { label: 'Keep the last 7', value: 7 },
+  { label: 'Keep the last 14', value: 14 },
+  { label: 'Keep the last 30', value: 30 },
+];
+
+function browserTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
+// Scheduled times are wall-clock times in the zone the schedule was set from,
+// which is not necessarily this browser's or the server's, so every moment the
+// panel shows is rendered in that same zone. Otherwise "runs at 03:00" and
+// "next run 09:00" appear side by side and both are right.
+function formatInZone(value: string | null, timeZone: string) {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  try {
+    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(parsed);
+  } catch {
+    return parsed.toLocaleString();
+  }
+}
+
+function clockValue(schedule: BackupSchedule) {
+  return `${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}`;
+}
+
+function scheduleSummary(schedule: BackupSchedule) {
+  if (schedule.running) return 'An automatic backup is running now.';
+  if (schedule.waiting) return schedule.waiting.reason;
+  if (schedule.nextRunAt) return `Next automatic backup: ${formatInZone(schedule.nextRunAt, schedule.timeZone)}.`;
+  return '';
+}
+
+function AutomaticBackupsPanel({ busy, destinations, onSave, running, schedule }: {
+  busy: string;
+  destinations: BackupDestination[];
+  onSave: (next: Partial<BackupSchedule>) => void;
+  running: boolean;
+  schedule: BackupSchedule;
+}) {
+  const locked = Boolean(busy) || running;
+  const zone = schedule.timeZone || browserTimeZone();
+  const usable = destinations.filter((destination) => destination.mountState === 'mounted' && destination.writable);
+  // A drive the schedule targets but that is not connected right now stays in
+  // the list: dropping it would silently repoint the schedule at whichever
+  // drive happened to be plugged in.
+  const options = usable.some((destination) => destination.id === schedule.destinationId) || !schedule.destinationId
+    ? usable.map((destination) => ({ id: destination.id, label: destination.label }))
+    : [...usable.map((destination) => ({ id: destination.id, label: destination.label })), { id: schedule.destinationId, label: `${schedule.destinationLabel || 'Chosen drive'} (not connected)` }];
+  const canEnable = options.length > 0;
+
+  return <section className="mos-panel suite-card suite-backup-panel">
+    <div>
+      <h2 className="mos-card-title">Automatic backups</h2>
+      <p className="suite-meta">Without a schedule, the newest backup you have is the one you last remembered to take. Apps pause for a few minutes while a backup runs, which is why it is worth putting somewhere quiet.</p>
+    </div>
+    <Switch
+      checked={schedule.enabled}
+      description={canEnable ? 'MOS runs a whole-suite backup on its own and reports the result here.' : 'Connect and select a writable backup drive first.'}
+      disabled={locked || !canEnable}
+      label="Back up automatically"
+      onChange={(event) => onSave({ destinationId: schedule.destinationId || options[0]?.id || null, enabled: event.currentTarget.checked })}
+    />
+    {schedule.enabled ? <>
+      <div className="suite-form-grid">
+        <Select
+          disabled={locked}
+          label="Back up to"
+          onChange={(event) => onSave({ destinationId: event.currentTarget.value })}
+          value={schedule.destinationId || ''}
+        >
+          {options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+        </Select>
+        <Select
+          disabled={locked}
+          label="How often"
+          onChange={(event) => onSave({ frequency: event.currentTarget.value === 'weekly' ? 'weekly' : 'daily' })}
+          value={schedule.frequency}
+        >
+          <option value="daily">Every day</option>
+          <option value="weekly">Once a week</option>
+        </Select>
+        {schedule.frequency === 'weekly' ? <Select
+          disabled={locked}
+          label="Day"
+          onChange={(event) => onSave({ weekday: Number(event.currentTarget.value) })}
+          value={String(schedule.weekday)}
+        >
+          {WEEKDAY_NAMES.map((name, index) => <option key={name} value={String(index)}>{name}</option>)}
+        </Select> : null}
+        <TextInput
+          disabled={locked}
+          helperText={`Times are in ${zone}, the time zone this schedule was set from.${browserTimeZone() === zone ? '' : ` This browser is in ${browserTimeZone()}.`}`}
+          label="At"
+          onChange={(event) => {
+            const [hour, minute] = event.currentTarget.value.split(':');
+            if (hour === undefined || minute === undefined) return;
+            onSave({ hour: Number(hour), minute: Number(minute) });
+          }}
+          type="time"
+          value={clockValue(schedule)}
+        />
+        <Select
+          disabled={locked}
+          helperText="Backups you take yourself are never removed automatically."
+          label="Keep"
+          onChange={(event) => onSave({ keepLast: Number(event.currentTarget.value) })}
+          value={String(schedule.keepLast)}
+        >
+          {RETENTION_OPTIONS.map((option) => <option key={option.value} value={String(option.value)}>{option.label}</option>)}
+        </Select>
+      </div>
+      <p className="suite-meta">{scheduleSummary(schedule)}</p>
+      {schedule.lastResult ? <p className="suite-meta">
+        <strong>{schedule.lastResult.status === 'failed' ? 'Last automatic backup failed' : 'Last automatic backup'}</strong>
+        {` · ${formatInZone(schedule.lastResult.at, zone)} · ${schedule.lastResult.message}`}
+      </p> : null}
+    </> : null}
+  </section>;
+}
+
 function getBackupButtonState(destinations: BackupDestination[], selectedId: string) {
   const selected = destinations.find(d => d.id === selectedId);
 
@@ -253,11 +402,14 @@ export function BackupsScreen() {
   }
 
   useEffect(() => { void load().catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load backups.')); }, []);
+  // A scheduled backup starts without anyone clicking anything, so an open page
+  // polls slowly even when idle — otherwise the screen keeps showing "nothing
+  // is happening" through an automatic backup it never noticed.
   useEffect(() => {
-    if (!running) return undefined;
-    const timer = window.setInterval(() => { void load().catch(() => undefined); }, 4000);
+    if (!running && !status?.schedule?.enabled) return undefined;
+    const timer = window.setInterval(() => { void load().catch(() => undefined); }, running ? 4000 : 30000);
     return () => window.clearInterval(timer);
-  }, [running]);
+  }, [running, status?.schedule?.enabled]);
   // Leaving or refreshing mid-restore drops the operator onto a raw server
   // error page while the control plane is intentionally down; browsers only
   // show a generic confirmation, so the patient-waiting guidance lives in the
@@ -307,6 +459,38 @@ export function BackupsScreen() {
       }), 'Unable to start backup.');
       setBackupNote('');
     });
+  }
+
+  // Each control is a setting that applies when it changes, so the whole
+  // schedule is resent with the one field the owner touched. The stored time
+  // zone is preserved rather than overwritten with this browser's: opening MOS
+  // from a laptop in another country must not quietly move a home server's
+  // backup window.
+  async function saveSchedule(next: Partial<BackupSchedule>) {
+    const current = status?.schedule;
+    if (!current) return;
+    const merged = { ...current, ...next };
+    await runAction('schedule', async () => {
+      await jsonResponse(await fetch('/suite-manager/api/backups/schedule', {
+        body: JSON.stringify({
+          destinationId: merged.destinationId || '',
+          destinationLabel: destinationLabelFor(merged.destinationId) || merged.destinationLabel || '',
+          enabled: merged.enabled,
+          frequency: merged.frequency,
+          hour: merged.hour,
+          keepLast: merged.keepLast,
+          minute: merged.minute,
+          timeZone: current.timeZone || browserTimeZone(),
+          weekday: merged.weekday,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Unable to save the backup schedule.');
+    });
+  }
+
+  function destinationLabelFor(destinationId: string | null) {
+    return status?.destinations.find((destination) => destination.id === destinationId)?.label || null;
   }
 
   async function acknowledgeInterrupted() {
@@ -493,6 +677,14 @@ export function BackupsScreen() {
             </button>
           </div>
         </section>
+
+        {status.schedule ? <AutomaticBackupsPanel
+          busy={busy}
+          destinations={status.destinations}
+          onSave={(next) => void saveSchedule(next)}
+          running={running}
+          schedule={status.schedule}
+        /> : null}
 
         {(status.currentJob || status.lastJob) ? <section className="mos-panel suite-card suite-backup-panel">
           <h2 className="mos-card-title">{running ? 'Working on it' : 'Latest activity'}</h2>

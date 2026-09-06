@@ -4,6 +4,10 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+### Added
+
+- **Backups can now run on their own.** Pick a drive, daily or weekly, and a time, and MOS backs the whole suite up without being asked — times are in the time zone you set the schedule from, not the server's, so 3am means 3am where you are. If the drive is not connected when the time comes, MOS waits and backs up as soon as it is back rather than reporting a failure; if the server was switched off through the window, it catches up once shortly after starting, not once per missed day. Retention keeps the last 3, 7, 14 or 30 automatic backups and prunes the oldest after a new one succeeds. **Backups you take yourself are never removed automatically**, whatever retention is set to, including any taken before this release.
+
 ### Changed
 
 - Backups are now written into an encrypted, deduplicating store on the backup drive (schema version 4): repeat backups only store what changed, and the drive alone cannot be read without the key held on the server. Restoring from it is **verified** — the recovery drills were re-run against the new storage on real hardware, including pulling the drive mid-backup, killing the restore outright, and cutting power partway through one, plus a 15.4 GB restore that came back byte-for-byte with every owner, permission and timestamp intact. **Compatibility:** backups written by MOS 0.19 or earlier, as unencrypted bundles, can no longer be restored by this release; they stay listed and can be deleted to free their space, and restoring one needs MOS 0.19 or earlier. Downloading a backup as a single file and uploading one back are gone with that format — the store on the drive is the copy you keep, and moving it to another machine means attaching the drive. A drive holding a storage format this version does not speak is refused rather than written into.

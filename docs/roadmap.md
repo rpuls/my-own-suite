@@ -38,9 +38,10 @@ storage engine half of this gate is met (`docs/decisions.md`, 2026-09-06).
 The restore contract itself is drill-verified and is not in question (`docs/decisions.md`, 2026-07-30),
 and as of 2026-09-06 so is the storage under it: backups are restic repositories, the engine choice is
 recorded with its measurements, and the drills that earn a `verified` restore guarantee were re-run
-against the encrypted store (`docs/decisions.md`, 2026-09-06). What is left in this theme is the
-lifecycle around that storage — a recovery key an owner actually holds, a schedule, retention, and a
-destination that is not in the same room.
+against the encrypted store (`docs/decisions.md`, 2026-09-06). Backups also now run unattended, with
+retention, to an attached disk. What is left in this theme is the rest of the lifecycle around that
+storage — a recovery key an owner actually holds, the pre-update trigger, and a destination that is
+not in the same room.
 
 - **A3 — Recovery-key lifecycle.** The engine supplies the cryptography; this is everything around
   it, and it is the half that does not come free. Generate a strong key, present it once, offer an
@@ -48,14 +49,14 @@ destination that is not in the same room.
   design what an owner sees when the key is gone. Retire the "backups are not encrypted" warning in
   the backup guide only when this is real, and say plainly that a key held on the server protects a
   stolen drive or a breached bucket, not a compromised server. *(Medium)*
-- **A4 — Scheduled and pre-update backups, retention, last-known-good protection.** Manual-only
-  backup means the newest thing an owner has is whenever they last remembered. MOS owns the
-  scheduling: restic's own scheduling needs a daemon MOS will not run, and a bare snapshot would skip
-  the stop-and-quiesce sequence entirely — so this is a systemd timer feeding the existing job
-  pipeline. Retention comes from the engine's forget policy. A checkpoint
-  before every update is on by default and switchable off; it needs a "skipped — destination not
-  connected" outcome rather than a failure, and it has to be precise about scope, because a platform
-  update and a per-app update transaction are different things. *(Medium)*
+- **A4 — Pre-update backups and last-known-good protection.** The schedule and retention half is
+  done (`docs/decisions.md`, 2026-09-06): backups run daily or weekly with a keep-last policy, driven
+  by a timer inside the backup agent. What remains is the other trigger — a checkpoint before every
+  update, on by default and switchable off. It needs the same "waiting, not failed" outcome the
+  schedule already has when the destination is not connected, and it has to be precise about scope,
+  because a platform update and a per-app update transaction are different things. Worth deciding at
+  the same time: a scheduled backup and a platform update can currently overlap, since the agents
+  hold separate queues and neither asks the other what it is doing. *(Small)*
 - **A5 — Two destinations: an attached disk, and an S3-compatible bucket.** Absorbs the former
   **D1**: object storage stops being a new subsystem because restic speaks S3 natively. Exactly two,
   because every advertised destination needs backup *and* restore drills before it is offered. Needs
@@ -293,7 +294,7 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 
 ### Carried in — already tracked above, and alpha gates rather than 1.0 wishes
 
-**A2** the storage-engine swap and encrypted repositories · **A4** scheduled backups · **A5** an
+**A4** the pre-update backup trigger · **A5** an
 off-site destination · **B1** human sign-off on privacy reviews · **E3** signed release and installer
 artifacts · **E4** owner-facing security events · **E5** passkeys and the MFA shape · **F1** runtime
 hardening of app containers · **H8** trusted HTTPS on own hardware. Alpha is where these stop being

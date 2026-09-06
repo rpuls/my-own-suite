@@ -13,6 +13,7 @@ const path = require('node:path');
 const { execFile, execFileSync, spawn } = require('node:child_process');
 const { BackupAgentCore, isRestorePointPath, restorePublicIdentity, sha256, UNREADABLE_LEGACY_BACKUP, validatePackagePayloads } = require('./agent-core.cjs');
 const { BackupSystemAdapter } = require('./system-adapter.cjs');
+const { BackupScheduler } = require('./scheduler.cjs');
 const { createEngine, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage, restorePointsDir } = require('./engines/engine.cjs');
 const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-agent-client.cjs');
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
@@ -198,7 +199,7 @@ function createJob(kind, payload) {
   // so the refusal happens here rather than after a job has been queued.
   if ((kind === 'restore' || kind === 'validate') && !isRestorePointPath(backupPath)) throw new Error(UNREADABLE_LEGACY_BACKUP);
   if (kind === 'restore' && payload.confirmation !== 'RESTORE') throw new Error('Type RESTORE to confirm this destructive restore.');
-  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator: payload.initiator || 'owner', kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(note ? { note } : {}) };
+  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator: payload.initiator === 'schedule' ? 'schedule' : 'owner', kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(note ? { note } : {}) };
   writeJson(jobPath(id), job);
   writeJson(currentJobPath, job);
   spawn(process.execPath, [__filename, '--worker', jobPath(id)], { cwd: repoDir, detached: true, env: process.env, stdio: 'ignore' }).unref();
@@ -267,7 +268,7 @@ function listBackups(destinations) {
         const manifest = readJson(manifestPath);
         const volumes = manifest.contents?.volumes || [];
         const rawBytes = (manifest.contents?.stateRawBytes || 0) + volumes.reduce((sum, volume) => sum + (volume.rawBytes || 0), 0);
-        backups.push({ appCount: manifest.contents?.apps?.length || 0, createdAt: manifest.backup?.createdAt || null, destinationId: destination.id, destinationLabel: destination.label, encrypted: true, engineName: manifest.backup?.engine || descriptor?.engineName || null, id: manifest.backup?.id || path.basename(name, '.json'), kind: 'restore-point', note: readNote(manifestPath), path: manifestPath, repositoryId: descriptor?.repositoryId || null, restorable: true, schemaVersion: manifest.backup?.schemaVersion || null, sizeBytes: rawBytes, sourceCommit: manifest.source?.commit || null, sourceVersion: manifest.source?.version || null, volumeCount: volumes.length });
+        backups.push({ appCount: manifest.contents?.apps?.length || 0, automatic: manifest.backup?.initiator === 'schedule', createdAt: manifest.backup?.createdAt || null, destinationId: destination.id, destinationLabel: destination.label, encrypted: true, engineName: manifest.backup?.engine || descriptor?.engineName || null, id: manifest.backup?.id || path.basename(name, '.json'), kind: 'restore-point', note: readNote(manifestPath), path: manifestPath, repositoryId: descriptor?.repositoryId || null, restorable: true, schemaVersion: manifest.backup?.schemaVersion || null, sizeBytes: rawBytes, sourceCommit: manifest.source?.commit || null, sourceVersion: manifest.source?.version || null, volumeCount: volumes.length });
       } catch {}
     }
   }
@@ -364,6 +365,39 @@ async function reconcileRestoredApps(logMessage) {
   }
 }
 
+// What the schedule needs to know about a destination's restore points: when
+// each was taken and whether the schedule itself took it. Read straight from
+// the manifests rather than from listBackups, because retention must not
+// depend on which drives happen to be mounted.
+function scheduledRestorePoints(destinationId) {
+  const points = [];
+  const pointsDir = restorePointsDir(destinationId);
+  if (!fs.existsSync(pointsDir)) return points;
+  for (const name of fs.readdirSync(pointsDir)) {
+    if (!name.endsWith('.json')) continue;
+    const manifestPath = path.join(pointsDir, name);
+    try {
+      if (!fs.existsSync(`${manifestPath}.sha256`)) continue;
+      const manifest = readJson(manifestPath);
+      points.push({ automatic: manifest.backup?.initiator === 'schedule', createdAt: manifest.backup?.createdAt || null, path: manifestPath });
+    } catch {}
+  }
+  return points;
+}
+
+const scheduler = new BackupScheduler({
+  agentStateDir,
+  createJob: (kind, payload) => createJob(kind, payload),
+  destinations: async () => (await listDestinations()).filter((destination) => destination.mountState === 'mounted'),
+  log: (message) => process.stdout.write(`[mos-backup-agent] ${message}\n`),
+  // Reconciled first: a worker killed by a power loss leaves its job file
+  // saying "running" until something checks, and the scheduler must not wait
+  // on that forever just because nobody had the Backups screen open.
+  readJob: (id) => { reconcileCurrentJob(); try { return readJson(jobPath(id)); } catch { return null; } },
+  repositoryId: (destinationId) => (destinationId ? readRepositoryDescriptor(destinationId)?.repositoryId || null : null),
+  restorePoints: scheduledRestorePoints,
+});
+
 const core = new BackupAgentCore({
   apps: { installedInstances: installedAppInstances, reconcile: reconcileRestoredApps },
   engine: createEngine({ agentStateDir }),
@@ -403,11 +437,12 @@ if (require.main === module && process.argv[2] === '--worker') {
         ));
         respond(response, 200, {
           backups: listBackups(destinations),
-          capabilities: { backups: ['create', 'delete', 'list', 'validate'], destinations: ['list', 'mount'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
+          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['list', 'mount'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
           currentJob: summarizeJob(reconcileCurrentJob()),
           destinations,
           interruptedRestore: core.interruptedRestore(),
           lastJob: summarizeJob(latestJob()),
+          schedule: scheduler.state(),
           service: 'mos-backup-agent',
         });
         return;
@@ -421,10 +456,14 @@ if (require.main === module && process.argv[2] === '--worker') {
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/backups/validate') { respond(response, 202, { job: createJob('validate', await readBody(request)) }); return; }
+      if (request.method === 'POST' && url.pathname === '/v1/schedule') {
+        respond(response, 200, { schedule: scheduler.save(await readBody(request)) });
+        return;
+      }
       if (request.method === 'POST' && url.pathname === '/v1/backups/note') {
         const body = await readBody(request);
-        const backupPath = normalizeBundlePath(body.backupPath);
-        if (!backupPath) { respond(response, 400, { code: 'INVALID_BUNDLE', error: 'Choose a detected backup bundle from mounted storage.' }); return; }
+        const backupPath = normalizeBackupPath(body.backupPath);
+        if (!backupPath) { respond(response, 400, { code: 'INVALID_BACKUP', error: 'Choose a detected backup from mounted storage.' }); return; }
         const note = String(body.note || '').trim().slice(0, 500);
         const notePath = notePathFor(backupPath);
         if (note) fs.writeFileSync(notePath, `${note}\n`, 'utf8');
@@ -452,8 +491,15 @@ if (require.main === module && process.argv[2] === '--worker') {
       respond(response, 409, { code: 'BACKUP_AGENT_ERROR', error: error instanceof Error ? error.message : 'Backup agent operation failed.' });
     }
   });
-  server.listen(socketPath, () => { fs.chmodSync(socketPath, 0o660); process.stdout.write('[mos-backup-agent] ready\n'); });
-  function shutdown() { server.close(() => { fs.rmSync(socketPath, { force: true }); process.exit(0); }); }
+  server.listen(socketPath, () => {
+    fs.chmodSync(socketPath, 0o660);
+    process.stdout.write('[mos-backup-agent] ready\n');
+    // A machine that was off through its backup window owes a run; the early
+    // tick is what makes it happen shortly after boot rather than a day later.
+    setTimeout(() => { void scheduler.tick().catch(() => {}); }, 10_000).unref();
+    scheduler.start();
+  });
+  function shutdown() { scheduler.stop(); server.close(() => { fs.rmSync(socketPath, { force: true }); process.exit(0); }); }
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }

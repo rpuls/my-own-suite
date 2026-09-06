@@ -391,6 +391,11 @@ class BackupAgentCore {
           createdAt: new Date().toISOString(),
           engine: this.engine.name,
           id: started.id,
+          // Recorded so retention can tell a scheduled backup from one an owner
+          // chose to take. A manifest without it predates automatic backups and
+          // counts as the owner's, which is the answer that never deletes
+          // something on a guess.
+          initiator: started.initiator === 'schedule' ? 'schedule' : 'owner',
           kind: 'mos-whole-suite',
           schemaVersion: BACKUP_SCHEMA_VERSION,
           storage: 'engine-repository',

@@ -843,6 +843,30 @@ function createMOSServer({
         return;
       }
 
+      // The schedule's rules live in the backup agent, which is the component
+      // that has to honour them; this passes the owner's choice through by
+      // field rather than forwarding the body, so the agent is never handed
+      // something the screen did not ask for.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/schedule`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.setSchedule({
+          destinationId: String(body.destinationId || ''),
+          destinationLabel: String(body.destinationLabel || ''),
+          enabled: body.enabled === true,
+          frequency: String(body.frequency || ''),
+          hour: Number(body.hour),
+          keepLast: Number(body.keepLast),
+          minute: Number(body.minute),
+          timeZone: String(body.timeZone || ''),
+          weekday: Number(body.weekday),
+        }));
+        return;
+      }
+
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/validate`) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });

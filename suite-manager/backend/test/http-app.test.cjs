@@ -697,6 +697,10 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
       calls.push(['backup', input]);
       return { job: { id: 'job-backup', status: 'queued' } };
     },
+    async setSchedule(input) {
+      calls.push(['schedule', input]);
+      return { schedule: { enabled: true } };
+    },
     async startRestore(input) {
       calls.push(['restore', input]);
       return { job: { id: 'job-restore', status: 'queued' } };
@@ -755,6 +759,22 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
     });
     assert.equal(restore.status, 202);
 
+    // The schedule reaches the agent field by field, so a body carrying
+    // anything the screen does not offer cannot travel with it.
+    const deniedSchedule = await hostRequest(baseUrl, '/suite-manager/api/backups/schedule', {
+      body: JSON.stringify({ enabled: true }),
+      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(deniedSchedule.status, 401);
+
+    const schedule = await hostRequest(baseUrl, '/suite-manager/api/backups/schedule', {
+      body: JSON.stringify({ destinationId: '/media/backup', enabled: true, frequency: 'daily', hour: 3, initiator: 'smuggled', keepLast: 7, minute: 0, timeZone: 'Europe/Amsterdam', weekday: 0 }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(schedule.status, 200);
+
     // Downloading and uploading a backup went with the tar formats: a backup
     // now lives in the drive's encrypted repository and is never a single file.
     const download = await hostRequest(baseUrl, `/suite-manager/api/backups/download?path=${encodeURIComponent(backupDir)}`, {
@@ -765,6 +785,7 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
     assert.deepEqual(calls.filter((call) => call[0] !== 'status'), [
       ['backup', { destinationId: '/media/backup', note: '' }],
       ['restore', { backupPath: backupDir, confirmation: 'RESTORE' }],
+      ['schedule', { destinationId: '/media/backup', destinationLabel: '', enabled: true, frequency: 'daily', hour: 3, keepLast: 7, minute: 0, timeZone: 'Europe/Amsterdam', weekday: 0 }],
     ]);
   }, { backupAgent, homeHost: 'home.test' });
 });

@@ -54,6 +54,7 @@ class BackupAgentClient {
   validateBackup(input) { return this.request('POST', '/v1/backups/validate', input); }
   deleteBackup(input) { return this.request('POST', '/v1/backups/delete', input); }
   setBackupNote(input) { return this.request('POST', '/v1/backups/note', input); }
+  setSchedule(input) { return this.request('POST', '/v1/schedule', input); }
   startRestore(input) { return this.request('POST', '/v1/restores', input); }
   acknowledgeInterruptedRestore(input) { return this.request('POST', '/v1/restores/acknowledge-interruption', input); }
 }
