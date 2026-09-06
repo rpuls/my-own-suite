@@ -10,34 +10,33 @@
 // able to accept the next backup?
 //
 // Usage:
-//   node scripts/backup-engine-resilience.cjs --engine restic \
-//     --binary-dir /home/mos/engines/bin --work-dir /home/mos/resilience \
+//   node scripts/backup-engine-resilience.cjs \
+//     --binary-dir /usr/local/libexec/mos --work-dir /home/mos/resilience \
 //     --destination /media/mos-backup/resilience --corpus /home/mos/corpus
 
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync, spawn } = require('node:child_process');
-const { createEngine } = require('../system-agents/backup/engines/engine.cjs');
+const { createEngine, ENGINE_NAME } = require('../system-agents/backup/engines/engine.cjs');
 
 function arg(name, fallback = null) {
   const index = process.argv.indexOf(`--${name}`);
   return index === -1 ? fallback : process.argv[index + 1];
 }
 
-const engineName = arg('engine', 'kopia');
 const binaryDir = arg('binary-dir', '/usr/local/libexec/mos');
 const workDir = arg('work-dir', path.join(os.tmpdir(), 'mos-engine-resilience'));
 const destination = arg('destination', path.join(workDir, 'destination'));
 const corpusDir = arg('corpus', path.join(workDir, 'corpus'));
 const mode = arg('mode', 'all');
 
-const agentStateDir = path.join(workDir, 'agent-state', engineName);
-const repositoryPath = path.join(destination, engineName, 'repository');
+const agentStateDir = path.join(workDir, 'agent-state', ENGINE_NAME);
+const repositoryPath = path.join(destination, ENGINE_NAME, 'repository');
 const fillerPath = path.join(destination, 'filler.bin');
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
-function engine() { return createEngine({ agentStateDir, binaryDir, name: engineName }); }
+function engine() { return createEngine({ agentStateDir, binaryDir }); }
 function freeBytes(dir) { const stat = fs.statfsSync(dir); return stat.bavail * stat.bsize; }
 
 // Deduplication makes a repeat of known data almost free, which would let a
@@ -70,7 +69,7 @@ async function seedRepository() {
 
 function killedMidBackup(afterMs, sourceDir) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [__filename, '--mode', 'snapshot-only', '--engine', engineName, '--binary-dir', binaryDir, '--work-dir', workDir, '--destination', destination, '--corpus', corpusDir, '--source', sourceDir], {
+    const child = spawn(process.execPath, [__filename, '--mode', 'snapshot-only', '--binary-dir', binaryDir, '--work-dir', workDir, '--destination', destination, '--corpus', corpusDir, '--source', sourceDir], {
       detached: true,
       stdio: 'ignore',
     });
@@ -153,7 +152,7 @@ async function main() {
 
   if (mode === 'snapshot-only') { await snapshotOnly(); return; }
 
-  const results = { engine: engineName, startedAt: new Date().toISOString() };
+  const results = { engine: ENGINE_NAME, startedAt: new Date().toISOString() };
   results.baselineSnapshots = await seedRepository();
   // Large enough that both engines are still writing when the kill lands: a
   // snapshot that finished first proves nothing about an interrupted one.

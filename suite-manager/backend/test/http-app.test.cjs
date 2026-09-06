@@ -685,10 +685,8 @@ test('Stable-track apply starts the update agent when a newer release is availab
   }, { homeHost: 'home.test', updateAgent });
 });
 
-test('Backup API proxies simple owner backup, restore, and download actions', async () => {
-  const backupDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-backup-bundle-'));
-  const archivePath = path.join(backupDir, 'bundle.tar.gz');
-  await fs.writeFile(archivePath, 'fake backup archive');
+test('Backup API proxies simple owner backup and restore actions', async () => {
+  const backupDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-backup-point-'));
   const calls = [];
   const backupAgent = {
     async mount(destinationId) {
@@ -707,13 +705,13 @@ test('Backup API proxies simple owner backup, restore, and download actions', as
       calls.push(['status']);
       return {
         backups: [{
-          archivePath,
           appCount: 1,
           createdAt: '2026-07-05T12:00:00.000Z',
           destinationId: '/media/backup',
           destinationLabel: 'Backup Drive',
           id: 'backup-one',
           path: backupDir,
+          restorable: true,
           sourceVersion: null,
           volumeCount: 1,
         }],
@@ -757,12 +755,13 @@ test('Backup API proxies simple owner backup, restore, and download actions', as
     });
     assert.equal(restore.status, 202);
 
+    // Downloading and uploading a backup went with the tar formats: a backup
+    // now lives in the drive's encrypted repository and is never a single file.
     const download = await hostRequest(baseUrl, `/suite-manager/api/backups/download?path=${encodeURIComponent(backupDir)}`, {
       headers: { Cookie: cookie, Host: 'home.test' },
     });
-    assert.equal(download.status, 200);
-    assert.equal(download.body, 'fake backup archive');
-    assert.match(download.headers['content-disposition'], /backup-one\.tar\.gz/);
+    assert.equal(download.status, 404);
+
     assert.deepEqual(calls.filter((call) => call[0] !== 'status'), [
       ['backup', { destinationId: '/media/backup', note: '' }],
       ['restore', { backupPath: backupDir, confirmation: 'RESTORE' }],

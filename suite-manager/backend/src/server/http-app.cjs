@@ -898,23 +898,6 @@ function createMOSServer({
         return;
       }
 
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/upload`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
-          return;
-        }
-        const contentLength = Number.parseInt(request.headers['content-length'] || '', 10);
-        if (!Number.isFinite(contentLength) || contentLength <= 0) {
-          jsonResponse(response, 411, { code: 'LENGTH_REQUIRED', error: 'The upload needs a known file size.' });
-          return;
-        }
-        jsonResponse(response, 202, await backupAgent.uploadBackup(request, {
-          contentLength,
-          destinationId: String(url.searchParams.get('destinationId') || ''),
-        }));
-        return;
-      }
-
       // One file an owner can hand to whoever is helping them. Signed in only:
       // it reports the shape of the machine, and an export anyone could fetch
       // would be a reconnaissance endpoint on an unauthenticated port.
@@ -937,22 +920,6 @@ function createMOSServer({
           'Content-Type': 'text/plain; charset=utf-8',
         });
         response.end(bundle.text);
-        return;
-      }
-
-      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/download`) {
-        if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to download backups.' });
-          return;
-        }
-        const backupPath = url.searchParams.get('path') || '';
-        const status = await backupAgent.status();
-        const backup = (status.backups || []).find((item) => item.path === backupPath);
-        if (!backup || !backup.archivePath || !fs.existsSync(backup.archivePath)) {
-          jsonResponse(response, 404, { error: 'Backup bundle is no longer available.' });
-          return;
-        }
-        downloadResponse(response, backup.archivePath, `${backup.id || 'mos-backup'}.tar.gz`);
         return;
       }
 

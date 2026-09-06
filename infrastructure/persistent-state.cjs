@@ -32,17 +32,15 @@ const OWNERSHIP_LABELS = Object.freeze({
   resource: 'mos.resource',
 });
 
-// Backup schema. Version 3 adds the owned-resource inventory, ownership
-// evidence, and space accounting. Version 4 replaces the per-backup tar
-// bundle with snapshots in an encrypted, deduplicating repository on the
-// destination, so it records snapshot ids where 3 recorded archive paths and
-// digests. Restore accepts the declared window only; anything else must fail
-// validation before any mutation. Versions 2 and 3 stay in the window because
-// existing installs have those bundles on their drives.
+// Backup schema. Version 4 stores every backup as snapshots in an encrypted,
+// deduplicating repository on the destination. The unencrypted tar bundles of
+// versions 2 and 3 are no longer readable: their restore path was removed once
+// the repository path was drill-verified, so a pre-4 backup is refused by
+// validation before any mutation rather than half-restored.
 const BACKUP_SCHEMA_VERSION = 4;
-const RESTORE_COMPATIBLE_SCHEMA_VERSIONS = Object.freeze([2, 3, 4]);
+const RESTORE_COMPATIBLE_SCHEMA_VERSIONS = Object.freeze([4]);
 
-// Beta ceiling for total raw authoritative state in one bundle. Deliberately
+// Beta ceiling for total raw authoritative state in one backup. Deliberately
 // conservative: the streaming and space-accounting behavior beyond this size
 // is unproven, and a refused backup is safer than an unrestorable one.
 const BACKUP_BETA_MAX_TOTAL_BYTES = 256 * 1024 * 1024 * 1024;

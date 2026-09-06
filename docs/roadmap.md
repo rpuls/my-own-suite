@@ -24,44 +24,24 @@ Consolidated 2026-07-30 from `pre-beta-checklist.md`, `beta-main-cutover-checkli
 
 ## Now — Beta hardening
 
-The window before and during private tester recruitment. Recovery leads, because a privacy-first
-platform whose backups are unencrypted full-secret exports is the sharpest dissonance in the product.
+The window before and during private tester recruitment. Recovery leads, because a backup an owner
+cannot schedule, take off-site, or unlock on a replacement machine is not yet recovery they can rely
+on — the storage under it is now encrypted and drill-verified, which was the sharpest dissonance in
+the product until 2026-09-06.
 
 ### A. Recovery an owner can trust without an asterisk
 
-**Gate:** the storage engine is chosen on measured evidence, an owner sets a recovery key once,
-backups run on a schedule with retention to an attached disk or an S3-compatible bucket, and no
-restore screen shows a raw 502 or an internal path.
+**Gate:** an owner sets a recovery key once, backups run on a schedule with retention to an attached
+disk or an S3-compatible bucket, and no restore screen shows a raw 502 or an internal path. The
+storage engine half of this gate is met (`docs/decisions.md`, 2026-09-06).
 
-The restore contract itself is drill-verified and is not in question (`docs/decisions.md`,
-2026-07-30). What is missing is encryption, scheduling, retention, and an off-site destination — and
-the tar-bundle storage format cannot reach them, because whole-copy archives make daily schedules and
-cloud uploads arithmetically impractical. Every item below assumes the storage layer *inside* the
-existing engine becomes a third-party content-addressed repository, and that the orchestration around
-it — journal, rescue generation, absence reconciliation, ownership classification, verification gate
-— does not change.
+The restore contract itself is drill-verified and is not in question (`docs/decisions.md`, 2026-07-30),
+and as of 2026-09-06 so is the storage under it: backups are restic repositories, the engine choice is
+recorded with its measurements, and the drills that earn a `verified` restore guarantee were re-run
+against the encrypted store (`docs/decisions.md`, 2026-09-06). What is left in this theme is the
+lifecycle around that storage — a recovery key an owner actually holds, a schedule, retention, and a
+destination that is not in the same room.
 
-- **A1 — Dual spike, then pick the storage engine.** *Decision node: A2–A5 are blocked on it.* Kopia
-  and restic are close enough that this has to be measured rather than argued. Build both behind the
-  existing injected system adapter and measure the same four things on real MOS data: peak memory
-  backing up an Immich-scale volume on a 4 GB box, restore into a freshly created Docker volume with
-  uid/gid and modes intact, refusal behaviour on a deliberately corrupted repository, and
-  replacement-machine recovery with no downloadable bundle in the picture. The standing preference is
-  Kopia — `repository sync-to` is the disk-plus-cloud model built in, KopiaUI is an escape hatch a
-  non-technical owner can actually use, and Velero deprecated restic in its favour after running both
-  at production scale. The counterweight is restic's settled repository format and `rustic`, a second
-  independent implementation of it, which is a stronger answer to **B3** than any promise MOS can
-  make. Memory is the axis that can overturn the preference. Record the outcome in
-  `docs/decisions.md`. *(Medium — owner-run measurement; blocks the rest of this theme)*
-- **A2 — Adopt the chosen engine, and re-earn the guarantee.** Three of the backup agent's
-  twenty-two adapter methods change — `archiveTree`, `extractArchive`, `assertArchiveReadable` —
-  along with the manifest fields that exist only to record per-archive digests. Everything the July
-  drills proved stays. The real cost is not the integration: the storage half of the evidence behind
-  a `verified` restore guarantee stops applying, so the corruption, insufficient-space,
-  disconnected-destination and power-loss drills all re-run. Both mount-liveness refusals must
-  survive, at job start and at completion. The downloadable single-file bundle does not survive —
-  moving a copy means moving the repository — so the upload path and the bundle list are redesigned
-  around restore points rather than files. *(Large — flagship)*
 - **A3 — Recovery-key lifecycle.** The engine supplies the cryptography; this is everything around
   it, and it is the half that does not come free. Generate a strong key, present it once, offer an
   export file, decide where the operational copy lives so unattended scheduled backups can run, and
@@ -70,25 +50,27 @@ it — journal, rescue generation, absence reconciliation, ownership classificat
   stolen drive or a breached bucket, not a compromised server. *(Medium)*
 - **A4 — Scheduled and pre-update backups, retention, last-known-good protection.** Manual-only
   backup means the newest thing an owner has is whenever they last remembered. MOS owns the
-  scheduling whichever engine wins: neither engine's built-in scheduler runs without a daemon MOS
-  will not run, and a bare snapshot would skip the stop-and-quiesce sequence entirely — so this is a
-  systemd timer feeding the existing job pipeline. Retention comes from the engine. A checkpoint
+  scheduling: restic's own scheduling needs a daemon MOS will not run, and a bare snapshot would skip
+  the stop-and-quiesce sequence entirely — so this is a systemd timer feeding the existing job
+  pipeline. Retention comes from the engine's forget policy. A checkpoint
   before every update is on by default and switchable off; it needs a "skipped — destination not
   connected" outcome rather than a failure, and it has to be precise about scope, because a platform
   update and a per-app update transaction are different things. *(Medium)*
 - **A5 — Two destinations: an attached disk, and an S3-compatible bucket.** Absorbs the former
-  **D1**: object storage stops being a new subsystem once the engine speaks it natively. Exactly two,
+  **D1**: object storage stops being a new subsystem because restic speaks S3 natively. Exactly two,
   because every advertised destination needs backup *and* restore drills before it is offered. Needs
   credential storage, destination UI, and the remote equivalent of the mount-liveness refusal. The
   server's own system disk may be a staging or replication source but is never offered as the only
   destination — that shape is what once wrote 13 GiB to the root disk and reported success. See
   **OQ1** for the remaining choice between one replicated repository and independent repositories per
   destination. *(Medium)*
-- **A6 — Restore-experience follow-ups from the July drills.** Serve a static "MOS is restoring"
-  page from Caddy instead of a raw 502 during the control-plane outage; map journal phase IDs
-  (`reconciling-apps`, …) to plain language in the interrupted-restore notice; say "the uploaded
-  file" instead of leaking the internal temp filename; offer Mount for whole-disk filesystems, not
-  only partitions. *(Small, bundled)*
+- **A6 — Backup and restore follow-ups from the drills.** Serve a static "MOS is restoring" page from
+  Caddy instead of a raw 502 during the control-plane outage; offer Mount for whole-disk filesystems,
+  not only partitions, which is also what makes a whole-disk lab drive re-attachable through the UI;
+  collect the data a killed or interrupted backup leaves unreferenced in the repository, which today
+  is reclaimed only by the next delete; and clear what a backup wrote under the mountpoint after the
+  drive was pulled — measured at 34 MB on the system disk, invisible once the drive is back, and safe
+  to remove only against a positive test that the path is not the mounted drive. *(Small, bundled)*
 - **A7 — Decide a cleanup story for anonymous Docker volumes.** Unlabeled, hash-named volumes left
   behind by removed app containers are outside MOS ownership by design, so restore correctly refuses
   to claim them — and nothing else ever removes them either. *(Small — needs a decision first)*

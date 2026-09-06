@@ -6,11 +6,12 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ### Changed
 
-- Backups are now written into an encrypted, deduplicating store on the backup drive (schema version 4): repeat backups only store what changed, and the drive alone cannot be read without the key held on the server. The per-backup downloadable file is gone — the store on the drive is the copy you keep — while bundles from schema versions 2 and 3 stay listed, restorable, and uploadable, and a drive holding one storage format refuses the other. Until the new storage passes its own recovery drills, MOS describes restoring from it as still being proven rather than verified.
+- Backups are now written into an encrypted, deduplicating store on the backup drive (schema version 4): repeat backups only store what changed, and the drive alone cannot be read without the key held on the server. Restoring from it is **verified** — the recovery drills were re-run against the new storage on real hardware, including pulling the drive mid-backup, killing the restore outright, and cutting power partway through one, plus a 15.4 GB restore that came back byte-for-byte with every owner, permission and timestamp intact. **Compatibility:** backups written by MOS 0.19 or earlier, as unencrypted bundles, can no longer be restored by this release; they stay listed and can be deleted to free their space, and restoring one needs MOS 0.19 or earlier. Downloading a backup as a single file and uploading one back are gone with that format — the store on the drive is the copy you keep, and moving it to another machine means attaching the drive. A drive holding a storage format this version does not speak is refused rather than written into.
 
 ### Fixed
 
 - Restoring a backup now rebuilds apps on the web address recorded in the backup itself. Previously, on a server that got its domain after installation (typical for own-hardware installs), a restore rewrote every app route to the install-time LAN address, leaving all apps unreachable over HTTPS until the owner re-applied their HTTPS settings.
+- A backup that fails because the drive was unplugged while MOS was writing to it now says so, instead of showing the storage engine's own message about a file path it could not write.
 
 ## [0.19.0] - 2026-09-04
 

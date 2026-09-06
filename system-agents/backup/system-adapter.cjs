@@ -73,11 +73,6 @@ class BackupSystemAdapter {
     this.command('tar', ['-czf', archivePath, '-C', sourceDir, ...(entries || ['.'])], { timeout: 1_800_000 });
   }
 
-  async extractArchive(archivePath, targetDir) {
-    ensureDir(targetDir);
-    this.command('tar', ['-xzf', archivePath, '-C', targetDir], { timeout: 1_800_000 });
-  }
-
   // Listing output is discarded on purpose: a multi-gigabyte archive can hold
   // millions of entries, and capturing that listing just to prove readability
   // would buffer it all in memory.

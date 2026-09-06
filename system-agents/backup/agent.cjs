@@ -11,9 +11,9 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { execFile, execFileSync, spawn } = require('node:child_process');
-const { BackupAgentCore, COMPLETE_MARKER, isRestorePointPath, restorePublicIdentity, sha256, validatePackagePayloads } = require('./agent-core.cjs');
+const { BackupAgentCore, isRestorePointPath, restorePublicIdentity, sha256, UNREADABLE_LEGACY_BACKUP, validatePackagePayloads } = require('./agent-core.cjs');
 const { BackupSystemAdapter } = require('./system-adapter.cjs');
-const { createEngine, engineNameFromEnv, readRepositoryDescriptor, repositoryUsage, restorePointsDir } = require('./engines/engine.cjs');
+const { createEngine, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage, restorePointsDir } = require('./engines/engine.cjs');
 const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-agent-client.cjs');
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
@@ -183,47 +183,45 @@ function jobPath(id) { return path.join(jobsDir, `${id}.json`); }
 function createJob(kind, payload) {
   if (isActive(reconcileCurrentJob())) throw new Error('A backup or restore job is already running.');
   const interrupted = core.interruptedRestore();
-  // Validation and upload never touch the running suite, so they stay
-  // available while an interrupted restore blocks destructive work — checking
-  // or bringing in a bundle is part of recovery.
-  if (interrupted && kind !== 'validate' && kind !== 'upload') throw new Error(`A restore did not complete (stopped during "${interrupted.phase}"). Acknowledge it before starting new backup or restore work; the pre-restore rescue copy is at ${interrupted.rescuePath || 'the backup agent state directory'}.`);
+  // Validation never touches the running suite, so it stays available while an
+  // interrupted restore blocks destructive work — checking whether a backup is
+  // restorable is part of recovery.
+  if (interrupted && kind !== 'validate') throw new Error(`A restore did not complete (stopped during "${interrupted.phase}"). Acknowledge it before starting new backup or restore work; the pre-restore rescue copy is at ${interrupted.rescuePath || 'the backup agent state directory'}.`);
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
-  const destinationId = kind === 'backup' || kind === 'upload' ? normalizeDestination(payload.destinationId) : null;
-  const backupPath = kind === 'restore' || kind === 'validate' || kind === 'delete' ? normalizeBundlePath(payload.backupPath) : null;
-  const uploadPath = kind === 'upload' ? path.resolve(String(payload.uploadPath || '')) : null;
+  const destinationId = kind === 'backup' ? normalizeDestination(payload.destinationId) : null;
+  const backupPath = kind === 'restore' || kind === 'validate' || kind === 'delete' ? normalizeBackupPath(payload.backupPath) : null;
   const note = kind === 'backup' ? String(payload.note || '').trim().slice(0, 500) : '';
-  if ((kind === 'backup' || kind === 'upload') && !destinationId) throw new Error('Choose a mounted destination under /media, /mnt, or /run/media.');
-  if ((kind === 'restore' || kind === 'validate' || kind === 'delete') && !backupPath) throw new Error('Choose a detected backup bundle from mounted storage.');
-  if (kind === 'upload' && (!uploadPath.startsWith(`${destinationId}${path.sep}`) || !fs.existsSync(uploadPath))) throw new Error('The uploaded file is no longer available on the destination.');
+  if (kind === 'backup' && !destinationId) throw new Error('Choose a mounted destination under /media, /mnt, or /run/media.');
+  if ((kind === 'restore' || kind === 'validate' || kind === 'delete') && !backupPath) throw new Error('Choose a detected backup from mounted storage.');
+  // A leftover backup in the retired tar format can be deleted but never read,
+  // so the refusal happens here rather than after a job has been queued.
+  if ((kind === 'restore' || kind === 'validate') && !isRestorePointPath(backupPath)) throw new Error(UNREADABLE_LEGACY_BACKUP);
   if (kind === 'restore' && payload.confirmation !== 'RESTORE') throw new Error('Type RESTORE to confirm this destructive restore.');
-  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator: payload.initiator || 'owner', kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(uploadPath ? { uploadPath } : {}), ...(note ? { note } : {}) };
+  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator: payload.initiator || 'owner', kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(note ? { note } : {}) };
   writeJson(jobPath(id), job);
   writeJson(currentJobPath, job);
   spawn(process.execPath, [__filename, '--worker', jobPath(id)], { cwd: repoDir, detached: true, env: process.env, stdio: 'ignore' }).unref();
   return job;
 }
-// One opaque locator covers both storage kinds: a restore point is its
-// manifest file inside the destination's restore-points directory, a legacy
-// bundle is its directory. Either way the locator must resolve under mounted
-// storage and name something complete.
-function normalizeBundlePath(candidate) {
+// A locator names a restore point: its manifest file inside the destination's
+// restore-points directory. A directory holding a retired tar-format backup
+// still resolves, because deleting one is the only thing MOS can still do with
+// it. Either way the locator must resolve under mounted storage.
+function normalizeBackupPath(candidate) {
   const resolved = path.resolve(String(candidate || ''));
   if (!destinationRoots.some((root) => resolved.startsWith(`${root}${path.sep}`))) return null;
   if (isRestorePointPath(resolved)) {
     if (!fs.existsSync(resolved) || !fs.existsSync(`${resolved}.sha256`)) return null;
     return resolved;
   }
-  if (!fs.existsSync(path.join(resolved, 'manifest.json'))) return null;
-  if (!fs.existsSync(path.join(resolved, COMPLETE_MARKER))) return null;
-  return resolved;
+  return fs.existsSync(path.join(resolved, 'manifest.json')) ? resolved : null;
 }
 function notePathFor(backupPath) {
   return isRestorePointPath(backupPath) ? `${backupPath}.note.txt` : path.join(backupPath, 'note.txt');
 }
-// An operator note is a sidecar file, never part of the checksummed manifest
-// or the downloadable archive — it annotates this destination's copy without
-// touching backup integrity.
+// An operator note is a sidecar file, never part of the checksummed manifest —
+// it annotates this destination's copy without touching backup integrity.
 function readNote(backupPath) {
   try {
     const note = fs.readFileSync(notePathFor(backupPath), 'utf8').trim();
@@ -241,23 +239,21 @@ function treeBytes(root) {
   } catch {}
   return total;
 }
-// Restore points and legacy bundles are listed together and typed, so the UI
-// can be honest about what each one can still do: a bundle is a file an owner
-// can download, a restore point is data inside the destination's repository.
-function listBundles(destinations) {
+// Restore points are the only backups MOS can read. Backups left on a drive in
+// the retired tar format are still listed, marked unrestorable: they occupy
+// real space, and an owner who cannot see them cannot reclaim it.
+function listBackups(destinations) {
   const backups = [];
   for (const destination of destinations) {
     if (!destination.mountPath) continue;
     const root = path.join(destination.mountPath, 'MOS-backups');
     if (!fs.existsSync(root)) continue;
     for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const bundlePath = path.join(root, entry.name);
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+      const legacyPath = path.join(root, entry.name);
       try {
-        if (!fs.existsSync(path.join(bundlePath, COMPLETE_MARKER))) continue;
-        if (!fs.existsSync(path.join(bundlePath, 'bundle.tar.gz'))) continue;
-        const manifest = readJson(path.join(bundlePath, 'manifest.json'));
-        backups.push({ appCount: manifest.contents?.apps?.length || 0, archivePath: path.join(bundlePath, 'bundle.tar.gz'), createdAt: manifest.backup?.createdAt || null, destinationId: destination.id, destinationLabel: destination.label, downloadable: true, encrypted: false, id: manifest.backup?.id || entry.name, kind: 'bundle', note: readNote(bundlePath), path: bundlePath, schemaVersion: manifest.backup?.schemaVersion || null, sizeBytes: treeBytes(bundlePath), sourceCommit: manifest.source?.commit || null, sourceVersion: manifest.source?.version || null, volumeCount: manifest.contents?.volumes?.length || 0 });
+        const manifest = readJson(path.join(legacyPath, 'manifest.json'));
+        backups.push({ appCount: manifest.contents?.apps?.length || 0, createdAt: manifest.backup?.createdAt || null, destinationId: destination.id, destinationLabel: destination.label, encrypted: false, id: manifest.backup?.id || entry.name, kind: 'legacy-bundle', note: readNote(legacyPath), path: legacyPath, restorable: false, schemaVersion: manifest.backup?.schemaVersion || null, sizeBytes: treeBytes(legacyPath), sourceCommit: manifest.source?.commit || null, sourceVersion: manifest.source?.version || null, volumeCount: manifest.contents?.volumes?.length || 0 });
       } catch {}
     }
     const descriptor = readRepositoryDescriptor(destination.mountPath);
@@ -271,7 +267,7 @@ function listBundles(destinations) {
         const manifest = readJson(manifestPath);
         const volumes = manifest.contents?.volumes || [];
         const rawBytes = (manifest.contents?.stateRawBytes || 0) + volumes.reduce((sum, volume) => sum + (volume.rawBytes || 0), 0);
-        backups.push({ appCount: manifest.contents?.apps?.length || 0, archivePath: null, createdAt: manifest.backup?.createdAt || null, destinationId: destination.id, destinationLabel: destination.label, downloadable: false, encrypted: true, engineName: manifest.backup?.engine || descriptor?.engineName || null, id: manifest.backup?.id || path.basename(name, '.json'), kind: 'restore-point', note: readNote(manifestPath), path: manifestPath, repositoryId: descriptor?.repositoryId || null, schemaVersion: manifest.backup?.schemaVersion || null, sizeBytes: rawBytes, sourceCommit: manifest.source?.commit || null, sourceVersion: manifest.source?.version || null, volumeCount: volumes.length });
+        backups.push({ appCount: manifest.contents?.apps?.length || 0, createdAt: manifest.backup?.createdAt || null, destinationId: destination.id, destinationLabel: destination.label, encrypted: true, engineName: manifest.backup?.engine || descriptor?.engineName || null, id: manifest.backup?.id || path.basename(name, '.json'), kind: 'restore-point', note: readNote(manifestPath), path: manifestPath, repositoryId: descriptor?.repositoryId || null, restorable: true, schemaVersion: manifest.backup?.schemaVersion || null, sizeBytes: rawBytes, sourceCommit: manifest.source?.commit || null, sourceVersion: manifest.source?.version || null, volumeCount: volumes.length });
       } catch {}
     }
   }
@@ -370,7 +366,7 @@ async function reconcileRestoredApps(logMessage) {
 
 const core = new BackupAgentCore({
   apps: { installedInstances: installedAppInstances, reconcile: reconcileRestoredApps },
-  engine: createEngine({ agentStateDir, name: engineNameFromEnv() }),
+  engine: createEngine({ agentStateDir }),
   jobs: { log, stage, update: updateJob },
   packages: { inventory: packageBackupInventory, validatePayloads: validatePackagePayloads },
   paths: { agentStateDir, stateDir, stateRoot },
@@ -384,7 +380,6 @@ if (require.main === module && process.argv[2] === '--worker') {
       const job = readJson(file);
       if (job.kind === 'restore') await core.restore(file);
       else if (job.kind === 'validate') await core.validateBackup(file);
-      else if (job.kind === 'upload') await core.importBundle(file);
       else if (job.kind === 'delete') await core.deleteBackupJob(file);
       else await core.backup(file);
     } catch (error) {
@@ -407,8 +402,8 @@ if (require.main === module && process.argv[2] === '--worker') {
           destination.mountPath ? { ...destination, repository: repositoryUsage(destination.mountPath) } : destination
         ));
         respond(response, 200, {
-          backups: listBundles(destinations),
-          capabilities: { backups: ['create', 'delete', 'download', 'list', 'upload', 'validate'], destinations: ['list', 'mount'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: engineNameFromEnv(), model: 'engine-repository' } },
+          backups: listBackups(destinations),
+          capabilities: { backups: ['create', 'delete', 'list', 'validate'], destinations: ['list', 'mount'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
           currentJob: summarizeJob(reconcileCurrentJob()),
           destinations,
           interruptedRestore: core.interruptedRestore(),
@@ -423,37 +418,6 @@ if (require.main === module && process.argv[2] === '--worker') {
         const destination = normalizeDestination(body.destinationId);
         if (destination) await assertMountedDestination(destination);
         respond(response, 202, { job: createJob('backup', body) });
-        return;
-      }
-      if (request.method === 'POST' && url.pathname === '/v1/backups/upload') {
-        // Raw octet stream, not JSON: the body is the downloaded bundle
-        // archive itself, saved onto the destination before an `upload` job
-        // unpacks and validates it.
-        const destinationId = normalizeDestination(url.searchParams.get('destinationId'));
-        if (!destinationId) { respond(response, 400, { code: 'INVALID_DESTINATION', error: 'Choose a mounted, writable destination under /media, /mnt, or /run/media.' }); return; }
-        await assertMountedDestination(destinationId);
-        if (isActive(reconcileCurrentJob())) { respond(response, 409, { code: 'JOB_ACTIVE', error: 'A backup or restore job is already running.' }); return; }
-        const contentLength = Number.parseInt(request.headers['content-length'] || '', 10);
-        if (!Number.isFinite(contentLength) || contentLength <= 0) { respond(response, 411, { code: 'LENGTH_REQUIRED', error: 'The upload needs a known file size.' }); return; }
-        // The stored file and its unpacked copy both land on the destination.
-        const free = availableBytes(destinationId);
-        if (free !== null && free < contentLength * 2) { respond(response, 409, { code: 'NO_SPACE', error: 'The destination does not have enough free space to store and unpack this upload.' }); return; }
-        const uploadRoot = path.join(destinationId, 'MOS-backups');
-        ensureDir(uploadRoot);
-        const uploadPath = path.join(uploadRoot, `.upload-${crypto.randomUUID().slice(0, 8)}.tar.gz`);
-        try {
-          await new Promise((resolve, reject) => {
-            const sink = fs.createWriteStream(uploadPath, { flags: 'wx' });
-            request.on('error', reject);
-            sink.on('error', reject);
-            sink.on('finish', resolve);
-            request.pipe(sink);
-          });
-          respond(response, 202, { job: createJob('upload', { destinationId, uploadPath }) });
-        } catch (error) {
-          fs.rmSync(uploadPath, { force: true });
-          throw error;
-        }
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/backups/validate') { respond(response, 202, { job: createJob('validate', await readBody(request)) }); return; }

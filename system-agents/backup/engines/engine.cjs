@@ -1,39 +1,24 @@
-// Engine selection and the on-destination layout that surrounds a repository.
+// The on-destination layout that surrounds a repository.
 //
-// The selection below is deliberately a plain branch. Both engines exist only
-// until MOS picks one; this is not a plugin seam and must not grow into a
-// registry.
+// MOS has one backup storage engine: restic, chosen 2026-09-06 after a
+// 15.4 GB measured comparison against Kopia on the lab VM (docs/decisions.md
+// records the numbers). The engine name is still written into every
+// destination's descriptor and every manifest, because a drive has to be able
+// to say what wrote it.
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { KopiaEngine } = require('./engine-kopia.cjs');
 const { ResticEngine } = require('./engine-restic.cjs');
 
-const ENGINE_NAMES = Object.freeze(['kopia', 'restic']);
-// Provisional default, chosen 2026-09-05 on the lab measurements: restic used
-// less peak memory on every operation — the axis named in advance as able to
-// decide this — with equal or better fidelity. Reversing it is this one line
-// while both engines exist; the scale rerun in the morning brief is what
-// confirms or reverses it before the losing engine is deleted.
-const DEFAULT_ENGINE_NAME = 'restic';
+const ENGINE_NAME = 'restic';
 const BACKUPS_DIRNAME = 'MOS-backups';
 const REPOSITORY_DIRNAME = 'repository';
 const RESTORE_POINTS_DIRNAME = 'restore-points';
 const REPOSITORY_SIDECAR_FILENAME = 'MOS-REPOSITORY.json';
 
-function engineNameFromEnv(env = process.env) {
-  const configured = String(env.MOS_BACKUP_ENGINE || '').trim().toLowerCase();
-  if (!configured) return DEFAULT_ENGINE_NAME;
-  if (!ENGINE_NAMES.includes(configured)) throw new Error(`MOS_BACKUP_ENGINE must be one of ${ENGINE_NAMES.join(', ')}.`);
-  return configured;
-}
-
-function createEngine({ agentStateDir, binaryDir, keyFile, name = DEFAULT_ENGINE_NAME } = {}) {
-  const options = { agentStateDir, binaryDir, keyFile };
-  if (name === 'restic') return new ResticEngine(options);
-  if (name === 'kopia') return new KopiaEngine(options);
-  throw new Error(`Unknown backup storage engine "${name}".`);
+function createEngine({ agentStateDir, binaryDir, keyFile } = {}) {
+  return new ResticEngine({ agentStateDir, binaryDir, keyFile });
 }
 
 function backupsRoot(destinationId) { return path.join(destinationId, BACKUPS_DIRNAME); }
@@ -43,8 +28,8 @@ function restorePointPath(destinationId, jobId) { return path.join(restorePoints
 function repositorySidecarPath(destinationId) { return path.join(backupsRoot(destinationId), REPOSITORY_SIDECAR_FILENAME); }
 
 // A plaintext description of what the repository directory is, so a listing
-// can name the storage without invoking an engine and a destination written by
-// one engine is refused rather than corrupted by the other.
+// can name the storage without invoking the engine, and a destination written
+// in a storage format this MOS does not speak is refused rather than corrupted.
 function readRepositoryDescriptor(destinationId) {
   try {
     return JSON.parse(fs.readFileSync(repositorySidecarPath(destinationId), 'utf8'));
@@ -127,9 +112,7 @@ module.exports = {
   BACKUPS_DIRNAME,
   backupsRoot,
   createEngine,
-  DEFAULT_ENGINE_NAME,
-  ENGINE_NAMES,
-  engineNameFromEnv,
+  ENGINE_NAME,
   openDestinationRepository,
   readRepositoryDescriptor,
   REPOSITORY_DIRNAME,
