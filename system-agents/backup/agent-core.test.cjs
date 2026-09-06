@@ -56,33 +56,11 @@ class FakeSystem {
   async startService(name) { this.events.push(['startService', name]); }
   async reloadCaddy() { this.events.push(['reloadCaddy']); }
 
-  async archiveTree(sourceDir, archivePath, { entries } = {}) {
+  // Tar survives only as the pre-restore rescue copy, so the fake keeps only
+  // what that path uses: writing an archive and proving it reads back.
+  async archiveTree(sourceDir, archivePath) {
     ensureDir(path.dirname(archivePath));
-    let files = {};
-    if (entries) {
-      for (const entry of entries) {
-        const absolute = path.join(sourceDir, entry);
-        if (!fs.existsSync(absolute)) continue;
-        if (fs.statSync(absolute).isDirectory()) {
-          for (const [key, value] of Object.entries(serializeTree(absolute))) files[`${entry}/${key}`] = value;
-        } else {
-          files[entry] = fs.readFileSync(absolute).toString('base64');
-        }
-      }
-    } else {
-      files = serializeTree(sourceDir);
-    }
-    fs.writeFileSync(archivePath, JSON.stringify({ files }));
-  }
-
-  async extractArchive(archivePath, targetDir) {
-    const { files } = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
-    for (const [relative, base64] of Object.entries(files)) {
-      const absolute = path.join(targetDir, ...relative.split('/'));
-      ensureDir(path.dirname(absolute));
-      fs.writeFileSync(absolute, Buffer.from(base64, 'base64'));
-    }
-    ensureDir(targetDir);
+    fs.writeFileSync(archivePath, JSON.stringify({ files: serializeTree(sourceDir) }));
   }
 
   async assertArchiveReadable(archivePath) { JSON.parse(fs.readFileSync(archivePath, 'utf8')); }
@@ -356,56 +334,26 @@ function rewriteRestorePoint(manifestPath, mutate) {
   return manifest;
 }
 
-// MOS no longer writes v2/v3 tar bundles, so the legacy restore and import
-// paths are tested against a fixture of the historical format rather than
-// against something the current code produced. This is what is on the drives
-// of installs that predate the repository.
+// What installs that predate the encrypted repository still have sitting on
+// their drives: a directory holding a pre-4 manifest. MOS can no longer read
+// one, so the fixture carries the manifest and the completion marker and not
+// the archives nothing opens any more.
 async function writeLegacyBundle(w, { id = 'legacy-0001', schemaVersion = 3 } = {}) {
-  const core = w.core();
   const bundle = path.join(w.destination(), 'MOS-backups', `mos-backup-${id}`);
-  const stage = path.join(w.paths.agentStateDir, `legacy-stage-${id}`);
-  fs.rmSync(stage, { force: true, recursive: true });
-  for (const target of core.stateTargets()) {
-    await w.system.copyTree(target.path, path.join(stage, target.stagePath), { excludeNames: target.exclude || [] });
-    if (target.sqliteDatabase) await w.system.snapshotSqlite(path.join(target.path, target.sqliteDatabase), path.join(stage, target.stagePath, target.sqliteDatabase));
-  }
   ensureDir(bundle);
-  const statePath = path.join(bundle, 'state.tar.gz');
-  await w.system.archiveTree(stage, statePath);
-  fs.rmSync(stage, { force: true, recursive: true });
   const apps = w.readDb().filter((instance) => instance.status !== 'uninstalled').map((instance) => ({
     instanceId: instance.instanceId,
-    manifestDigest: 'test-manifest-digest',
-    packageDigest: 'test-package-digest',
     packageId: instance.packageId,
     packageVersion: '1.0.0',
-    payload: [],
-    source: { kind: 'test' },
   }));
-  const { ambiguous, owned } = classifyVolumes(await w.system.listVolumes(), [...new Set(apps.map((app) => app.packageId))]);
-  const volumes = [];
-  for (const volume of owned) {
-    const archive = `volumes/${volume.name}.tar.gz`;
-    const archivePath = path.join(bundle, archive);
-    await w.system.archiveTree(w.system.volumeDir(volume.name), archivePath);
-    const entry = { archive, archiveBytes: fs.statSync(archivePath).size, archiveSha256: sha256(archivePath), name: volume.name };
-    volumes.push(schemaVersion >= 3 ? { ...entry, instanceId: volume.instanceId, ownership: volume.ownership, packageId: volume.packageId, rawBytes: await w.system.pathBytes(w.system.volumeDir(volume.name)) } : entry);
-  }
   const manifest = {
     backup: { createdAt: new Date().toISOString(), id, kind: 'mos-whole-suite', schemaVersion },
-    contents: {
-      apps,
-      stateArchive: 'state.tar.gz',
-      stateArchiveBytes: fs.statSync(statePath).size,
-      stateArchiveSha256: sha256(statePath),
-      volumes,
-      ...(schemaVersion >= 3 ? { ambiguousVolumes: ambiguous, stateRawBytes: 0 } : {}),
-    },
+    contents: { apps, stateArchive: 'state.tar.gz', volumes: [] },
     source: await w.system.sourceInfo(),
   };
   writeJson(path.join(bundle, 'manifest.json'), manifest);
   fs.writeFileSync(path.join(bundle, 'MANIFEST.sha256'), `${sha256(path.join(bundle, 'manifest.json'))}  manifest.json\n`);
-  await w.system.archiveTree(bundle, path.join(bundle, 'bundle.tar.gz'), { entries: ['manifest.json', 'MANIFEST.sha256', 'state.tar.gz', 'volumes'] });
+  fs.writeFileSync(path.join(bundle, 'state.tar.gz'), 'archive-nothing-reads\n');
   fs.writeFileSync(path.join(bundle, 'COMPLETE'), `${new Date().toISOString()}\n`);
   return bundle;
 }
@@ -494,22 +442,23 @@ test('full restore reconciles absence: post-backup app volumes cannot survive or
   assert.equal(w.system.volumes.get(name)[OWNERSHIP_LABELS.instance], reinstallInstance);
 });
 
-test('a v2 bundle restores with derived ownership and still reconciles absence', async () => {
+// The tar formats were removed with the code that read them. A backup in one
+// of them has to be refused in a sentence an owner can act on, and refused
+// before the restore has touched anything — the failure mode to avoid is a
+// half-restored machine and a checksum error from a file MOS cannot parse.
+test('a backup in a retired format is refused before any mutation', async () => {
   const w = await world();
   await w.installApp(STIRLING);
   const core = w.core();
   const bundle = await writeLegacyBundle(w, { id: 'v2-fixture', schemaVersion: 2 });
 
-  await w.installApp(SEAFILE);
-  const restoreJob = w.createJob('restore', { backupPath: bundle });
-  await core.restore(restoreJob);
-  assert.equal(readJson(restoreJob).status, 'succeeded');
-  assert.equal(w.system.volumes.has('mos-app-seafile-mysql-data'), false);
-  // Ownership was re-derived from the bundle's own package inventory, so the
-  // recreated volume is labeled and bound to the original installation.
-  const labels = w.system.volumes.get('mos-app-stirling-pdf-configs');
-  assert.equal(labels[OWNERSHIP_LABELS.owned], 'true');
-  assert.equal(labels[OWNERSHIP_LABELS.instance], STIRLING.instanceId);
+  w.system.events.length = 0;
+  await assert.rejects(() => core.restore(w.createJob('restore', { backupPath: bundle })), /older MOS in the unencrypted bundle format/u);
+  await assert.rejects(() => core.validateBackup(w.createJob('validate', { backupPath: bundle })), /older MOS in the unencrypted bundle format/u);
+  assert.equal(core.interruptedRestore(), null);
+  assert.ok(!w.system.events.some(([event]) => ['removeContainer', 'removeVolume', 'stopService'].includes(event)));
+  // Refused, not cleaned up behind the owner's back.
+  assert.ok(fs.existsSync(bundle));
 });
 
 test('an interrupted restore is detected, blocks new work, and requires explicit acknowledgment', async () => {
@@ -584,7 +533,7 @@ test('a bundle outside the supported schema window is rejected before any mutati
 
   w.system.events.length = 0;
   const restoreJob = w.createJob('restore', { backupPath: point });
-  await assert.rejects(() => core.restore(restoreJob), /supported restore window/u);
+  await assert.rejects(() => core.restore(restoreJob), /this version can no longer read/u);
   assert.equal(core.interruptedRestore(), null);
   assert.ok(!w.system.events.some(([event]) => ['removeContainer', 'removeVolume', 'stopService'].includes(event)));
 });
@@ -756,66 +705,6 @@ test('classifyVolumes trusts labels first, per-package derivation second, and no
   assert.deepEqual(ambiguous, ['mos-app-unknown-thing']);
 });
 
-// Upload is the inverse of download: the bundle's own bundle.tar.gz, brought
-// back to a destination, must become a restorable bundle only after passing
-// the full read-only validation — and a broken or duplicate upload must leave
-// nothing visible behind.
-test('importBundle turns a downloaded archive back into a restorable bundle and refuses duplicates and corruption', async () => {
-  const w = await world();
-  await w.installApp(STIRLING);
-  const core = w.core();
-
-  // A note given at backup time is born with the restore point, as a sidecar.
-  const backupJob = w.createJob('backup', { destinationId: w.destination(), note: 'before seafile' });
-  await core.backup(backupJob);
-  assert.equal(fs.readFileSync(`${restorePointOf(backupJob)}.note.txt`, 'utf8'), 'before seafile\n');
-
-  // Upload speaks the legacy bundle format only: a downloaded bundle from an
-  // earlier MOS is the sole thing an owner can have to upload.
-  const bundle = await writeLegacyBundle(w, { id: 'import-fixture' });
-  const originalManifest = readJson(path.join(bundle, 'manifest.json'));
-
-  // Uploading onto a destination that already holds the same backup refuses.
-  const duplicateUpload = path.join(w.destination(), 'MOS-backups', '.upload-dup.tar.gz');
-  fs.cpSync(path.join(bundle, 'bundle.tar.gz'), duplicateUpload);
-  const duplicateJob = w.createJob('upload', { destinationId: w.destination(), uploadPath: duplicateUpload });
-  await assert.rejects(core.importBundle(duplicateJob), /already exists/u);
-  assert.equal(fs.existsSync(duplicateUpload), false);
-
-  // Importing onto an empty destination (the replacement-machine flow).
-  const second = path.join(w.root, 'destination-2');
-  ensureDir(path.join(second, 'MOS-backups'));
-  const upload = path.join(second, 'MOS-backups', '.upload-ok.tar.gz');
-  fs.cpSync(path.join(bundle, 'bundle.tar.gz'), upload);
-  const importJob = w.createJob('upload', { destinationId: second, uploadPath: upload });
-  await core.importBundle(importJob);
-  const finished = readJson(importJob);
-  assert.equal(finished.status, 'succeeded');
-  assert.equal(finished.validation.checks.checksums, true);
-  assert.equal(finished.validation.storage, 'tar-bundle');
-  const imported = finished.outputPath;
-  assert.ok(fs.existsSync(path.join(imported, 'COMPLETE')));
-  assert.ok(fs.existsSync(path.join(imported, 'bundle.tar.gz')));
-  assert.equal(readJson(path.join(imported, 'manifest.json')).backup.id, originalManifest.backup.id);
-  assert.equal(fs.existsSync(upload), false);
-  // The sidecar note never rides inside the downloadable archive.
-  assert.equal(fs.existsSync(path.join(imported, 'note.txt')), false);
-
-  // The imported bundle actually restores.
-  const restoreJob = w.createJob('restore', { backupPath: imported });
-  await core.restore(restoreJob);
-  assert.equal(readJson(restoreJob).status, 'succeeded');
-
-  // A corrupt upload fails validation and leaves no visible bundle or litter.
-  const corrupt = path.join(second, 'MOS-backups', '.upload-bad.tar.gz');
-  fs.writeFileSync(corrupt, 'not-a-bundle');
-  const corruptJob = w.createJob('upload', { destinationId: second, uploadPath: corrupt });
-  await assert.rejects(core.importBundle(corruptJob));
-  assert.equal(fs.existsSync(corrupt), false);
-  const leftovers = fs.readdirSync(path.join(second, 'MOS-backups')).filter((name) => name.startsWith('.'));
-  assert.deepEqual(leftovers, []);
-});
-
 // The 2026-07-20 unmounted-destination drill: the mountpoint directory
 // outlives the mount, so a backup whose drive vanished mid-job wrote 13 GB
 // onto the system disk and reported success. Success now requires the
@@ -833,7 +722,7 @@ test('a backup whose destination disappears mid-job fails instead of reporting s
     return result;
   };
   const backupJob = w.createJob('backup', { destinationId: w.destination() });
-  await assert.rejects(core.backup(backupJob), /disappeared while the backup was running/u);
+  await assert.rejects(core.backup(backupJob), /drive was disconnected while MOS was writing to it/u);
   // Nothing is listed, and the repository this job created is removed, so no
   // orphaned gigabytes stay behind on the system disk.
   assert.equal(fs.existsSync(readJson(backupJob).outputPath), false);
@@ -848,10 +737,43 @@ test('a backup whose destination disappears mid-job fails instead of reporting s
   await assert.rejects(core.backup(refusedJob), /not mounted/u);
 });
 
-// The dual-engine phase is temporary, but while it lasts a destination holds
-// one repository in one format. Writing the other engine's snapshots into it
-// would corrupt it, so the refusal happens before the engine is invoked.
-test('a destination written by one storage engine refuses the other', async () => {
+// A pulled drive surfaces first as whatever the engine says about the path it
+// could not write, which reads like an internal fault. The owner gets the
+// actual cause instead, and support still gets the engine's own words.
+test('a backup that fails because the drive was pulled says so instead of quoting the engine', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const core = w.core();
+
+  w.engine.snapshotTree = async () => {
+    w.system.destinationMountedResult = false;
+    const failure = new Error('Fatal: unable to save snapshot: write /media/backup/MOS-backups/repository/data/fe/fed386-tmp: no space left on device');
+    failure.engineOutput = 'Fatal: unable to save snapshot';
+    throw failure;
+  };
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await assert.rejects(core.backup(backupJob), (error) => {
+    assert.match(error.message, /drive was disconnected while MOS was writing to it/u);
+    assert.equal(error.engineOutput, 'Fatal: unable to save snapshot');
+    assert.match(error.cause.message, /^Fatal: unable to save snapshot/u);
+    return true;
+  });
+
+  // A failure with the drive still there keeps the engine's own sentence: it
+  // is the useful one, and blaming the cable would be a lie.
+  const second = await world();
+  await second.installApp(STIRLING);
+  second.engine.snapshotTree = async () => { throw new Error('Fatal: repository is already locked exclusively'); };
+  await assert.rejects(
+    second.core().backup(second.createJob('backup', { destinationId: second.destination() })),
+    /already locked exclusively/u,
+  );
+});
+
+// A destination holds one repository in one storage format. A MOS that speaks
+// a different one would corrupt it, so the refusal happens before the engine
+// is invoked — which is also what a future format change has to survive.
+test('a destination written in another storage format refuses the current engine', async () => {
   const w = await world();
   await w.installApp(STIRLING);
   await w.core().backup(w.createJob('backup', { destinationId: w.destination() }));
@@ -929,7 +851,10 @@ test('a restore point is refused when the store it points into is gone', async (
   assert.equal(fs.existsSync(repositoryOf(w)), false);
 });
 
-test('a legacy bundle and a restore point coexist on one destination', async () => {
+// A drive that has been backed up to for a year holds both. The retired one
+// cannot be restored, but it still occupies space, so deleting it has to work
+// and has to leave the repository beside it completely alone.
+test('a retired-format backup can still be deleted, and the repository beside it is untouched', async () => {
   const w = await world();
   await w.installApp(STIRLING);
   const core = w.core();
@@ -938,20 +863,15 @@ test('a legacy bundle and a restore point coexist on one destination', async () 
   await core.backup(backupJob);
   const point = restorePointOf(backupJob);
 
-  const bundleCheck = w.createJob('validate', { backupPath: bundle });
-  await core.validateBackup(bundleCheck);
-  assert.equal(readJson(bundleCheck).validation.storage, 'tar-bundle');
-  assert.equal(readJson(bundleCheck).validation.schemaVersion, 3);
-
   const pointCheck = w.createJob('validate', { backupPath: point });
   await core.validateBackup(pointCheck);
-  assert.equal(readJson(pointCheck).validation.storage, 'engine-repository');
   assert.equal(readJson(pointCheck).validation.schemaVersion, 4);
 
-  // Deleting the legacy bundle leaves the repository and its restore point be.
-  assert.equal((await core.deleteBackup(bundle)).kind, 'bundle');
+  assert.equal((await core.deleteBackup(bundle)).kind, 'legacy-bundle');
   assert.equal(fs.existsSync(bundle), false);
   assert.ok(fs.existsSync(point));
+  // Removing it is a directory removal, never a repository rewrite.
+  assert.ok(!w.engine.events.some(([event]) => event === 'maintainRepository'));
   const afterJob = w.createJob('restore', { backupPath: point });
   await core.restore(afterJob);
   assert.equal(readJson(afterJob).status, 'succeeded');

@@ -8,7 +8,7 @@ import { Steps } from '@astrojs/starlight/components'
 MOS creates manual, whole-suite backups on storage that is mounted on the server running MOS. The practical destination depends on where that server lives.
 
 :::danger[A backup holds every secret your server has]
-Any backup contains your data, credentials, and secrets. New backups are encrypted on the drive with a key held on the server itself, so the drive alone cannot be read—but the key lives on the server, so a stolen server is still a stolen backup, and MOS cannot yet hand you that key to keep elsewhere. Backup bundles you downloaded from an earlier MOS are not encrypted at all. Keep backups on access-controlled storage—never in Downloads or casual cloud storage.
+Any backup contains your data, credentials, and secrets. Backups are encrypted on the drive with a key held on the server itself, so the drive alone cannot be read—but the key lives on the server, so a stolen server is still a stolen backup, and MOS cannot yet hand you that key to keep elsewhere. Keep backups on access-controlled storage. Bundles you downloaded from an earlier MOS are not encrypted at all: move them out of Downloads and off casual cloud storage.
 :::
 
 ## What a backup contains
@@ -21,7 +21,7 @@ A MOS backup captures:
 - the Home dashboard layout,
 - domain and HTTPS configuration.
 
-Restore requires a working MOS installation on a compatible version. A bundle is not a bare-metal installer by itself.
+Restore requires a working MOS installation on a compatible version. A backup is not a bare-metal installer by itself.
 
 ## Choose a destination for your installation
 
@@ -35,7 +35,7 @@ Do not save the only backup on the server's internal system disk: a disk failure
 
 A rented server cannot use a USB disk attached to your computer. Attach a separate persistent block-storage volume through your provider, format and mount it on the server, then select that mounted volume in Suite Manager. Provider block storage is billed separately and remains inside the provider's trust boundary; use provider-supported encryption where available.
 
-MOS does not currently copy the backup store to S3-compatible/object storage, another cloud account, or a backup service. Provider snapshots are outside MOS: they may be useful as an additional recovery layer, but MOS cannot verify their consistency, contents, retention, or restore behavior. They do not replace a tested MOS bundle.
+MOS does not currently copy the backup store to S3-compatible/object storage, another cloud account, or a backup service. Provider snapshots are outside MOS: they may be useful as an additional recovery layer, but MOS cannot verify their consistency, contents, retention, or restore behavior. They do not replace a tested MOS backup.
 
 ## Taking a backup
 
@@ -47,13 +47,13 @@ MOS does not currently copy the backup store to S3-compatible/object storage, an
 
 3. Review the full-secret warning, then click **Back up now**. Apps pause while their data is captured and start again when the job finishes.
 
-4. Keep the drive itself on access-controlled storage. There is no separate file to download for a new backup—the encrypted store on the drive is the copy you keep. If you still hold a bundle downloaded from an earlier MOS, move it out of Downloads and remove any unneeded browser copy.
+4. Keep the drive itself on access-controlled storage. There is no separate file to download—the encrypted store on the drive is the copy you keep, and moving a backup to another machine means taking the drive there.
 
 </Steps>
 
 Backups are written under `MOS-backups/` on the selected destination, into a single encrypted store that every backup on that drive shares. Because the store is content-addressed, a second backup only writes what actually changed, and one drive holds many restore points for far less space than one full copy each. Each restore point records which stored data it needs; MOS checks the store's integrity and re-verifies every app package before a restore changes running services.
 
-One drive holds one store. If you have bundles from an earlier MOS on the same drive, they are listed alongside the new restore points and stay restorable.
+One drive holds one store. Bundles from MOS 0.19 or earlier, in the older unencrypted format, are still listed if they are on the same drive, but this version cannot restore them—restoring one needs MOS 0.19 or earlier. You can delete them here to free the space they take.
 
 :::tip[A workable routine]
 Backups are manual; there is no scheduler or retention policy yet. Take one before updates or uninstalling an app, keep more than one generation, and periodically test that the destination is still readable.
@@ -70,6 +70,7 @@ Restore replaces the current suite with a backup on a machine that already has a
 Important boundaries:
 
 - **Match the MOS version.** Each backup records its source version. Restore onto that version unless a documented compatibility migration says otherwise.
+- **Backups from MOS 0.19 or earlier cannot be restored here.** Those were unencrypted bundles, a format this version no longer reads. Restore one with MOS 0.19 or earlier, or take a fresh backup on the machine you are running now.
 - **Restore is whole-suite.** Per-app restore is not supported.
 - **The machine must already run MOS.** Install the compatible MOS version first, then attach the backup destination and restore. Bare-metal recovery has not yet been validated as a single end-to-end workflow.
 - **A replacement machine needs the key as well as the drive.** The encryption key lives on the server that made the backup. Restoring onto the same server is unaffected, but restoring onto a new one currently means copying that key across by hand; a supported way to save and enter it is still being built.

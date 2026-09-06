@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { ActionMenu, AdvancedPanel, Dialog, Icon, Notice, TextInput } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
@@ -19,9 +19,9 @@ type BackupDestination = {
 
 type BackupValidation = {
   apps: Array<{ instanceId: string; packageId: string; packageVersion: string | null }>;
-  bundlePath: string;
+  backupPath: string;
   checkedAt: string;
-  software: { bundleVersion: string | null; currentVersion: string | null; matched: boolean };
+  software: { backupVersion: string | null; currentVersion: string | null; matched: boolean };
   volumes: Array<{ name: string; rawBytes: number | null }>;
   warnings: string[];
 };
@@ -39,13 +39,11 @@ type BackupJob = {
   validation?: BackupValidation | null;
 };
 
-type BackupBundle = {
+type BackupEntry = {
   appCount: number;
-  archivePath?: string | null;
   createdAt: string | null;
   destinationId: string;
   destinationLabel: string;
-  downloadable?: boolean;
   encrypted?: boolean;
   engineName?: string | null;
   id: string;
@@ -53,6 +51,7 @@ type BackupBundle = {
   note?: string | null;
   path: string;
   repositoryId?: string | null;
+  restorable?: boolean;
   sizeBytes?: number | null;
   sourceVersion: string | null;
   volumeCount: number;
@@ -67,7 +66,7 @@ type InterruptedRestore = {
 };
 
 type BackupStatus = {
-  backups: BackupBundle[];
+  backups: BackupEntry[];
   currentJob: BackupJob | null;
   destinations: BackupDestination[];
   error?: string | null;
@@ -126,24 +125,21 @@ function jobMessage(job: BackupJob | null) {
   if (job.status === 'succeeded') {
     if (job.kind === 'restore') return 'Restore completed.';
     if (job.kind === 'validate') return 'Backup check passed. The stored data and every app package in this backup are intact, so it can be restored.';
-    if (job.kind === 'upload') return 'Backup upload completed. The bundle passed the same checks as a restore preflight and is listed below.';
     if (job.kind === 'delete') return 'Backup deleted. The space only it was using has been reclaimed.';
     return 'Backup completed.';
   }
   if (job.status === 'failed') {
     if (job.kind === 'restore') return 'Restore failed.';
     if (job.kind === 'validate') return 'Backup check failed. Do not rely on this backup for recovery.';
-    if (job.kind === 'upload') return 'Backup upload failed. Nothing was added to the destination.';
     if (job.kind === 'delete') return 'Delete failed. The other backups on the drive are unaffected.';
     return 'Backup failed.';
   }
-  return job.stage || (job.kind === 'restore' ? 'Restore in progress' : job.kind === 'validate' ? 'Backup check in progress' : job.kind === 'upload' ? 'Backup upload in progress' : job.kind === 'delete' ? 'Backup delete in progress' : 'Backup in progress');
+  return job.stage || (job.kind === 'restore' ? 'Restore in progress' : job.kind === 'validate' ? 'Backup check in progress' : job.kind === 'delete' ? 'Backup delete in progress' : 'Backup in progress');
 }
 
 function operationTitle(job: BackupJob | null, restoreStarted: boolean) {
   if (restoreStarted || job?.kind === 'restore') return 'Restoring your backup';
   if (job?.kind === 'validate') return 'Checking your backup';
-  if (job?.kind === 'upload') return 'Adding your uploaded backup';
   if (job?.kind === 'delete') return 'Deleting the backup';
   return 'Backing up your suite';
 }
@@ -151,7 +147,6 @@ function operationTitle(job: BackupJob | null, restoreStarted: boolean) {
 function operationMessage(job: BackupJob | null, restoreStarted: boolean) {
   if (restoreStarted || job?.kind === 'restore') return 'MOS is replacing the current install with the selected backup. A large backup can take a long time — leave this page open and it will reconnect by itself. While services restart the suite may briefly look offline, and refreshing can show a temporary server error page even though the restore is running fine.';
   if (job?.kind === 'validate') return 'MOS is reading everything this backup stored and checking it against what was recorded, without changing anything. Apps keep running.';
-  if (job?.kind === 'upload') return 'MOS is unpacking the uploaded backup file and verifying every checksum and app package. Apps keep running.';
   if (job?.kind === 'delete') return 'MOS is removing the backup and reclaiming the space only it was using. Data other backups still need is kept. Apps keep running.';
   return 'MOS is pausing apps, saving their data, and then starting them again. Please wait until the backup finishes.';
 }
@@ -163,8 +158,10 @@ function operationStage(job: BackupJob | null, restoreStarted: boolean) {
 
 // A restore point's size is the suite data it restores, not space it takes on
 // the drive — points share the store's deduplicated data, so sizes are not
-// additive and are worded to not read that way. A bundle's size is its file.
-function backupDescription(backup: BackupBundle) {
+// additive and are worded to not read that way. A retired-format backup's size
+// is the space its folder occupies, which is the only useful thing left to say
+// about it.
+function backupDescription(backup: BackupEntry) {
   const contents = backup.appCount > 0 ? `${backup.appCount} app${backup.appCount === 1 ? '' : 's'} and ${backup.volumeCount} data store${backup.volumeCount === 1 ? '' : 's'}` : 'No apps in this backup';
   if (!Number.isFinite(backup.sizeBytes ?? NaN)) return contents;
   const size = formatBytes(backup.sizeBytes as number);
@@ -208,26 +205,24 @@ function getBackupButtonState(destinations: BackupDestination[], selectedId: str
 export function BackupsScreen() {
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [selectedDestinationId, setSelectedDestinationId] = useState('');
-  const [selectedRestore, setSelectedRestore] = useState<BackupBundle | null>(null);
-  const [selectedDelete, setSelectedDelete] = useState<BackupBundle | null>(null);
-  const [noteEditor, setNoteEditor] = useState<{ backup: BackupBundle; value: string } | null>(null);
+  const [selectedRestore, setSelectedRestore] = useState<BackupEntry | null>(null);
+  const [selectedDelete, setSelectedDelete] = useState<BackupEntry | null>(null);
+  const [noteEditor, setNoteEditor] = useState<{ backup: BackupEntry; value: string } | null>(null);
   const [backupNote, setBackupNote] = useState('');
-  const [visibleBundles, setVisibleBundles] = useState(3);
+  const [visibleBackups, setVisibleBackups] = useState(3);
   const [restoreConfirmation, setRestoreConfirmation] = useState('');
   const [restoreStarted, setRestoreStarted] = useState(false);
   const [sessionEnded, setSessionEnded] = useState<'restore' | 'expired' | ''>('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
-  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const activeJob = status?.currentJob || null;
   const running = restoreStarted || isRunning(activeJob);
   const backupList = status?.backups || [];
-  // Download hygiene only applies while an unencrypted bundle is actually
-  // sitting on a drive; once they are gone the warning is noise.
-  const hasDownloadableBundle = backupList.some((backup) => backup.downloadable !== false);
+  // Only worth saying while such a backup is actually sitting on a drive.
+  const unreadableCount = backupList.filter((backup) => backup.restorable === false).length;
   const storageSummary = [
-    `${backupList.filter((backup) => backup.encrypted).length} encrypted restore points`,
-    `${backupList.filter((backup) => !backup.encrypted).length} older bundles`,
+    `${backupList.filter((backup) => backup.restorable !== false).length} encrypted restore points`,
+    unreadableCount ? `${unreadableCount} in the retired format` : null,
     backupList.find((backup) => backup.engineName)?.engineName || null,
   ].filter(Boolean).join(' · ');
   const restoreInFlight = restoreStarted || (activeJob?.kind === 'restore' && isRunning(activeJob));
@@ -324,7 +319,7 @@ export function BackupsScreen() {
     });
   }
 
-  async function checkBackup(backup: BackupBundle) {
+  async function checkBackup(backup: BackupEntry) {
     await runAction(`validate:${backup.path}`, async () => {
       await jsonResponse(await fetch('/suite-manager/api/backups/validate', {
         body: JSON.stringify({ backupPath: backup.path }),
@@ -334,7 +329,7 @@ export function BackupsScreen() {
     });
   }
 
-  async function saveNote(backup: BackupBundle, note: string) {
+  async function saveNote(backup: BackupEntry, note: string) {
     setNoteEditor(null);
     await runAction(`note:${backup.path}`, async () => {
       await jsonResponse(await fetch('/suite-manager/api/backups/note', {
@@ -345,7 +340,7 @@ export function BackupsScreen() {
     });
   }
 
-  async function deleteBackup(backup: BackupBundle) {
+  async function deleteBackup(backup: BackupEntry) {
     setSelectedDelete(null);
     await runAction(`delete:${backup.path}`, async () => {
       await jsonResponse(await fetch('/suite-manager/api/backups/delete', {
@@ -353,17 +348,6 @@ export function BackupsScreen() {
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
       }), 'Unable to delete this backup.');
-    });
-  }
-
-  async function uploadBackup(file: File) {
-    if (!selectedDestination) return;
-    await runAction('upload', async () => {
-      await jsonResponse(await fetch(`/suite-manager/api/backups/upload?destinationId=${encodeURIComponent(selectedDestination.id)}`, {
-        body: file,
-        headers: { 'Content-Type': 'application/octet-stream' },
-        method: 'POST',
-      }), 'Unable to upload this backup file.');
     });
   }
 
@@ -394,7 +378,7 @@ export function BackupsScreen() {
       <div className="suite-hero">
         <h1>Backup & Restore</h1>
         <p className="suite-lead mos-body-lg">Save a whole-suite copy to storage mounted on this server, then restore it if you need to recover the system.</p>
-        <Notice title="A backup holds every secret this server has" variant="warning"><p>Any backup contains app data, owner and app credentials, Suite Manager state, and HTTPS/provider secrets. New backups are encrypted on the drive with a key kept on this server, so the drive alone cannot be read — but that key lives here, so a stolen server is still a stolen backup. Older downloadable bundles are not encrypted at all. Use an access-controlled destination, and do not leave downloaded bundles in Downloads or upload them to ordinary cloud storage.</p></Notice>
+        <Notice title="A backup holds every secret this server has" variant="warning"><p>Any backup contains app data, owner and app credentials, Suite Manager state, and HTTPS/provider secrets. Backups are encrypted on the drive with a key kept on this server, so the drive alone cannot be read — but that key lives here, so a stolen server is still a stolen backup. Use an access-controlled destination.</p></Notice>
       </div>
 
       {error ? <Notice title="Backup needs attention" variant="error"><p>{error}</p></Notice> : null}
@@ -520,44 +504,31 @@ export function BackupsScreen() {
         <section className="mos-panel suite-card suite-backup-panel">
           <h2 className="mos-card-title">Restore from a backup</h2>
           <p className="suite-meta">Restore replaces the current install with the backup, verifies the result against it, and keeps a complete rescue copy of the previous state on the server.</p>
-          {status.restoreGuarantee === 'verified' ? <p className="suite-meta">It has passed recovery drills on this and replacement hardware, including power-loss interruption.</p> : <p className="suite-meta"><strong>Restoring the new encrypted backups is still being proven.</strong> The safeguards around it — the rescue copy, the checks before anything is changed, the verification afterwards — are unchanged and drill-tested, but the new storage itself has not finished its own recovery drills. Keep an independent copy of anything you cannot lose.</p>}
-          {hasDownloadableBundle ? <p className="suite-meta"><strong>Before downloading an older bundle:</strong> it is unencrypted and contains the suite's data and reusable secrets. Save it only to encrypted, access-controlled storage and remove unneeded browser copies.</p> : null}
+          <p className="suite-meta">It has passed recovery drills on this and replacement hardware, including power loss partway through a restore.</p>
+          {unreadableCount ? <p className="suite-meta"><strong>Backups in the retired format are listed but cannot be restored.</strong> MOS 0.19 and earlier wrote unencrypted bundles; this version reads only encrypted restore points. Delete them here to reclaim their space once you no longer need them.</p> : null}
           {status.backups.length ? <div className="suite-backup-bundle-list">
-            {status.backups.slice(0, visibleBundles).map((backup) => <article key={backup.path}>
+            {status.backups.slice(0, visibleBackups).map((backup) => <article key={backup.path}>
               <div>
                 <strong>{backup.createdAt ? formatDate(backup.createdAt) : 'MOS backup'}</strong>
                 {backup.note ? <span className="suite-backup-note">{backup.note}</span> : null}
                 <span>{backupDescription(backup)} · {backup.destinationLabel || 'Backup drive'}</span>
-                <span className="suite-category-pill">{backup.encrypted ? 'Encrypted' : 'Older format'}</span>
+                <span className="suite-category-pill">{backup.restorable === false ? 'Retired format' : 'Encrypted'}</span>
               </div>
-              <ActionMenu ariaLabel="Backup actions" disabled={Boolean(busy) || running} items={[
+              <ActionMenu ariaLabel="Backup actions" disabled={Boolean(busy) || running} items={backup.restorable === false ? [
+                { label: 'Delete', onSelect: () => setSelectedDelete(backup) },
+              ] : [
                 { label: 'Restore', onSelect: () => { setSelectedRestore(backup); setRestoreConfirmation(''); } },
                 { label: 'Check', onSelect: () => void checkBackup(backup) },
-                ...(backup.downloadable === false ? [] : [{ label: 'Download', onSelect: () => window.location.assign(`/suite-manager/api/backups/download?path=${encodeURIComponent(backup.path)}`) }]),
                 { label: backup.note ? 'Edit note' : 'Add note', onSelect: () => setNoteEditor({ backup, value: backup.note || '' }) },
                 { label: 'Delete', onSelect: () => setSelectedDelete(backup) },
               ]} />
             </article>)}
-            {status.backups.length > visibleBundles ? <div className="suite-backup-show-more">
-              <button className="suite-subtle-button" onClick={() => setVisibleBundles((current) => current + 10)} type="button">
-                Show {Math.min(10, status.backups.length - visibleBundles)} more
+            {status.backups.length > visibleBackups ? <div className="suite-backup-show-more">
+              <button className="suite-subtle-button" onClick={() => setVisibleBackups((current) => current + 10)} type="button">
+                Show {Math.min(10, status.backups.length - visibleBackups)} more
               </button>
             </div> : null}
           </div> : <p className="suite-meta">Backups found on connected drives will appear here.</p>}
-          <div className="suite-backup-action-footer">
-            <p className="suite-backup-status-message">Have a backup file downloaded from an older MOS? Upload it to the selected backup drive and it becomes restorable here after passing the same checks. New backups are not downloaded one file at a time — the encrypted store on the drive is the copy you keep.</p>
-            <input
-              accept=".tar.gz,.tgz,application/gzip"
-              hidden
-              onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void uploadBackup(file); }}
-              ref={uploadInputRef}
-              type="file"
-            />
-            <button className="mos-btn mos-btn-secondary" disabled={!buttonState.enabled || Boolean(busy) || running} onClick={() => uploadInputRef.current?.click()} type="button">
-              {busy === 'upload' ? <span className="suite-spinner" /> : <Icon name="upload" />}
-              {busy === 'upload' ? 'Uploading...' : 'Upload backup file'}
-            </button>
-          </div>
         </section>
 
         <AdvancedPanel className="suite-backup-advanced" facts={[
@@ -597,7 +568,7 @@ export function BackupsScreen() {
         onClose={() => { if (!busy) setSelectedDelete(null); }}
         title="Delete this backup?"
       >
-        <Notice title="This cannot be undone" variant="warning"><p>{selectedDelete.encrypted ? 'This restore point is permanently removed and the space it alone was using is reclaimed, which can take a moment. Data still needed by other restore points is kept.' : 'The backup bundle is permanently removed from the drive.'} If you need it later, only a copy you downloaded or stored elsewhere can bring it back.</p></Notice>
+        <Notice title="This cannot be undone" variant="warning"><p>{selectedDelete.restorable === false ? 'This backup is in the retired format and cannot be restored by this version of MOS. Deleting it removes its folder from the drive and frees that space.' : 'This restore point is permanently removed and the space it alone was using is reclaimed, which can take a moment. Data still needed by other restore points is kept. If you need it later, only a copy stored elsewhere can bring it back.'}</p></Notice>
         <p className="suite-meta">{formatDate(selectedDelete.createdAt)} · {backupDescription(selectedDelete)} · {selectedDelete.destinationLabel || 'backup storage'}</p>
       </Dialog> : null}
 

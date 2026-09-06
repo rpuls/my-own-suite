@@ -1,6 +1,6 @@
-// Pinned installation of the backup storage engine binaries.
+// Pinned installation of the backup storage engine binary.
 //
-// Versions and their official checksums are adjacent constants and the
+// The version and its official checksums are adjacent constants and the
 // download is refused unless it hashes to the pinned value, following the
 // CoreDNS precedent in scripts/nameserver.cjs. Placement follows the Caddy
 // precedent in scripts/reconcile-system.cjs: /usr/local/libexec/mos, mode
@@ -13,30 +13,14 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
-// `versionArgs` is per engine because the CLIs disagree: restic has a
-// `version` subcommand, while kopia only answers `--version` and rejects
-// `version` as an unknown command — a uniform invocation makes the freshness
-// check below fail forever and every reconcile re-download the binary.
 const ENGINE_RELEASES = Object.freeze({
-  kopia: {
-    archives: {
-      arm64: { file: 'kopia-0.23.1-linux-arm64.tar.gz', sha256: 'a4ffbc019e0b0f932e2632054e73ec521dc1e80172a00095369c53ecf4e5a6cb' },
-      x64: { file: 'kopia-0.23.1-linux-x64.tar.gz', sha256: '416d0f84a3dbb321a8b2d8f0997b1a0a6e915babe79ee76fa6e4d2bd1e1c5178' },
-    },
-    compression: 'tar.gz',
-    repository: 'kopia/kopia',
-    version: '0.23.1',
-    versionArgs: ['--version'],
-  },
   restic: {
     archives: {
       arm64: { file: 'restic_0.19.1_linux_arm64.bz2', sha256: 'a5f64aaab53d51e311fa3829124c5b703f2d14cf187d8640b6be3b2b49376465' },
       x64: { file: 'restic_0.19.1_linux_amd64.bz2', sha256: 'f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c' },
     },
-    compression: 'bz2',
     repository: 'restic/restic',
     version: '0.19.1',
-    versionArgs: ['version'],
   },
 });
 
@@ -64,32 +48,19 @@ function assetFor(name, arch = process.arch) {
   return asset;
 }
 
-function installedVersion(binaryPath, versionArgs) {
+function installedVersion(binaryPath) {
   try {
-    return execFileSync(binaryPath, versionArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 30_000 }).trim();
+    return execFileSync(binaryPath, ['version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 30_000 }).trim();
   } catch {
     return null;
   }
 }
 
-function findBinary(root, name) {
-  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-    const absolute = path.join(root, entry.name);
-    if (entry.isFile() && entry.name === name) return absolute;
-    if (entry.isDirectory()) {
-      const nested = findBinary(absolute, name);
-      if (nested) return nested;
-    }
-  }
-  return null;
-}
-
 // Already-correct installs are left alone so reconciliation stays cheap: the
 // pinned version string appearing in the binary's own output is the check.
 function isCurrent(name, binaryPath) {
-  const release = ENGINE_RELEASES[name];
-  const reported = installedVersion(binaryPath, release.versionArgs);
-  return Boolean(reported && reported.includes(release.version));
+  const reported = installedVersion(binaryPath);
+  return Boolean(reported && reported.includes(ENGINE_RELEASES[name].version));
 }
 
 function installEngineBinary({ arch = process.arch, binaryDir, force = false, log = () => {}, name }) {
@@ -112,24 +83,21 @@ function installEngineBinary({ arch = process.arch, binaryDir, force = false, lo
     }
     fs.mkdirSync(binaryDir, { mode: 0o755, recursive: true });
     const stagedPath = `${binaryPath}.next`;
-    if (release.compression === 'tar.gz') {
-      execFileSync('tar', ['-xzf', archivePath, '-C', workDir], { stdio: ['ignore', 'ignore', 'pipe'], timeout: 300_000 });
-      const extracted = findBinary(workDir, name);
-      if (!extracted) throw new Error(`The ${name} download did not contain a ${name} binary.`);
-      fs.copyFileSync(extracted, stagedPath);
-    } else {
-      // restic publishes its Linux binaries bzip2-compressed and nothing
-      // else, so installing it needs a bzip2 on the host. Ubuntu server
-      // images do not all carry one, which is a real cost of choosing restic
-      // rather than a detail — say so plainly instead of failing on ENOENT.
-      try {
-        fs.writeFileSync(stagedPath, execFileSync('bzip2', ['-dc', archivePath], { maxBuffer: 512 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'], timeout: 300_000 }));
-      } catch (error) {
-        if (error?.code === 'ENOENT') throw new Error(`Cannot install ${name}: it ships bzip2-compressed and this machine has no bzip2.`);
-        throw error;
-      }
+    // restic publishes its Linux binaries bzip2-compressed and nothing else,
+    // so installing it needs a bzip2 on the host. Ubuntu server images do not
+    // all carry one, which is a real cost of choosing restic rather than a
+    // detail — say so plainly instead of failing on ENOENT.
+    try {
+      fs.writeFileSync(stagedPath, execFileSync('bzip2', ['-dc', archivePath], { maxBuffer: 512 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'], timeout: 300_000 }));
+    } catch (error) {
+      if (error?.code === 'ENOENT') throw new Error(`Cannot install ${name}: it ships bzip2-compressed and this machine has no bzip2.`);
+      throw error;
     }
     fs.chmodSync(stagedPath, 0o755);
+    // The binary runs as root from a root-owned directory, so it is owned by
+    // root: an installer that happened to run under another uid would
+    // otherwise leave the engine writable by that account.
+    try { fs.chownSync(stagedPath, 0, 0); } catch {}
     fs.renameSync(stagedPath, binaryPath);
   } finally {
     fs.rmSync(workDir, { force: true, recursive: true });

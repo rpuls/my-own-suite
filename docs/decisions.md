@@ -4,6 +4,46 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-09-06: The Backup Storage Engine Is restic, And It Is The Only One
+
+Decision: MOS stores backups in a restic repository, pinned to 0.19.1 and installed by reconciliation into `/usr/local/libexec/mos/restic`. Kopia is deleted — the module, the pinned release, the `MOS_BACKUP_ENGINE` environment variable, the `ENGINE_NAMES`/`engineNameFromEnv` selection, the base class the two implementations shared, and the comparison harness that chose between them. `system-agents/backup/engines/engine-restic.cjs` is now one file holding both the process plumbing and the CLI knowledge; `engine.cjs` keeps only the on-destination layout and a `createEngine()` that takes no engine name. Reconciliation removes a `kopia` binary it finds on a machine that carried the dual build. The engine name still travels in each destination's descriptor and each manifest, so a drive can always say what wrote it and a MOS that does not speak that format refuses it rather than writing into it.
+
+Reason: The two were close enough that the choice had to be measured, and the measurement had to be at a scale that resembles a real machine rather than a test fixture. Both engines ran the same 15.4 GB corpus — 1,600 unique 4 MiB photo-shaped blobs, four 512 MiB videos, 3 GiB of compressible database dumps, 4,000 documents, 10,000 tiny files, a 2 GiB deliberately duplicated tree, and mixed uid/gid, setuid and symlink cases — sequentially on the 2-core, 4 GB lab VM, through the real engine modules rather than the CLIs.
+
+| | restic | Kopia |
+| --- | --- | --- |
+| initial backup | 39.8 s, 144 MB peak RSS, 9.70 GB stored | 37.1 s, 241 MB, 9.76 GB |
+| incremental | 1.1 s, 105 MB | 0.6 s, 153 MB |
+| restore (26,149 entries) | **13.8 s, 183 MB, 0 metadata differences** | 54.4 s, 450 MB, 7 directory mtimes wrong |
+| replacement-machine restore | 15.2 s, 196 MB | 56.0 s, 393 MB |
+| forget + reclaim | 1.7 s, 75 MB | 0.6 s, 170 MB |
+| deep verify of the whole repository | **9.2 s, 110 MB** | 118.2 s, 257 MB |
+| flipped byte in the largest object | refused | refused |
+
+Kopia wins the two backup-side wall-clock axes by small margins. restic wins restore by 4×, whole-repository verification by 13×, peak memory on every operation, and is the only one of the two that restored every directory timestamp exactly. Memory was named in advance as the axis able to overturn the standing preference for Kopia, and it did — but the decisive numbers turned out to be restore and verify, which is the right way round for a recovery feature: an owner meets those two on their worst day, and both run on the modest hardware MOS targets.
+
+Consequences:
+
+- The temporary seam is gone rather than kept "in case". A second engine would be a new decision with new drills, not a configuration switch, and there is no supported way to ask for another engine.
+- `restoreGuarantee` is `verified` for restore points. The claim was re-earned on the encrypted repository by the machine-level drills of 2026-09-05/06 — mount-liveness refusal at job start and at completion, a drive pulled mid-backup, absence reconciliation on real Docker volumes, uid/gid and setuid fidelity, `kill -9` mid-`restoring-volumes`, and a real power cut mid-`reconciling-apps` with journal, rescue copy, acknowledgement gate and recovery restore all holding — plus the zero-difference 15.4 GB restore above.
+- restic ships its Linux binaries bzip2-compressed only, so reconciliation installs `bzip2` when a host lacks it. That is a real cost of this choice and is stated where it happens.
+- The second independent implementation of the format (`rustic`) is a stronger answer to **B3** than any promise MOS could make about a format only one program reads.
+
+## 2026-09-06: A Backup MOS Cannot Read Is Listed, Never Restored, And Always Deletable
+
+Decision: Restore accepts schema version 4 only. The tar-bundle read path of versions 2 and 3 is deleted along with everything that existed to serve it: `validateLegacyBundle`, `importBundle`, the per-backup download and upload endpoints on both the agent and Suite Manager, the file-picker upload panel in the UI, and the `extractArchive` adapter method. A pre-4 backup still sitting on a drive is still listed, marked `restorable: false`, and carries exactly one action — Delete — which removes its directory. Restore and check refuse it before a job is queued, in one sentence naming the format and the version that can still read it.
+
+Reason: Two formats meant two of everything — two validation paths, two delete branches, two guarantee levels, and a manifest field (`storage`) whose only job was to say which. Keeping a read path alive for backups that MOS stopped writing in 0.19 is the kind of compatibility that quietly becomes permanent. Removing it is a breaking change and is logged as one.
+
+Listing them anyway is the part worth stating: a backup MOS refuses to read still occupies real space on the drive, and an owner who cannot see it cannot reclaim that space. Hiding it would make the drive's free-space number unexplainable. So the tombstone stays, with the one operation that is still meaningful.
+
+Consequences:
+
+- **Breaking:** an unencrypted bundle from 0.19 or earlier cannot be restored by this release. The recovery path for one is MOS 0.19 or earlier.
+- Moving a backup between machines is no longer done by downloading a file. The repository on the drive is the portable artifact: attach the drive to the replacement machine and restore from it. The replacement-machine path is drill-verified with nothing carried over but the repository and its key.
+- `restoreGuaranteeFor` reports `unsupported` for a retired-format backup rather than the old `verified`-for-bundles: the honest claim about a backup this version will not restore is that it will not restore it.
+- The validation report renamed `bundlePath` to `backupPath` and `software.bundleVersion` to `software.backupVersion`, and dropped `storage`, which now has one possible value.
+
 ## 2026-09-02: A Privileged Command That Fails Says Why, And Never What It Was Told
 
 Decision: Every host agent runs its privileged commands through one runner, `system-agents/lib/command-output.cjs`, which keeps a bounded rolling tail of what a command writes and returns the last 60 lines (at most 8 000 characters) with a failure. The agents attach that tail to their fixed error sentence as `details`: the apps agent for `docker build`, `docker run`, network and remove steps, and for a health timeout each container's state and last log lines; the HTTPS agent for `caddy validate` and the reload, and what Cloudflare answered; the Homepage agent for validation, restart and reload, plus the unit's own journal tail read before the rollback restarts it; the update worker for each apply step, with the tail stored on the job record. Suite Manager persists these as it already persisted app failures — `app_operations.diagnostics`, `https_settings.last_apply_diagnostics`, the update job's `output` — shows them under `AdvancedPanel reveal="on-failure"` on the screen that reports the failure, and writes them into the diagnostics bundle, whose `WHAT LOOKS WRONG` summary now leads with a failed platform update or HTTPS apply.

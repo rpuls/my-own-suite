@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { installEngineBinary } = require('../system-agents/backup/engines/engine-install.cjs');
-const { DEFAULT_ENGINE_NAME, ENGINE_NAMES } = require('../system-agents/backup/engines/engine.cjs');
+const { ENGINE_NAME } = require('../system-agents/backup/engines/engine.cjs');
 
 const {
   HOMEPAGE_IMAGE,
@@ -248,19 +248,25 @@ function ensureBzip2() {
   run('apt-get', ['install', '-y', 'bzip2'], { allowFailure: true });
 }
 
-function refreshBackupEngines() {
+function refreshBackupEngine() {
   installDir('/usr/local/libexec/mos', 0o755);
   if (!dryRun) ensureBzip2();
-  for (const name of ENGINE_NAMES) {
-    if (dryRun) { log(`would install backup storage engine ${name}`); continue; }
-    try {
-      installEngineBinary({ binaryDir: '/usr/local/libexec/mos', log, name });
-    } catch (error) {
-      // A machine that cannot reach GitHub must still finish reconciling: the
-      // backup agent reports the missing engine when a backup is attempted,
-      // which is a far better failure than a half-configured host.
-      log(`could not install backup storage engine ${name}: ${error.message}`);
-    }
+  // Machines installed while MOS carried a second candidate engine still have
+  // its binary. Reconciliation owns what is in this directory, so it takes the
+  // retired one back out rather than leaving 50 MB nothing runs.
+  const retired = '/usr/local/libexec/mos/kopia';
+  if (fs.existsSync(retired)) {
+    if (dryRun) log('would remove the retired kopia engine binary');
+    else { fs.rmSync(retired, { force: true }); log('removed the retired kopia engine binary'); }
+  }
+  if (dryRun) { log(`would install backup storage engine ${ENGINE_NAME}`); return; }
+  try {
+    installEngineBinary({ binaryDir: '/usr/local/libexec/mos', log, name: ENGINE_NAME });
+  } catch (error) {
+    // A machine that cannot reach GitHub must still finish reconciling: the
+    // backup agent reports the missing engine when a backup is attempted,
+    // which is a far better failure than a half-configured host.
+    log(`could not install backup storage engine ${ENGINE_NAME}: ${error.message}`);
   }
 }
 
@@ -307,7 +313,7 @@ function main() {
   if (!dryRun) run('systemctl', ['restart', 'systemd-journald'], { allowFailure: true });
 
   refreshCaddyBinary();
-  refreshBackupEngines();
+  refreshBackupEngine();
   writeFile('/etc/systemd/system/caddy.service.d/mos.conf', `[Service]
 EnvironmentFile=-/etc/mos/secrets/caddy-cloudflare.env
 ExecStart=
@@ -356,9 +362,7 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
   unit('mos-backup-agent.service', agentUnit({
     after: 'network-online.target docker.service',
     description: 'MOS backup and restore agent',
-    // MOS_BACKUP_ENGINE selects the storage engine while both are being
-    // measured. It disappears with the losing engine.
-    env: { MOS_BACKUP_AGENT_SOCKET: '/run/mos-backup-agent/agent.sock', MOS_BACKUP_AGENT_STATE_DIR: `${stateRoot}/backup-agent`, MOS_BACKUP_ENGINE: process.env.MOS_BACKUP_ENGINE || DEFAULT_ENGINE_NAME, MOS_REPO_DIR: repoRoot, MOS_STATE_DIR: `${stateRoot}/suite-manager`, MOS_STATE_ROOT: stateRoot },
+    env: { MOS_BACKUP_AGENT_SOCKET: '/run/mos-backup-agent/agent.sock', MOS_BACKUP_AGENT_STATE_DIR: `${stateRoot}/backup-agent`, MOS_REPO_DIR: repoRoot, MOS_STATE_DIR: `${stateRoot}/suite-manager`, MOS_STATE_ROOT: stateRoot },
     name: 'mos-backup-agent.service',
     script: 'system-agents/backup/agent.cjs',
     wants: 'network-online.target docker.service',
