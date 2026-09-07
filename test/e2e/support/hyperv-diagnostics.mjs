@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 
 import { expect } from '@playwright/test';
 
+import { MOS_UNITS } from '../../../system-agents/diagnostics/agent-core.cjs';
 import { openSuiteManager } from './hyperv-navigation.mjs';
 
 // Exercises the owner-facing diagnostics export the way an owner does: open
@@ -53,13 +54,16 @@ export async function verifyDiagnosticsBundle(bundle) {
   expect(bundle, 'the diagnostics agent was not reachable from Suite Manager').not.toContain('diagnostics agent unreachable');
   expect(bundle, 'no systemd unit state was collected, so the agent returned nothing useful').toMatch(/mos-suite-manager\.service {2}· {2}active/u);
 
-  // Every unit, not just the primary one. A collector that loses a random
-  // subset of its reads passes an assertion on one unit almost every time —
-  // that is exactly how a bundle that dropped six of nine unit states went
-  // unnoticed for days. `unknown` is the shape a lost read takes, and it is
-  // rendered to the owner as a broken service, so no unit may report it.
-  const unknownUnits = [...bundle.matchAll(/^(\S+\.service) {2}· {2}unknown/gmu)].map(([, name]) => name);
-  expect(unknownUnits, `the agent could not read the state of ${unknownUnits.join(', ')}`).toEqual([]);
+  // Every unit the agent is defined to read, by name, in every field: a check
+  // on one unit passes a collector that loses a random subset of its reads
+  // almost every time. `unread` is a read that failed, `unknown` a lost one.
+  for (const unit of MOS_UNITS) {
+    const row = new RegExp(`^${unit.replaceAll('.', '\\.')} {2}· {2}(\\S+) {2}· {2}(\\S+)$`, 'mu').exec(bundle);
+    expect(row, `the bundle has no state row for ${unit}`).not.toBeNull();
+    expect(row.slice(1).join(' '), `the agent could not read the state of ${unit}: ${row[0]}`).not.toMatch(/unknown|unread/u);
+  }
+  // And the agent's own account of what it could not read agrees.
+  expect(bundle, 'the collection notes name a source that did not answer').toMatch(/Could not collect\s+nothing — every source answered/u);
 
   // Real host facts rather than an empty section: df output names a mount.
   expect(bundle, 'no filesystem information was collected').toMatch(/Filesystem\s+Size\s+Used/u);

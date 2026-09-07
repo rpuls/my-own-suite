@@ -9,7 +9,7 @@ const {
   resolveRuntimeConfig,
   suiteManagerUnit,
 } = require('../../scripts/reconcile-system.cjs');
-const { JOURNALD_CONFIG_PATH, renderJournaldConfig } = require('../../infrastructure/control-plane-runtime.cjs');
+const { JOURNALD_CONFIG_PATH, renderJournaldConfig, renderUnavailablePage, UNAVAILABLE_PAGE_FILENAME, UNAVAILABLE_PAGE_ROOT } = require('../../infrastructure/control-plane-runtime.cjs');
 const { renderBootstrapPlan } = require('../../scripts/installers/bootstrap-contract.cjs');
 
 test('system reconciliation preserves the installed Home host from the bootstrap contract', (context) => {
@@ -134,6 +134,27 @@ test('a fresh install installs the backup storage engine, not just a managed upd
   // Ubuntu server image does not carry bzip2.
   assert.match(installer, /^apt-get install -y bzip2 /mu);
   assert.ok(reconciler.includes("run('apt-get', ['install', '-y', 'bzip2']"));
+});
+
+// The Caddyfile every path writes points its error handler at a page under
+// /etc/caddy/mos-status. The reconciler wrote that page and the installer did
+// not, so a fresh install — and the published image — answered a restore with a
+// bare 404 until its first managed update.
+test('a fresh install writes the control-plane status page, not just a managed update', () => {
+  const installer = renderBootstrapPlan({}).sshBootstrap;
+  const reconciler = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8');
+  const page = renderUnavailablePage();
+
+  assert.ok(
+    installer.includes(`cat > ${UNAVAILABLE_PAGE_ROOT}/${UNAVAILABLE_PAGE_FILENAME} <<'MOS_UNAVAILABLE_PAGE'
+${page}MOS_UNAVAILABLE_PAGE`),
+    'the installer must write the shared status page verbatim',
+  );
+  assert.ok(installer.indexOf('MOS_UNAVAILABLE_PAGE') < installer.indexOf('cat > /etc/caddy/Caddyfile'), 'the page must exist before the Caddyfile that points at it');
+  assert.ok(reconciler.includes('writeFile(path.join(UNAVAILABLE_PAGE_ROOT, UNAVAILABLE_PAGE_FILENAME), renderUnavailablePage()'), 'the managed-update path must write the same page');
+  for (const source of [installer, reconciler]) {
+    assert.ok(source.includes('handle_errors') || source.includes('withUnavailableHandler'), 'both paths must point Caddy at the page');
+  }
 });
 
 // The socket is the only door to a root process that reads host state, so its

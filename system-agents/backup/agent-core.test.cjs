@@ -965,6 +965,28 @@ test('data left by an interrupted backup is collected at the start of the next b
   assert.ok(!w.engine.events.some(([event]) => event === 'maintainRepository'));
 });
 
+// The other writer of the note: not a killed worker but a backup that failed
+// on its own before its first snapshot was recorded. It ran its cleanup, and
+// with nothing to forget that cleanup can only note the destination.
+test('a backup that fails before its first snapshot notes the destination, and the next backup collects', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  await w.core().backup(w.createJob('backup', { destinationId: w.destination() }));
+
+  const failing = w.core();
+  failing.engine.snapshotTree = async () => { throw new Error('Fatal: repository is already locked exclusively'); };
+  await assert.rejects(failing.backup(w.createJob('backup', { destinationId: w.destination() })), /already locked/u);
+  assert.deepEqual(w.core().readUncollectedData(), [w.destination()]);
+
+  delete failing.engine.snapshotTree;
+  w.engine.events.length = 0;
+  const next = w.createJob('backup', { destinationId: w.destination() });
+  await w.core().backup(next);
+  assert.equal(readJson(next).status, 'succeeded');
+  assert.ok(w.engine.events.some(([event]) => event === 'maintainRepository'));
+  assert.deepEqual(w.core().readUncollectedData(), []);
+});
+
 test('an ordinary backup runs no repository maintenance', async () => {
   const w = await world();
   await w.installApp(STIRLING);

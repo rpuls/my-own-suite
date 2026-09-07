@@ -323,6 +323,33 @@ test('signing in upgrades a hash written under the old parameters, without endin
   service.close();
 });
 
+// The upgrade is a read-modify-write around a few hundred milliseconds of
+// hashing. A password change that lands inside that window must win: the owner
+// was told it changed, and a rehash of the old one would silently undo it.
+test('a rehash never overwrites a password that changed while it was being computed', async () => {
+  const service = new SetupService({ stateDir: await tempStateDir() });
+  await service.createOwner({ email: 'owner@example.com', name: 'Suite Owner', password: 'correct horse battery' });
+  service.store.upgradeOwnerPasswordHash(legacyHash('correct horse battery'));
+
+  // The change lands at the last possible moment: after the sign-in read and
+  // verified the legacy hash, right as it writes the upgraded one.
+  const upgrade = service.store.upgradeOwnerPasswordHash.bind(service.store);
+  let interleaved = null;
+  service.store.upgradeOwnerPasswordHash = (hash, options) => {
+    interleaved = service.changeOwnerPassword({ currentPassword: 'correct horse battery', newPassword: 'a different passphrase' })
+      .then(() => upgrade(hash, options));
+  };
+  assert.equal((await service.login({ email: 'owner@example.com', password: 'correct horse battery' })).status, 'signed-in');
+  assert.equal(await interleaved, false, 'the stale upgrade must not be written');
+
+  assert.equal((await service.login({ email: 'owner@example.com', password: 'a different passphrase' })).status, 'signed-in');
+  await assert.rejects(
+    () => service.login({ email: 'owner@example.com', password: 'correct horse battery' }),
+    (error) => error instanceof SetupError && error.code === 'INVALID_LOGIN',
+  );
+  service.close();
+});
+
 test('a failed sign-in never rewrites the stored hash', async () => {
   const service = new SetupService({ stateDir: await tempStateDir() });
   await service.createOwner({

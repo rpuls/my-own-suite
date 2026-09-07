@@ -3,8 +3,9 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { SetupError, SetupService } = require('../setup/setup-service.cjs');
-const { LoginThrottle, resolveClientAddress } = require('../auth/login-throttle.cjs');
+const { KNOWN_BROWSER_MAX_AGE_MS, SetupError, SetupService } = require('../setup/setup-service.cjs');
+const { LoginThrottle, loadThrottleKey, resolveClientAddress } = require('../auth/login-throttle.cjs');
+const { SignInAlerts } = require('../auth/sign-in-alerts.cjs');
 const { HomepageAgentClient } = require('../homepage/homepage-agent-client.cjs');
 const { HomepageService } = require('../homepage/homepage-service.cjs');
 const { ConsoleLoginError, ConsoleLoginService } = require('../settings/console-login-service.cjs');
@@ -35,6 +36,7 @@ const { UpdateAgentClient } = require('../updates/update-agent-client.cjs');
 const { UpdateService } = require('../updates/update-service.cjs');
 
 const SESSION_COOKIE = 'mos_session';
+const KNOWN_BROWSER_COOKIE = 'mos_known_browser';
 const DEFAULT_FRONTEND_DIST_DIR = path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
 const DEFAULT_APPS_DIR = path.resolve(__dirname, '..', '..', '..', '..', 'apps');
 const SUITE_MANAGER_BASE_PATH = '/suite-manager/';
@@ -124,6 +126,10 @@ function secureTokenEqual(actual, expected) {
 
 function sessionCookie(token, secure = false) {
   return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/${secure ? '; Secure' : ''}`;
+}
+
+function knownBrowserCookie(token, secure = false) {
+  return `${KNOWN_BROWSER_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(KNOWN_BROWSER_MAX_AGE_MS / 1_000)}${secure ? '; Secure' : ''}`;
 }
 
 function clearSessionCookie(secure = false) {
@@ -369,6 +375,7 @@ function createMOSServer({
   homepageUpstream = process.env.MOS_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
   disposableLab = process.env.MOS_DISPOSABLE_LAB === '1',
   loginThrottle = null,
+  signInAlerts = null,
   logger = createLogger(),
   securityLogger = (event) => logger.warn('security-event', event),
   securityEventRecorder = null,
@@ -380,7 +387,7 @@ function createMOSServer({
   const setup = new SetupService({ stateDir });
   // Built here rather than as a parameter default because the backoff is now
   // durable: it needs the store, which does not exist until setup does.
-  const throttle = loginThrottle || new LoginThrottle({ store: setup.store });
+  const throttle = loginThrottle || new LoginThrottle({ key: loadThrottleKey(stateDir), store: setup.store });
   // Defined before the services that report into it: a throttled sign-in, a
   // source serving a package the gate refused, and a catalog that cannot refresh
   // are all counted in the same durable place.
@@ -441,6 +448,7 @@ function createMOSServer({
     secretDir: appPackages.secretDir,
     store: setup.store,
   });
+  const alerts = signInAlerts || new SignInAlerts({ homeHost, logger, smtpSettings, store: setup.store });
   // Resolves an installed app's real host label, so every public URL this layer
   // builds names the address the app actually serves rather than its package id.
   const appHostFor = (packageId) => appPackages.publicRouteHostFor(packageId);
@@ -539,12 +547,13 @@ function createMOSServer({
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/auth/login`) {
         const body = await readJsonBody(request);
-        const attempt = { email: body.email, ip: resolveClientAddress(request) };
+        const knownBrowser = setup.isKnownBrowser(cookies[KNOWN_BROWSER_COOKIE] || '');
+        const attempt = { email: body.email, ip: resolveClientAddress(request), knownBrowser };
         const retryAfterMs = throttle.retryAfterMs(attempt);
         if (retryAfterMs > 0) {
           const retryAfterSeconds = Math.max(1, Math.ceil(retryAfterMs / 1_000));
           const securityEvent = {
-            clientFingerprint: crypto.createHash('sha256').update(attempt.ip).digest('hex').slice(0, 12),
+            clientFingerprint: throttle.fingerprint(attempt.ip),
             event: 'login-throttled',
             retryAfterSeconds,
           };
@@ -559,6 +568,9 @@ function createMOSServer({
             securityLogger({ event: 'security-event-persistence-failed' });
           }
           securityLogger(securityEvent);
+          // Not awaited: the 429 must not wait on a relay, and a relay that
+          // fails is logged rather than allowed to change the answer.
+          alerts.notify().catch((error) => securityLogger({ error: error.message, event: 'sign-in-alert-failed' }));
           jsonResponse(response, 429, {
             code: 'LOGIN_THROTTLED',
             error: 'Too many sign-in attempts. Wait a moment and try again.',
@@ -578,9 +590,10 @@ function createMOSServer({
           throw error;
         }
         throttle.recordSuccess(attempt);
-        jsonResponse(response, 200, { owner: result.owner, status: result.status }, {
-          'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),
-        });
+        const secure = isHttpsRequest(request);
+        const cookiesToSet = [sessionCookie(result.sessionToken, secure)];
+        if (!knownBrowser) cookiesToSet.push(knownBrowserCookie(setup.rememberBrowser(), secure));
+        jsonResponse(response, 200, { owner: result.owner, status: result.status }, { 'Set-Cookie': cookiesToSet });
         return;
       }
 
@@ -602,8 +615,11 @@ function createMOSServer({
           return;
         }
         const result = await setup.changeOwnerPassword(await readJsonBody(request, 8 * 1024));
+        // Every known browser was forgotten with the old password; the one that
+        // proved it is remembered again, like the session it keeps.
+        const secure = isHttpsRequest(request);
         jsonResponse(response, 200, { owner: result.owner, status: result.status }, {
-          'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),
+          'Set-Cookie': [sessionCookie(result.sessionToken, secure), knownBrowserCookie(setup.rememberBrowser(), secure)],
         });
         return;
       }

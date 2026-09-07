@@ -31,7 +31,7 @@ Suite Manager is where you run your suite. It lives at `home.<your-domain>/suite
 
 ## Owner account security
 
-Repeated failed sign-in attempts receive progressively longer, temporary delays. This slows online password guessing without permanently locking the single owner out. Multi-factor authentication and passkeys are not available yet, so use a unique password from a password manager and do not reuse it for an app or another service.
+Repeated failed sign-in attempts receive progressively longer, temporary delays. This slows online password guessing without permanently locking the single owner out. A browser you have signed in from before is not held up by someone else guessing at your account; a new browser during such an attack may have to wait a little. If you have set up an [email relay](/docs/guides/email-relay/), MOS emails you when someone is repeatedly trying your password, at most once a day. Multi-factor authentication and passkeys are not available yet, so use a unique password from a password manager and do not reuse it for an app or another service.
 
 ## Where Suite Manager ends
 

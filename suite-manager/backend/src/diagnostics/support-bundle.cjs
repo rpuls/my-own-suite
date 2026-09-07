@@ -63,7 +63,8 @@ function summarizeTrouble({ apps = [], collection = {}, platform = {} }) {
   if (platform.lastUpdate?.status === 'failed') trouble.push(`The last platform update failed at ${platform.lastUpdate.at || 'an unknown time'}: ${platform.lastUpdate.error || 'no reason was recorded.'}`);
   if (platform.lastHttpsApply?.status === 'failed') trouble.push(`The last HTTPS apply failed: ${platform.lastHttpsApply.errorCode || 'unknown error'} at ${platform.lastHttpsApply.at || 'an unknown time'}.`);
   for (const unit of collection.units || []) {
-    if (unit.active !== 'active') trouble.push(`Service ${unit.name} is ${unit.active}${unit.sub && unit.sub !== unit.active ? ` (${unit.sub})` : ''}.`);
+    if (unit.unread) trouble.push(`The state of ${unit.name} could not be read; it may or may not be running.`);
+    else if (unit.active !== 'active') trouble.push(`Service ${unit.name} is ${unit.active}${unit.sub && unit.sub !== unit.active ? ` (${unit.sub})` : ''}.`);
   }
   for (const container of collection.containers || []) {
     if (container.troubled) trouble.push(`Container ${container.name} is ${container.status || container.state || 'in an unexpected state'}.`);

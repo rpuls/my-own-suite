@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { LoginThrottle, resolveClientAddress } = require('../src/auth/login-throttle.cjs');
+const { KEY_FILENAME, LoginThrottle, loadThrottleKey, resolveClientAddress } = require('../src/auth/login-throttle.cjs');
 
 function fixture() {
   let now = 10_000;
@@ -40,6 +40,43 @@ test('account backoff catches attempts distributed across IPs', () => {
   assert.equal(limiter.retryAfterMs({ email: 'other@example.com', ip: '198.51.100.20' }), 0);
 });
 
+// The account bucket cannot tell the owner from whoever is guessing their
+// email, so a browser the owner has signed in from before skips it. The address
+// bucket still applies to that browser, so a stolen cookie is worth exactly one
+// address.
+test('a known browser skips the account backoff but not the address backoff', () => {
+  const { limiter } = fixture();
+  for (let index = 0; index < 5; index += 1) limiter.recordFailure({ email: 'owner@example.com', ip: `203.0.113.${index}` });
+  const fresh = { email: 'owner@example.com', ip: '198.51.100.20' };
+  assert.equal(limiter.retryAfterMs(fresh), 1_000);
+  assert.equal(limiter.retryAfterMs({ ...fresh, knownBrowser: true }), 0);
+
+  for (let index = 0; index < 3; index += 1) limiter.recordFailure(fresh);
+  assert.equal(limiter.retryAfterMs({ ...fresh, knownBrowser: true }), 1_000);
+
+  // Its success clears its own address, not the account bucket someone else raised.
+  limiter.recordSuccess({ ...fresh, knownBrowser: true });
+  assert.equal(limiter.retryAfterMs({ ...fresh, knownBrowser: true }), 0);
+  assert.equal(limiter.retryAfterMs(fresh), 8_000);
+});
+
+test('a keyed limiter writes subjects nobody can reproduce without the key', () => {
+  const store = {
+    deleteLoginThrottleEntry() {},
+    getLoginThrottleEntries: () => [],
+    pruneLoginThrottleEntries() {},
+    saved: [],
+    saveLoginThrottleEntry(entry) { this.saved.push(entry); },
+  };
+  const attempt = { email: 'owner@example.com', ip: '203.0.113.10' };
+  new LoginThrottle({ key: Buffer.alloc(32, 1), store }).recordFailure(attempt);
+  new LoginThrottle({ key: Buffer.alloc(32, 2), store }).recordFailure(attempt);
+  new LoginThrottle({ store }).recordFailure(attempt);
+  const subjects = store.saved.filter((entry) => entry.scope === 'ip').map((entry) => entry.subject);
+  assert.equal(new Set(subjects).size, 3);
+  assert.notEqual(new LoginThrottle({ key: Buffer.alloc(32, 1) }).fingerprint(attempt.ip), new LoginThrottle().fingerprint(attempt.ip));
+});
+
 test('success and expiry recover without permanent lockout', () => {
   const { advance, limiter } = fixture();
   const attempt = { email: 'Owner@Example.com', ip: '203.0.113.10' };
@@ -66,6 +103,19 @@ const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { DATABASE_FILENAME, SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
+
+test('the throttle key is created once, owner-only, and read back unchanged', async () => {
+  const stateDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-throttle-key-'));
+  const first = loadThrottleKey(stateDir);
+  const second = loadThrottleKey(stateDir);
+  assert.equal(first.length, 32);
+  assert.ok(first.equals(second));
+  if (process.platform !== 'win32') {
+    assert.equal(fsSync.statSync(path.join(stateDir, KEY_FILENAME)).mode & 0o777, 0o600);
+  }
+  fsSync.rmSync(path.join(stateDir, KEY_FILENAME));
+  assert.ok(!loadThrottleKey(stateDir).equals(first));
+});
 
 async function persistentFixture() {
   const stateDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-throttle-'));

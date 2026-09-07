@@ -6,6 +6,7 @@ const {
 } = require('../state/suite-manager-store.cjs');
 
 const MIN_PASSWORD_LENGTH = 12;
+const KNOWN_BROWSER_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1_000;
 
 // The terms the owner is asked to accept, versioned by the "Last updated" date
 // on site/src/content/docs/docs/terms.md. Bumping this date there means bumping
@@ -196,7 +197,7 @@ class SetupService {
     // it did not just create, so it is the only chance to move a hash written
     // under weaker parameters up to the current ones.
     if (needsRehash(owner.passwordHash)) {
-      this.store.upgradeOwnerPasswordHash(await hashPassword(password));
+      this.store.upgradeOwnerPasswordHash(await hashPassword(password), { replacing: owner.passwordHash });
     }
 
     const token = createSessionToken();
@@ -270,12 +271,32 @@ class SetupService {
     return this.store.hasSession(tokenHash);
   }
 
+  // A browser that has signed in successfully carries a random token, of which
+  // only the hash is stored — the same shape as a session, but it proves only
+  // "this browser has been the owner before", never that it is signed in now.
+  // Sign-in uses it to skip the account-wide backoff, and nothing else.
+  isKnownBrowser(token) {
+    if (!token) return false;
+    return this.store.isKnownBrowser({
+      at: this.now().toISOString(),
+      maxAgeMs: KNOWN_BROWSER_MAX_AGE_MS,
+      tokenHash: hashSessionToken(token),
+    });
+  }
+
+  rememberBrowser() {
+    const token = createSessionToken();
+    this.store.rememberBrowser({ at: this.now().toISOString(), tokenHash: hashSessionToken(token) });
+    return token;
+  }
+
   close() {
     this.store.close();
   }
 }
 
 module.exports = {
+  KNOWN_BROWSER_MAX_AGE_MS,
   MIN_PASSWORD_LENGTH,
   SetupError,
   SetupService,

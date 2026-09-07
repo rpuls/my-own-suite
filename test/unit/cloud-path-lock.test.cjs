@@ -24,6 +24,10 @@
 // only the last, because the handler went into `renderPublicCloudCaddyfile()`
 // as well as `renderCaddyfile()`. No `echo` line changed in any rendering — the
 // bar stated above — so the walkthrough recording is still accurate.
+//
+// Moved the same day, all five again: the installer now writes that status page
+// itself, since a fresh install never runs the reconciler that was its only
+// writer. No `echo` line changed.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -37,25 +41,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '8132852337b1e090dd0d97f366b992b2676acdcfcdd6ade2bea20810f7e8dca1',
+    digest: 'ef297d0add871f7670023ddc60d634138360b22ca5201e935c61e440c1f638f3',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '2cd0cdc6c5223b022f31592afaf1e227f083c5c2303fac3a298590eab9a1bf27',
+    digest: '074e127f90499928b2825e0ccb1b2285e9ac6e12de77de94440de309ad7fc27c',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: 'e444e86003f15952e0fee40b4ffd24a1ec1527faefef0d375d87e4cd2982b314',
+    digest: '1fb64e6dd072e824a3b342e7ae875574be21391bab339fb2131427112c0c3e4a',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: '871652cf11fbc305719f3d7a0fe909f781022ba6bf2204d3b0f8ffefb7a0ef17',
+    digest: '78a7c3312c58bba9ad8b090d37a78ce75838c662715054b7f759a23913fa5749',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -65,7 +69,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '94cffb13644e8ba51fd826c6a288c7355af2d1be2cd17ceee4fb10e33e8c3277',
+    digest: '8d6fdda121dc128483e8c2f423bcc3c8b06cfb930c3c5e404ea1a910582700e8',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

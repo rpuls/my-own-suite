@@ -111,17 +111,20 @@ jobs:
         run: |
           nohup npx --yes http-server@14.1.1 site/dist -p 4321 --silent > /tmp/http-server.log 2>&1 &
           for attempt in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:4321/ > /dev/null; then
-              echo "site is answering after ${attempt}s"
+            if curl -sf --max-time 5 http://127.0.0.1:4321/ > /dev/null; then
+              echo "site is answering after ${attempt} attempts"
               exit 0
             fi
             sleep 1
           done
-          echo "site did not answer on http://127.0.0.1:4321/ within 30s"
+          echo "site did not answer on http://127.0.0.1:4321/ within 30 attempts"
+          cat /tmp/http-server.log
           exit 1
 
-      # 429 and 503 are rate limiting rather than a dead link, so they are retried
-      # and then accepted; a genuinely broken link still fails the job.
+      # `--accept` replaces lychee's default set rather than extending it, so the
+      # default 1xx/2xx range is restated. 429 is rate limiting rather than a dead
+      # link, so it is retried and then accepted; a 503 is not, because a host
+      # that is down answers with one and must fail the job.
       - name: Check links
         uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
@@ -129,7 +132,7 @@ jobs:
             --no-progress
             --max-retries 3
             --retry-wait-time 10
-            --accept 200,204,206,429,503
+            --accept '100..=103,200..=299,429'
             --base-url http://127.0.0.1:4321
             site/dist
           fail: true

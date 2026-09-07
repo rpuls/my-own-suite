@@ -1922,6 +1922,140 @@ test('repeated login failures return a retry contract without logging secrets', 
   });
 });
 
+// Every other throttle test injects its own limiter, so this is the one place
+// the server's own wiring — the store handed to the throttle it builds — is
+// exercised. Without it the backoff is still correct, just no longer durable,
+// and every unit test stays green while a restart hands an attacker a fresh budget.
+test('the sign-in backoff the server builds itself survives a restart of the server', async () => {
+  const stateDir = await tempStateDir();
+  const badLogin = (baseUrl) => fetch(`${baseUrl}/suite-manager/api/auth/login`, {
+    body: JSON.stringify({ email: 'owner@example.com', password: 'definitely-wrong' }),
+    headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.77' },
+    method: 'POST',
+  });
+
+  await withServer(async (baseUrl) => {
+    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
+      body: JSON.stringify({ email: 'owner@example.com', name: 'Suite Owner', password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+    // Default policy: five free failures per address, then a one-second block.
+    for (let index = 0; index < 6; index += 1) assert.equal((await badLogin(baseUrl)).status, 401);
+    const throttled = await badLogin(baseUrl);
+    assert.equal(throttled.status, 429);
+    assert.equal(throttled.headers.get('retry-after'), '1');
+  }, { stateDir });
+
+  const store = new SuiteManagerStore(stateDir);
+  try {
+    assert.equal(store.getLoginThrottleEntries().filter((entry) => entry.scope === 'ip').length, 1);
+  } finally {
+    store.close();
+  }
+
+  // Past the one-second block, so the next failure is judged on the count the
+  // new process read back: a seventh failure earns a two-second block, a first
+  // failure would earn none.
+  await new Promise((resolve) => setTimeout(resolve, 1_200));
+  await withServer(async (baseUrl) => {
+    assert.equal((await badLogin(baseUrl)).status, 401);
+    const throttled = await badLogin(baseUrl);
+    assert.equal(throttled.status, 429);
+    assert.equal(throttled.headers.get('retry-after'), '2');
+  }, { stateDir });
+});
+
+// The account-wide backoff is skipped for a browser that has signed in before,
+// proved by a cookie set on that sign-in. A new browser during an attack waits
+// like today; a password change forgets every known browser except the one
+// that changed it.
+test('a browser that has signed in before gets past an account-wide backoff, and a new one does not', async () => {
+  const loginThrottle = new LoginThrottle({ policy: {
+    account: { baseDelayMs: 30_000, freeFailures: 1, maxDelayMs: 30_000 },
+    ip: { freeFailures: 100 },
+  } });
+  const login = (baseUrl, { cookie = '', ip, password = 'correct horse battery' }) => fetch(`${baseUrl}/suite-manager/api/auth/login`, {
+    body: JSON.stringify({ email: 'owner@example.com', password }),
+    headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip, ...(cookie ? { Cookie: cookie } : {}) },
+    method: 'POST',
+  });
+  const cookieNamed = (response, name) => {
+    const header = response.headers.getSetCookie().find((entry) => entry.startsWith(`${name}=`));
+    return header ? header.split(';')[0] : null;
+  };
+
+  await withServer(async (baseUrl) => {
+    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
+      body: JSON.stringify({ email: 'owner@example.com', name: 'Suite Owner', password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    // The owner's laptop signs in and is remembered.
+    const laptop = await login(baseUrl, { ip: '198.51.100.7' });
+    assert.equal(laptop.status, 200);
+    const known = cookieNamed(laptop, 'mos_known_browser');
+    assert.ok(known, 'a successful sign-in must remember the browser');
+    assert.match(laptop.headers.getSetCookie().find((entry) => entry.startsWith('mos_known_browser=')), /HttpOnly; SameSite=Lax; Path=\/; Max-Age=31536000/u);
+
+    // Two addresses guess the owner's email and raise the account bucket.
+    assert.equal((await login(baseUrl, { ip: '203.0.113.1', password: 'wrong' })).status, 401);
+    assert.equal((await login(baseUrl, { ip: '203.0.113.2', password: 'wrong' })).status, 401);
+    assert.equal((await login(baseUrl, { ip: '203.0.113.3', password: 'wrong' })).status, 429);
+
+    // A brand-new browser with the right password waits like everyone else.
+    assert.equal((await login(baseUrl, { ip: '198.51.100.8' })).status, 429);
+    // The laptop does not, and is not remembered twice.
+    const again = await login(baseUrl, { cookie: known, ip: '198.51.100.9' });
+    assert.equal(again.status, 200);
+    assert.equal(cookieNamed(again, 'mos_known_browser'), null);
+    // Skipping the account bucket is not skipping the password.
+    assert.equal((await login(baseUrl, { cookie: known, ip: '198.51.100.9', password: 'wrong' })).status, 401);
+    // A cookie that was never issued is a stranger.
+    assert.equal((await login(baseUrl, { cookie: 'mos_known_browser=made-up', ip: '198.51.100.9' })).status, 429);
+
+    // Changing the password forgets the laptop and remembers only the browser that changed it.
+    const session = cookieNamed(again, 'mos_session');
+    const changed = await fetch(`${baseUrl}/suite-manager/api/settings/owner/password`, {
+      body: JSON.stringify({ currentPassword: 'correct horse battery', newPassword: 'a different passphrase' }),
+      headers: { 'Content-Type': 'application/json', Cookie: session },
+      method: 'POST',
+    });
+    assert.equal(changed.status, 200);
+    const reissued = cookieNamed(changed, 'mos_known_browser');
+    assert.ok(reissued && reissued !== known);
+    assert.equal((await login(baseUrl, { cookie: known, ip: '198.51.100.9', password: 'a different passphrase' })).status, 429);
+    assert.equal((await login(baseUrl, { cookie: reissued, ip: '198.51.100.9', password: 'a different passphrase' })).status, 200);
+  }, { loginThrottle });
+});
+
+// The alert is asked for on every throttled attempt and decides for itself
+// whether to send; the 429 does not wait for it.
+test('a throttled sign-in asks the alert service to notify the owner', async () => {
+  const notified = [];
+  const loginThrottle = new LoginThrottle({ policy: { account: { freeFailures: 10 }, ip: { baseDelayMs: 5_000, freeFailures: 1, maxDelayMs: 5_000 } } });
+  await withServer(async (baseUrl) => {
+    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
+      body: JSON.stringify({ email: 'owner@example.com', name: 'Suite Owner', password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+    const badLogin = () => fetch(`${baseUrl}/suite-manager/api/auth/login`, {
+      body: JSON.stringify({ email: 'owner@example.com', password: 'definitely-wrong' }),
+      headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.25' },
+      method: 'POST',
+    });
+    await badLogin();
+    await badLogin();
+    assert.equal((await badLogin()).status, 429);
+    assert.equal(notified.length, 1);
+  }, {
+    loginThrottle,
+    signInAlerts: { notify: async () => { notified.push(Date.now()); return { sent: false }; } },
+  });
+});
+
 test('duplicate owner creation returns conflict', async () => {
   await withServer(async (baseUrl) => {
     const owner = {

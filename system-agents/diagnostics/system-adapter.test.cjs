@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { MAX_CAPTURE_BYTES, SystemDiagnosticsAdapter, capture, parseLabels, parseShowOutput, serializeJournal } = require('./system-adapter.cjs');
+const { MAX_CAPTURE_BYTES, SystemDiagnosticsAdapter, capture, parseContainerList, parseLabels, parseShowOutput, serializeJournal } = require('./system-adapter.cjs');
 
 test('systemctl show output is read as key/value, ignoring anything else', () => {
   const values = parseShowOutput('ActiveState=failed\nSubState=failed\nUnitFileState=enabled\n\ngarbage line\n');
@@ -27,6 +27,22 @@ test('docker labels are read from the single comma-separated string docker print
   assert.equal(labels['mos.package-version'], '1.119.0');
   assert.deepEqual(parseLabels(''), {});
   assert.deepEqual(parseLabels(undefined), {});
+});
+
+// The same failure shape as a lost read, one collector over: `docker ps` with
+// the daemon down exits non-zero with an error, which used to parse as an
+// empty list and be printed as "No MOS containers are present" beside a
+// collection note saying every source answered.
+test('docker output that lists nothing because docker failed is a failed read, not an empty machine', () => {
+  assert.throws(
+    () => parseContainerList('Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?\n'),
+    /did not list containers: Cannot connect/u,
+  );
+  assert.deepEqual(parseContainerList(''), []);
+  assert.deepEqual(parseContainerList('\n'), []);
+  const listed = parseContainerList('WARNING: something docker wanted to say\n{"Names":"mos-app-a","Image":"img","State":"running","Status":"Up 2 hours","Labels":"a=b"}\n');
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].name, 'mos-app-a');
 });
 
 test('a label value containing an equals sign keeps all of it', () => {
@@ -83,6 +99,17 @@ test('a command that floods is capped, keeping the newest output', async () => {
   assert.ok(output.length <= MAX_CAPTURE_BYTES, `captured ${output.length} bytes`);
   assert.match(output, /line 39999/u);
   assert.ok(!output.includes(' line 0\n'), 'the oldest output should have been dropped, not the newest');
+});
+
+// A read that times out is a failed read, not an answer: it rejects, so the
+// collector records it under what could not be collected instead of rendering
+// the empty result as a service in an unknown state. A log tail is the one
+// place a partial answer is still worth having, and keeps what arrived.
+test('a timed-out read rejects with what it got, and a log tail keeps it', async () => {
+  const { CaptureTimeoutError, keepPartialLog } = require('./system-adapter.cjs');
+  const error = new CaptureTimeoutError('first lines');
+  assert.equal(keepPartialLog(error), `first lines${String.fromCharCode(10)}[... collection timed out after 20s ...]`);
+  assert.throws(() => keepPartialLog(new Error('spawn failed')), /spawn failed/u);
 });
 
 test('a missing binary rejects rather than resolving with silence', async () => {

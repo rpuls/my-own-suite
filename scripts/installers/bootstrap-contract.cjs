@@ -534,6 +534,11 @@ RestartSec=3
 WantedBy=multi-user.target
 MOS_LAB_RESET_AGENT_UNIT
 
+# The Caddyfile below points its error handler at this page, and a fresh
+# install never runs reconcile-system.cjs, which is the other writer of it.
+install -d -m 0755 ${UNAVAILABLE_PAGE_ROOT}
+cat > ${UNAVAILABLE_PAGE_ROOT}/${UNAVAILABLE_PAGE_FILENAME} <<'MOS_UNAVAILABLE_PAGE'
+${renderUnavailablePage()}MOS_UNAVAILABLE_PAGE
 cat > /etc/caddy/Caddyfile <<MOS_CADDY
 ${caddyfile}
 MOS_CADDY
@@ -715,4 +720,7 @@ const {
   renderHomepageSystemdUnit,
   renderJournaldConfig,
   renderPublicCloudCaddyfile,
+  renderUnavailablePage,
+  UNAVAILABLE_PAGE_FILENAME,
+  UNAVAILABLE_PAGE_ROOT,
 } = require('../../infrastructure/control-plane-runtime.cjs');

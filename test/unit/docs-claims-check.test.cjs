@@ -100,22 +100,20 @@ test('app-names rejects a link to an app that is not in the catalog', () => {
   assert.equal(findings[0].line, 1);
 });
 
-test('app-names reports a catalog app that nothing links to', () => {
+test('app-names does not report packages nothing names, because every package has a generated page', () => {
   const findings = run('app-names', [
     file('site/a.md', 'Only [Alpha](/docs/apps/alpha-app/) is mentioned.'),
   ]);
-  assert.deepEqual(
-    findings.map((finding) => finding.message.match(/\((.+?)\)/u)[1]).sort(),
-    ['beta-app', 'gamma-app'],
-  );
+  assert.deepEqual(findings, []);
 });
 
-test('app-names accepts a generated index that links every app', () => {
-  // The real docs index maps over the catalog, so no id ever appears as text.
-  const findings = run('app-names', [
-    file('site/pages/index.astro', '{catalogApps.map((app) => (<a href={`/docs/apps/${app.id}/`}>{app.name}</a>))}'),
-  ]);
-  assert.deepEqual(findings, []);
+// An unclosed fence makes everything after it "code" to the fence tracker, so
+// one stray backtick line would silence every other rule for the rest of the
+// file — in a checker that deliberately has no suppression mechanism.
+test('code-fences reports a fence that never closes, and nothing else', () => {
+  const stray = file('site/b.md', ['Intro.', '```', 'const x = 1;', 'Claims after this are hidden.'].join(String.fromCharCode(10)));
+  const closed = file('site/c.md', ['Intro.', '```', 'const x = 1;', '```', 'Prose again.'].join(String.fromCharCode(10)));
+  assert.deepEqual(messages(run('code-fences', [stray, closed])), ['site/b.md:2']);
 });
 
 test('version-references fails only on a version presented as current', () => {

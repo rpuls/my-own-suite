@@ -153,6 +153,9 @@ function reclaimUnmountedDestinations(root = managedMountRoot) {
   }
   return reclaimed;
 }
+function logReclaimed(reclaimed) {
+  for (const entry of reclaimed) process.stdout.write(`[mos-backup-agent] reclaimed ${entry.bytes} bytes an interrupted backup left under ${entry.path}\n`);
+}
 async function listDestinations() {
   const lsblk = await execJson('lsblk', ['--json', '--bytes', '--output', 'NAME,PATH,LABEL,MODEL,TRAN,RM,TYPE,FSTYPE,SIZE,MOUNTPOINTS']);
   const candidates = new Map();
@@ -254,7 +257,7 @@ async function mountDestination(destinationId) {
   const mountPath = path.join(managedMountRoot, sanitizeMountName(`${destination.label}-${path.basename(destination.devicePath)}`));
   // Whatever a previous run wrote here after the drive was pulled is on the
   // system disk, and mounting over it would hide it again.
-  reclaimUnmountedDestinations();
+  logReclaimed(reclaimUnmountedDestinations());
   ensureDir(mountPath);
   command('mount', [destination.devicePath, mountPath]);
   const mounted = (await listDestinations()).find((item) => item.devicePath === destination.devicePath && item.mountState === 'mounted');
@@ -683,6 +686,8 @@ if (require.main === module && process.argv[2] === '--worker') {
       respond(response, 409, { code: 'BACKUP_AGENT_ERROR', error: error instanceof Error ? error.message : 'Backup agent operation failed.' });
     }
   });
+  // Before the socket opens, so nothing can mount over a leftover first.
+  logReclaimed(reclaimUnmountedDestinations());
   server.listen(socketPath, () => {
     fs.chmodSync(socketPath, 0o660);
     process.stdout.write('[mos-backup-agent] ready\n');

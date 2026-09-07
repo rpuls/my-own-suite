@@ -32,7 +32,7 @@ Three behaviors matter more than the list. The agent re-verifies the expected sn
 
 ## How they're installed and updated
 
-All agents (and the Suite Manager / Homepage / Caddy units) are generated and refreshed by one reconciliation script, `scripts/reconcile-system.cjs` — run at install time and again during every [managed update](/docs/guides/updates/). That's what guarantees an update refreshes the agents along with everything else: reconciliation is the single writer of repo-owned units, sockets, groups, and the pinned Caddy binary.
+All agents (and the Suite Manager / Homepage / Caddy units) are rendered from one set of definitions. The installer writes them once on a fresh machine, and one reconciliation script, `scripts/reconcile-system.cjs`, rewrites them from the same definitions during every [managed update](/docs/guides/updates/). That's what guarantees an update refreshes the agents along with everything else: reconciliation is the single writer of repo-owned units, sockets, groups, and the pinned Caddy binary on an installed machine.
 
 ## Operating them
 

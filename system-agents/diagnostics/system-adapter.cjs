@@ -13,6 +13,16 @@ const COMMAND_TIMEOUT_MS = 20_000;
 // A rolling tail rather than a head cut: the newest output is the point.
 const MAX_CAPTURE_BYTES = 512 * 1024;
 
+// A read that ran out of time. It carries whatever arrived, because for a log
+// tail a partial answer is still an answer; for a state read it is not.
+class CaptureTimeoutError extends Error {
+  constructor(output) {
+    super(`collection timed out after ${COMMAND_TIMEOUT_MS / 1000}s`);
+    this.name = 'CaptureTimeoutError';
+    this.output = output;
+  }
+}
+
 // Merges stderr into stdout and resolves whatever the command produced, even on
 // a non-zero exit. Every other MOS agent rejects on a failed command because it
 // is about to change the system and must not proceed; this one is only reading,
@@ -36,7 +46,7 @@ function capture(file, args) {
     };
     const timer = setTimeout(() => {
       child.kill('SIGTERM');
-      finish(resolve, `${output}\n[... collection timed out after ${COMMAND_TIMEOUT_MS / 1000}s ...]`);
+      finish(reject, new CaptureTimeoutError(output));
     }, COMMAND_TIMEOUT_MS);
     const append = (chunk) => {
       output += chunk;
@@ -45,12 +55,7 @@ function capture(file, args) {
     child.stdout.on('data', append);
     child.stderr.on('data', append);
     child.on('error', (error) => finish(reject, error));
-    // `close`, never `exit`: exit fires when the process dies, which for a fast
-    // command routinely beats the pipe read that carries its output, and this
-    // then resolves the empty string it has so far. Measured on the lab VM
-    // against the real collection: 189 of 200 passes silently lost at least one
-    // unit's state that way, and none did on `close`.
-    child.on('close', () => finish(resolve, output));
+    child.on('close', () => finish(resolve, output)); // never `exit`: it beats the pipe read carrying the output
   });
 }
 
@@ -78,8 +83,42 @@ function parseShowOutput(text) {
   return values;
 }
 
-// `docker ps` prints one JSON object per line. Labels arrive as a single
-// comma-separated `key=value` string rather than a map.
+// `docker ps` prints one JSON object per line. With the daemon down it prints
+// an error instead, and capture() hands that back as text like any other
+// answer — so an output with lines but no container in it is a failed read,
+// and rejecting is what lands it in the bundle's collection notes rather than
+// as "no MOS containers are present" stated as fact. An empty output is the
+// honest answer from a machine with no containers.
+function parseContainerList(raw) {
+  const containers = [];
+  let unreadable = 0;
+  for (const line of String(raw || '').split('\n')) {
+    if (!line.trim()) continue;
+    if (!line.trim().startsWith('{')) { unreadable += 1; continue; }
+    try {
+      const entry = JSON.parse(line);
+      containers.push({
+        image: entry.Image || '',
+        labels: parseLabels(entry.Labels),
+        name: (entry.Names || '').split(',')[0],
+        state: entry.State || '',
+        status: entry.Status || '',
+      });
+    } catch { unreadable += 1; }
+  }
+  if (containers.length === 0 && unreadable > 0) {
+    throw new Error(`docker did not list containers: ${raw.trim().split('\n')[0].slice(0, 200)}`);
+  }
+  return containers;
+}
+
+// A log that timed out keeps what it got, marked; every other failure stays one.
+function keepPartialLog(error) {
+  if (!(error instanceof CaptureTimeoutError)) throw error;
+  return `${error.output}\n[... ${error.message} ...]`;
+}
+
+// Labels arrive as a single comma-separated `key=value` string rather than a map.
 function parseLabels(raw) {
   const labels = {};
   for (const pair of String(raw || '').split(',')) {
@@ -131,31 +170,16 @@ class SystemDiagnosticsAdapter {
   // `--no-hostname` and message-only-plus-timestamp keep the per-line overhead
   // low enough that the line budget buys log rather than prefix.
   journal(unit, lines) {
-    return serializeJournal(() => capture(JOURNALCTL_BINARY, ['-u', unit, '-n', String(lines), '--no-pager', '--no-hostname', '-o', 'short-iso']));
+    return serializeJournal(() => capture(JOURNALCTL_BINARY, ['-u', unit, '-n', String(lines), '--no-pager', '--no-hostname', '-o', 'short-iso']).catch(keepPartialLog));
   }
 
   async containers() {
-    const raw = await capture(DOCKER_BINARY, ['ps', '-a', '--no-trunc', '--format', '{{json .}}']);
-    const containers = [];
-    for (const line of raw.split('\n')) {
-      if (!line.trim().startsWith('{')) continue;
-      try {
-        const entry = JSON.parse(line);
-        containers.push({
-          image: entry.Image || '',
-          labels: parseLabels(entry.Labels),
-          name: (entry.Names || '').split(',')[0],
-          state: entry.State || '',
-          status: entry.Status || '',
-        });
-      } catch { /* a line docker did not write as JSON is not a container */ }
-    }
-    return containers;
+    return parseContainerList(await capture(DOCKER_BINARY, ['ps', '-a', '--no-trunc', '--format', '{{json .}}']));
   }
 
   containerLog(name, lines) {
-    return capture(DOCKER_BINARY, ['logs', '--tail', String(lines), '--timestamps', name]);
+    return capture(DOCKER_BINARY, ['logs', '--tail', String(lines), '--timestamps', name]).catch(keepPartialLog);
   }
 }
 
-module.exports = { MAX_CAPTURE_BYTES, SystemDiagnosticsAdapter, capture, parseLabels, parseShowOutput, serializeJournal };
+module.exports = { CaptureTimeoutError, MAX_CAPTURE_BYTES, SystemDiagnosticsAdapter, capture, keepPartialLog, parseContainerList, parseLabels, parseShowOutput, serializeJournal };

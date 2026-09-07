@@ -386,8 +386,10 @@ const MIGRATIONS = [
     // The sign-in backoff used to live only in process memory, so restarting
     // Suite Manager handed an attacker their whole budget back — and a restart
     // is something an unauthenticated caller can provoke by other means. The
-    // subject is always a hash: the account was already one, and the client
-    // address is hashed on the way in so no raw IP is ever written to disk.
+    // subject is always a digest: the account was already one, and the client
+    // address is digested on the way in so the table never carries a raw IP —
+    // an unsalted SHA-256 of an IPv4 address is still recoverable by
+    // enumeration, so the one-hour TTL is what bounds the exposure.
     // Entries are short-lived by policy, so this table stays small and is
     // pruned on every write rather than by anything scheduled.
     name: 'login-throttle-persistence',
@@ -404,6 +406,30 @@ const MIGRATIONS = [
       CREATE INDEX login_throttle_last_seen_idx ON login_throttle(last_seen_at);
     `,
     version: 17,
+  },
+  {
+    // A browser that signed in successfully is remembered by the hash of a
+    // random token it carries in a cookie, so the account-wide sign-in backoff
+    // — the one bucket that cannot tell the owner from whoever is guessing
+    // their email — is skipped for it. The alert row is when MOS last emailed
+    // the owner about throttled sign-ins, so a week-long attack is one message
+    // a day rather than one per attempt.
+    name: 'known-browsers-and-sign-in-alerts',
+    sql: `
+      CREATE TABLE known_browsers (
+        token_hash TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE sign_in_alert_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        last_sent_at TEXT
+      ) STRICT;
+
+      INSERT INTO sign_in_alert_state (id, last_sent_at) VALUES (1, NULL);
+    `,
+    version: 18,
   },
 ];
 
@@ -585,15 +611,64 @@ class SuiteManagerStore {
     this.transaction(() => {
       this.database.prepare('UPDATE owners SET password_hash = ? WHERE id = 1').run(passwordHash);
       this.database.prepare('DELETE FROM sessions').run();
+      this.database.prepare('DELETE FROM known_browsers').run();
     });
+  }
+
+  // Browsers the owner has signed in from, by token hash. Bounded so a script
+  // signing in over and over cannot grow the table, and a browser not seen for
+  // longer than `maxAgeMs` is forgotten on its next visit.
+  rememberBrowser({ at, maxRows = 20, tokenHash }) {
+    this.transaction(() => {
+      this.database.prepare(`
+        INSERT INTO known_browsers (token_hash, created_at, last_seen_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT (token_hash) DO UPDATE SET last_seen_at = excluded.last_seen_at
+      `).run(tokenHash, at, at);
+      this.database.prepare(`
+        DELETE FROM known_browsers
+        WHERE token_hash IN (
+          SELECT token_hash FROM known_browsers ORDER BY last_seen_at DESC, rowid DESC LIMIT -1 OFFSET ?
+        )
+      `).run(maxRows);
+    });
+  }
+
+  isKnownBrowser({ at, maxAgeMs, tokenHash }) {
+    const row = this.database.prepare('SELECT last_seen_at AS lastSeenAt FROM known_browsers WHERE token_hash = ?').get(tokenHash);
+    if (!row) return false;
+    if (Date.parse(at) - Date.parse(row.lastSeenAt) > maxAgeMs) {
+      this.database.prepare('DELETE FROM known_browsers WHERE token_hash = ?').run(tokenHash);
+      return false;
+    }
+    this.database.prepare('UPDATE known_browsers SET last_seen_at = ? WHERE token_hash = ?').run(at, tokenHash);
+    return true;
+  }
+
+  countKnownBrowsers() {
+    return Number(this.database.prepare('SELECT COUNT(*) AS count FROM known_browsers').get().count);
+  }
+
+  getSignInAlertSentAt() {
+    return this.database.prepare('SELECT last_sent_at AS lastSentAt FROM sign_in_alert_state WHERE id = 1').get()?.lastSentAt || null;
+  }
+
+  markSignInAlertSent(at) {
+    this.database.prepare('UPDATE sign_in_alert_state SET last_sent_at = ? WHERE id = 1').run(at);
   }
 
   // Re-stores the same password under stronger hashing parameters. Deliberately
   // not `replaceOwnerPassword`: the password did not change, so taking every
   // session with it would sign the owner out of their other browsers for an
-  // upgrade they never asked for and cannot see.
-  upgradeOwnerPasswordHash(passwordHash) {
-    this.database.prepare('UPDATE owners SET password_hash = ? WHERE id = 1').run(passwordHash);
+  // upgrade they never asked for and cannot see. With `replacing`, the write
+  // lands only if the stored hash is still the one that was verified, so a
+  // password changed while the upgrade was being computed is never reverted.
+  upgradeOwnerPasswordHash(passwordHash, { replacing = null } = {}) {
+    if (replacing === null) {
+      this.database.prepare('UPDATE owners SET password_hash = ? WHERE id = 1').run(passwordHash);
+      return true;
+    }
+    return this.database.prepare('UPDATE owners SET password_hash = ? WHERE id = 1 AND password_hash = ?').run(passwordHash, replacing).changes > 0;
   }
 
   // Sign-in backoff that survives a restart. Entries expire by policy within the

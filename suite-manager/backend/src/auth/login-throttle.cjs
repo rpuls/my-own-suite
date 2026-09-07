@@ -1,5 +1,7 @@
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const net = require('node:net');
+const path = require('node:path');
 
 const DEFAULT_POLICY = Object.freeze({
   account: { baseDelayMs: 1_000, freeFailures: 10, maxDelayMs: 30_000 },
@@ -7,6 +9,8 @@ const DEFAULT_POLICY = Object.freeze({
   ip: { baseDelayMs: 1_000, freeFailures: 5, maxDelayMs: 30_000 },
   maxEntries: 10_000,
 });
+
+const KEY_FILENAME = 'login-throttle.key';
 
 function normalizeIp(address) {
   const value = String(address || '').trim();
@@ -32,24 +36,27 @@ function resolveClientAddress(request) {
   return net.isIP(forwarded) ? normalizeIp(forwarded) : peerAddress;
 }
 
-// Both keys are digests rather than the values themselves. The account one
-// always was; the client address became one when these entries started being
-// written to disk, so that surviving a restart does not also mean MOS keeps a
-// durable record of who tried to sign in.
-function digestKey(value) {
-  return crypto.createHash('sha256').update(String(value)).digest('base64url');
-}
-
-function accountKey(email) {
-  return digestKey(String(email || '').trim().toLowerCase());
-}
-
-function ipKey(address) {
-  return digestKey(normalizeIp(address));
+// The secret that keys every digest this limiter writes. Kept as a file beside
+// the database rather than in it, so the rows alone do not reverse: without the
+// key, an entry's subject is an HMAC nobody can enumerate; with an unkeyed hash,
+// an IPv4 address was a 2^32 guess away. Losing or deleting the file is safe —
+// a new one is made, and the entries keyed by the old one age out within the
+// hour like any other.
+function loadThrottleKey(stateDir) {
+  const target = path.join(stateDir, KEY_FILENAME);
+  try {
+    const existing = fs.readFileSync(target);
+    if (existing.length >= 32) return existing;
+  } catch {}
+  const key = crypto.randomBytes(32);
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(target, key, { mode: 0o600 });
+  return key;
 }
 
 class LoginThrottle {
-  constructor({ now = () => Date.now(), policy = {}, store = null } = {}) {
+  constructor({ key = null, now = () => Date.now(), policy = {}, store = null } = {}) {
+    this.key = key;
     this.now = now;
     this.policy = {
       account: { ...DEFAULT_POLICY.account, ...policy.account },
@@ -63,25 +70,55 @@ class LoginThrottle {
     this.#hydrate();
   }
 
-  retryAfterMs({ email, ip }) {
+  // Both keys are digests rather than the values themselves, keyed by the
+  // per-install secret when one is given; without a key this is a plain SHA-256,
+  // which keeps addresses out of logs but not out of reach of enumeration.
+  digest(value, encoding = 'base64url') {
+    const hasher = this.key ? crypto.createHmac('sha256', this.key) : crypto.createHash('sha256');
+    return hasher.update(String(value)).digest(encoding);
+  }
+
+  // A short opaque handle for a client address in the security-event history:
+  // enough to tell "one address, many times" from "many addresses", and nothing
+  // that names the address.
+  fingerprint(address) {
+    return this.digest(normalizeIp(address), 'hex').slice(0, 12);
+  }
+
+  // A browser the owner has signed in from before skips the account-wide
+  // backoff, which is the one bucket that cannot tell the owner from whoever is
+  // guessing their email. The per-address backoff still applies to it, so a
+  // stolen cookie buys no more guesses than any other single address gets.
+  retryAfterMs({ email, ip, knownBrowser = false }) {
     const now = this.now();
     this.#prune(now);
     return Math.max(
-      this.#retryAfter(this.accounts.get(accountKey(email)), now),
-      this.#retryAfter(this.ips.get(ipKey(ip)), now),
+      knownBrowser ? 0 : this.#retryAfter(this.accounts.get(this.#accountKey(email)), now),
+      this.#retryAfter(this.ips.get(this.#ipKey(ip)), now),
     );
   }
 
   recordFailure({ email, ip }) {
     const now = this.now();
     this.#prune(now);
-    this.#record(this.accounts, 'account', accountKey(email), this.policy.account, now);
-    this.#record(this.ips, 'ip', ipKey(ip), this.policy.ip, now);
+    this.#record(this.accounts, 'account', this.#accountKey(email), this.policy.account, now);
+    this.#record(this.ips, 'ip', this.#ipKey(ip), this.policy.ip, now);
   }
 
-  recordSuccess({ email, ip }) {
-    this.#forget(this.accounts, 'account', accountKey(email));
-    this.#forget(this.ips, 'ip', ipKey(ip));
+  // A known browser never waited on the account bucket, so its success says
+  // nothing about who raised it — clearing it would hand whoever is guessing a
+  // fresh budget every time the owner signs in.
+  recordSuccess({ email, ip, knownBrowser = false }) {
+    if (!knownBrowser) this.#forget(this.accounts, 'account', this.#accountKey(email));
+    this.#forget(this.ips, 'ip', this.#ipKey(ip));
+  }
+
+  #accountKey(email) {
+    return this.digest(String(email || '').trim().toLowerCase());
+  }
+
+  #ipKey(address) {
+    return this.digest(normalizeIp(address));
   }
 
   // Entries outlive the process but not their own TTL, so anything already
@@ -160,6 +197,8 @@ class LoginThrottle {
 
 module.exports = {
   DEFAULT_POLICY,
+  KEY_FILENAME,
   LoginThrottle,
+  loadThrottleKey,
   resolveClientAddress,
 };
