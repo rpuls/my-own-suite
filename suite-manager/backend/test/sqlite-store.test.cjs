@@ -62,6 +62,7 @@ test('fresh state creates the SQLite schema and records every migration', async 
     'homepage_operations',
     'homepage_revisions',
     'https_settings',
+    'login_throttle',
     'owner_preferences',
     'owner_terms_acceptances',
     'owners',
@@ -278,6 +279,7 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'owner-preferences',
     'app-instance-owner-env',
     'smtp-settings',
+    'login-throttle-persistence',
   ]);
   upgraded.close();
 });

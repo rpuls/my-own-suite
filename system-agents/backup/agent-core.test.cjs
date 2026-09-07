@@ -936,3 +936,61 @@ test('restorePublicIdentity prefers the restored HTTPS settings over install-tim
   );
   assert.deepEqual(restorePublicIdentity({}), { homeHost: 'home.mos.home', scheme: 'http' });
 });
+
+// A backup whose worker was killed never runs its own cleanup, so the packs it
+// had already written stay referenced by nothing. Before this, the only thing
+// that ever collected them was the next delete — which an owner may never do.
+test('data left by an interrupted backup is collected at the start of the next backup', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const core = w.core();
+  await core.backup(w.createJob('backup', { destinationId: w.destination() }));
+
+  // What reconcileCurrentJob records when it finds a worker that is gone.
+  core.noteUncollectedData(w.destination());
+  assert.deepEqual(core.readUncollectedData(), [w.destination()]);
+
+  w.engine.events.length = 0;
+  const next = w.createJob('backup', { destinationId: w.destination() });
+  await core.backup(next);
+
+  assert.ok(w.engine.events.some(([event]) => event === 'maintainRepository'));
+  assert.ok(readJson(next).logs.some((line) => /interrupted/u.test(line.message)));
+  // Collected once: the note is cleared so every later backup is not slowed by
+  // a repository rewrite it does not need.
+  assert.deepEqual(core.readUncollectedData(), []);
+
+  w.engine.events.length = 0;
+  await core.backup(w.createJob('backup', { destinationId: w.destination() }));
+  assert.ok(!w.engine.events.some(([event]) => event === 'maintainRepository'));
+});
+
+test('an ordinary backup runs no repository maintenance', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const core = w.core();
+  await core.backup(w.createJob('backup', { destinationId: w.destination() }));
+  assert.ok(!w.engine.events.some(([event]) => event === 'maintainRepository'));
+  assert.deepEqual(core.readUncollectedData(), []);
+});
+
+// Housekeeping must never cost the owner the backup they actually asked for.
+test('a backup still succeeds when the leftover data cannot be collected', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const core = w.core();
+  await core.backup(w.createJob('backup', { destinationId: w.destination() }));
+  core.noteUncollectedData(w.destination());
+
+  const failing = w.core();
+  failing.engine.maintainRepository = async () => { throw new Error('repository is locked'); };
+  const job = w.createJob('backup', { destinationId: w.destination() });
+  await failing.backup(job);
+
+  const finished = readJson(job);
+  assert.equal(finished.status, 'succeeded');
+  assert.ok(finished.logs.some((line) => /could not be reclaimed: repository is locked/u.test(line.message)));
+  // Cleared even on failure, so one unreachable pass does not rewrite the
+  // repository at the start of every backup from now on.
+  assert.deepEqual(failing.readUncollectedData(), []);
+});

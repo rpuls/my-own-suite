@@ -1,0 +1,10 @@
+# Link-checker exclusions for `npm run` CI link checking (lychee).
+#
+# Only permanently-legitimate entries belong here: a host that refuses automated
+# requests, or a URL behind a login. A link that is genuinely broken goes in the
+# report and gets fixed — never hidden here. Every entry states its reason, and an
+# entry without one is a broken link somebody buried.
+
+# Discord refuses invite lookups from non-browser clients (405/403) regardless of
+# whether the invite is valid, so every community link would fail on every run.
+https://discord\.gg/.*

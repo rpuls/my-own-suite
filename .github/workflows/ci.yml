@@ -54,6 +54,9 @@ jobs:
       - name: Monitor stale reviews and advisories
         run: npm run apps:privacy:monitor
 
+      - name: Check documentation claims against the repository
+        run: npm run docs:claims
+
       - name: Typecheck Suite Manager
         run: npm run typecheck
 
@@ -99,6 +102,40 @@ jobs:
       - name: Build MOS site
         run: npm run build
         working-directory: site
+
+      # Both checks run against the built site as a browser would see it, so
+      # root-relative links and rendered markup are what gets checked rather than
+      # source files. Versions are pinned because CI otherwise resolves whatever
+      # was published that morning.
+      - name: Serve the built site
+        run: |
+          nohup npx --yes http-server@14.1.1 site/dist -p 4321 --silent > /tmp/http-server.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:4321/ > /dev/null; then
+              echo "site is answering after ${attempt}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "site did not answer on http://127.0.0.1:4321/ within 30s"
+          exit 1
+
+      # 429 and 503 are rate limiting rather than a dead link, so they are retried
+      # and then accepted; a genuinely broken link still fails the job.
+      - name: Check links
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: >-
+            --no-progress
+            --max-retries 3
+            --retry-wait-time 10
+            --accept 200,204,206,429,503
+            --base-url http://127.0.0.1:4321
+            site/dist
+          fail: true
+
+      - name: Check accessibility
+        run: npx --yes pa11y-ci@4.1.1 --config site/.pa11yci.json
 
   shellcheck:
     name: Shell Scripts Lint

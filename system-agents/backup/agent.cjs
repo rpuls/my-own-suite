@@ -68,13 +68,28 @@ function normalizeDestination(candidate) {
 function isWritable(dir) {
   try { fs.accessSync(dir, fs.constants.W_OK); return true; } catch { return false; }
 }
+// Resolved as POSIX because these are Linux mountpoints reported by lsblk, not
+// paths on whatever machine is running the code. `path.resolve` is
+// platform-dependent and turns "/" into a drive letter off Linux, which would
+// silently stop recognising the system disk anywhere the agent is exercised.
 function isSystemMountpoint(mountpoint) {
-  const resolved = path.resolve(String(mountpoint || ''));
+  const resolved = path.posix.resolve('/', String(mountpoint || ''));
   return resolved === '/' || resolved === '/boot' || resolved === '/boot/efi' || resolved === '/var' || resolved === '/var/lib' || resolved.startsWith('/var/lib/docker/');
+}
+// A drive formatted end to end carries no partition table, so lsblk reports a
+// single `disk` with a filesystem on it and no children. That is an ordinary
+// backup drive and it is also the shape a whole-disk drive comes back as after
+// a restore drill, which is why refusing it made such a drive unre-attachable
+// from the UI. A disk that does have partitions stays a container: its
+// partitions are the candidates, and it is not one itself.
+function isWholeDiskFilesystem(device) {
+  return device.type === 'disk'
+    && Boolean(String(device.fstype || '').trim())
+    && (device.children || []).length === 0;
 }
 function mountBlockReason(device) {
   const fileSystem = String(device.fstype || '').toLowerCase();
-  if (device.type !== 'part') return 'Choose a data partition, not the whole device.';
+  if (device.type !== 'part' && !isWholeDiskFilesystem(device)) return 'Choose a data partition, not the whole device.';
   if (!device.path) return 'The device path was not reported by Linux.';
   if (!fileSystem) return 'The partition has no detected filesystem.';
   if (!mountableFileSystems.has(fileSystem)) return `The ${fileSystem} filesystem is not mounted automatically yet.`;
@@ -88,6 +103,55 @@ function mountBlockReason(device) {
 }
 function sanitizeMountName(value) {
   return String(value || 'drive').trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'drive';
+}
+// A mounted filesystem has a different device id from the directory it is
+// mounted over, which is the only positive proof available that a path is the
+// drive rather than the mountpoint left behind on the system disk. Anything that
+// cannot be determined answers "mounted", because the one caller deletes what
+// this says is not a drive.
+function isMountPoint(dir) {
+  try {
+    return fs.statSync(dir).dev !== fs.statSync(path.dirname(dir)).dev;
+  } catch {
+    return true;
+  }
+}
+function directorySize(dir) {
+  let total = 0;
+  const pending = [dir];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    let entries;
+    try { entries = fs.readdirSync(current, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) pending.push(full);
+      else { try { total += fs.lstatSync(full).size; } catch {} }
+    }
+  }
+  return total;
+}
+// A drive pulled mid-backup leaves its mountpoint behind as an ordinary
+// directory on the system disk, holding whatever was written after the drive
+// went away — measured at 34 MB in the drills. It is invisible the moment the
+// drive is plugged back in, because the mount covers it, so nothing ever
+// reclaimed it. Only directories MOS itself created under its own mount root are
+// considered, and only ones proved not to be a mount right now.
+function reclaimUnmountedDestinations(root = managedMountRoot) {
+  const reclaimed = [];
+  let entries;
+  try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return reclaimed; }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const dir = path.join(root, entry.name);
+    if (isMountPoint(dir)) continue;
+    const bytes = directorySize(dir);
+    try {
+      fs.rmSync(dir, { force: true, recursive: true });
+      if (bytes > 0) reclaimed.push({ bytes, path: dir });
+    } catch {}
+  }
+  return reclaimed;
 }
 async function listDestinations() {
   const lsblk = await execJson('lsblk', ['--json', '--bytes', '--output', 'NAME,PATH,LABEL,MODEL,TRAN,RM,TYPE,FSTYPE,SIZE,MOUNTPOINTS']);
@@ -106,7 +170,7 @@ async function listDestinations() {
       const externalMount = external || mountPath.startsWith('/media/');
       add({ availableBytes: availableBytes(mountPath), canMount: false, devicePath, fileSystem: device.fstype || null, id: mountPath, label, mountPath, mountState: 'mounted', sizeBytes: Number(device.size) || null, storageKind: externalMount ? 'external' : 'local', transport: device.tran || (externalMount ? 'removable' : 'local'), writable: isWritable(mountPath) });
     }
-    if (!mounted && device.type !== 'disk') {
+    if (!mounted && (device.type !== 'disk' || isWholeDiskFilesystem(device))) {
       const blocked = mountBlockReason(device);
       add({ availableBytes: null, canMount: !blocked && !points.some(Boolean), devicePath, fileSystem: device.fstype || null, id: devicePath || label, label, mountBlockedReason: blocked, mountPath: points.find(Boolean) || null, mountState: points.some(Boolean) ? 'unsupported-mount' : 'unmounted', sizeBytes: Number(device.size) || null, storageKind: external ? 'external' : 'local', transport: device.tran || (external ? 'removable' : 'local'), writable: false });
     }
@@ -188,6 +252,9 @@ async function mountDestination(destinationId) {
   if (destination.mountState === 'mounted') return destination;
   if (!destination.canMount || !destination.devicePath) throw new Error(destination.mountBlockedReason || 'Selected drive cannot be mounted automatically.');
   const mountPath = path.join(managedMountRoot, sanitizeMountName(`${destination.label}-${path.basename(destination.devicePath)}`));
+  // Whatever a previous run wrote here after the drive was pulled is on the
+  // system disk, and mounting over it would hide it again.
+  reclaimUnmountedDestinations();
   ensureDir(mountPath);
   command('mount', [destination.devicePath, mountPath]);
   const mounted = (await listDestinations()).find((item) => item.devicePath === destination.devicePath && item.mountState === 'mounted');
@@ -230,6 +297,10 @@ function reconcileCurrentJob() {
   const startedMs = new Date(job.createdAt || 0).getTime();
   if (Date.now() - startedMs < 15_000) return job;
   if (workerAlive(jobPath(job.id))) return job;
+  // A killed worker ran none of its own cleanup, so whatever it had already
+  // written to the repository is referenced by nothing. Record the destination
+  // so the next job for it collects the space.
+  if (job.kind === 'backup') core.noteUncollectedData(job.destinationId);
   return updateJob(jobPath(job.id), (entry) => {
     entry.error = `The ${entry.kind || 'backup'} stopped during "${entry.stage || 'an unknown step'}" because the backup worker is no longer running (for example after a power loss or restart).`;
     entry.stage = 'failed';
@@ -625,4 +696,4 @@ if (require.main === module && process.argv[2] === '--worker') {
   process.on('SIGTERM', shutdown);
 }
 
-module.exports = { packageBackupInventory, sha256, validatePackagePayloads };
+module.exports = { isMountPoint, isWholeDiskFilesystem, mountBlockReason, reclaimUnmountedDestinations, packageBackupInventory, sha256, validatePackagePayloads };

@@ -4,6 +4,37 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-09-07: An Outage Answers With A Page, And Reclaiming Space Requires Proof It Is Not The Drive
+
+Decision: Every Caddy site block that reverse-proxies Suite Manager carries a `handle_errors` handler serving `/etc/caddy/mos-status/unavailable.html` as `503` with `Retry-After: 15`. Reclaiming a mountpoint left behind on the system disk deletes only what is proved not to be a mount, by comparing the directory's device id against its parent's; every uncertain answer is "mounted", and nothing outside `/media/mos-backup` is ever considered.
+
+Reason: Suite Manager is stopped for the whole middle of a restore, so the drills met a bare `502 Bad Gateway` at the moment the owner was most worried about their data — the one screen in recovery that explained nothing. And a drive pulled mid-backup leaves its mountpoint as an ordinary directory holding whatever was written after the drive went away, invisible again the moment the drive is plugged back in, which is why nothing ever reclaimed it.
+
+Consequences:
+
+- **A real error from Suite Manager still reaches the browser.** `handle_errors` catches only errors Caddy raises itself, which in a block that does nothing but reverse-proxy means an upstream it could not reach; a 404 or a 500 from Suite Manager is a response, not an error.
+- **The page reaches for nothing.** No script, font, or image: anything it referenced would be a second failing request during the outage it exists to explain. It carries its own `meta refresh`, because the owner's alternative is reloading a dead tab by hand.
+- **The wording never names a restore as the cause.** Caddy cannot tell a restore from an update or a crash, and a confident wrong answer is worse here than a general one.
+- **The page is written on every reconcile**, unlike the Caddyfile beside it, which is written once because applying HTTPS replaces it. A machine updated from a release that predates the page would otherwise never receive the file its own Caddyfile points at.
+- **An installed Caddyfile is upgraded in place rather than re-rendered.** Re-rendering would clobber an applied HTTPS configuration, and doing nothing would have left the handler reaching new installs only — a managed update that applies half a change. `withUnavailableHandler` adds the handler to every top-level block that proxies Suite Manager and has none, found by brace depth because the installed file has been through `envsubst` and names a real host and port. It is a no-op on a file that already has them, so it runs on every reconcile. The edit is installed only after `caddy adapt` accepts it — `adapt` and not `validate`, because validate provisions the Cloudflare DNS module and fails without the token in the environment, which is exactly the machines that must not be skipped.
+- **Unreferenced repository data is collected inside the job pipeline, never beside it.** Maintenance rewrites the repository with the engine's concurrency safety off, so an interrupted backup only records its destination; the collection runs at the start of the next job for that destination, which is the first moment the repository is both reachable and provably not being written to. A collection that fails is reported and cleared rather than raised — the owner asked for a backup, and refusing it over housekeeping would turn a space problem into a lost backup.
+- **A whole disk with a filesystem and no partition table is a mount candidate.** It is an ordinary backup drive and the shape a whole-disk drive comes back as after a drill; a disk that has partitions stays a container whose partitions are the candidates. The system-disk guards apply to a whole disk exactly as they did to a partition.
+
+Verified 2026-09-07: all three rendered Caddyfiles validate against the Caddy binary MOS builds, and a probe with Suite Manager absent returns `503` with the page and `Retry-After: 15` while an unmatched host still gets `404`.
+
+## 2026-09-07: Sign-In Costs Real Work, Survives A Restart, And Records No Address
+
+Decision: Owner passwords are hashed with scrypt at **N=2^16, r=8, p=2** — an OWASP-listed configuration — encoded as `scrypt$N=65536,r=8,p=2$<salt>$<hash>`, which records all three parameters so the next change is readable from the stored value. Verification is asynchronous and passes through a gate of two concurrent hashes with a short queue behind it. The sign-in backoff is durable, in a `login_throttle` table keyed by a SHA-256 of the account and of the client address.
+
+Reason: The headline OWASP configuration is `N=2^17, r=8, p=1` at 128 MiB per hash. Measured on the reference machine the two are the same work — 293ms against 272ms — and MOS documents a 2 vCPU / 4 GB minimum server, so the memory is the scarce half and the 64 MiB pair buys the same security for half of it. Raising the cost eightfold is also what forces the other two halves of this entry: a 270ms hash on `crypto.scryptSync` would block the event loop for every other request, and an in-memory backoff was a budget an attacker got back by causing a restart.
+
+Consequences:
+
+- **Existing passwords upgrade on the next successful sign-in**, which is the only moment MOS holds the plaintext for an account it did not just create. `needsRehash` compares the stored parameters against the current ones, and the rewrite goes through `upgradeOwnerPasswordHash`, which deliberately does **not** end sessions the way `replaceOwnerPassword` does — the password did not change, so signing the owner out of their other browsers would be a cost for an upgrade they never asked for and cannot see. Hashes written before this release stay readable: an encoding naming no `r` or `p` is read with Node's defaults, which is what wrote it.
+- **A wrong email now costs the same as a wrong password.** Sign-in used to short-circuit before hashing when the address did not match, which answered "is this the owner's address?" in the response time; an eightfold cost raise is exactly what would have made that audible.
+- **Hashing is bounded, and says so when it is saturated.** Sign-in is unauthenticated, so anyone who can reach the port can ask for 270ms of CPU and 64 MiB. Past two concurrent hashes and a queue of eight, MOS answers `503` with `Retry-After` rather than growing a backlog that would also starve the threadpool the rest of the process needs for disk I/O.
+- **The durable backoff stores no address and no email.** Both keys are digests, so surviving a restart does not also mean MOS keeps a record of who tried to sign in. Entries expire on the same one-hour TTL as before and are pruned on every write, so the table stays small and needs nothing scheduled.
+
 ## 2026-09-06: A Bucket Is A Destination, Not A Subsystem — restic Speaks S3, And MOS Speaks None
 
 Decision: An object-storage destination is a stored connection (endpoint, bucket, optional folder, key pair, optional region) that resolves to a restic repository at `s3:<endpoint>/<bucket>/<folder>/MOS-backups/repository`. **MOS implements no part of the S3 protocol.** All bucket traffic is restic's, credentials reach it through `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` in its environment and never on its command line, and they are stored root-only in the backup agent's state directory, which `managedStateTargets` classifies machine-local and never backs up.

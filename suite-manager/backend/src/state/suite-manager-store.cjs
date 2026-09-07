@@ -382,6 +382,29 @@ const MIGRATIONS = [
     `,
     version: 16,
   },
+  {
+    // The sign-in backoff used to live only in process memory, so restarting
+    // Suite Manager handed an attacker their whole budget back — and a restart
+    // is something an unauthenticated caller can provoke by other means. The
+    // subject is always a hash: the account was already one, and the client
+    // address is hashed on the way in so no raw IP is ever written to disk.
+    // Entries are short-lived by policy, so this table stays small and is
+    // pruned on every write rather than by anything scheduled.
+    name: 'login-throttle-persistence',
+    sql: `
+      CREATE TABLE login_throttle (
+        scope TEXT NOT NULL CHECK (scope IN ('account', 'ip')),
+        subject TEXT NOT NULL,
+        failures INTEGER NOT NULL CHECK (failures > 0),
+        blocked_until_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        PRIMARY KEY (scope, subject)
+      ) STRICT;
+
+      CREATE INDEX login_throttle_last_seen_idx ON login_throttle(last_seen_at);
+    `,
+    version: 17,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -563,6 +586,52 @@ class SuiteManagerStore {
       this.database.prepare('UPDATE owners SET password_hash = ? WHERE id = 1').run(passwordHash);
       this.database.prepare('DELETE FROM sessions').run();
     });
+  }
+
+  // Re-stores the same password under stronger hashing parameters. Deliberately
+  // not `replaceOwnerPassword`: the password did not change, so taking every
+  // session with it would sign the owner out of their other browsers for an
+  // upgrade they never asked for and cannot see.
+  upgradeOwnerPasswordHash(passwordHash) {
+    this.database.prepare('UPDATE owners SET password_hash = ? WHERE id = 1').run(passwordHash);
+  }
+
+  // Sign-in backoff that survives a restart. Entries expire by policy within the
+  // hour, so the whole table is read back at startup rather than queried per
+  // attempt, and every write prunes what has aged out.
+  getLoginThrottleEntries() {
+    return this.database.prepare(`
+      SELECT
+        blocked_until_at AS blockedUntilAt,
+        failures,
+        last_seen_at AS lastSeenAt,
+        scope,
+        subject
+      FROM login_throttle
+      ORDER BY last_seen_at ASC, rowid ASC
+    `).all().map((row) => ({ ...row, failures: Number(row.failures) }));
+  }
+
+  saveLoginThrottleEntry({ blockedUntilAt, failures, lastSeenAt, scope, subject }) {
+    this.database.prepare(`
+      INSERT INTO login_throttle (scope, subject, failures, blocked_until_at, last_seen_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(scope, subject) DO UPDATE SET
+        failures = excluded.failures,
+        blocked_until_at = excluded.blocked_until_at,
+        last_seen_at = excluded.last_seen_at
+    `).run(scope, subject, failures, blockedUntilAt, lastSeenAt);
+  }
+
+  deleteLoginThrottleEntry({ scope, subject }) {
+    this.database.prepare('DELETE FROM login_throttle WHERE scope = ? AND subject = ?').run(scope, subject);
+  }
+
+  // Inclusive, because the in-memory expiry it mirrors is: an entry whose age has
+  // exactly reached the TTL is gone from memory, and a row that outlived it would
+  // be read back at the next start as a fact memory had already dropped.
+  pruneLoginThrottleEntries({ lastSeenAtOrBefore }) {
+    this.database.prepare('DELETE FROM login_throttle WHERE last_seen_at <= ?').run(lastSeenAtOrBefore);
   }
 
   getHttpsSettings() {

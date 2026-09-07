@@ -59,13 +59,6 @@ where the machine holding the key is gone — and the pre-update trigger.
   because a platform update and a per-app update transaction are different things. Worth deciding at
   the same time: a scheduled backup and a platform update can currently overlap, since the agents
   hold separate queues and neither asks the other what it is doing. *(Small)*
-- **A6 — Backup and restore follow-ups from the drills.** Serve a static "MOS is restoring" page from
-  Caddy instead of a raw 502 during the control-plane outage; offer Mount for whole-disk filesystems,
-  not only partitions, which is also what makes a whole-disk lab drive re-attachable through the UI;
-  collect the data a killed or interrupted backup leaves unreferenced in the repository, which today
-  is reclaimed only by the next delete; and clear what a backup wrote under the mountpoint after the
-  drive was pulled — measured at 34 MB on the system disk, invisible once the drive is back, and safe
-  to remove only against a positive test that the path is not the mounted drive. *(Small, bundled)*
 - **A7 — Decide a cleanup story for anonymous Docker volumes.** Unlabeled, hash-named volumes left
   behind by removed app containers are outside MOS ownership by design, so restore correctly refuses
   to claim them — and nothing else ever removes them either. *(Small — needs a decision first)*
@@ -218,22 +211,19 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 
 ### AL-S — Security hardening
 
-- **AL1 — Host OS patching.** MOS updates itself and it updates the apps, and nothing updates Ubuntu;
+- **AL1 — Host OS patching.** `#277`. MOS updates itself and it updates the apps, and nothing updates Ubuntu;
   an install running for months is quietly behind on kernel and TLS fixes while the Updates screen
   says everything is current. Enable unattended security upgrades at bootstrap, and surface host patch
   state where owners already look for updates. The published image raises this from small to
   load-bearing: it is frozen at release time, so someone flashing a months-old download starts behind
   on day one. *(Small)*
-- **AL2 — Full-disk encryption for own-hardware installs.** The installer uses a plain disk layout, so
+- **AL2 — Full-disk encryption for own-hardware installs.** `#278`. The installer uses a plain disk layout, so
   the "safe in your own house" claim currently survives everything except someone carrying the safe
   out of the house. Needs a decision on the unlock model for a headless machine — passphrase at boot,
   TPM-backed, or network-bound — before it is buildable. The published image narrows the options: it
   can carry no key material, so whatever unlocks the disk has to be derived or entered on the machine.
   *(Large — needs a decision first)*
-- **AL3 — Sign-in hardening either side of the second factor.** Raise the owner password hashing cost
-  to current guidance, and persist the login throttle so restarting the service does not reset an
-  attacker's budget. Both are small and independent of the MFA question in **E5**, which is the other
-  half of this gate. *(Small)*
+
 ### AL-A — Access
 
 - **AL4 — View-only household access to the Home dashboard.** Homepage is reachable only through the
@@ -268,9 +258,8 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 
 **A3** the recovery-key lifecycle, which off-site backup has made the gap that matters ·
 **A4** the pre-update backup trigger · **B1** human sign-off on privacy reviews · **E3** signed release and installer
-artifacts · **E4** owner-facing security events · **E5** passkeys and the MFA shape · **F1** runtime
-hardening of app containers · **H8** trusted HTTPS on own hardware. Alpha is where these stop being
-roadmap and become the bar.
+artifacts · **E5** passkeys and the MFA shape · **F1** runtime hardening of app containers ·
+**H8** trusted HTTPS on own hardware. Alpha is where these stop being roadmap and become the bar.
 
 ---
 
@@ -320,10 +309,6 @@ the update or install path requires SSH.
   shell script is the highest-trust artifact MOS ships, and since `v0.16.0` it is served from object
   storage rather than from the repository people trust. Checksums now ship on the release page; what is
   missing is a signature and build provenance from the release pipeline. *(Medium)*
-- **E4 — Owner-facing security event read surface.** `security_events` durably records throttled
-  sign-ins, refused packages, download-bound trips, and failed catalog refreshes — with no route and
-  no UI, so nothing is ever shown to the owner. A failing catalog refresh is the quiet one: the cache
-  keeps serving while MOS stops learning which installed packages have advisories. *(Small)*
 - **E5 — Passkeys, and decide the MFA shape.** `#238`, after `#237`. Research
   passkey-as-second-factor vs passkey-as-sole-credential and bring a recommendation before
   building. The deciding constraint is that the relying-party ID is the Home host, which changes

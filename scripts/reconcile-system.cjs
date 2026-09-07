@@ -10,6 +10,10 @@ const {
   HOMEPAGE_IMAGE,
   JOURNALD_CONFIG_PATH,
   renderCaddyfile,
+  renderUnavailablePage,
+  UNAVAILABLE_PAGE_FILENAME,
+  UNAVAILABLE_PAGE_ROOT,
+  withUnavailableHandler,
   renderHomepageSystemdUnit,
   renderJournaldConfig,
 } = require('../infrastructure/control-plane-runtime.cjs');
@@ -75,6 +79,8 @@ const {
   mosRoot,
 } = runtimeConfig;
 const dryRun = process.argv.includes('--dry-run');
+// The repo-built Caddy, which carries the Cloudflare DNS module the packaged one lacks.
+const CADDY_BINARY = '/usr/local/libexec/mos/caddy';
 
 function log(message) {
   process.stdout.write(`[mos:reconcile] ${message}\n`);
@@ -114,6 +120,37 @@ function canRun(command, args) {
   } catch {
     return false;
   }
+}
+
+// A machine installed before the status page existed still runs a Caddyfile that
+// never mentions it, and this script deliberately does not re-render that file —
+// applying HTTPS owns it. So the handler is added to the file already on disk,
+// and only after Caddy itself accepts the result.
+//
+// `adapt` rather than `validate`: validate provisions the Cloudflare DNS module
+// and fails when the token is not in this process's environment, which would
+// skip exactly the machines that have HTTPS applied. Adapt answers the only
+// question being asked here — did this edit stay valid Caddyfile syntax.
+function addStatusHandlerToCaddyfile() {
+  const target = '/etc/caddy/Caddyfile';
+  if (dryRun) {
+    log(`would add the control-plane status handler to ${target} if missing`);
+    return;
+  }
+  if (!fs.existsSync(target)) return;
+  const current = fs.readFileSync(target, 'utf8');
+  const upgraded = withUnavailableHandler(current);
+  if (upgraded === current) return;
+
+  const candidate = `${target}.mos-next`;
+  fs.writeFileSync(candidate, upgraded, 'utf8');
+  if (!canRun(CADDY_BINARY, ['adapt', '--adapter', 'caddyfile', '--config', candidate])) {
+    fs.rmSync(candidate, { force: true });
+    log(`WARNING: ${target} could not take the control-plane status handler; left it unchanged`);
+    return;
+  }
+  fs.renameSync(candidate, target);
+  log(`added the control-plane status handler to ${target}`);
 }
 
 function installDir(dirPath, mode) {
@@ -220,11 +257,11 @@ function refreshCaddyBinary() {
   run('docker', ['build', '--file', path.join(mosRoot, 'infrastructure/caddy/Dockerfile'), '--tag', 'mos-caddy-builder', mosRoot]);
   const container = dryRun ? 'dry-run-container' : run('docker', ['create', 'mos-caddy-builder'], { stdio: ['ignore', 'pipe', 'inherit'] }).trim();
   installDir('/usr/local/libexec/mos', 0o755);
-  run('docker', ['cp', `${container}:/caddy`, '/usr/local/libexec/mos/caddy.next']);
+  run('docker', ['cp', `${container}:/caddy`, `${CADDY_BINARY}.next`]);
   run('docker', ['rm', container]);
   if (!dryRun) {
-    fs.chmodSync('/usr/local/libexec/mos/caddy.next', 0o755);
-    fs.renameSync('/usr/local/libexec/mos/caddy.next', '/usr/local/libexec/mos/caddy');
+    fs.chmodSync(`${CADDY_BINARY}.next`, 0o755);
+    fs.renameSync(`${CADDY_BINARY}.next`, CADDY_BINARY);
   }
 }
 
@@ -395,6 +432,12 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
   if (!fs.existsSync('/etc/caddy/Caddyfile') || dryRun) writeFile('/etc/caddy/Caddyfile', renderCaddyfile(), 0o644);
   if (!fs.existsSync('/etc/caddy/mos-homepage-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-homepage-routes.caddy', '# No user-managed Homepage routes.\n', 0o644);
   if (!fs.existsSync('/etc/caddy/mos-app-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-app-routes.caddy', '# No app runtime routes.\n', 0o644);
+  // Unconditional, unlike the Caddyfile above: this page is repo-owned content
+  // with nothing in it for an owner to configure, and a machine updated from a
+  // release that predates it would otherwise never receive the file its own
+  // Caddyfile now points at.
+  writeFile(path.join(UNAVAILABLE_PAGE_ROOT, UNAVAILABLE_PAGE_FILENAME), renderUnavailablePage(), 0o644);
+  addStatusHandlerToCaddyfile();
 
   run('systemctl', ['daemon-reload']);
   for (const service of ['mos-homepage.service', 'mos-suite-manager.service', 'caddy.service', 'mos-https-agent.service', 'mos-homepage-agent.service', 'mos-app-agent.service', 'mos-backup-agent.service', 'mos-update-agent.service', 'mos-diagnostics-agent.service']) {

@@ -368,7 +368,7 @@ function createMOSServer({
   homeHost = process.env.MOS_HOME_HOST || 'home.localhost',
   homepageUpstream = process.env.MOS_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
   disposableLab = process.env.MOS_DISPOSABLE_LAB === '1',
-  loginThrottle = new LoginThrottle(),
+  loginThrottle = null,
   logger = createLogger(),
   securityLogger = (event) => logger.warn('security-event', event),
   securityEventRecorder = null,
@@ -378,6 +378,9 @@ function createMOSServer({
   externalSources = null,
 } = {}) {
   const setup = new SetupService({ stateDir });
+  // Built here rather than as a parameter default because the backoff is now
+  // durable: it needs the store, which does not exist until setup does.
+  const throttle = loginThrottle || new LoginThrottle({ store: setup.store });
   // Defined before the services that report into it: a throttled sign-in, a
   // source serving a package the gate refused, and a catalog that cannot refresh
   // are all counted in the same durable place.
@@ -527,7 +530,7 @@ function createMOSServer({
           });
           return;
         }
-        const result = setup.createOwner(body);
+        const result = await setup.createOwner(body);
         jsonResponse(response, 201, { owner: result.owner, status: result.status }, {
           'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),
         });
@@ -537,7 +540,7 @@ function createMOSServer({
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/auth/login`) {
         const body = await readJsonBody(request);
         const attempt = { email: body.email, ip: resolveClientAddress(request) };
-        const retryAfterMs = loginThrottle.retryAfterMs(attempt);
+        const retryAfterMs = throttle.retryAfterMs(attempt);
         if (retryAfterMs > 0) {
           const retryAfterSeconds = Math.max(1, Math.ceil(retryAfterMs / 1_000));
           const securityEvent = {
@@ -567,14 +570,14 @@ function createMOSServer({
 
         let result;
         try {
-          result = setup.login(body);
+          result = await setup.login(body);
         } catch (error) {
           if (error instanceof SetupError && (error.code === 'INVALID_LOGIN' || error.code === 'OWNER_NOT_CREATED')) {
-            loginThrottle.recordFailure(attempt);
+            throttle.recordFailure(attempt);
           }
           throw error;
         }
-        loginThrottle.recordSuccess(attempt);
+        throttle.recordSuccess(attempt);
         jsonResponse(response, 200, { owner: result.owner, status: result.status }, {
           'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),
         });
@@ -598,7 +601,7 @@ function createMOSServer({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change the owner password.' });
           return;
         }
-        const result = setup.changeOwnerPassword(await readJsonBody(request, 8 * 1024));
+        const result = await setup.changeOwnerPassword(await readJsonBody(request, 8 * 1024));
         jsonResponse(response, 200, { owner: result.owner, status: result.status }, {
           'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),
         });
@@ -1391,7 +1394,9 @@ function createMOSServer({
         ...(!internal && Array.isArray(error.details) && error.details.length ? { details: error.details } : {}),
         error: internal ? 'Internal server error.' : error.message || 'Internal server error.',
         ...(reference ? { reference } : {}),
-      });
+      }, Number.isInteger(error.retryAfterSeconds)
+        ? { 'Retry-After': String(error.retryAfterSeconds) }
+        : {});
     }
   });
 

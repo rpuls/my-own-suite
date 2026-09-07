@@ -13,7 +13,7 @@ They are deliberately separate. Your password manager shouldn't have to wait for
 Neither kind happens on its own. MOS checks for updates in the background and tells you what it found; applying either through Suite Manager is your decision and needs no SSH or package manager.
 
 :::caution[MOS does not update Ubuntu yet]
-Platform updates cover MOS, not the server’s operating system. Keep Ubuntu security updates current through your provider or Ubuntu’s own tools. Managing host patching from Suite Manager is planned.
+Platform updates cover MOS, not the server’s operating system. Keep Ubuntu security updates current through your provider or Ubuntu’s own tools. Managing host patching from Suite Manager is [planned](https://github.com/rpuls/my-own-suite/issues/277).
 :::
 
 ## App updates

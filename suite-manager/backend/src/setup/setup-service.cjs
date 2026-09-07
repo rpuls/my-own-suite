@@ -1,4 +1,4 @@
-const { hashPassword, verifyPassword } = require('../auth/passwords.cjs');
+const { hashPassword, needsRehash, verifyPassword } = require('../auth/passwords.cjs');
 const { createSessionToken, hashSessionToken } = require('../auth/sessions.cjs');
 const {
   OwnerAlreadyExistsError,
@@ -140,7 +140,7 @@ class SetupService {
     return this.termsState();
   }
 
-  createOwner(input) {
+  async createOwner(input) {
     if (this.store.getOwner()) {
       throw new SetupError('OWNER_ALREADY_EXISTS', 'The MOS owner account already exists.');
     }
@@ -150,7 +150,7 @@ class SetupService {
       createdAt: this.now().toISOString(),
       email: ownerInput.email,
       name: ownerInput.name,
-      passwordHash: hashPassword(ownerInput.password),
+      passwordHash: await hashPassword(ownerInput.password),
     };
     const token = createSessionToken();
     const session = {
@@ -174,7 +174,7 @@ class SetupService {
     };
   }
 
-  login(input) {
+  async login(input) {
     const owner = this.store.getOwner();
     const email = normalizeEmail(input?.email);
     const password = String(input?.password || '');
@@ -183,8 +183,20 @@ class SetupService {
       throw new SetupError('OWNER_NOT_CREATED', 'Create the MOS owner account first.');
     }
 
-    if (owner.email !== email || !verifyPassword(password, owner.passwordHash)) {
+    // The password is verified even when the email already does not match, so a
+    // wrong address and a wrong password cost the same. Skipping the hash on a
+    // mismatch would answer "is this the owner's email?" in the response time,
+    // and raising the hashing cost is exactly what would make that audible.
+    const passwordMatches = await verifyPassword(password, owner.passwordHash);
+    if (owner.email !== email || !passwordMatches) {
       throw new SetupError('INVALID_LOGIN', 'Email or password is incorrect.');
+    }
+
+    // A correct sign-in is the only time MOS holds the plaintext for an account
+    // it did not just create, so it is the only chance to move a hash written
+    // under weaker parameters up to the current ones.
+    if (needsRehash(owner.passwordHash)) {
+      this.store.upgradeOwnerPasswordHash(await hashPassword(password));
     }
 
     const token = createSessionToken();
@@ -206,7 +218,7 @@ class SetupService {
   // a password that was never sent in the clear. It proves the current password
   // first, then ends every session — including the caller's — and hands back a
   // fresh one so the owner stays signed in on this browser only.
-  changeOwnerPassword(input) {
+  async changeOwnerPassword(input) {
     const owner = this.store.getOwner();
     if (!owner) {
       throw new SetupError('OWNER_NOT_CREATED', 'Create the MOS owner account first.');
@@ -215,7 +227,7 @@ class SetupService {
     const currentPassword = String(input?.currentPassword || '');
     const newPassword = String(input?.newPassword || '');
 
-    if (!verifyPassword(currentPassword, owner.passwordHash)) {
+    if (!await verifyPassword(currentPassword, owner.passwordHash)) {
       throw new SetupError('INVALID_CURRENT_PASSWORD', 'Your current password is incorrect.');
     }
 
@@ -223,11 +235,11 @@ class SetupService {
       throw new SetupError('WEAK_OWNER_PASSWORD', `Owner password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
     }
 
-    if (verifyPassword(newPassword, owner.passwordHash)) {
+    if (await verifyPassword(newPassword, owner.passwordHash)) {
       throw new SetupError('PASSWORD_UNCHANGED', 'Choose a password you have not used here before.');
     }
 
-    this.store.replaceOwnerPassword(hashPassword(newPassword));
+    this.store.replaceOwnerPassword(await hashPassword(newPassword));
 
     const token = createSessionToken();
     this.store.createSession({

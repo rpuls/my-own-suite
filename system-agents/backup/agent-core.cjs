@@ -164,6 +164,63 @@ class BackupAgentCore {
     this.system = system;
     this.journalPath = path.join(paths.agentStateDir, RESTORE_JOURNAL_FILENAME);
     this.rescueRoot = path.join(paths.agentStateDir, 'pre-restore-rescue');
+    this.uncollectedPath = path.join(paths.agentStateDir, 'uncollected-data.json');
+  }
+
+  // A backup whose worker was killed — power loss, a kill, a reboot — never runs
+  // its own cleanup, so the packs it had already written stay in the repository
+  // referenced by nothing. Until now the only thing that ever collected them was
+  // the next delete, which an owner may never do.
+  //
+  // Noting the destination is all that can be done at the moment it is noticed:
+  // collecting rewrites the repository with the engine's concurrency safety off,
+  // so it has to happen inside the one-at-a-time pipeline rather than beside
+  // whatever starts next.
+  noteUncollectedData(destinationId) {
+    if (!destinationId) return;
+    const pending = new Set(this.readUncollectedData());
+    pending.add(String(destinationId));
+    try {
+      fs.mkdirSync(path.dirname(this.uncollectedPath), { recursive: true });
+      fs.writeFileSync(this.uncollectedPath, `${JSON.stringify([...pending], null, 2)}\n`, 'utf8');
+    } catch {}
+  }
+
+  readUncollectedData() {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(this.uncollectedPath, 'utf8'));
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  clearUncollectedData(destinationId) {
+    const remaining = this.readUncollectedData().filter((entry) => entry !== String(destinationId));
+    try {
+      if (remaining.length === 0) fs.rmSync(this.uncollectedPath, { force: true });
+      else fs.writeFileSync(this.uncollectedPath, `${JSON.stringify(remaining, null, 2)}\n`, 'utf8');
+    } catch {}
+  }
+
+  // Runs at the start of the next job for that destination, which is the first
+  // moment the repository is both reachable and provably not being written to.
+  // A failure here is reported and cleared rather than raised: the owner asked
+  // for a backup, and refusing it because leftover data could not be collected
+  // would turn a housekeeping problem into a lost backup.
+  async collectUncollectedData(destination, jobFile) {
+    const destinationId = destination?.id;
+    if (!destinationId || !this.readUncollectedData().includes(String(destinationId))) return false;
+    this.jobs.stage(jobFile, 'Reclaiming space from an interrupted backup');
+    try {
+      const repository = await destination.repository({ create: false });
+      await this.engine.maintainRepository({ repository });
+      this.jobs.log(jobFile, 'Reclaimed data left in the backup store by an earlier backup that was interrupted.');
+    } catch (error) {
+      this.jobs.log(jobFile, `Data left by an earlier interrupted backup could not be reclaimed: ${error.message}`);
+    }
+    this.clearUncollectedData(destinationId);
+    return true;
   }
 
   stateTargets() {
@@ -259,6 +316,7 @@ class BackupAgentCore {
     if (this.interruptedRestore()) throw new Error('A previous restore did not complete. Acknowledge it before starting new backup or restore work.');
     const destination = this.destinations.resolve(started.destinationId);
     await destination.assertAvailable('The backup destination is not mounted. Reconnect the drive, refresh drives, and try again.');
+    await this.collectUncollectedData(destination, jobFile);
     // exFAT and NTFS destinations reject app-packages' setgid mode, so the
     // stage cannot live on the drive.
     const stateStage = path.join(this.paths.agentStateDir, `backup-stage-${started.id}`);
@@ -408,6 +466,10 @@ class BackupAgentCore {
   async discardFailedBackup({ destination, jobFile, pointId, repository, snapshotIds }) {
     await destination.points.remove(pointId).catch(() => {});
     if (!repository) return;
+    // Nothing to forget does not mean nothing was written: a backup that failed
+    // before its first snapshot was recorded still left packs behind, and only a
+    // maintenance pass can tell that they are referenced by nothing.
+    if (!snapshotIds.length) this.noteUncollectedData(destination?.id);
     if (snapshotIds.length) {
       try {
         await this.engine.forgetSnapshots({ repository, snapshotIds });

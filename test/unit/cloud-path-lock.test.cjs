@@ -18,6 +18,13 @@
 // failed download, which a successful walkthrough never reaches; the engine
 // installer's own progress is sent to /dev/null for that reason.
 
+// Moved 2026-09-07 for the control-plane status page (roadmap A6): every Suite
+// Manager site block gained a `handle_errors` handler so a restore answers with
+// a page instead of a bare 502. All five digests moved this time rather than
+// only the last, because the handler went into `renderPublicCloudCaddyfile()`
+// as well as `renderCaddyfile()`. No `echo` line changed in any rendering — the
+// bar stated above — so the walkthrough recording is still accurate.
+
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const test = require('node:test');
@@ -30,25 +37,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '1fec3a6adfde7c53112af99e88054943c85162630592e5724410678d214a7d4e',
+    digest: '8132852337b1e090dd0d97f366b992b2676acdcfcdd6ade2bea20810f7e8dca1',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '83f14f25087d91a7b39cd2d7e1cdf506b06862cda85553d756f46c2ac936be66',
+    digest: '2cd0cdc6c5223b022f31592afaf1e227f083c5c2303fac3a298590eab9a1bf27',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: 'b72deefcaed4b1e4d08f3e8018abdc509c9e7f50d019f70fc7986534de290806',
+    digest: 'e444e86003f15952e0fee40b4ffd24a1ec1527faefef0d375d87e4cd2982b314',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: 'bd445a81da5fd57a1f9477d895dfd013c2fc445cb4bb1694da90029d106466e0',
+    digest: '871652cf11fbc305719f3d7a0fe909f781022ba6bf2204d3b0f8ffefb7a0ef17',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -58,7 +65,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: 'f56d85500ca998370b5758b053c9ff4356b0f2e606164825e90e46dc203833e2',
+    digest: '94cffb13644e8ba51fd826c6a288c7355af2d1be2cd17ceee4fb10e33e8c3277',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

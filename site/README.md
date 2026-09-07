@@ -44,6 +44,29 @@ npm run preview
 
 `predev`/`prebuild` run the branding sync automatically.
 
+## Link and accessibility checks
+
+CI runs both against the built site in the `site` job of `.github/workflows/ci.yml`, and both fail the
+build on a violation. To reproduce a failure locally, build first, then serve `dist` and point the
+checks at it:
+
+```bash
+cd site
+npm run build
+npx --yes http-server@14.1.1 dist -p 4321 --silent &
+
+npx --yes pa11y-ci@4.1.1 --config .pa11yci.json
+lychee --no-progress --base-url http://127.0.0.1:4321 dist   # needs lychee installed locally
+```
+
+`site/.pa11yci.json` checks six representative pages against WCAG2AA — the landing page, the docs
+index, getting-started, one install guide, one app page, and one long-form guide. It is deliberately
+not every page: coverage that takes four minutes gets deleted the first time it makes CI slow.
+
+The link checker's only configuration is `.lycheeignore` at the repository root; everything else is
+passed as arguments in the workflow. `.lycheeignore` is for hosts that refuse automated requests or
+URLs behind a login, never for a link that is actually broken.
+
 ## Deployment
 
 This folder is the deployed public site. `.github/workflows/deploy-site.yml` builds it on GitHub and deploys `site/dist` to Cloudflare Pages by direct upload — from `main` (production) and `staging` (aliased preview) only; no other branch deploys. The workflow needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets, and the Pages project must not have its own git-integration builds enabled, so the Actions workflow stays the only deployment path.
