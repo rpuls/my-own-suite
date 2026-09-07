@@ -160,7 +160,21 @@ async function installAppViaUi(page, app, env) {
   }
 
   const install = details.getByRole('button', { name: /^Install$/iu });
+  // The frontend applies the runtime right after install. A rejected apply — a
+  // build the registry refused, an agent that is down — leaves the app
+  // "installed" with nothing running, which the status poll would wait twelve
+  // minutes for while its own refreshes bury the real failure under validate
+  // failures. So a refused apply fails the step at once, with the answer.
+  let refused = new Promise(() => {});
   if (await install.isVisible().catch(() => false)) {
+    refused = page.waitForResponse(
+      (response) => response.url().endsWith(`/apps/packages/${encodeURIComponent(app.id)}/apply-runtime`),
+      { timeout: 12 * 60 * 1000 },
+    ).then(async (response) => {
+      if (response.status() < 400) return new Promise(() => {});
+      throw new Error(`${app.id} runtime apply was refused with ${response.status()}: ${await response.text()}`);
+    });
+    refused.catch(() => undefined);
     await install.click();
 
     // Install opens the same review dialog for every app now, whichever way
@@ -192,7 +206,7 @@ async function installAppViaUi(page, app, env) {
     }
   }
 
-  const running = await waitForRunning(page, app.id);
+  const running = await Promise.race([waitForRunning(page, app.id), refused]);
   await details.getByLabel('Close app details').click();
   await expect(details).toBeHidden({ timeout: 30000 });
   return running;
