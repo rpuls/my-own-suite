@@ -53,6 +53,14 @@ export async function verifyDiagnosticsBundle(bundle) {
   expect(bundle, 'the diagnostics agent was not reachable from Suite Manager').not.toContain('diagnostics agent unreachable');
   expect(bundle, 'no systemd unit state was collected, so the agent returned nothing useful').toMatch(/mos-suite-manager\.service {2}· {2}active/u);
 
+  // Every unit, not just the primary one. A collector that loses a random
+  // subset of its reads passes an assertion on one unit almost every time —
+  // that is exactly how a bundle that dropped six of nine unit states went
+  // unnoticed for days. `unknown` is the shape a lost read takes, and it is
+  // rendered to the owner as a broken service, so no unit may report it.
+  const unknownUnits = [...bundle.matchAll(/^(\S+\.service) {2}· {2}unknown/gmu)].map(([, name]) => name);
+  expect(unknownUnits, `the agent could not read the state of ${unknownUnits.join(', ')}`).toEqual([]);
+
   // Real host facts rather than an empty section: df output names a mount.
   expect(bundle, 'no filesystem information was collected').toMatch(/Filesystem\s+Size\s+Used/u);
 

@@ -48,6 +48,29 @@ test('stderr and stdout both reach the capture', async () => {
   assert.match(output, /err/u);
 });
 
+// Guards the difference between "the process has exited" and "its output has
+// been read", which is not a distinction the other tests here can make: a fast
+// command usually wins the race by luck, so a test that spawns one and hopes
+// passes whether or not the bug is present. In the field it lost 94% of the
+// time — `systemctl show` returns in 3ms — and the bundle then reported healthy
+// services as `unknown` with nothing in its collection notes to say a read had
+// failed at all.
+//
+// So the wait is made observable rather than raced for: the command exits
+// immediately and leaves a writer holding the same stdout. Resolving on `exit`
+// returns the empty string it has by then; resolving on `close` waits for the
+// stream, which is the contract. POSIX only, because Windows does not hand
+// inherited stdout to a grandchild this way — MOS and CI both run Linux.
+test('output still on its way when the process exits is not lost', { skip: process.platform === 'win32' && 'POSIX stdout inheritance' }, async () => {
+  const output = await capture(process.execPath, ['-e', `
+    const { spawn } = require('node:child_process');
+    spawn(process.execPath, ['-e', 'setTimeout(() => console.log("ActiveState=active"), 300)'], { stdio: ['ignore', 'inherit', 'inherit'] }).unref();
+    process.exit(0);
+  `]);
+
+  assert.match(output, /ActiveState=active/u, `the capture came back as ${JSON.stringify(output)}`);
+});
+
 test('a command that floods is capped, keeping the newest output', async () => {
   // A container logging large lines can legitimately return tens of megabytes.
   // Collecting several of those at once on a machine already short of memory is

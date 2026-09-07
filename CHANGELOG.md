@@ -21,6 +21,7 @@ Updater-facing software changes only — documentation, site, repository, and co
 - Space left behind by an interrupted backup is now reclaimed. A backup cut short — by a power loss, or by the drive being pulled — leaves data in the backup store that nothing refers to, and leaves the mountpoint on the system disk holding whatever was written after the drive went away (34 MB in our tests, and invisible once the drive is back). The first is collected at the start of the next backup to that destination, the second when MOS starts. Previously only deleting a backup ever reclaimed either.
 - Restoring a backup now rebuilds apps on the web address recorded in the backup itself. Previously, on a server that got its domain after installation (typical for own-hardware installs), a restore rewrote every app route to the install-time LAN address, leaving all apps unreachable over HTTPS until the owner re-applied their HTTPS settings.
 - A backup that fails because the drive was unplugged while MOS was writing to it now says so, instead of showing the storage engine's own message about a file path it could not write.
+- The diagnostics file now reports what it actually read. Output from a command that finished quickly could be dropped as it was collected, so running services were listed as `unknown` and called out under **What looks wrong**, and log sections could come back short — while the file still said every source answered.
 
 ## [0.19.0] - 2026-09-04
 
