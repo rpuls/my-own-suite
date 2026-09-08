@@ -119,6 +119,7 @@ test('publicStatus builds the HTTPS settings status payload', () => {
       status: 'failed',
     },
     installContext: 'ssh-bootstrap',
+    parkedBaseDomain: null,
     privateHttpsAvailable: true,
     provider: 'digitalocean',
     serverAddress: '10.0.0.20',
@@ -148,6 +149,22 @@ test('publicStatus falls back to bootstrap HTTP URL when no base domain exists',
   assert.equal(status.bootstrapUrl, 'http://bootstrap.test/');
   assert.equal(status.privateHttpsAvailable, false);
   assert.equal(status.tokenConfigured, false);
+});
+
+// A domain parked by a copy restore sits in pending with no apply running; a
+// pending domain during an apply is not parked, it is being applied.
+test('publicStatus reports a parked domain only outside an apply in progress', () => {
+  const parked = publicStatus({ baseDomain: null, lastApplyStatus: 'never', pendingBaseDomain: 'mos.example.com', tlsMode: 'off' }, 'bootstrap.test', true, { serverAddress: '10.0.0.20' });
+  assert.equal(parked.parkedBaseDomain, 'mos.example.com');
+  assert.equal(parked.activeHomeUrl, 'http://bootstrap.test/');
+  const applying = publicStatus({ baseDomain: null, lastApplyStatus: 'applying', pendingBaseDomain: 'mos.example.com', tlsMode: 'off' }, 'bootstrap.test', true, { serverAddress: '10.0.0.20' });
+  assert.equal(applying.parkedBaseDomain, null);
+});
+
+test('appliedBaseDomain names the domain apps are served on, and nothing before it is applied', () => {
+  const service = new HttpsSettingsService({ agent: {}, bootstrapHost: 'bootstrap.test', store: makeStore({ baseDomain: 'mos.example.com', tlsMode: 'cloudflare-dns01' }).store });
+  assert.equal(service.appliedBaseDomain(), 'mos.example.com');
+  assert.equal(service.appliedBaseDomain({ baseDomain: null, pendingBaseDomain: 'mos.example.com', tlsMode: 'off' }), null);
 });
 
 test('easyDoorHost returns null for cloudflare-dns01 TLS mode', () => {

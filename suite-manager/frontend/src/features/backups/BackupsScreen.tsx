@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { ActionMenu, AdvancedPanel, Checkbox, Dialog, Icon, Notice, SecretText, Select, Switch, TextInput } from '../../components/ui';
+import { ActionMenu, AdvancedPanel, Checkbox, Choice, Dialog, Icon, Notice, SecretText, Select, Switch, TextInput } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
 
 type BackupDestination = {
@@ -56,6 +56,9 @@ type BackupValidation = {
 };
 
 type BackupJob = {
+  // What a restore did about the domain the backup carried: `same` on the
+  // machine that wrote it, otherwise the owner's `move` or `copy`.
+  address?: { domain: string | null; plan: 'copy' | 'move' | 'same' } | null;
   error: string | null;
   id: string;
   kind: string | null;
@@ -82,7 +85,11 @@ type BackupEntry = {
   repositoryId?: string | null;
   restorable?: boolean;
   sizeBytes?: number | null;
+  // The domain the writing machine served: a string, null for none, and absent
+  // on a restore point too old to say.
+  sourceDomain?: string | null;
   sourceHostname?: string | null;
+  sourceInstallId?: string | null;
   sourceVersion: string | null;
   volumeCount: number;
 };
@@ -131,6 +138,7 @@ type BackupStatus = {
   destinations: BackupDestination[];
   error?: string | null;
   hostname?: string | null;
+  installId?: string | null;
   interruptedRestore?: InterruptedRestore | null;
   inventory?: {
     summary: { appCount: number; declaredVolumeCount: number; relationshipCount: number; warningCount: number };
@@ -245,12 +253,30 @@ function backupDescription(backup: BackupEntry) {
   return backup.kind === 'restore-point' ? `${contents} · restores ${size}` : `${contents} · ${size}`;
 }
 
-// Which machine wrote a restore point, said only when it was not this one. A
-// backup taken before MOS recorded the hostname counts as this machine's, which
-// is the answer that never invents a warning.
-function foreignHost(backup: BackupEntry, hostname: string | null | undefined) {
-  if (!backup.sourceHostname || !hostname) return null;
-  return backup.sourceHostname === hostname ? null : backup.sourceHostname;
+// Which machine wrote a restore point, said only when it was not this one. The
+// install id decides when both sides have one — a standby may carry the same
+// name on purpose — and the hostname before that; a backup naming neither
+// counts as this machine's, which is the answer that never invents a warning.
+function writtenElsewhere(backup: BackupEntry, status: BackupStatus | null | undefined) {
+  if (backup.sourceInstallId && status?.installId) {
+    return backup.sourceInstallId === status.installId ? null : backup.sourceHostname || 'another server';
+  }
+  if (!backup.sourceHostname || !status?.hostname) return null;
+  return backup.sourceHostname === status.hostname ? null : backup.sourceHostname;
+}
+
+// The one question a restore onto another machine has to ask: a domain can
+// point at one machine at a time. Asked when the backup carries one, and when
+// it is too old to say; never when it is known to carry none.
+function needsAddressChoice(backup: BackupEntry, status: BackupStatus | null | undefined) {
+  return Boolean(writtenElsewhere(backup, status)) && backup.sourceDomain !== null;
+}
+
+function restoreAddressNote(job: BackupJob | null) {
+  if (job?.kind !== 'restore' || job.status !== 'succeeded' || !job.address?.domain) return null;
+  if (job.address.plan === 'copy') return `This machine was restored as a copy. Apps answer on this machine's own address, and ${job.address.domain} still points at the machine that wrote the backup; Settings offers to move it here.`;
+  if (job.address.plan === 'move') return `This machine now serves ${job.address.domain}. To finish the move, point home.${job.address.domain} at this machine's address; Settings shows how.`;
+  return null;
 }
 
 // The kit is text the browser saves, not a file the server serves: it holds the
@@ -695,6 +721,7 @@ export function BackupsScreen() {
   const [backupNote, setBackupNote] = useState('');
   const [visibleBackups, setVisibleBackups] = useState(3);
   const [restoreConfirmation, setRestoreConfirmation] = useState('');
+  const [restoreAddress, setRestoreAddress] = useState<'' | 'copy' | 'move'>('');
   const [restoreStarted, setRestoreStarted] = useState(false);
   const [sessionEnded, setSessionEnded] = useState<'restore' | 'expired' | ''>('');
   const [error, setError] = useState('');
@@ -1032,7 +1059,11 @@ export function BackupsScreen() {
     setError('');
     try {
       await jsonResponse(await fetch('/suite-manager/api/backups/restore', {
-        body: JSON.stringify({ backupPath: selectedRestore.path, confirmation: restoreConfirmation }),
+        body: JSON.stringify({
+          ...(needsAddressChoice(selectedRestore, status) && restoreAddress ? { address: restoreAddress } : {}),
+          backupPath: selectedRestore.path,
+          confirmation: restoreConfirmation,
+        }),
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
       }), 'Unable to start restore.');
@@ -1159,6 +1190,7 @@ export function BackupsScreen() {
         {(status.currentJob || status.lastJob) ? <section className="mos-panel suite-card suite-backup-panel">
           <h2 className="mos-card-title">{running ? 'Working on it' : 'Latest activity'}</h2>
           <p>{jobMessage(status.currentJob || status.lastJob)}</p>
+          {restoreAddressNote(status.currentJob || status.lastJob) ? <p className="suite-meta">{restoreAddressNote(status.currentJob || status.lastJob)}</p> : null}
           {(status.currentJob || status.lastJob)?.error ? <p className="suite-error">{(status.currentJob || status.lastJob)?.error}</p> : null}
           {((status.currentJob || status.lastJob)?.validation?.warnings || []).map((warning) => <p className="suite-meta" key={warning}>{warning}</p>)}
         </section> : null}
@@ -1175,12 +1207,12 @@ export function BackupsScreen() {
                 {backup.note ? <span className="suite-backup-note">{backup.note}</span> : null}
                 <span>{backupDescription(backup)} · {backup.destinationLabel || 'Backup drive'}</span>
                 <span className="suite-category-pill">{backup.restorable === false ? 'Retired format' : 'Encrypted'}</span>
-                {foreignHost(backup, status.hostname) ? <span className="suite-category-pill">Written by {foreignHost(backup, status.hostname)}</span> : null}
+                {writtenElsewhere(backup, status) ? <span className="suite-category-pill">Written by {writtenElsewhere(backup, status)}</span> : null}
               </div>
               <ActionMenu ariaLabel="Backup actions" disabled={Boolean(busy) || running} items={backup.restorable === false ? [
                 { label: 'Delete', onSelect: () => setSelectedDelete(backup) },
               ] : [
-                { label: 'Restore', onSelect: () => { setSelectedRestore(backup); setRestoreConfirmation(''); } },
+                { label: 'Restore', onSelect: () => { setSelectedRestore(backup); setRestoreConfirmation(''); setRestoreAddress(''); } },
                 { label: 'Check', onSelect: () => void checkBackup(backup) },
                 { label: backup.note ? 'Edit note' : 'Add note', onSelect: () => setNoteEditor({ backup, value: backup.note || '' }) },
                 { label: 'Delete', onSelect: () => setSelectedDelete(backup) },
@@ -1283,16 +1315,21 @@ export function BackupsScreen() {
 
       {selectedRestore ? <Dialog
         footer={<>
-          <button className="mos-btn mos-btn-primary" disabled={restoreConfirmation !== 'RESTORE' || Boolean(busy)} onClick={() => void startRestore()} type="button">{busy === 'restore' ? 'Starting restore...' : 'Restore backup'}</button>
+          <button className="mos-btn mos-btn-primary" disabled={restoreConfirmation !== 'RESTORE' || (needsAddressChoice(selectedRestore, status) && !restoreAddress) || Boolean(busy)} onClick={() => void startRestore()} type="button">{busy === 'restore' ? 'Starting restore...' : 'Restore backup'}</button>
           <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => setSelectedRestore(null)} type="button">Cancel</button>
         </>}
         onClose={() => { if (!busy) setSelectedRestore(null); }}
         title="Restore this backup?"
       >
         <Notice title="This will replace the current install" variant="warning"><p>MOS will stop, restore the selected backup, verify it, and start again. Apps and app data added after this backup are removed so the system matches the backup exactly. A complete rescue copy of the current state is saved on the server first. When the restore finishes you will be signed out; sign back in with the owner account saved in this backup, which may differ from the current one. A large backup can take a long time to restore — keep this page open and let it finish.</p></Notice>
-        {foreignHost(selectedRestore, status?.hostname) ? <Notice title={`This backup was written by ${foreignHost(selectedRestore, status?.hostname)}`} variant="info">
-          <p>This machine will become that server. After restoring, sign in with that server's owner password. If you use a domain, re-apply it under HTTPS so it points at this machine.</p>
+        {writtenElsewhere(selectedRestore, status) ? <Notice title={`This backup was written by ${writtenElsewhere(selectedRestore, status)}`} variant="info">
+          <p>This machine will become that server. After restoring, sign in with that server's owner password.</p>
+          {needsAddressChoice(selectedRestore, status) ? <p>{selectedRestore.sourceDomain ? <>Its address <strong>{selectedRestore.sourceDomain}</strong> can</> : 'If it uses a domain, that address can'} only point at one machine at a time, and right now it points at the machine that wrote this backup. Choose what this machine should do with it:</p> : null}
         </Notice> : null}
+        {needsAddressChoice(selectedRestore, status) ? <div role="radiogroup" aria-label="What to do with the address">
+          <Choice checked={restoreAddress === 'move'} description={`Apps answer at their old addresses again, so links, phone apps and browser extensions keep working. Afterwards, point home.${selectedRestore.sourceDomain || '<your-domain>'} at this machine's address — Settings shows how.`} name="restore-address" onChange={() => setRestoreAddress('move')} value="move">Move my address to this machine</Choice>
+          <Choice checked={restoreAddress === 'copy'} description="Apps run here on this machine's own address. The domain stays as it is, so links and connected devices still point at the other machine. You can move the address here later under Settings." name="restore-address" onChange={() => setRestoreAddress('copy')} value="copy">Restore as a copy</Choice>
+        </div> : null}
         <p className="suite-meta">{formatDate(selectedRestore.createdAt)} · {backupDescription(selectedRestore)} · {selectedRestore.destinationLabel || 'backup storage'}</p>
         <label className="suite-auth-field">
           <span>Type RESTORE to continue</span>

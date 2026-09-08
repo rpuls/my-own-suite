@@ -111,6 +111,36 @@ function restorePublicIdentity({ bootstrapContract = {}, environment = {}, https
   return { homeHost: 'home.mos.home', scheme: 'http' };
 }
 
+// Whether a restore point was written by another machine. The install id is
+// the answer when both sides have one: a standby may carry the same hostname
+// on purpose, and an address changes on the same machine. Older manifests fall
+// back to the hostname, and a manifest naming neither counts as this machine's
+// own work, which is the reading that never invents a question.
+function writtenByAnotherMachine(source = {}, current = {}) {
+  if (source.installId && current.installId) return source.installId !== current.installId;
+  return Boolean(source.hostname && current.hostname && source.hostname !== current.hostname);
+}
+
+const RESTORE_ADDRESS_PLANS = Object.freeze(['copy', 'move']);
+
+// The one thing in a backup that is portable between machines is a domain;
+// every other address is bound to the machine, so there is nothing to choose.
+// A restore onto another machine of a backup that carries a domain (or, for a
+// manifest too old to say, may carry one) needs the owner's answer before
+// anything is touched: `move` serves the domain from this machine, `copy`
+// parks it and rebuilds the apps on this machine's own address.
+function restoreAddressPlan({ current = {}, manifest = {}, requested = null } = {}) {
+  const source = manifest.source || {};
+  const foreign = writtenByAnotherMachine(source, current);
+  const domain = source.domain || null;
+  const knownWithoutDomain = source.domain === null;
+  if (!foreign || knownWithoutDomain) return { domain, foreign, plan: 'same' };
+  if (!RESTORE_ADDRESS_PLANS.includes(requested)) {
+    throw new Error(`This backup was written by another machine${domain ? ` and carries the address ${domain}` : ''}. Choose whether to move that address to this machine or to restore as a copy before restoring.`);
+  }
+  return { domain, foreign, plan: requested };
+}
+
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes)) return 'an unknown amount';
   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
@@ -155,10 +185,21 @@ function requiredFreeBytes(estimatedBytes, restorePointsPresent) {
 }
 
 class BackupAgentCore {
-  constructor({ apps, destinations, engine, jobs, packages, paths, system }) {
+  constructor({ apps, destinations, engine, identity = {}, jobs, packages, paths, system }) {
     this.apps = apps;
     this.destinations = destinations;
     this.engine = engine;
+    // Who this machine is and what it does with a restored domain. The host
+    // wiring supplies the real answers; a core built without them names the
+    // machine by hostname alone and treats every domain as untouched.
+    this.identity = {
+      domain: () => null,
+      hostname: () => os.hostname(),
+      installId: () => null,
+      parkRestoredDomain: async () => null,
+      serveRestoredDomain: async () => null,
+      ...identity,
+    };
     this.jobs = jobs;
     this.packages = packages;
     this.paths = paths;
@@ -431,11 +472,12 @@ class BackupAgentCore {
           volumes: storedVolumes,
         },
         repository: { engineName: this.engine.name, repositoryId: repository.descriptor?.repositoryId || repository.repositoryId || null, repositoryStoredBytes },
-        // The machine that wrote this restore point. A destination can hold the
-        // backups of more than one server once a replacement takes over, and
-        // an owner about to restore has to be able to see which one they are
-        // about to become.
-        source: { ...await system.sourceInfo(), hostname: os.hostname() },
+        // The machine that wrote this restore point, and the domain it served.
+        // A destination can hold the backups of more than one server once a
+        // replacement takes over, and an owner about to restore has to be able
+        // to see which one they are about to become and whether it carries an
+        // address only one machine can answer on.
+        source: { ...await system.sourceInfo(), domain: this.identity.domain(), hostname: this.identity.hostname(), installId: this.identity.installId() },
       };
       // Success requires the destination to still be the one this started
       // against: if a drive vanished mid-backup, everything above landed on the
@@ -595,10 +637,8 @@ class BackupAgentCore {
     const source = await this.system.sourceInfo();
     const backupVersion = manifest.source?.version || null;
     const currentVersion = source?.version || null;
-    // A manifest without a hostname predates the field and is treated as this
-    // machine's own work, which is the answer that never invents a warning.
     const backupHostname = manifest.source?.hostname || null;
-    const currentHostname = os.hostname();
+    const currentHostname = this.identity.hostname();
     const warnings = [];
     if (backupVersion && currentVersion && backupVersion !== currentVersion) {
       warnings.push(`This backup was created by MOS ${backupVersion} but this machine runs MOS ${currentVersion}. Restore reuses the installed MOS software with the backup's validated app packages; recreating the recorded MOS version automatically is not supported yet.`);
@@ -610,7 +650,14 @@ class BackupAgentCore {
       checks,
       schemaVersion: manifest.backup.schemaVersion,
       software: { backupVersion, currentVersion, matched: !backupVersion || !currentVersion || backupVersion === currentVersion },
-      source: { backupHostname, currentHostname, matched: !backupHostname || backupHostname === currentHostname },
+      source: {
+        backupDomain: manifest.source?.domain || null,
+        backupHostname,
+        backupInstallId: manifest.source?.installId || null,
+        currentHostname,
+        currentInstallId: this.identity.installId(),
+        matched: !writtenByAnotherMachine(manifest.source, { hostname: currentHostname, installId: this.identity.installId() }),
+      },
       volumes: (manifest.contents?.volumes || []).map((volume) => ({ name: volume.name, rawBytes: volume.rawBytes ?? null })),
       warnings,
     };
@@ -647,6 +694,12 @@ class BackupAgentCore {
     jobs.update(jobFile, (job) => { job.validation = report; });
     let runtimeStopped = false;
     try {
+      const address = restoreAddressPlan({
+        current: { hostname: this.identity.hostname(), installId: this.identity.installId() },
+        manifest,
+        requested: started.address,
+      });
+      jobs.update(jobFile, (job) => { job.address = { domain: address.domain, plan: address.plan }; });
       jobs.stage(jobFile, 'Checking required space');
       const targets = this.stateTargets();
       let currentStateBytes = 0;
@@ -718,11 +771,20 @@ class BackupAgentCore {
 
       this.advanceJournal('restoring-state', { rescuePath: rescueDir });
       jobs.stage(jobFile, 'Restoring suite state');
-      for (const target of targets) {
+      // A copy keeps this machine's own Caddy files: they carry its own address
+      // and Easy Door, and the backup's would carry the other machine's domain.
+      for (const target of targets.filter((entry) => address.plan !== 'copy' || !entry.id.startsWith('caddy-'))) {
         await system.removeTree(target.path);
         const staged = path.join(stagedState, target.stagePath);
         if (fs.existsSync(staged)) await system.copyTree(staged, target.path, { excludeNames: [] });
         else jobs.log(jobFile, `The backup does not contain ${target.id}; it is left absent.`);
+      }
+      if (address.plan === 'copy') {
+        const parked = await this.identity.parkRestoredDomain();
+        if (parked) jobs.log(jobFile, `Kept the address ${parked} aside: this machine answers on its own address, and Settings offers to move ${parked} here later.`);
+      } else if (address.plan === 'move') {
+        const served = await this.identity.serveRestoredDomain();
+        if (served) jobs.log(jobFile, `This machine now serves ${served}. Point that name at this machine's address to finish the move; Settings shows how.`);
       }
 
       this.advanceJournal('restoring-volumes');
@@ -810,8 +872,10 @@ module.exports = {
   isRestorePointLocator,
   isRestorePointPath,
   readRestorePoint,
+  RESTORE_ADDRESS_PLANS,
   RESTORE_JOURNAL_FILENAME,
   RESTORE_PHASES,
+  restoreAddressPlan,
   restorePublicIdentity,
   UNREADABLE_LEGACY_BACKUP,
   sha256,

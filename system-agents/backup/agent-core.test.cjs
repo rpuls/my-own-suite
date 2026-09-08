@@ -11,7 +11,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { BackupAgentCore, restorePublicIdentity, sha256 } = require('./agent-core.cjs');
+const { BackupAgentCore, restoreAddressPlan, restorePublicIdentity, sha256 } = require('./agent-core.cjs');
 const { DestinationResolver } = require('./destinations.cjs');
 const { ObjectDestinationRegistry } = require('./object-destinations.cjs');
 const { appVolumeLabels, appVolumeName, classifyVolumes, OWNERSHIP_LABELS } = require('../../infrastructure/persistent-state.cjs');
@@ -258,9 +258,10 @@ class FakeWorld {
     }
   }
 
-  core() {
+  core(identity = {}) {
     const readInstances = () => this.readDb().filter((instance) => instance.status !== 'uninstalled');
     return new BackupAgentCore({
+      identity,
       apps: {
         installedInstances: () => readInstances().map(({ enabled, instanceId, packageId }) => ({ enabled, instanceId, packageId })),
         // Mirrors the apps agent on reconcile: enabled instances get their
@@ -913,6 +914,100 @@ test('a restore point with a tampered manifest is refused before any mutation', 
 // from the restored database, not this machine's install-time address: on a
 // USB install MOS_HOME_HOST stays the LAN name forever, and deriving from it
 // rewrote every app route off its HTTPS address.
+// Only a domain travels between machines. Nothing is asked of a restore onto the
+// machine that wrote the backup, or of one whose backup is known to carry no
+// domain; a backup from another machine that carries one (or is too old to say)
+// is refused without the owner's answer, before anything is touched.
+test('restoreAddressPlan asks exactly when another machine\'s backup may carry a domain', () => {
+  const here = { hostname: 'standby', installId: 'install-b' };
+  const own = { source: { domain: 'mos.example.com', hostname: 'other-name', installId: 'install-b' } };
+  assert.deepEqual(restoreAddressPlan({ current: here, manifest: own }), { domain: 'mos.example.com', foreign: false, plan: 'same' });
+  const foreignNoDomain = { source: { domain: null, hostname: 'home', installId: 'install-a' } };
+  assert.deepEqual(restoreAddressPlan({ current: here, manifest: foreignNoDomain, requested: 'move' }), { domain: null, foreign: true, plan: 'same' });
+  const foreignDomain = { source: { domain: 'mos.example.com', hostname: 'home', installId: 'install-a' } };
+  assert.throws(() => restoreAddressPlan({ current: here, manifest: foreignDomain }), /carries the address mos\.example\.com.*move.*copy/u);
+  assert.throws(() => restoreAddressPlan({ current: here, manifest: foreignDomain, requested: 'keep' }), /move.*copy/u);
+  assert.equal(restoreAddressPlan({ current: here, manifest: foreignDomain, requested: 'copy' }).plan, 'copy');
+  assert.equal(restoreAddressPlan({ current: here, manifest: foreignDomain, requested: 'move' }).plan, 'move');
+  // A manifest that predates the domain field may carry one; the hostname
+  // decides whose it is, as it did before install ids existed.
+  const older = { source: { hostname: 'home' } };
+  assert.throws(() => restoreAddressPlan({ current: here, manifest: older }), /another machine\. Choose/u);
+  assert.equal(restoreAddressPlan({ current: { hostname: 'home', installId: 'install-b' }, manifest: older }).plan, 'same');
+  // A standby named like the original is still another machine.
+  assert.equal(restoreAddressPlan({ current: { hostname: 'home', installId: 'install-b' }, manifest: foreignDomain, requested: 'copy' }).foreign, true);
+  assert.equal(restoreAddressPlan({ manifest: { source: {} } }).plan, 'same');
+});
+
+test('a restore point records the machine and domain it came from, and the check compares install ids', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const writer = w.core({ domain: () => 'mos.example.com', hostname: () => 'mos-home', installId: () => 'install-a' });
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await writer.backup(backupJob);
+  const manifest = restorePointManifest(backupJob);
+  assert.deepEqual({ domain: manifest.source.domain, hostname: manifest.source.hostname, installId: manifest.source.installId }, { domain: 'mos.example.com', hostname: 'mos-home', installId: 'install-a' });
+
+  const sameName = w.core({ hostname: () => 'mos-home', installId: () => 'install-b' });
+  const checkJob = w.createJob('validate', { backupPath: restorePointOf(backupJob) });
+  await sameName.validateBackup(checkJob);
+  const source = readJson(checkJob).validation.source;
+  assert.equal(source.matched, false);
+  assert.equal(source.backupDomain, 'mos.example.com');
+  assert.equal(source.backupInstallId, 'install-a');
+  assert.equal(source.currentInstallId, 'install-b');
+});
+
+test('a foreign restore that carries a domain is refused before any mutation unless the owner chose', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await w.core({ domain: () => 'mos.example.com', installId: () => 'install-a' }).backup(backupJob);
+  const standby = w.core({ installId: () => 'install-b' });
+  const eventsBefore = w.system.events.length;
+  await assert.rejects(standby.restore(w.createJob('restore', { backupPath: restorePointOf(backupJob) })), /carries the address mos\.example\.com/u);
+  assert.ok(!w.system.events.slice(eventsBefore).some(([event]) => event === 'stopService' || event === 'removeContainer'));
+  assert.equal(standby.interruptedRestore(), null);
+});
+
+test('a copy restore keeps this machine\'s Caddy files and parks the domain; a move serves it from here', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  fs.writeFileSync(path.join(w.root, 'etc-caddy', 'Caddyfile'), 'caddy-of-the-original\n');
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await w.core({ domain: () => 'mos.example.com', installId: () => 'install-a' }).backup(backupJob);
+  fs.writeFileSync(path.join(w.root, 'etc-caddy', 'Caddyfile'), 'caddy-of-the-standby\n');
+
+  const calls = [];
+  const standby = w.core({
+    installId: () => 'install-b',
+    parkRestoredDomain: async () => { calls.push('park'); return 'mos.example.com'; },
+    serveRestoredDomain: async () => { calls.push('serve'); return 'mos.example.com'; },
+  });
+  const copyJob = w.createJob('restore', { address: 'copy', backupPath: restorePointOf(backupJob) });
+  await standby.restore(copyJob);
+  const copied = readJson(copyJob);
+  assert.equal(copied.status, 'succeeded');
+  assert.deepEqual(copied.address, { domain: 'mos.example.com', plan: 'copy' });
+  assert.equal(fs.readFileSync(path.join(w.root, 'etc-caddy', 'Caddyfile'), 'utf8'), 'caddy-of-the-standby\n');
+  assert.deepEqual(calls, ['park']);
+  assert.ok(copied.logs.some((entry) => /Kept the address mos\.example\.com aside/u.test(entry.message)));
+
+  const moveJob = w.createJob('restore', { address: 'move', backupPath: restorePointOf(backupJob) });
+  await standby.restore(moveJob);
+  const moved = readJson(moveJob);
+  assert.equal(moved.status, 'succeeded');
+  assert.deepEqual(moved.address, { domain: 'mos.example.com', plan: 'move' });
+  assert.equal(fs.readFileSync(path.join(w.root, 'etc-caddy', 'Caddyfile'), 'utf8'), 'caddy-of-the-original\n');
+  assert.deepEqual(calls, ['park', 'serve']);
+
+  // The machine that wrote the backup restores it without being asked.
+  const homeJob = w.createJob('restore', { backupPath: restorePointOf(backupJob) });
+  await w.core({ installId: () => 'install-a', parkRestoredDomain: async () => { calls.push('park'); }, serveRestoredDomain: async () => { calls.push('serve'); } }).restore(homeJob);
+  assert.deepEqual(readJson(homeJob).address, { domain: 'mos.example.com', plan: 'same' });
+  assert.deepEqual(calls, ['park', 'serve']);
+});
+
 test('restorePublicIdentity prefers the restored HTTPS settings over install-time env', () => {
   const environment = { MOS_HOME_HOST: 'home.mos.home' };
   const bootstrapContract = { MOS_HOME_URL: 'http://home.mos.home/' };

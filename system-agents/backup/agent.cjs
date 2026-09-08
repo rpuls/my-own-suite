@@ -12,7 +12,8 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { execFile, execFileSync, spawn } = require('node:child_process');
-const { BackupAgentCore, isRestorePointPath, restorePublicIdentity, sha256, UNREADABLE_LEGACY_BACKUP, validatePackagePayloads } = require('./agent-core.cjs');
+const { BackupAgentCore, isRestorePointPath, RESTORE_ADDRESS_PLANS, restorePublicIdentity, sha256, UNREADABLE_LEGACY_BACKUP, validatePackagePayloads } = require('./agent-core.cjs');
+const { renderHttpsCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
 const { BackupSystemAdapter } = require('./system-adapter.cjs');
 const { BackupScheduler } = require('./scheduler.cjs');
 const { DestinationResolver, parseObjectLocator } = require('./destinations.cjs');
@@ -34,6 +35,8 @@ const agentStateDir = process.env.MOS_BACKUP_AGENT_STATE_DIR || path.join(stateR
 const bootstrapContractPath = path.join(stateRoot, 'bootstrap-contract.env');
 const jobsDir = path.join(agentStateDir, 'jobs');
 const currentJobPath = path.join(agentStateDir, 'current-job.json');
+const installIdPath = path.join(agentStateDir, 'install-id');
+const caddyfilePath = process.env.MOS_CADDYFILE_PATH || '/etc/caddy/Caddyfile';
 const managedMountRoot = '/media/mos-backup';
 const destinationRoots = ['/media', '/mnt', '/run/media'];
 const mountableFileSystems = new Set(['exfat', 'ext2', 'ext3', 'ext4', 'ntfs', 'ntfs3', 'vfat', 'xfs', 'btrfs']);
@@ -329,7 +332,7 @@ function latestJob() {
 }
 function summarizeJob(job) {
   if (!job) return null;
-  return { backupPath: job.backupPath || null, destinationId: job.destinationId || null, error: job.error || null, id: job.id, kind: job.kind || null, logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [], outputPath: job.outputPath || null, rescuePath: job.rescuePath || null, stage: job.stage || null, status: job.status || null, summary: job.summary || null, updatedAt: job.updatedAt || null, validation: job.validation || null, verification: job.verification || null };
+  return { address: job.address && typeof job.address === 'object' ? job.address : null, backupPath: job.backupPath || null, destinationId: job.destinationId || null, error: job.error || null, id: job.id, kind: job.kind || null, logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [], outputPath: job.outputPath || null, rescuePath: job.rescuePath || null, stage: job.stage || null, status: job.status || null, summary: job.summary || null, updatedAt: job.updatedAt || null, validation: job.validation || null, verification: job.verification || null };
 }
 function isActive(job) { return job && (job.status === 'queued' || job.status === 'running'); }
 function jobPath(id) { return path.join(jobsDir, `${id}.json`); }
@@ -345,13 +348,15 @@ function createJob(kind, payload) {
   const destinationId = kind === 'backup' ? normalizeDestinationId(payload.destinationId) : null;
   const backupPath = kind === 'restore' || kind === 'validate' || kind === 'delete' ? normalizeBackupLocator(payload.backupPath) : null;
   const note = kind === 'backup' ? String(payload.note || '').trim().slice(0, 500) : '';
+  const address = kind === 'restore' && payload.address !== undefined && payload.address !== null ? String(payload.address) : null;
+  if (address !== null && !RESTORE_ADDRESS_PLANS.includes(address)) throw new Error('Choose whether to move the address to this machine or to restore as a copy.');
   if (kind === 'backup' && !destinationId) throw new Error('Choose a connected drive or a storage connection to back up to.');
   if ((kind === 'restore' || kind === 'validate' || kind === 'delete') && !backupPath) throw new Error('Choose a detected backup from a connected destination.');
   // A leftover backup in the retired tar format can be deleted but never read,
   // so the refusal happens here rather than after a job has been queued.
   if ((kind === 'restore' || kind === 'validate') && !isRestorePointPath(backupPath) && !parseObjectLocator(backupPath)) throw new Error(UNREADABLE_LEGACY_BACKUP);
   if (kind === 'restore' && payload.confirmation !== 'RESTORE') throw new Error('Type RESTORE to confirm this destructive restore.');
-  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator: payload.initiator === 'schedule' ? 'schedule' : 'owner', kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(note ? { note } : {}) };
+  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator: payload.initiator === 'schedule' ? 'schedule' : 'owner', kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(note ? { note } : {}), ...(address ? { address } : {}) };
   writeJson(jobPath(id), job);
   writeJson(currentJobPath, job);
   spawn(process.execPath, [__filename, '--worker', jobPath(id)], { cwd: repoDir, detached: true, env: process.env, stdio: 'ignore' }).unref();
@@ -502,6 +507,60 @@ function restoreBaseUrl(store) {
   try { httpsSettings = store ? store.getHttpsSettings() : null; } catch {}
   return restorePublicIdentity({ bootstrapContract: readBootstrapContract(), environment: process.env, httpsSettings });
 }
+function withStore(work) {
+  const store = new SuiteManagerStore(stateDir);
+  try {
+    return work(store);
+  } finally {
+    store.close();
+  }
+}
+function appliedDomain(store) {
+  const settings = store.getHttpsSettings();
+  return settings?.tlsMode === 'cloudflare-dns01' && settings.baseDomain ? settings.baseDomain : null;
+}
+// Generated once, on this machine's first agent start, and kept beside the
+// engine key where nothing backs it up: the one fact a restore point can carry
+// that says which machine wrote it, whatever the machine was called.
+function installId() {
+  try {
+    const existing = fs.readFileSync(installIdPath, 'utf8').trim();
+    if (existing) return existing;
+  } catch {}
+  const id = crypto.randomUUID();
+  ensureDir(agentStateDir);
+  fs.writeFileSync(installIdPath, `${id}\n`, 'utf8');
+  return id;
+}
+// Who this machine is, and the two things a restore can do with a domain the
+// backup carried. Parking keeps the domain in the restored settings as pending
+// and switches HTTPS off, so apps are rebuilt on this machine's own address and
+// the Settings form offers the domain back. Serving rewrites the restored
+// Caddyfile for this machine's own bootstrap name; the certificate follows from
+// the restored token once Caddy starts, and pointing the name here is the
+// owner's step, as it is after any HTTPS apply.
+const identity = {
+  domain: () => { try { return withStore(appliedDomain); } catch { return null; } },
+  hostname: () => os.hostname(),
+  installId,
+  parkRestoredDomain: async () => withStore((store) => {
+    const domain = appliedDomain(store);
+    if (domain) store.parkHttpsDomain(new Date().toISOString());
+    return domain;
+  }),
+  serveRestoredDomain: async () => withStore((store) => {
+    const domain = appliedDomain(store);
+    if (!domain) return null;
+    const { homeHost } = restorePublicIdentity({ bootstrapContract: readBootstrapContract(), environment: process.env });
+    fs.writeFileSync(caddyfilePath, renderHttpsCaddyfile({
+      acmeEmail: store.getHttpsSettings().acmeEmail,
+      baseDomain: domain,
+      bootstrapHost: homeHost,
+      suiteManagerPort: process.env.MOS_SUITE_MANAGER_PORT || '3100',
+    }), { encoding: 'utf8', mode: 0o644 });
+    return domain;
+  }),
+};
 function restoreRequestContext(packageId, store) {
   const { homeHost, scheme } = restoreBaseUrl(store);
   const baseHost = homeHost.startsWith('home.') ? homeHost.slice(5) : homeHost;
@@ -678,6 +737,7 @@ const core = new BackupAgentCore({
   apps: { installedInstances: installedAppInstances, reconcile: reconcileRestoredApps },
   destinations: destinationResolver,
   engine,
+  identity,
   jobs: { log, stage, update: updateJob },
   packages: { inventory: packageBackupInventory, validatePayloads: validatePackagePayloads },
   paths: { agentStateDir, stateDir, stateRoot },
@@ -708,6 +768,7 @@ if (require.main === module && process.argv[2] === '--worker') {
   // pre-release password gets one the same moment.
   engine.migrateLegacyKey();
   engine.recoveryKey();
+  installId();
   fs.rmSync(socketPath, { force: true });
 
   const server = http.createServer(async (request, response) => {
@@ -725,6 +786,7 @@ if (require.main === module && process.argv[2] === '--worker') {
           // Named so the screen can say which machine wrote a restore point, and
           // stay quiet about the ones this machine wrote itself.
           hostname: os.hostname(),
+          installId: installId(),
           interruptedRestore: core.interruptedRestore(),
           lastJob: summarizeJob(latestJob()),
           recoveryKey: recoveryKeyStatus(),

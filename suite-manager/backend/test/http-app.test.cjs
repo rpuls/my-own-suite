@@ -2264,6 +2264,13 @@ test('a dashboard tile redirect resolves the app against the door it was reached
     assert.equal(secondDoor.status, 302);
     assert.equal(secondDoor.headers.location, 'https://stirling-pdf.mos.example.com/');
 
+    // Once a domain is applied every app route names exactly one host under
+    // it, so the bootstrap door has to send the tile there too — the
+    // replacement-machine drill found it pointing at a host nothing served.
+    const bootstrapDoorAfterApply = await hostRequest(baseUrl, `/suite-manager/open/${instanceId}`, { headers: { Host: 'home.test' } });
+    assert.equal(bootstrapDoorAfterApply.status, 302);
+    assert.equal(bootstrapDoorAfterApply.headers.location, 'https://stirling-pdf.mos.example.com/');
+
     const unknown = await hostRequest(baseUrl, '/suite-manager/open/00000000-0000-4000-8000-000000000000', { headers: { Host: 'home.test' } });
     assert.equal(unknown.status, 404);
     assert.equal(unknown.json().code, 'APP_NOT_INSTALLED');

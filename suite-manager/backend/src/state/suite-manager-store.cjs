@@ -752,6 +752,20 @@ class SuiteManagerStore {
     `).run(at, at, at);
   }
 
+  // A restore onto another machine that kept the backup's domain aside: the
+  // domain moves to pending, where the Settings form picks it up, and HTTPS is
+  // off, so this machine answers on its own address until the owner applies it.
+  parkHttpsDomain(at) {
+    this.database.prepare(`
+      UPDATE https_settings
+      SET pending_base_domain = base_domain, pending_acme_email = acme_email,
+          base_domain = NULL, tls_mode = 'off', provider = NULL,
+          last_apply_status = 'never', last_apply_at = NULL,
+          last_apply_error_code = NULL, last_apply_diagnostics = NULL, updated_at = ?
+      WHERE id = 1 AND tls_mode = 'cloudflare-dns01'
+    `).run(at);
+  }
+
   failHttpsApply({ at, diagnostics = null, errorCode }) {
     this.database.prepare(`
       UPDATE https_settings

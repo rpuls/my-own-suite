@@ -32,9 +32,9 @@ rely on. Those three are contracts now, and the theme stays for what the gate ne
 
 **Gate:** an owner sets a recovery key once, backups run on a schedule with retention to an attached
 disk or an S3-compatible bucket, and no restore screen shows a raw 502 or an internal path
-(`docs/decisions.md`, 2026-09-06 and 2026-09-07). The theme is kept open for the two items below,
-which the gate never covered: a backup taken before an update without being asked, and a cleanup
-story for volumes MOS does not own.
+(`docs/decisions.md`, 2026-09-06 and 2026-09-07). The theme is kept open for the items below, which
+the gate never covered: a backup taken before an update without being asked, and a cleanup story for
+volumes MOS does not own.
 
 The restore contract itself is drill-verified and is not in question (`docs/decisions.md`, 2026-07-30),
 and as of 2026-09-06 so is the storage under it: backups are restic repositories, the engine choice is
@@ -137,6 +137,12 @@ act on.
   question inside this item is settled: accepting the terms lands the owner on Suite Manager, because
   first run is the only moment with a server login to hand over, and ordinary sign-ins go on to the
   Homepage dashboard as before. *(Medium)*
+- **C8 — Say how long a backup check or restore takes, and show it happening.** `#280`. A check
+  and a restore each run 10–20 minutes on ordinary hardware, the only expectation set is "a long
+  time", and for most of a restore the owner is looking at the static busy page, which knows nothing.
+  The agent already logs every stage with a timestamp; what is missing is an estimate before the
+  owner commits, live stages on the busy page, and a per-phase progress indicator. The measured
+  lesson: restore time is dominated by rebuilding app images, not by gigabytes. *(Medium)*
 
 ### H. Install media people can just flash
 
@@ -250,7 +256,6 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 
 ### Carried in — already tracked above, and alpha gates rather than 1.0 wishes
 
-**A3** the recovery-key lifecycle, which off-site backup has made the gap that matters ·
 **A4** the pre-update backup trigger · **B1** human sign-off on privacy reviews · **E3** signed release and installer
 artifacts · **E5** passkeys and the MFA shape · **F1** runtime hardening of app containers ·
 **H8** trusted HTTPS on own hardware. Alpha is where these stop being roadmap and become the bar.

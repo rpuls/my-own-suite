@@ -275,7 +275,8 @@ function appHostLabelFor(packageId, hostFor) {
 }
 
 function appPublicUrlFor(request, packageId, httpsSettings = null, hostFor = null) {
-  const homeHost = normalizedHost(request);
+  const appliedDomain = typeof httpsSettings?.appliedBaseDomain === 'function' ? httpsSettings.appliedBaseDomain() : null;
+  const homeHost = appliedDomain ? `home.${appliedDomain}` : normalizedHost(request);
   const baseHost = homeHost.startsWith('home.') ? homeHost.slice(5) : homeHost;
   const appHost = `${appHostLabelFor(packageId, hostFor)}.${baseHost}`;
   const fallbackScheme = isHttpsRequest(request) ? 'https' : 'http';
@@ -988,6 +989,7 @@ function createMOSServer({
         }
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 202, await backupAgent.startRestore({
+          ...(body.address ? { address: String(body.address) } : {}),
           backupPath: String(body.backupPath || ''),
           confirmation: String(body.confirmation || ''),
         }));

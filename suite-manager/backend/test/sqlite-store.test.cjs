@@ -626,6 +626,29 @@ test('app guide state is persisted per app instance', async () => {
   store.close();
 });
 
+test('parking a domain moves it to pending, switches HTTPS off, and does nothing without one', async () => {
+  const store = new SuiteManagerStore(await tempStateDir());
+  store.parkHttpsDomain('zero');
+  assert.equal(store.getHttpsSettings().pendingBaseDomain, null);
+  store.beginHttpsApply({ acmeEmail: 'owner@example.com', at: 'one', baseDomain: 'mos.example.com' });
+  store.completeHttpsApply('two');
+  store.parkHttpsDomain('three');
+  const settings = store.getHttpsSettings();
+  assert.equal(settings.baseDomain, null);
+  assert.equal(settings.pendingBaseDomain, 'mos.example.com');
+  assert.equal(settings.pendingAcmeEmail, 'owner@example.com');
+  assert.equal(settings.acmeEmail, 'owner@example.com');
+  assert.equal(settings.tlsMode, 'off');
+  assert.equal(settings.provider, null);
+  assert.equal(settings.lastApplyStatus, 'never');
+  // The parked domain is what the next apply picks up, exactly as before.
+  store.beginHttpsApply({ acmeEmail: 'owner@example.com', at: 'four', baseDomain: 'mos.example.com' });
+  store.completeHttpsApply('five');
+  assert.equal(store.getHttpsSettings().baseDomain, 'mos.example.com');
+  assert.equal(store.getHttpsSettings().tlsMode, 'cloudflare-dns01');
+  store.close();
+});
+
 test('failed HTTPS apply retains the previously active configuration', async () => {
   const store = new SuiteManagerStore(await tempStateDir());
   store.beginHttpsApply({ acmeEmail: 'first@example.com', at: 'one', baseDomain: 'first.example.com' });

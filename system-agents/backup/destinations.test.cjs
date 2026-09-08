@@ -100,7 +100,7 @@ function manifestFor(id, { initiator = 'owner' } = {}) {
   return {
     backup: { createdAt: `2026-09-0${id.slice(-1)}T03:00:00.000Z`, engine: 'restic', id, initiator, kind: 'mos-whole-suite', schemaVersion: 4 },
     contents: { apps: [{ packageId: 'immich' }], stateRawBytes: 1000, volumes: [{ name: 'mos-app-immich-data', rawBytes: 2000 }] },
-    source: { version: '0.20.0' },
+    source: { domain: 'mos.example.com', hostname: 'mos-home', installId: 'install-one', version: '0.20.0' },
   };
 }
 
@@ -140,6 +140,9 @@ test('a manifest written to a bucket comes back from a listing of the bucket alo
   assert.equal(summaries[0].appCount, 1);
   assert.equal(summaries[0].sizeBytes, 3000);
   assert.equal(summaries[0].locator, objectLocator(world.record.id, 'point-1'));
+  assert.equal(summaries[0].sourceDomain, 'mos.example.com');
+  assert.equal(summaries[0].sourceHostname, 'mos-home');
+  assert.equal(summaries[0].sourceInstallId, 'install-one');
   assert.deepEqual(await rebuilt.points.read('point-1'), manifestFor('point-1'));
 });
 

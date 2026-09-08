@@ -4,6 +4,24 @@ This file records architectural decisions that should survive beyond a single is
 
 For documentation ownership rules, see [docs/README.md](./README.md).
 
+## 2026-09-08: A Restore Onto Another Machine Asks Whose Address Wins, Before It Touches Anything
+
+Decision: Only a domain travels between machines; a LAN name, an Easy Door name or a public IP is bound to the machine, so a restore without a domain has nothing to choose. A restore of a backup written by another machine that carries a domain — or is too old to say — needs the owner's answer on the restore screen before anything is stopped, and the backup agent refuses `POST /v1/restores` without it. `address: move` restores everything as before and re-renders the Caddyfile from the restored HTTPS settings for this machine's own bootstrap name, so the domain is served from here; the certificate follows from the restored Cloudflare token when Caddy starts. `address: copy` keeps this machine's own Caddy files, parks the restored domain (`base_domain` to `pending_base_domain`, TLS off) and rebuilds every app on this machine's own address; Settings names the parked domain and pre-fills the form to move it later. Neither answer writes DNS: MOS never has, and the owner points the name at the machine exactly as after any HTTPS apply.
+
+Reason: The first replacement-machine drill (2026-09-08, `#281`) restored perfectly and ended with every app tile answering 404. Routes were rebuilt on the backup's domain, the tile redirect used the door the owner came through, and the LAN door for apps is closed once a domain is applied — each rule right on its own, unusable together, and silent. Guessing either way destroys something: moving the address on a lab restore, or dropping it on a real recovery.
+
+Consequences:
+
+- **A machine has an install identity, and a restore point names it.** `<agentStateDir>/install-id` is generated at the backup agent's first start, kept machine-local beside the engine key and never backed up. Manifests carry `source.installId` and `source.domain` (the applied base domain, or null), `GET /v1/status` reports `installId`, and "written by another machine" is decided by install id when both sides have one — a standby may carry the original's hostname on purpose — and by hostname for manifests that predate it. A manifest naming neither counts as this machine's own work.
+- **The question is asked exactly once, and only when it has an answer.** The same machine is never asked; a foreign backup known to carry no domain is never asked and needs only a notice that the address changed; a foreign backup with a domain, or one too old to say, cannot be restored without `move` or `copy`. The check runs after the read-only validation and before the runtime is stopped, so a missing answer costs nothing.
+- **No address inside app data is rewritten.** Share links, phone apps and browser extensions still point at the old address after a copy; the copy option says so in one sentence and MOS does nothing more.
+- **Servers stay unaware of each other.** Nothing probes whether the old address still answers and nothing shuts the other machine down. Two alive at once is allowed, and an internet-isolated homelab is a first-class case.
+- **A dashboard tile follows the applied domain.** With a domain applied every app route names one host under it, so `/suite-manager/open/<instance>` — and every app public URL Suite Manager derives from a request — uses the domain whatever door the request came through, instead of the request's own host.
+- **Lab drills are safe by construction.** A copy touches nothing outside the machine, and a move only changes what this machine serves; production DNS is never written by either.
+- Manifest schema 4 is unreleased, so the new `source` fields migrate nothing.
+
+Not yet drill-verified: the replacement-machine restore of 2026-09-08 is to be repeated with each answer once this ships to staging.
+
 ## 2026-09-07: The Recovery Key Is The Repository Password, The Owner Holds It, And A Repository May Accept More Than One
 
 Decision: The string in `RESTIC_PASSWORD` *is* the recovery key — no wrapping layer, no key-encryption key, nothing derived from the owner password. It is 140 bits of random material as `MOS-` plus eight groups of four Crockford base32 characters, the last group a 20-bit SHA-256 checksum, so a mistyped key is answered as a typo and never as a wrong key. One machine holds exactly one key, generated at agent start and kept at `<agentStateDir>/engine-key` mode `0600`, machine-local and never backed up. A repository may accept several keys, which is what makes takeover possible.
@@ -19,7 +37,7 @@ Consequences:
 - **Pre-release hex keys migrate lazily and are never deleted.** A 64-hex `engine-key` is renamed to `engine-key.legacy` at agent start and a recovery key generated. Every probe of a repository with this machine's key — a drive's health check, a bucket's preflight, the connection test, the open itself — goes through one engine method; when it answers `locked` and that file exists, MOS retries with the legacy key, adds the recovery key, removes the old key id, and probes again. No stored data is re-encrypted — restic wraps one data key with any number of passwords — and a drive left unplugged for months still migrates the day it is attached.
 - **Restore points name the machine that wrote them.** `source.hostname` is in manifest schema 4, which is unreleased, so nothing migrates; a manifest without it counts as this machine's. Two live servers writing to one destination is allowed and visible, not prevented.
 
-Verified: <!-- Rasmus: two-machine drill result goes here (steps 3-4 of the acceptance drill). -->
+Verified 2026-09-08 by Rasmus: the home server (pre-release hex key, six apps, S3 bucket) updated, showed its recovery key, and backed up to the bucket; a fresh Hyper-V install connected the same bucket, was told the backups were written by another server, unlocked them with the entered key, listed them, and restored the whole suite — check 4.5 min, volumes 1.5 min, app runtime rebuild 11 min — with sign-in afterwards using the original owner password. One deviation, recorded as `#281`: on the replacement machine the apps were rebuilt on the backup's domain, which still pointed at the original server, so every app tile answered 404 until the domain is re-applied; nothing on screen said so.
 
 ## 2026-09-07: An Outage Answers With A Page, And Reclaiming Space Requires Proof It Is Not The Drive
 

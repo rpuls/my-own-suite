@@ -109,6 +109,22 @@ export function Checkbox({ children, ...props }: Omit<InputHTMLAttributes<HTMLIn
   return <label className="suite-confirm"><input className="suite-confirm-box" type="checkbox" {...props} /><span>{children}</span></label>;
 }
 
+// The shared choice: one of several exclusive answers to a question the owner
+// must settle before an action, each answer a boxed row whose whole surface is
+// the hit target, with a label and the consequence spelled out under it. Radio
+// semantics, so keyboard and form behaviour stay the platform's. It is neither
+// a checkbox (an acknowledgement) nor a switch (a setting that acts at once):
+// a choice is submitted with the action it decides.
+export function Choice({ children, description, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { children: ReactNode; description?: ReactNode }) {
+  return <label className="suite-choice">
+    <input className="suite-choice-dot" type="radio" {...props} />
+    <span className="suite-choice-copy">
+      <span className="suite-choice-label">{children}</span>
+      {description ? <span className="suite-choice-help">{description}</span> : null}
+    </span>
+  </label>;
+}
+
 // The shared setting switch: label and optional description on the left, the
 // switch on the right, the whole row a hit target. Use it for a preference that
 // takes effect the moment it is flipped.
