@@ -7,7 +7,22 @@ const test = require('node:test');
 
 const { collectPackageFiles, digestAppPackage } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
-const { isMountPoint, isWholeDiskFilesystem, mountBlockReason, reclaimUnmountedDestinations, sha256, validatePackagePayloads } = require('./agent.cjs');
+const { isMountPoint, isWholeDiskFilesystem, mountBlockReason, RECOVERY_KEY_GATED_ROUTES, RECOVERY_KEY_UNACKNOWLEDGED, reclaimUnmountedDestinations, sha256, validatePackagePayloads } = require('./agent.cjs');
+
+// The gate exists so nobody ends up with backups only a machine they no longer
+// have can open. It must not reach any further than that: a machine in the
+// middle of recovering has no key to save yet, and blocking it from mounting a
+// drive or restoring would be the gate causing the loss it exists to prevent.
+test('an unsaved recovery key blocks only what would create unopenable backups', () => {
+  assert.deepEqual([...RECOVERY_KEY_GATED_ROUTES].sort(), ['/v1/backups', '/v1/schedule']);
+  // Connecting a bucket is deliberately open: a replacement machine has to
+  // connect the surviving bucket before it can enter the key that opens it.
+  for (const open of ['/v1/backups/validate', '/v1/destinations/mount', '/v1/destinations/object', '/v1/destinations/object/test', '/v1/destinations/unlock', '/v1/recovery-key/reveal', '/v1/restores', '/v1/status']) {
+    assert.equal(RECOVERY_KEY_GATED_ROUTES.includes(open), false, open);
+  }
+  assert.match(RECOVERY_KEY_UNACKNOWLEDGED, /recovery key/iu);
+  assert.match(RECOVERY_KEY_UNACKNOWLEDGED, /replacement server/iu);
+});
 
 test('backup package preflight accepts exact snapshots and rejects corrupt payloads', async () => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-backup-packages-'));

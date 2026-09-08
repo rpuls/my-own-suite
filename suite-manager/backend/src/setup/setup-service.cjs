@@ -255,6 +255,17 @@ class SetupService {
     };
   }
 
+  // Proving the owner password without signing in and without changing
+  // anything. Used where a signed-in owner asks to see a secret again: the
+  // session says who they are, this says they are still the one at the keyboard.
+  async verifyOwnerPassword(password) {
+    const owner = this.store.getOwner();
+    if (!owner) {
+      throw new SetupError('OWNER_NOT_CREATED', 'Create the MOS owner account first.');
+    }
+    return verifyPassword(String(password || ''), owner.passwordHash);
+  }
+
   logout(sessionToken = '') {
     const tokenHash = sessionToken ? hashSessionToken(sessionToken) : '';
     this.store.deleteSession(tokenHash);

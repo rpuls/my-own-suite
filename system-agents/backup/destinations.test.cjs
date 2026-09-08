@@ -12,7 +12,8 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { objectLocator, OBJECT_INDEX_TTL_MS, ObjectDestination, parseObjectLocator } = require('./destinations.cjs');
+const { DiskDestination, objectLocator, OBJECT_INDEX_TTL_MS, ObjectDestination, parseObjectLocator } = require('./destinations.cjs');
+const { writeRepositoryDescriptor } = require('./engines/engine.cjs');
 const { normalizeObjectDestination, objectRepositorySpec } = require('./object-destinations.cjs');
 
 const CONNECTION = Object.freeze({
@@ -29,6 +30,7 @@ const CONNECTION = Object.freeze({
 class FakeObjectEngine {
   constructor() {
     this.counter = 0;
+    this.locked = false;
     this.offline = false;
     this.reads = [];
     this.repositories = new Map();
@@ -36,8 +38,11 @@ class FakeObjectEngine {
 
   get name() { return 'restic'; }
 
+  async probe(spec) { return this.probeRepository(spec); }
+
   probeRepository({ location }) {
     if (this.offline) return { message: 'MOS could not reach the storage provider.', state: 'unreachable' };
+    if (this.locked) return { message: "This bucket holds MOS backups written by another server. Enter that server's recovery key to use them here.", state: 'locked' };
     const repository = this.repositories.get(location);
     return repository ? { repositoryId: repository.repositoryId, state: 'open' } : { message: 'unable to open config file', state: 'absent' };
   }
@@ -45,6 +50,7 @@ class FakeObjectEngine {
   async openOrCreateRepository({ create = true, env = {}, localPath = null, location, missingMessage, secrets = [] }) {
     const probe = this.probeRepository({ location });
     if (probe.state === 'unreachable') throw new Error(probe.message);
+    if (this.locked) return { created: false, engineName: this.name, env, localPath, location, locked: true, lockedMessage: "This bucket holds MOS backups written by another server. Enter that server's recovery key to use them here.", repositoryId: null, secrets };
     const created = probe.state === 'absent';
     if (created) {
       if (!create) throw Object.assign(new Error(missingMessage || 'no repository'), { repositoryAbsent: true });
@@ -278,4 +284,69 @@ test('a point recorded with no index behind it still leaves a full listing owed'
   // And a point another process adds after that is still seen straight away.
   await reopen(world).points.write('point-2', manifestFor('point-2'));
   assert.deepEqual((await world.destination.points.summaries()).map((point) => point.id).sort(), ['point-1', 'point-2']);
+});
+
+// A destination holding another server's backups is one recovery key away from
+// being usable. Reporting that as "MOS could not reach this storage" is what
+// made a replacement machine pointed at a surviving bucket look broken at the
+// exact moment recovery depended on it.
+test('a bucket written by another server is reported locked, not unreachable', async () => {
+  const world = await bucket();
+  await world.destination.points.write('point-1', manifestFor('point-1'));
+  await world.destination.readIndex({ force: true });
+
+  world.engine.locked = true;
+  const reopened = reopen(world);
+  await reopened.refreshInBackground();
+  const health = await reopened.health();
+  assert.equal(health.ready, false);
+  assert.equal(health.locked, true);
+  assert.match(health.reason, /written by another server/u);
+  assert.match(health.reason, /recovery key/u);
+  // And nothing hands the locked repository on to something that would read or
+  // write with it: a backup aimed here is refused with the same sentence, not
+  // with whatever the engine says about a wrong password.
+  await assert.rejects(() => reopened.repository({ create: false }), /written by another server/u);
+  await assert.rejects(() => reopened.assertAvailable(), /written by another server/u);
+
+  // And the moment the key is entered it is a normal bucket again — the locked
+  // repository is never held on to.
+  world.engine.locked = false;
+  await reopened.refreshInBackground();
+  const unlocked = await reopened.health();
+  assert.equal(unlocked.locked, false);
+  assert.equal(unlocked.ready, true);
+});
+
+// The same answer for a drive, asked the only way a drive can be asked: by
+// trying this machine's key against the repository on it.
+test('a drive written by another server is reported locked, at most once per interval', async () => {
+  const mountPath = await fsp.mkdtemp(path.join(os.tmpdir(), 'mos-drive-'));
+  const probes = [];
+  const engine = {
+    name: 'restic',
+    async probe({ localPath, location }) {
+      probes.push({ localPath, location });
+      return { message: "This drive holds MOS backups written by another server. Enter that server's recovery key to use them here.", state: 'locked' };
+    },
+  };
+  const destination = new DiskDestination({ engine, label: 'Backup USB', mountPath });
+
+  // A drive with no repository on it costs nothing to judge.
+  assert.deepEqual(await destination.health(), { locked: false });
+  assert.equal(probes.length, 0);
+
+  writeRepositoryDescriptor(mountPath, { engineName: 'restic', repositoryId: 'r1' });
+  const health = await destination.health();
+  assert.equal(health.locked, true);
+  assert.match(health.reason, /written by another server/u);
+  // The destination listing is polled, so the answer is held rather than
+  // spawning a process per drive per look.
+  await destination.health();
+  assert.equal(probes.length, 1);
+  assert.equal(probes[0].localPath, probes[0].location);
+  // A drive whose restore points are readable as files but whose repository is
+  // not must refuse a backup, rather than starting one that fails on its first
+  // write with the engine own words.
+  await assert.rejects(() => destination.assertAvailable(), /written by another server/u);
 });

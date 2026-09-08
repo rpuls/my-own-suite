@@ -836,6 +836,90 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
   }, { backupAgent, homeHost: 'home.test' });
 });
 
+// The key is shown once without being asked for anything, because at that point
+// the owner has nothing to lose yet and the gate is what they are being taken
+// through. Every showing after that asks for the password, so a session left
+// open on a borrowed screen is not enough to read it off.
+test('the recovery key is shown freely until it is saved, and behind the owner password after', async () => {
+  const calls = [];
+  let acknowledged = false;
+  const backupAgent = {
+    async recoveryKeyStatus() { return { recoveryKey: { acknowledged, fingerprint: 'aabbccdd1122' } }; },
+    async acknowledgeRecoveryKey() {
+      acknowledged = true;
+      calls.push(['acknowledge']);
+      return { recoveryKey: { acknowledged: true, fingerprint: 'aabbccdd1122' } };
+    },
+    async revealRecoveryKey() {
+      calls.push(['reveal']);
+      return { key: 'MOS-7K2F-9XQ4-0000-0000-0000-0000-0000-0000', kit: 'My Own Suite — recovery kit', kitFilename: 'mos-recovery-kit-lab-2026-09-07.txt' };
+    },
+    async unlockDestination(input) {
+      calls.push(['unlock', input]);
+      return { result: { adopted: true, message: 'Unlocked.' } };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    for (const route of ['recovery-key/reveal', 'recovery-key/acknowledge', 'destinations/unlock']) {
+      const denied = await hostRequest(baseUrl, `/suite-manager/api/backups/${route}`, {
+        body: '{}',
+        headers: { 'Content-Type': 'application/json', Host: 'home.test' },
+        method: 'POST',
+      });
+      assert.equal(denied.status, 401, route);
+    }
+
+    const cookie = await createOwner(baseUrl);
+    const headers = { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' };
+
+    const first = await hostRequest(baseUrl, '/suite-manager/api/backups/recovery-key/reveal', { body: '{}', headers, method: 'POST' });
+    assert.equal(first.status, 200);
+    assert.match(first.json().key, /^MOS-/u);
+    assert.match(first.json().kit, /recovery kit/u);
+
+    const saved = await hostRequest(baseUrl, '/suite-manager/api/backups/recovery-key/acknowledge', { body: '{}', headers, method: 'POST' });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.json().recoveryKey.acknowledged, true);
+
+    const wrong = await hostRequest(baseUrl, '/suite-manager/api/backups/recovery-key/reveal', {
+      body: JSON.stringify({ password: 'not the owner password' }),
+      headers,
+      method: 'POST',
+    });
+    assert.equal(wrong.status, 400);
+    assert.equal(wrong.json().code, 'INVALID_PASSWORD');
+    assert.equal(wrong.body.includes('MOS-7K2F'), false, 'the key travelled with a rejected password');
+
+    const missing = await hostRequest(baseUrl, '/suite-manager/api/backups/recovery-key/reveal', { body: '{}', headers, method: 'POST' });
+    assert.equal(missing.status, 400);
+
+    const again = await hostRequest(baseUrl, '/suite-manager/api/backups/recovery-key/reveal', {
+      body: JSON.stringify({ password: 'correct horse battery' }),
+      headers,
+      method: 'POST',
+    });
+    assert.equal(again.status, 200);
+    assert.match(again.json().key, /^MOS-/u);
+
+    // The entered key reaches the agent field by field, like every other
+    // secret the screen collects.
+    const unlocked = await hostRequest(baseUrl, '/suite-manager/api/backups/destinations/unlock', {
+      body: JSON.stringify({ destinationId: 'object:abc123', initiator: 'smuggled', recoveryKey: 'mos 7k2f 9xq4' }),
+      headers,
+      method: 'POST',
+    });
+    assert.equal(unlocked.status, 200);
+
+    assert.deepEqual(calls, [
+      ['reveal'],
+      ['acknowledge'],
+      ['reveal'],
+      ['unlock', { destinationId: 'object:abc123', recoveryKey: 'mos 7k2f 9xq4' }],
+    ]);
+  }, { backupAgent, homeHost: 'home.test' });
+});
+
 test('Vaultwarden install generates a redacted secret and materializes it only for runtime apply', async () => {
   const vaultwardenPort = loopbackPortFor('vaultwarden');
   const calls = [];

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { ActionMenu, AdvancedPanel, Dialog, Icon, Notice, Select, Switch, TextInput } from '../../components/ui';
+import { ActionMenu, AdvancedPanel, Checkbox, Dialog, Icon, Notice, SecretText, Select, Switch, TextInput } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
 
 type BackupDestination = {
@@ -14,6 +14,9 @@ type BackupDestination = {
   id: string;
   kind?: 'disk' | 'object';
   label: string;
+  // Reached, and holding backups written with another server's key. Neither
+  // usable nor broken: one recovery key away from both.
+  locked?: boolean;
   mountBlockedReason?: string | null;
   mountPath: string | null;
   mountState?: 'mounted' | 'unmounted' | 'unsupported-mount';
@@ -47,6 +50,7 @@ type BackupValidation = {
   backupPath: string;
   checkedAt: string;
   software: { backupVersion: string | null; currentVersion: string | null; matched: boolean };
+  source?: { backupHostname: string | null; currentHostname: string | null; matched: boolean };
   volumes: Array<{ name: string; rawBytes: number | null }>;
   warnings: string[];
 };
@@ -78,6 +82,7 @@ type BackupEntry = {
   repositoryId?: string | null;
   restorable?: boolean;
   sizeBytes?: number | null;
+  sourceHostname?: string | null;
   sourceVersion: string | null;
   volumeCount: number;
 };
@@ -107,17 +112,32 @@ type InterruptedRestore = {
   startedAt: string | null;
 };
 
+// What this machine knows about its own recovery key. The fingerprint is a
+// short digest, never the key: it is how two machines can be shown to hold the
+// same one without either screen displaying it.
+type RecoveryKeyState = {
+  acknowledged: boolean;
+  acknowledgedAt?: string | null;
+  fingerprint: string | null;
+  keyFile?: string | null;
+  legacyKeyPresent?: boolean;
+};
+
+type RevealedRecoveryKey = { key: string; kit: string; kitFilename: string };
+
 type BackupStatus = {
   backups: BackupEntry[];
   currentJob: BackupJob | null;
   destinations: BackupDestination[];
   error?: string | null;
+  hostname?: string | null;
   interruptedRestore?: InterruptedRestore | null;
   inventory?: {
     summary: { appCount: number; declaredVolumeCount: number; relationshipCount: number; warningCount: number };
     warnings: Array<{ message: string; packageId: string }>;
   };
   lastJob: BackupJob | null;
+  recoveryKey?: RecoveryKeyState | null;
   restoreGuarantee?: string;
   restoreGuaranteeByKind?: Record<string, string>;
   schedule?: BackupSchedule | null;
@@ -223,6 +243,27 @@ function backupDescription(backup: BackupEntry) {
   if (!Number.isFinite(backup.sizeBytes ?? NaN)) return contents;
   const size = formatBytes(backup.sizeBytes as number);
   return backup.kind === 'restore-point' ? `${contents} · restores ${size}` : `${contents} · ${size}`;
+}
+
+// Which machine wrote a restore point, said only when it was not this one. A
+// backup taken before MOS recorded the hostname counts as this machine's, which
+// is the answer that never invents a warning.
+function foreignHost(backup: BackupEntry, hostname: string | null | undefined) {
+  if (!backup.sourceHostname || !hostname) return null;
+  return backup.sourceHostname === hostname ? null : backup.sourceHostname;
+}
+
+// The kit is text the browser saves, not a file the server serves: it holds the
+// recovery key, and a URL that returns one is a URL that can be requested again.
+function downloadKit(revealed: RevealedRecoveryKey) {
+  const url = URL.createObjectURL(new Blob([revealed.kit], { type: 'text/plain;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.download = revealed.kitFilename || 'mos-recovery-kit.txt';
+  link.href = url;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function usagePercent(used: number, total: number) {
@@ -365,13 +406,14 @@ function AutomaticBackupsPanel({ busy, destinations, onSave, running, schedule }
 // thing to choose between, so they share the row and differ only in what they
 // can say about themselves: a drive has space and can be mounted, a bucket has
 // an address and can be edited or disconnected.
-function DestinationItem({ busy, destination, onDisconnect, onEdit, onMount, onSelect, running, selected }: {
+function DestinationItem({ busy, destination, onDisconnect, onEdit, onMount, onSelect, onUnlock, running, selected }: {
   busy: string;
   destination: BackupDestination;
   onDisconnect: () => void;
   onEdit: () => void;
   onMount: () => void;
   onSelect: () => void;
+  onUnlock: () => void;
   running: boolean;
   selected: boolean;
 }) {
@@ -416,6 +458,10 @@ function DestinationItem({ busy, destination, onDisconnect, onEdit, onMount, onS
       </div>
     </button>
 
+    {destination.locked ? <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={onUnlock} type="button">
+      Enter recovery key
+    </button> : null}
+
     {destination.kind === 'object'
       ? <div className="suite-drive-actions">
           <ActionMenu ariaLabel="Storage connection actions" disabled={Boolean(busy) || running} items={[
@@ -431,6 +477,115 @@ function DestinationItem({ busy, destination, onDisconnect, onEdit, onMount, onS
   </div>;
 }
 
+// One dialog for both times an owner meets their recovery key: the first, where
+// MOS shows it unasked and will not take a backup until they say they have kept
+// it, and every later one, where a signed-in owner asks to see it again and
+// proves the owner password first. The two differ only in what has to happen
+// before the key appears, which is why they are not two dialogs.
+function RecoveryKeyDialog({ busy, error, mode, onAcknowledge, onClose, onReveal, revealed, status }: {
+  busy: string;
+  error: string;
+  mode: 'reveal' | 'save';
+  onAcknowledge: () => void;
+  onClose: () => void;
+  onReveal: (password: string) => void;
+  revealed: RevealedRecoveryKey | null;
+  status: RecoveryKeyState | null;
+}) {
+  const [password, setPassword] = useState('');
+  const [saved, setSaved] = useState(false);
+  const locked = Boolean(busy);
+
+  return <Dialog
+    footer={mode === 'save'
+      ? <>
+          <button className="mos-btn mos-btn-primary" disabled={!saved || !revealed || locked} onClick={onAcknowledge} type="button">
+            {busy === 'recovery-acknowledge' ? 'Saving...' : 'I have saved it'}
+          </button>
+          <button className="mos-btn mos-btn-secondary" disabled={!revealed || locked} onClick={() => revealed && downloadKit(revealed)} type="button">Download recovery kit</button>
+        </>
+      : <>
+          {revealed
+            ? <button className="mos-btn mos-btn-primary" onClick={() => downloadKit(revealed)} type="button">Download recovery kit</button>
+            : <button className="mos-btn mos-btn-primary" disabled={!password || locked} onClick={() => onReveal(password)} type="button">
+                {busy === 'recovery-reveal' ? 'Checking...' : 'Show recovery key'}
+              </button>}
+          <button className="mos-btn mos-btn-secondary" disabled={locked} onClick={onClose} type="button">Close</button>
+        </>}
+    onClose={() => { if (!locked) onClose(); }}
+    title={mode === 'save' ? 'Save your recovery key' : 'Your recovery key'}
+  >
+    <Notice title="This is the only thing that can open your backups on another server" variant={mode === 'save' ? 'warning' : 'info'}>
+      <p>Every backup MOS writes is encrypted with this key. This server keeps a copy so scheduled backups run without you, which means a stolen drive or a breached storage bucket cannot be read &mdash; but a stolen server can. Keep your own copy somewhere else: a password manager, or paper in a drawer that is not in this building. Without it, a replacement server cannot read a single backup, and nobody can recover it for you.</p>
+    </Notice>
+
+    {mode === 'reveal' && !revealed ? <TextInput
+      autoFocus
+      disabled={locked}
+      helperText="Asked because the key is being shown again. It is checked on this server and never stored in your browser."
+      label="Your owner password"
+      onChange={(event) => setPassword(event.currentTarget.value)}
+      onKeyDown={(event) => { if (event.key === 'Enter' && password && !locked) onReveal(password); }}
+      type="password"
+      value={password}
+    /> : null}
+
+    {revealed ? <SecretText label="recovery key" value={revealed.key} /> : null}
+    {revealed ? <p className="suite-meta">The recovery kit is a text file with this key, the storage you have connected, and the steps to recover onto another machine. It holds no access key or password for your storage provider.</p> : null}
+
+    {mode === 'save' && revealed ? <Checkbox checked={saved} disabled={locked} onChange={(event) => setSaved(event.currentTarget.checked)}>
+      I have saved this recovery key somewhere I can still reach if this server is gone.
+    </Checkbox> : null}
+
+    {error ? <Notice title="That did not work" variant="error"><p>{error}</p></Notice> : null}
+
+    <AdvancedPanel facts={[
+      { code: true, label: 'Key fingerprint', value: status?.fingerprint || 'unknown' },
+      { code: true, label: 'Key file on this server', value: status?.keyFile || 'unknown' },
+    ]} reveal="technical-mode" />
+  </Dialog>;
+}
+
+// Handing this machine the key to backups another server wrote. The same
+// forgiving entry as the kit promises: case, spaces and hyphens do not matter,
+// and a slip is answered as a slip.
+function UnlockDestinationDialog({ busy, destination, error, onCancel, onUnlock }: {
+  busy: string;
+  destination: BackupDestination;
+  error: string;
+  onCancel: () => void;
+  onUnlock: (recoveryKey: string) => void;
+}) {
+  const [entered, setEntered] = useState('');
+  const locked = Boolean(busy);
+
+  return <Dialog
+    footer={<>
+      <button className="mos-btn mos-btn-primary" disabled={!entered.trim() || locked} onClick={() => onUnlock(entered)} type="button">
+        {busy === `unlock:${destination.id}` ? 'Checking...' : 'Unlock these backups'}
+      </button>
+      <button className="mos-btn mos-btn-secondary" disabled={locked} onClick={onCancel} type="button">Cancel</button>
+    </>}
+    onClose={() => { if (!locked) onCancel(); }}
+    title="Enter the recovery key for these backups"
+  >
+    <Notice title="These backups were written by another server" variant="info">
+      <p>MOS can reach {destination.label}, but the backups in it are encrypted with the recovery key of the server that wrote them. Enter that key and MOS will list them here so you can restore one.</p>
+    </Notice>
+    <TextInput
+      autoFocus
+      disabled={locked}
+      helperText="From that server's recovery kit. Capitals, spaces and dashes do not matter."
+      label="Recovery key"
+      onChange={(event) => setEntered(event.currentTarget.value)}
+      onKeyDown={(event) => { if (event.key === 'Enter' && entered.trim() && !locked) onUnlock(entered); }}
+      placeholder="MOS-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
+      value={entered}
+    />
+    {error ? <Notice title="MOS could not use that key" variant="error"><p>{error}</p></Notice> : null}
+  </Dialog>;
+}
+
 function ObjectStorageDialog({ busy, draft, onCancel, onChange, onSave, onTest, testResult }: {
   busy: string;
   draft: ObjectDraft;
@@ -438,7 +593,7 @@ function ObjectStorageDialog({ busy, draft, onCancel, onChange, onSave, onTest, 
   onChange: (next: ObjectDraft) => void;
   onSave: () => void;
   onTest: () => void;
-  testResult: { message: string; ok: boolean } | null;
+  testResult: { locked?: boolean; message: string; ok: boolean } | null;
 }) {
   const editing = Boolean(draft.id);
   const field = (key: keyof ObjectDraft) => (event: { currentTarget: { value: string } }) => onChange({ ...draft, [key]: event.currentTarget.value });
@@ -457,8 +612,8 @@ function ObjectStorageDialog({ busy, draft, onCancel, onChange, onSave, onTest, 
     onClose={() => { if (!busy) onCancel(); }}
     title={editing ? 'Edit storage connection' : 'Connect object storage'}
   >
-    <Notice title="Your backups are encrypted, but the key stays on this server" variant="warning">
-      <p>MOS encrypts every backup before it leaves this machine, so the storage provider cannot read what you store. The key that opens them is kept here and never uploaded &mdash; so backups in this bucket can be restored by this server, and not yet by a replacement one. Keep a copy on a drive as well until MOS can hand you that key.</p>
+    <Notice title="Your backups are encrypted with your recovery key" variant="info">
+      <p>MOS encrypts every backup before it leaves this machine, so the storage provider cannot read what you store. The key that opens them is your recovery key: this server keeps a copy so backups run without you, and you keep a copy so a replacement server can read this bucket after this one is gone. A key on the server protects against a breached bucket, not against a compromised server.</p>
     </Notice>
     <div className="suite-form-grid">
       <TextInput
@@ -511,7 +666,10 @@ function ObjectStorageDialog({ busy, draft, onCancel, onChange, onSave, onTest, 
         value={draft.label}
       />
     </div>
-    {testResult ? <Notice title={testResult.ok ? 'Storage reachable' : 'MOS could not use this storage'} variant={testResult.ok ? 'success' : 'error'}>
+    {testResult ? <Notice
+      title={testResult.ok ? 'Storage reachable' : testResult.locked ? 'These backups were written by another server' : 'MOS could not use this storage'}
+      variant={testResult.ok ? 'success' : testResult.locked ? 'info' : 'error'}
+    >
       <p>{testResult.message}</p>
     </Notice> : null}
   </Dialog>;
@@ -543,7 +701,16 @@ export function BackupsScreen() {
   const [busy, setBusy] = useState('');
   const [objectDraft, setObjectDraft] = useState<ObjectDraft | null>(null);
   const [objectDisconnect, setObjectDisconnect] = useState<BackupDestination | null>(null);
-  const [objectTest, setObjectTest] = useState<{ message: string; ok: boolean } | null>(null);
+  const [objectTest, setObjectTest] = useState<{ locked?: boolean; message: string; ok: boolean } | null>(null);
+  // `then` is the action the gate interrupted, so an owner who was taking a
+  // backup gets the backup once they have saved their key, rather than having to
+  // find the button again.
+  const [keyDialog, setKeyDialog] = useState<{ mode: 'reveal' | 'save'; then?: () => Promise<void> } | null>(null);
+  const [revealedKey, setRevealedKey] = useState<RevealedRecoveryKey | null>(null);
+  const [keyError, setKeyError] = useState('');
+  const [unlockTarget, setUnlockTarget] = useState<BackupDestination | null>(null);
+  const [unlockError, setUnlockError] = useState('');
+  const [unlockResult, setUnlockResult] = useState('');
   const activeJob = status?.currentJob || null;
   const running = restoreStarted || isRunning(activeJob);
   const backupList = status?.backups || [];
@@ -557,6 +724,11 @@ export function BackupsScreen() {
   const restoreInFlight = restoreStarted || (activeJob?.kind === 'restore' && isRunning(activeJob));
   const selectedDestination = status?.destinations.find((destination) => destination.id === selectedDestinationId);
   const buttonState = status ? getBackupButtonState(status.destinations, selectedDestinationId) : { enabled: false, message: '' };
+  const recoveryKey = status?.recoveryKey || null;
+  // Until the key is saved, taking a backup or enabling a schedule goes through
+  // the dialog instead. The agent refuses them too, so a page left open from
+  // before cannot slip past this.
+  const keySaved = recoveryKey === null || recoveryKey.acknowledged;
 
   async function load() {
     setError('');
@@ -613,6 +785,83 @@ export function BackupsScreen() {
       // the order matters.
       await load().catch(() => undefined);
       setError(caught instanceof Error ? caught.message : 'Something went wrong.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  // The gate. Anything that would create a backup only this machine can read
+  // runs through here; everything else — mounting, connecting, listing,
+  // restoring — is deliberately not gated, because a replacement machine has to
+  // reach the surviving destination before it can enter the key that opens it.
+  function gateOnRecoveryKey(run: () => Promise<void>) {
+    if (keySaved) {
+      void run();
+      return;
+    }
+    setKeyError('');
+    setKeyDialog({ mode: 'save', then: run });
+    void revealRecoveryKey('');
+  }
+
+  async function revealRecoveryKey(password: string) {
+    setBusy('recovery-reveal');
+    setKeyError('');
+    try {
+      setRevealedKey(await jsonResponse<RevealedRecoveryKey>(await fetch('/suite-manager/api/backups/recovery-key/reveal', {
+        body: JSON.stringify({ password }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Unable to show the recovery key.'));
+    } catch (caught) {
+      setKeyError(caught instanceof Error ? caught.message : 'Unable to show the recovery key.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function acknowledgeRecoveryKey() {
+    const pending = keyDialog?.then;
+    setBusy('recovery-acknowledge');
+    setKeyError('');
+    try {
+      await jsonResponse(await fetch('/suite-manager/api/backups/recovery-key/acknowledge', {
+        body: '{}',
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Unable to record that you saved the recovery key.');
+      closeKeyDialog();
+      await load().catch(() => undefined);
+      if (pending) await pending();
+    } catch (caught) {
+      setKeyError(caught instanceof Error ? caught.message : 'Unable to record that you saved the recovery key.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  // The key is held only while its dialog is open: nothing keeps it in the page
+  // once the owner is done with it.
+  function closeKeyDialog() {
+    setKeyDialog(null);
+    setRevealedKey(null);
+    setKeyError('');
+  }
+
+  async function unlockDestination(destination: BackupDestination, recoveryKeyInput: string) {
+    setBusy(`unlock:${destination.id}`);
+    setUnlockError('');
+    try {
+      const result = await jsonResponse<{ result: { adopted: boolean; message: string } }>(await fetch('/suite-manager/api/backups/destinations/unlock', {
+        body: JSON.stringify({ destinationId: destination.id, recoveryKey: recoveryKeyInput }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Unable to unlock these backups.');
+      setUnlockTarget(null);
+      setUnlockResult(result.result.message);
+      await load().catch(() => undefined);
+    } catch (caught) {
+      setUnlockError(caught instanceof Error ? caught.message : 'Unable to unlock these backups.');
     } finally {
       setBusy('');
     }
@@ -804,10 +1053,23 @@ export function BackupsScreen() {
       <div className="suite-hero">
         <h1>Backup & Restore</h1>
         <p className="suite-lead mos-body-lg">Save a whole-suite copy to a drive on this server or to a storage bucket somewhere else, then restore it if you need to recover the system.</p>
-        <Notice title="A backup holds every secret this server has" variant="warning"><p>Any backup contains app data, owner and app credentials, Suite Manager state, and HTTPS/provider secrets. Backups are encrypted on the drive with a key kept on this server, so the drive alone cannot be read — but that key lives here, so a stolen server is still a stolen backup. Use an access-controlled destination.</p></Notice>
+        <Notice title="A backup holds every secret this server has" variant={keySaved ? 'info' : 'warning'}>
+          <p>Any backup contains app data, owner and app credentials, Suite Manager state, and HTTPS/provider secrets. All of it is encrypted with your recovery key before it is written anywhere, so a stolen drive or a breached bucket cannot be read. This server keeps a copy of that key so backups run without you, which means a stolen server is still a stolen backup &mdash; and you keep a copy, because it is the only thing that can open these backups on a replacement machine.</p>
+          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => {
+            setKeyError('');
+            setRevealedKey(null);
+            if (keySaved) { setKeyDialog({ mode: 'reveal' }); return; }
+            setKeyDialog({ mode: 'save' });
+            void revealRecoveryKey('');
+          }} type="button">{keySaved ? 'Show recovery key' : 'Save your recovery key'}</button>
+        </Notice>
       </div>
 
       {error ? <Notice title="Backup needs attention" variant="error"><p>{error}</p></Notice> : null}
+      {unlockResult ? <Notice title="These backups are readable here now" variant="success">
+        <p>{unlockResult}</p>
+        <button className="mos-btn mos-btn-secondary" onClick={() => setUnlockResult('')} type="button">Got it</button>
+      </Notice> : null}
       {sessionEnded ? <Notice title={sessionEnded === 'restore' ? 'The restore signed you out' : 'Your session ended'} variant="info">
         <p>{sessionEnded === 'restore'
           ? 'Suite Manager restarted with the restored state, which ended this session. Sign in with the owner account saved in that backup — accounts and passwords now match the backup, not what was set just before the restore. After signing in, check the restore result here under Latest activity.'
@@ -858,6 +1120,7 @@ export function BackupsScreen() {
               onEdit={() => openObjectDialog(destination)}
               onMount={() => void mount(destination)}
               onSelect={() => setSelectedDestinationId(destination.id)}
+              onUnlock={() => { setUnlockError(''); setUnlockResult(''); setUnlockTarget(destination); }}
               running={running}
               selected={selectedDestinationId === destination.id}
             />)}
@@ -879,7 +1142,7 @@ export function BackupsScreen() {
           />
           <div className="suite-backup-action-footer">
             <p className="suite-backup-status-message">{buttonState.message}</p>
-            <button className="mos-btn mos-btn-primary" disabled={!buttonState.enabled || Boolean(busy) || running} onClick={() => void startBackup()} type="button">
+            <button className="mos-btn mos-btn-primary" disabled={!buttonState.enabled || Boolean(busy) || running} onClick={() => gateOnRecoveryKey(startBackup)} type="button">
               {busy === 'backup' ? 'Starting backup...' : 'Back up now'}
             </button>
           </div>
@@ -888,7 +1151,7 @@ export function BackupsScreen() {
         {status.schedule ? <AutomaticBackupsPanel
           busy={busy}
           destinations={status.destinations}
-          onSave={(next) => void saveSchedule(next)}
+          onSave={(next) => ({ ...status.schedule, ...next }).enabled ? gateOnRecoveryKey(() => saveSchedule(next)) : void saveSchedule(next)}
           running={running}
           schedule={status.schedule}
         /> : null}
@@ -912,6 +1175,7 @@ export function BackupsScreen() {
                 {backup.note ? <span className="suite-backup-note">{backup.note}</span> : null}
                 <span>{backupDescription(backup)} · {backup.destinationLabel || 'Backup drive'}</span>
                 <span className="suite-category-pill">{backup.restorable === false ? 'Retired format' : 'Encrypted'}</span>
+                {foreignHost(backup, status.hostname) ? <span className="suite-category-pill">Written by {foreignHost(backup, status.hostname)}</span> : null}
               </div>
               <ActionMenu ariaLabel="Backup actions" disabled={Boolean(busy) || running} items={backup.restorable === false ? [
                 { label: 'Delete', onSelect: () => setSelectedDelete(backup) },
@@ -937,8 +1201,30 @@ export function BackupsScreen() {
           { label: 'Warnings', value: status.inventory?.warnings.map((warning) => `${warning.packageId}: ${warning.message}`).join(', ') || 'None' },
           { label: 'Backup storage', value: storageSummary },
           { label: 'Restore guarantee', value: status.restoreGuarantee || 'unknown' },
+          { code: true, label: 'Recovery key fingerprint', value: recoveryKey?.fingerprint || 'unknown' },
+          { code: true, label: 'Recovery key file', value: recoveryKey?.keyFile || 'unknown' },
+          { label: 'Pre-release key kept for old repositories', value: recoveryKey?.legacyKeyPresent ? 'yes' : 'no' },
         ]} reveal="technical-mode" />
       </div> : null}
+
+      {keyDialog ? <RecoveryKeyDialog
+        busy={busy}
+        error={keyError}
+        mode={keyDialog.mode}
+        onAcknowledge={() => void acknowledgeRecoveryKey()}
+        onClose={closeKeyDialog}
+        onReveal={(password) => void revealRecoveryKey(password)}
+        revealed={revealedKey}
+        status={recoveryKey}
+      /> : null}
+
+      {unlockTarget ? <UnlockDestinationDialog
+        busy={busy}
+        destination={unlockTarget}
+        error={unlockError}
+        onCancel={() => { setUnlockTarget(null); setUnlockError(''); }}
+        onUnlock={(entered) => void unlockDestination(unlockTarget, entered)}
+      /> : null}
 
       {objectDraft ? <ObjectStorageDialog
         busy={busy}
@@ -1004,6 +1290,9 @@ export function BackupsScreen() {
         title="Restore this backup?"
       >
         <Notice title="This will replace the current install" variant="warning"><p>MOS will stop, restore the selected backup, verify it, and start again. Apps and app data added after this backup are removed so the system matches the backup exactly. A complete rescue copy of the current state is saved on the server first. When the restore finishes you will be signed out; sign back in with the owner account saved in this backup, which may differ from the current one. A large backup can take a long time to restore — keep this page open and let it finish.</p></Notice>
+        {foreignHost(selectedRestore, status?.hostname) ? <Notice title={`This backup was written by ${foreignHost(selectedRestore, status?.hostname)}`} variant="info">
+          <p>This machine will become that server. After restoring, sign in with that server's owner password. If you use a domain, re-apply it under HTTPS so it points at this machine.</p>
+        </Notice> : null}
         <p className="suite-meta">{formatDate(selectedRestore.createdAt)} · {backupDescription(selectedRestore)} · {selectedRestore.destinationLabel || 'backup storage'}</p>
         <label className="suite-auth-field">
           <span>Type RESTORE to continue</span>

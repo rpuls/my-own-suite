@@ -37,6 +37,7 @@
 // all.
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const {
   appVolumeLabels,
@@ -430,7 +431,11 @@ class BackupAgentCore {
           volumes: storedVolumes,
         },
         repository: { engineName: this.engine.name, repositoryId: repository.descriptor?.repositoryId || repository.repositoryId || null, repositoryStoredBytes },
-        source: await system.sourceInfo(),
+        // The machine that wrote this restore point. A destination can hold the
+        // backups of more than one server once a replacement takes over, and
+        // an owner about to restore has to be able to see which one they are
+        // about to become.
+        source: { ...await system.sourceInfo(), hostname: os.hostname() },
       };
       // Success requires the destination to still be the one this started
       // against: if a drive vanished mid-backup, everything above landed on the
@@ -590,6 +595,10 @@ class BackupAgentCore {
     const source = await this.system.sourceInfo();
     const backupVersion = manifest.source?.version || null;
     const currentVersion = source?.version || null;
+    // A manifest without a hostname predates the field and is treated as this
+    // machine's own work, which is the answer that never invents a warning.
+    const backupHostname = manifest.source?.hostname || null;
+    const currentHostname = os.hostname();
     const warnings = [];
     if (backupVersion && currentVersion && backupVersion !== currentVersion) {
       warnings.push(`This backup was created by MOS ${backupVersion} but this machine runs MOS ${currentVersion}. Restore reuses the installed MOS software with the backup's validated app packages; recreating the recorded MOS version automatically is not supported yet.`);
@@ -601,6 +610,7 @@ class BackupAgentCore {
       checks,
       schemaVersion: manifest.backup.schemaVersion,
       software: { backupVersion, currentVersion, matched: !backupVersion || !currentVersion || backupVersion === currentVersion },
+      source: { backupHostname, currentHostname, matched: !backupHostname || backupHostname === currentHostname },
       volumes: (manifest.contents?.volumes || []).map((volume) => ({ name: volume.name, rawBytes: volume.rawBytes ?? null })),
       warnings,
     };

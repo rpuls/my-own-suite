@@ -8,8 +8,17 @@ import { Steps } from '@astrojs/starlight/components'
 MOS creates manual, whole-suite backups on storage that is mounted on the server running MOS. The practical destination depends on where that server lives.
 
 :::danger[A backup holds every secret your server has]
-Any backup contains your data, credentials, and secrets. Backups are encrypted on the drive with a key held on the server itself, so the drive alone cannot be read—but the key lives on the server, so a stolen server is still a stolen backup, and MOS cannot yet hand you that key to keep elsewhere. Keep backups on access-controlled storage. Bundles you downloaded from an earlier MOS are not encrypted at all: move them out of Downloads and off casual cloud storage.
+Any backup contains your data, credentials, and secrets. It is encrypted with your **recovery key** before it is written anywhere, so a stolen drive or a breached bucket cannot be read. The server keeps a copy of that key so backups can run without you, which means a stolen server is still a stolen backup — and you keep a copy, because it is the only thing that can open these backups on a replacement machine. Keep backups on access-controlled storage. Bundles you downloaded from an earlier MOS are not encrypted at all: move them out of Downloads and off casual cloud storage.
 :::
+
+## Your recovery key
+
+MOS shows you the key once, before your first backup, and will not take that backup until you say you have kept it. It looks like `MOS-7K2F-9XQ4-…`: eight groups of four characters, in an alphabet with no letters that can be mistaken for digits, so it survives being written on paper.
+
+- **Save it somewhere that is not this server.** A password manager, or paper somewhere that is not the building the server is in. Without it, a replacement server cannot read a single backup, and nobody can recover it for you.
+- **Download the recovery kit.** A text file with the key, the drives and buckets you have connected, and the steps to recover onto another machine. It never contains your storage provider's access key — that lives in your provider's console, and a new key for the same bucket works just as well.
+- **You can see it again.** **Show recovery key** on the Backup & Restore screen asks for your owner password and then shows the key and offers the kit again, so a kit that has gone stale since you connected new storage can be re-downloaded.
+- **What the copy on the server does and does not protect.** A key held on the server protects against a stolen drive or a breached bucket, not against a compromised server. It is there so unattended scheduled backups can run.
 
 ## What a backup contains
 
@@ -45,7 +54,7 @@ Provider snapshots are outside MOS either way: they may be useful as an addition
 
 2. Open **Suite Manager → Backup** and click **Refresh drives**. Select the mounted, writable destination; MOS may offer to mount a supported local disk.
 
-3. Review the full-secret warning, then click **Back up now**. Apps pause while their data is captured and start again when the job finishes.
+3. Click **Back up now**. The first time, MOS shows your recovery key and asks you to confirm you have saved it before it will start. Apps pause while their data is captured and start again when the job finishes.
 
 4. Keep the drive itself on access-controlled storage. There is no separate file to download—the encrypted store on the drive is the copy you keep, and moving a backup to another machine means taking the drive there.
 
@@ -65,8 +74,8 @@ You need four things from your provider: the endpoint address, a bucket that alr
 - **A bucket behaves like a drive from there on.** Back up to it by hand or on a schedule, check it, note it, restore from it, delete from it.
 - **Nothing is deleted when you disconnect.** MOS forgets how to reach the bucket; the backups in it stay, and reconnecting with the same details lists them again.
 
-:::caution[The key that opens them is still only on this server]
-This is the honest gap. Backups in a bucket can be restored by the server that wrote them, and not yet by a replacement one — so a bucket protects you against a lost drive or a stolen server, but not yet against a server that is simply gone. Keep a drive copy as well until MOS can hand you that key. It is the next thing being built here.
+:::caution[A bucket is only as recoverable as your recovery key]
+The provider holds data it cannot read. Your recovery key is what opens it, and the copy that matters is the one you keep — see [Recover onto a new machine](#recover-onto-a-new-machine).
 :::
 
 ## Backing up automatically
@@ -98,11 +107,31 @@ Important boundaries:
 - **Backups from MOS 0.19 or earlier cannot be restored here.** Those were unencrypted bundles, a format this version no longer reads. Restore one with MOS 0.19 or earlier, or take a fresh backup on the machine you are running now.
 - **Restore is whole-suite.** Per-app restore is not supported.
 - **The machine must already run MOS.** Install the compatible MOS version first, then attach the backup destination and restore. Bare-metal recovery has not yet been validated as a single end-to-end workflow.
-- **A replacement machine needs the key as well as the drive.** The encryption key lives on the server that made the backup. Restoring onto the same server is unaffected, but restoring onto a new one currently means copying that key across by hand; a supported way to save and enter it is still being built.
+- **A replacement machine needs the recovery key as well as the storage.** See below; restoring onto the server that made the backup never asks for it, because that server already holds it.
 - **Package snapshots are preserved, registry artifacts are not.** If an upstream registry removes a required digest-pinned image, MOS restores state and reports the affected app as failed rather than substituting another version.
+
+## Recover onto a new machine
+
+This is what the recovery key is for: the server is gone — fire, theft, a dead disk — and a drive or a bucket is all that is left. A cold standby kept powered off elsewhere, or any freshly installed machine, becomes the server you lost.
+
+<Steps>
+
+1. Install MOS on the replacement machine at a version compatible with the backup, and create an owner account on it so you can sign in. It can be a throwaway account; the restore replaces it with the one from the backup.
+
+2. Open **Suite Manager → Backup & Restore** and connect the same storage: attach the drive and **Refresh drives**, or **Connect object storage** with the same endpoint, bucket and folder. Your provider's console holds your access key, and a new key for the same bucket works too.
+
+3. The destination appears saying its backups were written by another server. Choose **Enter recovery key** and type the key from your kit. Capitals, spaces and dashes do not matter, and a slip is reported as a typo rather than as a wrong key.
+
+4. The restore points appear, each showing which server wrote it. Pick one and restore it as usual.
+
+5. When the restore finishes you are signed out. Sign in with the **owner password of the server the backup came from** — accounts and passwords now match the backup. If you were using a domain, re-apply it under **Settings → HTTPS** so it points at this machine.
+
+</Steps>
+
+Two things worth knowing about what just happened. If this machine had never taken a backup of its own, it adopts the key you entered, so the key on your kit stays the only one you need. If it had, MOS instead adds this machine's own recovery key to those backups so both open them — the screen says which happened, and in the second case you should save this machine's key too. And if the original server ever comes back on, both machines can write to the same destination; each restore point names the machine that wrote it.
 
 ## Current limitations
 
-Encryption key held only on the server, so a backup cannot yet be restored onto a replacement machine · whole-suite restore only · version-sensitive restore · no automatic backup before an update · one destination per schedule, so a drive copy and a bucket copy are two separate backups.
+Whole-suite restore only · version-sensitive restore · a restore needs an owner account to sign in with first, so recovery is install, create an account, restore · no automatic backup before an update · one destination per schedule, so a drive copy and a bucket copy are two separate backups · the recovery key cannot be rotated.
 
-A way to save and re-enter the encryption key, and a checkpoint taken automatically before every update, are the next things being built here. If you work with backup, storage, encryption, or recovery systems and want to shape how they land, [join us on Discord](https://discord.gg/YMpF6faBCv) or [open a GitHub issue](https://github.com/rpuls/my-own-suite/issues).
+A checkpoint taken automatically before every update is the next thing being built here. If you work with backup, storage, encryption, or recovery systems and want to shape how they land, [join us on Discord](https://discord.gg/YMpF6faBCv) or [open a GitHub issue](https://github.com/rpuls/my-own-suite/issues).

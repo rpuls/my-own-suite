@@ -16,6 +16,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync, spawn } = require('node:child_process');
+const { generate, isRecoveryKey } = require('../recovery-key.cjs');
 
 const ENGINE_BINARY_DIR = '/usr/local/libexec/mos';
 // Named once because it is both what a started job fails with and what every
@@ -24,6 +25,10 @@ const ENGINE_BINARY_DIR = '/usr/local/libexec/mos';
 // than discover it from a failed backup.
 const ENGINE_MISSING_MESSAGE = 'The backup storage engine is not installed on this machine. Run a platform update to install it, then try again.';
 const REPOSITORY_KEY_FILENAME = 'engine-key';
+// The pre-release 64-hex password, moved aside rather than replaced. It is
+// never deleted: a drive that stays unplugged for months must still open, and
+// migrate, on the day it is finally attached.
+const LEGACY_KEY_SUFFIX = '.legacy';
 const DEFAULT_TIMEOUT_MS = 3_600_000;
 // Reaching a bucket must answer while an owner is still looking at the dialog.
 // restic prints why a storage request failed straight away and then waits
@@ -40,20 +45,26 @@ const DATA_TIMEOUT_MS = 86_400_000;
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 
-// The repository password never leaves the machine that generated it. It is
-// written root-only into the agent state directory, which
+// The operational copy of the recovery key: the same string the owner holds on
+// paper. It is written root-only into the agent state directory, which
 // `managedStateTargets` classifies machine-local and never backs up, so a
-// backup can never carry its own key. A machine restoring its own backups
-// still has it, which is why same-machine restore never prompts.
+// backup can never carry its own key. The server keeps it so unattended
+// scheduled backups run, and the owner keeps it so a replacement machine can.
+// A key on the server protects against a stolen drive or a breached bucket, not
+// against a compromised server.
 function ensureRepositoryKey(keyFile) {
   if (fs.existsSync(keyFile)) {
     const existing = fs.readFileSync(keyFile, 'utf8').trim();
     if (existing) return existing;
   }
+  return writeRepositoryKey(keyFile, generate().key);
+}
+
+function writeRepositoryKey(keyFile, key) {
   ensureDir(path.dirname(keyFile));
-  fs.writeFileSync(keyFile, `${crypto.randomBytes(32).toString('hex')}\n`, { encoding: 'utf8', mode: 0o600 });
+  fs.writeFileSync(keyFile, `${key}\n`, { encoding: 'utf8', mode: 0o600 });
   fs.chmodSync(keyFile, 0o600);
-  return fs.readFileSync(keyFile, 'utf8').trim();
+  return key;
 }
 
 const PROGRESS_LINE = /^\[[\d:]|%|\bETA\b|\bprocessed\b/iu;
@@ -109,6 +120,13 @@ function maskSecrets(text, secrets = []) {
   return masked;
 }
 
+// Said in the owner's terms rather than the engine's, and with the noun the
+// screen is already using: a locked repository is not a failure, it is backups
+// belonging to a machine this one has not been introduced to yet.
+function lockedRepositoryMessage(kind = 'storage') {
+  return `This ${kind} holds MOS backups written by another server. Enter that server's recovery key to use them here.`;
+}
+
 // Why a repository would not open, in the owner's terms.
 //
 // Order is the whole point. "The specified bucket does not exist" and "The
@@ -125,6 +143,11 @@ function maskSecrets(text, secrets = []) {
 // "context canceled" when it is finally stopped: the truth is in the first
 // line, and the last line is the sound of giving up.
 const PROBE_CAUSES = Object.freeze([
+  {
+    cause: 'wrong-key',
+    message: lockedRepositoryMessage(),
+    test: /wrong password or no key found/iu,
+  },
   {
     cause: 'missing-bucket',
     message: 'MOS reached the storage provider, but it has no bucket with that name. Check the bucket name, or create the bucket with your provider first — MOS does not create one.',
@@ -157,15 +180,26 @@ function repositoryProbeCause(output) {
   return PROBE_CAUSES.find((entry) => entry.test.test(text)) || { cause: 'unknown', message: null };
 }
 
+// Three verdicts, not two. `locked` is the difference between "MOS cannot get
+// in" and "these backups belong to another server, and the owner can hand over
+// its key": reporting the second as the first is what made a replacement
+// machine look broken instead of one step from recovering.
 function repositoryProbeVerdict(output) {
-  return repositoryProbeCause(output).cause === 'absent' ? 'absent' : 'unreachable';
+  const { cause } = repositoryProbeCause(output);
+  if (cause === 'absent') return 'absent';
+  if (cause === 'wrong-key') return 'locked';
+  return 'unreachable';
 }
 
 class ResticEngine {
-  constructor({ agentStateDir, binaryDir = ENGINE_BINARY_DIR, keyFile } = {}) {
+  constructor({ agentStateDir, binaryDir = ENGINE_BINARY_DIR, keyFile, onKeyUsed } = {}) {
     this.agentStateDir = agentStateDir;
     this.binaryDir = binaryDir;
     this.keyFile = keyFile || path.join(agentStateDir || '.', REPOSITORY_KEY_FILENAME);
+    // Told whenever this machine's key created or opened a repository, which is
+    // what decides later whether a machine may adopt someone else's key or has
+    // to add its own beside it.
+    this.onKeyUsed = typeof onKeyUsed === 'function' ? onKeyUsed : null;
   }
 
   get name() { return 'restic'; }
@@ -180,6 +214,33 @@ class ResticEngine {
   }
 
   cacheDir() { return path.join(this.agentStateDir, 'engine-cache', this.name); }
+
+  get legacyKeyFile() { return `${this.keyFile}${LEGACY_KEY_SUFFIX}`; }
+
+  recoveryKey() { return ensureRepositoryKey(this.keyFile); }
+
+  adoptRecoveryKey(key) { return writeRepositoryKey(this.keyFile, key); }
+
+  legacyKey() {
+    try {
+      return fs.readFileSync(this.legacyKeyFile, 'utf8').trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Moves a pre-release 64-hex password aside so this machine gets a key its
+  // owner can write down. Idempotent, and it never removes the old value: the
+  // repositories keyed with it are migrated one at a time, whenever each is
+  // next opened, which for an unplugged drive may be months from now.
+  migrateLegacyKey() {
+    if (!fs.existsSync(this.keyFile)) return false;
+    const existing = fs.readFileSync(this.keyFile, 'utf8').trim();
+    if (!existing || isRecoveryKey(existing)) return false;
+    writeRepositoryKey(this.legacyKeyFile, existing);
+    writeRepositoryKey(this.keyFile, generate().key);
+    return true;
+  }
 
   // Verification has to read the repository, not a local copy of what the
   // repository said last time, so integrity checks run --no-cache throughout.
@@ -259,6 +320,90 @@ class ResticEngine {
     return this.run(args, { ...options, env: repository.env || {}, secrets: repository.secrets || [] });
   }
 
+  // Repository passwords travel in the environment and in 0600 files, never in
+  // argv and never in captured output: `password` overrides the machine's own
+  // key for one command, and is masked out of anything the engine wrote.
+  runAs(repository, password, args, options = {}) {
+    return this.run(args, {
+      ...options,
+      env: { ...(repository.env || {}), ...(password ? { RESTIC_PASSWORD: password } : {}) },
+      secrets: [...(repository.secrets || []), ...(password ? [password] : [])],
+    });
+  }
+
+  keyList({ password, repository }) {
+    const output = this.runAs(repository, password, ['key', 'list', '--json', ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS * 5 }).trim();
+    try {
+      const parsed = JSON.parse(output || '[]');
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch {
+      return [];
+    }
+  }
+
+  // restic reads a new password from a file rather than from a flag, so it is
+  // written 0600 beside the machine's own key and removed again whatever
+  // happens. Adding a password re-wraps the repository's data key; no stored
+  // data is re-encrypted.
+  keyAdd({ newPassword, password, repository }) {
+    ensureDir(this.agentStateDir);
+    const passwordFile = path.join(this.agentStateDir, `key-${crypto.randomBytes(8).toString('hex')}`);
+    fs.writeFileSync(passwordFile, newPassword, { encoding: 'utf8', mode: 0o600 });
+    try {
+      fs.chmodSync(passwordFile, 0o600);
+      this.runAs(repository, password, ['key', 'add', '--new-password-file', passwordFile, ...this.repositoryFlags(repository)], { secrets: [newPassword], timeout: PROBE_TIMEOUT_MS * 5 });
+    } finally {
+      fs.rmSync(passwordFile, { force: true });
+    }
+  }
+
+  keyRemove({ keyId, password, repository }) {
+    this.runAs(repository, password, ['key', 'remove', keyId, ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS * 5 });
+  }
+
+  // One repository's migration off the pre-release password, run the first time
+  // probing it answers `locked` while a legacy password is still on this
+  // machine. Adding this machine's recovery key and removing the old one is a
+  // metadata write: restic wraps a single data key with any number of
+  // passwords, so nothing stored is re-encrypted and every earlier backup stays
+  // exactly as valid as it was. The old key id is removed with the new key,
+  // because restic refuses to remove the password it is authenticated with; a
+  // failure there leaves both valid, which is untidy rather than harmful.
+  async migrateRepositoryKey({ env = {}, localPath = null, location, secrets = [] }) {
+    const legacy = this.legacyKey();
+    if (!legacy) return false;
+    if ((await this.probeRepository({ env, location, password: legacy, secrets })).state !== 'open') return false;
+    const repository = { engineName: this.name, env, localPath, location, secrets };
+    const legacyKeyId = this.keyList({ password: legacy, repository }).find((entry) => entry.current)?.id || null;
+    this.keyAdd({ newPassword: this.recoveryKey(), password: legacy, repository });
+    if (legacyKeyId) {
+      try { this.keyRemove({ keyId: legacyKeyId, repository }); } catch {}
+    }
+    return true;
+  }
+
+  // Whether this machine's key opens a repository, wherever it lives. A drive
+  // with no config file is absent without asking the engine; a `locked` answer
+  // is retried once through the pre-release password, which is the single place
+  // every repository keyed before the recovery key existed gets migrated — so
+  // health checks, preflights and opens all migrate, not only the open.
+  async probe({ env = {}, localPath = null, location, secrets = [] }) {
+    if (localPath && !this.repositoryInitialized(localPath)) return { cause: 'absent', state: 'absent' };
+    const noun = localPath ? 'drive' : 'bucket';
+    const first = await this.probeRepository({ env, location, noun, secrets });
+    if (first.state !== 'locked' || !(await this.migrateOnce({ env, localPath, location, secrets }))) return first;
+    return this.probeRepository({ env, location, noun, secrets });
+  }
+
+  // The listing is polled, so two probes of one repository can overlap; the
+  // second waits for the first's migration rather than adding the key twice.
+  migrateOnce(spec) {
+    this.migrations ||= new Map();
+    const pending = this.migrations.get(spec.location) || this.migrateRepositoryKey(spec).finally(() => this.migrations.delete(spec.location));
+    this.migrations.set(spec.location, pending);
+    return pending;
+  }
+
   // A local repository's stored size is measured from its directory: the CLI
   // reports it in a form not worth a version-sensitive parser when the truth is
   // on disk. A bucket has no directory to walk, so there the engine is asked —
@@ -313,13 +458,15 @@ class ResticEngine {
     });
   }
 
-  // Answers whether a repository can be opened at all, without creating one.
-  // The connection test and the create path both need this, and neither may
-  // guess: `absent` is the only verdict that permits writing to the location.
-  async probeRepository({ env = {}, location, secrets = [] }) {
+  // Answers whether a repository can be opened at all, without creating one and
+  // without migrating anything. `absent` is the only verdict that permits
+  // writing to the location. `password` tries one particular key instead of the
+  // machine's own — how an entered recovery key is checked before anything is
+  // written — and is masked out of whatever the engine said.
+  async probeRepository({ env = {}, location, noun = 'bucket', password, secrets = [] }) {
     const result = await this.runStreaming(['cat', 'config', `--repo=${location}`, `--cache-dir=${this.cacheDir()}`], {
       decisive: (text) => repositoryProbeCause(text).cause !== 'unknown',
-      env,
+      env: password ? { ...env, RESTIC_PASSWORD: password } : env,
       timeout: PROBE_TIMEOUT_MS,
     });
     if (result.status === 0) {
@@ -327,25 +474,25 @@ class ResticEngine {
         return { cause: 'open', repositoryId: JSON.parse(result.stdout || '{}').id || null, state: 'open' };
       } catch {}
     }
-    const output = maskSecrets(`${result.stderr}\n${result.stdout}`.trim(), secrets);
+    const output = maskSecrets(`${result.stderr}\n${result.stdout}`.trim(), password ? [...secrets, password] : secrets);
     const named = repositoryProbeCause(output);
     return {
       cause: named.cause,
-      message: named.message || this.failureMessage({ code: result.timedOut ? 'ETIMEDOUT' : null }, output),
+      message: named.cause === 'wrong-key' ? lockedRepositoryMessage(noun) : named.message || this.failureMessage({ code: result.timedOut ? 'ETIMEDOUT' : null }, output),
       output: output.split(/\r?\n/u).slice(-12).join('\n').trim() || null,
-      state: named.cause === 'absent' ? 'absent' : 'unreachable',
+      state: repositoryProbeVerdict(output),
     };
   }
 
   async openOrCreateRepository({ create = true, env = {}, localPath = null, location, missingMessage, secrets = [] }) {
     const repository = { engineName: this.name, env, localPath, location, secrets };
-    // A local repository is judged by its config file, which is free and exact.
-    // A remote one has to be asked, and a refusal that is not "there is nothing
-    // here" must never be answered by creating a second repository.
-    const probe = localPath
-      ? { state: this.repositoryInitialized(localPath) ? 'open' : 'absent' }
-      : await this.probeRepository({ env, location, secrets });
+    // A refusal that is not "there is nothing here" must never be answered by
+    // creating a second repository.
+    const probe = await this.probe({ env, localPath, location, secrets });
     if (probe.state === 'unreachable') throw Object.assign(new Error(probe.message), { engineName: this.name, engineOutput: probe.output || null });
+    // Returned rather than thrown: backups written by another server are a
+    // state the screen offers a recovery key for, not a failure to report.
+    if (probe.state === 'locked') return { ...repository, created: false, locked: true, lockedMessage: probe.message, repositoryId: null };
     const created = probe.state === 'absent';
     if (created) {
       // Flagged, because "there is no repository here yet" is a normal answer
@@ -355,8 +502,10 @@ class ResticEngine {
       if (localPath) fs.mkdirSync(localPath, { recursive: true });
       this.runFor(repository, ['init', ...this.repositoryFlags(repository)], { timeout: 600_000 });
     } else {
-      if (localPath) this.runFor(repository, ['cat', 'config', ...this.repositoryFlags(repository)], { timeout: 600_000 });
       this.clearStaleLocks(repository);
+    }
+    if (this.onKeyUsed) {
+      try { this.onKeyUsed(); } catch {}
     }
     // A local destination is identified by the descriptor MOS writes beside the
     // repository, so only a remote one needs the engine's own id — and asking
@@ -484,6 +633,8 @@ module.exports = {
   ENGINE_BINARY_DIR,
   ENGINE_MISSING_MESSAGE,
   ensureRepositoryKey,
+  LEGACY_KEY_SUFFIX,
+  lockedRepositoryMessage,
   maskSecrets,
   PROBE_TIMEOUT_MS,
   REPOSITORY_KEY_FILENAME,

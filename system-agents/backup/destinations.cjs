@@ -48,6 +48,16 @@ const DRIVE_DISCONNECTED = 'The selected backup drive is not mounted anymore. Re
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 function readJson(file) { return JSON.parse(fs.readFileSync(file, 'utf8')); }
 
+// The engine returns a locked repository rather than throwing, because reaching
+// a destination that holds another server's backups is a state the screen
+// offers a recovery key for. Past this point it would be a repository nothing
+// can read or write, so every caller that is about to use one stops here — with
+// the sentence that names the recovery key, never the engine's own words.
+function assertRepositoryUnlocked(repository) {
+  if (!repository?.locked) return;
+  throw Object.assign(new Error(repository.lockedMessage), { repositoryLocked: true });
+}
+
 // Hash in fixed-size chunks: volume archives are multi-gigabyte, and reading
 // one into a single Buffer exhausts RAM or trips ERR_FS_FILE_TOO_LARGE.
 function sha256(file) {
@@ -278,6 +288,9 @@ function summarize(manifest, { id, locator, note }) {
     schemaVersion: manifest?.backup?.schemaVersion || null,
     sizeBytes: rawBytes,
     sourceCommit: manifest?.source?.commit || null,
+    // Which machine wrote this restore point. A manifest without it predates
+    // the field and is displayed as this machine's own work.
+    sourceHostname: manifest?.source?.hostname || null,
     sourceVersion: manifest?.source?.version || null,
     volumeCount: volumes.length,
   };
@@ -294,6 +307,35 @@ class DiskDestination {
     this.mountPath = mountPath;
     this.points = new DiskRestorePoints(mountPath);
     this.system = system;
+    this.lockedAtMs = 0;
+    this.lockedState = null;
+  }
+
+  get noun() { return 'drive'; }
+
+  repositorySpec() {
+    const localPath = repositoryPathFor(this.mountPath);
+    return { env: {}, localPath, location: localPath, secrets: [] };
+  }
+
+  // A drive proves itself by being mounted and writable, which the destination
+  // listing already establishes without any engine call. The one thing left
+  // that costs one is whether the repository on it opens with this machine's
+  // key, so it is asked only when there is a repository to ask about and at
+  // most once per index interval — the destination listing is polled, and a
+  // process per drive per poll is not a thing to do to a machine.
+  async health() {
+    if (!readRepositoryDescriptor(this.mountPath)) return { locked: false };
+    if (this.lockedState && Date.now() - this.lockedAtMs < OBJECT_INDEX_TTL_MS) return this.lockedState;
+    let probe;
+    try {
+      probe = await this.engine.probe(this.repositorySpec());
+    } catch {
+      return { locked: false };
+    }
+    this.lockedAtMs = Date.now();
+    this.lockedState = probe.state === 'locked' ? { locked: true, reason: probe.message } : { locked: false };
+    return this.lockedState;
   }
 
   get lostMessage() {
@@ -312,6 +354,8 @@ class DiskDestination {
   async assertAvailable(message) {
     if (this.system?.destinationMounted && !(await this.system.destinationMounted(this.mountPath))) throw new Error(message || DRIVE_DISCONNECTED);
     if (!this.writable()) throw new Error('The selected backup drive is not writable.');
+    const health = await this.health();
+    if (health.locked) throw new Error(health.reason);
   }
 
   writable() {
@@ -360,6 +404,7 @@ class DiskDestination {
       location: localPath,
       missingMessage: 'The encrypted backup store is missing from this drive, so this backup cannot be read. Check that the right drive is connected and that its MOS-backups folder is intact.',
     });
+    assertRepositoryUnlocked(repository);
     return { ...repository, descriptor: readRepositoryDescriptor(this.mountPath), destinationId: this.id };
   }
 
@@ -386,9 +431,14 @@ class ObjectDestination {
     this.cached = null;
     this.cachedMtimeMs = null;
     this.lastError = null;
+    this.lastLocked = false;
     this.openRepository = null;
     this.refreshing = null;
   }
+
+  get noun() { return 'bucket'; }
+
+  repositorySpec() { return { ...this.spec, localPath: null }; }
 
   get lostMessage() {
     return 'MOS lost contact with the storage provider while writing this backup, so it did not finish. Check this server\'s internet connection, then try again.';
@@ -403,8 +453,9 @@ class ObjectDestination {
   // is exactly what an owner needs to fix and what a sentence written here
   // could only blur.
   async assertAvailable() {
-    const probe = await this.engine.probeRepository(this.spec);
+    const probe = await this.engine.probe(this.spec);
     if (probe.state === 'unreachable') throw Object.assign(new Error(probe.message), { engineOutput: probe.output || null });
+    if (probe.state === 'locked') throw Object.assign(new Error(probe.message), { repositoryLocked: true });
   }
 
   // Deliberately nothing. A drive needs proving still mounted before the
@@ -427,6 +478,10 @@ class ObjectDestination {
       create,
       missingMessage: 'There is no MOS backup store in this bucket yet, so there is nothing here to read.',
     });
+    // Not held, and not handed out: the caller is about to read or write with
+    // it, and the next look must ask again because the owner may have entered
+    // the key that opens it in between.
+    assertRepositoryUnlocked(repository);
     this.openRepository = { ...repository, destinationId: this.id };
     return this.openRepository;
   }
@@ -587,9 +642,9 @@ class ObjectDestination {
     if (!this.loadIndex()) {
       try {
         await this.readIndex({ force: true });
-        this.lastError = null;
+        this.noteReachable();
       } catch (error) {
-        this.lastError = error?.message || 'MOS could not reach this storage.';
+        this.noteUnreachable(error);
       }
     } else if (Date.now() - this.loadIndex().fetchedAtMs >= OBJECT_INDEX_TTL_MS) {
       this.refreshInBackground();
@@ -597,17 +652,28 @@ class ObjectDestination {
     const index = this.loadIndex();
     return {
       checkedAt: index?.fetchedAt || null,
+      locked: this.lastLocked,
       ready: Boolean(index) && !this.lastError,
       reason: this.lastError || null,
       usage: this.usage(),
     };
   }
 
+  noteReachable() {
+    this.lastError = null;
+    this.lastLocked = false;
+  }
+
+  noteUnreachable(error) {
+    this.lastError = error?.message || 'MOS could not reach this storage.';
+    this.lastLocked = error?.repositoryLocked === true;
+  }
+
   refreshInBackground() {
     if (this.refreshing) return this.refreshing;
     this.refreshing = this.readIndex({ force: true })
-      .then(() => { this.lastError = null; })
-      .catch((error) => { this.lastError = error?.message || 'MOS could not reach this storage.'; })
+      .then(() => this.noteReachable())
+      .catch((error) => this.noteUnreachable(error))
       .finally(() => { this.refreshing = null; });
     return this.refreshing;
   }
@@ -622,6 +688,7 @@ class ObjectDestination {
 class DestinationResolver {
   constructor({ agentStateDir, engine, objectRegistry, resolveDiskLabel, system }) {
     this.agentStateDir = agentStateDir;
+    this.disks = new Map();
     this.engine = engine;
     this.objectRegistry = objectRegistry;
     this.objects = new Map();
@@ -643,10 +710,31 @@ class DestinationResolver {
     return destination;
   }
 
-  forget(id) { this.objects.delete(id); }
+  forget(id) {
+    this.disks.delete(id);
+    this.objects.delete(id);
+  }
 
+  // After this machine's key changes, every held answer about what it opens is
+  // stale at once.
+  forgetAll() {
+    this.disks.clear();
+    this.objects.clear();
+  }
+
+  // Held between requests like a bucket, and for the same reason: a drive that
+  // has answered whether its repository opens with this machine's key must not
+  // be asked again on every poll of the backups screen.
   diskDestination(mountPath) {
-    return new DiskDestination({ engine: this.engine, label: this.resolveDiskLabel(mountPath), mountPath, system: this.system });
+    const label = this.resolveDiskLabel(mountPath);
+    const held = this.disks.get(mountPath);
+    if (held) {
+      if (label) held.label = label;
+      return held;
+    }
+    const destination = new DiskDestination({ engine: this.engine, label, mountPath, system: this.system });
+    this.disks.set(mountPath, destination);
+    return destination;
   }
 
   // Throws rather than returning null: every caller is about to act on the

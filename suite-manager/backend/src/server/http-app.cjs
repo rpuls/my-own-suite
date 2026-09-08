@@ -835,10 +835,60 @@ function createMOSServer({
             interruptedRestore: null,
             inventory: backupInventory.inventory(),
             lastJob: null,
+            recoveryKey: null,
             ...restoreGuaranteeFor(null),
             serviceAvailable: false,
           });
         }
+        return;
+      }
+
+      // Saving the key is what the first-backup gate is waiting for, so it is a
+      // route of its own rather than a side effect of the reveal: an owner who
+      // downloads the kit and closes the dialog without confirming is still
+      // asked again.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/recovery-key/acknowledge`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        jsonResponse(response, 200, await backupAgent.acknowledgeRecoveryKey());
+        return;
+      }
+
+      // "Shown once" is the default experience, not a security boundary: a
+      // signed-in owner already has root-equivalent power over this machine, so
+      // hiding the key from them protects nothing. The password is asked for
+      // every showing after the first, which is what a session left open on a
+      // borrowed screen cannot supply. The answer is never cached anywhere.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/recovery-key/reveal`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        const known = await backupAgent.recoveryKeyStatus();
+        if (known.recoveryKey?.acknowledged && !await setup.verifyOwnerPassword(body.password)) {
+          jsonResponse(response, 400, { code: 'INVALID_PASSWORD', error: 'Your current password is incorrect.' });
+          return;
+        }
+        jsonResponse(response, 200, await backupAgent.revealRecoveryKey());
+        return;
+      }
+
+      // Handing a replacement machine the key to backups another server wrote.
+      // The key goes straight through to the agent, which is the only component
+      // that holds one, and is never logged or kept here.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/unlock`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.unlockDestination({
+          destinationId: String(body.destinationId || ''),
+          recoveryKey: String(body.recoveryKey || ''),
+        }));
         return;
       }
 

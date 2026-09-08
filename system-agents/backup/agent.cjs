@@ -9,6 +9,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
+const os = require('node:os');
 const path = require('node:path');
 const { execFile, execFileSync, spawn } = require('node:child_process');
 const { BackupAgentCore, isRestorePointPath, restorePublicIdentity, sha256, UNREADABLE_LEGACY_BACKUP, validatePackagePayloads } = require('./agent-core.cjs');
@@ -17,6 +18,8 @@ const { BackupScheduler } = require('./scheduler.cjs');
 const { DestinationResolver, parseObjectLocator } = require('./destinations.cjs');
 const { isObjectDestinationId, normalizeObjectDestination, ObjectDestinationRegistry, objectRepositorySpec, publicObjectDestination } = require('./object-destinations.cjs');
 const { createEngine, ENGINE_MISSING_MESSAGE, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage } = require('./engines/engine.cjs');
+const { fingerprint: recoveryKeyFingerprint, normalize: normalizeRecoveryKey } = require('./recovery-key.cjs');
+const { RecoveryKeyRecord, recoveryKitFilename, recoveryKitText } = require('./recovery-kit.cjs');
 const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-agent-client.cjs');
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
@@ -180,16 +183,24 @@ async function listDestinations() {
     for (const child of device.children || []) visit(child, external);
   }
   for (const device of lsblk?.blockdevices || []) visit(device);
-  const disks = [...candidates.values()].filter((item) => item.mountState === 'mounted' || item.canMount === true)
-    // `ready` is the single question every destination answers, so nothing
-    // above this has to know that one kind proves itself by being mounted and
-    // another by answering a request.
-    .map((item) => {
+  // `ready` is the single question every destination answers, so nothing above
+  // this has to know that one kind proves itself by being mounted and another by
+  // answering a request. A drive holding another server's backups is neither
+  // ready nor a failure: it is one recovery key away from both.
+  const disks = await Promise.all([...candidates.values()].filter((item) => item.mountState === 'mounted' || item.canMount === true)
+    .map(async (item) => {
       const notReadyReason = item.mountState !== 'mounted'
         ? item.mountBlockedReason || 'This drive is not mounted.'
         : item.writable ? null : 'This drive is not writable.';
-      return { ...item, kind: 'disk', notReadyReason, ready: !notReadyReason };
-    });
+      const health = notReadyReason ? { locked: false } : await destinationResolver.resolve(item.id).health().catch(() => ({ locked: false }));
+      return {
+        ...item,
+        kind: 'disk',
+        locked: health.locked === true,
+        notReadyReason: notReadyReason || (health.locked ? health.reason : null),
+        ready: !notReadyReason && !health.locked,
+      };
+    }));
   const destinations = [...disks, ...await listObjectDestinations()];
   // Without the engine binary nothing can be written anywhere, so it is the
   // destination that is unusable, not the backup that failed. Reported last so
@@ -203,13 +214,14 @@ async function listDestinations() {
 async function listObjectDestinations() {
   const entries = [];
   for (const destination of destinationResolver.objectDestinations()) {
-    const health = await destination.health().catch(() => ({ ready: false, reason: 'MOS could not reach this storage.', usage: null }));
+    const health = await destination.health().catch(() => ({ locked: false, ready: false, reason: 'MOS could not reach this storage.', usage: null }));
     entries.push({
       ...publicObjectDestination(destination.record),
       availableBytes: null,
       canMount: false,
       checkedAt: health.checkedAt || null,
       kind: 'object',
+      locked: health.locked === true,
       mountPath: null,
       notReadyReason: health.reason || null,
       ready: health.ready === true,
@@ -227,8 +239,9 @@ async function listObjectDestinations() {
 async function testObjectDestination(input) {
   const record = normalizeObjectDestination(input, input.id ? objectRegistry.get(String(input.id)) : null);
   const spec = objectRepositorySpec(record);
-  const probe = await engine.probeRepository(spec);
+  const probe = await engine.probe(spec);
   if (probe.state === 'unreachable') return { message: probe.message, ok: false };
+  if (probe.state === 'locked') return { locked: true, message: `${probe.message} Connect this bucket, then choose Enter recovery key on it.`, ok: false };
   if (probe.state === 'absent') return { message: 'Connected. This bucket holds no MOS backups yet; the first backup creates the encrypted store in it.', ok: true, restorePoints: 0 };
   // Counted without touching the stored index, because this may be a
   // connection that has not been saved and must leave nothing behind.
@@ -523,6 +536,109 @@ async function reconcileRestoredApps(logMessage) {
   }
 }
 
+const RECOVERY_KEY_UNACKNOWLEDGED = 'Save your recovery key first. It is the only thing that can open these backups on a replacement server, and MOS shows it once before the first backup.';
+// Only what would create a backup is gated: a backup now, or a schedule that is
+// enabled. Mounting a drive, connecting or testing a bucket, listing, validating,
+// restoring and switching a schedule off all stay available while the key is
+// unsaved — none of them write a backup, and a replacement machine in the middle
+// of recovering must not be blocked by a dialog about its own future backups.
+const RECOVERY_KEY_GATED_ROUTES = Object.freeze(['/v1/backups', '/v1/schedule']);
+
+// Enforced by the agent as well as by the screen, so a page left open from
+// before the key existed cannot get past it.
+function assertRecoveryKeyAcknowledged(pathname, body = {}) {
+  if (!RECOVERY_KEY_GATED_ROUTES.includes(pathname) || recoveryRecord.acknowledged()) return;
+  if (pathname === '/v1/schedule' && body.enabled !== true) return;
+  throw Object.assign(new Error(RECOVERY_KEY_UNACKNOWLEDGED), { code: 'RECOVERY_KEY_UNACKNOWLEDGED' });
+}
+
+function recoveryKeyStatus() {
+  const record = recoveryRecord.read();
+  return {
+    acknowledged: Boolean(record.acknowledgedAt),
+    acknowledgedAt: record.acknowledgedAt,
+    // Read from the key itself rather than from the record, so the screen shows
+    // what this machine actually holds even before it has been acknowledged.
+    fingerprint: recoveryKeyFingerprint(engine.recoveryKey()),
+    keyFile: engine.keyFile,
+    legacyKeyPresent: Boolean(engine.legacyKey()),
+  };
+}
+
+// The address the kit tells an owner to come back to. Read from the restored
+// identity rules rather than from install-time env alone, so an applied HTTPS
+// domain is what gets printed.
+function homeAddress() {
+  let store = null;
+  try {
+    store = new SuiteManagerStore(stateDir);
+  } catch {}
+  try {
+    const { homeHost, scheme } = restoreBaseUrl(store);
+    return `${scheme}://${homeHost}/`;
+  } catch {
+    return null;
+  } finally {
+    try { store?.close(); } catch {}
+  }
+}
+
+// Built in the agent because only the agent can see the destinations — and it
+// composes the kit out of what a provider's console cannot tell an owner
+// afterwards, never out of the credentials it holds for them.
+async function recoveryKit(key) {
+  const destinations = [
+    ...(await listDestinations()).filter((entry) => entry.kind === 'disk' && entry.mountState === 'mounted').map((entry) => ({ kind: 'drive', label: entry.label })),
+    ...objectRegistry.list().map((record) => ({ bucket: record.bucket, endpoint: record.endpoint, folder: record.folder || '', kind: 'bucket', label: record.label, region: record.region || '' })),
+  ];
+  const hostname = os.hostname();
+  const now = new Date();
+  return {
+    kit: recoveryKitText({ destinations, homeAddress: homeAddress(), hostname, key, now }),
+    kitFilename: recoveryKitFilename({ hostname, now }),
+  };
+}
+
+async function revealRecoveryKey() {
+  const key = engine.recoveryKey();
+  return { key, recoveryKey: recoveryKeyStatus(), ...await recoveryKit(key) };
+}
+
+// Taking over backups another server wrote. The entered key is checked against
+// the destination before anything is written anywhere. A machine whose own key
+// has never created or opened a repository adopts the entered one, so a cold
+// standby ends up holding exactly the key on the owner's paper; any other
+// machine adds its own key to the repository instead, which restic supports
+// natively, so both keys open it from here on.
+async function unlockDestination(body) {
+  const normalized = normalizeRecoveryKey(body.recoveryKey);
+  if (normalized.error) throw Object.assign(new Error(normalized.error), { code: 'RECOVERY_KEY_MISTYPED' });
+  const destinationId = normalizeDestinationId(body.destinationId);
+  if (!destinationId) throw new Error('Choose a connected drive or a storage connection to unlock.');
+  const destination = destinationResolver.resolve(destinationId);
+  const spec = destination.repositorySpec();
+  const probe = await engine.probeRepository({ ...spec, noun: destination.noun, password: normalized.key });
+  if (probe.state === 'locked') throw new Error(`That key does not open the backups in this ${destination.noun}.`);
+  if (probe.state === 'absent') throw new Error(`This ${destination.noun} holds no MOS backups yet, so there is nothing here to unlock.`);
+  if (probe.state !== 'open') throw new Error(probe.message || `MOS could not reach this ${destination.noun}.`);
+  const adopted = !recoveryRecord.read().firstUsedAt;
+  if (adopted) {
+    engine.adoptRecoveryKey(normalized.key);
+    recoveryRecord.adopt(recoveryKeyFingerprint(normalized.key));
+    destinationResolver.forgetAll();
+  } else {
+    engine.keyAdd({ newPassword: engine.recoveryKey(), password: normalized.key, repository: { engineName: engine.name, ...spec } });
+    destinationResolver.forget(destinationId);
+  }
+  return {
+    adopted,
+    message: adopted
+      ? 'Unlocked. This server now uses the recovery key you entered, so the key on your kit is the only one you need.'
+      : "Unlocked. This server's own recovery key now opens these backups as well, so save this server's key too.",
+    recoveryKey: recoveryKeyStatus(),
+  };
+}
+
 // What the schedule needs to know about a destination's restore points: when
 // each was taken and whether the schedule itself took it. Asked of the
 // destination rather than taken from listBackups, because retention must not
@@ -532,7 +648,8 @@ async function scheduledRestorePoints(destinationId) {
   return points.map((point) => ({ automatic: point.automatic, createdAt: point.createdAt, path: point.locator }));
 }
 
-const engine = createEngine({ agentStateDir });
+const recoveryRecord = new RecoveryKeyRecord({ agentStateDir });
+const engine = createEngine({ agentStateDir, onKeyUsed: () => recoveryRecord.noteFirstUse() });
 const objectRegistry = new ObjectDestinationRegistry({ agentStateDir });
 const backupSystem = new BackupSystemAdapter({ agentStateDir, repoDir, stateDir, stateRoot });
 const destinationResolver = new DestinationResolver({ agentStateDir, engine, objectRegistry, system: backupSystem });
@@ -586,6 +703,11 @@ if (require.main === module && process.argv[2] === '--worker') {
   ensureDir(path.dirname(socketPath));
   ensureDir(agentStateDir);
   ensureDir(jobsDir);
+  // Before anything can ask for it: the screen has to be able to show an owner
+  // their recovery key before a backup exists, and a machine coming off the
+  // pre-release password gets one the same moment.
+  engine.migrateLegacyKey();
+  engine.recoveryKey();
   fs.rmSync(socketPath, { force: true });
 
   const server = http.createServer(async (request, response) => {
@@ -597,11 +719,15 @@ if (require.main === module && process.argv[2] === '--worker') {
         ));
         respond(response, 200, {
           backups: await listBackups(destinations),
-          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['connect-object', 'list', 'mount'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
+          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['connect-object', 'list', 'mount'], recoveryKey: ['acknowledge', 'reveal', 'unlock'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
           currentJob: summarizeJob(reconcileCurrentJob()),
           destinations,
+          // Named so the screen can say which machine wrote a restore point, and
+          // stay quiet about the ones this machine wrote itself.
+          hostname: os.hostname(),
           interruptedRestore: core.interruptedRestore(),
           lastJob: summarizeJob(latestJob()),
+          recoveryKey: recoveryKeyStatus(),
           schedule: scheduler.state(),
           service: 'mos-backup-agent',
         });
@@ -615,6 +741,29 @@ if (require.main === module && process.argv[2] === '--worker') {
       // backup, not by connecting.
       if (request.method === 'POST' && url.pathname === '/v1/destinations/object/test') {
         respond(response, 200, { result: await testObjectDestination(await readBody(request)) });
+        return;
+      }
+      // Asked on its own so Suite Manager can decide whether this showing needs
+      // the owner password without paying for a full status, which lists drives
+      // and reaches every connected bucket.
+      if (request.method === 'GET' && url.pathname === '/v1/recovery-key') {
+        respond(response, 200, { recoveryKey: recoveryKeyStatus() });
+        return;
+      }
+      // Shown before it is needed, and shown again to a signed-in owner who asks:
+      // Suite Manager decides whether a password was required, because it is the
+      // component that holds the owner's account.
+      if (request.method === 'POST' && url.pathname === '/v1/recovery-key/reveal') {
+        respond(response, 200, await revealRecoveryKey());
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/recovery-key/acknowledge') {
+        recoveryRecord.acknowledge(recoveryKeyFingerprint(engine.recoveryKey()));
+        respond(response, 200, { recoveryKey: recoveryKeyStatus() });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/destinations/unlock') {
+        respond(response, 200, { result: await unlockDestination(await readBody(request)) });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/destinations/object') {
@@ -638,6 +787,7 @@ if (require.main === module && process.argv[2] === '--worker') {
       }
       if (request.method === 'POST' && url.pathname === '/v1/backups') {
         const body = await readBody(request);
+        assertRecoveryKeyAcknowledged(url.pathname, body);
         const destinationId = normalizeDestinationId(body.destinationId);
         if (destinationId) await destinationResolver.resolve(destinationId).assertAvailable();
         respond(response, 202, { job: createJob('backup', body) });
@@ -645,7 +795,9 @@ if (require.main === module && process.argv[2] === '--worker') {
       }
       if (request.method === 'POST' && url.pathname === '/v1/backups/validate') { respond(response, 202, { job: createJob('validate', await readBody(request)) }); return; }
       if (request.method === 'POST' && url.pathname === '/v1/schedule') {
-        respond(response, 200, { schedule: scheduler.save(await readBody(request)) });
+        const body = await readBody(request);
+        assertRecoveryKeyAcknowledged(url.pathname, body);
+        respond(response, 200, { schedule: scheduler.save(body) });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/backups/note') {
@@ -683,7 +835,10 @@ if (require.main === module && process.argv[2] === '--worker') {
       }
       respond(response, 404, { code: 'NOT_FOUND', error: 'Not found.' });
     } catch (error) {
-      respond(response, 409, { code: 'BACKUP_AGENT_ERROR', error: error instanceof Error ? error.message : 'Backup agent operation failed.' });
+      // The code travels, because the screen has to tell a refusal it can act on
+      // — an unsaved recovery key, a mistyped one — from a failure it can only
+      // report.
+      respond(response, 409, { code: error?.code || 'BACKUP_AGENT_ERROR', error: error instanceof Error ? error.message : 'Backup agent operation failed.' });
     }
   });
   // Before the socket opens, so nothing can mount over a leftover first.
@@ -701,4 +856,4 @@ if (require.main === module && process.argv[2] === '--worker') {
   process.on('SIGTERM', shutdown);
 }
 
-module.exports = { isMountPoint, isWholeDiskFilesystem, mountBlockReason, reclaimUnmountedDestinations, packageBackupInventory, sha256, validatePackagePayloads };
+module.exports = { isMountPoint, isWholeDiskFilesystem, mountBlockReason, RECOVERY_KEY_GATED_ROUTES, RECOVERY_KEY_UNACKNOWLEDGED, reclaimUnmountedDestinations, packageBackupInventory, sha256, validatePackagePayloads };

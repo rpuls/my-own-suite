@@ -317,6 +317,39 @@ export function AdvancedPanel({
   </details>;
 }
 
+// A secret MOS hands the owner to keep: shown whole, in the groups it was
+// designed to be read in, and copyable, because the realistic things someone
+// does with one are copy it into a password manager or write it onto paper. Its
+// look is shared branding (.mos-secret*), so a secret reads the same wherever
+// MOS shows one, and the copy behaviour is the panel's: a fresh install on plain
+// HTTP has no navigator.clipboard, so failing visibly and leaving the text
+// selectable is the whole recovery.
+export function SecretText({ label, value }: { label: string; value: string }) {
+  const [copyState, setCopyState] = useState<'' | 'copied' | 'unavailable'>('');
+  useEffect(() => {
+    if (!copyState) return undefined;
+    const timer = window.setTimeout(() => setCopyState(''), 2_000);
+    return () => window.clearTimeout(timer);
+  }, [copyState]);
+
+  async function copy(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyState('copied');
+    } catch {
+      setCopyState('unavailable');
+    }
+  }
+
+  return <div className="mos-secret">
+    <code className="mos-secret-value">{value}</code>
+    <div className="mos-secret-actions">
+      <span className="mos-secret-state" role="status">{copyState === 'copied' ? 'Copied' : copyState === 'unavailable' ? 'Could not copy. Select the text instead.' : ''}</span>
+      <button aria-label={`Copy ${label}`} className="suite-icon-button" onClick={() => void copy()} title="Copy" type="button"><Icon name="copy" /></button>
+    </div>
+  </div>;
+}
+
 export function Dialog({ children, className, footer, header, onClose, title }: { children: ReactNode; className?: string; footer?: ReactNode; header?: ReactNode; onClose: () => void; title: string }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);

@@ -804,6 +804,45 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   box-shadow: var(--mos-shadow-strong);
 }
 
+/* A secret shown to be kept: the whole value on one block, in the face it was
+   designed to be read back in, with the copy control beside it. Wrapping rather
+   than truncating is the point — an ellipsis in the middle of a recovery key is
+   a key the owner cannot use. */
+.mos-secret {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--mos-space-3);
+  border: 1px solid var(--mos-color-accent-border);
+  border-radius: var(--mos-radius-sm);
+  padding: var(--mos-space-4);
+  background: var(--mos-color-accent-soft);
+}
+
+.mos-secret-value {
+  min-width: 0;
+  color: var(--mos-color-text-strong);
+  font-family: var(--mos-font-mono);
+  font-size: var(--mos-text-body-lg);
+  font-weight: var(--mos-weight-semibold);
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.mos-secret-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+  flex: 0 0 auto;
+}
+
+.mos-secret-state {
+  color: var(--mos-color-text-muted);
+  font-size: var(--mos-text-label);
+}
+
 .mos-badge,
 .mos-pill,
 .mos-label {

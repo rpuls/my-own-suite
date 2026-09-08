@@ -60,6 +60,10 @@ class BackupAgentClient {
   setSchedule(input) { return this.request('POST', '/v1/schedule', input); }
   startRestore(input) { return this.request('POST', '/v1/restores', input); }
   acknowledgeInterruptedRestore(input) { return this.request('POST', '/v1/restores/acknowledge-interruption', input); }
+  recoveryKeyStatus() { return this.request('GET', '/v1/recovery-key'); }
+  acknowledgeRecoveryKey() { return this.request('POST', '/v1/recovery-key/acknowledge', {}); }
+  revealRecoveryKey() { return this.request('POST', '/v1/recovery-key/reveal', {}); }
+  unlockDestination(input) { return this.request('POST', '/v1/destinations/unlock', input); }
 }
 
 module.exports = { BACKUP_AGENT_TIMEOUT_MS, BackupAgentClient };

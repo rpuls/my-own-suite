@@ -24,33 +24,27 @@ Consolidated 2026-07-30 from `pre-beta-checklist.md`, `beta-main-cutover-checkli
 
 ## Now — Beta hardening
 
-The window before and during private tester recruitment. Recovery leads, because a backup an owner
-cannot schedule, take off-site, or unlock on a replacement machine is not yet recovery they can rely
-on — the storage under it is now encrypted and drill-verified, which was the sharpest dissonance in
-the product until 2026-09-06.
+The window before and during private tester recruitment. Recovery led, because a backup an owner
+could not schedule, take off-site, or unlock on a replacement machine was not recovery they could
+rely on. Those three are contracts now, and the theme stays for what the gate never covered.
 
 ### A. Recovery an owner can trust without an asterisk
 
 **Gate:** an owner sets a recovery key once, backups run on a schedule with retention to an attached
-disk or an S3-compatible bucket, and no restore screen shows a raw 502 or an internal path. Everything
-but the recovery key is met (`docs/decisions.md`, 2026-09-06).
+disk or an S3-compatible bucket, and no restore screen shows a raw 502 or an internal path
+(`docs/decisions.md`, 2026-09-06 and 2026-09-07). The theme is kept open for the two items below,
+which the gate never covered: a backup taken before an update without being asked, and a cleanup
+story for volumes MOS does not own.
 
 The restore contract itself is drill-verified and is not in question (`docs/decisions.md`, 2026-07-30),
 and as of 2026-09-06 so is the storage under it: backups are restic repositories, the engine choice is
 recorded with its measurements, and the drills that earn a `verified` restore guarantee were re-run
 against the encrypted store (`docs/decisions.md`, 2026-09-06). Backups also now run unattended, with
 retention, to an attached disk or an S3-compatible bucket, the latter drill-verified through a whole-suite
-restore from a real provider (`docs/decisions.md`, 2026-09-06). What is left in this theme is the part of
-the lifecycle that is not about storage at all: **a recovery key an owner actually holds** — which
-off-site backup has now made urgent rather than merely missing, because a bucket is exactly the case
-where the machine holding the key is gone — and the pre-update trigger.
+restore from a real provider (`docs/decisions.md`, 2026-09-06). The owner holds the key that opens
+all of it, and a replacement machine can take over a destination the original wrote (`docs/decisions.md`,
+2026-09-07).
 
-- **A3 — Recovery-key lifecycle.** The engine supplies the cryptography; this is everything around
-  it, and it is the half that does not come free. Generate a strong key, present it once, offer an
-  export file, decide where the operational copy lives so unattended scheduled backups can run, and
-  design what an owner sees when the key is gone. Retire the "backups are not encrypted" warning in
-  the backup guide only when this is real, and say plainly that a key held on the server protects a
-  stolen drive or a breached bucket, not a compromised server. *(Medium)*
 - **A4 — Pre-update backups and last-known-good protection.** The schedule and retention half is
   done (`docs/decisions.md`, 2026-09-06): backups run daily or weekly with a keep-last policy, driven
   by a timer inside the backup agent. What remains is the other trigger — a checkpoint before every
