@@ -112,31 +112,27 @@ function restorePublicIdentity({ bootstrapContract = {}, environment = {}, https
 }
 
 // Whether a restore point was written by another machine. The install id is
-// the answer when both sides have one: a standby may carry the same hostname
-// on purpose, and an address changes on the same machine. Older manifests fall
-// back to the hostname, and a manifest naming neither counts as this machine's
-// own work, which is the reading that never invents a question.
+// the only answer: a standby may carry the same hostname on purpose, and an
+// address changes on the same machine.
 function writtenByAnotherMachine(source = {}, current = {}) {
-  if (source.installId && current.installId) return source.installId !== current.installId;
-  return Boolean(source.hostname && current.hostname && source.hostname !== current.hostname);
+  return source.installId !== current.installId;
 }
 
 const RESTORE_ADDRESS_PLANS = Object.freeze(['copy', 'move']);
 
 // The one thing in a backup that is portable between machines is a domain;
 // every other address is bound to the machine, so there is nothing to choose.
-// A restore onto another machine of a backup that carries a domain (or, for a
-// manifest too old to say, may carry one) needs the owner's answer before
-// anything is touched: `move` serves the domain from this machine, `copy`
-// parks it and rebuilds the apps on this machine's own address.
+// A restore onto another machine of a backup that carries a domain needs the
+// owner's answer before anything is touched: `move` serves the domain from
+// this machine, `copy` parks it and rebuilds the apps on this machine's own
+// address.
 function restoreAddressPlan({ current = {}, manifest = {}, requested = null } = {}) {
   const source = manifest.source || {};
   const foreign = writtenByAnotherMachine(source, current);
   const domain = source.domain || null;
-  const knownWithoutDomain = source.domain === null;
-  if (!foreign || knownWithoutDomain) return { domain, foreign, plan: 'same' };
+  if (!foreign || !domain) return { domain, foreign, plan: 'same' };
   if (!RESTORE_ADDRESS_PLANS.includes(requested)) {
-    throw new Error(`This backup was written by another machine${domain ? ` and carries the address ${domain}` : ''}. Choose whether to move that address to this machine or to restore as a copy before restoring.`);
+    throw new Error(`This backup was written by another machine and carries the address ${domain}. Choose whether to move that address to this machine or to restore as a copy before restoring.`);
   }
   return { domain, foreign, plan: requested };
 }
@@ -190,8 +186,8 @@ class BackupAgentCore {
     this.destinations = destinations;
     this.engine = engine;
     // Who this machine is and what it does with a restored domain. The host
-    // wiring supplies the real answers; a core built without them names the
-    // machine by hostname alone and treats every domain as untouched.
+    // wiring supplies the real answers; a core built without them has no
+    // install id or domain and treats every restore as its own.
     this.identity = {
       domain: () => null,
       hostname: () => os.hostname(),

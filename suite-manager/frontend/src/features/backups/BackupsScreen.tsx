@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { ServerLoginNotice } from '../../components/ServerLoginNotice';
-import { ActionMenu, AdvancedPanel, Checkbox, Choice, Dialog, Icon, Notice, SecretText, Select, Switch, TextInput } from '../../components/ui';
+import { ActionMenu, AdvancedPanel, Checkbox, Choice, Dialog, Icon, Notice, SecretText, Select, Spinner, Switch, TextInput } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
 
 type BackupDestination = {
@@ -262,18 +262,15 @@ function backupDescription(backup: BackupEntry) {
 // name on purpose — and the hostname before that; a backup naming neither
 // counts as this machine's, which is the answer that never invents a warning.
 function writtenElsewhere(backup: BackupEntry, status: BackupStatus | null | undefined) {
-  if (backup.sourceInstallId && status?.installId) {
-    return backup.sourceInstallId === status.installId ? null : backup.sourceHostname || 'another server';
-  }
-  if (!backup.sourceHostname || !status?.hostname) return null;
-  return backup.sourceHostname === status.hostname ? null : backup.sourceHostname;
+  if (!status?.installId || backup.sourceInstallId === status.installId) return null;
+  return backup.sourceHostname || 'another server';
 }
 
 // The one question a restore onto another machine has to ask: a domain can
 // point at one machine at a time. Asked when the backup carries one, and when
 // it is too old to say; never when it is known to carry none.
 function needsAddressChoice(backup: BackupEntry, status: BackupStatus | null | undefined) {
-  return Boolean(writtenElsewhere(backup, status)) && backup.sourceDomain !== null;
+  return Boolean(writtenElsewhere(backup, status)) && Boolean(backup.sourceDomain);
 }
 
 function restoreAddressNote(job: BackupJob | null) {
@@ -450,8 +447,11 @@ function DestinationItem({ busy, destination, onDisconnect, onEdit, onMount, onS
   const address = destinationAddress(destination);
   const usage = destination.repository;
   const spaceKnown = Boolean(destination.sizeBytes && destination.availableBytes);
-  return <div className={`suite-drive-item ${selected ? 'is-selected' : ''}`}>
-    <button className="suite-drive-select" disabled={!destination.ready || running || Boolean(busy)} onClick={onSelect} type="button">
+  const unlocking = busy === `unlock:${destination.id}`;
+  // A locked destination cannot be selected, so its card is not a button. That
+  // lets the unlock control live inside the card, where it is unmistakable
+  // which backups the key is for.
+  const body = <>
       <span className="suite-drive-icon"><Icon name={driveIconName(destination)} /></span>
 
       <div className="suite-drive-info">
@@ -480,17 +480,22 @@ function DestinationItem({ busy, destination, onDisconnect, onEdit, onMount, onS
                 <span>Encrypted store holds {usage.restorePoints} restore point{usage.restorePoints === 1 ? '' : 's'}{usage.storedBytes ? ` in ${formatBytes(usage.storedBytes)}` : ''}</span>
               </div>
             : destination.kind === 'object' ? <div className="suite-drive-space"><span>No backups stored here yet</span></div> : null}
-        </> : <div className="suite-drive-status">{destination.notReadyReason || 'This destination is not available.'}</div>}
+        </> : <div className="suite-drive-status">{unlocking ? 'Unlocking these backups...' : destination.notReadyReason || 'This destination is not available.'}</div>}
+        {destination.locked ? <div className="suite-drive-unlock">
+          <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={onUnlock} type="button">
+            {unlocking ? <><Spinner />Unlocking...</> : 'Enter recovery key'}
+          </button>
+        </div> : null}
       </div>
 
       <div className="suite-drive-selector">
         {selected ? <span className="suite-drive-check">&#10003;</span> : null}
       </div>
-    </button>
-
-    {destination.locked ? <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={onUnlock} type="button">
-      Enter recovery key
-    </button> : null}
+  </>;
+  return <div className={`suite-drive-item ${selected ? 'is-selected' : ''}`}>
+    {destination.locked
+      ? <div className="suite-drive-select is-locked">{body}</div>
+      : <button className="suite-drive-select" disabled={!destination.ready || running || Boolean(busy)} onClick={onSelect} type="button">{body}</button>}
 
     {destination.kind === 'object'
       ? <div className="suite-drive-actions">
@@ -592,7 +597,7 @@ function UnlockDestinationDialog({ busy, destination, error, onCancel, onUnlock 
   return <Dialog
     footer={<>
       <button className="mos-btn mos-btn-primary" disabled={!entered.trim() || locked} onClick={() => onUnlock(entered)} type="button">
-        {busy === `unlock:${destination.id}` ? 'Checking...' : 'Unlock these backups'}
+        {busy === `unlock:${destination.id}` ? <><Spinner />Unlocking...</> : 'Unlock these backups'}
       </button>
       <button className="mos-btn mos-btn-secondary" disabled={locked} onClick={onCancel} type="button">Cancel</button>
     </>}
@@ -1340,10 +1345,10 @@ export function BackupsScreen() {
         <Notice title="This will replace the current install" variant="warning"><p>MOS will stop, restore the selected backup, verify it, and start again. Apps and app data added after this backup are removed so the system matches the backup exactly. A complete rescue copy of the current state is saved on the server first. When the restore finishes you will be signed out; sign back in with the owner account saved in this backup, which may differ from the current one. A large backup can take a long time to restore — keep this page open and let it finish.</p></Notice>
         {writtenElsewhere(selectedRestore, status) ? <Notice title={`This backup was written by ${writtenElsewhere(selectedRestore, status)}`} variant="info">
           <p>This machine will become that server. After restoring, sign in with that server's owner password. This machine keeps its own console and SSH login; the other server's does not come along.</p>
-          {needsAddressChoice(selectedRestore, status) ? <p>{selectedRestore.sourceDomain ? <>Its address <strong>{selectedRestore.sourceDomain}</strong> can</> : 'If it uses a domain, that address can'} only point at one machine at a time, and right now it points at the machine that wrote this backup. Choose what this machine should do with it:</p> : null}
+          {needsAddressChoice(selectedRestore, status) ? <p>Its address <strong>{selectedRestore.sourceDomain}</strong> can only point at one machine at a time, and right now it points at the machine that wrote this backup. Choose what this machine should do with it:</p> : null}
         </Notice> : null}
         {needsAddressChoice(selectedRestore, status) ? <div role="radiogroup" aria-label="What to do with the address">
-          <Choice checked={restoreAddress === 'move'} description={`Apps answer at their old addresses again, so links, phone apps and browser extensions keep working. Afterwards, point home.${selectedRestore.sourceDomain || '<your-domain>'} at this machine's address — Settings shows how.`} name="restore-address" onChange={() => setRestoreAddress('move')} value="move">Move my address to this machine</Choice>
+          <Choice checked={restoreAddress === 'move'} description={`Apps answer at their old addresses again, so links, phone apps and browser extensions keep working. Afterwards, point home.${selectedRestore.sourceDomain} at this machine's address — Settings shows how.`} name="restore-address" onChange={() => setRestoreAddress('move')} value="move">Move my address to this machine</Choice>
           <Choice checked={restoreAddress === 'copy'} description="Apps run here on this machine's own address. The domain stays as it is, so links and connected devices still point at the other machine. You can move the address here later under Settings." name="restore-address" onChange={() => setRestoreAddress('copy')} value="copy">Restore as a copy</Choice>
         </div> : null}
         <p className="suite-meta">{formatDate(selectedRestore.createdAt)} · {backupDescription(selectedRestore)} · {selectedRestore.destinationLabel || 'backup storage'}</p>

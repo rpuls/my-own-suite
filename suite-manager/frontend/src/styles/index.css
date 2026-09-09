@@ -2730,6 +2730,15 @@
   opacity: 0.6;
 }
 
+.suite-drive-select.is-locked {
+  cursor: default;
+}
+
+.suite-drive-unlock {
+  display: flex;
+  padding-top: var(--mos-space-1);
+}
+
 .suite-drive-icon {
   display: flex;
   align-items: center;

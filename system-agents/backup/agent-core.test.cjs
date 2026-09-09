@@ -916,9 +916,9 @@ test('a restore point with a tampered manifest is refused before any mutation', 
 // rewrote every app route off its HTTPS address.
 // Only a domain travels between machines. Nothing is asked of a restore onto the
 // machine that wrote the backup, or of one whose backup is known to carry no
-// domain; a backup from another machine that carries one (or is too old to say)
-// is refused without the owner's answer, before anything is touched.
-test('restoreAddressPlan asks exactly when another machine\'s backup may carry a domain', () => {
+// domain; a backup from another machine that carries one is refused without
+// the owner's answer, before anything is touched.
+test('restoreAddressPlan asks exactly when another machine\'s backup carries a domain', () => {
   const here = { hostname: 'standby', installId: 'install-b' };
   const own = { source: { domain: 'mos.example.com', hostname: 'other-name', installId: 'install-b' } };
   assert.deepEqual(restoreAddressPlan({ current: here, manifest: own }), { domain: 'mos.example.com', foreign: false, plan: 'same' });
@@ -929,14 +929,8 @@ test('restoreAddressPlan asks exactly when another machine\'s backup may carry a
   assert.throws(() => restoreAddressPlan({ current: here, manifest: foreignDomain, requested: 'keep' }), /move.*copy/u);
   assert.equal(restoreAddressPlan({ current: here, manifest: foreignDomain, requested: 'copy' }).plan, 'copy');
   assert.equal(restoreAddressPlan({ current: here, manifest: foreignDomain, requested: 'move' }).plan, 'move');
-  // A manifest that predates the domain field may carry one; the hostname
-  // decides whose it is, as it did before install ids existed.
-  const older = { source: { hostname: 'home' } };
-  assert.throws(() => restoreAddressPlan({ current: here, manifest: older }), /another machine\. Choose/u);
-  assert.equal(restoreAddressPlan({ current: { hostname: 'home', installId: 'install-b' }, manifest: older }).plan, 'same');
   // A standby named like the original is still another machine.
   assert.equal(restoreAddressPlan({ current: { hostname: 'home', installId: 'install-b' }, manifest: foreignDomain, requested: 'copy' }).foreign, true);
-  assert.equal(restoreAddressPlan({ manifest: { source: {} } }).plan, 'same');
 });
 
 test('a restore point records the machine and domain it came from, and the check compares install ids', async () => {

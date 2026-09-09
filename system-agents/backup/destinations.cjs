@@ -288,11 +288,7 @@ function summarize(manifest, { id, locator, note }) {
     schemaVersion: manifest?.backup?.schemaVersion || null,
     sizeBytes: rawBytes,
     sourceCommit: manifest?.source?.commit || null,
-    // Which machine wrote this restore point and the domain it served. A
-    // manifest naming no machine predates the fields and is displayed as this
-    // machine's own work; `sourceDomain` stays undefined for one too old to
-    // say whether a domain was carried, and null when none was.
-    ...(manifest?.source?.domain === undefined ? {} : { sourceDomain: manifest.source.domain || null }),
+    sourceDomain: manifest?.source?.domain || null,
     sourceHostname: manifest?.source?.hostname || null,
     sourceInstallId: manifest?.source?.installId || null,
     sourceVersion: manifest?.source?.version || null,
