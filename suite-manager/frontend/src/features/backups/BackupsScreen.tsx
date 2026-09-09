@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { ServerLoginNotice } from '../../components/ServerLoginNotice';
 import { ActionMenu, AdvancedPanel, Checkbox, Choice, Dialog, Icon, Notice, SecretText, Select, Switch, TextInput } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
 
@@ -148,6 +149,9 @@ type BackupStatus = {
   recoveryKey?: RecoveryKeyState | null;
   restoreGuarantee?: string;
   restoreGuaranteeByKind?: Record<string, string>;
+  // This machine's console login is still waiting to be saved. It lives in the
+  // state a backup carries and a restore replaces, so the screen waits with it.
+  serverLoginUnsaved?: boolean;
   schedule?: BackupSchedule | null;
   serviceAvailable: boolean;
 };
@@ -1079,6 +1083,18 @@ export function BackupsScreen() {
     }
   }
 
+  if (status?.serverLoginUnsaved) {
+    return <section className="mos-shell suite-backups">
+      <div className="mos-page">
+        <div className="suite-hero">
+          <h1>Backup & Restore</h1>
+          <p className="suite-lead mos-body-lg">Save a whole-suite copy to a drive on this server or to a storage bucket somewhere else, then restore it if you need to recover the system.</p>
+        </div>
+        <ServerLoginNotice what="Backups and restores" />
+      </div>
+    </section>;
+  }
+
   return <section className="mos-shell suite-backups">
     <div className="mos-page">
       <div className="suite-hero">
@@ -1323,7 +1339,7 @@ export function BackupsScreen() {
       >
         <Notice title="This will replace the current install" variant="warning"><p>MOS will stop, restore the selected backup, verify it, and start again. Apps and app data added after this backup are removed so the system matches the backup exactly. A complete rescue copy of the current state is saved on the server first. When the restore finishes you will be signed out; sign back in with the owner account saved in this backup, which may differ from the current one. A large backup can take a long time to restore — keep this page open and let it finish.</p></Notice>
         {writtenElsewhere(selectedRestore, status) ? <Notice title={`This backup was written by ${writtenElsewhere(selectedRestore, status)}`} variant="info">
-          <p>This machine will become that server. After restoring, sign in with that server's owner password.</p>
+          <p>This machine will become that server. After restoring, sign in with that server's owner password. This machine keeps its own console and SSH login; the other server's does not come along.</p>
           {needsAddressChoice(selectedRestore, status) ? <p>{selectedRestore.sourceDomain ? <>Its address <strong>{selectedRestore.sourceDomain}</strong> can</> : 'If it uses a domain, that address can'} only point at one machine at a time, and right now it points at the machine that wrote this backup. Choose what this machine should do with it:</p> : null}
         </Notice> : null}
         {needsAddressChoice(selectedRestore, status) ? <div role="radiogroup" aria-label="What to do with the address">

@@ -686,6 +686,7 @@ test('Stable-track apply starts the update agent when a newer release is availab
 });
 
 test('Backup API proxies simple owner backup and restore actions', async () => {
+  const stateDir = await tempStateDir();
   const backupDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-backup-point-'));
   const calls = [];
   const backupAgent = {
@@ -771,6 +772,22 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
     });
     assert.equal(restore.status, 202);
 
+    // A console handover still waiting on this machine sits inside the state a
+    // backup carries and a restore wipes, so both wait until it is saved.
+    await fs.writeFile(path.join(stateDir, 'console-login.json'), JSON.stringify({ password: 'generated', username: 'mos', version: 1 }));
+    assert.equal((await hostRequest(baseUrl, '/suite-manager/api/backups/status', { headers: { Cookie: cookie, Host: 'home.test' } })).json().serverLoginUnsaved, true);
+    for (const [route, body] of [['start', { destinationId: '/media/backup' }], ['restore', { backupPath: backupDir, confirmation: 'RESTORE' }], ['schedule', { enabled: true }]]) {
+      const refused = await hostRequest(baseUrl, `/suite-manager/api/backups/${route}`, {
+        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+        method: 'POST',
+      });
+      assert.equal(refused.status, 409, route);
+      assert.equal(refused.json().code, 'SERVER_LOGIN_UNSAVED', route);
+    }
+    await hostRequest(baseUrl, '/suite-manager/api/settings/console-login/acknowledge', { headers: { Cookie: cookie, Host: 'home.test' }, method: 'POST' });
+    assert.equal((await hostRequest(baseUrl, '/suite-manager/api/backups/status', { headers: { Cookie: cookie, Host: 'home.test' } })).json().serverLoginUnsaved, false);
+
     // The schedule reaches the agent field by field, so a body carrying
     // anything the screen does not offer cannot travel with it.
     const deniedSchedule = await hostRequest(baseUrl, '/suite-manager/api/backups/schedule', {
@@ -833,7 +850,7 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
       ['test-object', { accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', folder: '', label: '', region: '', secretAccessKey: 'super-secret-value' }],
       ['disconnect-object', { destinationId: 'object:abc123' }],
     ]);
-  }, { backupAgent, homeHost: 'home.test' });
+  }, { backupAgent, homeHost: 'home.test', stateDir });
 });
 
 // The key is shown once without being asked for anything, because at that point

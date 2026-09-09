@@ -400,6 +400,19 @@ function createMOSServer({
     store: setup.store,
   });
   const consoleLogin = new ConsoleLoginService({ stateDir });
+  // The console handover lives in the state a backup carries and a restore
+  // replaces, so a backup taken before it is saved ships this machine's server
+  // password, and a restore over it deletes the only copy. Both wait until the
+  // owner has saved it; installs that never had a handover are never waited on.
+  const serverLoginUnsaved = () => {
+    const status = consoleLogin.status();
+    return status.pending === true || status.unreadable === true;
+  };
+  const refuseUntilServerLoginSaved = (response) => {
+    if (!serverLoginUnsaved()) return false;
+    jsonResponse(response, 409, { code: 'SERVER_LOGIN_UNSAVED', error: 'Save this machine\'s server login from the Home page first. A backup would carry it and a restore would delete it.' });
+    return true;
+  };
   const homepage = createHomepageProxy({ upstream: homepageUpstream, upstreamHost: homeHost });
   const homepageConfig = new HomepageService({
     agent: homepageAgent,
@@ -821,6 +834,7 @@ function createMOSServer({
             ...agentStatus,
             inventory: backupInventory.inventory(),
             ...restoreGuaranteeFor(agentStatus),
+            serverLoginUnsaved: serverLoginUnsaved(),
             serviceAvailable: true,
           });
         } catch (error) {
@@ -838,6 +852,7 @@ function createMOSServer({
             lastJob: null,
             recoveryKey: null,
             ...restoreGuaranteeFor(null),
+            serverLoginUnsaved: serverLoginUnsaved(),
             serviceAvailable: false,
           });
         }
@@ -943,6 +958,7 @@ function createMOSServer({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
           return;
         }
+        if (refuseUntilServerLoginSaved(response)) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 202, await backupAgent.startBackup({ destinationId: String(body.destinationId || ''), note: String(body.note || '') }));
         return;
@@ -957,6 +973,7 @@ function createMOSServer({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
           return;
         }
+        if (refuseUntilServerLoginSaved(response)) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 200, await backupAgent.setSchedule({
           destinationId: String(body.destinationId || ''),
@@ -987,6 +1004,7 @@ function createMOSServer({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to restore backups.' });
           return;
         }
+        if (refuseUntilServerLoginSaved(response)) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 202, await backupAgent.startRestore({
           ...(body.address ? { address: String(body.address) } : {}),
