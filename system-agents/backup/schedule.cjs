@@ -130,15 +130,14 @@ function integerWithin(value, low, high, fallback) {
 // Rejects only what cannot be honoured; everything else falls back to the
 // current setting, then to the default. A schedule with a nonsense weekday is a
 // caller bug, not something to leave an owner's backups switched off over.
+//
+// Where the backups go is not here: that is the primary destination, shared by
+// everything that backs up on its own (`primary.cjs`).
 function normalizeSchedule(input = {}, { current = null, defaultTimeZone = systemTimeZone() } = {}) {
   const base = { ...DEFAULT_SCHEDULE, ...(current || {}) };
   const enabled = input.enabled === true;
   const timeZone = isValidTimeZone(input.timeZone) ? input.timeZone : isValidTimeZone(base.timeZone) ? base.timeZone : defaultTimeZone;
-  const destinationId = String(input.destinationId || base.destinationId || '').trim() || null;
-  if (enabled && !destinationId) throw new Error('Choose the drive automatic backups should be written to.');
   return {
-    destinationId,
-    destinationLabel: String(input.destinationLabel || base.destinationLabel || '').trim() || null,
     enabled,
     frequency: FREQUENCIES.includes(input.frequency) ? input.frequency : FREQUENCIES.includes(base.frequency) ? base.frequency : 'daily',
     hour: integerWithin(input.hour, 0, 23, base.hour),
@@ -149,20 +148,20 @@ function normalizeSchedule(input = {}, { current = null, defaultTimeZone = syste
   };
 }
 
-// Whether two schedules fire at different moments. Editing retention or the
-// destination must not move the next run, but changing the time must, so that
-// a schedule moved from 3am to 9am at noon waits until tomorrow instead of
-// firing the moment it is saved.
+// Whether two schedules fire at different moments. Editing retention must not
+// move the next run, but changing the time must, so that a schedule moved from
+// 3am to 9am at noon waits until tomorrow instead of firing the moment it is
+// saved.
 function timingChanged(before, after) {
   if (!before) return true;
   return ['frequency', 'hour', 'minute', 'timeZone', 'weekday'].some((field) => before[field] !== after[field]);
 }
 
-// Only backups the schedule itself made are ever pruned. A backup an owner took
-// by hand marks a moment they chose — before a risky upgrade, after a migration
-// — and a retention rule that deleted one would be removing the copy someone
-// was counting on. Points whose origin is unrecorded, from before automatic
-// backups existed, count as manual for the same reason.
+// Only backups MOS took on its own are ever pruned — the schedule's, and the
+// one taken before a MOS update. A backup an owner took by hand marks a moment
+// they chose, and a retention rule that deleted one would be removing the copy
+// someone was counting on. Points whose origin is unrecorded, from before
+// automatic backups existed, count as manual for the same reason.
 // Returned oldest first, because they are deleted one at a time and a run that
 // stops halfway should have removed the least useful copies.
 function retentionVictims(points, keepLast) {

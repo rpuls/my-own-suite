@@ -16,6 +16,7 @@ const { BackupAgentCore, isRestorePointPath, RESTORE_ADDRESS_PLANS, restorePubli
 const { renderHttpsCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
 const { BackupSystemAdapter } = require('./system-adapter.cjs');
 const { BackupScheduler } = require('./scheduler.cjs');
+const { PrimaryDestination } = require('./primary.cjs');
 const { DestinationResolver, parseObjectLocator } = require('./destinations.cjs');
 const { isObjectDestinationId, normalizeObjectDestination, ObjectDestinationRegistry, objectRepositorySpec, publicObjectDestination } = require('./object-destinations.cjs');
 const { createEngine, ENGINE_MISSING_MESSAGE, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage } = require('./engines/engine.cjs');
@@ -26,6 +27,7 @@ const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
 const { SuiteManagerStore } = require('../../suite-manager/backend/src/state/suite-manager-store.cjs');
+const { UpdateAgentClient } = require('../../suite-manager/backend/src/updates/update-agent-client.cjs');
 
 const socketPath = process.env.MOS_BACKUP_AGENT_SOCKET || '/run/mos-backup-agent/agent.sock';
 const stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos';
@@ -284,6 +286,22 @@ async function mountDestination(destinationId) {
 // nothing else. A path that is not a mount path is refused because the
 // directory outlives the mount: without this, a backup aimed at a drive that
 // has been unplugged writes silently onto the system disk.
+// Anything that backs up without being asked names this instead of a drive:
+// only this agent knows which mounted destination is the primary right now,
+// including a drive that came back on a different mount path.
+const PRIMARY_DESTINATION = 'primary';
+async function primaryBackupDestinationId() {
+  const chosen = primary.read();
+  if (!chosen) {
+    throw Object.assign(new Error('No destination is set for automatic backups, so there is nowhere to write this backup.'), { code: 'NO_PRIMARY_DESTINATION' });
+  }
+  const mounted = (await listDestinations()).filter((destination) => destination.ready);
+  const destination = primary.resolve(mounted);
+  const absentCode = isObjectDestinationId(chosen.destinationId) ? 'DESTINATION_UNREACHABLE' : 'DESTINATION_ABSENT';
+  if (!destination) throw Object.assign(new Error('The destination automatic backups are written to is not available right now.'), { code: absentCode });
+  if (!destination.writable) throw Object.assign(new Error('The backup drive is connected but not writable.'), { code: absentCode });
+  return destination.id;
+}
 function normalizeDestinationId(candidate) {
   const value = String(candidate || '');
   if (isObjectDestinationId(value)) return objectRegistry.get(value) ? value : null;
@@ -337,7 +355,9 @@ function summarizeJob(job) {
 function isActive(job) { return job && (job.status === 'queued' || job.status === 'running'); }
 function jobPath(id) { return path.join(jobsDir, `${id}.json`); }
 function createJob(kind, payload) {
-  if (isActive(reconcileCurrentJob())) throw new Error('A backup or restore job is already running.');
+  // The code travels so a caller that can simply wait — the checkpoint before
+  // an update — can tell "busy right now" from a refusal it has to report.
+  if (isActive(reconcileCurrentJob())) throw Object.assign(new Error('A backup or restore job is already running.'), { code: 'JOB_ACTIVE' });
   const interrupted = core.interruptedRestore();
   // Validation never touches the running suite, so it stays available while an
   // interrupted restore blocks destructive work — checking whether a backup is
@@ -356,7 +376,9 @@ function createJob(kind, payload) {
   // so the refusal happens here rather than after a job has been queued.
   if ((kind === 'restore' || kind === 'validate') && !isRestorePointPath(backupPath) && !parseObjectLocator(backupPath)) throw new Error(UNREADABLE_LEGACY_BACKUP);
   if (kind === 'restore' && payload.confirmation !== 'RESTORE') throw new Error('Type RESTORE to confirm this destructive restore.');
-  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator: payload.initiator === 'schedule' ? 'schedule' : 'owner', kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(note ? { note } : {}), ...(address ? { address } : {}) };
+  const initiator = payload.initiator === 'schedule' || payload.initiator === 'update' ? payload.initiator : 'owner';
+  const updateTarget = kind === 'backup' && initiator === 'update' ? String(payload.updateTarget || '').trim().slice(0, 60) : '';
+  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator, kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(note ? { note } : {}), ...(address ? { address } : {}), ...(updateTarget ? { updateTarget } : {}) };
   writeJson(jobPath(id), job);
   writeJson(currentJobPath, job);
   spawn(process.execPath, [__filename, '--worker', jobPath(id)], { cwd: repoDir, detached: true, env: process.env, stdio: 'ignore' }).unref();
@@ -704,7 +726,7 @@ async function unlockDestination(body) {
 // depend on which drives happen to be mounted.
 async function scheduledRestorePoints(destinationId) {
   const points = await destinationResolver.resolve(destinationId).points.summaries();
-  return points.map((point) => ({ automatic: point.automatic, createdAt: point.createdAt, path: point.locator }));
+  return points.map((point) => ({ automatic: point.automatic, createdAt: point.createdAt, initiator: point.initiator, path: point.locator }));
 }
 
 const recoveryRecord = new RecoveryKeyRecord({ agentStateDir });
@@ -712,25 +734,46 @@ const engine = createEngine({ agentStateDir, onKeyUsed: () => recoveryRecord.not
 const objectRegistry = new ObjectDestinationRegistry({ agentStateDir });
 const backupSystem = new BackupSystemAdapter({ agentStateDir, repoDir, stateDir, stateRoot });
 const destinationResolver = new DestinationResolver({ agentStateDir, engine, objectRegistry, system: backupSystem });
+// Both agents run as root under the same unit template, so this agent can ask
+// the update agent what it is doing over its socket the way Suite Manager does.
+const updateAgent = new UpdateAgentClient();
+
+// A drive is identified by the descriptor MOS wrote beside its repository; a
+// bucket by the repository's own id, which the connection settings can be
+// re-entered around without becoming a different destination.
+function destinationRepositoryId(destinationId) {
+  if (!destinationId) return null;
+  if (isObjectDestinationId(destinationId)) return destinationResolver.resolve(destinationId).descriptorRepositoryId();
+  return readRepositoryDescriptor(destinationId)?.repositoryId || null;
+}
+
+// Whether a platform update is running. An update restarts this agent partway
+// through, so a backup that started underneath one would be cut off mid-write.
+// An update agent that does not answer is not an update in progress: a backup
+// refused because a socket was missing would be a backup that never happened.
+async function updateInProgress() {
+  try {
+    const summary = await updateAgent.summary();
+    return isActive(summary?.currentJob);
+  } catch {
+    return false;
+  }
+}
+
+const primary = new PrimaryDestination({ agentStateDir, repositoryId: destinationRepositoryId });
 
 const scheduler = new BackupScheduler({
   agentStateDir,
   createJob: (kind, payload) => createJob(kind, payload),
   destinations: async () => (await listDestinations()).filter((destination) => destination.ready),
   log: (message) => process.stdout.write(`[mos-backup-agent] ${message}\n`),
+  primary,
   // Reconciled first: a worker killed by a power loss leaves its job file
   // saying "running" until something checks, and the scheduler must not wait
   // on that forever just because nobody had the Backups screen open.
   readJob: (id) => { reconcileCurrentJob(); try { return readJson(jobPath(id)); } catch { return null; } },
-  // A drive is identified by the descriptor MOS wrote beside its repository; a
-  // bucket by the repository's own id, which the connection settings can be
-  // re-entered around without becoming a different destination.
-  repositoryId: (destinationId) => {
-    if (!destinationId) return null;
-    if (isObjectDestinationId(destinationId)) return destinationResolver.resolve(destinationId).descriptorRepositoryId();
-    return readRepositoryDescriptor(destinationId)?.repositoryId || null;
-  },
   restorePoints: scheduledRestorePoints,
+  updateInProgress,
 });
 
 const core = new BackupAgentCore({
@@ -780,7 +823,7 @@ if (require.main === module && process.argv[2] === '--worker') {
         ));
         respond(response, 200, {
           backups: await listBackups(destinations),
-          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['connect-object', 'list', 'mount'], recoveryKey: ['acknowledge', 'reveal', 'unlock'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
+          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['connect-object', 'list', 'mount', 'primary'], recoveryKey: ['acknowledge', 'reveal', 'unlock'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
           currentJob: summarizeJob(reconcileCurrentJob()),
           destinations,
           // Named so the screen can say which machine wrote a restore point, and
@@ -789,10 +832,45 @@ if (require.main === module && process.argv[2] === '--worker') {
           installId: installId(),
           interruptedRestore: core.interruptedRestore(),
           lastJob: summarizeJob(latestJob()),
+          // Where everything that backs up on its own writes: the schedule, and
+          // the checkpoint before a MOS update.
+          primaryDestination: primary.state(),
           recoveryKey: recoveryKeyStatus(),
           schedule: scheduler.state(),
           service: 'mos-backup-agent',
         });
+        return;
+      }
+      // The cheap read. A full status lists every drive and reaches every
+      // connected bucket, which is far too much for the two questions another
+      // agent asks often: is a job running, and where do unattended backups go.
+      if (request.method === 'GET' && url.pathname === '/v1/summary') {
+        respond(response, 200, {
+          currentJob: summarizeJob(reconcileCurrentJob()),
+          primaryDestination: primary.state(),
+          schedule: scheduler.state(),
+          service: 'mos-backup-agent',
+        });
+        return;
+      }
+      // One job by id, for a caller waiting on the backup it asked for: the
+      // current job may already be someone else's by the time it looks.
+      if (request.method === 'GET' && url.pathname.startsWith('/v1/jobs/')) {
+        const id = path.basename(url.pathname);
+        reconcileCurrentJob();
+        let job = null;
+        try { job = readJson(jobPath(id)); } catch {}
+        if (!job) { respond(response, 404, { code: 'NOT_FOUND', error: 'Job was not found.' }); return; }
+        respond(response, 200, { job: summarizeJob(job) });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/destinations/primary') {
+        const body = await readBody(request);
+        if (body.destinationId === null) { respond(response, 200, { primaryDestination: primary.clear() }); return; }
+        const destinationId = normalizeDestinationId(body.destinationId);
+        if (!destinationId) throw new Error('Choose a connected drive or a storage connection for automatic backups.');
+        const known = (await listDestinations()).find((destination) => destination.id === destinationId);
+        respond(response, 200, { primaryDestination: primary.save({ destinationId, label: known?.label || null }) });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/destinations/mount') { respond(response, 200, { destination: await mountDestination((await readBody(request)).destinationId) }); return; }
@@ -839,8 +917,8 @@ if (require.main === module && process.argv[2] === '--worker') {
         // Disconnecting forgets how to reach the bucket. It never deletes what
         // is in it: the backups stay, and reconnecting the same bucket lists
         // them again.
-        if (scheduler.state().destinationId === body.destinationId && scheduler.state().enabled) {
-          throw new Error('Automatic backups are set to use this storage. Turn them off or point them at another destination first.');
+        if (primary.read()?.destinationId === body.destinationId) {
+          throw new Error('Automatic backups are set to use this storage. Choose another destination for them first.');
         }
         const removed = objectRegistry.remove(String(body.destinationId || ''));
         destinationResolver.forget(removed.id);
@@ -850,15 +928,19 @@ if (require.main === module && process.argv[2] === '--worker') {
       if (request.method === 'POST' && url.pathname === '/v1/backups') {
         const body = await readBody(request);
         assertRecoveryKeyAcknowledged(url.pathname, body);
-        const destinationId = normalizeDestinationId(body.destinationId);
+        const requested = body.destinationId === PRIMARY_DESTINATION ? await primaryBackupDestinationId() : body.destinationId;
+        const destinationId = normalizeDestinationId(requested);
         if (destinationId) await destinationResolver.resolve(destinationId).assertAvailable();
-        respond(response, 202, { job: createJob('backup', body) });
+        respond(response, 202, { job: createJob('backup', { ...body, destinationId: requested }) });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/backups/validate') { respond(response, 202, { job: createJob('validate', await readBody(request)) }); return; }
       if (request.method === 'POST' && url.pathname === '/v1/schedule') {
         const body = await readBody(request);
         assertRecoveryKeyAcknowledged(url.pathname, body);
+        // Where the backups go is the primary's, not the schedule's, so a
+        // schedule cannot be turned on before one is chosen.
+        if (body.enabled === true && !primary.read()) throw new Error('Choose the destination automatic backups go to before turning them on.');
         respond(response, 200, { schedule: scheduler.save(body) });
         return;
       }

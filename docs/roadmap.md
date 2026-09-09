@@ -45,14 +45,10 @@ restore from a real provider (`docs/decisions.md`, 2026-09-06). The owner holds 
 all of it, and a replacement machine can take over a destination the original wrote (`docs/decisions.md`,
 2026-09-07).
 
-- **A4 — Pre-update backups and last-known-good protection.** The schedule and retention half is
-  done (`docs/decisions.md`, 2026-09-06): backups run daily or weekly with a keep-last policy, driven
-  by a timer inside the backup agent. What remains is the other trigger — a checkpoint before every
-  update, on by default and switchable off. It needs the same "waiting, not failed" outcome the
-  schedule already has when the destination is not connected, and it has to be precise about scope,
-  because a platform update and a per-app update transaction are different things. Worth deciding at
-  the same time: a scheduled backup and a platform update can currently overlap, since the agents
-  hold separate queues and neither asks the other what it is doing. *(Small)*
+- **A4 — Pre-update backups and last-known-good protection.** `#282`. Built and unit-covered
+  (`docs/decisions.md`, 2026-09-09): a MOS update takes a backup of the whole suite first, waits
+  rather than fails when the destination is not connected, and the two queues now refuse each other.
+  Open only until the lab drill confirms it end to end. *(Small)*
 - **A7 — Decide a cleanup story for anonymous Docker volumes.** Unlabeled, hash-named volumes left
   behind by removed app containers are outside MOS ownership by design, so restore correctly refuses
   to claim them — and nothing else ever removes them either. *(Small — needs a decision first)*

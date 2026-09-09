@@ -96,9 +96,9 @@ class FakeObjectEngine {
   async repositoryStats() { return { storedBytes: 4096 }; }
 }
 
-function manifestFor(id, { initiator = 'owner' } = {}) {
+function manifestFor(id, { initiator = 'owner', updateTarget = null } = {}) {
   return {
-    backup: { createdAt: `2026-09-0${id.slice(-1)}T03:00:00.000Z`, engine: 'restic', id, initiator, kind: 'mos-whole-suite', schemaVersion: 4 },
+    backup: { createdAt: `2026-09-0${id.slice(-1)}T03:00:00.000Z`, engine: 'restic', id, initiator, kind: 'mos-whole-suite', schemaVersion: 4, updateTarget },
     contents: { apps: [{ packageId: 'immich' }], stateRawBytes: 1000, volumes: [{ name: 'mos-app-immich-data', rawBytes: 2000 }] },
     source: { domain: 'mos.example.com', hostname: 'mos-home', installId: 'install-one', version: '0.20.0' },
   };
@@ -206,6 +206,15 @@ test('retention can still tell a scheduled backup from one an owner took', async
   await world.destination.points.write('point-2', manifestFor('point-2'));
   const summaries = await world.destination.points.summaries();
   assert.deepEqual(summaries.map((point) => [point.id, point.automatic]).sort(), [['point-1', true], ['point-2', false]]);
+});
+
+test('a backup taken before an update is listed as automatic and says which update', async () => {
+  const world = await bucket();
+  await world.destination.points.write('point-3', manifestFor('point-3', { initiator: 'update', updateTarget: '0.20.0' }));
+  const [point] = await world.destination.points.summaries();
+  assert.equal(point.automatic, true, 'retention counts it, and its newest is what retention spares');
+  assert.equal(point.initiator, 'update');
+  assert.equal(point.updateTarget, '0.20.0');
 });
 
 test('a bucket with no MOS store in it yet lists nothing instead of failing', async () => {

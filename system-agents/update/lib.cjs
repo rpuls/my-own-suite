@@ -131,6 +131,7 @@ function runNode(paths, scriptPath, args, log) {
 function summarizeJob(job) {
   if (!job) return null;
   return {
+    checkpoint: job.checkpoint || null,
     completedAt: job.completedAt || null,
     error: typeof job.error === 'string' ? job.error : null,
     id: job.id,

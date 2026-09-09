@@ -49,6 +49,11 @@ class BackupAgentClient {
   }
 
   status() { return this.request('GET', '/v1/status'); }
+  // The current job and the schedule alone. A full status lists every drive and
+  // reaches every connected bucket, which is far more than a caller polling for
+  // "is a backup running" needs.
+  summary() { return this.request('GET', '/v1/summary'); }
+  job(id) { return this.request('GET', `/v1/jobs/${encodeURIComponent(id)}`); }
   mount(destinationId) { return this.request('POST', '/v1/destinations/mount', { destinationId }); }
   connectObjectDestination(input) { return this.request('POST', '/v1/destinations/object', input); }
   disconnectObjectDestination(input) { return this.request('POST', '/v1/destinations/object/remove', input); }
@@ -58,6 +63,7 @@ class BackupAgentClient {
   deleteBackup(input) { return this.request('POST', '/v1/backups/delete', input); }
   setBackupNote(input) { return this.request('POST', '/v1/backups/note', input); }
   setSchedule(input) { return this.request('POST', '/v1/schedule', input); }
+  setPrimaryDestination(input) { return this.request('POST', '/v1/destinations/primary', input); }
   startRestore(input) { return this.request('POST', '/v1/restores', input); }
   acknowledgeInterruptedRestore(input) { return this.request('POST', '/v1/restores/acknowledge-interruption', input); }
   recoveryKeyStatus() { return this.request('GET', '/v1/recovery-key'); }

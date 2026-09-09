@@ -7,10 +7,13 @@ const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 
 const { buildPaths, collectStatus, readJson, readLastStatus, repoRootFrom, summarizeJob, writeJson, writeUpdateTrack } = require('./lib.cjs');
+const { BackupAgentClient } = require('../../suite-manager/backend/src/backups/backup-agent-client.cjs');
+const { CANCELLABLE_STAGES, CANCELLED, SKIPPABLE_STAGES } = require('./checkpoint.cjs');
 
 const repoRoot = process.env.MOS_REPO_DIR || repoRootFrom(process.cwd());
 const stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos';
 const socketPath = process.env.MOS_UPDATE_AGENT_SOCKET || '/run/mos-update-agent/agent.sock';
+const backupSocketPath = process.env.MOS_BACKUP_AGENT_SOCKET || '/run/mos-backup-agent/agent.sock';
 const paths = buildPaths(repoRoot, stateRoot);
 
 function respond(response, statusCode, payload) {
@@ -81,9 +84,31 @@ function isActive(job) {
   return Boolean(job && (job.status === 'queued' || job.status === 'running'));
 }
 
+const backupAgent = new BackupAgentClient({ socketPath: backupSocketPath });
+
+// An update restarts the host agents, the backup agent included, so it must not
+// begin while a backup, restore, check or delete is running: the reconcile step
+// would cut it off mid-write. Asked at the start, which is the only moment it
+// can be answered usefully — once the checkpoint has the backup queue, nothing
+// else can take it before the apply.
+async function activeBackupJob() {
+  try {
+    const summary = await backupAgent.summary();
+    return isActive(summary?.currentJob) ? summary.currentJob : null;
+  } catch {
+    return null;
+  }
+}
+
+function backupBusyMessage(job) {
+  const noun = job?.kind === 'restore' ? 'restore' : job?.kind === 'validate' ? 'backup check' : job?.kind === 'delete' ? 'backup deletion' : 'backup';
+  return `A ${noun} is running. Start the update when it finishes.`;
+}
+
 function createJob(payload) {
   const at = new Date().toISOString();
   const job = {
+    checkpoint: { backupId: null, jobId: null, status: 'pending', target: null, waiting: null },
     createdAt: at,
     id: crypto.randomUUID(),
     initiator: typeof payload?.initiator === 'string' ? payload.initiator.slice(0, 120) : 'owner',
@@ -127,6 +152,9 @@ function startWorker(job) {
       '--collect',
       `--unit=${unitName}`,
       `--working-directory=${workerCwd}`,
+      // A transient unit inherits nothing, and the worker is what asks the
+      // backup agent for the backup this update takes before it applies.
+      `--setenv=MOS_BACKUP_AGENT_SOCKET=${backupSocketPath}`,
       `--setenv=MOS_REPO_DIR=${repoRoot}`,
       `--setenv=MOS_STATE_ROOT=${stateRoot}`,
       `--setenv=NODE_ENV=${workerEnv.NODE_ENV || 'production'}`,
@@ -158,7 +186,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'GET' && url.pathname === '/v1/status') {
       const currentJob = readCurrentJob();
       respond(response, 200, {
-        capabilities: { updates: { capabilities: ['apply', 'configure-track'] } },
+        capabilities: { updates: { capabilities: ['apply', 'cancel', 'checkpoint', 'configure-track', 'skip-backup'] } },
         currentJob: summarizeJob(currentJob),
         lastJob: summarizeJob(readLatestJob()),
         repoDir: repoRoot,
@@ -168,15 +196,53 @@ const server = http.createServer(async (request, response) => {
       });
       return;
     }
+    // The cheap read. A full status asks the origin what the latest release is,
+    // which is far too much for the one question the backup agent asks often.
+    if (request.method === 'GET' && url.pathname === '/v1/summary') {
+      respond(response, 200, { currentJob: summarizeJob(readCurrentJob()), service: 'mos-update-agent' });
+      return;
+    }
     if (request.method === 'POST' && url.pathname === '/v1/jobs') {
       const existing = readCurrentJob();
       if (isActive(existing)) {
         respond(response, 409, { currentJob: summarizeJob(existing), error: 'An update job is already running.' });
         return;
       }
+      const backupJob = await activeBackupJob();
+      if (backupJob) {
+        respond(response, 409, { code: 'BACKUP_RUNNING', error: backupBusyMessage(backupJob) });
+        return;
+      }
       const job = createJob(await readBody(request));
       startWorker(job);
       respond(response, 202, { job: summarizeJob(job) });
+      return;
+    }
+    // The two answers an owner can give while the update waits for its backup.
+    // Cancel is honoured until the apply begins: past that the checkout, the
+    // build and the reconcile are under way and stopping them partway is what a
+    // rollback is for. Going on without a backup is honoured only while there is
+    // nowhere to write one; a backup already running is left to finish.
+    if (request.method === 'POST' && url.pathname.startsWith('/v1/jobs/') && (url.pathname.endsWith('/cancel') || url.pathname.endsWith('/skip-backup'))) {
+      const skip = url.pathname.endsWith('/skip-backup');
+      const id = path.basename(path.dirname(url.pathname));
+      const jobPath = path.join(paths.jobsDir, `${id}.json`);
+      if (!fs.existsSync(jobPath)) {
+        respond(response, 404, { code: 'NOT_FOUND', error: 'Job was not found.' });
+        return;
+      }
+      const job = readJson(jobPath);
+      if (!isActive(job) || !(skip ? SKIPPABLE_STAGES : CANCELLABLE_STAGES).includes(job.stage)) {
+        respond(response, 409, { code: 'UPDATE_UNDERWAY', error: skip ? 'The update is no longer waiting for a backup.' : 'The update has already started applying and can no longer be cancelled.' });
+        return;
+      }
+      const at = new Date().toISOString();
+      const next = skip
+        ? { ...job, checkpoint: { ...job.checkpoint, decision: 'skip' }, updatedAt: at }
+        : { ...job, completedAt: at, error: CANCELLED, stage: 'cancelled', status: 'cancelled', updatedAt: at };
+      writeJson(jobPath, next);
+      writeJson(paths.currentJobPath, summarizeJob(next));
+      respond(response, 200, { job: summarizeJob(next) });
       return;
     }
     if (request.method === 'POST' && url.pathname === '/v1/track') {

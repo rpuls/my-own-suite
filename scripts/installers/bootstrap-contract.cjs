@@ -450,6 +450,7 @@ WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_BACKUP_AGENT_SOCKET=/run/mos-backup-agent/agent.sock
 Environment=MOS_BACKUP_AGENT_STATE_DIR=$MOS_STATE_ROOT/backup-agent
+Environment=MOS_UPDATE_AGENT_SOCKET=/run/mos-update-agent/agent.sock
 Environment=MOS_STATE_ROOT=$MOS_STATE_ROOT
 Environment=MOS_STATE_DIR=$MOS_STATE_ROOT/suite-manager
 Environment=MOS_REPO_DIR=$MOS_INSTALL_ROOT/repo
@@ -476,6 +477,7 @@ UMask=0007
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_UPDATE_AGENT_SOCKET=/run/mos-update-agent/agent.sock
+Environment=MOS_BACKUP_AGENT_SOCKET=/run/mos-backup-agent/agent.sock
 Environment=MOS_REPO_DIR=$MOS_INSTALL_ROOT/repo
 Environment=MOS_STATE_ROOT=$MOS_STATE_ROOT
 ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/update/agent.cjs

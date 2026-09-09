@@ -2476,6 +2476,7 @@
 .suite-file-list small { color: var(--mos-color-text-muted); text-transform: uppercase; }
 .suite-editor-column { display: grid; min-width: 0; gap: var(--mos-space-4); }
 .suite-editor-actions { display: flex; flex-wrap: wrap; gap: var(--mos-space-2); }
+.suite-notice-actions { display: flex; flex-wrap: wrap; gap: var(--mos-space-2); margin-top: var(--mos-space-2); }
 .suite-code-editor { min-height: min(65vh, 760px); overflow: hidden; border: var(--mos-border-strong); border-radius: var(--mos-radius-sm); background: var(--mos-color-bg-soft); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; line-height: 1.5; }
 .suite-code-editor .cm-editor { min-height: min(65vh, 760px); color: var(--mos-color-text); }
 .suite-code-editor .cm-editor.cm-focused { outline: var(--mos-focus-ring); }

@@ -279,10 +279,11 @@ function summarize(manifest, { id, locator, note }) {
   const rawBytes = (manifest?.contents?.stateRawBytes || 0) + volumes.reduce((sum, volume) => sum + (volume.rawBytes || 0), 0);
   return {
     appCount: manifest?.contents?.apps?.length || 0,
-    automatic: manifest?.backup?.initiator === 'schedule',
+    automatic: manifest?.backup?.initiator === 'schedule' || manifest?.backup?.initiator === 'update',
     createdAt: manifest?.backup?.createdAt || null,
     engineName: manifest?.backup?.engine || null,
     id: manifest?.backup?.id || id,
+    initiator: manifest?.backup?.initiator === 'schedule' || manifest?.backup?.initiator === 'update' ? manifest.backup.initiator : 'owner',
     locator,
     note: note || null,
     schemaVersion: manifest?.backup?.schemaVersion || null,
@@ -292,6 +293,9 @@ function summarize(manifest, { id, locator, note }) {
     sourceHostname: manifest?.source?.hostname || null,
     sourceInstallId: manifest?.source?.installId || null,
     sourceVersion: manifest?.source?.version || null,
+    // The version the update was heading for, so a checkpoint can say which one
+    // it was taken before rather than only that it was taken before something.
+    updateTarget: manifest?.backup?.updateTarget || null,
     volumeCount: volumes.length,
   };
 }

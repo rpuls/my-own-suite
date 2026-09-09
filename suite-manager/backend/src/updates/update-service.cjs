@@ -10,9 +10,25 @@ function capabilityAvailable(capabilities, resource, capability) {
   return value?.capabilities?.includes(capability) === true;
 }
 
+// The backup taken before the apply, as job state rather than a log line: an
+// owner who reloads while it is waiting still has to see which restore point is
+// being taken and what it is waiting for.
+function normalizeCheckpoint(checkpoint) {
+  if (!checkpoint) return null;
+  const waiting = checkpoint.waiting && typeof checkpoint.waiting.reason === 'string' ? checkpoint.waiting : null;
+  return {
+    backupId: typeof checkpoint.backupId === 'string' ? checkpoint.backupId : null,
+    jobId: typeof checkpoint.jobId === 'string' ? checkpoint.jobId : null,
+    status: typeof checkpoint.status === 'string' ? checkpoint.status : null,
+    target: typeof checkpoint.target === 'string' ? checkpoint.target : null,
+    waiting: waiting ? { reason: waiting.reason, since: typeof waiting.since === 'string' ? waiting.since : null } : null,
+  };
+}
+
 function normalizeJob(job) {
   if (!job) return null;
   return {
+    checkpoint: normalizeCheckpoint(job.checkpoint),
     completedAt: typeof job.completedAt === 'string' ? job.completedAt : null,
     error: typeof job.error === 'string' ? job.error : null,
     id: typeof job.id === 'string' ? job.id : '',
@@ -36,9 +52,20 @@ function normalizeCheckFailure(checkFailure) {
   return { diagnostics, errorCode, reason: checkFailure.reason };
 }
 
+// Where the backup before an update would go, so the Updates screen can say so
+// before the click — or say that there is nowhere.
+function normalizeCheckpointSettings(agentPayload, summary) {
+  const primary = summary?.primaryDestination || null;
+  return {
+    destinationLabel: typeof primary?.label === 'string' ? primary.label : null,
+    ready: Boolean(primary?.destinationId),
+    supported: capabilityAvailable(agentPayload?.capabilities, 'updates', 'checkpoint'),
+  };
+}
+
 // updateAvailable is three-valued: null means the last check did not
 // complete, which is neither "up to date" nor "an update is waiting".
-function normalizeStatus(agentPayload, serviceAvailable) {
+function normalizeStatus(agentPayload, serviceAvailable, summary = null) {
   const updaterStatus = agentPayload?.updaterStatus || {};
   const track = updaterStatus.track || {};
   const latestRelease = updaterStatus.latestRelease || {};
@@ -54,6 +81,7 @@ function normalizeStatus(agentPayload, serviceAvailable) {
     },
     checkFailure,
     checkedAt: typeof updaterStatus.checkedAt === 'string' ? updaterStatus.checkedAt : new Date().toISOString(),
+    checkpoint: normalizeCheckpointSettings(agentPayload, summary),
     currentJob: normalizeJob(agentPayload?.currentJob),
     error: typeof updaterStatus.error === 'string' ? updaterStatus.error : null,
     installedVersion: typeof updaterStatus.installedVersion === 'string' ? updaterStatus.installedVersion : null,
@@ -79,14 +107,36 @@ function normalizeStatus(agentPayload, serviceAvailable) {
   };
 }
 
+function requiredJobId(input, verb) {
+  const id = String(input.id || '').trim();
+  if (id) return id;
+  const error = new Error(`Choose the update to ${verb}.`);
+  error.statusCode = 400;
+  throw error;
+}
+
 class UpdateService {
-  constructor({ agent }) {
+  constructor({ agent, backupAgent = null }) {
     this.agent = agent;
+    this.backupAgent = backupAgent;
+  }
+
+  // The cheap read on the backup agent: the schedule and whatever job is
+  // running. A backup agent that does not answer leaves the Updates screen
+  // saying no checkpoint will be taken, which is what would happen.
+  async backupSummary() {
+    if (!this.backupAgent) return null;
+    try {
+      return await this.backupAgent.summary();
+    } catch {
+      return null;
+    }
   }
 
   async status() {
     try {
-      return normalizeStatus(await this.agent.status(), true);
+      const [agentPayload, summary] = await Promise.all([this.agent.status(), this.backupSummary()]);
+      return normalizeStatus(agentPayload, true, summary);
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Update system agent is unavailable.';
       return normalizeStatus({
@@ -122,7 +172,22 @@ class UpdateService {
       error.statusCode = 409;
       throw error;
     }
+    // The agent refuses to begin on top of backup work, naming what is
+    // running; that sentence reaches the owner as it is.
     return this.agent.startUpdate({ initiator: input.initiator || 'owner', target: 'latest' });
+  }
+
+  // The two answers an owner can give while an update waits for its backup.
+  // The agent enforces when each is still possible, because it is what knows
+  // how far the apply has gone.
+  async cancel(input = {}) {
+    await this.agent.cancelUpdate(requiredJobId(input, 'cancel'));
+    return this.status();
+  }
+
+  async skipBackup(input = {}) {
+    await this.agent.skipBackup(requiredJobId(input, 'update without a backup'));
+    return this.status();
   }
 
   async configureTrack(input = {}) {

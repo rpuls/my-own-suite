@@ -4,7 +4,17 @@ import { AdvancedPanel, Notice, Select, Spinner } from '../../components/ui';
 import { buildChanged, servedBuildId } from '../../frontend-build';
 import { jsonResponse } from '../../lib/api';
 
+type UpdateCheckpoint = {
+  backupId: string | null;
+  jobId: string | null;
+  requested: boolean;
+  status: string | null;
+  target: string | null;
+  waiting: { reason: string; since: string | null } | null;
+};
+
 type UpdateJob = {
+  checkpoint: UpdateCheckpoint | null;
   error: string | null;
   id: string;
   logs?: Array<{ at?: string; message?: string }>;
@@ -18,6 +28,7 @@ type UpdateStatus = {
   changeSummary: { items: string[]; source: string | null; title: string };
   checkFailure: { diagnostics: string | null; errorCode: string; reason: string } | null;
   checkedAt: string;
+  checkpoint: { destinationLabel: string | null; ready: boolean; supported: boolean };
   currentJob: UpdateJob | null;
   error: string | null;
   installedVersion: string | null;
@@ -61,6 +72,27 @@ function isRunning(job: UpdateJob | null) {
   return Boolean(job && (job.status === 'queued' || job.status === 'running'));
 }
 
+// The two stages before anything is fetched read as agent internals otherwise,
+// and they are the ones an owner is most likely to be watching.
+const STAGE_LABELS: Record<string, string> = {
+  'taking-checkpoint': 'Taking a backup before updating...',
+  'waiting-for-backup-destination': 'Waiting to take a backup before updating...',
+};
+
+function stageLabel(stage: string | null) {
+  return (stage && STAGE_LABELS[stage]) || stage;
+}
+
+// What the checkpoint did, once it is done.
+function checkpointNote(job: UpdateJob | null) {
+  const checkpoint = job?.checkpoint;
+  if (checkpoint?.status === 'skipped') return 'No backup was taken before this update.';
+  if (checkpoint?.status !== 'succeeded') return null;
+  return checkpoint.target
+    ? `A backup was taken before this update, listed on the Backups screen as "Before update to ${checkpoint.target}".`
+    : 'A backup was taken before this update and is listed on the Backups screen.';
+}
+
 // The tail of the update log, and on a failed job the last lines the failing
 // step wrote. It is a `reveal` computed per render for the reason the prop is a
 // runtime value at all: the same panel is a diagnostic on a failed job and
@@ -100,6 +132,7 @@ export function UpdatesScreen() {
   const running = isRunning(status?.currentJob || null);
   const updating = running || busy === 'update';
   const jobStatus = status?.currentJob?.status || null;
+  const waitingReason = running ? status?.currentJob?.checkpoint?.waiting?.reason || '' : '';
 
   async function load() {
     const next = await jsonResponse<UpdateStatus>(await fetch('/suite-manager/api/updates/status'), 'Unable to load update status.');
@@ -165,6 +198,18 @@ export function UpdatesScreen() {
     });
   }
 
+  // The two answers an owner can give while the update waits for its backup.
+  async function answerWait(answer: 'cancel' | 'skip-backup') {
+    const id = status?.currentJob?.id || '';
+    await runAction(answer, async () => {
+      await jsonResponse(await fetch(`/suite-manager/api/updates/${answer}`, {
+        body: JSON.stringify({ id }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), answer === 'cancel' ? 'Unable to cancel the update.' : 'Unable to go on without a backup.');
+    });
+  }
+
   async function switchTrack() {
     await runAction('track', async () => {
       await jsonResponse(await fetch('/suite-manager/api/updates/track', {
@@ -186,11 +231,18 @@ export function UpdatesScreen() {
       <p>The update brought a new version of this interface. Reloading so you are looking at it.</p>
     </Notice> : null}
     {status && !status.serviceAvailable ? <Notice title="Update agent unavailable" variant="warning"><p>This install does not expose the MOS update agent to Suite Manager yet. Install or repair the host services before using in-app updates.</p></Notice> : null}
-    {updating ? <Notice title={<span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Spinner />{busy === 'update' && !running ? 'Starting update' : 'Update in progress'}</span>} variant="info"><p>Suite Manager may briefly reconnect while the host refreshes repo-owned services and agents.</p></Notice> : null}
+    {waitingReason ? <Notice title="Waiting to back up before updating" variant="warning">
+      <p>{waitingReason}</p>
+      <div className="suite-notice-actions">
+        <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => void answerWait('cancel')} type="button">{busy === 'cancel' ? 'Cancelling...' : 'Cancel update'}</button>
+        <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => void answerWait('skip-backup')} type="button">{busy === 'skip-backup' ? 'Starting...' : 'Update without a backup'}</button>
+      </div>
+    </Notice> : null}
+    {updating && !waitingReason ? <Notice title={<span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Spinner />{busy === 'update' && !running ? 'Starting update' : 'Update in progress'}</span>} variant="info"><p>Suite Manager may briefly reconnect while the host refreshes repo-owned services and agents.</p></Notice> : null}
     {updating ? <div className="suite-updates-progress" role="status" aria-live="polite">
       <div className="suite-updates-progress-bar" aria-hidden="true" />
       <div>
-        <strong>{busy === 'update' && !running ? 'Asking the update agent to start...' : status?.currentJob?.stage || 'Refreshing repo-owned services...'}</strong>
+        <strong>{busy === 'update' && !running ? 'Asking the update agent to start...' : stageLabel(status?.currentJob?.stage || null) || 'Refreshing repo-owned services...'}</strong>
         <span>Keep this page open; progress and failure details will appear below.</span>
       </div>
     </div> : null}
@@ -226,9 +278,14 @@ export function UpdatesScreen() {
           <button className="mos-btn mos-btn-secondary" disabled={busy === 'track' || updating || track === selectedTrack(status)} onClick={() => void switchTrack()} type="button">{busy === 'track' ? 'Switching...' : 'Switch track'}</button>
         </div> : null}
 
+        {status.checkpoint.supported && !status.checkpoint.ready ? <Notice title="No backup will be taken first" variant="warning">
+          <p>MOS has nowhere to put a backup before this update. <a href="/suite-manager/backups">Choose where automatic backups go</a> to change that; the update runs either way.</p>
+        </Notice> : null}
+
         <button className="mos-btn mos-btn-primary" disabled={!status.managedApplyAvailable || !status.updateAvailable || Boolean(busy) || running || checking} onClick={() => void startUpdate()} type="button">
           {updateButtonLabel(status, updating)}
         </button>
+        {status.checkpoint.supported && status.checkpoint.ready ? <p className="suite-meta">MOS backs up the whole suite to {status.checkpoint.destinationLabel || 'where automatic backups go'} before it updates itself, and waits if that is not connected. App updates are separate and are not backed up first.</p> : null}
         <p className="suite-meta">A platform update refreshes MOS services and host agents. Installed apps keep running from their installed package snapshots; app updates are applied separately from the Apps screen.</p>
       </section>
 
@@ -241,8 +298,10 @@ export function UpdatesScreen() {
 
       {status.currentJob ? <section className="mos-panel suite-card suite-updates-panel">
         <h2 className="mos-card-title">Update activity</h2>
-        <p>{status.currentJob.status === 'failed' ? 'The last update failed.' : status.currentJob.status === 'succeeded' ? 'The last update finished.' : status.currentJob.stage || 'Update activity received.'}</p>
+        <p>{status.currentJob.status === 'failed' ? 'The last update failed.' : status.currentJob.status === 'cancelled' ? 'The last update was cancelled.' : status.currentJob.status === 'succeeded' ? 'The last update finished.' : stageLabel(status.currentJob.stage) || 'Update activity received.'}</p>
         {status.currentJob.error ? <p className="suite-error">{status.currentJob.error}</p> : null}
+        {status.currentJob.status === 'failed' && status.currentJob.stage === 'taking-checkpoint' ? <p className="suite-meta">Nothing on this machine was changed: the update stops before it fetches or builds anything if it cannot back up first. Fix the problem on the Backups screen and start the update again.</p> : null}
+        {checkpointNote(status.currentJob) ? <p className="suite-meta">{checkpointNote(status.currentJob)}</p> : null}
         <UpdateJobLog job={status.currentJob} />
       </section> : null}
     </div> : <p className="suite-meta">Loading update status...</p>}

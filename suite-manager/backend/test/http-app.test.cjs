@@ -702,6 +702,10 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
       calls.push(['schedule', input]);
       return { schedule: { enabled: true } };
     },
+    async setPrimaryDestination(input) {
+      calls.push(['primary', input]);
+      return { primaryDestination: { destinationId: input.destinationId, label: 'Backup Drive' } };
+    },
     async connectObjectDestination(input) {
       calls.push(['connect-object', input]);
       return { destination: { id: 'object:abc123', label: input.label || 'bucket' } };
@@ -798,11 +802,20 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
     assert.equal(deniedSchedule.status, 401);
 
     const schedule = await hostRequest(baseUrl, '/suite-manager/api/backups/schedule', {
-      body: JSON.stringify({ destinationId: '/media/backup', enabled: true, frequency: 'daily', hour: 3, initiator: 'smuggled', keepLast: 7, minute: 0, timeZone: 'Europe/Amsterdam', weekday: 0 }),
+      body: JSON.stringify({ enabled: true, frequency: 'daily', hour: 3, initiator: 'smuggled', keepLast: 7, minute: 0, timeZone: 'Europe/Amsterdam', weekday: 0 }),
       headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
     assert.equal(schedule.status, 200);
+
+    // Which destination everything automatic writes to is its own choice, made
+    // where the destinations are listed rather than inside the schedule.
+    const primary = await hostRequest(baseUrl, '/suite-manager/api/backups/primary', {
+      body: JSON.stringify({ destinationId: '/media/backup', initiator: 'smuggled' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(primary.status, 200);
 
     // Storage credentials go to the agent, which is the only component that
     // keeps them, and only for a signed-in owner.
@@ -845,7 +858,8 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
     assert.deepEqual(calls.filter((call) => call[0] !== 'status'), [
       ['backup', { destinationId: '/media/backup', note: '' }],
       ['restore', { backupPath: backupDir, confirmation: 'RESTORE' }],
-      ['schedule', { destinationId: '/media/backup', destinationLabel: '', enabled: true, frequency: 'daily', hour: 3, keepLast: 7, minute: 0, timeZone: 'Europe/Amsterdam', weekday: 0 }],
+      ['schedule', { enabled: true, frequency: 'daily', hour: 3, keepLast: 7, minute: 0, timeZone: 'Europe/Amsterdam', weekday: 0 }],
+      ['primary', { destinationId: '/media/backup' }],
       ['connect-object', { accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', folder: 'home', label: 'Offsite', region: 'eu-central-1', secretAccessKey: 'super-secret-value' }],
       ['test-object', { accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', folder: '', label: '', region: '', secretAccessKey: 'super-secret-value' }],
       ['disconnect-object', { destinationId: 'object:abc123' }],

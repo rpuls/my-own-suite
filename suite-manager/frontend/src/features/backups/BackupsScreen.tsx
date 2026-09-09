@@ -80,6 +80,9 @@ type BackupEntry = {
   encrypted?: boolean;
   engineName?: string | null;
   id: string;
+  // Who asked for this restore point: the owner, the schedule, or the update
+  // that took it as its last-known-good state before changing anything.
+  initiator?: 'owner' | 'schedule' | 'update';
   kind?: string;
   note?: string | null;
   path: string;
@@ -92,12 +95,19 @@ type BackupEntry = {
   sourceHostname?: string | null;
   sourceInstallId?: string | null;
   sourceVersion: string | null;
+  updateTarget?: string | null;
   volumeCount: number;
 };
 
+// The one destination everything that backs up on its own writes to: the
+// schedule, and the backup taken before a MOS update.
+type PrimaryDestination = {
+  destinationId: string;
+  label: string | null;
+  setAt: string | null;
+};
+
 type BackupSchedule = {
-  destinationId: string | null;
-  destinationLabel: string | null;
   enabled: boolean;
   frequency: 'daily' | 'weekly';
   hour: number;
@@ -146,6 +156,7 @@ type BackupStatus = {
     warnings: Array<{ message: string; packageId: string }>;
   };
   lastJob: BackupJob | null;
+  primaryDestination?: PrimaryDestination | null;
   recoveryKey?: RecoveryKeyState | null;
   restoreGuarantee?: string;
   restoreGuaranteeByKind?: Record<string, string>;
@@ -257,6 +268,14 @@ function backupDescription(backup: BackupEntry) {
   return backup.kind === 'restore-point' ? `${contents} · restores ${size}` : `${contents} · ${size}`;
 }
 
+// The checkpoint MOS takes before it updates itself, named by what it was
+// taken before. It is the one restore point retention never removes, so an
+// owner deciding what to delete can see why this one is here.
+function checkpointLabel(backup: BackupEntry) {
+  if (backup.initiator !== 'update') return null;
+  return backup.updateTarget ? `Before update to ${backup.updateTarget}` : 'Before a MOS update';
+}
+
 // Which machine wrote a restore point, said only when it was not this one. The
 // install id decides when both sides have one — a standby may carry the same
 // name on purpose — and the hostname before that; a backup naming neither
@@ -341,46 +360,54 @@ function scheduleSummary(schedule: BackupSchedule) {
   return '';
 }
 
-function AutomaticBackupsPanel({ busy, destinations, onSave, running, schedule }: {
+// One place answers where everything automatic goes — the schedule and the
+// backup before a MOS update — and it is chosen here, next to the schedule,
+// rather than on a destination card where it would read as a property of the
+// drive. A backup the owner takes by hand still goes wherever they point it.
+function AutomaticBackupsPanel({ busy, destinations, onChoosePrimary, onSave, primary, running, schedule }: {
   busy: string;
   destinations: BackupDestination[];
+  onChoosePrimary: (destinationId: string) => void;
   onSave: (next: Partial<BackupSchedule>) => void;
+  primary: PrimaryDestination | null;
   running: boolean;
   schedule: BackupSchedule;
 }) {
   const locked = Boolean(busy) || running;
   const zone = schedule.timeZone || browserTimeZone();
   const usable = destinations.filter((destination) => destination.ready);
-  // A destination the schedule targets but that is not reachable right now
-  // stays in the list: dropping it would silently repoint the schedule at
-  // whichever drive happened to be plugged in.
-  const options = usable.some((destination) => destination.id === schedule.destinationId) || !schedule.destinationId
-    ? usable.map((destination) => ({ id: destination.id, label: destination.label }))
-    : [...usable.map((destination) => ({ id: destination.id, label: destination.label })), { id: schedule.destinationId, label: `${schedule.destinationLabel || 'Chosen destination'} (not available)` }];
-  const canEnable = options.length > 0;
+  // The chosen destination stays listed while it is away: dropping it would
+  // silently repoint automatic backups at whichever drive happened to be in.
+  const options = primary && !usable.some((destination) => destination.id === primary.destinationId)
+    ? [...usable.map((destination) => ({ id: destination.id, label: destination.label })), { id: primary.destinationId, label: `${primary.label || 'Chosen destination'} (not available)` }]
+    : usable.map((destination) => ({ id: destination.id, label: destination.label }));
 
   return <section className="mos-panel suite-card suite-backup-panel">
     <div>
       <h2 className="mos-card-title">Automatic backups</h2>
       <p className="suite-meta">Without a schedule, the newest backup you have is the one you last remembered to take. Apps pause for a few minutes while a backup runs, which is why it is worth putting somewhere quiet.</p>
     </div>
+    <Select
+      disabled={locked || !options.length}
+      helperText={options.length
+        ? 'Scheduled backups and the backup MOS takes before it updates itself go here. A backup you take yourself can go to any destination.'
+        : 'Connect a writable drive or object storage first.'}
+      label="Back up to"
+      onChange={(event) => { if (event.currentTarget.value) onChoosePrimary(event.currentTarget.value); }}
+      value={primary?.destinationId || ''}
+    >
+      {primary ? null : <option value="">Choose a destination</option>}
+      {options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+    </Select>
     <Switch
       checked={schedule.enabled}
-      description={canEnable ? 'MOS runs a whole-suite backup on its own and reports the result here.' : 'Connect a writable drive or object storage first.'}
-      disabled={locked || !canEnable}
-      label="Back up automatically"
-      onChange={(event) => onSave({ destinationId: schedule.destinationId || options[0]?.id || null, enabled: event.currentTarget.checked })}
+      description={primary ? 'MOS runs a whole-suite backup on its own and reports the result here.' : 'Choose where automatic backups go first.'}
+      disabled={locked || !primary}
+      label="Back up on a schedule"
+      onChange={(event) => onSave({ enabled: event.currentTarget.checked })}
     />
     {schedule.enabled ? <>
       <div className="suite-form-grid">
-        <Select
-          disabled={locked}
-          label="Back up to"
-          onChange={(event) => onSave({ destinationId: event.currentTarget.value })}
-          value={schedule.destinationId || ''}
-        >
-          {options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-        </Select>
         <Select
           disabled={locked}
           label="How often"
@@ -433,9 +460,12 @@ function AutomaticBackupsPanel({ busy, destinations, onSave, running, schedule }
 // thing to choose between, so they share the row and differ only in what they
 // can say about themselves: a drive has space and can be mounted, a bucket has
 // an address and can be edited or disconnected.
-function DestinationItem({ busy, destination, onDisconnect, onEdit, onMount, onSelect, onUnlock, running, selected }: {
+function DestinationItem({ busy, destination, isPrimary, onDisconnect, onEdit, onMount, onSelect, onUnlock, running, selected }: {
   busy: string;
   destination: BackupDestination;
+  // Where automatic backups go, said on the card so the list answers it at a
+  // glance. It is chosen in the Automatic backups panel, not here.
+  isPrimary: boolean;
   onDisconnect: () => void;
   onEdit: () => void;
   onMount: () => void;
@@ -448,6 +478,7 @@ function DestinationItem({ busy, destination, onDisconnect, onEdit, onMount, onS
   const usage = destination.repository;
   const spaceKnown = Boolean(destination.sizeBytes && destination.availableBytes);
   const unlocking = busy === `unlock:${destination.id}`;
+  const menuItems = destination.kind === 'object' ? [{ label: 'Edit connection', onSelect: onEdit }, { label: 'Disconnect', onSelect: onDisconnect }] : [];
   // A locked destination cannot be selected, so its card is not a button. That
   // lets the unlock control live inside the card, where it is unmistakable
   // which backups the key is for.
@@ -460,6 +491,7 @@ function DestinationItem({ busy, destination, onDisconnect, onEdit, onMount, onS
           <span className="suite-drive-badges">
             <span className="suite-category-pill">{destinationKindLabel(destination)}</span>
             {destination.ready ? <span className="suite-category-pill">{destination.kind === 'object' ? 'Connected' : 'Writable'}</span> : null}
+            {isPrimary ? <span className="suite-category-pill">Automatic backups</span> : null}
           </span>
         </div>
 
@@ -497,18 +529,14 @@ function DestinationItem({ busy, destination, onDisconnect, onEdit, onMount, onS
       ? <div className="suite-drive-select is-locked">{body}</div>
       : <button className="suite-drive-select" disabled={!destination.ready || running || Boolean(busy)} onClick={onSelect} type="button">{body}</button>}
 
-    {destination.kind === 'object'
-      ? <div className="suite-drive-actions">
-          <ActionMenu ariaLabel="Storage connection actions" disabled={Boolean(busy) || running} items={[
-            { label: 'Edit connection', onSelect: onEdit },
-            { label: 'Disconnect', onSelect: onDisconnect },
-          ]} />
-        </div>
-      : !destination.ready && destination.canMount
-        ? <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={onMount} type="button">
-            {busy === `mount:${destination.id}` ? 'Mounting...' : 'Mount'}
-          </button>
-        : null}
+    {menuItems.length ? <div className="suite-drive-actions">
+      <ActionMenu ariaLabel="Destination actions" disabled={Boolean(busy) || running} items={menuItems} />
+    </div> : null}
+    {destination.kind !== 'object' && !destination.ready && destination.canMount
+      ? <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={onMount} type="button">
+          {busy === `mount:${destination.id}` ? 'Mounting...' : 'Mount'}
+        </button>
+      : null}
   </div>;
 }
 
@@ -914,6 +942,18 @@ export function BackupsScreen() {
     });
   }
 
+  // One choice for everything MOS backs up without being asked: the schedule,
+  // and the backup taken before a MOS update.
+  async function choosePrimary(destinationId: string) {
+    await runAction('primary', async () => {
+      await jsonResponse(await fetch('/suite-manager/api/backups/primary', {
+        body: JSON.stringify({ destinationId }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'Unable to use this destination for automatic backups.');
+    });
+  }
+
   async function startBackup() {
     if (!selectedDestination) return;
     await runAction('backup', async () => {
@@ -938,8 +978,6 @@ export function BackupsScreen() {
     await runAction('schedule', async () => {
       await jsonResponse(await fetch('/suite-manager/api/backups/schedule', {
         body: JSON.stringify({
-          destinationId: merged.destinationId || '',
-          destinationLabel: destinationLabelFor(merged.destinationId) || merged.destinationLabel || '',
           enabled: merged.enabled,
           frequency: merged.frequency,
           hour: merged.hour,
@@ -952,10 +990,6 @@ export function BackupsScreen() {
         method: 'POST',
       }), 'Unable to save the backup schedule.');
     });
-  }
-
-  function destinationLabelFor(destinationId: string | null) {
-    return status?.destinations.find((destination) => destination.id === destinationId)?.label || null;
   }
 
   function openObjectDialog(destination?: BackupDestination) {
@@ -1167,6 +1201,7 @@ export function BackupsScreen() {
             {status.destinations.map((destination) => <DestinationItem
               busy={busy}
               destination={destination}
+              isPrimary={status.primaryDestination?.destinationId === destination.id}
               key={destination.id}
               onDisconnect={() => setObjectDisconnect(destination)}
               onEdit={() => openObjectDialog(destination)}
@@ -1203,7 +1238,9 @@ export function BackupsScreen() {
         {status.schedule ? <AutomaticBackupsPanel
           busy={busy}
           destinations={status.destinations}
+          onChoosePrimary={(destinationId) => void choosePrimary(destinationId)}
           onSave={(next) => ({ ...status.schedule, ...next }).enabled ? gateOnRecoveryKey(() => saveSchedule(next)) : void saveSchedule(next)}
+          primary={status.primaryDestination || null}
           running={running}
           schedule={status.schedule}
         /> : null}
@@ -1228,6 +1265,7 @@ export function BackupsScreen() {
                 {backup.note ? <span className="suite-backup-note">{backup.note}</span> : null}
                 <span>{backupDescription(backup)} · {backup.destinationLabel || 'Backup drive'}</span>
                 <span className="suite-category-pill">{backup.restorable === false ? 'Retired format' : 'Encrypted'}</span>
+                {checkpointLabel(backup) ? <span className="suite-category-pill">{checkpointLabel(backup)}</span> : null}
                 {writtenElsewhere(backup, status) ? <span className="suite-category-pill">Written by {writtenElsewhere(backup, status)}</span> : null}
               </div>
               <ActionMenu ariaLabel="Backup actions" disabled={Boolean(busy) || running} items={backup.restorable === false ? [

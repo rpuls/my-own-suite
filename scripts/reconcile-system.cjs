@@ -399,7 +399,10 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
   unit('mos-backup-agent.service', agentUnit({
     after: 'network-online.target docker.service',
     description: 'MOS backup and restore agent',
-    env: { MOS_BACKUP_AGENT_SOCKET: '/run/mos-backup-agent/agent.sock', MOS_BACKUP_AGENT_STATE_DIR: `${stateRoot}/backup-agent`, MOS_REPO_DIR: repoRoot, MOS_STATE_DIR: `${stateRoot}/suite-manager`, MOS_STATE_ROOT: stateRoot },
+    // The update agent's socket, because a scheduled backup asks it whether an
+    // update is running before starting: an update restarts this agent partway
+    // through, so a backup begun underneath one would be cut off mid-write.
+    env: { MOS_BACKUP_AGENT_SOCKET: '/run/mos-backup-agent/agent.sock', MOS_BACKUP_AGENT_STATE_DIR: `${stateRoot}/backup-agent`, MOS_REPO_DIR: repoRoot, MOS_STATE_DIR: `${stateRoot}/suite-manager`, MOS_STATE_ROOT: stateRoot, MOS_UPDATE_AGENT_SOCKET: '/run/mos-update-agent/agent.sock' },
     name: 'mos-backup-agent.service',
     script: 'system-agents/backup/agent.cjs',
     wants: 'network-online.target docker.service',
@@ -407,7 +410,9 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
   unit('mos-update-agent.service', agentUnit({
     after: 'network-online.target docker.service',
     description: 'MOS managed update agent',
-    env: { MOS_REPO_DIR: repoRoot, MOS_STATE_ROOT: stateRoot, MOS_UPDATE_AGENT_SOCKET: '/run/mos-update-agent/agent.sock' },
+    // The backup agent's socket, because an update takes a backup of the whole
+    // suite through it before it applies anything.
+    env: { MOS_BACKUP_AGENT_SOCKET: '/run/mos-backup-agent/agent.sock', MOS_REPO_DIR: repoRoot, MOS_STATE_ROOT: stateRoot, MOS_UPDATE_AGENT_SOCKET: '/run/mos-update-agent/agent.sock' },
     name: 'mos-update-agent.service',
     script: 'system-agents/update/agent.cjs',
     wants: 'network-online.target docker.service',

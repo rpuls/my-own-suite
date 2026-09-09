@@ -12,6 +12,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { dueOccurrence, nextOccurrenceAfter, normalizeSchedule, retentionVictims, timingChanged } = require('./schedule.cjs');
+const { PrimaryDestination } = require('./primary.cjs');
 const { BackupScheduler } = require('./scheduler.cjs');
 
 function schedule(overrides = {}) {
@@ -72,21 +73,33 @@ test('retention removes the oldest automatic backups and never a manual one', ()
   assert.deepEqual(retentionVictims([{ createdAt: '2020-01-01T00:00:00.000Z', path: '/d/old.json' }], 1), []);
 });
 
-test('a schedule cannot be enabled without a destination, and keeps settings it is not given', () => {
-  assert.throws(() => normalizeSchedule({ enabled: true }), /Choose the drive/u);
-  const current = schedule({ destinationId: '/media/backup', hour: 22, keepLast: 14 });
+test('a backup taken before a MOS update is an automatic backup like any other', () => {
+  const points = [
+    { automatic: true, createdAt: '2026-09-01T03:00:00.000Z', initiator: 'update', path: '/d/update-1.json' },
+    { automatic: true, createdAt: '2026-09-05T03:00:00.000Z', initiator: 'schedule', path: '/d/2.json' },
+    { automatic: true, createdAt: '2026-09-06T03:00:00.000Z', initiator: 'schedule', path: '/d/3.json' },
+  ];
+  // One rule: the oldest automatic copies beyond the number go, whoever asked
+  // for them. A second rule for checkpoints would be a second thing to learn.
+  assert.deepEqual(retentionVictims(points, 2).map((point) => point.path), ['/d/update-1.json']);
+});
+
+test('a schedule keeps settings it is not given', () => {
+  const current = schedule({ hour: 22, keepLast: 14 });
   const next = normalizeSchedule({ enabled: true, frequency: 'weekly' }, { current });
   assert.equal(next.hour, 22);
   assert.equal(next.keepLast, 14);
   assert.equal(next.frequency, 'weekly');
-  assert.equal(next.destinationId, '/media/backup');
+  // Where the backups go is not the schedule's to hold any more: it is the
+  // primary destination, shared with the backup taken before a MOS update.
+  assert.equal('destinationId' in next, false);
   // Retention only accepts the offered choices; anything else keeps the
   // current setting rather than inventing a policy of its own.
   assert.equal(normalizeSchedule({ enabled: true, keepLast: 9999 }, { current }).keepLast, 14);
 });
 
 test('only a change to when it fires restarts the schedule', () => {
-  const before = schedule({ destinationId: '/media/backup' });
+  const before = schedule();
   assert.equal(timingChanged(before, { ...before, keepLast: 30 }), false);
   assert.equal(timingChanged(before, { ...before, hour: 9 }), true);
   assert.equal(timingChanged(before, { ...before, timeZone: 'UTC' }), true);
@@ -98,7 +111,9 @@ function harness({ destinations = [{ id: '/media/backup', label: 'Backup drive',
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-schedule-'));
   const jobs = new Map();
   const created = [];
-  const state = { clock: new Date('2026-09-07T00:59:00.000Z'), createError: null, destinations, points };
+  const state = { clock: new Date('2026-09-07T00:59:00.000Z'), createError: null, destinations, points, updating: false };
+  const primary = new PrimaryDestination({ agentStateDir: dir, now: () => state.clock, repositoryId: () => 'repo-1' });
+  primary.save({ destinationId: '/media/backup', label: 'Backup drive' });
   const scheduler = new BackupScheduler({
     agentStateDir: dir,
     createJob: (kind, payload) => {
@@ -110,16 +125,17 @@ function harness({ destinations = [{ id: '/media/backup', label: 'Backup drive',
     },
     destinations: async () => state.destinations,
     now: () => state.clock,
+    primary,
     readJob: (id) => jobs.get(id) || null,
-    repositoryId: () => 'repo-1',
     restorePoints: () => state.points,
+    updateInProgress: async () => state.updating,
   });
-  return { created, dir, jobs, scheduler, state };
+  return { created, dir, jobs, primary, scheduler, state };
 }
 
 test('a due schedule starts a backup through the ordinary job pipeline', async () => {
   const { created, scheduler, state } = harness();
-  scheduler.save({ destinationId: '/media/backup', enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
+  scheduler.save({ enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
 
   await scheduler.tick();
   assert.equal(created.length, 0, 'not due a minute before the window');
@@ -137,7 +153,7 @@ test('a due schedule starts a backup through the ordinary job pipeline', async (
 
 test('a disconnected drive holds the run open instead of failing it', async () => {
   const { created, scheduler, state } = harness();
-  scheduler.save({ destinationId: '/media/backup', enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
+  scheduler.save({ enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
   state.clock = new Date('2026-09-07T01:00:30.000Z');
   state.destinations = [];
 
@@ -158,7 +174,7 @@ test('a disconnected drive holds the run open instead of failing it', async () =
 
 test('a failed automatic backup is reported and waits for the next window', async () => {
   const { created, jobs, scheduler, state } = harness();
-  scheduler.save({ destinationId: '/media/backup', enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
+  scheduler.save({ enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
   state.clock = new Date('2026-09-07T01:00:30.000Z');
   await scheduler.tick();
 
@@ -190,7 +206,7 @@ test('retention runs only after the new backup succeeded, one delete at a time',
       { automatic: true, createdAt: '2026-09-07T01:00:00.000Z', path: '/media/backup/e.json' },
     ],
   });
-  scheduler.save({ destinationId: '/media/backup', enabled: true, hour: 3, keepLast: 3, minute: 0, timeZone: 'Europe/Amsterdam' });
+  scheduler.save({ enabled: true, hour: 3, keepLast: 3, minute: 0, timeZone: 'Europe/Amsterdam' });
   state.clock = new Date('2026-09-07T01:00:30.000Z');
   await scheduler.tick();
 
@@ -215,7 +231,7 @@ test('retention runs only after the new backup succeeded, one delete at a time',
 
 test('a busy suite delays the run rather than losing it', async () => {
   const { created, scheduler, state } = harness();
-  scheduler.save({ destinationId: '/media/backup', enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
+  scheduler.save({ enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
   state.clock = new Date('2026-09-07T01:00:30.000Z');
   state.createError = 'A backup or restore job is already running.';
 
@@ -229,10 +245,30 @@ test('a busy suite delays the run rather than losing it', async () => {
   assert.equal(created.length, 1, 'the owed run starts as soon as the pipeline is free');
 });
 
+test('an update in progress holds the run open instead of being cut off by it', async () => {
+  const { created, scheduler, state } = harness();
+  scheduler.save({ enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
+  state.clock = new Date('2026-09-07T01:00:30.000Z');
+  state.updating = true;
+
+  // The update restarts this agent partway through, so a backup started under
+  // one would be cut off mid-write.
+  await scheduler.tick();
+  assert.equal(created.length, 0);
+  assert.match(scheduler.state().waiting.reason, /update is in progress/u);
+  assert.equal(scheduler.state().lastResult, null, 'an update running is not a failed backup');
+
+  state.updating = false;
+  state.clock = new Date('2026-09-07T01:20:00.000Z');
+  await scheduler.tick();
+  assert.equal(created.length, 1, 'the owed run starts as soon as the update finishes');
+  assert.equal(scheduler.state().waiting, null);
+});
+
 test('turning the schedule off stops it deciding anything', async () => {
   const { created, scheduler, state } = harness();
-  scheduler.save({ destinationId: '/media/backup', enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
-  scheduler.save({ destinationId: '/media/backup', enabled: false });
+  scheduler.save({ enabled: true, hour: 3, keepLast: 0, minute: 0, timeZone: 'Europe/Amsterdam' });
+  scheduler.save({ enabled: false });
   state.clock = new Date('2026-09-07T01:00:30.000Z');
 
   await scheduler.tick();

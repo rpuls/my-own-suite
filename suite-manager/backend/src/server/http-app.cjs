@@ -479,7 +479,7 @@ function createMOSServer({
     stateDir,
     store: setup.store,
   });
-  const updates = new UpdateService({ agent: updateAgent });
+  const updates = new UpdateService({ agent: updateAgent, backupAgent });
 
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://localhost');
@@ -809,6 +809,18 @@ function createMOSServer({
         return;
       }
 
+      // The two answers an owner can give while an update waits for its backup.
+      if (request.method === 'POST' && (url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/cancel` || url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/skip-backup`)) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage updates.' });
+          return;
+        }
+        const body = await readJsonBody(request, 4 * 1024);
+        const answer = url.pathname.endsWith('/cancel') ? updates.cancel({ id: body?.id }) : updates.skipBackup({ id: body?.id });
+        jsonResponse(response, 200, await answer);
+        return;
+      }
+
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/track`) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to switch update tracks.' });
@@ -964,6 +976,22 @@ function createMOSServer({
         return;
       }
 
+      // Which destination MOS writes to when it backs up on its own — the
+      // schedule, and the checkpoint before a MOS update. One choice, made
+      // where the destinations are listed, rather than one per trigger.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/primary`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        if (refuseUntilServerLoginSaved(response)) return;
+        const body = await readJsonBody(request, 4 * 1024);
+        jsonResponse(response, 200, await backupAgent.setPrimaryDestination({
+          destinationId: body.destinationId === null ? null : String(body.destinationId || ''),
+        }));
+        return;
+      }
+
       // The schedule's rules live in the backup agent, which is the component
       // that has to honour them; this passes the owner's choice through by
       // field rather than forwarding the body, so the agent is never handed
@@ -976,8 +1004,6 @@ function createMOSServer({
         if (refuseUntilServerLoginSaved(response)) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 200, await backupAgent.setSchedule({
-          destinationId: String(body.destinationId || ''),
-          destinationLabel: String(body.destinationLabel || ''),
           enabled: body.enabled === true,
           frequency: String(body.frequency || ''),
           hour: Number(body.hour),
