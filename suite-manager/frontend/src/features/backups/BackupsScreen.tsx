@@ -375,14 +375,14 @@ function AutomaticBackupsPanel({ busy, onSave, primary, running, schedule }: {
 
   return <section className="mos-panel suite-card suite-backup-panel">
     <div>
-      <h2 className="mos-card-title">Automatic backups</h2>
+      <h2 className="mos-card-title">Backup schedule</h2>
       <p className="suite-meta">Without a schedule, the newest backup you have is the one you last remembered to take. Apps pause for a few minutes while a backup runs, which is why it is worth putting somewhere quiet.</p>
     </div>
     <Switch
       checked={schedule.enabled}
       description={primary
-        ? `MOS backs the whole suite up to ${primary.label || 'the destination marked for automatic backups'} on its own and reports the result here.`
-        : 'Choose a destination above first: "Use for automatic backups" on a drive or storage connection.'}
+        ? `Backs the whole suite up to ${primary.label || 'the destination marked for automatic backups'} and reports the result here.`
+        : 'Mark a destination for automatic backups above first.'}
       disabled={locked || !primary}
       label="Back up on a schedule"
       onChange={(event) => onSave({ enabled: event.currentTarget.checked })}
@@ -1170,8 +1170,8 @@ export function BackupsScreen() {
         <section className="mos-panel suite-card suite-backup-panel">
           <div className="suite-backup-header-row">
             <div>
-              <h2 className="mos-card-title">Backup destination</h2>
-              <p className="suite-meta">A drive attached to this server, or a bucket at a storage provider. A drive is fastest to restore from; a bucket survives the building the server is in.</p>
+              <h2 className="mos-card-title">Backup destinations</h2>
+              <p className="suite-meta">A drive attached to this server, or a bucket at a storage provider. A drive is fastest to restore from; a bucket survives the building the server is in. Mark one with <strong>Use for automatic backups</strong>: scheduled backups and the backup before a MOS update go there. A backup you take yourself goes to whichever destination you select.</p>
             </div>
             <div className="suite-backup-header-actions">
               <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => openObjectDialog()} type="button">
