@@ -2236,191 +2236,6 @@
   white-space: normal;
 }
 
-.suite-backup-layout {
-  display: grid;
-  gap: var(--mos-space-4);
-}
-
-.suite-backup-busy {
-  position: fixed;
-  inset: 0;
-  z-index: 75;
-  display: grid;
-  grid-template-columns: auto minmax(0, 32rem);
-  align-content: center;
-  justify-content: center;
-  gap: var(--mos-space-4);
-  padding: var(--mos-space-5);
-  background: color-mix(in srgb, var(--mos-color-bg) 76%, transparent);
-  -webkit-backdrop-filter: var(--mos-frost-filter-backdrop);
-  backdrop-filter: var(--mos-frost-filter-backdrop);
-}
-
-.suite-backup-busy > div:last-child {
-  display: grid;
-  gap: var(--mos-space-2);
-  max-width: 32rem;
-  padding: var(--mos-space-5);
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: var(--mos-radius-sm);
-  background: var(--mos-color-frost-strong);
-  -webkit-backdrop-filter: var(--mos-frost-filter-strong);
-  backdrop-filter: var(--mos-frost-filter-strong);
-  box-shadow: var(--mos-shadow-strong);
-}
-
-.suite-backup-busy strong {
-  font-size: var(--mos-text-body-lg);
-}
-
-.suite-backup-busy p {
-  margin: 0;
-  color: var(--mos-color-text-muted);
-}
-
-.suite-backup-busy small {
-  display: inline-flex;
-  width: fit-content;
-  padding: 0.25rem 0.55rem;
-  border-radius: 999px;
-  background: var(--mos-color-accent-soft);
-  color: var(--mos-color-text);
-  font-weight: 800;
-}
-
-.suite-backup-spinner {
-  align-self: start;
-  width: 3rem;
-  height: 3rem;
-  border: 0.35rem solid var(--mos-color-surface-border);
-  border-top-color: var(--mos-color-accent);
-  border-radius: 50%;
-  animation: suite-backup-spin 0.9s linear infinite;
-}
-
-@keyframes suite-backup-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.suite-backup-panel {
-  display: grid;
-  gap: var(--mos-space-4);
-}
-
-.suite-backup-header-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--mos-space-4);
-}
-
-.suite-backup-header-row h2,
-.suite-backup-panel h2,
-.suite-backup-advanced h3 {
-  margin: 0;
-}
-
-.suite-backup-destination-list,
-.suite-backup-bundle-list {
-  display: grid;
-  gap: var(--mos-space-3);
-}
-
-.suite-backup-show-more {
-  display: flex;
-  justify-content: center;
-}
-
-.suite-backup-bundle-list span.suite-backup-note {
-  color: var(--mos-color-text);
-  font-style: italic;
-}
-
-.suite-backup-destination-card,
-.suite-backup-bundle-list article {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--mos-space-3);
-  padding: var(--mos-space-4);
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: var(--mos-radius-sm);
-  background: var(--mos-color-surface-muted);
-}
-
-.suite-backup-destination-card.is-selected {
-  border-color: var(--mos-color-accent-border);
-  background: var(--mos-color-accent-soft);
-}
-
-.suite-backup-destination-card > button:first-child {
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
-
-.suite-backup-destination-card > button:first-child:disabled {
-  cursor: default;
-}
-
-.suite-backup-destination-card span,
-.suite-backup-bundle-list article > div:first-child {
-  display: grid;
-  gap: var(--mos-space-1);
-  min-width: 0;
-}
-
-.suite-backup-destination-card small,
-.suite-backup-bundle-list span {
-  color: var(--mos-color-text-muted);
-}
-
-.suite-backup-path-list {
-  grid-column: 1 / -1;
-  display: grid;
-  gap: var(--mos-space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.suite-backup-path-list li {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--mos-space-2);
-  min-width: 0;
-}
-
-.suite-backup-path-list code {
-  overflow-wrap: anywhere;
-}
-
-.suite-backup-path-list small {
-  color: var(--mos-color-text-muted);
-  text-transform: uppercase;
-}
-
-.suite-backup-dot {
-  width: 0.65rem;
-  height: 0.65rem;
-  border-radius: 50%;
-  background: var(--mos-color-warning);
-}
-
-.suite-backup-dot.is-ready {
-  background: var(--mos-color-accent);
-}
-
 .suite-field {
   display: grid;
   gap: var(--mos-space-2);
@@ -2641,9 +2456,7 @@
   }
   .suite-app-facts,
   .suite-app-tiles,
-  .suite-updates-facts,
-  .suite-backup-destination-card,
-  .suite-backup-bundle-list article {
+  .suite-updates-facts {
     grid-template-columns: 1fr;
   }
   .suite-updates-header,
@@ -2654,14 +2467,6 @@
   .suite-updates-track .mos-btn {
     margin-top: 0;
   }
-  .suite-backup-busy {
-    grid-template-columns: 1fr;
-    justify-items: center;
-    text-align: center;
-  }
-  .suite-backup-spinner {
-    align-self: center;
-  }
   .suite-advanced dd { margin-bottom: var(--mos-space-2); }
   .suite-customize-header { align-items: stretch; flex-direction: column; }
   .suite-customize-layout { grid-template-columns: 1fr; }
@@ -2670,215 +2475,9 @@
 }
 
 /* Backup & Restore Drive List */
-.suite-drive-list {
-  display: grid;
-  gap: var(--mos-space-3);
-  margin-top: var(--mos-space-4);
-  margin-bottom: var(--mos-space-5);
-}
-
-.suite-drive-item {
-  position: relative;
-  display: grid;
-  gap: var(--mos-space-2);
-}
-
 /* The whole card is one button, so a menu cannot be nested inside it. It sits
    over the card's top-right corner instead, and the card reserves the width so
    the selected check and long addresses stop short of it. */
-.suite-drive-actions {
-  position: absolute;
-  top: var(--mos-space-3);
-  right: var(--mos-space-3);
-}
-
-.suite-drive-item:has(.suite-drive-actions) .suite-drive-select {
-  padding-right: calc(2.75rem + var(--mos-space-5));
-}
-
-.suite-drive-select {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: start;
-  gap: var(--mos-space-4);
-  width: 100%;
-  text-align: left;
-  padding: var(--mos-space-4);
-  border: var(--mos-border-subtle);
-  border-radius: var(--mos-radius-lg);
-  background: var(--mos-color-surface-muted);
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-  transition:
-    background 180ms ease,
-    border-color 180ms ease;
-}
-
-.suite-drive-select:hover:not(:disabled) {
-  border-color: var(--mos-color-accent-border);
-  background: var(--mos-color-surface);
-}
-
-.suite-drive-item.is-selected .suite-drive-select {
-  border-color: var(--mos-color-accent-border);
-  background: var(--mos-color-accent-soft);
-  outline: var(--mos-focus-ring);
-}
-
-.suite-drive-select:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-.suite-drive-select.is-locked {
-  cursor: default;
-}
-
-.suite-drive-unlock {
-  display: flex;
-  padding-top: var(--mos-space-1);
-}
-
-.suite-drive-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 3rem;
-  height: 3rem;
-  border-radius: var(--mos-radius-md);
-  background: var(--mos-color-surface-strong);
-  color: var(--mos-color-text-muted);
-}
-
-.suite-drive-item.is-selected .suite-drive-icon {
-  color: var(--mos-color-accent);
-  background: var(--mos-color-accent-soft);
-}
-
-.suite-drive-info {
-  display: grid;
-  gap: var(--mos-space-2);
-  min-width: 0;
-}
-
-.suite-drive-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--mos-space-3);
-  flex-wrap: wrap;
-}
-
-.suite-drive-header strong {
-  color: var(--mos-color-text-strong);
-  font-size: 1.1rem;
-  line-height: 1.3;
-}
-
-.suite-drive-badges {
-  display: flex;
-  gap: var(--mos-space-2);
-  flex-wrap: wrap;
-}
-
-.suite-drive-select {
-  user-select: text;
-}
-
-.suite-drive-path {
-  font-family: var(--mos-font-mono);
-  font-size: 0.9rem;
-  color: var(--mos-color-text-muted);
-}
-
-.suite-drive-space {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.9rem;
-  color: var(--mos-color-text-muted);
-}
-
-.suite-drive-bar {
-  height: 0.5rem;
-  border-radius: var(--mos-radius-pill);
-  background: var(--mos-color-surface-strong);
-  overflow: hidden;
-}
-
-.suite-drive-bar-fill {
-  height: 100%;
-  border-radius: var(--mos-radius-pill);
-  background: var(--mos-color-accent);
-  transition: width 300ms ease;
-}
-
-.suite-drive-status {
-  font-size: 0.9rem;
-  color: var(--mos-color-text-muted);
-}
-
-.suite-drive-selector {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.suite-drive-check {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: 50%;
-  background: var(--mos-color-accent);
-  color: white;
-  font-size: 0.8rem;
-  font-weight: bold;
-}
-
-.suite-backup-action-footer {
-  display: grid;
-  gap: var(--mos-space-3);
-  padding-top: var(--mos-space-4);
-  border-top: var(--mos-border-subtle);
-}
-
-.suite-backup-status-message {
-  margin: 0;
-  color: var(--mos-color-text-muted);
-  font-size: 0.95rem;
-}
-
-.suite-backup-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--mos-space-4);
-  flex-wrap: wrap;
-}
-
-.suite-backup-header-actions {
-  display: flex;
-  gap: var(--mos-space-2);
-  flex-wrap: wrap;
-}
-
-.suite-empty-state {
-  display: grid;
-  gap: var(--mos-space-2);
-  padding: var(--mos-space-6);
-  text-align: center;
-  border-radius: var(--mos-radius-lg);
-  background: var(--mos-color-surface-muted);
-  margin-top: var(--mos-space-4);
-  margin-bottom: var(--mos-space-5);
-}
-
-.suite-empty-state p {
-  margin: 0;
-}
-
 /* Privacy posture (shield badge, facts tile, posture dialog, update change
    row). SIBLING STYLES: the badge/tile/dialog visuals are duplicated in
    site/src/components/PrivacyPosture.astro because there is no shared
@@ -3373,3 +2972,721 @@
 }
 
 .suite-env-paste { display: grid; gap: var(--mos-space-3); }
+
+/* Backup & Restore ---------------------------------------------------------
+   One readable surface per section, dividers inside it, no card in a card.
+   Severity is carried by the coloured dot and the row tint; every row states
+   its condition once, in its status line. */
+
+.suite-bk-page {
+  display: grid;
+  gap: var(--mos-space-4);
+}
+
+.suite-bk-panel {
+  display: grid;
+  gap: var(--mos-space-4);
+}
+
+.suite-bk-panel h2,
+.suite-bk-panel h3 {
+  margin: 0;
+}
+
+.suite-bk-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--mos-space-4);
+  flex-wrap: wrap;
+}
+
+.suite-bk-panel-head > div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.suite-bk-eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mos-color-text-muted);
+}
+
+.suite-bk-detail {
+  margin: 0;
+  color: var(--mos-color-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+/* The dot is the only thing that carries severity, so a row never needs a
+   second sentence to say how it is doing. */
+.suite-bk-dot {
+  flex: none;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-top: 0.42rem;
+  border-radius: 999px;
+  background: var(--mos-color-success);
+  box-shadow: 0 0 0 0.22rem color-mix(in srgb, var(--mos-color-success) 18%, transparent);
+}
+
+.suite-bk-dot.is-warning {
+  background: var(--mos-color-warning);
+  box-shadow: 0 0 0 0.22rem color-mix(in srgb, var(--mos-color-warning) 18%, transparent);
+}
+
+.suite-bk-dot.is-error {
+  background: var(--mos-color-danger);
+  box-shadow: 0 0 0 0.22rem color-mix(in srgb, var(--mos-color-danger) 18%, transparent);
+}
+
+.suite-bk-dot.is-muted,
+.suite-bk-dot.is-auto {
+  background: var(--mos-color-text-muted);
+  box-shadow: none;
+}
+
+.suite-bk-dot.is-info {
+  background: var(--mos-color-info);
+  box-shadow: 0 0 0 0.22rem color-mix(in srgb, var(--mos-color-info) 18%, transparent);
+}
+
+.suite-bk-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--mos-color-text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.suite-bk-working {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--mos-color-accent);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+/* The banner: the only thing most visits need. If it is green the owner can
+   close the page. */
+.suite-bk-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mos-space-4);
+  flex-wrap: wrap;
+  padding: var(--mos-space-4) var(--mos-space-5);
+}
+
+.suite-bk-banner.is-warning {
+  border-color: var(--mos-color-warning-border);
+  background: var(--mos-color-warning-soft);
+}
+
+.suite-bk-banner.is-error {
+  border-color: var(--mos-color-danger-border);
+  background: var(--mos-color-danger-soft);
+}
+
+.suite-bk-banner-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.suite-bk-banner-text strong {
+  font-size: var(--mos-text-body-lg);
+}
+
+.suite-bk-banner-text > div {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.suite-bk-banner .suite-bk-dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-top: 0.4rem;
+}
+
+.suite-bk-banner-action {
+  display: grid;
+  gap: 0.4rem;
+  justify-items: end;
+  text-align: right;
+}
+
+.suite-bk-backup-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.suite-bk-backup-controls label {
+  margin: 0;
+}
+
+/* One sentence for the key, next to the list it describes: the key is a
+   property of that list, and adjacency is the explanation. */
+.suite-bk-keyrow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: var(--mos-space-3) var(--mos-space-4);
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface-muted);
+}
+
+.suite-bk-keyrow.is-warning {
+  border-color: var(--mos-color-warning-border);
+  background: var(--mos-color-warning-soft);
+}
+
+.suite-bk-keyrow p {
+  flex: 1 1 18rem;
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.suite-bk-keyrow-detail {
+  color: var(--mos-color-text-muted);
+}
+
+.suite-bk-keyrow-icon {
+  display: flex;
+  flex: none;
+  color: var(--mos-color-accent);
+}
+
+.suite-bk-keyrow-icon .suite-icon {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+/* The destination list. One row per place; three zones, always in the same
+   three positions. */
+.suite-bk-rows {
+  display: grid;
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  overflow: hidden;
+}
+
+.suite-bk-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--mos-space-3);
+  padding: var(--mos-space-4);
+  border-top: 1px solid var(--mos-color-hairline);
+}
+
+.suite-bk-rows > .suite-bk-row:first-child,
+.suite-bk-group-note + .suite-bk-row {
+  border-top: 0;
+}
+
+.suite-bk-row.is-selected {
+  background: var(--mos-color-accent-soft);
+  box-shadow: inset 3px 0 0 var(--mos-color-accent);
+}
+
+.suite-bk-row.is-away {
+  opacity: 0.62;
+}
+
+.suite-bk-row-body {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.suite-bk-row-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.suite-bk-row-title strong {
+  font-size: var(--mos-text-body-lg);
+}
+
+.suite-bk-row-icon {
+  display: flex;
+  flex: none;
+  color: var(--mos-color-text-muted);
+}
+
+.suite-bk-row.is-selected .suite-bk-row-icon,
+.suite-bk-row.is-ready .suite-bk-row-icon {
+  color: var(--mos-color-accent);
+}
+
+.suite-bk-row-icon .suite-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.suite-bk-kind {
+  color: var(--mos-color-text-muted);
+  font-size: 0.9rem;
+}
+
+.suite-bk-row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Selecting a place is the one consequential choice on the page, so it is a
+   radio: one of these, and picking another moves it. */
+.suite-bk-radio {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-top: 0.25rem;
+  padding: 0;
+  border: 2px solid var(--mos-color-surface-border);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.suite-bk-radio > span {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.suite-bk-row.is-selected .suite-bk-radio {
+  border-color: var(--mos-color-accent);
+}
+
+.suite-bk-row.is-selected .suite-bk-radio > span {
+  background: var(--mos-color-accent);
+}
+
+.suite-bk-radio:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.suite-bk-selected-note {
+  margin: 0;
+  color: var(--mos-color-accent);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* What opens this one, said on the row rather than in a sentence that
+   disappears on reload. */
+.suite-bk-keyline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0;
+  color: var(--mos-color-accent);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.suite-bk-keyline.is-warning {
+  color: var(--mos-color-warning);
+}
+
+.suite-bk-keyline .suite-icon {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.2rem;
+}
+
+.suite-bk-group-note {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: var(--mos-space-3) var(--mos-space-4);
+  border-top: 1px solid var(--mos-color-hairline);
+  background: var(--mos-color-info-soft);
+  color: var(--mos-color-text-muted);
+  font-size: 0.9rem;
+}
+
+.suite-bk-group-note strong {
+  color: var(--mos-color-text);
+}
+
+.suite-bk-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--mos-color-text-muted);
+  -webkit-backdrop-filter: var(--mos-frost-filter-backdrop);
+  backdrop-filter: var(--mos-frost-filter-backdrop);
+}
+
+.suite-bk-chip.is-guest {
+  border-color: var(--mos-color-info-border);
+  color: var(--mos-color-info);
+}
+
+/* The schedule decides only when and how many to keep; where they go is
+   stated as a fact, because the list above already answered it. */
+.suite-bk-schedule .suite-bk-panel-head > div {
+  gap: 0.3rem;
+}
+
+/* Restore points, grouped by the place they are kept. */
+.suite-bk-groups {
+  display: grid;
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  overflow: hidden;
+}
+
+.suite-bk-group + .suite-bk-group {
+  border-top: 1px solid var(--mos-color-hairline);
+}
+
+.suite-bk-group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: var(--mos-space-4);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.suite-bk-group-head:disabled {
+  cursor: default;
+  opacity: 0.66;
+}
+
+.suite-bk-group-head:hover:not(:disabled) {
+  background: var(--mos-color-surface-muted);
+}
+
+.suite-bk-group-name {
+  display: grid;
+  gap: 0.15rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.suite-bk-group-name > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.suite-bk-group-key {
+  flex: none;
+  color: var(--mos-color-text-muted);
+  font-size: 0.8rem;
+}
+
+.suite-bk-chevron {
+  display: flex;
+  flex: none;
+  color: var(--mos-color-text-muted);
+  transition: transform 180ms ease;
+}
+
+.suite-bk-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.suite-bk-points {
+  display: grid;
+  padding: 0 var(--mos-space-4) var(--mos-space-3);
+}
+
+.suite-bk-point + .suite-bk-point {
+  border-top: 1px solid var(--mos-color-hairline);
+}
+
+.suite-bk-point.is-retired {
+  opacity: 0.62;
+}
+
+.suite-bk-point-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: var(--mos-space-3) 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.suite-bk-point-head .suite-bk-dot {
+  margin-top: 0;
+}
+
+.suite-bk-point-when {
+  flex: none;
+  font-weight: 700;
+}
+
+.suite-bk-point-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--mos-color-text-muted);
+}
+
+.suite-bk-point-size {
+  flex: none;
+  color: var(--mos-color-text-muted);
+  font-size: 0.9rem;
+}
+
+.suite-bk-point-body {
+  display: grid;
+  gap: var(--mos-space-2);
+  padding: 0 0 var(--mos-space-3) 1.3rem;
+}
+
+.suite-bk-point-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+  flex-wrap: wrap;
+}
+
+.suite-bk-more,
+.suite-bk-empty {
+  padding: var(--mos-space-3) 0;
+  text-align: center;
+}
+
+.suite-bk-more {
+  border: 0;
+  background: transparent;
+  color: var(--mos-color-accent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* History, not a decision, so it is last and closed. */
+.suite-bk-activity {
+  gap: var(--mos-space-3);
+}
+
+.suite-bk-activity-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.suite-bk-activity-head .suite-bk-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suite-bk-activity-body {
+  display: grid;
+  gap: var(--mos-space-2);
+}
+
+.suite-bk-activity-body > p {
+  display: grid;
+  grid-template-columns: minmax(9rem, auto) minmax(0, 1fr);
+  gap: var(--mos-space-3);
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+/* Choosing a kind of destination, in the wizard and in the empty state. */
+.suite-bk-kinds {
+  display: grid;
+  gap: var(--mos-space-3);
+}
+
+.suite-bk-kind {
+  display: grid;
+  gap: 0.35rem;
+  padding: var(--mos-space-4);
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface-muted);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.suite-bk-kind:hover,
+.suite-bk-kind.is-picked {
+  border-color: var(--mos-color-accent-border);
+  background: var(--mos-color-accent-soft);
+}
+
+.suite-bk-kind > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.suite-bk-kind > span:first-child strong {
+  font-size: var(--mos-text-body-lg);
+}
+
+.suite-bk-kind > span:first-child .suite-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--mos-color-accent);
+}
+
+.suite-bk-kind > span:last-child {
+  color: var(--mos-color-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+/* What the key opens, and what it does not, listed by name. */
+.suite-bk-key-actions {
+  display: flex;
+  gap: var(--mos-space-2);
+  flex-wrap: wrap;
+}
+
+.suite-bk-key-list {
+  display: grid;
+  gap: 0.4rem;
+  padding: var(--mos-space-3);
+  border: 1px solid var(--mos-color-surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--mos-color-surface-muted);
+}
+
+.suite-bk-key-list.is-missing {
+  border-color: var(--mos-color-warning-border);
+  background: var(--mos-color-warning-soft);
+}
+
+.suite-bk-key-list > p {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.suite-bk-key-list > p .suite-icon {
+  width: 1rem;
+  height: 1rem;
+  color: var(--mos-color-text-muted);
+}
+
+.suite-bk-key-list > p > span {
+  color: var(--mos-color-text-muted);
+}
+
+/* A restore takes the page over: nothing else on it is true while the machine
+   is being replaced. */
+.suite-bk-progress {
+  gap: var(--mos-space-3);
+}
+
+.suite-bk-bar {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--mos-color-surface-border);
+  overflow: hidden;
+}
+
+.suite-bk-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--mos-color-accent);
+  transition: width 400ms ease;
+}
+
+@media (max-width: 47.9375rem) {
+  .suite-bk-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .suite-bk-row-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .suite-bk-banner-action {
+    justify-items: stretch;
+    text-align: left;
+    width: 100%;
+  }
+
+  .suite-bk-backup-controls {
+    justify-content: stretch;
+  }
+
+  .suite-bk-backup-controls .mos-btn {
+    flex: 1 1 auto;
+  }
+
+  .suite-bk-group-key,
+  .suite-bk-point-label {
+    display: none;
+  }
+
+  .suite-bk-activity-body > p {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}

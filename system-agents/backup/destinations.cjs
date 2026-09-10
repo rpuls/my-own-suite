@@ -43,7 +43,7 @@ const OBJECT_LOCATOR_SEPARATOR = '#';
 // into the same bucket, which MOS refuses to set up but cannot prevent.
 const OBJECT_INDEX_TTL_MS = 120_000;
 const OBJECT_INDEX_DIRNAME = 'object-index';
-const DRIVE_DISCONNECTED = 'The selected backup drive is not mounted anymore. Reconnect it, click Refresh drives, and try again.';
+const DRIVE_DISCONNECTED = 'The selected backup drive is not mounted anymore. Reconnect it and try again.';
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 function readJson(file) { return JSON.parse(fs.readFileSync(file, 'utf8')); }
@@ -343,7 +343,7 @@ class DiskDestination {
   }
 
   get lostMessage() {
-    return 'The backup drive was disconnected while MOS was writing to it, so this did not finish. Reconnect the drive, click Refresh drives, and try again.';
+    return 'The backup drive was disconnected while MOS was writing to it, so this did not finish. Reconnect the drive and try again.';
   }
 
   async available() {

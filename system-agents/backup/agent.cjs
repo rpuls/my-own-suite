@@ -348,6 +348,27 @@ function latestJob() {
   return listJobFiles().map((file) => { try { const job = readJson(file); return { job, time: new Date(job.updatedAt || job.createdAt || 0).getTime() }; } catch { return null; } })
     .filter(Boolean).sort((left, right) => right.time - left.time)[0]?.job || null;
 }
+// The last handful of jobs, newest first, for the activity list. Only what a
+// sentence about a finished job needs: the logs and validation of a job that is
+// over belong to the job itself, not to a summary of five of them.
+function recentJobs(limit = 6) {
+  return listJobFiles().map((file) => { try { return readJson(file); } catch { return null; } })
+    .filter(Boolean)
+    .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0).getTime() - new Date(left.updatedAt || left.createdAt || 0).getTime())
+    .slice(0, limit)
+    .map((job) => ({
+      destinationId: job.destinationId || null,
+      error: job.error || null,
+      id: job.id,
+      initiator: job.initiator || null,
+      kind: job.kind || null,
+      note: job.note || null,
+      stage: job.stage || null,
+      status: job.status || null,
+      updatedAt: job.updatedAt || job.createdAt || null,
+      updateTarget: job.updateTarget || null,
+    }));
+}
 function summarizeJob(job) {
   if (!job) return null;
   return { address: job.address && typeof job.address === 'object' ? job.address : null, backupPath: job.backupPath || null, destinationId: job.destinationId || null, error: job.error || null, id: job.id, kind: job.kind || null, logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [], outputPath: job.outputPath || null, rescuePath: job.rescuePath || null, stage: job.stage || null, status: job.status || null, summary: job.summary || null, updatedAt: job.updatedAt || null, validation: job.validation || null, verification: job.verification || null };
@@ -638,6 +659,9 @@ function recoveryKeyStatus() {
   return {
     acknowledged: Boolean(record.acknowledgedAt),
     acknowledgedAt: record.acknowledgedAt,
+    // Set when this key was typed off another server's kit rather than made
+    // here, which is the difference between "your key" and "their key".
+    adoptedAt: record.adoptedAt,
     // Read from the key itself rather than from the record, so the screen shows
     // what this machine actually holds even before it has been acknowledged.
     fingerprint: recoveryKeyFingerprint(engine.recoveryKey()),
@@ -832,6 +856,7 @@ if (require.main === module && process.argv[2] === '--worker') {
           installId: installId(),
           interruptedRestore: core.interruptedRestore(),
           lastJob: summarizeJob(latestJob()),
+          recentJobs: recentJobs(),
           // Where everything that backs up on its own writes: the schedule, and
           // the checkpoint before a MOS update.
           primaryDestination: primary.state(),

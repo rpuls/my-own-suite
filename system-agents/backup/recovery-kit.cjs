@@ -30,11 +30,12 @@ class RecoveryKeyRecord {
       const parsed = JSON.parse(fs.readFileSync(this.recordPath, 'utf8'));
       return {
         acknowledgedAt: parsed.acknowledgedAt || null,
+        adoptedAt: parsed.adoptedAt || null,
         fingerprint: parsed.fingerprint || null,
         firstUsedAt: parsed.firstUsedAt || null,
       };
     } catch {
-      return { acknowledgedAt: null, fingerprint: null, firstUsedAt: null };
+      return { acknowledgedAt: null, adoptedAt: null, fingerprint: null, firstUsedAt: null };
     }
   }
 
@@ -70,7 +71,7 @@ class RecoveryKeyRecord {
   // own key: the entered key becomes this machine's, and the owner has plainly
   // just read it off their kit, so it counts as acknowledged.
   adopt(fingerprint, now = new Date()) {
-    return this.write({ acknowledgedAt: now.toISOString(), fingerprint, firstUsedAt: now.toISOString() });
+    return this.write({ acknowledgedAt: now.toISOString(), adoptedAt: now.toISOString(), fingerprint, firstUsedAt: now.toISOString() });
   }
 }
 

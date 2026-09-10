@@ -59,7 +59,7 @@ const RESTORE_JOURNAL_FILENAME = 'restore-journal.json';
 const UNREADABLE_LEGACY_BACKUP = 'This backup was written by an older MOS in the unencrypted bundle format, which this version can no longer read. Restore it with MOS 0.19 or earlier, or take a new backup on this machine.';
 // One sentence for every way a drive can go away mid-write, so an owner reads
 // the same cause whether the loss was caught by MOS or reported by the engine.
-const DESTINATION_LOST = 'The backup drive was disconnected while MOS was writing to it, so this did not finish. Reconnect the drive, click Refresh drives, and try again.';
+const DESTINATION_LOST = 'The backup drive was disconnected while MOS was writing to it, so this did not finish. Reconnect the drive and try again.';
 const RESTORE_PHASES = Object.freeze(['stopping-runtime', 'rescue', 'restoring-state', 'restoring-volumes', 'reconciling-apps', 'verifying']);
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }

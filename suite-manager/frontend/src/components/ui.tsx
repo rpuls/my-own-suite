@@ -1,7 +1,7 @@
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
-export type IconName = 'apps' | 'backup' | 'check' | 'chevron-right' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'external' | 'eye' | 'eye-off' | 'hard-drive' | 'menu' | 'more' | 'network-drive' | 'refresh' | 'screens' | 'settings' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'x';
+export type IconName = 'apps' | 'backup' | 'check' | 'chevron-right' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'external' | 'eye' | 'eye-off' | 'hard-drive' | 'key' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'settings' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'x';
 
 export function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -17,8 +17,10 @@ export function Icon({ name }: { name: IconName }) {
     eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>,
     'eye-off': <><path d="M10.6 6.2A9.8 9.8 0 0 1 12 6c6.4 0 10 6 10 6a17.6 17.6 0 0 1-3 3.6" /><path d="M6.3 7.7A17.6 17.6 0 0 0 2 12s3.6 6 10 6a9.8 9.8 0 0 0 3.6-.7" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /><path d="m3 3 18 18" /></>,
     'hard-drive': <><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><line x1="3" x2="21" y1="9" y2="9" /></>,
+    key: <><circle cx="7.5" cy="15.5" r="3.5" /><path d="m10 13 8.5-8.5" /><path d="m15.5 7.5 2 2" /><path d="m18 5 2 2" /></>,
     menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
     more: <><circle cx="12" cy="5" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="12" cy="19" r="1.2" /></>,
+    plus: <path d="M12 5v14M5 12h14" />,
     'network-drive': <><circle cx="12" cy="12" r="3" /><path d="M12 1v4" /><path d="M12 19v4" /><path d="m4.93 4.93 2.83 2.83" /><path d="m16.24 16.24 2.83 2.83" /><path d="M1 12h4" /><path d="M19 12h4" /><path d="m4.93 19.07 2.83-2.83" /><path d="m16.24 7.76 2.83-2.83" /></>,
     refresh: <><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M3 21v-5h5" /></>,
     screens: <path d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6" />,
@@ -98,8 +100,8 @@ export function TextArea({ helperText, label, ...props }: TextareaHTMLAttributes
   return <label className="suite-control"><span className="suite-field-label">{label}</span><textarea className="suite-input suite-textarea" {...props} />{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
 }
 
-export function Select({ children, helperText, label, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode; helperText?: ReactNode; label: string }) {
-  return <label className="suite-control"><span className="suite-field-label">{label}</span><select className="suite-input suite-select" {...props}>{children}</select>{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
+export function Select({ children, helperText, label, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode; helperText?: ReactNode; label?: string }) {
+  return <label className="suite-control">{label ? <span className="suite-field-label">{label}</span> : null}<select className="suite-input suite-select" {...props}>{children}</select>{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
 }
 
 // The shared confirmation checkbox: a boxed, full-width row whose whole surface

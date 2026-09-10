@@ -21,7 +21,7 @@ const KEY = generate().key;
 
 test('the record is root-only and starts out saying nothing has happened', async () => {
   const record = new RecoveryKeyRecord({ agentStateDir: path.join(await scratch(), 'agent-state') });
-  assert.deepEqual(record.read(), { acknowledgedAt: null, fingerprint: null, firstUsedAt: null });
+  assert.deepEqual(record.read(), { acknowledgedAt: null, adoptedAt: null, fingerprint: null, firstUsedAt: null });
   assert.equal(record.acknowledged(), false);
   record.acknowledge('abc123');
   if (process.platform !== 'win32') assert.equal(fs.statSync(record.recordPath).mode & 0o777, 0o600);
@@ -56,15 +56,25 @@ test('first use is recorded once and never moves', async () => {
 test('adopting an entered key marks the machine used and acknowledged at once', async () => {
   const record = new RecoveryKeyRecord({ agentStateDir: await scratch() });
   const adopted = record.adopt('feed1234', new Date('2026-09-07T12:00:00.000Z'));
-  assert.deepEqual(adopted, { acknowledgedAt: '2026-09-07T12:00:00.000Z', fingerprint: 'feed1234', firstUsedAt: '2026-09-07T12:00:00.000Z' });
+  assert.deepEqual(adopted, { acknowledgedAt: '2026-09-07T12:00:00.000Z', adoptedAt: '2026-09-07T12:00:00.000Z', fingerprint: 'feed1234', firstUsedAt: '2026-09-07T12:00:00.000Z' });
   assert.equal(new RecoveryKeyRecord({ recordPath: record.recordPath }).acknowledged(), true);
+});
+
+// A key made here and a key taken off another server's kit are the same secret
+// but not the same sentence, and the screen says which one this is. Only
+// adoption records the moment.
+test('a key made on this machine is never marked as adopted', async () => {
+  const record = new RecoveryKeyRecord({ agentStateDir: await scratch() });
+  record.acknowledge('abc123', new Date('2026-09-01T10:00:00.000Z'));
+  record.noteFirstUse(new Date('2026-09-01T10:00:00.000Z'));
+  assert.equal(record.read().adoptedAt, null);
 });
 
 test('a damaged record reads as a machine that has done nothing, not as a crash', async () => {
   const record = new RecoveryKeyRecord({ agentStateDir: await scratch() });
   record.acknowledge('abc123');
   fs.writeFileSync(record.recordPath, 'not json at all', 'utf8');
-  assert.deepEqual(record.read(), { acknowledgedAt: null, fingerprint: null, firstUsedAt: null });
+  assert.deepEqual(record.read(), { acknowledgedAt: null, adoptedAt: null, fingerprint: null, firstUsedAt: null });
 });
 
 // The kit is what is left when the server is not. It has to name the bucket
