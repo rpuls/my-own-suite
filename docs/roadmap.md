@@ -228,21 +228,6 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
   role that reaches the dashboard and its app tiles and nothing in Suite Manager. Deliberately narrow:
   this is not multi-user, LDAP, or SSO, which stay declined. *(Medium)*
 
-### AL-R — Backup and restore hardening
-
-- **AL7 — Recovery onto a new machine at the version the bundle expects.** The backup guide tells an
-  owner to restore onto the MOS version the bundle records; the hosted installer only ever produces
-  the current `main` tip. On the worst day, those two instructions disagree. `--repo-ref` already
-  accepts a tag and is the mechanical escape hatch, but it needs a clone and Node on a second machine
-  — which the fire took too. Decide the real shape: a version argument the hosted installer accepts, a
-  restore path that migrates forward from an older bundle (**D2**), or documenting the escape hatch
-  and accepting it. The published image supplies part of the answer for own hardware: a per-release
-  image is an installer pinned to a known version, which is exactly what the bundle's instruction asks
-  for. What is missing is reaching an *older* release's image once its object has been pruned. The
-  storage-engine change (**A2**) adds a second version axis: an older MOS carries an older engine
-  binary, so the repository format is pinned per release and never auto-upgraded.
-  *(Medium — solution not yet determined)*
-
 ### AL-C — Storage
 
 - **AL8 — Per-app volume placement.** App data lives on whichever disk the container runtime uses, so

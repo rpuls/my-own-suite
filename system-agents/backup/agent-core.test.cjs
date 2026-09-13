@@ -543,7 +543,7 @@ test('a bundle outside the supported schema window is rejected before any mutati
 
   w.system.events.length = 0;
   const restoreJob = w.createJob('restore', { backupPath: point });
-  await assert.rejects(() => core.restore(restoreJob), /this version can no longer read/u);
+  await assert.rejects(() => core.restore(restoreJob), /no longer reads/u);
   assert.equal(core.interruptedRestore(), null);
   assert.ok(!w.system.events.some(([event]) => ['removeContainer', 'removeVolume', 'stopService'].includes(event)));
 });
@@ -682,6 +682,27 @@ test('the read-only check reports a software version mismatch without blocking t
   assert.equal(finished.validation.software.matched, false);
   assert.match(finished.validation.warnings[0], /9\.9\.9/u);
   assert.match(finished.validation.warnings[0], /0\.0\.0-test/u);
+});
+
+test('a backup from an older MOS reads as the supported direction, and an unreadable generation names its release', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const core = w.core();
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await core.backup(backupJob);
+  const point = restorePointOf(backupJob);
+  rewriteRestorePoint(point, (manifest) => { manifest.source.version = '0.0.0-older'; });
+
+  const validateJob = w.createJob('validate', { backupPath: point });
+  await core.validateBackup(validateJob);
+  const finished = readJson(validateJob);
+  assert.equal(finished.status, 'succeeded');
+  assert.match(finished.validation.warnings[0], /supported direction/u);
+  assert.doesNotMatch(finished.validation.warnings[0], /Update MOS first/u);
+
+  rewriteRestorePoint(point, (manifest) => { manifest.backup.schemaVersion = 99; manifest.source.version = '3.1.0'; });
+  const refusedJob = w.createJob('validate', { backupPath: point });
+  await assert.rejects(core.validateBackup(refusedJob), /Restore it with MOS 3\.1\.0/u);
 });
 
 test('the read-only check stays available while an interrupted restore blocks other work', async () => {

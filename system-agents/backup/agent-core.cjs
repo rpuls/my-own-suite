@@ -57,6 +57,15 @@ const RESTORE_JOURNAL_FILENAME = 'restore-journal.json';
 // read path is gone with the format, so such a backup gets one plain sentence
 // instead of a checksum failure from a file this code no longer understands.
 const UNREADABLE_LEGACY_BACKUP = 'This backup was written by an older MOS in the unencrypted bundle format, which this version can no longer read. Restore it with MOS 0.19 or earlier, or take a new backup on this machine.';
+// A restore point is readable by the MOS that wrote it and by every MOS after
+// it, so a schema this version does not accept can only belong to a later
+// generation. The way out is the release named in the manifest, which is why
+// the refusal reports it rather than a fixed version.
+function unreadableGeneration(manifest) {
+  const version = manifest?.source?.version;
+  if (!version) return UNREADABLE_LEGACY_BACKUP;
+  return `This backup was written by MOS ${version}, which stores backups in a format this version of MOS no longer reads. Restore it with MOS ${version}, or take a new backup on the machine you are running now.`;
+}
 // One sentence for every way a drive can go away mid-write, so an owner reads
 // the same cause whether the loss was caught by MOS or reported by the engine.
 const DESTINATION_LOST = 'The backup drive was disconnected while MOS was writing to it, so this did not finish. Reconnect the drive and try again.';
@@ -135,6 +144,16 @@ function restoreAddressPlan({ current = {}, manifest = {}, requested = null } = 
     throw new Error(`This backup was written by another machine and carries the address ${domain}. Choose whether to move that address to this machine or to restore as a copy before restoring.`);
   }
   return { domain, foreign, plan: requested };
+}
+
+// MOS versions are the plain semver of the VERSION file. Restore asks only
+// which of two releases came first, so a numeric compare of the first three
+// parts is the whole requirement.
+function versionPrecedes(left, right) {
+  const parts = (value) => String(value).split('.').map((part) => Number.parseInt(part, 10) || 0);
+  const [a, b] = [parts(left), parts(right)];
+  for (let index = 0; index < 3; index += 1) if (a[index] !== b[index]) return a[index] < b[index];
+  return false;
 }
 
 function formatBytes(bytes) {
@@ -629,7 +648,7 @@ class BackupAgentCore {
 
   assertRestorableManifest(manifest) {
     if (manifest.backup?.kind !== 'mos-whole-suite') throw new Error('This backup is not a MOS whole-suite backup.');
-    if (!RESTORE_COMPATIBLE_SCHEMA_VERSIONS.includes(manifest.backup?.schemaVersion)) throw new Error(UNREADABLE_LEGACY_BACKUP);
+    if (!RESTORE_COMPATIBLE_SCHEMA_VERSIONS.includes(manifest.backup?.schemaVersion)) throw new Error(unreadableGeneration(manifest));
   }
 
   async validationReport(manifest, locator, checks) {
@@ -640,7 +659,9 @@ class BackupAgentCore {
     const currentHostname = this.identity.hostname();
     const warnings = [];
     if (backupVersion && currentVersion && backupVersion !== currentVersion) {
-      warnings.push(`This backup was created by MOS ${backupVersion} but this machine runs MOS ${currentVersion}. Restore reuses the installed MOS software with the backup's validated app packages; recreating the recorded MOS version automatically is not supported yet.`);
+      warnings.push(versionPrecedes(currentVersion, backupVersion)
+        ? `This backup was written by MOS ${backupVersion}, but this machine runs the older MOS ${currentVersion}. A backup restores onto the version that wrote it or any later one, never onto an earlier one. Update MOS first, then restore.`
+        : `This backup was written by MOS ${backupVersion} and this machine runs MOS ${currentVersion}. That is the supported direction: the restore reuses the MOS software installed here together with the backup's own app packages, which carry their own pinned versions.`);
     }
     return {
       apps: (manifest.contents?.apps || []).map((app) => ({ instanceId: app.instanceId, packageId: app.packageId, packageVersion: app.packageVersion })),

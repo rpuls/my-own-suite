@@ -30,7 +30,7 @@ A MOS backup captures:
 - the Home dashboard layout,
 - domain and HTTPS configuration.
 
-Restore requires a working MOS installation on a compatible version. A backup is not a bare-metal installer by itself.
+Restore requires a working MOS installation. A backup is not a bare-metal installer by itself. The version does not have to match: MOS restores a backup written by its own release or any earlier one, so a current install reads a backup taken months ago.
 
 ## Choose a destination for your installation
 
@@ -103,10 +103,10 @@ Restore replaces the current suite with a backup on a machine that already has a
 
 Important boundaries:
 
-- **Match the MOS version.** Each backup records its source version. Restore onto that version unless a documented compatibility migration says otherwise.
+- **Restore goes forward, never backward.** Each backup records the MOS version that wrote it, and restores onto that version or any later one. Install the current release; MOS does not need, and cannot install, an older version of itself. The one direction that fails is restoring a newer backup onto an older MOS, which MOS reports and refuses rather than half-applying.
 - **Backups from MOS 0.19 or earlier cannot be restored here.** Those were unencrypted bundles, a format this version no longer reads. Restore one with MOS 0.19 or earlier, or take a fresh backup on the machine you are running now.
 - **Restore is whole-suite.** Per-app restore is not supported.
-- **The machine must already run MOS.** Install the compatible MOS version first, then attach the backup destination and restore. Bare-metal recovery has not yet been validated as a single end-to-end workflow.
+- **The machine must already run MOS.** Install MOS first, then attach the backup destination and restore. Bare-metal recovery has not yet been validated as a single end-to-end workflow.
 - **A replacement machine needs the recovery key as well as the storage.** See below; restoring onto the server that made the backup never asks for it, because that server already holds it.
 - **Package snapshots are preserved, registry artifacts are not.** If an upstream registry removes a required digest-pinned image, MOS restores state and reports the affected app as failed rather than substituting another version.
 
@@ -116,7 +116,7 @@ This is what the recovery key is for: the server is gone — fire, theft, a dead
 
 <Steps>
 
-1. Install MOS on the replacement machine at a version compatible with the backup, and create an owner account on it so you can sign in. It can be a throwaway account; the restore replaces it with the one from the backup.
+1. Install MOS on the replacement machine — the current release, whatever the backup was written by — and create an owner account on it so you can sign in. It can be a throwaway account; the restore replaces it with the one from the backup.
 
 2. Open **Suite Manager → Backup & Restore** and connect the same storage: attach the drive and open it under **Where backups go**, or **Add destination** with the same endpoint, bucket and folder. Your provider's console holds your access key, and a new key for the same bucket works too.
 
@@ -134,6 +134,6 @@ The key becomes this machine's own only when you restore and choose to take the 
 
 ## Current limitations
 
-Whole-suite restore only · version-sensitive restore · a restore needs an owner account to sign in with first, so recovery is install, create an account, restore · no automatic backup before an **app** update, only before a MOS update · one destination per schedule, so a drive copy and a bucket copy are two separate backups · the recovery key cannot be rotated.
+Whole-suite restore only · a restore needs an owner account to sign in with first, so recovery is install, create an account, restore · no automatic backup before an **app** update, only before a MOS update · one destination per schedule, so a drive copy and a bucket copy are two separate backups · the recovery key cannot be rotated.
 
 If you work with backup, storage, encryption, or recovery systems and want to shape how they land, [join us on Discord](https://discord.gg/YMpF6faBCv) or [open a GitHub issue](https://github.com/rpuls/my-own-suite/issues).
