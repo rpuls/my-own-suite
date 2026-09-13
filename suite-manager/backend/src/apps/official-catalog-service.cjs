@@ -375,6 +375,10 @@ class OfficialCatalogService {
     const available = {
       ...candidate,
       compatibility: compareSemver(this.platformVersion, candidate.minimumMosVersion) >= 0 ? 'compatible' : 'requires-platform-update',
+      // Named because it is no longer the only channel an update can arrive on:
+      // a package newer than this in the box's own checkout wins instead, and
+      // the owner should never have to guess which one answered.
+      sourceChannel: 'catalog',
       sourceRevision: this.cache.revision,
     };
     if (!instance) return { available, installed: null, status: 'installable' };

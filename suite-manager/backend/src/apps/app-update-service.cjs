@@ -113,6 +113,13 @@ class AppUpdateService {
   // is right now rather than on a revision cached at preview time.
   async downloadUpdateCandidate(instance) {
     if (instance.sourceKind !== 'external-git') {
+      // The checkout first, and only when it is strictly newer than both the
+      // installed package and anything the published catalog offers (see
+      // checkoutCandidateSummaryFor). It answers with bytes that are already on
+      // this box, so the newest package a box carries is installable even with
+      // no route to GitHub at all.
+      const checkout = this.apps.checkoutUpdateCandidate(instance);
+      if (checkout) return checkout;
       if (!this.catalogService?.downloadCandidate) {
         throw new AppPackageServiceError('APP_CANDIDATE_UNAVAILABLE', 'The verified app catalog cannot prepare this update.', 503);
       }

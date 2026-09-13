@@ -765,7 +765,25 @@ Consequences:
 - Same-version-different-contents is `current`. It is not offered as an update and cannot be applied, which is the outcome `integrity-error` already produced — without describing the normal case as a fault.
 - Publishing a package change now requires a version bump to be reachable at all, since availability is decided by version. `npm run apps:version:check` (`scripts/app-version-guard.cjs`) enforces this in CI by comparing the generated catalog against the one published on `main`, and also refuses a version that moves backwards. `npm run apps:catalog:check` cannot catch this class on its own: it only proves catalog.json matches the working tree.
 - Bumping a package version means re-stamping its `privacy-review.json` `scope.packageVersion`, because that field is part of the hashed package contents. `scope.packageDigest` is placeholdered before hashing, so writing the new digest back does not move it.
-- The app catalog branch remains `main` (`MOS_APP_CATALOG_BRANCH`) regardless of the platform update track. A box tracking `staging` therefore compares its packages against `main`'s catalog and reports `installed-newer` while staging is ahead, which is quiet and correct. Making the catalog branch follow the update track is a separate, still-open question.
+- The app catalog branch remains `main` (`MOS_APP_CATALOG_BRANCH`) regardless of the platform update track. Making the catalog branch follow the update track was considered and rejected: the checkout channel below reaches the same outcome without a second fetchable branch, a second signing surface, or a knob that can be set wrong. See the entry below, which supersedes the claim this line used to make about a staging box being "quiet and correct".
+
+## 2026-09-13: An App Update May Come From The Catalog Or From This Box's Own Checkout, Newest Wins
+
+Decision: update discovery reads two channels and offers the newer. The published catalog on `main` says what has been released since this MOS version; the packages in this box's own `apps/` say what shipped with it. Ties go to the catalog.
+
+An official app has always installed from `apps/<id>` in the checkout, never from the catalog, so the checkout was already the trust root for what gets installed. Only update discovery ignored it, reading the fetched catalog alone. Two consequences followed, and both were wrong:
+
+- A box tracking any branch other than `main` could not update to the packages it was itself carrying. That is precisely what a staging box exists to do, so a new app version could not be tested on the track built for testing. The only route to running it was uninstall and reinstall, which is destructive and does not exercise the update path at all.
+- A box that had never successfully fetched the catalog was offered nothing, because the cache starts empty. The fallback everyone assumed existed - "if the network is down, use what is on disk" - did not.
+
+Consequences:
+
+- The local channel reads `apps/<id>/manifest.json` directly, not the local `apps/catalog.json`, which Suite Manager does not read at all. Manifests cannot drift from the packages they describe, whereas a catalog beside them can; and verifying a signature over a file in the same checkout as the verifier would prove nothing anyway.
+- A checkout package whose manifest does not validate is offered by neither channel. It is already surfaced in the app list as broken, and proposing it would mean replacing a working app with one MOS has said it cannot read.
+- Ties going to the catalog is what keeps the `main` and `stable` tracks on the path they already had: the checkout wins only when strictly newer, so a box whose checkout matches the published catalog downloads exactly as before.
+- When the checkout wins, nothing is downloaded. The bytes are copied out of `apps/<id>` into a candidate directory first, so a platform update landing mid-transaction cannot move them under a digest the operation has already recorded. `source.revision` stands in as the package digest, matching the install path that reads the same directory.
+- `available.sourceChannel` (`catalog` or `checkout`) names which channel answered, so an update that the published catalog does not list is never unexplained.
+- No branch is named anywhere in the logic. The local channel is whatever `apps/` holds, so every track - `staging`, a `dev/*` branch, a detached release tag - behaves the same way for the same reason, and a new track needs no new code.
 
 ## 2026-07-24: A Privacy Review Binds To Package Contents, Not To The Commit That Contains It
 

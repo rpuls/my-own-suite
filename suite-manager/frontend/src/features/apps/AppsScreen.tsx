@@ -27,7 +27,10 @@ type CatalogMetadata = {
 };
 type CatalogStatus = { advisories?: { error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; revision: string | null }; error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; repository: string; revision: string | null };
 type CatalogUpdate = {
-  available: { compatibility: 'compatible' | 'requires-platform-update'; minimumMosVersion: string; packageDigest: string; packageVersion: string; privacy: { status: string }; sourceRevision: string } | null;
+  // `sourceChannel` says which of the two channels offered this: the published
+  // catalog, or the packages this MOS version shipped with. A checkout candidate
+  // has no fetched revision of its own, so `sourceRevision` is null there.
+  available: { compatibility: 'compatible' | 'requires-platform-update'; minimumMosVersion: string; packageDigest: string; packageVersion: string; privacy: { status: string }; sourceChannel?: 'catalog' | 'checkout'; sourceRevision: string | null } | null;
   installed: { packageDigest: string; packageVersion: string } | null;
   // `external-source` means the app came from a pasted repository rather than the
   // reviewed catalog, so only that repository knows whether a newer package

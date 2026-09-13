@@ -2101,3 +2101,183 @@ test('integration lifecycle recovers provider restart and reports disabled/unins
 
   store.close();
 });
+
+
+// --- the two update channels -------------------------------------------------
+//
+// An official app installs from `apps/<id>` in this box's own checkout, so these
+// build a checkout of their own and vary what it holds against what the catalog
+// offers. `appsDir` is the whole of the local channel: no branch is named
+// anywhere, which is what makes the behaviour identical on every update track.
+
+async function checkoutAppsDir(root, { version = '1.1.0', id = 'notes', broken = false } = {}) {
+  const appsDir = path.join(root, 'checkout-apps');
+  const packageDir = path.join(appsDir, id);
+  await fsp.mkdir(packageDir, { recursive: true });
+  const manifest = {
+    manifestVersion: 1,
+    category: 'test',
+    health: { type: 'http', url: 'http://notes:8080/health' },
+    id,
+    minimumMosVersion: '0.1.0',
+    name: 'Notes',
+    resources: { services: { notes: { dockerfile: 'Dockerfile', internalPort: 8080, volumes: ['notes-data:/data'] } } },
+    routes: [{ host: 'notes', service: 'notes' }],
+    setup: { fields: [] },
+    summary: 'Notes.',
+    version,
+    // A manifest missing its required services is the "broken package" case: the
+    // app list already reports it, and it must never be offered as an update.
+    ...(broken ? { resources: { services: {} } } : {}),
+  };
+  await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
+  return { appsDir, packageDir };
+}
+
+function checkoutAgent(appsDir) {
+  return {
+    async activatePackageUpdate() { return { status: 'candidate-healthy' }; },
+    async buildPackageUpdate() { return { steps: ['candidate-built'] }; },
+    async promotePackageUpdate() { return { snapshotPath: path.join(appsDir, 'notes'), status: 'snapshot-promoted' }; },
+    async rollbackPackageUpdate() { return { status: 'installed-restored' }; },
+    async snapshotPackage(input) { return { snapshotPath: path.join(appsDir, input.packageId) }; },
+    async stagePackageUpdate() { return { snapshotPath: '/state/candidate', steps: ['staged'] }; },
+    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+  };
+}
+
+// A catalog answering the way OfficialCatalogService does, for a package it
+// offers at `catalogVersion`. `null` is a catalog that has never been fetched.
+function catalogStub(catalogVersion, downloads = []) {
+  return {
+    advisoriesFor: () => [],
+    platformVersion: '0.19.0',
+    async downloadCandidate(packageId) {
+      downloads.push(packageId);
+      throw new Error('the catalog channel should not have been asked for these bytes');
+    },
+    updateFor(packageId, instance) {
+      if (!catalogVersion) return { available: null, installed: null, status: 'unavailable' };
+      return {
+        available: {
+          compatibility: 'compatible',
+          minimumMosVersion: '0.1.0',
+          packageDigest: 'sha256:catalog',
+          packageVersion: catalogVersion,
+          path: `apps/${packageId}`,
+          privacy: { status: 'reviewed' },
+          sourceChannel: 'catalog',
+          sourceRevision: 'a'.repeat(40),
+        },
+        installed: instance ? { packageDigest: instance.packageDigest, packageVersion: instance.packageVersion } : null,
+        status: 'update-available',
+      };
+    },
+  };
+}
+
+// Installs the checkout's package at `installedVersion`, then moves the checkout
+// on to `version`, which is what a platform update to a branch ahead of the
+// catalog does to a box.
+async function installedFromCheckout(root, store, { installedVersion = '1.0.0', version = '1.1.0', catalogVersion = null, broken = false } = {}) {
+  const downloads = [];
+  const { appsDir, packageDir } = await checkoutAppsDir(root, { version: installedVersion });
+  const service = new AppPackageService({
+    agent: checkoutAgent(appsDir),
+    appsDir,
+    catalogService: catalogStub(catalogVersion, downloads),
+    store,
+  });
+  await service.installPackage('notes');
+  const manifestPath = path.join(packageDir, 'manifest.json');
+  const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
+  const moved = broken ? { ...manifest, version, resources: { services: {} } } : { ...manifest, version };
+  await fsp.writeFile(manifestPath, `${JSON.stringify(moved, null, 2)}\n`);
+  return { downloads, service };
+}
+
+test('a package newer in this box’s checkout than in the published catalog is what gets offered, and its bytes never come from the network', async (t) => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  t.after(() => store.close());
+  // The catalog is behind, exactly as `main` is behind a branch under test.
+  const { downloads, service } = await installedFromCheckout(root, store, { catalogVersion: '1.0.0', installedVersion: '1.0.0', version: '1.1.0' });
+
+  const app = service.listPackages().find((entry) => entry.id === 'notes');
+  assert.equal(app.catalogUpdate.status, 'update-available');
+  assert.equal(app.catalogUpdate.available.packageVersion, '1.1.0');
+  assert.equal(app.catalogUpdate.available.sourceChannel, 'checkout');
+  // No fetched revision exists for bytes that were already here.
+  assert.equal(app.catalogUpdate.available.sourceRevision, null);
+
+  const candidate = await service.downloadUpdateCandidate(store.getAppInstanceByPackageId('notes'));
+  t.after(() => candidate.cleanup());
+  assert.equal(candidate.manifest.version, '1.1.0');
+  assert.equal(candidate.source.trust, 'mos-reviewed');
+  // The candidate is a copy, not the checkout itself, so a platform update
+  // landing mid-transaction cannot move the bytes under a recorded digest.
+  assert.notEqual(candidate.packageDir, path.join(root, 'checkout-apps', 'notes'));
+  assert.equal(candidate.packageDigest, digestAppPackage(candidate.packageDir));
+  assert.deepEqual(downloads, []);
+});
+
+test('a checkout level with the catalog changes nothing: the catalog still answers and still supplies the bytes', async (t) => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  t.after(() => store.close());
+  // Equal versions are the ordinary case on the main and stable tracks. Ties go
+  // to the catalog so those boxes keep the path they already had.
+  const { downloads, service } = await installedFromCheckout(root, store, { catalogVersion: '1.1.0', installedVersion: '1.0.0', version: '1.1.0' });
+
+  const app = service.listPackages().find((entry) => entry.id === 'notes');
+  assert.equal(app.catalogUpdate.available.sourceChannel, 'catalog');
+  assert.equal(app.catalogUpdate.available.sourceRevision, 'a'.repeat(40));
+
+  // The stub refuses to serve bytes, which is how this proves which channel was
+  // asked: reaching it at all is the assertion.
+  await assert.rejects(() => service.downloadUpdateCandidate(store.getAppInstanceByPackageId('notes')));
+  assert.deepEqual(downloads, ['notes']);
+});
+
+test('a box that has never reached the catalog can still update to what it is carrying', async (t) => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  t.after(() => store.close());
+  // catalogVersion null is an empty catalog cache: a fresh install, or a box
+  // with no route to GitHub. Before the checkout channel existed this offered
+  // nothing at all.
+  const { downloads, service } = await installedFromCheckout(root, store, { catalogVersion: null, installedVersion: '1.0.0', version: '1.1.0' });
+
+  const app = service.listPackages().find((entry) => entry.id === 'notes');
+  assert.equal(app.catalogUpdate.status, 'update-available');
+  assert.equal(app.catalogUpdate.available.packageVersion, '1.1.0');
+  assert.deepEqual(downloads, []);
+});
+
+test('a checkout package whose manifest does not validate is offered by neither channel', async (t) => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  t.after(() => store.close());
+  // Newer by version, and broken, so only the validity check can be what stops
+  // it. Replacing a working app with one MOS has said it cannot read is worse
+  // than offering no update.
+  const { service } = await installedFromCheckout(root, store, { broken: true, catalogVersion: null, installedVersion: '1.0.0', version: '2.0.0' });
+
+  const app = service.listPackages().find((entry) => entry.id === 'notes');
+  assert.notEqual(app.catalogUpdate.status, 'update-available');
+  assert.equal(service.checkoutUpdateCandidate(store.getAppInstanceByPackageId('notes')), null);
+});
+
+test('a checkout behind what is installed never proposes a downgrade', async (t) => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  t.after(() => store.close());
+  // Rolling the checkout back - switching to an older branch, or restoring an
+  // older release - must not read as an update.
+  const { service } = await installedFromCheckout(root, store, { catalogVersion: null, installedVersion: '2.0.0', version: '1.0.0' });
+
+  const app = service.listPackages().find((entry) => entry.id === 'notes');
+  assert.notEqual(app.catalogUpdate.status, 'update-available');
+  assert.equal(service.checkoutUpdateCandidate(store.getAppInstanceByPackageId('notes')), null);
+});
