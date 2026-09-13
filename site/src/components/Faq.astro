@@ -38,7 +38,8 @@ import { MOS_VERSION } from '../lib/version'
       </details>
       <details>
         <summary>What if I want to leave? <span class="chev"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-chevron"/></svg></span></summary>
-        <p>Everything runs on standard open-source apps with standard data formats. Manual whole-suite backups go to an encrypted USB drive on own hardware or a mounted block-storage volume on a cloud server. Bundles are not encrypted by MOS, so the destination must be protected like the server itself.</p>
+        <p>Everything runs on standard open-source apps with standard data formats. Whole-suite backups run on a schedule to a USB drive, a mounted block-storage volume, or an S3-compatible bucket, encrypted with your recovery key before they leave the server.</p>
+        <p>What MOS writes there is a plain <a class="mos-link" href="https://restic.net/" rel="noopener">restic</a> repository, not a format of our own. If MOS vanished tomorrow, your recovery key and the restic command-line tool would still open every backup you have and give you your files back, on any machine. The way out does not run through us.</p>
       </details>
       <details>
         <summary>It's beta — is it safe to use? <span class="chev"><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-chevron"/></svg></span></summary>

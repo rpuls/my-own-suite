@@ -60,7 +60,7 @@ Provider snapshots are outside MOS either way: they may be useful as an addition
 
 </Steps>
 
-Backups are written under `MOS-backups/` on the selected destination, into a single encrypted store that every backup on that drive shares. Because the store is content-addressed, a second backup only writes what actually changed, and one drive holds many restore points for far less space than one full copy each. Each restore point records which stored data it needs; MOS checks the store's integrity and re-verifies every app package before a restore changes running services.
+Backups are written under `MOS-backups/` on the selected destination, into a single encrypted store that every backup on that drive shares. That store is a [restic](https://restic.net/) repository. MOS has no backup format of its own: restic — an open-source backup program in wide use since 2014 — does the encryption, the chunking, the deduplication and the integrity checking, and MOS drives it rather than replacing it. Because the store is content-addressed, a second backup only writes what actually changed, and one drive holds many restore points for far less space than one full copy each. Each restore point records which stored data it needs; MOS checks the store's integrity and re-verifies every app package before a restore changes running services.
 
 One drive holds one store. Bundles from MOS 0.19 or earlier, in the older unencrypted format, are still listed if they are on the same drive, but this version cannot restore them—restoring one needs MOS 0.19 or earlier. You can delete them here to free the space they take.
 
@@ -70,7 +70,7 @@ A drive in the same room as the server survives a failed disk. It does not survi
 
 You need four things from your provider: the endpoint address, a bucket that already exists, and an access key with its secret. A folder is optional and lets one bucket hold the backups of more than one server. **Check it works** tells you whether MOS can reach it *before* you save, and says which of a wrong key, a missing bucket or an unreachable address it ran into.
 
-- **Your backups are encrypted before they leave the server.** The provider stores what it cannot read.
+- **Your backups are encrypted before they leave the server.** The provider stores what it cannot read. restic encrypts every chunk and its metadata with your recovery key, so nothing MOS uploads is readable without it.
 - **A bucket behaves like a drive from there on.** Back up to it by hand or on a schedule, check it, note it, restore from it, delete from it.
 - **Nothing is deleted when you disconnect.** MOS forgets how to reach the bucket; the backups in it stay, and reconnecting with the same details lists them again.
 
