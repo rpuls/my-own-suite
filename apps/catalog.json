@@ -32,8 +32,8 @@
     },
     "paperless-ngx": {
       "minimumMosVersion": "0.19.0",
-      "packageDigest": "sha256:4025a45f4f73973eed773749aca1012963abe6b667a43a6e799a442c492c634a",
-      "packageVersion": "0.2.0",
+      "packageDigest": "sha256:5091dd29333e011d67d2b6fd9293c3e058d6c78f4ac14ad7e99d0d3a0150ef99",
+      "packageVersion": "0.3.0",
       "path": "apps/paperless-ngx",
       "privacy": {
         "posture": "private-by-default",
