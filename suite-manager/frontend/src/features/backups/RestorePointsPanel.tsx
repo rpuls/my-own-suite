@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { Icon, Spinner } from '../../components/ui';
+import { Icon, Panel, PanelHead, PanelItem, PanelList, Spinner } from '../../components/ui';
 import {
   backupDescription,
   checkpointLabel,
@@ -39,28 +39,25 @@ export function RestorePointsPanel({ busy, checking, onCheck, onDelete, onEditNo
   const locked = Boolean(busy) || running;
   const anyOpen = views.some((view) => open[view.id]);
 
-  return <section className="mos-panel suite-bk-panel">
-    <div className="suite-bk-panel-head">
-      <div>
-        <p className="suite-bk-eyebrow">Restore points</p>
-        <p className="suite-meta">Grouped by the place they are kept. Open a place to see what is in it.</p>
-      </div>
-      <button
+  return <Panel>
+    <PanelHead
+      actions={<button
         className="mos-btn mos-btn-secondary mos-btn-sm"
         onClick={() => setOpen(anyOpen ? {} : Object.fromEntries(views.filter((view) => view.selectable).map((view) => [view.id, true])))}
         type="button"
-      >
-        {anyOpen ? 'Collapse all' : 'Open all'}
-      </button>
-    </div>
+      >{anyOpen ? 'Collapse all' : 'Open all'}</button>}
+      title="Restore points"
+    >
+      <p className="suite-meta">Grouped by the place they are kept. Open a place to see what is in it.</p>
+    </PanelHead>
 
-    <div className="suite-bk-groups">
+    <PanelList>
       {views.map((view) => {
         const points = status.backups.filter((backup) => backup.destinationId === view.id);
         const limit = shown[view.id] || PAGE;
         const visible = points.slice(0, limit);
         const isOpen = view.selectable && Boolean(open[view.id]);
-        return <div className="suite-bk-group" key={view.id}>
+        return <PanelItem flush key={view.id} quiet={!view.selectable}>
           <button
             aria-expanded={isOpen}
             className="suite-bk-group-head"
@@ -77,7 +74,7 @@ export function RestorePointsPanel({ busy, checking, onCheck, onDelete, onEditNo
               </span>
               <span className="suite-bk-detail">{groupSummary(view, points)}</span>
             </span>
-            {view.selectable ? <span className="suite-bk-group-key">{view.foreign ? `Opens with your key and ${view.foreign}'s` : 'Opens with your key'}</span> : null}
+            {view.selectable ? <span className="suite-bk-group-key">{view.destination.borrowedKey ? `Opens with ${view.foreign || 'another server'}'s key, kept here` : 'Opens with your key'}</span> : null}
           </button>
 
           {isOpen ? <div className="suite-bk-points">
@@ -100,12 +97,11 @@ export function RestorePointsPanel({ busy, checking, onCheck, onDelete, onEditNo
               onClick={() => setShown((current) => ({ ...current, [view.id]: (current[view.id] || PAGE) + 10 }))}
               type="button"
             >Show {Math.min(10, points.length - visible.length)} more</button> : null}
-            {points.length ? null : <p className="suite-bk-detail suite-bk-empty">Nothing here yet. Your next backup lands here.</p>}
           </div> : null}
-        </div>;
+        </PanelItem>;
       })}
-    </div>
-  </section>;
+    </PanelList>
+  </Panel>;
 }
 
 function groupSummary(view: DestinationView, points: BackupEntry[]) {

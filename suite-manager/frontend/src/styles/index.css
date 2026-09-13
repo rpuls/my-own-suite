@@ -2974,46 +2974,14 @@
 .suite-env-paste { display: grid; gap: var(--mos-space-3); }
 
 /* Backup & Restore ---------------------------------------------------------
-   One readable surface per section, dividers inside it, no card in a card.
-   Severity is carried by the coloured dot and the row tint; every row states
-   its condition once, in its status line. */
+   The page is built from the shared flush panel (.mos-panel-flush and its
+   head/band/list/item sections), so nothing here owns a surface, an inset or a
+   divider. What is left is what the content itself needs: severity dots, status
+   lines, the destination row's three-zone grid, restore points and activity. */
 
 .suite-bk-page {
   display: grid;
   gap: var(--mos-space-4);
-}
-
-.suite-bk-panel {
-  display: grid;
-  gap: var(--mos-space-4);
-}
-
-.suite-bk-panel h2,
-.suite-bk-panel h3 {
-  margin: 0;
-}
-
-.suite-bk-panel-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--mos-space-4);
-  flex-wrap: wrap;
-}
-
-.suite-bk-panel-head > div {
-  display: grid;
-  gap: 0.15rem;
-  min-width: 0;
-}
-
-.suite-bk-eyebrow {
-  margin: 0;
-  font-size: 0.75rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--mos-color-text-muted);
 }
 
 .suite-bk-detail {
@@ -3077,7 +3045,8 @@
 }
 
 /* The banner: the only thing most visits need. If it is green the owner can
-   close the page. */
+   close the page. It is one statement rather than a list, so it pads itself
+   instead of using the flush sections. */
 .suite-bk-banner {
   display: flex;
   align-items: center;
@@ -3139,76 +3108,14 @@
   margin: 0;
 }
 
-/* One sentence for the key, next to the list it describes: the key is a
-   property of that list, and adjacency is the explanation. */
-.suite-bk-keyrow {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  padding: var(--mos-space-3) var(--mos-space-4);
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: var(--mos-radius-sm);
-  background: var(--mos-color-surface-muted);
-}
-
-.suite-bk-keyrow.is-warning {
-  border-color: var(--mos-color-warning-border);
-  background: var(--mos-color-warning-soft);
-}
-
-.suite-bk-keyrow p {
-  flex: 1 1 18rem;
-  margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.55;
-}
-
-.suite-bk-keyrow-detail {
-  color: var(--mos-color-text-muted);
-}
-
-.suite-bk-keyrow-icon {
-  display: flex;
-  flex: none;
-  color: var(--mos-color-accent);
-}
-
-.suite-bk-keyrow-icon .suite-icon {
-  width: 1.1rem;
-  height: 1.1rem;
-}
-
-/* The destination list. One row per place; three zones, always in the same
-   three positions. */
-.suite-bk-rows {
-  display: grid;
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: var(--mos-radius-sm);
-  overflow: hidden;
-}
-
+/* One destination: the radio that chooses it, what it is and how it is doing,
+   and at most one button with a More menu. Three zones, always in the same
+   three positions. The shared panel item supplies the inset and the rule. */
 .suite-bk-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: start;
   gap: var(--mos-space-3);
-  padding: var(--mos-space-4);
-  border-top: 1px solid var(--mos-color-hairline);
-}
-
-.suite-bk-rows > .suite-bk-row:first-child,
-.suite-bk-group-note + .suite-bk-row {
-  border-top: 0;
-}
-
-.suite-bk-row.is-selected {
-  background: var(--mos-color-accent-soft);
-  box-shadow: inset 3px 0 0 var(--mos-color-accent);
-}
-
-.suite-bk-row.is-away {
-  opacity: 0.62;
 }
 
 .suite-bk-row-body {
@@ -3234,8 +3141,8 @@
   color: var(--mos-color-text-muted);
 }
 
-.suite-bk-row.is-selected .suite-bk-row-icon,
-.suite-bk-row.is-ready .suite-bk-row-icon {
+.suite-bk-row.is-ready .suite-bk-row-icon,
+.mos-panel-item-selected .suite-bk-row-icon {
   color: var(--mos-color-accent);
 }
 
@@ -3280,11 +3187,11 @@
   background: transparent;
 }
 
-.suite-bk-row.is-selected .suite-bk-radio {
+.mos-panel-item-selected .suite-bk-radio {
   border-color: var(--mos-color-accent);
 }
 
-.suite-bk-row.is-selected .suite-bk-radio > span {
+.mos-panel-item-selected .suite-bk-radio > span {
   background: var(--mos-color-accent);
 }
 
@@ -3323,21 +3230,6 @@
   margin-top: 0.2rem;
 }
 
-.suite-bk-group-note {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: var(--mos-space-3) var(--mos-space-4);
-  border-top: 1px solid var(--mos-color-hairline);
-  background: var(--mos-color-info-soft);
-  color: var(--mos-color-text-muted);
-  font-size: 0.9rem;
-}
-
-.suite-bk-group-note strong {
-  color: var(--mos-color-text);
-}
-
 .suite-bk-chip {
   display: inline-flex;
   align-items: center;
@@ -3357,30 +3249,14 @@
   color: var(--mos-color-info);
 }
 
-/* The schedule decides only when and how many to keep; where they go is
-   stated as a fact, because the list above already answered it. */
-.suite-bk-schedule .suite-bk-panel-head > div {
-  gap: 0.3rem;
-}
-
-/* Restore points, grouped by the place they are kept. */
-.suite-bk-groups {
-  display: grid;
-  border: 1px solid var(--mos-color-surface-border);
-  border-radius: var(--mos-radius-sm);
-  overflow: hidden;
-}
-
-.suite-bk-group + .suite-bk-group {
-  border-top: 1px solid var(--mos-color-hairline);
-}
-
+/* A place in the restore list is a whole-row disclosure, so the item is flush
+   and the button carries the inset. */
 .suite-bk-group-head {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   width: 100%;
-  padding: var(--mos-space-4);
+  padding: var(--mos-panel-pad);
   border: 0;
   background: transparent;
   color: inherit;
@@ -3391,7 +3267,6 @@
 
 .suite-bk-group-head:disabled {
   cursor: default;
-  opacity: 0.66;
 }
 
 .suite-bk-group-head:hover:not(:disabled) {
@@ -3431,11 +3306,11 @@
 
 .suite-bk-points {
   display: grid;
-  padding: 0 var(--mos-space-4) var(--mos-space-3);
+  padding: 0 var(--mos-panel-pad) var(--mos-space-2);
 }
 
 .suite-bk-point + .suite-bk-point {
-  border-top: 1px solid var(--mos-color-hairline);
+  border-top: var(--mos-border-hairline);
 }
 
 .suite-bk-point.is-retired {
@@ -3493,32 +3368,25 @@
   flex-wrap: wrap;
 }
 
-.suite-bk-more,
-.suite-bk-empty {
-  padding: var(--mos-space-3) 0;
-  text-align: center;
-}
-
 .suite-bk-more {
+  padding: var(--mos-space-3) 0;
   border: 0;
   background: transparent;
   color: var(--mos-color-accent);
   font: inherit;
   font-weight: 700;
+  text-align: center;
   cursor: pointer;
 }
 
-/* History, not a decision, so it is last and closed. */
-.suite-bk-activity {
-  gap: var(--mos-space-3);
-}
-
+/* History, not a decision, so it is last and closed. The head is the whole
+   row, so it carries the panel's inset itself. */
 .suite-bk-activity-head {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   width: 100%;
-  padding: 0;
+  padding: var(--mos-panel-pad);
   border: 0;
   background: transparent;
   color: inherit;
@@ -3534,8 +3402,8 @@
 }
 
 .suite-bk-activity-body {
-  display: grid;
-  gap: var(--mos-space-2);
+  padding-top: 0;
+  border-top: var(--mos-border-hairline);
 }
 
 .suite-bk-activity-body > p {
@@ -3553,7 +3421,7 @@
   gap: var(--mos-space-3);
 }
 
-.suite-bk-kind {
+.suite-bk-kind-card {
   display: grid;
   gap: 0.35rem;
   padding: var(--mos-space-4);
@@ -3566,30 +3434,30 @@
   cursor: pointer;
 }
 
-.suite-bk-kind:hover,
-.suite-bk-kind.is-picked {
+.suite-bk-kind-card:hover,
+.suite-bk-kind-card.is-picked {
   border-color: var(--mos-color-accent-border);
   background: var(--mos-color-accent-soft);
 }
 
-.suite-bk-kind > span:first-child {
+.suite-bk-kind-card > span:first-child {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
 }
 
-.suite-bk-kind > span:first-child strong {
+.suite-bk-kind-card > span:first-child strong {
   font-size: var(--mos-text-body-lg);
 }
 
-.suite-bk-kind > span:first-child .suite-icon {
+.suite-bk-kind-card > span:first-child .suite-icon {
   width: 1.25rem;
   height: 1.25rem;
   color: var(--mos-color-accent);
 }
 
-.suite-bk-kind > span:last-child {
+.suite-bk-kind-card > span:last-child {
   color: var(--mos-color-text-muted);
   font-size: 0.9rem;
   line-height: 1.55;
@@ -3600,6 +3468,24 @@
   display: flex;
   gap: var(--mos-space-2);
   flex-wrap: wrap;
+}
+
+/* One key in an archive's key list: what it is on the left, the one thing that
+   can be done to it on the right. */
+.suite-bk-keyrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mos-space-3);
+  flex-wrap: wrap;
+}
+
+.suite-bk-keyrow > div {
+  min-width: 0;
+}
+
+.suite-bk-keyrow p {
+  margin: 0.15rem 0 0;
 }
 
 .suite-bk-key-list {
@@ -3637,10 +3523,6 @@
 
 /* A restore takes the page over: nothing else on it is true while the machine
    is being replaced. */
-.suite-bk-progress {
-  gap: var(--mos-space-3);
-}
-
 .suite-bk-bar {
   height: 0.5rem;
   border-radius: 999px;

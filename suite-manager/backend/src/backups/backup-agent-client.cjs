@@ -70,6 +70,10 @@ class BackupAgentClient {
   acknowledgeRecoveryKey() { return this.request('POST', '/v1/recovery-key/acknowledge', {}); }
   revealRecoveryKey() { return this.request('POST', '/v1/recovery-key/reveal', {}); }
   unlockDestination(input) { return this.request('POST', '/v1/destinations/unlock', input); }
+  forgetDestinationKey(destinationId) { return this.request('POST', '/v1/destinations/forget-key', { destinationId }); }
+  archiveKeys(input) { return this.request('POST', '/v1/destinations/keys', input); }
+  removeArchiveKey(input) { return this.request('POST', '/v1/destinations/keys/remove', input); }
+  forgetDestinationKey(destinationId) { return this.request('POST', '/v1/destinations/forget-key', { destinationId }); }
 }
 
 module.exports = { BACKUP_AGENT_TIMEOUT_MS, BackupAgentClient };

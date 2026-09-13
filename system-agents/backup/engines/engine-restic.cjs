@@ -382,15 +382,21 @@ class ResticEngine {
     return true;
   }
 
-  // Whether this machine's key opens a repository, wherever it lives. A drive
-  // with no config file is absent without asking the engine; a `locked` answer
-  // is retried once through the pre-release password, which is the single place
-  // every repository keyed before the recovery key existed gets migrated — so
-  // health checks, preflights and opens all migrate, not only the open.
-  async probe({ env = {}, localPath = null, location, secrets = [] }) {
+  // Whether a repository opens, wherever it lives. A drive with no config file
+  // is absent without asking the engine; a `locked` answer is retried once
+  // through the pre-release password, which is the single place every
+  // repository keyed before the recovery key existed gets migrated — so health
+  // checks, preflights and opens all migrate, not only the open.
+  //
+  // `password` is the key of the server that owns the repository, for a
+  // destination this machine only borrows. It also stops the migration, which
+  // writes: nothing this machine does to another server's archive may change
+  // it, and there is nothing here of ours to migrate anyway.
+  async probe({ env = {}, localPath = null, location, password = null, secrets = [] }) {
     if (localPath && !this.repositoryInitialized(localPath)) return { cause: 'absent', state: 'absent' };
     const noun = localPath ? 'drive' : 'bucket';
-    const first = await this.probeRepository({ env, location, noun, secrets });
+    const first = await this.probeRepository({ env, location, noun, password, secrets });
+    if (password) return first;
     if (first.state !== 'locked' || !(await this.migrateOnce({ env, localPath, location, secrets }))) return first;
     return this.probeRepository({ env, location, noun, secrets });
   }
@@ -484,11 +490,17 @@ class ResticEngine {
     };
   }
 
-  async openOrCreateRepository({ create = true, env = {}, localPath = null, location, missingMessage, secrets = [] }) {
-    const repository = { engineName: this.name, env, localPath, location, secrets };
+  // `password` belongs to the server that owns the repository. It is folded
+  // into the repository's own environment and secrets rather than passed to
+  // each command, so every later read through this handle uses it and it stays
+  // masked out of captured output.
+  async openOrCreateRepository({ create = true, env = {}, localPath = null, location, missingMessage, password = null, secrets = [] }) {
+    const repository = password
+      ? { engineName: this.name, env: { ...env, RESTIC_PASSWORD: password }, localPath, location, secrets: [...secrets, password] }
+      : { engineName: this.name, env, localPath, location, secrets };
     // A refusal that is not "there is nothing here" must never be answered by
     // creating a second repository.
-    const probe = await this.probe({ env, localPath, location, secrets });
+    const probe = await this.probe({ env, localPath, location, password, secrets });
     if (probe.state === 'unreachable') throw Object.assign(new Error(probe.message), { engineName: this.name, engineOutput: probe.output || null });
     // Returned rather than thrown: backups written by another server are a
     // state the screen offers a recovery key for, not a failure to report.
@@ -498,13 +510,15 @@ class ResticEngine {
       // Flagged, because "there is no repository here yet" is a normal answer
       // for a destination nothing has been written to and a fatal one for a
       // backup being read back. Only the caller knows which it is asking.
-      if (!create) throw Object.assign(new Error(missingMessage || 'The encrypted backup store is missing from this destination, so this backup cannot be read.'), { repositoryAbsent: true });
+      if (!create || password) throw Object.assign(new Error(missingMessage || 'The encrypted backup store is missing from this destination, so this backup cannot be read.'), { repositoryAbsent: true });
       if (localPath) fs.mkdirSync(localPath, { recursive: true });
       this.runFor(repository, ['init', ...this.repositoryFlags(repository)], { timeout: 600_000 });
     } else {
       this.clearStaleLocks(repository);
     }
-    if (this.onKeyUsed) {
+    // Only this machine's own key counts as used: opening a borrowed archive
+    // must not spend the one condition that lets a fresh server adopt a key.
+    if (this.onKeyUsed && !password) {
       try { this.onKeyUsed(); } catch {}
     }
     // A local destination is identified by the descriptor MOS writes beside the

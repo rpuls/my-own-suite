@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 
 import { ServerLoginNotice } from '../../components/ServerLoginNotice';
-import { AdvancedPanel, Icon, Notice, Select, Spinner } from '../../components/ui';
+import { AdvancedPanel, Icon, Notice, Panel, PanelBody, PanelHead, Select, Spinner } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
 import { DestinationsPanel } from './DestinationsPanel';
 import { RestorePointsPanel } from './RestorePointsPanel';
 import {
   AddDestinationWizard,
+  ArchiveKeysDialog,
   BackupDialog,
   DeleteDialog,
   DisconnectDialog,
@@ -15,6 +16,7 @@ import {
   RestoreDialog,
   ScheduleDialog,
   UnlockDialog,
+  type ConnectionTest,
 } from './dialogs';
 import {
   EMPTY_OBJECT_DRAFT,
@@ -37,6 +39,7 @@ import {
   type DestinationView,
   type ObjectDraft,
   type RevealedRecoveryKey,
+  type ArchiveKey,
 } from './model';
 
 type Dialog =
@@ -47,6 +50,7 @@ type Dialog =
   | { kind: 'note'; backup: BackupEntry; value: string }
   | { kind: 'restore'; backup: BackupEntry }
   | { kind: 'schedule' }
+  | { kind: 'keys'; view: DestinationView }
   | { kind: 'unlock'; view: DestinationView }
   | { kind: 'wizard'; start: '' | 'drive' | 'online' }
   | null;
@@ -64,10 +68,12 @@ export function BackupsScreen() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const [objectDraft, setObjectDraft] = useState<ObjectDraft>({ ...EMPTY_OBJECT_DRAFT });
-  const [objectTest, setObjectTest] = useState<{ locked?: boolean; message: string; ok: boolean } | null>(null);
+  const [objectTest, setObjectTest] = useState<ConnectionTest>(null);
   const [revealedKey, setRevealedKey] = useState<RevealedRecoveryKey | null>(null);
   const [keyError, setKeyError] = useState('');
   const [unlockError, setUnlockError] = useState('');
+  const [archiveKeys, setArchiveKeys] = useState<ArchiveKey[] | null>(null);
+  const [archiveKeysError, setArchiveKeysError] = useState('');
   const [checking, setChecking] = useState('');
 
   const activeJob = status?.currentJob || null;
@@ -220,6 +226,43 @@ export function BackupsScreen() {
     }
   }
 
+  // Who can open an archive. The key is entered here and used for the read; it
+  // is never kept, which is why removing one asks for it again.
+  async function listArchiveKeys(view: DestinationView, recoveryKeyInput: string) {
+    setBusy(`keys:${view.id}`);
+    setArchiveKeysError('');
+    try {
+      const result = await post<{ result: { keys: ArchiveKey[] } }>('destinations/keys', { destinationId: view.id, recoveryKey: recoveryKeyInput }, 'Unable to read the keys on this archive.');
+      setArchiveKeys(result?.result?.keys || []);
+    } catch (caught) {
+      setArchiveKeysError(caught instanceof Error ? caught.message : 'Unable to read the keys on this archive.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function removeArchiveKey(view: DestinationView, recoveryKeyInput: string, keyId: string) {
+    setBusy(`key-remove:${keyId}`);
+    setArchiveKeysError('');
+    try {
+      await post('destinations/keys/remove', { destinationId: view.id, keyId, recoveryKey: recoveryKeyInput }, 'Unable to remove that key.');
+      setBusy(`keys:${view.id}`);
+      const result = await post<{ result: { keys: ArchiveKey[] } }>('destinations/keys', { destinationId: view.id, recoveryKey: recoveryKeyInput }, 'Unable to read the keys on this archive.');
+      setArchiveKeys(result?.result?.keys || []);
+    } catch (caught) {
+      setArchiveKeysError(caught instanceof Error ? caught.message : 'Unable to remove that key.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  // Handing the key back. Only this machine forgets it: the archive it opens
+  // was never changed and is not changed now.
+  async function forgetDestinationKey(view: DestinationView) {
+    await runAction(`forget-key:${view.id}`, async () => {
+      await post('destinations/forget-key', { destinationId: view.id }, 'Unable to forget this key.');
+    });
+  }
   async function mount(view: DestinationView) {
     await runAction(`mount:${view.id}`, async () => {
       const result = await post<{ destination: { id: string } }>('mount', { destinationId: view.id }, 'Unable to open this drive.');
@@ -272,14 +315,17 @@ export function BackupsScreen() {
 
   // The test reports into the dialog rather than the page banner, because it is
   // an answer about what is on screen and the owner is about to act on it.
-  async function testObjectStorage() {
+  async function testObjectStorage(): Promise<ConnectionTest> {
     setBusy('object-test');
     setObjectTest(null);
     try {
-      const response = await post<{ result: { message: string; ok: boolean } }>('destinations/object/test', objectDraft, 'Unable to reach this storage.');
+      const response = await post<{ result: ConnectionTest }>('destinations/object/test', objectDraft, 'Unable to reach this storage.');
       setObjectTest(response.result);
+      return response.result;
     } catch (caught) {
-      setObjectTest({ message: caught instanceof Error ? caught.message : 'Unable to reach this storage.', ok: false });
+      const failed = { message: caught instanceof Error ? caught.message : 'Unable to reach this storage.', ok: false };
+      setObjectTest(failed);
+      return failed;
     } finally {
       setBusy('');
     }
@@ -387,12 +433,14 @@ export function BackupsScreen() {
     return <section className="mos-shell suite-backups">
       <div className="mos-page">
         {hero}
-        <section className="mos-panel suite-bk-panel suite-bk-progress">
-          <p className="suite-bk-working"><Spinner />Restoring</p>
-          <h2 className="mos-card-title">{stageWords(activeJob?.stage)}</h2>
-          <div className="suite-bk-bar"><span style={{ width: `${progress.percent}%` }} /></div>
-          <p className="suite-meta">Step {progress.step || 1} of {progress.steps}. This takes 10 to 20 minutes. Your apps are stopped while it runs. <strong>Do not turn the machine off.</strong> When it is done everyone is signed out, because this becomes the restored server.</p>
-        </section>
+        <Panel>
+          <PanelBody>
+            <p className="suite-bk-working"><Spinner />Restoring</p>
+            <h2 className="mos-card-title">{stageWords(activeJob?.stage)}</h2>
+            <div className="suite-bk-bar"><span style={{ width: `${progress.percent}%` }} /></div>
+            <p className="suite-meta">Step {progress.step || 1} of {progress.steps}. This takes 10 to 20 minutes. Your apps are stopped while it runs. <strong>Do not turn the machine off.</strong> When it is done everyone is signed out, because this becomes the restored server.</p>
+          </PanelBody>
+        </Panel>
       </div>
     </section>;
   }
@@ -460,27 +508,30 @@ export function BackupsScreen() {
         {/* A fresh install has nothing to schedule, nothing to restore and
             nothing to report, so it shows one question instead of four empty
             sections. */}
-        {views.length ? null : <section className="mos-panel suite-bk-panel suite-bk-empty-state">
+        {views.length ? null : <Panel>
+          <PanelBody>
           <h2 className="mos-card-title">You have no backups yet.</h2>
           <p className="suite-meta">Choose where they should go &mdash; a drive you plug into this server, or storage you rent online. You can add the other one later.</p>
           <div className="suite-bk-kinds">
-            <button className="suite-bk-kind" onClick={() => setDialog({ kind: 'wizard', start: 'drive' })} type="button">
+            <button className="suite-bk-kind-card" onClick={() => setDialog({ kind: 'wizard', start: 'drive' })} type="button">
               <span><Icon name="usb-drive" /><strong>Use a drive</strong></span>
               <span>Plug a USB drive into this server. Fastest to restore from.</span>
             </button>
-            <button className="suite-bk-kind" onClick={() => setDialog({ kind: 'wizard', start: 'online' })} type="button">
+            <button className="suite-bk-kind-card" onClick={() => setDialog({ kind: 'wizard', start: 'online' })} type="button">
               <span><Icon name="cloud-storage" /><strong>Connect storage online</strong></span>
               <span>Storage you rent from a provider. Survives a fire or a theft at home.</span>
             </button>
           </div>
-        </section>}
+          </PanelBody>
+        </Panel>}
 
         {views.length ? <DestinationsPanel
           busy={busy}
-          keyState={recoveryKey}
           onAction={destinationAction}
           onAdd={() => { setObjectDraft({ ...EMPTY_OBJECT_DRAFT }); setObjectTest(null); setDialog({ kind: 'wizard', start: '' }); }}
           onDisconnect={(view) => setDialog({ kind: 'disconnect', view })}
+          onForgetKey={(view) => void forgetDestinationKey(view)}
+          onKeys={(view) => { setArchiveKeys(null); setArchiveKeysError(''); setDialog({ kind: 'keys', view }); }}
           onEdit={(view) => {
             const destination = view.destination;
             setObjectDraft({
@@ -502,19 +553,18 @@ export function BackupsScreen() {
           views={views}
         /> : null}
 
-        {views.length && status.schedule ? <section className="mos-panel suite-bk-panel suite-bk-schedule">
-          <div className="suite-bk-panel-head">
-            <div>
-              <p className="suite-bk-eyebrow">Automatic backups</p>
-              <strong>{scheduleSummary(status.schedule, selected)}</strong>
-              <p className={`suite-bk-status is-${scheduleLive(status.schedule, selected).tone}`}>
-                <span className={`suite-bk-dot is-${scheduleLive(status.schedule, selected).tone}`} />
-                {scheduleLive(status.schedule, selected).text}
-              </p>
-            </div>
-            <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={() => setDialog({ kind: 'schedule' })} type="button">Change</button>
-          </div>
-        </section> : null}
+        {views.length && status.schedule ? <Panel>
+          <PanelHead
+            actions={<button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={() => setDialog({ kind: 'schedule' })} type="button">Change</button>}
+            title="Automatic backups"
+          >
+            <strong>{scheduleSummary(status.schedule, selected)}</strong>
+            <p className={`suite-bk-status is-${scheduleLive(status.schedule, selected).tone}`}>
+              <span className={`suite-bk-dot is-${scheduleLive(status.schedule, selected).tone}`} />
+              {scheduleLive(status.schedule, selected).text}
+            </p>
+          </PanelHead>
+        </Panel> : null}
 
         {views.length ? <RestorePointsPanel
           busy={busy}
@@ -528,13 +578,13 @@ export function BackupsScreen() {
           views={views}
         /> : null}
 
-        {views.length ? <section className="mos-panel suite-bk-panel suite-bk-activity">
+        {views.length ? <Panel>
           <button aria-expanded={activityOpen} className="suite-bk-activity-head" onClick={() => setActivityOpen(!activityOpen)} type="button">
             <span className={`suite-bk-chevron${activityOpen ? ' is-open' : ''}`}><Icon name="chevron-right" /></span>
             <strong>Recent activity</strong>
             <span className="suite-bk-detail">{status.recentJobs?.[0] ? activityLine(status.recentJobs[0], views) : 'Nothing has happened yet.'}</span>
           </button>
-          {activityOpen ? <div className="suite-bk-activity-body">
+          {activityOpen ? <PanelBody className="suite-bk-activity-body">
             {(status.recentJobs || []).map((job) => <p key={job.id}>
               <span className="suite-bk-point-when">{whenWords(job.updatedAt)}</span>
               <span>{activityLine(job, views)}</span>
@@ -554,8 +604,8 @@ export function BackupsScreen() {
               output={status.lastJob?.error ? (status.lastJob.logs || []).map((entry) => entry.message || '').join('\n') : undefined}
               reveal={status.lastJob?.status === 'failed' ? 'on-failure' : 'technical-mode'}
             />
-          </div> : null}
-        </section> : null}
+          </PanelBody> : null}
+        </Panel> : null}
       </div> : null}
 
       {dialog?.kind === 'backup' && backupTarget ? <BackupDialog
@@ -577,6 +627,16 @@ export function BackupsScreen() {
         onReveal={(password) => void revealRecoveryKey(password)}
         revealed={revealedKey}
         views={views}
+      /> : null}
+
+      {dialog?.kind === 'keys' ? <ArchiveKeysDialog
+        busy={busy}
+        error={archiveKeysError}
+        keys={archiveKeys}
+        onClose={closeDialog}
+        onList={(entered) => void listArchiveKeys(dialog.view, entered)}
+        onRemove={(entered, keyId) => void removeArchiveKey(dialog.view, entered, keyId)}
+        view={dialog.view}
       /> : null}
 
       {dialog?.kind === 'unlock' ? <UnlockDialog
@@ -643,7 +703,7 @@ export function BackupsScreen() {
         onChange={setObjectDraft}
         onFinish={(useForAutomatic) => void saveObjectStorage(useForAutomatic)}
         onMount={(view) => void mount(view)}
-        onTest={() => void testObjectStorage()}
+        onTest={() => testObjectStorage()}
         testResult={objectTest}
       /> : null}
     </div>

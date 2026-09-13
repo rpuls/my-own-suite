@@ -1,24 +1,25 @@
-import { ActionMenu, Icon, Spinner } from '../../components/ui';
-import { destinationIconName, keyCoverage, type DestinationView, type RecoveryKeyState } from './model';
+import { ActionMenu, Icon, Panel, PanelBand, PanelHead, PanelItem, PanelList, Spinner } from '../../components/ui';
+import { destinationIconName, keyCoverage, type DestinationView } from './model';
 
 // Where backups go. One list, one row per place, sorted so the selected one is
 // first. A row has exactly three zones — the radio that chooses it, what it is
 // and how it is doing, and at most one button plus a More menu — because the
 // old screen had four affordances in four positions and nothing to read first.
-export function DestinationsPanel({ busy, keyState, onAdd, onAction, onDisconnect, onEdit, onSelect, onShowKey, running, views }: {
+export function DestinationsPanel({ busy, onAdd, onAction, onDisconnect, onEdit, onForgetKey, onKeys, onSelect, onShowKey, running, views }: {
   busy: string;
-  keyState: RecoveryKeyState | null;
   onAction: (view: DestinationView) => void;
   onAdd: () => void;
   onDisconnect: (view: DestinationView) => void;
   onEdit: (view: DestinationView) => void;
+  onForgetKey: (view: DestinationView) => void;
+  onKeys: (view: DestinationView) => void;
   onSelect: (view: DestinationView) => void;
   onShowKey: () => void;
   running: boolean;
   views: DestinationView[];
 }) {
   const locked = Boolean(busy) || running;
-  const coverage = keyCoverage(views, keyState);
+  const coverage = keyCoverage(views);
   const local = views.filter((view) => !view.foreign && !view.destination.locked);
   const guests = views.filter((view) => view.foreign || view.destination.locked);
 
@@ -29,58 +30,67 @@ export function DestinationsPanel({ busy, keyState, onAdd, onAction, onDisconnec
     onAction={() => onAction(view)}
     onDisconnect={() => onDisconnect(view)}
     onEdit={() => onEdit(view)}
+    onForgetKey={() => onForgetKey(view)}
+    onKeys={() => onKeys(view)}
     onSelect={() => onSelect(view)}
     view={view}
   />;
 
-  return <section className="mos-panel suite-bk-panel">
-    <div className="suite-bk-panel-head">
-      <div>
-        <p className="suite-bk-eyebrow">Where backups go</p>
-        <p className="suite-meta">Pick one place. That is where automatic backups go.</p>
-      </div>
-      <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={locked} onClick={onAdd} type="button">
+  return <Panel>
+    <PanelHead
+      actions={<button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={locked} onClick={onAdd} type="button">
         <Icon name="plus" />
         Add destination
-      </button>
-    </div>
+      </button>}
+      title="Where backups go"
+    >
+      <p className="suite-meta">Pick one place. That is where automatic backups go.</p>
+    </PanelHead>
 
-    <div className={`suite-bk-keyrow is-${coverage.tone}`}>
-      <span className="suite-bk-keyrow-icon"><Icon name="key" /></span>
-      <p>
-        {coverage.summary}
-        {coverage.detail ? <span className="suite-bk-keyrow-detail"> {coverage.detail}</span> : null}
-      </p>
-      <button className={`mos-btn mos-btn-${coverage.tone === 'warning' ? 'primary' : 'secondary'} mos-btn-sm`} disabled={locked} onClick={onShowKey} type="button">
-        {keyState?.acknowledged ? 'Show key' : 'Show my key'}
+    {/* The key is a property of the list, so it sits against it: the owner
+        reads the places, then reads which key opens them. */}
+    <PanelBand icon="key" note={coverage.detail} title={coverage.summary} tone="accent">
+      <button className="mos-btn mos-btn-ghost mos-btn-sm" disabled={locked} onClick={onShowKey} type="button">
+        <Icon name="eye" />
+        Show key
       </button>
-    </div>
+    </PanelBand>
 
-    {views.length ? <div className="suite-bk-rows">
-      {local.map(row)}
-      {guests.length ? <div className="suite-bk-group-note">
-        <span className="suite-bk-keyrow-icon"><Icon name="external" /></span>
-        <span><strong>Brought in from other servers</strong> — each needs its own server&rsquo;s key once, then yours opens it too</span>
-      </div> : null}
-      {guests.map(row)}
-    </div> : null}
-  </section>;
+    {local.length ? <PanelList>{local.map(row)}</PanelList> : null}
+
+    {guests.length ? <>
+      <PanelBand
+        icon="external"
+        note="each opens with the key of the server that wrote it"
+        title="Brought in from other servers"
+        tone="info"
+      />
+      <PanelList>{guests.map(row)}</PanelList>
+    </> : null}
+  </Panel>;
 }
 
-function DestinationRow({ busy, locked, onAction, onDisconnect, onEdit, onSelect, view }: {
+function DestinationRow({ busy, locked, onAction, onDisconnect, onEdit, onForgetKey, onKeys, onSelect, view }: {
   busy: string;
   locked: boolean;
   onAction: () => void;
   onDisconnect: () => void;
   onEdit: () => void;
+  onForgetKey: () => void;
+  onKeys: () => void;
   onSelect: () => void;
   view: DestinationView;
 }) {
   const bucket = view.destination.kind === 'object';
   const working = busy === `mount:${view.id}` || busy === `unlock:${view.id}` || busy === `primary:${view.id}` || busy === `retest:${view.id}`;
-  const menuItems = bucket ? [{ label: 'Edit connection', onSelect: onEdit }, { label: 'Disconnect', onSelect: onDisconnect }] : [];
+  const menuItems = [
+    ...bucket ? [{ label: 'Edit connection', onSelect: onEdit }] : [],
+    ...view.selectable ? [{ label: 'Keys that open this', onSelect: onKeys }] : [],
+    ...view.destination.borrowedKey ? [{ label: 'Forget this key', onSelect: onForgetKey }] : [],
+    ...bucket ? [{ label: 'Disconnect', onSelect: onDisconnect }] : [],
+  ];
 
-  return <div className={`suite-bk-row is-${view.tone}${view.selected ? ' is-selected' : ''}${view.present ? '' : ' is-away'}`}>
+  return <PanelItem className={`suite-bk-row is-${view.tone}`} quiet={!view.present} selected={view.selected}>
     <button
       aria-label={`Use ${view.label} for backups`}
       aria-pressed={view.selected}
@@ -112,5 +122,5 @@ function DestinationRow({ busy, locked, onAction, onDisconnect, onEdit, onSelect
       {!working && view.actionLabel ? <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={locked} onClick={onAction} type="button">{view.actionLabel}</button> : null}
       {menuItems.length ? <ActionMenu ariaLabel={`More for ${view.label}`} disabled={locked} items={menuItems} /> : null}
     </div>
-  </div>;
+  </PanelItem>;
 }

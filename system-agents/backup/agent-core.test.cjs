@@ -1105,3 +1105,35 @@ test('a backup still succeeds when the leftover data cannot be collected', async
   // repository at the start of every backup from now on.
   assert.deepEqual(failing.readUncollectedData(), []);
 });
+
+// Connecting to another server's archive must never change it, so the moment
+// this machine may make that server's key its own is the moment it takes that
+// server's place — a successful restore that is not a copy. A copy stays a
+// second machine and keeps borrowing the key.
+test('taking another server\'s place adopts its key; restoring as a copy does not', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await w.core({ domain: () => 'mos.example.com', installId: () => 'install-a' }).backup(backupJob);
+
+  const assumed = [];
+  const standby = w.core({
+    assumeArchiveKey: async (destinationId) => { assumed.push(destinationId); return true; },
+    installId: () => 'install-b',
+    parkRestoredDomain: async () => 'mos.example.com',
+    serveRestoredDomain: async () => 'mos.example.com',
+  });
+
+  await standby.restore(w.createJob('restore', { address: 'copy', backupPath: restorePointOf(backupJob) }));
+  assert.deepEqual(assumed, [], 'a copy keeps its own key');
+
+  const moveJob = w.createJob('restore', { address: 'move', backupPath: restorePointOf(backupJob) });
+  await standby.restore(moveJob);
+  assert.deepEqual(assumed, [w.destination()]);
+  assert.ok(readJson(moveJob).logs.some((entry) => /now uses the recovery key of the server it restored from/u.test(entry.message)));
+
+  // The machine that wrote the backup has nothing to take on.
+  await w.core({ assumeArchiveKey: async (id) => { assumed.push(id); return true; }, installId: () => 'install-a' })
+    .restore(w.createJob('restore', { backupPath: restorePointOf(backupJob) }));
+  assert.deepEqual(assumed, [w.destination()]);
+});

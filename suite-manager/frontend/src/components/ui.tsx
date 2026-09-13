@@ -157,6 +157,92 @@ export function Switch({ description, label, ...props }: Omit<InputHTMLAttribute
 // case: a disabled field says "not yet", and these values need to say "this is
 // how it is". Its look lives in the shared branding stylesheet as .mos-row*, so
 // the same row appears identically wherever it is used.
+// A panel whose sections run to its edges, divided by hairlines, instead of
+// each becoming another bordered box inside it. Reach for this whenever a panel
+// holds a list or more than one region: it is the shape the "avoid cards inside
+// cards" rule asks for, and it is what lets a row tint its full width. The look
+// lives in the shared branding stylesheet as .mos-panel-flush and friends, so
+// the same section appears identically wherever it is used.
+//
+// Compose it from PanelHead, PanelBand, PanelList/PanelItem and PanelBody in
+// whatever order the screen needs; the hairlines sort themselves out. An
+// overlay opened from inside must portal to <body>, as Dialog, Drawer and
+// ActionMenu already do — the panel clips to its own radius.
+export function Panel({ children, className, density = 'regular' }: {
+  children: ReactNode;
+  className?: string;
+  // "tight" is for narrow columns and dialogs, where the regular inset eats the
+  // width the content needs.
+  density?: 'regular' | 'tight';
+}) {
+  return <section className={`mos-panel mos-panel-flush${density === 'tight' ? ' mos-panel-flush-tight' : ''}${className ? ` ${className}` : ''}`}>{children}</section>;
+}
+
+// The padded header of a section: what this region is on the left, what you can
+// do to it on the right. `title` is an eyebrow rather than a card title,
+// because it labels a region of a panel the owner is already reading.
+export function PanelHead({ actions, children, title }: {
+  actions?: ReactNode;
+  children?: ReactNode;
+  title: ReactNode;
+}) {
+  return <div className="mos-panel-head">
+    <div>
+      <p className="mos-eyebrow">{title}</p>
+      {children}
+    </div>
+    {actions ? <div className="mos-panel-head-actions">{actions}</div> : null}
+  </div>;
+}
+
+// A full-bleed strip that comments on the section next to it — a fact that
+// belongs to the list rather than to any one row in it. Adjacency is the
+// explanation, which is why it is a band and not a notice somewhere else.
+// One centred line: the fact, then the qualification, then at most one quiet
+// action. It is deliberately not a Notice — a notice interrupts, a band
+// annotates, and this one is read every visit.
+export function PanelBand({ children, icon, note, title, tone = 'neutral' }: {
+  // A trailing action. Keep it ghost-quiet: the band is not what the owner
+  // came to the page to do.
+  children?: ReactNode;
+  icon?: IconName;
+  note?: ReactNode;
+  title: ReactNode;
+  tone?: 'accent' | 'info' | 'neutral' | 'warning';
+}) {
+  return <div className={`mos-panel-band${tone === 'neutral' ? '' : ` mos-panel-band-${tone}`}`}>
+    {icon ? <span className="mos-panel-band-icon"><Icon name={icon} /></span> : null}
+    <span className="mos-panel-band-title">{title}</span>
+    {note ? <span className="mos-panel-band-note">{note}</span> : null}
+    {children}
+  </div>;
+}
+
+export function PanelList({ children }: { children: ReactNode }) {
+  return <div className="mos-panel-list">{children}</div>;
+}
+
+// One entry. It owns only its inset and the rule above it; what goes inside is
+// the feature's own layout, because a destination, an app and an invoice do not
+// share a shape.
+export function PanelItem({ children, className, flush = false, selected = false, quiet = false }: {
+  children: ReactNode;
+  className?: string;
+  // The item's own children carry the inset instead — for an entry that is a
+  // whole-row button, or one that expands into more than one region.
+  flush?: boolean;
+  // Present but not usable and not at fault — quieter, never hidden.
+  quiet?: boolean;
+  selected?: boolean;
+}) {
+  return <div className={`mos-panel-item${flush ? ' mos-panel-item-flush' : ''}${selected ? ' mos-panel-item-selected' : ''}${quiet ? ' mos-panel-item-quiet' : ''}${className ? ` ${className}` : ''}`}>{children}</div>;
+}
+
+// A padded block for a section that is prose or controls rather than a list.
+export function PanelBody({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={`mos-panel-body${className ? ` ${className}` : ''}`}>{children}</div>;
+}
+
 export function Rows({ children, lead = false }: { children: ReactNode; lead?: boolean }) {
   return <div className={`mos-rows${lead ? ' mos-rows-lead' : ''}`}>{children}</div>;
 }

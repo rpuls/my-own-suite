@@ -252,3 +252,48 @@ test('a repository keyed with the pre-release password is migrated by whichever 
   accepted.add('MOS-SOME-OTHER-SERVER');
   assert.equal((await engine.probe({ ...spec, location: 's3:example/other/MOS-backups/repository' })).state, 'locked');
 });
+
+// The guarantee an owner is entitled to when they point MOS at backups another
+// server wrote: MOS reads them with that server's key and writes nothing —
+// not a snapshot, not a key, not the pre-release migration that would otherwise
+// fire on any repository this machine's own key cannot open.
+test('opening a repository with another server\'s key never writes to it', async () => {
+  const root = await scratch();
+  const agentStateDir = path.join(root, 'agent-state');
+  fs.mkdirSync(agentStateDir, { recursive: true });
+  const legacy = 'f00dbabe'.repeat(8);
+  fs.writeFileSync(path.join(agentStateDir, 'engine-key.legacy'), `${legacy}\n`, 'utf8');
+  let ownKeyUsed = false;
+  const engine = createEngine({ agentStateDir, onKeyUsed: () => { ownKeyUsed = true; } });
+  const borrowed = 'MOS-THEIR-SERVER-KEY';
+
+  const writes = [];
+  engine.keyAdd = () => { writes.push('key-add'); };
+  engine.keyRemove = () => { writes.push('key-remove'); };
+  engine.clearStaleLocks = () => {};
+  engine.repositoryConfigId = () => 'their-repository';
+  engine.probeRepository = async ({ password }) => (password === borrowed
+    ? { repositoryId: 'their-repository', state: 'open' }
+    : { message: 'locked', state: 'locked' });
+
+  const spec = { env: {}, localPath: null, location: 's3:example/theirs/MOS-backups/repository', secrets: [] };
+  assert.equal((await engine.probe({ ...spec, password: borrowed })).state, 'open');
+  const repository = await engine.openOrCreateRepository({ ...spec, password: borrowed });
+  assert.deepEqual(writes, [], 'nothing was written to another server\'s repository');
+  assert.equal(ownKeyUsed, false, 'a borrowed key does not spend this machine\'s own first use');
+  assert.equal(repository.created, false);
+  // The key travels with the repository, so every later read uses it and it is
+  // masked out of anything the engine prints.
+  assert.equal(repository.env.RESTIC_PASSWORD, borrowed);
+  assert.ok(repository.secrets.includes(borrowed));
+});
+
+test('a borrowed key never creates a repository that is not there', async () => {
+  const root = await scratch();
+  const engine = createEngine({ agentStateDir: path.join(root, 'agent-state') });
+  engine.probeRepository = async () => ({ cause: 'absent', state: 'absent' });
+  await assert.rejects(
+    engine.openOrCreateRepository({ env: {}, localPath: null, location: 's3:example/theirs/MOS-backups/repository', password: 'MOS-THEIR-SERVER-KEY', secrets: [] }),
+    (error) => error.repositoryAbsent === true,
+  );
+});

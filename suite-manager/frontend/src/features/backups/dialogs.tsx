@@ -1,17 +1,19 @@
 import { useState } from 'react';
 
-import { AdvancedPanel, Checkbox, Choice, Dialog, Icon, Notice, SecretText, Select, Spinner, Stepper, TextArea, TextInput } from '../../components/ui';
+import { AdvancedPanel, Checkbox, Choice, Dialog, Icon, Notice, Panel, PanelItem, PanelList, SecretText, Select, Spinner, Stepper, TextArea, TextInput } from '../../components/ui';
 import {
   RETENTION_OPTIONS,
   WEEKDAY_NAMES,
   backupDescription,
   browserTimeZone,
   clockValue,
+  archiveKeyLine,
   destinationIconName,
   downloadKit,
   needsAddressChoice,
   whenWords,
   writtenElsewhere,
+  type ArchiveKey,
   type BackupEntry,
   type BackupSchedule,
   type BackupStatus,
@@ -79,6 +81,7 @@ export function UnlockDialog({ busy, error, onCancel, onUnlock, view }: {
     title="Enter recovery key"
   >
     <p>The backups in <strong>{view.label}</strong> were written by another server. Type that server&rsquo;s recovery key to read them. It starts with MOS-.</p>
+    <p className="suite-meta">MOS keeps the key here to open this {view.destination.kind === 'object' ? 'bucket' : 'drive'} and changes nothing in the backups themselves.</p>
     <TextInput
       autoFocus
       disabled={working}
@@ -90,6 +93,68 @@ export function UnlockDialog({ busy, error, onCancel, onUnlock, view }: {
       value={entered}
     />
     {working ? <p className="suite-bk-working"><Spinner />Checking the key and opening the backups. This takes a few seconds.</p> : null}
+  </Dialog>;
+}
+
+// Who can open an archive, and taking one of them back out. Reading the key
+// list needs a key that already opens the archive, so the dialog asks for one
+// before it can show anything — which is also why this is not something a
+// passer-by can use to lock the owner out. The key doing the asking is never
+// offered for removal, and neither is the last one left.
+export function ArchiveKeysDialog({ busy, error, keys, onClose, onList, onRemove, view }: {
+  busy: string;
+  error: string;
+  keys: ArchiveKey[] | null;
+  onClose: () => void;
+  onList: (recoveryKey: string) => void;
+  onRemove: (recoveryKey: string, keyId: string) => void;
+  view: DestinationView;
+}) {
+  const [entered, setEntered] = useState('');
+  const listing = busy === `keys:${view.id}`;
+  const working = listing || busy.startsWith('key-remove:');
+
+  return <Dialog
+    footer={<>
+      {keys ? null : <button className="mos-btn mos-btn-primary" disabled={!entered.trim() || working} onClick={() => onList(entered)} type="button">
+        {listing ? <><Spinner />Reading</> : 'Show the keys'}
+      </button>}
+      <button className="mos-btn mos-btn-secondary" disabled={working} onClick={onClose} type="button">{keys ? 'Done' : 'Cancel'}</button>
+    </>}
+    onClose={() => { if (!working) onClose(); }}
+    title={`Keys that open ${view.label}`}
+  >
+    <p>Anyone holding one of these keys can read the backups in <strong>{view.label}</strong>. To see them, enter a recovery key that already opens this {view.destination.kind === 'object' ? 'bucket' : 'drive'}.</p>
+
+    {keys ? <>
+      <Panel density="tight">
+        <PanelList>
+          {keys.map((key) => <PanelItem className="suite-bk-keyrow" key={key.id}>
+            <div>
+              <strong>{archiveKeyLine(key)}</strong>
+              <p className="suite-meta">{key.current ? 'This is the key you entered.' : `Key ${key.id.slice(0, 8)}`}</p>
+            </div>
+            {key.current || keys.length < 2 ? null : <button
+              className="mos-btn mos-btn-secondary mos-btn-sm"
+              disabled={working}
+              onClick={() => onRemove(entered, key.id)}
+              type="button"
+            >{busy === `key-remove:${key.id}` ? <><Spinner />Removing</> : 'Remove'}</button>}
+          </PanelItem>)}
+        </PanelList>
+      </Panel>
+      {error ? <Notice title="That did not work" variant="error">{error}</Notice> : null}
+      <p className="suite-meta">Removing a key takes away that machine&rsquo;s access to these backups. Nothing stored here is changed or re-encrypted, and the other keys keep working.</p>
+    </> : <TextInput
+      autoFocus
+      disabled={working}
+      helperText={error || 'Capitals, spaces and dashes do not matter.'}
+      label="Recovery key"
+      onChange={(event) => setEntered(event.currentTarget.value)}
+      onKeyDown={(event) => { if (event.key === 'Enter' && entered.trim() && !working) onList(entered); }}
+      placeholder="MOS-XXXX-XXXX-XXXX-XXXX"
+      value={entered}
+    />}
   </Dialog>;
 }
 
@@ -159,15 +224,15 @@ export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, 
     </> : null}
 
     <p className="suite-meta">{keyState?.adoptedAt
-      ? 'This key came from another server. When you unlocked its backups, this server had no key of its own yet, so it took that key on as its own. Everything this server writes from now on opens with it.'
-      : 'This key was made on this server at your first backup. When you unlock a place written by another machine, MOS adds this key to it — so from then on both keys open it.'}</p>
+      ? 'This key came from the server this one restored from. Taking that server\u2019s place made its key this key, so everything here opens with it.'
+      : 'This key was made on this server at your first backup. Backups another server wrote keep their own key: MOS holds that key to read them and never changes what is in them.'}</p>
 
     {opens.length ? <div className="suite-bk-key-list">
-      <p className="suite-bk-eyebrow">This key opens</p>
-      {opens.map((view) => <p key={view.id}><Icon name={destinationIconName(view.destination)} /><strong>{view.label}</strong><span>{view.foreign ? `Brought in from ${view.foreign} · also opens with ${view.foreign}'s key` : 'Made here'}</span></p>)}
+      <p className="mos-eyebrow">This key opens</p>
+      {opens.map((view) => <p key={view.id}><Icon name={destinationIconName(view.destination)} /><strong>{view.label}</strong><span>{view.foreign ? `Brought in from ${view.foreign} · opens with ${view.foreign}'s key, kept here` : 'Made here'}</span></p>)}
     </div> : null}
     {missing.length ? <div className="suite-bk-key-list is-missing">
-      <p className="suite-bk-eyebrow">This key does not open</p>
+      <p className="mos-eyebrow">This key does not open</p>
       {missing.map((view) => <p key={view.id}><Icon name={destinationIconName(view.destination)} /><strong>{view.label}</strong><span>Needs the recovery key of the server that wrote it</span></p>)}
     </div> : null}
 
@@ -416,14 +481,25 @@ export function DisconnectDialog({ busy, onCancel, onDisconnect, view }: {
   </Dialog>;
 }
 
-const WIZARD_STEPS = ['Kind', 'Details', 'Check', 'Done'];
+const WIZARD_STEPS = ['Kind', 'Details', 'Name'];
 
 export type WizardKind = '' | 'drive' | 'online';
 
+export type ConnectionTest = { locked?: boolean; message: string; ok: boolean } | null;
+
+// Reachable and empty, and reachable but holding another server's backups, are
+// both connections that worked. Only the second needs a recovery key later, and
+// that is a thing to do on the destination, not a reason to refuse it here.
+function connected(result: ConnectionTest) {
+  return Boolean(result && (result.ok || result.locked));
+}
+
 // Adding a place to keep backups, one question at a time. MOS finds drives on
 // its own, so the drive branch is a list of what it found rather than a form;
-// only storage rented online has details to type. A kind MOS does not support
-// is not offered: the list is what this version can actually do.
+// only storage rented online has details to type. Leaving the details step
+// tries the connection and stays put if it did not work, so the owner never
+// carries a wrong endpoint forward and finds out at the end. A kind MOS does
+// not support is not offered: the list is what this version can actually do.
 export function AddDestinationWizard({ busy, draft, drives, initialKind, onCancel, onChange, onFinish, onMount, onTest, testResult }: {
   busy: string;
   draft: ObjectDraft;
@@ -433,37 +509,44 @@ export function AddDestinationWizard({ busy, draft, drives, initialKind, onCance
   onChange: (next: ObjectDraft) => void;
   onFinish: (useForAutomatic: boolean) => void;
   onMount: (view: DestinationView) => void;
-  onTest: () => void;
-  testResult: { locked?: boolean; message: string; ok: boolean } | null;
+  onTest: () => Promise<ConnectionTest>;
+  testResult: ConnectionTest;
 }) {
   const [kind, setKind] = useState<WizardKind>(initialKind);
   const [step, setStep] = useState(initialKind ? 1 : 0);
   const [useForAutomatic, setUseForAutomatic] = useState(true);
   const editing = Boolean(draft.id);
+  const testing = busy === 'object-test';
   const field = (key: keyof ObjectDraft) => (event: { currentTarget: { value: string } }) => onChange({ ...draft, [key]: event.currentTarget.value });
   const complete = Boolean(draft.endpoint.trim() && draft.bucket.trim() && draft.accessKeyId.trim() && (draft.secretAccessKey.trim() || editing));
   const titles: Array<[string, string]> = [
     ['Where should the copy go?', 'Pick the kind of place. MOS then asks only for what that kind needs.'],
     kind === 'drive'
       ? ['A drive you plug in', 'MOS found these drives. Choose one to open — anything already on it is left alone.']
-      : ['Storage you rent online', 'Your provider gives you these when you create the storage. Copy them across exactly.'],
-    ['Give it a name and check it works', 'MOS tries to reach it and write one small test file, then removes it again.'],
-    ['Ready to add', 'Nothing has been backed up yet. Adding it puts it in the list with your other places.'],
+      : ['Storage you rent online', 'Your provider gives you these when you create the storage. Copy them across exactly, and MOS will try them before going on.'],
+    ['Give it a name', 'This place answered and MOS can write to it. Name it and it joins the list.'],
   ];
   const [title, blurb] = titles[step] ?? titles[0] as [string, string];
 
-  const next = step === 0 || (step === 1 && kind === 'drive') ? '' : step === 1 ? 'Continue' : step === 2 ? 'Continue' : 'Add this destination';
-  const nextDisabled = (step === 1 && !complete) || (step === 2 && !(testResult && testResult.ok));
+  // Leaving the details step is the moment the connection is tried, so a wrong
+  // endpoint is caught here rather than three screens later.
+  async function leaveDetails() {
+    if (connected(await onTest())) setStep(2);
+  }
+
+  const next = step === 0 || (step === 1 && kind === 'drive') ? ''
+    : step === 1 ? (testing ? 'Trying it now...' : 'Connect and continue')
+    : 'Add this destination';
 
   return <Dialog
     footer={<>
-      {step > 0 ? <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => setStep(step - 1)} type="button">Back</button> : null}
+      {step > 0 && !testing ? <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => setStep(step - 1)} type="button">Back</button> : null}
       {next ? <button
         className="mos-btn mos-btn-primary"
-        disabled={nextDisabled || Boolean(busy)}
-        onClick={() => { if (step === 3) onFinish(useForAutomatic); else setStep(step + 1); }}
+        disabled={Boolean(busy) || (step === 1 && !complete)}
+        onClick={() => { if (step === 1) void leaveDetails(); else onFinish(useForAutomatic); }}
         type="button"
-      >{busy === 'object-save' ? <><Spinner />Adding</> : next}</button> : null}
+      >{busy === 'object-save' ? <><Spinner />Adding</> : testing ? <><Spinner />{next}</> : next}</button> : null}
       <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={onCancel} type="button">Cancel</button>
     </>}
     onClose={() => { if (!busy) onCancel(); }}
@@ -476,55 +559,56 @@ export function AddDestinationWizard({ busy, draft, drives, initialKind, onCance
     </div>
 
     {step === 0 ? <div className="suite-bk-kinds">
-      <button className={`suite-bk-kind${kind === 'drive' ? ' is-picked' : ''}`} onClick={() => { setKind('drive'); setStep(1); }} type="button">
+      <button className={`suite-bk-kind-card${kind === 'drive' ? ' is-picked' : ''}`} onClick={() => { setKind('drive'); setStep(1); }} type="button">
         <span><Icon name="usb-drive" /><strong>A drive you plug in</strong>{drives.length ? <span className="suite-bk-chip">{drives.length} found</span> : null}</span>
         <span>A USB drive or a disk in this server. Fastest to restore from, and you can put it in a drawer.</span>
       </button>
-      <button className={`suite-bk-kind${kind === 'online' ? ' is-picked' : ''}`} onClick={() => { setKind('online'); setStep(1); }} type="button">
+      <button className={`suite-bk-kind-card${kind === 'online' ? ' is-picked' : ''}`} onClick={() => { setKind('online'); setStep(1); }} type="button">
         <span><Icon name="cloud-storage" /><strong>Storage you rent online</strong><span className="suite-bk-chip">S3-compatible</span></span>
         <span>Storage from a provider, reached over the internet. The only kind that survives a fire or a theft at home.</span>
       </button>
       <p className="suite-meta">More kinds of place can be added to MOS later. When one arrives it appears in this list &mdash; nothing else on the page changes.</p>
     </div> : null}
 
-    {step === 1 && kind === 'drive' ? <div className="suite-bk-rows">
-      {drives.length ? drives.map((view) => <div className="suite-bk-row" key={view.id}>
-        <div className="suite-bk-row-body">
-          <div className="suite-bk-row-title"><span className="suite-bk-row-icon"><Icon name={destinationIconName(view.destination)} /></span><strong>{view.label}</strong></div>
-          <p className="suite-bk-detail">{view.status}</p>
-        </div>
-        <div className="suite-bk-row-actions">
-          <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy)} onClick={() => onMount(view)} type="button">
-            {busy === `mount:${view.id}` ? <><Spinner />Opening</> : 'Open this drive'}
-          </button>
-        </div>
-      </div>) : <p className="suite-meta">No drive is waiting to be opened. Plug one into the server and it appears here within a few seconds.</p>}
-    </div> : null}
+    {step === 1 && kind === 'drive' ? (drives.length ? <Panel density="tight">
+      <PanelList>
+        {drives.map((view) => <PanelItem className="suite-bk-row" key={view.id}>
+          <span />
+          <div className="suite-bk-row-body">
+            <div className="suite-bk-row-title"><span className="suite-bk-row-icon"><Icon name={destinationIconName(view.destination)} /></span><strong>{view.label}</strong></div>
+            <p className="suite-bk-detail">{view.status}</p>
+          </div>
+          <div className="suite-bk-row-actions">
+            <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy)} onClick={() => onMount(view)} type="button">
+              {busy === `mount:${view.id}` ? <><Spinner />Opening</> : 'Open this drive'}
+            </button>
+          </div>
+        </PanelItem>)}
+      </PanelList>
+    </Panel> : <p className="suite-meta">No drive is waiting to be opened. Plug one into the server and it appears here within a few seconds.</p>) : null}
 
-    {step === 1 && kind === 'online' ? <div className="suite-form-grid">
-      <TextInput helperText="Your provider's S3 address, for example https://s3.eu-central-003.backblazeb2.com." label="Address" onChange={field('endpoint')} placeholder="https://s3.example.com" value={draft.endpoint} />
-      <TextInput helperText="A bucket that already exists. MOS does not create one." label="Bucket" onChange={field('bucket')} placeholder="my-backups" value={draft.bucket} />
-      <TextInput helperText="Optional. Lets one bucket hold the backups of more than one server." label="Folder (optional)" onChange={field('folder')} placeholder="home-server" value={draft.folder} />
-      <TextInput helperText="Optional. Some providers need it; leave it empty if yours does not." label="Region" onChange={field('region')} placeholder="eu-central-1" value={draft.region} />
-      <TextInput helperText="Use a key that can only reach this bucket." label="Access key id" onChange={field('accessKeyId')} placeholder="AKIA…" value={draft.accessKeyId} />
-      <TextInput helperText={editing ? 'Leave empty to keep the key already saved.' : 'Stored on this server only, readable by root.'} label="Secret access key" onChange={field('secretAccessKey')} placeholder={editing ? 'Unchanged' : '••••••••'} type="password" value={draft.secretAccessKey} />
-    </div> : null}
-
-    {step === 2 ? <>
-      <TextInput helperText="The name you will see on this page." label="Call it" onChange={field('label')} placeholder="Off-site bucket" value={draft.label} />
-      <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={onTest} type="button">
-        {busy === 'object-test' ? <><Spinner />Trying it now. This takes a few seconds.</> : 'Check it works'}
-      </button>
-      {testResult ? <Notice
-        title={testResult.ok ? 'It works' : testResult.locked ? 'It holds backups written by another server' : 'That did not answer'}
-        variant={testResult.ok ? 'success' : testResult.locked ? 'info' : 'error'}
-      ><p>{testResult.message}</p></Notice> : null}
+    {step === 1 && kind === 'online' ? <>
+      <div className="suite-form-grid">
+        <TextInput disabled={testing} helperText="Your provider's S3 address, for example https://s3.eu-central-003.backblazeb2.com." label="Address" onChange={field('endpoint')} placeholder="https://s3.example.com" value={draft.endpoint} />
+        <TextInput disabled={testing} helperText="A bucket that already exists. MOS does not create one." label="Bucket" onChange={field('bucket')} placeholder="my-backups" value={draft.bucket} />
+        <TextInput disabled={testing} helperText="Optional. Lets one bucket hold the backups of more than one server." label="Folder (optional)" onChange={field('folder')} placeholder="home-server" value={draft.folder} />
+        <TextInput disabled={testing} helperText="Optional. Some providers need it; leave it empty if yours does not." label="Region" onChange={field('region')} placeholder="eu-central-1" value={draft.region} />
+        <TextInput disabled={testing} helperText="Use a key that can only reach this bucket." label="Access key id" onChange={field('accessKeyId')} placeholder="AKIA…" value={draft.accessKeyId} />
+        <TextInput disabled={testing} helperText={editing ? 'Leave empty to keep the key already saved.' : 'Stored on this server only, readable by root.'} label="Secret access key" onChange={field('secretAccessKey')} placeholder={editing ? 'Unchanged' : '••••••••'} type="password" value={draft.secretAccessKey} />
+      </div>
+      {testing ? <p className="suite-bk-working"><Spinner />Trying it now. This takes a few seconds.</p> : null}
+      {!testing && testResult && !connected(testResult) ? <Notice title="That did not work" variant="error">
+        <p>{testResult.message}</p>
+      </Notice> : null}
     </> : null}
 
-    {step === 3 ? <>
-      <Notice title="It works" variant="success">
-        <p>{draft.label || 'This storage'} answered and MOS can write to it. Adding it puts it in the list with your other places; nothing is backed up until you ask.</p>
+    {step === 2 ? <>
+      <Notice title={testResult?.locked ? 'It works, and it already holds backups' : 'It works'} variant={testResult?.locked ? 'info' : 'success'}>
+        <p>{testResult?.locked
+          ? 'MOS reached this storage and can write to it. The backups already in it were written by another server — add it, then choose Enter recovery key on it to read them.'
+          : 'MOS reached this storage and can write to it. It holds no backups yet.'}</p>
       </Notice>
+      <TextInput autoFocus helperText="The name you will see on this page." label="Call it" onChange={field('label')} placeholder="Off-site bucket" value={draft.label} />
       <Checkbox checked={useForAutomatic} onChange={(event) => setUseForAutomatic(event.currentTarget.checked)}>
         Send automatic backups here from now on.
       </Checkbox>

@@ -920,6 +920,46 @@ function createMOSServer({
         return;
       }
 
+      // Who can read an archive, and taking one of them back out. Both need the
+      // key of the server that owns it, which goes straight through to the agent.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/keys`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.archiveKeys({
+          destinationId: String(body.destinationId || ''),
+          recoveryKey: String(body.recoveryKey || ''),
+        }));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/keys/remove`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.removeArchiveKey({
+          destinationId: String(body.destinationId || ''),
+          keyId: String(body.keyId || ''),
+          recoveryKey: String(body.recoveryKey || ''),
+        }));
+        return;
+      }
+      // Giving the key back: MOS stops holding another server's key, and that
+      // archive is again something this machine cannot open.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/forget-key`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.forgetDestinationKey(String(body.destinationId || '')));
+        return;
+      }
+
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/mount`) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });

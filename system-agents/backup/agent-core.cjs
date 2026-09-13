@@ -189,6 +189,7 @@ class BackupAgentCore {
     // wiring supplies the real answers; a core built without them has no
     // install id or domain and treats every restore as its own.
     this.identity = {
+      assumeArchiveKey: async () => null,
       domain: () => null,
       hostname: () => os.hostname(),
       installId: () => null,
@@ -812,6 +813,15 @@ class BackupAgentCore {
       const verification = await this.verifyRestore(manifest);
       for (const warning of verification.warnings) jobs.log(jobFile, warning);
       jobs.update(jobFile, (job) => { job.verification = verification; });
+
+      // Taking another machine's place is the one moment this machine may make
+      // that machine's key its own: the restore has succeeded, so it now holds
+      // that machine's data and answers for it. A copy stays itself and keeps
+      // borrowing the key. Either way the archive was never touched.
+      if (address.foreign && address.plan !== 'copy') {
+        const assumed = await this.identity.assumeArchiveKey(repository.destinationId);
+        if (assumed) jobs.log(jobFile, 'This server now uses the recovery key of the server it restored from. One key opens everything from here on.');
+      }
 
       this.advanceJournal('completed', { completedAt: new Date().toISOString() });
       fs.rmSync(this.journalPath, { force: true });

@@ -303,8 +303,9 @@ function summarize(manifest, { id, locator, note }) {
 // --- Destinations -----------------------------------------------------------
 
 class DiskDestination {
-  constructor({ engine, label, mountPath, system }) {
+  constructor({ engine, guestKey, label, mountPath, system }) {
     this.engine = engine;
+    this.guestKey = guestKey || (() => null);
     this.id = mountPath;
     this.kind = 'disk';
     this.label = label || mountPath;
@@ -319,7 +320,7 @@ class DiskDestination {
 
   repositorySpec() {
     const localPath = repositoryPathFor(this.mountPath);
-    return { env: {}, localPath, location: localPath, secrets: [] };
+    return { env: {}, localPath, location: localPath, password: this.guestKey(), secrets: [] };
   }
 
   // A drive proves itself by being mounted and writable, which the destination
@@ -407,6 +408,7 @@ class DiskDestination {
       localPath,
       location: localPath,
       missingMessage: 'The encrypted backup store is missing from this drive, so this backup cannot be read. Check that the right drive is connected and that its MOS-backups folder is intact.',
+      password: this.guestKey(),
     });
     assertRepositoryUnlocked(repository);
     return { ...repository, descriptor: readRepositoryDescriptor(this.mountPath), destinationId: this.id };
@@ -423,9 +425,10 @@ class DiskDestination {
 }
 
 class ObjectDestination {
-  constructor({ agentStateDir, engine, record }) {
+  constructor({ agentStateDir, engine, guestKey, record }) {
     this.agentStateDir = agentStateDir;
     this.engine = engine;
+    this.guestKey = guestKey || (() => null);
     this.id = record.id;
     this.kind = 'object';
     this.label = record.label;
@@ -442,14 +445,14 @@ class ObjectDestination {
 
   get noun() { return 'bucket'; }
 
-  repositorySpec() { return { ...this.spec, localPath: null }; }
+  repositorySpec() { return { ...this.spec, localPath: null, password: this.guestKey() }; }
 
   get lostMessage() {
     return 'MOS lost contact with the storage provider while writing this backup, so it did not finish. Check this server\'s internet connection, then try again.';
   }
 
   async available() {
-    return (await this.engine.probeRepository(this.spec)).state !== 'unreachable';
+    return (await this.engine.probeRepository(this.repositorySpec())).state !== 'unreachable';
   }
 
   // The engine's own verdict is the message: it names the difference between a
@@ -457,7 +460,7 @@ class ObjectDestination {
   // is exactly what an owner needs to fix and what a sentence written here
   // could only blur.
   async assertAvailable() {
-    const probe = await this.engine.probe(this.spec);
+    const probe = await this.engine.probe(this.repositorySpec());
     if (probe.state === 'unreachable') throw Object.assign(new Error(probe.message), { engineOutput: probe.output || null });
     if (probe.state === 'locked') throw Object.assign(new Error(probe.message), { repositoryLocked: true });
   }
@@ -478,7 +481,7 @@ class ObjectDestination {
   async repository({ create = true } = {}) {
     if (this.openRepository) return this.openRepository;
     const repository = await this.engine.openOrCreateRepository({
-      ...this.spec,
+      ...this.repositorySpec(),
       create,
       missingMessage: 'There is no MOS backup store in this bucket yet, so there is nothing here to read.',
     });
@@ -690,10 +693,11 @@ class ObjectDestination {
 // them per request would mean a network round trip on every poll of the backups
 // screen. The fingerprint drops a destination as soon as its settings change.
 class DestinationResolver {
-  constructor({ agentStateDir, engine, objectRegistry, resolveDiskLabel, system }) {
+  constructor({ agentStateDir, engine, guestKeys, objectRegistry, resolveDiskLabel, system }) {
     this.agentStateDir = agentStateDir;
     this.disks = new Map();
     this.engine = engine;
+    this.guestKeys = guestKeys || null;
     this.objectRegistry = objectRegistry;
     this.objects = new Map();
     this.resolveDiskLabel = resolveDiskLabel || (() => null);
@@ -702,6 +706,12 @@ class DestinationResolver {
 
   objectRecords() { return this.objectRegistry ? this.objectRegistry.list() : []; }
 
+  // Read on every command rather than captured, so entering or removing a key
+  // takes effect on a destination that is already held.
+  guestKeyFor(destinationId) {
+    return () => (this.guestKeys ? this.guestKeys.keyFor(destinationId) : null);
+  }
+
   objectDestination(record) {
     const fingerprint = JSON.stringify([record.accessKeyId, record.bucket, record.endpoint, record.folder, record.region, record.secretAccessKey]);
     const held = this.objects.get(record.id);
@@ -709,7 +719,7 @@ class DestinationResolver {
       held.destination.label = record.label;
       return held.destination;
     }
-    const destination = new ObjectDestination({ agentStateDir: this.agentStateDir, engine: this.engine, record });
+    const destination = new ObjectDestination({ agentStateDir: this.agentStateDir, engine: this.engine, guestKey: this.guestKeyFor(record.id), record });
     this.objects.set(record.id, { destination, fingerprint });
     return destination;
   }
@@ -736,7 +746,7 @@ class DestinationResolver {
       if (label) held.label = label;
       return held;
     }
-    const destination = new DiskDestination({ engine: this.engine, label, mountPath, system: this.system });
+    const destination = new DiskDestination({ engine: this.engine, guestKey: this.guestKeyFor(mountPath), label, mountPath, system: this.system });
     this.disks.set(mountPath, destination);
     return destination;
   }

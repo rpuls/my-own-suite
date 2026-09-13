@@ -16,6 +16,7 @@ export type BackupDestination = {
   label: string;
   // Reached, and holding backups written with another server's key. Neither
   // usable nor broken: one recovery key away from both.
+  borrowedKey?: boolean;
   locked?: boolean;
   mountBlockedReason?: string | null;
   mountPath: string | null;
@@ -368,7 +369,7 @@ export function destinationView(destination: BackupDestination, status: BackupSt
   const ready = destination.ready === true;
   const bucket = destination.kind === 'object';
   const foreign = foreignServer(destination, status);
-  const adopted = Boolean(status?.recoveryKey?.adoptedAt);
+  const borrowed = destination.borrowedKey === true;
   const present = ready || destination.locked === true || bucket || destination.mountState === 'unmounted' || destination.mountState === 'unsupported-mount';
 
   let tone: Tone = 'ready';
@@ -417,10 +418,10 @@ export function destinationView(destination: BackupDestination, status: BackupSt
   if (destination.locked) {
     keyLine = 'Needs the recovery key of the server that wrote it. Your own key does not open this one yet.';
     keyTone = 'warning';
-  } else if (foreign && adopted) {
-    keyLine = `Your recovery key is ${foreign}'s key — this server took it on when you unlocked this place.`;
+  } else if (foreign && borrowed) {
+    keyLine = `Opens with ${foreign}'s key, kept on this server. Nothing in these backups was changed.`;
   } else if (foreign) {
-    keyLine = `Opens with your recovery key and with ${foreign}'s key. Keep both.`;
+    keyLine = 'Opens with your recovery key.';
   }
 
   const spaceKnown = Boolean(destination.sizeBytes && destination.availableBytes);
@@ -474,31 +475,35 @@ export function destinationViews(status: BackupStatus | null | undefined): Desti
 // What the recovery key opens, said as one sentence beside the list it
 // describes. Before the first backup it is the only thing on the row that
 // matters; afterwards it is a quiet fact with the exceptions named.
-export function keyCoverage(views: DestinationView[], key: RecoveryKeyState | null | undefined) {
+export function keyCoverage(views: DestinationView[]) {
   const names = (list: DestinationView[]) => {
     const labels = list.map((view) => view.label);
     return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels[0] || '';
   };
-  if (!key || !key.acknowledged) {
-    return {
-      detail: 'MOS will not back up until you have saved it.',
-      summary: 'Save your recovery key before your first backup.',
-      tone: 'warning' as Tone,
-    };
-  }
-  const guests = views.filter((view) => view.foreign && !view.destination.locked);
+
+  const guests = views.filter((view) => view.destination.borrowedKey === true);
   const strangers = views.filter((view) => view.destination.locked);
   const detail = [
-    guests.length ? `It also opens ${names(guests)}.` : '',
+    guests.length ? `${names(guests)} opens with the key of the server that wrote it, kept here.` : '',
     strangers.length ? `${names(strangers)} still needs the key of the server that wrote it.` : '',
   ].filter(Boolean).join(' ');
-  return {
-    detail,
-    summary: key.adoptedAt
-      ? 'One recovery key opens everything this server made, and the backups it took over.'
-      : 'One recovery key opens everything this server made.',
-    tone: (strangers.length ? 'warning' : 'ready') as Tone,
-  };
+  return { detail, summary: 'One recovery key opens everything this server made.' };
+}
+
+export type ArchiveKey = {
+  createdAt?: string | null;
+  current?: boolean;
+  hostname?: string | null;
+  id: string;
+  username?: string | null;
+};
+
+// A key in an archive's key list, said as a place rather than as a record: the
+// machine it was made on and when, because that is what an owner recognises
+// when deciding whether it still belongs there.
+export function archiveKeyLine(key: ArchiveKey) {
+  const where = key.hostname ? `Made on ${key.hostname}` : 'Made on an unnamed machine';
+  return key.createdAt ? `${where} · ${whenWords(key.createdAt)}` : where;
 }
 
 // The one sentence at the top of the page: am I safe, where does it go, when

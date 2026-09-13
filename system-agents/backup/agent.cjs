@@ -21,6 +21,7 @@ const { DestinationResolver, parseObjectLocator } = require('./destinations.cjs'
 const { isObjectDestinationId, normalizeObjectDestination, ObjectDestinationRegistry, objectRepositorySpec, publicObjectDestination } = require('./object-destinations.cjs');
 const { createEngine, ENGINE_MISSING_MESSAGE, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage } = require('./engines/engine.cjs');
 const { fingerprint: recoveryKeyFingerprint, normalize: normalizeRecoveryKey } = require('./recovery-key.cjs');
+const { GuestKeyStore } = require('./guest-keys.cjs');
 const { RecoveryKeyRecord, recoveryKitFilename, recoveryKitText } = require('./recovery-kit.cjs');
 const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-agent-client.cjs');
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
@@ -200,6 +201,7 @@ async function listDestinations() {
       const health = notReadyReason ? { locked: false } : await destinationResolver.resolve(item.id).health().catch(() => ({ locked: false }));
       return {
         ...item,
+        borrowedKey: Boolean(guestKeys.keyFor(item.id)),
         kind: 'disk',
         locked: health.locked === true,
         notReadyReason: notReadyReason || (health.locked ? health.reason : null),
@@ -223,6 +225,7 @@ async function listObjectDestinations() {
     entries.push({
       ...publicObjectDestination(destination.record),
       availableBytes: null,
+      borrowedKey: Boolean(guestKeys.keyFor(destination.id)),
       canMount: false,
       checkedAt: health.checkedAt || null,
       kind: 'object',
@@ -583,6 +586,18 @@ function installId() {
 // the restored token once Caddy starts, and pointing the name here is the
 // owner's step, as it is after any HTTPS apply.
 const identity = {
+  // A restore that takes another machine's place makes that machine's key this
+  // machine's own, and the borrowed copy is dropped: the two are now one server
+  // with one key. Nothing is written to the archive to do it.
+  assumeArchiveKey: async (destinationId) => {
+    const key = guestKeys.keyFor(destinationId);
+    if (!key) return false;
+    engine.adoptRecoveryKey(key);
+    recoveryRecord.adopt(recoveryKeyFingerprint(key));
+    guestKeys.forget(destinationId);
+    destinationResolver.forgetAll();
+    return true;
+  },
   domain: () => { try { return withStore(appliedDomain); } catch { return null; } },
   hostname: () => os.hostname(),
   installId,
@@ -709,12 +724,14 @@ async function revealRecoveryKey() {
   return { key, recoveryKey: recoveryKeyStatus(), ...await recoveryKit(key) };
 }
 
-// Taking over backups another server wrote. The entered key is checked against
-// the destination before anything is written anywhere. A machine whose own key
-// has never created or opened a repository adopts the entered one, so a cold
-// standby ends up holding exactly the key on the owner's paper; any other
-// machine adds its own key to the repository instead, which restic supports
-// natively, so both keys open it from here on.
+// Opening backups another server wrote, without changing them. The entered key
+// is checked against the destination and then kept on this machine, against
+// that destination, and handed to the engine for every command aimed at it.
+// Nothing is written into the archive — not its contents and not its key list:
+// it belongs to the server that made it, and connecting to something is not a
+// reason to alter it. Becoming that server is a separate act, and it happens at
+// restore, where the owner has said this machine is taking the other one's
+// place.
 async function unlockDestination(body) {
   const normalized = normalizeRecoveryKey(body.recoveryKey);
   if (normalized.error) throw Object.assign(new Error(normalized.error), { code: 'RECOVERY_KEY_MISTYPED' });
@@ -726,22 +743,72 @@ async function unlockDestination(body) {
   if (probe.state === 'locked') throw new Error(`That key does not open the backups in this ${destination.noun}.`);
   if (probe.state === 'absent') throw new Error(`This ${destination.noun} holds no MOS backups yet, so there is nothing here to unlock.`);
   if (probe.state !== 'open') throw new Error(probe.message || `MOS could not reach this ${destination.noun}.`);
-  const adopted = !recoveryRecord.read().firstUsedAt;
-  if (adopted) {
-    engine.adoptRecoveryKey(normalized.key);
-    recoveryRecord.adopt(recoveryKeyFingerprint(normalized.key));
-    destinationResolver.forgetAll();
-  } else {
-    engine.keyAdd({ newPassword: engine.recoveryKey(), password: normalized.key, repository: { engineName: engine.name, ...spec } });
-    destinationResolver.forget(destinationId);
-  }
+  guestKeys.save(destinationId, normalized.key);
+  destinationResolver.forget(destinationId);
   return {
-    adopted,
-    message: adopted
-      ? 'Unlocked. This server now uses the recovery key you entered, so the key on your kit is the only one you need.'
-      : "Unlocked. This server's own recovery key now opens these backups as well, so save this server's key too.",
+    message: `Unlocked. MOS keeps this key to open this ${destination.noun} and changed nothing in it.`,
     recoveryKey: recoveryKeyStatus(),
   };
+}
+
+// Which keys open an archive, and taking one back out.
+//
+// An owner is entitled to know who can read their backups and to end that
+// access, and MOS is the only place that can tell them without a terminal.
+// Both need the key of the server that owns the archive, because restic will
+// not list or change a key list for anyone who cannot already open it — which
+// is also what stops this from being a way to lock someone else out.
+async function archiveKeys(body) {
+  const { destination, key, repository } = await openWithEnteredKey(body);
+  const entries = engine.keyList({ password: key, repository });
+  return {
+    keys: entries.map((entry) => ({
+      createdAt: entry.created || null,
+      current: entry.current === true,
+      hostname: entry.hostName || null,
+      id: entry.id,
+      username: entry.userName || null,
+    })),
+    noun: destination.noun,
+  };
+}
+
+async function removeArchiveKey(body) {
+  const keyId = String(body.keyId || '').trim();
+  if (!keyId) throw new Error('Choose which key to remove.');
+  const { key, repository } = await openWithEnteredKey(body);
+  const entries = engine.keyList({ password: key, repository });
+  const target = entries.find((entry) => entry.id === keyId);
+  if (!target) throw new Error('That key is not on this archive anymore.');
+  // Two refusals that exist so this cannot end in an archive nobody opens: the
+  // key doing the removing stays, and the last one standing stays.
+  if (target.current === true) throw new Error('That is the key you entered, so it cannot remove itself. Enter another key that opens this archive to remove this one.');
+  if (entries.length < 2) throw new Error('This is the only key that opens these backups, so removing it would make them unreadable.');
+  engine.keyRemove({ keyId, password: key, repository });
+  return { removed: keyId };
+}
+
+async function openWithEnteredKey(body) {
+  const normalized = normalizeRecoveryKey(body.recoveryKey);
+  if (normalized.error) throw Object.assign(new Error(normalized.error), { code: 'RECOVERY_KEY_MISTYPED' });
+  const destinationId = normalizeDestinationId(body.destinationId);
+  if (!destinationId) throw new Error('Choose a connected drive or a storage connection.');
+  const destination = destinationResolver.resolve(destinationId);
+  const spec = destination.repositorySpec();
+  const probe = await engine.probeRepository({ ...spec, noun: destination.noun, password: normalized.key });
+  if (probe.state !== 'open') throw new Error(probe.state === 'locked' ? `That key does not open the backups in this ${destination.noun}.` : probe.message || `MOS could not reach this ${destination.noun}.`);
+  return { destination, key: normalized.key, repository: { engineName: engine.name, ...spec, password: undefined } };
+}
+
+// Forgetting a borrowed key. The archive is untouched by this too: the key
+// stops being on this machine, and the destination goes back to needing it
+// entered.
+function forgetGuestKey(body) {
+  const destinationId = normalizeDestinationId(body.destinationId);
+  if (!destinationId) throw new Error('Choose a destination.');
+  const forgotten = guestKeys.forget(destinationId);
+  destinationResolver.forget(destinationId);
+  return { forgotten };
 }
 
 // What the schedule needs to know about a destination's restore points: when
@@ -757,7 +824,8 @@ const recoveryRecord = new RecoveryKeyRecord({ agentStateDir });
 const engine = createEngine({ agentStateDir, onKeyUsed: () => recoveryRecord.noteFirstUse() });
 const objectRegistry = new ObjectDestinationRegistry({ agentStateDir });
 const backupSystem = new BackupSystemAdapter({ agentStateDir, repoDir, stateDir, stateRoot });
-const destinationResolver = new DestinationResolver({ agentStateDir, engine, objectRegistry, system: backupSystem });
+const guestKeys = new GuestKeyStore({ agentStateDir });
+const destinationResolver = new DestinationResolver({ agentStateDir, engine, guestKeys, objectRegistry, system: backupSystem });
 // Both agents run as root under the same unit template, so this agent can ask
 // the update agent what it is doing over its socket the way Suite Manager does.
 const updateAgent = new UpdateAgentClient();
@@ -847,7 +915,7 @@ if (require.main === module && process.argv[2] === '--worker') {
         ));
         respond(response, 200, {
           backups: await listBackups(destinations),
-          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['connect-object', 'list', 'mount', 'primary'], recoveryKey: ['acknowledge', 'reveal', 'unlock'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
+          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['connect-object', 'list', 'mount', 'primary'], recoveryKey: ['acknowledge', 'forget-key', 'keys', 'reveal', 'unlock'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
           currentJob: summarizeJob(reconcileCurrentJob()),
           destinations,
           // Named so the screen can say which machine wrote a restore point, and
@@ -929,6 +997,18 @@ if (require.main === module && process.argv[2] === '--worker') {
       }
       if (request.method === 'POST' && url.pathname === '/v1/destinations/unlock') {
         respond(response, 200, { result: await unlockDestination(await readBody(request)) });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/destinations/keys') {
+        respond(response, 200, { result: await archiveKeys(await readBody(request)) });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/destinations/keys/remove') {
+        respond(response, 200, { result: await removeArchiveKey(await readBody(request)) });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/destinations/forget-key') {
+        respond(response, 200, { result: forgetGuestKey(await readBody(request)) });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/destinations/object') {

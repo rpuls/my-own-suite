@@ -128,7 +128,9 @@ This is what the recovery key is for: the server is gone — fire, theft, a dead
 
 </Steps>
 
-Two things worth knowing about what just happened. If this machine had never taken a backup of its own, it adopts the key you entered, so the key on your kit stays the only one you need. If it had, MOS instead adds this machine's own recovery key to those backups so both open them — the screen says which happened, and in the second case you should save this machine's key too. And if the original server ever comes back on, both machines can write to the same destination; each restore point names the machine that wrote it.
+What just happened to the backups themselves: nothing. Connecting to an archive another server wrote never changes it — not its contents and not the list of keys that open it. MOS keeps the key you entered on this machine and uses it to read that place, and **Forget this key** on the row takes it back off again.
+
+The key becomes this machine's own only when you restore and choose to take the other server's place rather than restore as a copy. From then on one key opens everything, because the two servers are one. A copy stays a second machine with its own key, still borrowing the other's to read that archive. Either way, if the original server comes back on, both machines can write to the same destination; each restore point names the machine that wrote it.
 
 ## Current limitations
 

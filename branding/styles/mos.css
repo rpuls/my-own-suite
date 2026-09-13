@@ -138,6 +138,11 @@
   --mos-space-3: 0.75rem;
   --mos-space-4: 1rem;
   --mos-space-5: 1.25rem;
+  --mos-panel-pad: 1.5rem;
+  /* Sections read one step down from body copy: a panel is dense by design,
+     and a description set at body size crowds the list it introduces. */
+  --mos-text-section: 0.92rem;
+  --mos-text-section-aside: 0.86rem;
   --mos-space-6: 1.5rem;
   --mos-space-7: 2rem;
   --mos-space-8: 3rem;
@@ -760,6 +765,211 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
 .mos-panel-strong {
   background: var(--mos-color-surface-elevated);
   box-shadow: var(--mos-shadow-strong);
+}
+
+/* Panel sections — the flush pattern.
+
+   A panel is ONE surface. Its sections run edge to edge inside it and are told
+   apart by hairlines, instead of each becoming another bordered box. The
+   alternative — a bordered list inside a padded panel inside a page surface —
+   reads as an onion with thick skins, and spends the width on repeated gutters
+   rather than on content. It is also what the "avoid cards inside cards" rule
+   in AGENTS.md is asking for; this is the shape to reach for instead.
+
+   The inset lives on the SECTION, never on the panel. That is the whole trick:
+   a row can then tint its full width (selected, warning, away) right up to the
+   panel border, which a padded panel makes impossible.
+
+   Compose a flush panel from these, in any order:
+     .mos-panel-head   padded header — title and description left, actions right
+     .mos-panel-body   padded block of ordinary content
+     .mos-panel-band   full-bleed tinted strip that comments on what follows
+     .mos-panel-list   full-bleed list of .mos-panel-item entries
+
+   Hairlines are placed so the panel reads as one continuous list: an item
+   carries the rule above it, and it is dropped only where something else has
+   already drawn one (the panel's own top edge, or a band's bottom border).
+
+   THE FROST RULE still applies, and .mos-panel-flush additionally clips to its
+   own radius so a full-bleed child cannot square off the corners — so an
+   overlay opened from inside a section must portal to <body>, exactly as the
+   shared Dialog, Drawer and ActionMenu already do. An inline popover would be
+   cut off at the panel edge. */
+.mos-panel-flush {
+  display: grid;
+  align-content: start;
+  overflow: clip;
+}
+
+/* A denser panel for narrow columns and dialogs. */
+.mos-panel-flush-tight {
+  --mos-panel-pad: var(--mos-space-4);
+}
+
+.mos-panel-body {
+  padding: var(--mos-panel-pad);
+}
+
+/* Tighter under the title than above it, so the header sits with the section
+   it introduces rather than floating between two. */
+.mos-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mos-space-3);
+  flex-wrap: wrap;
+  padding: var(--mos-space-5) var(--mos-panel-pad) var(--mos-space-4);
+}
+
+/* The title side of a header: stacked, and allowed to shrink so a long
+   description wraps instead of pushing the actions off the row. */
+.mos-panel-head > :first-child {
+  display: grid;
+  gap: var(--mos-space-1);
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+
+.mos-panel-head > :first-child > * {
+  margin: 0;
+}
+
+/* The description under a section title. */
+.mos-panel-head > :first-child > p {
+  font-size: var(--mos-text-section);
+  line-height: 1.5;
+  color: var(--mos-color-text-muted);
+}
+
+.mos-panel-head-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+  flex-wrap: wrap;
+}
+
+.mos-panel-body {
+  display: grid;
+  gap: var(--mos-space-3);
+}
+
+.mos-panel-band {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--mos-space-2) var(--mos-space-3);
+  flex-wrap: wrap;
+  padding: var(--mos-space-3) var(--mos-panel-pad);
+  border-block: var(--mos-border-hairline);
+  background: var(--mos-color-surface-muted);
+  font-size: var(--mos-text-section);
+  text-align: center;
+}
+
+/* The fact the band exists to state, and the qualification after it. Two
+   weights on one centred line, never a paragraph: a band is a remark, and a
+   remark that wraps like body copy starts competing with the list under it. */
+.mos-panel-band-title {
+  font-weight: 700;
+  color: var(--mos-color-text-strong);
+}
+
+.mos-panel-band-note {
+  font-size: var(--mos-text-section-aside);
+  color: var(--mos-color-text-muted);
+}
+
+.mos-panel-band-icon {
+  display: flex;
+  flex: 0 0 auto;
+  color: var(--mos-color-text-muted);
+}
+
+.mos-panel-band-icon > .suite-icon,
+.mos-panel-band-icon > svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+/* Tones tint the strip and the icon together, so the band reads as one mark
+   rather than a coloured dot on a grey bar. */
+.mos-panel-band-accent {
+  border-color: var(--mos-color-accent-border);
+  background: var(--mos-color-accent-soft);
+}
+
+.mos-panel-band-accent > .mos-panel-band-icon {
+  color: var(--mos-color-accent);
+}
+
+.mos-panel-band-info {
+  border-color: var(--mos-color-info-border);
+  background: var(--mos-color-info-soft);
+}
+
+.mos-panel-band-info > .mos-panel-band-icon {
+  color: var(--mos-color-info);
+}
+
+.mos-panel-band-warning {
+  border-color: var(--mos-color-warning-border);
+  background: var(--mos-color-warning-soft);
+}
+
+.mos-panel-band-warning > .mos-panel-band-icon {
+  color: var(--mos-color-warning);
+}
+
+.mos-panel-list {
+  display: grid;
+}
+
+.mos-panel-item {
+  padding: var(--mos-space-4) var(--mos-panel-pad);
+  border-top: var(--mos-border-hairline);
+}
+
+/* Nothing above these has drawn a rule yet, so they must not draw a second. */
+.mos-panel-flush > .mos-panel-list:first-child > .mos-panel-item:first-child,
+.mos-panel-band + .mos-panel-list > .mos-panel-item:first-child {
+  border-top: 0;
+}
+
+/* A band that opens the panel, or follows another full-bleed section, would
+   double the rule that section already drew. */
+.mos-panel-flush > .mos-panel-band:first-child,
+.mos-panel-list + .mos-panel-band,
+.mos-panel-band + .mos-panel-band {
+  border-top: 0;
+}
+
+/* An item whose own children carry the inset — a whole-row disclosure button,
+   or an entry that expands to more than one region. The row keeps its rule and
+   its full width; what pads is up to the child, which is the only way a hit
+   target can fill the row edge to edge. */
+.mos-panel-item-flush {
+  padding: 0;
+}
+
+/* An item the owner has chosen. The mark is a bar on the leading edge rather
+   than a border, because a border would inset the tint and reintroduce the box
+   this pattern exists to remove. */
+.mos-panel-item-selected {
+  background: var(--mos-color-accent-soft);
+  box-shadow: inset 3px 0 0 var(--mos-color-accent);
+}
+
+/* Present but not usable, and not a fault: a drive in a drawer, a connection
+   that is off. Quieter, never hidden — a place that is still chosen has to keep
+   being visible while it is away. */
+.mos-panel-item-quiet {
+  opacity: 0.62;
+}
+
+@media (max-width: 47.9375rem) {
+  .mos-panel-flush {
+    --mos-panel-pad: var(--mos-space-4);
+  }
 }
 
 .mos-frost {
