@@ -60,6 +60,9 @@ function writeVerifiedCache(stateDir, value = catalog) {
   fs.writeFileSync(path.join(stateDir, 'official-app-catalog.json'), JSON.stringify({
     catalogText,
     fetchedAt: new Date().toISOString(),
+    // The ref the cache was fetched for. A cache from another ref is another
+    // ref's answer and is discarded rather than served.
+    ref: 'main',
     revision,
     signature: signCatalogBytes(catalogText, publisher.privateKey),
   }));
@@ -100,6 +103,7 @@ test('refresh treats a 304 on the conditional catalog request as unchanged, not 
     catalogText,
     etag: '"seed-etag"',
     fetchedAt: new Date('2026-07-14T09:00:00.000Z').toISOString(),
+    ref: 'main',
     revision,
     signature: signCatalogBytes(catalogText, publisher.privateKey),
   }));
@@ -486,4 +490,69 @@ test('a refresh failure is logged once per state, not once per attempt', async (
   await service.refresh();
   assert.deepEqual(records.map((record) => record[1]).slice(-1), ['app-catalog-refresh-recovered']);
   assert.equal(records.at(-1)[2].previousErrorCode, 'CATALOG_SIGNATURE_INVALID');
+});
+
+// The reason this exists: a branch track must be able to publish an app version
+// and have the boxes following that branch see it, without a platform update and
+// without merging to `main` first. Nothing here names a branch — the track
+// answers with its own ref — so a new track needs no new code.
+test('a branch track reads its own branch, and a release tag reads main', async () => {
+  const asked = [];
+  const serveRef = async (url) => {
+    if (url.includes('/commits/')) { asked.push(decodeURIComponent(url.split('/commits/')[1])); return jsonResponse({ sha: revision }); }
+    return serveRepo()(url);
+  };
+
+  for (const [track, expected] of [
+    [{ ref: 'staging', type: 'branch' }, 'staging'],
+    [{ ref: 'main', type: 'branch' }, 'main'],
+    [{ ref: 'main', type: 'stable' }, 'main'],
+  ]) {
+    const service = catalogService({
+      fetchImpl: serveRef,
+      resolveCatalogRef: async () => (track.type === 'branch' ? track.ref : 'main'),
+      stateDir: tempDir(),
+    });
+    await service.refresh();
+    assert.equal(asked.at(-1), expected);
+    assert.equal(service.status().ref, expected);
+  }
+});
+
+// A cache is one ref's answer. Serving it after a track change would show the
+// other branch's app versions, and its etag would make the conditional request
+// answer 304 for a document this ref never fetched.
+test('a catalog cached for another ref is discarded rather than served', async () => {
+  const stateDir = tempDir();
+  const conditional = [];
+  const fetchImpl = async (url, options) => {
+    if (options?.headers?.['If-None-Match']) conditional.push(url);
+    return serveRepo()(url);
+  };
+  let ref = 'main';
+  const service = catalogService({ fetchImpl, resolveCatalogRef: async () => ref, stateDir });
+
+  await service.refresh();
+  assert.equal(service.status().ref, 'main');
+
+  ref = 'staging';
+  service.lastAttemptedAt = null; // the 30s reuse window, not what is under test
+  await service.refresh();
+  assert.equal(service.status().ref, 'staging');
+  assert.deepEqual(conditional, [], 'the other ref\'s etag must not be reused');
+});
+
+// Deriving the ref from the update track means the track has to be knowable. It
+// is read from the update agent, which can be unreachable — a permanent state,
+// not a version problem — and guessing `main` there would silently read the
+// wrong branch on every box that follows another one.
+test('a ref that cannot be resolved refuses the fetch instead of guessing a branch', async () => {
+  const service = catalogService({
+    fetchImpl: async () => { throw new Error('should never be reached'); },
+    resolveCatalogRef: async () => { throw new Error('Update system agent is unavailable.'); },
+    stateDir: tempDir(),
+  });
+
+  await assert.rejects(() => service.refresh(), { code: 'CATALOG_REF_UNRESOLVED' });
+  assert.equal(service.catalog(), null);
 });

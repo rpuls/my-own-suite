@@ -751,7 +751,24 @@ Consequences:
 - Same-version-different-contents is `current`. It is not offered as an update and cannot be applied, which is the outcome `integrity-error` already produced — without describing the normal case as a fault.
 - Publishing a package change now requires a version bump to be reachable at all, since availability is decided by version. `npm run apps:version:check` (`scripts/app-version-guard.cjs`) enforces this in CI by comparing the generated catalog against the one published on `main`, and also refuses a version that moves backwards. `npm run apps:catalog:check` cannot catch this class on its own: it only proves catalog.json matches the working tree.
 - Bumping a package version means re-stamping its `privacy-review.json` `scope.packageVersion`, because that field is part of the hashed package contents. `scope.packageDigest` is placeholdered before hashing, so writing the new digest back does not move it.
-- The app catalog branch remains `main` (`MOS_APP_CATALOG_BRANCH`) regardless of the platform update track. Making the catalog branch follow the update track was considered and rejected: the checkout channel below reaches the same outcome without a second fetchable branch, a second signing surface, or a knob that can be set wrong. See the entry below, which supersedes the claim this line used to make about a staging box being "quiet and correct".
+- The app catalog branch was fixed at `main` for every update track, on the grounds that the checkout channel below reached the same outcome without a second signing surface. **Reversed on 2026-09-14** — see that entry: the catalog ref now follows the track, because a box on a branch ahead of `main` could not read the published catalog at all, and an app update without a platform update could not be tested before it shipped.
+
+## 2026-09-14: The App Catalog Is Read From The Ref This Box's Own Code Came From
+
+Decision: the catalog ref follows the update track. A branch track reads that branch's `apps/catalog.json`; a release tag reads `main`. `MOS_APP_CATALOG_BRANCH` remains an explicit override for a lab. This reverses the 2026-07-24 consequence that fixed the ref at `main` for every track.
+
+Reason: `main` is at or ahead of a release tag, so a stable box can only ever read a catalog newer than its own code — which is the safe direction, because `validateCatalog` ignores fields it does not know and `minimumMosVersion` filters what the box cannot run. It is behind `staging`, so a staging box read a catalog *older* than its own validator, and a release that adds a required catalog field could not read the published catalog at all until its own reached `main`. That happened: `appVersion` became required, every refresh on the staging track failed, and the only way to clear it was to merge a branch's worth of unrelated work to `main`.
+
+The rejected reading held that the checkout channel reaches the same outcome. It does not. The checkout channel lets a box run a package it is already carrying, but only by updating MOS to carry it — so on a branch track every app-version test is entangled with a platform update, and the product feature that matters, an app updating *without* one, could be exercised for the first time only on the stable track. That is testing in production.
+
+Consequences:
+
+- Publishing an app version to a branch is enough to offer it to boxes following that branch. No merge to `main`, no platform update.
+- `apps/catalog.json` must be signed on any branch a box follows, or its refresh fails the same way an unsigned `main` would. This is the cost the 2026-07-24 entry called a second signing surface, accepted: it moves the signing ceremony to where a bad catalog is caught rather than to the release that ships it.
+- No branch is named in the logic. The track answers with its own ref, a release tag answers `main`, and a new track needs no new code — the same property the 2026-09-13 local channel has.
+- A ref that cannot be resolved refuses the fetch (`CATALOG_REF_UNRESOLVED`) rather than falling back to `main`. The track is read from the update agent's cheap `/v1/summary`, which touches nothing off the machine; an unreachable agent is a permanent state, and guessing `main` there would read the wrong branch on every box that follows another one.
+- A cache records the ref it was fetched for and is discarded when the ref changes, so a track change cannot serve the other branch's app versions or reuse its etag against a document this ref never fetched.
+- A catalog that a release cannot read now reports `CATALOG_VERSION_SKEW` rather than `CATALOG_INVALID`, reaches the log once per change of state, appears in the diagnostics file beside the update check, and is readable under **Advanced details** on the Apps screen. The condition is self-healing and apps keep updating from the checkout while it lasts, which is why it is not a banner.
 
 ## 2026-09-13: An App Update May Come From The Catalog Or From This Box's Own Checkout, Newest Wins
 

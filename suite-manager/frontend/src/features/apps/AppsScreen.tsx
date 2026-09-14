@@ -25,7 +25,7 @@ type CatalogMetadata = {
   screenshots: Array<{ alt: string; caption: string; src: string }>;
   tags: string[];
 };
-type CatalogStatus = { advisories?: { error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; revision: string | null }; error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; repository: string; revision: string | null };
+type CatalogStatus = { advisories?: { error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; revision: string | null }; error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; ref: string | null; repository: string; revision: string | null };
 type CatalogUpdate = {
   // `sourceChannel` says which of the two channels offered this: the published
   // catalog, or the packages this MOS version shipped with. A checkout candidate
@@ -277,6 +277,7 @@ function failureCopy({ errorCode, kind }: { errorCode: string | null; kind: stri
 function catalogFacts(status: CatalogStatus): AdvancedFact[] {
   const facts: AdvancedFact[] = [
     { label: 'Source', value: status.repository },
+    { label: 'Branch', value: status.ref || 'not resolved' },
     { label: 'State', value: status.freshness },
     { label: 'Last fetched', value: status.fetchedAt ? new Date(status.fetchedAt).toLocaleString() : 'never' },
     { code: true, label: 'Revision', value: status.revision ? status.revision.slice(0, 12) : 'none' },

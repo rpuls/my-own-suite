@@ -6,7 +6,7 @@ const http = require('node:http');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 
-const { buildPaths, collectStatus, readJson, readLastStatus, repoRootFrom, summarizeJob, writeJson, writeUpdateTrack } = require('./lib.cjs');
+const { buildPaths, collectStatus, readJson, readLastStatus, repoRootFrom, resolveTrack, summarizeJob, writeJson, writeUpdateTrack } = require('./lib.cjs');
 const { BackupAgentClient } = require('../../suite-manager/backend/src/backups/backup-agent-client.cjs');
 const { CANCELLABLE_STAGES, CANCELLED, SKIPPABLE_STAGES } = require('./checkpoint.cjs');
 
@@ -198,8 +198,11 @@ const server = http.createServer(async (request, response) => {
     }
     // The cheap read. A full status asks the origin what the latest release is,
     // which is far too much for the one question the backup agent asks often.
+    // The track rides along because it is free here — `resolveTrack` reads the
+    // checkout and the config file and talks to nothing — and Suite Manager
+    // needs it per catalog refresh to know which ref to fetch.
     if (request.method === 'GET' && url.pathname === '/v1/summary') {
-      respond(response, 200, { currentJob: summarizeJob(readCurrentJob()), service: 'mos-update-agent' });
+      respond(response, 200, { currentJob: summarizeJob(readCurrentJob()), service: 'mos-update-agent', track: resolveTrack(paths) });
       return;
     }
     if (request.method === 'POST' && url.pathname === '/v1/jobs') {

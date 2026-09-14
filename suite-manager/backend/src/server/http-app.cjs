@@ -424,11 +424,21 @@ function createMOSServer({
   // downloads allow six, which is what the cap exists to prevent.
   const appOperationLimiter = new AppOperationLimiter();
   const catalogService = officialCatalog || new OfficialCatalogService({
-    branch: process.env.MOS_APP_CATALOG_BRANCH || 'main',
     limiter: appOperationLimiter,
     logger,
     recordSecurityEvent,
     repository: process.env.MOS_APP_CATALOG_REPOSITORY || 'https://github.com/rpuls/my-own-suite',
+    // A branch track reads its own branch's catalog, so the packages a box is
+    // offered are the ones published on the line of development it follows; a
+    // release tag reads `main`, which is what publishes an app update between
+    // platform releases. `/v1/summary` is the update agent's cheap read and
+    // reaches nothing off this machine.
+    resolveCatalogRef: async () => {
+      if (process.env.MOS_APP_CATALOG_BRANCH) return process.env.MOS_APP_CATALOG_BRANCH;
+      const { track } = await updateAgent.summary();
+      if (track?.type === 'branch') return track.ref || null;
+      return track?.type === 'stable' ? 'main' : null;
+    },
     // Read from the installed release, never from the network the catalog comes
     // over: a key fetched from whoever served the catalog would only prove they
     // are consistent with themselves.

@@ -124,7 +124,7 @@ function lastUpdateLines(job) {
 function catalogLines(catalog) {
   if (!catalog) return ['App catalog        not collected'];
   const lines = [
-    `App catalog        ${catalog.freshness}${catalog.revision ? ` at ${catalog.revision.slice(0, 12)}` : ''}${catalog.fetchedAt ? `, fetched ${catalog.fetchedAt}` : ''}`,
+    `App catalog        ${catalog.freshness}${catalog.ref ? ` on ${catalog.ref}` : ''}${catalog.revision ? ` at ${catalog.revision.slice(0, 12)}` : ''}${catalog.fetchedAt ? `, fetched ${catalog.fetchedAt}` : ''}`,
     `Catalog source     ${catalog.repository || 'unknown'}`,
   ];
   if (catalog.error) lines.push(`Catalog error      ${catalog.error.code}`, indent(catalog.error.message, 19));

@@ -455,6 +455,7 @@ module.exports = {
   readJson,
   readLastStatus,
   repoRootFrom,
+  resolveTrack,
   runApply,
   shortCommit,
   summarizeJob,

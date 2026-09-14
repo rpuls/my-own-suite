@@ -42,7 +42,6 @@ async function boundedResponse(response, maximumBytes) {
 
 class OfficialCatalogService {
   constructor({
-    branch = 'main',
     fetchImpl = globalThis.fetch,
     limiter = new AppOperationLimiter(),
     limits = DEFAULT_LIMITS,
@@ -52,10 +51,13 @@ class OfficialCatalogService {
     random = Math.random,
     recordSecurityEvent = () => {},
     repository = 'https://github.com/rpuls/my-own-suite',
+    // Which ref to read the catalog from. Resolved per refresh rather than once,
+    // because an owner can change the update track without restarting.
+    resolveCatalogRef = async () => 'main',
     signingPublicKey,
     stateDir,
   }) {
-    this.branch = branch;
+    this.resolveCatalogRef = resolveCatalogRef;
     this.fetch = fetchImpl;
     this.limiter = limiter;
     this.limits = limits;
@@ -171,6 +173,7 @@ class OfficialCatalogService {
       },
       error: this.lastError,
       fetchedAt,
+      ref: this.cache?.ref || null,
       freshness: !fetchedAt ? 'unavailable' : ageMs > CATALOG_REFRESH_POLICY.cacheStaleAfterMs ? 'stale' : 'fresh',
       repository: this.repository,
       revision: this.cache?.revision || null,
@@ -311,14 +314,26 @@ class OfficialCatalogService {
     const attemptedAt = this.now().toISOString();
     this.lastAttemptedAt = attemptedAt;
     try {
-      const refUrl = `https://api.github.com/repos/${this.github.owner}/${this.github.repo}/commits/${encodeURIComponent(this.branch)}`;
+      // The catalog is read from the ref this box's own code came from, so a
+      // release can never be handed a catalog older than the validator reading
+      // it. Nothing here names a branch: a track answers with its own ref and a
+      // release tag answers with `main`, which is ahead of it by construction
+      // and is what lets an app update without a platform update.
+      const catalogRef = await this.resolveCatalogRef().catch(() => null);
+      if (!catalogRef) {
+        throw new OfficialCatalogError('CATALOG_REF_UNRESOLVED', 'MOS could not establish which update track this server follows, so it did not fetch the app catalog.');
+      }
+      // A catalog fetched for another ref is not this ref's answer, and its etag
+      // would make a conditional request return 304 for the wrong document.
+      if (this.cache && this.cache.ref !== catalogRef) this.cache = null;
+      const refUrl = `https://api.github.com/repos/${this.github.owner}/${this.github.repo}/commits/${encodeURIComponent(catalogRef)}`;
       const ref = JSON.parse((await boundedResponse(await this.request(refUrl), this.limits.catalogBytes)).toString('utf8'));
       if (!COMMIT_PATTERN.test(String(ref.sha || ''))) throw new OfficialCatalogError('CATALOG_REVISION_INVALID', 'GitHub did not resolve the catalog branch to an immutable commit.');
       const revision = ref.sha;
       const catalogUrl = `https://raw.githubusercontent.com/${this.github.owner}/${this.github.repo}/${revision}/apps/catalog.json`;
       const response = await this.request(catalogUrl, this.cache?.revision === revision && this.cache?.etag ? { 'If-None-Match': this.cache.etag } : {});
       if (response.status === 304 && this.cache) {
-        this.cache = { ...this.cache, attemptedAt, error: null, fetchedAt: attemptedAt, revision };
+        this.cache = { ...this.cache, attemptedAt, error: null, fetchedAt: attemptedAt, ref: catalogRef, revision };
       } else {
         const catalogText = (await boundedResponse(response, this.limits.catalogBytes)).toString('utf8');
         // Before it is parsed, let alone believed. Whoever served these bytes had
@@ -344,12 +359,12 @@ class OfficialCatalogService {
             `The published app catalog is not what MOS ${this.platformVersion} reads, so it was not used: ${errors.join(' ')}`,
           );
         }
-        this.cache = { attemptedAt, catalog, catalogText, error: null, etag: response.headers.get('etag') || null, fetchedAt: attemptedAt, revision, signature };
+        this.cache = { attemptedAt, catalog, catalogText, error: null, etag: response.headers.get('etag') || null, fetchedAt: attemptedAt, ref: catalogRef, revision, signature };
       }
       this.failures = 0;
       this.lastError = null;
       if (this.loggedErrorCode) {
-        this.logger?.info('app-catalog-refresh-recovered', { previousErrorCode: this.loggedErrorCode, revision });
+        this.logger?.info('app-catalog-refresh-recovered', { previousErrorCode: this.loggedErrorCode, ref: catalogRef, revision });
         this.loggedErrorCode = null;
       }
       // Advisories are fetched from the same immutable revision, so they only
@@ -395,7 +410,7 @@ class OfficialCatalogService {
       // failure repeated is not new information for whoever reads the journal.
       if (safeError.code !== this.loggedErrorCode) {
         this.loggedErrorCode = safeError.code;
-        this.logger?.warn('app-catalog-refresh-failed', { errorCode: safeError.code, reason: safeError.message, revision: this.cache?.revision || null });
+        this.logger?.warn('app-catalog-refresh-failed', { errorCode: safeError.code, reason: safeError.message, ref: this.cache?.ref || null, revision: this.cache?.revision || null });
       }
       if (this.cache) {
         this.cache = { ...this.cache, attemptedAt, error: safeError };
