@@ -26,6 +26,7 @@ import {
   browserTimeZone,
   destinationViews,
   isRunning,
+  jobWorkingLine,
   restoreAddressNote,
   restorePhaseWords,
   scheduleLive,
@@ -90,6 +91,7 @@ export function BackupsScreen() {
     || null;
   const blockReason = status ? backupBlockReason(status, views, backupTarget) : '';
   const banner = bannerState(status, views, Boolean(backingUp));
+  const workingLine = jobWorkingLine(activeJob);
   const recoveryKey = status?.recoveryKey || null;
   // Until the key is saved, taking a backup or enabling a schedule goes through
   // the dialog instead. The agent refuses them too, so a page left open from
@@ -371,9 +373,9 @@ export function BackupsScreen() {
   }
 
   async function deleteBackup(backup: BackupEntry) {
-    setDialog(null);
     await runAction(`delete:${backup.path}`, async () => {
       await post('delete', { backupPath: backup.path }, 'Unable to delete this backup.');
+      setDialog(null);
     });
   }
 
@@ -416,6 +418,22 @@ export function BackupsScreen() {
     <h1>Backup &amp; Restore</h1>
     <p className="suite-lead mos-body-lg">A backup is a complete copy of your suite &mdash; your apps and everything in them. Keep it somewhere other than this machine, and you can get everything back.</p>
   </div>;
+
+  // The status read probes every destination, so it can take several seconds
+  // on a machine with a bucket attached. Until it lands the page has nothing
+  // true to say, and a headline over an empty page reads as broken, not busy.
+  if (!status && !error && !sessionEnded) {
+    return <section className="mos-shell suite-backups">
+      <div className="mos-page">
+        {hero}
+        <Panel>
+          <PanelBody>
+            <p className="suite-bk-working"><Spinner />Loading your backups</p>
+          </PanelBody>
+        </Panel>
+      </div>
+    </section>;
+  }
 
   if (status?.serverLoginUnsaved) {
     return <section className="mos-shell suite-backups">
@@ -478,7 +496,8 @@ export function BackupsScreen() {
             </div>
           </div>
           <div className="suite-bk-banner-action">
-            {backingUp ? <p className="suite-bk-working"><Spinner />{stageWords(activeJob?.stage)} &mdash; step {stageProgress(activeJob).step} of {stageProgress(activeJob).steps}. Apps come back on their own.</p> : <>
+            {backingUp ? <p className="suite-bk-working"><Spinner />{stageWords(activeJob?.stage)} &mdash; step {stageProgress(activeJob).step} of {stageProgress(activeJob).steps}. Apps come back on their own.</p>
+              : workingLine ? <p className="suite-bk-working"><Spinner />{workingLine}</p> : <>
               <div className="suite-bk-backup-controls">
                 {readyViews.length > 1 && !blockReason ? <Select
                   aria-label="Where to back up"

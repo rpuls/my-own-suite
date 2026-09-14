@@ -598,6 +598,17 @@ const STAGE_WORDS: Record<string, string> = {
 const BACKUP_STAGES = ['Preparing backup', 'Checking required space', 'Opening the backup repository on the destination', 'Stopping app runtime for a consistent snapshot', 'Copying suite state', 'Storing app volumes', 'Writing manifest', 'Restarting runtime'];
 const RESTORE_STAGES = ['Checking the backup', 'Checking required space', 'Stopping current runtime', 'Saving pre-restore rescue copy', 'Restoring suite state', 'Restoring app volumes', 'Rebuilding app runtime', 'Verifying restored state', 'Starting restored control plane'];
 
+// Why the controls are dead, for a job that holds the page without taking it
+// over. A running job disables everything on the screen, so each kind has to
+// say what it is waiting for rather than leaving a row of buttons that do
+// nothing. A backup is absent because it reports its own stage and step.
+export function jobWorkingLine(job: BackupJob | null) {
+  if (!isRunning(job)) return '';
+  if (job?.kind === 'delete') return 'Deleting that backup and reclaiming the space it used. This can take a few minutes.';
+  if (job?.kind === 'validate') return 'Checking a backup. Backups and restores wait until that finishes.';
+  return '';
+}
+
 export function stageWords(stage: string | null | undefined) {
   if (!stage) return 'Getting ready';
   return STAGE_WORDS[stage] || stage;
