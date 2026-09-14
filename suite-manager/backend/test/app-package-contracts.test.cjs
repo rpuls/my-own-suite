@@ -376,3 +376,26 @@ test('catalog refresh policy keeps a bounded retry cadence and last-known-good c
   assert.ok(CATALOG_REFRESH_POLICY.cacheStaleAfterMs > CATALOG_REFRESH_POLICY.catalogIntervalMs);
   assert.equal(CATALOG_REFRESH_POLICY.jitterRatio, 0.1);
 });
+
+// The catalog carries the app's own version so an update can be named in the
+// owner's terms before anything is downloaded. It is optional, because not every
+// package declares one, and free-form, because apps do not all use semver.
+test('a catalog entry may carry the app version, and is refused if it carries a malformed one', () => {
+  const entry = (appVersion) => ({
+    packages: {
+      example: {
+        ...(appVersion === undefined ? {} : { appVersion }),
+        minimumMosVersion: '0.19.0',
+        packageDigest: `sha256:${'a'.repeat(64)}`,
+        packageVersion: '1.0.0',
+        path: 'apps/example',
+        privacy: { status: 'reviewed' },
+      },
+    },
+    schemaVersion: 1,
+  });
+  assert.deepEqual(validateCatalog(entry()), []);
+  assert.deepEqual(validateCatalog(entry('26.8.1')), []);
+  assert.deepEqual(validateCatalog(entry('')), ['catalog.packages.example.appVersion must be a non-empty string.']);
+  assert.deepEqual(validateCatalog(entry(3)), ['catalog.packages.example.appVersion must be a non-empty string.']);
+});

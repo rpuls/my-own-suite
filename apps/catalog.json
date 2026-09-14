@@ -1,9 +1,10 @@
 {
   "packages": {
     "actual-budget": {
-      "minimumMosVersion": "0.18.0",
-      "packageDigest": "sha256:d384cff9d811c98e3fedfd515fee4a2b71c64ed495725a778574ccf4873baabc",
-      "packageVersion": "0.1.0",
+      "appVersion": "26.8.1",
+      "minimumMosVersion": "0.20.0",
+      "packageDigest": "sha256:81ea284fb1d0d6edcbada395f9a3c18e7553d1142f1cac3fe546d7ee329d4e53",
+      "packageVersion": "0.1.1",
       "path": "apps/actual-budget",
       "privacy": {
         "posture": "owner-disableable",
@@ -11,9 +12,10 @@
       }
     },
     "immich": {
-      "minimumMosVersion": "0.19.0",
-      "packageDigest": "sha256:c23fb9c922cac0f9d013a6f337d3a5e0e60c39639ad3efd89170fb6ba6b2f6c0",
-      "packageVersion": "0.8.0",
+      "appVersion": "3.1.0",
+      "minimumMosVersion": "0.20.0",
+      "packageDigest": "sha256:b6ab5b5fbff3959c93ec54a46b4b584c8cc0486e5c62e9242324ba22f48dd490",
+      "packageVersion": "0.8.1",
       "path": "apps/immich",
       "privacy": {
         "posture": "external-dependency",
@@ -21,9 +23,10 @@
       }
     },
     "onlyoffice": {
-      "minimumMosVersion": "0.18.0",
-      "packageDigest": "sha256:68b9043125c88c001f5d29d9f6a28c0ff5e2c8f26e12bd323c4f33f170489595",
-      "packageVersion": "0.2.4",
+      "appVersion": "9.3.1",
+      "minimumMosVersion": "0.20.0",
+      "packageDigest": "sha256:391fb6ba755a83d537c5ff3bece1257401126a4354c0c2820eba80c28e19f8dc",
+      "packageVersion": "0.2.5",
       "path": "apps/onlyoffice",
       "privacy": {
         "posture": "privacy-configured",
@@ -31,9 +34,10 @@
       }
     },
     "paperless-ngx": {
-      "minimumMosVersion": "0.19.0",
-      "packageDigest": "sha256:5091dd29333e011d67d2b6fd9293c3e058d6c78f4ac14ad7e99d0d3a0150ef99",
-      "packageVersion": "0.3.0",
+      "appVersion": "3.1.3",
+      "minimumMosVersion": "0.20.0",
+      "packageDigest": "sha256:f35c60040e8400c7d2bffc1507617ab355de7936935852cbe1e74bc975e99d94",
+      "packageVersion": "0.3.1",
       "path": "apps/paperless-ngx",
       "privacy": {
         "posture": "private-by-default",
@@ -41,9 +45,10 @@
       }
     },
     "radicale": {
-      "minimumMosVersion": "0.19.0",
-      "packageDigest": "sha256:12c1f7a5addd9b8708009267472f6d2cb672505c8982278a500d8b7914592de5",
-      "packageVersion": "0.5.0",
+      "appVersion": "3.7.6",
+      "minimumMosVersion": "0.20.0",
+      "packageDigest": "sha256:b171c2f3aa808b7ec8801a3beee61625b1490de8a719d1241352d4de53896e03",
+      "packageVersion": "0.5.1",
       "path": "apps/radicale",
       "privacy": {
         "posture": "private-by-default",
@@ -51,9 +56,10 @@
       }
     },
     "seafile": {
-      "minimumMosVersion": "0.19.0",
-      "packageDigest": "sha256:34147c4f61ed9f44141edadd29bfc6429620700bd5f46b678b47c75e013bfb3e",
-      "packageVersion": "0.3.0",
+      "appVersion": "13.0.21",
+      "minimumMosVersion": "0.20.0",
+      "packageDigest": "sha256:7b7e4b5ac62755a089eb980e168049b0fb24cfd097e2f2521b33cf4ec7b51248",
+      "packageVersion": "0.3.1",
       "path": "apps/seafile",
       "privacy": {
         "posture": "private-by-default",
@@ -61,9 +67,10 @@
       }
     },
     "stirling-pdf": {
-      "minimumMosVersion": "0.18.0",
-      "packageDigest": "sha256:db67601b2de9b6b8c42e521fff88005956fb3929997f7c8a8d585caff2bdb43e",
-      "packageVersion": "0.2.5",
+      "appVersion": "2.10.0",
+      "minimumMosVersion": "0.20.0",
+      "packageDigest": "sha256:1d49a3cf0a99d92c1af3394a4cc0049128ca5c679e4c620f4a85f548f0d4d743",
+      "packageVersion": "0.2.6",
       "path": "apps/stirling-pdf",
       "privacy": {
         "posture": "privacy-configured",
@@ -71,9 +78,10 @@
       }
     },
     "vaultwarden": {
-      "minimumMosVersion": "0.19.0",
-      "packageDigest": "sha256:b30c51017bb270bd3c2a1191e8c3cef764d97d574bbf9576f249c84e2fbed211",
-      "packageVersion": "0.3.0",
+      "appVersion": "1.37.0",
+      "minimumMosVersion": "0.20.0",
+      "packageDigest": "sha256:c5a15edc235ca56deaba4824e5893cdaa233596e2a4cdc15e0da4f1f67a4098a",
+      "packageVersion": "0.3.1",
       "path": "apps/vaultwarden",
       "privacy": {
         "posture": "owner-disableable",

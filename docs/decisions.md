@@ -1074,3 +1074,15 @@ Consequences:
 - The toggle in Settings is the only discovery path, deliberately: a standing hint on app pages would reinstate the pollution this removes. The public docs name where it is.
 - `on-failure` exists because `CONTRIBUTING.md` asks bug reporters to paste what is under this disclosure, and that instruction has to keep working for an owner who has never opened Settings.
 - Closes roadmap theme L2 (Advanced User mode), which had been blocked on finding a first real candidate. The eight existing disclosures were the candidate all along.
+
+## 2026-09-13: The App's Own Version Is A Manifest Fact
+
+Decision: a package declares the version of the app it ships as `appVersion`, an optional additive field of manifest generation 1, and that is the only version an owner is shown: on the app's page, in the update summary and in the update preview. `version` remains the package version and appears only under Advanced details. The catalog carries `appVersion` so an update can be named before anything is downloaded, and the update comparison reports it on both sides so a package bump that leaves the app where it is says so in words. Every official package declares it, and `npm run apps:privacy:check` refuses a package whose `appVersion` disagrees with the privacy review's entry for the primary service's image.
+
+Reason: the package version orders MOS's own updates and means nothing outside MOS, so it was the wrong number to lead with. Deriving the app's version from the privacy review was tried first and rejected: the review's component versions are hand-typed and are not what a re-stamp updates, so the review could not vouch for them; reading it at render time meant a second parse and a second binding check beside the privacy card; and hanging a display fact on a trust document forced a trust gate onto a label, which withheld the version from exactly the packages an owner knows least about. A manifest field is authored once, validated by the schema every consumer already enforces, and travels with the package the way its name does.
+
+Consequences:
+
+- Packages using `appVersion` raise `minimumMosVersion` to 0.20.0, per the amendment policy, so a 0.19.x machine reports them as requiring a platform update until it updates.
+- A package with no `appVersion` shows no app version. The package version is then labelled as a package version and never stands in for it.
+- Moving a primary image pin means updating `appVersion` and the review's matching component together; CI holds them to agree.

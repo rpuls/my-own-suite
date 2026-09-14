@@ -115,11 +115,11 @@ function compareAppPackages({ candidate, installed, platformVersion, agentCapabi
   const compatibility = unsupported ? 'unsupported' : ownerAction ? 'owner-action-required' : 'compatible';
   const identity = `${installed.packageDigest}:${candidate.packageDigest}`;
   return {
-    candidate: { packageDigest: candidate.packageDigest, packageVersion: candidate.manifest.version, privacy: candidatePrivacy, source: candidate.source },
+    candidate: { appVersion: candidate.manifest.appVersion || null, packageDigest: candidate.packageDigest, packageVersion: candidate.manifest.version, privacy: candidatePrivacy, source: candidate.source },
     changes,
     compatibility,
     confirmationToken: crypto.createHash('sha256').update(identity).digest('hex'),
-    installed: { packageDigest: installed.packageDigest, packageVersion: installed.manifest.version, privacy: installedPrivacy },
+    installed: { appVersion: installed.manifest.appVersion || null, packageDigest: installed.packageDigest, packageVersion: installed.manifest.version, privacy: installedPrivacy },
     metadata: {
       backupRequired: candidate.manifest.update?.backupRequired === true,
       downtime: candidate.manifest.update?.downtime || 'brief',

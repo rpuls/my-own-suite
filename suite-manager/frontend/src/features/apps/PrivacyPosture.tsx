@@ -168,7 +168,7 @@ export function PrivacyChangeRow({ candidate, candidateVersion, installed, insta
 }) {
   const changed = privacyChanged(installed, candidate);
   return <div className={`suite-privacy-change${changed ? ' is-changed' : ''}`}>
-    <span className="suite-privacy-change-label">Privacy change · {installedVersion} → {candidateVersion}</span>
+    <span className="suite-privacy-change-label">Privacy change · package {installedVersion} → {candidateVersion}</span>
     <div className="suite-privacy-change-row">
       <span className="suite-privacy-change-side">
         <PrivacyShieldBadge privacy={installed} size="row" />

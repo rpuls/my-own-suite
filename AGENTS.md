@@ -277,6 +277,7 @@ These rules are mandatory for app/service onboarding and version updates.
 - MOS app package services must use package-owned Dockerfiles in `apps/`.
 - Pin base images in Dockerfiles with immutable digests (`FROM image@sha256:...`).
 - Never use floating tags like `latest` or `release` in runtime Dockerfiles.
+- Every official package declares `appVersion` in its manifest: the version of the primary service's pinned image, as the app publishes it. When you move that pin, update `appVersion` and the matching component in `privacy-review.json` together; `npm run apps:privacy:check` refuses a package where they disagree.
 
 ### Required Dockerfile layout
 

@@ -19,6 +19,8 @@ export type CatalogApp = {
   routeHost: string
   name: string
   version: string
+  // The app's own version; `version` above is the MOS package version.
+  appVersion: string
   category: string
   categorySlug: string
   summary: string
@@ -355,6 +357,7 @@ export const catalogApps: CatalogApp[] = Object.entries(manifestModules)
       routeHost: String(routes[0]?.host ?? manifest.id ?? ''),
       name: String(manifest.name ?? ''),
       version: String(manifest.version ?? ''),
+      appVersion: String(manifest.appVersion ?? ''),
       category: categoryLabel(String(manifest.category ?? '')),
       categorySlug: String(manifest.category ?? ''),
       summary: String(manifest.summary ?? ''),

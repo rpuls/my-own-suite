@@ -220,6 +220,7 @@ function validateCatalog(catalog) {
     if (!SEMVER_PATTERN.test(String(entry.minimumMosVersion || ''))) errors.push(`${prefix}.minimumMosVersion must be semver-like.`);
     if (!DIGEST_PATTERN.test(String(entry.packageDigest || ''))) errors.push(`${prefix}.packageDigest must be a SHA-256 digest.`);
     if (!['review-required', 'reviewed', 'unverified'].includes(entry.privacy?.status)) errors.push(`${prefix}.privacy.status is invalid.`);
+    if (entry.appVersion !== undefined && !NON_EMPTY_STRING(entry.appVersion)) errors.push(`${prefix}.appVersion must be a non-empty string.`);
   }
   return errors;
 }

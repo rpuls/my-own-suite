@@ -403,6 +403,15 @@ test('update classification is decided by version alone, not by digest', () => {
   assert.equal(service.updateFor('immich', { packageDigest: digest, packageVersion: '1.2.0' }).status, 'current');
 });
 
+// The catalog may carry the app's own version; the offered candidate always has
+// the key, null when the catalog did not say.
+test('an offered candidate carries the catalog app version, or null', () => {
+  const installed = { packageDigest: `sha256:${'2'.repeat(64)}`, packageVersion: '1.1.0' };
+  assert.equal(catalogService({ stateDir: writeVerifiedCache(tempDir()) }).updateFor('immich', installed).available.appVersion, null);
+  const declared = { ...catalog, packages: { ...catalog.packages, immich: { ...catalog.packages.immich, appVersion: '3.1.0' } } };
+  assert.equal(catalogService({ stateDir: writeVerifiedCache(tempDir(), declared) }).updateFor('immich', installed).available.appVersion, '3.1.0');
+});
+
 test('candidate download is revision-bound and verifies the complete digest before returning package inputs', async (t) => {
   const fixture = tempDir();
   const manifest = { manifestVersion: 1, category: 'test', health: { type: 'http', url: 'http://example:8080/health' }, id: 'example', minimumMosVersion: '0.1.0', name: 'Example', resources: { services: { example: { dockerfile: 'Dockerfile', internalPort: 8080 } } }, routes: [{ host: 'example', port: 8080, service: 'example' }], setup: { fields: [] }, summary: 'Example.', version: '1.1.0' };

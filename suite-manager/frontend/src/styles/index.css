@@ -891,6 +891,9 @@
 .suite-app-update-summary p { color: var(--mos-color-text-muted); }
 .suite-app-update-summary p { grid-column: 1 / -1; margin: 0; }
 .suite-app-update-summary > button { justify-self: start; }
+/* An update that leaves the app's own version alone says so across the full width. */
+.suite-app-update-summary .suite-app-update-unchanged { grid-column: 1 / -1; }
+.suite-app-update-summary .suite-app-update-unchanged small { color: var(--mos-color-text-muted); }
 .suite-app-update-dialog { display: grid; gap: var(--mos-space-4); }
 .suite-app-update-dialog dl { display: grid; grid-template-columns: auto 1fr; gap: var(--mos-space-2) var(--mos-space-4); margin: 0; }
 .suite-app-update-dialog dd { margin: 0; }
@@ -1460,6 +1463,21 @@
 
 .suite-app-detail-hero.has-cover .suite-app-detail-heading h2 {
   text-shadow: 0 1px 3px rgb(var(--suite-sheet-rgb) / 0.7), 0 2px 14px rgb(var(--suite-sheet-rgb) / 0.85);
+}
+
+/* The app's own version, set as part of the title rather than as a badge on it;
+   on a cover it takes the heading's shadow instead of a plate of its own. */
+.suite-app-detail-version {
+  flex: 0 0 auto;
+  color: var(--mos-color-text-muted);
+  font-size: 1.15rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.suite-app-detail-hero.has-cover .suite-app-detail-version {
+  text-shadow: 0 1px 3px rgb(var(--suite-sheet-rgb) / 0.8), 0 2px 12px rgb(var(--suite-sheet-rgb) / 0.9);
 }
 
 .suite-app-detail-replaces {
@@ -2451,6 +2469,7 @@
   .suite-app-action-bar { padding: var(--mos-space-4); }
   .suite-app-detail-scroll { padding: var(--mos-space-5) var(--mos-space-4); }
   .suite-app-detail-heading h2 { font-size: 1.7rem; }
+  .suite-app-detail-version { font-size: 1rem; }
   .suite-app-detail-title-row {
     align-items: flex-start;
   }

@@ -1046,6 +1046,7 @@ class AppPackageService {
     const packageDir = path.join(this.appsDir, packageId);
     const minimumMosVersion = summary.minimumMosVersion || '0.0.0';
     return {
+      appVersion: summary.appVersion,
       compatibility: compareSemver(this.platformVersion, minimumMosVersion) >= 0 ? 'compatible' : 'requires-platform-update',
       minimumMosVersion: summary.minimumMosVersion || '',
       packageDigest: digestAppPackage(packageDir),

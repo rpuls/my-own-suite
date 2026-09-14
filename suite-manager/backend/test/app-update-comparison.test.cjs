@@ -195,3 +195,22 @@ test('an unchanged candidate reports as current rather than as an update', (t) =
   assert.deepEqual(comparison.permissions.added, []);
   assert.equal(comparison.compatibility, 'compatible');
 });
+
+// The package version says nothing about whether the software the owner uses is
+// changing, so the preview carries each manifest's appVersion on both sides. A
+// package that moves while the app stays put reports the same version twice; a
+// package that declares none reports null, never the package version.
+test('an update preview carries the app version each manifest declares on both sides', (t) => {
+  const withApp = (appVersion) => (manifest) => ({ ...manifest, appVersion });
+  const installed = appPackage('1.0.0', withApp('3.1.0'));
+  const moved = appPackage('2.0.0', withApp('3.2.0'));
+  const repackaged = appPackage('1.1.0', withApp('3.1.0'));
+  const undeclared = appPackage('1.2.0');
+  t.after(() => [installed, moved, repackaged, undeclared].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
+  const compare = (candidate) => compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.19.0' });
+
+  assert.equal(compare(moved).installed.appVersion, '3.1.0');
+  assert.equal(compare(moved).candidate.appVersion, '3.2.0');
+  assert.equal(compare(repackaged).candidate.appVersion, '3.1.0');
+  assert.equal(compare(undeclared).candidate.appVersion, null);
+});

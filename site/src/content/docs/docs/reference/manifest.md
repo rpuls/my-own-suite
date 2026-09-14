@@ -54,6 +54,7 @@ That is a working package once the folder also contains the pinned `Dockerfile`,
 | `id` | DNS-safe lowercase package id (`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`), stable for the life of the package. Names the folder, namespaces containers and volumes. |
 | `name` | Human-readable app name. |
 | `version` | The **package** version (semver). Independent of both the MOS platform version and the upstream app version. Any content change requires a bump — installed machines are offered updates purely by comparing this value. |
+| `appVersion` | Optional (MOS 0.20.0 and later). The version of the **app itself**, as it publishes it (`3.1.0`, `26.8.1`). This is the number owners see on the app's page and in an update preview; `version` above stays MOS bookkeeping. Keep it in step with the primary service's pinned base image — for official packages, CI checks it against the privacy review's component inventory. |
 | `minimumMosVersion` | Oldest MOS release the package works on. Raise it when you use a field or template namespace introduced later. |
 | `summary` | One-line catalog-card description. |
 | `category` | Free text. Reuse an existing category when one fits (`media`, `storage`, `office`, `security`, `tools`); an unknown category renders as written with default styling. |

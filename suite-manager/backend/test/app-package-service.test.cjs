@@ -134,7 +134,7 @@ async function updatableExternalApp(root, store, calls, { reclaims = false } = {
 // source's commit, then hand back the candidate that commit publishes.
 function externalClientStub(candidate) {
   return {
-    platformVersion: '0.18.0',
+    platformVersion: '0.20.0',
     async downloadCandidate() { return { ...candidate, cleanup() {} }; },
     async resolveRevision(source) { return withRevision(source, candidate.source.revision); },
   };
@@ -867,7 +867,7 @@ test('updating an integration consumer keeps its integration env and reconciles 
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { platformVersion: '0.19.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    catalogService: { platformVersion: '0.20.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
     store,
   });
   await service.installPackage('seafile', { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' });
@@ -963,7 +963,7 @@ test('a provider update recovered at startup re-applies its integration consumer
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { advisoriesFor: () => [], platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    catalogService: { advisoriesFor: () => [], platformVersion: '0.20.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
     store,
   });
   await service.installPackage('seafile', { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' });
@@ -1053,7 +1053,7 @@ test('a crash between snapshot promotion and the durable commit is committed by 
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { advisoriesFor: () => [], platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    catalogService: { advisoriesFor: () => [], platformVersion: '0.20.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
     store,
   });
   await service.installPackage('stirling-pdf');
@@ -1148,7 +1148,7 @@ test('the recovery action restores the recorded runtime after a failed rollback'
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    catalogService: { platformVersion: '0.20.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
     store,
   });
   await service.installPackage('stirling-pdf');
@@ -1415,7 +1415,7 @@ test('a candidate whose privacy review is unreadable fails the update as a class
     async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
   };
   const catalogService = {
-    platformVersion: '0.18.0',
+    platformVersion: '0.20.0',
     async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
@@ -1460,7 +1460,7 @@ test('confirmed app updates are re-compared and durably staged against exact ide
     async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
   };
   const catalogService = {
-    platformVersion: '0.18.0',
+    platformVersion: '0.20.0',
     async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
@@ -1513,7 +1513,7 @@ test('an agent that cannot apply updates end to end is refused before any update
     async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build'], contractVersion: 3 }; },
   };
   const catalogService = {
-    platformVersion: '0.18.0',
+    platformVersion: '0.20.0',
     async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
@@ -1557,7 +1557,7 @@ test('contract v6 app updates activate, promote, and commit candidate identity a
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
     async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
   };
-  const catalogService = { platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } };
+  const catalogService = { platformVersion: '0.20.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({ agent, appsDir: v2AppsDir, catalogService, store });
   await service.installPackage('stirling-pdf');
@@ -1622,7 +1622,7 @@ test('an official candidate that ships a privacy review updates and keeps its re
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { advisoriesFor: () => [], platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    catalogService: { advisoriesFor: () => [], platformVersion: '0.20.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
     store,
   });
   await service.installPackage('stirling-pdf');
@@ -1672,7 +1672,7 @@ test('app updates replace an applied Homepage entry and retain its applied proje
       async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
     },
     appsDir: v2AppsDir,
-    catalogService: { platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    catalogService: { platformVersion: '0.20.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
     store,
   });
   await service.installPackage('stirling-pdf');
@@ -2152,7 +2152,7 @@ function checkoutAgent(appsDir) {
 function catalogStub(catalogVersion, downloads = []) {
   return {
     advisoriesFor: () => [],
-    platformVersion: '0.19.0',
+    platformVersion: '0.20.0',
     async downloadCandidate(packageId) {
       downloads.push(packageId);
       throw new Error('the catalog channel should not have been asked for these bytes');
@@ -2192,7 +2192,7 @@ async function installedFromCheckout(root, store, { installedVersion = '1.0.0', 
   await service.installPackage('notes');
   const manifestPath = path.join(packageDir, 'manifest.json');
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
-  const moved = broken ? { ...manifest, version, resources: { services: {} } } : { ...manifest, version };
+  const moved = broken ? { ...manifest, version, resources: { services: {} } } : { ...manifest, appVersion: '2.0', version };
   await fsp.writeFile(manifestPath, `${JSON.stringify(moved, null, 2)}\n`);
   return { downloads, service };
 }
@@ -2207,6 +2207,7 @@ test('a package newer in this box’s checkout than in the published catalog is 
   const app = service.listPackages().find((entry) => entry.id === 'notes');
   assert.equal(app.catalogUpdate.status, 'update-available');
   assert.equal(app.catalogUpdate.available.packageVersion, '1.1.0');
+  assert.equal(app.catalogUpdate.available.appVersion, '2.0');
   assert.equal(app.catalogUpdate.available.sourceChannel, 'checkout');
   // No fetched revision exists for bytes that were already here.
   assert.equal(app.catalogUpdate.available.sourceRevision, null);
@@ -2280,4 +2281,20 @@ test('a checkout behind what is installed never proposes a downgrade', async (t)
   const app = service.listPackages().find((entry) => entry.id === 'notes');
   assert.notEqual(app.catalogUpdate.status, 'update-available');
   assert.equal(service.checkoutUpdateCandidate(store.getAppInstanceByPackageId('notes')), null);
+});
+
+// The version an owner needs is the one the app calls itself, which the manifest
+// declares as appVersion. The app list carries it straight from the manifest, so
+// every official package shows one and it is never the MOS package version.
+test('the app list carries each package\'s declared app version', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({ agent: externalAgent(root), appsDir: v2AppsDir, store });
+
+  const immich = service.listPackages().find((item) => item.id === 'immich');
+  const manifest = JSON.parse(await fsp.readFile(path.join(v2AppsDir, 'immich', 'manifest.json'), 'utf8'));
+
+  assert.equal(immich.appVersion, manifest.appVersion);
+  assert.notEqual(immich.appVersion, immich.version);
+  store.close();
 });
