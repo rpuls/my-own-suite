@@ -1,4 +1,4 @@
-FROM ghcr.io/immich-app/immich-server:v3.1.0@sha256:079cc990b26a88d71f96027341c67329cb11829d4c341ce33b3718fe0f84cbfa
+FROM ghcr.io/immich-app/immich-server:v3.2.0@sha256:ae13784ffcfcce8f4178113eb6661602a1fd1912f3d539880b8ac0dd95fc8ac2
 
 # The baked config disables Immich's enabled-by-default new-version check (MOS
 # controls when Immich updates are offered; side effect: no scheduled requests to
