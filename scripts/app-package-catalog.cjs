@@ -26,7 +26,7 @@ function generateCatalog() {
       privacy = { posture: review.posture, status: 'reviewed' };
     }
     packages[entry.manifest.id] = {
-      ...(entry.manifest.appVersion ? { appVersion: entry.manifest.appVersion } : {}),
+      appVersion: entry.manifest.appVersion,
       minimumMosVersion: entry.manifest.minimumMosVersion,
       packageDigest: digestAppPackage(entry.packageDir, { manifest: entry.manifest }),
       packageVersion: entry.manifest.version,

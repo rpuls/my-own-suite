@@ -37,7 +37,7 @@ import {
 
 interface Props {
   appName: string
-  packageVersion?: string | null
+  appVersion?: string | null
   privacy: PrivacyReviewSummary
   advisories?: PrivacyAdvisory[]
   assessmentUrl?: string
@@ -47,12 +47,12 @@ interface Props {
   reportUrl?: string | null
 }
 
-const { appName, packageVersion = null, privacy, advisories = [], assessmentUrl = ASSESSMENT_DOCS_URL, reportUrl = null } = Astro.props
+const { appName, appVersion = null, privacy, advisories = [], assessmentUrl = ASSESSMENT_DOCS_URL, reportUrl = null } = Astro.props
 const posture = postureFor(privacy)
 const badge = badgeTextFor(privacy)
 const rows = dimensionRowsFor(privacy)
 const method = provenanceMethodLabel(privacy)
-const provenance = [provenanceLine(privacy, isRated(privacy) ? packageVersion : null), method].filter(Boolean).join(' · ')
+const provenance = [provenanceLine(privacy, isRated(privacy) ? appVersion : null), method].filter(Boolean).join(' · ')
 const gradeScale = gradeScaleLabel(privacy)
 const sortedAdvisoryList = sortedAdvisories(advisories)
 const advisoryMarker = advisoryMarkerLabel(advisories)

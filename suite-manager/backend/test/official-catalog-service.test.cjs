@@ -16,6 +16,7 @@ const digest = `sha256:${'1'.repeat(64)}`;
 const catalog = {
   packages: {
     immich: {
+      appVersion: '3.1.0',
       minimumMosVersion: '0.1.0',
       packageDigest: digest,
       packageVersion: '1.2.0',
@@ -403,13 +404,9 @@ test('update classification is decided by version alone, not by digest', () => {
   assert.equal(service.updateFor('immich', { packageDigest: digest, packageVersion: '1.2.0' }).status, 'current');
 });
 
-// The catalog may carry the app's own version; the offered candidate always has
-// the key, null when the catalog did not say.
-test('an offered candidate carries the catalog app version, or null', () => {
-  const installed = { packageDigest: `sha256:${'2'.repeat(64)}`, packageVersion: '1.1.0' };
-  assert.equal(catalogService({ stateDir: writeVerifiedCache(tempDir()) }).updateFor('immich', installed).available.appVersion, null);
-  const declared = { ...catalog, packages: { ...catalog.packages, immich: { ...catalog.packages.immich, appVersion: '3.1.0' } } };
-  assert.equal(catalogService({ stateDir: writeVerifiedCache(tempDir(), declared) }).updateFor('immich', installed).available.appVersion, '3.1.0');
+test('an offered candidate carries the catalog app version', () => {
+  const service = catalogService({ stateDir: writeVerifiedCache(tempDir()) });
+  assert.equal(service.updateFor('immich', { packageDigest: `sha256:${'2'.repeat(64)}`, packageVersion: '1.1.0' }).available.appVersion, '3.1.0');
 });
 
 test('candidate download is revision-bound and verifies the complete digest before returning package inputs', async (t) => {
@@ -419,7 +416,7 @@ test('candidate download is revision-bound and verifies the complete digest befo
   fs.writeFileSync(path.join(fixture, 'Dockerfile'), 'FROM scratch\n');
   const candidateDigest = digestAppPackage(fixture);
   const stateDir = writeVerifiedCache(tempDir(), {
-    packages: { example: { minimumMosVersion: '0.1.0', packageDigest: candidateDigest, packageVersion: '1.1.0', path: 'apps/example', privacy: { status: 'review-required' } } },
+    packages: { example: { appVersion: '1.0', minimumMosVersion: '0.1.0', packageDigest: candidateDigest, packageVersion: '1.1.0', path: 'apps/example', privacy: { status: 'review-required' } } },
     schemaVersion: 1,
   });
   const raw = Object.fromEntries(['Dockerfile', 'manifest.json'].map((name) => [name, fs.readFileSync(path.join(fixture, name))]));

@@ -374,7 +374,6 @@ class OfficialCatalogService {
     if (!candidate) return { available: null, installed: instance ? { packageDigest: instance.packageDigest, packageVersion: instance.packageVersion } : null, status: instance ? 'not-in-catalog' : 'unavailable' };
     const available = {
       ...candidate,
-      appVersion: candidate.appVersion || null,
       compatibility: compareSemver(this.platformVersion, candidate.minimumMosVersion) >= 0 ? 'compatible' : 'requires-platform-update',
       // Named because it is no longer the only channel an update can arrive on:
       // a package newer than this in the box's own checkout wins instead, and

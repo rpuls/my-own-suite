@@ -238,9 +238,9 @@ export function tileMetaLine(privacy: PrivacyReviewSummary | null | undefined): 
   return isRated(privacy) ? reviewerLabel(privacy) : 'Not yet rated';
 }
 
-export function provenanceLine(privacy: PrivacyReviewSummary | null | undefined, packageVersion?: string | null): string {
+export function provenanceLine(privacy: PrivacyReviewSummary | null | undefined, appVersion?: string | null): string {
   if (!isRated(privacy)) return 'Not yet rated by MOS';
-  return [reviewerLabel(privacy), reviewDateLabel(privacy?.reviewedAt), packageVersion ? `package ${packageVersion}` : null]
+  return [reviewerLabel(privacy), reviewDateLabel(privacy?.reviewedAt), appVersion ? `version ${appVersion}` : null]
     .filter(Boolean)
     .join(' · ');
 }

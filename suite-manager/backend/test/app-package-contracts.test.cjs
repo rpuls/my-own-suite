@@ -163,7 +163,7 @@ test('catalog validation fails closed on malformed identity and privacy metadata
   assert.deepEqual(validateCatalog({
     packages: {
       'Bad_App': { minimumMosVersion: 'future', packageDigest: 'sha256:nope', packageVersion: 'moving', path: '../escape', privacy: { status: 'certified' } },
-      example: { minimumMosVersion: '0.1.0', packageDigest: digest, packageVersion: '1.0.0', path: 'apps/example', privacy: { status: 'review-required' } },
+      example: { appVersion: '1.0', minimumMosVersion: '0.1.0', packageDigest: digest, packageVersion: '1.0.0', path: 'apps/example', privacy: { status: 'review-required' } },
     },
     schemaVersion: 1,
   }), [
@@ -173,6 +173,7 @@ test('catalog validation fails closed on malformed identity and privacy metadata
     'catalog.packages.Bad_App.minimumMosVersion must be semver-like.',
     'catalog.packages.Bad_App.packageDigest must be a SHA-256 digest.',
     'catalog.packages.Bad_App.privacy.status is invalid.',
+    'catalog.packages.Bad_App.appVersion must be a non-empty string.',
   ]);
 });
 
@@ -377,10 +378,10 @@ test('catalog refresh policy keeps a bounded retry cadence and last-known-good c
   assert.equal(CATALOG_REFRESH_POLICY.jitterRatio, 0.1);
 });
 
-// The catalog carries the app's own version so an update can be named in the
-// owner's terms before anything is downloaded. It is optional, because not every
-// package declares one, and free-form, because apps do not all use semver.
-test('a catalog entry may carry the app version, and is refused if it carries a malformed one', () => {
+// Every catalog package names the app's own version, so an update can be named
+// in the owner's terms before anything is downloaded. Free-form, because apps do
+// not all use semver.
+test('a catalog entry must carry the app version', () => {
   const entry = (appVersion) => ({
     packages: {
       example: {
@@ -394,8 +395,8 @@ test('a catalog entry may carry the app version, and is refused if it carries a 
     },
     schemaVersion: 1,
   });
-  assert.deepEqual(validateCatalog(entry()), []);
   assert.deepEqual(validateCatalog(entry('26.8.1')), []);
-  assert.deepEqual(validateCatalog(entry('')), ['catalog.packages.example.appVersion must be a non-empty string.']);
-  assert.deepEqual(validateCatalog(entry(3)), ['catalog.packages.example.appVersion must be a non-empty string.']);
+  for (const missing of [undefined, '', 3]) {
+    assert.deepEqual(validateCatalog(entry(missing)), ['catalog.packages.example.appVersion must be a non-empty string.']);
+  }
 });

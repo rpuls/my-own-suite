@@ -1084,5 +1084,5 @@ Reason: the package version orders MOS's own updates and means nothing outside M
 Consequences:
 
 - Packages using `appVersion` raise `minimumMosVersion` to 0.20.0, per the amendment policy, so a 0.19.x machine reports them as requiring a platform update until it updates.
-- A package with no `appVersion` shows no app version. The package version is then labelled as a package version and never stands in for it.
+- A package with no `appVersion` shows no app version. The package version never appears outside Advanced details.
 - Moving a primary image pin means updating `appVersion` and the review's matching component together; CI holds them to agree.
