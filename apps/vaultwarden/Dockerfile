@@ -1,4 +1,4 @@
-FROM vaultwarden/server@sha256:e6443e3d5ed8fcee2204b89ec778d7f24d0173bcc42d1ea34f990304f5f63f51
+FROM vaultwarden/server@sha256:1587c45feaa479f1f5e8af3b00eded36bff77bcf1880cf8dbf0541706dd470e0
 
 # MOS package wrapper:
 # - Keeps the app self-contained under apps/vaultwarden.
