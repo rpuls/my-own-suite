@@ -3115,6 +3115,15 @@
   text-align: right;
 }
 
+/* A remark about the banner, on its own line under both halves of it: kept
+   out of the action column so a sentence can never set the width the controls
+   are aligned against. */
+.suite-bk-banner-note {
+  flex-basis: 100%;
+  display: grid;
+  gap: 0.2rem;
+}
+
 .suite-bk-backup-controls {
   display: flex;
   align-items: center;

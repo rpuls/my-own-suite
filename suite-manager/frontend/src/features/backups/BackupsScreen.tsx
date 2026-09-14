@@ -516,12 +516,16 @@ export function BackupsScreen() {
                   type="button"
                 >Back up now</button>
               </div>
+            </>}
+          </div>
+          {!backingUp && !workingLine && (blockReason || (backupTarget && !backupTarget.selected && readyViews.length > 1))
+            ? <div className="suite-bk-banner-note">
               {blockReason ? <p className="suite-bk-detail">{blockReason}</p> : null}
               {backupTarget && !backupTarget.selected && readyViews.length > 1
                 ? <p className="suite-bk-detail">This one backup goes to {backupTarget.label}. Automatic backups still go to {selected ? selected.label : 'the selected place'}.</p>
                 : null}
-            </>}
-          </div>
+            </div>
+            : null}
         </section> : null}
 
         {/* A fresh install has nothing to schedule, nothing to restore and

@@ -940,10 +940,11 @@ label.mos-row:hover .mos-switch-input:enabled + .mos-switch-track {
   border-top: 0;
 }
 
-/* A band that opens the panel, or follows another full-bleed section, would
-   double the rule that section already drew. */
+/* A band that opens the panel, or follows another band, would double a rule
+   that is already there. A list is not in this company: its items carry only
+   the rule above them, so it closes with no rule at all and the band after it
+   must draw its own. */
 .mos-panel-flush > .mos-panel-band:first-child,
-.mos-panel-list + .mos-panel-band,
 .mos-panel-band + .mos-panel-band {
   border-top: 0;
 }
