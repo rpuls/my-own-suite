@@ -426,6 +426,7 @@ function createMOSServer({
   const catalogService = officialCatalog || new OfficialCatalogService({
     branch: process.env.MOS_APP_CATALOG_BRANCH || 'main',
     limiter: appOperationLimiter,
+    logger,
     recordSecurityEvent,
     repository: process.env.MOS_APP_CATALOG_REPOSITORY || 'https://github.com/rpuls/my-own-suite',
     // Read from the installed release, never from the network the catalog comes
@@ -1122,6 +1123,7 @@ function createMOSServer({
         }
         const bundle = await assembleSupportBundle({
           agent: diagnosticsAgent,
+          catalogStatus: catalogService.status(),
           frontDoor,
           homeHost,
           platformVersion: catalogService.platformVersion,

@@ -433,3 +433,57 @@ test('candidate download is revision-bound and verifies the complete digest befo
   assert.equal(candidate.manifest.version, '1.1.0');
   assert.equal(candidate.source.revision, revision);
 });
+
+// The failure that took a month to name: a release that adds a required catalog
+// field reads the catalog already published on `main` until its own lands there,
+// and `CATALOG_INVALID` described that as a broken catalog the owner should do
+// something about. The signature verified, so the publisher wrote this document
+// and meant it; the two are simply not the same version.
+test('a signed catalog missing what this release requires reports skew, not a broken catalog', async () => {
+  const published = { packages: { immich: { ...catalog.packages.immich } }, schemaVersion: 1 };
+  delete published.packages.immich.appVersion;
+  const service = catalogService({ fetchImpl: serveRepo({ value: published }), platformVersion: '0.20.0', stateDir: tempDir() });
+
+  await assert.rejects(() => service.refresh(), (error) => {
+    assert.equal(error.code, 'CATALOG_VERSION_SKEW');
+    // Names the version that could not read it and what was missing, because
+    // that pair is the whole diagnosis.
+    assert.match(error.message, /MOS 0\.20\.0/u);
+    assert.match(error.message, /appVersion/u);
+    return true;
+  });
+  // Still counted, and still not a signature event: nothing was served that
+  // anybody distrusts.
+  assert.equal(service.status().error.code, 'CATALOG_VERSION_SKEW');
+});
+
+// The reason a failed refresh was invisible: it reached `lastError`, the cache
+// file and the security-event counter, and never the log — so the journal and
+// the diagnostics file showed a healthy server whose catalog had not refreshed
+// once.
+test('a refresh failure is logged once per state, not once per attempt', async () => {
+  const records = [];
+  const logger = { info: (event, fields) => records.push(['info', event, fields]), warn: (event, fields) => records.push(['warn', event, fields]) };
+  let serve = async () => { throw new Error('offline'); };
+  const service = catalogService({ fetchImpl: (...args) => serve(...args), logger, stateDir: tempDir() });
+
+  // The owner path retries on every Apps screen mount with no backoff, so the
+  // same failure three times must not be three log lines.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await assert.rejects(() => service.refresh(), { code: 'CATALOG_FETCH_FAILED' });
+    service.lastAttemptedAt = null; // the 30s reuse window, not what is under test
+  }
+  assert.deepEqual(records.map((record) => record[1]), ['app-catalog-refresh-failed']);
+  assert.equal(records[0][2].errorCode, 'CATALOG_FETCH_FAILED');
+
+  // A different failure is new information and says so.
+  serve = serveRepo({ key: generateSigningKeyPair().privateKey });
+  await assert.rejects(() => service.refresh(), { code: 'CATALOG_SIGNATURE_INVALID' });
+  assert.deepEqual(records.map((record) => record[2].errorCode), ['CATALOG_FETCH_FAILED', 'CATALOG_SIGNATURE_INVALID']);
+
+  // And so is recovery, which is what tells a reader the earlier lines are over.
+  serve = serveRepo();
+  await service.refresh();
+  assert.deepEqual(records.map((record) => record[1]).slice(-1), ['app-catalog-refresh-recovered']);
+  assert.equal(records.at(-1)[2].previousErrorCode, 'CATALOG_SIGNATURE_INVALID');
+});

@@ -46,6 +46,7 @@ class OfficialCatalogService {
     fetchImpl = globalThis.fetch,
     limiter = new AppOperationLimiter(),
     limits = DEFAULT_LIMITS,
+    logger = null,
     now = () => new Date(),
     platformVersion = '0.0.0',
     random = Math.random,
@@ -58,6 +59,7 @@ class OfficialCatalogService {
     this.fetch = fetchImpl;
     this.limiter = limiter;
     this.limits = limits;
+    this.logger = logger;
     this.recordSecurityEvent = recordSecurityEvent;
     this.stateDir = stateDir;
     this.now = now;
@@ -73,6 +75,9 @@ class OfficialCatalogService {
     if (!signingPublicKey) throw new OfficialCatalogError('CATALOG_SIGNING_KEY_MISSING', 'This MOS release is missing the official catalog signing key.');
     this.signingPublicKey = readSigningPublicKey(signingPublicKey);
     this.cachePath = path.join(stateDir, 'official-app-catalog.json');
+    // The failure state the log already carries, so a repeated failure stays
+    // quiet and a change of state does not.
+    this.loggedErrorCode = null;
     this.timer = null;
     this.failures = 0;
     this.refreshing = null;
@@ -196,7 +201,12 @@ class OfficialCatalogService {
     }
     const index = JSON.parse(advisoriesText);
     const errors = validateAdvisoryIndex(index);
-    if (errors.length) throw new OfficialCatalogError('ADVISORIES_INVALID', `Official advisory feed is invalid: ${errors.join(' ')}`);
+    if (errors.length) {
+      throw new OfficialCatalogError(
+        'ADVISORIES_VERSION_SKEW',
+        `The published advisory feed is not what MOS ${this.platformVersion} reads, so it was not used: ${errors.join(' ')}`,
+      );
+    }
     return { advisories: index, advisoriesSignature, advisoriesText };
   }
 
@@ -321,11 +331,27 @@ class OfficialCatalogService {
         }
         const catalog = JSON.parse(catalogText);
         const errors = validateCatalog(catalog);
-        if (errors.length) throw new OfficialCatalogError('CATALOG_INVALID', `Official catalog is invalid: ${errors.join(' ')}`);
+        // The signature verified, so the publisher wrote this document and meant
+        // it. A field this release requires and the document does not carry is
+        // therefore version skew between code and catalog, not a broken catalog
+        // and not something the owner can fix: MOS is released from a branch,
+        // the catalog is published on `main`, and a release that adds a required
+        // field reads the older published catalog until its own catalog lands
+        // there. Apps keep updating from this box's own checkout meanwhile.
+        if (errors.length) {
+          throw new OfficialCatalogError(
+            'CATALOG_VERSION_SKEW',
+            `The published app catalog is not what MOS ${this.platformVersion} reads, so it was not used: ${errors.join(' ')}`,
+          );
+        }
         this.cache = { attemptedAt, catalog, catalogText, error: null, etag: response.headers.get('etag') || null, fetchedAt: attemptedAt, revision, signature };
       }
       this.failures = 0;
       this.lastError = null;
+      if (this.loggedErrorCode) {
+        this.logger?.info('app-catalog-refresh-recovered', { previousErrorCode: this.loggedErrorCode, revision });
+        this.loggedErrorCode = null;
+      }
       // Advisories are fetched from the same immutable revision, so they only
       // change when the revision does. A malformed or unreachable feed keeps the
       // last-known-good advisories and never fails the catalog refresh.
@@ -361,6 +387,16 @@ class OfficialCatalogService {
       // this box a catalog its publisher did not sign, and reading them as the
       // same number would bury the second under the first.
       this.noteSecurityEvent(error?.code === 'CATALOG_SIGNATURE_INVALID' ? 'app-catalog-signature-invalid' : 'app-catalog-refresh-failed', attemptedAt);
+      // A refresh failure used to reach `lastError`, the cache file and the
+      // security-event counter but never the log, so the journal and the
+      // diagnostics file showed a healthy server whose catalog had not refreshed
+      // once. Logged on a change of state rather than per attempt: the owner
+      // path retries on every Apps screen mount with no backoff, and the same
+      // failure repeated is not new information for whoever reads the journal.
+      if (safeError.code !== this.loggedErrorCode) {
+        this.loggedErrorCode = safeError.code;
+        this.logger?.warn('app-catalog-refresh-failed', { errorCode: safeError.code, reason: safeError.message, revision: this.cache?.revision || null });
+      }
       if (this.cache) {
         this.cache = { ...this.cache, attemptedAt, error: safeError };
         this.writeCache(this.cache);

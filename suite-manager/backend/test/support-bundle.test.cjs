@@ -177,3 +177,59 @@ test('an update that worked and HTTPS that was never applied are one line each, 
   assert.ok(text.includes('Nothing obviously wrong was detected'));
   assert.ok(text.includes('Update check       ok at 2026-09-02T07:00:00.000Z\nLast update        succeeded at 2026-09-01T11:00:00.000Z\nLast HTTPS apply   never\n'));
 });
+
+// The catalog is the other conversation this server has with GitHub, and it was
+// in no section of this file: a server whose catalog had never once refreshed
+// exported "Nothing obviously wrong was detected".
+test('a catalog that cannot be read is named in what looks wrong, and says what still works', () => {
+  const catalog = {
+    advisories: { count: null, error: null, fetchedAt: null, freshness: 'unavailable', revision: null },
+    error: { code: 'CATALOG_VERSION_SKEW', message: 'The published app catalog is not what MOS 0.20.0 reads, so it was not used: catalog.packages.immich.appVersion must be a non-empty string.' },
+    fetchedAt: null,
+    freshness: 'unavailable',
+    repository: 'https://github.com/rpuls/my-own-suite',
+    revision: null,
+  };
+
+  const { text } = buildSupportBundle({ catalog, collection: healthyCollection(), now, secrets: [] });
+
+  assert.ok(!text.includes('Nothing obviously wrong was detected'));
+  assert.match(text, /The app catalog could not be read \(CATALOG_VERSION_SKEW\)/u);
+  assert.match(text, /Apps still update from the packages this MOS version shipped with/u);
+  // And the evidence behind the finding, beside the update check it is parallel to.
+  assert.match(text, /App catalog {8}unavailable/u);
+  assert.match(text, /Catalog error {6}CATALOG_VERSION_SKEW/u);
+  assert.match(text, /Catalog source {5}https:\/\/github\.com\/rpuls\/my-own-suite/u);
+});
+
+test('a fresh catalog is evidence rather than a finding, and a stale one is a finding', () => {
+  const fresh = {
+    advisories: { count: 2, error: null, fetchedAt: '2026-09-01T11:00:00.000Z', freshness: 'fresh', revision: 'b'.repeat(40) },
+    error: null,
+    fetchedAt: '2026-09-01T11:00:00.000Z',
+    freshness: 'fresh',
+    repository: 'https://github.com/rpuls/my-own-suite',
+    revision: 'b'.repeat(40),
+  };
+
+  const healthy = buildSupportBundle({ catalog: fresh, collection: healthyCollection(), now, secrets: [] }).text;
+  assert.ok(healthy.includes('Nothing obviously wrong was detected'));
+  assert.match(healthy, /App catalog {8}fresh at bbbbbbbbbbbb, fetched 2026-09-01T11:00:00\.000Z/u);
+  assert.match(healthy, /Advisories {9}fresh, 2 published/u);
+
+  const stale = buildSupportBundle({ catalog: { ...fresh, freshness: 'stale' }, collection: healthyCollection(), now, secrets: [] }).text;
+  assert.match(stale, /The app catalog was last fetched at 2026-09-01T11:00:00\.000Z and is out of date/u);
+});
+
+// Advisories are fetched after the catalog, so a catalog error already explains
+// their absence. Reporting both reads as two problems.
+test('an advisory failure is reported on its own account only', () => {
+  const base = { error: null, fetchedAt: '2026-09-01T11:00:00.000Z', freshness: 'fresh', repository: 'https://github.com/rpuls/my-own-suite', revision: 'b'.repeat(40) };
+  const advisories = { count: null, error: { code: 'ADVISORIES_SIGNATURE_INVALID', message: 'Official advisory feed is not signed by the key this MOS release trusts.' }, fetchedAt: null, freshness: 'unavailable', revision: null };
+
+  const alone = summarizeTrouble({ catalog: { ...base, advisories } });
+  assert.equal(alone.filter((line) => line.includes('Privacy advisories could not be read')).length, 1);
+
+  const withCatalogError = summarizeTrouble({ catalog: { ...base, advisories, error: { code: 'CATALOG_FETCH_FAILED', message: 'Official catalog request failed.' } } });
+  assert.deepEqual(withCatalogError.filter((line) => line.includes('Privacy advisories could not be read')), []);
+});

@@ -10,7 +10,7 @@ The "Explore the apps" section is generated at build time from `apps/*/manifest.
 
 ## Digital Independence Planner
 
-`planner/` is a standalone Vite + React sub-app deployed at `/plan/` — a free, browser-only roadmap builder that exports "digital independence journey" graphics. `npm run build` in `site/` builds it into `site/dist/plan` after the Astro build. It deliberately keeps its own toolchain (Tailwind, Base UI) so its styles never fight Starlight's; the brand look comes from the same synced `mos.css`.
+`planner/` is a standalone Vite + React sub-app deployed at `/plan/` — a free, browser-only roadmap builder that exports "digital independence journey" graphics. `npm run build` in `site/` builds it into `site/dist/plan` after the Astro build, and `npm run dev` in `site/` starts its dev server alongside Astro's and proxies `/plan/` to it, so the planner is reachable at the same path in dev as in production. It deliberately keeps its own toolchain (Tailwind, Base UI) so its styles never fight Starlight's; the brand look comes from the same synced `mos.css`.
 
 Its `prebuild`/`predev` step (`planner/scripts/prepare-assets.mjs`) stages everything that must not live in git:
 
@@ -20,7 +20,7 @@ Its `prebuild`/`predev` step (`planner/scripts/prepare-assets.mjs`) stages every
 ```bash
 cd site/planner
 npm install
-npm run dev   # stages assets, then serves the planner alone at http://127.0.0.1:5173/
+npm run dev   # stages assets, then serves the planner alone at http://127.0.0.1:5173/plan/
 npm test      # layout engine + share-link tests
 ```
 
@@ -31,8 +31,12 @@ The editor stores plans in `localStorage` only, and share links carry the whole 
 ```bash
 cd site
 npm install
-npm run dev
+npm run dev   # Astro on http://localhost:4321/, with the planner served at /plan/
 ```
+
+`npm run dev` runs two servers (`scripts/dev.mjs`): Astro, and the planner's Vite server behind the
+`/plan/` proxy in `astro.config.mjs`. `npm run dev:astro` starts Astro alone when the planner is not
+needed.
 
 ## Build and preview
 

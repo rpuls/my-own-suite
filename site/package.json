@@ -20,7 +20,8 @@
   "scripts": {
     "predev": "node ../scripts/sync-branding.cjs",
     "prebuild": "node ../scripts/sync-branding.cjs",
-    "dev": "astro dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:astro": "astro dev",
     "build": "astro build && npm --prefix planner run build",
     "preview": "astro preview"
   },

@@ -269,6 +269,23 @@ function failureCopy({ errorCode, kind }: { errorCode: string | null; kind: stri
   return (errorCode && FAILURE_COPY[errorCode]) || UNKNOWN_FAILURE;
 }
 
+// Where the app list and its update offers came from. A catalog that will not
+// refresh is deliberately not a banner — the list falls back to the packages
+// this MOS version shipped with, so nothing is broken — but the reason for it
+// existed only in the browser console, which is not a place an owner can be
+// asked to look.
+function catalogFacts(status: CatalogStatus): AdvancedFact[] {
+  const facts: AdvancedFact[] = [
+    { label: 'Source', value: status.repository },
+    { label: 'State', value: status.freshness },
+    { label: 'Last fetched', value: status.fetchedAt ? new Date(status.fetchedAt).toLocaleString() : 'never' },
+    { code: true, label: 'Revision', value: status.revision ? status.revision.slice(0, 12) : 'none' },
+  ];
+  if (status.error) facts.push({ code: true, label: 'Error', value: status.error.code });
+  if (status.advisories) facts.push({ label: 'Advisories', value: status.advisories.error ? status.advisories.error.code : status.advisories.freshness });
+  return facts;
+}
+
 function initialsFor(name: string) {
   const words = name.split(/\s+/u).filter(Boolean);
   return (words.length > 1 ? `${words[0]![0]}${words[1]![0]}` : name.slice(0, 2)).toUpperCase();
@@ -1689,6 +1706,13 @@ export function AppsScreen({ owner }: { owner: Owner }) {
         </div>
       </section> : null}
     </div> : null}
+
+    {catalogStatus && !externalUrl ? <AdvancedPanel facts={catalogFacts(catalogStatus)} reveal="technical-mode" summary="App catalog">
+      {catalogStatus.error
+        ? <p>{catalogStatus.error.message}</p>
+        : <p>This list is the published catalog folded together with the app packages this MOS version shipped with; whichever offers the newer version of an app wins.</p>}
+      {catalogStatus.error ? <p>Apps still update from the packages this MOS version shipped with, so nothing here is broken — but app versions published since are not known to this server.</p> : null}
+    </AdvancedPanel> : null}
 
     {externalOpen && externalResolved ? <ExternalAppDetail
       installError={externalInstallError}
