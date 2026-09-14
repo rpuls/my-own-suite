@@ -3,7 +3,6 @@ const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 
 const DATABASE_FILENAME = 'suite-manager.sqlite';
-const LEGACY_STATE_FILENAME = 'platform-state.json';
 
 const MIGRATIONS = [
   {
@@ -435,37 +434,6 @@ const MIGRATIONS = [
 
 class OwnerAlreadyExistsError extends Error {}
 
-function readLegacyState(legacyStatePath) {
-  const parsed = JSON.parse(fs.readFileSync(legacyStatePath, 'utf8'));
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('Legacy Suite Manager state must be a JSON object.');
-  }
-
-  if (parsed.owner !== null && parsed.owner !== undefined) {
-    const owner = parsed.owner;
-    for (const field of ['createdAt', 'email', 'name', 'passwordHash']) {
-      if (typeof owner[field] !== 'string' || !owner[field]) {
-        throw new Error(`Legacy Suite Manager owner is missing ${field}.`);
-      }
-    }
-  }
-
-  const sessions = parsed.sessions === undefined ? [] : parsed.sessions;
-  if (!Array.isArray(sessions)) {
-    throw new Error('Legacy Suite Manager sessions must be an array.');
-  }
-  for (const session of sessions) {
-    if (typeof session?.createdAt !== 'string' || typeof session?.tokenHash !== 'string') {
-      throw new Error('Legacy Suite Manager session is invalid.');
-    }
-  }
-  if (!parsed.owner && sessions.length > 0) {
-    throw new Error('Legacy Suite Manager state cannot contain sessions without an owner.');
-  }
-
-  return { owner: parsed.owner || null, sessions };
-}
-
 class SuiteManagerStore {
   constructor(stateDir) {
     if (!stateDir) {
@@ -474,12 +442,7 @@ class SuiteManagerStore {
 
     this.stateDir = stateDir;
     this.databasePath = path.join(stateDir, DATABASE_FILENAME);
-    this.legacyStatePath = path.join(stateDir, LEGACY_STATE_FILENAME);
-    this.legacyMigratedPath = `${this.legacyStatePath}.migrated`;
     const databaseExisted = fs.existsSync(this.databasePath);
-    const legacyState = !databaseExisted && fs.existsSync(this.legacyStatePath)
-      ? readLegacyState(this.legacyStatePath)
-      : null;
 
     fs.mkdirSync(this.stateDir, { recursive: true });
 
@@ -487,10 +450,6 @@ class SuiteManagerStore {
       this.database = new DatabaseSync(this.databasePath);
       this.configure();
       this.migrate();
-      if (legacyState) {
-        this.importLegacyState(legacyState);
-        fs.renameSync(this.legacyStatePath, this.legacyMigratedPath);
-      }
     } catch (error) {
       this.database?.close();
       if (!databaseExisted) {
@@ -574,9 +533,7 @@ class SuiteManagerStore {
     `).run(termsVersion, acceptedAt);
   }
 
-  // Every stored preference for one owner, decoded. A row this MOS no longer
-  // recognises is skipped rather than thrown on: a preference written by a newer
-  // release must not stop an older one from reading the rest.
+  // Every stored preference for one owner, decoded.
   getOwnerPreferences(ownerId) {
     const rows = this.database.prepare(`
       SELECT key, value_json AS valueJson
@@ -584,13 +541,7 @@ class SuiteManagerStore {
       WHERE owner_id = ?
     `).all(ownerId);
     const preferences = {};
-    for (const row of rows) {
-      try {
-        preferences[row.key] = JSON.parse(row.valueJson);
-      } catch {
-        continue;
-      }
-    }
+    for (const row of rows) preferences[row.key] = JSON.parse(row.valueJson);
     return preferences;
   }
 
@@ -1885,18 +1836,6 @@ class SuiteManagerStore {
     `).run(session.tokenHash, session.createdAt);
   }
 
-  importLegacyState(state) {
-    this.transaction(() => {
-      if (!state.owner) {
-        return;
-      }
-      this.insertOwner(state.owner);
-      for (const session of state.sessions) {
-        this.insertSession(session);
-      }
-    });
-  }
-
   close() {
     this.database.close();
   }
@@ -1904,7 +1843,6 @@ class SuiteManagerStore {
 
 module.exports = {
   DATABASE_FILENAME,
-  LEGACY_STATE_FILENAME,
   MIGRATIONS,
   OwnerAlreadyExistsError,
   SuiteManagerStore,

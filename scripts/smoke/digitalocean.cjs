@@ -89,10 +89,6 @@ function env(name, fallback = '') {
   return value === undefined || value === '' ? fallback : value;
 }
 
-function compatibleEnv(name, legacyName, fallback = '') {
-  return env(name, env(legacyName, fallback));
-}
-
 function requireEnv(name) {
   const value = env(name);
   if (!value) {
@@ -174,17 +170,17 @@ async function ensureTag(token) {
 }
 
 async function resolveOptionalSshKeys(token) {
-  const byId = compatibleEnv('MOS_SMOKE_SSH_KEY_ID', 'MOS_SMOKE_SSH_KEY_ID');
+  const byId = env('MOS_SMOKE_SSH_KEY_ID');
   if (byId) {
     return [Number.isNaN(Number(byId)) ? byId : Number(byId)];
   }
 
-  const byFingerprint = compatibleEnv('MOS_SMOKE_SSH_KEY_FINGERPRINT', 'MOS_SMOKE_SSH_KEY_FINGERPRINT');
+  const byFingerprint = env('MOS_SMOKE_SSH_KEY_FINGERPRINT');
   if (byFingerprint) {
     return [byFingerprint];
   }
 
-  const byName = compatibleEnv('MOS_SMOKE_SSH_KEY_NAME', 'MOS_SMOKE_SSH_KEY_NAME');
+  const byName = env('MOS_SMOKE_SSH_KEY_NAME');
   if (!byName) {
     return [];
   }
@@ -266,7 +262,7 @@ function ownerClaimUrl(setupUrl, token) {
 }
 
 function sshPrivateKey() {
-  return compatibleEnv('MOS_SMOKE_SSH_PRIVATE_KEY', 'MOS_SMOKE_SSH_PRIVATE_KEY');
+  return env('MOS_SMOKE_SSH_PRIVATE_KEY');
 }
 
 // Returns null when the machine cannot be reached yet, which is normal for the

@@ -56,10 +56,6 @@ Owner login uses bounded progressive throttling that survives a restart. A per-c
 
 Throttle events are persisted without raw addresses or account identifiers. SQLite stores one aggregate per UTC hour, event type, and client fingerprint (a truncated keyed digest of the address), including only the count, maximum retry delay, and first/last timestamps. Writes enforce 30-day retention and a 5,000-row hard cap, and persistence failure never bypasses or breaks the in-memory throttle. This bounded event history backs the authenticated summary at `GET /suite-manager/api/settings/security-events`, shown to a signed-in owner under **Settings**; it is a per-hour aggregate, never a raw request log. When an email relay is configured, a throttled sign-in also emails the owner (`sign-in-alerts.cjs`): at most one message per 24 hours, carrying the count of turned-away attempts and distinct addresses in that window and never an address; the window is claimed in `sign_in_alert_state` before the relay is tried, so a failing relay is not retried on every attempt, and the 429 never waits on it.
 
-### Legacy JSON import
-
-On startup, Suite Manager imports `platform-state.json` only when `suite-manager.sqlite` does not already exist. The validated owner and hashed sessions are imported in one transaction, then the JSON file is renamed to `platform-state.json.migrated`. Import failure removes the newly created database so the next start can retry safely. If SQLite already exists, it always wins and the JSON file is left untouched; Suite Manager never overwrites initialized SQLite state.
-
 Back up the database with a SQLite-aware backup tool or while Suite Manager is stopped so the database and WAL state remain consistent. Do not edit the database or migration records manually.
 
 ## HTTPS Settings Boundary

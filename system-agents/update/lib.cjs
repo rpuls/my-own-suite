@@ -379,7 +379,6 @@ async function collectStatus(paths = buildPaths(), { releaseLookup = fetchLatest
     checkFailure: checkFailure ? { at: now(), ...checkFailure } : null,
     checkedAt: now(),
     changeSummary: buildChangeSummary(paths, track.type, latestRelease),
-    error: checkFailure ? checkFailure.reason : null,
     githubRepo,
     installedVersion,
     latestRelease,

@@ -157,7 +157,7 @@ class AppUpdateService {
         instanceId: operation.instanceId,
         operationId: operation.id,
         recoveryState,
-        stage: `${operation.stage || 'unknown'}-interrupted`,
+        stage: `${operation.stage}-interrupted`,
       });
       return { ...operation, recoveryState, status: 'recovery-required' };
     });

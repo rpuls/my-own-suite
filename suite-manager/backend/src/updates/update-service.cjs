@@ -5,9 +5,7 @@ const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnost
 const OUTPUT_LIMIT_CHARS = 20_000;
 
 function capabilityAvailable(capabilities, resource, capability) {
-  const value = capabilities?.[resource];
-  if (Array.isArray(value)) return value.includes(capability);
-  return value?.capabilities?.includes(capability) === true;
+  return capabilities?.[resource]?.capabilities?.includes(capability) === true;
 }
 
 // The backup taken before the apply, as job state rather than a log line: an
@@ -69,8 +67,7 @@ function normalizeStatus(agentPayload, serviceAvailable, summary = null) {
   const updaterStatus = agentPayload?.updaterStatus || {};
   const track = updaterStatus.track || {};
   const latestRelease = updaterStatus.latestRelease || {};
-  const checkFailure = normalizeCheckFailure(updaterStatus.checkFailure
-    || (typeof updaterStatus.error === 'string' && updaterStatus.error ? { details: [], reason: updaterStatus.error } : null));
+  const checkFailure = normalizeCheckFailure(updaterStatus.checkFailure);
   return {
     changeSummary: {
       items: Array.isArray(updaterStatus.changeSummary?.items)
@@ -83,7 +80,6 @@ function normalizeStatus(agentPayload, serviceAvailable, summary = null) {
     checkedAt: typeof updaterStatus.checkedAt === 'string' ? updaterStatus.checkedAt : new Date().toISOString(),
     checkpoint: normalizeCheckpointSettings(agentPayload, summary),
     currentJob: normalizeJob(agentPayload?.currentJob),
-    error: typeof updaterStatus.error === 'string' ? updaterStatus.error : null,
     installedVersion: typeof updaterStatus.installedVersion === 'string' ? updaterStatus.installedVersion : null,
     latestRelease: {
       channel: typeof latestRelease.channel === 'string' ? latestRelease.channel : null,

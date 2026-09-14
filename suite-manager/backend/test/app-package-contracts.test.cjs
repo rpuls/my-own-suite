@@ -138,9 +138,9 @@ test('a package is refused on a host it says it does not run on', () => {
 });
 
 // The check explains a build failure that was already coming. Neither unknown is
-// evidence of one, so neither may invent a refusal: an undeclared package is
-// every package written before the field existed, and an unidentified host would
-// otherwise have every declaring package blocked on it.
+// evidence of one, so neither may invent a refusal: `architectures` is optional,
+// and an unidentified host would otherwise have every declaring package blocked
+// on it.
 test('nothing is refused for an architecture no one has named', () => {
   assert.deepEqual(validateArchitectureCompatibility({ id: 'example' }, 'arm64'), []);
   assert.deepEqual(validateArchitectureCompatibility({ architectures: ['amd64'] }, null), []);

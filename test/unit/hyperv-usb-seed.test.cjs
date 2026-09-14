@@ -69,12 +69,11 @@ test('Hyper-V USB seed embeds the MOS bootstrap without the v1 owner handoff', (
 // must be byte-identical, because whatever differs between them would be a
 // secret baked into the image every downloader flashes.
 test('an unconfigured seed bakes no console password and is reproducible', () => {
-  for (const config of [{}, { LINUX_PASSWORD: 'change-me-before-build' }, { LINUX_PASSWORD: '   ' }]) {
+  for (const config of [{}, { LINUX_PASSWORD: '   ' }]) {
     const rendered = renderSeed(config, { profile: 'release', repoRef: 'staging' });
     assert.equal(rendered.consoleLoginHandover, 'first-boot');
     assert.equal(rendered.linuxPassword, '');
     assert.equal(rendered.linuxUsername, 'mos');
-    assert.doesNotMatch(rendered.userData, /change-me-before-build/u);
 
     const rebuilt = renderSeed(config, { profile: 'release', repoRef: 'staging' });
     assert.equal(rebuilt.userData, rendered.userData);

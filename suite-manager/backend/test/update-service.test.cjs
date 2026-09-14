@@ -3,7 +3,7 @@ const test = require('node:test');
 
 const { UpdateService, normalizeStatus } = require('../src/updates/update-service.cjs');
 
-const CAPABILITIES = { updates: ['apply', 'cancel', 'checkpoint', 'configure-track', 'skip-backup'] };
+const CAPABILITIES = { updates: { capabilities: ['apply', 'cancel', 'checkpoint', 'configure-track', 'skip-backup'] } };
 const REASON = 'github.com answered a plain request from this server for this repository with HTTP 401 "Repository not found.".';
 
 function agentPayload(updaterStatus) {
@@ -18,7 +18,6 @@ test('a check that did not complete is neither up to date nor an update waiting'
       reason: REASON,
     },
     checkedAt: '2026-09-02T07:00:00.000Z',
-    error: REASON,
     latestRevision: null,
     updateAvailable: null,
   }), true);
@@ -30,12 +29,6 @@ test('a check that did not complete is neither up to date nor an update waiting'
   assert.ok(status.checkFailure.diagnostics.includes(REASON));
   assert.ok(status.checkFailure.diagnostics.includes('Details:'));
   assert.ok(status.checkFailure.diagnostics.includes('- plain request from this server, no login: HTTP 401 Unauthorized'));
-});
-
-test('an agent too old to explain itself still reports the check as failed', () => {
-  const status = normalizeStatus(agentPayload({ error: 'fetch failed', updateAvailable: null }), true);
-  assert.equal(status.updateAvailable, null);
-  assert.equal(status.checkFailure.reason, 'fetch failed');
 });
 
 test('a check that completed keeps its answer', () => {

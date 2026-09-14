@@ -328,8 +328,8 @@ test('public package summary carries declared requirements and drops partial one
     cpuCores: 0.1, cpuPeakCores: null, memoryMb: 128, memoryPeakMb: null,
   });
 
-  // An older or hand-edited package that states neither, or only half, must
-  // reach the UI as "not declared" rather than as a figure to add up.
+  // `requires` is optional, so a package that states neither, or only half,
+  // must reach the UI as "not declared" rather than as a figure to add up.
   assert.equal(publicPackageSummary(validManifest()).services[0].requires, null);
   const partial = publicPackageSummary(validManifest({
     resources: { services: { 'example-app': { dockerfile: 'Dockerfile', internalPort: 8080, requires: { memoryMb: 512 } } } },

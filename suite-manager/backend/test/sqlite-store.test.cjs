@@ -6,7 +6,6 @@ const path = require('node:path');
 const test = require('node:test');
 const { DatabaseSync } = require('node:sqlite');
 
-const { hashSessionToken } = require('../src/auth/sessions.cjs');
 const {
   DATABASE_FILENAME,
   MIGRATIONS,
@@ -90,18 +89,6 @@ test('owner preferences round-trip per key, survive restart, and belong to an ow
   // The row is owner-scoped for real, not by convention.
   assert.throws(() => store.setOwnerPreference({ at: '2026-08-30T10:02:00.000Z', key: 'technicalControls', ownerId: 2, value: true }));
   store.close();
-
-  store = new SuiteManagerStore(stateDir);
-  assert.deepEqual(store.getOwnerPreferences(ownerId), { technicalControls: false });
-  store.close();
-
-  // A row written by a release this one does not understand is skipped, not
-  // thrown on: one unreadable preference must not take the readable ones with it.
-  const database = new DatabaseSync(path.join(stateDir, DATABASE_FILENAME));
-  database.prepare(`
-    INSERT INTO owner_preferences (owner_id, key, value_json, updated_at) VALUES (?, ?, ?, ?)
-  `).run(ownerId, 'fromALaterRelease', 'not json', '2026-08-30T10:03:00.000Z');
-  database.close();
 
   store = new SuiteManagerStore(stateDir);
   assert.deepEqual(store.getOwnerPreferences(ownerId), { technicalControls: false });
@@ -683,43 +670,6 @@ test('database constraints enforce one owner account', async () => {
     /CHECK constraint failed/,
   );
   store.close();
-});
-
-test('legacy JSON imports once and is retained with a migrated suffix', async () => {
-  const stateDir = await tempStateDir();
-  const rawToken = 'legacy-raw-session-token';
-  const legacyPath = path.join(stateDir, 'platform-state.json');
-  await fsp.writeFile(legacyPath, `${JSON.stringify({
-    owner: owner(),
-    sessions: [session(hashSessionToken(rawToken))],
-    version: 1,
-  }, null, 2)}\n`);
-
-  const store = new SuiteManagerStore(stateDir);
-  assert.equal(store.getOwner().email, 'owner@example.com');
-  assert.equal(store.hasSession(hashSessionToken(rawToken)), true);
-  store.close();
-
-  assert.equal(fs.existsSync(legacyPath), false);
-  assert.equal(fs.existsSync(`${legacyPath}.migrated`), true);
-
-  const reopened = new SuiteManagerStore(stateDir);
-  assert.equal(reopened.getOwner().email, 'owner@example.com');
-  reopened.close();
-});
-
-test('an existing SQLite database is never overwritten by legacy JSON', async () => {
-  const stateDir = await tempStateDir();
-  const store = new SuiteManagerStore(stateDir);
-  store.close();
-
-  const legacyPath = path.join(stateDir, 'platform-state.json');
-  await fsp.writeFile(legacyPath, JSON.stringify({ owner: owner(), sessions: [] }));
-
-  const reopened = new SuiteManagerStore(stateDir);
-  assert.equal(reopened.getOwner(), null);
-  reopened.close();
-  assert.equal(fs.existsSync(legacyPath), true);
 });
 
 test('external sources persist separately and removing one never uninstalls its snapshot', async () => {

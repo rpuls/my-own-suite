@@ -154,8 +154,7 @@ test('managed URL reconciliation updates only MOS-owned app IDs and keeps random
   const withApp = addEntry(seed, { ...link, name: 'Stirling', url: 'http://stirling-pdf.mos.home/' }, { id: appId }).content;
   const withRandom = addEntry(withApp, { ...link, name: 'Docs', url: 'https://example.com/docs' }, { id: randomId }).content;
 
-  // The app tile went in absolute, as every tile written before this shape did,
-  // so this is also the migration path for an existing install.
+  // The app tile went in absolute, which is what applying a domain re-stamps.
   const reconciled = reconcileManagedUrls(withRandom, [{ id: appId }]);
 
   assert.equal(reconciled.changed, true);

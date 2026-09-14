@@ -69,7 +69,7 @@ Optional:
 - `MOS_SMOKE_SSH_KEY_ID`, `MOS_SMOKE_SSH_KEY_FINGERPRINT`, or `MOS_SMOKE_SSH_KEY_NAME`
 - `MOS_SMOKE_SSH_PRIVATE_KEY` (local key path used to retrieve and print the one-time owner claim URL)
 
-The smoke install uses cloud-init, so SSH keys are optional for installation. When both a Droplet SSH key and `MOS_SMOKE_SSH_PRIVATE_KEY` are configured, the harness reads the root-only claim secret over SSH and prints the owner setup URL without storing the token in smoke state or harness-created log files. The legacy `MOS_SMOKE_SSH_*` key names remain accepted for existing local harness configuration.
+The smoke install uses cloud-init, so SSH keys are optional for installation. When both a Droplet SSH key and `MOS_SMOKE_SSH_PRIVATE_KEY` are configured, the harness reads the root-only claim secret over SSH and prints the owner setup URL without storing the token in smoke state or harness-created log files.
 
 ### Local Hyper-V smoke
 

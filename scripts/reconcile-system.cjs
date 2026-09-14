@@ -35,7 +35,6 @@ function parseEnvFile(filePath) {
 }
 
 function homeHostFromContract(contract) {
-  if (contract.MOS_HOME_HOST) return contract.MOS_HOME_HOST;
   if (contract.MOS_HOME_URL) {
     try {
       return new URL(contract.MOS_HOME_URL).hostname;
@@ -270,12 +269,9 @@ function refreshCaddyBinary() {
 // engine here is what keeps an updated machine's agent able to write backups
 // at all, per the rule in infrastructure/control-plane-runtime.cjs.
 //
-// Both engines are installed while MOS is still measuring them; only the
-// chosen one survives that decision.
 // restic ships its Linux builds bzip2-compressed and nothing else, so
-// unpacking the pinned download needs bzip2 on the host. Installs made before
-// this dependency existed gain it on update; without a network, the engine
-// install below reports the real failure.
+// unpacking the pinned download needs bzip2 on the host. Without a network,
+// the engine install below reports the real failure.
 function ensureBzip2() {
   try {
     execFileSync('which', ['bzip2'], { stdio: 'ignore' });
@@ -288,14 +284,6 @@ function ensureBzip2() {
 function refreshBackupEngine() {
   installDir('/usr/local/libexec/mos', 0o755);
   if (!dryRun) ensureBzip2();
-  // Machines installed while MOS carried a second candidate engine still have
-  // its binary. Reconciliation owns what is in this directory, so it takes the
-  // retired one back out rather than leaving 50 MB nothing runs.
-  const retired = '/usr/local/libexec/mos/kopia';
-  if (fs.existsSync(retired)) {
-    if (dryRun) log('would remove the retired kopia engine binary');
-    else { fs.rmSync(retired, { force: true }); log('removed the retired kopia engine binary'); }
-  }
   if (dryRun) { log(`would install backup storage engine ${ENGINE_NAME}`); return; }
   try {
     installEngineBinary({ binaryDir: '/usr/local/libexec/mos', log, name: ENGINE_NAME });

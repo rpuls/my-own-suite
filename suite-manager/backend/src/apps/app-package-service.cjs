@@ -1576,23 +1576,6 @@ class AppPackageService {
     };
   }
 
-  // Startup migration for tiles written before hrefs became relative, which still
-  // hold the absolute address of whichever door installed the app. It needs only
-  // the ids, because `reconcileManagedUrls` derives every href from the id and
-  // this is not an address change — widget endpoints are already correct.
-  // Idempotent, so it is a no-op from the second boot onward.
-  async reconcileDashboardLinks(homepageService) {
-    const entries = this.store.getAppInstances()
-      .filter((instance) => instance.status === 'installed' && homepageProjectionApplied(this.store.getAppProjections(instance.id)))
-      .map((instance) => ({ id: instance.id }));
-    if (!entries.length) return { changed: false, status: 'skipped' };
-    try {
-      return { changed: (await homepageService.reconcileUrls({ entries })).changed === true, status: 'applied' };
-    } catch (error) {
-      return { changed: false, errorCode: error.code || 'HOMEPAGE_DASHBOARD_LINK_RECONCILE_FAILED', status: 'failed' };
-    }
-  }
-
   async reconcilePublicUrls(homepageService, requestContext = {}) {
     const runtime = [];
     const homepageEntries = [];

@@ -23,7 +23,6 @@ const configEnvOverrides = {
   TIMEZONE: 'MOS_TIMEZONE',
   USERNAME: 'MOS_HYPERV_USERNAME',
 };
-const placeholderLinuxPassword = 'change-me-before-build';
 // The Hyper-V lab is a disposable VM that gets reinstalled constantly and that
 // both humans and coding agents need to SSH into on demand. Making that depend
 // on remembering to set LINUX_PASSWORD first is a trap, so the lab profile
@@ -104,28 +103,6 @@ function assertSmokeRepoRefIsPushed(repoRef, repoUrl) {
     `Push it (git push -u origin ${repoRef}), or build the image against a pushed branch ` +
     '(MOS_SMOKE_REPO_REF=staging). The ref defaults to the branch you have checked out.',
   );
-}
-
-function assertSmokeRepoRefContainsRootLayout(repoRef) {
-  const requiredPaths = [
-    'package.json',
-    'scripts/installers/bootstrap-contract.cjs',
-    'infrastructure/caddy/Dockerfile',
-    'suite-manager/backend/src/server/start.cjs',
-  ];
-
-  for (const requiredPath of requiredPaths) {
-    const exists = spawnSync('git', ['cat-file', '-e', `${repoRef}:${requiredPath}`], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-    });
-    if (exists.status !== 0) {
-      throw new Error(
-        `MOS_SMOKE_REPO_REF=${repoRef} does not contain '${requiredPath}'. ` +
-        'Commit and push the root-layout branch, or set MOS_SMOKE_REPO_REF to a branch/tag that contains it.',
-      );
-    }
-  }
 }
 
 function parseEnvFile(filePath) {
@@ -350,10 +327,7 @@ function renderSeed(config, options = {}) {
   // anything; an explicit LINUX_PASSWORD overrides it. Neither applies to the
   // default profile, which is the shape a shareable ISO must have.
   const profile = options.profile || resolveSeedProfile();
-  const configuredPassword = String(config.LINUX_PASSWORD || '').trim();
-  const explicitPassword = configuredPassword && configuredPassword !== placeholderLinuxPassword
-    ? configuredPassword
-    : '';
+  const explicitPassword = String(config.LINUX_PASSWORD || '').trim();
   const fixedPassword = explicitPassword || (profile === 'lab' ? labLinuxPassword : '');
   const consoleLoginHandover = fixedPassword ? 'preconfigured' : 'first-boot';
 
@@ -435,7 +409,6 @@ function renderSeed(config, options = {}) {
 function main() {
   const smokeRepoRef = resolveSmokeRepoRef();
   assertSmokeRepoRefIsPushed(smokeRepoRef, DEFAULT_REPO_URL);
-  assertSmokeRepoRefContainsRootLayout(smokeRepoRef);
   const rendered = renderSeed(loadSmokeConfig(), { repoRef: smokeRepoRef });
   fs.rmSync(defaultOutputDir, { force: true, recursive: true });
   fs.mkdirSync(defaultOutputDir, { recursive: true });
@@ -478,7 +451,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  assertSmokeRepoRefContainsRootLayout,
   assertSmokeRepoRefIsPushed,
   consoleLoginAcknowledgedFileName,
   consoleLoginFileName,

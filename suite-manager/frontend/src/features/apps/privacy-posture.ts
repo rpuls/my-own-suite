@@ -168,9 +168,7 @@ export function postureFor(privacy: PrivacyReviewSummary | null | undefined) {
   return (posture && POSTURES[posture]) || UNREVIEWED;
 }
 
-// A completed review always carries a posture, so the status alone answers
-// this. It used to also have to exclude a "reviewed" package whose posture
-// said "review-required", a state the derivation can no longer produce.
+// A completed review always carries a posture, so the status alone answers this.
 export function isRated(privacy: PrivacyReviewSummary | null | undefined): boolean {
   return privacy?.status === 'reviewed';
 }

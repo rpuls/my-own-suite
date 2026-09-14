@@ -1951,44 +1951,6 @@ test('public URL reconciliation keeps Homepage regeneration separate from per-ap
   store.close();
 });
 
-// The startup re-stamp exists for installs updated from before tile hrefs went
-// relative. Applying a real domain was the only other path that rewrote them. It
-// sends ids and nothing else: hrefs come from the id, and a migration is not an
-// address change, so widget endpoints are already correct.
-test('startup re-stamps dashboard links from ids alone, without touching any app runtime', async () => {
-  const calls = [];
-  const appAgent = {
-    async snapshotPackage(input) { return snapshotResult(input); },
-    async apply(input) { calls.push(input); return { status: 'applied', steps: [] }; },
-    async checkHealth() { return { status: 'healthy' }; },
-  };
-  const reconciled = [];
-  const homepageService = {
-    async addManagedApp(body) { return { changed: true, requestId: body.requestId, revision: 'sha256:next' }; },
-    async read() { return { content: '[]', revision: 'sha256:current' }; },
-    async reconcileUrls(body) { reconciled.push(body.entries); return { changed: true, revision: 'sha256:reconciled' }; },
-  };
-  const store = new SuiteManagerStore(await tempStateDir());
-  const service = new AppPackageService({ agent: appAgent, appsDir: v2AppsDir, store });
-
-  // Nothing on the dashboard yet, so startup has nothing to say.
-  assert.deepEqual(await service.reconcileDashboardLinks(homepageService), { changed: false, status: 'skipped' });
-
-  const context = { appHost: 'stirling-pdf.mos.home', baseHost: 'mos.home', publicUrl: 'http://stirling-pdf.mos.home/', scheme: 'http' };
-  await service.installPackage('stirling-pdf');
-  await service.applyPackageRuntime('stirling-pdf', context);
-  await service.addPackageToHomepage('stirling-pdf', homepageService, context);
-  const applyCount = calls.length;
-
-  const result = await service.reconcileDashboardLinks(homepageService);
-
-  assert.equal(result.status, 'applied');
-  assert.deepEqual(reconciled.at(-1), [{ id: store.getAppInstanceByPackageId('stirling-pdf').id }]);
-  assert.equal(calls.length, applyCount, 'a tile href never reaches a container');
-
-  store.close();
-});
-
 test('public URL reconciliation keeps disabled apps out of runtime reapply', async () => {
   const calls = [];
   const appAgent = {

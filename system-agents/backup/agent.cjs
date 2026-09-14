@@ -546,8 +546,8 @@ function readBootstrapContract() {
   }).filter(Boolean));
 }
 // Derived from the restored database first (see restorePublicIdentity): the
-// owner's applied HTTPS domain must win over this machine's install-time env.
-// A backup old enough to predate HTTPS settings falls back to that env.
+// owner's applied HTTPS domain must win over this machine's install-time env,
+// which is what answers when no domain has been applied.
 function restoreBaseUrl(store) {
   let httpsSettings = null;
   try { httpsSettings = store ? store.getHttpsSettings() : null; } catch {}

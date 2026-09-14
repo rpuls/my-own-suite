@@ -61,7 +61,6 @@ function writeVerifiedCache(stateDir, value = catalog) {
     catalogText,
     fetchedAt: new Date().toISOString(),
     revision,
-    schemaVersion: 2,
     signature: signCatalogBytes(catalogText, publisher.privateKey),
   }));
   return stateDir;
@@ -102,7 +101,6 @@ test('refresh treats a 304 on the conditional catalog request as unchanged, not 
     etag: '"seed-etag"',
     fetchedAt: new Date('2026-07-14T09:00:00.000Z').toISOString(),
     revision,
-    schemaVersion: 2,
     signature: signCatalogBytes(catalogText, publisher.privateKey),
   }));
   let conditional = false;

@@ -240,9 +240,8 @@ function validatePlatformCompatibility(manifest, platformVersion) {
 // produces the same build failure it would have produced anyway.
 //
 // Both unknowns mean "no constraint", because neither is evidence of a mismatch:
-// a package that declares nothing is every package written before this field
-// existed, and a host MOS cannot identify would otherwise have every package
-// blocked on it.
+// `architectures` is optional, and a host MOS cannot identify would otherwise
+// have every package blocked on it.
 function validateArchitectureCompatibility(manifest, hostArchitecture) {
   const declared = manifest?.architectures;
   if (declared === undefined) return [];
@@ -365,9 +364,10 @@ function validatePrivacyAssessment(review) {
 // validator that quietly declines to validate is worse than none, because it
 // reports success. Plain code cannot skip a rule it does not recognise.
 //
-// Runtime install/update paths deliberately do NOT call this: they enforce
-// binding (validatePrivacyBinding) and semantics (validatePrivacyAssessment)
-// against packages that may predate any given authoring rule.
+// Runtime install/update paths deliberately do NOT call this: authoring
+// conventions are a publishing gate, not something MOS may require of a
+// third-party package it installs, so runtime enforces only what it depends on
+// — binding (validatePrivacyBinding) and semantics (validatePrivacyAssessment).
 
 const ISO_DATE_TIME = (value) => typeof value === 'string' && !Number.isNaN(Date.parse(value));
 const NON_EMPTY_STRING = (value) => typeof value === 'string' && value.trim() !== '';

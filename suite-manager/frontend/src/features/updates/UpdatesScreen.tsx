@@ -30,7 +30,6 @@ type UpdateStatus = {
   checkedAt: string;
   checkpoint: { destinationLabel: string | null; ready: boolean; supported: boolean };
   currentJob: UpdateJob | null;
-  error: string | null;
   installedVersion: string | null;
   latestRelease: { notesUrl: string | null; source: string | null; version: string | null };
   latestRevision: string | null;

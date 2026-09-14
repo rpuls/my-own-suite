@@ -73,7 +73,6 @@ class BackupAgentClient {
   forgetDestinationKey(destinationId) { return this.request('POST', '/v1/destinations/forget-key', { destinationId }); }
   archiveKeys(input) { return this.request('POST', '/v1/destinations/keys', input); }
   removeArchiveKey(input) { return this.request('POST', '/v1/destinations/keys/remove', input); }
-  forgetDestinationKey(destinationId) { return this.request('POST', '/v1/destinations/forget-key', { destinationId }); }
 }
 
 module.exports = { BACKUP_AGENT_TIMEOUT_MS, BackupAgentClient };

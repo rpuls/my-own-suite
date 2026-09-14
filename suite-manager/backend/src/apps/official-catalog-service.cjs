@@ -102,7 +102,7 @@ class OfficialCatalogService {
   readCache() {
     try {
       const cache = JSON.parse(fs.readFileSync(this.cachePath, 'utf8'));
-      if (cache.schemaVersion !== 2 || !COMMIT_PATTERN.test(cache.revision)) return null;
+      if (!COMMIT_PATTERN.test(cache.revision)) return null;
       const catalog = this.verifiedText(cache.catalogText, cache.signature, validateCatalog);
       if (!catalog) return null;
       // Advisories ride alongside the catalog but must never make a valid catalog
@@ -322,7 +322,7 @@ class OfficialCatalogService {
         const catalog = JSON.parse(catalogText);
         const errors = validateCatalog(catalog);
         if (errors.length) throw new OfficialCatalogError('CATALOG_INVALID', `Official catalog is invalid: ${errors.join(' ')}`);
-        this.cache = { attemptedAt, catalog, catalogText, error: null, etag: response.headers.get('etag') || null, fetchedAt: attemptedAt, revision, schemaVersion: 2, signature };
+        this.cache = { attemptedAt, catalog, catalogText, error: null, etag: response.headers.get('etag') || null, fetchedAt: attemptedAt, revision, signature };
       }
       this.failures = 0;
       this.lastError = null;

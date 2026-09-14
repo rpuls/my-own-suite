@@ -1576,10 +1576,6 @@ function createMOSServer({
   server.recoverAppPackageUpdates = () => appPackages.recoverInterruptedUpdates({
     publicUrlFor: appPublicUrlResolverAtBoot(homeHost, httpsSettings),
   });
-  // Carries an install updated from before the dashboard became door-agnostic
-  // over to relative tile links. Applying a real domain was the only other path
-  // that re-stamped them, and most installs never take it.
-  server.reconcileDashboardLinks = () => appPackages.reconcileDashboardLinks(homepageConfig);
   // Candidate downloads from a Suite Manager that was killed mid-operation are
   // owned by nobody once it restarts. Downloads sweep before they run, so this is
   // about reclaiming the disk now rather than at whatever point someone next
