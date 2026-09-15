@@ -173,3 +173,33 @@ test('a method the endpoint does not serve is still refused', async () => {
   const response = await worker.fetch(new Request('https://get.myownsuite.org/install.sh', { method: 'POST' }), {});
   assert.equal(response.status, 404);
 });
+
+// The first fix kept the ref in a module-scope Map, which lasts exactly as long
+// as the isolate holding it. Cloudflare recycles those constantly, so a cold
+// start asked GitHub again, GitHub refused again, and the endpoint served the
+// same 503 the cache was added to prevent. The store has to outlive the worker.
+test('a cold isolate reuses the ref an earlier one resolved', async () => {
+  const store = new Map();
+  const stub = githubStub();
+  const warm = createInstallerWorker(() => ({ stable: true }), { cache: store, fetchImpl: stub.fetchImpl });
+  assert.equal((await warm.fetch(installerRequest(), {})).status, 200);
+  assert.equal(stub.calls.length, 2);
+
+  // A new worker object is a new isolate; only the shared store carries over.
+  const cold = createInstallerWorker(() => ({ stable: true }), {
+    cache: store,
+    fetchImpl: async () => new Response('rate limited', { status: 403 }),
+  });
+  const response = await cold.fetch(installerRequest(), {});
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('x-mos-install-ref'), releaseCommit);
+});
+
+test('a cold isolate with nothing kept still fails closed', async () => {
+  const cold = createInstallerWorker(() => ({ stable: true }), {
+    cache: new Map(),
+    fetchImpl: async () => new Response('rate limited', { status: 403 }),
+  });
+  assert.equal((await cold.fetch(installerRequest(), {})).status, 503);
+});

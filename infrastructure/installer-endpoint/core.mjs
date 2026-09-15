@@ -62,38 +62,66 @@ export async function resolveLatestStableRef(fetchImpl = fetch) {
   return { label: tag, ref: (await resolveInstallRef(tag, fetchImpl)).ref };
 }
 
-// How long a resolved ref is reused before GitHub is asked again. Every request
-// used to spend two unauthenticated GitHub API calls, and that budget is counted
-// per source address - which for a Worker is an address shared with everyone else
-// on the colo. So the endpoint answered `Installer unavailable` on requests
-// GitHub had no reason to refuse, intermittently and without warning.
+// How long a resolved ref is reused before GitHub is asked again, and how long
+// one is kept as a fallback. Every request used to spend two unauthenticated
+// GitHub API calls, and that budget is counted per source address - which for a
+// Worker is an address shared with everyone else on the colo. So the endpoint
+// answered `Installer unavailable` on requests GitHub had no reason to refuse.
 const RESOLUTION_TTL_MS = 5 * 60 * 1000;
+const FALLBACK_TTL_SECONDS = 24 * 60 * 60;
+
+// Where a resolved ref is kept between requests. This has to outlive the isolate:
+// Cloudflare recycles them constantly, so a module-scope Map means a cold start
+// asks GitHub again and, when GitHub refuses, has nothing to fall back on - which
+// is exactly the 503 this was meant to end. The Cache API is per-colo and
+// survives that churn. Freshness is carried in the payload rather than left to
+// cache expiry, so an entry can be past its TTL and still be a usable fallback.
+const REF_CACHE_PREFIX = 'https://get.myownsuite.org/__install-ref/';
+
+function defaultRefStore() {
+  if (typeof caches === 'undefined') return new Map();
+  return {
+    async get(key) {
+      const hit = await caches.default.match(`${REF_CACHE_PREFIX}${encodeURIComponent(key)}`);
+      return hit ? hit.json() : undefined;
+    },
+    async set(key, entry) {
+      await caches.default.put(`${REF_CACHE_PREFIX}${encodeURIComponent(key)}`, new Response(JSON.stringify(entry), {
+        headers: {
+          'Cache-Control': `max-age=${FALLBACK_TTL_SECONDS}`,
+          'Content-Type': 'application/json',
+        },
+      }));
+    },
+  };
+}
 
 // selectSource(env) returns `{ stable: true }` or `{ branch }`.
 //
-// A resolution is cached for RESOLUTION_TTL_MS, and if GitHub then fails, the
+// A resolution is reused for RESOLUTION_TTL_MS, and if GitHub then fails, the
 // last good one is served rather than nothing: a release a few minutes stale
 // still installs, while a 503 is a machine that installs nothing at all. Failing
-// closed is kept for the case that deserves it - never having resolved a ref, so
-// there is no source to pin and the alternative would be inventing one.
-export function createInstallerWorker(selectSource, { cache = new Map(), fetchImpl = null, now = () => Date.now() } = {}) {
+// closed is kept for the case that deserves it - no ref has ever been resolved
+// here, so there is no source to pin and the alternative would be inventing one.
+export function createInstallerWorker(selectSource, { cache = null, fetchImpl = null, now = () => Date.now() } = {}) {
+  const store = cache || defaultRefStore();
   return { async fetch(request, env) {
     const path = new URL(request.url).pathname;
     const method = request.method;
     if ((method !== 'GET' && method !== 'HEAD') || (path !== '/' && path !== '/install.sh')) return new Response('Not found\n', { status: 404 });
     const source = selectSource(env) || {};
     const key = source.stable ? 'stable' : `branch:${source.branch}`;
-    const fresh = cache.get(key);
-    let resolved = fresh && now() - fresh.at < RESOLUTION_TTL_MS ? fresh.value : null;
+    const kept = await store.get(key);
+    let resolved = kept && now() - kept.at < RESOLUTION_TTL_MS ? kept.value : null;
     let stale = null;
     if (!resolved) {
       const http = fetchImpl || fetch;
       try {
         resolved = source.stable ? await resolveLatestStableRef(http) : await resolveInstallRef(source.branch, http);
-        cache.set(key, { at: now(), value: resolved });
+        await store.set(key, { at: now(), value: resolved });
       } catch (error) {
-        if (!fresh) return new Response(`Installer unavailable: ${error.message}\n`, { status: 503 });
-        resolved = fresh.value;
+        if (!kept) return new Response(`Installer unavailable: ${error.message}\n`, { status: 503 });
+        resolved = kept.value;
         stale = error.message;
       }
     }
