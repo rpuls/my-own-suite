@@ -235,6 +235,21 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
   manual pre-install mount for now (`cloud-server.mdx`), which does not help an existing install and
   cannot vary per app. The durable answer is MOS choosing where each app's volumes live. *(Large)*
 
+### AL-U — App updates
+
+- **AL9 — Refuse an app update the app itself cannot survive.** An update is one jump from the
+  installed snapshot to whatever the source offers now, and nothing measures how far that jump is. For
+  an app that replays its own migration history the distance is irrelevant; for one that upgrades only
+  from its predecessor — Seafile, in the current catalog — skipping is data loss under a green health
+  check. The jump is authored as often as it is suffered: moving a pinned digest across several
+  upstream releases inflicts the same distance on every owner at once, including the ones who update
+  the day each release lands, so package-version distance is the wrong thing to reason about and image
+  distance is the right one. Wants an optional additive `appVersion` floor in the manifest — the oldest
+  install a package can upgrade — checked in `compareAppPackages` beside `minimumMosVersion`, so the
+  preview refuses with a sentence naming the version the owner has to reach first. What that owner then
+  does is the undecided half and gates the design: a published waypoint package, or a restore-and-climb
+  path. *(Medium — needs a decision first)*
+
 ### Carried in — already tracked above, and alpha gates rather than 1.0 wishes
 
 **A4** the pre-update backup trigger · **B1** human sign-off on privacy reviews · **E3** signed release and installer
@@ -424,6 +439,15 @@ Owner decisions. Future agents and reviews should not resurface these.
   only when a manifest can declare when a field is read, which is a generation event
   (`docs/decisions.md`, 2026-08-30). The app-agnostic escape hatch for what MOS never knew to ask
   shipped separately as owner environment variables.
+- **Stepping an app up through every package version between installed and current** — declined, the
+  way TrueNAS and the Helm catalogs do it. The catalog publishes one current version per package and
+  keeps no history, so there is nothing to walk; but the reason not to add one is that a chain has to
+  pull image digests that will not exist. Packages pin `@sha256:`, upstream deletes tags and registries
+  collect untagged layers, and chaining only earns its keep when an install is years behind — exactly
+  when the intermediate digests have rotted. It would fail hardest in the single case it exists for,
+  and buy nothing for the apps that replay their own migration history, which is most of them. **AL9**
+  takes the correctness half by refusing a jump the app cannot survive. Reopen only as a published
+  waypoint package for a named app that genuinely demands one.
 
 ---
 
