@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
+const { APP_AGENT_CONTRACT_VERSION } = require('../../../shared/app-agent-contract.cjs');
 const { compareAppPackages } = require('../src/apps/app-update-comparison.cjs');
 const { digestAppPackage } = require('../src/apps/package-contracts.cjs');
 
@@ -60,13 +61,14 @@ test('an update that drops this host architecture is unsupported before it is st
   const installed = appPackage('1.0.0');
   const candidate = appPackage('2.0.0', (manifest) => ({ ...manifest, architectures: ['amd64'] }));
   t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
-  const input = { agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' };
+  const input = { agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.11.0' };
   const refused = compareAppPackages({ ...input, hostArchitecture: 'arm64' });
   assert.equal(refused.compatibility, 'unsupported');
   assert.deepEqual(refused.validation.errors, ['Package runs on amd64; this host is arm64.']);
   assert.equal(compareAppPackages({ ...input, hostArchitecture: 'amd64' }).compatibility, 'compatible');
-  // An agent too old to report a host leaves the update exactly as it was before
-  // this check existed, rather than blocking every declaring package.
+  // An agent that does not recognise its own host leaves the update exactly as
+  // it was before this check existed, rather than blocking every declaring
+  // package.
   assert.equal(compareAppPackages(input).compatibility, 'compatible');
 });
 
@@ -78,7 +80,7 @@ test('comparison is deterministic and refuses undeclared required-field and volu
     return manifest;
   });
   t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
-  const input = { agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' };
+  const input = { agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.11.0' };
   const first = compareAppPackages(input);
   const second = compareAppPackages(input);
   assert.deepEqual(first, second);
@@ -95,7 +97,7 @@ test('declared breaking changes remain owner-visible and require confirmation ra
     return manifest;
   });
   t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
-  const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
+  const comparison = compareAppPackages({ agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.11.0' });
   assert.equal(comparison.compatibility, 'owner-action-required');
   assert.equal(comparison.metadata.backupRequired, true);
   assert.equal(comparison.metadata.rollback, 'unsupported');
@@ -107,7 +109,7 @@ test('privacy assessments carry their dimensions into both sides of the comparis
   writePrivacyReview(installed, 'private-by-default', { accountDependency: 'local-only', confidence: 'verified', dataProcessing: 'local', externalServices: 'none-required', policyExposure: 'self-hosted-software-only', telemetry: 'none-observed' });
   writePrivacyReview(candidate, 'external-dependency', { accountDependency: 'local-only', confidence: 'verified', dataProcessing: 'optional-external', externalServices: 'required', policyExposure: 'upstream-services-involved', telemetry: 'optional' });
   t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
-  const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
+  const comparison = compareAppPackages({ agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.11.0' });
   assert.equal(comparison.installed.privacy.status, 'reviewed');
   assert.equal(comparison.installed.privacy.posture, 'private-by-default');
   assert.equal(comparison.installed.privacy.dimensions.telemetry, 'none-observed');
@@ -126,7 +128,7 @@ test('an unverified package cannot present its own privacy review as a MOS revie
   writePrivacyReview(installed, 'private-by-default', dimensions);
   writePrivacyReview(candidate, 'private-by-default', dimensions);
   t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
-  const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
+  const comparison = compareAppPackages({ agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.11.0' });
   for (const side of [comparison.installed.privacy, comparison.candidate.privacy]) {
     assert.equal(side.status, 'review-required');
     assert.equal(side.posture, null);
@@ -143,7 +145,7 @@ test('an unverified update that widens the access it asks for needs explicit con
     return manifest;
   }, EXTERNAL_SOURCE);
   t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
-  const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
+  const comparison = compareAppPackages({ agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.11.0' });
   assert.equal(comparison.updateStatus, 'update-available');
   assert.deepEqual(comparison.permissions.installed, ['route:ext-example', 'volume:data']);
   assert.deepEqual(comparison.permissions.added, ['route:ext-example-admin', 'volume:extra']);
@@ -161,7 +163,7 @@ test('the same access increase from the reviewed catalog is reported without dem
     return manifest;
   });
   t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
-  const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
+  const comparison = compareAppPackages({ agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.11.0' });
   assert.deepEqual(comparison.permissions.added, ['route:example-admin']);
   assert.equal(comparison.changes.find((item) => item.area === 'permissions').classification, 'automatically-handled');
   assert.equal(comparison.compatibility, 'compatible');
@@ -179,7 +181,7 @@ test('a candidate that reuses the installed version number is current, and is no
     return manifest;
   });
   t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
-  const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
+  const comparison = compareAppPackages({ agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.11.0' });
   assert.notEqual(installed.packageDigest, candidate.packageDigest);
   assert.equal(comparison.updateStatus, 'current');
   assert.equal(comparison.compatibility, 'compatible');
@@ -190,7 +192,7 @@ test('an unchanged candidate reports as current rather than as an update', (t) =
   const installed = appPackage('1.0.0');
   const candidate = appPackage('1.0.0');
   t.after(() => [installed, candidate].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
-  const comparison = compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.11.0' });
+  const comparison = compareAppPackages({ agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.11.0' });
   assert.equal(comparison.updateStatus, 'current');
   assert.deepEqual(comparison.permissions.added, []);
   assert.equal(comparison.compatibility, 'compatible');
@@ -207,7 +209,7 @@ test('an update preview carries the app version each manifest declares on both s
   const repackaged = appPackage('1.1.0', withApp('3.1.0'));
   const undeclared = appPackage('1.2.0');
   t.after(() => [installed, moved, repackaged, undeclared].forEach((item) => fs.rmSync(item.packageDir, { force: true, recursive: true })));
-  const compare = (candidate) => compareAppPackages({ agentCapabilities: ['apps.package.snapshot'], agentContractVersion: 1, candidate, installed, platformVersion: '0.19.0' });
+  const compare = (candidate) => compareAppPackages({ agentContractVersion: APP_AGENT_CONTRACT_VERSION, candidate, installed, platformVersion: '0.19.0' });
 
   assert.equal(compare(moved).installed.appVersion, '3.1.0');
   assert.equal(compare(moved).candidate.appVersion, '3.2.0');

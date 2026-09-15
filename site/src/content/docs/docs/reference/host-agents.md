@@ -11,7 +11,7 @@ Host agents are the privileged half of the [MOS privilege boundary](/docs/refere
 | --- | --- | --- |
 | HTTPS | `mos-https-agent` | The [Cloudflare DNS-01 flow](/docs/guides/https-domain/): verifies the token against the zone, stores it root-only, rewrites the Caddyfile atomically with checkpoint/rollback, restarts Caddy. |
 | Homepage | `mos-homepage-agent` | Validates and applies allowlisted [dashboard YAML](/docs/guides/customize-homepage/) and the MOS-owned home route snippet; keeps a 10-checkpoint history; restarts/reloads only when content actually changed. |
-| App runtime | `mos-app-agent` | The Docker side of [app management](/docs/guides/apps/) — the largest agent, at contract version 9 with 14 capabilities. See below. |
+| App runtime | `mos-app-agent` | The Docker side of [app management](/docs/guides/apps/) — the largest agent, and the one with a versioned contract. See below. |
 | Backup | `mos-backup-agent` | Drive discovery and mounting, whole-suite [backup and restore](/docs/guides/backup-restore/) jobs (one at a time). |
 | Update | `mos-update-agent` | [Managed updates](/docs/guides/updates/): track configuration and update jobs, each run as a transient systemd unit so an update survives the agent restarting itself. An orphaned job is marked failed after a timeout instead of blocking updates forever. |
 | Lab reset | `mos-lab-reset-agent` | **Lab installs only** (USB/Hyper-V with `MOS_LAB_RESET_ENABLED=1`): clears disposable lab state for repeatable testing. Absent on normal installs. |
@@ -20,11 +20,13 @@ Sockets live at `/run/mos-<name>-agent/agent.sock`.
 
 ## The app runtime agent
 
-The app agent is where the boundary is under the most pressure, so it's worth spelling out. It accepts bounded structured projections and host-owned snapshot identities — never repository-relative build paths — across fourteen named capabilities:
+The app agent is where the boundary is under the most pressure, so it's worth spelling out. It accepts bounded structured projections and host-owned snapshot identities — never repository-relative build paths — across three groups of operations:
 
-- **Runtime** — `apps.multi-service.apply`, `apps.multi-service.stop`, `apps.multi-service.remove`, `apps.network.connect`, `apps.health.check`.
-- **Snapshots** — `apps.package.snapshot` and `apps.package.snapshot.external`, which copy only validated package files into the host-owned root.
-- **Updates** — `apps.package.update.stage`, `.build`, `.activate`, `.rollback`, `.promote`, `.reclaim`, plus `apps.package.remove.reclaim`.
+- **Runtime** — apply, stop, remove, connect an app to another app's network, run a health check.
+- **Snapshots** — copy only validated package files into the host-owned root, for a package from the catalog or from an external source.
+- **Updates** — stage a candidate, build it, activate it, roll it back, promote it, and reclaim the images the outgoing package named.
+
+Suite Manager and this agent ship in the same managed update, so they agree on one contract version or MOS refuses to install, update or remove an app at all — with both numbers named, in the message and in the diagnostics file you can export from [Suite Manager](/docs/guides/suite-manager/). There is no capability negotiation and no tolerance for a mismatched pair in either direction: an agent left behind by a half-applied update is a fault to fix, not a mode to run in. Installed apps keep running while it lasts.
 
 It owns two storage roots. Installed [package snapshots](/docs/reference/app-packages/) live under `MOS_APP_PACKAGE_ROOT` (`/var/lib/mos/app-packages`, `root:mos-agent`, mode `2750`, so Suite Manager can read but not write them); candidate downloads land under the private `MOS_APP_CANDIDATE_ROOT` (`/var/lib/mos/suite-manager/app-candidates`), the only place an unvalidated package may ever sit.
 

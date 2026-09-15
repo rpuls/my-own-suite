@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
+const { APP_AGENT_CONTRACT_VERSION } = require('../../shared/app-agent-contract.cjs');
 const { AppAgentCore, AppRuntimeError, renderAppRoutes } = require('./agent-core.cjs');
 
 const request = {
@@ -26,11 +27,14 @@ const request = {
   sourceRevision: '0123456789abcdef0123456789abcdef01234567',
 };
 
-test('app agent exposes only narrow app runtime capabilities', async () => {
+// One number, read from the same module Suite Manager gates on, is the whole
+// handshake: both ends ship in one managed update, so there is nothing to
+// negotiate and no list of capabilities for either side to probe.
+test('app agent reports the contract version it shares with Suite Manager', async () => {
   const core = new AppAgentCore({ applyAppServices: async () => ({ steps: [] }), checkAppHealth: async () => ({}) });
   const status = await core.status();
-  assert.deepEqual(status.capabilities, ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote', 'apps.package.update.reclaim', 'apps.package.remove.reclaim']);
-  assert.equal(status.contractVersion, 9);
+  assert.equal(status.contractVersion, APP_AGENT_CONTRACT_VERSION);
+  assert.deepEqual(Object.keys(status).sort(), ['contractVersion', 'hostArchitecture', 'service']);
 });
 
 // The agent runs on the host and is what invokes `docker build`, so it answers
@@ -45,7 +49,7 @@ test('app agent answers for the architecture of the host it builds on', async ()
 test('app update promotion accepts only digest-bound snapshot identity', async () => {
   const calls = [];
   const core = new AppAgentCore({ async promoteAppPackageUpdate(input) { calls.push(input); return { snapshotPath: '/state/installed' }; } });
-  const input = { candidateDigest: `sha256:${'b'.repeat(64)}`, expectedInstalledDigest: request.packageDigest, instanceId: request.instanceId, packageId: request.packageId, rollbackSafe: true };
+  const input = { candidateDigest: `sha256:${'b'.repeat(64)}`, expectedInstalledDigest: request.packageDigest, installedSourceRevision: 'c'.repeat(40), instanceId: request.instanceId, packageId: request.packageId, rollbackSafe: true };
   assert.equal((await core.promotePackageUpdate(input)).status, 'snapshot-promoted');
   assert.deepEqual(calls, [input]);
   await assert.rejects(() => core.promotePackageUpdate({ ...input, rollbackSafe: 'yes' }), AppRuntimeError);
@@ -64,12 +68,12 @@ test('app update promotion takes the outgoing source revision that names its sup
   await assert.rejects(() => core.promotePackageUpdate({ ...input, installedSourceRevision: '' }), AppRuntimeError);
 });
 
-test('a promotion from a Suite Manager that cannot name superseded images still succeeds', async () => {
+// A promotion that names no outgoing revision leaves a copy of every image the
+// app has ever run on the disk. Suite Manager and the agent ship together, so
+// there is no caller for which that is the best available outcome.
+test('a promotion that names no outgoing revision is refused', async () => {
   const core = new AppAgentCore({ async promoteAppPackageUpdate() { return { snapshotPath: '/state/installed' }; } });
-  // Refusing here would strand an update whose candidate is already serving
-  // traffic, so the older request shape stays acceptable and reclaims nothing.
-  const promoted = await core.promotePackageUpdate({ candidateDigest: `sha256:${'b'.repeat(64)}`, expectedInstalledDigest: request.packageDigest, instanceId: request.instanceId, packageId: request.packageId, rollbackSafe: false });
-  assert.equal(promoted.status, 'snapshot-promoted');
+  await assert.rejects(() => core.promotePackageUpdate({ candidateDigest: `sha256:${'b'.repeat(64)}`, expectedInstalledDigest: request.packageDigest, instanceId: request.instanceId, packageId: request.packageId, rollbackSafe: false }), AppRuntimeError);
 });
 
 test('app update activation binds candidate and installed runtime identities', async () => {
@@ -338,7 +342,7 @@ test('app health check validates loopback health projection only', async () => {
   }), AppRuntimeError);
 });
 
-test('app remove accepts only package-scoped removal fields and delegates volumes', async () => {
+test('app remove accepts only documented removal fields and delegates volumes', async () => {
   const calls = [];
   const core = new AppAgentCore({
     async removeAppService(input) {
@@ -346,17 +350,21 @@ test('app remove accepts only package-scoped removal fields and delegates volume
       return { steps: ['stopped', 'route-removed'] };
     },
   });
+  const uninstall = { installedSourceRevision: request.sourceRevision, instanceId: request.instanceId, packageId: 'example-tool' };
 
-  const result = await core.remove({ packageId: 'example-tool' });
+  const result = await core.remove(uninstall);
 
   assert.equal(result.status, 'removed');
-  assert.deepEqual(calls, [{ packageId: 'example-tool', serviceIds: [], volumes: [] }]);
-  await core.remove({ packageId: 'example-tool', services: ['web', 'database'], volumes: ['data', 'cache'] });
-  assert.deepEqual(calls[1], { packageId: 'example-tool', serviceIds: ['web', 'database'], volumes: ['data', 'cache'] });
-  await assert.rejects(() => core.remove({ packageId: 'example-tool', volumes: true }), AppRuntimeError);
-  await assert.rejects(() => core.remove({ packageId: 'example-tool', volumes: ['../bad'] }), AppRuntimeError);
-  await assert.rejects(() => core.remove({ packageId: '../example-tool' }), AppRuntimeError);
-  await assert.rejects(() => core.remove({ packageId: 'example-tool', services: ['../bad'] }), AppRuntimeError);
+  assert.deepEqual(calls, [{ ...uninstall, serviceIds: [], volumes: [] }]);
+  await core.remove({ ...uninstall, services: ['web', 'database'], volumes: ['data', 'cache'] });
+  assert.deepEqual(calls[1], { ...uninstall, serviceIds: ['web', 'database'], volumes: ['data', 'cache'] });
+  await assert.rejects(() => core.remove({ ...uninstall, volumes: true }), AppRuntimeError);
+  await assert.rejects(() => core.remove({ ...uninstall, volumes: ['../bad'] }), AppRuntimeError);
+  await assert.rejects(() => core.remove({ ...uninstall, packageId: '../example-tool' }), AppRuntimeError);
+  await assert.rejects(() => core.remove({ ...uninstall, services: ['../bad'] }), AppRuntimeError);
+  // What an uninstall leaves behind is named by the instance and the revision,
+  // so a removal that names neither is refused rather than served as a stop.
+  await assert.rejects(() => core.remove({ packageId: 'example-tool' }), AppRuntimeError);
 });
 
 test('app remove takes the instance and revision that name what an uninstall leaves behind', async () => {

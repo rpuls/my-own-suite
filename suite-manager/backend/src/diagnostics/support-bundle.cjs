@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { APP_AGENT_CONTRACT_VERSION, appAgentContractVersionOf } = require('../../../../shared/app-agent-contract.cjs');
 const { redactValuesWithReport } = require('../redaction.cjs');
 
 const RULE = '─'.repeat(74);
@@ -71,6 +72,15 @@ function summarizeTrouble({ apps = [], catalog = null, collection = {}, platform
   // as two problems.
   if (!catalog?.error && catalog?.advisories?.error) trouble.push(`Privacy advisories could not be read (${catalog.advisories.error.code}): ${catalog.advisories.error.message}`);
   if (platform.lastUpdate?.status === 'failed') trouble.push(`The last platform update failed at ${platform.lastUpdate.at || 'an unknown time'}: ${platform.lastUpdate.error || 'no reason was recorded.'}`);
+  // Suite Manager and the app agent ship together, so a disagreement here means
+  // the last update applied one and not the other. Nothing else on the server
+  // says so: apps keep running, and only installing, updating or removing one
+  // reports it.
+  if (platform.appAgentContractVersion !== undefined && platform.appAgentContractVersion !== APP_AGENT_CONTRACT_VERSION) {
+    trouble.push(platform.appAgentContractVersion === null
+      ? 'The app runtime agent could not be reached, so no app can be installed, updated or removed.'
+      : `The app runtime agent reports contract version ${platform.appAgentContractVersion} but this MOS needs ${APP_AGENT_CONTRACT_VERSION}, so its last update did not fully apply. Installed apps keep running; installing, updating or removing one is refused until MOS is updated again.`);
+  }
   if (platform.lastHttpsApply?.status === 'failed') trouble.push(`The last HTTPS apply failed: ${platform.lastHttpsApply.errorCode || 'unknown error'} at ${platform.lastHttpsApply.at || 'an unknown time'}.`);
   for (const unit of collection.units || []) {
     if (unit.unread) trouble.push(`The state of ${unit.name} could not be read; it may or may not be running.`);
@@ -85,6 +95,13 @@ function summarizeTrouble({ apps = [], catalog = null, collection = {}, platform
   for (const line of fullFilesystems(collection.host?.disk)) trouble.push(`Filesystem is nearly full: ${line}`);
   if (collection.incomplete?.length) trouble.push(`Some information could not be collected: ${collection.incomplete.join(', ')}.`);
   return trouble;
+}
+
+// Both numbers, always, so the reader never has to know which release changed
+// the contract to see that the two ends disagree.
+function appAgentLine(reported) {
+  if (reported === undefined) return 'not collected';
+  return `contract ${reported === null ? 'unreachable' : reported}, MOS needs ${APP_AGENT_CONTRACT_VERSION}`;
 }
 
 function section(title, body) {
@@ -214,6 +231,7 @@ Logs are shortened newest-first, so this stays small enough to read in full.
       `Update track       ${platform.updateTrack || 'unknown'}`,
       `Install shape      ${platform.frontDoor || 'unknown'}`,
       `HTTPS mode         ${platform.tlsMode || 'unknown'}`,
+      `App agent          ${appAgentLine(platform.appAgentContractVersion)}`,
       `Home host          ${homeHost || 'unknown'}`,
       `Collected at       ${collection.collectedAt || 'not collected'}`,
       ...lastCheckLines(platform.lastCheck),
@@ -261,6 +279,7 @@ Logs are shortened newest-first, so this stays small enough to read in full.
 // rendering is testable against fixtures with no store, agent or disk.
 async function assembleSupportBundle({
   agent,
+  appAgent = null,
   catalogStatus = null,
   frontDoor = 'unknown',
   homeHost = '',
@@ -280,6 +299,7 @@ async function assembleSupportBundle({
   const https = (() => {
     try { return store.getHttpsSettings() || {}; } catch { return {}; }
   })();
+  const appAgentStatus = await Promise.resolve(appAgent?.status?.()).catch(() => null);
   const apps = store.getAppInstances().map((instance) => ({
     displayName: instance.displayNameSnapshot || instance.packageId,
     installedAt: instance.installedAt,
@@ -298,6 +318,7 @@ async function assembleSupportBundle({
     homeHost,
     now,
     platform: {
+      appAgentContractVersion: appAgentContractVersionOf(appAgentStatus),
       frontDoor,
       lastHttpsApply: {
         at: https.lastApplyAt || null,

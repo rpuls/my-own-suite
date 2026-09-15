@@ -9,6 +9,7 @@ const {
   digestFor,
   renderDryRunProjections,
 } = require('../src/apps/app-package-service.cjs');
+const { APP_AGENT_CONTRACT_VERSION } = require('../../../shared/app-agent-contract.cjs');
 const { readAppPackageManifest } = require('../src/apps/package-manifest.cjs');
 const { digestAppPackage } = require('../src/apps/package-contracts.cjs');
 const { buildSourceRecord, withRevision, withStatus } = require('../src/apps/external-source-registry.cjs');
@@ -81,15 +82,20 @@ function externalAgent(root, calls = []) {
       return { snapshotPath };
     },
     async status() {
-      return { capabilities: ['apps.package.snapshot', 'apps.package.snapshot.external'], contractVersion: 7 };
+      return agentStatus();
     },
   };
 }
 
-// An app agent that can run the whole update transaction for an external app:
-// the external snapshot its install needed, plus the same update capabilities
-// official packages go through.
-function externalUpdateAgent(root, calls = [], promotedSnapshotPath = null, { reclaims = false } = {}) {
+// Every fixture agent answers with the contract this MOS ships: both ends move
+// in one managed update, so an agent on another version is not a scenario a test
+// can set up, only a broken update.
+function agentStatus(extra = {}) {
+  return { contractVersion: APP_AGENT_CONTRACT_VERSION, ...extra };
+}
+
+// An app agent that can run the whole update transaction for an external app.
+function externalUpdateAgent(root, calls = [], promotedSnapshotPath = null) {
   return {
     ...externalAgent(root),
     async activatePackageUpdate(input) { calls.push(['activate', input]); return { status: 'candidate-healthy' }; },
@@ -98,29 +104,20 @@ function externalUpdateAgent(root, calls = [], promotedSnapshotPath = null, { re
     async remove(input) { calls.push(['remove', input]); return { status: 'removed' }; },
     async rollbackPackageUpdate(input) { calls.push(['rollback', input]); return { status: 'installed-restored' }; },
     async stagePackageUpdate(input) { calls.push(['stage', input]); return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() {
-      return {
-        capabilities: [
-          'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build',
-          'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote',
-          ...(reclaims ? ['apps.package.update.reclaim', 'apps.package.remove.reclaim'] : []),
-        ],
-        contractVersion: reclaims ? 9 : 7,
-      };
-    },
+    async status() { return agentStatus(); },
   };
 }
 
 // An installed external app and the newer package its source now offers, with
 // the update ready to apply.
-async function updatableExternalApp(root, store, calls, { reclaims = false } = {}) {
+async function updatableExternalApp(root, store, calls) {
   const installedPackage = await externalCandidate(root);
   const next = await externalCandidate(root, { version: '1.1.0' }, 'ext-next');
   // The update is published from a later commit than the one running, so a
   // promotion told the candidate's revision cannot pass as telling the truth.
   next.source = { ...next.source, revision: 'c'.repeat(40) };
   const service = new AppPackageService({
-    agent: externalUpdateAgent(root, calls, next.packageDir, { reclaims }),
+    agent: externalUpdateAgent(root, calls, next.packageDir),
     appsDir: v2AppsDir,
     externalClient: externalClientStub(next),
     store,
@@ -208,6 +205,7 @@ test('an external package asking for an official app web address is served under
     agent: {
       ...externalAgent(root),
       async snapshotPackage(input) { return snapshotResult(input); },
+      async status() { return agentStatus(); },
     },
     appsDir: v2AppsDir,
     store,
@@ -236,6 +234,7 @@ test('two external packages cannot serve the same web address', async () => {
     agent: {
       ...externalAgent(root),
       async snapshotPackage(input) { return snapshotResult(input); },
+      async status() { return agentStatus(); },
     },
     appsDir: v2AppsDir,
     store,
@@ -250,20 +249,22 @@ test('two external packages cannot serve the same web address', async () => {
   store.close();
 });
 
-test('an external install is refused when the app agent cannot snapshot external packages', async () => {
+// An agent on another contract version is a managed update that applied half of
+// itself, so nothing is snapshotted, installed, or recorded under it.
+test('an install is refused when the app agent is not the one this MOS shipped with', async () => {
   const root = await tempStateDir();
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const candidate = await externalCandidate(root);
   const service = new AppPackageService({
     agent: {
       async snapshotExternalPackage() { throw new Error('should not be called'); },
-      async status() { return { capabilities: ['apps.package.snapshot'], contractVersion: 6 }; },
+      async status() { return agentStatus({ contractVersion: APP_AGENT_CONTRACT_VERSION - 1 }); },
     },
     appsDir: v2AppsDir,
     store,
   });
 
-  await assert.rejects(() => service.installExternalPackage({ candidate }), { code: 'APP_EXTERNAL_INSTALL_UNAVAILABLE' });
+  await assert.rejects(() => service.installExternalPackage({ candidate }), { code: 'APP_AGENT_CONTRACT_MISMATCH' });
   assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes'), null);
   store.close();
 });
@@ -280,7 +281,7 @@ test('an app that does not run on this host is refused before anything is instal
     agent: {
       ...externalAgent(root),
       async snapshotExternalPackage() { throw new Error('should not be called'); },
-      async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.snapshot.external'], contractVersion: 9, hostArchitecture: 'arm64' }; },
+      async status() { return agentStatus({ hostArchitecture: 'arm64' }); },
     },
     appsDir: v2AppsDir,
     store,
@@ -307,7 +308,7 @@ test('an app is installed as before when nothing can say what this host is', asy
   assert.ok(store.getAppInstanceByPackageId('x-abcdef01-community-notes'));
 
   const unrecognised = new AppPackageService({
-    agent: { ...agent, async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.snapshot.external'], contractVersion: 9, hostArchitecture: 'sparc' }; } },
+    agent: { ...agent, async status() { return agentStatus({ hostArchitecture: 'sparc' }); } },
     appsDir: v2AppsDir,
     store: new SuiteManagerStore(path.join(root, 'state-2')),
   });
@@ -326,7 +327,7 @@ test('the amd64-only package in the catalog is refused on an arm64 host', async 
   const service = new AppPackageService({
     agent: {
       async snapshotPackage() { throw new Error('should not be called'); },
-      async status() { return { capabilities: ['apps.package.snapshot'], contractVersion: 9, hostArchitecture: 'arm64' }; },
+      async status() { return agentStatus({ hostArchitecture: 'arm64' }); },
     },
     appsDir: v2AppsDir,
     store,
@@ -511,7 +512,7 @@ test('an update tells an agent that can reclaim which images the outgoing packag
   const root = await tempStateDir();
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const calls = [];
-  const { comparison, service } = await updatableExternalApp(root, store, calls, { reclaims: true });
+  const { comparison, service } = await updatableExternalApp(root, store, calls);
   const outgoing = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
 
   const result = await service.stagePackageUpdate(
@@ -534,7 +535,7 @@ test('an uninstall tells an agent that can reclaim what the app leaves behind be
   const root = await tempStateDir();
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const calls = [];
-  const { service } = await updatableExternalApp(root, store, calls, { reclaims: true });
+  const { service } = await updatableExternalApp(root, store, calls);
   const installed = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
 
   const result = await service.uninstallPackage('x-abcdef01-community-notes');
@@ -546,43 +547,6 @@ test('an uninstall tells an agent that can reclaim what the app leaves behind be
   assert.equal(remove.instanceId, installed.id);
   assert.equal(remove.installedSourceRevision, installed.sourceRevision);
   assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes'), null);
-  store.close();
-});
-
-test('an uninstall never sends a removal field an older agent would refuse', async () => {
-  const root = await tempStateDir();
-  const store = new SuiteManagerStore(path.join(root, 'state'));
-  const calls = [];
-  const { service } = await updatableExternalApp(root, store, calls);
-
-  const result = await service.uninstallPackage('x-abcdef01-community-notes');
-
-  assert.equal(result.instance, null);
-  const [, remove] = calls.find(([kind]) => kind === 'remove');
-  assert.equal(Object.hasOwn(remove, 'instanceId'), false);
-  assert.equal(Object.hasOwn(remove, 'installedSourceRevision'), false);
-  store.close();
-});
-
-test('an update never sends a promotion field an older agent would refuse', async () => {
-  const root = await tempStateDir();
-  const store = new SuiteManagerStore(path.join(root, 'state'));
-  const calls = [];
-  const { comparison, service } = await updatableExternalApp(root, store, calls);
-
-  const result = await service.stagePackageUpdate(
-    'x-abcdef01-community-notes',
-    { confirmationToken: comparison.confirmationToken },
-    requestContext().publicUrlFor('notes'),
-  );
-
-  // An agent without the capability rejects unknown promotion fields outright,
-  // and a promotion refused here would strand an update whose candidate is
-  // already serving traffic. Leaving an image behind is the lesser outcome.
-  assert.equal(result.operation.status, 'succeeded');
-  const [, promote] = calls.find(([kind]) => kind === 'promote');
-  assert.equal(Object.hasOwn(promote, 'installedSourceRevision'), false);
-  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes').packageVersion, '1.1.0');
   store.close();
 });
 
@@ -786,6 +750,7 @@ test('a failure after activation rolls the old runtime back and closes the updat
           statusCode: 502,
         });
       },
+      async status() { return agentStatus(); },
     },
     appsDir: v2AppsDir,
     externalClient: externalClientStub(next),
@@ -861,7 +826,7 @@ test('updating an integration consumer keeps its integration env and reconciles 
     async rollbackPackageUpdate(input) { calls.push(['rollback', input]); return { status: 'installed-restored' }; },
     async snapshotPackage(input) { return snapshotResult(input); },
     async stagePackageUpdate(input) { calls.push(['stage', input]); return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({
@@ -956,7 +921,7 @@ test('a provider update recovered at startup re-applies its integration consumer
       return { snapshotPath: snapshotDir };
     },
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   t.after(() => store.close());
@@ -1042,7 +1007,7 @@ test('a crash between snapshot promotion and the durable commit is committed by 
       return { snapshotPath: snapshotDir };
     },
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
   const entries = [];
   const homepageService = {
@@ -1142,7 +1107,7 @@ test('the recovery action restores the recorded runtime after a failed rollback'
     },
     async snapshotPackage(input) { return snapshotResult(input); },
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({
@@ -1228,6 +1193,7 @@ test('new installs snapshot package contents before persisting configuration and
       calls.push(['snapshot', store.getAppInstanceByPackageId(input.packageId)]);
       return snapshotResult(input);
     },
+    async status() { return agentStatus(); },
   };
   const service = new AppPackageService({ agent, appsDir: v2AppsDir, store });
 
@@ -1261,6 +1227,7 @@ test('installed package details and icons remain bound to the snapshot when the 
         await fsp.cp(candidateDir, snapshotDir, { recursive: true });
         return { snapshotPath: snapshotDir };
       },
+      async status() { return agentStatus(); },
     },
     appsDir,
     store,
@@ -1320,6 +1287,7 @@ test('listPackages exposes privacy from the installed snapshot rather than the m
         await fsp.cp(candidateDir, snapshotDir, { recursive: true });
         return { snapshotPath: snapshotDir };
       },
+      async status() { return agentStatus(); },
     },
     appsDir,
     store,
@@ -1371,6 +1339,7 @@ test('listPackages surfaces current advisories for the installed version separat
         await fsp.cp(candidateDir, snapshotDir, { recursive: true });
         return { snapshotPath: snapshotDir };
       },
+      async status() { return agentStatus(); },
     },
     appsDir,
     catalogService,
@@ -1412,7 +1381,7 @@ test('a candidate whose privacy review is unreadable fails the update as a class
     async rollbackPackageUpdate() { return { status: 'installed-restored' }; },
     async snapshotPackage(input) { return snapshotResult(input); },
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', steps: ['staged'] }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
   const catalogService = {
     platformVersion: '0.20.0',
@@ -1457,7 +1426,7 @@ test('confirmed app updates are re-compared and durably staged against exact ide
     async rollbackPackageUpdate() { return { status: 'installed-restored' }; },
     async snapshotPackage(input) { return snapshotResult(input); },
     async stagePackageUpdate(input) { stagedCalls.push(input); return { snapshotPath: '/state/candidate', steps: ['staged'] }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
   const catalogService = {
     platformVersion: '0.20.0',
@@ -1485,12 +1454,11 @@ test('confirmed app updates are re-compared and durably staged against exact ide
   store.close();
 });
 
-// An agent that could stage and build but not activate/rollback/promote used to
-// be accepted and then abandoned mid-transaction, leaving the operation row
-// running forever and every later update refused until restart. That tier
-// cannot legitimately exist under the managed-update rule, so it is refused
-// before any durable update work begins.
-test('an agent that cannot apply updates end to end is refused before any update work begins', async () => {
+// An update abandoned mid-transaction used to leave the operation row running
+// forever and every later update refused until restart. An agent Suite Manager
+// did not ship with is the state that produced it, so it is refused before any
+// durable update work begins.
+test('an agent on another contract version is refused before any update work begins', async () => {
   const root = await tempStateDir();
   const candidateDir = path.join(root, 'candidate');
   await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
@@ -1501,8 +1469,10 @@ test('an agent that cannot apply updates end to end is refused before any update
   const candidateDigest = digestAppPackage(candidateDir);
   const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'b'.repeat(40), trust: 'mos-reviewed' };
   const stagedCalls = [];
-  // The client methods exist (a current Suite Manager), but the agent on the
-  // host only declares the stage/build half of the update contract.
+  // Installed by a matching pair, then left behind by an update that applied
+  // Suite Manager without its agent — the only way this state is reachable. The
+  // client methods all exist; none of them may be reached.
+  let contractVersion = APP_AGENT_CONTRACT_VERSION;
   const agent = {
     async activatePackageUpdate() { throw new Error('should not be called'); },
     async buildPackageUpdate() { throw new Error('should not be called'); },
@@ -1510,7 +1480,7 @@ test('an agent that cannot apply updates end to end is refused before any update
     async rollbackPackageUpdate() { throw new Error('should not be called'); },
     async snapshotPackage(input) { return snapshotResult(input); },
     async stagePackageUpdate(input) { stagedCalls.push(input); return { snapshotPath: '/state/candidate', steps: ['staged'] }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build'], contractVersion: 3 }; },
+    async status() { return agentStatus({ contractVersion }); },
   };
   const catalogService = {
     platformVersion: '0.20.0',
@@ -1520,10 +1490,11 @@ test('an agent that cannot apply updates end to end is refused before any update
   const service = new AppPackageService({ agent, appsDir: v2AppsDir, catalogService, store });
   await service.installPackage('stirling-pdf');
   const comparison = await service.preparePackageUpdate('stirling-pdf');
+  contractVersion = APP_AGENT_CONTRACT_VERSION - 1;
 
   await assert.rejects(
     () => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf')),
-    (error) => error.code === 'APP_UPDATE_STAGING_UNAVAILABLE' && error.statusCode === 503,
+    (error) => error.code === 'APP_AGENT_CONTRACT_MISMATCH' && error.statusCode === 503,
   );
   assert.equal(stagedCalls.length, 0);
   assert.equal(store.getAppInstanceByPackageId('stirling-pdf').packageVersion, manifest.version);
@@ -1531,12 +1502,12 @@ test('an agent that cannot apply updates end to end is refused before any update
   // permanently "already running" update.
   await assert.rejects(
     () => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf')),
-    (error) => error.code === 'APP_UPDATE_STAGING_UNAVAILABLE',
+    (error) => error.code === 'APP_AGENT_CONTRACT_MISMATCH',
   );
   store.close();
 });
 
-test('contract v6 app updates activate, promote, and commit candidate identity as one operation', async () => {
+test('app updates activate, promote, and commit candidate identity as one operation', async () => {
   const root = await tempStateDir();
   const candidateDir = path.join(root, 'candidate');
   await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
@@ -1555,7 +1526,7 @@ test('contract v6 app updates activate, promote, and commit candidate identity a
     async rollbackPackageUpdate(input) { calls.push(['rollback', input]); return { status: 'installed-restored' }; },
     async snapshotPackage(input) { return snapshotResult(input); },
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
   const catalogService = { platformVersion: '0.20.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } };
   const store = new SuiteManagerStore(path.join(root, 'state'));
@@ -1616,7 +1587,7 @@ test('an official candidate that ships a privacy review updates and keeps its re
       return { snapshotPath: snapshotDir };
     },
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({
@@ -1669,7 +1640,7 @@ test('app updates replace an applied Homepage entry and retain its applied proje
       async rollbackPackageUpdate() { return { status: 'installed-restored' }; },
       async snapshotPackage(input) { return snapshotResult(input); },
       async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
-      async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+      async status() { return agentStatus(); },
     },
     appsDir: v2AppsDir,
     catalogService: { platformVersion: '0.20.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
@@ -1712,7 +1683,7 @@ test('startup classifies every interrupted update boundary into an actionable re
   for (const [stage, expectedState] of cases) {
     const root = await tempStateDir();
     const store = new SuiteManagerStore(root);
-    const service = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); } }, appsDir: v2AppsDir, store });
+    const service = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); }, async status() { return agentStatus(); } }, appsDir: v2AppsDir, store });
     await service.installPackage('stirling-pdf');
     const instance = store.getAppInstanceByPackageId('stirling-pdf');
     const operationId = `interrupted-${stage}`;
@@ -1761,6 +1732,7 @@ test('legacy instances migrate only from an exactly matching validated package',
         await fsp.cp(path.join(v2AppsDir, input.packageId), snapshotPath, { recursive: true });
         return { snapshotPath };
       },
+      async status() { return agentStatus(); },
     },
     appsDir: v2AppsDir,
     store,
@@ -1802,7 +1774,7 @@ test('a malformed privacy review degrades to recovery at migration and a 409 at 
     operationId: 'legacy-malformed-review-operation',
     projections: renderDryRunProjections(manifest, []),
   });
-  const service = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); } }, appsDir, store });
+  const service = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); }, async status() { return agentStatus(); } }, appsDir, store });
 
   const results = await service.migrateLegacyPackages();
   assert.deepEqual(results, [{ packageId: 'stirling-pdf', status: 'needs-package-recovery' }]);
@@ -1810,7 +1782,7 @@ test('a malformed privacy review degrades to recovery at migration and a 409 at 
 
   const freshStore = new SuiteManagerStore(path.join(root, 'fresh-state'));
   t.after(() => freshStore.close());
-  const freshService = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); } }, appsDir, store: freshStore });
+  const freshService = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); }, async status() { return agentStatus(); } }, appsDir, store: freshStore });
   await assert.rejects(
     () => freshService.installPackage('stirling-pdf'),
     (error) => error.code === 'APP_PACKAGE_INVALID' && error.statusCode === 409,
@@ -1825,6 +1797,7 @@ test('snapshot failure leaves no app configuration or install record', async () 
       async snapshotPackage() {
         throw Object.assign(new Error('digest mismatch'), { code: 'APP_PACKAGE_DIGEST_MISMATCH' });
       },
+      async status() { return agentStatus(); },
     },
     appsDir: v2AppsDir,
     store,
@@ -1851,6 +1824,7 @@ test('public URL reconciliation reapplies installed app routes and Homepage app 
     async checkHealth() {
       return { status: 'healthy' };
     },
+    async status() { return agentStatus(); },
   };
   const homepageCalls = [];
   const homepageService = {
@@ -1906,6 +1880,7 @@ test('public URL reconciliation keeps Homepage regeneration separate from per-ap
     async checkHealth() {
       return { status: 'healthy' };
     },
+    async status() { return agentStatus(); },
   };
   const homepageCalls = [];
   const homepageService = {
@@ -1959,6 +1934,7 @@ test('public URL reconciliation keeps disabled apps out of runtime reapply', asy
       calls.push(input);
       return { status: 'applied', steps: [] };
     },
+    async status() { return agentStatus(); },
     async stop() {
       return { status: 'stopped', steps: [] };
     },
@@ -2002,6 +1978,7 @@ test('integration lifecycle recovers provider restart and reports disabled/unins
       calls.push(['remove', input.packageId]);
       return { status: 'removed', steps: [] };
     },
+    async status() { return agentStatus(); },
     async stop(input) {
       calls.push(['stop', input.packageId]);
       return { status: 'stopped', steps: [] };
@@ -2105,7 +2082,7 @@ function checkoutAgent(appsDir) {
     async rollbackPackageUpdate() { return { status: 'installed-restored' }; },
     async snapshotPackage(input) { return { snapshotPath: path.join(appsDir, input.packageId) }; },
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', steps: ['staged'] }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
 }
 

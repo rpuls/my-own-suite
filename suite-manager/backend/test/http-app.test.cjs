@@ -9,6 +9,7 @@ const { HOMEPAGE_AGENT_TIMEOUT_MS } = require('../src/homepage/homepage-agent-cl
 const { loopbackPortFor } = require('../src/apps/app-package-service.cjs');
 const { LoginThrottle } = require('../src/auth/login-throttle.cjs');
 
+const { APP_AGENT_CONTRACT_VERSION } = require('../../../shared/app-agent-contract.cjs');
 const { createMOSServer } = require('../src/server/http-app.cjs');
 const { createLogger } = require('../src/server/logger.cjs');
 const { TERMS_VERSION } = require('../src/setup/setup-service.cjs');
@@ -48,6 +49,7 @@ async function withServer(fn, options = {}) {
     async snapshotPackage(input) {
       return { snapshotPath: path.join(appsDir, input.packageId) };
     },
+    async status() { return { contractVersion: APP_AGENT_CONTRACT_VERSION }; },
     ...(options.appAgent || {}),
   };
   const server = createMOSServer({
@@ -1561,7 +1563,12 @@ test('app lifecycle stop, start, restart, and uninstall remove app state, data, 
     assert.equal(uninstalled.status, 200);
     assert.equal(uninstalled.json().instance, null);
     assert.equal(appCalls.map((call) => call[0]).join(','), 'apply,stop,apply,apply,remove');
-    assert.deepEqual(appCalls.at(-1)[1], { packageId: 'vaultwarden', services: ['vaultwarden'], volumes: ['data'] });
+    const remove = appCalls.at(-1)[1];
+    // The instance and the outgoing revision name everything the uninstall has
+    // to reclaim, so both travel with every removal.
+    assert.deepEqual(Object.keys(remove).sort(), ['installedSourceRevision', 'instanceId', 'packageId', 'services', 'volumes']);
+    assert.equal(remove.instanceId, instanceId);
+    assert.deepEqual([remove.packageId, remove.services, remove.volumes], ['vaultwarden', ['vaultwarden'], ['data']]);
     assert.equal(homepageCalls.some((call) => call[0] === 'removeLink' && call[1].id === instanceId), true);
     assert.doesNotMatch(JSON.stringify(appCalls), /rmi/u);
 

@@ -9,6 +9,7 @@ const {
   AppPackageServiceError,
   appPublicIdentity,
   appRouteForHomepage,
+  assertAppAgentContract,
   capabilityMatches,
   createConfigRows,
   digestFor,
@@ -120,9 +121,9 @@ class AppPackageService {
   // of `docker build`, after the download, the gate, and the snapshot have all
   // passed. Refusing up front turns that into an answer the owner can act on.
   //
-  // An agent that cannot be asked, or is too old to answer, leaves the host
-  // unknown, and an unknown host enforces nothing: this check exists to explain
-  // a failure that was already coming, so it must never invent one.
+  // An agent that cannot be asked leaves the host unknown, and an unknown host
+  // enforces nothing: this check exists to explain a failure that was already
+  // coming, so it must never invent one.
   async assertArchitectureSupported(manifest, agentStatus = null) {
     const status = agentStatus || await Promise.resolve(this.agent?.status?.()).catch(() => null);
     const errors = validateArchitectureCompatibility(manifest, hostArchitectureOf(status));
@@ -1273,7 +1274,9 @@ class AppPackageService {
     if (!this.agent?.snapshotPackage) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App package snapshot system agent is unavailable.', 503);
     }
-    await this.assertArchitectureSupported(manifest);
+    const agentStatus = await Promise.resolve(this.agent.status?.()).catch(() => null);
+    assertAppAgentContract(agentStatus);
+    await this.assertArchitectureSupported(manifest, agentStatus);
     const at = this.now().toISOString();
     const manifestDigest = digestFor(manifest);
     // Digesting parses privacy-review.json and validates package contents, so
@@ -1458,10 +1461,8 @@ class AppPackageService {
     if (!this.agent?.snapshotExternalPackage) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App package snapshot system agent is unavailable.', 503);
     }
-    const agentStatus = await this.agent.status().catch(() => ({ capabilities: [] }));
-    if (!agentStatus.capabilities?.includes('apps.package.snapshot.external')) {
-      throw new AppPackageServiceError('APP_EXTERNAL_INSTALL_UNAVAILABLE', 'The installed app agent cannot snapshot external app packages.', 503);
-    }
+    const agentStatus = await this.agent.status().catch(() => null);
+    assertAppAgentContract(agentStatus);
     await this.assertArchitectureSupported(manifest, agentStatus);
     this.assertRouteHostsAvailable(manifest, packageId);
 
@@ -1778,24 +1779,21 @@ class AppPackageService {
     if (!['installed', 'disabled'].includes(instance.status)) {
       throw new AppPackageServiceError('APP_INVALID_TRANSITION', 'This app cannot be uninstalled from its current state.', 409);
     }
-
+    // Deliberately not gated on the app agent's contract version, unlike
+    // installing or updating. Removing a broken app is how an owner recovers,
+    // and a handshake that has to succeed first would take that away in exactly
+    // the state that needs it.
     const projections = this.store.getAppProjections(instance.id);
     const composeProjection = projections.find((projection) => projection.kind === 'compose');
     const services = composeProjection?.content?.services || [];
     const volumes = composeProjection?.content?.volumes || [];
     const homepage = await this.removePackageFromHomepage(instance, homepageService);
-    // An agent that cannot be asked what it supports is treated as one that
-    // supports nothing here, because uninstalling is worth more than reclaiming.
-    const agentStatus = await Promise.resolve(this.agent.status?.()).catch(() => null) || { capabilities: [] };
     // Deleting the instance row below drops the last reference to this app's
-    // snapshot directory and to the revision naming its images, so an agent that
-    // can reclaim them has to be told before that happens. Sent only to an agent
-    // that asked for it: an older one rejects unknown removal fields outright,
-    // and an uninstall it used to handle must not start failing.
+    // snapshot directory and to the revision naming its images, so the agent is
+    // told both before that happens, or they are unreachable for good.
     const agent = await this.agent.remove({
-      ...(agentStatus.capabilities?.includes('apps.package.remove.reclaim')
-        ? { instanceId: instance.id, ...(instance.sourceRevision ? { installedSourceRevision: instance.sourceRevision } : {}) }
-        : {}),
+      installedSourceRevision: instance.sourceRevision,
+      instanceId: instance.id,
       packageId: instance.packageId,
       services: services.map((service) => service.id),
       volumes,

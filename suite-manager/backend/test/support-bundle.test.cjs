@@ -137,6 +137,31 @@ test('secrets are gathered from the files on disk, including orphaned ones', () 
   fs.rmSync(root, { force: true, recursive: true });
 });
 
+// An app agent left behind by a half-applied update is invisible everywhere
+// else: the apps keep running, and only installing, updating or removing one
+// reports it. The file has to name it, and name both numbers.
+test('an app agent on another contract version is a finding, and both numbers are in PLATFORM', () => {
+  const { APP_AGENT_CONTRACT_VERSION } = require('../../../shared/app-agent-contract.cjs');
+  const render = (appAgentContractVersion) => buildSupportBundle({
+    collection: healthyCollection(),
+    now,
+    platform: { appAgentContractVersion },
+    secrets: ['x'],
+  }).text;
+
+  const behind = render(APP_AGENT_CONTRACT_VERSION - 1);
+  assert.ok(behind.includes(`reports contract version ${APP_AGENT_CONTRACT_VERSION - 1} but this MOS needs ${APP_AGENT_CONTRACT_VERSION}`));
+  assert.ok(behind.includes(`App agent          contract ${APP_AGENT_CONTRACT_VERSION - 1}, MOS needs ${APP_AGENT_CONTRACT_VERSION}`));
+
+  const unreachable = render(null);
+  assert.ok(unreachable.includes('The app runtime agent could not be reached'));
+  assert.ok(unreachable.includes('App agent          contract unreachable'));
+
+  const current = render(APP_AGENT_CONTRACT_VERSION);
+  assert.ok(current.includes('Nothing obviously wrong was detected'));
+  assert.ok(current.includes(`App agent          contract ${APP_AGENT_CONTRACT_VERSION}, MOS needs ${APP_AGENT_CONTRACT_VERSION}`));
+});
+
 test('a missing secret directory yields no secrets rather than throwing', () => {
   assert.deepEqual(collectRedactionSecrets({ httpsSecretPath: '/nope', secretDir: '/does/not/exist' }), []);
   assert.deepEqual(collectRedactionSecrets({}), []);

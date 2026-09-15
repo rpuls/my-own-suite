@@ -1133,6 +1133,7 @@ function createMOSServer({
         }
         const bundle = await assembleSupportBundle({
           agent: diagnosticsAgent,
+          appAgent,
           catalogStatus: catalogService.status(),
           frontDoor,
           homeHost,

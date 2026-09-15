@@ -692,11 +692,8 @@ class SystemAppAdapter {
       verifySnapshotIdentity(candidate, { errorMessage: 'CANDIDATE_PACKAGE_CHANGED', expectedDigest: candidateDigest, packageId });
       // Named from the manifest the digest check above just proved, so the caller
       // cannot widen a reclamation by describing the outgoing package as
-      // something other than what is actually on disk. An older Suite Manager
-      // sends no revision, and then nothing is reclaimed.
-      const superseded = installedSourceRevision
-        ? packageImageTags({ manifest: installedManifest, packageDigest: expectedInstalledDigest, packageId, sourceRevision: installedSourceRevision })
-        : [];
+      // something other than what is actually on disk.
+      const superseded = packageImageTags({ manifest: installedManifest, packageDigest: expectedInstalledDigest, packageId, sourceRevision: installedSourceRevision });
       const evicted = await readRetainedImageTags(previousImages);
       await fsp.rm(displaced, { force: true, recursive: true });
       await fsp.rename(installed, displaced);
@@ -966,25 +963,21 @@ class SystemAppAdapter {
   // Everything an uninstalled app leaves behind on disk. The instance row is
   // deleted as soon as this returns, taking with it the only reference to this
   // directory and to the revision that names the images built from it, so
-  // whatever is not reclaimed here is unreachable for good. An older Suite
-  // Manager names no instance, and then this is skipped entirely.
+  // whatever is not reclaimed here is unreachable for good.
   async discardInstanceSnapshot({ installedSourceRevision, instanceId, packageId }) {
-    if (!instanceId) return { imagesReclaimed: 0, snapshotRemoved: false };
     const instanceRoot = path.join(this.appPackageRoot, instanceId);
     const installed = path.join(instanceRoot, 'installed');
     let superseded = [];
-    if (installedSourceRevision) {
-      try {
-        // Named from the snapshot on disk and digested here rather than taken
-        // from the caller: a package that is not the one this instance installed
-        // yields tags that name nothing, and nothing is reclaimed.
-        const manifest = JSON.parse(await fsp.readFile(path.join(installed, 'manifest.json'), 'utf8'));
-        if (manifest.id === expectedManifestId(packageId)) {
-          superseded = packageImageTags({ manifest, packageDigest: digestAppPackage(installed, { manifest }), packageId, sourceRevision: installedSourceRevision });
-        }
-      } catch {
-        superseded = [];
+    try {
+      // Named from the snapshot on disk and digested here rather than taken
+      // from the caller: a package that is not the one this instance installed
+      // yields tags that name nothing, and nothing is reclaimed.
+      const manifest = JSON.parse(await fsp.readFile(path.join(installed, 'manifest.json'), 'utf8'));
+      if (manifest.id === expectedManifestId(packageId)) {
+        superseded = packageImageTags({ manifest, packageDigest: digestAppPackage(installed, { manifest }), packageId, sourceRevision: installedSourceRevision });
       }
+    } catch {
+      superseded = [];
     }
     const retained = await readRetainedImageTags(path.join(instanceRoot, 'previous-images.json'));
     const imagesReclaimed = await this.reclaimImages([...superseded, ...retained]);

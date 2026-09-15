@@ -51,7 +51,7 @@ type UpdateComparison = {
   permissions: { added: string[]; candidate: string[]; installed: string[]; removed: string[] };
   requiredInput: Array<{ default?: unknown; id: string; label: string; secret: boolean; type: string }>;
   updateStatus: 'current' | 'installed-newer' | 'update-available';
-  validation: { agentCapability: string; errors: string[] };
+  validation: { errors: string[] };
 };
 
 type AppPackageSummary = {

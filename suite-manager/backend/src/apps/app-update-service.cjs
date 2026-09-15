@@ -2,8 +2,10 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { appAgentContractVersionOf } = require('../../../../shared/app-agent-contract.cjs');
 const {
   AppPackageServiceError,
+  assertAppAgentContract,
   createConfigRows,
   digestFor,
   homepageEntryForHomepage,
@@ -402,10 +404,9 @@ class AppUpdateService {
     let candidate;
     try {
       candidate = await this.downloadUpdateCandidate(instance);
-      const agentStatus = await this.agent?.status().catch(() => ({ capabilities: [] })) || { capabilities: [] };
+      const agentStatus = await this.agent?.status().catch(() => null) || null;
       return compareAppPackages({
-        agentCapabilities: Array.isArray(agentStatus.capabilities) ? agentStatus.capabilities : [],
-        agentContractVersion: Number.isInteger(agentStatus.contractVersion) ? agentStatus.contractVersion : 0,
+        agentContractVersion: appAgentContractVersionOf(agentStatus),
         candidate,
         hostArchitecture: hostArchitectureOf(agentStatus),
         installed: { ...installedPackage, packageDigest: instance.packageDigest, source: {
@@ -461,11 +462,16 @@ class AppUpdateService {
     let addedConfig = [];
     let secrets = [];
     try {
-      candidate = await this.downloadUpdateCandidate(instance);
+      // An update is one transaction through promote, so an agent Suite Manager
+      // did not ship with is refused before anything is downloaded and before any
+      // durable operation record exists, rather than abandoned part way through —
+      // which used to leave the operation row running forever and every later
+      // update refused until restart.
       const agentStatus = await this.agent.status();
+      assertAppAgentContract(agentStatus);
+      candidate = await this.downloadUpdateCandidate(instance);
       const comparison = compareAppPackages({
-        agentCapabilities: Array.isArray(agentStatus.capabilities) ? agentStatus.capabilities : [],
-        agentContractVersion: Number.isInteger(agentStatus.contractVersion) ? agentStatus.contractVersion : 0,
+        agentContractVersion: appAgentContractVersionOf(agentStatus),
         candidate,
         hostArchitecture: hostArchitectureOf(agentStatus),
         installed: { ...installedPackage, packageDigest: instance.packageDigest, source: {
@@ -504,16 +510,6 @@ class AppUpdateService {
       // same way its install was, so an update cannot take over a web address
       // another app already answers on.
       if (candidate.source?.trust !== 'mos-reviewed') this.apps.assertRouteHostsAvailable(candidate.manifest, instance.packageId);
-      // An update is one transaction through promote. An agent that could stage
-      // and build but not activate/rollback/promote used to be accepted and then
-      // abandoned mid-transaction, leaving the operation row running forever and
-      // every later update refused until restart. Under the repo's managed-update
-      // rule that tier cannot legitimately exist, so it is refused here — before
-      // any durable operation record is created — instead of half-served.
-      const requiredUpdateCapabilities = ['apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'];
-      if (agentStatus.contractVersion < 6 || requiredUpdateCapabilities.some((capability) => !agentStatus.capabilities?.includes(capability))) {
-        throw new AppPackageServiceError('APP_UPDATE_STAGING_UNAVAILABLE', 'The installed app agent cannot apply package updates end to end. Update MOS so its app agent is current, then retry this app update.', 503);
-      }
       const installedConfigRows = this.store.getAppConfig(instance.id).map((row) => (
         row.secretRef ? { ...row, rawValue: readSecretValue(this.secretDir, row.secretRef) } : row
       ));
@@ -701,16 +697,11 @@ class AppUpdateService {
       const rollbackSafe = candidate.manifest.update?.rollback === 'safe';
       // The revision names the images the outgoing package was built into, which
       // is the only thing standing between an updated app and a copy of every
-      // image it has ever run. It is sent only to an agent that asked for it: an
-      // older agent rejects unknown promotion fields outright, and refusing a
-      // promotion at this point would strand an update whose candidate is
-      // already serving traffic.
+      // image it has ever run.
       const promoted = await this.agent.promotePackageUpdate({
         candidateDigest: candidate.packageDigest,
         expectedInstalledDigest: instance.packageDigest,
-        ...(agentStatus.capabilities?.includes('apps.package.update.reclaim') && instance.sourceRevision
-          ? { installedSourceRevision: instance.sourceRevision }
-          : {}),
+        installedSourceRevision: instance.sourceRevision,
         instanceId: instance.id,
         packageId,
         rollbackSafe,
