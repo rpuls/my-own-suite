@@ -4,6 +4,8 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-09-15
+
 ### Added
 
 - **MOS backs itself up before it updates itself, to one destination you choose for everything automatic.** Under **Backup & Restore**, the place you select under **Where backups go** is where scheduled backups and the backup before a MOS update go; a backup you take yourself goes there too unless you pick another for that one backup. Clicking Update takes a full backup first and only then applies. If that destination is not connected the update waits and starts by itself when it is back, and offers **Cancel update** or **Update without a backup** meanwhile; if the backup cannot be taken at all the update stops before changing anything. Backups and updates no longer collide: each waits for or refuses the other. These backups count towards your keep-last number like scheduled ones. App updates are not backed up first. A schedule set up before this release loses its destination: select one after updating.
