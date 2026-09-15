@@ -25,7 +25,7 @@
     "onlyoffice": {
       "appVersion": "9.3.1",
       "minimumMosVersion": "0.20.0",
-      "packageDigest": "sha256:391fb6ba755a83d537c5ff3bece1257401126a4354c0c2820eba80c28e19f8dc",
+      "packageDigest": "sha256:cfa1c3a88b53e7a6caddfc276de2f7e984336984e9e08bc4766c588a5542416d",
       "packageVersion": "0.2.5",
       "path": "apps/onlyoffice",
       "privacy": {

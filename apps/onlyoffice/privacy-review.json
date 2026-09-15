@@ -5,7 +5,7 @@
   "expiresAt": "2027-01-23T00:00:00.000Z",
   "scope": {
     "packageVersion": "0.2.5",
-    "packageDigest": "sha256:391fb6ba755a83d537c5ff3bece1257401126a4354c0c2820eba80c28e19f8dc",
+    "packageDigest": "sha256:cfa1c3a88b53e7a6caddfc276de2f7e984336984e9e08bc4766c588a5542416d",
     "source": {
       "kind": "official-git",
       "repository": "https://github.com/rpuls/my-own-suite",
@@ -101,7 +101,7 @@
   "policies": [
     {
       "kind": "license",
-      "url": "https://github.com/ONLYOFFICE/DocumentServer/blob/v9.3.1/LICENSE",
+      "url": "https://github.com/ONLYOFFICE/DocumentServer/blob/v9.3.1/LICENSE.txt",
       "retrievedAt": "2026-07-23",
       "publisher": "Ascensio System SIA (ONLYOFFICE)"
     }

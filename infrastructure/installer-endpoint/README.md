@@ -10,4 +10,4 @@ The Worker asks GitHub for the configured branch tip, validates the returned ful
 
 The endpoint has been observed returning `503` intermittently, at least once with GitHub answering `403`. A `curl … | bash` install turns that into installing nothing, so the DigitalOcean smoke pre-flights the endpoint before creating a Droplet and the cloud-init download keeps the failing response body in `/var/log/cloud-init-output.log`. The cause is not established well enough to design around yet; the next failure should say what it was.
 
-Inspect the endpoint with `curl https://get-dev.myownsuite.org/install.sh`, not `curl -I`. The Worker answers `GET` only, so a `HEAD` request returns 404 and looks like an outage that is not there. Use `curl -sD - -o /dev/null` when you want the headers.
+Inspect the endpoint with `curl https://get-dev.myownsuite.org/install.sh`. `HEAD` is answered too, with the same headers and no body, so `curl -I` reports what is actually being served rather than a 404 that looks like an outage.

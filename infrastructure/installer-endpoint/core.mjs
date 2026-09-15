@@ -62,20 +62,50 @@ export async function resolveLatestStableRef(fetchImpl = fetch) {
   return { label: tag, ref: (await resolveInstallRef(tag, fetchImpl)).ref };
 }
 
+// How long a resolved ref is reused before GitHub is asked again. Every request
+// used to spend two unauthenticated GitHub API calls, and that budget is counted
+// per source address - which for a Worker is an address shared with everyone else
+// on the colo. So the endpoint answered `Installer unavailable` on requests
+// GitHub had no reason to refuse, intermittently and without warning.
+const RESOLUTION_TTL_MS = 5 * 60 * 1000;
+
 // selectSource(env) returns `{ stable: true }` or `{ branch }`.
-export function createInstallerWorker(selectSource, { fetchImpl = null } = {}) {
+//
+// A resolution is cached for RESOLUTION_TTL_MS, and if GitHub then fails, the
+// last good one is served rather than nothing: a release a few minutes stale
+// still installs, while a 503 is a machine that installs nothing at all. Failing
+// closed is kept for the case that deserves it - never having resolved a ref, so
+// there is no source to pin and the alternative would be inventing one.
+export function createInstallerWorker(selectSource, { cache = new Map(), fetchImpl = null, now = () => Date.now() } = {}) {
   return { async fetch(request, env) {
     const path = new URL(request.url).pathname;
-    if (request.method !== 'GET' || (path !== '/' && path !== '/install.sh')) return new Response('Not found\n', { status: 404 });
-    try {
-      const source = selectSource(env) || {};
+    const method = request.method;
+    if ((method !== 'GET' && method !== 'HEAD') || (path !== '/' && path !== '/install.sh')) return new Response('Not found\n', { status: 404 });
+    const source = selectSource(env) || {};
+    const key = source.stable ? 'stable' : `branch:${source.branch}`;
+    const fresh = cache.get(key);
+    let resolved = fresh && now() - fresh.at < RESOLUTION_TTL_MS ? fresh.value : null;
+    let stale = null;
+    if (!resolved) {
       const http = fetchImpl || fetch;
-      const { label, ref } = source.stable ? await resolveLatestStableRef(http) : await resolveInstallRef(source.branch, http);
-      return new Response(renderInstaller(ref), { headers: {
-        'Cache-Control': 'no-store', 'Content-Type': 'text/x-shellscript; charset=utf-8',
-        'X-Content-Type-Options': 'nosniff', 'X-MOS-Install-Ref': ref,
-        'X-MOS-Install-Source': label,
-      }});
-    } catch (error) { return new Response(`Installer unavailable: ${error.message}\n`, { status: 503 }); }
+      try {
+        resolved = source.stable ? await resolveLatestStableRef(http) : await resolveInstallRef(source.branch, http);
+        cache.set(key, { at: now(), value: resolved });
+      } catch (error) {
+        if (!fresh) return new Response(`Installer unavailable: ${error.message}\n`, { status: 503 });
+        resolved = fresh.value;
+        stale = error.message;
+      }
+    }
+    const script = renderInstaller(resolved.ref);
+    const headers = {
+      'Cache-Control': 'no-store', 'Content-Type': 'text/x-shellscript; charset=utf-8',
+      'X-Content-Type-Options': 'nosniff', 'X-MOS-Install-Ref': resolved.ref,
+      'X-MOS-Install-Source': resolved.label,
+    };
+    // Names why a ref was reused past its TTL, so the next person diagnosing this
+    // reads GitHub's own answer instead of guessing at a healthy-looking response.
+    if (stale) headers['X-MOS-Install-Stale'] = stale;
+    return new Response(method === 'HEAD' ? null : script, { headers });
   }};
 }
