@@ -26,9 +26,28 @@ export async function createBackupIfAvailable(page, env) {
   const reasons = (status.destinations || []).map((item) => `${item.label || item.id}: ${item.notReadyReason || 'ready'}`).join('; ');
   expect(usable[0], `Hyper-V full E2E needs a ready backup destination (${reasons || 'none reported'})`).toBeTruthy();
   const destination = usable[0];
-  await page.getByRole('button', { name: new RegExp(destination.label.replace(/[-/\\^$*+?.()|[\]{}]/gu, '\\$&'), 'iu') }).click().catch(() => undefined);
+  // The row's own control, not every mention of the label on the page.
+  await page.getByRole('button', { exact: true, name: `Use ${destination.label} for backups` }).click();
+
+  // MOS refuses to write a backup until the owner has confirmed they saved the
+  // recovery key, so Back up now stays disabled until this is done. Save it the
+  // way an owner does rather than reaching past the rule.
+  if (!status.recoveryKey?.acknowledged) {
+    await page.getByRole('button', { name: /Show key/i }).click();
+    const keyDialog = page.getByRole('dialog', { name: /Your recovery key/i });
+    await expect(keyDialog.getByRole('checkbox')).toBeVisible({ timeout: 30000 });
+    await keyDialog.getByRole('checkbox').check();
+    await keyDialog.getByRole('button', { name: /^Done$/u }).click();
+    await expect(keyDialog).toBeHidden({ timeout: 30000 });
+    const saved = await apiJson(page, '/suite-manager/api/backups/status');
+    expect(saved.recoveryKey?.acknowledged, 'Saving the recovery key should unblock backups').toBe(true);
+  }
+
   await page.getByRole('button', { name: /Back up now/i }).click();
-  await expect(page.getByRole('status')).toContainText(/backup|saving|pausing|starting/i, { timeout: 30000 });
+  await page.getByRole('button', { name: /Start backup/i }).click();
+  // The banner swaps Back up now for the running line while a backup is in
+  // flight, so this is the screen itself saying it started rather than the API.
+  await expect(page.getByText(/Apps come back on their own/iu)).toBeVisible({ timeout: 30000 });
   const deadline = Date.now() + 15 * 60 * 1000;
   let current = null;
   while (Date.now() < deadline) {
@@ -38,7 +57,7 @@ export async function createBackupIfAvailable(page, env) {
   }
   expect(current?.lastJob?.status, `Backup job should succeed (${current?.lastJob?.error || 'no reason reported'})`).toBe('succeeded');
   expect((current?.backups || []).length, 'Backup list should include at least one bundle').toBeGreaterThan(0);
-  await expect(page.locator('body')).toContainText(/Backup completed|Restore from a backup/i, { timeout: 60000 });
+  await expect(page.getByText(/Your backups are up to date/iu)).toBeVisible({ timeout: 60000 });
   await capturePageShot(page, 'backups', { fullPage: true });
   return latestBackup(current);
 }
