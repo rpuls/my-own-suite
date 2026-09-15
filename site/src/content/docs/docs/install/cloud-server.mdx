@@ -88,7 +88,7 @@ There is no setting for this in Suite Manager yet, and moving an existing instal
 
 ## Backup destination
 
-Attach a separate persistent block-storage volume through your provider, format and mount it on this server, then select that mounted volume in Suite Manager. A USB disk attached to your own computer is not visible to a rented server. MOS has no direct object-storage destination today; provider snapshots are an additional provider-managed recovery layer, not a consistency-checked MOS backup. Use encrypted storage and read [Back up and restore](/docs/guides/backup-restore/) before storing data.
+Attach a separate persistent block-storage volume through your provider, format and mount it on this server, then select that mounted volume in Suite Manager. A USB disk attached to your own computer is not visible to a rented server. You can also connect an S3-compatible bucket, which needs nothing mounted and can sit at a different company from the server. Provider snapshots are an additional provider-managed recovery layer, not a consistency-checked MOS backup. Use encrypted storage and read [Back up and restore](/docs/guides/backup-restore/) before storing data.
 
 ## Good to know
 

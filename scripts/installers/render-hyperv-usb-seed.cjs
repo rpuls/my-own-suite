@@ -5,7 +5,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const YAML = require('yaml');
 
-const { renderBootstrapPlan } = require('./bootstrap-contract.cjs');
+const { DEFAULT_REPO_URL, renderBootstrapPlan } = require('./bootstrap-contract.cjs');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const configDir = path.join(repoRoot, 'infrastructure', 'self-host', 'autoinstall', 'installer-config');
@@ -23,7 +23,6 @@ const configEnvOverrides = {
   TIMEZONE: 'MOS_TIMEZONE',
   USERNAME: 'MOS_HYPERV_USERNAME',
 };
-const placeholderLinuxPassword = 'change-me-before-build';
 // The Hyper-V lab is a disposable VM that gets reinstalled constantly and that
 // both humans and coding agents need to SSH into on demand. Making that depend
 // on remembering to set LINUX_PASSWORD first is a trap, so the lab profile
@@ -77,26 +76,33 @@ function resolveSmokeRepoRef(env = process.env) {
   return defaultSmokeRepoRef;
 }
 
-function assertSmokeRepoRefContainsRootLayout(repoRef) {
-  const requiredPaths = [
-    'package.json',
-    'scripts/installers/bootstrap-contract.cjs',
-    'infrastructure/caddy/Dockerfile',
-    'suite-manager/backend/src/server/start.cjs',
-  ];
-
-  for (const requiredPath of requiredPaths) {
-    const exists = spawnSync('git', ['cat-file', '-e', `${repoRef}:${requiredPath}`], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-    });
-    if (exists.status !== 0) {
-      throw new Error(
-        `MOS_SMOKE_REPO_REF=${repoRef} does not contain '${requiredPath}'. ` +
-        'Commit and push the root-layout branch, or set MOS_SMOKE_REPO_REF to a branch/tag that contains it.',
-      );
-    }
+// The guest clones MOS_REPO_URL and checks out MOS_REPO_REF, so the ref has to
+// exist on the remote — a branch that only exists on this machine produces an
+// image that cannot possibly install. This is checked separately from the
+// content check below because they fail for opposite reasons and the local one
+// cannot see the difference: `git cat-file` resolves against local objects, so
+// an unpushed branch passes it and then costs ninety minutes of installer
+// timeout to discover.
+function assertSmokeRepoRefIsPushed(repoRef, repoUrl) {
+  const remote = spawnSync('git', ['ls-remote', '--heads', '--tags', repoUrl, repoRef], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  });
+  if (remote.status !== 0) {
+    // Being unable to ask is not the same as a missing ref; say which happened
+    // rather than blaming the branch for the network.
+    console.log(`[mos-smoke] Could not reach ${repoUrl} to confirm '${repoRef}' is pushed; continuing.`);
+    return;
   }
+  if (String(remote.stdout || '').trim()) return;
+  // A full commit id never appears in ls-remote by name, so it is accepted when
+  // some remote branch already contains it.
+  if (/^[0-9a-f]{7,40}$/iu.test(repoRef) && git(['branch', '--remotes', '--contains', repoRef])) return;
+  throw new Error(
+    `The lab installs by cloning ${repoUrl} and checking out '${repoRef}', which does not exist there. ` +
+    `Push it (git push -u origin ${repoRef}), or build the image against a pushed branch ` +
+    '(MOS_SMOKE_REPO_REF=staging). The ref defaults to the branch you have checked out.',
+  );
 }
 
 function parseEnvFile(filePath) {
@@ -321,10 +327,7 @@ function renderSeed(config, options = {}) {
   // anything; an explicit LINUX_PASSWORD overrides it. Neither applies to the
   // default profile, which is the shape a shareable ISO must have.
   const profile = options.profile || resolveSeedProfile();
-  const configuredPassword = String(config.LINUX_PASSWORD || '').trim();
-  const explicitPassword = configuredPassword && configuredPassword !== placeholderLinuxPassword
-    ? configuredPassword
-    : '';
+  const explicitPassword = String(config.LINUX_PASSWORD || '').trim();
   const fixedPassword = explicitPassword || (profile === 'lab' ? labLinuxPassword : '');
   const consoleLoginHandover = fixedPassword ? 'preconfigured' : 'first-boot';
 
@@ -405,7 +408,7 @@ function renderSeed(config, options = {}) {
 
 function main() {
   const smokeRepoRef = resolveSmokeRepoRef();
-  assertSmokeRepoRefContainsRootLayout(smokeRepoRef);
+  assertSmokeRepoRefIsPushed(smokeRepoRef, DEFAULT_REPO_URL);
   const rendered = renderSeed(loadSmokeConfig(), { repoRef: smokeRepoRef });
   fs.rmSync(defaultOutputDir, { force: true, recursive: true });
   fs.mkdirSync(defaultOutputDir, { recursive: true });
@@ -448,7 +451,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  assertSmokeRepoRefContainsRootLayout,
+  assertSmokeRepoRefIsPushed,
   consoleLoginAcknowledgedFileName,
   consoleLoginFileName,
   labLinuxPassword,

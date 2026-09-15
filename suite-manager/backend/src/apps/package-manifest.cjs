@@ -178,6 +178,7 @@ function publicPackageSummary(manifest, validationErrors = []) {
       volumes: Array.isArray(service?.volumes) ? service.volumes : [],
     }));
   return {
+    appVersion: hasText(manifest.appVersion) ? manifest.appVersion : null,
     category: hasText(manifest.category) ? manifest.category : 'unknown',
     health: isRecord(manifest.health) ? {
       type: manifest.health.type || null,

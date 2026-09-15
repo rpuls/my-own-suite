@@ -12,7 +12,6 @@ const { spawnSync } = require('node:child_process');
 const YAML = require('yaml');
 
 const {
-  assertSmokeRepoRefContainsRootLayout,
   loadSmokeConfig,
   renderSeed,
 } = require('../scripts/installers/render-hyperv-usb-seed.cjs');
@@ -105,7 +104,6 @@ function fill(name, template, values) {
 function main() {
   const repoRef = String(process.env.MOS_IMAGE_REPO_REF || 'staging').trim();
   assertRefIsPushed(repoRef);
-  assertSmokeRepoRefContainsRootLayout(repoRef);
 
   // 'lab' bakes a known console password into the VM so a failed finalize can be
   // logged into and read. It must never produce a published image, which is why

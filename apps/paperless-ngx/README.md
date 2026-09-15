@@ -53,4 +53,10 @@ Documents can be uploaded through the web interface, which is the path this pack
 
 Paperless runs database migrations on start, so the manifest declares `backupRequired: true` and brief downtime.
 
-Paperless-ngx 3.0 was a major release: it dropped API versions below 9, removed document and thumbnail encryption, replaced the Whoosh search backend with tantivy, and changed the pre/post consume script arguments. This package pins 3.0.5 as its first release, so those breaks do not apply to an upgrade path within MOS, but they matter to anyone importing an export from an older Paperless install.
+Paperless-ngx 3.0 was a major release: it dropped API versions below 9, removed document and thumbnail encryption, replaced the Whoosh search backend with tantivy, and changed the pre/post consume script arguments. This package's first release pinned 3.0.5, so those breaks do not apply to an upgrade path within MOS, but they matter to anyone importing an export from an older Paperless install.
+
+The package now pins 3.1.3, which upstream rebased onto Python 3.14 and which carries no documented breaking change from 3.0.5. It adds two scheduled tasks to the six that 3.0.5 shipped: `documents.tasks.llmindex_index` daily at 02:10, which returns immediately unless the owner has enabled AI, and `documents.tasks.cleanup_expired_share_link_bundles` daily at 02:00, which is local. It also spreads the default ten-minute mail poll across the interval using an offset derived from `PAPERLESS_SECRET_KEY`, so the schedule is per-install rather than on the exact minute.
+
+## AI Features
+
+Paperless' AI suggestions and document chat are inactive by default and MOS neither sets nor exposes their variables. They are not env-only: `AIConfig` reads `ApplicationConfiguration` first and falls back to `settings`, so an owner turns them on inside Paperless under Settings, choosing an OpenAI-compatible or Ollama backend and supplying their own model, endpoint and key. Doing so sends document text to whatever endpoint they configure, which is outside this package's privacy review; `paperless/network.py` pins every such URL to a vetted public IP and refuses private, loopback and link-local addresses unless `PAPERLESS_AI_LLM_ALLOW_INTERNAL_ENDPOINTS` is set.

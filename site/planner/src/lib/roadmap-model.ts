@@ -80,10 +80,6 @@ export interface RoadmapDocument {
     showSafeArea: boolean;
     simulateSquareCrop: boolean;
   };
-  branding: {
-    myOwnSuite: boolean;
-    siteLabel: string;
-  };
   export: {
     filename: string;
   };
@@ -335,10 +331,6 @@ export const initialRoadmap: RoadmapDocument = {
     showSafeArea: false,
     simulateSquareCrop: false,
   },
-  branding: {
-    myOwnSuite: true,
-    siteLabel: 'myownsuite.org/plan',
-  },
   export: { filename: 'digital-independence-roadmap' },
 };
 
@@ -374,7 +366,6 @@ export const presets = {
           showSafeArea: true,
           simulateSquareCrop: false,
         },
-        branding: { ...doc.branding, myOwnSuite: true },
       };
     },
   },
@@ -587,7 +578,6 @@ export function validateRoadmap(
     timeline: { ...initialRoadmap.timeline, ...value.timeline },
     theme: { ...initialRoadmap.theme, ...value.theme },
     layout: { ...initialRoadmap.layout, ...value.layout },
-    branding: { ...initialRoadmap.branding, ...value.branding },
     export: { ...initialRoadmap.export, ...value.export },
   };
   normalized.metadata.showCategories =
@@ -614,13 +604,6 @@ export function validateRoadmap(
       emphasized?: unknown;
     }
   ).emphasized;
-  // Legacy field from the original studio build; the planner ships MOS
-  // branding only.
-  delete (
-    normalized.branding as RoadmapDocument['branding'] & {
-      funkyton?: unknown;
-    }
-  ).funkyton;
   normalized.migrations = normalized.migrations.map((migration) => {
     const result: Migration = {
       ...migration,

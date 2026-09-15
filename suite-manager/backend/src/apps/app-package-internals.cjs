@@ -11,6 +11,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { appAgentContractFailure } = require('../../../../shared/app-agent-contract.cjs');
 const {
   SUPPORTED_ARCHITECTURES,
   effectiveRouteHost,
@@ -41,14 +42,23 @@ class AppPackageServiceError extends Error {
   }
 }
 
-// What the app agent says this host is, or null when it is too old to say, could
-// not be asked, or does not recognise its own host. Validated rather than
-// trusted: this value decides whether packages are refused, so an agent that
-// answers with something MOS has no vocabulary for is treated as having said
-// nothing, which enforces no declaration at all.
+// What the app agent says this host is, or null when it could not be asked or
+// does not recognise its own host. Validated rather than trusted: this value
+// decides whether packages are refused, so an agent that answers with something
+// MOS has no vocabulary for is treated as having said nothing, which enforces no
+// declaration at all.
 function hostArchitectureOf(agentStatus) {
   const reported = agentStatus?.hostArchitecture;
   return SUPPORTED_ARCHITECTURES.includes(reported) ? reported : null;
+}
+
+// Every operation that changes an app runtime passes through here first. The
+// agent ships with Suite Manager, so the only reason the two disagree is an
+// update that applied half of itself, and acting on a runtime through an agent
+// whose request shapes are unknown is worse than refusing before anything moves.
+function assertAppAgentContract(agentStatus) {
+  const failure = appAgentContractFailure(agentStatus);
+  if (failure) throw new AppPackageServiceError(failure.code, failure.message, 503);
 }
 
 function digestFor(value) {
@@ -724,6 +734,7 @@ module.exports = {
   OWNER_ENV_NAME_PATTERN,
   appPublicIdentity,
   appRouteForHomepage,
+  assertAppAgentContract,
   primaryProjectedRoute,
   capabilityMatches,
   createConfigRows,

@@ -110,6 +110,12 @@ function unitLooksTroubled(state) {
   return state.active !== 'active';
 }
 
+// What a unit reports when its state could not be read at all — the command
+// timed out or failed to run. Distinct from a real answer on purpose: `unknown`
+// is also what systemd says about a unit that does not exist, and a bundle used
+// to show a lost read as a broken service.
+const UNREAD_STATE = Object.freeze({ active: 'unread', enabled: 'unread', sub: 'unread' });
+
 function containerLooksTroubled(container) {
   if (container.state && container.state !== 'running') return true;
   return /unhealthy|restarting/iu.test(container.status || '');
@@ -148,10 +154,10 @@ class DiagnosticsAgentCore {
     const [host, units, containers] = await Promise.all([
       attempt('host', () => this.adapter.hostFacts(), {}),
       mapWithLimit(MOS_UNITS, LIMITS.concurrency, async (name) => {
-        const state = await attempt(`unit:${name}`, () => this.adapter.unitState(name), { active: 'unknown', enabled: 'unknown' });
+        const state = await attempt(`unit:${name}`, () => this.adapter.unitState(name), UNREAD_STATE);
         const troubled = name === PRIMARY_UNIT || unitLooksTroubled(state);
         const log = await attempt(`journal:${name}`, () => this.adapter.journal(name, troubled ? LIMITS.troubledLines : LIMITS.healthyLines), '');
-        return { active: state.active, enabled: state.enabled, log: boundText(log), name, sub: state.sub, troubled };
+        return { active: state.active, enabled: state.enabled, log: boundText(log), name, sub: state.sub, troubled, unread: state === UNREAD_STATE };
       }),
       attempt('containers', () => this.adapter.containers(), []).then((discovered) => mapWithLimit(
         discovered
@@ -184,6 +190,7 @@ module.exports = {
   MOS_CONTAINER_PREFIX,
   MOS_UNITS,
   PRIMARY_UNIT,
+  UNREAD_STATE,
   boundText,
   containerLooksTroubled,
   fitLogsToBudget,

@@ -88,9 +88,10 @@ function AdvisoryNotices({ advisories }: { advisories: PrivacyAdvisory[] }) {
   </div>;
 }
 
-export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSESSMENT_DOCS_URL, onClose, overrideNotice = null, packageId, packageVersion, privacy }: {
+export function PrivacyPostureDialog({ advisories, appName, appVersion, assessmentUrl = ASSESSMENT_DOCS_URL, onClose, overrideNotice = null, packageId, privacy }: {
   advisories?: PrivacyAdvisory[] | null;
   appName: string;
+  appVersion?: string | null;
   assessmentUrl?: string;
   onClose: () => void;
   // One scoped line, shown only when this instance carries owner-set
@@ -103,7 +104,6 @@ export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSE
   // promises the evidence names what leaves and who receives it, so the
   // dialog has to be able to reach it.
   packageId?: string | null;
-  packageVersion?: string | null;
   privacy: PrivacyReviewSummary | null | undefined;
 }) {
   const posture = postureFor(privacy);
@@ -149,7 +149,7 @@ export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSE
     </a> : null}
     <div className="suite-privacy-footer">
       <div className="suite-privacy-footer-meta">
-        <span>{[provenanceLine(privacy, isRated(privacy) ? packageVersion : null), method].filter(Boolean).join(' · ')}</span>
+        <span>{[provenanceLine(privacy, isRated(privacy) ? appVersion : null), method].filter(Boolean).join(' · ')}</span>
         <a className="suite-privacy-link" href={assessmentUrl} rel="noreferrer" target="_blank">
           How MOS assesses app privacy
           <Glyph path={GLYPHS.externalLink} />
@@ -162,13 +162,14 @@ export function PrivacyPostureDialog({ advisories, appName, assessmentUrl = ASSE
 
 export function PrivacyChangeRow({ candidate, candidateVersion, installed, installedVersion }: {
   candidate: PrivacyReviewSummary;
-  candidateVersion: string;
+  candidateVersion: string | null;
   installed: PrivacyReviewSummary;
-  installedVersion: string;
+  installedVersion: string | null;
 }) {
   const changed = privacyChanged(installed, candidate);
+  const versions = installedVersion && candidateVersion ? (installedVersion === candidateVersion ? installedVersion : `${installedVersion} → ${candidateVersion}`) : null;
   return <div className={`suite-privacy-change${changed ? ' is-changed' : ''}`}>
-    <span className="suite-privacy-change-label">Privacy change · {installedVersion} → {candidateVersion}</span>
+    <span className="suite-privacy-change-label">Privacy change{versions ? ` · ${versions}` : ''}</span>
     <div className="suite-privacy-change-row">
       <span className="suite-privacy-change-side">
         <PrivacyShieldBadge privacy={installed} size="row" />

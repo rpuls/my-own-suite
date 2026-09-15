@@ -19,11 +19,35 @@ export async function createBackupIfAvailable(page, env) {
   await openSuiteManager(page, 'Backup');
   const status = await apiJson(page, '/suite-manager/api/backups/status');
   expect(status.serviceAvailable, 'Backup agent should be available for Hyper-V full E2E').toBe(true);
-  const destination = (status.destinations || []).find((item) => item.mountState === 'mounted' && item.writable);
-  expect(destination, 'Hyper-V full E2E needs a mounted writable backup destination').toBeTruthy();
-  await page.getByRole('button', { name: new RegExp(destination.label.replace(/[-/\\^$*+?.()|[\]{}]/gu, '\\$&'), 'iu') }).click().catch(() => undefined);
+  // `ready` is what the screen itself acts on, so asking the same question here
+  // reports why a destination is unusable — a missing storage engine on a fresh
+  // install, say — instead of failing later as a backup that would not run.
+  const usable = (status.destinations || []).filter((item) => item.kind !== 'object' && item.ready);
+  const reasons = (status.destinations || []).map((item) => `${item.label || item.id}: ${item.notReadyReason || 'ready'}`).join('; ');
+  expect(usable[0], `Hyper-V full E2E needs a ready backup destination (${reasons || 'none reported'})`).toBeTruthy();
+  const destination = usable[0];
+  // The row's own control, not every mention of the label on the page.
+  await page.getByRole('button', { exact: true, name: `Use ${destination.label} for backups` }).click();
+
+  // MOS refuses to write a backup until the owner has confirmed they saved the
+  // recovery key, so Back up now stays disabled until this is done. Save it the
+  // way an owner does rather than reaching past the rule.
+  if (!status.recoveryKey?.acknowledged) {
+    await page.getByRole('button', { name: /Show key/i }).click();
+    const keyDialog = page.getByRole('dialog', { name: /Your recovery key/i });
+    await expect(keyDialog.getByRole('checkbox')).toBeVisible({ timeout: 30000 });
+    await keyDialog.getByRole('checkbox').check();
+    await keyDialog.getByRole('button', { name: /^Done$/u }).click();
+    await expect(keyDialog).toBeHidden({ timeout: 30000 });
+    const saved = await apiJson(page, '/suite-manager/api/backups/status');
+    expect(saved.recoveryKey?.acknowledged, 'Saving the recovery key should unblock backups').toBe(true);
+  }
+
   await page.getByRole('button', { name: /Back up now/i }).click();
-  await expect(page.getByRole('status')).toContainText(/backup|saving|pausing|starting/i, { timeout: 30000 });
+  await page.getByRole('button', { name: /Start backup/i }).click();
+  // The banner swaps Back up now for the running line while a backup is in
+  // flight, so this is the screen itself saying it started rather than the API.
+  await expect(page.getByText(/Apps come back on their own/iu)).toBeVisible({ timeout: 30000 });
   const deadline = Date.now() + 15 * 60 * 1000;
   let current = null;
   while (Date.now() < deadline) {
@@ -31,9 +55,9 @@ export async function createBackupIfAvailable(page, env) {
     if (!backupRunning(current.currentJob)) break;
     await page.waitForTimeout(5000);
   }
-  expect(current?.lastJob?.status, 'Backup job should succeed').toBe('succeeded');
+  expect(current?.lastJob?.status, `Backup job should succeed (${current?.lastJob?.error || 'no reason reported'})`).toBe('succeeded');
   expect((current?.backups || []).length, 'Backup list should include at least one bundle').toBeGreaterThan(0);
-  await expect(page.locator('body')).toContainText(/Backup completed|Restore from a backup/i, { timeout: 60000 });
+  await expect(page.getByText(/Your backups are up to date/iu)).toBeVisible({ timeout: 60000 });
   await capturePageShot(page, 'backups', { fullPage: true });
   return latestBackup(current);
 }
@@ -58,7 +82,7 @@ export async function restoreBackupIfAvailable(page, env, backup) {
     await page.waitForTimeout(5000);
   }
   expect(validated?.lastJob?.kind, 'The bundle check job should be the latest job').toBe('validate');
-  expect(validated?.lastJob?.status, 'The read-only bundle check should pass before restoring').toBe('succeeded');
+  expect(validated?.lastJob?.status, `The read-only bundle check should pass before restoring (${validated?.lastJob?.error || 'no reason reported'})`).toBe('succeeded');
 
   await apiJson(page, '/suite-manager/api/backups/restore', {
     body: JSON.stringify({ backupPath: backup.path, confirmation: 'RESTORE' }),
@@ -77,7 +101,7 @@ export async function restoreBackupIfAvailable(page, env, backup) {
     await page.waitForTimeout(5000);
   }
 
-  expect(current?.lastJob?.status, 'Restore job should succeed').toBe('succeeded');
+  expect(current?.lastJob?.status, `Restore job should succeed (${current?.lastJob?.error || 'no reason reported'})`).toBe('succeeded');
   // A restore that merely finishes is not evidence: the agent must have
   // compared the restored app inventory and owned volumes against the bundle
   // and found an exact match, presence and absence.

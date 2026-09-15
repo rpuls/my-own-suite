@@ -9,6 +9,7 @@ const { HOMEPAGE_AGENT_TIMEOUT_MS } = require('../src/homepage/homepage-agent-cl
 const { loopbackPortFor } = require('../src/apps/app-package-service.cjs');
 const { LoginThrottle } = require('../src/auth/login-throttle.cjs');
 
+const { APP_AGENT_CONTRACT_VERSION } = require('../../../shared/app-agent-contract.cjs');
 const { createMOSServer } = require('../src/server/http-app.cjs');
 const { createLogger } = require('../src/server/logger.cjs');
 const { TERMS_VERSION } = require('../src/setup/setup-service.cjs');
@@ -48,6 +49,7 @@ async function withServer(fn, options = {}) {
     async snapshotPackage(input) {
       return { snapshotPath: path.join(appsDir, input.packageId) };
     },
+    async status() { return { contractVersion: APP_AGENT_CONTRACT_VERSION }; },
     ...(options.appAgent || {}),
   };
   const server = createMOSServer({
@@ -686,6 +688,7 @@ test('Stable-track apply starts the update agent when a newer release is availab
 });
 
 test('Backup API proxies simple owner backup and restore actions', async () => {
+  const stateDir = await tempStateDir();
   const backupDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mos-backup-point-'));
   const calls = [];
   const backupAgent = {
@@ -696,6 +699,26 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
     async startBackup(input) {
       calls.push(['backup', input]);
       return { job: { id: 'job-backup', status: 'queued' } };
+    },
+    async setSchedule(input) {
+      calls.push(['schedule', input]);
+      return { schedule: { enabled: true } };
+    },
+    async setPrimaryDestination(input) {
+      calls.push(['primary', input]);
+      return { primaryDestination: { destinationId: input.destinationId, label: 'Backup Drive' } };
+    },
+    async connectObjectDestination(input) {
+      calls.push(['connect-object', input]);
+      return { destination: { id: 'object:abc123', label: input.label || 'bucket' } };
+    },
+    async disconnectObjectDestination(input) {
+      calls.push(['disconnect-object', input]);
+      return { destination: { id: input.destinationId } };
+    },
+    async testObjectDestination(input) {
+      calls.push(['test-object', input]);
+      return { result: { message: 'Connected.', ok: true } };
     },
     async startRestore(input) {
       calls.push(['restore', input]);
@@ -755,6 +778,78 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
     });
     assert.equal(restore.status, 202);
 
+    // A console handover still waiting on this machine sits inside the state a
+    // backup carries and a restore wipes, so both wait until it is saved.
+    await fs.writeFile(path.join(stateDir, 'console-login.json'), JSON.stringify({ password: 'generated', username: 'mos', version: 1 }));
+    assert.equal((await hostRequest(baseUrl, '/suite-manager/api/backups/status', { headers: { Cookie: cookie, Host: 'home.test' } })).json().serverLoginUnsaved, true);
+    for (const [route, body] of [['start', { destinationId: '/media/backup' }], ['restore', { backupPath: backupDir, confirmation: 'RESTORE' }], ['schedule', { enabled: true }]]) {
+      const refused = await hostRequest(baseUrl, `/suite-manager/api/backups/${route}`, {
+        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+        method: 'POST',
+      });
+      assert.equal(refused.status, 409, route);
+      assert.equal(refused.json().code, 'SERVER_LOGIN_UNSAVED', route);
+    }
+    await hostRequest(baseUrl, '/suite-manager/api/settings/console-login/acknowledge', { headers: { Cookie: cookie, Host: 'home.test' }, method: 'POST' });
+    assert.equal((await hostRequest(baseUrl, '/suite-manager/api/backups/status', { headers: { Cookie: cookie, Host: 'home.test' } })).json().serverLoginUnsaved, false);
+
+    // The schedule reaches the agent field by field, so a body carrying
+    // anything the screen does not offer cannot travel with it.
+    const deniedSchedule = await hostRequest(baseUrl, '/suite-manager/api/backups/schedule', {
+      body: JSON.stringify({ enabled: true }),
+      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(deniedSchedule.status, 401);
+
+    const schedule = await hostRequest(baseUrl, '/suite-manager/api/backups/schedule', {
+      body: JSON.stringify({ enabled: true, frequency: 'daily', hour: 3, initiator: 'smuggled', keepLast: 7, minute: 0, timeZone: 'Europe/Amsterdam', weekday: 0 }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(schedule.status, 200);
+
+    // Which destination everything automatic writes to is its own choice, made
+    // where the destinations are listed rather than inside the schedule.
+    const primary = await hostRequest(baseUrl, '/suite-manager/api/backups/primary', {
+      body: JSON.stringify({ destinationId: '/media/backup', initiator: 'smuggled' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(primary.status, 200);
+
+    // Storage credentials go to the agent, which is the only component that
+    // keeps them, and only for a signed-in owner.
+    const deniedObject = await hostRequest(baseUrl, '/suite-manager/api/backups/destinations/object', {
+      body: JSON.stringify({ accessKeyId: 'AKIA', bucket: 'b', endpoint: 'https://s3.test', secretAccessKey: 's' }),
+      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(deniedObject.status, 401);
+
+    const connected = await hostRequest(baseUrl, '/suite-manager/api/backups/destinations/object', {
+      body: JSON.stringify({ accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', folder: 'home', initiator: 'smuggled', label: 'Offsite', region: 'eu-central-1', secretAccessKey: 'super-secret-value' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(connected.status, 200);
+
+    const tested = await hostRequest(baseUrl, '/suite-manager/api/backups/destinations/object/test', {
+      body: JSON.stringify({ accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', secretAccessKey: 'super-secret-value' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(tested.status, 200);
+    assert.equal(JSON.parse(tested.body).result.ok, true);
+
+    const disconnected = await hostRequest(baseUrl, '/suite-manager/api/backups/destinations/object/remove', {
+      body: JSON.stringify({ destinationId: 'object:abc123' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(disconnected.status, 200);
+
     // Downloading and uploading a backup went with the tar formats: a backup
     // now lives in the drive's encrypted repository and is never a single file.
     const download = await hostRequest(baseUrl, `/suite-manager/api/backups/download?path=${encodeURIComponent(backupDir)}`, {
@@ -765,6 +860,95 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
     assert.deepEqual(calls.filter((call) => call[0] !== 'status'), [
       ['backup', { destinationId: '/media/backup', note: '' }],
       ['restore', { backupPath: backupDir, confirmation: 'RESTORE' }],
+      ['schedule', { enabled: true, frequency: 'daily', hour: 3, keepLast: 7, minute: 0, timeZone: 'Europe/Amsterdam', weekday: 0 }],
+      ['primary', { destinationId: '/media/backup' }],
+      ['connect-object', { accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', folder: 'home', label: 'Offsite', region: 'eu-central-1', secretAccessKey: 'super-secret-value' }],
+      ['test-object', { accessKeyId: 'AKIAIOSFODNN7EXAMPLE', bucket: 'mos-backups', endpoint: 'https://s3.test', folder: '', label: '', region: '', secretAccessKey: 'super-secret-value' }],
+      ['disconnect-object', { destinationId: 'object:abc123' }],
+    ]);
+  }, { backupAgent, homeHost: 'home.test', stateDir });
+});
+
+// The key is shown once without being asked for anything, because at that point
+// the owner has nothing to lose yet and the gate is what they are being taken
+// through. Every showing after that asks for the password, so a session left
+// open on a borrowed screen is not enough to read it off.
+test('the recovery key is shown freely until it is saved, and behind the owner password after', async () => {
+  const calls = [];
+  let acknowledged = false;
+  const backupAgent = {
+    async recoveryKeyStatus() { return { recoveryKey: { acknowledged, fingerprint: 'aabbccdd1122' } }; },
+    async acknowledgeRecoveryKey() {
+      acknowledged = true;
+      calls.push(['acknowledge']);
+      return { recoveryKey: { acknowledged: true, fingerprint: 'aabbccdd1122' } };
+    },
+    async revealRecoveryKey() {
+      calls.push(['reveal']);
+      return { key: 'MOS-7K2F-9XQ4-0000-0000-0000-0000-0000-0000', kit: 'My Own Suite — recovery kit', kitFilename: 'mos-recovery-kit-lab-2026-09-07.txt' };
+    },
+    async unlockDestination(input) {
+      calls.push(['unlock', input]);
+      return { result: { adopted: true, message: 'Unlocked.' } };
+    },
+  };
+
+  await withServer(async (baseUrl) => {
+    for (const route of ['recovery-key/reveal', 'recovery-key/acknowledge', 'destinations/unlock']) {
+      const denied = await hostRequest(baseUrl, `/suite-manager/api/backups/${route}`, {
+        body: '{}',
+        headers: { 'Content-Type': 'application/json', Host: 'home.test' },
+        method: 'POST',
+      });
+      assert.equal(denied.status, 401, route);
+    }
+
+    const cookie = await createOwner(baseUrl);
+    const headers = { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' };
+
+    const first = await hostRequest(baseUrl, '/suite-manager/api/backups/recovery-key/reveal', { body: '{}', headers, method: 'POST' });
+    assert.equal(first.status, 200);
+    assert.match(first.json().key, /^MOS-/u);
+    assert.match(first.json().kit, /recovery kit/u);
+
+    const saved = await hostRequest(baseUrl, '/suite-manager/api/backups/recovery-key/acknowledge', { body: '{}', headers, method: 'POST' });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.json().recoveryKey.acknowledged, true);
+
+    const wrong = await hostRequest(baseUrl, '/suite-manager/api/backups/recovery-key/reveal', {
+      body: JSON.stringify({ password: 'not the owner password' }),
+      headers,
+      method: 'POST',
+    });
+    assert.equal(wrong.status, 400);
+    assert.equal(wrong.json().code, 'INVALID_PASSWORD');
+    assert.equal(wrong.body.includes('MOS-7K2F'), false, 'the key travelled with a rejected password');
+
+    const missing = await hostRequest(baseUrl, '/suite-manager/api/backups/recovery-key/reveal', { body: '{}', headers, method: 'POST' });
+    assert.equal(missing.status, 400);
+
+    const again = await hostRequest(baseUrl, '/suite-manager/api/backups/recovery-key/reveal', {
+      body: JSON.stringify({ password: 'correct horse battery' }),
+      headers,
+      method: 'POST',
+    });
+    assert.equal(again.status, 200);
+    assert.match(again.json().key, /^MOS-/u);
+
+    // The entered key reaches the agent field by field, like every other
+    // secret the screen collects.
+    const unlocked = await hostRequest(baseUrl, '/suite-manager/api/backups/destinations/unlock', {
+      body: JSON.stringify({ destinationId: 'object:abc123', initiator: 'smuggled', recoveryKey: 'mos 7k2f 9xq4' }),
+      headers,
+      method: 'POST',
+    });
+    assert.equal(unlocked.status, 200);
+
+    assert.deepEqual(calls, [
+      ['reveal'],
+      ['acknowledge'],
+      ['reveal'],
+      ['unlock', { destinationId: 'object:abc123', recoveryKey: 'mos 7k2f 9xq4' }],
     ]);
   }, { backupAgent, homeHost: 'home.test' });
 });
@@ -1379,7 +1563,12 @@ test('app lifecycle stop, start, restart, and uninstall remove app state, data, 
     assert.equal(uninstalled.status, 200);
     assert.equal(uninstalled.json().instance, null);
     assert.equal(appCalls.map((call) => call[0]).join(','), 'apply,stop,apply,apply,remove');
-    assert.deepEqual(appCalls.at(-1)[1], { packageId: 'vaultwarden', services: ['vaultwarden'], volumes: ['data'] });
+    const remove = appCalls.at(-1)[1];
+    // The instance and the outgoing revision name everything the uninstall has
+    // to reclaim, so both travel with every removal.
+    assert.deepEqual(Object.keys(remove).sort(), ['installedSourceRevision', 'instanceId', 'packageId', 'services', 'volumes']);
+    assert.equal(remove.instanceId, instanceId);
+    assert.deepEqual([remove.packageId, remove.services, remove.volumes], ['vaultwarden', ['vaultwarden'], ['data']]);
     assert.equal(homepageCalls.some((call) => call[0] === 'removeLink' && call[1].id === instanceId), true);
     assert.doesNotMatch(JSON.stringify(appCalls), /rmi/u);
 
@@ -1855,6 +2044,140 @@ test('repeated login failures return a retry contract without logging secrets', 
   });
 });
 
+// Every other throttle test injects its own limiter, so this is the one place
+// the server's own wiring — the store handed to the throttle it builds — is
+// exercised. Without it the backoff is still correct, just no longer durable,
+// and every unit test stays green while a restart hands an attacker a fresh budget.
+test('the sign-in backoff the server builds itself survives a restart of the server', async () => {
+  const stateDir = await tempStateDir();
+  const badLogin = (baseUrl) => fetch(`${baseUrl}/suite-manager/api/auth/login`, {
+    body: JSON.stringify({ email: 'owner@example.com', password: 'definitely-wrong' }),
+    headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.77' },
+    method: 'POST',
+  });
+
+  await withServer(async (baseUrl) => {
+    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
+      body: JSON.stringify({ email: 'owner@example.com', name: 'Suite Owner', password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+    // Default policy: five free failures per address, then a one-second block.
+    for (let index = 0; index < 6; index += 1) assert.equal((await badLogin(baseUrl)).status, 401);
+    const throttled = await badLogin(baseUrl);
+    assert.equal(throttled.status, 429);
+    assert.equal(throttled.headers.get('retry-after'), '1');
+  }, { stateDir });
+
+  const store = new SuiteManagerStore(stateDir);
+  try {
+    assert.equal(store.getLoginThrottleEntries().filter((entry) => entry.scope === 'ip').length, 1);
+  } finally {
+    store.close();
+  }
+
+  // Past the one-second block, so the next failure is judged on the count the
+  // new process read back: a seventh failure earns a two-second block, a first
+  // failure would earn none.
+  await new Promise((resolve) => setTimeout(resolve, 1_200));
+  await withServer(async (baseUrl) => {
+    assert.equal((await badLogin(baseUrl)).status, 401);
+    const throttled = await badLogin(baseUrl);
+    assert.equal(throttled.status, 429);
+    assert.equal(throttled.headers.get('retry-after'), '2');
+  }, { stateDir });
+});
+
+// The account-wide backoff is skipped for a browser that has signed in before,
+// proved by a cookie set on that sign-in. A new browser during an attack waits
+// like today; a password change forgets every known browser except the one
+// that changed it.
+test('a browser that has signed in before gets past an account-wide backoff, and a new one does not', async () => {
+  const loginThrottle = new LoginThrottle({ policy: {
+    account: { baseDelayMs: 30_000, freeFailures: 1, maxDelayMs: 30_000 },
+    ip: { freeFailures: 100 },
+  } });
+  const login = (baseUrl, { cookie = '', ip, password = 'correct horse battery' }) => fetch(`${baseUrl}/suite-manager/api/auth/login`, {
+    body: JSON.stringify({ email: 'owner@example.com', password }),
+    headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip, ...(cookie ? { Cookie: cookie } : {}) },
+    method: 'POST',
+  });
+  const cookieNamed = (response, name) => {
+    const header = response.headers.getSetCookie().find((entry) => entry.startsWith(`${name}=`));
+    return header ? header.split(';')[0] : null;
+  };
+
+  await withServer(async (baseUrl) => {
+    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
+      body: JSON.stringify({ email: 'owner@example.com', name: 'Suite Owner', password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+
+    // The owner's laptop signs in and is remembered.
+    const laptop = await login(baseUrl, { ip: '198.51.100.7' });
+    assert.equal(laptop.status, 200);
+    const known = cookieNamed(laptop, 'mos_known_browser');
+    assert.ok(known, 'a successful sign-in must remember the browser');
+    assert.match(laptop.headers.getSetCookie().find((entry) => entry.startsWith('mos_known_browser=')), /HttpOnly; SameSite=Lax; Path=\/; Max-Age=31536000/u);
+
+    // Two addresses guess the owner's email and raise the account bucket.
+    assert.equal((await login(baseUrl, { ip: '203.0.113.1', password: 'wrong' })).status, 401);
+    assert.equal((await login(baseUrl, { ip: '203.0.113.2', password: 'wrong' })).status, 401);
+    assert.equal((await login(baseUrl, { ip: '203.0.113.3', password: 'wrong' })).status, 429);
+
+    // A brand-new browser with the right password waits like everyone else.
+    assert.equal((await login(baseUrl, { ip: '198.51.100.8' })).status, 429);
+    // The laptop does not, and is not remembered twice.
+    const again = await login(baseUrl, { cookie: known, ip: '198.51.100.9' });
+    assert.equal(again.status, 200);
+    assert.equal(cookieNamed(again, 'mos_known_browser'), null);
+    // Skipping the account bucket is not skipping the password.
+    assert.equal((await login(baseUrl, { cookie: known, ip: '198.51.100.9', password: 'wrong' })).status, 401);
+    // A cookie that was never issued is a stranger.
+    assert.equal((await login(baseUrl, { cookie: 'mos_known_browser=made-up', ip: '198.51.100.9' })).status, 429);
+
+    // Changing the password forgets the laptop and remembers only the browser that changed it.
+    const session = cookieNamed(again, 'mos_session');
+    const changed = await fetch(`${baseUrl}/suite-manager/api/settings/owner/password`, {
+      body: JSON.stringify({ currentPassword: 'correct horse battery', newPassword: 'a different passphrase' }),
+      headers: { 'Content-Type': 'application/json', Cookie: session },
+      method: 'POST',
+    });
+    assert.equal(changed.status, 200);
+    const reissued = cookieNamed(changed, 'mos_known_browser');
+    assert.ok(reissued && reissued !== known);
+    assert.equal((await login(baseUrl, { cookie: known, ip: '198.51.100.9', password: 'a different passphrase' })).status, 429);
+    assert.equal((await login(baseUrl, { cookie: reissued, ip: '198.51.100.9', password: 'a different passphrase' })).status, 200);
+  }, { loginThrottle });
+});
+
+// The alert is asked for on every throttled attempt and decides for itself
+// whether to send; the 429 does not wait for it.
+test('a throttled sign-in asks the alert service to notify the owner', async () => {
+  const notified = [];
+  const loginThrottle = new LoginThrottle({ policy: { account: { freeFailures: 10 }, ip: { baseDelayMs: 5_000, freeFailures: 1, maxDelayMs: 5_000 } } });
+  await withServer(async (baseUrl) => {
+    await fetch(`${baseUrl}/suite-manager/api/setup/owner`, {
+      body: JSON.stringify({ email: 'owner@example.com', name: 'Suite Owner', password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+    const badLogin = () => fetch(`${baseUrl}/suite-manager/api/auth/login`, {
+      body: JSON.stringify({ email: 'owner@example.com', password: 'definitely-wrong' }),
+      headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.25' },
+      method: 'POST',
+    });
+    await badLogin();
+    await badLogin();
+    assert.equal((await badLogin()).status, 429);
+    assert.equal(notified.length, 1);
+  }, {
+    loginThrottle,
+    signInAlerts: { notify: async () => { notified.push(Date.now()); return { sent: false }; } },
+  });
+});
+
 test('duplicate owner creation returns conflict', async () => {
   await withServer(async (baseUrl) => {
     const owner = {
@@ -1978,6 +2301,13 @@ test('a dashboard tile redirect resolves the app against the door it was reached
     const secondDoor = await hostRequest(baseUrl, `/suite-manager/open/${instanceId}`, { headers: { Host: 'home.mos.example.com' } });
     assert.equal(secondDoor.status, 302);
     assert.equal(secondDoor.headers.location, 'https://stirling-pdf.mos.example.com/');
+
+    // Once a domain is applied every app route names exactly one host under
+    // it, so the bootstrap door has to send the tile there too — the
+    // replacement-machine drill found it pointing at a host nothing served.
+    const bootstrapDoorAfterApply = await hostRequest(baseUrl, `/suite-manager/open/${instanceId}`, { headers: { Host: 'home.test' } });
+    assert.equal(bootstrapDoorAfterApply.status, 302);
+    assert.equal(bootstrapDoorAfterApply.headers.location, 'https://stirling-pdf.mos.example.com/');
 
     const unknown = await hostRequest(baseUrl, '/suite-manager/open/00000000-0000-4000-8000-000000000000', { headers: { Host: 'home.test' } });
     assert.equal(unknown.status, 404);

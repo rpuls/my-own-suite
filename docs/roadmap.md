@@ -18,59 +18,37 @@ Rules for editing:
 - When a theme's gate is met, delete the theme and record the contract in `docs/decisions.md`.
 
 Consolidated 2026-07-30 from `pre-beta-checklist.md`, `beta-main-cutover-checklist.md`,
-`backup-restore-reliability-plan.md`, and the app-package refactor plan. Current release: 0.18.0.
+`backup-restore-reliability-plan.md`, and the app-package refactor plan. Current release: 0.20.0.
 
 ---
 
 ## Now — Beta hardening
 
-The window before and during private tester recruitment. Recovery leads, because a backup an owner
-cannot schedule, take off-site, or unlock on a replacement machine is not yet recovery they can rely
-on — the storage under it is now encrypted and drill-verified, which was the sharpest dissonance in
-the product until 2026-09-06.
+The window before and during private tester recruitment. Recovery led, because a backup an owner
+could not schedule, take off-site, or unlock on a replacement machine was not recovery they could
+rely on. Those three are contracts now, and the theme stays for what the gate never covered.
 
 ### A. Recovery an owner can trust without an asterisk
 
 **Gate:** an owner sets a recovery key once, backups run on a schedule with retention to an attached
-disk or an S3-compatible bucket, and no restore screen shows a raw 502 or an internal path. The
-storage engine half of this gate is met (`docs/decisions.md`, 2026-09-06).
+disk or an S3-compatible bucket, and no restore screen shows a raw 502 or an internal path
+(`docs/decisions.md`, 2026-09-06 and 2026-09-07). The theme is kept open for the items below, which
+the gate never covered: a backup taken before an update without being asked, and a cleanup story for
+volumes MOS does not own.
 
 The restore contract itself is drill-verified and is not in question (`docs/decisions.md`, 2026-07-30),
 and as of 2026-09-06 so is the storage under it: backups are restic repositories, the engine choice is
 recorded with its measurements, and the drills that earn a `verified` restore guarantee were re-run
-against the encrypted store (`docs/decisions.md`, 2026-09-06). What is left in this theme is the
-lifecycle around that storage — a recovery key an owner actually holds, a schedule, retention, and a
-destination that is not in the same room.
+against the encrypted store (`docs/decisions.md`, 2026-09-06). Backups also now run unattended, with
+retention, to an attached disk or an S3-compatible bucket, the latter drill-verified through a whole-suite
+restore from a real provider (`docs/decisions.md`, 2026-09-06). The owner holds the key that opens
+all of it, and a replacement machine can take over a destination the original wrote (`docs/decisions.md`,
+2026-09-07).
 
-- **A3 — Recovery-key lifecycle.** The engine supplies the cryptography; this is everything around
-  it, and it is the half that does not come free. Generate a strong key, present it once, offer an
-  export file, decide where the operational copy lives so unattended scheduled backups can run, and
-  design what an owner sees when the key is gone. Retire the "backups are not encrypted" warning in
-  the backup guide only when this is real, and say plainly that a key held on the server protects a
-  stolen drive or a breached bucket, not a compromised server. *(Medium)*
-- **A4 — Scheduled and pre-update backups, retention, last-known-good protection.** Manual-only
-  backup means the newest thing an owner has is whenever they last remembered. MOS owns the
-  scheduling: restic's own scheduling needs a daemon MOS will not run, and a bare snapshot would skip
-  the stop-and-quiesce sequence entirely — so this is a systemd timer feeding the existing job
-  pipeline. Retention comes from the engine's forget policy. A checkpoint
-  before every update is on by default and switchable off; it needs a "skipped — destination not
-  connected" outcome rather than a failure, and it has to be precise about scope, because a platform
-  update and a per-app update transaction are different things. *(Medium)*
-- **A5 — Two destinations: an attached disk, and an S3-compatible bucket.** Absorbs the former
-  **D1**: object storage stops being a new subsystem because restic speaks S3 natively. Exactly two,
-  because every advertised destination needs backup *and* restore drills before it is offered. Needs
-  credential storage, destination UI, and the remote equivalent of the mount-liveness refusal. The
-  server's own system disk may be a staging or replication source but is never offered as the only
-  destination — that shape is what once wrote 13 GiB to the root disk and reported success. See
-  **OQ1** for the remaining choice between one replicated repository and independent repositories per
-  destination. *(Medium)*
-- **A6 — Backup and restore follow-ups from the drills.** Serve a static "MOS is restoring" page from
-  Caddy instead of a raw 502 during the control-plane outage; offer Mount for whole-disk filesystems,
-  not only partitions, which is also what makes a whole-disk lab drive re-attachable through the UI;
-  collect the data a killed or interrupted backup leaves unreferenced in the repository, which today
-  is reclaimed only by the next delete; and clear what a backup wrote under the mountpoint after the
-  drive was pulled — measured at 34 MB on the system disk, invisible once the drive is back, and safe
-  to remove only against a positive test that the path is not the mounted drive. *(Small, bundled)*
+- **A4 — Pre-update backups and last-known-good protection.** `#282`. Built and unit-covered
+  (`docs/decisions.md`, 2026-09-09): a MOS update takes a backup of the whole suite first, waits
+  rather than fails when the destination is not connected, and the two queues now refuse each other.
+  Open only until the lab drill confirms it end to end. *(Small)*
 - **A7 — Decide a cleanup story for anonymous Docker volumes.** Unlabeled, hash-named volumes left
   behind by removed app containers are outside MOS ownership by design, so restore correctly refuses
   to claim them — and nothing else ever removes them either. *(Small — needs a decision first)*
@@ -155,6 +133,12 @@ act on.
   question inside this item is settled: accepting the terms lands the owner on Suite Manager, because
   first run is the only moment with a server login to hand over, and ordinary sign-ins go on to the
   Homepage dashboard as before. *(Medium)*
+- **C8 — Say how long a backup check or restore takes, and show it happening.** `#280`. A check
+  and a restore each run 10–20 minutes on ordinary hardware, the only expectation set is "a long
+  time", and for most of a restore the owner is looking at the static busy page, which knows nothing.
+  The agent already logs every stage with a timestamp; what is missing is an estimate before the
+  owner commits, live stages on the busy page, and a per-phase progress indicator. The measured
+  lesson: restore time is dominated by rebuilding app images, not by gigabytes. *(Medium)*
 
 ### H. Install media people can just flash
 
@@ -212,28 +196,6 @@ on its own: machines that install but will not boot, and reaching the suite once
 A flashable image that installs an OS and then runs a root shell script is the highest-trust artifact
 the project ships, which is what makes **E3** load-bearing rather than aspirational.
 
-### J. Configuration an owner can reach
-
-**Gate:** an owner can change an installed app's configuration from Suite Manager — both the settings
-MOS asked for at install and the ones it never knew existed — without SSH, and without a wrong value
-leaving the app dead.
-
-Config is captured once, at install, and never again. There is no reconfigure path of any kind, so
-correcting a mistyped time zone means reinstalling, and anything the package did not think to ask for
-is unreachable except by editing generated compose over SSH. The wall a tester actually hits is
-Paperless and a Microsoft mailbox: Outlook consumer IMAP is OAuth-only, which needs two upstream
-environment variables MOS has no reason to know about.
-
-- **J1 — Custom environment variables per installed app.** An app-agnostic escape hatch, behind
-  technical controls in a per-app settings dialog, never in the install flow — the values cannot exist
-  before the app has a URL. Owner-set names are rejected on collision with MOS-managed ones rather
-  than silently losing, and a change that fails its health probe rolls back to the previous
-  environment automatically. Recurring variables graduate into package setup fields; the hatch is for
-  what MOS does not yet know. *(Medium)*
-- **J2 — Re-editable setup fields after install.** The same dialog, holding what the package asked for
-  at install so it can be corrected without a reinstall. Needs the secret rows to round-trip without
-  being re-entered, which is the reason it is not folded into **J1**. *(Medium)*
-
 ---
 
 ## Alpha gate — the bar before MOS is called an alpha
@@ -245,22 +207,19 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 
 ### AL-S — Security hardening
 
-- **AL1 — Host OS patching.** MOS updates itself and it updates the apps, and nothing updates Ubuntu;
+- **AL1 — Host OS patching.** `#277`. MOS updates itself and it updates the apps, and nothing updates Ubuntu;
   an install running for months is quietly behind on kernel and TLS fixes while the Updates screen
   says everything is current. Enable unattended security upgrades at bootstrap, and surface host patch
   state where owners already look for updates. The published image raises this from small to
   load-bearing: it is frozen at release time, so someone flashing a months-old download starts behind
   on day one. *(Small)*
-- **AL2 — Full-disk encryption for own-hardware installs.** The installer uses a plain disk layout, so
+- **AL2 — Full-disk encryption for own-hardware installs.** `#278`. The installer uses a plain disk layout, so
   the "safe in your own house" claim currently survives everything except someone carrying the safe
   out of the house. Needs a decision on the unlock model for a headless machine — passphrase at boot,
   TPM-backed, or network-bound — before it is buildable. The published image narrows the options: it
   can carry no key material, so whatever unlocks the disk has to be derived or entered on the machine.
   *(Large — needs a decision first)*
-- **AL3 — Sign-in hardening either side of the second factor.** Raise the owner password hashing cost
-  to current guidance, and persist the login throttle so restarting the service does not reset an
-  attacker's budget. Both are small and independent of the MFA question in **E5**, which is the other
-  half of this gate. *(Small)*
+
 ### AL-A — Access
 
 - **AL4 — View-only household access to the Home dashboard.** Homepage is reachable only through the
@@ -269,21 +228,6 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
   role that reaches the dashboard and its app tiles and nothing in Suite Manager. Deliberately narrow:
   this is not multi-user, LDAP, or SSO, which stay declined. *(Medium)*
 
-### AL-R — Backup and restore hardening
-
-- **AL7 — Recovery onto a new machine at the version the bundle expects.** The backup guide tells an
-  owner to restore onto the MOS version the bundle records; the hosted installer only ever produces
-  the current `main` tip. On the worst day, those two instructions disagree. `--repo-ref` already
-  accepts a tag and is the mechanical escape hatch, but it needs a clone and Node on a second machine
-  — which the fire took too. Decide the real shape: a version argument the hosted installer accepts, a
-  restore path that migrates forward from an older bundle (**D2**), or documenting the escape hatch
-  and accepting it. The published image supplies part of the answer for own hardware: a per-release
-  image is an installer pinned to a known version, which is exactly what the bundle's instruction asks
-  for. What is missing is reaching an *older* release's image once its object has been pruned. The
-  storage-engine change (**A2**) adds a second version axis: an older MOS carries an older engine
-  binary, so the repository format is pinned per release and never auto-upgraded.
-  *(Medium — solution not yet determined)*
-
 ### AL-C — Storage
 
 - **AL8 — Per-app volume placement.** App data lives on whichever disk the container runtime uses, so
@@ -291,13 +235,26 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
   manual pre-install mount for now (`cloud-server.mdx`), which does not help an existing install and
   cannot vary per app. The durable answer is MOS choosing where each app's volumes live. *(Large)*
 
+### AL-U — App updates
+
+- **AL9 — Refuse an app update the app itself cannot survive.** An update is one jump from the
+  installed snapshot to whatever the source offers now, and nothing measures how far that jump is. For
+  an app that replays its own migration history the distance is irrelevant; for one that upgrades only
+  from its predecessor — Seafile, in the current catalog — skipping is data loss under a green health
+  check. The jump is authored as often as it is suffered: moving a pinned digest across several
+  upstream releases inflicts the same distance on every owner at once, including the ones who update
+  the day each release lands, so package-version distance is the wrong thing to reason about and image
+  distance is the right one. Wants an optional additive `appVersion` floor in the manifest — the oldest
+  install a package can upgrade — checked in `compareAppPackages` beside `minimumMosVersion`, so the
+  preview refuses with a sentence naming the version the owner has to reach first. What that owner then
+  does is the undecided half and gates the design: a published waypoint package, or a restore-and-climb
+  path. *(Medium — needs a decision first)*
+
 ### Carried in — already tracked above, and alpha gates rather than 1.0 wishes
 
-**A2** the storage-engine swap and encrypted repositories · **A4** scheduled backups · **A5** an
-off-site destination · **B1** human sign-off on privacy reviews · **E3** signed release and installer
-artifacts · **E4** owner-facing security events · **E5** passkeys and the MFA shape · **F1** runtime
-hardening of app containers · **H8** trusted HTTPS on own hardware. Alpha is where these stop being
-roadmap and become the bar.
+**A4** the pre-update backup trigger · **B1** human sign-off on privacy reviews · **E3** signed release and installer
+artifacts · **E5** passkeys and the MFA shape · **F1** runtime hardening of app containers ·
+**H8** trusted HTTPS on own hardware. Alpha is where these stop being roadmap and become the bar.
 
 ---
 
@@ -347,10 +304,6 @@ the update or install path requires SSH.
   shell script is the highest-trust artifact MOS ships, and since `v0.16.0` it is served from object
   storage rather than from the repository people trust. Checksums now ship on the release page; what is
   missing is a signature and build provenance from the release pipeline. *(Medium)*
-- **E4 — Owner-facing security event read surface.** `security_events` durably records throttled
-  sign-ins, refused packages, download-bound trips, and failed catalog refreshes — with no route and
-  no UI, so nothing is ever shown to the owner. A failing catalog refresh is the quiet one: the cache
-  keeps serving while MOS stops learning which installed packages have advisories. *(Small)*
 - **E5 — Passkeys, and decide the MFA shape.** `#238`, after `#237`. Research
   passkey-as-second-factor vs passkey-as-sole-credential and bring a recommendation before
   building. The deciding constraint is that the relying-party ID is the Home host, which changes
@@ -378,9 +331,6 @@ the update or install path requires SSH.
 
 ## Later — Bets and deferred
 
-- **L1 — Restore the shared SMTP relay.** A MOS1 capability (v0.9.0) absent in MOS2; apps half-work
-  without outbound mail — Vaultwarden hints at it, Seafile notifications are off. Relay presets only,
-  explicitly **not** a mail server. *(Medium)*
 - **L3 — Communicate capacity in-product.** See **OQ2**. Folds in resource estimation/preflight for
   Immich, Seafile, and ONLYOFFICE. *(Medium)*
 - **L4 — One proven local VM/filesystem snapshot integration.** Fast same-machine rollback; never a
@@ -406,16 +356,15 @@ the update or install path requires SSH.
 
 Owner decisions pending. Options are already worked out — what is missing is a choice.
 
-**OQ1 — One replicated repository, or independent repositories per destination.** The cloud-backup
-question that used to sit here is answered by **A5**: the engine speaks S3, so object storage becomes
-a destination rather than a subsystem and "attach, format and mount a block-storage volume" stops
-being the cloud instruction. What is left is a real fork. Replication — Kopia's `repository sync-to`,
-or an rsync of a restic repository — is incremental and cheap, but the second copy is a *mirror*: it
-inherits the primary's snapshot set and any corruption in it, and it does not propagate deletions
-unless told to, so retention on the two copies silently diverges. Independent repositories per
-destination give genuinely isolated copies at roughly double the backup work, and need the offline
-drive attached whenever the job runs. Provider snapshots stay outside MOS either way, useful as a
-supplementary layer with the consistency caveat the guide already carries.
+**OQ1 — Whether to add mirroring between destinations.** Shipping settled the default: each
+destination is its own repository, so keeping a drive copy and a bucket copy means two backup runs
+producing two genuinely isolated copies (`docs/decisions.md`, 2026-09-06). The open half is whether to
+also offer replication — Kopia's `repository sync-to`, or an rsync of a restic repository — which is
+incremental and far cheaper than a second run, but produces a *mirror*: it inherits the primary's
+snapshot set and any corruption in it, and does not propagate deletions unless told to, so retention on
+the two copies silently diverges. Worth it only if owners actually find two scheduled runs too
+expensive; nobody has yet, because there is only one schedule. Provider snapshots stay outside MOS
+either way, useful as a supplementary layer with the consistency caveat the guide already carries.
 
 **OQ2 — Communicating per-app resource needs in-product.** **C2** answers sizing *before* install.
 The per-app half is now decided and built: packages declare resting and peak memory/CPU per service
@@ -483,6 +432,22 @@ Owner decisions. Future agents and reviews should not resurface these.
   the household" currently means sharing the credential that can run code as root. That is an access
   fix, not the start of a user system.
 - **Do not chase app-count parity, a DNS-provider matrix, or monitoring graphs.**
+- **Re-editable setup fields after install** — declined, with a named condition. Package setup fields
+  are seed values most apps read once at first boot; the manifest cannot say which, and some feed two
+  services at once, so an edit leaves an app healthy but unable to reach its own data and the health
+  probe does not catch it. They are rendered as facts, and correcting one means reinstalling. Reopen
+  only when a manifest can declare when a field is read, which is a generation event
+  (`docs/decisions.md`, 2026-08-30). The app-agnostic escape hatch for what MOS never knew to ask
+  shipped separately as owner environment variables.
+- **Stepping an app up through every package version between installed and current** — declined, the
+  way TrueNAS and the Helm catalogs do it. The catalog publishes one current version per package and
+  keeps no history, so there is nothing to walk; but the reason not to add one is that a chain has to
+  pull image digests that will not exist. Packages pin `@sha256:`, upstream deletes tags and registries
+  collect untagged layers, and chaining only earns its keep when an install is years behind — exactly
+  when the intermediate digests have rotted. It would fail hardest in the single case it exists for,
+  and buy nothing for the apps that replay their own migration history, which is most of them. **AL9**
+  takes the correctness half by refusing a jump the app cannot survive. Reopen only as a published
+  waypoint package for a named app that genuinely demands one.
 
 ---
 

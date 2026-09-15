@@ -154,14 +154,14 @@ test('a status response missing the fields the screen reads throws instead of ha
 // is what the backend computes when the catalog branch and the installed
 // checkout hold identical packages.
 function realComparisonBody(packageId) {
+  const { APP_AGENT_CONTRACT_VERSION } = require('../../shared/app-agent-contract.cjs');
   const { compareAppPackages } = require('../../suite-manager/backend/src/apps/app-update-comparison.cjs');
   const packageDir = path.join(repoRoot, 'apps', packageId);
   const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'manifest.json'), 'utf8'));
   const side = { manifest, packageDigest: 'a'.repeat(64), packageDir, source: { kind: 'official', trust: 'mos-reviewed' } };
   return {
     comparison: compareAppPackages({
-      agentCapabilities: ['apps.package.snapshot'],
-      agentContractVersion: 99,
+      agentContractVersion: APP_AGENT_CONTRACT_VERSION,
       candidate: side,
       hostArchitecture: 'amd64',
       installed: side,

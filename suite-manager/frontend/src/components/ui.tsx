@@ -1,7 +1,7 @@
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 
-export type IconName = 'apps' | 'backup' | 'check' | 'chevron-right' | 'copy' | 'customize' | 'dashboard' | 'external' | 'eye' | 'eye-off' | 'hard-drive' | 'menu' | 'more' | 'network-drive' | 'refresh' | 'screens' | 'settings' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'x';
+export type IconName = 'apps' | 'backup' | 'check' | 'chevron-right' | 'cloud-storage' | 'copy' | 'customize' | 'dashboard' | 'external' | 'eye' | 'eye-off' | 'hard-drive' | 'key' | 'menu' | 'more' | 'network-drive' | 'plus' | 'refresh' | 'screens' | 'settings' | 'sign-out' | 'update' | 'upload' | 'usb-drive' | 'x';
 
 export function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -9,6 +9,7 @@ export function Icon({ name }: { name: IconName }) {
     backup: <><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" /><path d="M8 15h8M9 9h6M9 12h6" /></>,
     check: <path d="M5 13l4 4 10-10" />,
     'chevron-right': <path d="M9 6l6 6-6 6" />,
+    'cloud-storage': <><path d="M7 18a4 4 0 0 1-.4-7.98 5.5 5.5 0 0 1 10.5-1.2A3.75 3.75 0 0 1 18 18Z" /><path d="M12 12v5" /><path d="m9.5 14.5 2.5-2.5 2.5 2.5" /></>,
     copy: <><rect height="14" rx="2" ry="2" width="14" x="8" y="8" /><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2" /></>,
     customize: <><path d="M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></>,
     dashboard: <><rect height="7" rx="1" width="7" x="3" y="3" /><rect height="7" rx="1" width="7" x="14" y="3" /><rect height="7" rx="1" width="7" x="3" y="14" /><rect height="7" rx="1" width="7" x="14" y="14" /></>,
@@ -16,8 +17,10 @@ export function Icon({ name }: { name: IconName }) {
     eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>,
     'eye-off': <><path d="M10.6 6.2A9.8 9.8 0 0 1 12 6c6.4 0 10 6 10 6a17.6 17.6 0 0 1-3 3.6" /><path d="M6.3 7.7A17.6 17.6 0 0 0 2 12s3.6 6 10 6a9.8 9.8 0 0 0 3.6-.7" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /><path d="m3 3 18 18" /></>,
     'hard-drive': <><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><line x1="3" x2="21" y1="9" y2="9" /></>,
+    key: <><circle cx="7.5" cy="15.5" r="3.5" /><path d="m10 13 8.5-8.5" /><path d="m15.5 7.5 2 2" /><path d="m18 5 2 2" /></>,
     menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
     more: <><circle cx="12" cy="5" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="12" cy="19" r="1.2" /></>,
+    plus: <path d="M12 5v14M5 12h14" />,
     'network-drive': <><circle cx="12" cy="12" r="3" /><path d="M12 1v4" /><path d="M12 19v4" /><path d="m4.93 4.93 2.83 2.83" /><path d="m16.24 16.24 2.83 2.83" /><path d="M1 12h4" /><path d="M19 12h4" /><path d="m4.93 19.07 2.83-2.83" /><path d="m16.24 7.76 2.83-2.83" /></>,
     refresh: <><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M3 21v-5h5" /></>,
     screens: <path d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6" />,
@@ -97,8 +100,8 @@ export function TextArea({ helperText, label, ...props }: TextareaHTMLAttributes
   return <label className="suite-control"><span className="suite-field-label">{label}</span><textarea className="suite-input suite-textarea" {...props} />{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
 }
 
-export function Select({ children, helperText, label, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode; helperText?: ReactNode; label: string }) {
-  return <label className="suite-control"><span className="suite-field-label">{label}</span><select className="suite-input suite-select" {...props}>{children}</select>{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
+export function Select({ children, helperText, label, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode; helperText?: ReactNode; label?: string }) {
+  return <label className="suite-control">{label ? <span className="suite-field-label">{label}</span> : null}<select className="suite-input suite-select" {...props}>{children}</select>{helperText ? <span className="suite-control-help">{helperText}</span> : null}</label>;
 }
 
 // The shared confirmation checkbox: a boxed, full-width row whose whole surface
@@ -106,6 +109,22 @@ export function Select({ children, helperText, label, ...props }: SelectHTMLAttr
 // so "I have read this" looks and behaves the same everywhere it is asked.
 export function Checkbox({ children, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { children: ReactNode }) {
   return <label className="suite-confirm"><input className="suite-confirm-box" type="checkbox" {...props} /><span>{children}</span></label>;
+}
+
+// The shared choice: one of several exclusive answers to a question the owner
+// must settle before an action, each answer a boxed row whose whole surface is
+// the hit target, with a label and the consequence spelled out under it. Radio
+// semantics, so keyboard and form behaviour stay the platform's. It is neither
+// a checkbox (an acknowledgement) nor a switch (a setting that acts at once):
+// a choice is submitted with the action it decides.
+export function Choice({ children, description, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { children: ReactNode; description?: ReactNode }) {
+  return <label className="suite-choice">
+    <input className="suite-choice-dot" type="radio" {...props} />
+    <span className="suite-choice-copy">
+      <span className="suite-choice-label">{children}</span>
+      {description ? <span className="suite-choice-help">{description}</span> : null}
+    </span>
+  </label>;
 }
 
 // The shared setting switch: label and optional description on the left, the
@@ -138,6 +157,92 @@ export function Switch({ description, label, ...props }: Omit<InputHTMLAttribute
 // case: a disabled field says "not yet", and these values need to say "this is
 // how it is". Its look lives in the shared branding stylesheet as .mos-row*, so
 // the same row appears identically wherever it is used.
+// A panel whose sections run to its edges, divided by hairlines, instead of
+// each becoming another bordered box inside it. Reach for this whenever a panel
+// holds a list or more than one region: it is the shape the "avoid cards inside
+// cards" rule asks for, and it is what lets a row tint its full width. The look
+// lives in the shared branding stylesheet as .mos-panel-flush and friends, so
+// the same section appears identically wherever it is used.
+//
+// Compose it from PanelHead, PanelBand, PanelList/PanelItem and PanelBody in
+// whatever order the screen needs; the hairlines sort themselves out. An
+// overlay opened from inside must portal to <body>, as Dialog, Drawer and
+// ActionMenu already do — the panel clips to its own radius.
+export function Panel({ children, className, density = 'regular' }: {
+  children: ReactNode;
+  className?: string;
+  // "tight" is for narrow columns and dialogs, where the regular inset eats the
+  // width the content needs.
+  density?: 'regular' | 'tight';
+}) {
+  return <section className={`mos-panel mos-panel-flush${density === 'tight' ? ' mos-panel-flush-tight' : ''}${className ? ` ${className}` : ''}`}>{children}</section>;
+}
+
+// The padded header of a section: what this region is on the left, what you can
+// do to it on the right. `title` is an eyebrow rather than a card title,
+// because it labels a region of a panel the owner is already reading.
+export function PanelHead({ actions, children, title }: {
+  actions?: ReactNode;
+  children?: ReactNode;
+  title: ReactNode;
+}) {
+  return <div className="mos-panel-head">
+    <div>
+      <p className="mos-eyebrow">{title}</p>
+      {children}
+    </div>
+    {actions ? <div className="mos-panel-head-actions">{actions}</div> : null}
+  </div>;
+}
+
+// A full-bleed strip that comments on the section next to it — a fact that
+// belongs to the list rather than to any one row in it. Adjacency is the
+// explanation, which is why it is a band and not a notice somewhere else.
+// One centred line: the fact, then the qualification, then at most one quiet
+// action. It is deliberately not a Notice — a notice interrupts, a band
+// annotates, and this one is read every visit.
+export function PanelBand({ children, icon, note, title, tone = 'neutral' }: {
+  // A trailing action. Keep it ghost-quiet: the band is not what the owner
+  // came to the page to do.
+  children?: ReactNode;
+  icon?: IconName;
+  note?: ReactNode;
+  title: ReactNode;
+  tone?: 'accent' | 'info' | 'neutral' | 'warning';
+}) {
+  return <div className={`mos-panel-band${tone === 'neutral' ? '' : ` mos-panel-band-${tone}`}`}>
+    {icon ? <span className="mos-panel-band-icon"><Icon name={icon} /></span> : null}
+    <span className="mos-panel-band-title">{title}</span>
+    {note ? <span className="mos-panel-band-note">{note}</span> : null}
+    {children}
+  </div>;
+}
+
+export function PanelList({ children }: { children: ReactNode }) {
+  return <div className="mos-panel-list">{children}</div>;
+}
+
+// One entry. It owns only its inset and the rule above it; what goes inside is
+// the feature's own layout, because a destination, an app and an invoice do not
+// share a shape.
+export function PanelItem({ children, className, flush = false, selected = false, quiet = false }: {
+  children: ReactNode;
+  className?: string;
+  // The item's own children carry the inset instead — for an entry that is a
+  // whole-row button, or one that expands into more than one region.
+  flush?: boolean;
+  // Present but not usable and not at fault — quieter, never hidden.
+  quiet?: boolean;
+  selected?: boolean;
+}) {
+  return <div className={`mos-panel-item${flush ? ' mos-panel-item-flush' : ''}${selected ? ' mos-panel-item-selected' : ''}${quiet ? ' mos-panel-item-quiet' : ''}${className ? ` ${className}` : ''}`}>{children}</div>;
+}
+
+// A padded block for a section that is prose or controls rather than a list.
+export function PanelBody({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={`mos-panel-body${className ? ` ${className}` : ''}`}>{children}</div>;
+}
+
 export function Rows({ children, lead = false }: { children: ReactNode; lead?: boolean }) {
   return <div className={`mos-rows${lead ? ' mos-rows-lead' : ''}`}>{children}</div>;
 }
@@ -314,6 +419,39 @@ export function AdvancedPanel({
       {children}
     </div>
   </details>;
+}
+
+// A secret MOS hands the owner to keep: shown whole, in the groups it was
+// designed to be read in, and copyable, because the realistic things someone
+// does with one are copy it into a password manager or write it onto paper. Its
+// look is shared branding (.mos-secret*), so a secret reads the same wherever
+// MOS shows one, and the copy behaviour is the panel's: a fresh install on plain
+// HTTP has no navigator.clipboard, so failing visibly and leaving the text
+// selectable is the whole recovery.
+export function SecretText({ label, value }: { label: string; value: string }) {
+  const [copyState, setCopyState] = useState<'' | 'copied' | 'unavailable'>('');
+  useEffect(() => {
+    if (!copyState) return undefined;
+    const timer = window.setTimeout(() => setCopyState(''), 2_000);
+    return () => window.clearTimeout(timer);
+  }, [copyState]);
+
+  async function copy(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyState('copied');
+    } catch {
+      setCopyState('unavailable');
+    }
+  }
+
+  return <div className="mos-secret">
+    <code className="mos-secret-value">{value}</code>
+    <div className="mos-secret-actions">
+      <span className="mos-secret-state" role="status">{copyState === 'copied' ? 'Copied' : copyState === 'unavailable' ? 'Could not copy. Select the text instead.' : ''}</span>
+      <button aria-label={`Copy ${label}`} className="suite-icon-button" onClick={() => void copy()} title="Copy" type="button"><Icon name="copy" /></button>
+    </div>
+  </div>;
 }
 
 export function Dialog({ children, className, footer, header, onClose, title }: { children: ReactNode; className?: string; footer?: ReactNode; header?: ReactNode; onClose: () => void; title: string }) {

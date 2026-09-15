@@ -3,7 +3,6 @@ const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 
 const DATABASE_FILENAME = 'suite-manager.sqlite';
-const LEGACY_STATE_FILENAME = 'platform-state.json';
 
 const MIGRATIONS = [
   {
@@ -382,40 +381,58 @@ const MIGRATIONS = [
     `,
     version: 16,
   },
+  {
+    // The sign-in backoff used to live only in process memory, so restarting
+    // Suite Manager handed an attacker their whole budget back — and a restart
+    // is something an unauthenticated caller can provoke by other means. The
+    // subject is always a digest: the account was already one, and the client
+    // address is digested on the way in so the table never carries a raw IP —
+    // an unsalted SHA-256 of an IPv4 address is still recoverable by
+    // enumeration, so the one-hour TTL is what bounds the exposure.
+    // Entries are short-lived by policy, so this table stays small and is
+    // pruned on every write rather than by anything scheduled.
+    name: 'login-throttle-persistence',
+    sql: `
+      CREATE TABLE login_throttle (
+        scope TEXT NOT NULL CHECK (scope IN ('account', 'ip')),
+        subject TEXT NOT NULL,
+        failures INTEGER NOT NULL CHECK (failures > 0),
+        blocked_until_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        PRIMARY KEY (scope, subject)
+      ) STRICT;
+
+      CREATE INDEX login_throttle_last_seen_idx ON login_throttle(last_seen_at);
+    `,
+    version: 17,
+  },
+  {
+    // A browser that signed in successfully is remembered by the hash of a
+    // random token it carries in a cookie, so the account-wide sign-in backoff
+    // — the one bucket that cannot tell the owner from whoever is guessing
+    // their email — is skipped for it. The alert row is when MOS last emailed
+    // the owner about throttled sign-ins, so a week-long attack is one message
+    // a day rather than one per attempt.
+    name: 'known-browsers-and-sign-in-alerts',
+    sql: `
+      CREATE TABLE known_browsers (
+        token_hash TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE sign_in_alert_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        last_sent_at TEXT
+      ) STRICT;
+
+      INSERT INTO sign_in_alert_state (id, last_sent_at) VALUES (1, NULL);
+    `,
+    version: 18,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
-
-function readLegacyState(legacyStatePath) {
-  const parsed = JSON.parse(fs.readFileSync(legacyStatePath, 'utf8'));
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('Legacy Suite Manager state must be a JSON object.');
-  }
-
-  if (parsed.owner !== null && parsed.owner !== undefined) {
-    const owner = parsed.owner;
-    for (const field of ['createdAt', 'email', 'name', 'passwordHash']) {
-      if (typeof owner[field] !== 'string' || !owner[field]) {
-        throw new Error(`Legacy Suite Manager owner is missing ${field}.`);
-      }
-    }
-  }
-
-  const sessions = parsed.sessions === undefined ? [] : parsed.sessions;
-  if (!Array.isArray(sessions)) {
-    throw new Error('Legacy Suite Manager sessions must be an array.');
-  }
-  for (const session of sessions) {
-    if (typeof session?.createdAt !== 'string' || typeof session?.tokenHash !== 'string') {
-      throw new Error('Legacy Suite Manager session is invalid.');
-    }
-  }
-  if (!parsed.owner && sessions.length > 0) {
-    throw new Error('Legacy Suite Manager state cannot contain sessions without an owner.');
-  }
-
-  return { owner: parsed.owner || null, sessions };
-}
 
 class SuiteManagerStore {
   constructor(stateDir) {
@@ -425,12 +442,7 @@ class SuiteManagerStore {
 
     this.stateDir = stateDir;
     this.databasePath = path.join(stateDir, DATABASE_FILENAME);
-    this.legacyStatePath = path.join(stateDir, LEGACY_STATE_FILENAME);
-    this.legacyMigratedPath = `${this.legacyStatePath}.migrated`;
     const databaseExisted = fs.existsSync(this.databasePath);
-    const legacyState = !databaseExisted && fs.existsSync(this.legacyStatePath)
-      ? readLegacyState(this.legacyStatePath)
-      : null;
 
     fs.mkdirSync(this.stateDir, { recursive: true });
 
@@ -438,10 +450,6 @@ class SuiteManagerStore {
       this.database = new DatabaseSync(this.databasePath);
       this.configure();
       this.migrate();
-      if (legacyState) {
-        this.importLegacyState(legacyState);
-        fs.renameSync(this.legacyStatePath, this.legacyMigratedPath);
-      }
     } catch (error) {
       this.database?.close();
       if (!databaseExisted) {
@@ -525,9 +533,7 @@ class SuiteManagerStore {
     `).run(termsVersion, acceptedAt);
   }
 
-  // Every stored preference for one owner, decoded. A row this MOS no longer
-  // recognises is skipped rather than thrown on: a preference written by a newer
-  // release must not stop an older one from reading the rest.
+  // Every stored preference for one owner, decoded.
   getOwnerPreferences(ownerId) {
     const rows = this.database.prepare(`
       SELECT key, value_json AS valueJson
@@ -535,13 +541,7 @@ class SuiteManagerStore {
       WHERE owner_id = ?
     `).all(ownerId);
     const preferences = {};
-    for (const row of rows) {
-      try {
-        preferences[row.key] = JSON.parse(row.valueJson);
-      } catch {
-        continue;
-      }
-    }
+    for (const row of rows) preferences[row.key] = JSON.parse(row.valueJson);
     return preferences;
   }
 
@@ -562,7 +562,102 @@ class SuiteManagerStore {
     this.transaction(() => {
       this.database.prepare('UPDATE owners SET password_hash = ? WHERE id = 1').run(passwordHash);
       this.database.prepare('DELETE FROM sessions').run();
+      this.database.prepare('DELETE FROM known_browsers').run();
     });
+  }
+
+  // Browsers the owner has signed in from, by token hash. Bounded so a script
+  // signing in over and over cannot grow the table, and a browser not seen for
+  // longer than `maxAgeMs` is forgotten on its next visit.
+  rememberBrowser({ at, maxRows = 20, tokenHash }) {
+    this.transaction(() => {
+      this.database.prepare(`
+        INSERT INTO known_browsers (token_hash, created_at, last_seen_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT (token_hash) DO UPDATE SET last_seen_at = excluded.last_seen_at
+      `).run(tokenHash, at, at);
+      this.database.prepare(`
+        DELETE FROM known_browsers
+        WHERE token_hash IN (
+          SELECT token_hash FROM known_browsers ORDER BY last_seen_at DESC, rowid DESC LIMIT -1 OFFSET ?
+        )
+      `).run(maxRows);
+    });
+  }
+
+  isKnownBrowser({ at, maxAgeMs, tokenHash }) {
+    const row = this.database.prepare('SELECT last_seen_at AS lastSeenAt FROM known_browsers WHERE token_hash = ?').get(tokenHash);
+    if (!row) return false;
+    if (Date.parse(at) - Date.parse(row.lastSeenAt) > maxAgeMs) {
+      this.database.prepare('DELETE FROM known_browsers WHERE token_hash = ?').run(tokenHash);
+      return false;
+    }
+    this.database.prepare('UPDATE known_browsers SET last_seen_at = ? WHERE token_hash = ?').run(at, tokenHash);
+    return true;
+  }
+
+  countKnownBrowsers() {
+    return Number(this.database.prepare('SELECT COUNT(*) AS count FROM known_browsers').get().count);
+  }
+
+  getSignInAlertSentAt() {
+    return this.database.prepare('SELECT last_sent_at AS lastSentAt FROM sign_in_alert_state WHERE id = 1').get()?.lastSentAt || null;
+  }
+
+  markSignInAlertSent(at) {
+    this.database.prepare('UPDATE sign_in_alert_state SET last_sent_at = ? WHERE id = 1').run(at);
+  }
+
+  // Re-stores the same password under stronger hashing parameters. Deliberately
+  // not `replaceOwnerPassword`: the password did not change, so taking every
+  // session with it would sign the owner out of their other browsers for an
+  // upgrade they never asked for and cannot see. With `replacing`, the write
+  // lands only if the stored hash is still the one that was verified, so a
+  // password changed while the upgrade was being computed is never reverted.
+  upgradeOwnerPasswordHash(passwordHash, { replacing = null } = {}) {
+    if (replacing === null) {
+      this.database.prepare('UPDATE owners SET password_hash = ? WHERE id = 1').run(passwordHash);
+      return true;
+    }
+    return this.database.prepare('UPDATE owners SET password_hash = ? WHERE id = 1 AND password_hash = ?').run(passwordHash, replacing).changes > 0;
+  }
+
+  // Sign-in backoff that survives a restart. Entries expire by policy within the
+  // hour, so the whole table is read back at startup rather than queried per
+  // attempt, and every write prunes what has aged out.
+  getLoginThrottleEntries() {
+    return this.database.prepare(`
+      SELECT
+        blocked_until_at AS blockedUntilAt,
+        failures,
+        last_seen_at AS lastSeenAt,
+        scope,
+        subject
+      FROM login_throttle
+      ORDER BY last_seen_at ASC, rowid ASC
+    `).all().map((row) => ({ ...row, failures: Number(row.failures) }));
+  }
+
+  saveLoginThrottleEntry({ blockedUntilAt, failures, lastSeenAt, scope, subject }) {
+    this.database.prepare(`
+      INSERT INTO login_throttle (scope, subject, failures, blocked_until_at, last_seen_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(scope, subject) DO UPDATE SET
+        failures = excluded.failures,
+        blocked_until_at = excluded.blocked_until_at,
+        last_seen_at = excluded.last_seen_at
+    `).run(scope, subject, failures, blockedUntilAt, lastSeenAt);
+  }
+
+  deleteLoginThrottleEntry({ scope, subject }) {
+    this.database.prepare('DELETE FROM login_throttle WHERE scope = ? AND subject = ?').run(scope, subject);
+  }
+
+  // Inclusive, because the in-memory expiry it mirrors is: an entry whose age has
+  // exactly reached the TTL is gone from memory, and a row that outlived it would
+  // be read back at the next start as a fact memory had already dropped.
+  pruneLoginThrottleEntries({ lastSeenAtOrBefore }) {
+    this.database.prepare('DELETE FROM login_throttle WHERE last_seen_at <= ?').run(lastSeenAtOrBefore);
   }
 
   getHttpsSettings() {
@@ -606,6 +701,20 @@ class SuiteManagerStore {
           last_apply_error_code = NULL, last_apply_diagnostics = NULL
       WHERE id = 1
     `).run(at, at, at);
+  }
+
+  // A restore onto another machine that kept the backup's domain aside: the
+  // domain moves to pending, where the Settings form picks it up, and HTTPS is
+  // off, so this machine answers on its own address until the owner applies it.
+  parkHttpsDomain(at) {
+    this.database.prepare(`
+      UPDATE https_settings
+      SET pending_base_domain = base_domain, pending_acme_email = acme_email,
+          base_domain = NULL, tls_mode = 'off', provider = NULL,
+          last_apply_status = 'never', last_apply_at = NULL,
+          last_apply_error_code = NULL, last_apply_diagnostics = NULL, updated_at = ?
+      WHERE id = 1 AND tls_mode = 'cloudflare-dns01'
+    `).run(at);
   }
 
   failHttpsApply({ at, diagnostics = null, errorCode }) {
@@ -1727,18 +1836,6 @@ class SuiteManagerStore {
     `).run(session.tokenHash, session.createdAt);
   }
 
-  importLegacyState(state) {
-    this.transaction(() => {
-      if (!state.owner) {
-        return;
-      }
-      this.insertOwner(state.owner);
-      for (const session of state.sessions) {
-        this.insertSession(session);
-      }
-    });
-  }
-
   close() {
     this.database.close();
   }
@@ -1746,7 +1843,6 @@ class SuiteManagerStore {
 
 module.exports = {
   DATABASE_FILENAME,
-  LEGACY_STATE_FILENAME,
   MIGRATIONS,
   OwnerAlreadyExistsError,
   SuiteManagerStore,

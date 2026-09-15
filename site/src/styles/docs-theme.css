@@ -18,6 +18,9 @@
      accent-low, which is a translucent brand token here — pin it to the
      page background so text on accent pills stays readable. */
   --sl-color-text-invert: var(--mos-color-bg);
+  /* Starlight's inline-code fill comes from its own grey scale, which is not
+     the scale the MOS background belongs to - the pair measured 3.48:1. */
+  --sl-color-bg-inline-code: var(--mos-color-surface);
 }
 
 /* Starlight asides → the MOS status palette (info / success / warning /
@@ -68,11 +71,17 @@
   color: var(--sl-color-white);
 }
 
-.sidebar-content a[aria-current='page'],
-.sidebar-content a[aria-current='page']:hover,
-.sidebar-content a[aria-current='page']:focus-visible {
-  color: var(--sl-color-text-invert);
-  background-color: var(--sl-color-text-accent);
+/* The current page's own entry is the one pill in the sidebar, and its two
+   halves used to come from different palettes: MOS supplied the text through
+   text-invert while Starlight supplied the accent behind it, so the pair drifted
+   to 4.35:1 against the 4.5:1 floor. Take both from the brand accent pair the
+   primary button already uses - 10.65:1 dark, 5.03:1 light - so they can only
+   move together. The id carries the specificity Starlight's own rule has. */
+#starlight__sidebar a[aria-current='page'],
+#starlight__sidebar a[aria-current='page']:hover,
+#starlight__sidebar a[aria-current='page']:focus-visible {
+  color: var(--mos-color-button-primary-text);
+  background-color: var(--mos-color-accent);
 }
 
 starlight-toc nav a {

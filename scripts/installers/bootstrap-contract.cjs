@@ -196,7 +196,7 @@ if ! command -v caddy >/dev/null 2>&1; then
 fi
 
 apt-get update
-apt-get install -y ca-certificates curl docker.io git gnupg ufw
+apt-get install -y bzip2 ca-certificates curl docker.io git gnupg ufw
 systemctl enable --now docker.service
 echo '[mos] Pulling the pinned Homepage image while the control plane builds.'
 docker pull ${shellQuote(HOMEPAGE_IMAGE)} &
@@ -252,6 +252,17 @@ mv /usr/local/libexec/mos/caddy.next /usr/local/libexec/mos/caddy
 if ! /usr/local/libexec/mos/caddy list-modules | grep -q '^dns.providers.cloudflare$'; then
   echo '[mos] The repo-built Caddy binary is missing dns.providers.cloudflare.' >&2
   exit 1
+fi
+
+# The backup agent runs the storage engine binary, which lives beside Caddy and
+# is not a package. reconcile-system.cjs installs it on every managed update; a
+# fresh install never runs that, so without this line a new machine's first
+# backup fails on a missing engine. Both paths call the same pinned installer.
+# A download that fails must not abort the install: the machine is otherwise
+# complete, the backup agent names the missing engine, and the next update
+# retries it.
+if ! node "$MOS_INSTALL_ROOT/repo/system-agents/backup/engines/engine-install.cjs" /usr/local/libexec/mos >/dev/null; then
+  echo '[mos] Could not install the backup storage engine; backups report it until the next platform update.' >&2
 fi
 
 if ! getent group mos-agent >/dev/null; then
@@ -439,6 +450,7 @@ WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_BACKUP_AGENT_SOCKET=/run/mos-backup-agent/agent.sock
 Environment=MOS_BACKUP_AGENT_STATE_DIR=$MOS_STATE_ROOT/backup-agent
+Environment=MOS_UPDATE_AGENT_SOCKET=/run/mos-update-agent/agent.sock
 Environment=MOS_STATE_ROOT=$MOS_STATE_ROOT
 Environment=MOS_STATE_DIR=$MOS_STATE_ROOT/suite-manager
 Environment=MOS_REPO_DIR=$MOS_INSTALL_ROOT/repo
@@ -465,6 +477,7 @@ UMask=0007
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_UPDATE_AGENT_SOCKET=/run/mos-update-agent/agent.sock
+Environment=MOS_BACKUP_AGENT_SOCKET=/run/mos-backup-agent/agent.sock
 Environment=MOS_REPO_DIR=$MOS_INSTALL_ROOT/repo
 Environment=MOS_STATE_ROOT=$MOS_STATE_ROOT
 ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/update/agent.cjs
@@ -523,6 +536,11 @@ RestartSec=3
 WantedBy=multi-user.target
 MOS_LAB_RESET_AGENT_UNIT
 
+# The Caddyfile below points its error handler at this page, and a fresh
+# install never runs reconcile-system.cjs, which is the other writer of it.
+install -d -m 0755 ${UNAVAILABLE_PAGE_ROOT}
+cat > ${UNAVAILABLE_PAGE_ROOT}/${UNAVAILABLE_PAGE_FILENAME} <<'MOS_UNAVAILABLE_PAGE'
+${renderUnavailablePage()}MOS_UNAVAILABLE_PAGE
 cat > /etc/caddy/Caddyfile <<MOS_CADDY
 ${caddyfile}
 MOS_CADDY
@@ -704,4 +722,7 @@ const {
   renderHomepageSystemdUnit,
   renderJournaldConfig,
   renderPublicCloudCaddyfile,
+  renderUnavailablePage,
+  UNAVAILABLE_PAGE_FILENAME,
+  UNAVAILABLE_PAGE_ROOT,
 } = require('../../infrastructure/control-plane-runtime.cjs');

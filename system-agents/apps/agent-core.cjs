@@ -1,3 +1,4 @@
+const { APP_AGENT_CONTRACT_VERSION } = require('../../shared/app-agent-contract.cjs');
 const { detectEasyDoorBase } = require('../../shared/easy-door.cjs');
 
 class AppRuntimeError extends Error {
@@ -169,17 +170,16 @@ function assertHealthCheckRequest(input) {
 // may name the instance whose snapshot and images are to be discarded, so a stop
 // cannot reach either.
 function assertRuntimeRemoveRequest(input, { allowInstance = false, allowVolumes = false } = {}) {
-  const optional = [
-    'services',
-    ...(allowVolumes ? ['volumes'] : []),
-    ...(allowInstance ? ['installedSourceRevision', 'instanceId'] : []),
-  ];
-  if (!allowedKeys(input, { optional, required: ['packageId'] })) {
+  const optional = ['services', ...(allowVolumes ? ['volumes'] : [])];
+  const required = ['packageId', ...(allowInstance ? ['installedSourceRevision', 'instanceId'] : [])];
+  if (!allowedKeys(input, { optional, required })) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app runtime removal fields are accepted.');
   }
   assertString(input.packageId, 'packageId', PACKAGE_ID_PATTERN);
-  if (input.instanceId !== undefined) assertString(input.instanceId, 'instanceId', /^[0-9a-f-]{36}$/u);
-  if (input.installedSourceRevision !== undefined) assertString(input.installedSourceRevision, 'installedSourceRevision', SOURCE_REVISION_PATTERN);
+  if (allowInstance) {
+    assertString(input.instanceId, 'instanceId', /^[0-9a-f-]{36}$/u);
+    assertString(input.installedSourceRevision, 'installedSourceRevision', SOURCE_REVISION_PATTERN);
+  }
   const services = input.services === undefined ? [] : input.services;
   if (!Array.isArray(services) || services.length > 8 || services.some((service) => !DNS_LABEL_PATTERN.test(String(service)))) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'The app runtime removal service list is invalid.');
@@ -217,19 +217,14 @@ function assertNetworkConnectRequest(input) {
 }
 
 function assertPackageUpdatePromoteRequest(input) {
-  // `installedSourceRevision` is optional so that a Suite Manager talking to an
-  // agent from before `apps.package.update.reclaim` keeps promoting normally: an
-  // unreclaimed image wastes disk, but a promotion refused here after the
-  // candidate is already serving traffic would strand a committed update.
-  const promoteKeys = ['candidateDigest', 'expectedInstalledDigest', 'instanceId', 'packageId', 'rollbackSafe'];
-  if (!exactKeys(input, promoteKeys) && !exactKeys(input, [...promoteKeys, 'installedSourceRevision'])) {
+  if (!exactKeys(input, ['candidateDigest', 'expectedInstalledDigest', 'installedSourceRevision', 'instanceId', 'packageId', 'rollbackSafe'])) {
     throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'Only the documented app update promotion fields are accepted.');
   }
   assertString(input.instanceId, 'instanceId', /^[0-9a-f-]{36}$/u);
   assertString(input.packageId, 'packageId', PACKAGE_ID_PATTERN);
   assertString(input.candidateDigest, 'candidateDigest', PACKAGE_DIGEST_PATTERN);
   assertString(input.expectedInstalledDigest, 'expectedInstalledDigest', PACKAGE_DIGEST_PATTERN);
-  if (input.installedSourceRevision !== undefined) assertString(input.installedSourceRevision, 'installedSourceRevision', SOURCE_REVISION_PATTERN);
+  assertString(input.installedSourceRevision, 'installedSourceRevision', SOURCE_REVISION_PATTERN);
   if (typeof input.rollbackSafe !== 'boolean') throw new AppRuntimeError('INVALID_APP_RUNTIME_REQUEST', 'rollbackSafe must be a boolean.');
   return input;
 }
@@ -379,8 +374,7 @@ class AppAgentCore {
 
   async status() {
     return {
-      capabilities: ['apps.multi-service.apply', 'apps.health.check', 'apps.multi-service.stop', 'apps.multi-service.remove', 'apps.network.connect', 'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote', 'apps.package.update.reclaim', 'apps.package.remove.reclaim'],
-      contractVersion: 9,
+      contractVersion: APP_AGENT_CONTRACT_VERSION,
       hostArchitecture: HOST_ARCHITECTURES[process.arch] || null,
       service: 'mos-app-agent',
     };

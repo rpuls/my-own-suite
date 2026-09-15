@@ -10,6 +10,10 @@ const {
   HOMEPAGE_IMAGE,
   JOURNALD_CONFIG_PATH,
   renderCaddyfile,
+  renderUnavailablePage,
+  UNAVAILABLE_PAGE_FILENAME,
+  UNAVAILABLE_PAGE_ROOT,
+  withUnavailableHandler,
   renderHomepageSystemdUnit,
   renderJournaldConfig,
 } = require('../infrastructure/control-plane-runtime.cjs');
@@ -31,7 +35,6 @@ function parseEnvFile(filePath) {
 }
 
 function homeHostFromContract(contract) {
-  if (contract.MOS_HOME_HOST) return contract.MOS_HOME_HOST;
   if (contract.MOS_HOME_URL) {
     try {
       return new URL(contract.MOS_HOME_URL).hostname;
@@ -75,6 +78,8 @@ const {
   mosRoot,
 } = runtimeConfig;
 const dryRun = process.argv.includes('--dry-run');
+// The repo-built Caddy, which carries the Cloudflare DNS module the packaged one lacks.
+const CADDY_BINARY = '/usr/local/libexec/mos/caddy';
 
 function log(message) {
   process.stdout.write(`[mos:reconcile] ${message}\n`);
@@ -114,6 +119,37 @@ function canRun(command, args) {
   } catch {
     return false;
   }
+}
+
+// A machine installed before the status page existed still runs a Caddyfile that
+// never mentions it, and this script deliberately does not re-render that file —
+// applying HTTPS owns it. So the handler is added to the file already on disk,
+// and only after Caddy itself accepts the result.
+//
+// `adapt` rather than `validate`: validate provisions the Cloudflare DNS module
+// and fails when the token is not in this process's environment, which would
+// skip exactly the machines that have HTTPS applied. Adapt answers the only
+// question being asked here — did this edit stay valid Caddyfile syntax.
+function addStatusHandlerToCaddyfile() {
+  const target = '/etc/caddy/Caddyfile';
+  if (dryRun) {
+    log(`would add the control-plane status handler to ${target} if missing`);
+    return;
+  }
+  if (!fs.existsSync(target)) return;
+  const current = fs.readFileSync(target, 'utf8');
+  const upgraded = withUnavailableHandler(current);
+  if (upgraded === current) return;
+
+  const candidate = `${target}.mos-next`;
+  fs.writeFileSync(candidate, upgraded, 'utf8');
+  if (!canRun(CADDY_BINARY, ['adapt', '--adapter', 'caddyfile', '--config', candidate])) {
+    fs.rmSync(candidate, { force: true });
+    log(`WARNING: ${target} could not take the control-plane status handler; left it unchanged`);
+    return;
+  }
+  fs.renameSync(candidate, target);
+  log(`added the control-plane status handler to ${target}`);
 }
 
 function installDir(dirPath, mode) {
@@ -220,11 +256,11 @@ function refreshCaddyBinary() {
   run('docker', ['build', '--file', path.join(mosRoot, 'infrastructure/caddy/Dockerfile'), '--tag', 'mos-caddy-builder', mosRoot]);
   const container = dryRun ? 'dry-run-container' : run('docker', ['create', 'mos-caddy-builder'], { stdio: ['ignore', 'pipe', 'inherit'] }).trim();
   installDir('/usr/local/libexec/mos', 0o755);
-  run('docker', ['cp', `${container}:/caddy`, '/usr/local/libexec/mos/caddy.next']);
+  run('docker', ['cp', `${container}:/caddy`, `${CADDY_BINARY}.next`]);
   run('docker', ['rm', container]);
   if (!dryRun) {
-    fs.chmodSync('/usr/local/libexec/mos/caddy.next', 0o755);
-    fs.renameSync('/usr/local/libexec/mos/caddy.next', '/usr/local/libexec/mos/caddy');
+    fs.chmodSync(`${CADDY_BINARY}.next`, 0o755);
+    fs.renameSync(`${CADDY_BINARY}.next`, CADDY_BINARY);
   }
 }
 
@@ -233,12 +269,9 @@ function refreshCaddyBinary() {
 // engine here is what keeps an updated machine's agent able to write backups
 // at all, per the rule in infrastructure/control-plane-runtime.cjs.
 //
-// Both engines are installed while MOS is still measuring them; only the
-// chosen one survives that decision.
 // restic ships its Linux builds bzip2-compressed and nothing else, so
-// unpacking the pinned download needs bzip2 on the host. Installs made before
-// this dependency existed gain it on update; without a network, the engine
-// install below reports the real failure.
+// unpacking the pinned download needs bzip2 on the host. Without a network,
+// the engine install below reports the real failure.
 function ensureBzip2() {
   try {
     execFileSync('which', ['bzip2'], { stdio: 'ignore' });
@@ -251,14 +284,6 @@ function ensureBzip2() {
 function refreshBackupEngine() {
   installDir('/usr/local/libexec/mos', 0o755);
   if (!dryRun) ensureBzip2();
-  // Machines installed while MOS carried a second candidate engine still have
-  // its binary. Reconciliation owns what is in this directory, so it takes the
-  // retired one back out rather than leaving 50 MB nothing runs.
-  const retired = '/usr/local/libexec/mos/kopia';
-  if (fs.existsSync(retired)) {
-    if (dryRun) log('would remove the retired kopia engine binary');
-    else { fs.rmSync(retired, { force: true }); log('removed the retired kopia engine binary'); }
-  }
   if (dryRun) { log(`would install backup storage engine ${ENGINE_NAME}`); return; }
   try {
     installEngineBinary({ binaryDir: '/usr/local/libexec/mos', log, name: ENGINE_NAME });
@@ -362,7 +387,10 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
   unit('mos-backup-agent.service', agentUnit({
     after: 'network-online.target docker.service',
     description: 'MOS backup and restore agent',
-    env: { MOS_BACKUP_AGENT_SOCKET: '/run/mos-backup-agent/agent.sock', MOS_BACKUP_AGENT_STATE_DIR: `${stateRoot}/backup-agent`, MOS_REPO_DIR: repoRoot, MOS_STATE_DIR: `${stateRoot}/suite-manager`, MOS_STATE_ROOT: stateRoot },
+    // The update agent's socket, because a scheduled backup asks it whether an
+    // update is running before starting: an update restarts this agent partway
+    // through, so a backup begun underneath one would be cut off mid-write.
+    env: { MOS_BACKUP_AGENT_SOCKET: '/run/mos-backup-agent/agent.sock', MOS_BACKUP_AGENT_STATE_DIR: `${stateRoot}/backup-agent`, MOS_REPO_DIR: repoRoot, MOS_STATE_DIR: `${stateRoot}/suite-manager`, MOS_STATE_ROOT: stateRoot, MOS_UPDATE_AGENT_SOCKET: '/run/mos-update-agent/agent.sock' },
     name: 'mos-backup-agent.service',
     script: 'system-agents/backup/agent.cjs',
     wants: 'network-online.target docker.service',
@@ -370,7 +398,9 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
   unit('mos-update-agent.service', agentUnit({
     after: 'network-online.target docker.service',
     description: 'MOS managed update agent',
-    env: { MOS_REPO_DIR: repoRoot, MOS_STATE_ROOT: stateRoot, MOS_UPDATE_AGENT_SOCKET: '/run/mos-update-agent/agent.sock' },
+    // The backup agent's socket, because an update takes a backup of the whole
+    // suite through it before it applies anything.
+    env: { MOS_BACKUP_AGENT_SOCKET: '/run/mos-backup-agent/agent.sock', MOS_REPO_DIR: repoRoot, MOS_STATE_ROOT: stateRoot, MOS_UPDATE_AGENT_SOCKET: '/run/mos-update-agent/agent.sock' },
     name: 'mos-update-agent.service',
     script: 'system-agents/update/agent.cjs',
     wants: 'network-online.target docker.service',
@@ -395,6 +425,12 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
   if (!fs.existsSync('/etc/caddy/Caddyfile') || dryRun) writeFile('/etc/caddy/Caddyfile', renderCaddyfile(), 0o644);
   if (!fs.existsSync('/etc/caddy/mos-homepage-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-homepage-routes.caddy', '# No user-managed Homepage routes.\n', 0o644);
   if (!fs.existsSync('/etc/caddy/mos-app-routes.caddy') || dryRun) writeFile('/etc/caddy/mos-app-routes.caddy', '# No app runtime routes.\n', 0o644);
+  // Unconditional, unlike the Caddyfile above: this page is repo-owned content
+  // with nothing in it for an owner to configure, and a machine updated from a
+  // release that predates it would otherwise never receive the file its own
+  // Caddyfile now points at.
+  writeFile(path.join(UNAVAILABLE_PAGE_ROOT, UNAVAILABLE_PAGE_FILENAME), renderUnavailablePage(), 0o644);
+  addStatusHandlerToCaddyfile();
 
   run('systemctl', ['daemon-reload']);
   for (const service of ['mos-homepage.service', 'mos-suite-manager.service', 'caddy.service', 'mos-https-agent.service', 'mos-homepage-agent.service', 'mos-app-agent.service', 'mos-backup-agent.service', 'mos-update-agent.service', 'mos-diagnostics-agent.service']) {

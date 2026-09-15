@@ -25,9 +25,12 @@ type CatalogMetadata = {
   screenshots: Array<{ alt: string; caption: string; src: string }>;
   tags: string[];
 };
-type CatalogStatus = { advisories?: { error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; revision: string | null }; error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; repository: string; revision: string | null };
+type CatalogStatus = { advisories?: { error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; revision: string | null }; error: { code: string; message: string } | null; fetchedAt: string | null; freshness: 'fresh' | 'stale' | 'unavailable'; ref: string | null; repository: string; revision: string | null };
 type CatalogUpdate = {
-  available: { compatibility: 'compatible' | 'requires-platform-update'; minimumMosVersion: string; packageDigest: string; packageVersion: string; privacy: { status: string }; sourceRevision: string } | null;
+  // `sourceChannel` says which of the two channels offered this: the published
+  // catalog, or the packages this MOS version shipped with. A checkout candidate
+  // has no fetched revision of its own, so `sourceRevision` is null there.
+  available: { appVersion: string; compatibility: 'compatible' | 'requires-platform-update'; minimumMosVersion: string; packageDigest: string; packageVersion: string; privacy: { status: string }; sourceChannel?: 'catalog' | 'checkout'; sourceRevision: string | null } | null;
   installed: { packageDigest: string; packageVersion: string } | null;
   // `external-source` means the app came from a pasted repository rather than the
   // reviewed catalog, so only that repository knows whether a newer package
@@ -35,23 +38,26 @@ type CatalogUpdate = {
   status: 'current' | 'external-source' | 'installable' | 'installed-newer' | 'not-in-catalog' | 'unavailable' | 'update-available';
 };
 type UpdateComparison = {
-  candidate: { packageVersion: string; privacy: PrivacyReviewSummary };
+  candidate: { appVersion: string | null; packageVersion: string; privacy: PrivacyReviewSummary };
   changes: Array<{ area: string; classification: string; summary: string }>;
   compatibility: 'compatible' | 'owner-action-required' | 'unsupported' | 'unresolved';
   // Binds an apply to the exact pair of packages that were compared here. The
   // backend re-compares and refuses the apply if either side moved since.
   confirmationToken: string;
-  installed: { packageVersion: string; privacy: PrivacyReviewSummary };
+  installed: { appVersion: string | null; packageVersion: string; privacy: PrivacyReviewSummary };
   metadata: { backupRequired: boolean; downtime: string; migrations: string[]; ownerActions: string[]; rollback: string };
   // What the candidate asks MOS for, and what it asks for that the installed
   // version does not already have.
   permissions: { added: string[]; candidate: string[]; installed: string[]; removed: string[] };
   requiredInput: Array<{ default?: unknown; id: string; label: string; secret: boolean; type: string }>;
   updateStatus: 'current' | 'installed-newer' | 'update-available';
-  validation: { agentCapability: string; errors: string[] };
+  validation: { errors: string[] };
 };
 
 type AppPackageSummary = {
+  // The app's own version, as its manifest declares it; `version` below is the
+  // MOS package version.
+  appVersion: string | null;
   capabilities: {
     exports: Array<{ features: Record<string, unknown>; id: string; implementation: string; interfaceVersion: number | null; protocol: string; title: string; type: string }>;
     integrations: Array<{ accepts: Array<{ interfaceVersion: number | null; protocol: string; type: string }>; id: string; title: string }>;
@@ -133,7 +139,7 @@ type AppPackageSummary = {
 // The card reuses the public package summary shape, plus explicit external/trust
 // flags and the package's own inlined icon; nothing is persisted by resolving.
 type ExternalCard = Pick<AppPackageSummary,
-  'capabilities' | 'catalog' | 'category' | 'health' | 'homepage' | 'icon' | 'id' | 'name' | 'role' | 'routes' | 'services' | 'setup' | 'summary' | 'validation' | 'version'> & {
+  'appVersion' | 'capabilities' | 'catalog' | 'category' | 'health' | 'homepage' | 'icon' | 'id' | 'name' | 'role' | 'routes' | 'services' | 'setup' | 'summary' | 'validation' | 'version'> & {
   external: true;
   iconDataUrl: string | null;
   iconUrl: string;
@@ -261,6 +267,24 @@ const UNKNOWN_UPDATE_FAILURE = {
 function failureCopy({ errorCode, kind }: { errorCode: string | null; kind: string }) {
   if (kind === 'update') return (errorCode && UPDATE_FAILURE_COPY[errorCode]) || UNKNOWN_UPDATE_FAILURE;
   return (errorCode && FAILURE_COPY[errorCode]) || UNKNOWN_FAILURE;
+}
+
+// Where the app list and its update offers came from. A catalog that will not
+// refresh is deliberately not a banner — the list falls back to the packages
+// this MOS version shipped with, so nothing is broken — but the reason for it
+// existed only in the browser console, which is not a place an owner can be
+// asked to look.
+function catalogFacts(status: CatalogStatus): AdvancedFact[] {
+  const facts: AdvancedFact[] = [
+    { label: 'Source', value: status.repository },
+    { label: 'Branch', value: status.ref || 'not resolved' },
+    { label: 'State', value: status.freshness },
+    { label: 'Last fetched', value: status.fetchedAt ? new Date(status.fetchedAt).toLocaleString() : 'never' },
+    { code: true, label: 'Revision', value: status.revision ? status.revision.slice(0, 12) : 'none' },
+  ];
+  if (status.error) facts.push({ code: true, label: 'Error', value: status.error.code });
+  if (status.advisories) facts.push({ label: 'Advisories', value: status.advisories.error ? status.advisories.error.code : status.advisories.freshness });
+  return facts;
 }
 
 function initialsFor(name: string) {
@@ -547,11 +571,20 @@ function AppGuidePanel({
   </aside>;
 }
 
+// An update is described by the app's own version; the MOS package version never
+// appears outside Advanced details. Either side may be undeclared on an
+// external package.
+function updateHeadline(name: string, from: string | null, to: string | null): string {
+  if (!from || !to) return 'A newer package of this app is available.';
+  if (from === to) return `${name} stays on ${from}. This update changes how MOS runs it, not the app itself.`;
+  return `${name} ${from} to ${to}.`;
+}
+
 function appAdvancedFacts(app: AppPackageSummary): AdvancedFact[] {
   const projections = app.instance?.projections || [];
   return [
     { label: 'Package id', value: app.id },
-    { label: 'Version', value: app.version },
+    { label: 'MOS package version', value: app.version },
     { label: 'Service', value: app.services.map((service) => `${service.id}:${service.internalPort ?? '?'}`).join(', ') || 'None' },
     { label: 'Route', value: app.routes.map((route) => `${route.host} -> ${route.service}`).join(', ') || 'None' },
     { label: 'Volumes', value: app.services.flatMap((service) => service.volumes).join(', ') || 'None' },
@@ -792,6 +825,7 @@ function AppDetail({
           <div className="suite-app-detail-heading">
             <div className="suite-app-detail-title-row">
               <h2>{app.name}</h2>
+              {app.appVersion ? <span className="suite-app-detail-version">{app.appVersion}</span> : null}
               <AppHealthIndicator app={app} />
             </div>
             <p className="suite-app-detail-replaces">
@@ -882,15 +916,21 @@ function AppDetail({
         </Notice> : null}
 
         {app.catalogUpdate?.status === 'update-available' && app.catalogUpdate.available ? <section className="suite-app-update-summary">
-          <div><span>Installed</span><strong>{app.catalogUpdate.installed?.packageVersion}</strong></div>
-          <div><span>Available</span><strong>{app.catalogUpdate.available.packageVersion}</strong></div>
+          {app.appVersion === app.catalogUpdate.available.appVersion ? <div className="suite-app-update-unchanged">
+            <span>{app.name} version</span>
+            <strong>{app.appVersion}</strong>
+            <small>Stays the same. This update changes how MOS runs it, not the app itself.</small>
+          </div> : <>
+            <div><span>Installed</span><strong>{app.appVersion}</strong></div>
+            <div><span>Available</span><strong>{app.catalogUpdate.available.appVersion}</strong></div>
+          </>}
           <div><span>Compatibility</span><strong>{app.catalogUpdate.available.compatibility === 'compatible' ? 'Ready for this MOS version' : `Requires MOS ${app.catalogUpdate.available.minimumMosVersion}`}</strong></div>
           {updateWaiting ? null : <button className="mos-btn mos-btn-secondary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking update...' : 'Review update'}</button>}
           {comparisonError ? <p role="alert">{comparisonError}</p> : null}
         </section> : null}
 
         {app.catalogUpdate?.status === 'external-source' ? <section className="suite-app-update-summary">
-          <div><span>Installed</span><strong>{app.catalogUpdate.installed?.packageVersion}</strong></div>
+          {app.appVersion ? <div><span>Installed</span><strong>{app.appVersion}</strong></div> : null}
           <div><span>Source</span><strong>The repository you pasted</strong></div>
           <p>This app did not come from the verified MOS catalog, so MOS does not track its versions. Checking asks its repository directly what it publishes now.</p>
           <button className="mos-btn mos-btn-secondary" disabled={comparisonLoading} onClick={() => void prepareUpdate()} type="button">{comparisonLoading ? 'Checking...' : 'Check for updates'}</button>
@@ -982,8 +1022,8 @@ function AppDetail({
       // any says so — a fact about this owner's own data, which is why it is not
       // behind technical controls.
       overrideNotice={ownerEnv.length ? 'You have changed this app’s configuration. The assessment below describes it as MOS ships it.' : null}
+      appVersion={app.appVersion}
       packageId={app.id}
-      packageVersion={app.instance?.packageVersion || app.version}
       privacy={app.privacy}
     /> : null}
     {configOpen ? <AppConfigDialog
@@ -1083,8 +1123,8 @@ function AppDetail({
           <p>{comparison.updateStatus === 'current'
             ? `${app.name} is already running the newest package its source offers.`
             : comparison.updateStatus === 'installed-newer'
-              ? `The source offers version ${comparison.candidate.packageVersion}, which is older than the installed ${comparison.installed.packageVersion}. MOS does not downgrade apps.`
-              : `Version ${comparison.installed.packageVersion} to ${comparison.candidate.packageVersion}.`}</p>
+              ? 'The source offers an older package than the one installed. MOS does not downgrade apps.'
+              : updateHeadline(app.name, comparison.installed.appVersion, comparison.candidate.appVersion)}</p>
         </Notice>
         {comparison.validation.errors.length ? <Notice title="This update cannot be applied" variant="warning">
           <ul>{comparison.validation.errors.map((item) => <li key={item}>{item}</li>)}</ul>
@@ -1101,7 +1141,7 @@ function AppDetail({
             })}
           </ul>
         </Notice> : null}
-        <PrivacyChangeRow candidate={comparison.candidate.privacy} candidateVersion={comparison.candidate.packageVersion} installed={comparison.installed.privacy} installedVersion={comparison.installed.packageVersion} />
+        <PrivacyChangeRow candidate={comparison.candidate.privacy} candidateVersion={comparison.candidate.appVersion} installed={comparison.installed.privacy} installedVersion={comparison.installed.appVersion} />
         <dl><dt>Backup</dt><dd>{comparison.metadata.backupRequired ? 'Required' : 'Not declared as required'}</dd><dt>Downtime</dt><dd>{comparison.metadata.downtime}</dd><dt>Rollback</dt><dd>{comparison.metadata.rollback}</dd></dl>
         {comparison.changes.length ? <ul>{comparison.changes.map((change, index) => <li key={`${change.area}-${index}`}><strong>{change.area}</strong>: {change.summary}</li>)}</ul> : <p>No structural changes detected.</p>}
         {comparison.requiredInput.map((field) => <TextInput autoComplete={field.secret ? 'new-password' : 'off'} disabled={applying} key={field.id} label={field.label} onChange={(event) => { const { value } = event.currentTarget; setUpdateInput((current) => ({ ...current, [field.id]: value })); }} type={field.secret ? 'password' : field.type === 'email' ? 'email' : 'text'} value={updateInput[field.id] || ''} />)}
@@ -1247,7 +1287,7 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
         <section className="suite-app-facts" aria-label="Package facts">
           <div><span>Trust</span><strong>Unverified</strong></div>
           <div><span>Review</span><strong>Not reviewed by MOS</strong></div>
-          <div><span>Version</span><strong>{card.version || 'Unknown'}</strong></div>
+          {card.appVersion ? <div><span>Version</span><strong>{card.appVersion}</strong></div> : null}
           <div><span>Source</span><strong>{externalSourceLabel(source.repository)}</strong></div>
         </section>
 
@@ -1255,6 +1295,7 @@ function ExternalAppDetail({ installError, installing, onClose, onInstall, owner
           { label: 'Repository', value: source.repository },
           { code: true, label: 'Revision', value: source.revision.slice(0, 12) },
           { label: 'Package id', value: source.packageId },
+          { label: 'Package version', value: card.version || 'Unknown' },
           { code: true, label: 'Package digest', value: resolved.packageDigest },
           { label: 'Services', value: card.services.map((service) => `${service.id}:${service.internalPort ?? '?'}`).join(', ') || 'None' },
           { label: 'Routes', value: card.routes.map((route) => `${route.host} -> ${route.service}`).join(', ') || 'None' },
@@ -1666,6 +1707,13 @@ export function AppsScreen({ owner }: { owner: Owner }) {
         </div>
       </section> : null}
     </div> : null}
+
+    {catalogStatus && !externalUrl ? <AdvancedPanel facts={catalogFacts(catalogStatus)} reveal="technical-mode" summary="App catalog">
+      {catalogStatus.error
+        ? <p>{catalogStatus.error.message}</p>
+        : <p>This list is the published catalog folded together with the app packages this MOS version shipped with; whichever offers the newer version of an app wins.</p>}
+      {catalogStatus.error ? <p>Apps still update from the packages this MOS version shipped with, so nothing here is broken — but app versions published since are not known to this server.</p> : null}
+    </AdvancedPanel> : null}
 
     {externalOpen && externalResolved ? <ExternalAppDetail
       installError={externalInstallError}

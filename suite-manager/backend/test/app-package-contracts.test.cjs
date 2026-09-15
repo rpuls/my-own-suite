@@ -138,9 +138,9 @@ test('a package is refused on a host it says it does not run on', () => {
 });
 
 // The check explains a build failure that was already coming. Neither unknown is
-// evidence of one, so neither may invent a refusal: an undeclared package is
-// every package written before the field existed, and an unidentified host would
-// otherwise have every declaring package blocked on it.
+// evidence of one, so neither may invent a refusal: `architectures` is optional,
+// and an unidentified host would otherwise have every declaring package blocked
+// on it.
 test('nothing is refused for an architecture no one has named', () => {
   assert.deepEqual(validateArchitectureCompatibility({ id: 'example' }, 'arm64'), []);
   assert.deepEqual(validateArchitectureCompatibility({ architectures: ['amd64'] }, null), []);
@@ -163,7 +163,7 @@ test('catalog validation fails closed on malformed identity and privacy metadata
   assert.deepEqual(validateCatalog({
     packages: {
       'Bad_App': { minimumMosVersion: 'future', packageDigest: 'sha256:nope', packageVersion: 'moving', path: '../escape', privacy: { status: 'certified' } },
-      example: { minimumMosVersion: '0.1.0', packageDigest: digest, packageVersion: '1.0.0', path: 'apps/example', privacy: { status: 'review-required' } },
+      example: { appVersion: '1.0', minimumMosVersion: '0.1.0', packageDigest: digest, packageVersion: '1.0.0', path: 'apps/example', privacy: { status: 'review-required' } },
     },
     schemaVersion: 1,
   }), [
@@ -173,6 +173,7 @@ test('catalog validation fails closed on malformed identity and privacy metadata
     'catalog.packages.Bad_App.minimumMosVersion must be semver-like.',
     'catalog.packages.Bad_App.packageDigest must be a SHA-256 digest.',
     'catalog.packages.Bad_App.privacy.status is invalid.',
+    'catalog.packages.Bad_App.appVersion must be a non-empty string.',
   ]);
 });
 
@@ -375,4 +376,27 @@ test('catalog refresh policy keeps a bounded retry cadence and last-known-good c
   assert.ok(CATALOG_REFRESH_POLICY.backoffInitialMs < CATALOG_REFRESH_POLICY.backoffMaximumMs);
   assert.ok(CATALOG_REFRESH_POLICY.cacheStaleAfterMs > CATALOG_REFRESH_POLICY.catalogIntervalMs);
   assert.equal(CATALOG_REFRESH_POLICY.jitterRatio, 0.1);
+});
+
+// Every catalog package names the app's own version, so an update can be named
+// in the owner's terms before anything is downloaded. Free-form, because apps do
+// not all use semver.
+test('a catalog entry must carry the app version', () => {
+  const entry = (appVersion) => ({
+    packages: {
+      example: {
+        ...(appVersion === undefined ? {} : { appVersion }),
+        minimumMosVersion: '0.19.0',
+        packageDigest: `sha256:${'a'.repeat(64)}`,
+        packageVersion: '1.0.0',
+        path: 'apps/example',
+        privacy: { status: 'reviewed' },
+      },
+    },
+    schemaVersion: 1,
+  });
+  assert.deepEqual(validateCatalog(entry('26.8.1')), []);
+  for (const missing of [undefined, '', 3]) {
+    assert.deepEqual(validateCatalog(entry(missing)), ['catalog.packages.example.appVersion must be a non-empty string.']);
+  }
 });

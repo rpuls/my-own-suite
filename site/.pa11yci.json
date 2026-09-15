@@ -1,0 +1,18 @@
+{
+  "defaults": {
+    "chromeLaunchConfig": {
+      "args": ["--no-sandbox", "--disable-dev-shm-usage"]
+    },
+    "standard": "WCAG2AA",
+    "timeout": 60000,
+    "wait": 500
+  },
+  "urls": [
+    "http://127.0.0.1:4321/",
+    "http://127.0.0.1:4321/docs/",
+    "http://127.0.0.1:4321/docs/getting-started/",
+    "http://127.0.0.1:4321/docs/install/cloud-server/",
+    "http://127.0.0.1:4321/docs/apps/vaultwarden/",
+    "http://127.0.0.1:4321/docs/guides/backup-restore/"
+  ]
+}

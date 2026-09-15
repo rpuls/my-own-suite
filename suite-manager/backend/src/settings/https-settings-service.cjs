@@ -29,6 +29,9 @@ function publicStatus(settings, bootstrapHost, agentAvailable, {
       status: settings.lastApplyStatus,
     },
     installContext: frontDoor,
+    // A domain that came with a restored backup and is not served here: pending
+    // outside an apply in progress, which is the only other time pending is set.
+    parkedBaseDomain: settings.lastApplyStatus === 'applying' ? null : settings.pendingBaseDomain || null,
     privateHttpsAvailable: privateHttpsAvailable(frontDoor),
     provider: settings.provider,
     serverAddress,
@@ -54,6 +57,13 @@ class HttpsSettingsService {
   easyDoorHost(settings = this.store.getHttpsSettings()) {
     if (settings.tlsMode === 'cloudflare-dns01') return null;
     return easyDoorHomeHost(this.detectAddress());
+  }
+
+  // The domain this machine serves apps on, or null. Once a domain is applied
+  // every app route names exactly one host under it, so the address an app is
+  // reached on no longer depends on which door the owner came in through.
+  appliedBaseDomain(settings = this.store.getHttpsSettings()) {
+    return settings.tlsMode === 'cloudflare-dns01' && settings.baseDomain ? settings.baseDomain : null;
   }
 
   allowedHosts() {

@@ -225,6 +225,18 @@ test('unknown manifest fields are ignored at every level, never fatal', () => {
   assert.deepEqual(validateAppPackageManifest(manifest), []);
 });
 
+// `appVersion` is the one version an owner sees. It is optional and free-form
+// (apps do not all use semver), and the public summary reports null when a
+// manifest leaves it out rather than substituting the package version.
+test('appVersion is optional, must be text when present, and reaches the public summary', () => {
+  assert.deepEqual(validateAppPackageManifest(validManifest({ appVersion: '26.8.1' })), []);
+  assert.deepEqual(validateAppPackageManifest(validManifest({ appVersion: '14-vectorchord0.4.3' })), []);
+  assert.ok(validateAppPackageManifest(validManifest({ appVersion: '' })).length);
+  assert.ok(validateAppPackageManifest(validManifest({ appVersion: 3 })).length);
+  assert.equal(publicPackageSummary(validManifest({ appVersion: '26.8.1' })).appVersion, '26.8.1');
+  assert.equal(publicPackageSummary(validManifest()).appVersion, null);
+});
+
 test('manifestVersion is required and must be a known generation', () => {
   const missing = validManifest();
   delete missing.manifestVersion;
@@ -316,8 +328,8 @@ test('public package summary carries declared requirements and drops partial one
     cpuCores: 0.1, cpuPeakCores: null, memoryMb: 128, memoryPeakMb: null,
   });
 
-  // An older or hand-edited package that states neither, or only half, must
-  // reach the UI as "not declared" rather than as a figure to add up.
+  // `requires` is optional, so a package that states neither, or only half,
+  // must reach the UI as "not declared" rather than as a figure to add up.
   assert.equal(publicPackageSummary(validManifest()).services[0].requires, null);
   const partial = publicPackageSummary(validManifest({
     resources: { services: { 'example-app': { dockerfile: 'Dockerfile', internalPort: 8080, requires: { memoryMb: 512 } } } },

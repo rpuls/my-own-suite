@@ -11,6 +11,7 @@ type HttpsStatus = {
   bootstrapUrl: string;
   installContext: string;
   lastApply: { at: string | null; diagnostics: string | null; errorCode: string | null; status: string };
+  parkedBaseDomain?: string | null;
   privateHttpsAvailable: boolean;
   provider: string | null;
   serverAddress: string | null;
@@ -457,7 +458,7 @@ export function SettingsScreen() {
     try {
       const next = await jsonResponse<HttpsStatus>(await fetch('/suite-manager/api/settings/https'), 'Unable to load HTTPS settings.');
       setStatus(next);
-      setBaseDomain(next.baseDomain || '');
+      setBaseDomain(next.baseDomain || next.parkedBaseDomain || '');
       setAcmeEmail(next.acmeEmail || '');
       setLoadError('');
       return next;
@@ -551,6 +552,7 @@ export function SettingsScreen() {
     </div> : <div className="mos-panel suite-card suite-settings-panel">
       <div><h2 className="mos-card-title">Private LAN HTTPS with Cloudflare DNS</h2><p className="suite-meta">Use DNS-01 to get a trusted certificate for private local access to <strong>home.&lt;your-domain&gt;</strong>. This does not publish MOS to the internet or configure public access.</p></div>
       {!status.agentAvailable ? <Notice title="HTTPS agent unavailable" variant="warning"><p>You can review and validate the form, but applying requires the installed MOS HTTPS agent and Cloudflare-capable Caddy build.</p></Notice> : null}
+      {status.parkedBaseDomain && !result ? <Notice title={`${status.parkedBaseDomain} is not served from this machine`} variant="info"><p>That address came with the backup this machine was restored from, as a copy, so MOS answers on this machine's own address for now. To make this the machine behind <strong>home.{status.parkedBaseDomain}</strong>, apply HTTPS below with your Cloudflare API token, then point that name at this server.</p></Notice> : null}
       <form className="suite-settings-form" onSubmit={(event) => void submit(event)}>
         <TextInput autoComplete="url" helperText="Example: mos.example.com. Your Home URL becomes home.mos.example.com." label="MOS base domain" onChange={(event) => setBaseDomain(event.target.value)} placeholder="mos.example.com" value={baseDomain} />
         <TextInput autoComplete="email" helperText="Used by the ACME certificate authority for account notices." label="ACME contact email" onChange={(event) => setAcmeEmail(event.target.value)} placeholder="you@example.com" type="email" value={acmeEmail} />

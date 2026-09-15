@@ -37,6 +37,12 @@ const OWNERSHIP_LABELS = Object.freeze({
 // versions 2 and 3 are no longer readable: their restore path was removed once
 // the repository path was drill-verified, so a pre-4 backup is refused by
 // validation before any mutation rather than half-restored.
+//
+// Within a generation this list only ever grows. A backup is readable by the
+// MOS that wrote it and by every MOS after it, so raising the written version
+// means appending the new one, never replacing the old. Dropping a version is
+// a generation break: a major platform event that keeps the last release able
+// to read it installable for good, rather than migrating forward from it.
 const BACKUP_SCHEMA_VERSION = 4;
 const RESTORE_COMPATIBLE_SCHEMA_VERSIONS = Object.freeze([4]);
 

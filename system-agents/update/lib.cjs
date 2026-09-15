@@ -131,6 +131,7 @@ function runNode(paths, scriptPath, args, log) {
 function summarizeJob(job) {
   if (!job) return null;
   return {
+    checkpoint: job.checkpoint || null,
     completedAt: job.completedAt || null,
     error: typeof job.error === 'string' ? job.error : null,
     id: job.id,
@@ -378,7 +379,6 @@ async function collectStatus(paths = buildPaths(), { releaseLookup = fetchLatest
     checkFailure: checkFailure ? { at: now(), ...checkFailure } : null,
     checkedAt: now(),
     changeSummary: buildChangeSummary(paths, track.type, latestRelease),
-    error: checkFailure ? checkFailure.reason : null,
     githubRepo,
     installedVersion,
     latestRelease,
@@ -455,6 +455,7 @@ module.exports = {
   readJson,
   readLastStatus,
   repoRootFrom,
+  resolveTrack,
   runApply,
   shortCommit,
   summarizeJob,

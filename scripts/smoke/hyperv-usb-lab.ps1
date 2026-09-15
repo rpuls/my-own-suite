@@ -80,26 +80,10 @@ function Get-LabSwitch {
 }
 
 function Remove-LabVm {
-  $vmNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-  $namedVm = Get-VM -Name $VmName -ErrorAction SilentlyContinue
-  if ($namedVm) { [void]$vmNames.Add($namedVm.Name) }
-
-  # A harness rename can leave the same disposable VHDX attached to a VM with
-  # an older name. Find ownership by the exact lab directory before deleting it.
-  foreach ($vm in @(Get-VM)) {
-    foreach ($drive in @(Get-VMHardDiskDrive -VMName $vm.Name -ErrorAction SilentlyContinue)) {
-      if ($drive.Path -and [IO.Path]::GetFullPath($drive.Path).StartsWith("$LabRoot\", [StringComparison]::OrdinalIgnoreCase)) {
-        [void]$vmNames.Add($vm.Name)
-      }
-    }
-  }
-
-  foreach ($name in $vmNames) {
-    $vm = Get-VM -Name $name -ErrorAction SilentlyContinue
-    if (-not $vm) { continue }
-    if ($vm.State -ne 'Off') { Stop-VM -Name $name -TurnOff -Force }
-    Remove-VM -Name $name -Force
-  }
+  $vm = Get-VM -Name $VmName -ErrorAction SilentlyContinue
+  if (-not $vm) { return }
+  if ($vm.State -ne 'Off') { Stop-VM -Name $VmName -TurnOff -Force }
+  Remove-VM -Name $VmName -Force
 }
 
 function Remove-LabArtifacts {
@@ -464,10 +448,6 @@ if ($Command -eq 'refresh') {
   }
 
   Set-SmokeHostsEntries -Ip $ip -StackDomain $stackDomain
-  $vm = Get-VM -Name $VmName
-  if ($vm.AutomaticStopAction -ne 'ShutDown') {
-    Write-Host "[mos-smoke:hyperv-usb] Note: automatic stop action is still '$($vm.AutomaticStopAction)'; the next refresh that stops the VM will switch it to ShutDown."
-  }
   Show-Summary -Ip $ip -StackDomain $stackDomain
   exit 0
 }

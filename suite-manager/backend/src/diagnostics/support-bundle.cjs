@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { APP_AGENT_CONTRACT_VERSION, appAgentContractVersionOf } = require('../../../../shared/app-agent-contract.cjs');
 const { redactValuesWithReport } = require('../redaction.cjs');
 
 const RULE = '─'.repeat(74);
@@ -57,13 +58,33 @@ function fullFilesystems(dfOutput) {
 // The section that leads the file. Everything below it is evidence; this is the
 // part a helper — or the AI they paste it into — reads first, and the reason the
 // bundle is worth more than a folder of raw logs.
-function summarizeTrouble({ apps = [], collection = {}, platform = {} }) {
+function summarizeTrouble({ apps = [], catalog = null, collection = {}, platform = {} }) {
   const trouble = [];
   if (platform.lastCheck?.reason) trouble.push(`The last update check failed: ${platform.lastCheck.reason}`);
+  // A catalog that will not refresh is quiet by design — the app list and its
+  // update offers fall back to the packages this MOS version shipped with — so
+  // it is invisible on every screen and has to be named here or nowhere.
+  if (catalog?.error) trouble.push(`The app catalog could not be read (${catalog.error.code}): ${catalog.error.message} Apps still update from the packages this MOS version shipped with, so nothing is broken, but app versions published since are not known.`);
+  else if (catalog?.freshness === 'unavailable') trouble.push('The app catalog has never been fetched successfully, so no app version published since this MOS version is known.');
+  else if (catalog?.freshness === 'stale') trouble.push(`The app catalog was last fetched at ${catalog.fetchedAt || 'an unknown time'} and is out of date.`);
+  // Only on its own account: advisories are fetched after the catalog, so a
+  // catalog error already explains their absence and saying it twice would read
+  // as two problems.
+  if (!catalog?.error && catalog?.advisories?.error) trouble.push(`Privacy advisories could not be read (${catalog.advisories.error.code}): ${catalog.advisories.error.message}`);
   if (platform.lastUpdate?.status === 'failed') trouble.push(`The last platform update failed at ${platform.lastUpdate.at || 'an unknown time'}: ${platform.lastUpdate.error || 'no reason was recorded.'}`);
+  // Suite Manager and the app agent ship together, so a disagreement here means
+  // the last update applied one and not the other. Nothing else on the server
+  // says so: apps keep running, and only installing, updating or removing one
+  // reports it.
+  if (platform.appAgentContractVersion !== undefined && platform.appAgentContractVersion !== APP_AGENT_CONTRACT_VERSION) {
+    trouble.push(platform.appAgentContractVersion === null
+      ? 'The app runtime agent could not be reached, so no app can be installed, updated or removed.'
+      : `The app runtime agent reports contract version ${platform.appAgentContractVersion} but this MOS needs ${APP_AGENT_CONTRACT_VERSION}, so its last update did not fully apply. Installed apps keep running; installing, updating or removing one is refused until MOS is updated again.`);
+  }
   if (platform.lastHttpsApply?.status === 'failed') trouble.push(`The last HTTPS apply failed: ${platform.lastHttpsApply.errorCode || 'unknown error'} at ${platform.lastHttpsApply.at || 'an unknown time'}.`);
   for (const unit of collection.units || []) {
-    if (unit.active !== 'active') trouble.push(`Service ${unit.name} is ${unit.active}${unit.sub && unit.sub !== unit.active ? ` (${unit.sub})` : ''}.`);
+    if (unit.unread) trouble.push(`The state of ${unit.name} could not be read; it may or may not be running.`);
+    else if (unit.active !== 'active') trouble.push(`Service ${unit.name} is ${unit.active}${unit.sub && unit.sub !== unit.active ? ` (${unit.sub})` : ''}.`);
   }
   for (const container of collection.containers || []) {
     if (container.troubled) trouble.push(`Container ${container.name} is ${container.status || container.state || 'in an unexpected state'}.`);
@@ -74,6 +95,13 @@ function summarizeTrouble({ apps = [], collection = {}, platform = {} }) {
   for (const line of fullFilesystems(collection.host?.disk)) trouble.push(`Filesystem is nearly full: ${line}`);
   if (collection.incomplete?.length) trouble.push(`Some information could not be collected: ${collection.incomplete.join(', ')}.`);
   return trouble;
+}
+
+// Both numbers, always, so the reader never has to know which release changed
+// the contract to see that the two ends disagree.
+function appAgentLine(reported) {
+  if (reported === undefined) return 'not collected';
+  return `contract ${reported === null ? 'unreachable' : reported}, MOS needs ${APP_AGENT_CONTRACT_VERSION}`;
 }
 
 function section(title, body) {
@@ -103,6 +131,23 @@ function lastUpdateLines(job) {
   if (job.status === 'failed') {
     lines.push(indent(job.error || 'No reason was recorded.'));
     if (job.output) lines.push(indent(job.output, 4));
+  }
+  return lines;
+}
+
+// Where the app list and its update offers came from. Parallel to the update
+// check above: the other conversation this server has with GitHub, and the first
+// thing to look at when an app update the owner expected is not being offered.
+function catalogLines(catalog) {
+  if (!catalog) return ['App catalog        not collected'];
+  const lines = [
+    `App catalog        ${catalog.freshness}${catalog.ref ? ` on ${catalog.ref}` : ''}${catalog.revision ? ` at ${catalog.revision.slice(0, 12)}` : ''}${catalog.fetchedAt ? `, fetched ${catalog.fetchedAt}` : ''}`,
+    `Catalog source     ${catalog.repository || 'unknown'}`,
+  ];
+  if (catalog.error) lines.push(`Catalog error      ${catalog.error.code}`, indent(catalog.error.message, 19));
+  if (catalog.advisories) {
+    lines.push(`Advisories         ${catalog.advisories.freshness}${typeof catalog.advisories.count === 'number' ? `, ${catalog.advisories.count} published` : ''}`);
+    if (catalog.advisories.error) lines.push(`Advisory error     ${catalog.advisories.error.code}`, indent(catalog.advisories.error.message, 19));
   }
   return lines;
 }
@@ -152,6 +197,7 @@ function containerLines(containers) {
 // and the person reading it — increasingly an AI agent — needs no unpacking step.
 function buildSupportBundle({
   apps = [],
+  catalog = null,
   collection = {},
   homeHost = '',
   now = () => new Date(),
@@ -159,7 +205,7 @@ function buildSupportBundle({
   secrets = [],
 } = {}) {
   const createdAt = now().toISOString();
-  const trouble = summarizeTrouble({ apps, collection, platform });
+  const trouble = summarizeTrouble({ apps, catalog, collection, platform });
 
   const body = [
 `MY OWN SUITE — DIAGNOSTICS
@@ -185,11 +231,13 @@ Logs are shortened newest-first, so this stays small enough to read in full.
       `Update track       ${platform.updateTrack || 'unknown'}`,
       `Install shape      ${platform.frontDoor || 'unknown'}`,
       `HTTPS mode         ${platform.tlsMode || 'unknown'}`,
+      `App agent          ${appAgentLine(platform.appAgentContractVersion)}`,
       `Home host          ${homeHost || 'unknown'}`,
       `Collected at       ${collection.collectedAt || 'not collected'}`,
       ...lastCheckLines(platform.lastCheck),
       ...lastUpdateLines(platform.lastUpdate),
       ...lastHttpsApplyLines(platform.lastHttpsApply),
+      ...catalogLines(catalog),
     ].join('\n')),
     section('HOST', [
       collection.host?.kernel && `Kernel:\n${collection.host.kernel}`,
@@ -231,6 +279,8 @@ Logs are shortened newest-first, so this stays small enough to read in full.
 // rendering is testable against fixtures with no store, agent or disk.
 async function assembleSupportBundle({
   agent,
+  appAgent = null,
+  catalogStatus = null,
   frontDoor = 'unknown',
   homeHost = '',
   now = () => new Date(),
@@ -249,6 +299,7 @@ async function assembleSupportBundle({
   const https = (() => {
     try { return store.getHttpsSettings() || {}; } catch { return {}; }
   })();
+  const appAgentStatus = await Promise.resolve(appAgent?.status?.()).catch(() => null);
   const apps = store.getAppInstances().map((instance) => ({
     displayName: instance.displayNameSnapshot || instance.packageId,
     installedAt: instance.installedAt,
@@ -262,10 +313,12 @@ async function assembleSupportBundle({
 
   return buildSupportBundle({
     apps,
+    catalog: catalogStatus,
     collection,
     homeHost,
     now,
     platform: {
+      appAgentContractVersion: appAgentContractVersionOf(appAgentStatus),
       frontDoor,
       lastHttpsApply: {
         at: https.lastApplyAt || null,

@@ -1828,35 +1828,6 @@ function DesignInspector({
           }
         />
       </section>
-      <section className="inspector-section">
-        <p className="eyebrow">EXPORT FOOTER</p>
-        <SwitchRow
-          label="My Own Suite mark"
-          description="Invites others to plan their own journey."
-          checked={doc.branding.myOwnSuite}
-          onCheckedChange={(checked) =>
-            commit((draft) => {
-              draft.branding.myOwnSuite = checked;
-            })
-          }
-        />
-        {doc.branding.myOwnSuite && (
-          <Field label="Website label">
-            <Input
-              value={doc.branding.siteLabel}
-              onChange={(event) =>
-                commit((draft) => {
-                  draft.branding.siteLabel = event.target.value;
-                })
-              }
-            />
-          </Field>
-        )}
-        <p className="tiny-note">
-          The mark and website label sit in the bottom-right corner of every
-          export.
-        </p>
-      </section>
       <section className="inspector-section advanced-section">
         <button
           className="advanced-toggle"

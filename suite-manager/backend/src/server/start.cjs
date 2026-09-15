@@ -20,8 +20,6 @@ async function start() {
   for (const migration of migrations) logger.info('app-package-migrated', { packageId: migration.packageId, status: migration.status });
   const recoveries = await server.recoverAppPackageUpdates();
   for (const recovery of recoveries) logger.info('app-update-recovered', { instanceId: recovery.instanceId, recoveryState: recovery.recoveryState });
-  const dashboardLinks = await server.reconcileDashboardLinks();
-  if (dashboardLinks.status !== 'skipped') logger.info('dashboard-links-reconciled', { errorCode: dashboardLinks.errorCode || undefined, status: dashboardLinks.status });
   const sweptCandidates = server.sweepAppCandidates();
   if (sweptCandidates.length) logger.info('app-candidates-reclaimed', { count: sweptCandidates.length });
   void server.startCatalogRefresh();

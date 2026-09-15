@@ -119,3 +119,87 @@ test('endpoint fails closed when GitHub cannot resolve the branch', async () => 
     globalThis.fetch = originalFetch;
   }
 });
+
+// The endpoint spent two unauthenticated GitHub calls on every request, and that
+// budget belongs to the Worker colo's shared address rather than to MOS. Once it
+// ran out, a healthy installer reported itself unavailable and a cloud install
+// got nothing, which is how a link check found it.
+test('a resolved ref outlives a GitHub rate limit rather than becoming an outage', async () => {
+  const stub = githubStub();
+  let clock = 0;
+  let refusing = false;
+  const worker = createInstallerWorker(() => ({ stable: true }), {
+    fetchImpl: async (url) => (refusing ? new Response('rate limited', { status: 403 }) : stub.fetchImpl(url)),
+    now: () => clock,
+  });
+
+  const first = await worker.fetch(installerRequest(), {});
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get('x-mos-install-stale'), null);
+
+  refusing = true;
+  clock += 10 * 60 * 1000;
+  const second = await worker.fetch(installerRequest(), {});
+  assert.equal(second.status, 200);
+  assert.equal(second.headers.get('x-mos-install-ref'), releaseCommit);
+  assert.match(second.headers.get('x-mos-install-stale'), /403/u);
+});
+
+test('a resolved ref is reused instead of spending GitHub calls on every request', async () => {
+  const stub = githubStub();
+  const worker = createInstallerWorker(() => ({ stable: true }), { fetchImpl: stub.fetchImpl });
+
+  await worker.fetch(installerRequest(), {});
+  await worker.fetch(installerRequest(), {});
+  assert.equal(stub.calls.length, 2);
+});
+
+// Answering GET alone made every HEAD look like a missing installer, which is
+// both what a link checker asks first and what a person reaching for `curl -I`
+// sees when they are checking whether the endpoint is up.
+test('the endpoint answers HEAD with the same headers and no body', async () => {
+  const stub = githubStub();
+  const worker = createInstallerWorker(() => ({ stable: true }), { fetchImpl: stub.fetchImpl });
+
+  const response = await worker.fetch(new Request('https://get.myownsuite.org/install.sh', { method: 'HEAD' }), {});
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('x-mos-install-ref'), releaseCommit);
+  assert.equal(response.headers.get('x-mos-install-source'), 'v0.16.0');
+  assert.equal(await response.text(), '');
+});
+
+test('a method the endpoint does not serve is still refused', async () => {
+  const worker = createInstallerWorker(() => ({ stable: true }), { fetchImpl: githubStub().fetchImpl });
+  const response = await worker.fetch(new Request('https://get.myownsuite.org/install.sh', { method: 'POST' }), {});
+  assert.equal(response.status, 404);
+});
+
+// The first fix kept the ref in a module-scope Map, which lasts exactly as long
+// as the isolate holding it. Cloudflare recycles those constantly, so a cold
+// start asked GitHub again, GitHub refused again, and the endpoint served the
+// same 503 the cache was added to prevent. The store has to outlive the worker.
+test('a cold isolate reuses the ref an earlier one resolved', async () => {
+  const store = new Map();
+  const stub = githubStub();
+  const warm = createInstallerWorker(() => ({ stable: true }), { cache: store, fetchImpl: stub.fetchImpl });
+  assert.equal((await warm.fetch(installerRequest(), {})).status, 200);
+  assert.equal(stub.calls.length, 2);
+
+  // A new worker object is a new isolate; only the shared store carries over.
+  const cold = createInstallerWorker(() => ({ stable: true }), {
+    cache: store,
+    fetchImpl: async () => new Response('rate limited', { status: 403 }),
+  });
+  const response = await cold.fetch(installerRequest(), {});
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('x-mos-install-ref'), releaseCommit);
+});
+
+test('a cold isolate with nothing kept still fails closed', async () => {
+  const cold = createInstallerWorker(() => ({ stable: true }), {
+    cache: new Map(),
+    fetchImpl: async () => new Response('rate limited', { status: 403 }),
+  });
+  assert.equal((await cold.fetch(installerRequest(), {})).status, 503);
+});

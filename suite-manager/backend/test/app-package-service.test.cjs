@@ -9,6 +9,7 @@ const {
   digestFor,
   renderDryRunProjections,
 } = require('../src/apps/app-package-service.cjs');
+const { APP_AGENT_CONTRACT_VERSION } = require('../../../shared/app-agent-contract.cjs');
 const { readAppPackageManifest } = require('../src/apps/package-manifest.cjs');
 const { digestAppPackage } = require('../src/apps/package-contracts.cjs');
 const { buildSourceRecord, withRevision, withStatus } = require('../src/apps/external-source-registry.cjs');
@@ -22,6 +23,14 @@ const v2AppsDir = path.join(repoRoot, 'apps');
 // package reaches it â€” which is exactly what a catalog-wide version bump did.
 // Kept deliberately above any version a shipped package will plausibly reach.
 const CANDIDATE_VERSION = '99.0.0';
+
+// The same trap on the other side: these candidates are real packages, so a
+// literal platform version stops satisfying their minimumMosVersion the moment
+// the catalog is re-stamped for a release. Nothing here tests the version gate
+// — app-package-contracts.test.cjs does — so the host is simply newer than any
+// package will ask for.
+const PLATFORM_VERSION = '99.0.0';
+
 
 function snapshotResult(input) {
   return { snapshotPath: path.join(v2AppsDir, input.packageId) };
@@ -81,15 +90,20 @@ function externalAgent(root, calls = []) {
       return { snapshotPath };
     },
     async status() {
-      return { capabilities: ['apps.package.snapshot', 'apps.package.snapshot.external'], contractVersion: 7 };
+      return agentStatus();
     },
   };
 }
 
-// An app agent that can run the whole update transaction for an external app:
-// the external snapshot its install needed, plus the same update capabilities
-// official packages go through.
-function externalUpdateAgent(root, calls = [], promotedSnapshotPath = null, { reclaims = false } = {}) {
+// Every fixture agent answers with the contract this MOS ships: both ends move
+// in one managed update, so an agent on another version is not a scenario a test
+// can set up, only a broken update.
+function agentStatus(extra = {}) {
+  return { contractVersion: APP_AGENT_CONTRACT_VERSION, ...extra };
+}
+
+// An app agent that can run the whole update transaction for an external app.
+function externalUpdateAgent(root, calls = [], promotedSnapshotPath = null) {
   return {
     ...externalAgent(root),
     async activatePackageUpdate(input) { calls.push(['activate', input]); return { status: 'candidate-healthy' }; },
@@ -98,29 +112,20 @@ function externalUpdateAgent(root, calls = [], promotedSnapshotPath = null, { re
     async remove(input) { calls.push(['remove', input]); return { status: 'removed' }; },
     async rollbackPackageUpdate(input) { calls.push(['rollback', input]); return { status: 'installed-restored' }; },
     async stagePackageUpdate(input) { calls.push(['stage', input]); return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() {
-      return {
-        capabilities: [
-          'apps.package.snapshot', 'apps.package.snapshot.external', 'apps.package.update.stage', 'apps.package.update.build',
-          'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote',
-          ...(reclaims ? ['apps.package.update.reclaim', 'apps.package.remove.reclaim'] : []),
-        ],
-        contractVersion: reclaims ? 9 : 7,
-      };
-    },
+    async status() { return agentStatus(); },
   };
 }
 
 // An installed external app and the newer package its source now offers, with
 // the update ready to apply.
-async function updatableExternalApp(root, store, calls, { reclaims = false } = {}) {
+async function updatableExternalApp(root, store, calls) {
   const installedPackage = await externalCandidate(root);
   const next = await externalCandidate(root, { version: '1.1.0' }, 'ext-next');
   // The update is published from a later commit than the one running, so a
   // promotion told the candidate's revision cannot pass as telling the truth.
   next.source = { ...next.source, revision: 'c'.repeat(40) };
   const service = new AppPackageService({
-    agent: externalUpdateAgent(root, calls, next.packageDir, { reclaims }),
+    agent: externalUpdateAgent(root, calls, next.packageDir),
     appsDir: v2AppsDir,
     externalClient: externalClientStub(next),
     store,
@@ -134,7 +139,7 @@ async function updatableExternalApp(root, store, calls, { reclaims = false } = {
 // source's commit, then hand back the candidate that commit publishes.
 function externalClientStub(candidate) {
   return {
-    platformVersion: '0.18.0',
+    platformVersion: PLATFORM_VERSION,
     async downloadCandidate() { return { ...candidate, cleanup() {} }; },
     async resolveRevision(source) { return withRevision(source, candidate.source.revision); },
   };
@@ -208,6 +213,7 @@ test('an external package asking for an official app web address is served under
     agent: {
       ...externalAgent(root),
       async snapshotPackage(input) { return snapshotResult(input); },
+      async status() { return agentStatus(); },
     },
     appsDir: v2AppsDir,
     store,
@@ -236,6 +242,7 @@ test('two external packages cannot serve the same web address', async () => {
     agent: {
       ...externalAgent(root),
       async snapshotPackage(input) { return snapshotResult(input); },
+      async status() { return agentStatus(); },
     },
     appsDir: v2AppsDir,
     store,
@@ -250,20 +257,22 @@ test('two external packages cannot serve the same web address', async () => {
   store.close();
 });
 
-test('an external install is refused when the app agent cannot snapshot external packages', async () => {
+// An agent on another contract version is a managed update that applied half of
+// itself, so nothing is snapshotted, installed, or recorded under it.
+test('an install is refused when the app agent is not the one this MOS shipped with', async () => {
   const root = await tempStateDir();
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const candidate = await externalCandidate(root);
   const service = new AppPackageService({
     agent: {
       async snapshotExternalPackage() { throw new Error('should not be called'); },
-      async status() { return { capabilities: ['apps.package.snapshot'], contractVersion: 6 }; },
+      async status() { return agentStatus({ contractVersion: APP_AGENT_CONTRACT_VERSION - 1 }); },
     },
     appsDir: v2AppsDir,
     store,
   });
 
-  await assert.rejects(() => service.installExternalPackage({ candidate }), { code: 'APP_EXTERNAL_INSTALL_UNAVAILABLE' });
+  await assert.rejects(() => service.installExternalPackage({ candidate }), { code: 'APP_AGENT_CONTRACT_MISMATCH' });
   assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes'), null);
   store.close();
 });
@@ -280,7 +289,7 @@ test('an app that does not run on this host is refused before anything is instal
     agent: {
       ...externalAgent(root),
       async snapshotExternalPackage() { throw new Error('should not be called'); },
-      async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.snapshot.external'], contractVersion: 9, hostArchitecture: 'arm64' }; },
+      async status() { return agentStatus({ hostArchitecture: 'arm64' }); },
     },
     appsDir: v2AppsDir,
     store,
@@ -307,7 +316,7 @@ test('an app is installed as before when nothing can say what this host is', asy
   assert.ok(store.getAppInstanceByPackageId('x-abcdef01-community-notes'));
 
   const unrecognised = new AppPackageService({
-    agent: { ...agent, async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.snapshot.external'], contractVersion: 9, hostArchitecture: 'sparc' }; } },
+    agent: { ...agent, async status() { return agentStatus({ hostArchitecture: 'sparc' }); } },
     appsDir: v2AppsDir,
     store: new SuiteManagerStore(path.join(root, 'state-2')),
   });
@@ -326,7 +335,7 @@ test('the amd64-only package in the catalog is refused on an arm64 host', async 
   const service = new AppPackageService({
     agent: {
       async snapshotPackage() { throw new Error('should not be called'); },
-      async status() { return { capabilities: ['apps.package.snapshot'], contractVersion: 9, hostArchitecture: 'arm64' }; },
+      async status() { return agentStatus({ hostArchitecture: 'arm64' }); },
     },
     appsDir: v2AppsDir,
     store,
@@ -511,7 +520,7 @@ test('an update tells an agent that can reclaim which images the outgoing packag
   const root = await tempStateDir();
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const calls = [];
-  const { comparison, service } = await updatableExternalApp(root, store, calls, { reclaims: true });
+  const { comparison, service } = await updatableExternalApp(root, store, calls);
   const outgoing = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
 
   const result = await service.stagePackageUpdate(
@@ -534,7 +543,7 @@ test('an uninstall tells an agent that can reclaim what the app leaves behind be
   const root = await tempStateDir();
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const calls = [];
-  const { service } = await updatableExternalApp(root, store, calls, { reclaims: true });
+  const { service } = await updatableExternalApp(root, store, calls);
   const installed = store.getAppInstanceByPackageId('x-abcdef01-community-notes');
 
   const result = await service.uninstallPackage('x-abcdef01-community-notes');
@@ -546,43 +555,6 @@ test('an uninstall tells an agent that can reclaim what the app leaves behind be
   assert.equal(remove.instanceId, installed.id);
   assert.equal(remove.installedSourceRevision, installed.sourceRevision);
   assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes'), null);
-  store.close();
-});
-
-test('an uninstall never sends a removal field an older agent would refuse', async () => {
-  const root = await tempStateDir();
-  const store = new SuiteManagerStore(path.join(root, 'state'));
-  const calls = [];
-  const { service } = await updatableExternalApp(root, store, calls);
-
-  const result = await service.uninstallPackage('x-abcdef01-community-notes');
-
-  assert.equal(result.instance, null);
-  const [, remove] = calls.find(([kind]) => kind === 'remove');
-  assert.equal(Object.hasOwn(remove, 'instanceId'), false);
-  assert.equal(Object.hasOwn(remove, 'installedSourceRevision'), false);
-  store.close();
-});
-
-test('an update never sends a promotion field an older agent would refuse', async () => {
-  const root = await tempStateDir();
-  const store = new SuiteManagerStore(path.join(root, 'state'));
-  const calls = [];
-  const { comparison, service } = await updatableExternalApp(root, store, calls);
-
-  const result = await service.stagePackageUpdate(
-    'x-abcdef01-community-notes',
-    { confirmationToken: comparison.confirmationToken },
-    requestContext().publicUrlFor('notes'),
-  );
-
-  // An agent without the capability rejects unknown promotion fields outright,
-  // and a promotion refused here would strand an update whose candidate is
-  // already serving traffic. Leaving an image behind is the lesser outcome.
-  assert.equal(result.operation.status, 'succeeded');
-  const [, promote] = calls.find(([kind]) => kind === 'promote');
-  assert.equal(Object.hasOwn(promote, 'installedSourceRevision'), false);
-  assert.equal(store.getAppInstanceByPackageId('x-abcdef01-community-notes').packageVersion, '1.1.0');
   store.close();
 });
 
@@ -786,6 +758,7 @@ test('a failure after activation rolls the old runtime back and closes the updat
           statusCode: 502,
         });
       },
+      async status() { return agentStatus(); },
     },
     appsDir: v2AppsDir,
     externalClient: externalClientStub(next),
@@ -861,13 +834,13 @@ test('updating an integration consumer keeps its integration env and reconciles 
     async rollbackPackageUpdate(input) { calls.push(['rollback', input]); return { status: 'installed-restored' }; },
     async snapshotPackage(input) { return snapshotResult(input); },
     async stagePackageUpdate(input) { calls.push(['stage', input]); return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { platformVersion: '0.19.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    catalogService: { platformVersion: PLATFORM_VERSION, async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
     store,
   });
   await service.installPackage('seafile', { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' });
@@ -956,14 +929,14 @@ test('a provider update recovered at startup re-applies its integration consumer
       return { snapshotPath: snapshotDir };
     },
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   t.after(() => store.close());
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { advisoriesFor: () => [], platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    catalogService: { advisoriesFor: () => [], platformVersion: PLATFORM_VERSION, async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
     store,
   });
   await service.installPackage('seafile', { adminEmail: 'owner@example.test', adminPassword: 'not-a-real-secret' });
@@ -1042,7 +1015,7 @@ test('a crash between snapshot promotion and the durable commit is committed by 
       return { snapshotPath: snapshotDir };
     },
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
   const entries = [];
   const homepageService = {
@@ -1053,7 +1026,7 @@ test('a crash between snapshot promotion and the durable commit is committed by 
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { advisoriesFor: () => [], platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    catalogService: { advisoriesFor: () => [], platformVersion: PLATFORM_VERSION, async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
     store,
   });
   await service.installPackage('stirling-pdf');
@@ -1142,13 +1115,13 @@ test('the recovery action restores the recorded runtime after a failed rollback'
     },
     async snapshotPackage(input) { return snapshotResult(input); },
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    catalogService: { platformVersion: PLATFORM_VERSION, async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
     store,
   });
   await service.installPackage('stirling-pdf');
@@ -1228,6 +1201,7 @@ test('new installs snapshot package contents before persisting configuration and
       calls.push(['snapshot', store.getAppInstanceByPackageId(input.packageId)]);
       return snapshotResult(input);
     },
+    async status() { return agentStatus(); },
   };
   const service = new AppPackageService({ agent, appsDir: v2AppsDir, store });
 
@@ -1261,6 +1235,7 @@ test('installed package details and icons remain bound to the snapshot when the 
         await fsp.cp(candidateDir, snapshotDir, { recursive: true });
         return { snapshotPath: snapshotDir };
       },
+      async status() { return agentStatus(); },
     },
     appsDir,
     store,
@@ -1320,6 +1295,7 @@ test('listPackages exposes privacy from the installed snapshot rather than the m
         await fsp.cp(candidateDir, snapshotDir, { recursive: true });
         return { snapshotPath: snapshotDir };
       },
+      async status() { return agentStatus(); },
     },
     appsDir,
     store,
@@ -1371,6 +1347,7 @@ test('listPackages surfaces current advisories for the installed version separat
         await fsp.cp(candidateDir, snapshotDir, { recursive: true });
         return { snapshotPath: snapshotDir };
       },
+      async status() { return agentStatus(); },
     },
     appsDir,
     catalogService,
@@ -1412,10 +1389,10 @@ test('a candidate whose privacy review is unreadable fails the update as a class
     async rollbackPackageUpdate() { return { status: 'installed-restored' }; },
     async snapshotPackage(input) { return snapshotResult(input); },
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', steps: ['staged'] }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
   const catalogService = {
-    platformVersion: '0.18.0',
+    platformVersion: PLATFORM_VERSION,
     async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
@@ -1457,10 +1434,10 @@ test('confirmed app updates are re-compared and durably staged against exact ide
     async rollbackPackageUpdate() { return { status: 'installed-restored' }; },
     async snapshotPackage(input) { return snapshotResult(input); },
     async stagePackageUpdate(input) { stagedCalls.push(input); return { snapshotPath: '/state/candidate', steps: ['staged'] }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
   const catalogService = {
-    platformVersion: '0.18.0',
+    platformVersion: PLATFORM_VERSION,
     async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
@@ -1485,12 +1462,11 @@ test('confirmed app updates are re-compared and durably staged against exact ide
   store.close();
 });
 
-// An agent that could stage and build but not activate/rollback/promote used to
-// be accepted and then abandoned mid-transaction, leaving the operation row
-// running forever and every later update refused until restart. That tier
-// cannot legitimately exist under the managed-update rule, so it is refused
-// before any durable update work begins.
-test('an agent that cannot apply updates end to end is refused before any update work begins', async () => {
+// An update abandoned mid-transaction used to leave the operation row running
+// forever and every later update refused until restart. An agent Suite Manager
+// did not ship with is the state that produced it, so it is refused before any
+// durable update work begins.
+test('an agent on another contract version is refused before any update work begins', async () => {
   const root = await tempStateDir();
   const candidateDir = path.join(root, 'candidate');
   await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
@@ -1501,8 +1477,10 @@ test('an agent that cannot apply updates end to end is refused before any update
   const candidateDigest = digestAppPackage(candidateDir);
   const source = { kind: 'official-git', path: 'apps/stirling-pdf', repository: 'https://github.com/rpuls/my-own-suite', revision: 'b'.repeat(40), trust: 'mos-reviewed' };
   const stagedCalls = [];
-  // The client methods exist (a current Suite Manager), but the agent on the
-  // host only declares the stage/build half of the update contract.
+  // Installed by a matching pair, then left behind by an update that applied
+  // Suite Manager without its agent — the only way this state is reachable. The
+  // client methods all exist; none of them may be reached.
+  let contractVersion = APP_AGENT_CONTRACT_VERSION;
   const agent = {
     async activatePackageUpdate() { throw new Error('should not be called'); },
     async buildPackageUpdate() { throw new Error('should not be called'); },
@@ -1510,20 +1488,21 @@ test('an agent that cannot apply updates end to end is refused before any update
     async rollbackPackageUpdate() { throw new Error('should not be called'); },
     async snapshotPackage(input) { return snapshotResult(input); },
     async stagePackageUpdate(input) { stagedCalls.push(input); return { snapshotPath: '/state/candidate', steps: ['staged'] }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build'], contractVersion: 3 }; },
+    async status() { return agentStatus({ contractVersion }); },
   };
   const catalogService = {
-    platformVersion: '0.18.0',
+    platformVersion: PLATFORM_VERSION,
     async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({ agent, appsDir: v2AppsDir, catalogService, store });
   await service.installPackage('stirling-pdf');
   const comparison = await service.preparePackageUpdate('stirling-pdf');
+  contractVersion = APP_AGENT_CONTRACT_VERSION - 1;
 
   await assert.rejects(
     () => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf')),
-    (error) => error.code === 'APP_UPDATE_STAGING_UNAVAILABLE' && error.statusCode === 503,
+    (error) => error.code === 'APP_AGENT_CONTRACT_MISMATCH' && error.statusCode === 503,
   );
   assert.equal(stagedCalls.length, 0);
   assert.equal(store.getAppInstanceByPackageId('stirling-pdf').packageVersion, manifest.version);
@@ -1531,12 +1510,12 @@ test('an agent that cannot apply updates end to end is refused before any update
   // permanently "already running" update.
   await assert.rejects(
     () => service.stagePackageUpdate('stirling-pdf', { confirmationToken: comparison.confirmationToken }, requestContext().publicUrlFor('stirling-pdf')),
-    (error) => error.code === 'APP_UPDATE_STAGING_UNAVAILABLE',
+    (error) => error.code === 'APP_AGENT_CONTRACT_MISMATCH',
   );
   store.close();
 });
 
-test('contract v6 app updates activate, promote, and commit candidate identity as one operation', async () => {
+test('app updates activate, promote, and commit candidate identity as one operation', async () => {
   const root = await tempStateDir();
   const candidateDir = path.join(root, 'candidate');
   await fsp.cp(path.join(v2AppsDir, 'stirling-pdf'), candidateDir, { recursive: true });
@@ -1555,9 +1534,9 @@ test('contract v6 app updates activate, promote, and commit candidate identity a
     async rollbackPackageUpdate(input) { calls.push(['rollback', input]); return { status: 'installed-restored' }; },
     async snapshotPackage(input) { return snapshotResult(input); },
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
-  const catalogService = { platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } };
+  const catalogService = { platformVersion: PLATFORM_VERSION, async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({ agent, appsDir: v2AppsDir, catalogService, store });
   await service.installPackage('stirling-pdf');
@@ -1616,13 +1595,13 @@ test('an official candidate that ships a privacy review updates and keeps its re
       return { snapshotPath: snapshotDir };
     },
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+    async status() { return agentStatus(); },
   };
   const store = new SuiteManagerStore(path.join(root, 'state'));
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { advisoriesFor: () => [], platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    catalogService: { advisoriesFor: () => [], platformVersion: PLATFORM_VERSION, async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
     store,
   });
   await service.installPackage('stirling-pdf');
@@ -1669,10 +1648,10 @@ test('app updates replace an applied Homepage entry and retain its applied proje
       async rollbackPackageUpdate() { return { status: 'installed-restored' }; },
       async snapshotPackage(input) { return snapshotResult(input); },
       async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
-      async status() { return { capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'], contractVersion: 6 }; },
+      async status() { return agentStatus(); },
     },
     appsDir: v2AppsDir,
-    catalogService: { platformVersion: '0.18.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
+    catalogService: { platformVersion: PLATFORM_VERSION, async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; } },
     store,
   });
   await service.installPackage('stirling-pdf');
@@ -1712,7 +1691,7 @@ test('startup classifies every interrupted update boundary into an actionable re
   for (const [stage, expectedState] of cases) {
     const root = await tempStateDir();
     const store = new SuiteManagerStore(root);
-    const service = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); } }, appsDir: v2AppsDir, store });
+    const service = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); }, async status() { return agentStatus(); } }, appsDir: v2AppsDir, store });
     await service.installPackage('stirling-pdf');
     const instance = store.getAppInstanceByPackageId('stirling-pdf');
     const operationId = `interrupted-${stage}`;
@@ -1761,6 +1740,7 @@ test('legacy instances migrate only from an exactly matching validated package',
         await fsp.cp(path.join(v2AppsDir, input.packageId), snapshotPath, { recursive: true });
         return { snapshotPath };
       },
+      async status() { return agentStatus(); },
     },
     appsDir: v2AppsDir,
     store,
@@ -1802,7 +1782,7 @@ test('a malformed privacy review degrades to recovery at migration and a 409 at 
     operationId: 'legacy-malformed-review-operation',
     projections: renderDryRunProjections(manifest, []),
   });
-  const service = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); } }, appsDir, store });
+  const service = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); }, async status() { return agentStatus(); } }, appsDir, store });
 
   const results = await service.migrateLegacyPackages();
   assert.deepEqual(results, [{ packageId: 'stirling-pdf', status: 'needs-package-recovery' }]);
@@ -1810,7 +1790,7 @@ test('a malformed privacy review degrades to recovery at migration and a 409 at 
 
   const freshStore = new SuiteManagerStore(path.join(root, 'fresh-state'));
   t.after(() => freshStore.close());
-  const freshService = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); } }, appsDir, store: freshStore });
+  const freshService = new AppPackageService({ agent: { async snapshotPackage(input) { return snapshotResult(input); }, async status() { return agentStatus(); } }, appsDir, store: freshStore });
   await assert.rejects(
     () => freshService.installPackage('stirling-pdf'),
     (error) => error.code === 'APP_PACKAGE_INVALID' && error.statusCode === 409,
@@ -1825,6 +1805,7 @@ test('snapshot failure leaves no app configuration or install record', async () 
       async snapshotPackage() {
         throw Object.assign(new Error('digest mismatch'), { code: 'APP_PACKAGE_DIGEST_MISMATCH' });
       },
+      async status() { return agentStatus(); },
     },
     appsDir: v2AppsDir,
     store,
@@ -1851,6 +1832,7 @@ test('public URL reconciliation reapplies installed app routes and Homepage app 
     async checkHealth() {
       return { status: 'healthy' };
     },
+    async status() { return agentStatus(); },
   };
   const homepageCalls = [];
   const homepageService = {
@@ -1906,6 +1888,7 @@ test('public URL reconciliation keeps Homepage regeneration separate from per-ap
     async checkHealth() {
       return { status: 'healthy' };
     },
+    async status() { return agentStatus(); },
   };
   const homepageCalls = [];
   const homepageService = {
@@ -1951,44 +1934,6 @@ test('public URL reconciliation keeps Homepage regeneration separate from per-ap
   store.close();
 });
 
-// The startup re-stamp exists for installs updated from before tile hrefs went
-// relative. Applying a real domain was the only other path that rewrote them. It
-// sends ids and nothing else: hrefs come from the id, and a migration is not an
-// address change, so widget endpoints are already correct.
-test('startup re-stamps dashboard links from ids alone, without touching any app runtime', async () => {
-  const calls = [];
-  const appAgent = {
-    async snapshotPackage(input) { return snapshotResult(input); },
-    async apply(input) { calls.push(input); return { status: 'applied', steps: [] }; },
-    async checkHealth() { return { status: 'healthy' }; },
-  };
-  const reconciled = [];
-  const homepageService = {
-    async addManagedApp(body) { return { changed: true, requestId: body.requestId, revision: 'sha256:next' }; },
-    async read() { return { content: '[]', revision: 'sha256:current' }; },
-    async reconcileUrls(body) { reconciled.push(body.entries); return { changed: true, revision: 'sha256:reconciled' }; },
-  };
-  const store = new SuiteManagerStore(await tempStateDir());
-  const service = new AppPackageService({ agent: appAgent, appsDir: v2AppsDir, store });
-
-  // Nothing on the dashboard yet, so startup has nothing to say.
-  assert.deepEqual(await service.reconcileDashboardLinks(homepageService), { changed: false, status: 'skipped' });
-
-  const context = { appHost: 'stirling-pdf.mos.home', baseHost: 'mos.home', publicUrl: 'http://stirling-pdf.mos.home/', scheme: 'http' };
-  await service.installPackage('stirling-pdf');
-  await service.applyPackageRuntime('stirling-pdf', context);
-  await service.addPackageToHomepage('stirling-pdf', homepageService, context);
-  const applyCount = calls.length;
-
-  const result = await service.reconcileDashboardLinks(homepageService);
-
-  assert.equal(result.status, 'applied');
-  assert.deepEqual(reconciled.at(-1), [{ id: store.getAppInstanceByPackageId('stirling-pdf').id }]);
-  assert.equal(calls.length, applyCount, 'a tile href never reaches a container');
-
-  store.close();
-});
-
 test('public URL reconciliation keeps disabled apps out of runtime reapply', async () => {
   const calls = [];
   const appAgent = {
@@ -1997,6 +1942,7 @@ test('public URL reconciliation keeps disabled apps out of runtime reapply', asy
       calls.push(input);
       return { status: 'applied', steps: [] };
     },
+    async status() { return agentStatus(); },
     async stop() {
       return { status: 'stopped', steps: [] };
     },
@@ -2040,6 +1986,7 @@ test('integration lifecycle recovers provider restart and reports disabled/unins
       calls.push(['remove', input.packageId]);
       return { status: 'removed', steps: [] };
     },
+    async status() { return agentStatus(); },
     async stop(input) {
       calls.push(['stop', input.packageId]);
       return { status: 'stopped', steps: [] };
@@ -2099,5 +2046,202 @@ test('integration lifecycle recovers provider restart and reports disabled/unins
   assert.equal(store.getAppInstanceByPackageId('seafile').status, 'installed');
   assert.doesNotMatch(JSON.stringify(store.getAppIntegrations()), /not-a-real-secret/u);
 
+  store.close();
+});
+
+
+// --- the two update channels -------------------------------------------------
+//
+// An official app installs from `apps/<id>` in this box's own checkout, so these
+// build a checkout of their own and vary what it holds against what the catalog
+// offers. `appsDir` is the whole of the local channel: no branch is named
+// anywhere, which is what makes the behaviour identical on every update track.
+
+async function checkoutAppsDir(root, { version = '1.1.0', id = 'notes', broken = false } = {}) {
+  const appsDir = path.join(root, 'checkout-apps');
+  const packageDir = path.join(appsDir, id);
+  await fsp.mkdir(packageDir, { recursive: true });
+  const manifest = {
+    manifestVersion: 1,
+    category: 'test',
+    health: { type: 'http', url: 'http://notes:8080/health' },
+    id,
+    minimumMosVersion: '0.1.0',
+    name: 'Notes',
+    resources: { services: { notes: { dockerfile: 'Dockerfile', internalPort: 8080, volumes: ['notes-data:/data'] } } },
+    routes: [{ host: 'notes', service: 'notes' }],
+    setup: { fields: [] },
+    summary: 'Notes.',
+    version,
+    // A manifest missing its required services is the "broken package" case: the
+    // app list already reports it, and it must never be offered as an update.
+    ...(broken ? { resources: { services: {} } } : {}),
+  };
+  await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
+  return { appsDir, packageDir };
+}
+
+function checkoutAgent(appsDir) {
+  return {
+    async activatePackageUpdate() { return { status: 'candidate-healthy' }; },
+    async buildPackageUpdate() { return { steps: ['candidate-built'] }; },
+    async promotePackageUpdate() { return { snapshotPath: path.join(appsDir, 'notes'), status: 'snapshot-promoted' }; },
+    async rollbackPackageUpdate() { return { status: 'installed-restored' }; },
+    async snapshotPackage(input) { return { snapshotPath: path.join(appsDir, input.packageId) }; },
+    async stagePackageUpdate() { return { snapshotPath: '/state/candidate', steps: ['staged'] }; },
+    async status() { return agentStatus(); },
+  };
+}
+
+// A catalog answering the way OfficialCatalogService does, for a package it
+// offers at `catalogVersion`. `null` is a catalog that has never been fetched.
+function catalogStub(catalogVersion, downloads = []) {
+  return {
+    advisoriesFor: () => [],
+    platformVersion: PLATFORM_VERSION,
+    async downloadCandidate(packageId) {
+      downloads.push(packageId);
+      throw new Error('the catalog channel should not have been asked for these bytes');
+    },
+    updateFor(packageId, instance) {
+      if (!catalogVersion) return { available: null, installed: null, status: 'unavailable' };
+      return {
+        available: {
+          compatibility: 'compatible',
+          minimumMosVersion: '0.1.0',
+          packageDigest: 'sha256:catalog',
+          packageVersion: catalogVersion,
+          path: `apps/${packageId}`,
+          privacy: { status: 'reviewed' },
+          sourceChannel: 'catalog',
+          sourceRevision: 'a'.repeat(40),
+        },
+        installed: instance ? { packageDigest: instance.packageDigest, packageVersion: instance.packageVersion } : null,
+        status: 'update-available',
+      };
+    },
+  };
+}
+
+// Installs the checkout's package at `installedVersion`, then moves the checkout
+// on to `version`, which is what a platform update to a branch ahead of the
+// catalog does to a box.
+async function installedFromCheckout(root, store, { installedVersion = '1.0.0', version = '1.1.0', catalogVersion = null, broken = false } = {}) {
+  const downloads = [];
+  const { appsDir, packageDir } = await checkoutAppsDir(root, { version: installedVersion });
+  const service = new AppPackageService({
+    agent: checkoutAgent(appsDir),
+    appsDir,
+    catalogService: catalogStub(catalogVersion, downloads),
+    store,
+  });
+  await service.installPackage('notes');
+  const manifestPath = path.join(packageDir, 'manifest.json');
+  const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
+  const moved = broken ? { ...manifest, version, resources: { services: {} } } : { ...manifest, appVersion: '2.0', version };
+  await fsp.writeFile(manifestPath, `${JSON.stringify(moved, null, 2)}\n`);
+  return { downloads, service };
+}
+
+test('a package newer in this box’s checkout than in the published catalog is what gets offered, and its bytes never come from the network', async (t) => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  t.after(() => store.close());
+  // The catalog is behind, exactly as `main` is behind a branch under test.
+  const { downloads, service } = await installedFromCheckout(root, store, { catalogVersion: '1.0.0', installedVersion: '1.0.0', version: '1.1.0' });
+
+  const app = service.listPackages().find((entry) => entry.id === 'notes');
+  assert.equal(app.catalogUpdate.status, 'update-available');
+  assert.equal(app.catalogUpdate.available.packageVersion, '1.1.0');
+  assert.equal(app.catalogUpdate.available.appVersion, '2.0');
+  assert.equal(app.catalogUpdate.available.sourceChannel, 'checkout');
+  // No fetched revision exists for bytes that were already here.
+  assert.equal(app.catalogUpdate.available.sourceRevision, null);
+
+  const candidate = await service.downloadUpdateCandidate(store.getAppInstanceByPackageId('notes'));
+  t.after(() => candidate.cleanup());
+  assert.equal(candidate.manifest.version, '1.1.0');
+  assert.equal(candidate.source.trust, 'mos-reviewed');
+  // The candidate is a copy, not the checkout itself, so a platform update
+  // landing mid-transaction cannot move the bytes under a recorded digest.
+  assert.notEqual(candidate.packageDir, path.join(root, 'checkout-apps', 'notes'));
+  assert.equal(candidate.packageDigest, digestAppPackage(candidate.packageDir));
+  assert.deepEqual(downloads, []);
+});
+
+test('a checkout level with the catalog changes nothing: the catalog still answers and still supplies the bytes', async (t) => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  t.after(() => store.close());
+  // Equal versions are the ordinary case on the main and stable tracks. Ties go
+  // to the catalog so those boxes keep the path they already had.
+  const { downloads, service } = await installedFromCheckout(root, store, { catalogVersion: '1.1.0', installedVersion: '1.0.0', version: '1.1.0' });
+
+  const app = service.listPackages().find((entry) => entry.id === 'notes');
+  assert.equal(app.catalogUpdate.available.sourceChannel, 'catalog');
+  assert.equal(app.catalogUpdate.available.sourceRevision, 'a'.repeat(40));
+
+  // The stub refuses to serve bytes, which is how this proves which channel was
+  // asked: reaching it at all is the assertion.
+  await assert.rejects(() => service.downloadUpdateCandidate(store.getAppInstanceByPackageId('notes')));
+  assert.deepEqual(downloads, ['notes']);
+});
+
+test('a box that has never reached the catalog can still update to what it is carrying', async (t) => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  t.after(() => store.close());
+  // catalogVersion null is an empty catalog cache: a fresh install, or a box
+  // with no route to GitHub. Before the checkout channel existed this offered
+  // nothing at all.
+  const { downloads, service } = await installedFromCheckout(root, store, { catalogVersion: null, installedVersion: '1.0.0', version: '1.1.0' });
+
+  const app = service.listPackages().find((entry) => entry.id === 'notes');
+  assert.equal(app.catalogUpdate.status, 'update-available');
+  assert.equal(app.catalogUpdate.available.packageVersion, '1.1.0');
+  assert.deepEqual(downloads, []);
+});
+
+test('a checkout package whose manifest does not validate is offered by neither channel', async (t) => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  t.after(() => store.close());
+  // Newer by version, and broken, so only the validity check can be what stops
+  // it. Replacing a working app with one MOS has said it cannot read is worse
+  // than offering no update.
+  const { service } = await installedFromCheckout(root, store, { broken: true, catalogVersion: null, installedVersion: '1.0.0', version: '2.0.0' });
+
+  const app = service.listPackages().find((entry) => entry.id === 'notes');
+  assert.notEqual(app.catalogUpdate.status, 'update-available');
+  assert.equal(service.checkoutUpdateCandidate(store.getAppInstanceByPackageId('notes')), null);
+});
+
+test('a checkout behind what is installed never proposes a downgrade', async (t) => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  t.after(() => store.close());
+  // Rolling the checkout back - switching to an older branch, or restoring an
+  // older release - must not read as an update.
+  const { service } = await installedFromCheckout(root, store, { catalogVersion: null, installedVersion: '2.0.0', version: '1.0.0' });
+
+  const app = service.listPackages().find((entry) => entry.id === 'notes');
+  assert.notEqual(app.catalogUpdate.status, 'update-available');
+  assert.equal(service.checkoutUpdateCandidate(store.getAppInstanceByPackageId('notes')), null);
+});
+
+// The version an owner needs is the one the app calls itself, which the manifest
+// declares as appVersion. The app list carries it straight from the manifest, so
+// every official package shows one and it is never the MOS package version.
+test('the app list carries each package\'s declared app version', async () => {
+  const root = await tempStateDir();
+  const store = new SuiteManagerStore(path.join(root, 'state'));
+  const service = new AppPackageService({ agent: externalAgent(root), appsDir: v2AppsDir, store });
+
+  const immich = service.listPackages().find((item) => item.id === 'immich');
+  const manifest = JSON.parse(await fsp.readFile(path.join(v2AppsDir, 'immich', 'manifest.json'), 'utf8'));
+
+  assert.equal(immich.appVersion, manifest.appVersion);
+  assert.notEqual(immich.appVersion, immich.version);
   store.close();
 });

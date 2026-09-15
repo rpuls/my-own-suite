@@ -322,6 +322,7 @@ module.exports = {
   DEFAULT_TIMEOUT_MS,
   SmtpError,
   parseReply,
+  sendMessage: sendTestMessage,
   sendTestMessage,
   verifyRelay,
 };

@@ -9,7 +9,8 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { ensureRepositoryKey } = require('./engine-restic.cjs');
+const { ensureRepositoryKey, maskSecrets, repositoryProbeCause, repositoryProbeVerdict } = require('./engine-restic.cjs');
+const { generate, isRecoveryKey } = require('../recovery-key.cjs');
 const { assertRepositoryEngine, createEngine, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage, writeRepositoryDescriptor } = require('./engine.cjs');
 const { assetFor, downloadUrl, ENGINE_RELEASES } = require('./engine-install.cjs');
 const { managedStateTargets } = require('../../../infrastructure/persistent-state.cjs');
@@ -29,14 +30,50 @@ test('the single engine exposes the whole surface under its own binary name', ()
 
 // The password is what makes the repository readable at all, so it is
 // generated once and reused; regenerating it would strand every earlier
-// backup on the drive.
-test('the repository key is generated once, kept private, and reused', async () => {
+// backup on the drive. It is a recovery key rather than raw hex because the
+// owner holds the same string on paper.
+test('the repository key is a recovery key, generated once, kept private, and reused', async () => {
   const root = await scratch();
   const keyFile = path.join(root, 'agent-state', 'engine-key');
   const key = ensureRepositoryKey(keyFile);
-  assert.match(key, /^[0-9a-f]{64}$/u);
+  assert.equal(isRecoveryKey(key), true);
   assert.equal(ensureRepositoryKey(keyFile), key);
   if (process.platform !== 'win32') assert.equal(fs.statSync(keyFile).mode & 0o777, 0o600);
+});
+
+// Pre-release machines hold a 64-hex password. It is moved aside so the owner
+// gets a key they can write down, and never deleted: a drive left unplugged for
+// months still has to open, and migrate, the day it is attached.
+test('a pre-release hex key is set aside and replaced with a recovery key', async () => {
+  const root = await scratch();
+  const keyFile = path.join(root, 'agent-state', 'engine-key');
+  const legacy = 'a1b2c3d4'.repeat(8);
+  fs.mkdirSync(path.dirname(keyFile), { recursive: true });
+  fs.writeFileSync(keyFile, `${legacy}\n`, 'utf8');
+
+  const engine = createEngine({ agentStateDir: path.dirname(keyFile) });
+  assert.equal(engine.migrateLegacyKey(), true);
+  const key = engine.recoveryKey();
+  assert.equal(isRecoveryKey(key), true);
+  assert.equal(engine.legacyKey(), legacy);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(engine.legacyKeyFile).mode & 0o777, 0o600);
+
+  // Idempotent, and it never touches a key that is already a recovery key.
+  assert.equal(engine.migrateLegacyKey(), false);
+  assert.equal(engine.recoveryKey(), key);
+  assert.equal(engine.legacyKey(), legacy);
+});
+
+// An owner may replace this machine's key with the one from their recovery kit,
+// which is how a cold standby ends up holding exactly the key on their paper.
+test('an entered recovery key replaces this machine key in place', async () => {
+  const root = await scratch();
+  const engine = createEngine({ agentStateDir: path.join(root, 'agent-state') });
+  const generated = engine.recoveryKey();
+  const adopted = engine.adoptRecoveryKey(generate().key);
+  assert.notEqual(adopted, generated);
+  assert.equal(engine.recoveryKey(), adopted);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(engine.keyFile).mode & 0o777, 0o600);
 });
 
 // Restore points share the repository's deduplicated data, so the UI must be
@@ -99,4 +136,164 @@ test('the engine build is pinned to an immutable version and checksum', () => {
     assert.ok(!/latest|release\b/u.test(url.replace('/releases/', '/')));
   }
   assert.throws(() => assetFor(ENGINE_NAME, 'mips'), /No pinned/u);
+});
+
+// Verbatim output captured from restic 0.19.1 against MinIO on the lab VM.
+// These four answers differ by a word or two and mean entirely different
+// things to an owner, so they are pinned rather than paraphrased: the second
+// and third were both read as "connected, no backups here yet" before this,
+// which told someone who had mistyped a bucket name that they were set up.
+const RESTIC_S3_OUTPUT = Object.freeze({
+  missingBucket: [
+    'Stat(<config/>) returned error, retrying after 21.053409241s: Stat: The specified bucket does not exist',
+    'signal terminated received, cleaning up ',
+    'Fatal: unable to open config file: context canceled',
+  ].join('\n'),
+  noRepositoryYet: [
+    'Fatal: repository does not exist: unable to open config file: Stat: The specified key does not exist.',
+    'Is there a repository at the following location?',
+    's3:http://127.0.0.1:9100/mos-lab-backups/probe-a/MOS-backups/repository',
+  ].join('\n'),
+  refused: [
+    'Stat(<config/>) returned error, retrying after 13.430741892s: Stat: The request signature we calculated does not match the signature you provided. Check your key and signing method.',
+    'signal terminated received, cleaning up ',
+    'Fatal: unable to open config file: context canceled',
+  ].join('\n'),
+  unreachable: [
+    'Stat(<config/>) returned error, retrying after 20.909085174s: Stat: Get "http://127.0.0.1:9399/mos-lab-backups/?location=": dial tcp 127.0.0.1:9399: connect: connection refused',
+    'signal terminated received, cleaning up ',
+    'Fatal: unable to open config file: context canceled',
+  ].join('\n'),
+  wrongKey: 'Fatal: unable to open repository at s3:http://127.0.0.1:9100/mos-lab-backups/probe-a/MOS-backups/repository: wrong password or no key found',
+});
+
+test('only an empty destination is read as one MOS may create a repository in', () => {
+  assert.equal(repositoryProbeVerdict(RESTIC_S3_OUTPUT.noRepositoryYet), 'absent');
+  assert.equal(repositoryProbeCause(RESTIC_S3_OUTPUT.noRepositoryYet).cause, 'absent');
+  // Everything else must refuse, because creating a repository is a write and
+  // MOS must never answer "I could not get in" by trying to write.
+  for (const key of ['missingBucket', 'refused', 'unreachable']) {
+    assert.equal(repositoryProbeVerdict(RESTIC_S3_OUTPUT[key]), 'unreachable', key);
+  }
+  assert.equal(repositoryProbeCause(RESTIC_S3_OUTPUT.missingBucket).cause, 'missing-bucket');
+  assert.equal(repositoryProbeCause(RESTIC_S3_OUTPUT.refused).cause, 'rejected-key');
+  assert.equal(repositoryProbeCause(RESTIC_S3_OUTPUT.unreachable).cause, 'unreachable-host');
+});
+
+// A destination holding another server's backups is one recovery key away from
+// being usable, so it must never be read as "MOS could not get in" — that told
+// a replacement machine's owner their off-site backups were unreachable at the
+// one moment the answer mattered.
+test('backups written with another key are locked, not unreachable', () => {
+  assert.equal(repositoryProbeVerdict(RESTIC_S3_OUTPUT.wrongKey), 'locked');
+  assert.equal(repositoryProbeCause(RESTIC_S3_OUTPUT.wrongKey).cause, 'wrong-key');
+  assert.match(repositoryProbeCause(RESTIC_S3_OUTPUT.wrongKey).message, /written by another server/u);
+  assert.match(repositoryProbeCause(RESTIC_S3_OUTPUT.wrongKey).message, /recovery key/u);
+});
+
+test('each storage failure carries a sentence naming what to fix', () => {
+  assert.match(repositoryProbeCause(RESTIC_S3_OUTPUT.missingBucket).message, /no bucket with that name/iu);
+  assert.match(repositoryProbeCause(RESTIC_S3_OUTPUT.refused).message, /rejected the access key/iu);
+  assert.match(repositoryProbeCause(RESTIC_S3_OUTPUT.unreachable).message, /could not reach that endpoint/iu);
+  assert.equal(repositoryProbeCause(RESTIC_S3_OUTPUT.noRepositoryYet).message, null);
+  assert.equal(repositoryProbeCause('something nobody predicted').cause, 'unknown');
+});
+
+// A rejected request quotes the key it was signed with, so masking is what
+// stands between an owner's secret and a diagnostics file they email to
+// someone.
+test('storage credentials are masked out of captured output by exact value', () => {
+  const secret = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY';
+  const masked = maskSecrets(`AWSAccessKeyId=AKIAIOSFODNN7EXAMPLE signature for ${secret} rejected`, [secret, 'AKIAIOSFODNN7EXAMPLE']);
+  assert.equal(masked.includes(secret), false);
+  assert.equal(masked.includes('AKIAIOSFODNN7EXAMPLE'), false);
+  assert.match(masked, /signature for •+ rejected/u);
+  // A short or empty value is left alone: blanking it would hide the failure
+  // rather than the secret.
+  assert.equal(maskSecrets('exit status 2', ['2', '']), 'exit status 2');
+});
+
+// A repository keyed with the pre-release password must migrate on any probe,
+// not only on an open: a drive's health check and a bucket's preflight both run
+// before a backup job ever opens the repository, and a `locked` answer from
+// either would refuse the backup the migration exists to keep working.
+test('a repository keyed with the pre-release password is migrated by whichever probe meets it first', async () => {
+  const root = await scratch();
+  const keyFile = path.join(root, 'agent-state', 'engine-key');
+  const legacy = 'f00dbabe'.repeat(8);
+  fs.mkdirSync(path.dirname(keyFile), { recursive: true });
+  fs.writeFileSync(keyFile, `${legacy}\n`, 'utf8');
+  const engine = createEngine({ agentStateDir: path.dirname(keyFile) });
+  engine.migrateLegacyKey();
+  const recovery = engine.recoveryKey();
+
+  const accepted = new Set([legacy]);
+  const calls = [];
+  engine.probeRepository = async ({ password }) => {
+    calls.push(['probe', password ? 'entered' : 'own']);
+    return accepted.has(password || recovery) ? { state: 'open' } : { message: 'locked', state: 'locked' };
+  };
+  engine.keyList = () => [{ current: true, id: 'legacy-id' }];
+  engine.keyAdd = ({ newPassword }) => { calls.push(['add']); accepted.add(newPassword); };
+  engine.keyRemove = ({ keyId }) => { calls.push(['remove', keyId]); accepted.delete(legacy); };
+
+  const spec = { env: {}, localPath: null, location: 's3:example/bucket/MOS-backups/repository', secrets: [] };
+  const [first, second] = await Promise.all([engine.probe(spec), engine.probe(spec)]);
+  assert.equal(first.state, 'open');
+  assert.equal(second.state, 'open');
+  assert.equal(calls.filter(([call]) => call === 'add').length, 1, 'overlapping probes migrated once');
+  assert.deepEqual(calls.filter(([call]) => call === 'remove'), [['remove', 'legacy-id']]);
+  assert.equal(accepted.has(recovery), true);
+  assert.equal(accepted.has(legacy), false);
+  // The legacy file itself is kept for the drives still keyed with it.
+  assert.equal(engine.legacyKey(), legacy);
+  // A repository that genuinely belongs to another server stays locked.
+  accepted.clear();
+  accepted.add('MOS-SOME-OTHER-SERVER');
+  assert.equal((await engine.probe({ ...spec, location: 's3:example/other/MOS-backups/repository' })).state, 'locked');
+});
+
+// The guarantee an owner is entitled to when they point MOS at backups another
+// server wrote: MOS reads them with that server's key and writes nothing —
+// not a snapshot, not a key, not the pre-release migration that would otherwise
+// fire on any repository this machine's own key cannot open.
+test('opening a repository with another server\'s key never writes to it', async () => {
+  const root = await scratch();
+  const agentStateDir = path.join(root, 'agent-state');
+  fs.mkdirSync(agentStateDir, { recursive: true });
+  const legacy = 'f00dbabe'.repeat(8);
+  fs.writeFileSync(path.join(agentStateDir, 'engine-key.legacy'), `${legacy}\n`, 'utf8');
+  let ownKeyUsed = false;
+  const engine = createEngine({ agentStateDir, onKeyUsed: () => { ownKeyUsed = true; } });
+  const borrowed = 'MOS-THEIR-SERVER-KEY';
+
+  const writes = [];
+  engine.keyAdd = () => { writes.push('key-add'); };
+  engine.keyRemove = () => { writes.push('key-remove'); };
+  engine.clearStaleLocks = () => {};
+  engine.repositoryConfigId = () => 'their-repository';
+  engine.probeRepository = async ({ password }) => (password === borrowed
+    ? { repositoryId: 'their-repository', state: 'open' }
+    : { message: 'locked', state: 'locked' });
+
+  const spec = { env: {}, localPath: null, location: 's3:example/theirs/MOS-backups/repository', secrets: [] };
+  assert.equal((await engine.probe({ ...spec, password: borrowed })).state, 'open');
+  const repository = await engine.openOrCreateRepository({ ...spec, password: borrowed });
+  assert.deepEqual(writes, [], 'nothing was written to another server\'s repository');
+  assert.equal(ownKeyUsed, false, 'a borrowed key does not spend this machine\'s own first use');
+  assert.equal(repository.created, false);
+  // The key travels with the repository, so every later read uses it and it is
+  // masked out of anything the engine prints.
+  assert.equal(repository.env.RESTIC_PASSWORD, borrowed);
+  assert.ok(repository.secrets.includes(borrowed));
+});
+
+test('a borrowed key never creates a repository that is not there', async () => {
+  const root = await scratch();
+  const engine = createEngine({ agentStateDir: path.join(root, 'agent-state') });
+  engine.probeRepository = async () => ({ cause: 'absent', state: 'absent' });
+  await assert.rejects(
+    engine.openOrCreateRepository({ env: {}, localPath: null, location: 's3:example/theirs/MOS-backups/repository', password: 'MOS-THEIR-SERVER-KEY', secrets: [] }),
+    (error) => error.repositoryAbsent === true,
+  );
 });

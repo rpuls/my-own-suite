@@ -12,6 +12,27 @@
 // walkthrough shows on screen moved and no re-recording was needed. That is the
 // bar for updating these without re-recording: compare the echo lines, not the
 // digests, and if any of them differ the recording is genuinely stale.
+//
+// Moved again 2026-09-06 to install the backup storage engine, which only the
+// managed-update path had. One echo line was added and it writes to stderr on a
+// failed download, which a successful walkthrough never reaches; the engine
+// installer's own progress is sent to /dev/null for that reason.
+
+// Moved 2026-09-07 for the control-plane status page (roadmap A6): every Suite
+// Manager site block gained a `handle_errors` handler so a restore answers with
+// a page instead of a bare 502. All five digests moved this time rather than
+// only the last, because the handler went into `renderPublicCloudCaddyfile()`
+// as well as `renderCaddyfile()`. No `echo` line changed in any rendering — the
+// bar stated above — so the walkthrough recording is still accurate.
+//
+// Moved the same day, all five again: the installer now writes that status page
+// itself, since a fresh install never runs the reconciler that was its only
+// writer. No `echo` line changed.
+//
+// Moved 2026-09-09, all five again: the backup and update agent units each gained
+// the other's socket path, because a MOS update now backs the suite up first and a
+// scheduled backup waits while an update runs. Two `Environment=` lines; no `echo`
+// line changed, so the walkthrough recording still shows what an install prints.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -25,25 +46,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '7a3a02d1ec5d4db97e2fa9d62c11658785a0ecdcbe0376506f344b2b292be77f',
+    digest: '6cab0c27e37eae5ac8bd21ba12ea5806608bdbfa098b0b2561d091dfc308f2ac',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '123b896d7b2f42d33414cdaf71122085bc8ab2bbf1637e6ac1c7e6a22c805f43',
+    digest: '932f27b91c2cfde56596504ecd8a41be6b9bd7de85986003938ddad9ef92a352',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: 'd5737e21326ec242b86267644fe4beba3c2505a6ca5cf7b9f0de394e6c5ee243',
+    digest: '005731a94d3a8bcfd78243ec50a073e769a13543d40f5a4304f3488b61b679d2',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: 'b184cd8b12a89b72c2281ddfe7582ed2b1269e7b846e888be4252954781f3a54',
+    digest: '38949138ef57416977f35a672a7f6f47cbec52607df2f183af4b78cc25f4d599',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -53,7 +74,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '1773a2207e533dcbf15d3925519778994349a8d89d237b2e861df87f7a08bf00',
+    digest: 'a86c09339ea81dcb97bdbe1d9fadddbf3b2e99b22c27111fc577b35684b7322c',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

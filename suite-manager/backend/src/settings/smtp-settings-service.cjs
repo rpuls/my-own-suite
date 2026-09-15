@@ -162,6 +162,20 @@ class SmtpSettingsService {
     }
   }
 
+  canSendToOwner() {
+    return Boolean(this.store.getSmtpSettings()?.host) && Boolean(this.ownerEmail());
+  }
+
+  // One message from MOS itself to the owner's own address. Nothing here touches
+  // the relay's verify status: an alert that could not be sent is the caller's
+  // to log, not a fact about whether the relay is configured correctly.
+  async sendToOwner({ subject, text }) {
+    const { configured, relay } = readStoredRelay(this.store, (ref) => readSecretValue(this.secretDir, ref));
+    const to = this.ownerEmail();
+    if (!configured || !to) throw new SmtpSettingsError('SMTP_NOT_CONFIGURED', 'No email relay is configured.', 409);
+    return this.client.sendMessage(relay, { subject, text, to });
+  }
+
   // Records a verify/send failure as a diagnostics row and either returns a
   // failed result (verify, whose caller reads status) or rethrows as an
   // SmtpSettingsError (send, whose caller expects a thrown error to surface).

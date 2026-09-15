@@ -10,7 +10,7 @@ The "Explore the apps" section is generated at build time from `apps/*/manifest.
 
 ## Digital Independence Planner
 
-`planner/` is a standalone Vite + React sub-app deployed at `/plan/` — a free, browser-only roadmap builder that exports "digital independence journey" graphics. `npm run build` in `site/` builds it into `site/dist/plan` after the Astro build. It deliberately keeps its own toolchain (Tailwind, Base UI) so its styles never fight Starlight's; the brand look comes from the same synced `mos.css`.
+`planner/` is a standalone Vite + React sub-app deployed at `/plan/` — a free, browser-only roadmap builder that exports "digital independence journey" graphics. `npm run build` in `site/` builds it into `site/dist/plan` after the Astro build, and `npm run dev` in `site/` starts its dev server alongside Astro's and proxies `/plan/` to it, so the planner is reachable at the same path in dev as in production. It deliberately keeps its own toolchain (Tailwind, Base UI) so its styles never fight Starlight's; the brand look comes from the same synced `mos.css`.
 
 Its `prebuild`/`predev` step (`planner/scripts/prepare-assets.mjs`) stages everything that must not live in git:
 
@@ -20,7 +20,7 @@ Its `prebuild`/`predev` step (`planner/scripts/prepare-assets.mjs`) stages every
 ```bash
 cd site/planner
 npm install
-npm run dev   # stages assets, then serves the planner alone at http://127.0.0.1:5173/
+npm run dev   # stages assets, then serves the planner alone at http://127.0.0.1:5173/plan/
 npm test      # layout engine + share-link tests
 ```
 
@@ -31,8 +31,12 @@ The editor stores plans in `localStorage` only, and share links carry the whole 
 ```bash
 cd site
 npm install
-npm run dev
+npm run dev   # Astro on http://localhost:4321/, with the planner served at /plan/
 ```
+
+`npm run dev` runs two servers (`scripts/dev.mjs`): Astro, and the planner's Vite server behind the
+`/plan/` proxy in `astro.config.mjs`. `npm run dev:astro` starts Astro alone when the planner is not
+needed.
 
 ## Build and preview
 
@@ -43,6 +47,29 @@ npm run preview
 ```
 
 `predev`/`prebuild` run the branding sync automatically.
+
+## Link and accessibility checks
+
+CI runs both against the built site in the `site` job of `.github/workflows/ci.yml`, and both fail the
+build on a violation. To reproduce a failure locally, build first, then serve `dist` and point the
+checks at it:
+
+```bash
+cd site
+npm run build
+npx --yes http-server@14.1.1 dist -p 4321 --silent &
+
+npx --yes pa11y-ci@4.1.1 --config .pa11yci.json
+lychee --no-progress --base-url http://127.0.0.1:4321 dist   # needs lychee installed locally
+```
+
+`site/.pa11yci.json` checks six representative pages against WCAG2AA — the landing page, the docs
+index, getting-started, one install guide, one app page, and one long-form guide. It is deliberately
+not every page: coverage that takes four minutes gets deleted the first time it makes CI slow.
+
+The link checker's only configuration is `.lycheeignore` at the repository root; everything else is
+passed as arguments in the workflow. `.lycheeignore` is for hosts that refuse automated requests or
+URLs behind a login, never for a link that is actually broken.
 
 ## Deployment
 

@@ -5,7 +5,11 @@ const test = require('node:test');
 
 const {
   HOMEPAGE_IMAGE,
+  UNAVAILABLE_PAGE_FILENAME,
+  UNAVAILABLE_PAGE_ROOT,
   renderCaddyfile,
+  renderUnavailablePage,
+  withUnavailableHandler,
   renderHttpsCaddyfile,
   renderPublicCloudCaddyfile,
   renderHomepageSystemdUnit,
@@ -135,4 +139,118 @@ test('Homepage ships useful defaults and an editable source template without ove
   assert.equal(fs.existsSync(path.join(configDir, 'images', 'funkyton-F-icon.png')), true);
   assert.equal(fs.existsSync(path.join(configDir, 'images', 'github.svg')), true);
   assert.equal(fs.existsSync(path.join(configDir, 'images', 'discord.svg')), true);
+});
+
+// Suite Manager is stopped on purpose for the middle of a restore, and the
+// drills found that an owner refreshing the page then met Caddy's bare 502 —
+// the one screen in recovery that explained nothing.
+test('every Suite Manager entrance answers a control-plane outage with the status page', () => {
+  const expected = new RegExp(
+    String.raw`handle_errors \{\s*root \* ${UNAVAILABLE_PAGE_ROOT}\s*`
+    + String.raw`rewrite \* /${UNAVAILABLE_PAGE_FILENAME}\s*`
+    + String.raw`header Retry-After 15\s*`
+    + String.raw`file_server \{\s*status 503`,
+    'u',
+  );
+
+  // Both doors on a default install: the Home host and the Easy Door.
+  const defaultFile = renderCaddyfile();
+  assert.equal(defaultFile.match(/handle_errors/gu).length, 2);
+  assert.match(defaultFile, expected);
+
+  const cloud = renderPublicCloudCaddyfile();
+  assert.equal(cloud.match(/handle_errors/gu).length, 2);
+  assert.match(cloud, expected);
+
+  // On HTTPS, the two proxying blocks get it; the plain-HTTP redirect has no
+  // upstream to fail, so it stays a redirect.
+  const https = renderHttpsCaddyfile({ acmeEmail: 'owner@example.com', baseDomain: 'example.com', bootstrapHost: 'boot.example.com' });
+  assert.equal(https.match(/handle_errors/gu).length, 2);
+  assert.match(https, expected);
+  assert.match(https, /http:\/\/home\.example\.com \{\s*redir https:\/\/home\.example\.com\{uri\} permanent\s*\}/u);
+});
+
+test('the status page stands alone and asks the browser to come back', () => {
+  const page = renderUnavailablePage();
+
+  // Caddy serves this with nothing else running, so anything it referenced
+  // would be a second broken request during the outage it explains.
+  assert.doesNotMatch(page, /<script|<img|<link|https?:\/\//u);
+  assert.match(page, /<meta http-equiv="refresh" content="15">/u);
+  assert.match(page, /<title>[^<]+<\/title>/u);
+  assert.match(page, /restore or an update/u);
+  assert.match(page, /prefers-color-scheme: dark/u);
+});
+
+// The installed Caddyfile is never re-rendered by reconciliation, because
+// applying HTTPS owns that file. Without an in-place upgrade the status handler
+// would have reached new installs only, which is a partly applied update.
+const INSTALLED_BEFORE_THE_HANDLER = `http://home.mos.home {
+  reverse_proxy 127.0.0.1:8890
+}
+
+# mos-easy-door
+http:// {
+  @mos-easy-door header_regexp Host ^home\.10-0-0-5\.local\.myownsuite\.org$
+  handle @mos-easy-door {
+    reverse_proxy 127.0.0.1:8890
+  }
+  handle {
+    respond 404
+  }
+}
+`;
+
+const INSTALLED_HTTPS_BEFORE_THE_HANDLER = `{
+  email owner@example.com
+  acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+}
+
+http://boot.example.com {
+  reverse_proxy 127.0.0.1:8890
+}
+
+http://home.example.com {
+  redir https://home.example.com{uri} permanent
+}
+
+https://home.example.com {
+  reverse_proxy 127.0.0.1:8890
+}
+`;
+
+test('an already-installed Caddyfile gains the handler in every proxying block', () => {
+  const upgraded = withUnavailableHandler(INSTALLED_BEFORE_THE_HANDLER);
+  assert.equal(upgraded.match(/handle_errors/gu).length, 2);
+
+  // In the Easy Door the proxy sits inside a `handle`, where `handle_errors` is
+  // not valid, so it has to land at the end of the site block instead.
+  assert.match(upgraded, /  \}\n  handle_errors \{/u);
+  assert.doesNotMatch(upgraded, /handle @mos-easy-door \{\s*\n\s*handle_errors/u);
+});
+
+test('the upgrade skips blocks with no upstream to fail', () => {
+  const upgraded = withUnavailableHandler(INSTALLED_HTTPS_BEFORE_THE_HANDLER);
+  assert.equal(upgraded.match(/handle_errors/gu).length, 2);
+
+  // The global options block is not a site, and the plain-HTTP block only
+  // redirects — neither can produce an upstream error.
+  const beforeFirstSite = upgraded.slice(0, upgraded.indexOf('http://boot.example.com'));
+  assert.doesNotMatch(beforeFirstSite, /handle_errors/u);
+  const redirect = upgraded.slice(upgraded.indexOf('http://home.example.com {'), upgraded.indexOf('https://home.example.com {'));
+  assert.doesNotMatch(redirect, /handle_errors/u);
+});
+
+test('the upgrade is a no-op on every current rendering and on its own output', () => {
+  // Runs on every reconcile, so a second pass must never stack a second handler.
+  for (const rendered of [
+    renderCaddyfile(),
+    renderPublicCloudCaddyfile(),
+    renderHttpsCaddyfile({ acmeEmail: 'owner@example.com', baseDomain: 'example.com', bootstrapHost: 'boot.example.com' }),
+  ]) {
+    assert.equal(withUnavailableHandler(rendered), rendered);
+  }
+
+  const once = withUnavailableHandler(INSTALLED_BEFORE_THE_HANDLER);
+  assert.equal(withUnavailableHandler(once), once);
 });

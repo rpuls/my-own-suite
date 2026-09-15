@@ -32,6 +32,10 @@
       "$ref": "#/$defs/semverish",
       "description": "The app-package version, independent of the MOS platform version and of the upstream app version. Any change to package contents requires a bump; installed boxes are offered updates by comparing this value."
     },
+    "appVersion": {
+      "$ref": "#/$defs/text",
+      "description": "The version of the app itself, as the app publishes it: the number in its own release notes and documentation. This is the version owners see; the package version stays MOS bookkeeping. Keep it in step with the primary service's pinned base image. Introduced in MOS 0.20.0."
+    },
     "minimumMosVersion": {
       "$ref": "#/$defs/semverish",
       "description": "The oldest MOS platform release this package works on. A package that uses a manifest field or template namespace introduced in a later MOS release must raise this to that release."

@@ -3,8 +3,9 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { SetupError, SetupService } = require('../setup/setup-service.cjs');
-const { LoginThrottle, resolveClientAddress } = require('../auth/login-throttle.cjs');
+const { KNOWN_BROWSER_MAX_AGE_MS, SetupError, SetupService } = require('../setup/setup-service.cjs');
+const { LoginThrottle, loadThrottleKey, resolveClientAddress } = require('../auth/login-throttle.cjs');
+const { SignInAlerts } = require('../auth/sign-in-alerts.cjs');
 const { HomepageAgentClient } = require('../homepage/homepage-agent-client.cjs');
 const { HomepageService } = require('../homepage/homepage-service.cjs');
 const { ConsoleLoginError, ConsoleLoginService } = require('../settings/console-login-service.cjs');
@@ -35,6 +36,7 @@ const { UpdateAgentClient } = require('../updates/update-agent-client.cjs');
 const { UpdateService } = require('../updates/update-service.cjs');
 
 const SESSION_COOKIE = 'mos_session';
+const KNOWN_BROWSER_COOKIE = 'mos_known_browser';
 const DEFAULT_FRONTEND_DIST_DIR = path.resolve(__dirname, '..', '..', '..', 'frontend', 'dist');
 const DEFAULT_APPS_DIR = path.resolve(__dirname, '..', '..', '..', '..', 'apps');
 const SUITE_MANAGER_BASE_PATH = '/suite-manager/';
@@ -124,6 +126,10 @@ function secureTokenEqual(actual, expected) {
 
 function sessionCookie(token, secure = false) {
   return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/${secure ? '; Secure' : ''}`;
+}
+
+function knownBrowserCookie(token, secure = false) {
+  return `${KNOWN_BROWSER_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(KNOWN_BROWSER_MAX_AGE_MS / 1_000)}${secure ? '; Secure' : ''}`;
 }
 
 function clearSessionCookie(secure = false) {
@@ -269,7 +275,8 @@ function appHostLabelFor(packageId, hostFor) {
 }
 
 function appPublicUrlFor(request, packageId, httpsSettings = null, hostFor = null) {
-  const homeHost = normalizedHost(request);
+  const appliedDomain = typeof httpsSettings?.appliedBaseDomain === 'function' ? httpsSettings.appliedBaseDomain() : null;
+  const homeHost = appliedDomain ? `home.${appliedDomain}` : normalizedHost(request);
   const baseHost = homeHost.startsWith('home.') ? homeHost.slice(5) : homeHost;
   const appHost = `${appHostLabelFor(packageId, hostFor)}.${baseHost}`;
   const fallbackScheme = isHttpsRequest(request) ? 'https' : 'http';
@@ -368,7 +375,8 @@ function createMOSServer({
   homeHost = process.env.MOS_HOME_HOST || 'home.localhost',
   homepageUpstream = process.env.MOS_HOMEPAGE_UPSTREAM || 'http://127.0.0.1:3200',
   disposableLab = process.env.MOS_DISPOSABLE_LAB === '1',
-  loginThrottle = new LoginThrottle(),
+  loginThrottle = null,
+  signInAlerts = null,
   logger = createLogger(),
   securityLogger = (event) => logger.warn('security-event', event),
   securityEventRecorder = null,
@@ -378,6 +386,9 @@ function createMOSServer({
   externalSources = null,
 } = {}) {
   const setup = new SetupService({ stateDir });
+  // Built here rather than as a parameter default because the backoff is now
+  // durable: it needs the store, which does not exist until setup does.
+  const throttle = loginThrottle || new LoginThrottle({ key: loadThrottleKey(stateDir), store: setup.store });
   // Defined before the services that report into it: a throttled sign-in, a
   // source serving a package the gate refused, and a catalog that cannot refresh
   // are all counted in the same durable place.
@@ -389,6 +400,19 @@ function createMOSServer({
     store: setup.store,
   });
   const consoleLogin = new ConsoleLoginService({ stateDir });
+  // The console handover lives in the state a backup carries and a restore
+  // replaces, so a backup taken before it is saved ships this machine's server
+  // password, and a restore over it deletes the only copy. Both wait until the
+  // owner has saved it; installs that never had a handover are never waited on.
+  const serverLoginUnsaved = () => {
+    const status = consoleLogin.status();
+    return status.pending === true || status.unreadable === true;
+  };
+  const refuseUntilServerLoginSaved = (response) => {
+    if (!serverLoginUnsaved()) return false;
+    jsonResponse(response, 409, { code: 'SERVER_LOGIN_UNSAVED', error: 'Save this machine\'s server login from the Home page first. A backup would carry it and a restore would delete it.' });
+    return true;
+  };
   const homepage = createHomepageProxy({ upstream: homepageUpstream, upstreamHost: homeHost });
   const homepageConfig = new HomepageService({
     agent: homepageAgent,
@@ -400,10 +424,21 @@ function createMOSServer({
   // downloads allow six, which is what the cap exists to prevent.
   const appOperationLimiter = new AppOperationLimiter();
   const catalogService = officialCatalog || new OfficialCatalogService({
-    branch: process.env.MOS_APP_CATALOG_BRANCH || 'main',
     limiter: appOperationLimiter,
+    logger,
     recordSecurityEvent,
     repository: process.env.MOS_APP_CATALOG_REPOSITORY || 'https://github.com/rpuls/my-own-suite',
+    // A branch track reads its own branch's catalog, so the packages a box is
+    // offered are the ones published on the line of development it follows; a
+    // release tag reads `main`, which is what publishes an app update between
+    // platform releases. `/v1/summary` is the update agent's cheap read and
+    // reaches nothing off this machine.
+    resolveCatalogRef: async () => {
+      if (process.env.MOS_APP_CATALOG_BRANCH) return process.env.MOS_APP_CATALOG_BRANCH;
+      const { track } = await updateAgent.summary();
+      if (track?.type === 'branch') return track.ref || null;
+      return track?.type === 'stable' ? 'main' : null;
+    },
     // Read from the installed release, never from the network the catalog comes
     // over: a key fetched from whoever served the catalog would only prove they
     // are consistent with themselves.
@@ -438,6 +473,7 @@ function createMOSServer({
     secretDir: appPackages.secretDir,
     store: setup.store,
   });
+  const alerts = signInAlerts || new SignInAlerts({ homeHost, logger, smtpSettings, store: setup.store });
   // Resolves an installed app's real host label, so every public URL this layer
   // builds names the address the app actually serves rather than its package id.
   const appHostFor = (packageId) => appPackages.publicRouteHostFor(packageId);
@@ -454,7 +490,7 @@ function createMOSServer({
     stateDir,
     store: setup.store,
   });
-  const updates = new UpdateService({ agent: updateAgent });
+  const updates = new UpdateService({ agent: updateAgent, backupAgent });
 
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://localhost');
@@ -527,7 +563,7 @@ function createMOSServer({
           });
           return;
         }
-        const result = setup.createOwner(body);
+        const result = await setup.createOwner(body);
         jsonResponse(response, 201, { owner: result.owner, status: result.status }, {
           'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),
         });
@@ -536,12 +572,13 @@ function createMOSServer({
 
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/auth/login`) {
         const body = await readJsonBody(request);
-        const attempt = { email: body.email, ip: resolveClientAddress(request) };
-        const retryAfterMs = loginThrottle.retryAfterMs(attempt);
+        const knownBrowser = setup.isKnownBrowser(cookies[KNOWN_BROWSER_COOKIE] || '');
+        const attempt = { email: body.email, ip: resolveClientAddress(request), knownBrowser };
+        const retryAfterMs = throttle.retryAfterMs(attempt);
         if (retryAfterMs > 0) {
           const retryAfterSeconds = Math.max(1, Math.ceil(retryAfterMs / 1_000));
           const securityEvent = {
-            clientFingerprint: crypto.createHash('sha256').update(attempt.ip).digest('hex').slice(0, 12),
+            clientFingerprint: throttle.fingerprint(attempt.ip),
             event: 'login-throttled',
             retryAfterSeconds,
           };
@@ -556,6 +593,9 @@ function createMOSServer({
             securityLogger({ event: 'security-event-persistence-failed' });
           }
           securityLogger(securityEvent);
+          // Not awaited: the 429 must not wait on a relay, and a relay that
+          // fails is logged rather than allowed to change the answer.
+          alerts.notify().catch((error) => securityLogger({ error: error.message, event: 'sign-in-alert-failed' }));
           jsonResponse(response, 429, {
             code: 'LOGIN_THROTTLED',
             error: 'Too many sign-in attempts. Wait a moment and try again.',
@@ -567,17 +607,18 @@ function createMOSServer({
 
         let result;
         try {
-          result = setup.login(body);
+          result = await setup.login(body);
         } catch (error) {
           if (error instanceof SetupError && (error.code === 'INVALID_LOGIN' || error.code === 'OWNER_NOT_CREATED')) {
-            loginThrottle.recordFailure(attempt);
+            throttle.recordFailure(attempt);
           }
           throw error;
         }
-        loginThrottle.recordSuccess(attempt);
-        jsonResponse(response, 200, { owner: result.owner, status: result.status }, {
-          'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),
-        });
+        throttle.recordSuccess(attempt);
+        const secure = isHttpsRequest(request);
+        const cookiesToSet = [sessionCookie(result.sessionToken, secure)];
+        if (!knownBrowser) cookiesToSet.push(knownBrowserCookie(setup.rememberBrowser(), secure));
+        jsonResponse(response, 200, { owner: result.owner, status: result.status }, { 'Set-Cookie': cookiesToSet });
         return;
       }
 
@@ -598,9 +639,12 @@ function createMOSServer({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change the owner password.' });
           return;
         }
-        const result = setup.changeOwnerPassword(await readJsonBody(request, 8 * 1024));
+        const result = await setup.changeOwnerPassword(await readJsonBody(request, 8 * 1024));
+        // Every known browser was forgotten with the old password; the one that
+        // proved it is remembered again, like the session it keeps.
+        const secure = isHttpsRequest(request);
         jsonResponse(response, 200, { owner: result.owner, status: result.status }, {
-          'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),
+          'Set-Cookie': [sessionCookie(result.sessionToken, secure), knownBrowserCookie(setup.rememberBrowser(), secure)],
         });
         return;
       }
@@ -776,6 +820,18 @@ function createMOSServer({
         return;
       }
 
+      // The two answers an owner can give while an update waits for its backup.
+      if (request.method === 'POST' && (url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/cancel` || url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/skip-backup`)) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage updates.' });
+          return;
+        }
+        const body = await readJsonBody(request, 4 * 1024);
+        const answer = url.pathname.endsWith('/cancel') ? updates.cancel({ id: body?.id }) : updates.skipBackup({ id: body?.id });
+        jsonResponse(response, 200, await answer);
+        return;
+      }
+
       if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/track`) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to switch update tracks.' });
@@ -801,6 +857,7 @@ function createMOSServer({
             ...agentStatus,
             inventory: backupInventory.inventory(),
             ...restoreGuaranteeFor(agentStatus),
+            serverLoginUnsaved: serverLoginUnsaved(),
             serviceAvailable: true,
           });
         } catch (error) {
@@ -816,10 +873,101 @@ function createMOSServer({
             interruptedRestore: null,
             inventory: backupInventory.inventory(),
             lastJob: null,
+            recoveryKey: null,
             ...restoreGuaranteeFor(null),
+            serverLoginUnsaved: serverLoginUnsaved(),
             serviceAvailable: false,
           });
         }
+        return;
+      }
+
+      // Saving the key is what the first-backup gate is waiting for, so it is a
+      // route of its own rather than a side effect of the reveal: an owner who
+      // downloads the kit and closes the dialog without confirming is still
+      // asked again.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/recovery-key/acknowledge`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        jsonResponse(response, 200, await backupAgent.acknowledgeRecoveryKey());
+        return;
+      }
+
+      // "Shown once" is the default experience, not a security boundary: a
+      // signed-in owner already has root-equivalent power over this machine, so
+      // hiding the key from them protects nothing. The password is asked for
+      // every showing after the first, which is what a session left open on a
+      // borrowed screen cannot supply. The answer is never cached anywhere.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/recovery-key/reveal`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        const known = await backupAgent.recoveryKeyStatus();
+        if (known.recoveryKey?.acknowledged && !await setup.verifyOwnerPassword(body.password)) {
+          jsonResponse(response, 400, { code: 'INVALID_PASSWORD', error: 'Your current password is incorrect.' });
+          return;
+        }
+        jsonResponse(response, 200, await backupAgent.revealRecoveryKey());
+        return;
+      }
+
+      // Handing a replacement machine the key to backups another server wrote.
+      // The key goes straight through to the agent, which is the only component
+      // that holds one, and is never logged or kept here.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/unlock`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.unlockDestination({
+          destinationId: String(body.destinationId || ''),
+          recoveryKey: String(body.recoveryKey || ''),
+        }));
+        return;
+      }
+
+      // Who can read an archive, and taking one of them back out. Both need the
+      // key of the server that owns it, which goes straight through to the agent.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/keys`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.archiveKeys({
+          destinationId: String(body.destinationId || ''),
+          recoveryKey: String(body.recoveryKey || ''),
+        }));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/keys/remove`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.removeArchiveKey({
+          destinationId: String(body.destinationId || ''),
+          keyId: String(body.keyId || ''),
+          recoveryKey: String(body.recoveryKey || ''),
+        }));
+        return;
+      }
+      // Giving the key back: MOS stops holding another server's key, and that
+      // archive is again something this machine cannot open.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/forget-key`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.forgetDestinationKey(String(body.destinationId || '')));
         return;
       }
 
@@ -833,13 +981,88 @@ function createMOSServer({
         return;
       }
 
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/start`) {
+      // Storage credentials pass straight through to the agent, which is the
+      // only component that stores them, and are never held or logged here.
+      // Like the schedule route this forwards by field rather than the body, so
+      // the agent is never handed something the screen did not ask for.
+      if (request.method === 'POST' && (url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/object` || url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/object/test`)) {
         if (!isSignedIn(setup, sessionToken)) {
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
           return;
         }
         const body = await readJsonBody(request, 8 * 1024);
+        const input = {
+          accessKeyId: String(body.accessKeyId || ''),
+          bucket: String(body.bucket || ''),
+          endpoint: String(body.endpoint || ''),
+          folder: String(body.folder || ''),
+          label: String(body.label || ''),
+          region: String(body.region || ''),
+          secretAccessKey: String(body.secretAccessKey || ''),
+          ...(body.id ? { id: String(body.id) } : {}),
+        };
+        const testing = url.pathname.endsWith('/test');
+        jsonResponse(response, 200, testing ? await backupAgent.testObjectDestination(input) : await backupAgent.connectObjectDestination(input));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/object/remove`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.disconnectObjectDestination({ destinationId: String(body.destinationId || '') }));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/start`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        if (refuseUntilServerLoginSaved(response)) return;
+        const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 202, await backupAgent.startBackup({ destinationId: String(body.destinationId || ''), note: String(body.note || '') }));
+        return;
+      }
+
+      // Which destination MOS writes to when it backs up on its own — the
+      // schedule, and the checkpoint before a MOS update. One choice, made
+      // where the destinations are listed, rather than one per trigger.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/primary`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        if (refuseUntilServerLoginSaved(response)) return;
+        const body = await readJsonBody(request, 4 * 1024);
+        jsonResponse(response, 200, await backupAgent.setPrimaryDestination({
+          destinationId: body.destinationId === null ? null : String(body.destinationId || ''),
+        }));
+        return;
+      }
+
+      // The schedule's rules live in the backup agent, which is the component
+      // that has to honour them; this passes the owner's choice through by
+      // field rather than forwarding the body, so the agent is never handed
+      // something the screen did not ask for.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/schedule`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        if (refuseUntilServerLoginSaved(response)) return;
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.setSchedule({
+          enabled: body.enabled === true,
+          frequency: String(body.frequency || ''),
+          hour: Number(body.hour),
+          keepLast: Number(body.keepLast),
+          minute: Number(body.minute),
+          timeZone: String(body.timeZone || ''),
+          weekday: Number(body.weekday),
+        }));
         return;
       }
 
@@ -858,8 +1081,10 @@ function createMOSServer({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to restore backups.' });
           return;
         }
+        if (refuseUntilServerLoginSaved(response)) return;
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 202, await backupAgent.startRestore({
+          ...(body.address ? { address: String(body.address) } : {}),
           backupPath: String(body.backupPath || ''),
           confirmation: String(body.confirmation || ''),
         }));
@@ -908,6 +1133,8 @@ function createMOSServer({
         }
         const bundle = await assembleSupportBundle({
           agent: diagnosticsAgent,
+          appAgent,
+          catalogStatus: catalogService.status(),
           frontDoor,
           homeHost,
           platformVersion: catalogService.platformVersion,
@@ -1332,7 +1559,9 @@ function createMOSServer({
         ...(!internal && Array.isArray(error.details) && error.details.length ? { details: error.details } : {}),
         error: internal ? 'Internal server error.' : error.message || 'Internal server error.',
         ...(reference ? { reference } : {}),
-      });
+      }, Number.isInteger(error.retryAfterSeconds)
+        ? { 'Retry-After': String(error.retryAfterSeconds) }
+        : {});
     }
   });
 
@@ -1360,10 +1589,6 @@ function createMOSServer({
   server.recoverAppPackageUpdates = () => appPackages.recoverInterruptedUpdates({
     publicUrlFor: appPublicUrlResolverAtBoot(homeHost, httpsSettings),
   });
-  // Carries an install updated from before the dashboard became door-agnostic
-  // over to relative tile links. Applying a real domain was the only other path
-  // that re-stamped them, and most installs never take it.
-  server.reconcileDashboardLinks = () => appPackages.reconcileDashboardLinks(homepageConfig);
   // Candidate downloads from a Suite Manager that was killed mid-operation are
   // owned by nobody once it restarts. Downloads sweep before they run, so this is
   // about reclaiming the disk now rather than at whatever point someone next

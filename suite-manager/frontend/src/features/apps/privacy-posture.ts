@@ -168,9 +168,7 @@ export function postureFor(privacy: PrivacyReviewSummary | null | undefined) {
   return (posture && POSTURES[posture]) || UNREVIEWED;
 }
 
-// A completed review always carries a posture, so the status alone answers
-// this. It used to also have to exclude a "reviewed" package whose posture
-// said "review-required", a state the derivation can no longer produce.
+// A completed review always carries a posture, so the status alone answers this.
 export function isRated(privacy: PrivacyReviewSummary | null | undefined): boolean {
   return privacy?.status === 'reviewed';
 }
@@ -238,9 +236,9 @@ export function tileMetaLine(privacy: PrivacyReviewSummary | null | undefined): 
   return isRated(privacy) ? reviewerLabel(privacy) : 'Not yet rated';
 }
 
-export function provenanceLine(privacy: PrivacyReviewSummary | null | undefined, packageVersion?: string | null): string {
+export function provenanceLine(privacy: PrivacyReviewSummary | null | undefined, appVersion?: string | null): string {
   if (!isRated(privacy)) return 'Not yet rated by MOS';
-  return [reviewerLabel(privacy), reviewDateLabel(privacy?.reviewedAt), packageVersion ? `package ${packageVersion}` : null]
+  return [reviewerLabel(privacy), reviewDateLabel(privacy?.reviewedAt), appVersion ? `version ${appVersion}` : null]
     .filter(Boolean)
     .join(' · ');
 }

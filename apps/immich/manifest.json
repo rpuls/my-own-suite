@@ -2,8 +2,9 @@
   "manifestVersion": 1,
   "id": "immich",
   "name": "Immich",
-  "version": "0.8.0",
-  "minimumMosVersion": "0.19.0",
+  "version": "0.8.1",
+  "appVersion": "3.1.0",
+  "minimumMosVersion": "0.20.0",
   "architectures": [
     "amd64"
   ],

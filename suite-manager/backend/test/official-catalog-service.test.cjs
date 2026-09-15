@@ -16,6 +16,7 @@ const digest = `sha256:${'1'.repeat(64)}`;
 const catalog = {
   packages: {
     immich: {
+      appVersion: '3.1.0',
       minimumMosVersion: '0.1.0',
       packageDigest: digest,
       packageVersion: '1.2.0',
@@ -59,8 +60,10 @@ function writeVerifiedCache(stateDir, value = catalog) {
   fs.writeFileSync(path.join(stateDir, 'official-app-catalog.json'), JSON.stringify({
     catalogText,
     fetchedAt: new Date().toISOString(),
+    // The ref the cache was fetched for. A cache from another ref is another
+    // ref's answer and is discarded rather than served.
+    ref: 'main',
     revision,
-    schemaVersion: 2,
     signature: signCatalogBytes(catalogText, publisher.privateKey),
   }));
   return stateDir;
@@ -100,8 +103,8 @@ test('refresh treats a 304 on the conditional catalog request as unchanged, not 
     catalogText,
     etag: '"seed-etag"',
     fetchedAt: new Date('2026-07-14T09:00:00.000Z').toISOString(),
+    ref: 'main',
     revision,
-    schemaVersion: 2,
     signature: signCatalogBytes(catalogText, publisher.privateKey),
   }));
   let conditional = false;
@@ -403,6 +406,11 @@ test('update classification is decided by version alone, not by digest', () => {
   assert.equal(service.updateFor('immich', { packageDigest: digest, packageVersion: '1.2.0' }).status, 'current');
 });
 
+test('an offered candidate carries the catalog app version', () => {
+  const service = catalogService({ stateDir: writeVerifiedCache(tempDir()) });
+  assert.equal(service.updateFor('immich', { packageDigest: `sha256:${'2'.repeat(64)}`, packageVersion: '1.1.0' }).available.appVersion, '3.1.0');
+});
+
 test('candidate download is revision-bound and verifies the complete digest before returning package inputs', async (t) => {
   const fixture = tempDir();
   const manifest = { manifestVersion: 1, category: 'test', health: { type: 'http', url: 'http://example:8080/health' }, id: 'example', minimumMosVersion: '0.1.0', name: 'Example', resources: { services: { example: { dockerfile: 'Dockerfile', internalPort: 8080 } } }, routes: [{ host: 'example', port: 8080, service: 'example' }], setup: { fields: [] }, summary: 'Example.', version: '1.1.0' };
@@ -410,7 +418,7 @@ test('candidate download is revision-bound and verifies the complete digest befo
   fs.writeFileSync(path.join(fixture, 'Dockerfile'), 'FROM scratch\n');
   const candidateDigest = digestAppPackage(fixture);
   const stateDir = writeVerifiedCache(tempDir(), {
-    packages: { example: { minimumMosVersion: '0.1.0', packageDigest: candidateDigest, packageVersion: '1.1.0', path: 'apps/example', privacy: { status: 'review-required' } } },
+    packages: { example: { appVersion: '1.0', minimumMosVersion: '0.1.0', packageDigest: candidateDigest, packageVersion: '1.1.0', path: 'apps/example', privacy: { status: 'review-required' } } },
     schemaVersion: 1,
   });
   const raw = Object.fromEntries(['Dockerfile', 'manifest.json'].map((name) => [name, fs.readFileSync(path.join(fixture, name))]));
@@ -428,4 +436,123 @@ test('candidate download is revision-bound and verifies the complete digest befo
   assert.equal(candidate.packageDigest, candidateDigest);
   assert.equal(candidate.manifest.version, '1.1.0');
   assert.equal(candidate.source.revision, revision);
+});
+
+// The failure that took a month to name: a release that adds a required catalog
+// field reads the catalog already published on `main` until its own lands there,
+// and `CATALOG_INVALID` described that as a broken catalog the owner should do
+// something about. The signature verified, so the publisher wrote this document
+// and meant it; the two are simply not the same version.
+test('a signed catalog missing what this release requires reports skew, not a broken catalog', async () => {
+  const published = { packages: { immich: { ...catalog.packages.immich } }, schemaVersion: 1 };
+  delete published.packages.immich.appVersion;
+  const service = catalogService({ fetchImpl: serveRepo({ value: published }), platformVersion: '0.20.0', stateDir: tempDir() });
+
+  await assert.rejects(() => service.refresh(), (error) => {
+    assert.equal(error.code, 'CATALOG_VERSION_SKEW');
+    // Names the version that could not read it and what was missing, because
+    // that pair is the whole diagnosis.
+    assert.match(error.message, /MOS 0\.20\.0/u);
+    assert.match(error.message, /appVersion/u);
+    return true;
+  });
+  // Still counted, and still not a signature event: nothing was served that
+  // anybody distrusts.
+  assert.equal(service.status().error.code, 'CATALOG_VERSION_SKEW');
+});
+
+// The reason a failed refresh was invisible: it reached `lastError`, the cache
+// file and the security-event counter, and never the log — so the journal and
+// the diagnostics file showed a healthy server whose catalog had not refreshed
+// once.
+test('a refresh failure is logged once per state, not once per attempt', async () => {
+  const records = [];
+  const logger = { info: (event, fields) => records.push(['info', event, fields]), warn: (event, fields) => records.push(['warn', event, fields]) };
+  let serve = async () => { throw new Error('offline'); };
+  const service = catalogService({ fetchImpl: (...args) => serve(...args), logger, stateDir: tempDir() });
+
+  // The owner path retries on every Apps screen mount with no backoff, so the
+  // same failure three times must not be three log lines.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await assert.rejects(() => service.refresh(), { code: 'CATALOG_FETCH_FAILED' });
+    service.lastAttemptedAt = null; // the 30s reuse window, not what is under test
+  }
+  assert.deepEqual(records.map((record) => record[1]), ['app-catalog-refresh-failed']);
+  assert.equal(records[0][2].errorCode, 'CATALOG_FETCH_FAILED');
+
+  // A different failure is new information and says so.
+  serve = serveRepo({ key: generateSigningKeyPair().privateKey });
+  await assert.rejects(() => service.refresh(), { code: 'CATALOG_SIGNATURE_INVALID' });
+  assert.deepEqual(records.map((record) => record[2].errorCode), ['CATALOG_FETCH_FAILED', 'CATALOG_SIGNATURE_INVALID']);
+
+  // And so is recovery, which is what tells a reader the earlier lines are over.
+  serve = serveRepo();
+  await service.refresh();
+  assert.deepEqual(records.map((record) => record[1]).slice(-1), ['app-catalog-refresh-recovered']);
+  assert.equal(records.at(-1)[2].previousErrorCode, 'CATALOG_SIGNATURE_INVALID');
+});
+
+// The reason this exists: a branch track must be able to publish an app version
+// and have the boxes following that branch see it, without a platform update and
+// without merging to `main` first. Nothing here names a branch — the track
+// answers with its own ref — so a new track needs no new code.
+test('a branch track reads its own branch, and a release tag reads main', async () => {
+  const asked = [];
+  const serveRef = async (url) => {
+    if (url.includes('/commits/')) { asked.push(decodeURIComponent(url.split('/commits/')[1])); return jsonResponse({ sha: revision }); }
+    return serveRepo()(url);
+  };
+
+  for (const [track, expected] of [
+    [{ ref: 'staging', type: 'branch' }, 'staging'],
+    [{ ref: 'main', type: 'branch' }, 'main'],
+    [{ ref: 'main', type: 'stable' }, 'main'],
+  ]) {
+    const service = catalogService({
+      fetchImpl: serveRef,
+      resolveCatalogRef: async () => (track.type === 'branch' ? track.ref : 'main'),
+      stateDir: tempDir(),
+    });
+    await service.refresh();
+    assert.equal(asked.at(-1), expected);
+    assert.equal(service.status().ref, expected);
+  }
+});
+
+// A cache is one ref's answer. Serving it after a track change would show the
+// other branch's app versions, and its etag would make the conditional request
+// answer 304 for a document this ref never fetched.
+test('a catalog cached for another ref is discarded rather than served', async () => {
+  const stateDir = tempDir();
+  const conditional = [];
+  const fetchImpl = async (url, options) => {
+    if (options?.headers?.['If-None-Match']) conditional.push(url);
+    return serveRepo()(url);
+  };
+  let ref = 'main';
+  const service = catalogService({ fetchImpl, resolveCatalogRef: async () => ref, stateDir });
+
+  await service.refresh();
+  assert.equal(service.status().ref, 'main');
+
+  ref = 'staging';
+  service.lastAttemptedAt = null; // the 30s reuse window, not what is under test
+  await service.refresh();
+  assert.equal(service.status().ref, 'staging');
+  assert.deepEqual(conditional, [], 'the other ref\'s etag must not be reused');
+});
+
+// Deriving the ref from the update track means the track has to be knowable. It
+// is read from the update agent, which can be unreachable — a permanent state,
+// not a version problem — and guessing `main` there would silently read the
+// wrong branch on every box that follows another one.
+test('a ref that cannot be resolved refuses the fetch instead of guessing a branch', async () => {
+  const service = catalogService({
+    fetchImpl: async () => { throw new Error('should never be reached'); },
+    resolveCatalogRef: async () => { throw new Error('Update system agent is unavailable.'); },
+    stateDir: tempDir(),
+  });
+
+  await assert.rejects(() => service.refresh(), { code: 'CATALOG_REF_UNRESOLVED' });
+  assert.equal(service.catalog(), null);
 });

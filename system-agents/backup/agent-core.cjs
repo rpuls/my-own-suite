@@ -22,19 +22,22 @@
 // `apps`     = { installedInstances() -> [{ enabled, instanceId, packageId }], reconcile(log) }
 // `jobs`     = { log(file, message), stage(file, name), update(file, mutator) }
 // `engine`   = the backup storage engine (./engines/, fakes in the tests):
-//   openOrCreateRepository({ repositoryPath }) -> repository
+//   openOrCreateRepository({ create, env, localPath, location }) -> repository
 //   snapshotTree({ repository, sourceDir, tags }) -> { snapshotId, sourcePath }
 //   restoreSnapshot({ repository, snapshotId, sourcePath, targetDir })
 //   forgetSnapshots({ repository, snapshotIds })  maintainRepository({ repository })
 //   verifySnapshots({ repository, snapshotIds })  repositoryStats({ repository })
+// `destinations` = resolve(id) -> destination (../destinations.cjs), which owns
+//   whether a drive is still mounted or a bucket still answers, how much room
+//   is left, and where a restore point's manifest is kept.
 //
 // Every backup is a restore point in that repository. The tar adapter methods
 // remain for the one thing that is still tar: the pre-restore rescue copy,
 // which targets the system disk and must work with no destination attached at
 // all.
 
-const crypto = require('node:crypto');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const {
   appVolumeLabels,
@@ -46,16 +49,26 @@ const {
 } = require('../../infrastructure/persistent-state.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
-const { openDestinationRepository, repositorySidecarPath, RESTORE_POINTS_DIRNAME, restorePointPath, restorePointsDir } = require('./engines/engine.cjs');
+const { RESTORE_POINTS_DIRNAME } = require('./engines/engine.cjs');
+const { parseObjectLocator, readRestorePoint, sha256, writeRestorePoint } = require('./destinations.cjs');
 
 const RESTORE_JOURNAL_FILENAME = 'restore-journal.json';
 // MOS 0.19 and earlier wrote each backup as an unencrypted tar bundle. That
 // read path is gone with the format, so such a backup gets one plain sentence
 // instead of a checksum failure from a file this code no longer understands.
 const UNREADABLE_LEGACY_BACKUP = 'This backup was written by an older MOS in the unencrypted bundle format, which this version can no longer read. Restore it with MOS 0.19 or earlier, or take a new backup on this machine.';
+// A restore point is readable by the MOS that wrote it and by every MOS after
+// it, so a schema this version does not accept can only belong to a later
+// generation. The way out is the release named in the manifest, which is why
+// the refusal reports it rather than a fixed version.
+function unreadableGeneration(manifest) {
+  const version = manifest?.source?.version;
+  if (!version) return UNREADABLE_LEGACY_BACKUP;
+  return `This backup was written by MOS ${version}, which stores backups in a format this version of MOS no longer reads. Restore it with MOS ${version}, or take a new backup on the machine you are running now.`;
+}
 // One sentence for every way a drive can go away mid-write, so an owner reads
 // the same cause whether the loss was caught by MOS or reported by the engine.
-const DESTINATION_LOST = 'The backup drive was disconnected while MOS was writing to it, so this did not finish. Reconnect the drive, click Refresh drives, and try again.';
+const DESTINATION_LOST = 'The backup drive was disconnected while MOS was writing to it, so this did not finish. Reconnect the drive and try again.';
 const RESTORE_PHASES = Object.freeze(['stopping-runtime', 'rescue', 'restoring-state', 'restoring-volumes', 'reconciling-apps', 'verifying']);
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
@@ -69,40 +82,6 @@ function writeJsonAtomic(file, value) {
   const temp = `${file}.next`;
   fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
   fs.renameSync(temp, file);
-}
-
-// A restore point's manifest is its completion marker: it names the snapshots
-// the repository holds for one backup, and nothing lists a restore point until
-// it exists. So it is written whole or not at all — digest first, then an
-// atomic rename of the manifest itself.
-function writeRestorePoint(manifestPath, manifest) {
-  ensureDir(path.dirname(manifestPath));
-  const staged = `${manifestPath}.next`;
-  fs.writeFileSync(staged, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-  fs.writeFileSync(`${manifestPath}.sha256`, `${sha256(staged)}  ${path.basename(manifestPath)}\n`, 'utf8');
-  fs.renameSync(staged, manifestPath);
-}
-
-function readRestorePoint(manifestPath) {
-  const digestFile = `${manifestPath}.sha256`;
-  if (!fs.existsSync(digestFile)) throw new Error('This restore point is incomplete: the checksum recorded with it is missing.');
-  if (sha256(manifestPath) !== fs.readFileSync(digestFile, 'utf8').trim().split(/\s+/u)[0]) throw new Error('Backup manifest checksum is invalid.');
-  return readJson(manifestPath);
-}
-
-// Hash in fixed-size chunks: volume archives are multi-gigabyte, and reading
-// one into a single Buffer exhausts RAM or trips ERR_FS_FILE_TOO_LARGE.
-function sha256(file) {
-  const hash = crypto.createHash('sha256');
-  const descriptor = fs.openSync(file, 'r');
-  try {
-    const buffer = Buffer.alloc(8 * 1024 * 1024);
-    let bytesRead;
-    while ((bytesRead = fs.readSync(descriptor, buffer, 0, buffer.length)) > 0) hash.update(buffer.subarray(0, bytesRead));
-  } finally {
-    fs.closeSync(descriptor);
-  }
-  return hash.digest('hex');
 }
 
 function validatePackagePayloads(root, packages) {
@@ -141,6 +120,42 @@ function restorePublicIdentity({ bootstrapContract = {}, environment = {}, https
   return { homeHost: 'home.mos.home', scheme: 'http' };
 }
 
+// Whether a restore point was written by another machine. The install id is
+// the only answer: a standby may carry the same hostname on purpose, and an
+// address changes on the same machine.
+function writtenByAnotherMachine(source = {}, current = {}) {
+  return source.installId !== current.installId;
+}
+
+const RESTORE_ADDRESS_PLANS = Object.freeze(['copy', 'move']);
+
+// The one thing in a backup that is portable between machines is a domain;
+// every other address is bound to the machine, so there is nothing to choose.
+// A restore onto another machine of a backup that carries a domain needs the
+// owner's answer before anything is touched: `move` serves the domain from
+// this machine, `copy` parks it and rebuilds the apps on this machine's own
+// address.
+function restoreAddressPlan({ current = {}, manifest = {}, requested = null } = {}) {
+  const source = manifest.source || {};
+  const foreign = writtenByAnotherMachine(source, current);
+  const domain = source.domain || null;
+  if (!foreign || !domain) return { domain, foreign, plan: 'same' };
+  if (!RESTORE_ADDRESS_PLANS.includes(requested)) {
+    throw new Error(`This backup was written by another machine and carries the address ${domain}. Choose whether to move that address to this machine or to restore as a copy before restoring.`);
+  }
+  return { domain, foreign, plan: requested };
+}
+
+// MOS versions are the plain semver of the VERSION file. Restore asks only
+// which of two releases came first, so a numeric compare of the first three
+// parts is the whole requirement.
+function versionPrecedes(left, right) {
+  const parts = (value) => String(value).split('.').map((part) => Number.parseInt(part, 10) || 0);
+  const [a, b] = [parts(left), parts(right)];
+  for (let index = 0; index < 3; index += 1) if (a[index] !== b[index]) return a[index] < b[index];
+  return false;
+}
+
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes)) return 'an unknown amount';
   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
@@ -150,33 +165,25 @@ function formatBytes(bytes) {
   return `${value >= 10 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
 }
 
-// A restore point is identified by its manifest file inside the destination's
-// restore-points directory. Anything else on the wire is not something this
-// version can restore, and is refused rather than guessed at.
+// A restore point on a drive is identified by its manifest file inside the
+// destination's restore-points directory. Anything else on the wire is not
+// something this version can restore, and is refused rather than guessed at.
 function isRestorePointPath(target) {
   return typeof target === 'string' && target.endsWith('.json') && path.basename(path.dirname(target)) === RESTORE_POINTS_DIRNAME;
+}
+
+// Either shape of locator that names something MOS can still restore. A bucket
+// has only this one: there were never any retired-format backups in one.
+function isRestorePointLocator(target) {
+  return Boolean(parseObjectLocator(target)) || isRestorePointPath(target);
 }
 
 function destinationOfRestorePoint(manifestPath) {
   return path.resolve(path.dirname(manifestPath), '..', '..');
 }
 
-// The drive a backup locator sits on, whichever of the two shapes it is: a
-// restore point is one level deeper than a retired-format directory.
-function destinationOfBackup(target) {
-  return isRestorePointPath(target) ? destinationOfRestorePoint(target) : path.resolve(path.dirname(target), '..');
-}
-
 function snapshotIdsOfRestorePoint(manifest) {
   return [manifest.contents?.stateSnapshot?.snapshotId, ...(manifest.contents?.volumes || []).map((volume) => volume.snapshotId)].filter(Boolean);
-}
-
-function existingRestorePoints(destinationId) {
-  try {
-    return fs.readdirSync(restorePointsDir(destinationId)).filter((name) => name.endsWith('.json')).length;
-  } catch {
-    return 0;
-  }
 }
 
 // Room a backup has to see free before it starts. The first backup into a
@@ -193,43 +200,116 @@ function requiredFreeBytes(estimatedBytes, restorePointsPresent) {
 }
 
 class BackupAgentCore {
-  constructor({ apps, engine, jobs, packages, paths, system }) {
+  constructor({ apps, destinations, engine, identity = {}, jobs, packages, paths, system }) {
     this.apps = apps;
+    this.destinations = destinations;
     this.engine = engine;
+    // Who this machine is and what it does with a restored domain. The host
+    // wiring supplies the real answers; a core built without them has no
+    // install id or domain and treats every restore as its own.
+    this.identity = {
+      assumeArchiveKey: async () => null,
+      domain: () => null,
+      hostname: () => os.hostname(),
+      installId: () => null,
+      parkRestoredDomain: async () => null,
+      serveRestoredDomain: async () => null,
+      ...identity,
+    };
     this.jobs = jobs;
     this.packages = packages;
     this.paths = paths;
     this.system = system;
     this.journalPath = path.join(paths.agentStateDir, RESTORE_JOURNAL_FILENAME);
     this.rescueRoot = path.join(paths.agentStateDir, 'pre-restore-rescue');
+    this.uncollectedPath = path.join(paths.agentStateDir, 'uncollected-data.json');
+  }
+
+  // A backup whose worker was killed — power loss, a kill, a reboot — never runs
+  // its own cleanup, so the packs it had already written stay in the repository
+  // referenced by nothing. Until now the only thing that ever collected them was
+  // the next delete, which an owner may never do.
+  //
+  // Noting the destination is all that can be done at the moment it is noticed:
+  // collecting rewrites the repository with the engine's concurrency safety off,
+  // so it has to happen inside the one-at-a-time pipeline rather than beside
+  // whatever starts next.
+  noteUncollectedData(destinationId) {
+    if (!destinationId) return;
+    const pending = new Set(this.readUncollectedData());
+    pending.add(String(destinationId));
+    try {
+      fs.mkdirSync(path.dirname(this.uncollectedPath), { recursive: true });
+      fs.writeFileSync(this.uncollectedPath, `${JSON.stringify([...pending], null, 2)}\n`, 'utf8');
+    } catch {}
+  }
+
+  readUncollectedData() {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(this.uncollectedPath, 'utf8'));
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  clearUncollectedData(destinationId) {
+    const remaining = this.readUncollectedData().filter((entry) => entry !== String(destinationId));
+    try {
+      if (remaining.length === 0) fs.rmSync(this.uncollectedPath, { force: true });
+      else fs.writeFileSync(this.uncollectedPath, `${JSON.stringify(remaining, null, 2)}\n`, 'utf8');
+    } catch {}
+  }
+
+  // Runs at the start of the next job for that destination, which is the first
+  // moment the repository is both reachable and provably not being written to.
+  // A failure here is reported and cleared rather than raised: the owner asked
+  // for a backup, and refusing it because leftover data could not be collected
+  // would turn a housekeeping problem into a lost backup.
+  async collectUncollectedData(destination, jobFile) {
+    const destinationId = destination?.id;
+    if (!destinationId || !this.readUncollectedData().includes(String(destinationId))) return false;
+    this.jobs.stage(jobFile, 'Reclaiming space from an interrupted backup');
+    try {
+      const repository = await destination.repository({ create: false });
+      await this.engine.maintainRepository({ repository });
+      this.jobs.log(jobFile, 'Reclaimed data left in the backup store by an earlier backup that was interrupted.');
+    } catch (error) {
+      this.jobs.log(jobFile, `Data left by an earlier interrupted backup could not be reclaimed: ${error.message}`);
+    }
+    this.clearUncollectedData(destinationId);
+    return true;
   }
 
   stateTargets() {
     return managedStateTargets(this.paths).filter((target) => target.backedUp && target.stagePath);
   }
 
-  // The destination directory outlives its mount, so without this check a
-  // detached drive turns backups into silent writes onto the system disk —
-  // reported as success and invisible in the bundle list.
-  async assertDestinationMounted(destinationId, message) {
-    if (!this.system.destinationMounted) return;
-    if (await this.system.destinationMounted(destinationId)) return;
-    throw new Error(message);
+  // What a backup locator names: which destination holds it, which restore
+  // point it is, and whether it is a restore point at all — a drive can still
+  // carry a directory written in the retired tar format, which is listed and
+  // deletable but no longer readable.
+  resolveBackup(locator) {
+    const object = parseObjectLocator(locator);
+    if (object) return { destination: this.destinations.resolve(object.destinationId), kind: 'restore-point', pointId: object.pointId };
+    if (isRestorePointPath(locator)) {
+      return { destination: this.destinations.resolve(destinationOfRestorePoint(locator)), kind: 'restore-point', pointId: path.basename(locator, '.json') };
+    }
+    return { destination: this.destinations.resolve(path.resolve(path.dirname(locator), '..')), kind: 'legacy-bundle', path: locator };
   }
 
-  // A drive pulled mid-write fails inside the engine, which reports the path it
-  // could not write as a fatal error — true, and unreadable as anything but a
-  // MOS bug. When the destination is simply gone, that is the whole story, so
-  // it replaces the message; the engine's own output stays on the error for the
-  // support panel.
-  async destinationLoss(destinationId, error) {
-    if (!this.system.destinationMounted) return error;
+  // A destination lost mid-write fails inside the engine, which reports the
+  // path or request it could not complete as a fatal error — true, and
+  // unreadable as anything but a MOS bug. When the destination is simply gone,
+  // that is the whole story, so it replaces the message; the engine's own
+  // output stays on the error for the support panel.
+  async destinationLoss(destination, error) {
     try {
-      if (await this.system.destinationMounted(destinationId)) return error;
+      if (await destination.available()) return error;
     } catch {
       return error;
     }
-    const failure = new Error(DESTINATION_LOST);
+    const failure = new Error(destination.lostMessage || DESTINATION_LOST);
     failure.cause = error;
     failure.engineOutput = error?.engineOutput || null;
     return failure;
@@ -292,7 +372,9 @@ class BackupAgentCore {
     const { jobs, packages, system } = this;
     const started = jobs.update(jobFile, (job) => { job.status = 'running'; job.stage = 'starting'; });
     if (this.interruptedRestore()) throw new Error('A previous restore did not complete. Acknowledge it before starting new backup or restore work.');
-    await this.assertDestinationMounted(started.destinationId, 'The backup destination is not mounted. Reconnect the drive, refresh drives, and try again.');
+    const destination = this.destinations.resolve(started.destinationId);
+    await destination.assertAvailable('The backup destination is not mounted. Reconnect the drive, refresh drives, and try again.');
+    await this.collectUncollectedData(destination, jobFile);
     // exFAT and NTFS destinations reject app-packages' setgid mode, so the
     // stage cannot live on the drive.
     const stateStage = path.join(this.paths.agentStateDir, `backup-stage-${started.id}`);
@@ -321,8 +403,11 @@ class BackupAgentCore {
     if (estimatedBytes > BACKUP_BETA_MAX_TOTAL_BYTES) {
       throw new Error(`This installation holds about ${formatBytes(estimatedBytes)} of persistent state, above the current backup limit of ${formatBytes(BACKUP_BETA_MAX_TOTAL_BYTES)}.`);
     }
-    const restorePointsPresent = existingRestorePoints(started.destinationId) > 0;
-    const freeBytes = await system.availableBytes(started.destinationId);
+    const restorePointsPresent = (await destination.points.count()) > 0;
+    // Null where the destination sells capacity rather than reserving it: a
+    // bucket has no free-space figure to refuse a backup against, and the
+    // provider says so itself if a write is genuinely over a limit.
+    const freeBytes = await destination.freeBytes();
     const neededBytes = requiredFreeBytes(estimatedBytes, restorePointsPresent);
     if (freeBytes !== null && freeBytes < neededBytes) {
       throw new Error(restorePointsPresent
@@ -337,14 +422,9 @@ class BackupAgentCore {
     jobs.log(jobFile, `Backing up about ${formatBytes(estimatedBytes)} of persistent state (${owned.length} app volumes).`);
 
     jobs.stage(jobFile, 'Opening the backup repository on the destination');
-    const repository = await openDestinationRepository(this.engine, started.destinationId);
-    if (repository.created) jobs.log(jobFile, 'Created a new encrypted backup repository on this drive.');
-    const manifestPath = restorePointPath(started.destinationId, started.id);
-    ensureDir(restorePointsDir(started.destinationId));
-    // The operator's note travels with the restore point from birth; it stays a
-    // sidecar outside the checksummed manifest.
-    if (started.note) fs.writeFileSync(`${manifestPath}.note.txt`, `${started.note}\n`, 'utf8');
-    jobs.update(jobFile, (job) => { job.outputPath = manifestPath; });
+    const repository = await destination.repository();
+    if (repository.created) jobs.log(jobFile, `Created a new encrypted backup repository ${destination.kind === 'object' ? 'in this bucket' : 'on this drive'}.`);
+    jobs.update(jobFile, (job) => { job.outputPath = destination.points.locator(started.id); });
     const storedSnapshotIds = [];
     let repositoryStoredBytes = null;
     const stoppedContainers = await system.listAppContainers({ runningOnly: true });
@@ -391,9 +471,16 @@ class BackupAgentCore {
           createdAt: new Date().toISOString(),
           engine: this.engine.name,
           id: started.id,
+          // Recorded so retention can tell a backup MOS took on its own from one
+          // an owner chose to take, and so the checkpoint before an update can
+          // be named on the Backups screen. A manifest without it predates
+          // automatic backups and counts as the owner's, which is the answer
+          // that never deletes something on a guess.
+          initiator: started.initiator === 'schedule' || started.initiator === 'update' ? started.initiator : 'owner',
           kind: 'mos-whole-suite',
           schemaVersion: BACKUP_SCHEMA_VERSION,
           storage: 'engine-repository',
+          updateTarget: started.updateTarget || null,
         },
         contents: {
           ambiguousVolumes: ambiguous,
@@ -402,19 +489,28 @@ class BackupAgentCore {
           stateSnapshot: { snapshotId: stateSnapshot.snapshotId, sourcePath: stateSnapshot.sourcePath },
           volumes: storedVolumes,
         },
-        repository: { engineName: this.engine.name, repositoryId: repository.descriptor?.repositoryId || null, repositoryStoredBytes },
-        source: await system.sourceInfo(),
+        repository: { engineName: this.engine.name, repositoryId: repository.descriptor?.repositoryId || repository.repositoryId || null, repositoryStoredBytes },
+        // The machine that wrote this restore point, and the domain it served.
+        // A destination can hold the backups of more than one server once a
+        // replacement takes over, and an owner about to restore has to be able
+        // to see which one they are about to become and whether it carries an
+        // address only one machine can answer on.
+        source: { ...await system.sourceInfo(), domain: this.identity.domain(), hostname: this.identity.hostname(), installId: this.identity.installId() },
       };
-      // Success requires the destination to still be the mounted drive: if it
-      // vanished mid-backup, everything above landed on the system disk and
-      // this restore point must not be reported as a usable backup. The
-      // manifest is written only after that holds, so its presence is the
-      // completion marker.
-      await this.assertDestinationMounted(started.destinationId, DESTINATION_LOST);
-      writeRestorePoint(manifestPath, manifest);
+      // Success requires the destination to still be the one this started
+      // against: if a drive vanished mid-backup, everything above landed on the
+      // system disk and this restore point must not be reported as a usable
+      // backup. The manifest is written only after that holds, so its presence
+      // is the completion marker.
+      await destination.assertStillWritable(destination.lostMessage);
+      await destination.points.write(started.id, manifest);
+      // Written after the manifest rather than before it, so a crash between
+      // the two can only lose the note — never leave a note describing a
+      // restore point that does not exist.
+      if (started.note) await destination.points.writeNote(started.id, started.note);
     } catch (error) {
-      await this.discardFailedBackup({ jobFile, manifestPath, repository, snapshotIds: storedSnapshotIds });
-      throw await this.destinationLoss(started.destinationId, error);
+      await this.discardFailedBackup({ destination, jobFile, pointId: started.id, repository, snapshotIds: storedSnapshotIds });
+      throw await this.destinationLoss(destination, error);
     } finally {
       fs.rmSync(stateStage, { force: true, recursive: true });
       jobs.stage(jobFile, 'Restarting runtime');
@@ -432,9 +528,13 @@ class BackupAgentCore {
   // this job wrote are forgotten and the space reclaimed; the repository
   // itself is removed only when this job created it, so a mount check that
   // reports wrongly can never delete backups that were already on the drive.
-  async discardFailedBackup({ jobFile, manifestPath, repository, snapshotIds }) {
-    for (const suffix of ['', '.sha256', '.next', '.note.txt']) fs.rmSync(`${manifestPath}${suffix}`, { force: true });
+  async discardFailedBackup({ destination, jobFile, pointId, repository, snapshotIds }) {
+    await destination.points.remove(pointId).catch(() => {});
     if (!repository) return;
+    // Nothing to forget does not mean nothing was written: a backup that failed
+    // before its first snapshot was recorded still left packs behind, and only a
+    // maintenance pass can tell that they are referenced by nothing.
+    if (!snapshotIds.length) this.noteUncollectedData(destination?.id);
     if (snapshotIds.length) {
       try {
         await this.engine.forgetSnapshots({ repository, snapshotIds });
@@ -443,10 +543,7 @@ class BackupAgentCore {
         this.jobs.log(jobFile, `Some partly written backup data could not be cleaned up: ${cleanupError.message}`);
       }
     }
-    if (repository.created) {
-      fs.rmSync(repository.repositoryPath, { force: true, recursive: true });
-      fs.rmSync(repositorySidecarPath(repository.destinationId), { force: true });
-    }
+    if (repository.created) await destination.discardCreatedRepository(repository).catch(() => {});
   }
 
   // Deleting a restore point forgets its snapshots and then runs repository
@@ -458,28 +555,33 @@ class BackupAgentCore {
   // it runs only as a queued job through the same one-at-a-time pipeline as
   // backup and restore (deleteBackupJob), never inline.
   async deleteBackup(target) {
+    const { destination, kind, pointId } = this.resolveBackup(target);
     // A backup left over in the retired tar format can no longer be read, but
     // it is still a directory the owner is entitled to remove: refusing that
     // too would strand its space on the drive with nothing MOS can do about it.
-    if (!isRestorePointPath(target)) {
+    if (kind === 'legacy-bundle') {
       fs.rmSync(target, { force: true, recursive: true });
-      return { kind: 'legacy-bundle', path: target };
+      return { kind, path: target };
     }
     let snapshotIds = [];
     try {
-      snapshotIds = snapshotIdsOfRestorePoint(readRestorePoint(target));
+      snapshotIds = snapshotIdsOfRestorePoint(await destination.points.read(pointId));
     } catch {
       // A restore point whose manifest no longer reads cannot name its
       // snapshots. Removing it is still the owner's call; the unreferenced
       // data stays until repository maintenance collects it.
     }
+    // The manifest goes first, because it is what makes a restore point exist.
+    // A delete interrupted after this leaves data nobody references, which the
+    // next maintenance pass collects; the other order would leave a backup
+    // still listed and offered for restore with its contents already gone.
+    await destination.points.remove(pointId);
     if (snapshotIds.length) {
-      const repository = await openDestinationRepository(this.engine, destinationOfRestorePoint(target), { create: false });
+      const repository = await destination.repository({ create: false });
       await this.engine.forgetSnapshots({ repository, snapshotIds });
       await this.engine.maintainRepository({ repository });
     }
-    for (const suffix of ['', '.sha256', '.note.txt']) fs.rmSync(`${target}${suffix}`, { force: true });
-    return { kind: 'restore-point', path: target };
+    return { kind, path: target };
   }
 
   async deleteBackupJob(jobFile) {
@@ -487,9 +589,9 @@ class BackupAgentCore {
     const started = jobs.update(jobFile, (job) => { job.status = 'running'; job.stage = 'starting'; });
     jobs.stage(jobFile, 'Deleting backup and reclaiming space');
     // Reclaiming space rewrites the repository, so a delete is a writer too and
-    // fails the same way when the drive goes away underneath it.
+    // fails the same way when the destination goes away underneath it.
     const deleted = await this.deleteBackup(started.backupPath).catch(async (error) => {
-      throw await this.destinationLoss(destinationOfBackup(started.backupPath), error);
+      throw await this.destinationLoss(this.resolveBackup(started.backupPath).destination, error);
     });
     jobs.update(jobFile, (job) => {
       job.stage = 'completed';
@@ -513,13 +615,13 @@ class BackupAgentCore {
   // snapshots on purpose: a whole-repository read costs every backup ever
   // taken and sits on the restore path, so it would grow until validate times
   // out exactly when recovery matters.
-  async validateRestorePoint(manifestPath, { keepStagedState = false } = {}) {
+  async validateRestorePoint(locator, { keepStagedState = false } = {}) {
     const { packages } = this;
-    if (!isRestorePointPath(manifestPath)) throw new Error(UNREADABLE_LEGACY_BACKUP);
-    const destinationId = destinationOfRestorePoint(manifestPath);
-    const manifest = readRestorePoint(manifestPath);
+    if (!isRestorePointLocator(locator)) throw new Error(UNREADABLE_LEGACY_BACKUP);
+    const { destination, pointId } = this.resolveBackup(locator);
+    const manifest = await destination.points.read(pointId);
     this.assertRestorableManifest(manifest);
-    const repository = await openDestinationRepository(this.engine, destinationId, { create: false });
+    const repository = await destination.repository({ create: false });
     try {
       await this.engine.verifySnapshots({ repository, snapshotIds: snapshotIdsOfRestorePoint(manifest) });
     } catch (error) {
@@ -540,22 +642,26 @@ class BackupAgentCore {
     } finally {
       if (!keepStaged) fs.rmSync(stagedState, { force: true, recursive: true });
     }
-    const report = await this.validationReport(manifest, manifestPath, { archivesReadable: true, checksums: true, packagePayloads: true, repositoryIntegrity: true });
+    const report = await this.validationReport(manifest, locator, { archivesReadable: true, checksums: true, packagePayloads: true, repositoryIntegrity: true });
     return { manifest, report, repository, stagedStatePath: keepStaged ? stagedState : null };
   }
 
   assertRestorableManifest(manifest) {
     if (manifest.backup?.kind !== 'mos-whole-suite') throw new Error('This backup is not a MOS whole-suite backup.');
-    if (!RESTORE_COMPATIBLE_SCHEMA_VERSIONS.includes(manifest.backup?.schemaVersion)) throw new Error(UNREADABLE_LEGACY_BACKUP);
+    if (!RESTORE_COMPATIBLE_SCHEMA_VERSIONS.includes(manifest.backup?.schemaVersion)) throw new Error(unreadableGeneration(manifest));
   }
 
   async validationReport(manifest, locator, checks) {
     const source = await this.system.sourceInfo();
     const backupVersion = manifest.source?.version || null;
     const currentVersion = source?.version || null;
+    const backupHostname = manifest.source?.hostname || null;
+    const currentHostname = this.identity.hostname();
     const warnings = [];
     if (backupVersion && currentVersion && backupVersion !== currentVersion) {
-      warnings.push(`This backup was created by MOS ${backupVersion} but this machine runs MOS ${currentVersion}. Restore reuses the installed MOS software with the backup's validated app packages; recreating the recorded MOS version automatically is not supported yet.`);
+      warnings.push(versionPrecedes(currentVersion, backupVersion)
+        ? `This backup was written by MOS ${backupVersion}, but this machine runs the older MOS ${currentVersion}. A backup restores onto the version that wrote it or any later one, never onto an earlier one. Update MOS first, then restore.`
+        : `This backup was written by MOS ${backupVersion} and this machine runs MOS ${currentVersion}. That is the supported direction: the restore reuses the MOS software installed here together with the backup's own app packages, which carry their own pinned versions.`);
     }
     return {
       apps: (manifest.contents?.apps || []).map((app) => ({ instanceId: app.instanceId, packageId: app.packageId, packageVersion: app.packageVersion })),
@@ -564,6 +670,14 @@ class BackupAgentCore {
       checks,
       schemaVersion: manifest.backup.schemaVersion,
       software: { backupVersion, currentVersion, matched: !backupVersion || !currentVersion || backupVersion === currentVersion },
+      source: {
+        backupDomain: manifest.source?.domain || null,
+        backupHostname,
+        backupInstallId: manifest.source?.installId || null,
+        currentHostname,
+        currentInstallId: this.identity.installId(),
+        matched: !writtenByAnotherMachine(manifest.source, { hostname: currentHostname, installId: this.identity.installId() }),
+      },
       volumes: (manifest.contents?.volumes || []).map((volume) => ({ name: volume.name, rawBytes: volume.rawBytes ?? null })),
       warnings,
     };
@@ -600,6 +714,12 @@ class BackupAgentCore {
     jobs.update(jobFile, (job) => { job.validation = report; });
     let runtimeStopped = false;
     try {
+      const address = restoreAddressPlan({
+        current: { hostname: this.identity.hostname(), installId: this.identity.installId() },
+        manifest,
+        requested: started.address,
+      });
+      jobs.update(jobFile, (job) => { job.address = { domain: address.domain, plan: address.plan }; });
       jobs.stage(jobFile, 'Checking required space');
       const targets = this.stateTargets();
       let currentStateBytes = 0;
@@ -671,11 +791,20 @@ class BackupAgentCore {
 
       this.advanceJournal('restoring-state', { rescuePath: rescueDir });
       jobs.stage(jobFile, 'Restoring suite state');
-      for (const target of targets) {
+      // A copy keeps this machine's own Caddy files: they carry its own address
+      // and Easy Door, and the backup's would carry the other machine's domain.
+      for (const target of targets.filter((entry) => address.plan !== 'copy' || !entry.id.startsWith('caddy-'))) {
         await system.removeTree(target.path);
         const staged = path.join(stagedState, target.stagePath);
         if (fs.existsSync(staged)) await system.copyTree(staged, target.path, { excludeNames: [] });
         else jobs.log(jobFile, `The backup does not contain ${target.id}; it is left absent.`);
+      }
+      if (address.plan === 'copy') {
+        const parked = await this.identity.parkRestoredDomain();
+        if (parked) jobs.log(jobFile, `Kept the address ${parked} aside: this machine answers on its own address, and Settings offers to move ${parked} here later.`);
+      } else if (address.plan === 'move') {
+        const served = await this.identity.serveRestoredDomain();
+        if (served) jobs.log(jobFile, `This machine now serves ${served}. Point that name at this machine's address to finish the move; Settings shows how.`);
       }
 
       this.advanceJournal('restoring-volumes');
@@ -705,6 +834,15 @@ class BackupAgentCore {
       const verification = await this.verifyRestore(manifest);
       for (const warning of verification.warnings) jobs.log(jobFile, warning);
       jobs.update(jobFile, (job) => { job.verification = verification; });
+
+      // Taking another machine's place is the one moment this machine may make
+      // that machine's key its own: the restore has succeeded, so it now holds
+      // that machine's data and answers for it. A copy stays itself and keeps
+      // borrowing the key. Either way the archive was never touched.
+      if (address.foreign && address.plan !== 'copy') {
+        const assumed = await this.identity.assumeArchiveKey(repository.destinationId);
+        if (assumed) jobs.log(jobFile, 'This server now uses the recovery key of the server it restored from. One key opens everything from here on.');
+      }
 
       this.advanceJournal('completed', { completedAt: new Date().toISOString() });
       fs.rmSync(this.journalPath, { force: true });
@@ -760,10 +898,13 @@ class BackupAgentCore {
 
 module.exports = {
   BackupAgentCore,
+  isRestorePointLocator,
   isRestorePointPath,
   readRestorePoint,
+  RESTORE_ADDRESS_PLANS,
   RESTORE_JOURNAL_FILENAME,
   RESTORE_PHASES,
+  restoreAddressPlan,
   restorePublicIdentity,
   UNREADABLE_LEGACY_BACKUP,
   sha256,

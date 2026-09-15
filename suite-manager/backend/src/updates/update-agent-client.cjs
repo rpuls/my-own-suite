@@ -47,7 +47,13 @@ class UpdateAgentClient {
   }
 
   status() { return this.request('GET', '/v1/status'); }
+  // The current job alone. A full status runs an update check against the
+  // origin, which is far more than a caller asking "is an update running" wants
+  // to pay for or wait on.
+  summary() { return this.request('GET', '/v1/summary'); }
   startUpdate(input) { return this.request('POST', '/v1/jobs', input); }
+  cancelUpdate(id) { return this.request('POST', `/v1/jobs/${encodeURIComponent(id)}/cancel`, {}); }
+  skipBackup(id) { return this.request('POST', `/v1/jobs/${encodeURIComponent(id)}/skip-backup`, {}); }
   configureTrack(input) { return this.request('POST', '/v1/track', input); }
 }
 

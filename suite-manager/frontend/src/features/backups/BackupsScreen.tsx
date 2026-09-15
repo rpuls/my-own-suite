@@ -1,263 +1,132 @@
 import { useEffect, useState } from 'react';
 
-import { ActionMenu, AdvancedPanel, Dialog, Icon, Notice, TextInput } from '../../components/ui';
+import { ServerLoginNotice } from '../../components/ServerLoginNotice';
+import { AdvancedPanel, Icon, Notice, Panel, PanelBody, PanelHead, Select, Spinner } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
+import { DestinationsPanel } from './DestinationsPanel';
+import { RestorePointsPanel } from './RestorePointsPanel';
+import {
+  AddDestinationWizard,
+  ArchiveKeysDialog,
+  BackupDialog,
+  DeleteDialog,
+  DisconnectDialog,
+  NoteDialog,
+  RecoveryKeyDialog,
+  RestoreDialog,
+  ScheduleDialog,
+  UnlockDialog,
+  type ConnectionTest,
+} from './dialogs';
+import {
+  EMPTY_OBJECT_DRAFT,
+  activityLine,
+  backupBlockReason,
+  bannerState,
+  browserTimeZone,
+  destinationViews,
+  isRunning,
+  jobWorkingLine,
+  restoreAddressNote,
+  restorePhaseWords,
+  scheduleLive,
+  scheduleSummary,
+  stageProgress,
+  stageWords,
+  whenWords,
+  type BackupEntry,
+  type BackupSchedule,
+  type BackupStatus,
+  type DestinationView,
+  type ObjectDraft,
+  type RevealedRecoveryKey,
+  type ArchiveKey,
+} from './model';
 
-type BackupDestination = {
-  availableBytes: number | null;
-  canMount?: boolean;
-  id: string;
-  label: string;
-  mountBlockedReason?: string | null;
-  mountPath: string | null;
-  mountState?: 'mounted' | 'unmounted' | 'unsupported-mount';
-  repository?: { engineName: string | null; restorePoints: number; storedBytes: number | null } | null;
-  sizeBytes: number | null;
-  storageKind?: 'external' | 'local' | 'network' | null;
-  writable: boolean;
-};
-
-type BackupValidation = {
-  apps: Array<{ instanceId: string; packageId: string; packageVersion: string | null }>;
-  backupPath: string;
-  checkedAt: string;
-  software: { backupVersion: string | null; currentVersion: string | null; matched: boolean };
-  volumes: Array<{ name: string; rawBytes: number | null }>;
-  warnings: string[];
-};
-
-type BackupJob = {
-  error: string | null;
-  id: string;
-  kind: string | null;
-  logs?: Array<{ at?: string; message?: string }>;
-  outputPath: string | null;
-  rescuePath: string | null;
-  stage: string | null;
-  status: string | null;
-  updatedAt: string | null;
-  validation?: BackupValidation | null;
-};
-
-type BackupEntry = {
-  appCount: number;
-  createdAt: string | null;
-  destinationId: string;
-  destinationLabel: string;
-  encrypted?: boolean;
-  engineName?: string | null;
-  id: string;
-  kind?: string;
-  note?: string | null;
-  path: string;
-  repositoryId?: string | null;
-  restorable?: boolean;
-  sizeBytes?: number | null;
-  sourceVersion: string | null;
-  volumeCount: number;
-};
-
-type InterruptedRestore = {
-  backupPath: string | null;
-  jobId: string | null;
-  phase: string;
-  rescuePath: string | null;
-  startedAt: string | null;
-};
-
-type BackupStatus = {
-  backups: BackupEntry[];
-  currentJob: BackupJob | null;
-  destinations: BackupDestination[];
-  error?: string | null;
-  interruptedRestore?: InterruptedRestore | null;
-  inventory?: {
-    summary: { appCount: number; declaredVolumeCount: number; relationshipCount: number; warningCount: number };
-    warnings: Array<{ message: string; packageId: string }>;
-  };
-  lastJob: BackupJob | null;
-  restoreGuarantee?: string;
-  restoreGuaranteeByKind?: Record<string, string>;
-  serviceAvailable: boolean;
-};
-
-
-function formatDate(value: string | null) {
-  if (!value) return 'Unknown date';
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
-}
-
-function formatBytes(value: number | null) {
-  if (value === null || !Number.isFinite(value)) return 'Unknown space';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let size = value;
-  let unit = 0;
-  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
-  return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
-}
-
-function isRunning(job: BackupJob | null) {
-  return Boolean(job && (job.status === 'queued' || job.status === 'running'));
-}
-
-const RESTORE_PHASE_WORDS: Record<string, string> = {
-  'reconciling-apps': 'while it was rebuilding your apps',
-  rescue: 'while it was saving a rescue copy of the current state',
-  'restoring-state': 'while it was putting your settings and accounts back',
-  'restoring-volumes': 'while it was putting your app data back',
-  'stopping-runtime': 'before it had changed anything, while it was stopping your apps',
-  verifying: 'while it was checking the result against the backup',
-};
-
-function restorePhaseWords(phase: string | null | undefined) {
-  return RESTORE_PHASE_WORDS[String(phase || '')] || 'at a step it could not name';
-}
-
-function driveIconName(kind: string | null | undefined) {
-  if (kind === 'external') return 'usb-drive';
-  if (kind === 'network') return 'network-drive';
-  return 'hard-drive';
-}
-
-function jobMessage(job: BackupJob | null) {
-  if (!job) return '';
-  if (job.status === 'succeeded') {
-    if (job.kind === 'restore') return 'Restore completed.';
-    if (job.kind === 'validate') return 'Backup check passed. The stored data and every app package in this backup are intact, so it can be restored.';
-    if (job.kind === 'delete') return 'Backup deleted. The space only it was using has been reclaimed.';
-    return 'Backup completed.';
-  }
-  if (job.status === 'failed') {
-    if (job.kind === 'restore') return 'Restore failed.';
-    if (job.kind === 'validate') return 'Backup check failed. Do not rely on this backup for recovery.';
-    if (job.kind === 'delete') return 'Delete failed. The other backups on the drive are unaffected.';
-    return 'Backup failed.';
-  }
-  return job.stage || (job.kind === 'restore' ? 'Restore in progress' : job.kind === 'validate' ? 'Backup check in progress' : job.kind === 'delete' ? 'Backup delete in progress' : 'Backup in progress');
-}
-
-function operationTitle(job: BackupJob | null, restoreStarted: boolean) {
-  if (restoreStarted || job?.kind === 'restore') return 'Restoring your backup';
-  if (job?.kind === 'validate') return 'Checking your backup';
-  if (job?.kind === 'delete') return 'Deleting the backup';
-  return 'Backing up your suite';
-}
-
-function operationMessage(job: BackupJob | null, restoreStarted: boolean) {
-  if (restoreStarted || job?.kind === 'restore') return 'MOS is replacing the current install with the selected backup. A large backup can take a long time — leave this page open and it will reconnect by itself. While services restart the suite may briefly look offline, and refreshing can show a temporary server error page even though the restore is running fine.';
-  if (job?.kind === 'validate') return 'MOS is reading everything this backup stored and checking it against what was recorded, without changing anything. Apps keep running.';
-  if (job?.kind === 'delete') return 'MOS is removing the backup and reclaiming the space only it was using. Data other backups still need is kept. Apps keep running.';
-  return 'MOS is pausing apps, saving their data, and then starting them again. Please wait until the backup finishes.';
-}
-
-function operationStage(job: BackupJob | null, restoreStarted: boolean) {
-  if (job?.stage) return job.stage;
-  return restoreStarted ? 'Starting restore' : 'Starting backup';
-}
-
-// A restore point's size is the suite data it restores, not space it takes on
-// the drive — points share the store's deduplicated data, so sizes are not
-// additive and are worded to not read that way. A retired-format backup's size
-// is the space its folder occupies, which is the only useful thing left to say
-// about it.
-function backupDescription(backup: BackupEntry) {
-  const contents = backup.appCount > 0 ? `${backup.appCount} app${backup.appCount === 1 ? '' : 's'} and ${backup.volumeCount} data store${backup.volumeCount === 1 ? '' : 's'}` : 'No apps in this backup';
-  if (!Number.isFinite(backup.sizeBytes ?? NaN)) return contents;
-  const size = formatBytes(backup.sizeBytes as number);
-  return backup.kind === 'restore-point' ? `${contents} · restores ${size}` : `${contents} · ${size}`;
-}
-
-function usagePercent(used: number, total: number) {
-  if (!total) return 0;
-  return Math.min(100, Math.max(0, Math.round(((total - used) / total) * 100)));
-}
-
-function getBackupButtonState(destinations: BackupDestination[], selectedId: string) {
-  const selected = destinations.find(d => d.id === selectedId);
-
-  if (destinations.length === 0) {
-    return { enabled: false, message: 'No backup drives detected.' };
-  }
-
-  if (!selectedId) {
-    return { enabled: false, message: 'Select a backup drive to continue.' };
-  }
-
-  if (!selected) {
-    return { enabled: false, message: 'Select a backup drive to continue.' };
-  }
-
-  if (selected.mountState !== 'mounted') {
-    return { enabled: false, message: 'The selected drive is not mounted.' };
-  }
-
-  if (!selected.writable) {
-    return { enabled: false, message: 'The selected drive is not writable.' };
-  }
-
-  return {
-    enabled: true,
-    message: `Ready to back up to ${selected.label} · ${formatBytes(selected.availableBytes)} available`
-  };
-}
+type Dialog =
+  | { kind: 'backup' }
+  | { kind: 'delete'; backup: BackupEntry }
+  | { kind: 'disconnect'; view: DestinationView }
+  | { kind: 'key'; mode: 'reveal' | 'save'; then?: () => Promise<void> }
+  | { kind: 'note'; backup: BackupEntry; value: string }
+  | { kind: 'restore'; backup: BackupEntry }
+  | { kind: 'schedule' }
+  | { kind: 'keys'; view: DestinationView }
+  | { kind: 'unlock'; view: DestinationView }
+  | { kind: 'wizard'; start: '' | 'drive' | 'online' }
+  | null;
 
 export function BackupsScreen() {
   const [status, setStatus] = useState<BackupStatus | null>(null);
-  const [selectedDestinationId, setSelectedDestinationId] = useState('');
-  const [selectedRestore, setSelectedRestore] = useState<BackupEntry | null>(null);
-  const [selectedDelete, setSelectedDelete] = useState<BackupEntry | null>(null);
-  const [noteEditor, setNoteEditor] = useState<{ backup: BackupEntry; value: string } | null>(null);
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [backupTargetId, setBackupTargetId] = useState('');
   const [backupNote, setBackupNote] = useState('');
-  const [visibleBackups, setVisibleBackups] = useState(3);
   const [restoreConfirmation, setRestoreConfirmation] = useState('');
+  const [restoreAddress, setRestoreAddress] = useState<'' | 'copy' | 'move'>('');
   const [restoreStarted, setRestoreStarted] = useState(false);
   const [sessionEnded, setSessionEnded] = useState<'restore' | 'expired' | ''>('');
+  const [activityOpen, setActivityOpen] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+  const [objectDraft, setObjectDraft] = useState<ObjectDraft>({ ...EMPTY_OBJECT_DRAFT });
+  const [objectTest, setObjectTest] = useState<ConnectionTest>(null);
+  const [revealedKey, setRevealedKey] = useState<RevealedRecoveryKey | null>(null);
+  const [keyError, setKeyError] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+  const [archiveKeys, setArchiveKeys] = useState<ArchiveKey[] | null>(null);
+  const [archiveKeysError, setArchiveKeysError] = useState('');
+  const [checking, setChecking] = useState('');
+
   const activeJob = status?.currentJob || null;
   const running = restoreStarted || isRunning(activeJob);
-  const backupList = status?.backups || [];
-  // Only worth saying while such a backup is actually sitting on a drive.
-  const unreadableCount = backupList.filter((backup) => backup.restorable === false).length;
-  const storageSummary = [
-    `${backupList.filter((backup) => backup.restorable !== false).length} encrypted restore points`,
-    unreadableCount ? `${unreadableCount} in the retired format` : null,
-    backupList.find((backup) => backup.engineName)?.engineName || null,
-  ].filter(Boolean).join(' · ');
   const restoreInFlight = restoreStarted || (activeJob?.kind === 'restore' && isRunning(activeJob));
-  const selectedDestination = status?.destinations.find((destination) => destination.id === selectedDestinationId);
-  const buttonState = status ? getBackupButtonState(status.destinations, selectedDestinationId) : { enabled: false, message: '' };
+  const backingUp = isRunning(activeJob) && activeJob?.kind !== 'restore' && activeJob?.kind !== 'validate' && activeJob?.kind !== 'delete';
 
+  const views = destinationViews(status);
+  const readyViews = views.filter((view) => view.selectable);
+  const selected = views.find((view) => view.selected) || null;
+  const backupTarget = readyViews.find((view) => view.id === backupTargetId)
+    || (selected && selected.selectable ? selected : null)
+    || readyViews[0]
+    || null;
+  const blockReason = status ? backupBlockReason(status, views, backupTarget) : '';
+  const banner = bannerState(status, views, Boolean(backingUp));
+  const workingLine = jobWorkingLine(activeJob);
+  const recoveryKey = status?.recoveryKey || null;
+  // Until the key is saved, taking a backup or enabling a schedule goes through
+  // the dialog instead. The agent refuses them too, so a page left open from
+  // before cannot slip past this.
+  const keySaved = recoveryKey === null || recoveryKey.acknowledged;
+
+  // Reads the status and nothing else. Every action calls this when it is done
+  // and the idle poll calls it on its own, so it must not touch the busy state:
+  // whichever action is in flight is what the screen should still be showing.
   async function load() {
     setError('');
-    setBusy('refresh');
     const response = await fetch('/suite-manager/api/backups/status');
     if (response.status === 401) {
       // A restore replaces Suite Manager state, so the session that started it
       // no longer exists once the restored control plane comes back.
-      setSessionEnded(restoreStarted || (activeJob?.kind === 'restore' && isRunning(activeJob)) ? 'restore' : 'expired');
+      setSessionEnded(restoreInFlight ? 'restore' : 'expired');
       setStatus(null);
       setRestoreStarted(false);
-      setBusy('');
       return;
     }
     const next = await jsonResponse<BackupStatus>(response, 'Unable to load backups.');
     setStatus(next);
-    setBusy('');
     if (!isRunning(next.currentJob) && restoreStarted) setRestoreStarted(false);
-    if (!selectedDestinationId) {
-      const firstWritable = next.destinations.find((destination) => destination.mountState === 'mounted' && destination.writable);
-      if (firstWritable) setSelectedDestinationId(firstWritable.id);
-    }
+    if (!isRunning(next.currentJob) && checking) setChecking('');
   }
 
   useEffect(() => { void load().catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load backups.')); }, []);
+  // A scheduled backup starts without anyone clicking anything, so an open page
+  // polls slowly even when idle — otherwise the screen keeps showing "nothing
+  // is happening" through an automatic backup it never noticed.
   useEffect(() => {
-    if (!running) return undefined;
-    const timer = window.setInterval(() => { void load().catch(() => undefined); }, 4000);
+    if (!running && !status?.schedule?.enabled) return undefined;
+    const timer = window.setInterval(() => { void load().catch(() => undefined); }, running ? 4000 : 30000);
     return () => window.clearInterval(timer);
-  }, [running]);
+  }, [running, status?.schedule?.enabled]);
   // Leaving or refreshing mid-restore drops the operator onto a raw server
   // error page while the control plane is intentionally down; browsers only
   // show a generic confirmation, so the patient-waiting guidance lives in the
@@ -286,83 +155,242 @@ export function BackupsScreen() {
     }
   }
 
-  async function mount(destination: BackupDestination) {
-    await runAction(`mount:${destination.id}`, async () => {
-      const result = await jsonResponse<{ destination: BackupDestination }>(await fetch('/suite-manager/api/backups/mount', {
-        body: JSON.stringify({ destinationId: destination.id }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), 'Unable to mount this drive.');
-      setSelectedDestinationId(result.destination.id);
+  async function post<T>(path: string, body: unknown, message: string) {
+    return jsonResponse<T>(await fetch(`/suite-manager/api/backups/${path}`, {
+      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    }), message);
+  }
+
+  // The gate. Anything that would create a backup only this machine can read
+  // runs through here; everything else — mounting, connecting, listing,
+  // restoring — is deliberately not gated, because a replacement machine has to
+  // reach the surviving destination before it can enter the key that opens it.
+  function gateOnRecoveryKey(run: () => Promise<void>) {
+    if (keySaved) {
+      void run();
+      return;
+    }
+    setKeyError('');
+    setDialog({ kind: 'key', mode: 'save', then: run });
+    void revealRecoveryKey('');
+  }
+
+  async function revealRecoveryKey(password: string) {
+    setBusy('recovery-reveal');
+    setKeyError('');
+    try {
+      setRevealedKey(await post<RevealedRecoveryKey>('recovery-key/reveal', { password }, 'Unable to show the recovery key.'));
+    } catch (caught) {
+      setKeyError(caught instanceof Error ? caught.message : 'Unable to show the recovery key.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function acknowledgeRecoveryKey() {
+    const pending = dialog?.kind === 'key' ? dialog.then : undefined;
+    setBusy('recovery-acknowledge');
+    setKeyError('');
+    try {
+      await post('recovery-key/acknowledge', {}, 'Unable to record that you saved the recovery key.');
+      closeDialog();
+      await load().catch(() => undefined);
+      if (pending) await pending();
+    } catch (caught) {
+      setKeyError(caught instanceof Error ? caught.message : 'Unable to record that you saved the recovery key.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  // The key is held only while its dialog is open: nothing keeps it in the page
+  // once the owner is done with it.
+  function closeDialog() {
+    setDialog(null);
+    setRevealedKey(null);
+    setKeyError('');
+    setUnlockError('');
+  }
+
+  async function unlockDestination(view: DestinationView, recoveryKeyInput: string) {
+    setBusy(`unlock:${view.id}`);
+    setUnlockError('');
+    try {
+      await post('destinations/unlock', { destinationId: view.id, recoveryKey: recoveryKeyInput }, 'Unable to unlock these backups.');
+      closeDialog();
+      await load().catch(() => undefined);
+    } catch (caught) {
+      setUnlockError(caught instanceof Error ? caught.message : 'Unable to unlock these backups.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  // Who can open an archive. The key is entered here and used for the read; it
+  // is never kept, which is why removing one asks for it again.
+  async function listArchiveKeys(view: DestinationView, recoveryKeyInput: string) {
+    setBusy(`keys:${view.id}`);
+    setArchiveKeysError('');
+    try {
+      const result = await post<{ result: { keys: ArchiveKey[] } }>('destinations/keys', { destinationId: view.id, recoveryKey: recoveryKeyInput }, 'Unable to read the keys on this archive.');
+      setArchiveKeys(result?.result?.keys || []);
+    } catch (caught) {
+      setArchiveKeysError(caught instanceof Error ? caught.message : 'Unable to read the keys on this archive.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function removeArchiveKey(view: DestinationView, recoveryKeyInput: string, keyId: string) {
+    setBusy(`key-remove:${keyId}`);
+    setArchiveKeysError('');
+    try {
+      await post('destinations/keys/remove', { destinationId: view.id, keyId, recoveryKey: recoveryKeyInput }, 'Unable to remove that key.');
+      setBusy(`keys:${view.id}`);
+      const result = await post<{ result: { keys: ArchiveKey[] } }>('destinations/keys', { destinationId: view.id, recoveryKey: recoveryKeyInput }, 'Unable to read the keys on this archive.');
+      setArchiveKeys(result?.result?.keys || []);
+    } catch (caught) {
+      setArchiveKeysError(caught instanceof Error ? caught.message : 'Unable to remove that key.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  // Handing the key back. Only this machine forgets it: the archive it opens
+  // was never changed and is not changed now.
+  async function forgetDestinationKey(view: DestinationView) {
+    await runAction(`forget-key:${view.id}`, async () => {
+      await post('destinations/forget-key', { destinationId: view.id }, 'Unable to forget this key.');
+    });
+  }
+  async function mount(view: DestinationView) {
+    await runAction(`mount:${view.id}`, async () => {
+      const result = await post<{ destination: { id: string } }>('mount', { destinationId: view.id }, 'Unable to open this drive.');
+      if (!selected) await choosePrimaryQuietly(result.destination.id);
+      setDialog(null);
     });
   }
 
+  // Selecting a place is the one choice on this screen: it is where the
+  // schedule and the backup before a MOS update write, and the default for a
+  // backup taken by hand.
+  async function choosePrimaryQuietly(destinationId: string) {
+    await post('primary', { destinationId }, 'Unable to select this destination.');
+  }
+
+  async function choosePrimary(view: DestinationView) {
+    if (view.selected) return;
+    setBackupTargetId('');
+    await runAction(`primary:${view.id}`, () => choosePrimaryQuietly(view.id));
+  }
+
   async function startBackup() {
-    if (!selectedDestination) return;
+    if (!backupTarget) return;
     await runAction('backup', async () => {
-      await jsonResponse(await fetch('/suite-manager/api/backups/start', {
-        body: JSON.stringify({ destinationId: selectedDestination.id, note: backupNote }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), 'Unable to start backup.');
+      await post('start', { destinationId: backupTarget.id, note: backupNote }, 'Unable to start backup.');
       setBackupNote('');
+      setDialog(null);
+    });
+  }
+
+  // The stored time zone is preserved rather than overwritten with this
+  // browser's: opening MOS from a laptop in another country must not quietly
+  // move a home server's backup window.
+  async function saveSchedule(next: BackupSchedule) {
+    const current = status?.schedule;
+    if (!current) return;
+    await runAction('schedule', async () => {
+      await post('schedule', {
+        enabled: next.enabled,
+        frequency: next.frequency,
+        hour: next.hour,
+        keepLast: next.keepLast,
+        minute: next.minute,
+        timeZone: current.timeZone || browserTimeZone(),
+        weekday: next.weekday,
+      }, 'Unable to save the backup schedule.');
+      setDialog(null);
+    });
+  }
+
+  // The test reports into the dialog rather than the page banner, because it is
+  // an answer about what is on screen and the owner is about to act on it.
+  async function testObjectStorage(): Promise<ConnectionTest> {
+    setBusy('object-test');
+    setObjectTest(null);
+    try {
+      const response = await post<{ result: ConnectionTest }>('destinations/object/test', objectDraft, 'Unable to reach this storage.');
+      setObjectTest(response.result);
+      return response.result;
+    } catch (caught) {
+      const failed = { message: caught instanceof Error ? caught.message : 'Unable to reach this storage.', ok: false };
+      setObjectTest(failed);
+      return failed;
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function saveObjectStorage(useForAutomatic: boolean) {
+    const draft = objectDraft;
+    await runAction('object-save', async () => {
+      const saved = await post<{ destination: { id: string } }>('destinations/object', draft, 'Unable to save this storage connection.');
+      if (useForAutomatic && saved?.destination?.id) await choosePrimaryQuietly(saved.destination.id);
+      setObjectDraft({ ...EMPTY_OBJECT_DRAFT });
+      setObjectTest(null);
+      setDialog(null);
+    });
+  }
+
+  async function disconnectObjectStorage(view: DestinationView) {
+    setDialog(null);
+    await runAction(`disconnect:${view.id}`, async () => {
+      await post('destinations/object/remove', { destinationId: view.id }, 'Unable to disconnect this storage.');
+      if (backupTargetId === view.id) setBackupTargetId('');
     });
   }
 
   async function acknowledgeInterrupted() {
     await runAction('acknowledge', async () => {
-      await jsonResponse(await fetch('/suite-manager/api/backups/restore/acknowledge', {
-        body: JSON.stringify({ confirmation: 'ACKNOWLEDGE' }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), 'Unable to dismiss the interrupted restore record.');
+      await post('restore/acknowledge', { confirmation: 'ACKNOWLEDGE' }, 'Unable to dismiss the interrupted restore record.');
     });
   }
 
   async function checkBackup(backup: BackupEntry) {
+    setChecking(backup.path);
     await runAction(`validate:${backup.path}`, async () => {
-      await jsonResponse(await fetch('/suite-manager/api/backups/validate', {
-        body: JSON.stringify({ backupPath: backup.path }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), 'Unable to check this backup.');
+      await post('validate', { backupPath: backup.path }, 'Unable to check this backup.');
     });
   }
 
   async function saveNote(backup: BackupEntry, note: string) {
-    setNoteEditor(null);
+    setDialog(null);
     await runAction(`note:${backup.path}`, async () => {
-      await jsonResponse(await fetch('/suite-manager/api/backups/note', {
-        body: JSON.stringify({ backupPath: backup.path, note }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), 'Unable to save the backup note.');
+      await post('note', { backupPath: backup.path, note }, 'Unable to save the backup note.');
     });
   }
 
   async function deleteBackup(backup: BackupEntry) {
-    setSelectedDelete(null);
     await runAction(`delete:${backup.path}`, async () => {
-      await jsonResponse(await fetch('/suite-manager/api/backups/delete', {
-        body: JSON.stringify({ backupPath: backup.path }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), 'Unable to delete this backup.');
+      await post('delete', { backupPath: backup.path }, 'Unable to delete this backup.');
+      setDialog(null);
     });
   }
 
-  async function startRestore() {
-    if (!selectedRestore) return;
+  async function startRestore(backup: BackupEntry) {
     setBusy('restore');
     setError('');
     try {
-      await jsonResponse(await fetch('/suite-manager/api/backups/restore', {
-        body: JSON.stringify({ backupPath: selectedRestore.path, confirmation: restoreConfirmation }),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-      }), 'Unable to start restore.');
-      setSelectedRestore(null);
+      await post('restore', {
+        ...(restoreAddress ? { address: restoreAddress } : {}),
+        backupPath: backup.path,
+        confirmation: restoreConfirmation,
+      }, 'Unable to start restore.');
+      setDialog(null);
       setRestoreConfirmation('');
+      setRestoreAddress('');
       setRestoreStarted(true);
       await load().catch(() => undefined);
     } catch (caught) {
@@ -373,220 +401,334 @@ export function BackupsScreen() {
     }
   }
 
+  function openKey(mode: 'reveal' | 'save') {
+    setKeyError('');
+    setRevealedKey(null);
+    setDialog({ kind: 'key', mode });
+    if (mode === 'save') void revealRecoveryKey('');
+  }
+
+  function destinationAction(view: DestinationView) {
+    if (view.action === 'unlock') { setUnlockError(''); setDialog({ kind: 'unlock', view }); return; }
+    if (view.action === 'mount') { void mount(view); return; }
+    if (view.action === 'retest') void runAction(`retest:${view.id}`, async () => undefined);
+  }
+
+  const hero = <div className="suite-hero">
+    <h1>Backup &amp; Restore</h1>
+    <p className="suite-lead mos-body-lg">A backup is a complete copy of your suite &mdash; your apps and everything in them. Keep it somewhere other than this machine, and you can get everything back.</p>
+  </div>;
+
+  // The status read probes every destination, so it can take several seconds
+  // on a machine with a bucket attached. Until it lands the page has nothing
+  // true to say, and a headline over an empty page reads as broken, not busy.
+  if (!status && !error && !sessionEnded) {
+    return <section className="mos-shell suite-backups">
+      <div className="mos-page">
+        {hero}
+        <Panel>
+          <PanelBody>
+            <p className="suite-bk-working"><Spinner />Loading your backups</p>
+          </PanelBody>
+        </Panel>
+      </div>
+    </section>;
+  }
+
+  if (status?.serverLoginUnsaved) {
+    return <section className="mos-shell suite-backups">
+      <div className="mos-page">
+        {hero}
+        <ServerLoginNotice what="Backups and restores" />
+      </div>
+    </section>;
+  }
+
+  // A restore takes the page over. Nothing else on it is reachable or true
+  // while the machine is being replaced by the backup.
+  if (restoreInFlight) {
+    const progress = stageProgress(activeJob);
+    return <section className="mos-shell suite-backups">
+      <div className="mos-page">
+        {hero}
+        <Panel>
+          <PanelBody>
+            <p className="suite-bk-working"><Spinner />Restoring</p>
+            <h2 className="mos-card-title">{stageWords(activeJob?.stage)}</h2>
+            <div className="suite-bk-bar"><span style={{ width: `${progress.percent}%` }} /></div>
+            <p className="suite-meta">Step {progress.step || 1} of {progress.steps}. This takes 10 to 20 minutes. Your apps are stopped while it runs. <strong>Do not turn the machine off.</strong> When it is done everyone is signed out, because this becomes the restored server.</p>
+          </PanelBody>
+        </Panel>
+      </div>
+    </section>;
+  }
+
   return <section className="mos-shell suite-backups">
     <div className="mos-page">
-      <div className="suite-hero">
-        <h1>Backup & Restore</h1>
-        <p className="suite-lead mos-body-lg">Save a whole-suite copy to storage mounted on this server, then restore it if you need to recover the system.</p>
-        <Notice title="A backup holds every secret this server has" variant="warning"><p>Any backup contains app data, owner and app credentials, Suite Manager state, and HTTPS/provider secrets. Backups are encrypted on the drive with a key kept on this server, so the drive alone cannot be read — but that key lives here, so a stolen server is still a stolen backup. Use an access-controlled destination.</p></Notice>
-      </div>
+      {hero}
 
       {error ? <Notice title="Backup needs attention" variant="error"><p>{error}</p></Notice> : null}
       {sessionEnded ? <Notice title={sessionEnded === 'restore' ? 'The restore signed you out' : 'Your session ended'} variant="info">
         <p>{sessionEnded === 'restore'
-          ? 'Suite Manager restarted with the restored state, which ended this session. Sign in with the owner account saved in that backup — accounts and passwords now match the backup, not what was set just before the restore. After signing in, check the restore result here under Latest activity.'
+          ? 'The restore is done. Everyone is signed out because this is now the restored server. Sign in with the password you used on the machine you restored — accounts and passwords now match the backup, not what was set just before the restore.'
           : 'Sign in again to manage backups.'}</p>
         <button className="mos-btn mos-btn-primary" onClick={() => window.location.reload()} type="button">Go to sign-in</button>
       </Notice> : null}
-      {status?.interruptedRestore && !running ? <Notice title="A restore did not finish" variant="error">
-        <p>A restore stopped {restorePhaseWords(status.interruptedRestore.phase)}, so this system may not match the backup it was restoring. A complete rescue copy of the pre-restore state was kept on the server{status.interruptedRestore.rescuePath ? ` at ${status.interruptedRestore.rescuePath}` : ''}. New backups and restores stay blocked until you dismiss this record; the rescue copy stays on disk either way.</p>
-        <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => void acknowledgeInterrupted()} type="button">{busy === 'acknowledge' ? 'Dismissing...' : 'I understand, unblock backups'}</button>
+
+      {status && !status.serviceAvailable ? <Notice title="Backup is not available yet" variant="warning">
+        <p>The host backup service is not running on this install. Update or restart the MOS host services, then come back here.</p>
       </Notice> : null}
-      {restoreStarted ? <Notice title="Restore started" variant="info"><p>MOS is restoring the selected backup and may be unavailable for a short moment. When Suite Manager starts again you will be asked to sign in with the owner account saved in the backup.</p></Notice> : null}
-      {status && !status.serviceAvailable ? <Notice title="Backup is not available yet" variant="warning"><p>The host backup service is not running on this install. Update or restart the MOS host services, then come back here.</p></Notice> : null}
 
-      {status?.serviceAvailable ? <div className="suite-backup-layout" aria-busy={running}>
-        {running ? <div className="suite-backup-busy" aria-live="polite" role="status">
-          <div className="suite-backup-spinner" aria-hidden="true" />
-          <div>
-            <strong>{operationTitle(activeJob, restoreStarted)}</strong>
-            <p>{operationMessage(activeJob, restoreStarted)}</p>
-            <small>{operationStage(activeJob, restoreStarted)}</small>
-          </div>
-        </div> : null}
-
-        <section className="mos-panel suite-card suite-backup-panel">
-          <div className="suite-backup-header-row">
+      {status?.serviceAvailable ? <div className="suite-bk-page" aria-busy={running}>
+        {/* A block is the answer to "am I safe", so it takes that slot rather
+            than sitting beside it. Never more than one at a time. */}
+        {status.interruptedRestore ? <Notice title="A restore did not finish" variant="error">
+          <p>A restore stopped {restorePhaseWords(status.interruptedRestore.phase)}, so this system may not match the backup it was restoring. Your suite is as it was before it started, and a complete rescue copy of what was in progress is kept on the server. Backups and restores stay paused until you have read this.</p>
+          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => void acknowledgeInterrupted()} type="button">
+            {busy === 'acknowledge' ? <><Spinner />Unblocking</> : 'I have read this'}
+          </button>
+        </Notice> : views.length ? <section className={`mos-panel suite-bk-banner is-${banner.tone}`}>
+          <div className="suite-bk-banner-text">
+            <span className={`suite-bk-dot is-${banner.tone}`} />
             <div>
-              <h2 className="mos-card-title">Backup destination</h2>
-              <p className="suite-meta">On own hardware, select an encrypted external drive. On a cloud server, select an encrypted block-storage volume mounted on this server.</p>
+              <strong>{banner.title}</strong>
+              <p className="suite-meta">{banner.detail}</p>
             </div>
-            <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy) || running} onClick={() => void load()} type="button">
-              {busy === 'refresh' ? <span className="suite-spinner" /> : <Icon name="refresh" />}
-              Refresh drives
-            </button>
           </div>
-
-          {status.destinations.length ? <div className="suite-drive-list">
-            {status.destinations.map((destination) => {
-              const mounted = destination.mountState === 'mounted';
-              const selectable = mounted && destination.writable && !running && !busy;
-              const selected = selectedDestinationId === destination.id;
-              const kindLabel = destination.storageKind === 'external' ? 'USB' : destination.storageKind === 'network' ? 'Network' : 'Internal';
-
-              return <div className={`suite-drive-item ${selected ? 'is-selected' : ''}`} key={destination.id}>
-                <button className="suite-drive-select" disabled={!selectable} onClick={() => setSelectedDestinationId(destination.id)} type="button">
-                  <span className="suite-drive-icon"><Icon name={driveIconName(destination.storageKind)} /></span>
-
-                  <div className="suite-drive-info">
-                    <div className="suite-drive-header">
-                      <strong>{destination.label}</strong>
-                        <span className="suite-drive-badges">
-                        <span className="suite-category-pill">{kindLabel}</span>
-                        {destination.writable && mounted ? <span className="suite-category-pill">Writable</span> : null}
-                      </span>
-                    </div>
-
-                    {destination.mountPath ? <div className="suite-drive-path">{destination.mountPath}</div> : null}
-
-                    {mounted && destination.sizeBytes && destination.availableBytes
-                      ? <>
-                          <div className="suite-drive-space">
-                            <span>{formatBytes(destination.availableBytes)} free of {formatBytes(destination.sizeBytes)}</span>
-                          </div>
-                          <div className="suite-drive-bar">
-                            <div className="suite-drive-bar-fill" style={{ width: `${100 - usagePercent(destination.availableBytes, destination.sizeBytes)}%` }} />
-                          </div>
-                          {destination.repository && destination.repository.restorePoints > 0 && destination.repository.storedBytes
-                            ? <div className="suite-drive-space">
-                                <span>Encrypted store holds {destination.repository.restorePoints} restore point{destination.repository.restorePoints === 1 ? '' : 's'} in {formatBytes(destination.repository.storedBytes)}</span>
-                              </div>
-                            : null}
-                        </>
-                      : <div className="suite-drive-status">{mounted ? 'Calculating space...' : destination.mountBlockedReason || 'Drive connected but not available'}</div>
-                    }
-                  </div>
-
-                  <div className="suite-drive-selector">
-                    {selected ? <span className="suite-drive-check">✓</span> : null}
-                  </div>
-                </button>
-
-                {!mounted && destination.canMount
-                  ? <button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={() => void mount(destination)} type="button">
-                      {busy === `mount:${destination.id}` ? 'Mounting...' : 'Mount'}
-                    </button>
-                  : null
-                }
-              </div>;
-            })}
-          </div> :
-            <div className="suite-empty-state">
-              <p className="suite-meta">No backup drives detected.</p>
-              <p className="suite-meta">Own hardware: connect an external drive to this machine. Cloud server: attach and mount a provider block-storage volume. Then click Refresh drives.</p>
+          <div className="suite-bk-banner-action">
+            {backingUp ? <p className="suite-bk-working"><Spinner />{stageWords(activeJob?.stage)} &mdash; step {stageProgress(activeJob).step} of {stageProgress(activeJob).steps}. Apps come back on their own.</p>
+              : workingLine ? <p className="suite-bk-working"><Spinner />{workingLine}</p> : <>
+              <div className="suite-bk-backup-controls">
+                {readyViews.length > 1 && !blockReason ? <Select
+                  aria-label="Where to back up"
+                  disabled={Boolean(busy) || running}
+                  onChange={(event) => setBackupTargetId(event.currentTarget.value)}
+                  value={backupTarget?.id || ''}
+                >
+                  {readyViews.map((view) => <option key={view.id} value={view.id}>
+                    {view.selected ? `Back up to ${view.label} (the usual place)` : `Back up to ${view.label}`}
+                  </option>)}
+                </Select> : null}
+                <button
+                  className="mos-btn mos-btn-primary"
+                  disabled={Boolean(blockReason) || Boolean(busy) || running}
+                  onClick={() => gateOnRecoveryKey(async () => setDialog({ kind: 'backup' }))}
+                  type="button"
+                >Back up now</button>
+              </div>
+            </>}
+          </div>
+          {!backingUp && !workingLine && (blockReason || (backupTarget && !backupTarget.selected && readyViews.length > 1))
+            ? <div className="suite-bk-banner-note">
+              {blockReason ? <p className="suite-bk-detail">{blockReason}</p> : null}
+              {backupTarget && !backupTarget.selected && readyViews.length > 1
+                ? <p className="suite-bk-detail">This one backup goes to {backupTarget.label}. Automatic backups still go to {selected ? selected.label : 'the selected place'}.</p>
+                : null}
             </div>
-          }
-
-          <TextInput
-            disabled={Boolean(busy) || running}
-            helperText="Shown next to the backup so you can tell restore points apart later."
-            label="Note for this backup (optional)"
-            maxLength={200}
-            onChange={(event) => setBackupNote(event.currentTarget.value)}
-            placeholder="e.g. Before installing a new app"
-            value={backupNote}
-          />
-          <div className="suite-backup-action-footer">
-            <p className="suite-backup-status-message">{buttonState.message}</p>
-            <button className="mos-btn mos-btn-primary" disabled={!buttonState.enabled || Boolean(busy) || running} onClick={() => void startBackup()} type="button">
-              {busy === 'backup' ? 'Starting backup...' : 'Back up now'}
-            </button>
-          </div>
-        </section>
-
-        {(status.currentJob || status.lastJob) ? <section className="mos-panel suite-card suite-backup-panel">
-          <h2 className="mos-card-title">{running ? 'Working on it' : 'Latest activity'}</h2>
-          <p>{jobMessage(status.currentJob || status.lastJob)}</p>
-          {(status.currentJob || status.lastJob)?.error ? <p className="suite-error">{(status.currentJob || status.lastJob)?.error}</p> : null}
-          {((status.currentJob || status.lastJob)?.validation?.warnings || []).map((warning) => <p className="suite-meta" key={warning}>{warning}</p>)}
+            : null}
         </section> : null}
 
-        <section className="mos-panel suite-card suite-backup-panel">
-          <h2 className="mos-card-title">Restore from a backup</h2>
-          <p className="suite-meta">Restore replaces the current install with the backup, verifies the result against it, and keeps a complete rescue copy of the previous state on the server.</p>
-          <p className="suite-meta">It has passed recovery drills on this and replacement hardware, including power loss partway through a restore.</p>
-          {unreadableCount ? <p className="suite-meta"><strong>Backups in the retired format are listed but cannot be restored.</strong> MOS 0.19 and earlier wrote unencrypted bundles; this version reads only encrypted restore points. Delete them here to reclaim their space once you no longer need them.</p> : null}
-          {status.backups.length ? <div className="suite-backup-bundle-list">
-            {status.backups.slice(0, visibleBackups).map((backup) => <article key={backup.path}>
-              <div>
-                <strong>{backup.createdAt ? formatDate(backup.createdAt) : 'MOS backup'}</strong>
-                {backup.note ? <span className="suite-backup-note">{backup.note}</span> : null}
-                <span>{backupDescription(backup)} · {backup.destinationLabel || 'Backup drive'}</span>
-                <span className="suite-category-pill">{backup.restorable === false ? 'Retired format' : 'Encrypted'}</span>
-              </div>
-              <ActionMenu ariaLabel="Backup actions" disabled={Boolean(busy) || running} items={backup.restorable === false ? [
-                { label: 'Delete', onSelect: () => setSelectedDelete(backup) },
-              ] : [
-                { label: 'Restore', onSelect: () => { setSelectedRestore(backup); setRestoreConfirmation(''); } },
-                { label: 'Check', onSelect: () => void checkBackup(backup) },
-                { label: backup.note ? 'Edit note' : 'Add note', onSelect: () => setNoteEditor({ backup, value: backup.note || '' }) },
-                { label: 'Delete', onSelect: () => setSelectedDelete(backup) },
-              ]} />
-            </article>)}
-            {status.backups.length > visibleBackups ? <div className="suite-backup-show-more">
-              <button className="suite-subtle-button" onClick={() => setVisibleBackups((current) => current + 10)} type="button">
-                Show {Math.min(10, status.backups.length - visibleBackups)} more
-              </button>
-            </div> : null}
-          </div> : <p className="suite-meta">Backups found on connected drives will appear here.</p>}
-        </section>
+        {/* A fresh install has nothing to schedule, nothing to restore and
+            nothing to report, so it shows one question instead of four empty
+            sections. */}
+        {views.length ? null : <Panel>
+          <PanelBody>
+          <h2 className="mos-card-title">You have no backups yet.</h2>
+          <p className="suite-meta">Choose where they should go &mdash; a drive you plug into this server, or storage you rent online. You can add the other one later.</p>
+          <div className="suite-bk-kinds">
+            <button className="suite-bk-kind-card" onClick={() => setDialog({ kind: 'wizard', start: 'drive' })} type="button">
+              <span><Icon name="usb-drive" /><strong>Use a drive</strong></span>
+              <span>Plug a USB drive into this server. Fastest to restore from.</span>
+            </button>
+            <button className="suite-bk-kind-card" onClick={() => setDialog({ kind: 'wizard', start: 'online' })} type="button">
+              <span><Icon name="cloud-storage" /><strong>Connect storage online</strong></span>
+              <span>Storage you rent from a provider. Survives a fire or a theft at home.</span>
+            </button>
+          </div>
+          </PanelBody>
+        </Panel>}
 
-        <AdvancedPanel className="suite-backup-advanced" facts={[
-          { label: 'Detected apps', value: String(status.inventory?.summary.appCount ?? 0) },
-          { label: 'Detected app data stores', value: String(status.inventory?.summary.declaredVolumeCount ?? 0) },
-          { label: 'App connections', value: String(status.inventory?.summary.relationshipCount ?? 0) },
-          { label: 'Warnings', value: status.inventory?.warnings.map((warning) => `${warning.packageId}: ${warning.message}`).join(', ') || 'None' },
-          { label: 'Backup storage', value: storageSummary },
-          { label: 'Restore guarantee', value: status.restoreGuarantee || 'unknown' },
-        ]} reveal="technical-mode" />
+        {views.length ? <DestinationsPanel
+          busy={busy}
+          onAction={destinationAction}
+          onAdd={() => { setObjectDraft({ ...EMPTY_OBJECT_DRAFT }); setObjectTest(null); setDialog({ kind: 'wizard', start: '' }); }}
+          onDisconnect={(view) => setDialog({ kind: 'disconnect', view })}
+          onForgetKey={(view) => void forgetDestinationKey(view)}
+          onKeys={(view) => { setArchiveKeys(null); setArchiveKeysError(''); setDialog({ kind: 'keys', view }); }}
+          onEdit={(view) => {
+            const destination = view.destination;
+            setObjectDraft({
+              accessKeyId: destination.accessKeyId || '',
+              bucket: destination.bucket || '',
+              endpoint: destination.endpoint || '',
+              folder: destination.folder || '',
+              id: destination.id,
+              label: destination.label,
+              region: destination.region || '',
+              secretAccessKey: '',
+            });
+            setObjectTest(null);
+            setDialog({ kind: 'wizard', start: 'online' });
+          }}
+          onSelect={(view) => void choosePrimary(view)}
+          onShowKey={() => openKey(keySaved ? 'reveal' : 'save')}
+          running={running}
+          views={views}
+        /> : null}
+
+        {views.length && status.schedule ? <Panel>
+          <PanelHead
+            actions={<button className="mos-btn mos-btn-secondary mos-btn-sm" disabled={Boolean(busy) || running} onClick={() => setDialog({ kind: 'schedule' })} type="button">Change</button>}
+            title="Automatic backups"
+          >
+            <strong>{scheduleSummary(status.schedule, selected)}</strong>
+            <p className={`suite-bk-status is-${scheduleLive(status.schedule, selected).tone}`}>
+              <span className={`suite-bk-dot is-${scheduleLive(status.schedule, selected).tone}`} />
+              {scheduleLive(status.schedule, selected).text}
+            </p>
+          </PanelHead>
+        </Panel> : null}
+
+        {views.length ? <RestorePointsPanel
+          busy={busy}
+          checking={checking}
+          onCheck={(backup) => void checkBackup(backup)}
+          onDelete={(backup) => setDialog({ kind: 'delete', backup })}
+          onEditNote={(backup) => setDialog({ kind: 'note', backup, value: backup.note || '' })}
+          onRestore={(backup) => { setRestoreConfirmation(''); setRestoreAddress(''); setDialog({ kind: 'restore', backup }); }}
+          running={running}
+          status={status}
+          views={views}
+        /> : null}
+
+        {views.length ? <Panel>
+          <button aria-expanded={activityOpen} className="suite-bk-activity-head" onClick={() => setActivityOpen(!activityOpen)} type="button">
+            <span className={`suite-bk-chevron${activityOpen ? ' is-open' : ''}`}><Icon name="chevron-right" /></span>
+            <strong>Recent activity</strong>
+            <span className="suite-bk-detail">{status.recentJobs?.[0] ? activityLine(status.recentJobs[0], views) : 'Nothing has happened yet.'}</span>
+          </button>
+          {activityOpen ? <PanelBody className="suite-bk-activity-body">
+            {(status.recentJobs || []).map((job) => <p key={job.id}>
+              <span className="suite-bk-point-when">{whenWords(job.updatedAt)}</span>
+              <span>{activityLine(job, views)}</span>
+            </p>)}
+            {restoreAddressNote(status.lastJob) ? <p className="suite-meta">{restoreAddressNote(status.lastJob)}</p> : null}
+            <AdvancedPanel
+              facts={[
+                { label: 'Detected apps', value: String(status.inventory?.summary.appCount ?? 0) },
+                { label: 'Detected app data stores', value: String(status.inventory?.summary.declaredVolumeCount ?? 0) },
+                { label: 'App connections', value: String(status.inventory?.summary.relationshipCount ?? 0) },
+                { label: 'Warnings', value: status.inventory?.warnings.map((warning) => `${warning.packageId}: ${warning.message}`).join(', ') || 'None' },
+                { label: 'Storage engine', value: status.backups.find((backup) => backup.engineName)?.engineName || 'unknown' },
+                { label: 'Restore guarantee', value: status.restoreGuarantee || 'unknown' },
+                { code: true, label: 'Recovery key fingerprint', value: recoveryKey?.fingerprint || 'unknown' },
+                { code: true, label: 'This machine', value: status.hostname || 'unknown' },
+              ]}
+              output={status.lastJob?.error ? (status.lastJob.logs || []).map((entry) => entry.message || '').join('\n') : undefined}
+              reveal={status.lastJob?.status === 'failed' ? 'on-failure' : 'technical-mode'}
+            />
+          </PanelBody> : null}
+        </Panel> : null}
       </div> : null}
 
-      {noteEditor ? <Dialog
-        footer={<>
-          <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={() => void saveNote(noteEditor.backup, noteEditor.value)} type="button">Save note</button>
-          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => setNoteEditor(null)} type="button">Cancel</button>
-        </>}
-        onClose={() => { if (!busy) setNoteEditor(null); }}
-        title="Backup note"
-      >
-        <p className="suite-meta">{formatDate(noteEditor.backup.createdAt)} · {backupDescription(noteEditor.backup)}</p>
-        <TextInput
-          helperText="Stored beside the backup on its drive. Leave empty to remove the note."
-          label="What is this restore point about?"
-          maxLength={200}
-          onChange={(event) => setNoteEditor({ backup: noteEditor.backup, value: event.currentTarget.value })}
-          placeholder="e.g. Before a big app install"
-          value={noteEditor.value}
-        />
-      </Dialog> : null}
+      {dialog?.kind === 'backup' && backupTarget ? <BackupDialog
+        busy={busy}
+        note={backupNote}
+        onCancel={closeDialog}
+        onChange={setBackupNote}
+        onStart={() => void startBackup()}
+        target={backupTarget}
+      /> : null}
 
-      {selectedDelete ? <Dialog
-        footer={<>
-          <button className="mos-btn mos-btn-primary" disabled={Boolean(busy)} onClick={() => void deleteBackup(selectedDelete)} type="button">{busy === `delete:${selectedDelete.path}` ? 'Deleting...' : 'Delete backup'}</button>
-          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => setSelectedDelete(null)} type="button">Cancel</button>
-        </>}
-        onClose={() => { if (!busy) setSelectedDelete(null); }}
-        title="Delete this backup?"
-      >
-        <Notice title="This cannot be undone" variant="warning"><p>{selectedDelete.restorable === false ? 'This backup is in the retired format and cannot be restored by this version of MOS. Deleting it removes its folder from the drive and frees that space.' : 'This restore point is permanently removed and the space it alone was using is reclaimed, which can take a moment. Data still needed by other restore points is kept. If you need it later, only a copy stored elsewhere can bring it back.'}</p></Notice>
-        <p className="suite-meta">{formatDate(selectedDelete.createdAt)} · {backupDescription(selectedDelete)} · {selectedDelete.destinationLabel || 'backup storage'}</p>
-      </Dialog> : null}
+      {dialog?.kind === 'key' ? <RecoveryKeyDialog
+        busy={busy}
+        error={keyError}
+        keyState={recoveryKey}
+        mode={dialog.mode}
+        onAcknowledge={() => void acknowledgeRecoveryKey()}
+        onClose={closeDialog}
+        onReveal={(password) => void revealRecoveryKey(password)}
+        revealed={revealedKey}
+        views={views}
+      /> : null}
 
-      {selectedRestore ? <Dialog
-        footer={<>
-          <button className="mos-btn mos-btn-primary" disabled={restoreConfirmation !== 'RESTORE' || Boolean(busy)} onClick={() => void startRestore()} type="button">{busy === 'restore' ? 'Starting restore...' : 'Restore backup'}</button>
-          <button className="mos-btn mos-btn-secondary" disabled={Boolean(busy)} onClick={() => setSelectedRestore(null)} type="button">Cancel</button>
-        </>}
-        onClose={() => { if (!busy) setSelectedRestore(null); }}
-        title="Restore this backup?"
-      >
-        <Notice title="This will replace the current install" variant="warning"><p>MOS will stop, restore the selected backup, verify it, and start again. Apps and app data added after this backup are removed so the system matches the backup exactly. A complete rescue copy of the current state is saved on the server first. When the restore finishes you will be signed out; sign back in with the owner account saved in this backup, which may differ from the current one. A large backup can take a long time to restore — keep this page open and let it finish.</p></Notice>
-        <p className="suite-meta">{formatDate(selectedRestore.createdAt)} · {backupDescription(selectedRestore)} · {selectedRestore.destinationLabel || 'backup storage'}</p>
-        <label className="suite-auth-field">
-          <span>Type RESTORE to continue</span>
-          <input autoFocus onChange={(event) => setRestoreConfirmation(event.currentTarget.value)} value={restoreConfirmation} />
-        </label>
-      </Dialog> : null}
+      {dialog?.kind === 'keys' ? <ArchiveKeysDialog
+        busy={busy}
+        error={archiveKeysError}
+        keys={archiveKeys}
+        onClose={closeDialog}
+        onList={(entered) => void listArchiveKeys(dialog.view, entered)}
+        onRemove={(entered, keyId) => void removeArchiveKey(dialog.view, entered, keyId)}
+        view={dialog.view}
+      /> : null}
+
+      {dialog?.kind === 'unlock' ? <UnlockDialog
+        busy={busy}
+        error={unlockError}
+        onCancel={closeDialog}
+        onUnlock={(entered) => void unlockDestination(dialog.view, entered)}
+        view={dialog.view}
+      /> : null}
+
+      {dialog?.kind === 'schedule' && status?.schedule ? <ScheduleDialog
+        busy={busy}
+        onCancel={closeDialog}
+        onSave={(next) => {
+          const merged = { ...(status.schedule as BackupSchedule), ...next };
+          if (merged.enabled) gateOnRecoveryKey(() => saveSchedule(merged));
+          else void saveSchedule(merged);
+        }}
+        schedule={status.schedule}
+        selected={selected}
+      /> : null}
+
+      {dialog?.kind === 'restore' ? <RestoreDialog
+        address={restoreAddress}
+        backup={dialog.backup}
+        busy={busy}
+        confirmation={restoreConfirmation}
+        onAddress={setRestoreAddress}
+        onCancel={closeDialog}
+        onConfirmation={setRestoreConfirmation}
+        onStart={() => void startRestore(dialog.backup)}
+        status={status as BackupStatus}
+      /> : null}
+
+      {dialog?.kind === 'delete' ? <DeleteDialog
+        backup={dialog.backup}
+        busy={busy}
+        onCancel={closeDialog}
+        onDelete={() => void deleteBackup(dialog.backup)}
+      /> : null}
+
+      {dialog?.kind === 'note' ? <NoteDialog
+        backup={dialog.backup}
+        busy={busy}
+        onCancel={closeDialog}
+        onChange={(value) => setDialog({ kind: 'note', backup: dialog.backup, value })}
+        onSave={() => void saveNote(dialog.backup, dialog.value)}
+        value={dialog.value}
+      /> : null}
+
+      {dialog?.kind === 'disconnect' ? <DisconnectDialog
+        busy={busy}
+        onCancel={closeDialog}
+        onDisconnect={() => void disconnectObjectStorage(dialog.view)}
+        view={dialog.view}
+      /> : null}
+
+      {dialog?.kind === 'wizard' ? <AddDestinationWizard
+        busy={busy}
+        draft={objectDraft}
+        drives={views.filter((view) => view.action === 'mount')}
+        initialKind={dialog.start}
+        onCancel={() => { setObjectDraft({ ...EMPTY_OBJECT_DRAFT }); setObjectTest(null); closeDialog(); }}
+        onChange={setObjectDraft}
+        onFinish={(useForAutomatic) => void saveObjectStorage(useForAutomatic)}
+        onMount={(view) => void mount(view)}
+        onTest={() => testObjectStorage()}
+        testResult={objectTest}
+      /> : null}
     </div>
   </section>;
 }

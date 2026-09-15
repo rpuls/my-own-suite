@@ -9,6 +9,7 @@ const {
   AppPackageServiceError,
   appPublicIdentity,
   appRouteForHomepage,
+  assertAppAgentContract,
   capabilityMatches,
   createConfigRows,
   digestFor,
@@ -46,6 +47,7 @@ const {
 const { AppOperationLimiter } = require('./app-operation-limits.cjs');
 const { AppUpdateService } = require('./app-update-service.cjs');
 const {
+  compareSemver,
   digestAppPackage,
   effectiveRouteHost,
   parseNamespacedPackageId,
@@ -53,6 +55,7 @@ const {
   validateArchitectureCompatibility,
   validatePrivacyBinding,
 } = require('./package-contracts.cjs');
+const { createCandidateDir, releaseCandidateDir } = require('./candidate-storage.cjs');
 const {
   inspectAppPackages,
   publicPackageSummary,
@@ -118,9 +121,9 @@ class AppPackageService {
   // of `docker build`, after the download, the gate, and the snapshot have all
   // passed. Refusing up front turns that into an answer the owner can act on.
   //
-  // An agent that cannot be asked, or is too old to answer, leaves the host
-  // unknown, and an unknown host enforces nothing: this check exists to explain
-  // a failure that was already coming, so it must never invent one.
+  // An agent that cannot be asked leaves the host unknown, and an unknown host
+  // enforces nothing: this check exists to explain a failure that was already
+  // coming, so it must never invent one.
   async assertArchitectureSupported(manifest, agentStatus = null) {
     const status = agentStatus || await Promise.resolve(this.agent?.status?.()).catch(() => null);
     const errors = validateArchitectureCompatibility(manifest, hostArchitectureOf(status));
@@ -984,7 +987,7 @@ class AppPackageService {
   // finding out costs a network round trip. Report that honestly instead of
   // "not in catalog", which reads as a fault, and let the owner check on demand
   // through the ordinary update preview.
-  packageUpdateStatusFor(instance, packageId) {
+  packageUpdateStatusFor(instance, packageId, checkoutSummary = null) {
     if (instance?.sourceKind === 'external-git') {
       return {
         available: null,
@@ -992,7 +995,110 @@ class AppPackageService {
         status: 'external-source',
       };
     }
-    return this.catalogService?.updateFor(packageId, instance) || null;
+    const catalogStatus = this.catalogService?.updateFor(packageId, instance) || null;
+    const checkout = this.checkoutCandidateSummaryFor(packageId, instance, {
+      catalogVersion: catalogStatus?.available?.packageVersion || null,
+      summary: checkoutSummary,
+    });
+    if (!checkout) return catalogStatus;
+    let available;
+    // A package the checkout cannot digest is no better than one that does not
+    // validate, and it must not take the catalog's answer down with it.
+    try {
+      available = this.checkoutAvailableFor(packageId, checkout);
+    } catch {
+      return catalogStatus;
+    }
+    return {
+      available,
+      installed: instance ? { packageDigest: instance.packageDigest, packageVersion: instance.packageVersion } : null,
+      status: instance ? 'update-available' : 'installable',
+    };
+  }
+
+  // An official app is installed from `apps/<id>` in this box's own checkout,
+  // never from the catalog (see installPackage), so the checkout is already the
+  // trust root for what gets installed. Update discovery used to read only the
+  // published catalog on `main`, which left a box tracking any other branch
+  // unable to update to the packages it is itself carrying - the very packages a
+  // staging box exists to test - and left a box that has never reached GitHub
+  // with no update path at all, because the catalog cache starts empty.
+  //
+  // Two channels answer two different questions: the catalog says what has been
+  // released since this MOS version, and the checkout says what shipped with it.
+  // The newer wins, and ties go to the catalog, so a box whose checkout matches
+  // the published catalog keeps taking the download path exactly as before. This
+  // widens where an update may come from without moving the ordinary case.
+  //
+  // Nothing here names a branch: the answer is whatever `apps/` on this box
+  // holds, so every track behaves the same way for the same reason.
+  checkoutCandidateSummaryFor(packageId, instance, { catalogVersion = null, summary = null } = {}) {
+    const candidate = summary || inspectAppPackages(this.appsDir).find((entry) => entry.id === packageId) || null;
+    // A package whose manifest does not validate is a candidate for nothing. The
+    // app list already reports it as broken; offering it as an update would
+    // propose replacing a working app with one MOS has said it cannot read.
+    if (!candidate?.validation?.valid || !candidate.version) return null;
+    if (instance && compareSemver(candidate.version, instance.packageVersion) <= 0) return null;
+    if (catalogVersion && compareSemver(candidate.version, catalogVersion) <= 0) return null;
+    return candidate;
+  }
+
+  checkoutAvailableFor(packageId, summary) {
+    const packageDir = path.join(this.appsDir, packageId);
+    const minimumMosVersion = summary.minimumMosVersion || '0.0.0';
+    return {
+      appVersion: summary.appVersion,
+      compatibility: compareSemver(this.platformVersion, minimumMosVersion) >= 0 ? 'compatible' : 'requires-platform-update',
+      minimumMosVersion: summary.minimumMosVersion || '',
+      packageDigest: digestAppPackage(packageDir),
+      packageVersion: summary.version,
+      path: `apps/${packageId}`,
+      privacy: privacyReviewPresentation(packageDir, { id: packageId, version: summary.version })
+        || { dimensions: null, posture: null, reviewedAt: null, status: 'review-required' },
+      // Which channel is offering this, so the owner is never left guessing why
+      // an update appeared that the published catalog does not list.
+      sourceChannel: 'checkout',
+      sourceRevision: null,
+    };
+  }
+
+  // Candidate bytes from this box's own checkout, in the shape every update
+  // transaction already consumes. Copied into a candidate directory rather than
+  // handed to the agent in place: a platform update landing mid-transaction would
+  // otherwise move the bytes under a digest this operation has already recorded.
+  checkoutUpdateCandidate(instance) {
+    const catalogVersion = this.catalogService?.updateFor?.(instance.packageId, instance)?.available?.packageVersion || null;
+    const summary = this.checkoutCandidateSummaryFor(instance.packageId, instance, { catalogVersion });
+    if (!summary) return null;
+    const packageDir = path.join(this.appsDir, instance.packageId);
+    const candidateDir = createCandidateDir(this.store.stateDir, `${instance.packageId}-checkout-`);
+    try {
+      fs.cpSync(packageDir, candidateDir, { recursive: true });
+      const packageDigest = digestAppPackage(candidateDir);
+      const appPackage = readAppPackageManifest(candidateDir);
+      if (appPackage.manifest.id !== instance.packageId || appPackage.manifest.version !== summary.version) {
+        throw new AppPackageServiceError('APP_CANDIDATE_IDENTITY_MISMATCH', 'The app package in this MOS version does not match what it declares.', 409);
+      }
+      return {
+        ...appPackage,
+        cleanup: () => releaseCandidateDir(candidateDir),
+        packageDigest,
+        // `revision` stands in as the package digest exactly as it does on the
+        // install path, which reads the same directory: neither has a resolved
+        // git revision of its own, and inventing one here would make two
+        // identical sources look different.
+        source: {
+          kind: 'official-git',
+          path: `apps/${instance.packageId}`,
+          repository: this.officialRepository,
+          revision: packageDigest,
+          trust: 'mos-reviewed',
+        },
+      };
+    } catch (error) {
+      releaseCandidateDir(candidateDir);
+      throw error;
+    }
   }
 
   listPackages() {
@@ -1027,7 +1133,7 @@ class AppPackageService {
       return {
         ...summary,
         advisories: this.packageAdvisoriesFor(instance, packageId, candidatesByPackage.get(packageId)?.version),
-        catalogUpdate: this.packageUpdateStatusFor(instance, packageId),
+        catalogUpdate: this.packageUpdateStatusFor(instance, packageId, candidatesByPackage.get(packageId)),
         external: instance?.sourceKind === 'external-git',
         // The installed identity wins over the id the manifest claims: an
         // external package is managed under its source-namespaced id, and every
@@ -1168,7 +1274,9 @@ class AppPackageService {
     if (!this.agent?.snapshotPackage) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App package snapshot system agent is unavailable.', 503);
     }
-    await this.assertArchitectureSupported(manifest);
+    const agentStatus = await Promise.resolve(this.agent.status?.()).catch(() => null);
+    assertAppAgentContract(agentStatus);
+    await this.assertArchitectureSupported(manifest, agentStatus);
     const at = this.now().toISOString();
     const manifestDigest = digestFor(manifest);
     // Digesting parses privacy-review.json and validates package contents, so
@@ -1353,10 +1461,8 @@ class AppPackageService {
     if (!this.agent?.snapshotExternalPackage) {
       throw new AppPackageServiceError('APP_AGENT_UNAVAILABLE', 'App package snapshot system agent is unavailable.', 503);
     }
-    const agentStatus = await this.agent.status().catch(() => ({ capabilities: [] }));
-    if (!agentStatus.capabilities?.includes('apps.package.snapshot.external')) {
-      throw new AppPackageServiceError('APP_EXTERNAL_INSTALL_UNAVAILABLE', 'The installed app agent cannot snapshot external app packages.', 503);
-    }
+    const agentStatus = await this.agent.status().catch(() => null);
+    assertAppAgentContract(agentStatus);
     await this.assertArchitectureSupported(manifest, agentStatus);
     this.assertRouteHostsAvailable(manifest, packageId);
 
@@ -1469,23 +1575,6 @@ class AppPackageService {
         this.store.getAppEnv(instance.id),
       ),
     };
-  }
-
-  // Startup migration for tiles written before hrefs became relative, which still
-  // hold the absolute address of whichever door installed the app. It needs only
-  // the ids, because `reconcileManagedUrls` derives every href from the id and
-  // this is not an address change — widget endpoints are already correct.
-  // Idempotent, so it is a no-op from the second boot onward.
-  async reconcileDashboardLinks(homepageService) {
-    const entries = this.store.getAppInstances()
-      .filter((instance) => instance.status === 'installed' && homepageProjectionApplied(this.store.getAppProjections(instance.id)))
-      .map((instance) => ({ id: instance.id }));
-    if (!entries.length) return { changed: false, status: 'skipped' };
-    try {
-      return { changed: (await homepageService.reconcileUrls({ entries })).changed === true, status: 'applied' };
-    } catch (error) {
-      return { changed: false, errorCode: error.code || 'HOMEPAGE_DASHBOARD_LINK_RECONCILE_FAILED', status: 'failed' };
-    }
   }
 
   async reconcilePublicUrls(homepageService, requestContext = {}) {
@@ -1690,24 +1779,21 @@ class AppPackageService {
     if (!['installed', 'disabled'].includes(instance.status)) {
       throw new AppPackageServiceError('APP_INVALID_TRANSITION', 'This app cannot be uninstalled from its current state.', 409);
     }
-
+    // Deliberately not gated on the app agent's contract version, unlike
+    // installing or updating. Removing a broken app is how an owner recovers,
+    // and a handshake that has to succeed first would take that away in exactly
+    // the state that needs it.
     const projections = this.store.getAppProjections(instance.id);
     const composeProjection = projections.find((projection) => projection.kind === 'compose');
     const services = composeProjection?.content?.services || [];
     const volumes = composeProjection?.content?.volumes || [];
     const homepage = await this.removePackageFromHomepage(instance, homepageService);
-    // An agent that cannot be asked what it supports is treated as one that
-    // supports nothing here, because uninstalling is worth more than reclaiming.
-    const agentStatus = await Promise.resolve(this.agent.status?.()).catch(() => null) || { capabilities: [] };
     // Deleting the instance row below drops the last reference to this app's
-    // snapshot directory and to the revision naming its images, so an agent that
-    // can reclaim them has to be told before that happens. Sent only to an agent
-    // that asked for it: an older one rejects unknown removal fields outright,
-    // and an uninstall it used to handle must not start failing.
+    // snapshot directory and to the revision naming its images, so the agent is
+    // told both before that happens, or they are unreachable for good.
     const agent = await this.agent.remove({
-      ...(agentStatus.capabilities?.includes('apps.package.remove.reclaim')
-        ? { instanceId: instance.id, ...(instance.sourceRevision ? { installedSourceRevision: instance.sourceRevision } : {}) }
-        : {}),
+      installedSourceRevision: instance.sourceRevision,
+      instanceId: instance.id,
       packageId: instance.packageId,
       services: services.map((service) => service.id),
       volumes,

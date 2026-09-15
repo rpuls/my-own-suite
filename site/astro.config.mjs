@@ -31,6 +31,13 @@ export default defineConfig({
         // manifests, icons, and READMEs straight from the repo's apps/
         // packages at build time.
         allow: ['..']
+      },
+      // The Digital Independence Planner is a separate Vite app that the site
+      // build drops into dist/plan. In dev it runs its own server, which
+      // `npm run dev` starts alongside this one (scripts/dev.mjs), so /plan/
+      // works here exactly as it does on the deployed site.
+      proxy: {
+        '/plan': { target: 'http://127.0.0.1:5173', ws: true }
       }
     }
   },

@@ -31,11 +31,16 @@ const iconStyle =
       </div>
       <div class="mos-panel path">
         <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-lock"/></svg></span>
+        <h3 style="font-size:1.15rem">Backups you can open without us</h3>
+        <p class="mos-meta" style="font-size:0.92rem">Whole-suite backups run on a schedule and are encrypted before they leave the server — by <a class="mos-link" href="https://restic.net/" rel="noopener">restic</a>, not by anything we wrote. What lands on your drive or bucket is a standard restic repository: your recovery key opens it on any machine, with no MOS involved.</p>
+      </div>
+      <div class="mos-panel path">
+        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
         <h3 style="font-size:1.15rem">A catalog your server can verify</h3>
         <p class="mos-meta" style="font-size:0.92rem">The app catalog is cryptographically signed, and your server checks the signature against a key it already has — not one downloaded alongside it. Even offline, it won't trust a catalog nobody signed.</p>
       </div>
       <div class="mos-panel path">
-        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+        <span class="ico" style={iconStyle}><svg width="18" height="18" viewBox="0 0 24 24"><use href="#i-plug"/></svg></span>
         <h3 style="font-size:1.15rem">Apps update on their own schedule</h3>
         <p class="mos-meta" style="font-size:0.92rem">A security fix for your password manager doesn't wait for us to ship a version of MOS. Each app updates by itself, when you say so — with the changes spelled out first.</p>
       </div>

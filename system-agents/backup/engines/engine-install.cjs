@@ -112,3 +112,15 @@ function installEngineBinary({ arch = process.arch, binaryDir, force = false, lo
 }
 
 module.exports = { assetFor, downloadUrl, ENGINE_RELEASES, installedVersion, installEngineBinary, isCurrent, sha256File };
+
+// Runnable directly so the installer, which is shell, gets the engine from the
+// same pinned constants and checksum check reconciliation uses rather than a
+// second copy of the version in a download line.
+if (require.main === module) {
+  const { ENGINE_NAME } = require('./engine.cjs');
+  installEngineBinary({
+    binaryDir: process.argv[2] || '/usr/local/libexec/mos',
+    log: (message) => console.log(`[mos] ${message}`),
+    name: ENGINE_NAME,
+  });
+}

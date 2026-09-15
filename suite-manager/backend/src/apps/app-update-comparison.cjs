@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { APP_AGENT_CONTRACT_VERSION } = require('../../../../shared/app-agent-contract.cjs');
 const {
   compareSemver,
   describeRequestedPermissions,
@@ -41,7 +42,24 @@ function privacyFor(packageDir, manifest, packageDigest, source) {
     : { dimensions: review.dimensions || null, posture: review.posture, reviewedAt: review.reviewedAt, status: 'reviewed' };
 }
 
-function compareAppPackages({ candidate, installed, platformVersion, agentCapabilities = [], agentContractVersion = 0, hostArchitecture = null }) {
+// Why the app agent cannot apply this update, in the owner's terms, or null when
+// it can. Three different refusals wear the same shape on the card: an agent
+// that cannot be reached; a package asking for a contract newer than this MOS
+// ships, which is the manifest's own gate and stands until MOS is updated; and
+// an agent that is not the one this MOS shipped with, which means its last
+// update applied half of itself.
+function describeAgentBlocker(reported, requiredByPackage) {
+  if (reported === null) return 'MOS could not reach the part of itself that runs apps.';
+  if (requiredByPackage > APP_AGENT_CONTRACT_VERSION) {
+    return `This update needs app agent contract ${requiredByPackage} and this MOS ships ${APP_AGENT_CONTRACT_VERSION}. Update MOS first.`;
+  }
+  if (reported !== APP_AGENT_CONTRACT_VERSION) {
+    return `The app agent on this server reports contract ${reported} and this MOS needs ${APP_AGENT_CONTRACT_VERSION}, so its last update did not fully apply.`;
+  }
+  return null;
+}
+
+function compareAppPackages({ candidate, installed, platformVersion, agentContractVersion = null, hostArchitecture = null }) {
   const changes = [];
   const breakingAreas = new Set();
   const installedFields = fields(installed.manifest);
@@ -76,8 +94,8 @@ function compareAppPackages({ candidate, installed, platformVersion, agentCapabi
     ...validatePlatformCompatibility(candidate.manifest, platformVersion),
     ...validateArchitectureCompatibility(candidate.manifest, hostArchitecture),
   ];
-  const requiredAgentVersion = candidate.manifest.update?.minimumAppAgentVersion || 1;
-  const agentReady = agentCapabilities.includes('apps.package.snapshot') && agentContractVersion >= requiredAgentVersion;
+  const agentBlocker = describeAgentBlocker(agentContractVersion, candidate.manifest.update?.minimumAppAgentVersion || 1);
+  const agentReady = agentBlocker === null;
   // What the package asks MOS for: web addresses, named storage, integration
   // slots, capability provision. An update that widens that surface is never
   // routine. A MOS-reviewed candidate had the increase reviewed, so it is only
@@ -115,11 +133,11 @@ function compareAppPackages({ candidate, installed, platformVersion, agentCapabi
   const compatibility = unsupported ? 'unsupported' : ownerAction ? 'owner-action-required' : 'compatible';
   const identity = `${installed.packageDigest}:${candidate.packageDigest}`;
   return {
-    candidate: { packageDigest: candidate.packageDigest, packageVersion: candidate.manifest.version, privacy: candidatePrivacy, source: candidate.source },
+    candidate: { appVersion: candidate.manifest.appVersion || null, packageDigest: candidate.packageDigest, packageVersion: candidate.manifest.version, privacy: candidatePrivacy, source: candidate.source },
     changes,
     compatibility,
     confirmationToken: crypto.createHash('sha256').update(identity).digest('hex'),
-    installed: { packageDigest: installed.packageDigest, packageVersion: installed.manifest.version, privacy: installedPrivacy },
+    installed: { appVersion: installed.manifest.appVersion || null, packageDigest: installed.packageDigest, packageVersion: installed.manifest.version, privacy: installedPrivacy },
     metadata: {
       backupRequired: candidate.manifest.update?.backupRequired === true,
       downtime: candidate.manifest.update?.downtime || 'brief',
@@ -133,10 +151,9 @@ function compareAppPackages({ candidate, installed, platformVersion, agentCapabi
     schemaVersion: 1,
     updateStatus,
     validation: {
-      agentCapability: agentReady ? 'compatible' : 'unsupported',
       errors: [
         ...platformErrors,
-        ...(agentReady ? [] : [`App agent contract ${requiredAgentVersion} is required.`]),
+        ...(agentBlocker ? [agentBlocker] : []),
         ...undeclaredBreaking.map((area) => `Undeclared breaking change: ${area}.`),
       ],
     },

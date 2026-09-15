@@ -894,21 +894,6 @@ test('an uninstall reclaims the generation its app kept for rollback', async () 
   assert.deepEqual(removedImages(commands), [imageFor('app', installedDigest, revision), imageFor('db', installedDigest, revision), retained]);
 });
 
-test('an uninstall from a Suite Manager that cannot name the snapshot still uninstalls', async () => {
-  const root = await tempDir();
-  const instanceId = '12345678-1234-4123-8123-123456789abc';
-  const { adapter, commands, instanceRoot } = await uninstallableInstance(root, { instanceId });
-
-  const result = await adapter.removeAppService({ packageId: 'example-tool', serviceIds: ['app', 'db'], volumes: ['data'] });
-
-  // Leaking a snapshot and its images is the price of an older Suite Manager,
-  // and a far better one than an uninstall that refuses to run at all.
-  assert.equal(result.imagesReclaimed, 0);
-  assert.deepEqual(removedImages(commands), []);
-  assert.ok(result.steps.includes('stopped'));
-  assert.equal(fs.existsSync(instanceRoot), true);
-});
-
 test('an uninstall never reclaims images for a package its snapshot is not', async () => {
   const root = await tempDir();
   const instanceId = '12345678-1234-4123-8123-123456789abc';

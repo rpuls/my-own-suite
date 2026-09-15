@@ -62,6 +62,13 @@ image and the release notes; the rest comes from `npm run release:prepare`.
 
 The MOS1 layout also shipped an `apps/suite-manager/release.json` so packaged installs could report their version without the repo root. The MOS root layout reports the installed version from the root `VERSION` file, which stable release-track managed updates also use for installed-versus-latest comparison. Add a packaged metadata file back (and extend `scripts/release-check.cjs`) only if a Suite Manager distribution without the repo root returns.
 
+## Artifact Retention
+
+Release artifacts are pruned on the normal schedule, with one exception that is not negotiable.
+
+A backup restores onto the MOS release that wrote it or any later one, never onto an earlier one (`docs/decisions.md`, 2026-09-13). Retiring a backup schema version breaks that chain, so the **last release able to read the retired format must stay installable for good**: its git tag, its GitHub Release, its `releases/*.json` entry, and its disk image and checksum on `downloads.myownsuite.org` are retained permanently and are never pruned. The restore refusal names that release to the owner, so the download has to still be there when they follow it.
+
+Mark such a release in its GitHub Release notes as the terminal reader for its backup generation, so a later cleanup has the reason in front of it.
 ## Safety Guardrails (Recommended)
 
 Install local git hooks once per clone:

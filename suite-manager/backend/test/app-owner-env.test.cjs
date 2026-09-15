@@ -11,6 +11,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
+const { APP_AGENT_CONTRACT_VERSION } = require('../../../shared/app-agent-contract.cjs');
 const { AppPackageService } = require('../src/apps/app-package-service.cjs');
 const { publicInstance } = require('../src/apps/app-package-internals.cjs');
 const { validateAppPackageManifest } = require('../src/apps/package-manifest.cjs');
@@ -21,6 +22,11 @@ const { SuiteManagerStore } = require('../src/state/suite-manager-store.cjs');
 const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const v2AppsDir = path.join(repoRoot, 'apps');
 const CANDIDATE_VERSION = '99.0.0';
+// A host newer than any package's minimumMosVersion: this test is about owner
+// variables surviving an update, not about the version gate, so re-stamping the
+// catalog must not decide whether it runs.
+const PLATFORM_VERSION = '99.0.0';
+
 
 async function tempStateDir() {
   return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-owner-env-'));
@@ -61,7 +67,7 @@ function recordingAgent({ fatal = null } = {}) {
     },
     async connectNetwork() { return { status: 'connected' }; },
     async snapshotPackage(input) { return { snapshotPath: path.join(v2AppsDir, input.packageId) }; },
-    async status() { return { capabilities: ['apps.package.snapshot'], contractVersion: 7 }; },
+    async status() { return { contractVersion: APP_AGENT_CONTRACT_VERSION }; },
     async stop() { state.compose = null; return { status: 'stopped' }; },
   };
 }
@@ -353,17 +359,12 @@ test('an app update re-renders the owner environment instead of dropping it', as
     async promotePackageUpdate() { return { snapshotPath: candidateDir, status: 'snapshot-promoted' }; },
     async rollbackPackageUpdate() { return { status: 'installed-restored' }; },
     async stagePackageUpdate() { return { snapshotPath: '/state/candidate', status: 'staged' }; },
-    async status() {
-      return {
-        capabilities: ['apps.package.snapshot', 'apps.package.update.stage', 'apps.package.update.build', 'apps.package.update.activate', 'apps.package.update.rollback', 'apps.package.update.promote'],
-        contractVersion: 6,
-      };
-    },
+    async status() { return { contractVersion: APP_AGENT_CONTRACT_VERSION }; },
   };
   const service = new AppPackageService({
     agent,
     appsDir: v2AppsDir,
-    catalogService: { advisoriesFor: () => [], platformVersion: '0.19.0', async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
+    catalogService: { advisoriesFor: () => [], platformVersion: PLATFORM_VERSION, async downloadCandidate() { return { ...candidatePackage, cleanup() {}, packageDigest: candidateDigest, source }; }, updateFor: () => null },
     store,
   });
   await service.installPackage('paperless-ngx', PAPERLESS_SETUP);
