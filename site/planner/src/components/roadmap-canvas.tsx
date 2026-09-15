@@ -355,15 +355,12 @@ export const RoadmapCanvas = forwardRef<SVGSVGElement, Props>(
           </g>
         )}
 
-        {doc.branding.myOwnSuite && (
-          <BrandSignature
-            label={doc.branding.siteLabel}
-            right={layout.width - doc.layout.outerMargin}
-            centerY={social ? layout.height - 154 : layout.legendY}
-            size={social ? 62 : 40}
-            fontSize={social ? 27 : 18}
-          />
-        )}
+        <BrandSignature
+          right={layout.width - doc.layout.outerMargin}
+          centerY={social ? layout.height - 154 : layout.legendY}
+          size={social ? 62 : 40}
+          fontSize={social ? 27 : 18}
+        />
 
         {doc.layout.showSafeArea && (
           <rect
@@ -386,21 +383,21 @@ export const RoadmapCanvas = forwardRef<SVGSVGElement, Props>(
 );
 
 const BRAND_NOTE = 'Plan your digital independence at';
+const BRAND_LABEL = 'myownsuite.org/plan';
 // Cap height of the semi-bold face, as a share of font size.
 const CAP_RATIO = 0.72;
 
-// The invitation every export carries, bottom-right opposite the legend. SVG
-// cannot measure text before layout, so the block is right-aligned from an
-// estimated width; the 0.6 factor matches the semi-bold face and keeps a
-// realistic label inside the margin.
+// The invitation every export carries, bottom-right opposite the legend. It is
+// not optional: the planner is free, and the signature is what it asks back.
+// SVG cannot measure text before layout, so the block is right-aligned from an
+// estimated width; the 0.6 factor matches the semi-bold face and keeps the
+// label inside the margin.
 function BrandSignature({
-  label,
   right,
   centerY,
   size,
   fontSize,
 }: {
-  label: string;
   right: number;
   centerY: number;
   size: number;
@@ -409,7 +406,7 @@ function BrandSignature({
   const noteSize = fontSize * 0.62;
   const gap = size * 0.24;
   const textWidth = Math.max(
-    label.length * fontSize * 0.6,
+    BRAND_LABEL.length * fontSize * 0.6,
     BRAND_NOTE.length * noteSize * 0.6,
   );
   // The two lines are optically centred on the mark: the block runs from the
@@ -438,7 +435,7 @@ function BrandSignature({
         y={noteBaseline + lineGap}
         className="rm-text rm-brand"
       >
-        {label}
+        {BRAND_LABEL}
       </text>
     </g>
   );

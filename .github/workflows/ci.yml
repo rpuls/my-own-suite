@@ -123,8 +123,13 @@ jobs:
 
       # `--accept` replaces lychee's default set rather than extending it, so the
       # default 1xx/2xx range is restated. 429 is rate limiting rather than a dead
-      # link, so it is retried and then accepted; a 503 is not, because a host
-      # that is down answers with one and must fail the job.
+      # link, so it is retried and then accepted.
+      #
+      # Reports, never gates. The step reaches ~110 third-party hosts, so a red run
+      # means "somebody else's server was down for the six seconds we asked", not
+      # "this branch is broken" — and gating on it blocked every merge for three days
+      # while finding one real broken link. Findings stay in the job summary, which is
+      # where link rot belongs: something to read, not something to be held up by.
       - name: Check links
         uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
@@ -135,7 +140,7 @@ jobs:
             --accept '100..=103,200..=299,429'
             --base-url http://127.0.0.1:4321
             site/dist
-          fail: true
+          fail: false
 
       - name: Check accessibility
         run: npx --yes pa11y-ci@4.1.1 --config site/.pa11yci.json

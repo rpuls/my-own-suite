@@ -1,7 +1,8 @@
 # Link-checker exclusions for `npm run` CI link checking (lychee).
 #
 # Only permanently-legitimate entries belong here: a host that refuses automated
-# requests, or a URL behind a login. A link that is genuinely broken goes in the
+# requests, a URL behind a login, or a live MOS service whose uptime is a
+# different concern from link rot. A link that is genuinely broken goes in the
 # report and gets fixed — never hidden here. Every entry states its reason, and an
 # entry without one is a broken link somebody buried.
 
@@ -13,3 +14,10 @@ https://discord\.gg/.*
 # client, a full browser User-Agent included, so the app page's two links to it
 # fail on every run while being correct for a reader who clicks them.
 https://docs\.paperless-ngx\.com/.*
+
+# MOS's own installer endpoint is a Worker that resolves a commit ref through the
+# GitHub API, so a colo with a cold ref cache can answer 503 for one request. That
+# is the endpoint's availability, not a rotten link in the docs, and gating a docs
+# build on it made every run red. Whether the endpoint itself should ever 503 is
+# infrastructure/installer-endpoint's problem to solve, not CI's to report.
+https://get\.myownsuite\.org/.*

@@ -1180,16 +1180,11 @@ select:focus {
   font-size: 9px;
   line-height: 1.35;
 }
-.subtle,
-.tiny-note {
+.subtle {
   margin: 0;
   color: var(--quiet-soft);
   font-size: 10px;
   line-height: 1.4;
-}
-.tiny-note {
-  margin-top: var(--mos-space-2);
-  text-align: center;
 }
 .item-actions {
   display: grid;
