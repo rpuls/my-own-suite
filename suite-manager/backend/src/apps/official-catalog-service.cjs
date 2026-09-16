@@ -47,6 +47,10 @@ class OfficialCatalogService {
     limits = DEFAULT_LIMITS,
     logger = null,
     now = () => new Date(),
+    // Called after a refresh that produced a verified cache. The host-patch hold
+    // list rides on this: a package the project needs to stop installing has to
+    // reach every server within the hour, which is this loop, not a MOS release.
+    onRefreshed = () => {},
     platformVersion = '0.0.0',
     random = Math.random,
     recordSecurityEvent = () => {},
@@ -62,6 +66,7 @@ class OfficialCatalogService {
     this.limiter = limiter;
     this.limits = limits;
     this.logger = logger;
+    this.onRefreshed = onRefreshed;
     this.recordSecurityEvent = recordSecurityEvent;
     this.stateDir = stateDir;
     this.now = now;
@@ -181,6 +186,16 @@ class OfficialCatalogService {
   }
 
   catalog() { return this.cache?.catalog || null; }
+
+  // The verified advisory bytes and their signature, for a consumer that must
+  // re-verify them itself rather than trust this process. The parsed copy is
+  // deliberately not offered: re-serializing it does not reproduce what was
+  // signed, so only the text can be checked again.
+  signedAdvisories() {
+    const signature = this.cache?.advisoriesSignature || null;
+    const text = this.cache?.advisoriesText || null;
+    return signature && text ? { revision: this.cache?.advisoriesRevision || null, signature, text } : null;
+  }
 
   // Applicable official advisories for an installed/candidate version. Advisories
   // are current source-trusted metadata; they never mutate installed snapshots.
@@ -385,6 +400,9 @@ class OfficialCatalogService {
         }
       }
       this.writeCache(this.cache);
+      // Fire-and-forget: whatever acts on a refresh is downstream of it, and a
+      // consumer that throws must not turn a good catalog into a failed refresh.
+      try { Promise.resolve(this.onRefreshed({ advisoriesRevision: this.cache.advisoriesRevision || null })).catch(() => {}); } catch {}
       return { catalog: this.catalog(), reusedForMs: 0, status: this.status() };
     } catch (error) {
       this.failures += 1;

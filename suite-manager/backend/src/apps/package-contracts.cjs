@@ -520,6 +520,35 @@ function validateAdvisory(advisory) {
   return errors;
 }
 
+// The advisory feed's host section: Ubuntu packages MOS must stop installing
+// unattended, on every server, within the hour and without waiting for a MOS
+// release. It exists because MOS has no telemetry by promise and so cannot learn
+// from the fleet that a patch is breaking servers — it hears that from a person,
+// and the answer has to be able to reach everyone the same day.
+const HOST_PACKAGE_NAME = /^[a-z0-9][a-z0-9+.-]{0,127}$/u;
+
+function validateHostAdvisorySection(host) {
+  if (host === undefined) return [];
+  if (!isPlainRecord(host)) return ['host must be an object.'];
+  if (host.heldPackages === undefined) return [];
+  if (!Array.isArray(host.heldPackages)) return ['host.heldPackages must be an array.'];
+  const errors = [];
+  host.heldPackages.forEach((entry, position) => {
+    if (!isPlainRecord(entry)) { errors.push(`host.heldPackages[${position}] must be an object.`); return; }
+    if (!HOST_PACKAGE_NAME.test(String(entry.package || ''))) errors.push(`host.heldPackages[${position}].package is invalid.`);
+    if (typeof entry.reason !== 'string' || !entry.reason.trim()) errors.push(`host.heldPackages[${position}].reason is required.`);
+    if (entry.publishedAt === undefined || Number.isNaN(Date.parse(String(entry.publishedAt)))) errors.push(`host.heldPackages[${position}].publishedAt must be an ISO date-time.`);
+  });
+  return errors;
+}
+
+// Names only, deduplicated and sorted, because the file they end up in is
+// rewritten from this and must not churn when the feed reorders.
+function hostHeldPackages(index) {
+  const held = Array.isArray(index?.host?.heldPackages) ? index.host.heldPackages : [];
+  return [...new Set(held.map((entry) => String(entry?.package || '')).filter((name) => HOST_PACKAGE_NAME.test(name)))].sort();
+}
+
 // The official advisory feed is a small authored index fetched from the same
 // trusted catalog source revision. Trust is derived from the source (see
 // validateSourceIdentity); this only enforces structural validity and unique ids.
@@ -535,6 +564,7 @@ function validateAdvisoryIndex(index) {
     if (id && seen.has(id)) errors.push(`advisories[${position}] duplicates advisory id ${id}.`);
     seen.add(id);
   });
+  for (const error of validateHostAdvisorySection(index.host)) errors.push(`advisory index ${error}`);
   return errors;
 }
 
@@ -769,6 +799,7 @@ module.exports = {
   diffRequestedPermissions,
   digestAppPackage,
   effectiveRouteHost,
+  hostHeldPackages,
   isExternalPackageId,
   namespacedPackageId,
   parseNamespacedPackageId,
@@ -779,6 +810,7 @@ module.exports = {
   validateCatalog,
   validateConstrainedCapabilities,
   validateExternalIdentity,
+  validateHostAdvisorySection,
   validatePlatformCompatibility,
   validatePrivacyAssessment,
   validatePrivacyAssessmentDocument,

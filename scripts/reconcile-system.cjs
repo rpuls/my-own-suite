@@ -5,6 +5,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { installEngineBinary } = require('../system-agents/backup/engines/engine-install.cjs');
 const { ENGINE_NAME } = require('../system-agents/backup/engines/engine.cjs');
+const { applyHostPatching } = require('../infrastructure/host-patching.cjs');
 
 const {
   HOMEPAGE_IMAGE,
@@ -326,6 +327,10 @@ function main() {
     fs.chmodSync(`${stateRoot}/app-packages`, 0o2750);
   }
   installDir(`${stateRoot}/update-agent/jobs`, 0o700);
+  // Readable by the diagnostics agent and by anyone reading a support bundle;
+  // nothing in here is a secret, and a mode that hid it would only hide it from
+  // the reader it exists for.
+  installDir(`${stateRoot}/host-patches`, 0o755);
 
   for (const socketDir of ['https', 'homepage', 'app', 'backup', 'update', 'diagnostics', 'lab-reset']) {
     installSocketDir(`/run/mos-${socketDir}-agent`);
@@ -339,6 +344,12 @@ function main() {
 
   refreshCaddyBinary();
   refreshBackupEngine();
+  // Applied on every managed update rather than only at install, for the reason
+  // the journald config is: the installer is the one path a machine that already
+  // exists never runs again, so a policy applied only there would reach
+  // reflashed machines and no others. It records what it decided instead of
+  // throwing — an update must not fail because apt could not reach an archive.
+  applyHostPatching({ dryRun, log, repoRoot: mosRoot, stateRoot });
   writeFile('/etc/systemd/system/caddy.service.d/mos.conf', `[Service]
 EnvironmentFile=-/etc/mos/secrets/caddy-cloudflare.env
 ExecStart=
@@ -408,7 +419,9 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
   unit('mos-diagnostics-agent.service', agentUnit({
     after: 'network-online.target docker.service',
     description: 'MOS read-only diagnostics collection agent',
-    env: { MOS_DIAGNOSTICS_AGENT_SOCKET: '/run/mos-diagnostics-agent/agent.sock' },
+    // The state root, because the host patch state it reports on is written
+    // under it by the installer, this script and the post-patch check.
+    env: { MOS_DIAGNOSTICS_AGENT_SOCKET: '/run/mos-diagnostics-agent/agent.sock', MOS_STATE_ROOT: stateRoot },
     name: 'mos-diagnostics-agent.service',
     script: 'system-agents/diagnostics/agent.cjs',
     wants: 'network-online.target docker.service',

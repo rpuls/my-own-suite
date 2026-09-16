@@ -33,6 +33,12 @@
 // the other's socket path, because a MOS update now backs the suite up first and a
 // scheduled backup waits while an update runs. Two `Environment=` lines; no `echo`
 // line changed, so the walkthrough recording still shows what an install prints.
+//
+// Moved 2026-09-16 for host OS patching (roadmap AL1): the installer now applies
+// Ubuntu's unattended security-upgrade policy, and the diagnostics agent unit
+// carries the state root so it can read the patch state. One command line and
+// one `Environment=` line; no `echo` line changed, so the walkthrough recording
+// still shows what an install prints.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -46,25 +52,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '6cab0c27e37eae5ac8bd21ba12ea5806608bdbfa098b0b2561d091dfc308f2ac',
+    digest: '4a468f71926f28744b50d2b23651f9b0dedded1b5ebde4645dee300e3c61af81',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '932f27b91c2cfde56596504ecd8a41be6b9bd7de85986003938ddad9ef92a352',
+    digest: '96c63735491a867d44248245769d0b2d3176af3e2f10cce47bbeeeca9c99bfff',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: '005731a94d3a8bcfd78243ec50a073e769a13543d40f5a4304f3488b61b679d2',
+    digest: '2544c06b9d3b16d634055360132a6d28408df924eef73daae16bc08729ff570c',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: '38949138ef57416977f35a672a7f6f47cbec52607df2f183af4b78cc25f4d599',
+    digest: 'b64c867038aec181570e3b8c7e35acf15b670d80ca7dee5b8c12e462c5ac1389',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -74,7 +80,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: 'a86c09339ea81dcb97bdbe1d9fadddbf3b2e99b22c27111fc577b35684b7322c',
+    digest: '96011e52decff010b7bf104bb85018600d43c996ec1c3155a2a5b6d21a62384e',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

@@ -265,6 +265,13 @@ if ! node "$MOS_INSTALL_ROOT/repo/system-agents/backup/engines/engine-install.cj
   echo '[mos] Could not install the backup storage engine; backups report it until the next platform update.' >&2
 fi
 
+# Ubuntu's own security patches, pinned to the security pocket. Applied from the
+# same definition reconcile-system.cjs applies on every managed update, so a
+# machine that was updated rather than reflashed ends up with the identical
+# policy. It never throws: a machine that could not be set up says so on the
+# Updates screen, which beats failing an install over it.
+MOS_STATE_ROOT="$MOS_STATE_ROOT" node "$MOS_INSTALL_ROOT/repo/infrastructure/host-patching.cjs"
+
 if ! getent group mos-agent >/dev/null; then
   groupadd --system mos-agent
 fi
@@ -502,6 +509,7 @@ UMask=0007
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_DIAGNOSTICS_AGENT_SOCKET=/run/mos-diagnostics-agent/agent.sock
+Environment=MOS_STATE_ROOT=$MOS_STATE_ROOT
 ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/diagnostics/agent.cjs
 Restart=always
 RestartSec=3

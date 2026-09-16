@@ -1,10 +1,22 @@
 'use strict';
 
+const fs = require('node:fs');
 const { spawn } = require('node:child_process');
+
+const { REBOOT_REQUIRED_PATH, healthStatePath, readEnablementState } = require('../../infrastructure/host-patching.cjs');
+const { parseAptConfigDump, parseRebootPackages, parseUnattendedLog, parseUpgradableSimulation } = require('./host-patches.cjs');
 
 const DOCKER_BINARY = process.env.MOS_DOCKER_BINARY || '/usr/bin/docker';
 const JOURNALCTL_BINARY = process.env.MOS_JOURNALCTL_BINARY || '/usr/bin/journalctl';
 const SYSTEMCTL_BINARY = process.env.MOS_SYSTEMCTL_BINARY || '/usr/bin/systemctl';
+const APT_GET_BINARY = process.env.MOS_APT_GET_BINARY || '/usr/bin/apt-get';
+const APT_CONFIG_BINARY = process.env.MOS_APT_CONFIG_BINARY || '/usr/bin/apt-config';
+const REBOOT_REQUIRED_PKGS_PATH = `${REBOOT_REQUIRED_PATH}.pkgs`;
+const UNATTENDED_LOG_PATH = '/var/log/unattended-upgrades/unattended-upgrades.log';
+// Touched by apt's own daily script after a successful list refresh. The
+// similarly named update-success-stamp beside it belongs to update-notifier,
+// which not every install carries.
+const APT_UPDATE_STAMP_PATH = '/var/lib/apt/periodic/update-stamp';
 const COMMAND_TIMEOUT_MS = 20_000;
 // Docker caps a container's logs at 30 MB and journald at its own retention, so
 // a single `docker logs --tail 400` can legitimately return tens of megabytes if
@@ -112,6 +124,14 @@ function parseContainerList(raw) {
   return containers;
 }
 
+// The end of a file, for the sections of the patch state that exist to be read
+// by a person rather than counted. agent-core.cjs bounds logs the same way and
+// for the same reason: what matters in a long file is the last thing in it.
+function boundedTail(text, maxChars) {
+  const value = String(text || '');
+  return value.length <= maxChars ? value : value.slice(value.length - maxChars);
+}
+
 // A log that timed out keeps what it got, marked; every other failure stays one.
 function keepPartialLog(error) {
   if (!(error instanceof CaptureTimeoutError)) throw error;
@@ -158,6 +178,54 @@ class SystemDiagnosticsAdapter {
     return facts;
   }
 
+  // Host patch state, as a fixed source like every other one here. The
+  // simulation is read-only and touches no network: `--just-print` decides
+  // against the package lists already on disk, and NoLocking keeps it from
+  // contending with an unattended run that may be happening right now.
+  async hostPatches() {
+    const at = new Date().toISOString();
+    const text = async (file, args) => {
+      try { return await capture(file, args); } catch { return ''; }
+    };
+    const file = (filePath) => {
+      try { return fs.readFileSync(filePath, 'utf8'); } catch { return null; }
+    };
+    const json = (filePath) => {
+      try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch { return null; }
+    };
+    const stateRoot = process.env.MOS_STATE_ROOT || '/var/lib/mos';
+    const [simulation, configDump] = await Promise.all([
+      text(APT_GET_BINARY, ['--just-print', '--quiet', '-o', 'Debug::NoLocking=1', 'dist-upgrade']),
+      text(APT_CONFIG_BINARY, ['dump']),
+    ]);
+    const upgradable = parseUpgradableSimulation(simulation);
+    const config = parseAptConfigDump(configDump);
+    const unattendedLog = file(UNATTENDED_LOG_PATH);
+    const enablement = readEnablementState(stateRoot);
+    let lastListedAt = null;
+    try { lastListedAt = fs.statSync(APT_UPDATE_STAMP_PATH).mtime.toISOString(); } catch {}
+
+    return {
+      ...parseUnattendedLog(unattendedLog),
+      ...config,
+      at,
+      // The simulation is the evidence behind the count, and the count is the
+      // only thing the primary UI says. Bounded because it is a package list on
+      // a machine that may be a very long way behind.
+      available: Boolean(configDump),
+      health: json(healthStatePath(stateRoot)),
+      lastListedAt,
+      managedBy: enablement?.managedBy || 'unknown',
+      managedReason: enablement?.reason || null,
+      other: upgradable.other,
+      rebootPackages: parseRebootPackages(file(REBOOT_REQUIRED_PKGS_PATH)),
+      rebootRequired: fs.existsSync(REBOOT_REQUIRED_PATH),
+      security: upgradable.security,
+      simulation: boundedTail(simulation, 8_000),
+      unattendedLog: boundedTail(unattendedLog, 8_000),
+    };
+  }
+
   async unitState(unit) {
     const values = parseShowOutput(await capture(SYSTEMCTL_BINARY, ['show', unit, '-p', 'ActiveState', '-p', 'SubState', '-p', 'UnitFileState']));
     return {
@@ -182,4 +250,4 @@ class SystemDiagnosticsAdapter {
   }
 }
 
-module.exports = { CaptureTimeoutError, MAX_CAPTURE_BYTES, SystemDiagnosticsAdapter, capture, keepPartialLog, parseContainerList, parseLabels, parseShowOutput, serializeJournal };
+module.exports = { CaptureTimeoutError, MAX_CAPTURE_BYTES, SystemDiagnosticsAdapter, boundedTail, capture, keepPartialLog, parseContainerList, parseLabels, parseShowOutput, serializeJournal };

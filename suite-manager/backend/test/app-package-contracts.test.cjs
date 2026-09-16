@@ -8,6 +8,7 @@ const {
   AppPackageContractError,
   CATALOG_REFRESH_POLICY,
   advisoriesForVersion,
+  hostHeldPackages,
   advisoryAffectsVersion,
   canonicalPackagePath,
   compareSemver,
@@ -19,6 +20,7 @@ const {
   parseNamespacedPackageId,
   validateAdvisory,
   validateAdvisoryIndex,
+  validateHostAdvisorySection,
   validateArchitectureCompatibility,
   validateCatalog,
   validateConstrainedCapabilities,
@@ -399,4 +401,29 @@ test('a catalog entry must carry the app version', () => {
   for (const missing of [undefined, '', 3]) {
     assert.deepEqual(validateCatalog(entry(missing)), ['catalog.packages.example.appVersion must be a non-empty string.']);
   }
+});
+
+// The advisory feed's host section: Ubuntu packages MOS must stop installing on
+// every server within the hour. It is empty on day one and expected to stay
+// empty, which is exactly why the shape has to be checked rather than assumed.
+test('the advisory host section is optional and validated when it is there', () => {
+  const held = { package: 'linux-image-generic', publishedAt: '2026-09-16T00:00:00.000Z', reason: 'Breaks Docker on 6.8.0-48.' };
+  assert.deepEqual(validateHostAdvisorySection(undefined), []);
+  assert.deepEqual(validateHostAdvisorySection({}), []);
+  assert.deepEqual(validateHostAdvisorySection({ heldPackages: [] }), []);
+  assert.deepEqual(validateHostAdvisorySection({ heldPackages: [held] }), []);
+  assert.ok(validateHostAdvisorySection({ heldPackages: [{ ...held, package: 'Linux Image; rm -rf /' }] }).some((error) => error.includes('package is invalid')));
+  assert.ok(validateHostAdvisorySection({ heldPackages: [{ ...held, reason: '' }] }).some((error) => error.includes('reason is required')));
+  assert.ok(validateHostAdvisorySection({ heldPackages: held }).some((error) => error.includes('must be an array')));
+  assert.ok(validateAdvisoryIndex({ advisories: [], host: { heldPackages: [{ package: '' }] }, schemaVersion: 1 }).some((error) => error.startsWith('advisory index host.heldPackages[0]')));
+});
+
+test('held package names come out deduplicated, sorted and free of anything unnameable', () => {
+  assert.deepEqual(hostHeldPackages({ host: { heldPackages: [
+    { package: 'linux-image-generic' },
+    { package: 'systemd' },
+    { package: 'linux-image-generic' },
+    { package: '../../etc/passwd' },
+  ] } }), ['linux-image-generic', 'systemd']);
+  assert.deepEqual(hostHeldPackages({ advisories: [], schemaVersion: 1 }), []);
 });

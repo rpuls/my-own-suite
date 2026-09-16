@@ -4,6 +4,10 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ## [Unreleased]
 
+### Added
+
+- **MOS now keeps Ubuntu patched.** Security updates from Ubuntu's own channel install themselves, and **Updates** shows what is waiting, when it last checked and what it last installed, beside MOS and your apps. MOS never restarts your server on its own: when a patch needs one it says so and offers **Restart server**, which you confirm. Existing servers get this through a managed platform update; a server where you configured unattended-upgrades yourself is reported as yours and left alone.
+
 ## [0.20.0] - 2026-09-15
 
 ### Added

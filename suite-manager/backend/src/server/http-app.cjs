@@ -423,9 +423,30 @@ function createMOSServer({
   // meaningful shared: two services each allowing their own three concurrent
   // downloads allow six, which is what the cap exists to prevent.
   const appOperationLimiter = new AppOperationLimiter();
+  // The advisory revision this process has already handed to the update agent.
+  // Per-process rather than persisted, so a Suite Manager that has just started
+  // pushes once even when the feed has not moved — which is how a fresh install
+  // gets its hold file at all.
+  let pushedAdvisoryRevision = null;
   const catalogService = officialCatalog || new OfficialCatalogService({
     limiter: appOperationLimiter,
     logger,
+    // Ubuntu packages the project has had to stop installing, from the same
+    // signed feed the app advisories come from. Suite Manager is a courier: the
+    // update agent re-verifies the signature before it writes anything, because
+    // a privileged write whose contents an unprivileged web app could name would
+    // be a way to stop a server taking security patches at all.
+    onRefreshed: async ({ advisoriesRevision }) => {
+      if (advisoriesRevision === pushedAdvisoryRevision) return;
+      const signed = catalogService.signedAdvisories();
+      if (!signed) return;
+      try {
+        await updateAgent.applyHostHolds({ advisoriesSignature: signed.signature, advisoriesText: signed.text });
+        pushedAdvisoryRevision = advisoriesRevision;
+      } catch (error) {
+        logger?.warn('host-package-holds-push-failed', { reason: error instanceof Error ? error.message : 'unknown' });
+      }
+    },
     recordSecurityEvent,
     repository: process.env.MOS_APP_CATALOG_REPOSITORY || 'https://github.com/rpuls/my-own-suite',
     // A branch track reads its own branch's catalog, so the packages a box is
@@ -490,7 +511,7 @@ function createMOSServer({
     stateDir,
     store: setup.store,
   });
-  const updates = new UpdateService({ agent: updateAgent, backupAgent });
+  const updates = new UpdateService({ agent: updateAgent, backupAgent, diagnosticsAgent });
 
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://localhost');
@@ -829,6 +850,17 @@ function createMOSServer({
         const body = await readJsonBody(request, 4 * 1024);
         const answer = url.pathname.endsWith('/cancel') ? updates.cancel({ id: body?.id }) : updates.skipBackup({ id: body?.id });
         jsonResponse(response, 200, await answer);
+        return;
+      }
+
+      // MOS said a restart was needed, so MOS performs it. The browser confirmed
+      // it; the agent refuses it under a running update or backup.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/updates/host/restart`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to restart this server.' });
+          return;
+        }
+        jsonResponse(response, 202, await updates.restartHost());
         return;
       }
 

@@ -130,6 +130,13 @@ class DiagnosticsAgentCore {
     return { collectors: await this.adapter.availableCollectors(), ok: true };
   }
 
+  // The cheap read, for the Updates screen. Separate from collect() because a
+  // full collection sweeps every unit and container and an owner opening
+  // Updates is asking one question about the host, not for a bundle.
+  async hostPatches() {
+    return this.adapter.hostPatches();
+  }
+
   // Every collector is best-effort and independent. This runs when something is
   // already broken, so a collector that throws is an expected outcome, not an
   // exceptional one — losing the rest of the bundle to it would defeat the
@@ -151,8 +158,9 @@ class DiagnosticsAgentCore {
     // machine is by definition not well. Serialising forty reads behind a
     // twenty-second timeout each is how a diagnostic becomes a hang; running
     // them all at once is how it becomes the last straw.
-    const [host, units, containers] = await Promise.all([
+    const [host, hostPatches, units, containers] = await Promise.all([
       attempt('host', () => this.adapter.hostFacts(), {}),
+      attempt('host-patches', () => this.adapter.hostPatches(), null),
       mapWithLimit(MOS_UNITS, LIMITS.concurrency, async (name) => {
         const state = await attempt(`unit:${name}`, () => this.adapter.unitState(name), UNREAD_STATE);
         const troubled = name === PRIMARY_UNIT || unitLooksTroubled(state);
@@ -178,6 +186,7 @@ class DiagnosticsAgentCore {
       collectedAt: new Date().toISOString(),
       containers: fitted.containers,
       host,
+      hostPatches,
       incomplete,
       units: fitted.units,
     };

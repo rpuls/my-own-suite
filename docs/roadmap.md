@@ -207,12 +207,6 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
 
 ### AL-S — Security hardening
 
-- **AL1 — Host OS patching.** `#277`. MOS updates itself and it updates the apps, and nothing updates Ubuntu;
-  an install running for months is quietly behind on kernel and TLS fixes while the Updates screen
-  says everything is current. Enable unattended security upgrades at bootstrap, and surface host patch
-  state where owners already look for updates. The published image raises this from small to
-  load-bearing: it is frozen at release time, so someone flashing a months-old download starts behind
-  on day one. *(Small)*
 - **AL2 — Full-disk encryption for own-hardware installs.** `#278`. The installer uses a plain disk layout, so
   the "safe in your own house" claim currently survives everything except someone carrying the safe
   out of the house. Needs a decision on the unlock model for a headless machine — passphrase at boot,

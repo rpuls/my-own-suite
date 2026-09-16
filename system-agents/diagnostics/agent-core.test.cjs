@@ -20,6 +20,7 @@ function adapter(overrides = {}) {
     containerLog: async (name, lines) => `log for ${name} (${lines} lines)`,
     containers: async () => [],
     hostFacts: async () => ({ disk: 'df', kernel: 'linux' }),
+    hostPatches: async () => ({ available: true, managedBy: 'mos', rebootRequired: false, security: [] }),
     journal: async (unit, lines) => `journal for ${unit} (${lines} lines)`,
     unitState: async () => ({ active: 'active', enabled: 'enabled', sub: 'running' }),
     ...overrides,

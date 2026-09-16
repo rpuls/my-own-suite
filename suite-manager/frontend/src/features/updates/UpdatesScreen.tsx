@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { AdvancedPanel, Notice, Select, Spinner } from '../../components/ui';
 import { buildChanged, servedBuildId } from '../../frontend-build';
 import { jsonResponse } from '../../lib/api';
+import { HostPatchesPanel } from './HostPatchesPanel';
+import type { HostPatches } from './HostPatchesPanel';
 
 type UpdateCheckpoint = {
   backupId: string | null;
@@ -30,6 +32,7 @@ type UpdateStatus = {
   checkedAt: string;
   checkpoint: { destinationLabel: string | null; ready: boolean; supported: boolean };
   currentJob: UpdateJob | null;
+  host: HostPatches;
   installedVersion: string | null;
   latestRelease: { notesUrl: string | null; source: string | null; version: string | null };
   latestRevision: string | null;
@@ -128,6 +131,7 @@ export function UpdatesScreen() {
   const [busy, setBusy] = useState('');
   const [checking, setChecking] = useState(false);
   const [reloading, setReloading] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const running = isRunning(status?.currentJob || null);
   const updating = running || busy === 'update';
   const jobStatus = status?.currentJob?.status || null;
@@ -207,6 +211,20 @@ export function UpdatesScreen() {
         method: 'POST',
       }), answer === 'cancel' ? 'Unable to cancel the update.' : 'Unable to go on without a backup.');
     });
+  }
+
+  // MOS told the owner a restart was needed, so MOS performs it. Nothing is
+  // reloaded afterwards: the server is going away, and the page saying so is
+  // more use than a page trying to reconnect to it.
+  async function restartHost() {
+    setRestarting(true);
+    setError('');
+    try {
+      await jsonResponse(await fetch('/suite-manager/api/updates/host/restart', { method: 'POST' }), 'Unable to restart this server.');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to restart this server.');
+      setRestarting(false);
+    }
   }
 
   async function switchTrack() {
@@ -294,6 +312,8 @@ export function UpdatesScreen() {
         {status.changeSummary.items.length ? <ul className="suite-updates-change-list">{status.changeSummary.items.map((item) => <li key={item}>{item}</li>)}</ul> : <p className="suite-meta">No local changelog summary is available for this target.</p>}
       </section>
 
+
+      <HostPatchesPanel busy={busy} formatDate={formatDate} host={status.host} onRestart={() => void restartHost()} restarting={restarting} />
 
       {status.currentJob ? <section className="mos-panel suite-card suite-updates-panel">
         <h2 className="mos-card-title">Update activity</h2>

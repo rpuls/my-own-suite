@@ -12,9 +12,7 @@ They are deliberately separate. Your password manager shouldn't have to wait for
 
 Neither kind happens on its own. MOS checks for updates in the background and tells you what it found; applying either through Suite Manager is your decision and needs no SSH or package manager.
 
-:::caution[MOS does not update Ubuntu yet]
-Platform updates cover MOS, not the server’s operating system. Keep Ubuntu security updates current through your provider or Ubuntu’s own tools. Managing host patching from Suite Manager is [planned](https://github.com/rpuls/my-own-suite/issues/277).
-:::
+Underneath both sits Ubuntu, and MOS keeps that patched too — automatically, security fixes only, with restarts left to you. See [Keeping the operating system patched](#keeping-the-operating-system-patched) below.
 
 ## App updates
 
@@ -73,3 +71,29 @@ It fetches the new code, rebuilds what needs rebuilding, and refreshes **all** o
 **A MOS update backs your whole suite up first.** Before it fetches anything it takes a full [backup](/docs/guides/backup-restore/) to wherever your automatic backups go. If that drive or bucket is not connected the update waits and starts by itself when it is back, and offers **Cancel update** or **Update without a backup** meanwhile; if the backup cannot be taken at all the update stops before changing anything. With no destination set for automatic backups there is nowhere to put one and the screen says so. **App updates are not covered by this** — take one yourself before an app update that migrates data, which the update summary will warn you about.
 
 If the screen reports the updater itself as unavailable, see [Host agents](/docs/reference/host-agents/) for how the platform services are laid out and restarted.
+
+## Keeping the operating system patched
+
+Your server runs Ubuntu underneath MOS. MOS updates itself and your apps, and it keeps Ubuntu patched too — so a server that's been running for months isn't quietly behind on security fixes while the Updates screen says everything is current.
+
+**What gets installed automatically:** security updates only, from Ubuntu's own security channel. These are fixes backported onto the version you already run — a patched OpenSSL is the same OpenSSL with the hole closed, not a new one. Ubuntu maintains that channel for this release until April 2029.
+
+**What doesn't:** everything else. MOS never moves you to a new Ubuntu release. And the software your suite actually runs on — Docker, Caddy — doesn't come from that channel at all, so a security patch can't swap it out from under your apps. Those move when MOS updates, where they're tested together.
+
+**Restarts are yours.** A few patches, kernel ones mostly, only take effect after a restart. MOS tells you when one is needed and leaves it at that. It will never restart your server on its own, so it can't interrupt you mid-upload. When you are ready, **Restart server** on the Updates screen does it; every app stops for a minute or two and comes back by itself.
+
+**Where you see it:** on Updates, beside MOS and your apps — when it last checked, what's waiting, and when it last installed something.
+
+**If a patch ever does break something,** MOS can hold it back on every server within the hour, without waiting for a MOS release. Worth knowing: a host that won't boot is reinstall-and-restore, not a rollback — your apps and data come back from your [backup](/docs/guides/backup-restore/), the operating system is installed fresh.
+
+### If the server does not come back after a restart
+
+A kernel patch does nothing until you restart, and Ubuntu keeps the previous kernel installed. If the machine stops booting after one, you can boot the old kernel: hold **Shift** (or press **Esc**) as it starts to get GRUB's menu, choose **Advanced options for Ubuntu**, and pick the kernel one version below the newest. On a VPS this is the provider's web console; on your own hardware it is a monitor and a keyboard. That gets you back to a running suite, from where MOS's own Updates screen and the diagnostics file will say what happened.
+
+MOS also checks itself after every patch and after every restart: if the suite did not come back cleanly, the Updates screen says so rather than leaving you to discover it through an app that stopped working.
+
+### What MOS cannot know
+
+MOS has no telemetry, by design — it never reports anything about your server to the project. That means the project cannot learn from other people's servers that an Ubuntu patch is breaking things; it finds out when somebody says so. If a patch breaks your suite, the diagnostics file from **Settings** is what makes that report actionable, and the hold list above is how the answer reaches everyone else the same day.
+
+*Under the hood: `unattended-upgrades` with `Allowed-Origins` restricted to `${distro_id}:${distro_codename}-security`, automatic reboot off. Suite Manager reads pending packages and `/var/run/reboot-required` through the read-only host agent. If you configured unattended-upgrades yourself, MOS reports what it found and leaves it alone.*

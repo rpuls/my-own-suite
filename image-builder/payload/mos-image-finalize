@@ -151,6 +151,49 @@ swapoff -a || true
 rm -f /swap.img
 sed -i '/swap\.img/d' /etc/fstab
 
+stage 'Making a frozen image catch up on Ubuntu patches after its first boot'
+# The control-plane bootstrap already pinned unattended-upgrades to the security
+# pocket inside this VM, and that policy ships in the image. What cannot ship is
+# time: an image downloaded months after it was built starts exactly that far
+# behind, and apt's own timers fire at 6am and 6pm with up to twelve hours of
+# jitter, so a machine flashed this evening could sit unpatched until tomorrow
+# night. Two timers of MOS's own fire the same apt services once, shortly after
+# boot. They are separate units rather than drop-ins on apt's timers because a
+# drop-in's RandomizedDelaySec would replace the twelve hours on the daily
+# schedule too, and that jitter is what keeps a fleet off the mirrors at once.
+# On later boots apt's own daily stamps make the early run a no-op.
+#
+# Only the image gets this. A VPS install is patched at the moment it is created
+# and has nothing to catch up on, so it keeps Ubuntu's own timing.
+cat > /etc/systemd/system/mos-apt-catchup-update.timer <<'CATCHUP_UPDATE'
+[Unit]
+Description=Refresh package lists shortly after boot
+
+[Timer]
+OnBootSec=5min
+RandomizedDelaySec=10min
+Unit=apt-daily.service
+
+[Install]
+WantedBy=timers.target
+CATCHUP_UPDATE
+cat > /etc/systemd/system/mos-apt-catchup-upgrade.timer <<'CATCHUP_UPGRADE'
+[Unit]
+Description=Install Ubuntu security updates shortly after boot
+
+[Timer]
+OnBootSec=20min
+RandomizedDelaySec=10min
+Unit=apt-daily-upgrade.service
+
+[Install]
+WantedBy=timers.target
+CATCHUP_UPGRADE
+systemctl enable mos-apt-catchup-update.timer mos-apt-catchup-upgrade.timer
+# Written during the bake, and apt reads them as "the lists were refreshed
+# recently" on a machine where nothing has been refreshed since the image was cut.
+rm -f /var/lib/apt/periodic/*
+
 stage 'Clearing build logs and caches'
 apt-get clean
 rm -rf /var/lib/apt/lists/*
