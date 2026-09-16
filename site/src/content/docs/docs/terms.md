@@ -37,6 +37,10 @@ My Own Suite can install app packages from a source you supply yourself, such as
 
 Installing one builds it from the publisher's own instructions, which execute on your server. You are choosing to trust that publisher — not My Own Suite — and the decision, along with anything that follows from it, is yours. MOS shows you what a package asks for before you install it and constrains what it may request; that is a safeguard, not a guarantee, and not a substitute for your own judgment.
 
+## Logos in the planner
+
+The [Digital Independence Planner](/plan/) lets you pick product logos from the open-source [Dashboard Icons](https://github.com/homarr-labs/dashboard-icons) collection to label the services on your roadmap. Those names and logos belong to their respective owners and appear for identification only. If you hold the rights to a logo and want it removed from the planner, [open an issue on GitHub](https://github.com/rpuls/my-own-suite/issues); removal is a one-line change and roadmaps that used the logo fall back to a text label.
+
 ## Changes to these terms
 
 Like everything else in this project, these terms live in the public repository and can only change in the open, with the full history visible in git. If you keep using the software after the terms change, you accept the updated terms.

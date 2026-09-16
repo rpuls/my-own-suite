@@ -1088,3 +1088,16 @@ Consequences:
 - Packages using `appVersion` raise `minimumMosVersion` to 0.20.0, per the amendment policy, so a 0.19.x machine reports them as requiring a platform update until it updates.
 - A package with no `appVersion` shows no app version. The package version never appears outside Advanced details.
 - Moving a primary image pin means updating `appVersion` and the review's matching component together; CI holds them to agree.
+
+## 2026-09-16: Third-Party Brand Artwork Is Never Committed; The Planner Fetches A Pinned Set At Build Time And Serves It First-Party
+
+Decision: the Digital Independence Planner (`site/planner`, deployed at `/plan/`) shows Big Tech product logos, and not one of them lives in this repository. The build stages the SVG set from the exact upstream Dashboard Icons commit pinned in `site/planner/icon-source.json`, strips every id listed in `site/planner/icon-denylist.json`, and ships the result inside the site so a visitor's browser only ever talks to myownsuite.org. A roadmap references a logo by id; the artwork is embedded on open and in exports, and an id that no longer resolves degrades to a text label. The only artwork committed is our own brand mark.
+
+Reason: the planner's promise is that the plan never leaves the visitor's device, which rules out loading logos from a third-party CDN. Vendoring the logos instead would put other companies' trademarks in an AGPL repository and make every takedown a git history problem. Fetching a pinned commit at build time keeps the repository clean, keeps the set reproducible, and turns a rights holder's complaint into a one-line denylist entry and a redeploy.
+
+Consequences:
+
+- Bumping the icon set is a deliberate change to the pinned commit. The build refuses to stage a set that lacks any icon the shipped templates reference, so a template cannot silently ship with holes.
+- A logo removal request has a public inbound path on the terms page and a one-line answer in the denylist; roadmaps that used the logo keep working with a text label, which is all a takedown can achieve.
+- CI and the deploy cache the pinned checkout keyed on the pin, so a site deploy does not depend on GitHub serving an 80 MB fetch, and a docs-only push does not refetch.
+- The planner's own analytics are the same first-party Umami page counter as the landing page, disclosed on the privacy page; the roadmap itself is never transmitted.

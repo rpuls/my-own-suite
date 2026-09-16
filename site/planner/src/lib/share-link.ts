@@ -16,7 +16,9 @@ const FRAGMENT_PREFIX = '#plan=';
 // Dashboard and MOS catalog artwork re-hydrates from its id on open, so links
 // stay short enough to paste anywhere. Only uploaded icons must carry their
 // own artwork — theirs exists nowhere else.
-export function stripRehydratableArtwork(doc: RoadmapDocument): RoadmapDocument {
+export function stripRehydratableArtwork(
+  doc: RoadmapDocument,
+): RoadmapDocument {
   const next = cloneRoadmap(doc);
   for (const migration of next.migrations) {
     for (const side of [migration.source, migration.replacement]) {

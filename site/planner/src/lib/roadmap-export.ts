@@ -1,12 +1,65 @@
 export type RasterFormat = 'png' | 'webp';
 
-export function serializeRoadmapSvg(svg: SVGSVGElement): string {
+// The three Open Sans faces the graphic draws with. An exported SVG is opened
+// outside this page and a raster export is drawn in an isolated document, so
+// neither can reach the site's own @font-face rules: the brand face has to
+// travel inside the file or the export silently falls back to whatever sans
+// the reader happens to have.
+const BRAND_FACES = [400, 600, 800] as const;
+
+let embeddedFaces: Promise<string> | null = null;
+
+export function brandFontFaceCss(): Promise<string> {
+  embeddedFaces ??= Promise.all(
+    BRAND_FACES.map(async (weight) => {
+      const response = await fetch(`/brand/fonts/open-sans-${weight}.ttf`);
+      if (!response.ok) throw new Error(`Open Sans ${weight} is unavailable.`);
+      const data = base64(await response.arrayBuffer());
+      return `@font-face{font-family:'Open Sans';font-style:normal;font-weight:${weight};src:url(data:font/ttf;base64,${data}) format('truetype')}`;
+    }),
+  )
+    .then((faces) => faces.join(''))
+    .catch(() => {
+      embeddedFaces = null;
+      return '';
+    });
+  return embeddedFaces;
+}
+
+/** The serialized graphic with the brand face embedded, ready to hand to a
+ *  file or to the rasterizer. */
+export async function exportableRoadmapSvg(svg: SVGSVGElement) {
+  return serializeRoadmapSvg(svg, await brandFontFaceCss());
+}
+
+function base64(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+export function serializeRoadmapSvg(
+  svg: SVGSVGElement,
+  fontFaceCss = '',
+): string {
   const copy = svg.cloneNode(true) as SVGSVGElement;
   copy
     .querySelectorAll('[data-preview-only]')
     .forEach((element) => element.remove());
+  // Editor affordances stay in the editor; the user's own label rides in the
+  // aria-label and must not trip the external-reference scan below.
+  copy.removeAttribute('id');
+  for (const node of copy.querySelectorAll('[role="button"]')) {
+    for (const name of ['role', 'tabindex', 'aria-label', 'class'])
+      node.removeAttribute(name);
+  }
   copy.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
   copy.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+  const style = copy.querySelector('style');
+  if (fontFaceCss && style)
+    style.textContent = `${fontFaceCss}${style.textContent ?? ''}`;
   const xml = new XMLSerializer().serializeToString(copy);
   const parsed = new DOMParser().parseFromString(xml, 'image/svg+xml');
   if (parsed.querySelector('parsererror'))
@@ -70,7 +123,7 @@ export async function rasterizeSvg(
   format: RasterFormat,
   filename: string,
 ) {
-  const source = serializeRoadmapSvg(svg);
+  const source = await exportableRoadmapSvg(svg);
   const width = Number(svg.getAttribute('width'));
   const height = Number(svg.getAttribute('height'));
   const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });

@@ -1,6 +1,15 @@
 import type { CategoryIconId } from '@/lib/category-icons';
 import { libraryIconDataUrl } from '@/lib/icon-library';
-import { computeLayout, splitLabel } from '@/lib/roadmap-layout';
+import {
+  BRAND_LABEL,
+  BRAND_NOTE,
+  categoryMarker,
+  legendSecondX,
+  splitLabel,
+  type CategoryMarkerGeometry,
+  type RoadmapLayout,
+  type RoadmapMetrics,
+} from '@/lib/roadmap-layout';
 import {
   chronologicalMigrations,
   formatNodeDate,
@@ -12,7 +21,7 @@ import {
   type RoadmapDocument,
   type ServiceEntry,
 } from '@/lib/roadmap-model';
-import { forwardRef, useMemo } from 'react';
+import { useMemo, type Ref } from 'react';
 import {
   BriefcaseBusiness,
   CalendarDays,
@@ -37,353 +46,391 @@ import {
 
 interface Props {
   document: RoadmapDocument;
+  layout: RoadmapLayout;
+  ref?: Ref<SVGSVGElement>;
   className?: string;
   interactive?: boolean;
   selectedId?: string;
   onSelect?: (id: string) => void;
+  onAdd?: () => void;
 }
 
-export const RoadmapCanvas = forwardRef<SVGSVGElement, Props>(
-  function RoadmapCanvas(
-    { document: doc, className, interactive = false, selectedId, onSelect },
-    ref,
-  ) {
-    const layout = useMemo(() => computeLayout(doc), [doc]);
-    const migrations = useMemo(
-      () => chronologicalMigrations(doc.migrations),
-      [doc.migrations],
-    );
-    const social = layout.height >= 1400;
-    const titleX = layout.header.centered
-      ? layout.width / 2
-      : doc.layout.outerMargin;
-    const titleAnchor = layout.header.centered ? 'middle' : 'start';
-    const topLabelY = layout.topY - 66;
-    const bottomLabelY = layout.bottomY - 66;
-    const categoryY = layout.topY - 106;
-    const selectionTop = doc.metadata.showCategories
-      ? categoryY - 56
-      : layout.topY - 54;
-    const selectionBottom = layout.timelineY + 54;
-    const empty = doc.migrations.length === 0;
+export function RoadmapCanvas({
+  document: doc,
+  layout,
+  ref,
+  className,
+  interactive = false,
+  selectedId,
+  onSelect,
+  onAdd,
+}: Props) {
+  const migrations = useMemo(
+    () => chronologicalMigrations(doc.migrations),
+    [doc.migrations],
+  );
+  const social = layout.social;
+  const type = layout.metrics;
+  const marker = categoryMarker(doc, type);
+  const titleX = layout.header.centered
+    ? layout.width / 2
+    : doc.layout.outerMargin;
+  const titleAnchor = layout.header.centered ? 'middle' : 'start';
+  const topLabelY = layout.topY - type.laneLabelOffset;
+  const bottomLabelY = layout.bottomY - type.laneLabelOffset;
+  const categoryY = layout.topY - type.categoryOffset;
+  const selectionTop =
+    (doc.metadata.showCategories ? categoryY : layout.topY) - 54 * type.scale;
+  const selectionBottom = layout.timelineY + 54 * type.scale;
+  const empty = doc.migrations.length === 0;
 
-    return (
-      <svg
-        ref={ref}
-        id="roadmap-export"
-        className={className}
-        width={layout.width}
-        height={layout.height}
-        viewBox={`0 0 ${layout.width} ${layout.height}`}
-        aria-labelledby="roadmap-title roadmap-description"
-        style={{
-          background: doc.theme.transparent
-            ? 'transparent'
-            : doc.theme.background,
-        }}
-      >
-        <title id="roadmap-title">
-          {doc.metadata.title || 'Digital independence roadmap'}
-        </title>
-        <desc id="roadmap-description">
-          A two-lane roadmap showing Big Tech apps and their open-source
-          alternatives over time.
-        </desc>
-        <defs>
-          <style>{`
-          .rm-text{font-family:Inter,"Segoe UI",Arial,sans-serif}.rm-title{font-size:${social ? 64 : 52}px;font-weight:760;letter-spacing:-1.7px;fill:${doc.theme.text}}.rm-subtitle{font-size:${social ? 22 : 18}px;fill:${doc.theme.secondaryText}}.rm-lane{font-size:14px;font-weight:800;letter-spacing:1.5px;fill:${doc.theme.text}}.rm-category{font-size:${social ? 15 : 12}px;font-weight:760;fill:${doc.theme.text}}.rm-node-label{font-size:${social ? 14 : 13}px;font-weight:620;fill:${doc.theme.secondaryText}}.rm-date{font-size:13px;font-weight:750;fill:${doc.theme.text}}.rm-now{font-size:10px;font-weight:850;letter-spacing:.8px;fill:${doc.theme.timeline}}.rm-legend{font-size:${social ? 22 : 14}px;font-weight:780;fill:${doc.theme.text}}.rm-brand{font-size:${social ? 27 : 18}px;font-weight:760;fill:${doc.theme.text}}.rm-brand-note{font-size:${social ? 16 : 11}px;font-weight:700;letter-spacing:.5px;fill:${doc.theme.secondaryText}}.rm-interactive{cursor:pointer;outline:none}.rm-select-outline{opacity:0;transition:opacity .12s}.rm-interactive:hover .rm-select-outline,.rm-interactive:focus .rm-select-outline{opacity:.55}.rm-select-outline.selected{opacity:.85}
+  return (
+    <svg
+      ref={ref}
+      id="roadmap-export"
+      className={className}
+      width={layout.width}
+      height={layout.height}
+      viewBox={`0 0 ${layout.width} ${layout.height}`}
+      aria-labelledby="roadmap-title roadmap-description"
+      style={{
+        background: doc.theme.transparent
+          ? 'transparent'
+          : doc.theme.background,
+      }}
+    >
+      <title id="roadmap-title">
+        {doc.metadata.title || 'Digital independence roadmap'}
+      </title>
+      <desc id="roadmap-description">
+        A two-lane roadmap showing Big Tech apps and their open-source
+        alternatives over time.
+      </desc>
+      <defs>
+        <style>{`
+          .rm-text{font-family:'Open Sans','Segoe UI',Arial,sans-serif}.rm-interactive:focus-visible .rm-select-outline{opacity:1;stroke-dasharray:none}.rm-title{font-size:${round(type.title)}px;font-weight:800;letter-spacing:${round(-1.7 * type.scale)}px;fill:${doc.theme.text}}.rm-subtitle{font-size:${round(type.subtitle)}px;fill:${doc.theme.secondaryText}}.rm-lane{font-size:${round(type.lane)}px;font-weight:800;letter-spacing:${round(1.5 * type.scale)}px;fill:${doc.theme.text}}.rm-category{font-size:${round(type.category)}px;font-weight:800;fill:${doc.theme.text}}.rm-node-label{font-size:${round(type.nodeLabel)}px;font-weight:600;fill:${doc.theme.secondaryText}}.rm-date{font-size:${round(type.date)}px;font-weight:800;fill:${doc.theme.text}}.rm-now{font-size:${round(type.now)}px;font-weight:800;letter-spacing:.8px;fill:${doc.theme.timeline}}.rm-legend{font-size:${round(type.legend)}px;font-weight:800;fill:${doc.theme.text}}.rm-brand{font-size:${round(type.brand)}px;font-weight:800;fill:${doc.theme.text}}.rm-brand-note{font-size:${round(type.brand * 0.62)}px;font-weight:600;letter-spacing:.5px;fill:${doc.theme.secondaryText}}.rm-interactive{cursor:pointer;outline:none}.rm-select-outline{opacity:0;transition:opacity .12s}.rm-interactive:hover .rm-select-outline,.rm-interactive:focus .rm-select-outline{opacity:.55}.rm-select-outline.selected{opacity:.85}
         `}</style>
-        </defs>
-        {!doc.theme.transparent && (
-          <rect
-            width={layout.width}
-            height={layout.height}
-            fill={doc.theme.background}
+      </defs>
+      {!doc.theme.transparent && (
+        <rect
+          width={layout.width}
+          height={layout.height}
+          fill={doc.theme.background}
+        />
+      )}
+
+      {doc.metadata.showTitle && (
+        <text
+          x={titleX}
+          y={layout.header.titleY}
+          textAnchor={titleAnchor}
+          className="rm-text rm-title"
+        >
+          {doc.metadata.title}
+        </text>
+      )}
+      {doc.metadata.showSubtitle && (
+        <text
+          x={titleX}
+          y={layout.header.subtitleY}
+          textAnchor={titleAnchor}
+          className="rm-text rm-subtitle"
+        >
+          {doc.metadata.subtitle}
+        </text>
+      )}
+
+      {!empty && (
+        <>
+          <text
+            x={doc.layout.outerMargin}
+            y={topLabelY}
+            className="rm-text rm-lane"
+          >
+            {doc.labels.usingNow}
+          </text>
+          <text
+            x={doc.layout.outerMargin}
+            y={bottomLabelY}
+            className="rm-text rm-lane"
+          >
+            {doc.labels.replacedPlanned}
+          </text>
+          <path
+            d={layout.paths.independent}
+            fill="none"
+            stroke={doc.theme.independent}
+            strokeWidth="3"
+            strokeLinecap="round"
           />
-        )}
-
-        {doc.metadata.showTitle && (
-          <text
-            x={titleX}
-            y={layout.header.titleY}
-            textAnchor={titleAnchor}
-            className="rm-text rm-title"
-          >
-            {doc.metadata.title}
-          </text>
-        )}
-        {doc.metadata.showSubtitle && (
-          <text
-            x={titleX}
-            y={layout.header.subtitleY}
-            textAnchor={titleAnchor}
-            className="rm-text rm-subtitle"
-          >
-            {doc.metadata.subtitle}
-          </text>
-        )}
-
-        {!empty && (
-          <>
-            <text
-              x={doc.layout.outerMargin}
-              y={topLabelY}
-              className="rm-text rm-lane"
-            >
-              {doc.labels.usingNow}
-            </text>
-            <text
-              x={doc.layout.outerMargin}
-              y={bottomLabelY}
-              className="rm-text rm-lane"
-            >
-              {doc.labels.replacedPlanned}
-            </text>
-            <path
-              d={layout.paths.independent}
-              fill="none"
-              stroke={doc.theme.independent}
-              strokeWidth="3"
-              strokeLinecap="round"
-            />
-            <path
-              d={layout.paths.proprietary}
-              fill="none"
-              stroke={doc.theme.proprietary}
-              strokeWidth="3"
-              strokeLinecap="round"
-            />
-            {migrations.map((migration, index) => {
-              const entries = laneEntries(migration, doc.timeline.viewDate);
-              const geometry = layout.nodes[index];
-              return (
-                <g
-                  key={migration.id}
-                  className={interactive ? 'rm-interactive' : undefined}
-                  role={interactive ? 'button' : undefined}
-                  tabIndex={interactive ? 0 : undefined}
-                  aria-label={
-                    interactive
-                      ? `Edit ${migration.replacement.label || migration.source.label || migration.timeLabel}`
-                      : undefined
-                  }
-                  onClick={
-                    interactive ? () => onSelect?.(migration.id) : undefined
-                  }
-                  onKeyDown={
-                    interactive
-                      ? (event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            onSelect?.(migration.id);
-                          }
-                        }
-                      : undefined
-                  }
-                >
-                  {interactive && (
-                    <>
-                      <rect
-                        data-preview-only="true"
-                        className={`rm-select-outline ${selectedId === migration.id ? 'selected' : ''}`}
-                        x={
-                          geometry.x -
-                          Math.max(geometry.topWidth, geometry.bottomWidth) /
-                            2 -
-                          15
-                        }
-                        y={selectionTop}
-                        width={
-                          Math.max(geometry.topWidth, geometry.bottomWidth) + 30
-                        }
-                        height={selectionBottom - selectionTop}
-                        rx="22"
-                        fill={doc.theme.timeline}
-                        fillOpacity=".055"
-                        stroke={doc.theme.timeline}
-                        strokeWidth="2"
-                        strokeDasharray="7 7"
-                      />
-                      <rect
-                        data-preview-only="true"
-                        x={
-                          geometry.x -
-                          Math.max(geometry.topWidth, geometry.bottomWidth) /
-                            2 -
-                          15
-                        }
-                        y={selectionTop}
-                        width={
-                          Math.max(geometry.topWidth, geometry.bottomWidth) + 30
-                        }
-                        height={selectionBottom - selectionTop}
-                        rx="22"
-                        fill="transparent"
-                        pointerEvents="all"
-                      />
-                    </>
-                  )}
-                  {doc.metadata.showCategories && (
-                    <CategoryMarker
-                      migration={migration}
-                      x={geometry.x}
-                      y={categoryY}
-                      display={doc.metadata.categoryDisplay}
-                      color={doc.theme.timeline}
-                    />
-                  )}
-                  <RoadmapNode
-                    entry={entries.top}
-                    x={geometry.x}
-                    y={layout.topY}
-                    width={geometry.topWidth}
-                    iconSize={doc.layout.iconSize}
-                    active
-                    category={entries.top.category}
-                    index={`${migration.id}-top`}
-                    theme={doc.theme}
-                  />
-                  <RoadmapNode
-                    entry={entries.bottom}
-                    x={geometry.x}
-                    y={layout.bottomY}
-                    width={geometry.bottomWidth}
-                    iconSize={doc.layout.iconSize}
-                    active={false}
-                    category={entries.bottom.category}
-                    index={`${migration.id}-bottom`}
-                    theme={doc.theme}
-                  />
-                </g>
-              );
-            })}
-
-            <text
-              x={doc.layout.outerMargin}
-              y={layout.timelineY - 16}
-              className="rm-text rm-lane"
-            >
-              {doc.labels.timeline}
-            </text>
-            <line
-              x1={layout.nodes[0].x}
-              y1={layout.timelineY}
-              x2={layout.nodes.at(-1)!.x}
-              y2={layout.timelineY}
-              stroke={doc.theme.secondaryText}
-              strokeOpacity="0.35"
-              strokeWidth="1.5"
-            />
-            {migrations.map((migration, index) => (
-              <g key={`date-${migration.id}`} pointerEvents="none">
-                <circle
-                  cx={layout.nodes[index].x}
-                  cy={layout.timelineY}
-                  r="4"
-                  fill={doc.theme.timeline}
-                />
-                <text
-                  x={layout.nodes[index].x}
-                  y={layout.timelineY + 36}
-                  textAnchor="middle"
-                  className="rm-text rm-date"
-                >
-                  {migrationDisplayLabel(
-                    migration,
-                    doc.timeline.dateDisplay,
-                    doc.timeline.fullDateFormat,
-                  )}
-                </text>
-              </g>
-            ))}
-            {layout.viewMarkerX !== undefined && (
+          <path
+            d={layout.paths.proprietary}
+            fill="none"
+            stroke={doc.theme.proprietary}
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+          {migrations.map((migration, index) => {
+            const entries = laneEntries(migration, doc.timeline.viewDate);
+            const geometry = layout.nodes[index];
+            return (
               <g
-                transform={`translate(${layout.viewMarkerX},${layout.timelineY})`}
+                key={migration.id}
+                className={interactive ? 'rm-interactive' : undefined}
+                role={interactive ? 'button' : undefined}
+                tabIndex={interactive ? 0 : undefined}
+                aria-label={
+                  interactive
+                    ? `Edit ${migration.replacement.label || migration.source.label || migrationDisplayLabel(migration, doc.timeline.fullDateFormat)}`
+                    : undefined
+                }
+                onClick={
+                  interactive ? () => onSelect?.(migration.id) : undefined
+                }
+                onKeyDown={
+                  interactive
+                    ? (event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          onSelect?.(migration.id);
+                        }
+                      }
+                    : undefined
+                }
               >
-                <path d="M 0 -8 L -6 -18 H 6 Z" fill={doc.theme.timeline} />
-                <line
-                  y1="-8"
-                  y2="8"
-                  stroke={doc.theme.timeline}
-                  strokeWidth="2"
+                {interactive && (
+                  <>
+                    <rect
+                      data-preview-only="true"
+                      className={`rm-select-outline ${selectedId === migration.id ? 'selected' : ''}`}
+                      x={
+                        geometry.x -
+                        Math.max(geometry.topWidth, geometry.bottomWidth) / 2 -
+                        15
+                      }
+                      y={selectionTop}
+                      width={
+                        Math.max(geometry.topWidth, geometry.bottomWidth) + 30
+                      }
+                      height={selectionBottom - selectionTop}
+                      rx="22"
+                      fill={doc.theme.timeline}
+                      fillOpacity=".055"
+                      stroke={doc.theme.timeline}
+                      strokeWidth="2"
+                      strokeDasharray="7 7"
+                    />
+                    <rect
+                      data-preview-only="true"
+                      x={
+                        geometry.x -
+                        Math.max(geometry.topWidth, geometry.bottomWidth) / 2 -
+                        15
+                      }
+                      y={selectionTop}
+                      width={
+                        Math.max(geometry.topWidth, geometry.bottomWidth) + 30
+                      }
+                      height={selectionBottom - selectionTop}
+                      rx="22"
+                      fill="transparent"
+                      pointerEvents="all"
+                    />
+                  </>
+                )}
+                {doc.metadata.showCategories && (
+                  <CategoryMarker
+                    migration={migration}
+                    x={geometry.x}
+                    y={categoryY}
+                    display={doc.metadata.categoryDisplay}
+                    color={doc.theme.timeline}
+                    geometry={marker}
+                  />
+                )}
+                <RoadmapNode
+                  entry={entries.top}
+                  x={geometry.x}
+                  y={layout.topY}
+                  width={geometry.topWidth}
+                  iconSize={doc.layout.iconSize}
+                  active
+                  category={entries.top.category}
+                  index={`${migration.id}-top`}
+                  theme={doc.theme}
+                  type={type}
                 />
-                <text y="-25" textAnchor="middle" className="rm-text rm-now">
-                  AS OF{' '}
-                  {formatNodeDate(doc.timeline.viewDate, 'date').toUpperCase()}
-                </text>
+                <RoadmapNode
+                  entry={entries.bottom}
+                  x={geometry.x}
+                  y={layout.bottomY}
+                  width={geometry.bottomWidth}
+                  iconSize={doc.layout.iconSize}
+                  active={false}
+                  category={entries.bottom.category}
+                  index={`${migration.id}-bottom`}
+                  theme={doc.theme}
+                  type={type}
+                />
               </g>
-            )}
+            );
+          })}
 
-            <g
-              transform={`translate(${social ? layout.width / 2 - 215 : doc.layout.outerMargin},${layout.legendY})`}
-            >
-              <circle r={social ? 12 : 9} fill={doc.theme.independent} />
-              <text x={social ? 28 : 22} y={7} className="rm-text rm-legend">
-                {doc.labels.independent}
-              </text>
+          <text
+            x={doc.layout.outerMargin}
+            y={layout.timelineY - type.timelineLabelOffset}
+            className="rm-text rm-lane"
+          >
+            {doc.labels.timeline}
+          </text>
+          <line
+            x1={layout.nodes[0].x}
+            y1={layout.timelineY}
+            x2={layout.nodes.at(-1)!.x}
+            y2={layout.timelineY}
+            stroke={doc.theme.timeline}
+            strokeOpacity="0.45"
+            strokeWidth="1.5"
+          />
+          {migrations.map((migration, index) => (
+            <g key={`date-${migration.id}`} pointerEvents="none">
               <circle
-                cx={social ? 250 : 190}
-                r={social ? 12 : 9}
-                fill={doc.theme.proprietary}
+                cx={layout.nodes[index].x}
+                cy={layout.timelineY}
+                r={4 * type.scale}
+                fill={doc.theme.timeline}
               />
-              <text x={social ? 278 : 212} y={7} className="rm-text rm-legend">
-                {doc.labels.proprietary}
+              <text
+                x={layout.nodes[index].x}
+                y={layout.timelineY + type.dateLabelOffset}
+                textAnchor="middle"
+                className="rm-text rm-date"
+              >
+                {migrationDisplayLabel(migration, doc.timeline.fullDateFormat)}
               </text>
             </g>
-          </>
-        )}
+          ))}
+          {layout.viewMarkerX !== undefined && doc.timeline.viewDate && (
+            <g
+              transform={`translate(${layout.viewMarkerX},${layout.timelineY})`}
+            >
+              <path
+                d={`M 0 ${round(-8 * type.scale)} L ${round(-6 * type.scale)} ${round(-18 * type.scale)} H ${round(6 * type.scale)} Z`}
+                fill={doc.theme.timeline}
+              />
+              <line
+                y1={-8 * type.scale}
+                y2={8 * type.scale}
+                stroke={doc.theme.timeline}
+                strokeWidth={2 * type.scale}
+              />
+              <text
+                y={-25 * type.scale}
+                textAnchor="middle"
+                className="rm-text rm-now"
+              >
+                AS OF{' '}
+                {formatNodeDate(doc.timeline.viewDate, 'date').toUpperCase()}
+              </text>
+            </g>
+          )}
 
-        {empty && (
+          {/* The second swatch clears the first label, which grows with the
+                type, so the pair keeps its spacing at any text size. */}
           <g
-            transform={`translate(${layout.width / 2},${layout.height / 2})`}
-            textAnchor="middle"
+            transform={`translate(${social ? layout.width / 2 - 215 * type.scale : doc.layout.outerMargin},${layout.legendY})`}
           >
-            <circle
-              r="44"
-              fill={doc.theme.independent}
-              fillOpacity="0.08"
-              stroke={doc.theme.independent}
-              strokeWidth="2"
-              strokeDasharray="5 7"
-            />
-            <text y="8" className="rm-text rm-title" style={{ fontSize: 30 }}>
-              +
+            <circle r={type.legendDot} fill={doc.theme.independent} />
+            <text
+              x={type.legendDot + 13 * type.scale}
+              y={7 * type.scale}
+              className="rm-text rm-legend"
+            >
+              {doc.labels.independent}
             </text>
-            <text y="88" className="rm-text rm-subtitle">
-              Add a node to begin your roadmap
+            <circle
+              cx={legendSecondX(doc.labels.independent, type)}
+              r={type.legendDot}
+              fill={doc.theme.proprietary}
+            />
+            <text
+              x={
+                legendSecondX(doc.labels.independent, type) +
+                type.legendDot +
+                13 * type.scale
+              }
+              y={7 * type.scale}
+              className="rm-text rm-legend"
+            >
+              {doc.labels.proprietary}
             </text>
           </g>
-        )}
+        </>
+      )}
 
-        <BrandSignature
-          right={layout.width - doc.layout.outerMargin}
-          centerY={social ? layout.height - 154 : layout.legendY}
-          size={social ? 62 : 40}
-          fontSize={social ? 27 : 18}
-        />
-
-        {doc.layout.showSafeArea && (
-          <rect
-            data-preview-only="true"
-            x={layout.width * 0.08}
-            y={layout.height * 0.08}
-            width={layout.width * 0.84}
-            height={layout.height * 0.84}
-            rx="18"
-            fill="none"
-            stroke={doc.theme.timeline}
+      {empty && (
+        <g
+          transform={`translate(${layout.width / 2},${layout.height / 2})`}
+          textAnchor="middle"
+          className={interactive ? 'rm-interactive' : undefined}
+          role={interactive ? 'button' : undefined}
+          tabIndex={interactive ? 0 : undefined}
+          aria-label={interactive ? 'Add the first node' : undefined}
+          onClick={interactive ? onAdd : undefined}
+          onKeyDown={
+            interactive
+              ? (event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onAdd?.();
+                  }
+                }
+              : undefined
+          }
+        >
+          <circle
+            r="44"
+            fill={doc.theme.independent}
+            fillOpacity="0.08"
+            stroke={doc.theme.independent}
             strokeWidth="2"
-            strokeDasharray="12 10"
-            opacity=".4"
+            strokeDasharray="5 7"
           />
-        )}
-      </svg>
-    );
-  },
-);
+          <text y="8" className="rm-text rm-title" style={{ fontSize: 30 }}>
+            +
+          </text>
+          <text y="88" className="rm-text rm-subtitle">
+            Add a node to begin your roadmap
+          </text>
+        </g>
+      )}
 
-const BRAND_NOTE = 'Plan your digital independence at';
-const BRAND_LABEL = 'myownsuite.org/plan';
+      <BrandSignature
+        right={layout.width - doc.layout.outerMargin}
+        centerY={layout.brandY}
+        size={type.brandMark}
+        fontSize={type.brand}
+      />
+
+      {doc.layout.showSafeArea && (
+        <rect
+          data-preview-only="true"
+          x={layout.width * 0.08}
+          y={layout.height * 0.08}
+          width={layout.width * 0.84}
+          height={layout.height * 0.84}
+          rx="18"
+          fill="none"
+          stroke={doc.theme.timeline}
+          strokeWidth="2"
+          strokeDasharray="12 10"
+          opacity=".4"
+        />
+      )}
+    </svg>
+  );
+}
+
 // Cap height of the semi-bold face, as a share of font size.
 const CAP_RATIO = 0.72;
 
@@ -468,12 +515,14 @@ function CategoryMarker({
   y,
   display,
   color,
+  geometry,
 }: {
   migration: Migration;
   x: number;
   y: number;
   display: RoadmapDocument['metadata']['categoryDisplay'];
   color: string;
+  geometry: CategoryMarkerGeometry;
 }) {
   const Glyph = CATEGORY_ICON_COMPONENTS[migration.categoryIcon] ?? Tag;
   const showIcon = display !== 'text';
@@ -484,7 +533,7 @@ function CategoryMarker({
         <text
           data-category-text="true"
           x={x}
-          y={showIcon ? y - 43 : y - 16}
+          y={y - geometry.textBaseline}
           textAnchor="middle"
           className="rm-text rm-category"
         >
@@ -494,12 +543,12 @@ function CategoryMarker({
       {showIcon && (
         <Glyph
           data-category-icon="true"
-          x={x - 11}
-          y={y - 34}
-          width={22}
-          height={22}
+          x={x - geometry.glyph / 2}
+          y={y - geometry.iconTop}
+          width={geometry.glyph}
+          height={geometry.glyph}
           color={color}
-          strokeWidth={1.8}
+          strokeWidth={1.7}
         />
       )}
     </g>
@@ -516,6 +565,7 @@ function RoadmapNode({
   category,
   index,
   theme,
+  type,
 }: {
   entry: ServiceEntry;
   x: number;
@@ -526,6 +576,7 @@ function RoadmapNode({
   category: Category;
   index: string;
   theme: RoadmapDocument['theme'];
+  type: RoadmapMetrics;
 }) {
   const color =
     category === 'independent' ? theme.independent : theme.proprietary;
@@ -563,7 +614,13 @@ function RoadmapNode({
       ) : (
         <FallbackIcon x={x} y={y} color={color} muted={!active} />
       )}
-      <Label text={entry.label} x={x} y={y + 78} muted={!active} />
+      <Label
+        text={entry.label}
+        x={x}
+        y={y + type.nodeLabelOffset}
+        lineHeight={type.nodeLabelLine}
+        muted={!active}
+      />
     </g>
   );
 }
@@ -603,7 +660,7 @@ function IconImage({
       y={y}
       width={size}
       height={size}
-      opacity={muted ? 0.62 : 1}
+      opacity={muted ? 0.57 : 1}
       preserveAspectRatio="xMidYMid meet"
     />
   );
@@ -621,7 +678,7 @@ function FallbackIcon({
   muted: boolean;
 }) {
   return (
-    <g opacity={muted ? 0.45 : 1}>
+    <g opacity={muted ? 0.4 : 1}>
       <circle cx={x} cy={y} r="17" fill="none" stroke={color} strokeWidth="2" />
       <path
         d={`M${x - 7} ${y}h14M${x} ${y - 7}v14`}
@@ -637,28 +694,34 @@ function Label({
   text,
   x,
   y,
+  lineHeight,
   muted,
 }: {
   text: string;
   x: number;
   y: number;
+  lineHeight: number;
   muted: boolean;
 }) {
   const lines = splitLabel(text);
-  const startY = y - Math.max(0, lines.length - 1) * 8;
+  // A multi-line label stays optically centred on the same point a one-line
+  // label would sit at, so lanes keep their rhythm.
+  const startY = y - (Math.max(0, lines.length - 1) * lineHeight) / 2;
   return (
     <text
       x={x}
       y={startY}
       textAnchor="middle"
       className="rm-text rm-node-label"
-      opacity={muted ? 0.72 : 1}
+      opacity={muted ? 0.67 : 1}
     >
       {lines.map((line, index) => (
-        <tspan key={index} x={x} dy={index ? 17 : 0}>
+        <tspan key={index} x={x} dy={index ? lineHeight : 0}>
           {line}
         </tspan>
       ))}
     </text>
   );
 }
+
+const round = (value: number) => Math.round(value * 10) / 10;

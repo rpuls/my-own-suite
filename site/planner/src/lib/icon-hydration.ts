@@ -1,6 +1,10 @@
 import { createDashboardIcon } from './dashboard-icon-library';
 import { MOS_ICON_PREFIX, createMosAppIcon, mosApps } from './mos-catalog';
-import { cloneRoadmap, type IconRef, type RoadmapDocument } from './roadmap-model';
+import {
+  cloneRoadmap,
+  type IconRef,
+  type RoadmapDocument,
+} from './roadmap-model';
 
 // Dashboard and MOS catalog icons travel by id (in the starter roadmap and in
 // share links) and get their artwork embedded from the first-party staged

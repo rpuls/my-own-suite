@@ -49,6 +49,14 @@ jobs:
         run: npm ci
         working-directory: site/planner
 
+      # Same cache as CI: a deploy must not depend on GitHub serving an 80 MB
+      # sparse fetch of the pinned Dashboard Icons commit.
+      - name: Cache the pinned Dashboard Icons checkout
+        uses: actions/cache@v4
+        with:
+          path: site/planner/.cache/dashboard-icons
+          key: dashboard-icons-${{ hashFiles('site/planner/icon-source.json') }}
+
       # `npm run build` also builds the Digital Independence Planner
       # (site/planner) into site/dist/plan; its prebuild step stages brand
       # assets, the pinned Dashboard Icons set, and the MOS app catalog.

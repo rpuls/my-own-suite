@@ -151,6 +151,168 @@ textarea.input {
 .brand-lockup:hover small {
   color: var(--accent);
 }
+/* -- Roadmap switcher: which plan is open, and how to start another ------- */
+.project-switcher {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+.project-current,
+.project-add {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+  padding: 0 10px;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--mos-radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+.project-current {
+  max-width: 260px;
+}
+.project-current:hover,
+.project-add:hover {
+  border-color: var(--mos-color-accent-border);
+}
+.project-current > svg:first-child {
+  width: 16px;
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+.project-current > span {
+  min-width: 0;
+  text-align: left;
+}
+.project-current small,
+.project-current strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-current small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: var(--mos-weight-bold);
+  letter-spacing: var(--mos-letter-spacing-label);
+}
+.project-current strong {
+  font-size: 12px;
+}
+.project-current > svg:last-child {
+  width: 14px;
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition: transform 0.2s;
+}
+.project-current > svg.rotated {
+  transform: rotate(180deg);
+}
+.project-add {
+  width: 34px;
+  justify-content: center;
+  padding: 0;
+  color: var(--accent);
+}
+.project-add svg {
+  width: 16px;
+}
+/* Solid, not frosted: the frost rule in mos.css — a blur inside the already
+   frosted topbar would silently fail against the wrong backdrop root. */
+.project-popover {
+  position: absolute;
+  top: 42px;
+  left: 0;
+  z-index: 50;
+  width: 300px;
+  padding: var(--mos-space-1);
+  background: var(--bg-soft);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--mos-radius-sm);
+  box-shadow: var(--mos-shadow-strong);
+}
+.project-popover-head {
+  margin: 0;
+  padding: var(--mos-space-2) var(--mos-space-2) var(--mos-space-1);
+  color: var(--quiet-soft);
+  font-size: 9px;
+  font-weight: var(--mos-weight-bold);
+  letter-spacing: var(--mos-letter-spacing-label);
+  text-transform: uppercase;
+}
+.project-list {
+  display: grid;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.project-popover button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--mos-space-2);
+  padding: var(--mos-space-2);
+  border: 0;
+  border-radius: var(--radius-inner);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: var(--mos-weight-semibold);
+  text-align: left;
+}
+.project-popover button:hover:not(:disabled) {
+  background: var(--mos-color-accent-soft);
+}
+.project-popover button:disabled {
+  color: var(--quiet-soft);
+}
+.project-popover button svg {
+  width: 15px;
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+.project-list button > span {
+  min-width: 0;
+}
+.project-list button small,
+.project-popover.new-roadmap button small {
+  display: block;
+  margin-top: 1px;
+  color: var(--quiet-soft);
+  font-size: 10px;
+  font-weight: var(--mos-weight-regular);
+}
+.project-list button.selected {
+  color: var(--accent);
+}
+.project-popover.new-roadmap button {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+}
+.project-popover.new-roadmap button svg {
+  grid-row: 1 / 3;
+  margin-top: 2px;
+}
+.project-actions {
+  display: flex;
+  gap: 2px;
+  margin-top: var(--mos-space-1);
+  padding-top: var(--mos-space-1);
+  border-top: 1px solid var(--mos-color-hairline);
+}
+.project-actions button {
+  justify-content: center;
+  font-size: 11px;
+}
+.project-actions button.danger:not(:disabled) {
+  color: var(--mos-color-danger);
+}
+.project-actions button.danger svg {
+  color: inherit;
+}
+
 .mode-switch {
   display: flex;
   gap: 2px;
@@ -256,6 +418,12 @@ textarea.input {
   height: 13px;
   color: var(--accent);
 }
+.save-state.unsaved {
+  color: var(--mos-color-warning);
+}
+.save-state.unsaved svg {
+  color: inherit;
+}
 .save-state.saving svg {
   animation: pulse 0.8s infinite alternate;
 }
@@ -267,25 +435,20 @@ textarea.input {
   border-radius: var(--mos-radius-sm) 0 0 var(--mos-radius-sm) !important;
   padding-inline: 12px !important;
 }
-.export-menu details {
-  position: relative;
-}
-.export-menu summary {
-  list-style: none;
+.export-more {
   width: 30px;
   height: 2.1rem;
   display: grid;
   place-items: center;
+  padding: 0;
   color: var(--mos-color-button-primary-text);
   background: linear-gradient(160deg, var(--accent), var(--accent-strong));
+  border: 0;
   border-left: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 0 var(--mos-radius-sm) var(--mos-radius-sm) 0;
   cursor: pointer;
 }
-.export-menu summary::-webkit-details-marker {
-  display: none;
-}
-.export-menu summary svg {
+.export-more svg {
   width: 15px;
 }
 /* Solid, not frosted: the frost rule in mos.css — a blur inside the already
@@ -476,7 +639,6 @@ select:focus {
   background: var(--mos-color-frost-strong);
   -webkit-backdrop-filter: var(--mos-frost-filter);
   backdrop-filter: var(--mos-frost-filter);
-  box-shadow: var(--mos-shadow-soft);
   transform: translateX(-50%);
 }
 .canvas-edit-bar span {
@@ -655,6 +817,44 @@ select:focus {
   font-size: 10px;
   font-weight: var(--mos-weight-bold);
 }
+/* Slider row: label and current value on one line, the track under both, an
+   optional line of help under that. */
+.slider-field {
+  margin-bottom: var(--mos-space-3);
+}
+.slider-field > label {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0 var(--mos-space-2);
+}
+.slider-field > label > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: var(--mos-weight-semibold);
+}
+.slider-field output {
+  color: var(--mos-color-text-strong);
+  font-size: 11px;
+  font-weight: var(--mos-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.slider-field .mos-range {
+  grid-column: 1 / -1;
+  margin-top: 5px;
+}
+.slider-field > small,
+.field-note {
+  display: block;
+  margin: 4px 0 0;
+  color: var(--quiet-soft);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.field-note strong {
+  color: var(--muted);
+}
+
 .field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1320,11 +1520,12 @@ select:focus {
   font-size: 10px;
   line-height: 1.4;
 }
-.app-footnote span {
+.app-footnote-promise {
   display: flex;
   align-items: center;
   gap: var(--mos-space-1);
   min-width: 0;
+  flex: 0 0 auto;
 }
 .app-footnote svg {
   width: 12px;
@@ -1445,10 +1646,6 @@ select:focus {
   .roadmap-app {
     height: auto;
     min-height: 100dvh;
-  }
-  .topbar {
-    position: sticky;
-    top: 0;
   }
   .toolbar-actions > button {
     display: none;

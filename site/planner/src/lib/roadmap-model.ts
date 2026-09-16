@@ -4,14 +4,51 @@ export const SCHEMA_VERSION = 1 as const;
 
 export type Category = 'independent' | 'proprietary';
 export type DatePrecision = 'year' | 'quarter' | 'date';
-export type WidthMode = 'fit' | 'auto' | 'manual';
+export type Side = 'source' | 'replacement';
+// Two honest choices: let the canvas hug its content, or pin it to an exact
+// width and let the nodes spread to fill it.
+export type WidthMode = 'auto' | 'fixed';
+
+const DATE_PRECISIONS: DatePrecision[] = ['year', 'quarter', 'date'];
+const WIDTH_MODES: WidthMode[] = ['auto', 'fixed'];
+const ICON_SOURCES: IconRef['source'][] = ['library', 'dashboard', 'upload'];
+
+// What each side of a switch is called wherever the editor names it.
+export const SIDE_NAMES: Record<Side, string> = {
+  source: 'Big Tech',
+  replacement: 'Open Source',
+};
+
+// The settable range of every layout number. The inspector's controls and the
+// validator share these, so a crafted file cannot ask for what a slider cannot.
+export const LAYOUT_RANGES = {
+  width: { min: 760, max: 8000 },
+  height: { min: 640, max: 5000 },
+  outerMargin: { min: 24, max: 300 },
+  nodeSpacing: { min: 8, max: 400 },
+  textScale: { min: 0.8, max: 2.4 },
+  minNodeWidth: { min: 54, max: 280 },
+  iconSize: { min: 24, max: 110 },
+  laneSeparation: { min: 150, max: 650 },
+  curveTension: { min: 0.35, max: 1.4 },
+} as const;
+
+// Hard caps on what a document may hold, so a file or a link can never ask
+// the browser for a canvas or a storage entry it cannot produce.
+export const LIMITS = {
+  migrations: 60,
+  iconsPerSide: 6,
+  text: 200,
+  filename: 80,
+  // A 1.5 MB upload is ~2 MB once base64-encoded.
+  dataUrl: 2_100_000,
+} as const;
 
 export interface IconRef {
   id: string;
   name: string;
   source: 'library' | 'dashboard' | 'upload';
   dataUrl?: string;
-  attribution?: string;
 }
 
 export interface ServiceEntry {
@@ -26,11 +63,13 @@ export interface Migration {
   categoryIcon: CategoryIconId;
   source: ServiceEntry;
   replacement: ServiceEntry;
+  /** ISO date, or empty while the switch has no date yet. */
   date: string;
+  /** How precisely the date is known: the day, or only the quarter or year
+   *  it falls in. */
   datePrecision: DatePrecision;
-  timeLabel: string;
-  useFlexibleDate?: boolean;
-  displayPrecision?: DatePrecision;
+  /** How the date is printed on the graphic; never finer than it is known. */
+  displayPrecision: DatePrecision;
 }
 
 export interface RoadmapDocument {
@@ -52,7 +91,6 @@ export interface RoadmapDocument {
   };
   timeline: {
     viewDate: string;
-    dateDisplay: 'quarter' | 'date';
     fullDateFormat: 'dmy' | 'mdy';
   };
   migrations: Migration[];
@@ -70,9 +108,13 @@ export interface RoadmapDocument {
     width: number;
     height: number;
     outerMargin: number;
-    minNodeGap: number;
-    preferredNodeGap: number;
-    nodeHeight: number;
+    // The horizontal distance between two neighbouring columns, measured
+    // between what is actually drawn — plate edge to plate edge, or label edge
+    // to label edge when a label is the wider part of the column.
+    nodeSpacing: number;
+    // Multiplies every piece of type on the canvas, so a roadmap stays
+    // readable when a blog shrinks it into a narrow column.
+    textScale: number;
     minNodeWidth: number;
     iconSize: number;
     laneSeparation: number;
@@ -113,15 +155,164 @@ export const CANVAS_THEMES: Record<'light' | 'dark', CanvasTheme> = {
 
 // Starter icons reference the Dashboard Icons set staged at build time (no
 // dataUrl yet — the app embeds them on first load, and exports always carry
-// embedded artwork). Ids listed here must stay in the STARTER_ICON_IDS guard
-// in scripts/prepare-assets.mjs.
+// embedded artwork). Every id used here must be listed in starter-icons.json,
+// which the build checks against the staged set.
 const icon = (id: string, name: string): IconRef => ({
   id,
   name,
   source: 'dashboard',
 });
 
+const defaultLabels = (): RoadmapDocument['labels'] => ({
+  usingNow: 'USING NOW',
+  replacedPlanned: 'REPLACED / PLANNED',
+  timeline: 'TIMELINE',
+  independent: 'OPEN SOURCE',
+  proprietary: 'BIG TECH',
+});
+
+const defaultLayout = (): RoadmapDocument['layout'] => ({
+  widthMode: 'auto',
+  width: 2000,
+  height: 900,
+  outerMargin: 72,
+  nodeSpacing: 60,
+  textScale: 1,
+  minNodeWidth: 78,
+  iconSize: 52,
+  laneSeparation: 220,
+  curveTension: 0.72,
+  showSafeArea: false,
+  simulateSquareCrop: false,
+});
+
+// The roadmap a first-time visitor lands on: five switches everyone
+// recognises, a single crossover in the middle, and the light canvas that
+// drops straight into a blog post. Long, personal journeys are a template
+// away — they are what the planner grows into, not what it opens with.
 export const initialRoadmap: RoadmapDocument = {
+  schemaVersion: SCHEMA_VERSION,
+  metadata: {
+    title: 'My digital independence plan',
+    subtitle: 'Five everyday switches from Big Tech to open source.',
+    showTitle: true,
+    showSubtitle: true,
+    showCategories: true,
+    categoryDisplay: 'icon',
+  },
+  labels: defaultLabels(),
+  timeline: {
+    viewDate: todayIsoDate(),
+    fullDateFormat: 'dmy',
+  },
+  migrations: [
+    {
+      id: 'files',
+      categoryLabel: 'Files',
+      categoryIcon: 'folder',
+      date: '2026-01-01',
+      datePrecision: 'quarter',
+      displayPrecision: 'quarter',
+      source: {
+        label: 'Google Drive',
+        category: 'proprietary',
+        icons: [icon('google-drive', 'Google Drive')],
+      },
+      replacement: {
+        label: 'Seafile',
+        category: 'independent',
+        icons: [icon('seafile', 'Seafile')],
+      },
+    },
+    {
+      // Documents follow the drive they live in: moving the files and moving
+      // the editor that opens them is really one switch, so the example keeps
+      // the two side by side.
+      id: 'office',
+      categoryLabel: 'Office',
+      categoryIcon: 'office',
+      date: '2026-04-01',
+      datePrecision: 'quarter',
+      displayPrecision: 'quarter',
+      source: {
+        label: 'Google Docs,\nSheets, Slides',
+        category: 'proprietary',
+        icons: [
+          icon('google-docs', 'Google Docs'),
+          icon('google-sheets', 'Google Sheets'),
+          icon('google-slides', 'Google Slides'),
+        ],
+      },
+      replacement: {
+        label: 'ONLYOFFICE',
+        category: 'independent',
+        icons: [icon('onlyoffice', 'ONLYOFFICE')],
+      },
+    },
+    {
+      id: 'photos',
+      categoryLabel: 'Photos',
+      categoryIcon: 'image',
+      date: '2026-10-01',
+      datePrecision: 'quarter',
+      displayPrecision: 'quarter',
+      source: {
+        label: 'Google Photos',
+        category: 'proprietary',
+        icons: [icon('google-photos', 'Google Photos')],
+      },
+      replacement: {
+        label: 'Immich',
+        category: 'independent',
+        icons: [icon('immich', 'Immich')],
+      },
+    },
+    {
+      id: 'calendar',
+      categoryLabel: 'Calendar',
+      categoryIcon: 'calendar',
+      date: '2027-01-01',
+      datePrecision: 'quarter',
+      displayPrecision: 'quarter',
+      source: {
+        label: 'Google Calendar',
+        category: 'proprietary',
+        icons: [icon('google-calendar', 'Google Calendar')],
+      },
+      replacement: {
+        label: 'Radicale',
+        category: 'independent',
+        icons: [icon('radicale', 'Radicale')],
+      },
+    },
+    {
+      id: 'passwords',
+      categoryLabel: 'Passwords',
+      categoryIcon: 'key',
+      date: '2027-04-01',
+      datePrecision: 'quarter',
+      displayPrecision: 'quarter',
+      source: {
+        label: 'Google Password\nManager',
+        category: 'proprietary',
+        icons: [icon('google-password-manager', 'Google Password Manager')],
+      },
+      replacement: {
+        label: 'Vaultwarden',
+        category: 'independent',
+        icons: [icon('vaultwarden', 'Vaultwarden')],
+      },
+    },
+  ],
+  theme: { ...CANVAS_THEMES.light, transparent: false },
+  layout: defaultLayout(),
+  export: { filename: 'digital-independence-roadmap' },
+};
+
+// A worked, full-length example: eight switches over seven years, on the MOS
+// dark canvas. Offered as a template so the planner can show what a whole
+// journey looks like without making that the first thing anyone edits.
+export const fullJourneyRoadmap: RoadmapDocument = {
   schemaVersion: SCHEMA_VERSION,
   metadata: {
     title: 'My digital independence journey',
@@ -130,18 +321,11 @@ export const initialRoadmap: RoadmapDocument = {
     showTitle: true,
     showSubtitle: true,
     showCategories: true,
-    categoryDisplay: 'text',
+    categoryDisplay: 'icon',
   },
-  labels: {
-    usingNow: 'USING NOW',
-    replacedPlanned: 'REPLACED / PLANNED',
-    timeline: 'TIMELINE',
-    independent: 'OPEN SOURCE',
-    proprietary: 'BIG TECH',
-  },
+  labels: defaultLabels(),
   timeline: {
     viewDate: todayIsoDate(),
-    dateDisplay: 'quarter',
     fullDateFormat: 'dmy',
   },
   migrations: [
@@ -151,8 +335,6 @@ export const initialRoadmap: RoadmapDocument = {
       categoryIcon: 'home',
       date: '2020-01-01',
       datePrecision: 'date',
-      timeLabel: 'Jan 1, 2020',
-      useFlexibleDate: true,
       displayPrecision: 'year',
       source: {
         label: 'SmartThings +\nGoogle Home',
@@ -171,8 +353,6 @@ export const initialRoadmap: RoadmapDocument = {
       categoryIcon: 'image',
       date: '2025-01-01',
       datePrecision: 'date',
-      timeLabel: 'Jan 1, 2025',
-      useFlexibleDate: true,
       displayPrecision: 'year',
       source: {
         label: 'Google Photos',
@@ -191,8 +371,6 @@ export const initialRoadmap: RoadmapDocument = {
       categoryIcon: 'router',
       date: '2026-04-01',
       datePrecision: 'date',
-      timeLabel: 'Apr 1, 2026',
-      useFlexibleDate: true,
       displayPrecision: 'quarter',
       source: {
         label: 'TP-Link',
@@ -211,15 +389,13 @@ export const initialRoadmap: RoadmapDocument = {
       categoryIcon: 'calendar',
       date: '2026-04-01',
       datePrecision: 'date',
-      timeLabel: 'Apr 1, 2026',
-      useFlexibleDate: true,
       displayPrecision: 'quarter',
       source: {
         label: 'Apple Calendar +\nGoogle Calendar',
         category: 'proprietary',
         icons: [
-          // The dark-canvas variant of the monochrome Apple glyph; flipping
-          // the canvas scheme swaps variant pairs like this automatically.
+          // The white variant of the monochrome Apple glyph, for the dark
+          // canvas; flipping the canvas scheme swaps such pairs automatically.
           icon('apple-light', 'Apple Calendar'),
           icon('google-calendar', 'Google Calendar'),
         ],
@@ -236,8 +412,6 @@ export const initialRoadmap: RoadmapDocument = {
       categoryIcon: 'folder',
       date: '2026-07-01',
       datePrecision: 'date',
-      timeLabel: 'Jul 1, 2026',
-      useFlexibleDate: true,
       displayPrecision: 'quarter',
       source: {
         label: 'Google Drive',
@@ -256,8 +430,6 @@ export const initialRoadmap: RoadmapDocument = {
       categoryIcon: 'office',
       date: '2026-07-01',
       datePrecision: 'date',
-      timeLabel: 'Jul 1, 2026',
-      useFlexibleDate: true,
       displayPrecision: 'quarter',
       source: {
         label: 'Google Docs, Sheets,\nand Slides',
@@ -280,13 +452,11 @@ export const initialRoadmap: RoadmapDocument = {
       categoryIcon: 'key',
       date: '2026-09-15',
       datePrecision: 'date',
-      timeLabel: 'Sep 15, 2026',
-      useFlexibleDate: true,
       displayPrecision: 'date',
       source: {
         label: 'Google Password\nManager',
         category: 'proprietary',
-        icons: [icon('google', 'Google Password Manager')],
+        icons: [icon('google-password-manager', 'Google Password Manager')],
       },
       replacement: {
         label: 'Vaultwarden',
@@ -300,8 +470,6 @@ export const initialRoadmap: RoadmapDocument = {
       categoryIcon: 'globe',
       date: '2026-10-01',
       datePrecision: 'date',
-      timeLabel: 'Oct 1, 2026',
-      useFlexibleDate: true,
       displayPrecision: 'quarter',
       source: {
         label: 'Chrome',
@@ -316,35 +484,84 @@ export const initialRoadmap: RoadmapDocument = {
     },
   ],
   theme: { ...CANVAS_THEMES.dark, transparent: false },
-  layout: {
-    widthMode: 'fit',
-    width: 2000,
-    height: 900,
-    outerMargin: 72,
-    minNodeGap: 34,
-    preferredNodeGap: 78,
-    nodeHeight: 76,
-    minNodeWidth: 78,
-    iconSize: 52,
-    laneSeparation: 220,
-    curveTension: 0.72,
-    showSafeArea: false,
-    simulateSquareCrop: false,
-  },
+  layout: defaultLayout(),
   export: { filename: 'digital-independence-roadmap' },
 };
+
+export function blankRoadmap(): RoadmapDocument {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    metadata: {
+      title: 'My digital independence plan',
+      subtitle: 'From Big Tech to open source, one switch at a time.',
+      showTitle: true,
+      showSubtitle: true,
+      showCategories: true,
+      categoryDisplay: 'icon',
+    },
+    labels: defaultLabels(),
+    timeline: {
+      viewDate: todayIsoDate(),
+      fullDateFormat: 'dmy',
+    },
+    migrations: [],
+    theme: { ...CANVAS_THEMES.light, transparent: false },
+    layout: defaultLayout(),
+    export: { filename: 'digital-independence-roadmap' },
+  };
+}
+
+export interface RoadmapTemplate {
+  id: string;
+  name: string;
+  description: string;
+  build: () => RoadmapDocument;
+}
+
+// What the “new roadmap” button offers. The first entry is also what a
+// first-time visitor's library is seeded with.
+export const ROADMAP_TEMPLATES: RoadmapTemplate[] = [
+  {
+    id: 'everyday',
+    name: 'Example roadmap',
+    description: 'Five familiar apps, one crossover — the starting example.',
+    build: () => withFreshViewDate(initialRoadmap),
+  },
+  {
+    id: 'journey',
+    name: 'Full journey',
+    description: 'A longer, worked example on the dark canvas.',
+    build: () => withFreshViewDate(fullJourneyRoadmap),
+  },
+  {
+    id: 'blank',
+    name: 'Blank roadmap',
+    description: 'An empty canvas to build up node by node.',
+    build: blankRoadmap,
+  },
+];
+
+export function templateById(id: string) {
+  return ROADMAP_TEMPLATES.find((template) => template.id === id);
+}
+
+function withFreshViewDate(doc: RoadmapDocument): RoadmapDocument {
+  const copy = cloneRoadmap(doc);
+  copy.timeline.viewDate = todayIsoDate();
+  return copy;
+}
 
 export const presets = {
   blogLandscape: {
     label: 'Blog landscape',
+    description: 'Fits the roadmap; drops into a post.',
     apply(doc: RoadmapDocument): RoadmapDocument {
       return {
         ...doc,
         metadata: { ...doc.metadata, showTitle: true, showSubtitle: true },
         layout: {
           ...doc.layout,
-          widthMode: 'fit',
-          width: 2000,
+          widthMode: 'auto',
           height: 900,
           showSafeArea: false,
           simulateSquareCrop: false,
@@ -354,13 +571,14 @@ export const presets = {
   },
   squareSocial: {
     label: 'Square social',
+    description: '2000 × 2000 with the safe area shown.',
     apply(doc: RoadmapDocument): RoadmapDocument {
       return {
         ...doc,
         metadata: { ...doc.metadata, showTitle: true, showSubtitle: true },
         layout: {
           ...doc.layout,
-          widthMode: 'fit',
+          widthMode: 'fixed',
           width: 2000,
           height: 2000,
           showSafeArea: true,
@@ -375,11 +593,39 @@ export function cloneRoadmap(value: RoadmapDocument): RoadmapDocument {
   return JSON.parse(JSON.stringify(value)) as RoadmapDocument;
 }
 
+// A side's label follows its icons ("Google Docs +\nSheets") until the owner
+// types a label of their own, after which the icons stop touching it.
+export function appLabel(names: string[]) {
+  return names.join(' +\n');
+}
+
+/** Adds an icon to a side; false when the side is full. */
+export function addIconToEntry(entry: ServiceEntry, icon: IconRef) {
+  if (entry.icons.length >= LIMITS.iconsPerSide) return false;
+  const names = entry.icons.map((item) => item.name);
+  const follows = !entry.label || entry.label === appLabel(names);
+  entry.icons.push(icon);
+  if (follows) entry.label = appLabel([...names, icon.name]);
+  return true;
+}
+
+export function removeIconFromEntry(entry: ServiceEntry, index: number) {
+  const follows = entry.label === appLabel(entry.icons.map((i) => i.name));
+  entry.icons.splice(index, 1);
+  if (follows) entry.label = appLabel(entry.icons.map((i) => i.name));
+}
+
+/** The first day a switch counts as done: its date when the day is known,
+ *  otherwise the day after the quarter or year it is placed in ends. */
+export function migrationReachedOn(migration: Migration): string {
+  if (!migration.date) return '';
+  if (migration.datePrecision === 'date') return migration.date;
+  return dayAfter(periodEndDate(migration.date, migration.datePrecision));
+}
+
 export function migrationIsReached(migration: Migration, viewDate: string) {
-  if (!migration.date || !viewDate) return false;
-  if (!migration.useFlexibleDate || migration.datePrecision === 'date')
-    return migration.date <= viewDate;
-  return periodEndDate(migration.date, migration.datePrecision) < viewDate;
+  const reachedOn = migrationReachedOn(migration);
+  return Boolean(reachedOn && viewDate) && reachedOn <= viewDate;
 }
 
 export function laneEntries(migration: Migration, viewDate: string) {
@@ -389,18 +635,28 @@ export function laneEntries(migration: Migration, viewDate: string) {
     : { top: migration.source, bottom: migration.replacement };
 }
 
+// Left to right in the order the switches happen. Sorting by the day each
+// one counts as done means the done ones are always a prefix of the row, so
+// the lanes cross exactly once whatever mix of precisions is in play. Nodes
+// that become done on the same day keep the order they were put in, which is
+// what the “earlier / later” controls adjust; undated nodes go last.
 export function chronologicalMigrations(migrations: Migration[]) {
   return migrations
     .map((migration, index) => ({ migration, index }))
     .sort((a, b) => {
-      const aDate = migrationPositionDate(a.migration);
-      const bDate = migrationPositionDate(b.migration);
-      if (!aDate && !bDate) return a.index - b.index;
-      if (!aDate) return 1;
-      if (!bDate) return -1;
-      return aDate.localeCompare(bDate) || a.index - b.index;
+      const aOn = migrationReachedOn(a.migration);
+      const bOn = migrationReachedOn(b.migration);
+      if (!aOn && !bOn) return a.index - b.index;
+      if (!aOn) return 1;
+      if (!bOn) return -1;
+      return aOn.localeCompare(bOn) || a.index - b.index;
     })
     .map(({ migration }) => migration);
+}
+
+/** Nodes that share this key are tied in time and can be reordered by hand. */
+export function migrationOrderKey(migration: Migration) {
+  return migrationReachedOn(migration) || `unset:${migration.id}`;
 }
 
 // Which of the two schemes a canvas background is closest to, so icon
@@ -410,7 +666,9 @@ export function canvasSchemeFor(background: string): 'light' | 'dark' {
   if (!hex) return 'light';
   const value = Number.parseInt(hex, 16);
   const luminance =
-    0.299 * (value >> 16) + 0.587 * ((value >> 8) & 0xff) + 0.114 * (value & 0xff);
+    0.299 * (value >> 16) +
+    0.587 * ((value >> 8) & 0xff) +
+    0.114 * (value & 0xff);
   return luminance < 128 ? 'dark' : 'light';
 }
 
@@ -420,8 +678,21 @@ export function todayIsoDate() {
   return local.toISOString().slice(0, 10);
 }
 
+/** A real calendar day written YYYY-MM-DD. */
+export function isIsoDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  return (
+    probe.getUTCFullYear() === year &&
+    probe.getUTCMonth() === month - 1 &&
+    probe.getUTCDate() === day
+  );
+}
+
 export function formatNodeDate(date: string, precision: DatePrecision) {
-  if (!date) return 'Set date';
+  if (!isIsoDate(date)) return 'Set date';
   const [year, month, day] = date.split('-').map(Number);
   if (precision === 'year') return String(year);
   if (precision === 'quarter')
@@ -434,18 +705,11 @@ export function formatNodeDate(date: string, precision: DatePrecision) {
   }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
-export function migrationDisplayPrecision(migration: Migration) {
-  return migration.useFlexibleDate
-    ? migration.displayPrecision || migration.datePrecision
-    : undefined;
-}
-
 export function migrationDisplayLabel(
   migration: Migration,
-  fallback: 'quarter' | 'date',
   fullDateFormat: 'dmy' | 'mdy' = 'dmy',
 ) {
-  const precision = migrationDisplayPrecision(migration) || fallback;
+  const precision = migration.displayPrecision;
   if (precision === 'date' && migration.datePrecision !== 'date')
     return 'Set exact date';
   if (precision === 'date')
@@ -454,33 +718,11 @@ export function migrationDisplayLabel(
 }
 
 export function formatFullDate(date: string, order: 'dmy' | 'mdy') {
-  if (!date) return 'Set date';
+  if (!isIsoDate(date)) return 'Set date';
   const [year, month, day] = date.split('-');
   return order === 'dmy'
     ? `${day}/${month}/${year}`
     : `${month}/${day}/${year}`;
-}
-
-export function migrationPeriodKey(migration: Migration) {
-  const precision = migrationDisplayPrecision(migration) || 'date';
-  if (!migration.date) return `unset:${migration.id}`;
-  if (precision === 'year') return `year:${migration.date.slice(0, 4)}`;
-  if (precision === 'quarter')
-    return `quarter:${formatNodeDate(migration.date, 'quarter')}`;
-  return `date:${migration.date}`;
-}
-
-function migrationPositionDate(migration: Migration) {
-  const precision = migrationDisplayPrecision(migration);
-  if (!migration.date || !precision || precision === 'date')
-    return migration.date;
-  if (precision === 'year') return `${migration.date.slice(0, 4)}-01-01`;
-  const year = Number(migration.date.slice(0, 4));
-  const month = Number(migration.date.slice(5, 7));
-  return quarterStartDate(
-    year,
-    (Math.floor((month - 1) / 3) + 1) as 1 | 2 | 3 | 4,
-  );
 }
 
 function periodEndDate(date: string, precision: DatePrecision) {
@@ -488,12 +730,17 @@ function periodEndDate(date: string, precision: DatePrecision) {
   if (precision === 'year') return `${year}-12-31`;
   if (precision === 'quarter') {
     const month = Number(date.slice(5, 7));
-    const quarter = Math.floor((month - 1) / 3) + 1;
-    const endMonth = quarter * 3;
+    const endMonth = (Math.floor((month - 1) / 3) + 1) * 3;
     const lastDay = new Date(Date.UTC(year, endMonth, 0)).getUTCDate();
     return `${year}-${String(endMonth).padStart(2, '0')}-${lastDay}`;
   }
   return date;
+}
+
+function dayAfter(date: string) {
+  const next = new Date(`${date}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString().slice(0, 10);
 }
 
 export function quarterStartDate(year: number, quarter: 1 | 2 | 3 | 4) {
@@ -514,203 +761,259 @@ export function createMigration(): Migration {
     categoryIcon: 'tag',
     date: '',
     datePrecision: 'date',
-    timeLabel: 'Set date',
-    useFlexibleDate: true,
     displayPrecision: 'quarter',
     source: { label: '', category: 'proprietary', icons: [] },
     replacement: { label: '', category: 'independent', icons: [] },
   };
 }
 
+// Anything that reaches the editor from outside — a JSON file, a share link,
+// this browser's own storage — comes through here. The shape is checked, and
+// every field is then rebuilt from what was given with defaults, caps and
+// ranges applied, so a document that validates can always be laid out, drawn,
+// stored and shared without a further check anywhere.
 export function validateRoadmap(
   input: unknown,
 ): { ok: true; value: RoadmapDocument } | { ok: false; errors: string[] } {
-  const errors: string[] = [];
-  if (!input || typeof input !== 'object')
+  if (!isRecord(input))
     return {
       ok: false,
       errors: ['The file does not contain a roadmap object.'],
     };
-  const raw = input as Record<string, unknown>;
-  if (raw.schemaVersion !== SCHEMA_VERSION)
+  const errors: string[] = [];
+  if (input.schemaVersion !== SCHEMA_VERSION)
     errors.push(
-      `Unsupported schema version “${String(raw.schemaVersion)}”. This app supports version ${SCHEMA_VERSION}.`,
+      `Unsupported schema version “${String(input.schemaVersion)}”. This app supports version ${SCHEMA_VERSION}.`,
     );
-  if (!raw.metadata || typeof raw.metadata !== 'object')
-    errors.push('Roadmap metadata is missing.');
-  if (!Array.isArray(raw.migrations))
+  if (!Array.isArray(input.migrations))
     errors.push('The migrations list is missing.');
+  else if (input.migrations.length > LIMITS.migrations)
+    errors.push(
+      `This roadmap has ${input.migrations.length} nodes; the planner supports up to ${LIMITS.migrations}.`,
+    );
   else
-    raw.migrations.forEach((item, index) => {
-      if (!item || typeof item !== 'object') {
-        errors.push(`Migration ${index + 1} is not an object.`);
-        return;
-      }
-      const row = item as Record<string, unknown>;
-      if (typeof row.id !== 'string' || !row.id)
-        errors.push(`Migration ${index + 1} needs a stable id.`);
-      for (const side of ['source', 'replacement'] as const) {
-        const service = row[side] as Record<string, unknown> | undefined;
-        if (!service || typeof service.label !== 'string')
-          errors.push(`Migration ${index + 1} needs a ${side} label.`);
-        if (
-          service &&
-          !['independent', 'proprietary'].includes(String(service.category))
-        )
-          errors.push(
-            `Migration ${index + 1} has an invalid ${side} category.`,
-          );
-        if (service && !Array.isArray(service.icons))
-          errors.push(
-            `Migration ${index + 1} has an invalid ${side} icon list.`,
-          );
-      }
+    input.migrations.forEach((item, index) => {
+      if (
+        !isRecord(item) ||
+        !isRecord(item.source) ||
+        !isRecord(item.replacement)
+      )
+        errors.push(`Node ${index + 1} is not a roadmap node.`);
     });
   if (errors.length) return { ok: false, errors };
-  // Start with current defaults so unknown future fields are ignored without
-  // making older files lose newly introduced optional settings.
-  const value = raw as unknown as RoadmapDocument;
-  const normalized = {
-    ...cloneRoadmap(initialRoadmap),
-    ...value,
-    metadata: { ...initialRoadmap.metadata, ...value.metadata },
-    labels: { ...initialRoadmap.labels, ...value.labels },
-    timeline: { ...initialRoadmap.timeline, ...value.timeline },
-    theme: { ...initialRoadmap.theme, ...value.theme },
-    layout: { ...initialRoadmap.layout, ...value.layout },
-    export: { ...initialRoadmap.export, ...value.export },
+
+  const base = initialRoadmap;
+  const metadata = field(input.metadata);
+  const labels = field(input.labels);
+  const timeline = field(input.timeline);
+  const theme = field(input.theme);
+  const layout = field(input.layout);
+  const exportSettings = field(input.export);
+  const seenIds = new Set<string>();
+
+  const value: RoadmapDocument = {
+    schemaVersion: SCHEMA_VERSION,
+    metadata: {
+      title: text(metadata.title, base.metadata.title),
+      subtitle: text(metadata.subtitle, base.metadata.subtitle),
+      showTitle: flag(metadata.showTitle, base.metadata.showTitle),
+      showSubtitle: flag(metadata.showSubtitle, base.metadata.showSubtitle),
+      showCategories: flag(
+        metadata.showCategories,
+        base.metadata.showCategories,
+      ),
+      categoryDisplay: oneOf(
+        metadata.categoryDisplay,
+        ['text', 'icon', 'both'],
+        base.metadata.categoryDisplay,
+      ),
+    },
+    labels: {
+      usingNow: text(labels.usingNow, base.labels.usingNow),
+      replacedPlanned: text(
+        labels.replacedPlanned,
+        base.labels.replacedPlanned,
+      ),
+      timeline: text(labels.timeline, base.labels.timeline),
+      independent: text(labels.independent, base.labels.independent),
+      proprietary: text(labels.proprietary, base.labels.proprietary),
+    },
+    timeline: {
+      viewDate: isIsoDate(timeline.viewDate)
+        ? timeline.viewDate
+        : todayIsoDate(),
+      fullDateFormat: oneOf(
+        timeline.fullDateFormat,
+        ['dmy', 'mdy'],
+        base.timeline.fullDateFormat,
+      ),
+    },
+    migrations: (input.migrations as Record<string, unknown>[]).map((item) => {
+      const id =
+        typeof item.id === 'string' && item.id && !seenIds.has(item.id)
+          ? item.id
+          : uniqueId();
+      seenIds.add(id);
+      const datePrecision = oneOf(item.datePrecision, DATE_PRECISIONS, 'date');
+      return {
+        id,
+        categoryLabel: text(item.categoryLabel, ''),
+        categoryIcon: oneOf(
+          item.categoryIcon,
+          CATEGORY_ICONS.map((option) => option.id),
+          'tag',
+        ),
+        date: isIsoDate(item.date) ? item.date : '',
+        datePrecision,
+        displayPrecision: oneOf(
+          item.displayPrecision,
+          DATE_PRECISIONS,
+          'quarter',
+        ),
+        source: service(item.source as Record<string, unknown>, 'proprietary'),
+        replacement: service(
+          item.replacement as Record<string, unknown>,
+          'independent',
+        ),
+      };
+    }),
+    theme: {
+      background: color(theme.background, base.theme.background),
+      text: color(theme.text, base.theme.text),
+      secondaryText: color(theme.secondaryText, base.theme.secondaryText),
+      independent: color(theme.independent, base.theme.independent),
+      proprietary: color(theme.proprietary, base.theme.proprietary),
+      timeline: color(theme.timeline, base.theme.timeline),
+      transparent: flag(theme.transparent, base.theme.transparent),
+    },
+    layout: {
+      widthMode: oneOf(layout.widthMode, WIDTH_MODES, base.layout.widthMode),
+      width: number(layout.width, LAYOUT_RANGES.width, base.layout.width),
+      height: number(layout.height, LAYOUT_RANGES.height, base.layout.height),
+      outerMargin: number(
+        layout.outerMargin,
+        LAYOUT_RANGES.outerMargin,
+        base.layout.outerMargin,
+      ),
+      nodeSpacing: number(
+        layout.nodeSpacing,
+        LAYOUT_RANGES.nodeSpacing,
+        base.layout.nodeSpacing,
+      ),
+      textScale: number(
+        layout.textScale,
+        LAYOUT_RANGES.textScale,
+        base.layout.textScale,
+      ),
+      minNodeWidth: number(
+        layout.minNodeWidth,
+        LAYOUT_RANGES.minNodeWidth,
+        base.layout.minNodeWidth,
+      ),
+      iconSize: number(
+        layout.iconSize,
+        LAYOUT_RANGES.iconSize,
+        base.layout.iconSize,
+      ),
+      laneSeparation: number(
+        layout.laneSeparation,
+        LAYOUT_RANGES.laneSeparation,
+        base.layout.laneSeparation,
+      ),
+      curveTension: number(
+        layout.curveTension,
+        LAYOUT_RANGES.curveTension,
+        base.layout.curveTension,
+      ),
+      showSafeArea: flag(layout.showSafeArea, base.layout.showSafeArea),
+      simulateSquareCrop: flag(
+        layout.simulateSquareCrop,
+        base.layout.simulateSquareCrop,
+      ),
+    },
+    export: { filename: safeFilename(exportSettings.filename) },
   };
-  normalized.metadata.showCategories =
-    typeof value.metadata.showCategories === 'boolean'
-      ? value.metadata.showCategories
-      : initialRoadmap.metadata.showCategories;
-  normalized.metadata.categoryDisplay = ['text', 'icon', 'both'].includes(
-    value.metadata.categoryDisplay,
-  )
-    ? value.metadata.categoryDisplay
-    : initialRoadmap.metadata.categoryDisplay;
-  normalized.timeline.dateDisplay = ['quarter', 'date'].includes(
-    value.timeline?.dateDisplay,
-  )
-    ? value.timeline!.dateDisplay
-    : initialRoadmap.timeline.dateDisplay;
-  normalized.timeline.fullDateFormat = ['dmy', 'mdy'].includes(
-    value.timeline?.fullDateFormat,
-  )
-    ? value.timeline!.fullDateFormat
-    : initialRoadmap.timeline.fullDateFormat;
-  delete (
-    normalized.theme as RoadmapDocument['theme'] & {
-      emphasized?: unknown;
-    }
-  ).emphasized;
-  normalized.migrations = normalized.migrations.map((migration) => {
-    const result: Migration = {
-      ...migration,
-      categoryLabel:
-        typeof migration.categoryLabel === 'string'
-          ? migration.categoryLabel
-          : inferredCategory(migration),
-      categoryIcon: CATEGORY_ICONS.some(
-        (option) => option.id === migration.categoryIcon,
-      )
-        ? migration.categoryIcon
-        : inferredCategoryIcon(migration),
-      ...normalizedMigrationDate(migration, normalized.timeline.viewDate),
-      source: { ...migration.source, category: 'proprietary' as const },
-      replacement: {
-        ...migration.replacement,
-        category: 'independent' as const,
-      },
+  return { ok: true, value };
+}
+
+export function safeFilename(value: unknown) {
+  const cleaned =
+    typeof value === 'string'
+      ? value
+          .replace(/[^a-zA-Z0-9._-]/g, '-')
+          .replace(/^[.-]+/, '')
+          .slice(0, LIMITS.filename)
+      : '';
+  return cleaned || 'roadmap';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function field(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+function text(value: unknown, fallback: string) {
+  return typeof value === 'string' ? value.slice(0, LIMITS.text) : fallback;
+}
+
+function flag(value: unknown, fallback: boolean) {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function oneOf<T extends string>(
+  value: unknown,
+  options: readonly T[],
+  fallback: T,
+): T {
+  return options.includes(value as T) ? (value as T) : fallback;
+}
+
+function number(
+  value: unknown,
+  range: { min: number; max: number },
+  fallback: number,
+) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(range.max, Math.max(range.min, value))
+    : fallback;
+}
+
+function color(value: unknown, fallback: string) {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value.trim())
+    ? value.trim().toLowerCase()
+    : fallback;
+}
+
+// Artwork is only ever an inline image: a remote address here would make the
+// recipient of a link fetch it, which is exactly what the planner promises
+// never happens. Anything else is dropped; catalog icons re-embed from their
+// id and an upload without artwork draws the fallback glyph.
+const INLINE_IMAGE = /^data:image\/(png|jpeg|webp|svg\+xml)[;,]/i;
+
+function service(
+  value: Record<string, unknown>,
+  category: Category,
+): ServiceEntry {
+  const icons: IconRef[] = [];
+  for (const raw of Array.isArray(value.icons) ? value.icons : []) {
+    if (icons.length >= LIMITS.iconsPerSide) break;
+    if (!isRecord(raw) || typeof raw.id !== 'string' || !raw.id) continue;
+    const source = oneOf(raw.source, ICON_SOURCES, 'dashboard');
+    const icon: IconRef = {
+      id: raw.id.slice(0, LIMITS.text),
+      name: text(raw.name, raw.id),
+      source,
     };
-    result.useFlexibleDate = true;
-    result.displayPrecision = ['year', 'quarter', 'date'].includes(
-      String(migration.displayPrecision),
+    if (
+      typeof raw.dataUrl === 'string' &&
+      raw.dataUrl.length <= LIMITS.dataUrl &&
+      INLINE_IMAGE.test(raw.dataUrl)
     )
-      ? migration.displayPrecision
-      : normalized.timeline.dateDisplay;
-    delete (result as Migration & { emphasized?: unknown }).emphasized;
-    return result;
-  });
-  return { ok: true, value: normalized };
-}
-
-function inferredCategory(migration: Migration) {
-  const known: Record<string, string> = {
-    home: 'Smart home',
-    photos: 'Photos',
-    network: 'Router',
-    calendar: 'Calendar',
-    files: 'Files',
-    office: 'Office',
-    passwords: 'Passwords',
-    browser: 'Browser',
-  };
-  return known[migration.id] || '';
-}
-
-function inferredCategoryIcon(migration: Migration): CategoryIconId {
-  const known: Record<string, CategoryIconId> = {
-    home: 'home',
-    photos: 'image',
-    network: 'router',
-    calendar: 'calendar',
-    files: 'folder',
-    office: 'office',
-    passwords: 'key',
-    browser: 'globe',
-  };
-  return known[migration.id] || 'tag';
-}
-
-function normalizedMigrationDate(migration: Migration, viewDate: string) {
-  if (migration.date) {
-    const precision =
-      migration.useFlexibleDate &&
-      ['year', 'quarter', 'date'].includes(migration.datePrecision)
-        ? migration.datePrecision
-        : ('date' as const);
-    return {
-      date: migration.date,
-      datePrecision: precision,
-      timeLabel: formatNodeDate(migration.date, precision),
-    };
+      icon.dataUrl = raw.dataUrl;
+    icons.push(icon);
   }
-  const legacy = parseLegacyDate(migration.timeLabel);
-  const legacyStatus = (migration as unknown as { status?: string }).status;
-  if (
-    legacy.date &&
-    legacy.date <= viewDate &&
-    (legacyStatus === 'planned' || legacyStatus === 'current')
-  ) {
-    const nextDay = new Date(`${viewDate}T00:00:00Z`);
-    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-    legacy.date = nextDay.toISOString().slice(0, 10);
-  }
-  return {
-    date: legacy.date,
-    datePrecision: 'date' as const,
-    timeLabel: legacy.date ? formatNodeDate(legacy.date, 'date') : 'Set date',
-  };
-}
-
-function parseLegacyDate(label: string): {
-  date: string;
-  datePrecision: DatePrecision;
-} {
-  const quarter = label?.match(/^(\d{4})\s*Q([1-4])$/i);
-  if (quarter)
-    return {
-      date: `${quarter[1]}-${String((Number(quarter[2]) - 1) * 3 + 1).padStart(2, '0')}-01`,
-      datePrecision: 'quarter',
-    };
-  const year = label?.match(/^(\d{4})$/);
-  if (year) return { date: `${year[1]}-01-01`, datePrecision: 'year' };
-  const parsed = Date.parse(label);
-  if (Number.isFinite(parsed))
-    return {
-      date: new Date(parsed).toISOString().slice(0, 10),
-      datePrecision: 'date',
-    };
-  return { date: '', datePrecision: 'date' };
+  return { label: text(value.label, ''), category, icons };
 }

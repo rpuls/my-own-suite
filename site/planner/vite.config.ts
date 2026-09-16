@@ -19,9 +19,6 @@ export default defineConfig({
       apply: 'serve',
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
-          // Site-root brand URLs (/brand/... in JSX and in the synced mos.css)
-          // are served by the Astro site in dev and by the deployed site in
-          // production. Standalone, map them onto the planner's staged copy.
           if (req.url?.startsWith('/brand/')) req.url = `/plan${req.url}`;
           // Match the deployed site's directory redirect, so a typed /plan
           // lands on the app instead of Vite's base-mismatch 404.

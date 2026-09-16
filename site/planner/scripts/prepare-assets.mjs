@@ -26,31 +26,12 @@ const repoRoot = path.resolve(siteRoot, '..');
 const require = createRequire(import.meta.url);
 const { syncBranding } = require(path.join(repoRoot, 'scripts', 'sync-branding.cjs'));
 
-// Keep in sync with the icon ids referenced by initialRoadmap in
-// src/lib/roadmap-model.ts — a starter graphic with silent icon holes would
-// ship broken without this guard.
-const STARTER_ICON_IDS = [
-  'google-home',
-  'home-assistant',
-  'google-photos',
-  'immich',
-  'tp-link',
-  'opnsense',
-  'apple',
-  'apple-light',
-  'google-calendar',
-  'radicale',
-  'google-drive',
-  'seafile',
-  'google-docs',
-  'google-sheets',
-  'google-slides',
-  'onlyoffice',
-  'google',
-  'vaultwarden',
-  'google-chrome',
-  'firefox',
-];
+// The icon ids the built-in roadmap templates reference; a unit test holds
+// the list to src/lib/roadmap-model.ts. A starter graphic with silent icon
+// holes would ship broken without this guard.
+const STARTER_ICON_IDS = JSON.parse(
+  fs.readFileSync(path.join(plannerRoot, 'src', 'lib', 'starter-icons.json'), 'utf8'),
+).icons;
 
 function stageBrandAssets() {
   syncBranding();
@@ -76,11 +57,12 @@ function stageDashboardIcons() {
 
   const destination = path.join(plannerRoot, 'public', 'dashboard-icons');
   const markerPath = path.join(destination, '.staged');
+  const checkout = path.join(plannerRoot, '.cache', 'dashboard-icons', commit);
+  pruneOtherCheckouts(checkout);
   if (fs.existsSync(markerPath) && fs.readFileSync(markerPath, 'utf8') === stamp) {
     return { commit, skipped: true };
   }
 
-  const checkout = path.join(plannerRoot, '.cache', 'dashboard-icons', commit);
   const checkoutReady = fs.existsSync(path.join(checkout, 'metadata.json'));
   if (!checkoutReady) {
     fs.rmSync(checkout, { recursive: true, force: true });
@@ -104,9 +86,10 @@ function stageDashboardIcons() {
     const svgSource = path.join(checkout, 'svg', `${id}.svg`);
     if (!fs.existsSync(svgSource)) continue;
     fs.copyFileSync(svgSource, path.join(destination, 'svg', `${id}.svg`));
-    // Monochrome logos ship per-scheme variants (upstream `colors` maps canvas
-    // scheme → icon id); stage the variant files too so the planner can swap
-    // them when the canvas flips. Denylisting a variant id strips just it.
+    // Monochrome logos ship colour variants (upstream `colors` maps the
+    // variant's own colour → icon id: `light` is the light-coloured file);
+    // stage them too so the planner can swap when the canvas flips.
+    // Denylisting a variant id strips just it.
     const colors = {};
     for (const [scheme, variantId] of Object.entries(entry.colors ?? {})) {
       if (!['light', 'dark'].includes(scheme) || typeof variantId !== 'string') continue;
@@ -129,12 +112,20 @@ function stageDashboardIcons() {
   if (missing.length) {
     throw new Error(
       `Starter roadmap icons missing from the staged Dashboard Icons set: ${missing.join(', ')}. ` +
-        'Update initialRoadmap in src/lib/roadmap-model.ts or the pinned commit in icon-source.json.',
+        'Update src/lib/starter-icons.json or the pinned commit in icon-source.json.',
     );
   }
 
   fs.writeFileSync(markerPath, stamp);
   return { commit, count: Object.keys(staged).length, skipped: false };
+}
+
+// Checkouts of earlier pins are dead weight (~80 MB each).
+function pruneOtherCheckouts(checkout) {
+  const parent = path.dirname(checkout);
+  if (!fs.existsSync(parent)) return;
+  for (const entry of fs.readdirSync(parent))
+    if (entry !== path.basename(checkout)) fs.rmSync(path.join(parent, entry), { recursive: true, force: true });
 }
 
 function stageMosCatalog() {

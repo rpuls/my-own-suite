@@ -1,0 +1,8 @@
+# Cloudflare Pages response headers. Only content-hashed build output is
+# marked immutable; everything else (pages, the planner's icon set) keeps the
+# platform default so a redeploy is picked up on the next request.
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/plan/assets/*
+  Cache-Control: public, max-age=31536000, immutable
