@@ -19,7 +19,7 @@ Those services see the ordinary metadata any download involves: your server's ad
 
 ## This website
 
-The landing page uses [Umami](https://umami.is/), an open-source analytics tool we host ourselves, to count visits anonymously: no cookies, no cross-site tracking, no personal profiles, and the numbers stay on our own instance. The docs pages you're reading have no analytics at all.
+The landing page and the [Digital Independence Planner](/plan/) use [Umami](https://umami.is/), an open-source analytics tool we host ourselves, to count visits anonymously: no cookies, no cross-site tracking, no personal profiles, and the numbers stay on our own instance. The planner counts the page view only; the roadmap you build there stays in your browser and is never sent anywhere. The docs pages you're reading have no analytics at all.
 
 ## The apps are a different story — please read this part
 

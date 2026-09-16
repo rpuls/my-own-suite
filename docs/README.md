@@ -7,6 +7,7 @@ This folder holds durable project memory: architectural decisions, documentation
 | Need | Source of truth |
 | --- | --- |
 | Product and end-user documentation | `site/` |
+| Public site build, dev servers, and the Digital Independence Planner sub-app | `site/README.md` |
 | App technical reference | `apps/<app>/README.md` |
 | MOS operator/developer scripts | `scripts/README.md` |
 | Test harness guidance | `test/README.md` |

@@ -16,6 +16,7 @@ import {
 import {
   createDashboardIcon,
   dashboardIconUrl,
+  iconIdForScheme,
   loadDashboardIcons,
   loadIconVariantIndex,
   type DashboardIcon,
@@ -25,7 +26,7 @@ import {
   applyIconArtwork,
   resolveMissingIconArtwork,
 } from '@/lib/icon-hydration';
-import { svgTextToDataUrl } from '@/lib/icon-library';
+import { blobToDataUrl, svgTextToDataUrl } from '@/lib/icon-library';
 import {
   createMosAppIcon,
   mosAppDocsUrl,
@@ -33,33 +34,52 @@ import {
   mosAppMatchesQuery,
   mosApps,
   mosAppsForIcons,
+  mosIconId,
   type MosApp,
 } from '@/lib/mos-catalog';
-import { computeLayout } from '@/lib/roadmap-layout';
+import { computeLayout, type RoadmapLayout } from '@/lib/roadmap-layout';
 import {
   downloadText,
+  exportableRoadmapSvg,
   rasterizeSvg,
-  serializeRoadmapSvg,
   type RasterFormat,
 } from '@/lib/roadmap-export';
 import {
-  loadLocalRoadmap,
+  activeProject,
+  addProject,
+  createProject,
+  forkExample,
+  libraryIsFull,
+  loadLibrary,
+  removeProject,
+  renameProject,
   roadmapJson,
-  saveLocalRoadmap,
-} from '@/lib/roadmap-persistence';
+  saveLibrary,
+  uniqueProjectName,
+  withActiveDoc,
+  MAX_PROJECTS,
+  MAX_PROJECT_NAME,
+  type RoadmapLibrary,
+} from '@/lib/roadmap-library';
 import { shareUrlFor, takePendingSharedRoadmap } from '@/lib/share-link';
 import {
   CANVAS_THEMES,
+  LAYOUT_RANGES,
+  LIMITS,
+  ROADMAP_TEMPLATES,
+  SIDE_NAMES,
+  addIconToEntry,
   canvasSchemeFor,
   cloneRoadmap,
   createMigration,
   formatNodeDate,
-  initialRoadmap,
+  isIsoDate,
   migrationDisplayLabel,
   migrationIsReached,
-  migrationPeriodKey,
+  migrationOrderKey,
   presets,
   quarterStartDate,
+  removeIconFromEntry,
   todayIsoDate,
   uniqueId,
   validateRoadmap,
@@ -67,6 +87,8 @@ import {
   type IconRef,
   type Migration,
   type RoadmapDocument,
+  type RoadmapTemplate,
+  type Side,
 } from '@/lib/roadmap-model';
 import {
   ArrowLeft,
@@ -95,17 +117,27 @@ import {
   Settings2,
   ShieldCheck,
   Trash2,
+  TriangleAlert,
   Undo2,
   Upload,
   X,
   ZoomIn,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react';
 
 type InspectorTab = 'migration' | 'design';
+type SaveState = 'saving' | 'saved' | 'unsaved';
 type ConfirmAction = {
   title: string;
   description: string;
+  confirmLabel: string;
   action: () => void;
 } | null;
 
@@ -113,30 +145,60 @@ type ConfirmAction = {
 // StrictMode would otherwise run a state initializer twice and lose it.
 const pendingShared = takePendingSharedRoadmap();
 
+// A shared link opens as a roadmap of its own rather than over whatever the
+// visitor had open, so remixing someone else's plan can never cost them their
+// own. A full library cannot take it, and says so rather than dropping it.
+function openSharedRoadmap(library: RoadmapLibrary) {
+  if (!pendingShared) return { library, notice: '' };
+  if (libraryIsFull(library))
+    return {
+      library,
+      notice: `This browser already holds ${MAX_PROJECTS} roadmaps, so the shared plan could not be opened. Delete one, then open the link again.`,
+    };
+  return {
+    library: addProject(
+      library,
+      createProject(
+        uniqueProjectName(library, 'Shared roadmap'),
+        pendingShared,
+      ),
+    ),
+    notice: 'Shared plan opened as a new roadmap.',
+  };
+}
+
 export default function Home() {
-  const [history, setHistory] = useState(() => {
-    const local = loadLocalRoadmap();
-    return pendingShared
-      ? { past: [local], present: pendingShared, future: [] as RoadmapDocument[] }
-      : { past: [] as RoadmapDocument[], present: local, future: [] as RoadmapDocument[] };
-  });
+  const [opened] = useState(() => openSharedRoadmap(loadLibrary()));
+  const [library, setLibrary] = useState<RoadmapLibrary>(opened.library);
+  const [history, setHistory] = useState(() => ({
+    past: [] as RoadmapDocument[],
+    present: activeProject(library).doc,
+    future: [] as RoadmapDocument[],
+  }));
   const doc = history.present;
+  const project = activeProject(library);
   const [selectedId, setSelectedId] = useState(doc.migrations[0]?.id ?? '');
   const [mode, setMode] = useState<'edit' | 'view'>('edit');
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('migration');
   const [zoom, setZoom] = useState(0.56);
-  const [saveState, setSaveState] = useState<'saving' | 'saved'>('saved');
-  const [notice, setNotice] = useState(
-    pendingShared
-      ? 'Shared plan loaded — your own work is one Undo away.'
-      : '',
-  );
+  const [saveState, setSaveState] = useState<SaveState>('saved');
+  const [notice, setNotice] = useState(opened.notice);
+  const [renaming, setRenaming] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const hydrationAttempts = useRef(new Set<string>());
+  // Whether the pending autosave carries an edit (as opposed to artwork
+  // embedded or a plan merely opened), which is what "edited 2m ago" means.
+  const editedRef = useRef(false);
+  // Refs, so committing an edit can read the library without making every
+  // control depend on it.
+  const libraryRef = useRef(library);
+  libraryRef.current = library;
+  const docRef = useRef(doc);
+  docRef.current = doc;
   const layout = useMemo(() => computeLayout(doc), [doc]);
   const selectedIndex = doc.migrations.findIndex(
     (item) => item.id === selectedId,
@@ -144,13 +206,22 @@ export default function Home() {
   const selected =
     selectedIndex >= 0 ? doc.migrations[selectedIndex] : undefined;
 
+  // Edits land in whichever roadmap is open. Switching roadmaps writes the
+  // open one first, so a pending save can never spill into its neighbour.
+  const activeId = library.activeId;
   useEffect(() => {
     const timer = setTimeout(() => {
-      saveLocalRoadmap(doc);
-      setSaveState('saved');
+      const current = libraryRef.current;
+      if (current.activeId !== activeId) return;
+      const next = withActiveDoc(current, doc, editedRef.current);
+      editedRef.current = false;
+      const stored = saveLibrary(next);
+      libraryRef.current = next;
+      setLibrary(next);
+      setSaveState(stored ? 'saved' : 'unsaved');
     }, 350);
     return () => clearTimeout(timer);
-  }, [doc]);
+  }, [doc, activeId]);
 
   // Icons referenced by id (starter plan, shared links, denylist survivors)
   // get their artwork embedded from the first-party sets. Applied onto the
@@ -178,21 +249,55 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [notice]);
 
-  const commit = useCallback((recipe: (draft: RoadmapDocument) => void) => {
-    setSaveState('saving');
-    setHistory((current) => {
-      const next = cloneRoadmap(current.present);
-      recipe(next);
-      return {
-        past: [...current.past.slice(-79), current.present],
-        present: next,
-        future: [],
-      };
-    });
+  const publishLibrary = useCallback((next: RoadmapLibrary) => {
+    libraryRef.current = next;
+    setLibrary(next);
+    if (!saveLibrary(next)) setSaveState('unsaved');
   }, []);
+
+  const commit = useCallback(
+    (recipe: (draft: RoadmapDocument) => void) => {
+      // The first edit to the example forks it into a roadmap of your own: the
+      // example has to stay in the list, exactly as it shipped, for anyone who
+      // wants to look at it again or start over from it.
+      const current = libraryRef.current;
+      const open = activeProject(current);
+      if (open?.example && libraryIsFull(current)) {
+        setNotice(
+          `This browser holds ${MAX_PROJECTS} roadmaps, so the example cannot be copied to edit. Delete one to start another.`,
+        );
+        return;
+      }
+      setSaveState('saving');
+      editedRef.current = true;
+      if (open?.example) {
+        const edited = cloneRoadmap(docRef.current);
+        recipe(edited);
+        const { library: next, project: copy } = forkExample(current, edited);
+        libraryRef.current = next;
+        publishLibrary(next);
+        setHistory({ past: [docRef.current], present: copy.doc, future: [] });
+        setNotice(
+          `Editing started “${copy.name}” — “${open.name}” stays as the example.`,
+        );
+        return;
+      }
+      setHistory((history) => {
+        const next = cloneRoadmap(history.present);
+        recipe(next);
+        return {
+          past: [...history.past.slice(-79), history.present],
+          present: next,
+          future: [],
+        };
+      });
+    },
+    [publishLibrary],
+  );
 
   const undo = () => {
     setSaveState('saving');
+    editedRef.current = true;
     setHistory((current) => {
       if (!current.past.length) return current;
       const present = current.past.at(-1)!;
@@ -205,6 +310,7 @@ export default function Home() {
   };
   const redo = () => {
     setSaveState('saving');
+    editedRef.current = true;
     setHistory((current) => {
       if (!current.future.length) return current;
       return {
@@ -215,9 +321,70 @@ export default function Home() {
     });
   };
 
+  // Resolved inside the recipe: an icon fetch may finish after the selection
+  // or the order has moved on.
   const updateSelected = (recipe: (item: Migration) => void) => {
-    if (selectedIndex < 0) return;
-    commit((draft) => recipe(draft.migrations[selectedIndex]));
+    const id = selectedId;
+    commit((draft) => {
+      const item = draft.migrations.find((entry) => entry.id === id);
+      if (item) recipe(item);
+    });
+  };
+
+  // Every roadmap switch goes through here: the open document is written back
+  // first, then the newly opened one starts with a clean undo history.
+  const openProject = (id: string) => {
+    const saved = withActiveDoc(library, doc);
+    const target = saved.projects.find((entry) => entry.id === id);
+    if (!target) return;
+    publishLibrary({ ...saved, activeId: id });
+    setHistory({ past: [], present: target.doc, future: [] });
+    setSelectedId(target.doc.migrations[0]?.id ?? '');
+    setInspectorTab('migration');
+    setSaveState('saved');
+  };
+
+  const startProject = (name: string, source: RoadmapDocument) => {
+    const saved = withActiveDoc(library, doc);
+    if (libraryIsFull(saved)) {
+      setNotice(
+        `This browser holds ${MAX_PROJECTS} roadmaps. Delete one to start another.`,
+      );
+      return;
+    }
+    const created = createProject(uniqueProjectName(saved, name), source);
+    publishLibrary(addProject(saved, created));
+    setHistory({ past: [], present: created.doc, future: [] });
+    setSelectedId(created.doc.migrations[0]?.id ?? '');
+    setInspectorTab('migration');
+    setSaveState('saved');
+    setNotice(`“${created.name}” is ready to edit.`);
+  };
+
+  const newProject = (template: RoadmapTemplate) =>
+    startProject(template.name, template.build());
+
+  const duplicateProject = () => startProject(project.name, doc);
+
+  const deleteProject = () =>
+    setConfirmAction({
+      title: `Delete “${project.name}”?`,
+      description:
+        'This roadmap is removed from this browser. Export it as JSON first if you might want it back.',
+      confirmLabel: 'Delete roadmap',
+      action: () => {
+        const next = removeProject(library, project.id);
+        publishLibrary(next);
+        const opened = activeProject(next);
+        setHistory({ past: [], present: opened.doc, future: [] });
+        setSelectedId(opened.doc.migrations[0]?.id ?? '');
+        setNotice(`“${project.name}” deleted.`);
+      },
+    });
+
+  const applyRename = (name: string) => {
+    publishLibrary(renameProject(library, project.id, name));
+    setRenaming(null);
   };
 
   const addMigration = () => {
@@ -231,9 +398,7 @@ export default function Home() {
     if (!selected) return;
     const copy = structuredClone(selected);
     copy.id = uniqueId();
-    copy.source.label = copy.source.label
-      ? `${copy.source.label} copy`
-      : 'Big Tech apps copy';
+    if (copy.source.label) copy.source.label = `${copy.source.label} copy`;
     commit((draft) => draft.migrations.splice(selectedIndex + 1, 0, copy));
     setSelectedId(copy.id);
   };
@@ -244,6 +409,7 @@ export default function Home() {
       title: `Remove “${selected.replacement.label || selected.source.label || 'untitled node'}”?`,
       description:
         'This removes the node from the roadmap. You can still undo the change afterward.',
+      confirmLabel: 'Remove',
       action: () => {
         const nextId =
           doc.migrations[selectedIndex + 1]?.id ??
@@ -262,10 +428,10 @@ export default function Home() {
         (item) => item.id === selectedId,
       );
       if (index < 0) return;
-      const key = migrationPeriodKey(draft.migrations[index]);
+      const key = migrationOrderKey(draft.migrations[index]);
       const peerIndexes = draft.migrations
         .map((item, itemIndex) => ({ item, itemIndex }))
-        .filter(({ item }) => migrationPeriodKey(item) === key)
+        .filter(({ item }) => migrationOrderKey(item) === key)
         .map(({ itemIndex }) => itemIndex);
       const peerPosition = peerIndexes.indexOf(index);
       const targetIndex = peerIndexes[peerPosition + direction];
@@ -277,17 +443,36 @@ export default function Home() {
     });
   };
 
+  // Fit means the whole graphic is on screen, not just its width: a canvas
+  // that follows its content is often taller than it is wide, and fitting the
+  // width alone left the timeline and the legend below the fold. The reserved
+  // height also clears the edit bar floating over the top of the artboard.
+  // A zoom chosen by hand is kept until the next explicit Fit; the automatic
+  // fit follows the canvas only while nobody has touched the zoom.
+  const manualZoom = useRef(false);
   const fitPreview = useCallback(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    setZoom(
-      Math.min(1.1, Math.max(0.12, (viewport.clientWidth - 64) / layout.width)),
-    );
-  }, [layout.width]);
+    // The viewport centres the artboard inside 48px of padding on every side;
+    // anything wider than that spills past the padding into a scrollbar, and
+    // one scrollbar brings on the other.
+    const byWidth = (viewport.clientWidth - 96) / layout.width;
+    const byHeight =
+      (viewport.clientHeight - (mode === 'edit' ? 140 : 96)) / layout.height;
+    manualZoom.current = false;
+    setZoom(clampZoom(Math.min(byWidth, byHeight)));
+  }, [layout.width, layout.height, mode]);
+  const zoomBy = (delta: number) => {
+    manualZoom.current = true;
+    setZoom((value) => clampZoom(value + delta));
+  };
 
   useEffect(() => {
-    fitPreview();
-  }, [fitPreview, mode]);
+    manualZoom.current = false;
+  }, [mode]);
+  useEffect(() => {
+    if (!manualZoom.current) fitPreview();
+  }, [fitPreview]);
 
   const applyPreset = (key: keyof typeof presets) => {
     const preset = presets[key];
@@ -300,7 +485,7 @@ export default function Home() {
     try {
       if (format === 'svg')
         downloadText(
-          serializeRoadmapSvg(svgRef.current),
+          await exportableRoadmapSvg(svgRef.current),
           `${doc.export.filename}.svg`,
           'image/svg+xml',
         );
@@ -330,14 +515,12 @@ export default function Home() {
         setNotice(result.errors.slice(0, 2).join(' '));
         return;
       }
-      setHistory((current) => ({
-        past: [...current.past, current.present],
-        present: result.value,
-        future: [],
-      }));
-      setSaveState('saving');
-      setSelectedId(result.value.migrations[0]?.id ?? '');
-      setNotice('Roadmap loaded successfully');
+      // A loaded file opens as its own roadmap, next to the ones already
+      // here, instead of overwriting whatever was open.
+      startProject(
+        file.name.replace(/\.json$/i, '') || 'Loaded roadmap',
+        result.value,
+      );
     } catch {
       setNotice('That file is not valid JSON. Nothing was changed.');
     } finally {
@@ -351,48 +534,6 @@ export default function Home() {
       `${doc.export.filename}.json`,
       'application/json',
     );
-
-  const uploadIcon = async (
-    file: File | undefined,
-    side: 'source' | 'replacement' = 'replacement',
-  ) => {
-    if (!file || !selected) return;
-    if (!['image/svg+xml', 'image/png'].includes(file.type)) {
-      setNotice('Choose an SVG or PNG icon.');
-      return;
-    }
-    if (file.size > 1_500_000) {
-      setNotice('Please keep icon files below 1.5 MB.');
-      return;
-    }
-    try {
-      const dataUrl =
-        file.type === 'image/svg+xml'
-          ? svgTextToDataUrl(await file.text(), uniqueId('svg'))
-          : await readAsDataUrl(file);
-      const icon: IconRef = {
-        id: uniqueId('upload'),
-        name: file.name.replace(/\.[^.]+$/, ''),
-        source: 'upload',
-        dataUrl,
-      };
-      updateSelected((item) => {
-        const previousNames = item[side].icons.map((entry) => entry.name);
-        const keepInSync =
-          !item[side].label || item[side].label === appLabel(previousNames);
-        item[side].icons.push(icon);
-        if (keepInSync)
-          item[side].label = appLabel([...previousNames, icon.name]);
-      });
-      setNotice(
-        `${icon.name} added to ${side === 'source' ? 'Big Tech' : 'Open Source'}`,
-      );
-    } catch (error) {
-      setNotice(
-        error instanceof Error ? error.message : 'The icon could not be read.',
-      );
-    }
-  };
 
   return (
     <main className="roadmap-app">
@@ -422,7 +563,11 @@ export default function Home() {
                 >
                   <FileUp /> Load
                 </Button>
-                <Button variant="outline" className="wide-only" onClick={saveJson}>
+                <Button
+                  variant="outline"
+                  className="wide-only"
+                  onClick={saveJson}
+                >
                   <Save /> Save JSON
                 </Button>
               </>
@@ -430,34 +575,18 @@ export default function Home() {
             <Button variant="outline" onClick={shareLink}>
               <Link2 /> Share link
             </Button>
-            <div className="export-menu">
-              <Button
-                className="export-main"
-                onClick={() => exportGraphic('png')}
-              >
-                <Download /> Export PNG
-              </Button>
-              <details>
-                <summary aria-label="More export formats">
-                  <ChevronDown />
-                </summary>
-                <div className="export-popover">
-                  <button onClick={() => exportGraphic('svg')}>
-                    <FileDown /> Editable SVG{' '}
-                    <small>Self-contained vector</small>
-                  </button>
-                  <button onClick={() => exportGraphic('png')}>
-                    <ImageDown /> PNG <small>Exact-size lossless</small>
-                  </button>
-                  <button onClick={() => exportGraphic('webp')}>
-                    <ImageDown /> WebP <small>Compact social image</small>
-                  </button>
-                </div>
-              </details>
-            </div>
+            <ExportMenu onExport={exportGraphic} />
           </div>
         </div>
         <div className="topbar-row topbar-controls">
+          <ProjectSwitcher
+            library={library}
+            onOpen={openProject}
+            onNew={newProject}
+            onRename={() => setRenaming(project.name)}
+            onDuplicate={duplicateProject}
+            onDelete={deleteProject}
+          />
           <div className="mode-switch" aria-label="Workspace mode">
             <button
               className={mode === 'edit' ? 'active' : ''}
@@ -479,11 +608,13 @@ export default function Home() {
               <input
                 type="date"
                 value={doc.timeline.viewDate}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const viewDate = event.target.value;
+                  if (!isIsoDate(viewDate)) return;
                   commit((draft) => {
-                    draft.timeline.viewDate = event.target.value;
-                  })
-                }
+                    draft.timeline.viewDate = viewDate;
+                  });
+                }}
                 aria-label="View timeline as of date"
               />
             </label>
@@ -517,8 +648,13 @@ export default function Home() {
               >
                 <Redo2 />
               </Button>
-              <span className={`save-state ${saveState}`}>
-                <Check /> {saveState === 'saved' ? 'Saved locally' : 'Saving…'}
+              <span className={`save-state ${saveState}`} role="status">
+                {saveState === 'unsaved' ? <TriangleAlert /> : <Check />}{' '}
+                {saveState === 'saved'
+                  ? 'Saved locally'
+                  : saveState === 'saving'
+                    ? 'Saving…'
+                    : 'Not saved — this browser’s storage is full or blocked'}
               </span>
             </div>
           )}
@@ -567,18 +703,22 @@ export default function Home() {
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => setZoom((value) => Math.max(0.1, value - 0.1))}
+                onClick={() => zoomBy(-0.1)}
                 aria-label="Zoom out"
               >
                 <Minus />
               </Button>
-              <button className="zoom-value" onClick={fitPreview}>
+              <button
+                className="zoom-value"
+                onClick={fitPreview}
+                title="Fit the whole graphic on screen"
+              >
                 {Math.round(zoom * 100)}%
               </button>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => setZoom((value) => Math.min(2, value + 0.1))}
+                onClick={() => zoomBy(0.1)}
                 aria-label="Zoom in"
               >
                 <ZoomIn />
@@ -612,6 +752,7 @@ export default function Home() {
               <RoadmapCanvas
                 ref={svgRef}
                 document={doc}
+                layout={layout}
                 className="roadmap-svg"
                 interactive={mode === 'edit'}
                 selectedId={selectedId}
@@ -619,6 +760,7 @@ export default function Home() {
                   setSelectedId(id);
                   setInspectorTab('migration');
                 }}
+                onAdd={addMigration}
               />
             </div>
           </div>
@@ -649,23 +791,25 @@ export default function Home() {
                   className="reset-button"
                   onClick={() =>
                     setConfirmAction({
-                      title: 'Reset the entire roadmap?',
+                      title: `Reset “${project.name}” to the example?`,
                       description:
-                        'This restores the starter roadmap, theme, and labels. Your current work can only be recovered from a JSON backup.',
+                        'This replaces the open roadmap with the starting example, theme and labels included. Your other roadmaps are untouched, and this one can be brought back with Undo.',
+                      confirmLabel: 'Reset roadmap',
                       action: () => {
-                        const fresh = cloneRoadmap(initialRoadmap);
+                        const fresh = ROADMAP_TEMPLATES[0].build();
                         setSaveState('saving');
+                        editedRef.current = true;
                         setHistory((current) => ({
                           past: [...current.past, current.present],
                           present: fresh,
                           future: [],
                         }));
-                        setSelectedId(fresh.migrations[0].id);
+                        setSelectedId(fresh.migrations[0]?.id ?? '');
                       },
                     })
                   }
                 >
-                  <RotateCcw /> Reset to starter plan
+                  <RotateCcw /> Reset to example
                 </button>
               )}
             </div>
@@ -699,7 +843,6 @@ export default function Home() {
                   update={updateSelected}
                   onDuplicate={duplicateSelected}
                   onDelete={removeSelected}
-                  onUpload={uploadIcon}
                   setNotice={setNotice}
                   viewDate={doc.timeline.viewDate}
                   fullDateFormat={doc.timeline.fullDateFormat}
@@ -721,6 +864,7 @@ export default function Home() {
             ) : (
               <DesignInspector
                 doc={doc}
+                layout={layout}
                 commit={commit}
                 advancedOpen={advancedOpen}
                 setAdvancedOpen={setAdvancedOpen}
@@ -731,9 +875,9 @@ export default function Home() {
       </section>
 
       <footer className="app-footnote">
-        <span>
-          <ShieldCheck /> Runs entirely in your browser — your plan never
-          leaves your device.
+        <span className="app-footnote-promise">
+          <ShieldCheck /> Runs entirely in your browser — your plan never leaves
+          your device.
         </span>
         <span>
           Icon artwork from the open-source{' '}
@@ -781,13 +925,262 @@ export default function Home() {
                 setConfirmAction(null);
               }}
             >
-              Remove
+              {confirmAction?.confirmLabel ?? 'Remove'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <RenameDialog
+        name={renaming}
+        onCancel={() => setRenaming(null)}
+        onSave={applyRename}
+      />
     </main>
   );
+}
+
+const ZOOM_RANGE = { min: 0.1, max: 2 };
+const clampZoom = (value: number) =>
+  Math.min(ZOOM_RANGE.max, Math.max(ZOOM_RANGE.min, value));
+
+// Closes a popover on a click outside it or on Escape.
+function useDismiss(
+  root: RefObject<HTMLElement | null>,
+  open: boolean,
+  close: () => void,
+) {
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) close();
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close();
+    };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [root, open, close]);
+}
+
+function ExportMenu({
+  onExport,
+}: {
+  onExport: (format: 'svg' | RasterFormat) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(root, open, close);
+  const choose = (format: 'svg' | RasterFormat) => {
+    setOpen(false);
+    onExport(format);
+  };
+  return (
+    <div className="export-menu" ref={root}>
+      <Button className="export-main" onClick={() => onExport('png')}>
+        <Download /> Export PNG
+      </Button>
+      <button
+        className="export-more"
+        aria-label="More export formats"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <ChevronDown />
+      </button>
+      {open && (
+        <div className="export-popover" role="menu">
+          <button role="menuitem" onClick={() => choose('svg')}>
+            <FileDown /> Editable SVG <small>Self-contained vector</small>
+          </button>
+          <button role="menuitem" onClick={() => choose('webp')}>
+            <ImageDown /> WebP <small>Compact social image</small>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RenameDialog({
+  name,
+  onCancel,
+  onSave,
+}: {
+  name: string | null;
+  onCancel: () => void;
+  onSave: (name: string) => void;
+}) {
+  const [draft, setDraft] = useState('');
+  useEffect(() => {
+    if (name !== null) setDraft(name);
+  }, [name]);
+  return (
+    <AlertDialog
+      open={name !== null}
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Rename roadmap</AlertDialogTitle>
+          <AlertDialogDescription>
+            Only you see this name — it labels the roadmap in the switcher, not
+            on the graphic.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <Input
+          autoFocus
+          value={draft}
+          maxLength={MAX_PROJECT_NAME}
+          aria-label="Roadmap name"
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') onSave(draft);
+          }}
+        />
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={() => onSave(draft)}>
+            Save name
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function ProjectSwitcher({
+  library,
+  onOpen,
+  onNew,
+  onRename,
+  onDuplicate,
+  onDelete,
+}: {
+  library: RoadmapLibrary;
+  onOpen: (id: string) => void;
+  onNew: (template: RoadmapTemplate) => void;
+  onRename: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState<'list' | 'new' | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const active = activeProject(library);
+  const close = useCallback(() => setOpen(null), []);
+  useDismiss(root, open !== null, close);
+  const choose = (run: () => void) => {
+    setOpen(null);
+    run();
+  };
+  return (
+    <div className="project-switcher" ref={root}>
+      <button
+        className="project-current"
+        aria-expanded={open === 'list'}
+        onClick={() => setOpen(open === 'list' ? null : 'list')}
+      >
+        <Library />
+        <span>
+          <small>ROADMAP</small>
+          <strong>{active.name}</strong>
+        </span>
+        <ChevronDown className={open === 'list' ? 'rotated' : ''} />
+      </button>
+      <button
+        className="project-add"
+        aria-label="Start a new roadmap"
+        title="Start a new roadmap"
+        aria-expanded={open === 'new'}
+        onClick={() => setOpen(open === 'new' ? null : 'new')}
+      >
+        <Plus />
+      </button>
+      {open === 'list' && (
+        <div className="project-popover">
+          <p className="project-popover-head">Your roadmaps</p>
+          <div className="project-list">
+            {library.projects.map((entry) => (
+              <button
+                key={entry.id}
+                className={entry.id === active.id ? 'selected' : ''}
+                onClick={() => choose(() => onOpen(entry.id))}
+              >
+                <Check
+                  style={{
+                    visibility: entry.id === active.id ? 'visible' : 'hidden',
+                  }}
+                />
+                <span>
+                  {entry.name}
+                  <small>
+                    {entry.doc.migrations.length} node
+                    {entry.doc.migrations.length === 1 ? '' : 's'} ·{' '}
+                    {entry.example ? 'example' : editedLabel(entry.updatedAt)}
+                  </small>
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="project-actions">
+            <button onClick={() => choose(onRename)}>
+              <Pencil /> Rename
+            </button>
+            <button onClick={() => choose(onDuplicate)}>
+              <Copy /> Duplicate
+            </button>
+            <button
+              className="danger"
+              disabled={library.projects.length < 2 || Boolean(active.example)}
+              title={
+                active.example
+                  ? 'The example is always kept — editing it starts a copy.'
+                  : library.projects.length < 2
+                    ? 'This is your only roadmap.'
+                    : undefined
+              }
+              onClick={() => choose(onDelete)}
+            >
+              <Trash2 /> Delete
+            </button>
+          </div>
+        </div>
+      )}
+      {open === 'new' && (
+        <div className="project-popover new-roadmap">
+          <p className="project-popover-head">Start a new roadmap</p>
+          {ROADMAP_TEMPLATES.map((template) => (
+            <button
+              key={template.id}
+              onClick={() => choose(() => onNew(template))}
+            >
+              <LayoutTemplate />
+              {template.name}
+              <small>{template.description}</small>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function editedLabel(updatedAt: number) {
+  const minutes = Math.round((Date.now() - updatedAt) / 60_000);
+  if (minutes < 1) return 'edited just now';
+  if (minutes < 60) return `edited ${minutes}m ago`;
+  if (minutes < 1440) return `edited ${Math.round(minutes / 60)}h ago`;
+  return `edited ${new Intl.DateTimeFormat('en', {
+    day: 'numeric',
+    month: 'short',
+  }).format(updatedAt)}`;
 }
 
 function MigrationInspector({
@@ -795,7 +1188,6 @@ function MigrationInspector({
   update,
   onDuplicate,
   onDelete,
-  onUpload,
   setNotice,
   viewDate,
   fullDateFormat,
@@ -808,7 +1200,6 @@ function MigrationInspector({
   update: (recipe: (item: Migration) => void) => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  onUpload: (file: File | undefined, side: 'source' | 'replacement') => void;
   setNotice: (message: string) => void;
   viewDate: string;
   fullDateFormat: RoadmapDocument['timeline']['fullDateFormat'];
@@ -843,24 +1234,24 @@ function MigrationInspector({
       </section>
       <CategoryEditor migration={migration} update={update} />
       <AppChooser
+        key={usingSide}
         side={usingSide}
         entry={migration[usingSide]}
         step="2"
         eyebrow="USING NOW"
         heading="Apps used at the viewing date"
         update={update}
-        onUpload={onUpload}
         setNotice={setNotice}
         canvasScheme={canvasScheme}
       />
       <AppChooser
+        key={otherSide}
         side={otherSide}
         entry={migration[otherSide]}
         step="3"
         eyebrow="REPLACED / PLANNED"
         heading={reached ? 'Apps this switch replaced' : 'Apps planned next'}
         update={update}
-        onUpload={onUpload}
         setNotice={setNotice}
         canvasScheme={canvasScheme}
       />
@@ -954,33 +1345,29 @@ function FlexibleTimelineEditor({
   onMoveEarlier: () => void;
   onMoveLater: () => void;
 }) {
-  const precision = migration.displayPrecision || migration.datePrecision;
+  const precision = migration.displayPrecision;
   const referenceDate = migration.date || viewDate || todayIsoDate();
   const year = Number(referenceDate.slice(0, 4));
   const month = Number(referenceDate.slice(5, 7)) || 1;
   const quarter = (Math.floor((month - 1) / 3) + 1) as 1 | 2 | 3 | 4;
-  const periodKey = migrationPeriodKey(migration);
+  const orderKey = migrationOrderKey(migration);
   const peers = migrations.filter(
-    (item) => migrationPeriodKey(item) === periodKey,
+    (item) => migrationOrderKey(item) === orderKey,
   );
   const peerPosition = peers.findIndex((item) => item.id === migration.id);
-  const shownLabel = migrationDisplayLabel(
-    migration,
-    'quarter',
-    fullDateFormat,
-  );
+  const shownLabel = migrationDisplayLabel(migration, fullDateFormat);
 
   const choosePrecision = (nextPrecision: Migration['datePrecision']) =>
     update((item) => {
-      item.useFlexibleDate = true;
       item.displayPrecision = nextPrecision;
       if (!item.date && nextPrecision !== 'date') {
         item.date = `${year}-01-01`;
         item.datePrecision = nextPrecision;
-        item.timeLabel = formatNodeDate(item.date, nextPrecision);
       }
     });
 
+  // A year or quarter chosen on top of an exact date keeps the exact date,
+  // so the “as of” view stays accurate while the graphic prints less.
   const setYear = (nextYear: number) =>
     update((item) => {
       const suffix =
@@ -990,32 +1377,33 @@ function FlexibleTimelineEditor({
       item.date = `${nextYear}${suffix}`;
       if (item.datePrecision !== 'date') item.datePrecision = 'year';
       item.displayPrecision = 'year';
-      item.useFlexibleDate = true;
-      item.timeLabel = formatNodeDate(item.date, item.datePrecision);
     });
 
-  const setQuarter = (nextQuarter: 1 | 2 | 3 | 4) =>
+  const setQuarter = (nextQuarter: 1 | 2 | 3 | 4, inYear = year) =>
     update((item) => {
       const currentQuarter = item.date
         ? Math.floor((Number(item.date.slice(5, 7)) - 1) / 3) + 1
         : undefined;
-      if (item.datePrecision !== 'date' || currentQuarter !== nextQuarter) {
-        item.date = quarterStartDate(year, nextQuarter);
+      const currentYear = Number(item.date.slice(0, 4));
+      if (
+        item.datePrecision !== 'date' ||
+        currentQuarter !== nextQuarter ||
+        currentYear !== inYear
+      ) {
+        item.date = quarterStartDate(inYear, nextQuarter);
         item.datePrecision = 'quarter';
       }
       item.displayPrecision = 'quarter';
-      item.useFlexibleDate = true;
-      item.timeLabel = formatNodeDate(item.date, item.datePrecision);
     });
 
-  const setExactDate = (date: string) =>
+  const setExactDate = (date: string) => {
+    if (date && !isIsoDate(date)) return;
     update((item) => {
       item.date = date;
       item.datePrecision = 'date';
       item.displayPrecision = 'date';
-      item.useFlexibleDate = true;
-      item.timeLabel = formatNodeDate(date, 'date');
     });
+  };
 
   return (
     <section className="app-group flexible-date-group">
@@ -1050,47 +1438,24 @@ function FlexibleTimelineEditor({
       </div>
 
       {precision === 'year' && (
-        <Field label="Year">
-          <Input
-            type="number"
-            min={1900}
-            max={2200}
-            value={year}
-            onChange={(event) =>
-              setYear(
-                Math.min(
-                  2200,
-                  Math.max(1900, Number(event.target.value) || year),
-                ),
-              )
-            }
-          />
-        </Field>
+        <NumberField
+          label="Year"
+          value={year}
+          min={1900}
+          max={2200}
+          onChange={setYear}
+        />
       )}
 
       {precision === 'quarter' && (
         <div className="flexible-quarter-row">
-          <Field label="Year">
-            <Input
-              type="number"
-              min={1900}
-              max={2200}
-              value={year}
-              onChange={(event) => {
-                const nextYear = Math.min(
-                  2200,
-                  Math.max(1900, Number(event.target.value) || year),
-                );
-                update((item) => {
-                  item.date = quarterStartDate(nextYear, quarter);
-                  item.datePrecision = 'quarter';
-                  item.displayPrecision = 'quarter';
-                  item.useFlexibleDate = true;
-                  item.timeLabel = formatNodeDate(item.date, 'quarter');
-                });
-              }}
-            />
-          </Field>
+          <NumberField
+            label="Year"
+            value={year}
+            min={1900}
+            max={2200}
+            onChange={(nextYear) => setQuarter(quarter, nextYear)}
+          />
           <div className="flexible-quarter-choice">
             <span>Quarter</span>
             <div>
@@ -1128,34 +1493,36 @@ function FlexibleTimelineEditor({
             : 'Show only what you really know — no made-up day required.'}
       </p>
 
-      <div className="position-divider" />
-      <div className="flexible-label">
-        POSITION WITHIN {shownLabel.toUpperCase()}
-      </div>
-      <div className="position-controls">
-        <button
-          type="button"
-          disabled={peerPosition <= 0}
-          onClick={onMoveEarlier}
-        >
-          <ArrowLeft /> Earlier
-        </button>
-        <span>
-          {peers.length > 1
-            ? `${peerPosition + 1} of ${peers.length}`
-            : 'Only node'}
-        </span>
-        <button
-          type="button"
-          disabled={peerPosition < 0 || peerPosition >= peers.length - 1}
-          onClick={onMoveLater}
-        >
-          Later <ArrowRight />
-        </button>
-      </div>
-      <p className="position-help">
-        Order matching labels without inventing a more precise date.
-      </p>
+      {peers.length > 1 && (
+        <>
+          <div className="position-divider" />
+          <div className="flexible-label">
+            POSITION WITHIN {shownLabel.toUpperCase()}
+          </div>
+          <div className="position-controls">
+            <button
+              type="button"
+              disabled={peerPosition <= 0}
+              onClick={onMoveEarlier}
+            >
+              <ArrowLeft /> Earlier
+            </button>
+            <span>
+              {peerPosition + 1} of {peers.length}
+            </span>
+            <button
+              type="button"
+              disabled={peerPosition >= peers.length - 1}
+              onClick={onMoveLater}
+            >
+              Later <ArrowRight />
+            </button>
+          </div>
+          <p className="position-help">
+            Order matching labels without inventing a more precise date.
+          </p>
+        </>
+      )}
     </section>
   );
 }
@@ -1167,17 +1534,15 @@ function AppChooser({
   eyebrow,
   heading,
   update,
-  onUpload,
   setNotice,
   canvasScheme,
 }: {
-  side: 'source' | 'replacement';
+  side: Side;
   entry: Migration['source'];
   step: '2' | '3';
   eyebrow: string;
   heading: string;
   update: (recipe: (item: Migration) => void) => void;
-  onUpload: (file: File | undefined, side: 'source' | 'replacement') => void;
   setNotice: (message: string) => void;
   canvasScheme: 'light' | 'dark';
 }) {
@@ -1253,59 +1618,69 @@ function AppChooser({
     () => (isBigTech ? [] : mosAppsForIcons(entry.icons)),
     [isBigTech, entry.icons],
   );
-  const pushIcon = (created: IconRef) =>
+  const sideFull = entry.icons.length >= LIMITS.iconsPerSide;
+  const pushIcon = (created: IconRef) => {
     update((item) => {
-      const previousNames = item[side].icons.map((current) => current.name);
-      const keepInSync =
-        !item[side].label || item[side].label === appLabel(previousNames);
-      item[side].icons.push(created);
       item[side].category = isBigTech ? 'proprietary' : 'independent';
-      if (keepInSync)
-        item[side].label = appLabel([...previousNames, created.name]);
+      addIconToEntry(item[side], created);
     });
+    setNotice(`${created.name} added to ${SIDE_NAMES[side]}`);
+  };
+  const refuse = (error: unknown, fallback: string) =>
+    setNotice(error instanceof Error ? error.message : fallback);
   const addIcon = async (icon: DashboardIcon) => {
-    if (selectedIds.has(icon.id) || addingId) return;
+    if (selectedIds.has(icon.id) || addingId || sideFull) return;
     setAddingId(icon.id);
     try {
-      const created = await createDashboardIcon({
-        id: icon.colors?.[canvasScheme] ?? icon.id,
-        name: icon.name,
-      });
-      pushIcon(created);
-      setNotice(
-        `${icon.name} added to ${isBigTech ? 'Big Tech' : 'Open Source'}`,
+      pushIcon(
+        await createDashboardIcon({
+          id: iconIdForScheme(icon.id, icon.colors, canvasScheme),
+          name: icon.name,
+        }),
       );
     } catch (error) {
-      setNotice(
-        error instanceof Error ? error.message : 'The icon could not be added.',
-      );
+      refuse(error, 'The icon could not be added.');
     } finally {
       setAddingId('');
     }
   };
   const addMosApp = async (app: MosApp) => {
-    const iconId = `mos-app-${app.id}`;
-    if (selectedIds.has(iconId) || addingId) return;
-    setAddingId(iconId);
+    if (selectedIds.has(mosIconId(app)) || addingId || sideFull) return;
+    setAddingId(mosIconId(app));
     try {
       pushIcon(await createMosAppIcon(app));
-      setNotice(`${app.name} added — it runs on My Own Suite`);
     } catch (error) {
-      setNotice(
-        error instanceof Error ? error.message : 'The icon could not be added.',
-      );
+      refuse(error, 'The icon could not be added.');
     } finally {
       setAddingId('');
     }
   };
+  const uploadIcon = async (file: File | undefined) => {
+    if (!file || sideFull) return;
+    if (!['image/svg+xml', 'image/png'].includes(file.type)) {
+      setNotice('Choose an SVG or PNG icon.');
+      return;
+    }
+    if (file.size > 1_500_000) {
+      setNotice('Please keep icon files below 1.5 MB.');
+      return;
+    }
+    try {
+      pushIcon({
+        id: uniqueId('upload'),
+        name: file.name.replace(/\.[^.]+$/, ''),
+        source: 'upload',
+        dataUrl:
+          file.type === 'image/svg+xml'
+            ? svgTextToDataUrl(await file.text(), uniqueId('svg'))
+            : await blobToDataUrl(file),
+      });
+    } catch (error) {
+      refuse(error, 'The icon could not be read.');
+    }
+  };
   const removeIcon = (index: number) =>
-    update((item) => {
-      const previousNames = item[side].icons.map((icon) => icon.name);
-      const keepInSync = item[side].label === appLabel(previousNames);
-      item[side].icons.splice(index, 1);
-      if (keepInSync)
-        item[side].label = appLabel(item[side].icons.map((icon) => icon.name));
-    });
+    update((item) => removeIconFromEntry(item[side], index));
   return (
     <section className={`app-group ${isBigTech ? 'big-tech' : 'open-source'}`}>
       <div className="app-group-heading">
@@ -1314,9 +1689,7 @@ function AppChooser({
           <p className="eyebrow">{eyebrow}</p>
           <h3>{heading}</h3>
         </div>
-        <span className="fixed-category">
-          {isBigTech ? 'Big Tech' : 'Open Source'}
-        </span>
+        <span className="fixed-category">{SIDE_NAMES[side]}</span>
       </div>
       <div className="current-icons selected-apps">
         {entry.icons.map((icon, index) => (
@@ -1341,7 +1714,8 @@ function AppChooser({
           <span>
             {matchedMosApps.map((app, index) => (
               <span key={app.id}>
-                {index > 0 && (index === matchedMosApps.length - 1 ? ' and ' : ', ')}
+                {index > 0 &&
+                  (index === matchedMosApps.length - 1 ? ' and ' : ', ')}
                 <a
                   href={mosAppDocsUrl(app.id)}
                   rel="noopener noreferrer"
@@ -1362,7 +1736,7 @@ function AppChooser({
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search apps, services, categories…"
-          aria-label={`Search local icons for ${isBigTech ? 'Big Tech' : 'Open Source'}`}
+          aria-label={`Search local icons for ${SIDE_NAMES[side]}`}
         />
         {query && (
           <button onClick={() => setQuery('')} aria-label="Clear icon search">
@@ -1385,7 +1759,7 @@ function AppChooser({
       </div>
       <div
         className="icon-library"
-        aria-label={`Icon results for ${isBigTech ? 'Big Tech' : 'Open Source'}`}
+        aria-label={`Icon results for ${SIDE_NAMES[side]}`}
       >
         {mosSuggestions.length > 0 && (
           <>
@@ -1393,12 +1767,14 @@ function AppChooser({
               <ShieldCheck /> On My Own Suite · privacy-reviewed
             </div>
             {mosSuggestions.map((app) => {
-              const iconId = `mos-app-${app.id}`;
+              const iconId = mosIconId(app);
               return (
                 <button
                   key={app.id}
                   className={`mos-tile ${selectedIds.has(iconId) ? 'selected' : ''}`}
-                  disabled={selectedIds.has(iconId) || Boolean(addingId)}
+                  disabled={
+                    selectedIds.has(iconId) || Boolean(addingId) || sideFull
+                  }
                   onClick={() => addMosApp(app)}
                   title={`${selectedIds.has(iconId) ? 'Added' : 'Add'} ${app.name}`}
                 >
@@ -1418,7 +1794,9 @@ function AppChooser({
             <button
               key={icon.id}
               className={selectedIds.has(icon.id) ? 'selected' : ''}
-              disabled={selectedIds.has(icon.id) || Boolean(addingId)}
+              disabled={
+                selectedIds.has(icon.id) || Boolean(addingId) || sideFull
+              }
               onClick={() => addIcon(icon)}
               title={`${selectedIds.has(icon.id) ? 'Added' : 'Add'} ${icon.name}`}
             >
@@ -1439,7 +1817,7 @@ function AppChooser({
         hidden
         accept="image/svg+xml,image/png,.svg,.png"
         onChange={(event) => {
-          onUpload(event.target.files?.[0], side);
+          uploadIcon(event.target.files?.[0]);
           event.currentTarget.value = '';
         }}
       />
@@ -1447,11 +1825,16 @@ function AppChooser({
         <Button
           variant="outline"
           size="sm"
+          disabled={sideFull}
           onClick={() => uploadRef.current?.click()}
         >
           <Upload /> Upload your own
         </Button>
-        <span>Icons stay local and are embedded in exports.</span>
+        <span>
+          {sideFull
+            ? `Up to ${LIMITS.iconsPerSide} icons per side.`
+            : 'Icons stay local and are embedded in exports.'}
+        </span>
       </div>
       <Field label="Display label">
         <Textarea
@@ -1474,17 +1857,15 @@ function AppChooser({
   );
 }
 
-function appLabel(names: string[]) {
-  return names.join(' +\n');
-}
-
 function DesignInspector({
   doc,
+  layout,
   commit,
   advancedOpen,
   setAdvancedOpen,
 }: {
   doc: RoadmapDocument;
+  layout: RoadmapLayout;
   commit: (recipe: (draft: RoadmapDocument) => void) => void;
   advancedOpen: boolean;
   setAdvancedOpen: (open: boolean) => void;
@@ -1504,8 +1885,12 @@ function DesignInspector({
         for (const side of [migration.source, migration.replacement])
           for (const icon of side.icons) {
             if (icon.source !== 'dashboard') continue;
-            const target = variants.get(icon.id)?.[scheme];
-            if (target && target !== icon.id) {
+            const target = iconIdForScheme(
+              icon.id,
+              variants.get(icon.id),
+              scheme,
+            );
+            if (target !== icon.id) {
               icon.id = target;
               delete icon.dataUrl;
             }
@@ -1579,9 +1964,7 @@ function DesignInspector({
               onChange={(event) =>
                 commit((draft) => {
                   draft.metadata.categoryDisplay = event.target.value as
-                    | 'text'
-                    | 'icon'
-                    | 'both';
+                    'text' | 'icon' | 'both';
                 })
               }
             >
@@ -1756,6 +2139,71 @@ function DesignInspector({
         />
       </section>
       <section className="inspector-section">
+        <p className="eyebrow">SIZE & SPACING</p>
+        <SliderField
+          label="Text size"
+          hint="Raise this when the graphic will be shown small — in a blog column, for instance."
+          value={doc.layout.textScale}
+          min={LAYOUT_RANGES.textScale.min}
+          max={LAYOUT_RANGES.textScale.max}
+          step={0.05}
+          format={(value) => `${Math.round(value * 100)}%`}
+          onChange={(value) =>
+            commit((draft) => {
+              draft.layout.textScale = value;
+            })
+          }
+        />
+        <SliderField
+          label="Space between nodes"
+          hint="The gap between neighbouring columns. Tighten it for a long roadmap, open it up for a short one."
+          value={doc.layout.nodeSpacing}
+          min={LAYOUT_RANGES.nodeSpacing.min}
+          max={LAYOUT_RANGES.nodeSpacing.max}
+          step={2}
+          format={(value) => `${Math.round(value)} px`}
+          onChange={(value) =>
+            commit((draft) => {
+              draft.layout.nodeSpacing = value;
+            })
+          }
+        />
+        {layout.spread > 1 && (
+          <p className="field-note">
+            The canvas is wider than this roadmap needs, so nodes are spread to
+            fill it and this gap is only a minimum. Switch the canvas width to{' '}
+            <strong>Fit the roadmap</strong> below to space them exactly.
+          </p>
+        )}
+        <SliderField
+          label="Distance between lanes"
+          hint="Vertical room between the top and bottom rows."
+          value={doc.layout.laneSeparation}
+          min={LAYOUT_RANGES.laneSeparation.min}
+          max={LAYOUT_RANGES.laneSeparation.max}
+          step={5}
+          format={(value) => `${Math.round(value)} px`}
+          onChange={(value) =>
+            commit((draft) => {
+              draft.layout.laneSeparation = value;
+            })
+          }
+        />
+        <SliderField
+          label="Icon size"
+          value={doc.layout.iconSize}
+          min={LAYOUT_RANGES.iconSize.min}
+          max={LAYOUT_RANGES.iconSize.max}
+          step={2}
+          format={(value) => `${Math.round(value)} px`}
+          onChange={(value) =>
+            commit((draft) => {
+              draft.layout.iconSize = value;
+            })
+          }
+        />
+      </section>
+      <section className="inspector-section">
         <p className="eyebrow">OUTPUT</p>
         <Field label="Filename">
           <Input
@@ -1769,7 +2217,7 @@ function DesignInspector({
             }
           />
         </Field>
-        <Field label="Width behavior">
+        <Field label="Canvas size">
           <select
             value={doc.layout.widthMode}
             onChange={(event) =>
@@ -1779,35 +2227,44 @@ function DesignInspector({
               })
             }
           >
-            <option value="fit">Fit to width</option>
-            <option value="auto">Automatic width</option>
-            <option value="manual">Manual width (grows if needed)</option>
+            <option value="auto">Fit the roadmap</option>
+            <option value="fixed">Exact size (grows if needed)</option>
           </select>
         </Field>
-        <div className="field-row">
-          <NumberField
-            label="Width"
-            value={doc.layout.width}
-            min={760}
-            max={8000}
-            onChange={(value) =>
-              commit((draft) => {
-                draft.layout.width = value;
-              })
-            }
-          />
-          <NumberField
-            label="Height"
-            value={doc.layout.height}
-            min={640}
-            max={5000}
-            onChange={(value) =>
-              commit((draft) => {
-                draft.layout.height = value;
-              })
-            }
-          />
-        </div>
+        {doc.layout.widthMode === 'fixed' ? (
+          <div className="field-row">
+            <NumberField
+              label="Width"
+              value={doc.layout.width}
+              min={LAYOUT_RANGES.width.min}
+              max={LAYOUT_RANGES.width.max}
+              onChange={(value) =>
+                commit((draft) => {
+                  draft.layout.width = value;
+                })
+              }
+            />
+            <NumberField
+              label="Height"
+              value={doc.layout.height}
+              min={LAYOUT_RANGES.height.min}
+              max={LAYOUT_RANGES.height.max}
+              onChange={(value) =>
+                commit((draft) => {
+                  draft.layout.height = value;
+                })
+              }
+            />
+          </div>
+        ) : (
+          <p className="field-note">
+            The canvas is exactly as tall and wide as the roadmap needs, so
+            hiding the title or tightening the spacing shrinks it.
+          </p>
+        )}
+        <p className="field-note">
+          Exports at {layout.width} × {layout.height} px.
+        </p>
         <SwitchRow
           label="Show social safe area"
           description="Preview guide only; never included in exports."
@@ -1848,8 +2305,8 @@ function DesignInspector({
             <NumberField
               label="Outer margin"
               value={doc.layout.outerMargin}
-              min={24}
-              max={300}
+              min={LAYOUT_RANGES.outerMargin.min}
+              max={LAYOUT_RANGES.outerMargin.max}
               onChange={(value) =>
                 commit((draft) => {
                   draft.layout.outerMargin = value;
@@ -1857,32 +2314,10 @@ function DesignInspector({
               }
             />
             <NumberField
-              label="Minimum gap"
-              value={doc.layout.minNodeGap}
-              min={8}
-              max={300}
-              onChange={(value) =>
-                commit((draft) => {
-                  draft.layout.minNodeGap = value;
-                })
-              }
-            />
-            <NumberField
-              label="Preferred gap"
-              value={doc.layout.preferredNodeGap}
-              min={20}
-              max={500}
-              onChange={(value) =>
-                commit((draft) => {
-                  draft.layout.preferredNodeGap = value;
-                })
-              }
-            />
-            <NumberField
-              label="Minimum node"
+              label="Minimum node width"
               value={doc.layout.minNodeWidth}
-              min={54}
-              max={280}
+              min={LAYOUT_RANGES.minNodeWidth.min}
+              max={LAYOUT_RANGES.minNodeWidth.max}
               onChange={(value) =>
                 commit((draft) => {
                   draft.layout.minNodeWidth = value;
@@ -1890,32 +2325,10 @@ function DesignInspector({
               }
             />
             <NumberField
-              label="Icon size"
-              value={doc.layout.iconSize}
-              min={24}
-              max={110}
-              onChange={(value) =>
-                commit((draft) => {
-                  draft.layout.iconSize = value;
-                })
-              }
-            />
-            <NumberField
-              label="Lane separation"
-              value={doc.layout.laneSeparation}
-              min={130}
-              max={650}
-              onChange={(value) =>
-                commit((draft) => {
-                  draft.layout.laneSeparation = value;
-                })
-              }
-            />
-            <NumberField
               label="Curve tension"
               value={doc.layout.curveTension}
-              min={0.35}
-              max={1.4}
+              min={LAYOUT_RANGES.curveTension.min}
+              max={LAYOUT_RANGES.curveTension.max}
               step={0.05}
               onChange={(value) =>
                 commit((draft) => {
@@ -1953,6 +2366,8 @@ function Field({
     </label>
   );
 }
+// Typed freely, clamped once the field is left: clamping per keystroke made
+// “2027” impossible to type past a minimum of 1900.
 function NumberField({
   label,
   value,
@@ -1968,23 +2383,79 @@ function NumberField({
   step?: number;
   onChange: (value: number) => void;
 }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const settle = () => {
+    if (draft === null) return;
+    const typed = Number(draft);
+    if (draft.trim() && Number.isFinite(typed))
+      onChange(Math.min(max, Math.max(min, typed)));
+    setDraft(null);
+  };
   return (
     <Field label={label}>
       <Input
         type="number"
-        value={value}
+        value={draft ?? value}
         min={min}
         max={max}
         step={step}
-        onChange={(event) =>
-          onChange(
-            Math.min(max, Math.max(min, Number(event.target.value) || min)),
-          )
-        }
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={settle}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur();
+        }}
       />
     </Field>
   );
 }
+// A setting whose whole point is to be dragged and watched: the number field
+// it replaces made spacing feel like a guess. The control's own look is the
+// shared mos-range; this owns only the row around it.
+function SliderField({
+  label,
+  hint,
+  value,
+  min,
+  max,
+  step,
+  format,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  format: (value: number) => string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="slider-field">
+      <label>
+        <span>{label}</span>
+        <output>{format(value)}</output>
+        <input
+          className="mos-range"
+          type="range"
+          aria-label={label}
+          style={
+            {
+              '--mos-range-fill': `${((value - min) / (max - min)) * 100}%`,
+            } as React.CSSProperties
+          }
+          value={value}
+          min={min}
+          max={max}
+          step={step}
+          onChange={(event) => onChange(Number(event.target.value))}
+        />
+      </label>
+      {hint && <small>{hint}</small>}
+    </div>
+  );
+}
+
 function SwitchRow({
   label,
   description,
@@ -2030,17 +2501,7 @@ function ColorField({
   );
 }
 function IconPreview({ icon }: { icon: IconRef }) {
-  if (!icon.dataUrl) return <span className="icon-preview-empty" aria-hidden="true" />;
+  if (!icon.dataUrl)
+    return <span className="icon-preview-empty" aria-hidden="true" />;
   return <img src={icon.dataUrl} alt="" />;
-}
-function readAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () =>
-      typeof reader.result === 'string'
-        ? resolve(reader.result)
-        : reject(new Error('The PNG could not be read.'));
-    reader.onerror = () => reject(new Error('The PNG could not be read.'));
-    reader.readAsDataURL(file);
-  });
 }

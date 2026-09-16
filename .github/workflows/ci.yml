@@ -96,6 +96,19 @@ jobs:
         run: npm ci
         working-directory: site/planner
 
+      - name: Test the planner
+        run: npm test
+        working-directory: site/planner
+
+      # The planner's prebuild fetches the pinned Dashboard Icons commit from
+      # GitHub (~80 MB) unless a checkout for that commit already exists. Keyed
+      # on the pin, so bumping it refetches and a docs-only push does not.
+      - name: Cache the pinned Dashboard Icons checkout
+        uses: actions/cache@v4
+        with:
+          path: site/planner/.cache/dashboard-icons
+          key: dashboard-icons-${{ hashFiles('site/planner/icon-source.json') }}
+
       # `npm run build` also builds the Digital Independence Planner
       # (site/planner) into site/dist/plan, so the planner's dependencies must
       # be installed first.

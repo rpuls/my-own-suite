@@ -13,6 +13,34 @@ updates:
         patterns:
           - "*"
 
+  - package-ecosystem: "npm"
+    directory: "/site"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:10"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 5
+    groups:
+      site-npm:
+        patterns:
+          - "*"
+
+  # The planner pins exact versions, so without this entry nothing would ever
+  # bump them, security patches included.
+  - package-ecosystem: "npm"
+    directory: "/site/planner"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:20"
+      timezone: "Europe/Amsterdam"
+    open-pull-requests-limit: 5
+    groups:
+      planner-npm:
+        patterns:
+          - "*"
+
   - package-ecosystem: "docker"
     directory: "/infrastructure/caddy"
     schedule:

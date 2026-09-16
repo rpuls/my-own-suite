@@ -8,8 +8,9 @@ interface DashboardIconMetadata {
   colors?: IconSchemeVariants;
 }
 
-// Per-canvas-scheme icon ids for monochrome logos (e.g. apple on a light
-// canvas, apple-light on a dark one), as staged from upstream metadata.
+// The ids of a monochrome logo's colour variants, as staged from upstream
+// metadata: `light` is the light-coloured file (for a dark canvas), `dark`
+// the dark-coloured one (for a light canvas).
 export interface IconSchemeVariants {
   light?: string;
   dark?: string;
@@ -57,6 +58,10 @@ export function dashboardIconUrl(id: string) {
 
 export function loadDashboardIcons(): Promise<DashboardIcon[]> {
   catalogPromise ??= fetch(`${iconsBase}/metadata.json`)
+    .catch((error) => {
+      catalogPromise = undefined;
+      throw error;
+    })
     .then((response) => {
       if (!response.ok)
         throw new Error('The local icon catalog could not be opened.');
@@ -93,14 +98,15 @@ export function loadDashboardIcons(): Promise<DashboardIcon[]> {
 }
 
 // Maps every id of a variant pair (base, light and dark ids alike) to the
-// full pair, so an icon can be re-pointed when the canvas scheme flips.
+// pair, so an icon can be re-pointed when the canvas scheme flips.
 export async function loadIconVariantIndex(): Promise<
-  Map<string, { light: string; dark: string }>
+  Map<string, IconSchemeVariants>
 > {
   const icons = await loadDashboardIcons();
-  const index = new Map<string, { light: string; dark: string }>();
+  const index = new Map<string, IconSchemeVariants>();
   for (const icon of icons) {
     if (!icon.colors) continue;
+    // The base file is the variant upstream leaves implicit.
     const pair = {
       light: icon.colors.light ?? icon.id,
       dark: icon.colors.dark ?? icon.id,
@@ -110,12 +116,14 @@ export async function loadIconVariantIndex(): Promise<
   return index;
 }
 
+// A dark canvas wants the light-coloured file and a light canvas the dark
+// one; a logo with no variant for that side keeps its own id.
 export function iconIdForScheme(
-  variants: Map<string, { light: string; dark: string }> | null,
   id: string,
+  colors: IconSchemeVariants | undefined,
   scheme: 'light' | 'dark',
 ) {
-  return variants?.get(id)?.[scheme] ?? id;
+  return (scheme === 'dark' ? colors?.light : colors?.dark) ?? id;
 }
 
 export async function createDashboardIcon(
@@ -131,7 +139,6 @@ export async function createDashboardIcon(
     name: icon.name,
     source: 'dashboard',
     dataUrl: svgTextToDataUrl(await response.text(), `dashboard-${icon.id}`),
-    attribution: `Dashboard Icons: ${icon.id}`,
   };
 }
 

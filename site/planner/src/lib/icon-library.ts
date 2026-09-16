@@ -4,7 +4,7 @@ import mos from '@/assets/my-own-suite-mark.svg?raw';
 // the document at runtime — from the first-party staged Dashboard Icons set,
 // the MOS app catalog, or a user upload — and is embedded as a data URL, so
 // exports stay self-contained without third-party artwork in the repository.
-export const rawIconLibrary: Record<string, { name: string; svg: string }> = {
+const rawIconLibrary: Record<string, { name: string; svg: string }> = {
   'my-own-suite-mark': { name: 'My Own Suite', svg: mos },
 };
 
@@ -75,6 +75,18 @@ export function libraryIconDataUrl(id: string, instance = id) {
 
 export function svgTextToDataUrl(raw: string, instance: string) {
   return encode(sanitizeAndScopeSvg(raw, `upload-${instance}`));
+}
+
+export function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      typeof reader.result === 'string'
+        ? resolve(reader.result)
+        : reject(new Error('The image could not be read.'));
+    reader.onerror = () => reject(new Error('The image could not be read.'));
+    reader.readAsDataURL(blob);
+  });
 }
 
 function escapeRegExp(value: string) {

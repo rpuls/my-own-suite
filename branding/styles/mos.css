@@ -494,6 +494,104 @@ label:hover > .mos-switch-input:enabled + .mos-switch-track {
   }
 }
 
+/* Range: a continuous setting that is chosen by eye rather than typed — a size
+   or a distance whose right value is whatever looks right. It takes the
+   switch's accent gradient for the part of the track already spent, so "more"
+   reads the same affirmative everywhere, and a knob the same size as the
+   switch's so the two controls sit level in a column of settings. The number
+   itself belongs beside the control, not inside it.
+
+   Structure contract: a real <input type="range">, with the product setting
+   --mos-range-fill to the percentage of the track that is spent (only Firefox
+   can work that out on its own). Leaving it out simply shows an empty track. */
+.mos-range {
+  width: 100%;
+  height: 1.25rem;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.mos-range::-webkit-slider-runnable-track {
+  height: 0.375rem;
+  border-radius: var(--mos-radius-pill);
+  background:
+    linear-gradient(90deg, var(--mos-color-accent), var(--mos-color-accent-strong))
+      0 / var(--mos-range-fill, 0%) 100% no-repeat,
+    var(--mos-color-surface-strong);
+  border: 1px solid var(--mos-color-surface-border);
+}
+
+.mos-range::-moz-range-track {
+  height: 0.375rem;
+  border-radius: var(--mos-radius-pill);
+  background: var(--mos-color-surface-strong);
+  border: 1px solid var(--mos-color-surface-border);
+}
+
+.mos-range::-moz-range-progress {
+  height: 0.375rem;
+  border-radius: var(--mos-radius-pill);
+  background: linear-gradient(90deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+}
+
+/* A 1.125rem knob on a 0.375rem track needs lifting by half the difference to
+   sit centred on it. */
+.mos-range::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin-top: -0.4375rem;
+  border: 0;
+  border-radius: var(--mos-radius-pill);
+  background: linear-gradient(160deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+  box-shadow: var(--mos-shadow-soft);
+  transition: transform var(--mos-transition);
+}
+
+.mos-range::-moz-range-thumb {
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 0;
+  border-radius: var(--mos-radius-pill);
+  background: linear-gradient(160deg, var(--mos-color-accent), var(--mos-color-accent-strong));
+  box-shadow: var(--mos-shadow-soft);
+}
+
+.mos-range:hover::-webkit-slider-thumb,
+.mos-range:active::-webkit-slider-thumb {
+  transform: scale(1.08);
+}
+
+.mos-range:focus-visible {
+  outline: none;
+}
+
+.mos-range:focus-visible::-webkit-slider-thumb {
+  outline: 3px solid var(--mos-color-focus-visible);
+  outline-offset: 2px;
+}
+
+.mos-range:focus-visible::-moz-range-thumb {
+  outline: 3px solid var(--mos-color-focus-visible);
+  outline-offset: 2px;
+}
+
+.mos-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mos-range::-webkit-slider-thumb {
+    transition: none;
+  }
+}
+
 /* Settings row: the single element app configuration is built from. Label on
    the left, value on the right, a hairline between neighbours.
 

@@ -10,7 +10,7 @@ The "Explore the apps" section is generated at build time from `apps/*/manifest.
 
 ## Digital Independence Planner
 
-`planner/` is a standalone Vite + React sub-app deployed at `/plan/` — a free, browser-only roadmap builder that exports "digital independence journey" graphics. `npm run build` in `site/` builds it into `site/dist/plan` after the Astro build, and `npm run dev` in `site/` starts its dev server alongside Astro's and proxies `/plan/` to it, so the planner is reachable at the same path in dev as in production. It deliberately keeps its own toolchain (Tailwind, Base UI) so its styles never fight Starlight's; the brand look comes from the same synced `mos.css`.
+`planner/` is a standalone Vite + React sub-app deployed at `/plan/` — a free, browser-only roadmap builder that exports "digital independence journey" graphics. `npm run build` in `site/` builds it into `site/dist/plan` after the Astro build, and `npm run dev` in `site/` starts its dev server alongside Astro's and proxies `/plan/` to it, so the planner is reachable at the same path in dev as in production. It deliberately keeps its own Vite + React toolchain and a plain product stylesheet so its styles never fight Starlight's; the brand look comes from the same synced `mos.css`.
 
 Its `prebuild`/`predev` step (`planner/scripts/prepare-assets.mjs`) stages everything that must not live in git:
 

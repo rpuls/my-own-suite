@@ -1,0 +1,24 @@
+{
+  "$comment": "Every Dashboard Icons id the built-in roadmap templates reference. scripts/prepare-assets.mjs refuses to stage an icon set that lacks one, and a unit test holds this list to the templates in roadmap-model.ts.",
+  "icons": [
+    "google-home",
+    "home-assistant",
+    "google-photos",
+    "immich",
+    "tp-link",
+    "opnsense",
+    "apple-light",
+    "google-calendar",
+    "radicale",
+    "google-drive",
+    "seafile",
+    "google-docs",
+    "google-sheets",
+    "google-slides",
+    "onlyoffice",
+    "google-password-manager",
+    "vaultwarden",
+    "google-chrome",
+    "firefox"
+  ]
+}
