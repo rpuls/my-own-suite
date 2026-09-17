@@ -354,8 +354,12 @@ export function RestoreDialog({ backup, busy, address, confirmation, onCancel, o
     onClose={() => { if (!busy) onCancel(); }}
     title="Restore this backup"
   >
-    <p>This replaces everything on this machine with the backup from <strong>{whenWords(backup.createdAt)}</strong>. It takes 10 to 20 minutes, your apps stop while it runs, and everyone is signed out at the end.</p>
+    <p>This replaces everything on this machine with the backup from <strong>{whenWords(backup.createdAt)}</strong>. Your apps stop while it runs, and everyone is signed out at the end.</p>
     <p className="suite-meta">{backupDescription(backup)} · {backup.destinationLabel}</p>
+    {/* The estimate is the agent's: read off this machine's own jobs and app
+        build times, or a stated range when it has none, and it says which. */}
+    {backup.expect ? <p>{backup.expect.restore.sentence}</p> : null}
+    {backup.expect?.restore.note ? <p className="suite-meta">{backup.expect.restore.note}</p> : null}
     <Notice title="A rescue copy is kept" variant="info">
       <p>MOS saves a complete copy of what is on this machine now before it changes anything, so a restore that stops partway can be looked at rather than guessed about. Apps and app data added after this backup are removed, so the system matches the backup exactly.</p>
     </Notice>

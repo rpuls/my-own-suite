@@ -19,8 +19,11 @@
 //   restoreStateOwnership()               sourceInfo() -> { branch, commit, repoDir, version }
 //
 // `packages` = { inventory(), validatePayloads(stagedRoot, apps) }
-// `apps`     = { installedInstances() -> [{ enabled, instanceId, packageId }], reconcile(log) }
-// `jobs`     = { log(file, message), stage(file, name), update(file, mutator) }
+// `apps`     = { installedInstances() -> [{ enabled, instanceId, packageId }], reconcile(log, progress) }
+// `jobs`     = { log(file, message), stage(file, name), progress(file, count), update(file, mutator) }
+//   where a count is { done, total, unit: 'apps' | 'volumes', packageId, displayName? }:
+//   which item of how many the current stage is on, so the surfaces that show
+//   a job can say "Seafile — 4 of 16" instead of only the stage.
 // `engine`   = the backup storage engine (./engines/, fakes in the tests):
 //   openOrCreateRepository({ create, env, localPath, location }) -> repository
 //   snapshotTree({ repository, sourceDir, tags }) -> { snapshotId, sourcePath }
@@ -74,6 +77,17 @@ const RESTORE_PHASES = Object.freeze(['stopping-runtime', 'rescue', 'restoring-s
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 function readJson(file) { return JSON.parse(fs.readFileSync(file, 'utf8')); }
 function writeJson(file, value) { ensureDir(path.dirname(file)); fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
+// What a job is working on, on the job record: the apps a backup holds and
+// how much data, which is what an estimate of the next job of this kind is
+// scaled by and what a running one names.
+function subjectOf(manifest) {
+  const volumes = manifest?.contents?.volumes || [];
+  return {
+    apps: (manifest?.contents?.apps || []).map((app) => ({ instanceId: app.instanceId || null, packageId: app.packageId })),
+    sizeBytes: (manifest?.contents?.stateRawBytes || 0) + volumes.reduce((sum, volume) => sum + (volume.rawBytes || 0), 0),
+    volumeCount: volumes.length,
+  };
+}
 // The journal must never be half-written: it is what a later process reads to
 // decide whether the machine sits mid-restore. Write-then-rename keeps every
 // observable journal state either the previous record or the next one.
@@ -420,6 +434,7 @@ class BackupAgentCore {
       throw new Error(`Staging the suite state needs ${formatBytes(stateRawBytes)} free on the system disk, but only ${formatBytes(localFreeBytes)} is available.`);
     }
     jobs.log(jobFile, `Backing up about ${formatBytes(estimatedBytes)} of persistent state (${owned.length} app volumes).`);
+    jobs.update(jobFile, (job) => { job.subject = { apps: packageInventory.map((item) => ({ instanceId: item.instanceId, packageId: item.packageId })), sizeBytes: estimatedBytes, volumeCount: owned.length }; });
 
     jobs.stage(jobFile, 'Opening the backup repository on the destination');
     const repository = await destination.repository();
@@ -449,7 +464,8 @@ class BackupAgentCore {
 
       jobs.stage(jobFile, 'Storing app volumes');
       const storedVolumes = [];
-      for (const volume of ownedWithMounts) {
+      for (const [index, volume] of ownedWithMounts.entries()) {
+        jobs.progress(jobFile, { done: index, packageId: volume.packageId, total: ownedWithMounts.length, unit: 'volumes' });
         jobs.log(jobFile, `Storing ${volume.name}`);
         const snapshot = await this.engine.snapshotTree({ repository, sourceDir: volume.mountpoint, tags: { mosjob: started.id, mosrole: 'volume', mosvolume: volume.name } });
         storedSnapshotIds.push(snapshot.snapshotId);
@@ -615,12 +631,15 @@ class BackupAgentCore {
   // snapshots on purpose: a whole-repository read costs every backup ever
   // taken and sits on the restore path, so it would grow until validate times
   // out exactly when recovery matters.
-  async validateRestorePoint(locator, { keepStagedState = false } = {}) {
+  async validateRestorePoint(locator, { keepStagedState = false, onManifest = null } = {}) {
     const { packages } = this;
     if (!isRestorePointLocator(locator)) throw new Error(UNREADABLE_LEGACY_BACKUP);
     const { destination, pointId } = this.resolveBackup(locator);
     const manifest = await destination.points.read(pointId);
     this.assertRestorableManifest(manifest);
+    // Told before the long read rather than after it, so a job can say what
+    // it is checking, and how long that usually takes, while it checks.
+    if (onManifest) onManifest(manifest);
     const repository = await destination.repository({ create: false });
     try {
       await this.engine.verifySnapshots({ repository, snapshotIds: snapshotIdsOfRestorePoint(manifest) });
@@ -690,7 +709,7 @@ class BackupAgentCore {
     const { jobs } = this;
     const started = jobs.update(jobFile, (job) => { job.status = 'running'; job.stage = 'starting'; });
     jobs.stage(jobFile, 'Checking the backup');
-    const { report } = await this.validateRestorePoint(started.backupPath);
+    const { report } = await this.validateRestorePoint(started.backupPath, { onManifest: (manifest) => jobs.update(jobFile, (job) => { job.subject = subjectOf(manifest); }) });
     for (const warning of report.warnings) jobs.log(jobFile, warning);
     jobs.update(jobFile, (job) => {
       job.stage = 'completed';
@@ -709,7 +728,7 @@ class BackupAgentCore {
     const backupPath = started.backupPath;
 
     jobs.stage(jobFile, 'Checking the backup');
-    const { manifest, report, repository, stagedStatePath: stagedState } = await this.validateRestorePoint(backupPath, { keepStagedState: true });
+    const { manifest, report, repository, stagedStatePath: stagedState } = await this.validateRestorePoint(backupPath, { keepStagedState: true, onManifest: (read) => jobs.update(jobFile, (job) => { job.subject = subjectOf(read); }) });
     for (const warning of report.warnings) jobs.log(jobFile, warning);
     jobs.update(jobFile, (job) => { job.validation = report; });
     let runtimeStopped = false;
@@ -765,7 +784,8 @@ class BackupAgentCore {
       await system.archiveTree(rescueStage, path.join(rescueDir, 'state-before-restore.tar.gz'));
       fs.rmSync(rescueStage, { force: true, recursive: true });
       const rescuedVolumes = [];
-      for (const volume of currentOwnedWithMounts) {
+      for (const [index, volume] of currentOwnedWithMounts.entries()) {
+        jobs.progress(jobFile, { done: index, packageId: volume.packageId, total: currentOwnedWithMounts.length, unit: 'volumes' });
         jobs.log(jobFile, `Saving rescue copy of ${volume.name}`);
         const archivePath = path.join(rescueDir, 'volumes', `${volume.name}.tar.gz`);
         ensureDir(path.dirname(archivePath));
@@ -817,7 +837,9 @@ class BackupAgentCore {
       for (const name of currentAmbiguous) {
         jobs.log(jobFile, `Volume ${name} wears the MOS prefix but matches no known package, so it was left untouched. Remove it manually if it is unwanted.`);
       }
-      for (const volume of manifest.contents?.volumes || []) {
+      const restoringVolumes = manifest.contents?.volumes || [];
+      for (const [index, volume] of restoringVolumes.entries()) {
+        jobs.progress(jobFile, { done: index, packageId: volume.packageId || null, total: restoringVolumes.length, unit: 'volumes' });
         jobs.log(jobFile, `Restoring ${volume.name}`);
         await system.createVolume(volume.name, appVolumeLabels({ instanceId: volume.instanceId || null, name: volume.name, packageId: volume.packageId || null }));
         const mountpoint = await system.volumeMountpoint(volume.name);
@@ -827,7 +849,7 @@ class BackupAgentCore {
       this.advanceJournal('reconciling-apps');
       jobs.stage(jobFile, 'Rebuilding app runtime');
       await system.restoreStateOwnership();
-      await apps.reconcile((message) => jobs.log(jobFile, message));
+      await apps.reconcile((message) => jobs.log(jobFile, message), (count) => jobs.progress(jobFile, count));
 
       this.advanceJournal('verifying');
       jobs.stage(jobFile, 'Verifying restored state');

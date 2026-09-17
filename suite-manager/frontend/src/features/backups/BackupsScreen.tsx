@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { ServerLoginNotice } from '../../components/ServerLoginNotice';
-import { AdvancedPanel, Icon, Notice, Panel, PanelBody, PanelHead, Select, Spinner } from '../../components/ui';
+import { AdvancedPanel, Icon, Notice, Panel, PanelBody, PanelHead, PanelItem, PanelList, Select, Spinner } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
 import { DestinationsPanel } from './DestinationsPanel';
 import { RestorePointsPanel } from './RestorePointsPanel';
@@ -24,15 +24,17 @@ import {
   backupBlockReason,
   bannerState,
   browserTimeZone,
+  countShare,
   destinationViews,
   isRunning,
+  jobLine,
   jobWorkingLine,
   restoreAddressNote,
   restorePhaseWords,
   scheduleLive,
   scheduleSummary,
-  stageProgress,
   stageWords,
+  stepLine,
   whenWords,
   type BackupEntry,
   type BackupSchedule,
@@ -447,16 +449,27 @@ export function BackupsScreen() {
   // A restore takes the page over. Nothing else on it is reachable or true
   // while the machine is being replaced by the backup.
   if (restoreInFlight) {
-    const progress = stageProgress(activeJob);
+    const progress = activeJob?.progress || null;
+    const count = progress?.count || null;
     return <section className="mos-shell suite-backups">
       <div className="mos-page">
         {hero}
         <Panel>
+          <PanelHead title={progress?.headline || 'Restoring your backup'}>
+            <p className="suite-bk-working"><Spinner />{stageWords(activeJob)}{stepLine(progress)}</p>
+            {count ? <>
+              <p className="suite-meta">{count.sentence}{count.note ? ` ${count.note}` : ''}</p>
+              <div className="suite-bk-bar"><span style={{ width: `${countShare(count)}%` }} /></div>
+            </> : null}
+          </PanelHead>
+          {progress?.plan.length ? <PanelList>
+            {progress.plan.map((entry, index) => <PanelItem className={`suite-bk-step is-${entry.state}`} key={index} quiet={entry.state === 'next'}>
+              <span className={`suite-bk-dot is-${entry.state === 'next' ? 'muted' : 'ready'}`} />
+              <span>{entry.sentence}</span>
+            </PanelItem>)}
+          </PanelList> : null}
           <PanelBody>
-            <p className="suite-bk-working"><Spinner />Restoring</p>
-            <h2 className="mos-card-title">{stageWords(activeJob?.stage)}</h2>
-            <div className="suite-bk-bar"><span style={{ width: `${progress.percent}%` }} /></div>
-            <p className="suite-meta">Step {progress.step || 1} of {progress.steps}. This takes 10 to 20 minutes. Your apps are stopped while it runs. <strong>Do not turn the machine off.</strong> When it is done everyone is signed out, because this becomes the restored server.</p>
+            <p className="suite-meta">{progress?.expect?.sentence ? `${progress.expect.sentence} ` : ''}Your apps are stopped while it runs. <strong>Do not turn the machine off.</strong> When it is done everyone is signed out, because this becomes the restored server.</p>
           </PanelBody>
         </Panel>
       </div>
@@ -496,7 +509,7 @@ export function BackupsScreen() {
             </div>
           </div>
           <div className="suite-bk-banner-action">
-            {backingUp ? <p className="suite-bk-working"><Spinner />{stageWords(activeJob?.stage)} &mdash; step {stageProgress(activeJob).step} of {stageProgress(activeJob).steps}. Apps come back on their own.</p>
+            {backingUp ? <p className="suite-bk-working"><Spinner />{jobLine(activeJob)}. Apps come back on their own.</p>
               : workingLine ? <p className="suite-bk-working"><Spinner />{workingLine}</p> : <>
               <div className="suite-bk-backup-controls">
                 {readyViews.length > 1 && !blockReason ? <Select

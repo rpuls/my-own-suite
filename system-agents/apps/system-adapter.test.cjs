@@ -1158,3 +1158,61 @@ test('a stale volume refuses the install under its own code instead of as a star
   );
   assert.equal(commands.some((command) => command.args[0] === 'run'), false);
 });
+
+// The number a restore's estimate is read off: how long each app took to come
+// up on this machine, from the first build to healthy. Recorded beside the
+// package root, only for an app that got there.
+test('system adapter records how long each app took to build and come up, and nothing for one that failed', async () => {
+  const root = await tempDir();
+  const appPackageRoot = path.join(root, 'packages');
+  const instanceId = '12345678-1234-4123-8123-123456789abc';
+  const packageDir = path.join(appPackageRoot, instanceId, 'installed');
+  await fsp.mkdir(packageDir, { recursive: true });
+  await fsp.writeFile(path.join(packageDir, 'manifest.json'), `${JSON.stringify({ id: 'example-tool', name: 'Example Tool', packageFiles: [] })}\n`);
+  await fsp.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM scratch\n');
+  const packageDigest = digestAppPackage(packageDir);
+  const timingsPath = path.join(root, 'app-build-timings.json');
+  let clock = 1_000_000;
+  const request = {
+    caddyRoutes: 'http://example-tool.mos.home {\n  reverse_proxy http://127.0.0.1:18123\n}\n',
+    dockerfile: 'Dockerfile',
+    environment: {},
+    healthTarget: 'http://127.0.0.1:18123/health',
+    imageTag: 'mos-app-example-tool:0.1.0',
+    instanceId,
+    internalPort: 3000,
+    loopbackPort: 18123,
+    packageDigest,
+    packageId: 'example-tool',
+    packageVersion: '0.1.0',
+    sourceRevision: '0123456789abcdef0123456789abcdef01234567',
+    volumes: [],
+  };
+  const build = (failBuild) => new SystemAppAdapter({
+    appsRoot: root,
+    appPackageRoot,
+    caddyBinary: 'caddy',
+    dockerBinary: 'docker',
+    now: () => clock,
+    routesPath: path.join(root, 'routes.caddy'),
+    async execute(file, args) {
+      if (args[0] === 'build') {
+        if (failBuild) throw new Error('build exploded');
+        clock += 200_000;
+      }
+    },
+    async waitForReady() { clock += 30_000; },
+  });
+
+  assert.equal(path.join(path.dirname(appPackageRoot), 'app-build-timings.json'), timingsPath, 'the default lands in the state root beside the package root');
+  await assert.rejects(() => build(true).applyAppService(request));
+  assert.equal(fs.existsSync(timingsPath), false, 'a failed build records nothing');
+
+  await build(false).applyAppService(request);
+  const timings = JSON.parse(await fsp.readFile(timingsPath, 'utf8'));
+  assert.equal(timings['example-tool'].displayName, 'Example Tool');
+  assert.equal(timings['example-tool'].samples.length, 1);
+  assert.equal(timings['example-tool'].samples[0].seconds, 230);
+  assert.equal(timings['example-tool'].samples[0].buildSeconds, 200);
+  assert.ok(timings['example-tool'].samples[0].cpus >= 1);
+});

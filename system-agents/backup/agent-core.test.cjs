@@ -220,6 +220,7 @@ class FakeWorld {
     this.system = new FakeSystem(root);
     this.engine = new FakeEngine();
     this.reconcileRuns = [];
+    this.progressCalls = [];
     this.jobsDir = path.join(root, 'jobs');
     for (const dir of [this.paths.agentStateDir, this.paths.stateDir, this.jobsDir, path.join(root, 'destination')]) ensureDir(dir);
     ensureDir(path.join(this.paths.stateRoot, 'homepage', 'config'));
@@ -266,9 +267,11 @@ class FakeWorld {
         installedInstances: () => readInstances().map(({ enabled, instanceId, packageId }) => ({ enabled, instanceId, packageId })),
         // Mirrors the apps agent on reconcile: enabled instances get their
         // declared volumes ensured (created with labels only when absent).
-        reconcile: async (log) => {
+        reconcile: async (log, progress = () => {}) => {
           this.reconcileRuns.push(new Date().toISOString());
-          for (const instance of readInstances().filter((entry) => entry.enabled)) {
+          const enabled = readInstances().filter((entry) => entry.enabled);
+          for (const [index, instance] of enabled.entries()) {
+            progress({ displayName: instance.packageId.toUpperCase(), done: index, packageId: instance.packageId, total: enabled.length, unit: 'apps' });
             log(`Restoring ${instance.packageId}`);
             for (const volume of PACKAGE_VOLUMES[instance.packageId] || []) {
               const name = appVolumeName(instance.packageId, volume);
@@ -288,6 +291,7 @@ class FakeWorld {
       engine: this.engine,
       jobs: {
         log: (file, message) => this.updateJob(file, (job) => { job.logs.push({ message }); }),
+        progress: (file, count) => { this.progressCalls.push({ ...count, stage: readJson(file).stage }); },
         stage: (file, name) => this.updateJob(file, (job) => { job.stage = name; job.status = 'running'; job.logs.push({ message: name }); }),
         update: (file, mutator) => this.updateJob(file, mutator),
       },
@@ -1157,4 +1161,46 @@ test('taking another server\'s place adopts its key; restoring as a copy does no
   await w.core({ assumeArchiveKey: async (id) => { assumed.push(id); return true; }, installId: () => 'install-a' })
     .restore(w.createJob('restore', { backupPath: restorePointOf(backupJob) }));
   assert.deepEqual(assumed, [w.destination()]);
+});
+
+// What the surfaces that show a running job are given: the apps and size a
+// check or restore is working on, told before the long read starts, and which
+// item of how many a stage is on. The words are the host's; the engine only
+// says where it is.
+test('a check and a restore record what they work on, and count through volumes and apps', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  await w.installApp(SEAFILE);
+  const core = w.core();
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await core.backup(backupJob);
+  const point = restorePointOf(backupJob);
+  const backup = readJson(backupJob);
+  assert.deepEqual(backup.subject.apps.map((app) => app.packageId), ['stirling-pdf', 'seafile']);
+  assert.equal(backup.subject.volumeCount, 3);
+  assert.ok(backup.subject.sizeBytes > 0);
+  assert.deepEqual(
+    w.progressCalls.filter((call) => call.stage === 'Storing app volumes').map((call) => [call.done, call.total, call.unit, call.packageId]),
+    [[0, 3, 'volumes', 'seafile'], [1, 3, 'volumes', 'seafile'], [2, 3, 'volumes', 'stirling-pdf']],
+  );
+
+  w.progressCalls.length = 0;
+  const validateJob = w.createJob('validate', { backupPath: point });
+  await core.validateBackup(validateJob);
+  const validated = readJson(validateJob);
+  assert.deepEqual(validated.subject.apps.map((app) => app.packageId), ['stirling-pdf', 'seafile']);
+  assert.equal(validated.subject.sizeBytes, backup.subject.sizeBytes);
+  assert.deepEqual(w.progressCalls, [], 'a check has no counted stage');
+
+  const restoreJob = w.createJob('restore', { backupPath: point });
+  await core.restore(restoreJob);
+  const restored = readJson(restoreJob);
+  assert.equal(restored.status, 'succeeded');
+  assert.equal(restored.subject.sizeBytes, backup.subject.sizeBytes);
+  const byStage = (stage) => w.progressCalls.filter((call) => call.stage === stage).map((call) => [call.done, call.total, call.unit, call.displayName || call.packageId]);
+  assert.deepEqual(byStage('Saving pre-restore rescue copy'), [[0, 3, 'volumes', 'seafile'], [1, 3, 'volumes', 'seafile'], [2, 3, 'volumes', 'stirling-pdf']]);
+  assert.deepEqual(byStage('Restoring app volumes'), [[0, 3, 'volumes', 'seafile'], [1, 3, 'volumes', 'seafile'], [2, 3, 'volumes', 'stirling-pdf']]);
+  assert.deepEqual(byStage('Rebuilding app runtime'), [[0, 2, 'apps', 'STIRLING-PDF'], [1, 2, 'apps', 'SEAFILE']]);
+  // Nothing about a volume reaches a count but the app it belongs to.
+  for (const call of w.progressCalls) assert.equal(call.name, undefined);
 });

@@ -6,6 +6,7 @@ Updater-facing software changes only — documentation, site, repository, and co
 
 ### Added
 
+- **A backup check or restore now says how long it will take, and shows where it is while it runs.** The restore dialog names the apps in the backup and gives a time for this machine, read off its own earlier jobs and how long each app took to build here; with no history yet it gives a stated range and says so. A running job shows its step of how many and, inside a stage, which app of how many it is on. While Suite Manager is stopped for the middle of a restore, the **My Own Suite is busy** page shows the same stages, counts and expectation instead of a fixed sentence, and still works with no JavaScript. Existing servers get the page and its route through a managed platform update; the first estimate on any server is a range until it has timed a job.
 - **MOS now keeps Ubuntu patched.** Security updates from Ubuntu's own channel install themselves, and **Updates** shows what is waiting, when it last checked and what it last installed, beside MOS and your apps. MOS never restarts your server on its own: when a patch needs one it says so and offers **Restart server**, which you confirm. Existing servers get this through a managed platform update; a server where you configured unattended-upgrades yourself is reported as yours and left alone.
 
 ## [0.20.0] - 2026-09-15

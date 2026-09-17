@@ -7,6 +7,7 @@ const { packageImageTag } = require('./agent-core.cjs');
 const { appVolumeLabels, appVolumeName, OWNERSHIP_LABELS } = require('../../infrastructure/persistent-state.cjs');
 const { collectPackageFiles, digestAppPackage, parseNamespacedPackageId, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { describeDuration, describeFailure, indent, maskValues, runCommand, tailOutput } = require('../lib/command-output.cjs');
+const { BUILD_TIMINGS_FILENAME, recordBuildTiming } = require('../lib/app-build-timings.cjs');
 
 const APPS_ROOT = process.env.MOS_APPS_ROOT || path.resolve(process.cwd(), 'apps');
 const APP_PACKAGE_ROOT = process.env.MOS_APP_PACKAGE_ROOT || '/var/lib/mos/app-packages';
@@ -270,19 +271,27 @@ class SystemAppAdapter {
     appsRoot = APPS_ROOT,
     appCandidateRoot = APP_CANDIDATE_ROOT,
     appPackageRoot = APP_PACKAGE_ROOT,
+    // How long each app took to build and come up on this machine, beside the
+    // package root, i.e. in the state root: the backup agent reads it to say
+    // what rebuilding the apps will cost, and it stays out of every backup
+    // because these numbers are about this CPU, not about the suite.
+    buildTimingsPath = path.join(path.dirname(appPackageRoot), BUILD_TIMINGS_FILENAME),
     caddyBinary = CADDY_BINARY,
     dockerBinary = DOCKER_BINARY,
     execute = exec,
     executeCapture = undefined,
+    now = () => Date.now(),
     routesPath = APP_ROUTES_PATH,
     waitForReady = waitForHttp,
   } = {}) {
     this.appsRoot = appsRoot;
     this.appCandidateRoot = appCandidateRoot;
     this.appPackageRoot = appPackageRoot;
+    this.buildTimingsPath = buildTimingsPath;
     this.caddyBinary = caddyBinary;
     this.dockerBinary = dockerBinary;
     this.execute = execute;
+    this.now = now;
     // Derived from the plain runner rather than defaulted to the real system,
     // so a harness that stubs only `execute` sees the explicit labeled
     // `volume create` instead of this adapter reaching around the stub to the
@@ -799,12 +808,27 @@ class SystemAppAdapter {
     });
   }
 
+  // What one app cost to bring up, from the first `docker build` to healthy,
+  // recorded only when it succeeded: a build that failed after a minute says
+  // nothing about how long a working one takes. The build alone is kept too,
+  // for whoever wants to set install expectations from it.
+  recordAppTiming({ buildSeconds, packageDir, packageId, startedAt }) {
+    let displayName = null;
+    try {
+      const name = JSON.parse(fs.readFileSync(path.join(packageDir, 'manifest.json'), 'utf8')).name;
+      displayName = typeof name === 'string' && name.trim() ? name.trim() : null;
+    } catch {}
+    recordBuildTiming(this.buildTimingsPath, { buildSeconds, displayName, packageId, seconds: (this.now() - startedAt) / 1000 });
+  }
+
   async applyAppServices({ caddyRoutes, healthTarget, instanceId, packageDigest, packageId, packageVersion, services, sourceRevision }) {
     const packageDir = path.join(this.appPackageRoot, instanceId, 'installed');
     const routeSnapshot = `${this.routesPath}.before-${process.pid}`;
     let routesChanged = false;
     let stage = 'build';
     let activity = STAGE_ACTIVITY.build;
+    const startedAt = this.now();
+    let buildSeconds = null;
 
     try {
       verifySnapshotIdentity(packageDir, { errorMessage: 'PACKAGE_SNAPSHOT_MISMATCH', expectedDigest: packageDigest, packageId });
@@ -822,6 +846,7 @@ class SystemAppAdapter {
           '.',
         ], { cwd: packageDir, timeoutMs: 300000 });
       }
+      buildSeconds = (this.now() - startedAt) / 1000;
 
       stage = 'run';
       activity = STAGE_ACTIVITY.run;
@@ -864,6 +889,7 @@ class SystemAppAdapter {
       stage = 'health';
       activity = STAGE_ACTIVITY.health;
       await this.waitForReady(healthTarget);
+      this.recordAppTiming({ buildSeconds, packageDir, packageId, startedAt });
 
       const currentRoutes = fs.existsSync(this.routesPath) ? await fsp.readFile(this.routesPath, 'utf8') : null;
       const nextRoutes = upsertAppRouteBlock(currentRoutes, { caddyRoutes, packageId });

@@ -9,7 +9,7 @@ const {
   resolveRuntimeConfig,
   suiteManagerUnit,
 } = require('../../scripts/reconcile-system.cjs');
-const { JOURNALD_CONFIG_PATH, renderJournaldConfig, renderUnavailablePage, UNAVAILABLE_PAGE_FILENAME, UNAVAILABLE_PAGE_ROOT } = require('../../infrastructure/control-plane-runtime.cjs');
+const { JOURNALD_CONFIG_PATH, PROGRESS_ROUTE, renderJournaldConfig, renderUnavailablePage, UNAVAILABLE_PAGE_FILENAME, UNAVAILABLE_PAGE_ROOT } = require('../../infrastructure/control-plane-runtime.cjs');
 const { renderBootstrapPlan } = require('../../scripts/installers/bootstrap-contract.cjs');
 
 test('system reconciliation preserves the installed Home host from the bootstrap contract', (context) => {
@@ -155,6 +155,12 @@ ${page}MOS_UNAVAILABLE_PAGE`),
   for (const source of [installer, reconciler]) {
     assert.ok(source.includes('handle_errors') || source.includes('withUnavailableHandler'), 'both paths must point Caddy at the page');
   }
+  // The progress file the page polls is served from the same directory by its
+  // own route: rendered into a fresh install's Caddyfile, and added to an
+  // installed one by the same in-place upgrade that adds the handler.
+  assert.ok(installer.includes(`handle ${PROGRESS_ROUTE} {`), 'a fresh install serves the progress file');
+  assert.ok(installer.includes(`install -d -m 0755 ${UNAVAILABLE_PAGE_ROOT}`), 'the directory the agent writes into exists from install');
+  assert.ok(reconciler.includes('withUnavailableHandler'), 'the managed-update path upgrades the installed Caddyfile in place');
 });
 
 // The socket is the only door to a root process that reads host state, so its

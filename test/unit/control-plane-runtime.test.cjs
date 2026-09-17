@@ -5,10 +5,14 @@ const test = require('node:test');
 
 const {
   HOMEPAGE_IMAGE,
+  PROGRESS_FILENAME,
+  PROGRESS_ROUTE,
+  PROGRESS_STALE_MINUTES,
   UNAVAILABLE_PAGE_FILENAME,
   UNAVAILABLE_PAGE_ROOT,
   renderCaddyfile,
   renderUnavailablePage,
+  renderUnavailablePageScript,
   withUnavailableHandler,
   renderHttpsCaddyfile,
   renderPublicCloudCaddyfile,
@@ -174,12 +178,193 @@ test('the status page stands alone and asks the browser to come back', () => {
   const page = renderUnavailablePage();
 
   // Caddy serves this with nothing else running, so anything it referenced
-  // would be a second broken request during the outage it explains.
-  assert.doesNotMatch(page, /<script|<img|<link|https?:\/\//u);
+  // would be a second broken request during the outage it explains. The one
+  // script is inline, and the one thing it fetches is Caddy's own file.
+  assert.doesNotMatch(page, /<script src|<img|<link|https?:\/\//u);
   assert.match(page, /<meta http-equiv="refresh" content="15">/u);
   assert.match(page, /<title>[^<]+<\/title>/u);
   assert.match(page, /restore or an update/u);
   assert.match(page, /prefers-color-scheme: dark/u);
+  assert.ok(page.includes(renderUnavailablePageScript()), 'the page carries the script verbatim');
+  assert.equal(page.match(/fetch\(/gu).length, 1);
+  assert.ok(page.includes(`fetch('${PROGRESS_ROUTE}'`));
+
+  // With no script running, the progress section is hidden markup and the
+  // page is the static one it always was: the words come before the script.
+  const staticText = page.slice(0, page.indexOf('<script>'));
+  assert.match(staticText, /My Own Suite is busy right now/u);
+  assert.match(staticText, /Nothing is lost while it waits/u);
+  assert.match(staticText, /<section id="mos-progress" hidden/u);
+});
+
+// The route the page polls. It is matched before the proxy, so it never
+// depends on the error path: with the file present it is served, without it
+// the answer is an empty 204, and neither is an error `handle_errors` would
+// rewrite into the HTML page.
+test('the progress file has its own route in every proxying block, ahead of the proxy and outside the error handler', () => {
+  const route = new RegExp(String.raw`handle ${PROGRESS_ROUTE.replace(/\./gu, '\\.')} \{\s*root \* ${UNAVAILABLE_PAGE_ROOT}\s*@present file /${PROGRESS_FILENAME.replace(/\./gu, '\\.')}\s*handle @present \{\s*header Cache-Control no-store\s*rewrite \* /${PROGRESS_FILENAME.replace(/\./gu, '\\.')}\s*file_server\s*\}\s*handle \{\s*respond 204\s*\}\s*\}`, 'u');
+  const renderings = {
+    cloud: renderPublicCloudCaddyfile(),
+    default: renderCaddyfile(),
+    https: renderHttpsCaddyfile({ acmeEmail: 'owner@example.com', baseDomain: 'example.com', bootstrapHost: 'boot.example.com' }),
+  };
+  for (const [name, rendered] of Object.entries(renderings)) {
+    assert.match(rendered, route, `${name}: the route is rendered in full`);
+    assert.equal(rendered.match(/handle \/mos-status\/progress\.json \{/gu).length, 2, `${name}: one route per proxying block`);
+    for (const block of siteBlocks(rendered)) {
+      const proxies = /reverse_proxy\s+127\.0\.0\.1:/u.test(block);
+      const routeAt = block.indexOf(`handle ${PROGRESS_ROUTE} {`);
+      if (!proxies) {
+        assert.equal(routeAt, -1, `${name}: a block with no upstream has no route`);
+        continue;
+      }
+      assert.ok(routeAt >= 0, `${name}: a proxying block has the route`);
+      assert.ok(routeAt < block.indexOf('reverse_proxy'), `${name}: the route comes before the proxy`);
+      assert.ok(routeAt < block.indexOf('handle_errors'), `${name}: the route is not inside the error handler`);
+      // Inside the Easy Door the proxy sits in a `handle @mos-easy-door`;
+      // the route has to be a sibling ahead of it, not nested in it.
+      if (block.includes('@mos-easy-door')) assert.ok(routeAt < block.indexOf('@mos-easy-door'));
+    }
+  }
+});
+
+// Top-level `{ ... }` blocks of a Caddyfile, by brace depth.
+function siteBlocks(caddyfile) {
+  const blocks = [];
+  let depth = 0;
+  let start = -1;
+  const lines = caddyfile.split('\n');
+  lines.forEach((line, index) => {
+    const opens = (line.match(/\{/gu) || []).length;
+    const closes = (line.match(/\}/gu) || []).length;
+    if (depth === 0 && opens > closes) start = index;
+    depth = Math.max(0, depth + opens - closes);
+    if (depth === 0 && start !== -1) {
+      blocks.push(lines.slice(start, index + 1).join('\n'));
+      start = -1;
+    }
+  });
+  return blocks;
+}
+
+// The page's script, run against a fake document: the page must render
+// correctly with no file, with the HTML page where JSON was expected, with
+// malformed JSON, and with a file a dead worker left behind. Only a fresh,
+// well-formed file makes the section appear.
+class FakeNode {
+  constructor(tag) {
+    this.children = [];
+    this.className = '';
+    this.hidden = false;
+    this.style = {};
+    this.tag = tag;
+    this.textContent = '';
+  }
+
+  get firstChild() { return this.children[0] || null; }
+  appendChild(node) { this.children.push(node); return node; }
+  removeChild(node) { this.children = this.children.filter((child) => child !== node); return node; }
+}
+
+function runPageScript(responder) {
+  const ids = ['mos-progress', 'mos-progress-headline', 'mos-progress-now', 'mos-progress-count', 'mos-progress-bar', 'mos-progress-fill', 'mos-progress-note', 'mos-progress-plan', 'mos-progress-expect'];
+  const nodes = new Map(ids.map((id) => [id, new FakeNode(id)]));
+  nodes.get('mos-progress').hidden = true;
+  const document = { createElement: (tag) => new FakeNode(tag), getElementById: (id) => nodes.get(id) || null };
+  const fetch = (url, options) => {
+    assert.equal(url, PROGRESS_ROUTE);
+    assert.deepEqual(options, { cache: 'no-store' });
+    return Promise.resolve().then(() => responder());
+  };
+  const timers = [];
+  const script = new Function('document', 'fetch', 'setInterval', renderUnavailablePageScript());
+  script(document, fetch, (callback, ms) => timers.push({ callback, ms }));
+  return { nodes, timers };
+}
+
+function response({ body = '', ok = true, status = 200, type = 'application/json' }) {
+  return { headers: { get: () => type }, json: async () => JSON.parse(body), ok, status };
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
+
+function freshProgress(overrides = {}) {
+  const now = new Date().toISOString();
+  return {
+    count: { current: 'ONLYOFFICE', done: 2, note: 'ONLYOFFICE usually takes 6 minutes on this machine.', sentence: 'ONLYOFFICE — 3 of 6 apps', total: 6 },
+    expect: { sentence: 'On this machine this usually takes about 19 minutes.' },
+    headline: 'Restoring your backup',
+    plan: [{ sentence: 'Reading the backup', state: 'done' }, { sentence: 'Building your apps again', state: 'now' }, { sentence: 'Checking the result against the backup', state: 'next' }],
+    sentence: 'Building your apps again',
+    startedAt: new Date(Date.now() - 9 * 60 * 1000).toISOString(),
+    step: 7,
+    steps: 9,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+test('the status page shows nothing extra with no progress file, an HTML answer, or malformed JSON', async () => {
+  for (const answer of [
+    () => response({ ok: true, status: 204, type: '' }),
+    () => response({ body: '<!doctype html>', ok: false, status: 503, type: 'text/html; charset=utf-8' }),
+    () => response({ body: '{not json', status: 200 }),
+    () => response({ body: '"a string"', status: 200 }),
+    () => response({ body: JSON.stringify({ headline: 'Restoring your backup' }), status: 200 }),
+    () => { throw new Error('network down'); },
+    () => Promise.reject(new Error('aborted')),
+  ]) {
+    const { nodes } = runPageScript(answer);
+    await settle();
+    assert.equal(nodes.get('mos-progress').hidden, true);
+    assert.equal(nodes.get('mos-progress-headline').textContent, '');
+  }
+});
+
+test('the status page shows the stage, the counts, the plan and the expectation from a fresh file', async () => {
+  const { nodes, timers } = runPageScript(() => response({ body: JSON.stringify(freshProgress()) }));
+  await settle();
+  assert.equal(nodes.get('mos-progress').hidden, false);
+  assert.equal(nodes.get('mos-progress-headline').textContent, 'Restoring your backup');
+  assert.equal(nodes.get('mos-progress-now').textContent, 'Building your apps again — step 7 of 9');
+  assert.equal(nodes.get('mos-progress-count').textContent, 'ONLYOFFICE — 3 of 6 apps');
+  assert.equal(nodes.get('mos-progress-count').hidden, false);
+  assert.equal(nodes.get('mos-progress-note').textContent, 'ONLYOFFICE usually takes 6 minutes on this machine.');
+  assert.equal(nodes.get('mos-progress-bar').hidden, false);
+  assert.equal(nodes.get('mos-progress-fill').style.width, '33%');
+  assert.deepEqual(nodes.get('mos-progress-plan').children.map((item) => [item.className, item.textContent]), [
+    ['is-done', 'Reading the backup'],
+    ['is-now', 'Building your apps again'],
+    ['is-next', 'Checking the result against the backup'],
+  ]);
+  assert.equal(nodes.get('mos-progress-expect').textContent, 'On this machine this usually takes about 19 minutes. Started 9 minutes ago.');
+  // It keeps asking, and a single-step job says no step count.
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].ms, 5000);
+
+  const single = runPageScript(() => response({ body: JSON.stringify(freshProgress({ count: null, expect: null, headline: 'Checking a backup', plan: [{ sentence: 'Reading the backup', state: 'now' }], sentence: 'Reading the backup', step: 1, steps: 1 })) }));
+  await settle();
+  assert.equal(single.nodes.get('mos-progress-now').textContent, 'Reading the backup');
+  assert.equal(single.nodes.get('mos-progress-bar').hidden, true);
+  assert.equal(single.nodes.get('mos-progress-count').hidden, true);
+  assert.equal(single.nodes.get('mos-progress-fill').style.width, '0%');
+});
+
+test('a progress file a dead worker left behind does not make the page claim a job is running', async () => {
+  const stale = new Date(Date.now() - (PROGRESS_STALE_MINUTES + 1) * 60 * 1000).toISOString();
+  const { nodes } = runPageScript(() => response({ body: JSON.stringify(freshProgress({ updatedAt: stale })) }));
+  await settle();
+  assert.equal(nodes.get('mos-progress').hidden, true);
+
+  // And a file that appears fresh, then goes stale between polls, disappears.
+  let updatedAt = new Date().toISOString();
+  const live = runPageScript(() => response({ body: JSON.stringify(freshProgress({ updatedAt })) }));
+  await settle();
+  assert.equal(live.nodes.get('mos-progress').hidden, false);
+  updatedAt = stale;
+  live.timers[0].callback();
+  await settle();
+  assert.equal(live.nodes.get('mos-progress').hidden, true);
 });
 
 // The installed Caddyfile is never re-rendered by reconciliation, because
@@ -219,26 +404,74 @@ https://home.example.com {
 }
 `;
 
-test('an already-installed Caddyfile gains the handler in every proxying block', () => {
+test('an already-installed Caddyfile gains the handler and the progress route in every proxying block', () => {
   const upgraded = withUnavailableHandler(INSTALLED_BEFORE_THE_HANDLER);
   assert.equal(upgraded.match(/handle_errors/gu).length, 2);
+  assert.equal(upgraded.match(/handle \/mos-status\/progress\.json \{/gu).length, 2);
 
   // In the Easy Door the proxy sits inside a `handle`, where `handle_errors` is
   // not valid, so it has to land at the end of the site block instead.
   assert.match(upgraded, /  \}\n  handle_errors \{/u);
   assert.doesNotMatch(upgraded, /handle @mos-easy-door \{\s*\n\s*handle_errors/u);
+  // The route opens each site block, ahead of the proxy and of the Easy Door's
+  // own handle blocks, which is where Caddy evaluates it first.
+  assert.match(upgraded, /http:\/\/home\.mos\.home \{\n  handle \/mos-status\/progress\.json \{/u);
+  assert.match(upgraded, /http:\/\/ \{\n  handle \/mos-status\/progress\.json \{/u);
+  assert.ok(upgraded.indexOf('handle /mos-status/progress.json') < upgraded.indexOf('reverse_proxy'));
+});
+
+// What a server updated to the release with the handler but not the route
+// has on disk: the reconcile must add the route without stacking a second
+// handler.
+test('an installed Caddyfile with the handler but not the route gains only the route', () => {
+  const withHandlerOnly = `http://home.mos.home {
+  reverse_proxy 127.0.0.1:8890
+  handle_errors {
+    root * /etc/caddy/mos-status
+    rewrite * /unavailable.html
+    header Retry-After 15
+    file_server {
+      status 503
+    }
+  }
+}
+
+# mos-easy-door
+http:// {
+  @mos-easy-door header_regexp Host ^home\.10-0-0-5\.local\.myownsuite\.org$
+  handle @mos-easy-door {
+    reverse_proxy 127.0.0.1:8890
+  }
+  handle {
+    respond 404
+  }
+  handle_errors {
+    root * /etc/caddy/mos-status
+    rewrite * /unavailable.html
+    header Retry-After 15
+    file_server {
+      status 503
+    }
+  }
+}
+`;
+  const upgraded = withUnavailableHandler(withHandlerOnly);
+  assert.equal(upgraded.match(/handle_errors/gu).length, 2);
+  assert.equal(upgraded.match(/handle \/mos-status\/progress\.json \{/gu).length, 2);
+  assert.equal(withUnavailableHandler(upgraded), upgraded);
 });
 
 test('the upgrade skips blocks with no upstream to fail', () => {
   const upgraded = withUnavailableHandler(INSTALLED_HTTPS_BEFORE_THE_HANDLER);
   assert.equal(upgraded.match(/handle_errors/gu).length, 2);
+  assert.equal(upgraded.match(/handle \/mos-status\/progress\.json \{/gu).length, 2);
 
   // The global options block is not a site, and the plain-HTTP block only
   // redirects — neither can produce an upstream error.
   const beforeFirstSite = upgraded.slice(0, upgraded.indexOf('http://boot.example.com'));
-  assert.doesNotMatch(beforeFirstSite, /handle_errors/u);
+  assert.doesNotMatch(beforeFirstSite, /handle_errors|mos-status/u);
   const redirect = upgraded.slice(upgraded.indexOf('http://home.example.com {'), upgraded.indexOf('https://home.example.com {'));
-  assert.doesNotMatch(redirect, /handle_errors/u);
+  assert.doesNotMatch(redirect, /handle_errors|mos-status/u);
 });
 
 test('the upgrade is a no-op on every current rendering and on its own output', () => {

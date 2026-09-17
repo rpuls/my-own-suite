@@ -56,6 +56,32 @@ export type BackupValidation = {
   warnings: string[];
 };
 
+// Which item of how many the current stage is on, named by its app.
+export type JobCount = { current: string | null; done: number; note: string | null; sentence: string; total: number; unit: string };
+
+// Where a running job is, in the agent's own words. The agent knows its own
+// sequence, so the step count and the plan are facts it reports, not a guess
+// this screen keeps beside it; the busy page Caddy serves reads the same
+// record, so the two never drift.
+export type JobProgress = {
+  count: JobCount | null;
+  expect: { sentence: string } | null;
+  headline: string;
+  kind: string | null;
+  plan: Array<{ sentence: string; state: 'done' | 'next' | 'now' }>;
+  sentence: string;
+  stage: string | null;
+  startedAt: string | null;
+  step: number;
+  steps: number;
+  updatedAt: string | null;
+};
+
+// How long a check or a restore of one restore point will take on this
+// machine, said before it starts. `basis` is whether that came from this
+// machine's history or is a stated range; the sentence already says which.
+export type JobExpectation = { basis: 'guess' | 'measured' | 'partly'; note: string | null; sentence: string };
+
 export type BackupJob = {
   // What a restore did about the domain the backup carried: `same` on the
   // machine that wrote it, otherwise the owner's `move` or `copy`.
@@ -65,6 +91,7 @@ export type BackupJob = {
   kind: string | null;
   logs?: Array<{ at?: string; message?: string }>;
   outputPath: string | null;
+  progress?: JobProgress | null;
   rescuePath: string | null;
   stage: string | null;
   status: string | null;
@@ -81,8 +108,13 @@ export type RecentJob = {
   initiator?: 'owner' | 'schedule' | 'update' | null;
   kind: string | null;
   note?: string | null;
+  // The agent's words for where a running job is, and its step; null once
+  // the job is over.
+  sentence?: string | null;
   stage: string | null;
   status: string | null;
+  step?: number | null;
+  steps?: number | null;
   updatedAt: string | null;
   updateTarget?: string | null;
 };
@@ -94,6 +126,9 @@ export type BackupEntry = {
   destinationLabel: string;
   encrypted?: boolean;
   engineName?: string | null;
+  // What checking or restoring this point will take here; absent on a backup
+  // in the retired format, which can be neither.
+  expect?: { check: JobExpectation; restore: JobExpectation } | null;
   id: string;
   // Who asked for this restore point: the owner, the schedule, or the update
   // that took it as its last-known-good state before changing anything.
@@ -572,31 +607,34 @@ export function scheduleSummary(schedule: BackupSchedule | null | undefined, sel
   return `${when} at ${clockValue(schedule)} · ${keep} · to ${selected ? selected.label : 'nowhere yet'}`;
 }
 
-// A job in the owner's words. The stage names the agent writes are the engine's
-// step; these are what that step means to someone whose photos are in it.
-const STAGE_WORDS: Record<string, string> = {
-  'Checking required space': 'Checking there is room',
-  'Checking the backup': 'Reading the backup',
-  'Copying suite state': 'Copying your settings and accounts',
-  'Deleting backup and reclaiming space': 'Removing it and freeing the space',
-  'Opening the backup repository on the destination': 'Opening the backup store',
-  'Preparing backup': 'Getting ready',
-  'Rebuilding app runtime': 'Building your apps again',
-  'Reclaiming space from an interrupted backup': 'Tidying up after a backup that stopped',
-  'Restarting runtime': 'Starting your apps again',
-  'Restoring app volumes': 'Putting your app data back',
-  'Restoring suite state': 'Putting your settings and accounts back',
-  'Saving pre-restore rescue copy': 'Saving a rescue copy of what is here now',
-  'Starting restored control plane': 'Starting the restored server',
-  'Stopping app runtime for a consistent snapshot': 'Pausing your apps',
-  'Stopping current runtime': 'Stopping your apps',
-  'Storing app volumes': 'Copying your app data',
-  'Verifying restored state': 'Checking the result against the backup',
-  'Writing manifest': 'Finishing up',
-};
+// The words for a running job are the agent's (system-agents/backup/progress.cjs):
+// it knows its own sequence, and the busy page reads the same record. This
+// screen only renders what it was sent, and says "Getting ready" for a job the
+// agent has not described yet.
+export function stageWords(job: BackupJob | null | undefined) {
+  return job?.progress?.sentence || 'Getting ready';
+}
 
-const BACKUP_STAGES = ['Preparing backup', 'Checking required space', 'Opening the backup repository on the destination', 'Stopping app runtime for a consistent snapshot', 'Copying suite state', 'Storing app volumes', 'Writing manifest', 'Restarting runtime'];
-const RESTORE_STAGES = ['Checking the backup', 'Checking required space', 'Stopping current runtime', 'Saving pre-restore rescue copy', 'Restoring suite state', 'Restoring app volumes', 'Rebuilding app runtime', 'Verifying restored state', 'Starting restored control plane'];
+// " — step 4 of 9", or nothing for a job with one step or none reported.
+export function stepLine(job: { step?: number | null; steps?: number | null } | null | undefined) {
+  const step = job?.step || 0;
+  const steps = job?.steps || 0;
+  return step > 0 && steps > 1 ? ` — step ${step} of ${steps}` : '';
+}
+
+// One line for a running job: its stage, its step, and which item of how many
+// inside the stage when the agent counted one.
+export function jobLine(job: BackupJob | null | undefined) {
+  const count = job?.progress?.count;
+  return `${stageWords(job)}${stepLine(job?.progress)}${count ? ` · ${count.sentence}` : ''}`;
+}
+
+// The share of a counted stage that is done, for the one bar this screen
+// draws: a proportion of items, never of time.
+export function countShare(count: JobCount | null | undefined) {
+  if (!count || count.total <= 0) return 0;
+  return Math.round(Math.max(0, Math.min(1, count.done / count.total)) * 100);
+}
 
 // Why the controls are dead, for a job that holds the page without taking it
 // over. A running job disables everything on the screen, so each kind has to
@@ -604,24 +642,9 @@ const RESTORE_STAGES = ['Checking the backup', 'Checking required space', 'Stopp
 // nothing. A backup is absent because it reports its own stage and step.
 export function jobWorkingLine(job: BackupJob | null) {
   if (!isRunning(job)) return '';
-  if (job?.kind === 'delete') return 'Deleting that backup and reclaiming the space it used. This can take a few minutes.';
-  if (job?.kind === 'validate') return 'Checking a backup. Backups and restores wait until that finishes.';
+  if (job?.kind === 'delete') return `Deleting a backup: ${jobLine(job)}. This can take a few minutes.`;
+  if (job?.kind === 'validate') return `Checking a backup: ${jobLine(job)}. Backups and restores wait until it finishes.`;
   return '';
-}
-
-export function stageWords(stage: string | null | undefined) {
-  if (!stage) return 'Getting ready';
-  return STAGE_WORDS[stage] || stage;
-}
-
-// Where a running job has got to, as a step of a known number rather than a
-// guess: the agent writes its stages in a fixed order, so the position in that
-// order is the honest answer.
-export function stageProgress(job: BackupJob | null) {
-  const order = job?.kind === 'restore' ? RESTORE_STAGES : BACKUP_STAGES;
-  const index = job?.stage ? order.indexOf(job.stage) : -1;
-  if (index < 0) return { percent: 4, step: 0, steps: order.length };
-  return { percent: Math.round(((index + 1) / order.length) * 100), step: index + 1, steps: order.length };
 }
 
 const RESTORE_PHASE_WORDS: Record<string, string> = {
@@ -644,7 +667,7 @@ export function activityLine(job: RecentJob, destinations: DestinationView[]) {
   const at = place ? ` on ${place}` : '';
   const kind = job.kind === 'restore' ? 'Restore' : job.kind === 'validate' ? 'Backup check' : job.kind === 'delete' ? 'Delete' : 'Backup';
   if (job.status === 'failed') return `${kind} stopped${at}: ${job.error || 'MOS could not say why.'}`;
-  if (job.status === 'queued' || job.status === 'running') return `${kind} in progress${at} — ${stageWords(job.stage)}.`;
+  if (job.status === 'queued' || job.status === 'running') return `${kind} in progress${at}: ${job.sentence || 'Getting ready'}${stepLine(job)}.`;
   if (job.kind === 'restore') return `Restore finished. This machine now matches the backup it restored.`;
   if (job.kind === 'validate') return `Backup check passed${at}. It is readable and complete.`;
   if (job.kind === 'delete') return `Backup deleted${at}. The space only it was using has been freed.`;

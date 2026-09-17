@@ -214,14 +214,6 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
   can carry no key material, so whatever unlocks the disk has to be derived or entered on the machine.
   *(Large — needs a decision first)*
 
-### AL-A — Access
-
-- **AL4 — View-only household access to the Home dashboard.** Homepage is reachable only through the
-  owner session, so the only way to let a partner or housemate use the dashboard today is to hand over
-  the owner password — which is also the credential that can install and run code as root. A view-only
-  role that reaches the dashboard and its app tiles and nothing in Suite Manager. Deliberately narrow:
-  this is not multi-user, LDAP, or SSO, which stay declined. *(Medium)*
-
 ### AL-C — Storage
 
 - **AL8 — Per-app volume placement.** App data lives on whichever disk the container runtime uses, so
@@ -343,6 +335,13 @@ the update or install path requires SSH.
   CNAME once, and MOS thereafter talks only to a narrow service that can answer challenges and nothing
   else. Strictly better than today's model, where MOS asks for a token that can edit the owner's whole
   zone. Self-hostable, and the option this audience respects most. *(Medium)*
+- **L10 — View-only household access to the Home dashboard.** Sharing the dashboard with a partner
+  currently means sharing the owner password, which is also the credential that installs and runs code
+  as root, so a dashboard-only role looks like an obvious fix. It is not meaningful on its own: every
+  app carries its own login, so a household member who reaches the dashboard still cannot open
+  anything on it. The role is theatre until MOS has a unified sign-in story, and the SSO and LDAP
+  forms of that are declined below. Blocked on that question being reopened, not on any work here.
+  *(Medium — blocked)*
 
 ---
 
@@ -422,9 +421,10 @@ Owner decisions. Future agents and reviews should not resurface these.
   tarpit. **L1** is a relay, not a mail server.
 - **Do not chase multi-user, LDAP, or SSO.** Single-owner is a position, not a gap: the platform has
   one owner, apps have their own users, families live inside their Immich and Seafile accounts. The
-  one carve-out is **AL4**, view-only dashboard access at alpha — because "share the dashboard with
-  the household" currently means sharing the credential that can run code as root. That is an access
-  fix, not the start of a user system.
+  carve-out this used to name — view-only dashboard access at alpha — is now **L10** and post-alpha,
+  because it depends on the very thing declined here: a household member who reaches the dashboard
+  still meets a separate login at every tile on it, so the role buys nothing until sign-in is unified.
+  Reopening that is a deliberate change of position, not a small access fix.
 - **Do not chase app-count parity, a DNS-provider matrix, or monitoring graphs.**
 - **Re-editable setup fields after install** — declined, with a named condition. Package setup fields
   are seed values most apps read once at first boot; the manifest cannot say which, and some feed two

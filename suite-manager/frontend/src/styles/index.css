@@ -3566,6 +3566,24 @@
   transition: width 400ms ease;
 }
 
+.mos-panel-head .suite-bk-bar {
+  margin-top: 0.5rem;
+  max-width: 24rem;
+}
+
+/* The restore's plan, one row per stage: done, now, and still to come. */
+.suite-bk-step {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--mos-color-text-muted);
+}
+
+.suite-bk-step.is-now {
+  color: var(--mos-color-text);
+  font-weight: 700;
+}
+
 @media (max-width: 47.9375rem) {
   .suite-bk-row {
     grid-template-columns: auto minmax(0, 1fr);

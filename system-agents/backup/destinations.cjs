@@ -279,6 +279,9 @@ function summarize(manifest, { id, locator, note }) {
   const rawBytes = (manifest?.contents?.stateRawBytes || 0) + volumes.reduce((sum, volume) => sum + (volume.rawBytes || 0), 0);
   return {
     appCount: manifest?.contents?.apps?.length || 0,
+    // Which apps, by package id, so a restore can be described before it
+    // starts: the names and the time it will take are both read off this.
+    apps: (manifest?.contents?.apps || []).map((app) => ({ packageId: app.packageId })),
     automatic: manifest?.backup?.initiator === 'schedule' || manifest?.backup?.initiator === 'update',
     createdAt: manifest?.backup?.createdAt || null,
     engineName: manifest?.backup?.engine || null,

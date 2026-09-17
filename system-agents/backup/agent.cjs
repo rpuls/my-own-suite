@@ -13,7 +13,10 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFile, execFileSync, spawn } = require('node:child_process');
 const { BackupAgentCore, isRestorePointPath, RESTORE_ADDRESS_PLANS, restorePublicIdentity, sha256, UNREADABLE_LEGACY_BACKUP, validatePackagePayloads } = require('./agent-core.cjs');
-const { renderHttpsCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
+const { PROGRESS_FILENAME, UNAVAILABLE_PAGE_ROOT, renderHttpsCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
+const { BUILD_TIMINGS_FILENAME, expectedBuildSeconds, readBuildTimings } = require('../lib/app-build-timings.cjs');
+const { checkExpectation, restoreExpectation, runningExpectation } = require('./expectations.cjs');
+const { ProgressPublisher, advanceTimeline, closeTimeline, progressFor, stageSentence } = require('./progress.cjs');
 const { BackupSystemAdapter } = require('./system-adapter.cjs');
 const { BackupScheduler } = require('./scheduler.cjs');
 const { PrimaryDestination } = require('./primary.cjs');
@@ -40,6 +43,12 @@ const jobsDir = path.join(agentStateDir, 'jobs');
 const currentJobPath = path.join(agentStateDir, 'current-job.json');
 const installIdPath = path.join(agentStateDir, 'install-id');
 const caddyfilePath = process.env.MOS_CADDYFILE_PATH || '/etc/caddy/Caddyfile';
+// Where Caddy serves the busy page from, which is where the progress file
+// goes: the one place an owner can still read while Suite Manager is down.
+const statusDir = process.env.MOS_STATUS_DIR || UNAVAILABLE_PAGE_ROOT;
+// Build times the app agent recorded on this machine, for what a rebuild of
+// each app is going to cost.
+const buildTimingsPath = path.join(stateRoot, BUILD_TIMINGS_FILENAME);
 const managedMountRoot = '/media/mos-backup';
 const destinationRoots = ['/media', '/mnt', '/run/media'];
 const mountableFileSystems = new Set(['exfat', 'ext2', 'ext3', 'ext4', 'ntfs', 'ntfs3', 'vfat', 'xfs', 'btrfs']);
@@ -366,15 +375,52 @@ function recentJobs(limit = 6) {
       initiator: job.initiator || null,
       kind: job.kind || null,
       note: job.note || null,
+      // The owner's words for where a running job is; a finished job is a
+      // sentence about what happened, and needs none.
+      sentence: isActive(job) ? job.progress?.sentence || stageSentence(job.stage) : null,
       stage: job.stage || null,
       status: job.status || null,
+      step: isActive(job) ? job.progress?.step ?? null : null,
+      steps: isActive(job) ? job.progress?.steps ?? null : null,
       updatedAt: job.updatedAt || job.createdAt || null,
       updateTarget: job.updateTarget || null,
     }));
 }
+// Every finished job with a timeline: what this machine's own estimates are
+// read off. Failed jobs are left out — a check that stopped after a second
+// says nothing about how long one takes.
+function jobHistory() {
+  return listJobFiles().map((file) => { try { return readJson(file); } catch { return null; } })
+    .filter((job) => job && job.status === 'succeeded' && Array.isArray(job.timeline));
+}
+// The name an app is shown under, from the catalog package in this checkout;
+// a package this checkout does not carry is named by its id.
+const displayNames = new Map();
+function displayNameOf(packageId) {
+  const id = String(packageId || '');
+  if (!id) return null;
+  if (displayNames.has(id)) return displayNames.get(id);
+  let name = id;
+  try {
+    const appsDir = path.join(repoDir, 'apps');
+    const manifestPath = path.join(appsDir, id, 'manifest.json');
+    if (path.resolve(manifestPath).startsWith(`${path.resolve(appsDir)}${path.sep}`)) {
+      const manifest = readJson(manifestPath);
+      if (typeof manifest.name === 'string' && manifest.name.trim()) name = manifest.name.trim();
+    }
+  } catch {}
+  displayNames.set(id, name);
+  return name;
+}
+function appsWithNames(apps) {
+  return (apps || []).map((app) => ({ displayName: displayNameOf(app.packageId), packageId: app.packageId }));
+}
+function expectationInputs({ apps, sizeBytes }) {
+  return { apps: appsWithNames(apps), buildTimings: readBuildTimings(buildTimingsPath), cpus: os.cpus().length, history: jobHistory(), sizeBytes: sizeBytes ?? null };
+}
 function summarizeJob(job) {
   if (!job) return null;
-  return { address: job.address && typeof job.address === 'object' ? job.address : null, backupPath: job.backupPath || null, destinationId: job.destinationId || null, error: job.error || null, id: job.id, kind: job.kind || null, logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [], outputPath: job.outputPath || null, rescuePath: job.rescuePath || null, stage: job.stage || null, status: job.status || null, summary: job.summary || null, updatedAt: job.updatedAt || null, validation: job.validation || null, verification: job.verification || null };
+  return { address: job.address && typeof job.address === 'object' ? job.address : null, backupPath: job.backupPath || null, destinationId: job.destinationId || null, error: job.error || null, id: job.id, kind: job.kind || null, logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [], outputPath: job.outputPath || null, progress: job.progress || null, rescuePath: job.rescuePath || null, stage: job.stage || null, status: job.status || null, summary: job.summary || null, updatedAt: job.updatedAt || null, validation: job.validation || null, verification: job.verification || null };
 }
 function isActive(job) { return job && (job.status === 'queued' || job.status === 'running'); }
 function jobPath(id) { return path.join(jobsDir, `${id}.json`); }
@@ -446,6 +492,11 @@ function treeBytes(root) {
 // real space, and an owner who cannot see them cannot reclaim it.
 async function listBackups(destinations) {
   const backups = [];
+  // Read once for the whole listing: every restore point's estimate is drawn
+  // from the same history and the same build timings.
+  const history = jobHistory();
+  const buildTimings = readBuildTimings(buildTimingsPath);
+  const cpus = os.cpus().length;
   for (const entry of destinations) {
     if (entry.kind === 'disk' && !entry.mountPath) continue;
     if (entry.kind === 'object' && !entry.ready) continue;
@@ -471,6 +522,12 @@ async function listBackups(destinations) {
         destinationLabel: entry.label,
         encrypted: true,
         engineName: point.engineName || descriptor?.engineName || ENGINE_NAME,
+        // What checking or restoring this point will take on this machine,
+        // said in the owner's words before either is started.
+        expect: {
+          check: checkExpectation({ history, sizeBytes: point.sizeBytes }),
+          restore: restoreExpectation({ apps: appsWithNames(point.apps), buildTimings, cpus, history, sizeBytes: point.sizeBytes }),
+        },
         kind: 'restore-point',
         path: point.locator,
         repositoryId: descriptor?.repositoryId || entry.repository?.repositoryId || null,
@@ -496,16 +553,59 @@ function legacyBundlesOn(destination) {
   }
   return found;
 }
-function updateJob(file, mutator) {
+// Every change to a job goes through here, so the progress record on it and
+// the public file the busy page polls are always what the job record says. An
+// active job publishes; a job that is over — however it ended, and in
+// whichever process noticed — takes the file with it.
+function updateJob(file, mutator, { count } = {}) {
   const job = readJson(file);
   mutator(job);
-  job.updatedAt = new Date().toISOString();
+  const now = new Date().toISOString();
+  job.updatedAt = now;
+  refreshProgress(job, now, count);
   writeJson(file, job);
   writeJson(currentJobPath, job);
+  if (isActive(job)) progressPublisher.publish(job.progress);
+  else progressPublisher.clear();
   return job;
 }
+function refreshProgress(job, now, count) {
+  if (!isActive(job)) {
+    closeTimeline(job, now);
+    return;
+  }
+  // Said once the job knows what it is working on, and kept from then on — a
+  // null is kept too, so a kind with no expectation is not re-read for one on
+  // every log line.
+  if (job.expect === undefined && job.subject) {
+    try { job.expect = runningExpectation(job.kind, expectationInputs(job.subject)) || null; } catch { job.expect = null; }
+  }
+  const next = progressFor(job, { count: count ?? null, now });
+  // A count belongs to the stage it was reported in: kept through that stage's
+  // log lines, dropped the moment the stage moves on.
+  if (count === undefined && job.progress?.stage === job.stage && job.progress.count) next.count = job.progress.count;
+  job.progress = next;
+}
 function log(file, message) { updateJob(file, (job) => { job.logs.push({ at: new Date().toISOString(), message }); }); }
-function stage(file, name) { updateJob(file, (job) => { job.stage = name; job.status = 'running'; }); log(file, name); }
+function stage(file, name) {
+  updateJob(file, (job) => { advanceTimeline(job, name); job.stage = name; job.status = 'running'; }, { count: null });
+  log(file, name);
+}
+// Which item of how many the current stage is on. The engine names the app by
+// package id; the name shown, and what that app usually costs here, are added
+// on this side because only the host has the catalog and the timings.
+function progress(file, count) {
+  const displayName = count.displayName || displayNameOf(count.packageId);
+  updateJob(file, () => {}, {
+    count: {
+      current: displayName,
+      done: count.done,
+      expectSeconds: count.unit === 'apps' ? expectedBuildSeconds(readBuildTimings(buildTimingsPath), count.packageId) : null,
+      total: count.total,
+      unit: count.unit,
+    },
+  });
+}
 function packageBackupInventory() {
   const store = new SuiteManagerStore(stateDir);
   try {
@@ -631,7 +731,7 @@ function restoreRequestContext(packageId, store) {
     scheme,
   };
 }
-async function reconcileRestoredApps(logMessage) {
+async function reconcileRestoredApps(logMessage, onProgress = () => {}) {
   const store = new SuiteManagerStore(stateDir);
   try {
     const appPackages = new AppPackageService({
@@ -644,8 +744,10 @@ async function reconcileRestoredApps(logMessage) {
       logMessage('No installed app runtimes to restore');
       return;
     }
-    for (const instance of instances) {
-      logMessage(`Restoring ${instance.displayNameSnapshot || instance.packageId}`);
+    for (const [index, instance] of instances.entries()) {
+      const displayName = instance.displayNameSnapshot || displayNameOf(instance.packageId);
+      onProgress({ displayName, done: index, packageId: instance.packageId, total: instances.length, unit: 'apps' });
+      logMessage(`Restoring ${displayName}`);
       await appPackages.enablePackage(instance.packageId, restoreRequestContext(instance.packageId, store));
     }
   } finally {
@@ -821,6 +923,7 @@ async function scheduledRestorePoints(destinationId) {
 }
 
 const recoveryRecord = new RecoveryKeyRecord({ agentStateDir });
+const progressPublisher = new ProgressPublisher({ dir: statusDir, filename: PROGRESS_FILENAME });
 const engine = createEngine({ agentStateDir, onKeyUsed: () => recoveryRecord.noteFirstUse() });
 const objectRegistry = new ObjectDestinationRegistry({ agentStateDir });
 const backupSystem = new BackupSystemAdapter({ agentStateDir, repoDir, stateDir, stateRoot });
@@ -873,7 +976,7 @@ const core = new BackupAgentCore({
   destinations: destinationResolver,
   engine,
   identity,
-  jobs: { log, stage, update: updateJob },
+  jobs: { log, progress, stage, update: updateJob },
   packages: { inventory: packageBackupInventory, validatePayloads: validatePackagePayloads },
   paths: { agentStateDir, stateDir, stateRoot },
   system: backupSystem,
@@ -904,6 +1007,9 @@ if (require.main === module && process.argv[2] === '--worker') {
   engine.migrateLegacyKey();
   engine.recoveryKey();
   installId();
+  // A worker that died with the machine never cleared the file the busy page
+  // reads; the next agent start is the first moment anything can.
+  if (!isActive(reconcileCurrentJob())) progressPublisher.clear();
   fs.rmSync(socketPath, { force: true });
 
   const server = http.createServer(async (request, response) => {
