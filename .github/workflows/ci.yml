@@ -34,40 +34,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run unit tests
-        run: npm run test:unit
-
-      - name: Check app catalog and advisory feed
-        run: npm run apps:catalog:check
-
-      # The guard compares against the catalog installed boxes actually read, so
-      # the default shallow checkout has to be given that branch first.
-      - name: Fetch published catalog branch
-        run: git fetch --depth=1 origin main
-
-      - name: Check app package versions against the published catalog
-        run: npm run apps:version:check -- --require-baseline
-
-      - name: Validate app privacy reviews
-        run: npm run apps:privacy:check
-
-      - name: Monitor stale reviews and advisories
-        run: npm run apps:privacy:monitor
-
-      - name: Check documentation claims against the repository
-        run: npm run docs:claims
-
-      - name: Typecheck Suite Manager
-        run: npm run typecheck
-
-      - name: Build Suite Manager client
-        run: npm run build:client
-
-      - name: Render installer contract
-        run: npm run install:render -- --target json
-
-      - name: Check release metadata
-        run: npm run release:check
+      # Every check this job runs is defined in scripts/checks.cjs, which is
+      # also what `npm test`, the release gate and the pre-push hook run. Adding
+      # a step here instead would make CI diverge from what a push can be tested
+      # against, which is the whole thing this file stopped doing.
+      - name: Run workspace checks
+        run: npm run check:workspace
 
   site:
     name: MOS Site
@@ -88,38 +60,26 @@ jobs:
       - name: Setup npm
         run: npm install -g npm@11.2.0
 
-      - name: Install site dependencies
-        run: npm ci
-        working-directory: site
-
-      - name: Install planner dependencies
-        run: npm ci
-        working-directory: site/planner
-
-      - name: Test the planner
-        run: npm test
-        working-directory: site/planner
-
       # The planner's prebuild fetches the pinned Dashboard Icons commit from
       # GitHub (~80 MB) unless a checkout for that commit already exists. Keyed
       # on the pin, so bumping it refetches and a docs-only push does not.
+      # Restored before the build below, which is what populates it.
       - name: Cache the pinned Dashboard Icons checkout
         uses: actions/cache@v4
         with:
           path: site/planner/.cache/dashboard-icons
           key: dashboard-icons-${{ hashFiles('site/planner/icon-source.json') }}
 
-      # `npm run build` also builds the Digital Independence Planner
-      # (site/planner) into site/dist/plan, so the planner's dependencies must
-      # be installed first.
-      - name: Build MOS site
-        run: npm run build
-        working-directory: site
+      # Installs, the site and planner build, the planner's tests and the
+      # accessibility check, all defined in scripts/checks.cjs alongside the
+      # workspace lane. The accessibility check serves site/dist itself.
+      - name: Run site checks
+        run: npm run check:site
 
-      # Both checks run against the built site as a browser would see it, so
-      # root-relative links and rendered markup are what gets checked rather than
-      # source files. Versions are pinned because CI otherwise resolves whatever
-      # was published that morning.
+      # The link report runs against the built site as a browser would see it,
+      # so root-relative links and rendered markup are what gets checked rather
+      # than source files. Versions are pinned because CI otherwise resolves
+      # whatever was published that morning.
       - name: Serve the built site
         run: |
           nohup npx --yes http-server@14.1.1 site/dist -p 4321 --silent > /tmp/http-server.log 2>&1 &
@@ -154,9 +114,6 @@ jobs:
             --base-url http://127.0.0.1:4321
             site/dist
           fail: false
-
-      - name: Check accessibility
-        run: npx --yes pa11y-ci@4.1.1 --config site/.pa11yci.json
 
   shellcheck:
     name: Shell Scripts Lint

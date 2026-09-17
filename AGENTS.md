@@ -46,6 +46,11 @@ These rules are required for every non-trivial change (docs, config, code, infra
    - If repo-owned host agents need new capabilities, update/restart them as part of the same managed update instead of adding UI around the partially applied state.
    - Treat a partially applied managed update as a regression to fix at the update mechanism level.
    - Installed app runtimes are intentionally outside a platform update's scope: each app runs from the package snapshot it was installed with, and app changes apply only through the per-app update transaction. A platform update must not silently rebuild installed apps, and must not claim to have updated them.
+8. **Every gating check lives in `scripts/checks.cjs` and nowhere else.**
+   - `npm test`, the CI workflow, the release gate and the pre-push hook all run that one file. A check that exists in one of them and not the others is the drift that lets a release tag fail on something no push was ever tested against.
+   - Add a check by adding an entry to the `CHECKS` table, not by adding a `run:` step to `.github/workflows/ci.yml`. Workflow steps are for setup (checkout, Node, caches) and for reporters that never gate.
+   - Pick the lane by what the check needs: `workspace` for anything that runs against a root `npm ci`, `site` for anything that needs the built site. The pre-push hook runs the `workspace` lane, so keep it around a minute.
+   - Mark a check `heavy: true` only when it downloads a browser or similar. Heavy checks always run in CI and are skipped locally unless asked for, and the run prints every skip so the gap is visible rather than silent.
 
 ## Pre-Work Checklist (Agents)
 
@@ -55,7 +60,7 @@ Before making edits, agents should confirm:
 - If the change is intended for fast platform testing, target **`staging` first** rather than `main`.
 - If the work changes updater-facing software behavior, `CHANGELOG.md` contains or will contain an `Unreleased` entry; docs-only and public-site-only work does not require one.
 - Any needed docs split rules (MDX vs app README) are respected.
-- Local git hooks are installed (`npm run hooks:install`) so commits/pushes on `main` are blocked.
+- Local git hooks are installed (`npm run hooks:install`) so commits/pushes on `main` are blocked and every branch push runs the workspace checks first.
 - If the work is release-related, confirm `VERSION`, `releases/stable.json`, and any Suite Manager release metadata will stay in sync with the intended tag.
 
 ## Documentation Ownership Workflow

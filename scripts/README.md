@@ -4,6 +4,26 @@ MOS operator, installer, smoke, and developer scripts live here.
 
 The DigitalOcean, USB/Hyper-V, cloud-init, and SSH installer and smoke entry points are implemented here and share the repository bootstrap contract.
 
+## Checks (`checks.cjs`)
+
+`checks.cjs` is the single definition of the checks that gate a change. `npm test`, the `CI` workflow, the release gate in `release.yml` and the `pre-push` hook all run this one file, so a check cannot be enforced in one place and be quietly missing from another.
+
+```powershell
+npm test                              # every lane, what the release gate runs
+npm run check:workspace               # the workspace lane, what the pre-push hook runs
+npm run check:site                    # installs, site and planner build, planner tests
+npm run check -- --list               # what the lanes contain
+npm run check -- --only typecheck     # re-run one check by id
+npm run check -- --keep-going         # run past the first failure for a full report
+npm run check -- --heavy              # include the browser-driven checks CI always runs
+```
+
+Two lanes, matching CI's two jobs: `workspace` runs against a root `npm ci`, `site` needs the built site. Checks marked `heavy` (currently the pa11y accessibility pass, which downloads its own Chromium) always run in CI and are skipped elsewhere unless asked for — every skip is printed, so the gap is visible rather than silent.
+
+Add a check by adding an entry to the `CHECKS` table, never by adding a gating step to the workflow file. On GitHub Actions the run folds each check into its own log group and writes a pass/fail table to the job summary.
+
+`MOS_SKIP_CHECKS=1 git push` skips the pre-push run when you genuinely need to push something red.
+
 ## No-Preconfig Bootstrap Contract
 
 The first MOS installer surface bootstraps only the control plane:

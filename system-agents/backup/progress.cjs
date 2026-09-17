@@ -185,14 +185,21 @@ class ProgressPublisher {
     }
   }
 
+  // `force` swallows ENOENT but not ENOTDIR, which is what a parent that is a
+  // file rather than a directory raises on Linux while Windows reports ENOENT
+  // for the same path. Either way nothing is published, which is what clearing
+  // asked for.
   clear() {
-    try {
-      fs.rmSync(this.file, { force: true });
-      fs.rmSync(`${this.file}.next`, { force: true });
-      return true;
-    } catch {
-      return false;
-    }
+    return [this.file, `${this.file}.next`]
+      .map((file) => {
+        try {
+          fs.rmSync(file, { force: true });
+          return true;
+        } catch (error) {
+          return error.code === 'ENOTDIR';
+        }
+      })
+      .every(Boolean);
   }
 
   present() {
