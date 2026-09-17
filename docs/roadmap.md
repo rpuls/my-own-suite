@@ -49,7 +49,7 @@ all of it, and a replacement machine can take over a destination the original wr
   (`docs/decisions.md`, 2026-09-09): a MOS update takes a backup of the whole suite first, waits
   rather than fails when the destination is not connected, and the two queues now refuse each other.
   Open only until the lab drill confirms it end to end. *(Small)*
-- **A7 — Decide a cleanup story for anonymous Docker volumes.** Unlabeled, hash-named volumes left
+- **A7 — Decide a cleanup story for anonymous Docker volumes.** Unlabelled, hash-named volumes left
   behind by removed app containers are outside MOS ownership by design, so restore correctly refuses
   to claim them — and nothing else ever removes them either. *(Small — needs a decision first)*
 

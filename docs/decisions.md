@@ -731,7 +731,7 @@ Reason: The generation layout's proof obligations failed at the first two gates 
 
 Consequences:
 
-- `infrastructure/persistent-state.cjs` is the single contract for state classification, volume naming, ownership labels (`mos.owned`, `mos.package`, `mos.instance`, `mos.resource`), backup schema versions, and the beta size ceiling. The apps agent creates volumes explicitly with these labels before `docker run` can create them unlabeled, and refuses a volume still bound to a different installation instead of silently adopting its data.
+- `infrastructure/persistent-state.cjs` is the single contract for state classification, volume naming, ownership labels (`mos.owned`, `mos.package`, `mos.instance`, `mos.resource`), backup schema versions, and the beta size ceiling. The apps agent creates volumes explicitly with these labels before `docker run` can create them unlabelled, and refuses a volume still bound to a different installation instead of silently adopting its data.
 - The backup engine (`system-agents/backup/agent-core.cjs`) runs behind injected system adapters, so the rescue, reconciliation, journal, and verification guarantees are enforced by unit regressions — including the Stirling-then-Seafile false-restore drill — rather than only by Hyper-V runs.
 - Restore selects volumes by ownership evidence (label first, per-package name derivation second); a volume wearing the `mos-app-` prefix that matches no known package is reported and left untouched, never destructively claimed.
 - Bundles are schema version 3 (owned-resource inventory, ownership evidence, raw-size accounting, consistent `VACUUM INTO` database snapshot); restore accepts versions 2-3 and re-derives ownership for version 2 from the bundle's own package inventory.

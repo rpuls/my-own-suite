@@ -70,13 +70,13 @@ the four combinations that describe a state an app can really be in:
 The label is derived, never chosen. The remaining three dimensions describe the
 app and count toward the grade, but they cannot move the label, so no reviewer
 can reach a friendlier badge by rewording a fact. Missing evidence is never
-scored in an app's favor, and an unfinished assessment does not produce a label
+scored in an app's favour, and an unfinished assessment does not produce a label
 at all: an app with unresolved questions stays out of the catalog rather than
 appearing with a cautious-looking one.
 
 ## Evidence and confidence
 
-Every favorable assessment includes concrete evidence. Claims are labeled as
+Every favourable assessment includes concrete evidence. Claims are labeled as
 **observed**, **configured**, **documented**, or **inferred**. We prefer package
 and runtime evidence over marketing language. A supported setting that disables
 known analytics is evidence for that control, but is not proof of complete
@@ -84,7 +84,7 @@ network silence. Open questions and untested boundaries stay visible.
 
 ## Where AI fits in
 
-The division of labor is simple: people decide, AI reads. Which apps are worth
+The division of labour is simple: people decide, AI reads. Which apps are worth
 considering, what the five dimensions are, what counts as evidence, and the
 fail-closed rules above are human decisions. What AI does is the long reading
 behind each assessment - source code and package configuration, terms of
@@ -97,7 +97,7 @@ use AI where it genuinely helps, and say so.
 The workflow is built so AI-read evidence stays checkable rather than taken on
 faith. Every claim must carry one of the evidence labels above and name its
 source; configuration claims point at the actual package files; an unsettled
-fact leaves the assessment unfinished rather than resolving into a favorable
+fact leaves the assessment unfinished rather than resolving into a favourable
 default; and open questions are published, not smoothed over. Each review also records
 its provenance: the review method, the AI provider and model, the exact
 workflow revision it ran under, and the repository commit. The workflow itself
