@@ -25,10 +25,18 @@ const ENGINE_BINARY_DIR = '/usr/local/libexec/mos';
 // than discover it from a failed backup.
 const ENGINE_MISSING_MESSAGE = 'The backup storage engine is not installed on this machine. Run a platform update to install it, then try again.';
 const REPOSITORY_KEY_FILENAME = 'engine-key';
+// tmpfs, so a key handed to one command never reaches a disk — least of all
+// the plaintext system partition the vault exists to keep owner data off.
+const RUNTIME_SECRET_DIR = '/run/mos-backup-agent';
 // The pre-release 64-hex password, moved aside rather than replaced. It is
 // never deleted: a drive that stays unplugged for months must still open, and
 // migrate, on the day it is finally attached.
 const LEGACY_KEY_SUFFIX = '.legacy';
+// Keys a rotation has replaced. They are kept rather than destroyed because a
+// repository that was not attached when the key changed still answers to the
+// one it had: a drive in a drawer may be months behind, and dropping the key
+// that opens it would strand the copy an owner is most likely to need.
+const SUPERSEDED_KEY_SUFFIX = '.superseded';
 const DEFAULT_TIMEOUT_MS = 3_600_000;
 // Reaching a bucket must answer while an owner is still looking at the dialog.
 // restic prints why a storage request failed straight away and then waits
@@ -217,9 +225,47 @@ class ResticEngine {
 
   get legacyKeyFile() { return `${this.keyFile}${LEGACY_KEY_SUFFIX}`; }
 
+  get supersededKeyFile() { return `${this.keyFile}${SUPERSEDED_KEY_SUFFIX}`; }
+
   recoveryKey() { return ensureRepositoryKey(this.keyFile); }
 
   adoptRecoveryKey(key) { return writeRepositoryKey(this.keyFile, key); }
+
+  /**
+   * Makes a new key this machine's own and remembers the one it replaces.
+   *
+   * Only the key file moves. Nothing is said to any repository here: each one
+   * is re-keyed the first time it is seen with the wrong key, which is what
+   * lets a rotation finish on a bucket immediately and on a drawer drive in six
+   * months, with the same code and nothing to keep in step.
+   */
+  rotateRecoveryKey(next) {
+    const current = this.recoveryKey();
+    if (!next || next === current) return current;
+    const kept = [current, ...this.rotatedKeys()].filter((key, index, all) => key !== next && all.indexOf(key) === index);
+    ensureDir(path.dirname(this.supersededKeyFile));
+    fs.writeFileSync(this.supersededKeyFile, `${JSON.stringify(kept, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+    fs.chmodSync(this.supersededKeyFile, 0o600);
+    return writeRepositoryKey(this.keyFile, next);
+  }
+
+  rotatedKeys() {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(this.supersededKeyFile, 'utf8'));
+      return (Array.isArray(parsed) ? parsed : []).map((key) => String(key || '').trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  // Every key this machine used before its current one, newest first: what a
+  // rotation replaced, and then the pre-release password a machine installed
+  // before recovery keys existed may still be carrying. One list, because a
+  // repository holding either is the same problem with the same fix.
+  supersededKeys() {
+    const legacy = this.legacyKey();
+    return [...this.rotatedKeys(), ...(legacy ? [legacy] : [])];
+  }
 
   legacyKey() {
     try {
@@ -287,8 +333,14 @@ class ResticEngine {
   // as a read-everything integrity check), where capturing it would buffer
   // gigabytes. `input` feeds stdin, for the one write whose source is a string
   // rather than a directory.
+  // The key travels as a path to a 0600 file rather than as a value in the
+  // environment. `/proc/<pid>/environ` is root-only, so this was never a way in
+  // from outside, but the engine runs dozens of commands and each one carried
+  // the key that opens every backup this machine has. The file it points at is
+  // the one the key already lives in.
   environmentFor(env = {}) {
-    const environment = { ...process.env, HOME: this.agentStateDir, RESTIC_PASSWORD: ensureRepositoryKey(this.keyFile) };
+    ensureRepositoryKey(this.keyFile);
+    const environment = { ...process.env, HOME: this.agentStateDir, RESTIC_PASSWORD_FILE: this.keyFile };
     // A repository that carries no credentials is addressed with none: without
     // this, a stray AWS key in the agent's own environment would be signed onto
     // requests for a destination that never asked for it.
@@ -315,20 +367,43 @@ class ResticEngine {
   }
 
   // Every repository-addressed command goes through here so the credentials and
-  // the masking travel with the repository instead of with each call site.
+  // the masking travel with the repository instead of with each call site. A
+  // repository this machine borrows carries the key of the server that owns it,
+  // and that key is staged for the one command rather than held open.
   runFor(repository, args, options = {}) {
+    if (repository.password) return this.runAs(repository, repository.password, args, options);
     return this.run(args, { ...options, env: repository.env || {}, secrets: repository.secrets || [] });
   }
 
-  // Repository passwords travel in the environment and in 0600 files, never in
-  // argv and never in captured output: `password` overrides the machine's own
-  // key for one command, and is masked out of anything the engine wrote.
+  /**
+   * One command run with a password that is not this machine's own: another
+   * server's key for an archive it borrows, or a key this machine has since
+   * replaced.
+   *
+   * It is written to a 0600 file under /run — tmpfs, so it never reaches a
+   * disk — and removed again whatever happens, rather than travelling in the
+   * environment. Never in argv, and always masked out of captured output.
+   */
   runAs(repository, password, args, options = {}) {
-    return this.run(args, {
-      ...options,
-      env: { ...(repository.env || {}), ...(password ? { RESTIC_PASSWORD: password } : {}) },
-      secrets: [...(repository.secrets || []), ...(password ? [password] : [])],
-    });
+    if (!password) return this.run(args, { ...options, env: repository.env || {}, secrets: repository.secrets || [] });
+    const passwordFile = this.stagePassword(password);
+    try {
+      return this.run(args, {
+        ...options,
+        env: { ...(repository.env || {}), RESTIC_PASSWORD_FILE: passwordFile },
+        secrets: [...(repository.secrets || []), password],
+      });
+    } finally {
+      fs.rmSync(passwordFile, { force: true });
+    }
+  }
+
+  stagePassword(password) {
+    ensureDir(RUNTIME_SECRET_DIR);
+    const passwordFile = path.join(RUNTIME_SECRET_DIR, `key-${crypto.randomBytes(8).toString('hex')}`);
+    fs.writeFileSync(passwordFile, password, { encoding: 'utf8', mode: 0o600 });
+    fs.chmodSync(passwordFile, 0o600);
+    return passwordFile;
   }
 
   keyList({ password, repository }) {
@@ -346,11 +421,8 @@ class ResticEngine {
   // happens. Adding a password re-wraps the repository's data key; no stored
   // data is re-encrypted.
   keyAdd({ newPassword, password, repository }) {
-    ensureDir(this.agentStateDir);
-    const passwordFile = path.join(this.agentStateDir, `key-${crypto.randomBytes(8).toString('hex')}`);
-    fs.writeFileSync(passwordFile, newPassword, { encoding: 'utf8', mode: 0o600 });
+    const passwordFile = this.stagePassword(newPassword);
     try {
-      fs.chmodSync(passwordFile, 0o600);
       this.runAs(repository, password, ['key', 'add', '--new-password-file', passwordFile, ...this.repositoryFlags(repository)], { secrets: [newPassword], timeout: PROBE_TIMEOUT_MS * 5 });
     } finally {
       fs.rmSync(passwordFile, { force: true });
@@ -361,25 +433,36 @@ class ResticEngine {
     this.runAs(repository, password, ['key', 'remove', keyId, ...this.repositoryFlags(repository)], { timeout: PROBE_TIMEOUT_MS * 5 });
   }
 
-  // One repository's migration off the pre-release password, run the first time
-  // probing it answers `locked` while a legacy password is still on this
-  // machine. Adding this machine's recovery key and removing the old one is a
-  // metadata write: restic wraps a single data key with any number of
-  // passwords, so nothing stored is re-encrypted and every earlier backup stays
-  // exactly as valid as it was. The old key id is removed with the new key,
-  // because restic refuses to remove the password it is authenticated with; a
-  // failure there leaves both valid, which is untidy rather than harmful.
+  /**
+   * One repository's catch-up onto this machine's current key, run the first
+   * time probing it answers `locked` while a key it used to have is still here.
+   * It covers both ways a repository falls behind: a pre-release password, and
+   * a key the owner has since rotated.
+   *
+   * Adding the current key and removing the old one is a metadata write. restic
+   * wraps a single data key with any number of passwords, so nothing stored is
+   * re-encrypted and every earlier backup stays exactly as valid as it was —
+   * and, for the same reason, nothing that was readable with the old key stops
+   * being readable to someone who kept both that key and a copy of the data.
+   * That is restic's model, not a shortcut taken here, and the rotation screen
+   * says so in those words.
+   *
+   * The old key id is removed while authenticated with the new one, because
+   * restic refuses to remove the password it is authenticated with; a failure
+   * there leaves both valid, which is untidy rather than harmful.
+   */
   async migrateRepositoryKey({ env = {}, localPath = null, location, secrets = [] }) {
-    const legacy = this.legacyKey();
-    if (!legacy) return false;
-    if ((await this.probeRepository({ env, location, password: legacy, secrets })).state !== 'open') return false;
     const repository = { engineName: this.name, env, localPath, location, secrets };
-    const legacyKeyId = this.keyList({ password: legacy, repository }).find((entry) => entry.current)?.id || null;
-    this.keyAdd({ newPassword: this.recoveryKey(), password: legacy, repository });
-    if (legacyKeyId) {
-      try { this.keyRemove({ keyId: legacyKeyId, repository }); } catch {}
+    for (const previous of this.supersededKeys()) {
+      if ((await this.probeRepository({ env, location, password: previous, secrets })).state !== 'open') continue;
+      const previousKeyId = this.keyList({ password: previous, repository }).find((entry) => entry.current)?.id || null;
+      this.keyAdd({ newPassword: this.recoveryKey(), password: previous, repository });
+      if (previousKeyId) {
+        try { this.keyRemove({ keyId: previousKeyId, repository }); } catch {}
+      }
+      return true;
     }
-    return true;
+    return false;
   }
 
   // Whether a repository opens, wherever it lives. A drive with no config file
@@ -470,11 +553,17 @@ class ResticEngine {
   // machine's own — how an entered recovery key is checked before anything is
   // written — and is masked out of whatever the engine said.
   async probeRepository({ env = {}, location, noun = 'bucket', password, secrets = [] }) {
-    const result = await this.runStreaming(['cat', 'config', `--repo=${location}`, `--cache-dir=${this.cacheDir()}`], {
-      decisive: (text) => repositoryProbeCause(text).cause !== 'unknown',
-      env: password ? { ...env, RESTIC_PASSWORD: password } : env,
-      timeout: PROBE_TIMEOUT_MS,
-    });
+    const passwordFile = password ? this.stagePassword(password) : null;
+    let result;
+    try {
+      result = await this.runStreaming(['cat', 'config', `--repo=${location}`, `--cache-dir=${this.cacheDir()}`], {
+        decisive: (text) => repositoryProbeCause(text).cause !== 'unknown',
+        env: passwordFile ? { ...env, RESTIC_PASSWORD_FILE: passwordFile } : env,
+        timeout: PROBE_TIMEOUT_MS,
+      });
+    } finally {
+      if (passwordFile) fs.rmSync(passwordFile, { force: true });
+    }
     if (result.status === 0) {
       try {
         return { cause: 'open', repositoryId: JSON.parse(result.stdout || '{}').id || null, state: 'open' };
@@ -490,13 +579,15 @@ class ResticEngine {
     };
   }
 
-  // `password` belongs to the server that owns the repository. It is folded
-  // into the repository's own environment and secrets rather than passed to
-  // each command, so every later read through this handle uses it and it stays
-  // masked out of captured output.
+  // `password` belongs to the server that owns the repository. It rides on the
+  // handle rather than on each call site, so every later read through it uses
+  // that key and it stays masked out of captured output — and it is a value
+  // here rather than an environment variable, because a handle is long-lived
+  // and every command run through it would otherwise carry the key of an
+  // archive in its environment.
   async openOrCreateRepository({ create = true, env = {}, localPath = null, location, missingMessage, password = null, secrets = [] }) {
     const repository = password
-      ? { engineName: this.name, env: { ...env, RESTIC_PASSWORD: password }, localPath, location, secrets: [...secrets, password] }
+      ? { engineName: this.name, env, localPath, location, password, secrets: [...secrets, password] }
       : { engineName: this.name, env, localPath, location, secrets };
     // A refusal that is not "there is nothing here" must never be answered by
     // creating a second repository.

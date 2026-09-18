@@ -283,8 +283,12 @@ test('opening a repository with another server\'s key never writes to it', async
   assert.equal(ownKeyUsed, false, 'a borrowed key does not spend this machine\'s own first use');
   assert.equal(repository.created, false);
   // The key travels with the repository, so every later read uses it and it is
-  // masked out of anything the engine prints.
-  assert.equal(repository.env.RESTIC_PASSWORD, borrowed);
+  // masked out of anything the engine prints. It is a value on the handle
+  // rather than an environment variable: the handle is long-lived, and every
+  // command run through it would otherwise carry another server's key in its
+  // environment.
+  assert.equal(repository.password, borrowed);
+  assert.equal(repository.env.RESTIC_PASSWORD, undefined);
   assert.ok(repository.secrets.includes(borrowed));
 });
 

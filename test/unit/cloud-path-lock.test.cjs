@@ -47,6 +47,12 @@
 // compared before and after and not one changed, so the walkthrough recording
 // still shows what an install prints.
 
+// Moved 2026-09-17 for the encrypted vault (roadmap AL2): the installer installs
+// cryptsetup, writes the two vault units and the Docker drop-ins, and every unit
+// that holds owner data gained `Requires=mos-vault.service`. All five again. The
+// thirteen `echo` lines of every rendering were compared before and after and not
+// one changed, so the walkthrough recording still shows what an install prints.
+
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const test = require('node:test');
@@ -59,25 +65,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: 'bdb49864789424eb8b3c96b0b312993dc72e965542e5554184aed21dc853058a',
+    digest: 'acf9d2b2e3e638c7be7d871085e46c77937d15807e32907e470f158e48613a4c',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '7edec74e323fa73686727d5dda3e93bc724917b5d54373a81975b02c66dd6421',
+    digest: '2dc21e448ca359a995ac93f862512a231cfb71e87b48ec601f703172b6d3e5b8',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: '8c309ed0085ede5954eb44f963efd6fe9ccd2758761537d5e626a81d2d583daf',
+    digest: 'e694878a6f8d9d434cdcde387cbb98a39f54167ed6c55faf2286ab01e98a246d',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: '8bb655f4a36015d85c5b4666ea50ef01723ebfc3472df02ae47718eeb3dcca2c',
+    digest: '151ed9b46bc8c032c0a1274db4b4d0d1b746f5e3ae6f46823c4bde87754f3c1c',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -87,7 +93,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '3fafb70c1e36bb5f449067dd1f570b3e2b0e06bbb273385be8f077099fbd7721',
+    digest: '2640dd345d7e790e94b2d1b25bc32876b4691fae070b75572109899bb4cb9dac',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

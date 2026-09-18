@@ -2938,3 +2938,236 @@ test('the diagnostics export still produces a file when the agent is unreachable
     },
   });
 });
+
+// The dashboard card that hands over the server login reads this route to know
+// whether it must also hand over the recovery key. A machine whose vault agent
+// is not answering still has a password with exactly one copy on it, so the
+// route answers rather than failing — a card that renders nothing because one of
+// two statuses could not be read is how that password goes unsaved.
+test('the vault route is authenticated and survives an agent that is not there', async () => {
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/vault', { headers: { Host: 'home.test' } });
+    assert.equal(denied.status, 401);
+    assert.equal(denied.json().code, 'AUTH_REQUIRED');
+
+    const cookie = await createOwner(baseUrl);
+    const response = await hostRequest(baseUrl, '/suite-manager/api/settings/vault', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.json().vault.state, 'unknown');
+    assert.equal(response.json().recoveryKey, null);
+    // Never "not encrypted" on an agent that could not be reached: a machine
+    // whose agent is down still has whatever disk it had a minute ago.
+    assert.equal(response.json().encrypted, false);
+  }, { homeHost: 'home.test' });
+});
+
+test('the vault route reports what the agent says and whether the key has been saved', async () => {
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const response = await hostRequest(baseUrl, '/suite-manager/api/settings/vault', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.json(), {
+      asksForPassword: false,
+      chipNeedsRepair: false,
+      encrypted: true,
+      recoveryKey: { acknowledged: false, fingerprint: 'abc123abc123' },
+      vault: { state: 'unlocked', unlocksItself: true },
+    });
+  }, {
+    backupAgent: { async recoveryKeyStatus() { return { recoveryKey: { acknowledged: false, fingerprint: 'abc123abc123' } }; } },
+    homeHost: 'home.test',
+    vaultAgent: { async status() { return { state: 'unlocked', unlocksItself: true }; } },
+  });
+});
+
+
+// --- Startup protection -----------------------------------------------------
+//
+// The chip's PIN is the owner's password and nothing else, so the routes that
+// hold that password in plaintext for a moment — the switch, a password change,
+// a sign-in — are the only ones that ever reach the vault agent with it.
+
+test('startup protection is confirmed with the owner password, which is also what gets enrolled', async () => {
+  const enrollments = [];
+  const vaultAgent = {
+    async enrollChip(input) { enrollments.push(input); return { mode: input.mode, ok: true, slot: 'enrolled' }; },
+    async status() { return { state: 'unlocked', tpm: { mode: 'password', slot: 'enrolled' }, unlocksItself: false }; },
+  };
+
+  await withServer(async (baseUrl) => {
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/vault/startup-password', {
+      body: JSON.stringify({ enabled: true, password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(denied.status, 401);
+    assert.equal(enrollments.length, 0);
+
+    const cookie = await createOwner(baseUrl);
+    const wrong = await hostRequest(baseUrl, '/suite-manager/api/settings/vault/startup-password', {
+      body: JSON.stringify({ enabled: true, password: 'not the owner password' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(wrong.status, 400);
+    assert.equal(wrong.json().code, 'INVALID_PASSWORD');
+    assert.equal(enrollments.length, 0, 'a password MOS does not accept never reaches the chip');
+
+    const on = await hostRequest(baseUrl, '/suite-manager/api/settings/vault/startup-password', {
+      body: JSON.stringify({ enabled: true, password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(on.status, 200);
+    assert.equal(on.json().asksForPassword, true);
+    assert.deepEqual(enrollments, [{ mode: 'password', pin: 'correct horse battery' }]);
+
+    const off = await hostRequest(baseUrl, '/suite-manager/api/settings/vault/startup-password', {
+      body: JSON.stringify({ enabled: false, password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(off.status, 200);
+    assert.deepEqual(enrollments[1], { mode: 'automatic', pin: null }, 'turning it off enrolls no password at all');
+  }, { homeHost: 'home.test', vaultAgent });
+});
+
+// The chip is allowed to refuse. What is not allowed is MOS pretending it did
+// not, because the owner has to know their server will want the recovery key
+// after the next restart.
+test('a chip that refuses the switch is reported, not swallowed', async () => {
+  const vaultAgent = {
+    async enrollChip() { return { mode: 'password', ok: false, reason: 'tpm-refused', slot: 'needs-repair' }; },
+    async status() { return { state: 'unlocked', tpm: { mode: 'password', slot: 'needs-repair' } }; },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const refused = await hostRequest(baseUrl, '/suite-manager/api/settings/vault/startup-password', {
+      body: JSON.stringify({ enabled: true, password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(refused.status, 409);
+    assert.equal(refused.json().code, 'VAULT_TPM_REFUSED');
+    assert.match(refused.json().error, /asks for your recovery key/u);
+  }, { homeHost: 'home.test', vaultAgent });
+});
+
+/**
+ * The ordering is the whole point. A password Suite Manager accepts while the
+ * disk still wants the previous one is a machine that signs its owner in and
+ * then refuses them after a power cut, so the chip is taught first — and the
+ * probe inside the fake proves it, by checking that the old password still
+ * signs in at the moment the chip is being taught.
+ *
+ * And it still has to complete when the chip will not have it: an owner may be
+ * changing this password precisely because it leaked.
+ */
+test('a password change teaches the chip before it commits, and completes even when the chip refuses', async () => {
+  let baseUrlRef = '';
+  const probes = [];
+  const vaultAgent = {
+    async enrollChip(input) {
+      const old = await hostRequest(baseUrlRef, '/suite-manager/api/auth/login', {
+        body: JSON.stringify({ email: 'owner@example.com', password: 'correct horse battery' }),
+        headers: { 'Content-Type': 'application/json', Host: 'home.test' },
+        method: 'POST',
+      });
+      probes.push({ oldPasswordStillWorks: old.status === 200, pin: input.pin });
+      return { mode: 'password', ok: false, reason: 'tpm-refused', slot: 'needs-repair' };
+    },
+    async status() { return { state: 'unlocked', tpm: { mode: 'password', slot: 'enrolled' } }; },
+  };
+
+  await withServer(async (baseUrl) => {
+    baseUrlRef = baseUrl;
+    const cookie = await createOwner(baseUrl);
+    const changed = await hostRequest(baseUrl, '/suite-manager/api/settings/owner/password', {
+      body: JSON.stringify({ currentPassword: 'correct horse battery', newPassword: 'a much better passphrase' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+
+    assert.equal(changed.status, 200, 'a chip that will not follow never refuses the change');
+    assert.deepEqual(changed.json().startupProtection, { mode: 'password', ok: false, reason: 'tpm-refused' });
+    assert.deepEqual(probes, [{ oldPasswordStillWorks: true, pin: 'a much better passphrase' }]);
+
+    const withNew = await hostRequest(baseUrl, '/suite-manager/api/auth/login', {
+      body: JSON.stringify({ email: 'owner@example.com', password: 'a much better passphrase' }),
+      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(withNew.status, 200);
+  }, { homeHost: 'home.test', vaultAgent });
+});
+
+// A slot left needing repair is taught again at the next sign-in whatever the
+// mode. In automatic mode the chip needs no password and the agent ignores the
+// one sent; what matters is that the repair is attempted at all, because
+// nothing else on a running machine holds the owner's password.
+test('a sign-in repairs a chip slot that is waiting, in either mode', async () => {
+  const enrollments = [];
+  const vaultAgent = {
+    async enrollChip(input) { enrollments.push(input); return { mode: 'automatic', ok: true, slot: 'enrolled' }; },
+    async status() { return { state: 'unlocked', tpm: { mode: 'automatic', slot: 'needs-repair' }, unlocksItself: false }; },
+  };
+
+  await withServer(async (baseUrl) => {
+    await createOwner(baseUrl);
+    const signedIn = await hostRequest(baseUrl, '/suite-manager/api/auth/login', {
+      body: JSON.stringify({ email: 'owner@example.com', password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(signedIn.status, 200);
+    // The repair is not awaited by the sign-in, so give it a moment to land.
+    for (let waited = 0; enrollments.length === 0 && waited < 50; waited += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.deepEqual(enrollments, [{ mode: 'current', pin: 'correct horse battery' }]);
+  }, { homeHost: 'home.test', vaultAgent });
+});
+
+// On a machine that opens itself there is no password for the chip to know, so
+// a password change is a Suite Manager matter and nothing is said about disks.
+test('a password change says nothing about the chip on a machine that opens itself', async () => {
+  const vaultAgent = {
+    async enrollChip() { return { mode: 'automatic', ok: true, slot: 'enrolled', unchanged: true }; },
+    async status() { return { state: 'unlocked', tpm: { mode: 'automatic', slot: 'enrolled' }, unlocksItself: true }; },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const changed = await hostRequest(baseUrl, '/suite-manager/api/settings/owner/password', {
+      body: JSON.stringify({ currentPassword: 'correct horse battery', newPassword: 'a much better passphrase' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(changed.status, 200);
+    assert.equal(changed.json().startupProtection, null);
+  }, { homeHost: 'home.test', vaultAgent });
+});
+
+// Three screens ask these two questions and none of them may work them out for
+// itself: the same predicate answers here that answers in the vault agent.
+test('the vault route answers whether this machine waits for a password', async () => {
+  const vaultAgent = {
+    async status() { return { state: 'unlocked', tpm: { mode: 'password', slot: 'needs-repair' }, unlocksItself: false }; },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const view = await hostRequest(baseUrl, '/suite-manager/api/settings/vault', {
+      headers: { Cookie: cookie, Host: 'home.test' },
+    });
+    assert.equal(view.status, 200);
+    assert.equal(view.json().asksForPassword, true);
+    assert.equal(view.json().chipNeedsRepair, true);
+    assert.equal(view.json().encrypted, true);
+  }, { homeHost: 'home.test', vaultAgent });
+});

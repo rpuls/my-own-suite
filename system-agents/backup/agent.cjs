@@ -26,6 +26,10 @@ const { createEngine, ENGINE_MISSING_MESSAGE, ENGINE_NAME, readRepositoryDescrip
 const { fingerprint: recoveryKeyFingerprint, normalize: normalizeRecoveryKey } = require('./recovery-key.cjs');
 const { GuestKeyStore } = require('./guest-keys.cjs');
 const { RecoveryKeyRecord, recoveryKitFilename, recoveryKitText } = require('./recovery-kit.cjs');
+const { rotateRecoveryKey: rotateKey } = require('./key-rotation.cjs');
+const { KnownDrives } = require('./known-drives.cjs');
+const { machineHasVault, readVaultDescriptor, vaultAsksForPassword } = require('../../shared/vault-contract.cjs');
+const { VaultAgentClient } = require('../../suite-manager/backend/src/settings/vault-agent-client.cjs');
 const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-agent-client.cjs');
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
@@ -175,7 +179,7 @@ function logReclaimed(reclaimed) {
   for (const entry of reclaimed) process.stdout.write(`[mos-backup-agent] reclaimed ${entry.bytes} bytes an interrupted backup left under ${entry.path}\n`);
 }
 async function listDestinations() {
-  const lsblk = await execJson('lsblk', ['--json', '--bytes', '--output', 'NAME,PATH,LABEL,MODEL,TRAN,RM,TYPE,FSTYPE,SIZE,MOUNTPOINTS']);
+  const lsblk = await execJson('lsblk', ['--json', '--bytes', '--output', 'NAME,PATH,LABEL,MODEL,TRAN,RM,TYPE,FSTYPE,UUID,SIZE,MOUNTPOINTS']);
   const candidates = new Map();
   function add(destination) { if (destination.id) candidates.set(destination.id, destination); }
   function visit(device, inheritedExternal = false) {
@@ -189,11 +193,11 @@ async function listDestinations() {
       if (!mountPath) continue;
       mounted = true;
       const externalMount = external || mountPath.startsWith('/media/');
-      add({ availableBytes: availableBytes(mountPath), canMount: false, devicePath, fileSystem: device.fstype || null, id: mountPath, label, mountPath, mountState: 'mounted', sizeBytes: Number(device.size) || null, storageKind: externalMount ? 'external' : 'local', transport: device.tran || (externalMount ? 'removable' : 'local'), writable: isWritable(mountPath) });
+      add({ availableBytes: availableBytes(mountPath), canMount: false, devicePath, fileSystem: device.fstype || null, fsUuid: device.uuid || null, id: mountPath, label, mountPath, mountState: 'mounted', sizeBytes: Number(device.size) || null, storageKind: externalMount ? 'external' : 'local', transport: device.tran || (externalMount ? 'removable' : 'local'), writable: isWritable(mountPath) });
     }
     if (!mounted && (device.type !== 'disk' || isWholeDiskFilesystem(device))) {
       const blocked = mountBlockReason(device);
-      add({ availableBytes: null, canMount: !blocked && !points.some(Boolean), devicePath, fileSystem: device.fstype || null, id: devicePath || label, label, mountBlockedReason: blocked, mountPath: points.find(Boolean) || null, mountState: points.some(Boolean) ? 'unsupported-mount' : 'unmounted', sizeBytes: Number(device.size) || null, storageKind: external ? 'external' : 'local', transport: device.tran || (external ? 'removable' : 'local'), writable: false });
+      add({ availableBytes: null, canMount: !blocked && !points.some(Boolean), devicePath, fileSystem: device.fstype || null, fsUuid: device.uuid || null, id: devicePath || label, label, mountBlockedReason: blocked, mountPath: points.find(Boolean) || null, mountState: points.some(Boolean) ? 'unsupported-mount' : 'unmounted', sizeBytes: Number(device.size) || null, storageKind: external ? 'external' : 'local', transport: device.tran || (external ? 'removable' : 'local'), writable: false });
     }
     for (const child of device.children || []) visit(child, external);
   }
@@ -688,10 +692,27 @@ function installId() {
 const identity = {
   // A restore that takes another machine's place makes that machine's key this
   // machine's own, and the borrowed copy is dropped: the two are now one server
-  // with one key. Nothing is written to the archive to do it.
+  // with one key. Nothing is written to the archive to do it — adding this
+  // machine's key there instead would leave every test restore's key able to
+  // open it for good.
+  //
+  // On a machine with a vault that means the disk too, and the disk goes first.
+  // Adopting the key for the backups alone would leave an owner holding a card
+  // that opens their archive and not their server, and they would find out at
+  // the one moment they need it. A rekey that fails therefore abandons the
+  // whole adoption: the archive stays readable with the borrowed key, which is
+  // a state the screen already explains.
   assumeArchiveKey: async (destinationId) => {
     const key = guestKeys.keyFor(destinationId);
     if (!key) return false;
+
+    try {
+      const rekeyed = await vaultAgent.rekey(key);
+      if (!rekeyed.ok) return { ok: false, reason: rekeyed.reason || 'rekey-failed' };
+    } catch (error) {
+      return { ok: false, reason: error?.code === 'VAULT_AGENT_UNAVAILABLE' ? 'vault-agent-unavailable' : 'rekey-failed' };
+    }
+
     engine.adoptRecoveryKey(key);
     recoveryRecord.adopt(recoveryKeyFingerprint(key));
     guestKeys.forget(destinationId);
@@ -816,7 +837,19 @@ async function recoveryKit(key) {
   const hostname = os.hostname();
   const now = new Date();
   return {
-    kit: recoveryKitText({ destinations, homeAddress: homeAddress(), hostname, key, now }),
+    // Read from the descriptor rather than asked of the vault agent: this runs
+    // while composing a kit an owner may be printing because their machine is in
+    // trouble, and one more socket that can be down is one more way for the
+    // sheet to come out wrong.
+    kit: recoveryKitText({
+      asksForPassword: vaultAsksForPassword(readVaultDescriptor()),
+      destinations,
+      encryptedDisk: machineHasVault(),
+      homeAddress: homeAddress(),
+      hostname,
+      key,
+      now,
+    }),
     kitFilename: recoveryKitFilename({ hostname, now }),
   };
 }
@@ -824,6 +857,39 @@ async function recoveryKit(key) {
 async function revealRecoveryKey() {
   const key = engine.recoveryKey();
   return { key, recoveryKey: recoveryKeyStatus(), ...await recoveryKit(key) };
+}
+
+// What a rotation can reach right now: the drives that are plugged in and the
+// buckets that are configured. A drive in a drawer is deliberately not here —
+// it is the reason a rotation reports what it could not finish, rather than
+// claiming a key change that a copy in a drawer knows nothing about.
+async function attachedDestinations() {
+  const mounted = (await listDestinations())
+    .filter((entry) => entry.kind === 'disk' && entry.mountState === 'mounted')
+    .map((entry) => destinationResolver.resolve(entry.id));
+  return [...mounted, ...destinationResolver.objectDestinations()];
+}
+
+// Replacing this machine's recovery key with a new one. The disk half is the
+// vault agent's, over the same socket a takeover uses, and it goes first so a
+// vault that will not follow stops the whole thing before anything moves.
+async function rotateRecoveryKey() {
+  const rotated = await rotateKey({
+    attached: attachedDestinations,
+    destinations: destinationResolver,
+    engine,
+    record: recoveryRecord,
+    rekeyDisk: async (nextKey) => {
+      try {
+        const result = await vaultAgent.rekey(nextKey);
+        return result.ok === false ? { ok: false, reason: result.reason || 'rekey-failed' } : { ok: true };
+      } catch (error) {
+        return { ok: false, reason: error?.code === 'VAULT_AGENT_UNAVAILABLE' ? 'vault-agent-unavailable' : 'rekey-failed' };
+      }
+    },
+  });
+  if (!rotated.ok) return rotated;
+  return { ...rotated, recoveryKey: recoveryKeyStatus(), ...await recoveryKit(rotated.key) };
 }
 
 // Opening backups another server wrote, without changing them. The entered key
@@ -923,11 +989,15 @@ async function scheduledRestorePoints(destinationId) {
 }
 
 const recoveryRecord = new RecoveryKeyRecord({ agentStateDir });
+const knownDrives = new KnownDrives({ agentStateDir });
 const progressPublisher = new ProgressPublisher({ dir: statusDir, filename: PROGRESS_FILENAME });
 const engine = createEngine({ agentStateDir, onKeyUsed: () => recoveryRecord.noteFirstUse() });
 const objectRegistry = new ObjectDestinationRegistry({ agentStateDir });
 const backupSystem = new BackupSystemAdapter({ agentStateDir, repoDir, stateDir, stateRoot });
 const guestKeys = new GuestKeyStore({ agentStateDir });
+// Only ever asked to rekey the disk at the end of a takeover restore. A machine
+// with no vault answers that there was nothing to do.
+const vaultAgent = new VaultAgentClient({ socketPath: process.env.MOS_VAULT_AGENT_SOCKET || '/run/mos-vault-agent/agent.sock' });
 const destinationResolver = new DestinationResolver({ agentStateDir, engine, guestKeys, objectRegistry, system: backupSystem });
 // Both agents run as root under the same unit template, so this agent can ask
 // the update agent what it is doing over its socket the way Suite Manager does.
@@ -1016,12 +1086,38 @@ if (require.main === module && process.argv[2] === '--worker') {
     try {
       const url = new URL(request.url || '/', 'http://localhost');
       if (request.method === 'GET' && url.pathname === '/v1/status') {
-        const destinations = (await listDestinations()).map((destination) => (
+        const attached = (await listDestinations()).map((destination) => (
           destination.mountPath ? { ...destination, repository: repositoryUsage(destination.mountPath) } : destination
         ));
+        const backups = await listBackups(attached);
+        // A drive that is not plugged in is the one backup an attacker on this
+        // machine cannot reach, so it is worth more said than unsaid. It is
+        // listed from what MOS recorded while it was here, and it is the only
+        // entry in this list that describes something MOS cannot currently see.
+        const away = knownDrives.reconcile({
+          attached: attached.filter((destination) => destination.kind === 'disk'),
+          lastBackupAt: (id) => backups.find((backup) => backup.destinationId === id)?.createdAt || null,
+        }).map((drive) => ({
+          availableBytes: null,
+          fsUuid: drive.fsUuid,
+          id: drive.id,
+          kind: 'disk',
+          label: drive.label,
+          lastBackupAt: drive.lastBackupAt,
+          lastSeenAt: drive.lastSeenAt,
+          locked: false,
+          mountPath: null,
+          mountState: 'away',
+          notReadyReason: 'This drive is not plugged in.',
+          ready: false,
+          sizeBytes: null,
+          storageKind: 'external',
+          writable: false,
+        }));
+        const destinations = [...attached, ...away];
         respond(response, 200, {
-          backups: await listBackups(destinations),
-          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['connect-object', 'list', 'mount', 'primary'], recoveryKey: ['acknowledge', 'forget-key', 'keys', 'reveal', 'unlock'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
+          backups,
+          capabilities: { backups: ['create', 'delete', 'list', 'schedule', 'validate'], destinations: ['connect-object', 'forget-drive', 'list', 'mount', 'primary'], recoveryKey: ['acknowledge', 'forget-key', 'keys', 'reveal', 'rotate', 'unlock'], restores: ['acknowledge-interruption', 'apply', 'list'], storage: { engine: ENGINE_NAME, model: 'engine-repository' } },
           currentJob: summarizeJob(reconcileCurrentJob()),
           destinations,
           // Named so the screen can say which machine wrote a restore point, and
@@ -1096,6 +1192,13 @@ if (require.main === module && process.argv[2] === '--worker') {
         respond(response, 200, await revealRecoveryKey());
         return;
       }
+      // Answered 200 with `ok: false` when the vault refused, because a
+      // rotation that stopped early is a state to explain rather than a
+      // failure: the key the owner already has still opens everything.
+      if (request.method === 'POST' && url.pathname === '/v1/recovery-key/rotate') {
+        respond(response, 200, await rotateRecoveryKey());
+        return;
+      }
       if (request.method === 'POST' && url.pathname === '/v1/recovery-key/acknowledge') {
         recoveryRecord.acknowledge(recoveryKeyFingerprint(engine.recoveryKey()));
         respond(response, 200, { recoveryKey: recoveryKeyStatus() });
@@ -1111,6 +1214,15 @@ if (require.main === module && process.argv[2] === '--worker') {
       }
       if (request.method === 'POST' && url.pathname === '/v1/destinations/keys/remove') {
         respond(response, 200, { result: await removeArchiveKey(await readBody(request)) });
+        return;
+      }
+      // A drive the owner has finished with. Only the memory of it goes: MOS
+      // never writes to a drive that is not here, so nothing on the drive
+      // itself changes and plugging it back in lists it again.
+      if (request.method === 'POST' && url.pathname === '/v1/destinations/forget-drive') {
+        const body = await readBody(request);
+        knownDrives.forget(String(body.fsUuid || ''));
+        respond(response, 200, { forgotten: true });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/destinations/forget-key') {

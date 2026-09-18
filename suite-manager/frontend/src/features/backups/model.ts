@@ -11,16 +11,23 @@ export type BackupDestination = {
   checkedAt?: string | null;
   endpoint?: string;
   folder?: string;
+  // How a drive stays the same drive across being unplugged: where it is
+  // mounted is a fact about this boot, the filesystem on it is not.
+  fsUuid?: string | null;
   id: string;
   kind?: 'disk' | 'object';
   label: string;
+  lastBackupAt?: string | null;
+  lastSeenAt?: string | null;
   // Reached, and holding backups written with another server's key. Neither
   // usable nor broken: one recovery key away from both.
   borrowedKey?: boolean;
   locked?: boolean;
   mountBlockedReason?: string | null;
   mountPath: string | null;
-  mountState?: 'mounted' | 'unmounted' | 'unsupported-mount';
+  // `away` is the only state describing something MOS cannot see: a drive it
+  // has backed up to before and that is not plugged in now.
+  mountState?: 'away' | 'mounted' | 'unmounted' | 'unsupported-mount';
   notReadyReason?: string | null;
   ready?: boolean;
   region?: string;
@@ -194,7 +201,6 @@ export type RecoveryKeyState = {
   legacyKeyPresent?: boolean;
 };
 
-export type RevealedRecoveryKey = { key: string; kit: string; kitFilename: string };
 
 export type BackupStatus = {
   backups: BackupEntry[];
@@ -379,12 +385,17 @@ export type DestinationView = {
   action: DestinationAction;
   actionLabel: string;
   address: string | null;
+  away: boolean;
   detail: string;
   destination: BackupDestination;
   foreign: string | null;
   id: string;
   keyLine: string;
   keyTone: Tone;
+  // Whether someone who breaks into this server could erase this copy. MOS may
+  // decline to enforce good practice, but it must never imply protection the
+  // owner does not have.
+  reachLine: string;
   kindLabel: string;
   label: string;
   present: boolean;
@@ -437,6 +448,12 @@ export function destinationView(destination: BackupDestination, status: BackupSt
     tone = 'warning';
     line = 'MOS can read this drive but cannot write to it';
     detail = 'It may be locked by a switch on the drive itself.';
+  } else if (destination.mountState === 'away') {
+    // Not a problem to fix. This is the copy that survives the thing every
+    // other copy does not, and the row says so rather than reading as an error.
+    tone = 'muted';
+    line = destination.lastBackupAt ? `Unplugged · backed up ${whenWords(destination.lastBackupAt).toLowerCase()}` : 'Unplugged';
+    detail = 'Plug it in to bring it up to date.';
   } else if (!present) {
     tone = selected ? 'warning' : 'muted';
     line = 'Not connected';
@@ -460,16 +477,19 @@ export function destinationView(destination: BackupDestination, status: BackupSt
   }
 
   const spaceKnown = Boolean(destination.sizeBytes && destination.availableBytes);
+  const away = destination.mountState === 'away';
   return {
     action,
     actionLabel,
     address: destinationAddress(destination),
+    away,
     detail,
     destination,
     foreign,
     id: destination.id,
     keyLine,
     keyTone,
+    reachLine: reachOf(destination),
     kindLabel: destinationKindLabel(destination),
     label: destination.label,
     present,
@@ -479,6 +499,49 @@ export function destinationView(destination: BackupDestination, status: BackupSt
     status: line,
     tone,
   };
+}
+
+/**
+ * Whether this copy is within reach of someone who gets into the server.
+ *
+ * It is the one thing MOS must always be able to say. Ransomware runs on an
+ * unlocked machine with the owner's own credentials, so anything MOS can write
+ * to, it can also delete, and anything MOS can undo an attacker with root can
+ * undo. No setting on this screen changes that: only a drive that is not
+ * plugged in is out of reach, which is why unplugging is worth saying out loud
+ * rather than leaving as something the owner is supposed to infer.
+ */
+function reachOf(destination: BackupDestination) {
+  if (destination.mountState === 'away') return 'Unplugged, so nothing that gets into this server can reach it.';
+  if (destination.locked) return '';
+  if (destination.kind === 'object') return 'Anything that gets into this server can erase this copy.';
+  if (destination.mountState === 'mounted') return 'Plugged in, so anything that gets into this server can erase this copy.';
+  return '';
+}
+
+/**
+ * Whether the owner has a copy out of reach, and how old it is.
+ *
+ * One line at the right moment is what gets a drive plugged in; an article
+ * reaches people after something has already gone wrong. It says where they
+ * stand and never scolds, because the goal is moving an owner from one copy to
+ * two, not teaching them a practice they did not ask to learn.
+ */
+export function offlineCopyLine(views: DestinationView[]) {
+  const away = views.filter((view) => view.away);
+  const reachable = views.filter((view) => !view.away && !view.destination.locked && (view.destination.ready || view.destination.mountState === 'mounted'));
+  if (!away.length) {
+    if (!reachable.length) return '';
+    return 'Every copy you have is somewhere this server can reach, so anything that gets into this server can erase all of them. A drive you plug in, back up to, and unplug again is the one copy that survives that.';
+  }
+  const freshest = away
+    .map((view) => daysSince(view.destination.lastBackupAt || null))
+    .filter((days): days is number => days !== null)
+    .sort((left, right) => left - right)[0] ?? null;
+  const drive = away.length === 1 ? away[0]?.label || 'Your unplugged drive' : `${away.length} drives you keep unplugged`;
+  if (freshest === null) return `${drive} is unplugged, out of reach of anything that gets into this server. MOS does not know how old the copy on it is.`;
+  if (freshest > 30) return `Your copy that is out of reach is on ${drive}, and it is ${freshest} days old. Plugging it in brings it up to date.`;
+  return `${drive} holds a copy from ${freshest === 0 ? 'today' : freshest === 1 ? 'yesterday' : `${freshest} days ago`} that nothing on this server can reach.`;
 }
 
 // The list the page draws, in the order it draws it: the selected place first,
@@ -569,6 +632,19 @@ export function bannerState(status: BackupStatus | null | undefined, views: Dest
   }
   if (age !== null && age > 3) {
     return { detail: `Last backup ${whenWords(newest.createdAt)} to ${newest.destinationLabel}${nextRun}`, title: `Your last backup was ${age} days ago.`, tone: 'warning' as Tone };
+  }
+  // The end of the rotation, said once, at the only moment it is useful: a
+  // drive that has just been written to and is not where automatic backups go
+  // is a drive on its way back to a drawer, and it is only out of reach once it
+  // is unplugged. Never said about the chosen destination — unplugging that one
+  // would break the schedule the owner set up.
+  const writtenTo = views.find((view) => view.id === newest.destinationId) || null;
+  if (age === 0 && writtenTo && !writtenTo.selected && writtenTo.destination.storageKind === 'external' && writtenTo.destination.mountState === 'mounted') {
+    return {
+      detail: `Backed up to ${writtenTo.label}. Unplug it and keep it somewhere else: a drive that stays plugged in can be erased by anything that gets into this server.`,
+      title: 'Your backups are up to date.',
+      tone: 'ready' as Tone,
+    };
   }
   return { detail: `Last backup ${whenWords(newest.createdAt)} to ${newest.destinationLabel}${nextRun}`, title: 'Your backups are up to date.', tone: 'ready' as Tone };
 }
@@ -685,13 +761,13 @@ export function restoreAddressNote(job: BackupJob | null) {
 
 // The kit is text the browser saves, not a file the server serves: it holds the
 // recovery key, and a URL that returns one is a URL that can be requested again.
-export function downloadKit(revealed: RevealedRecoveryKey) {
-  const url = URL.createObjectURL(new Blob([revealed.kit], { type: 'text/plain;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.download = revealed.kitFilename || 'mos-recovery-kit.txt';
-  link.href = url;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
+
+// What a rotation reached, and what it could not. A copy that was not attached
+// is not a failure: it carries the previous key until it is next plugged in,
+// and MOS finishes the change itself at that moment.
+export type RotationResult = {
+  destinations: Array<{ id: string; label: string; state: 'foreign' | 'pending' | 'rotated' }>;
+  ok?: boolean;
+  pending: Array<{ id: string; label: string }>;
+  sentence?: string;
+};

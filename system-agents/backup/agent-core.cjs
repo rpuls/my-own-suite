@@ -213,6 +213,17 @@ function requiredFreeBytes(estimatedBytes, restorePointsPresent) {
   return Math.max(1024 * 1024 * 1024, Math.round(estimatedBytes * 0.05));
 }
 
+// Why a takeover kept this machine's own key instead of adopting the one it was
+// handed. Each names the thing the owner would otherwise have to guess at: the
+// restore worked, and the only open question is which key opens what.
+const KEY_ADOPTION_REFUSALS = {
+  'current-key-rejected': 'This server could not change its disk over to the recovery key you entered, because the key it currently uses did not open its own vault.',
+  'locked': 'This server could not change its disk over to the recovery key you entered, because its vault was not open.',
+  'own-key-unreadable': 'This server could not change its disk over to the recovery key you entered, because it could not read the key it uses now.',
+  'vault-agent-unavailable': 'This server could not change its disk over to the recovery key you entered, because the part of MOS that owns the encrypted disk was not answering.',
+  default: 'This server could not change its disk over to the recovery key you entered.',
+};
+
 class BackupAgentCore {
   constructor({ apps, destinations, engine, identity = {}, jobs, packages, paths, system }) {
     this.apps = apps;
@@ -863,7 +874,15 @@ class BackupAgentCore {
       // borrowing the key. Either way the archive was never touched.
       if (address.foreign && address.plan !== 'copy') {
         const assumed = await this.identity.assumeArchiveKey(repository.destinationId);
-        if (assumed) jobs.log(jobFile, 'This server now uses the recovery key of the server it restored from. One key opens everything from here on.');
+        // Three outcomes, and each is said in full. `true` is the adoption; a
+        // refusal names what stopped it and what still works, because the
+        // restore itself succeeded and the owner must not read a key problem as
+        // lost data; `null` is a machine that had no key to adopt.
+        if (assumed === true) {
+          jobs.log(jobFile, 'This server now uses the recovery key of the server it restored from. One key opens this disk and these backups from here on, and the key this server made when it was installed no longer opens anything.');
+        } else if (assumed && assumed.ok === false) {
+          jobs.log(jobFile, `${KEY_ADOPTION_REFUSALS[assumed.reason] || KEY_ADOPTION_REFUSALS.default} Your restore is complete and nothing is lost: these backups still open with the key you entered, and this server still opens its own disk with the key it was installed with.`);
+        }
       }
 
       this.advanceJournal('completed', { completedAt: new Date().toISOString() });

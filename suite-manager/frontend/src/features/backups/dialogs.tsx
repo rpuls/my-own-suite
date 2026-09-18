@@ -1,6 +1,8 @@
 import { useState } from 'react';
 
-import { AdvancedPanel, Checkbox, Choice, Dialog, Icon, Notice, Panel, PanelItem, PanelList, SecretText, Select, Spinner, Stepper, TextArea, TextInput } from '../../components/ui';
+import { AdvancedPanel, Checkbox, Choice, Dialog, Icon, Notice, Panel, PanelItem, PanelList, Select, Spinner, Stepper, TextArea, TextInput } from '../../components/ui';
+import { RecoveryKeySecret, type RevealedRecoveryKey } from '../../components/RecoveryKeySecret';
+import { type VaultStartup } from '../../lib/vault';
 import {
   RETENTION_OPTIONS,
   WEEKDAY_NAMES,
@@ -9,7 +11,6 @@ import {
   clockValue,
   archiveKeyLine,
   destinationIconName,
-  downloadKit,
   needsAddressChoice,
   whenWords,
   writtenElsewhere,
@@ -20,7 +21,7 @@ import {
   type DestinationView,
   type ObjectDraft,
   type RecoveryKeyState,
-  type RevealedRecoveryKey,
+  type RotationResult,
 } from './model';
 
 // Taking a backup by hand. The destination is stated rather than asked: it was
@@ -165,26 +166,32 @@ export function ArchiveKeysDialog({ busy, error, keys, onClose, onList, onRemove
 // before the key appears, which is why they are not two dialogs. What it opens
 // is listed by name, because one key for the whole server is only reassuring
 // once you can see which places that covers.
-export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, onClose, onReveal, revealed, views }: {
+export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, onClose, onReveal, onRotate, onStartRotation, revealed, rotation, startup, views }: {
   busy: string;
   error: string;
   keyState: RecoveryKeyState | null;
-  mode: 'reveal' | 'save';
+  mode: 'reveal' | 'rotate' | 'save';
   onAcknowledge: () => void;
   onClose: () => void;
   onReveal: (password: string) => void;
+  onRotate: (password: string) => void;
+  onStartRotation: () => void;
   revealed: RevealedRecoveryKey | null;
+  rotation: RotationResult | null;
+  startup: VaultStartup;
   views: DestinationView[];
 }) {
   const [password, setPassword] = useState('');
   const [saved, setSaved] = useState(false);
-  const [copied, setCopied] = useState(false);
   const locked = Boolean(busy);
   const opens = views.filter((view) => !view.destination.locked);
   const missing = views.filter((view) => view.destination.locked);
+  // A rotation ends in the same place a first handover does: a key on screen
+  // that has to be saved before the dialog is done with.
+  const confirming = mode === 'save' || (mode === 'rotate' && Boolean(rotation));
 
   return <Dialog
-    footer={mode === 'save'
+    footer={confirming
       ? <>
           <button className="mos-btn mos-btn-primary" disabled={!saved || !revealed || locked} onClick={onAcknowledge} type="button">
             {busy === 'recovery-acknowledge' ? <><Spinner />Saving</> : 'Done'}
@@ -192,9 +199,25 @@ export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, 
         </>
       : <button className="mos-btn mos-btn-secondary" disabled={locked} onClick={onClose} type="button">Close</button>}
     onClose={() => { if (!locked) onClose(); }}
-    title="Your recovery key"
+    title={mode === 'rotate' && !rotation ? 'Change your recovery key' : 'Your recovery key'}
   >
-    <p>This key is the only thing that opens your backups on a new machine. If this server is lost and the key is lost, the backups cannot be read &mdash; not by us, not by anyone.</p>
+    {mode === 'rotate' && !rotation ? <>
+      <p>MOS makes a new key, changes this server's disk over to it, and changes every backup it can reach over to it. The key you have now stops opening them.</p>
+      <p>You are shown the new key once here, with a new recovery kit to download. Nothing else about your backups changes and none of them are rewritten.</p>
+      <TextInput
+        autoFocus
+        disabled={locked}
+        helperText="Checked on this server. The new key is shown as soon as it is made."
+        label="Enter your password to change the key"
+        onChange={(event) => setPassword(event.currentTarget.value)}
+        onKeyDown={(event) => { if (event.key === 'Enter' && password && !locked) onRotate(password); }}
+        type="password"
+        value={password}
+      />
+      <button className="mos-btn mos-btn-primary" disabled={!password || locked} onClick={() => onRotate(password)} type="button">
+        {busy === 'recovery-rotate' ? <><Spinner />Changing the key</> : 'Change my recovery key'}
+      </button>
+    </> : null}
 
     {mode === 'reveal' && !revealed ? <TextInput
       autoFocus
@@ -210,17 +233,20 @@ export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, 
       {busy === 'recovery-reveal' ? <><Spinner />Checking</> : 'Show recovery key'}
     </button> : null}
 
-    {revealed ? <>
-      <SecretText label="recovery key" value={revealed.key} />
-      <div className="suite-bk-key-actions">
-        <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => {
-          void navigator.clipboard?.writeText(revealed.key).then(() => setCopied(true)).catch(() => setCopied(false));
-        }} type="button"><Icon name="copy" />{copied ? 'Copied' : 'Copy'}</button>
-        <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => downloadKit(revealed)} type="button">
-          <Icon name="upload" />Download recovery kit
-        </button>
-      </div>
-      <p className="suite-meta">The kit is a plain text file with the key, where your backups are kept, and the steps to get everything back. It holds no access key or password for your storage provider.</p>
+    {revealed ? <RecoveryKeySecret revealed={revealed} startup={startup} /> : null}
+
+    {rotation ? <>
+      {/* Said without hedging, because it is the one thing rotation does not
+          fix and the owner is the only one who can decide what to do about it.
+          The disk half has no equivalent: reaching what is under a LUKS
+          passphrase needs the disk in hand, and at that point the data is
+          already gone. */}
+      <Notice title="What changing the key does not undo" variant="warning">
+        <p>Your disk and every backup from now on need the new key. Anyone who already had the old key <strong>and</strong> a copy of your bucket or drive can still read the backups that existed before today. If you think that happened, start a fresh archive rather than trusting this one.</p>
+      </Notice>
+      {rotation.pending.length ? <Notice title="Some copies still open with your old key" variant="info">
+        <p>{rotation.pending.map((entry) => entry.label).join(', ')} {rotation.pending.length === 1 ? 'was' : 'were'} not attached, so {rotation.pending.length === 1 ? 'it keeps' : 'they keep'} the old key until next plugged in. MOS finishes the change by itself then; keep your old kit until it has.</p>
+      </Notice> : null}
     </> : null}
 
     <p className="suite-meta">{keyState?.adoptedAt
@@ -236,9 +262,18 @@ export function RecoveryKeyDialog({ busy, error, keyState, mode, onAcknowledge, 
       {missing.map((view) => <p key={view.id}><Icon name={destinationIconName(view.destination)} /><strong>{view.label}</strong><span>Needs the recovery key of the server that wrote it</span></p>)}
     </div> : null}
 
-    {mode === 'save' && revealed ? <Checkbox checked={saved} disabled={locked} onChange={(event) => setSaved(event.currentTarget.checked)}>
+    {confirming && revealed ? <Checkbox checked={saved} disabled={locked} onChange={(event) => setSaved(event.currentTarget.checked)}>
       I have saved this recovery key somewhere I can still reach if this server is gone.
     </Checkbox> : null}
+
+    {mode === 'reveal' && revealed ? <>
+      <p className="suite-meta">If you think someone else has seen this key, change it. MOS makes a new one and moves this server's disk and every backup it can reach over to it.</p>
+      <button className="mos-btn mos-btn-ghost mos-btn-sm" disabled={locked} onClick={onStartRotation} type="button">
+        <Icon name="key" />
+        Change recovery key
+      </button>
+    </> : null}
+
 
     {error ? <Notice title="That did not work" variant="error"><p>{error}</p></Notice> : null}
 

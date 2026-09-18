@@ -11,6 +11,12 @@ const UNAVAILABLE_PAGE_FILENAME = 'unavailable.html';
 const PROGRESS_FILENAME = 'progress.json';
 const PROGRESS_ROUTE = `/mos-status/${PROGRESS_FILENAME}`;
 const PROGRESS_STALE_MINUTES = 30;
+// The vault agent, which is the only thing listening on a machine whose disk
+// has not been unlocked yet. Suite Manager, every app and every secret are
+// inside the vault, so the page that asks for the recovery key cannot come from
+// any of them and its form cannot post to any of them.
+const VAULT_AGENT_PORT = 3300;
+const VAULT_UNLOCK_ROUTE = '/mos-unlock';
 
 // The one path Caddy answers itself while Suite Manager is down: the progress
 // file the status page polls. It is its own route, matched before anything is
@@ -37,6 +43,27 @@ function progressRoute(indent = '  ') {
     '  }',
     '}',
   ].map((line) => `${indent}${line}`).join('\n');
+}
+
+// The form on the locked page posts here. It is a route of its own, ordered
+// before the proxy for the same reason the progress file is: everything that
+// errors is rewritten to the status page, so a POST that fell through to a
+// stopped Suite Manager would come back as HTML and the owner's key would go
+// nowhere. The agent answers with a page either way, which is what lets the
+// whole exchange work in a browser with no JavaScript.
+function unlockRoute(indent = '  ') {
+  return [
+    `handle ${VAULT_UNLOCK_ROUTE} {`,
+    `  reverse_proxy 127.0.0.1:${VAULT_AGENT_PORT}`,
+    '}',
+  ].map((line) => `${indent}${line}`).join('\n');
+}
+
+// The routes Caddy answers while the control plane is down, in the order it
+// evaluates them. Rendered as one unit so a future third route is added here
+// rather than in each of the six site blocks below.
+function statusRoutes(indent = '  ') {
+  return [progressRoute(indent), unlockRoute(indent)].join('\n');
 }
 
 // Suite Manager is deliberately stopped for the whole middle of a restore, so
@@ -106,6 +133,17 @@ function withUnavailableHandler(caddyfile) {
         ...updated.slice(0, block.end),
         ...unavailableHandler().split('\n'),
         ...updated.slice(block.end),
+      ];
+    }
+    // Each route is checked on its own, because a machine installed before the
+    // vault existed has the progress route and not the unlock one, and an
+    // all-or-nothing test would leave exactly those machines unable to serve the
+    // only screen that can open their disk.
+    if (!body.includes(VAULT_UNLOCK_ROUTE)) {
+      updated = [
+        ...updated.slice(0, block.start + 1),
+        ...unlockRoute().split('\n'),
+        ...updated.slice(block.start + 1),
       ];
     }
     if (!body.includes(PROGRESS_ROUTE)) {
@@ -320,14 +358,14 @@ function renderUnavailablePageScript() {
 // served the moment there is a better address.
 function renderCaddyfile() {
   return `http://$MOS_HOME_HOST {
-${progressRoute()}
+${statusRoutes()}
   reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
 ${unavailableHandler()}
 }
 
 ${EASY_DOOR_CADDY_MARKER}
 http:// {
-${progressRoute()}
+${statusRoutes()}
   @mos-easy-door header_regexp Host ${EASY_DOOR_HOME_HOST_REGEXP}
   handle @mos-easy-door {
     reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
@@ -345,13 +383,13 @@ import /etc/caddy/mos-app-routes.caddy
 
 function renderPublicCloudCaddyfile() {
   return `http://$MOS_HOME_HOST {
-${progressRoute()}
+${statusRoutes()}
   reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
 ${unavailableHandler()}
 }
 
 https://$MOS_HOME_HOST {
-${progressRoute()}
+${statusRoutes()}
   reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
 ${unavailableHandler()}
 }
@@ -369,7 +407,7 @@ function renderHttpsCaddyfile({ acmeEmail, baseDomain, bootstrapHost, suiteManag
 }
 
 http://${bootstrapHost} {
-${progressRoute()}
+${statusRoutes()}
   reverse_proxy 127.0.0.1:${suiteManagerPort}
 ${unavailableHandler()}
 }
@@ -379,7 +417,7 @@ http://${homeHost} {
 }
 
 https://${homeHost} {
-${progressRoute()}
+${statusRoutes()}
   reverse_proxy 127.0.0.1:${suiteManagerPort}
 ${unavailableHandler()}
 }
@@ -445,6 +483,8 @@ WantedBy=multi-user.target
 module.exports = {
   HOMEPAGE_IMAGE,
   HOMEPAGE_PORT,
+  VAULT_AGENT_PORT,
+  VAULT_UNLOCK_ROUTE,
   JOURNALD_CONFIG_PATH,
   PROGRESS_FILENAME,
   PROGRESS_ROUTE,
@@ -454,6 +494,8 @@ module.exports = {
   renderCaddyfile,
   renderUnavailablePage,
   renderUnavailablePageScript,
+  statusRoutes,
+  unlockRoute,
   withUnavailableHandler,
   renderJournaldConfig,
   renderHttpsCaddyfile,

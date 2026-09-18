@@ -21,6 +21,13 @@ const { createLogger, requestId } = require('./logger.cjs');
 const { AppPackageService, AppPackageServiceError } = require('../apps/app-package-service.cjs');
 const { AppAgentClient } = require('../apps/app-agent-client.cjs');
 const { DiagnosticsAgentClient } = require('../diagnostics/diagnostics-agent-client.cjs');
+const { VaultAgentClient } = require('../settings/vault-agent-client.cjs');
+const {
+  VAULT_TPM_MODES,
+  vaultAsksForPassword,
+  vaultChipNeedsRepair,
+  vaultIsPresent,
+} = require('../../../../shared/vault-contract.cjs');
 const { assembleSupportBundle } = require('../diagnostics/support-bundle.cjs');
 const { OfficialCatalogError, OfficialCatalogService } = require('../apps/official-catalog-service.cjs');
 const { ExternalSourceClient } = require('../apps/external-source-client.cjs');
@@ -370,6 +377,7 @@ function createMOSServer({
   httpsAgent = new HttpsAgentClient(),
   labResetAgent = new LabResetAgentClient(),
   updateAgent = new UpdateAgentClient(),
+  vaultAgent = new VaultAgentClient(),
   frontendDistDir = DEFAULT_FRONTEND_DIST_DIR,
   frontDoor = process.env.MOS_FRONT_DOOR || 'ssh-bootstrap',
   homeHost = process.env.MOS_HOME_HOST || 'home.localhost',
@@ -413,6 +421,50 @@ function createMOSServer({
     jsonResponse(response, 409, { code: 'SERVER_LOGIN_UNSAVED', error: 'Save this machine\'s server login from the Home page first. A backup would carry it and a restore would delete it.' });
     return true;
   };
+  /**
+   * The chip's side of the owner password, in the two places MOS holds that
+   * password in plaintext for a moment: a password change and a sign-in.
+   *
+   * Nothing here can refuse either of them. On a machine in the default mode it
+   * does nothing at all, because the chip has no password to be taught. On a
+   * machine that asks for one it re-enrolls, and a chip that would not take it
+   * ends up holding nothing rather than holding the password the owner has just
+   * replaced — which costs one recovery-key entry after the next restart and is
+   * reported in those words.
+   */
+  async function teachChipOwnerPassword(password) {
+    try {
+      const enrolled = await vaultAgent.enrollChip({ mode: 'current', pin: password });
+      // Nothing to report when there was nothing to do — a machine with no
+      // vault, no chip, or one that opens itself. The screen says something
+      // about the disk only when the disk had something to say.
+      if (enrolled.ok) return enrolled.unchanged || enrolled.vault === false ? null : { mode: enrolled.mode, ok: true };
+      return { mode: enrolled.mode || null, ok: false, reason: enrolled.reason || 'tpm-refused' };
+    } catch (error) {
+      logger.warn('vault-chip-enroll-failed', { error });
+      return { mode: null, ok: false, reason: 'vault-agent-unavailable' };
+    }
+  }
+
+  // A sign-in is the only moment MOS holds the password of an account it did not
+  // just create, which makes it the only chance to finish a chip enrollment that
+  // did not. Whatever the mode: an automatic-mode slot needs no password to be
+  // repaired and the agent ignores the one sent. Not awaited: the owner is
+  // waiting on a session, and the next sign-in tries again if this one does not
+  // land.
+  function repairChipOnSignIn(password) {
+    void (async () => {
+      try {
+        const vault = await vaultAgent.status();
+        if (!vaultChipNeedsRepair(vault)) return;
+        const enrolled = await vaultAgent.enrollChip({ mode: 'current', pin: password });
+        logger.info('vault-chip-repair', { ok: Boolean(enrolled.ok), reason: enrolled.reason || null });
+      } catch (error) {
+        logger.warn('vault-chip-repair-failed', { error });
+      }
+    })();
+  }
+
   const homepage = createHomepageProxy({ upstream: homepageUpstream, upstreamHost: homeHost });
   const homepageConfig = new HomepageService({
     agent: homepageAgent,
@@ -636,6 +688,10 @@ function createMOSServer({
           throw error;
         }
         throttle.recordSuccess(attempt);
+        // The one moment MOS holds this password without being asked to change
+        // it, and therefore the only chance to finish a chip enrollment that
+        // failed earlier. Nothing about the sign-in depends on it.
+        repairChipOnSignIn(body.password);
         const secure = isHttpsRequest(request);
         const cookiesToSet = [sessionCookie(result.sessionToken, secure)];
         if (!knownBrowser) cookiesToSet.push(knownBrowserCookie(setup.rememberBrowser(), secure));
@@ -660,11 +716,13 @@ function createMOSServer({
           jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change the owner password.' });
           return;
         }
-        const result = await setup.changeOwnerPassword(await readJsonBody(request, 8 * 1024));
+        const result = await setup.changeOwnerPassword(await readJsonBody(request, 8 * 1024), {
+          beforeCommit: teachChipOwnerPassword,
+        });
         // Every known browser was forgotten with the old password; the one that
         // proved it is remembered again, like the session it keeps.
         const secure = isHttpsRequest(request);
-        jsonResponse(response, 200, { owner: result.owner, status: result.status }, {
+        jsonResponse(response, 200, { owner: result.owner, startupProtection: result.startupProtection, status: result.status }, {
           'Set-Cookie': [sessionCookie(result.sessionToken, secure), knownBrowserCookie(setup.rememberBrowser(), secure)],
         });
         return;
@@ -738,6 +796,98 @@ function createMOSServer({
           return;
         }
         jsonResponse(response, 200, consoleLogin.acknowledge());
+        return;
+      }
+
+      // What this machine's recovery key opens, and whether it has been saved.
+      // The two live together because the key is one secret with two jobs: it
+      // is the vault's passphrase and the backup repository's password, and the
+      // screen that asks an owner to write it down has to say both.
+      //
+      // An unavailable vault agent answers 200 with `state: 'unknown'` rather
+      // than failing the request. The dashboard card that reads this must still
+      // hand over the server login on a machine whose vault agent is not
+      // running, and a card that renders nothing because one of two statuses
+      // could not be read is how a password goes unsaved.
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/vault`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to review this server\'s encryption.' });
+          return;
+        }
+        let vault = { state: 'unknown' };
+        try {
+          vault = await vaultAgent.status();
+        } catch (error) {
+          logger.warn('vault-agent-unavailable', { error });
+        }
+        let recoveryKey = null;
+        try {
+          recoveryKey = (await backupAgent.recoveryKeyStatus()).recoveryKey || null;
+        } catch (error) {
+          logger.warn('backup-agent-unavailable', { error });
+        }
+        // `encrypted` is the answer, not the state string. A screen that decided
+        // for itself which states count as encrypted would be a fifth copy of
+        // one predicate, and the fifth copy is the one that gets it wrong. The
+        // same goes for the two startup questions: three screens ask them — the
+        // encryption statement, the restart dialog and the dashboard card — and
+        // none of them re-derives them.
+        jsonResponse(response, 200, {
+          asksForPassword: vaultAsksForPassword(vault),
+          chipNeedsRepair: vaultChipNeedsRepair(vault),
+          encrypted: vaultIsPresent(vault),
+          recoveryKey,
+          vault,
+        });
+        return;
+      }
+
+      // Startup protection: whether this machine's chip requires the owner's
+      // password before it opens the disk. The current password is the
+      // confirmation and the secret in one — it is what gets enrolled — so this
+      // route is the only place MOS sends that password to the vault agent
+      // outside a password change and a sign-in repair.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/vault/startup-password`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change how this server starts.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        const wanted = body.enabled === true;
+        if (!await setup.verifyOwnerPassword(body.password)) {
+          jsonResponse(response, 400, { code: 'INVALID_PASSWORD', error: 'Your current password is incorrect.' });
+          return;
+        }
+        let enrolled;
+        try {
+          enrolled = await vaultAgent.enrollChip({
+            mode: wanted ? VAULT_TPM_MODES.PASSWORD : VAULT_TPM_MODES.AUTOMATIC,
+            pin: wanted ? String(body.password) : null,
+          });
+        } catch (error) {
+          logger.warn('vault-agent-unavailable', { error });
+          jsonResponse(response, 503, {
+            code: 'VAULT_AGENT_UNAVAILABLE',
+            error: 'This server\'s vault agent is not answering, so how it starts was not changed.',
+          });
+          return;
+        }
+        if (!enrolled.ok) {
+          // Reported rather than hidden, and the state it left behind is named:
+          // the recovery key opens this machine whatever the chip is doing.
+          jsonResponse(response, 409, {
+            code: 'VAULT_TPM_REFUSED',
+            error: enrolled.reason === 'no-tpm'
+              ? 'This machine has no security chip, so it always asks for your recovery key after a restart.'
+              : 'This machine\'s security chip would not take the change, so it now opens nothing on its own and this server asks for your recovery key after a restart. Try again, and use your recovery key if it restarts first.',
+            reason: enrolled.reason || null,
+          });
+          return;
+        }
+        jsonResponse(response, 200, {
+          asksForPassword: enrolled.mode === VAULT_TPM_MODES.PASSWORD,
+          vault: await vaultAgent.status().catch(() => ({ state: 'unknown' })),
+        });
         return;
       }
 
@@ -947,6 +1097,24 @@ function createMOSServer({
         return;
       }
 
+      // Replacing the key. The password is always asked for, unlike the reveal,
+      // because this one changes what opens the disk and the archives rather
+      // than showing what already does — and because the answer carries the new
+      // key, so it is the same "still the owner at this keyboard" question.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/recovery-key/rotate`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to change your recovery key.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        if (!await setup.verifyOwnerPassword(body.password)) {
+          jsonResponse(response, 400, { code: 'INVALID_PASSWORD', error: 'Your current password is incorrect.' });
+          return;
+        }
+        jsonResponse(response, 200, await backupAgent.rotateRecoveryKey(), { 'Cache-Control': 'no-store' });
+        return;
+      }
+
       // Handing a replacement machine the key to backups another server wrote.
       // The key goes straight through to the agent, which is the only component
       // that holds one, and is never logged or kept here.
@@ -1000,6 +1168,19 @@ function createMOSServer({
         }
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 200, await backupAgent.forgetDestinationKey(String(body.destinationId || '')));
+        return;
+      }
+
+      // Forgetting a drive MOS is not holding. It only removes the entry that
+      // says a copy of the owner's data is out there on that drive, which is a
+      // thing to stop claiming once it is no longer true.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/backups/destinations/forget-drive`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage backups.' });
+          return;
+        }
+        const body = await readJsonBody(request, 8 * 1024);
+        jsonResponse(response, 200, await backupAgent.forgetDrive(String(body.fsUuid || '')));
         return;
       }
 

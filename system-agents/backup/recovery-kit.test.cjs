@@ -21,7 +21,7 @@ const KEY = generate().key;
 
 test('the record is root-only and starts out saying nothing has happened', async () => {
   const record = new RecoveryKeyRecord({ agentStateDir: path.join(await scratch(), 'agent-state') });
-  assert.deepEqual(record.read(), { acknowledgedAt: null, adoptedAt: null, fingerprint: null, firstUsedAt: null });
+  assert.deepEqual(record.read(), { acknowledgedAt: null, adoptedAt: null, fingerprint: null, firstUsedAt: null, rotatedAt: null });
   assert.equal(record.acknowledged(), false);
   record.acknowledge('abc123');
   if (process.platform !== 'win32') assert.equal(fs.statSync(record.recordPath).mode & 0o777, 0o600);
@@ -56,7 +56,7 @@ test('first use is recorded once and never moves', async () => {
 test('adopting an entered key marks the machine used and acknowledged at once', async () => {
   const record = new RecoveryKeyRecord({ agentStateDir: await scratch() });
   const adopted = record.adopt('feed1234', new Date('2026-09-07T12:00:00.000Z'));
-  assert.deepEqual(adopted, { acknowledgedAt: '2026-09-07T12:00:00.000Z', adoptedAt: '2026-09-07T12:00:00.000Z', fingerprint: 'feed1234', firstUsedAt: '2026-09-07T12:00:00.000Z' });
+  assert.deepEqual(adopted, { acknowledgedAt: '2026-09-07T12:00:00.000Z', adoptedAt: '2026-09-07T12:00:00.000Z', fingerprint: 'feed1234', firstUsedAt: '2026-09-07T12:00:00.000Z', rotatedAt: null });
   assert.equal(new RecoveryKeyRecord({ recordPath: record.recordPath }).acknowledged(), true);
 });
 
@@ -74,7 +74,7 @@ test('a damaged record reads as a machine that has done nothing, not as a crash'
   const record = new RecoveryKeyRecord({ agentStateDir: await scratch() });
   record.acknowledge('abc123');
   fs.writeFileSync(record.recordPath, 'not json at all', 'utf8');
-  assert.deepEqual(record.read(), { acknowledgedAt: null, adoptedAt: null, fingerprint: null, firstUsedAt: null });
+  assert.deepEqual(record.read(), { acknowledgedAt: null, adoptedAt: null, fingerprint: null, firstUsedAt: null, rotatedAt: null });
 });
 
 // The kit is what is left when the server is not. It has to name the bucket
@@ -118,4 +118,47 @@ test('a kit made before anything is connected still says so rather than lying', 
 test('the kit file is named for the server and the day it was made', () => {
   assert.equal(recoveryKitFilename({ hostname: 'MOS Home.local', now: new Date('2026-09-07T12:00:00.000Z') }), 'mos-recovery-kit-mos-home-local-2026-09-07.txt');
   assert.equal(recoveryKitFilename({ hostname: '', now: new Date('2026-09-07T12:00:00.000Z') }), 'mos-recovery-kit-server-2026-09-07.txt');
+});
+
+// The kit is what an owner is holding when the server will not come back, so on
+// a machine whose disk this key also opens it has to say so — and on one where
+// it does not, it must not claim a disk that is not encrypted.
+test('a kit from a machine with an encrypted disk explains that half of the key too', () => {
+  const kit = recoveryKitText({ encryptedDisk: true, hostname: 'mos-home', key: KEY, now: new Date('2026-09-17T12:00:00.000Z') });
+  assert.match(kit, /also opens the encrypted disk/u);
+  assert.match(kit, /security chip/u);
+  assert.ok(kit.includes(KEY), 'the key itself is still on the sheet');
+});
+
+test('a kit from a machine with no vault claims no disk', () => {
+  const kit = recoveryKitText({ hostname: 'mos-cloud', key: KEY, now: new Date('2026-09-17T12:00:00.000Z') });
+  assert.doesNotMatch(kit, /encrypted disk/u);
+});
+
+// A rotation is the one thing that takes an acknowledgement back. The kit in
+// the owner's drawer is wrong from that moment, and the gate that stood before
+// their first backup belongs in front of them again until they have the new one.
+test('rotating the key puts it back to unsaved, and remembers when', async () => {
+  const record = new RecoveryKeyRecord({ agentStateDir: await scratch() });
+  record.acknowledge('abc123', new Date('2026-09-01T10:00:00.000Z'));
+  record.noteFirstUse(new Date('2026-09-01T10:00:00.000Z'));
+
+  const rotated = record.rotate('feed1234', new Date('2026-09-18T10:00:00.000Z'));
+  assert.equal(rotated.acknowledgedAt, null);
+  assert.equal(rotated.fingerprint, 'feed1234');
+  assert.equal(rotated.rotatedAt, '2026-09-18T10:00:00.000Z');
+  assert.equal(rotated.firstUsedAt, '2026-09-01T10:00:00.000Z', 'this machine has still used its own key');
+  assert.equal(record.acknowledged(), false);
+
+  record.acknowledge('feed1234', new Date('2026-09-18T10:05:00.000Z'));
+  assert.equal(record.acknowledged(), true);
+});
+
+// The sheet has to be right about how the server it came from starts, because
+// an owner reading it is usually reading it at the worst moment.
+test('a kit from a machine that asks for a password at startup says so', () => {
+  const kit = recoveryKitText({ asksForPassword: true, encryptedDisk: true, hostname: 'mos-home', key: KEY, now: new Date('2026-09-18T12:00:00.000Z') });
+  assert.match(kit, /ask for your Suite Manager password after every restart/u);
+  assert.match(kit, /takes the key above instead/u);
+  assert.doesNotMatch(kit, /never asks you for anything/u);
 });

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { AdvancedPanel, Notice, Select, Spinner } from '../../components/ui';
 import { buildChanged, servedBuildId } from '../../frontend-build';
 import { jsonResponse } from '../../lib/api';
+import { readVaultView, startupOf } from '../../lib/vault';
 import { HostPatchesPanel } from './HostPatchesPanel';
 import type { HostPatches } from './HostPatchesPanel';
 
@@ -132,6 +133,11 @@ export function UpdatesScreen() {
   const [checking, setChecking] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  // Whether a restart will land on the page that asks for the owner's password.
+  // Read from the one route that answers that question, so this screen does not
+  // decide it for itself; a machine whose vault agent is quiet says no, which
+  // understates the interruption rather than promising it away.
+  const [asksForPassword, setAsksForPassword] = useState(false);
   const running = isRunning(status?.currentJob || null);
   const updating = running || busy === 'update';
   const jobStatus = status?.currentJob?.status || null;
@@ -144,6 +150,11 @@ export function UpdatesScreen() {
   }
 
   useEffect(() => { void load().catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load update status.')); }, []);
+  useEffect(() => {
+    void readVaultView()
+      .then((view) => setAsksForPassword(startupOf(view) === 'password'))
+      .catch(() => undefined);
+  }, []);
   useEffect(() => {
     if (!updating) return undefined;
     const timer = window.setInterval(() => { void load().catch(() => undefined); }, 4000);
@@ -313,7 +324,7 @@ export function UpdatesScreen() {
       </section>
 
 
-      <HostPatchesPanel busy={busy} formatDate={formatDate} host={status.host} onRestart={() => void restartHost()} restarting={restarting} />
+      <HostPatchesPanel asksForPassword={asksForPassword} busy={busy} formatDate={formatDate} host={status.host} onRestart={() => void restartHost()} restarting={restarting} />
 
       {status.currentJob ? <section className="mos-panel suite-card suite-updates-panel">
         <h2 className="mos-card-title">Update activity</h2>

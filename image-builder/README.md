@@ -102,10 +102,21 @@ runs `check-target.sh` over the disk it leaves behind. That second half exists
 because the interesting parts of a first boot are sized against a disk the build
 cannot know, so they are not checkable on the artifact:
 
-- the root filesystem grew to fill the disk
+- the system partition grew to its cap — 15% of the disk between a 12 GiB floor
+  and a 24 GiB ceiling — and not past it
+- the rest of the disk is a third partition that `blkid` reports as
+  `crypto_LUKS`, and `/etc/mos/vault.json` records a TPM keyslot, so the sealed
+  unlock is exercised on every release rather than assumed
 - at least 2 GB is still free afterwards
-- a swapfile exists and is in `fstab`
+- no swapfile sits on the plaintext system partition, and nothing mounts swap
+  from `fstab`
 - cloud-init stayed disabled, and the machine generated its own SSH host keys
+
+The verify VM is given a virtual TPM for this — `swtpm` under QEMU,
+`Enable-VMTPM` under Hyper-V. Without one the published image comes up locked,
+Suite Manager never answers, and the run fails for a reason that has nothing to
+do with the image. `bake.sh` refuses to start the verify stage if `swtpm` is not
+installed rather than producing that failure.
 
 The free-space check is not hypothetical. The first version of `mos-grow-root`
 created a flat 2 GB swapfile regardless of what was left, filled the root
@@ -148,10 +159,12 @@ Written to a USB stick with Rufus (DD mode) or balenaEtcher, and booted:
   moment the stick came out.
 - On the internal disk it sees non-removable media and does nothing, so the same
   image is both the installer and the installed system.
-- `mos-ssh-hostkeys`, `mos-grow-root` and `mos-first-boot` give the machine its own
-  identity, its full disk, and its own server login. `mos-grow-root` skips
-  removable media, so choosing not to install leaves the stick a working installer
-  rather than expanding it to fill itself.
+- `mos-ssh-hostkeys` and `mos-first-boot` give the machine its own identity and
+  its own server login. The disk itself belongs to `mos-vault.service`, which
+  grows the system partition to its cap and gives the rest to the encrypted
+  vault; it skips removable media, so choosing not to install leaves the stick a
+  working installer rather than expanding it to fill itself, and it creates no
+  vault there either.
 - Running from the stick, `mos-first-boot` leads with **RUNNING FROM THE USB
   STICK** and says nothing is installed, instead of the completion banner below.
 - `mos-first-boot` then writes the completion banner to `/etc/issue.d/`. It states

@@ -7,8 +7,10 @@ import { Steps } from '@astrojs/starlight/components'
 
 MOS creates manual, whole-suite backups on storage that is mounted on the server running MOS. The practical destination depends on where that server lives.
 
+If you are deciding how many copies to keep and where, read [Keeping copies](/docs/guides/keeping-copies/) first. This page is the mechanics.
+
 :::danger[A backup holds every secret your server has]
-Any backup contains your data, credentials, and secrets. It is encrypted with your **recovery key** before it is written anywhere, so a stolen drive or a breached bucket cannot be read. The server keeps a copy of that key so backups can run without you, which means a stolen server is still a stolen backup — and you keep a copy, because it is the only thing that can open these backups on a replacement machine. Keep backups on access-controlled storage. Bundles you downloaded from an earlier MOS are not encrypted at all: move them out of Downloads and off casual cloud storage.
+Any backup contains your data, credentials, and secrets. It is encrypted with your **recovery key** before it is written anywhere, so a stolen drive or a breached bucket cannot be read. The server keeps a copy of that key so backups can run without you, which it holds inside its own encrypted vault: on own hardware, a stolen server with password-protected startup on gives up neither the server nor the backups, and with it off a thief who gets past the machine has the key to both. You keep a copy too, because it is the only thing that can open these backups on a replacement machine. Bundles you downloaded from an earlier MOS are not encrypted at all: move them out of Downloads and off casual cloud storage.
 :::
 
 ## Your recovery key
@@ -18,7 +20,8 @@ MOS shows you the key once, before your first backup, and will not take that bac
 - **Save it somewhere that is not this server.** A password manager, or paper somewhere that is not the building the server is in. Without it, a replacement server cannot read a single backup, and nobody can recover it for you.
 - **Download the recovery kit.** A text file with the key, the drives and buckets you have connected, and the steps to recover onto another machine. It never contains your storage provider's access key — that lives in your provider's console, and a new key for the same bucket works just as well.
 - **You can see it again.** **Show key** on the Backup & Restore screen asks for your owner password and then shows the key and offers the kit again, so a kit that has gone stale since you connected new storage can be re-downloaded. It also lists, by name, every place this key opens and every place that still needs another server's key.
-- **What the copy on the server does and does not protect.** A key held on the server protects against a stolen drive or a breached bucket, not against a compromised server. It is there so unattended scheduled backups can run.
+- **What the copy on the server does and does not protect.** A key held on the server protects against a stolen drive or a breached bucket, not against a compromised server: something running on your server with the key can read and delete your backups, which is why [one copy you unplug](/docs/guides/keeping-copies/) matters. It is there so unattended scheduled backups can run.
+- **You can change it.** **Show key → Change recovery key** makes a new one and moves this server's disk and every backup it can reach over to it; a drive that was not plugged in catches up the next time you connect it. Changing the key does not make old snapshots unreadable to someone who already had the old key and a copy of your storage, and the screen says so — if you think that happened, start a fresh archive.
 
 ## What a backup contains
 

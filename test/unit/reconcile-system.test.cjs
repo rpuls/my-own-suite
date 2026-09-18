@@ -8,6 +8,7 @@ const {
   homepageUnit,
   resolveRuntimeConfig,
   suiteManagerUnit,
+  vaultGateUnit,
 } = require('../../scripts/reconcile-system.cjs');
 const { JOURNALD_CONFIG_PATH, PROGRESS_ROUTE, renderJournaldConfig, renderUnavailablePage, UNAVAILABLE_PAGE_FILENAME, UNAVAILABLE_PAGE_ROOT } = require('../../infrastructure/control-plane-runtime.cjs');
 const { renderBootstrapPlan } = require('../../scripts/installers/bootstrap-contract.cjs');
@@ -174,4 +175,56 @@ test('the diagnostics agent socket is owned by root and reachable only through m
   assert.match(unit, /^User=root$/mu);
   assert.match(unit, /^Group=mos-agent$/mu);
   assert.match(unit, /^UMask=0007$/mu);
+});
+
+// AGENTS.md rule 7: a managed update may not leave a machine running half of a
+// change. The reconciler writes its own unit definitions rather than the
+// installer's, so the vault reaching an existing install is not implied by the
+// installer carrying it — and the Caddyfile that same reconcile upgrades now
+// contains a route that posts to the vault agent. A machine that got the route
+// and not the agent is the state this test exists to prevent.
+test('reconciliation gives an existing machine the vault gate the new Caddy route needs', () => {
+  const gate = vaultGateUnit({ mosRoot: '/opt/mos/repo' });
+
+  assert.match(gate, /ExecStart=\/usr\/bin\/node \/opt\/mos\/repo\/system-agents\/vault\/open\.cjs/u);
+  assert.match(gate, /Type=oneshot/u);
+  assert.match(gate, /RemainAfterExit=yes/u);
+  // Ahead of dockerd and its socket, which is what stops a socket-activated
+  // daemon from starting against the directory the vault mounts over.
+  assert.match(gate, /Before=basic\.target docker\.service docker\.socket/u);
+  // Never before the installer: mos-self-install copies this filesystem onto
+  // the internal disk, so anything written ahead of it travels in that copy.
+  assert.match(gate, /After=.*mos-self-install\.service/u);
+
+  const reconciler = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8');
+  assert.match(reconciler, /unit\('mos-vault\.service', vaultGateUnit\(\)\)/u);
+  assert.match(reconciler, /unit\('mos-vault-agent\.service'/u);
+  assert.match(reconciler, /docker\.socket\.d/u);
+  // The Docker requirement follows the disk, not the release. A machine with no
+  // vault has nothing to wait for, and a requirement there is only a new way for
+  // a working headless server to fail to come back from a reboot.
+  assert.match(reconciler, /if \(runtimeConfig\.vault\) \{/u);
+  assert.match(reconciler, /fs\.rmSync\(dropInPath, \{ force: true \}\)/u);
+  // The one unit that speaks for a locked machine must never wait for it.
+  assert.match(reconciler, /name: 'mos-vault-agent\.service',[\s\S]{0,200}gated: false|gated: false,[\s\S]{0,200}name: 'mos-vault-agent\.service'/u);
+});
+
+// The installer writes `Requires=mos-vault.service` into Suite Manager and every
+// agent; the reconciler rewrites those same units on every platform update. If
+// its renderers left the requirement out, the first update after install would
+// let Suite Manager start against the empty directory the vault mounts over and
+// initialise a fresh store on the plaintext partition.
+test('reconciled units wait for the vault exactly where the disk has one', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-reconcile-vault-'));
+  const descriptor = path.join(tempDir, 'vault.json');
+  fs.writeFileSync(descriptor, JSON.stringify({ state: 'unlocked', version: 1 }));
+
+  const withVault = resolveRuntimeConfig({ MOS_REPO_DIR: '/opt/mos/repo', MOS_STATE_ROOT: tempDir, MOS_VAULT_DESCRIPTOR: descriptor });
+  assert.equal(withVault.vault, true);
+  assert.match(suiteManagerUnit(withVault), /^Requires=mos-vault\.service$/mu);
+  assert.match(suiteManagerUnit(withVault), /^After=mos-vault\.service$/mu);
+
+  const without = resolveRuntimeConfig({ MOS_REPO_DIR: '/opt/mos/repo', MOS_STATE_ROOT: tempDir, MOS_VAULT_DESCRIPTOR: path.join(tempDir, 'missing.json') });
+  assert.equal(without.vault, false);
+  assert.doesNotMatch(suiteManagerUnit(without), /mos-vault\.service/u);
 });

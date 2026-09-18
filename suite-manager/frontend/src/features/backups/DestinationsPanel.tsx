@@ -1,16 +1,17 @@
 import { ActionMenu, Icon, Panel, PanelBand, PanelHead, PanelItem, PanelList, Spinner } from '../../components/ui';
-import { destinationIconName, keyCoverage, type DestinationView } from './model';
+import { destinationIconName, keyCoverage, offlineCopyLine, type DestinationView } from './model';
 
 // Where backups go. One list, one row per place, sorted so the selected one is
 // first. A row has exactly three zones — the radio that chooses it, what it is
 // and how it is doing, and at most one button plus a More menu — because the
 // old screen had four affordances in four positions and nothing to read first.
-export function DestinationsPanel({ busy, onAdd, onAction, onDisconnect, onEdit, onForgetKey, onKeys, onSelect, onShowKey, running, views }: {
+export function DestinationsPanel({ busy, onAdd, onAction, onDisconnect, onEdit, onForgetDrive, onForgetKey, onKeys, onSelect, onShowKey, running, views }: {
   busy: string;
   onAction: (view: DestinationView) => void;
   onAdd: () => void;
   onDisconnect: (view: DestinationView) => void;
   onEdit: (view: DestinationView) => void;
+  onForgetDrive: (view: DestinationView) => void;
   onForgetKey: (view: DestinationView) => void;
   onKeys: (view: DestinationView) => void;
   onSelect: (view: DestinationView) => void;
@@ -22,14 +23,21 @@ export function DestinationsPanel({ busy, onAdd, onAction, onDisconnect, onEdit,
   const coverage = keyCoverage(views);
   const local = views.filter((view) => !view.foreign && !view.destination.locked);
   const guests = views.filter((view) => view.foreign || view.destination.locked);
+  const offline = offlineCopyLine(views);
+  // Per-row reach lines only once there is a difference to show. With nothing
+  // unplugged the band above already says every copy is within reach, and
+  // repeating it under each row is the same sentence three times.
+  const showReach = views.some((view) => view.away);
 
   const row = (view: DestinationView) => <DestinationRow
     busy={busy}
     key={view.id}
     locked={locked}
+    showReach={showReach}
     onAction={() => onAction(view)}
     onDisconnect={() => onDisconnect(view)}
     onEdit={() => onEdit(view)}
+    onForgetDrive={() => onForgetDrive(view)}
     onForgetKey={() => onForgetKey(view)}
     onKeys={() => onKeys(view)}
     onSelect={() => onSelect(view)}
@@ -56,6 +64,18 @@ export function DestinationsPanel({ busy, onAdd, onAction, onDisconnect, onEdit,
       </button>
     </PanelBand>
 
+    {/* Where the owner stands on the one thing no setting here can fix. It sits
+        with the list rather than in a notice, because it is a fact about these
+        places and not something that has gone wrong, and it carries the one
+        link on this screen to the page that explains the practice — the line is
+        what changes behaviour, the article is what answers "why". */}
+    {offline ? <PanelBand icon="usb-drive" title={offline} tone="info">
+      <a className="mos-btn mos-btn-ghost mos-btn-sm" href="https://myownsuite.org/docs/guides/keeping-copies/" rel="noreferrer" target="_blank">
+        <Icon name="external" />
+        How many copies to keep
+      </a>
+    </PanelBand> : null}
+
     {local.length ? <PanelList>{local.map(row)}</PanelList> : null}
 
     {guests.length ? <>
@@ -70,15 +90,17 @@ export function DestinationsPanel({ busy, onAdd, onAction, onDisconnect, onEdit,
   </Panel>;
 }
 
-function DestinationRow({ busy, locked, onAction, onDisconnect, onEdit, onForgetKey, onKeys, onSelect, view }: {
+function DestinationRow({ busy, locked, onAction, onDisconnect, onEdit, onForgetDrive, onForgetKey, onKeys, onSelect, showReach, view }: {
   busy: string;
   locked: boolean;
   onAction: () => void;
   onDisconnect: () => void;
   onEdit: () => void;
+  onForgetDrive: () => void;
   onForgetKey: () => void;
   onKeys: () => void;
   onSelect: () => void;
+  showReach: boolean;
   view: DestinationView;
 }) {
   const bucket = view.destination.kind === 'object';
@@ -88,6 +110,9 @@ function DestinationRow({ busy, locked, onAction, onDisconnect, onEdit, onForget
     ...view.selectable ? [{ label: 'Keys that open this', onSelect: onKeys }] : [],
     ...view.destination.borrowedKey ? [{ label: 'Forget this key', onSelect: onForgetKey }] : [],
     ...bucket ? [{ label: 'Disconnect', onSelect: onDisconnect }] : [],
+    // Only the memory of the drive goes. MOS cannot write to a drive that is
+    // not here, so nothing on it changes and plugging it back in lists it again.
+    ...view.away ? [{ label: 'Forget this drive', onSelect: onForgetDrive }] : [],
   ];
 
   return <PanelItem className={`suite-bk-row is-${view.tone}`} quiet={!view.present} selected={view.selected}>
@@ -114,6 +139,7 @@ function DestinationRow({ busy, locked, onAction, onDisconnect, onEdit, onForget
       {view.spaceLine ? <p className="suite-bk-detail">{view.spaceLine}</p> : null}
       {view.detail ? <p className="suite-bk-detail">{view.detail}</p> : null}
       {view.keyLine ? <p className={`suite-bk-keyline is-${view.keyTone}`}><Icon name="key" />{view.keyLine}</p> : null}
+      {showReach && view.reachLine ? <p className="suite-bk-detail">{view.reachLine}</p> : null}
       {view.selected ? <p className="suite-bk-selected-note">Automatic backups go here, including the one taken before a MOS update.</p> : null}
     </div>
 

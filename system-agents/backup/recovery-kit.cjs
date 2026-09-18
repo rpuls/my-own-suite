@@ -33,9 +33,10 @@ class RecoveryKeyRecord {
         adoptedAt: parsed.adoptedAt || null,
         fingerprint: parsed.fingerprint || null,
         firstUsedAt: parsed.firstUsedAt || null,
+        rotatedAt: parsed.rotatedAt || null,
       };
     } catch {
-      return { acknowledgedAt: null, adoptedAt: null, fingerprint: null, firstUsedAt: null };
+      return { acknowledgedAt: null, adoptedAt: null, fingerprint: null, firstUsedAt: null, rotatedAt: null };
     }
   }
 
@@ -67,6 +68,14 @@ class RecoveryKeyRecord {
     return this.write({ firstUsedAt: now.toISOString() });
   }
 
+  // The owner replaced the key. Acknowledgement goes back to unsaved on
+  // purpose: the kit in their drawer is now wrong, and the one gate MOS has
+  // against backups only a lost machine can open belongs in front of them again
+  // until they say they have the new one.
+  rotate(fingerprint, now = new Date()) {
+    return this.write({ acknowledgedAt: null, fingerprint, firstUsedAt: this.read().firstUsedAt || now.toISOString(), rotatedAt: now.toISOString() });
+  }
+
   // Taking over another server's backups on a machine that has never used its
   // own key: the entered key becomes this machine's, and the owner has plainly
   // just read it off their kit, so it counts as acknowledged.
@@ -95,7 +104,7 @@ function recoveryKitFilename({ hostname, now = new Date() }) {
   return `mos-recovery-kit-${safeHost}-${kitDate(now)}.txt`;
 }
 
-function recoveryKitText({ destinations = [], homeAddress, hostname, key, now = new Date() }) {
+function recoveryKitText({ asksForPassword = false, destinations = [], encryptedDisk = false, homeAddress, hostname, key, now = new Date() }) {
   return [
     'My Own Suite — recovery kit',
     '',
@@ -109,6 +118,20 @@ function recoveryKitText({ destinations = [], homeAddress, hostname, key, now = 
     '',
     'Anyone who has this key and can reach your backups can read them. Keep it somewhere safe, and not only on this server.',
     '',
+    ...(encryptedDisk ? [
+      'This key also opens the encrypted disk in this server.',
+      '',
+      ...(asksForPassword ? [
+        'That server is set to ask for your Suite Manager password after every restart before it opens that disk, so',
+        'day to day you type your password and never this key. If you forget that password, or the security chip stops',
+        'answering, the page at the address above takes the key above instead. Nothing is lost while it waits.',
+      ] : [
+        'The server normally opens its own disk using its security chip and never asks you for anything. If it ever',
+        'cannot — after a firmware change, or if the disk is moved to another machine — it still starts, and the page',
+        'at the address above asks for the key above instead of showing your apps. Nothing is lost while it waits.',
+      ]),
+      '',
+    ] : []),
     'Backup destinations MOS knows right now:',
     ...(destinations.length ? destinations.map(describeDestination) : ['  (none connected yet)']),
     '',

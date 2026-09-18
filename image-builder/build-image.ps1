@@ -250,6 +250,13 @@ function Invoke-Verify {
   Set-VMProcessor -VMName $VerifyVmName -Count 2
   Set-VM -Name $VerifyVmName -AutomaticCheckpointsEnabled $false
   Set-VMFirmware -VMName $VerifyVmName -EnableSecureBoot On -SecureBootTemplate MicrosoftUEFICertificateAuthority
+  # A published image creates an encrypted vault on its first boot and seals the
+  # key to this machine's TPM. Without a virtual one the verify VM comes up
+  # locked, Suite Manager never answers, and the run fails for a reason that has
+  # nothing to do with the image. Hyper-V needs a key protector before a vTPM can
+  # be enabled, and a local one is what an ordinary machine's firmware provides.
+  Set-VMKeyProtector -VMName $VerifyVmName -NewLocalKeyProtector
+  Enable-VMTPM -VMName $VerifyVmName
   Start-VM -Name $VerifyVmName
 
   Say 'Waiting for it to take an address (up to 5 minutes).'

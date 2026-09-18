@@ -44,7 +44,6 @@ const docsRootUrl = 'https://myownsuite.org/docs/';
 const payloadScripts = [
   'mos-image-finalize',
   'mos-self-install',
-  'mos-grow-root',
   'mos-first-boot',
 ];
 
@@ -59,7 +58,6 @@ const payloadUnits = [
   'mos-image-finalize.service',
   'mos-ssh-hostkeys.service',
   'mos-self-install.service',
-  'mos-grow-root.service',
   'mos-first-boot.service',
 ];
 

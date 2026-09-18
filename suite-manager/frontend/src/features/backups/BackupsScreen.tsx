@@ -41,15 +41,17 @@ import {
   type BackupStatus,
   type DestinationView,
   type ObjectDraft,
-  type RevealedRecoveryKey,
   type ArchiveKey,
+  type RotationResult,
 } from './model';
+import { type RevealedRecoveryKey } from '../../components/RecoveryKeySecret';
+import { readVaultView, startupOf, type VaultView } from '../../lib/vault';
 
 type Dialog =
   | { kind: 'backup' }
   | { kind: 'delete'; backup: BackupEntry }
   | { kind: 'disconnect'; view: DestinationView }
-  | { kind: 'key'; mode: 'reveal' | 'save'; then?: () => Promise<void> }
+  | { kind: 'key'; mode: 'reveal' | 'rotate' | 'save'; then?: () => Promise<void> }
   | { kind: 'note'; backup: BackupEntry; value: string }
   | { kind: 'restore'; backup: BackupEntry }
   | { kind: 'schedule' }
@@ -73,11 +75,16 @@ export function BackupsScreen() {
   const [objectDraft, setObjectDraft] = useState<ObjectDraft>({ ...EMPTY_OBJECT_DRAFT });
   const [objectTest, setObjectTest] = useState<ConnectionTest>(null);
   const [revealedKey, setRevealedKey] = useState<RevealedRecoveryKey | null>(null);
+  const [rotation, setRotation] = useState<RotationResult | null>(null);
   const [keyError, setKeyError] = useState('');
   const [unlockError, setUnlockError] = useState('');
   const [archiveKeys, setArchiveKeys] = useState<ArchiveKey[] | null>(null);
   const [archiveKeysError, setArchiveKeysError] = useState('');
   const [checking, setChecking] = useState('');
+  // How this machine's disk opens, which decides what the key dialog says the
+  // key is for. Read once: a vault is created at install and never appears or
+  // disappears afterwards.
+  const [vaultView, setVaultView] = useState<VaultView | null>(null);
 
   const activeJob = status?.currentJob || null;
   const running = restoreStarted || isRunning(activeJob);
@@ -121,6 +128,16 @@ export function BackupsScreen() {
   }
 
   useEffect(() => { void load().catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load backups.')); }, []);
+  // A failure here is silent on purpose. It only decides one sentence in the key
+  // dialog, and the fallback sentence — the key opens your backups — is true on
+  // every machine; the screen must not refuse to load backups over it.
+  useEffect(() => {
+    let cancelled = false;
+    void readVaultView()
+      .then((view) => { if (!cancelled) setVaultView(view); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   // A scheduled backup starts without anyone clicking anything, so an open page
   // polls slowly even when idle — otherwise the screen keeps showing "nothing
   // is happening" through an automatic backup it never noticed.
@@ -191,6 +208,29 @@ export function BackupsScreen() {
     }
   }
 
+  // Changing the key. The new one is shown in the same dialog the first one was
+  // shown in, with the same confirmation, because there is one place an owner
+  // ever reads a recovery key and it should not matter which of the two
+  // occasions brought them there.
+  async function rotateRecoveryKey(password: string) {
+    setBusy('recovery-rotate');
+    setKeyError('');
+    try {
+      const result = await post<RotationResult & RevealedRecoveryKey>('recovery-key/rotate', { password }, 'Unable to change the recovery key.');
+      if (result.ok === false) {
+        setKeyError(result.sentence || 'Unable to change the recovery key.');
+        return;
+      }
+      setRotation({ destinations: result.destinations || [], pending: result.pending || [] });
+      setRevealedKey(result);
+      await load().catch(() => undefined);
+    } catch (caught) {
+      setKeyError(caught instanceof Error ? caught.message : 'Unable to change the recovery key.');
+    } finally {
+      setBusy('');
+    }
+  }
+
   async function acknowledgeRecoveryKey() {
     const pending = dialog?.kind === 'key' ? dialog.then : undefined;
     setBusy('recovery-acknowledge');
@@ -212,6 +252,7 @@ export function BackupsScreen() {
   function closeDialog() {
     setDialog(null);
     setRevealedKey(null);
+    setRotation(null);
     setKeyError('');
     setUnlockError('');
   }
@@ -267,6 +308,15 @@ export function BackupsScreen() {
       await post('destinations/forget-key', { destinationId: view.id }, 'Unable to forget this key.');
     });
   }
+  // Forgetting a drive MOS is not holding. It stops MOS saying a copy of the
+  // owner's data is out there on that drive, which is worth stopping once it is
+  // no longer true — and it touches nothing on the drive, which is not here.
+  async function forgetDrive(view: DestinationView) {
+    await runAction(`forget-drive:${view.id}`, async () => {
+      await post('destinations/forget-drive', { fsUuid: view.destination.fsUuid || '' }, 'Unable to forget this drive.');
+    });
+  }
+
   async function mount(view: DestinationView) {
     await runAction(`mount:${view.id}`, async () => {
       const result = await post<{ destination: { id: string } }>('mount', { destinationId: view.id }, 'Unable to open this drive.');
@@ -403,9 +453,10 @@ export function BackupsScreen() {
     }
   }
 
-  function openKey(mode: 'reveal' | 'save') {
+  function openKey(mode: 'reveal' | 'rotate' | 'save') {
     setKeyError('');
     setRevealedKey(null);
+    setRotation(null);
     setDialog({ kind: 'key', mode });
     if (mode === 'save') void revealRecoveryKey('');
   }
@@ -566,6 +617,7 @@ export function BackupsScreen() {
           onAction={destinationAction}
           onAdd={() => { setObjectDraft({ ...EMPTY_OBJECT_DRAFT }); setObjectTest(null); setDialog({ kind: 'wizard', start: '' }); }}
           onDisconnect={(view) => setDialog({ kind: 'disconnect', view })}
+          onForgetDrive={(view) => void forgetDrive(view)}
           onForgetKey={(view) => void forgetDestinationKey(view)}
           onKeys={(view) => { setArchiveKeys(null); setArchiveKeysError(''); setDialog({ kind: 'keys', view }); }}
           onEdit={(view) => {
@@ -658,10 +710,14 @@ export function BackupsScreen() {
         error={keyError}
         keyState={recoveryKey}
         mode={dialog.mode}
+        startup={startupOf(vaultView)}
         onAcknowledge={() => void acknowledgeRecoveryKey()}
         onClose={closeDialog}
         onReveal={(password) => void revealRecoveryKey(password)}
+        onRotate={(password) => void rotateRecoveryKey(password)}
+        onStartRotation={() => openKey('rotate')}
         revealed={revealedKey}
+        rotation={rotation}
         views={views}
       /> : null}
 

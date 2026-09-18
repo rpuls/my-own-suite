@@ -85,15 +85,24 @@ function tailOutput(text, { chars = OUTPUT_TAIL_CHARS, lines = OUTPUT_TAIL_LINES
 // it: `npm run` and `docker build` do their work in children that inherit the
 // output pipes, and signalling only the parent would leave them running and
 // the pipes open, which is exactly the hang the deadline exists to end.
-function runCommand(file, args, { cwd = undefined, echo = false, env = undefined, mask = [], timeoutMs = 120_000 } = {}) {
+// `input` is written to the command's stdin and closed. It exists for secrets
+// that must not become arguments: a LUKS passphrase reaches `cryptsetup` as
+// `--key-file -` rather than on a command line every process on the machine can
+// read out of /proc. Callers pass the same value in `mask` so it cannot come
+// back out in captured output either.
+function runCommand(file, args, { cwd = undefined, echo = false, env = undefined, input = undefined, mask = [], timeoutMs = 120_000 } = {}) {
   return new Promise((resolve, reject) => {
     const ownGroup = process.platform !== 'win32';
     let child;
     try {
-      child = spawn(file, args, { cwd, detached: ownGroup, env, stdio: ['ignore', 'pipe', 'pipe'] });
+      child = spawn(file, args, { cwd, detached: ownGroup, env, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'] });
     } catch (error) {
       reject(error);
       return;
+    }
+    if (input !== undefined) {
+      child.stdin.on('error', () => {});
+      child.stdin.end(input);
     }
     let settled = false;
     let output = '';

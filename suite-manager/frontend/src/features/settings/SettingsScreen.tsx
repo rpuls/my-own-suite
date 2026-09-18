@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 
-import { AdvancedPanel, Checkbox, Notice, Select, Switch, TextInput, useTechnicalControls } from '../../components/ui';
+import { AdvancedPanel, Checkbox, Dialog, Notice, Select, Switch, TextInput, useTechnicalControls } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
+import { readVaultView, type VaultView } from '../../lib/vault';
 
 type HttpsStatus = {
   acmeEmail: string | null;
@@ -283,6 +284,148 @@ function EmailRelayPanel() {
 
 const MIN_PASSWORD_LENGTH = 12;
 
+// Turning startup protection on or off is confirmed with the owner password
+// rather than a checkbox, because the password is not only the confirmation —
+// it is the secret being enrolled. This dialog is the one moment MOS holds it
+// for that purpose outside a password change and a sign-in.
+function StartupProtectionDialog({ enabling, onClose, onDone }: {
+  enabling: boolean;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [password, setPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!password || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      await jsonResponse(await fetch('/suite-manager/api/settings/vault/startup-password', {
+        body: JSON.stringify({ enabled: enabling, password }),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      }), 'How this server starts could not be changed.');
+      setPassword('');
+      onDone();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'How this server starts could not be changed.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <Dialog
+    footer={<>
+      <button className="mos-btn mos-btn-secondary" onClick={onClose} type="button">Cancel</button>
+      <button className="mos-btn mos-btn-primary" disabled={!password || saving} form="startup-protection" type="submit">
+        {saving ? 'Saving...' : enabling ? 'Ask for my password' : 'Open by itself'}
+      </button>
+    </>}
+    onClose={onClose}
+    title={enabling ? 'Ask for your password at startup' : 'Let this server open itself'}
+  >
+    {enabling ? <>
+      <p>From now on, this server waits for your password after every restart — including a power cut — and your apps stay off until you type it. If you are away and cannot reach this page, they stay off until you can.</p>
+      <p>In exchange, a stolen server gives up nothing: without your password its disk stays closed, and so do the backups whose key is inside it.</p>
+    </> : <>
+      <p>This server will open its own disk when it starts, so a power cut needs nothing from you and your apps come back on their own.</p>
+      <p>The trade is that someone who takes the whole machine and knows Linux can get into it. A disk pulled out on its own, or this machine sold, still gives up nothing.</p>
+    </>}
+    <form id="startup-protection" onSubmit={(event) => void submit(event)}>
+      <TextInput
+        autoComplete="current-password"
+        autoFocus
+        helperText="The password you sign in to Suite Manager with. It is what your server's security chip will ask for."
+        label="Your password"
+        onChange={(event) => { setPassword(event.target.value); setError(''); }}
+        type="password"
+        value={password}
+      />
+    </form>
+    {error ? <Notice title="Nothing was changed" variant="error"><p>{error}</p></Notice> : null}
+  </Dialog>;
+}
+
+/**
+ * The standing answer to "is my data encrypted, and what happens when this
+ * thing restarts" — the question an owner has months after the setup screen
+ * that showed them their recovery key.
+ *
+ * It says what is true of this machine in this mode and never more than that.
+ * Each mode protects something different, and the one claim MOS must never make
+ * is the blanket one: only a machine with startup protection on is useless to
+ * someone who walks off with it.
+ */
+function EncryptionPanel() {
+  const [view, setView] = useState<VaultView | null>(null);
+  const [asking, setAsking] = useState<'off' | 'on' | null>(null);
+
+  async function load() {
+    try {
+      setView(await readVaultView());
+    } catch {
+      // A panel that cannot read its own state says nothing rather than
+      // guessing, in either direction.
+      setView(null);
+    }
+  }
+
+  useEffect(() => { void load(); }, []);
+
+  if (!view) return null;
+
+  const hasChip = Boolean(view.vault.tpm);
+  const asksForPassword = view.asksForPassword;
+  // `unknown` is the agent not answering, never "not encrypted": the machine
+  // still has whatever disk it had a minute ago.
+  const unencryptedSentence = view.vault.state === 'unknown'
+    ? 'MOS could not read how this server\'s disk is set up just now. Reload in a moment.'
+    : view.vault.sentence || 'This server keeps its app data on an unencrypted disk. Your backups are still encrypted with your recovery key.';
+
+  return <div className="mos-panel suite-card suite-settings-panel">
+    <div>
+      <h2 className="mos-card-title">Disk encryption</h2>
+      {view.encrypted
+        ? <p className="suite-meta">Your apps' data, your Suite Manager settings and your apps' secrets are all held on an encrypted part of this server's disk. Everything below is about when it opens.</p>
+        : <p className="suite-meta">{unencryptedSentence}</p>}
+    </div>
+
+    {view.encrypted ? <>
+      {view.chipNeedsRepair ? <Notice title="This server will ask for your recovery key after a restart" variant="warning">
+        <p>Its security chip is waiting to be taught what it needs to know again. MOS repairs that the next time you sign in; until then, a restart asks for the recovery key from your recovery kit.</p>
+      </Notice> : null}
+
+      {!hasChip ? <p>This machine has no security chip, so it cannot open its own disk. It asks for your recovery key on a web page after every restart, and your apps start once you enter it.</p>
+        : asksForPassword
+          ? <p>This server asks for your password after every restart, including a power cut, and opens your data once you type it on its own web page. If it is stolen, nobody gets in: the disk stays closed, and so do the backups whose key is inside it.</p>
+          : <p>This server opens its own disk when it starts, so a power cut needs nothing from you. A disk pulled out and read elsewhere, moved into another machine, or sold with this one gives up nothing — but a thief who takes the whole machine, switches it on and knows Linux can get into it.</p>}
+
+      {hasChip ? <Switch
+        checked={asksForPassword}
+        description={asksForPassword
+          ? 'Your apps stay off after a restart until you type your password. Turning this off means the server opens itself again, and a stolen machine can be got into.'
+          : 'The only thing that makes this machine useless to someone who steals it. The cost is that your apps stay off after every restart, including a power cut, until you are somewhere you can type your password.'}
+        label="Ask for my password when this server starts"
+        onChange={(event) => setAsking(event.currentTarget.checked ? 'on' : 'off')}
+      /> : null}
+
+      <p className="suite-meta">Your recovery key opens this disk and your backups whatever happens to the chip, and it is the only way in if you forget your password. It is under Backup &amp; Restore, where you can see it again and print a new kit.</p>
+    </> : null}
+
+    {asking ? <StartupProtectionDialog
+      enabling={asking === 'on'}
+      // Reloaded on cancel as well: a refused switch may have left the chip
+      // slot wiped and the mode changed, and the panel must show that state
+      // rather than the one the owner started from.
+      onClose={() => { setAsking(null); void load(); }}
+      onDone={() => { setAsking(null); void load(); }}
+    /> : null}
+  </div>;
+}
+
 // Rotating the owner password matters most on the installs where it was created
 // over plain HTTP — a local or own-hardware suite that had no certificate yet.
 // The first password travelled the LAN in the clear; this is how it stops being
@@ -294,6 +437,11 @@ function OwnerAccountPanel() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [changed, setChanged] = useState(false);
+  // Why the chip did not follow the change, when it did not. The two reasons
+  // leave the machine in different states and the owner has to be told which:
+  // a chip that refused now holds nothing, an agent that was unreachable was
+  // never told and the chip may still hold the previous password.
+  const [chipFailed, setChipFailed] = useState<'refused' | 'unreachable' | null>(null);
 
   const tooShort = newPassword.length > 0 && newPassword.length < MIN_PASSWORD_LENGTH;
   const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
@@ -306,7 +454,10 @@ function OwnerAccountPanel() {
     if (!canSubmit) return;
     setSaving(true);
     try {
-      await jsonResponse(await fetch('/suite-manager/api/settings/owner/password', {
+      // The change always goes through, so the only thing the answer can add is
+      // whether the disk followed it. It reports that rather than hiding it: the
+      // owner has to know which password their server will want after a restart.
+      const result = await jsonResponse<{ startupProtection?: { ok: boolean; reason?: string | null } | null }>(await fetch('/suite-manager/api/settings/owner/password', {
         body: JSON.stringify({ currentPassword, newPassword }),
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
@@ -314,6 +465,8 @@ function OwnerAccountPanel() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      const protection = result.startupProtection;
+      setChipFailed(!protection || protection.ok ? null : protection.reason === 'vault-agent-unavailable' ? 'unreachable' : 'refused');
       setChanged(true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Your password could not be changed.');
@@ -330,6 +483,14 @@ function OwnerAccountPanel() {
       <TextInput autoComplete="new-password" helperText={mismatch ? "Those passwords don't match." : 'Retype it to catch typos.'} label="Confirm new password" minLength={MIN_PASSWORD_LENGTH} onChange={(event) => { setConfirmPassword(event.target.value); setError(''); setChanged(false); }} type="password" value={confirmPassword} />
       {error ? <Notice title="Your password was not changed" variant="error"><p>{error}</p></Notice> : null}
       {changed ? <Notice title="Password changed" variant="success"><p>Your new password is active. Every other signed-in browser was signed out; this one stays signed in.</p></Notice> : null}
+      {chipFailed === 'refused' ? <Notice title="Your server's chip did not follow the change" variant="warning">
+        <p>Your password changed, and your old one no longer opens anything. But this server's security chip would not take the new one, so it now opens nothing on its own: after a restart it asks for the recovery key from your recovery kit instead of your password.</p>
+        <p>MOS tries again the next time you sign in, so signing out and back in is usually the whole fix.</p>
+      </Notice> : null}
+      {chipFailed === 'unreachable' ? <Notice title="Your server's chip was not told about the change" variant="warning">
+        <p>Your password changed, but the part of MOS that manages this server's disk was not answering, so its security chip was not taught the new one. If this server is set to ask for your password when it starts, it may still want your previous password after a restart; your recovery key opens it either way.</p>
+        <p>Once MOS is answering again, turning <strong>Ask for my password when this server starts</strong> off and on in Disk encryption teaches the chip your current password.</p>
+      </Notice> : null}
       <button className="mos-btn mos-btn-primary" disabled={!canSubmit} type="submit">{saving ? 'Changing password...' : 'Change password'}</button>
     </form>
   </div>;
@@ -566,6 +727,7 @@ export function SettingsScreen() {
       <HttpsDiagnostics status={status} />
     </div> : <p className="suite-meta">Loading HTTPS settings...</p>}
     <EmailRelayPanel />
+    <EncryptionPanel />
     <TechnicalControlsPanel />
     <OwnerAccountPanel />
     <SecurityActivity error={securityError} summary={securitySummary} />

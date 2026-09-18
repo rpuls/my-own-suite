@@ -137,7 +137,7 @@ fi
 
 stage 'Arming the first-boot units'
 systemctl daemon-reload
-systemctl enable mos-ssh-hostkeys.service mos-self-install.service mos-grow-root.service mos-first-boot.service
+systemctl enable mos-ssh-hostkeys.service mos-self-install.service mos-first-boot.service
 systemctl disable mos-image-finalize.service
 
 stage 'Pruning container build cache'
@@ -206,6 +206,30 @@ stage 'Removing machine identity'
 rm -f /etc/ssh/ssh_host_*
 truncate -s 0 /etc/machine-id
 rm -f /var/lib/dbus/machine-id
+
+stage 'Checking no vault was created during the bake'
+# A vault created in here would be written to every machine that downloads this
+# image, all of them sharing one key that is also sitting in the image. The gate
+# refuses to create one until armed, and this is the second lock on that door:
+# it is release-stopping rather than best effort, because the failure is
+# invisible from outside and unfixable afterwards.
+if [ -e /etc/mos/vault.json ] || [ -e /etc/mos/vault-armed ]; then
+  log 'FATAL: this bake has vault state on it.'
+  exit 1
+fi
+if lsblk -no FSTYPE 2>/dev/null | grep -q crypto_LUKS; then
+  log 'FATAL: this bake has an encrypted partition on it.'
+  exit 1
+fi
+
+stage 'Arming the vault for the machine this image lands on'
+# The last thing written, deliberately. Everything before this point runs inside
+# the bake VM, where creating a vault would bake one key into every download;
+# everything after it runs on somebody's own machine, where the vault is created
+# on first boot with a key only that machine has ever held.
+install -d -m 0750 /etc/mos
+: > /etc/mos/vault-armed
+chmod 0644 /etc/mos/vault-armed
 
 stage 'Zeroing free space so the image compresses'
 fstrim -av || true

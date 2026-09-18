@@ -1204,3 +1204,36 @@ test('a check and a restore record what they work on, and count through volumes 
   // Nothing about a volume reaches a count but the app it belongs to.
   for (const call of w.progressCalls) assert.equal(call.name, undefined);
 });
+
+// The half of adoption that used to be silent, and the one that matters most on
+// a machine with an encrypted disk: the takeover rekeys the disk before it
+// changes any bookkeeping, so a rekey that could not happen must abandon the
+// whole adoption. The alternative is a machine whose backups and whose disk
+// answer to different keys, discovered by its owner at the one moment they need
+// either — and the restore itself succeeded, so the words must not suggest
+// otherwise.
+test('a takeover whose disk rekey fails adopts nothing and says what still opens what', async () => {
+  const w = await world();
+  await w.installApp(STIRLING);
+  const backupJob = w.createJob('backup', { destinationId: w.destination() });
+  await w.core({ installId: () => 'install-a' }).backup(backupJob);
+
+  const standby = w.core({
+    assumeArchiveKey: async () => ({ ok: false, reason: 'vault-agent-unavailable' }),
+    installId: () => 'install-b',
+  });
+  const moveJob = w.createJob('restore', { address: 'move', backupPath: restorePointOf(backupJob) });
+  await standby.restore(moveJob);
+
+  const logs = readJson(moveJob).logs.map((entry) => entry.message);
+  assert.ok(
+    !logs.some((line) => /now uses the recovery key of the server it restored from/u.test(line)),
+    'a refused rekey must never be reported as an adopted key',
+  );
+  const refusal = logs.find((line) => /could not change its disk over/u.test(line));
+  assert.ok(refusal, 'the refusal is reported');
+  assert.match(refusal, /not answering/u, 'and names what stopped it');
+  assert.match(refusal, /nothing is lost/u, 'and that the restore itself is complete');
+  assert.match(refusal, /still open with the key you entered/u);
+  assert.equal(readJson(moveJob).status, 'succeeded', 'the restore is not failed by a key it could not change');
+});

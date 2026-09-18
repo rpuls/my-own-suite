@@ -6,6 +6,7 @@ const { execFileSync } = require('node:child_process');
 const { installEngineBinary } = require('../system-agents/backup/engines/engine-install.cjs');
 const { ENGINE_NAME } = require('../system-agents/backup/engines/engine.cjs');
 const { applyHostPatching } = require('../infrastructure/host-patching.cjs');
+const { machineHasVault } = require('../shared/vault-contract.cjs');
 
 const {
   HOMEPAGE_IMAGE,
@@ -63,7 +64,20 @@ function resolveRuntimeConfig(env = process.env) {
     stateRoot,
     suiteManagerPort: env.MOS_SUITE_MANAGER_PORT || bootstrapContract.MOS_SUITE_MANAGER_PORT || '3100',
     mosRoot,
+    // Whether the units written below wait for the vault. Decided once, here,
+    // so dockerd, Suite Manager and every agent are gated by the same answer.
+    vault: machineHasVault(env.MOS_VAULT_DESCRIPTOR || undefined),
   };
+}
+
+// The vault requirement every unit holding owner data carries on a machine
+// that has one. Without it a unit starts against the empty directory the vault
+// mounts over, which for Suite Manager means a fresh, empty store on the
+// plaintext partition. On a machine with no vault there is nothing to wait for,
+// and a requirement there is only a new way for a working headless server to
+// fail to come back from a reboot.
+function vaultRequirement(config = runtimeConfig) {
+  return config.vault ? 'Requires=mos-vault.service\nAfter=mos-vault.service\n' : '';
 }
 
 const runtimeConfig = resolveRuntimeConfig();
@@ -184,13 +198,13 @@ function unit(name, content) {
   writeFile(path.join('/etc/systemd/system', name), content, 0o644);
 }
 
-function agentUnit({ after, description, env, name, script, wants = 'network-online.target' }) {
+function agentUnit({ after, description, env, gated = runtimeConfig.vault, name, script, wants = 'network-online.target' }) {
   const envLines = Object.entries(env).map(([key, value]) => `Environment=${key}=${value}`).join('\n');
   return `[Unit]
 Description=${description}
 After=${after}
 Wants=${wants}
-
+${vaultRequirement({ vault: gated })}
 [Service]
 Type=simple
 User=root
@@ -208,12 +222,46 @@ WantedBy=multi-user.target
 `;
 }
 
+// The gate, and the agent that speaks for a locked machine. Both reach an
+// existing install through reconciliation, not only a fresh one: the Caddyfile
+// upgraded below gains the route the unlock page posts to, and a route pointing
+// at an agent that was never installed is a worse state than either end of it.
+//
+// On a machine that predates the vault the gate is a no-op by construction. It
+// creates nothing unless /etc/mos/vault-armed exists, which only the published
+// image's finalize writes, and a system partition that already fills its disk
+// has nowhere to put a vault anyway. What it does do is let the agent report
+// that plainly, so Suite Manager can say "app data on this machine is not
+// encrypted" instead of "unknown".
+function vaultGateUnit(config = runtimeConfig) {
+  return `[Unit]
+Description=MOS encrypted vault
+DefaultDependencies=no
+Requires=local-fs.target
+After=local-fs.target systemd-udevd.service mos-self-install.service
+Before=basic.target docker.service docker.socket shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/node ${config.mosRoot}/system-agents/vault/open.cjs
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=sysinit.target
+`;
+}
+
 function suiteManagerUnit(config = runtimeConfig) {
   return `[Unit]
 Description=MOS Suite Manager
 After=mos-homepage.service network-online.target
 Wants=mos-homepage.service network-online.target
-
+${vaultRequirement(config)}
 [Service]
 Type=simple
 User=${config.runtimeUser}
@@ -332,7 +380,7 @@ function main() {
   // the reader it exists for.
   installDir(`${stateRoot}/host-patches`, 0o755);
 
-  for (const socketDir of ['https', 'homepage', 'app', 'backup', 'update', 'diagnostics', 'lab-reset']) {
+  for (const socketDir of ['https', 'homepage', 'app', 'backup', 'update', 'diagnostics', 'lab-reset', 'vault']) {
     installSocketDir(`/run/mos-${socketDir}-agent`);
   }
 
@@ -369,6 +417,40 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
       }
     }
     if (!dryRun) fs.writeFileSync(homepageSeedMarker, '');
+  }
+
+  unit('mos-vault.service', vaultGateUnit());
+  // The one MOS process that runs while the disk is locked, so the one unit
+  // that must never wait for it.
+  unit('mos-vault-agent.service', agentUnit({
+    after: 'network-online.target caddy.service',
+    description: 'MOS vault agent',
+    env: {
+      MOS_VAULT_AGENT_SOCKET: '/run/mos-vault-agent/agent.sock',
+      PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+    },
+    gated: false,
+    name: 'mos-vault-agent.service',
+    script: 'system-agents/vault/agent.cjs',
+  }));
+  // Docker's units are not MOS-owned, so its gate is a drop-in. The socket is
+  // gated as well as the service: it is socket-activated, so anything touching
+  // /var/run/docker.sock would otherwise start a dockerd whose /var/lib/docker
+  // is the empty directory the vault mounts over. Written and removed rather
+  // than only written, so a machine restored onto different hardware does not
+  // keep a requirement its disk no longer has.
+  installDir('/etc/systemd/system/docker.service.d', 0o755);
+  installDir('/etc/systemd/system/docker.socket.d', 0o755);
+  for (const dropIn of ['docker.service.d', 'docker.socket.d']) {
+    const dropInPath = `/etc/systemd/system/${dropIn}/mos-vault.conf`;
+    if (runtimeConfig.vault) {
+      writeFile(dropInPath, `[Unit]
+Requires=mos-vault.service
+After=mos-vault.service
+`, 0o644);
+    } else if (!dryRun) {
+      fs.rmSync(dropInPath, { force: true });
+    }
   }
 
   unit('mos-homepage.service', homepageUnit());
@@ -446,7 +528,9 @@ ExecReload=/usr/local/libexec/mos/caddy reload --config /etc/caddy/Caddyfile --f
   addStatusHandlerToCaddyfile();
 
   run('systemctl', ['daemon-reload']);
-  for (const service of ['mos-homepage.service', 'mos-suite-manager.service', 'caddy.service', 'mos-https-agent.service', 'mos-homepage-agent.service', 'mos-app-agent.service', 'mos-backup-agent.service', 'mos-update-agent.service', 'mos-diagnostics-agent.service']) {
+  run('systemctl', ['enable', 'mos-vault.service']);
+  run('systemctl', ['start', 'mos-vault.service'], { allowFailure: true });
+  for (const service of ['mos-vault-agent.service', 'mos-homepage.service', 'mos-suite-manager.service', 'caddy.service', 'mos-https-agent.service', 'mos-homepage-agent.service', 'mos-app-agent.service', 'mos-backup-agent.service', 'mos-update-agent.service', 'mos-diagnostics-agent.service']) {
     run('systemctl', ['enable', service]);
     run('systemctl', ['restart', service]);
   }
@@ -469,6 +553,7 @@ if (require.main === module) {
 module.exports = {
   homeHostFromContract,
   homepageUnit,
+  vaultGateUnit,
   parseEnvFile,
   resolveRuntimeConfig,
   suiteManagerUnit,
