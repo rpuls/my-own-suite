@@ -1,7 +1,7 @@
 import { jsonResponse } from './api';
 
 // What Suite Manager knows about this machine's vault, as the one route that
-// answers it reports it. Four screens read this — the dashboard handover, the
+// answers it reports it. Four screens read this — the handover page, the
 // encryption panel, the key dialog and the restart dialog — and none of them
 // re-derives "encrypted" or "asks for a password" from the raw state, for the
 // same reason the backend keeps those predicates in one file.
@@ -9,11 +9,7 @@ export type VaultView = {
   asksForPassword: boolean;
   chipNeedsRepair: boolean;
   encrypted: boolean;
-  recoveryKey: { acknowledged?: boolean; fingerprint?: string } | null;
   vault: {
-    // `pending` until the owner confirms they saved the key: a copy still sits
-    // on the unencrypted part of the disk so the server can always open.
-    handover?: 'done' | 'pending';
     sentence?: string | null;
     state: 'absent' | 'locked' | 'unknown' | 'unlocked' | 'unsupported';
     tpm?: { mode: 'automatic' | 'password'; slot: 'enrolled' | 'needs-repair' } | null;

@@ -1,7 +1,8 @@
+import { type RevealedRecoveryKey } from '../lib/recovery-key';
 import { type VaultStartup } from '../lib/vault';
 import { Icon, SecretText } from './ui';
 
-export type RevealedRecoveryKey = { key: string; kit: string; kitFilename: string };
+export type { RevealedRecoveryKey } from '../lib/recovery-key';
 
 // The kit is a plain text file on purpose: its whole job is to survive being
 // printed, photographed, or copied onto paper by hand, and a PDF would be a
@@ -30,12 +31,13 @@ const SENTENCES: Record<VaultStartup, string> = {
   'recovery-key': `${OPENS_BOTH} This machine has no security chip, so it asks you for this key after every restart — and if this server is gone and only the backups are left, it is the only way in.`,
 };
 
-// The recovery key as it appears wherever MOS shows it: at setup beside the
-// server login, and again under Backup & Restore. Shared so the two screens
-// cannot drift into showing one secret two ways.
-export function RecoveryKeySecret({ revealed, startup }: { revealed: RevealedRecoveryKey; startup: VaultStartup }) {
+// The recovery key as it appears wherever MOS shows it: on the handover page
+// beside the server login, masked like the login is, and again under Backup &
+// Restore. Shared so the two screens cannot drift into showing one secret two
+// ways.
+export function RecoveryKeySecret({ masked = false, revealed, startup }: { masked?: boolean; revealed: RevealedRecoveryKey; startup: VaultStartup }) {
   return <>
-    <SecretText label="recovery key" value={revealed.key} />
+    <SecretText label="recovery key" masked={masked} value={revealed.key} />
     <div className="suite-bk-key-actions">
       <button className="mos-btn mos-btn-secondary mos-btn-sm" onClick={() => downloadKit(revealed)} type="button">
         <Icon name="upload" />Download recovery kit

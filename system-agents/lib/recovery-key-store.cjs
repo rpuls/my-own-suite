@@ -37,8 +37,6 @@ const RECORD_FILENAME = 'recovery-key.json';
 const ESCROW_PATH = '/etc/mos/vault-recovery-key';
 const RECORD_VERSION = 1;
 
-const HANDOVER = Object.freeze({ DONE: 'done', PENDING: 'pending' });
-
 const EMPTY_RECORD = Object.freeze({ acknowledgedAt: null, adoptedAt: null, fingerprint: null, firstUsedAt: null, rotatedAt: null });
 
 function writeSecretFile(filePath, value, dirMode) {
@@ -163,12 +161,6 @@ class RecoveryKeyStore {
     } catch {}
     fs.rmSync(this.escrowPath, { force: true });
   }
-
-  // `pending` while the escrow exists: the encryption protects nothing yet,
-  // because a copy of the key sits on the plaintext partition.
-  handover() {
-    return this.hasEscrow() ? HANDOVER.PENDING : HANDOVER.DONE;
-  }
 }
 
-module.exports = { ESCROW_PATH, HANDOVER, KEY_FILENAME, RECORD_FILENAME, RecoveryKeyStore, STATE_DIR };
+module.exports = { ESCROW_PATH, KEY_FILENAME, RECORD_FILENAME, RecoveryKeyStore, STATE_DIR };

@@ -394,9 +394,6 @@ function EncryptionPanel() {
     </div>
 
     {view.encrypted ? <>
-      {view.vault.handover === 'pending' ? <Notice title="Your recovery key has not been saved yet" variant="warning">
-        <p>Until you confirm from the Home page that you have it, MOS keeps a copy of the key on the unencrypted part of this disk so this server can always open. That means the encryption protects nothing yet, and startup protection cannot be turned on.</p>
-      </Notice> : null}
       {view.chipNeedsRepair ? <Notice title="This server will ask for your recovery key after a restart" variant="warning">
         <p>Its security chip is waiting to be taught what it needs to know again. MOS repairs that the next time you sign in; until then, a restart asks for the recovery key from your recovery kit.</p>
       </Notice> : null}
@@ -406,7 +403,7 @@ function EncryptionPanel() {
           ? <p>This server asks for your password after every restart, including a power cut, and opens your data once you type it on its own web page. If it is stolen, nobody gets in: the disk stays closed, and so do the backups whose key is inside it.</p>
           : <p>This server opens its own disk when it starts, so a power cut needs nothing from you. A disk pulled out and read elsewhere, moved into another machine, or sold with this one gives up nothing — but a thief who takes the whole machine, switches it on and knows Linux can get into it.</p>}
 
-      {hasChip && view.vault.handover !== 'pending' ? <Switch
+      {hasChip ? <Switch
         checked={asksForPassword}
         description={asksForPassword
           ? 'Your apps stay off after a restart until you type your password. Turning this off means the server opens itself again, and a stolen machine can be got into.'

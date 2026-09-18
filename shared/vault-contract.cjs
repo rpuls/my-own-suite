@@ -52,6 +52,20 @@ const VAULT_TPM_MODES = { AUTOMATIC: 'automatic', PASSWORD: 'password' };
 // asks for the recovery key until MOS teaches the chip again.
 const VAULT_TPM_SLOTS = { ENROLLED: 'enrolled', NEEDS_REPAIR: 'needs-repair' };
 
+// Whether the owner has been handed the recovery key. `pending` from the
+// vault's creation until they confirm it on the handover page; while pending a
+// copy of the key sits on the plaintext partition so the machine can always
+// open, and the encryption protects nothing yet. The escrow's presence is the
+// state, so a vault can only refuse to open once its owner holds the key.
+const VAULT_HANDOVER = { DONE: 'done', PENDING: 'pending' };
+
+// Left by the vault gate on a boot from the installer stick, for the units after
+// it that behave differently there: the address banner says nothing is
+// installed, and the login generator does not run. The gate writes it because
+// it is the first MOS unit of every boot and already knows which medium it is
+// running from. Per boot, because /run is.
+const INSTALLER_MEDIA_MARKER = '/run/mos/installer-media';
+
 /**
  * Whether this machine has a vault, given an agent status or a bare state
  * string. For the descriptor on disk, ask `machineHasVault`.
@@ -107,7 +121,9 @@ function machineHasVault(descriptorPath = VAULT_DESCRIPTOR_PATH) {
 }
 
 module.exports = {
+  INSTALLER_MEDIA_MARKER,
   VAULT_DESCRIPTOR_PATH,
+  VAULT_HANDOVER,
   VAULT_STATES,
   VAULT_TPM_MODES,
   VAULT_TPM_SLOTS,

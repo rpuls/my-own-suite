@@ -220,9 +220,6 @@ export type BackupStatus = {
   recoveryKey?: RecoveryKeyState | null;
   restoreGuarantee?: string;
   restoreGuaranteeByKind?: Record<string, string>;
-  // This machine's console login is still waiting to be saved. It lives in the
-  // state a backup carries and a restore replaces, so the screen waits with it.
-  serverLoginUnsaved?: boolean;
   schedule?: BackupSchedule | null;
   serviceAvailable: boolean;
 };

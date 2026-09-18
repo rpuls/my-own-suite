@@ -40,12 +40,13 @@ const path = require('node:path');
 
 const { planLayout } = require('./layout.cjs');
 const {
+  INSTALLER_MEDIA_MARKER,
   VAULT_DESCRIPTOR_PATH,
+  VAULT_HANDOVER,
   VAULT_STATES,
   VAULT_TPM_MODES,
   VAULT_TPM_SLOTS,
 } = require('../../shared/vault-contract.cjs');
-const { HANDOVER } = require('../lib/recovery-key-store.cjs');
 
 const MAPPER_NAME = 'mos-vault';
 const MOUNTPOINT = '/var/lib/mos-vault';
@@ -69,9 +70,6 @@ const SWAPFILE_NAME = 'swap.img';
 // Where swap goes on a machine that has no vault to put it in: the same path
 // Ubuntu and the first-boot script this replaces both used.
 const SYSTEM_SWAPFILE_PATH = '/swap.img';
-// Left by the gate on a boot from the installer stick, for the units after it
-// that behave differently there. Per boot, because /run is.
-const INSTALLER_MEDIA_MARKER = '/run/mos/installer-media';
 
 class VaultError extends Error {
   constructor(code, message, details = {}) {
@@ -171,7 +169,7 @@ class VaultAgentCore {
       device: descriptor.device,
       // `pending` means a copy of the key still sits on the plaintext partition
       // and the encryption protects nothing yet; the screens say so.
-      handover: (await this.adapter.hasEscrow()) ? HANDOVER.PENDING : HANDOVER.DONE,
+      handover: (await this.adapter.hasEscrow()) ? VAULT_HANDOVER.PENDING : VAULT_HANDOVER.DONE,
       protects: PROTECTED_PATHS.map((entry) => entry.target),
       reason,
       sentence: reason ? sentenceFor(reason) : null,
@@ -552,7 +550,6 @@ class VaultAgentCore {
 
 module.exports = {
   DESCRIPTOR_PATH,
-  INSTALLER_MEDIA_MARKER,
   SYSTEM_SWAPFILE_PATH,
   MAPPER_NAME,
   MOUNTPOINT,

@@ -11,11 +11,12 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const YAML = require('yaml');
 
+const { loadSmokeConfig, renderSeed } = require('../scripts/installers/render-hyperv-usb-seed.cjs');
 const {
-  consoleLoginIssuePath,
-  loadSmokeConfig,
-  renderSeed,
-} = require('../scripts/installers/render-hyperv-usb-seed.cjs');
+  CONSOLE_LOGIN_ACKNOWLEDGED_FILE,
+  CONSOLE_LOGIN_HANDOVER_FILE,
+  CONSOLE_LOGIN_ISSUE_PATH,
+} = require('../shared/console-login-contract.cjs');
 
 const repoRoot = path.resolve(__dirname, '..');
 const payloadDir = path.join(__dirname, 'payload');
@@ -108,9 +109,9 @@ function main() {
 
   // Asserted against the rendered seed, so a drift fails the build instead of
   // silently leaving the bake VM's login on the console of the published image.
-  if (!rendered.userData.includes(consoleLoginIssuePath)) {
+  if (!rendered.userData.includes(CONSOLE_LOGIN_ISSUE_PATH)) {
     throw new Error(
-      `The rendered seed no longer writes '${consoleLoginIssuePath}'. ` +
+      `The rendered seed no longer writes '${CONSOLE_LOGIN_ISSUE_PATH}'. ` +
       'The finalize step removes the console login by that path; update image-builder to match.',
     );
   }
@@ -120,12 +121,14 @@ function main() {
   const stateDir = `${rendered.plan.config.stateRoot}/suite-manager`;
 
   const values = {
+    CONSOLE_LOGIN_ACKNOWLEDGED_FILE,
+    CONSOLE_LOGIN_HANDOVER_FILE,
     DOCS_ROOT_URL: docsRootUrl,
     DOCS_URL: networkDocsUrl,
     DOMAIN: rendered.plan.config.domain,
     EASY_DOCS_URL: easyAddressDocsUrl,
     HOME_URL: rendered.plan.config.publicUrls.home,
-    ISSUE_FILE: consoleLoginIssuePath,
+    ISSUE_FILE: CONSOLE_LOGIN_ISSUE_PATH,
     REPO_REF: repoRef,
     STATE_DIR: stateDir,
     USERNAME: rendered.linuxUsername,

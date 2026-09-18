@@ -14,7 +14,8 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 
-const { INSTALLER_MEDIA_MARKER, VaultError } = require('./agent-core.cjs');
+const { VaultError } = require('./agent-core.cjs');
+const { INSTALLER_MEDIA_MARKER } = require('../../shared/vault-contract.cjs');
 const { describeFailure, runCommand } = require('../lib/command-output.cjs');
 const { fingerprint, generate } = require('../backup/recovery-key.cjs');
 const { RecoveryKeyStore } = require('../lib/recovery-key-store.cjs');

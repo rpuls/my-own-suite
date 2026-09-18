@@ -7,10 +7,13 @@ const { spawnSync } = require('node:child_process');
 const YAML = require('yaml');
 
 const {
+  CONSOLE_LOGIN_ACKNOWLEDGED_FILE,
+  CONSOLE_LOGIN_HANDOVER_FILE,
+  CONSOLE_LOGIN_ISSUE_PATH,
+} = require('../../shared/console-login-contract.cjs');
+const { INSTALLER_MEDIA_MARKER } = require('../../shared/vault-contract.cjs');
+const {
   assertSmokeRepoRefIsPushed,
-  consoleLoginAcknowledgedFileName,
-  consoleLoginFileName,
-  consoleLoginIssuePath,
   labLinuxPassword,
   loadSmokeConfig,
   renderSeed,
@@ -99,9 +102,9 @@ test('first boot generates the console password on the installed machine', () =>
   assert.match(init.content, /\/dev\/urandom/u);
   assert.match(init.content, /chpasswd/u);
   assert.match(init.content, /state_dir='\/var\/lib\/mos\/suite-manager'/u);
-  assert.match(init.content, new RegExp(`handover="\\$state_dir/${consoleLoginFileName}"`, 'u'));
+  assert.match(init.content, new RegExp(`handover="\\$state_dir/${CONSOLE_LOGIN_HANDOVER_FILE}"`, 'u'));
   // Idempotent, so a re-run cannot rotate a password the owner already saved.
-  assert.match(init.content, new RegExp(consoleLoginAcknowledgedFileName, 'u'));
+  assert.match(init.content, new RegExp(CONSOLE_LOGIN_ACKNOWLEDGED_FILE, 'u'));
   // Ahead of the control-plane bootstrap: a machine whose install failed must
   // still be reachable, or a failed boot is an unrecoverable brick.
   const commands = firstBoot.runcmd.map((entry) => (Array.isArray(entry) ? entry.join(' ') : String(entry)));
@@ -120,8 +123,8 @@ test('the server login is its own console file, written after the banner and nev
   const rendered = renderSeed({}, { profile: 'release', repoRef: 'staging' });
   const init = fileAt(rendered, '/usr/local/sbin/mos-console-login-init');
 
-  assert.equal(consoleLoginIssuePath, '/etc/issue.d/20-mos-server-login.issue');
-  assert.match(init.content, new RegExp(`cat > ${consoleLoginIssuePath} <<`, 'u'));
+  assert.equal(CONSOLE_LOGIN_ISSUE_PATH, '/etc/issue.d/20-mos-server-login.issue');
+  assert.match(init.content, new RegExp(`cat > ${CONSOLE_LOGIN_ISSUE_PATH} <<`, 'u'));
   assert.doesNotMatch(init.content, />> \/etc\/issue\b/u, 'nothing is appended to /etc/issue');
   assert.ok('20-mos-server-login' > '10-mos-address', 'sorted after the address banner, which clears the screen');
 });
@@ -138,7 +141,7 @@ test('the login generator waits for the vault and never runs on the installer st
   assert.ok(unit);
   assert.match(unit.content, /^Requires=mos-vault\.service$/mu);
   assert.match(unit.content, /^After=mos-vault\.service$/mu);
-  assert.match(unit.content, /^ConditionPathExists=!\/run\/mos\/installer-media$/mu);
+  assert.ok(unit.content.includes(`ConditionPathExists=!${INSTALLER_MEDIA_MARKER}\n`), 'never runs on the installer stick');
   assert.match(unit.content, /ExecStart=\/usr\/local\/sbin\/mos-console-login-init/u);
   const commands = firstBoot.runcmd.map((entry) => (Array.isArray(entry) ? entry.join(' ') : String(entry)));
   assert.ok(commands.some((entry) => entry === 'systemctl enable mos-console-login.service'));
@@ -150,12 +153,12 @@ test('the console banner clears itself once the owner confirms', () => {
   const pathUnit = fileAt(rendered, '/etc/systemd/system/mos-console-login-clear.path');
 
   assert.ok(clear && pathUnit);
-  assert.match(clear.content, new RegExp(`rm -f ${consoleLoginIssuePath}`, 'u'));
+  assert.match(clear.content, new RegExp(`rm -f ${CONSOLE_LOGIN_ISSUE_PATH}`, 'u'));
   assert.doesNotMatch(clear.content, /awk/u, 'nothing is edited out of /etc/issue, because nothing was put in it');
-  assert.match(clear.content, new RegExp(`rm -f .*${consoleLoginFileName}`, 'u'));
+  assert.match(clear.content, new RegExp(`rm -f .*${CONSOLE_LOGIN_HANDOVER_FILE}`, 'u'));
   // Suite Manager runs unprivileged and cannot edit /etc/issue, so the sentinel
   // it can write is what triggers the root-side cleanup.
-  assert.match(pathUnit.content, new RegExp(`PathExists=/var/lib/mos/suite-manager/${consoleLoginAcknowledgedFileName}`, 'u'));
+  assert.match(pathUnit.content, new RegExp(`PathExists=/var/lib/mos/suite-manager/${CONSOLE_LOGIN_ACKNOWLEDGED_FILE}`, 'u'));
   assert.match(pathUnit.content, /Unit=mos-console-login-clear\.service/u);
 });
 

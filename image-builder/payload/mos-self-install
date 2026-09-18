@@ -194,33 +194,83 @@ fail_after_copy() {
 # the disk would leave the gate, which never shrinks, nowhere to put the vault.
 # Retried, because udev may still hold a partition open from probing the disk
 # that was just overwritten; three refusals in a row are a fault to read.
-for attempt in 1 2 3; do
-  if blockdev --rereadpt "$target" 2>/dev/null; then break; fi
-  [ "$attempt" -lt 3 ] || fail_after_copy 'the kernel would not re-read the copied partition table'
-  udevadm settle || true
-done
-udevadm settle || fail_after_copy 'the copied partitions did not appear'
+reread_partitions() {
+  local attempt
+  for attempt in 1 2 3; do
+    if blockdev --rereadpt "$target" 2>/dev/null; then break; fi
+    [ "$attempt" -lt 3 ] || fail_after_copy "the kernel would not re-read the disk's partition table"
+    udevadm settle || true
+  done
+  udevadm settle || fail_after_copy 'the partitions on the disk did not appear'
+}
+reread_partitions
 source_parts="$(lsblk -nro TYPE "$root_disk" | grep -c part || true)"
 target_parts="$(lsblk -nro TYPE "$target" | grep -c part || true)"
 [ "$source_parts" = "$target_parts" ] || fail_after_copy "the kernel still shows ${target_parts} partitions on the disk; the copy has ${source_parts}"
+
+# The system partition is found by the number the stick's own root has, the EFI
+# partition by its type.
+root_partn="$(lsblk -nro PARTN "$root_source")"
+system_partition="$(lsblk -nrpo NAME,PARTN "$target" | awk -v n="$root_partn" '$2 == n { print $1 }')"
+[ -n "$system_partition" ] || fail_after_copy "partition ${root_partn} did not appear on the disk"
+esp_partition="$(lsblk -nrpo NAME,PARTTYPE "$target" | awk '$2 == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" { print $1 }' | head -n1)"
+[ -n "$esp_partition" ] || fail_after_copy 'no EFI system partition appeared on the disk'
+
+# The copy is the stick byte for byte, identifiers included: the same disk and
+# partition GUIDs, the same filesystem UUIDs. The firmware's boot entry, GRUB's
+# search and the kernel's root= all find a disk by those, and with the stick
+# left in they found the internal disk first — so the stick booted the disk,
+# this installer saw a fixed root and stepped aside, and the machine could not
+# be reinstalled. The disk gets identifiers of its own here, and every file on
+# it that names the old ones is rewritten, because one left behind is a disk
+# that boots only while the stick is in. Read with a raw probe: blkid's cache
+# still answers the old value after a change.
+printf '\n  Giving the disk its own identity.\n'
+fs_uuid() { blkid -p -s UUID -o value "$1" 2>/dev/null || true; }
+old_system_uuid="$(fs_uuid "$system_partition")"
+old_esp_uuid="$(fs_uuid "$esp_partition")"
+{ [ -n "$old_system_uuid" ] && [ -n "$old_esp_uuid" ]; } || fail_after_copy 'could not read the copied filesystems'
+sgdisk -G "$target" >/dev/null 2>&1 || fail_after_copy 'could not give the disk its own partition identifiers'
+reread_partitions
+# A checked filesystem is what tune2fs requires before it will rewrite the
+# checksums a new UUID changes; the copy was frozen, so this finds nothing.
+e2fsck -fy "$system_partition" >/dev/null 2>&1 || [ $? -le 1 ] || fail_after_copy 'the copied system partition did not check clean'
+tune2fs -U random "$system_partition" >/dev/null 2>&1 || fail_after_copy 'could not give the system partition its own identifier'
+fatlabel -i "$esp_partition" "$(od -An -N4 -tx4 /dev/urandom | tr -d ' \n')" >/dev/null 2>&1 || fail_after_copy 'could not give the EFI partition its own identifier'
+new_system_uuid="$(fs_uuid "$system_partition")"
+new_esp_uuid="$(fs_uuid "$esp_partition")"
+{ [ -n "$new_system_uuid" ] && [ "$new_system_uuid" != "$old_system_uuid" ]; } || fail_after_copy 'the system partition kept its identifier'
+{ [ -n "$new_esp_uuid" ] && [ "$new_esp_uuid" != "$old_esp_uuid" ]; } || fail_after_copy 'the EFI partition kept its identifier'
+
+# Mounted under /run, a tmpfs, so nothing here depends on the root being writable.
+target_root=/run/mos-self-install/target
+mkdir -p "$target_root"
+mount_error="$(mount "$system_partition" "$target_root" 2>&1)" || fail_after_copy "could not open ${system_partition}: ${mount_error}"
+mount_error="$(mount "$esp_partition" "$target_root/boot/efi" 2>&1)" || fail_after_copy "could not open ${esp_partition}: ${mount_error}"
 
 # The stick was running while it was copied, so the copy carries the stick's
 # identity: its SSH host keys, its machine-id and its journal so far. Cleared
 # here so the disk's first boot makes its own, as a fresh install would, and
 # two machines installed from one stick never share a host key or a DHCP id.
-# The system partition is found by the number the stick's own root has, and
-# mounted under /run, a tmpfs, so nothing here depends on the root being writable.
-root_partn="$(lsblk -nro PARTN "$root_source")"
-system_partition="$(lsblk -nrpo NAME,PARTN "$target" | awk -v n="$root_partn" '$2 == n { print $1 }')"
-[ -n "$system_partition" ] || fail_after_copy "partition ${root_partn} did not appear on the disk"
-target_root=/run/mos-self-install/target
-mkdir -p "$target_root"
-mount_error="$(mount "$system_partition" "$target_root" 2>&1)" || fail_after_copy "could not open ${system_partition}: ${mount_error}"
 rm -f "$target_root"/etc/ssh/ssh_host_*
 : > "$target_root/etc/machine-id"
 rm -f "$target_root/var/lib/dbus/machine-id"
 rm -rf "$target_root"/var/log/journal/*
+
+# fstab mounts both by UUID; GRUB's menu names the root for its search and the
+# kernel's root=; the two ESP configs are what BOOTX64.EFI reads first to find
+# the root at all. Each is checked afterwards: a rewrite that missed one would
+# only show as a disk that will not boot with the stick out.
+for named in etc/fstab boot/grub/grub.cfg boot/efi/EFI/ubuntu/grub.cfg boot/efi/EFI/BOOT/grub.cfg; do
+  [ -f "$target_root/$named" ] || continue
+  sed -i "s/${old_system_uuid}/${new_system_uuid}/gI; s/${old_esp_uuid}/${new_esp_uuid}/gI" "$target_root/$named"
+  ! grep -qiE "${old_system_uuid}|${old_esp_uuid}" "$target_root/$named" || fail_after_copy "${named} still names the stick's identifiers"
+done
+grep -q "$new_system_uuid" "$target_root/etc/fstab" || fail_after_copy 'fstab does not name the system partition'
+grep -q "$new_system_uuid" "$target_root/boot/grub/grub.cfg" || fail_after_copy 'the GRUB menu does not name the system partition'
+grep -q "$new_system_uuid" "$target_root/boot/efi/EFI/BOOT/grub.cfg" || fail_after_copy 'the EFI loader config does not name the system partition'
 sync
+umount "$target_root/boot/efi"
 umount "$target_root"
 
 # The image carries its bootloader at the removable-media fallback path only, so
@@ -232,14 +282,7 @@ register_boot_entry() {
   [ -d /sys/firmware/efi ] || return 1
   command -v efibootmgr >/dev/null 2>&1 || return 1
 
-  local esp_partition esp_number existing
-  esp_partition="$(lsblk -nrpo NAME,PARTTYPE "$target" 2>/dev/null \
-    | awk '$2 == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" { print $1 }' | head -n1)"
-  if [ -z "$esp_partition" ]; then
-    esp_partition="$(lsblk -nrpo NAME,FSTYPE "$target" 2>/dev/null \
-      | awk '$2 == "vfat" { print $1 }' | head -n1)"
-  fi
-  [ -n "$esp_partition" ] || return 1
+  local esp_number existing
   esp_number="$(printf '%s' "$esp_partition" | grep -oE '[0-9]+$' || true)"
   [ -n "$esp_number" ] || return 1
 

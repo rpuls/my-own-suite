@@ -809,6 +809,7 @@ module.exports = {
   renderBootstrapShell,
   renderCloudInit,
   renderSshBootstrapCommand,
+  shellQuote,
   renderUsbSeedConfig,
   validateBootstrapInput,
 };

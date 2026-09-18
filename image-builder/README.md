@@ -164,8 +164,14 @@ Written to a USB stick with Rufus (DD mode) or balenaEtcher, and booted:
   image is both the installer and the installed system.
 - `mos-ssh-hostkeys` gives the machine its own identity, and `mos-console-login`
   its own server login. The installer clears the stick's host keys, machine-id
-  and journal from the copy it makes, so nothing of the stick's identity reaches
-  the disk. The disk itself belongs to `mos-vault.service`, which fits the copied
+  and journal from the copy it makes, and gives the copy its own disk and
+  partition GUIDs and filesystem UUIDs (`sgdisk -G`, `tune2fs -U random`,
+  `fatlabel -i`), rewriting fstab and the three GRUB configs to match — a
+  byte-for-byte twin of the stick is what the firmware, GRUB and the kernel all
+  resolved to the internal disk, so a stick left in booted the disk and the
+  installer never asked again. Nothing of the stick's identity reaches the disk,
+  and every step after the copy fails on screen rather than silently. The disk
+  itself belongs to `mos-vault.service`, which fits the copied
   partition table to the disk it landed on, grows the system partition to its
   cap and gives the rest to the encrypted vault; the installer lays out nothing,
   so the same first boot happens whether the image arrived by stick or was

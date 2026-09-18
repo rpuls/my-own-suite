@@ -428,8 +428,13 @@ export function AdvancedPanel({
 // MOS shows one, and the copy behaviour is the panel's: a fresh install on plain
 // HTTP has no navigator.clipboard, so failing visibly and leaving the text
 // selectable is the whole recovery.
-export function SecretText({ label, value }: { label: string; value: string }) {
+//
+// `masked` starts the value hidden behind dots with a Show button, for a page
+// someone else in the room could read; copying never needs it visible, and a
+// copy that fails unmasks it so the fallback of selecting the text works.
+export function SecretText({ label, masked = false, value }: { label: string; masked?: boolean; value: string }) {
   const [copyState, setCopyState] = useState<'' | 'copied' | 'unavailable'>('');
+  const [hidden, setHidden] = useState(masked);
   useEffect(() => {
     if (!copyState) return undefined;
     const timer = window.setTimeout(() => setCopyState(''), 2_000);
@@ -442,13 +447,15 @@ export function SecretText({ label, value }: { label: string; value: string }) {
       setCopyState('copied');
     } catch {
       setCopyState('unavailable');
+      setHidden(false);
     }
   }
 
   return <div className="mos-secret">
-    <code className="mos-secret-value">{value}</code>
+    <code className={hidden ? 'mos-secret-value mos-secret-masked' : 'mos-secret-value'}>{hidden ? '•'.repeat(value.length) : value}</code>
     <div className="mos-secret-actions">
       <span className="mos-secret-state" role="status">{copyState === 'copied' ? 'Copied' : copyState === 'unavailable' ? 'Could not copy. Select the text instead.' : ''}</span>
+      {masked ? <button aria-label={`${hidden ? 'Show' : 'Hide'} ${label}`} aria-pressed={!hidden} className="suite-icon-button" onClick={() => setHidden((current) => !current)} title={hidden ? 'Show' : 'Hide'} type="button"><Icon name={hidden ? 'eye' : 'eye-off'} /></button> : null}
       <button aria-label={`Copy ${label}`} className="suite-icon-button" onClick={() => void copy()} title="Copy" type="button"><Icon name="copy" /></button>
     </div>
   </div>;

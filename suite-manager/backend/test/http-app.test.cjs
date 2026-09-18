@@ -786,22 +786,6 @@ test('Backup API proxies simple owner backup and restore actions', async () => {
     });
     assert.equal(restore.status, 202);
 
-    // A console handover still waiting on this machine sits inside the state a
-    // backup carries and a restore wipes, so both wait until it is saved.
-    await fs.writeFile(path.join(stateDir, 'console-login.json'), JSON.stringify({ password: 'generated', username: 'mos', version: 1 }));
-    assert.equal((await hostRequest(baseUrl, '/suite-manager/api/backups/status', { headers: { Cookie: cookie, Host: 'home.test' } })).json().serverLoginUnsaved, true);
-    for (const [route, body] of [['start', { destinationId: '/media/backup' }], ['restore', { backupPath: backupDir, confirmation: 'RESTORE' }], ['schedule', { enabled: true }]]) {
-      const refused = await hostRequest(baseUrl, `/suite-manager/api/backups/${route}`, {
-        body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
-        method: 'POST',
-      });
-      assert.equal(refused.status, 409, route);
-      assert.equal(refused.json().code, 'SERVER_LOGIN_UNSAVED', route);
-    }
-    await hostRequest(baseUrl, '/suite-manager/api/settings/console-login/acknowledge', { headers: { Cookie: cookie, Host: 'home.test' }, method: 'POST' });
-    assert.equal((await hostRequest(baseUrl, '/suite-manager/api/backups/status', { headers: { Cookie: cookie, Host: 'home.test' } })).json().serverLoginUnsaved, false);
-
     // The schedule reaches the agent field by field, so a body carrying
     // anything the screen does not offer cannot travel with it.
     const deniedSchedule = await hostRequest(baseUrl, '/suite-manager/api/backups/schedule', {
@@ -2947,11 +2931,9 @@ test('the diagnostics export still produces a file when the agent is unreachable
   });
 });
 
-// The dashboard card that hands over the server login reads this route to know
-// whether it must also hand over the recovery key. A machine whose vault agent
-// is not answering still has a password with exactly one copy on it, so the
-// route answers rather than failing — a card that renders nothing because one of
-// two statuses could not be read is how that password goes unsaved.
+// The encryption panel reads this route. A vault agent that is not answering is
+// reported as `unknown`, never as "not encrypted" and never as a failed request:
+// the panel has to be able to say MOS could not tell.
 test('the vault route is authenticated and survives an agent that is not there', async () => {
   await withServer(async (baseUrl) => {
     const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/vault', { headers: { Host: 'home.test' } });
@@ -2965,14 +2947,13 @@ test('the vault route is authenticated and survives an agent that is not there',
 
     assert.equal(response.status, 200);
     assert.equal(response.json().vault.state, 'unknown');
-    assert.equal(response.json().recoveryKey, null);
     // Never "not encrypted" on an agent that could not be reached: a machine
     // whose agent is down still has whatever disk it had a minute ago.
     assert.equal(response.json().encrypted, false);
   }, { homeHost: 'home.test' });
 });
 
-test('the vault route reports what the agent says and whether the key has been saved', async () => {
+test('the vault route reports what the agent says', async () => {
   await withServer(async (baseUrl) => {
     const cookie = await createOwner(baseUrl);
     const response = await hostRequest(baseUrl, '/suite-manager/api/settings/vault', {
@@ -2984,13 +2965,35 @@ test('the vault route reports what the agent says and whether the key has been s
       asksForPassword: false,
       chipNeedsRepair: false,
       encrypted: true,
-      recoveryKey: { acknowledged: false, fingerprint: 'abc123abc123' },
-      vault: { state: 'unlocked', unlocksItself: true },
+      vault: { handover: 'done', state: 'unlocked', unlocksItself: true },
     });
   }, {
-    backupAgent: { async recoveryKeyStatus() { return { recoveryKey: { acknowledged: false, fingerprint: 'abc123abc123' } }; } },
     homeHost: 'home.test',
-    vaultAgent: { async status() { return { state: 'unlocked', unlocksItself: true }; } },
+    vaultAgent: { async status() { return { handover: 'done', state: 'unlocked', unlocksItself: true }; } },
+  });
+});
+
+// The page in front of Suite Manager is decided from this before the first
+// screen paints. What each agent answer means is handover-service.test.cjs;
+// this pins the wiring: only a signed-in caller is told, and confirming the
+// login is what takes it to done.
+test('the setup status says what this machine still has to hand its owner', async () => {
+  const stateDir = await tempStateDir();
+  await fs.writeFile(path.join(stateDir, 'console-login.json'), JSON.stringify({ password: 'generated', username: 'mos', version: 1 }));
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const signedOut = await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Host: 'home.test' } });
+    assert.equal(signedOut.json().handover, undefined);
+
+    const read = async () => (await hostRequest(baseUrl, '/suite-manager/api/setup/status', { headers: { Cookie: cookie, Host: 'home.test' } })).json().handover;
+    assert.deepEqual(await read(), { login: 'pending', recoveryKey: 'pending' });
+
+    await hostRequest(baseUrl, '/suite-manager/api/settings/console-login/acknowledge', { headers: { Cookie: cookie, Host: 'home.test' }, method: 'POST' });
+    assert.deepEqual(await read(), { login: 'done', recoveryKey: 'pending' });
+  }, {
+    homeHost: 'home.test',
+    stateDir,
+    vaultAgent: { async status() { return { handover: 'pending', state: 'unlocked' }; } },
   });
 });
 

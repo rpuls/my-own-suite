@@ -11,7 +11,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { generate, isRecoveryKey } = require('../backup/recovery-key.cjs');
-const { HANDOVER, RecoveryKeyStore } = require('./recovery-key-store.cjs');
+const { RecoveryKeyStore } = require('./recovery-key-store.cjs');
 
 async function scratch() { return fsp.mkdtemp(path.join(os.tmpdir(), 'mos-recovery-')); }
 
@@ -106,22 +106,20 @@ test('rotating the key puts it back to unsaved, and remembers when', async () =>
 });
 
 // The escrow exists from the vault's creation until the owner confirms they
-// hold the key, and its presence is the whole of the handover state: while it
-// is there the encryption protects nothing, and the machine says so.
-test('the escrow is root-only, decides the handover, and is destroyed rather than deleted', async () => {
+// hold the key, and its presence is the whole of the handover state the vault
+// agent reports: while it is there the encryption protects nothing.
+test('the escrow is root-only and is destroyed rather than deleted', async () => {
   const keys = await store();
   const key = generate().key;
-  assert.equal(keys.handover(), HANDOVER.DONE, 'no escrow was ever written');
+  assert.equal(keys.hasEscrow(), false, 'no escrow was ever written');
 
   keys.escrow(key);
   assert.equal(keys.hasEscrow(), true);
   assert.equal(keys.readEscrow(), key);
-  assert.equal(keys.handover(), HANDOVER.PENDING);
   if (process.platform !== 'win32') assert.equal(fs.statSync(keys.escrowPath).mode & 0o777, 0o600);
 
   keys.discardEscrow();
   assert.equal(keys.hasEscrow(), false);
   assert.equal(keys.readEscrow(), null);
-  assert.equal(keys.handover(), HANDOVER.DONE);
   assert.doesNotThrow(() => keys.discardEscrow(), 'discarding twice is not an error');
 });

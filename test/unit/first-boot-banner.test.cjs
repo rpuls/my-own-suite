@@ -12,6 +12,7 @@ const test = require('node:test');
 const { execFileSync } = require('node:child_process');
 
 const { easyDoorHomeHost } = require('../../shared/easy-door.cjs');
+const { INSTALLER_MEDIA_MARKER } = require('../../shared/vault-contract.cjs');
 const { renderCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
 
 const easyDoorModule = path.resolve(__dirname, '..', '..', 'shared', 'easy-door.cjs');
@@ -178,7 +179,7 @@ test('the Easy Door CLI answers with the name the host gate admits', () => {
 test('the banner is vault-independent, runs no generator, and never claims a locked machine is running', () => {
   assert.doesNotMatch(script, /mos-console-login-init|chpasswd|\/var\/lib\/mos\b|\/var\/lib\/docker|\/etc\/mos\/secrets/u);
   // The medium is the gate's decision, read from /run, not a second lsblk.
-  assert.match(script, /-e \/run\/mos\/installer-media/u);
+  assert.ok(script.includes(`-e ${INSTALLER_MEDIA_MARKER}`), 'reads the marker the gate leaves');
   assert.doesNotMatch(script, /lsblk|findmnt|\/sys\/block/u);
   // Nothing is stripped out of /etc/issue, because nothing is written into it.
   assert.doesNotMatch(script, /awk -v b=/u);

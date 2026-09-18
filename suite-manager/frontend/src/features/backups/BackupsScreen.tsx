@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 
-import { ServerLoginNotice } from '../../components/ServerLoginNotice';
 import { AdvancedPanel, Icon, Notice, Panel, PanelBody, PanelHead, PanelItem, PanelList, Select, Spinner } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
 import { DestinationsPanel } from './DestinationsPanel';
@@ -44,7 +43,7 @@ import {
   type ArchiveKey,
   type RotationResult,
 } from './model';
-import { type RevealedRecoveryKey } from '../../components/RecoveryKeySecret';
+import { fetchRecoveryKey, markRecoveryKeySaved, type RevealedRecoveryKey } from '../../lib/recovery-key';
 import { readVaultView, startupOf, type VaultView } from '../../lib/vault';
 
 type Dialog =
@@ -200,7 +199,7 @@ export function BackupsScreen() {
     setBusy('recovery-reveal');
     setKeyError('');
     try {
-      setRevealedKey(await post<RevealedRecoveryKey>('recovery-key/reveal', { password }, 'Unable to show the recovery key.'));
+      setRevealedKey(await fetchRecoveryKey(password));
     } catch (caught) {
       setKeyError(caught instanceof Error ? caught.message : 'Unable to show the recovery key.');
     } finally {
@@ -236,7 +235,7 @@ export function BackupsScreen() {
     setBusy('recovery-acknowledge');
     setKeyError('');
     try {
-      await post('recovery-key/acknowledge', {}, 'Unable to record that you saved the recovery key.');
+      await markRecoveryKeySaved();
       closeDialog();
       await load().catch(() => undefined);
       if (pending) await pending();
@@ -484,15 +483,6 @@ export function BackupsScreen() {
             <p className="suite-bk-working"><Spinner />Loading your backups</p>
           </PanelBody>
         </Panel>
-      </div>
-    </section>;
-  }
-
-  if (status?.serverLoginUnsaved) {
-    return <section className="mos-shell suite-backups">
-      <div className="mos-page">
-        {hero}
-        <ServerLoginNotice what="Backups and restores" />
       </div>
     </section>;
   }
