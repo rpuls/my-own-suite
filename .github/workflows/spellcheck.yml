@@ -1,0 +1,40 @@
+name: Spell Check
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spellcheck-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  spellcheck:
+    name: Docs and site copy
+    runs-on: ubuntu-latest
+    steps:
+      # Full history so the action can diff against the PR or push base.
+      # incremental_files_only keeps a leftover typo in an untouched file
+      # from blocking a contributor's first PR.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check spelling
+        uses: streetsidesoftware/cspell-action@6f3c77c1406bc930f944ba97e9801a22e42caf58 # v9.1.0
+        with:
+          config: cspell.json
+          incremental_files_only: true
+          files: |
+            site/src/content/**/*.{md,mdx}
+            site/src/components/**/*.astro
+            site/src/pages/**/*.astro
+            docs/**/*.md
+            apps/*/README.md
+            *.md
+            !CHANGELOG.md
+            suite-manager/frontend/src/**/*.tsx

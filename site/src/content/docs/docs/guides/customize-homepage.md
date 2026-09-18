@@ -9,7 +9,7 @@ The Home dashboard is the page your household actually lives on, so it should lo
 
 The **Add to Homepage** dialog covers the common cases without touching any configuration:
 
-- **A website or shortcut** — any link you want on the dashboard: your webmail, the school portal, a favorite site.
+- **A website or shortcut** — any link you want on the dashboard: your webmail, the school portal, a favourite site.
 - **An app on your home network** — something else already running in your house (a printer's admin page, a NAS, Home Assistant). Give it a name and its address and it becomes a first-class tile.
 
 Tiles for apps installed through MOS appear automatically and stay correct on their own — when your suite's domain changes (say, after [setting up HTTPS](/docs/guides/https-domain/)), MOS-managed tiles update themselves. Links you added by hand are yours: MOS never rewrites them.

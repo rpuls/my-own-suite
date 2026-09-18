@@ -35,7 +35,7 @@ The apps in the catalog are developed by other teams and organizations. Each one
 
 My Own Suite can install app packages from a source you supply yourself, such as a repository URL you paste in. These are **unverified**: we have not reviewed them, we make no representation about their safety, licensing, or privacy, and they are not covered by any assessment we publish.
 
-Installing one builds it from the publisher's own instructions, which execute on your server. You are choosing to trust that publisher — not My Own Suite — and the decision, along with anything that follows from it, is yours. MOS shows you what a package asks for before you install it and constrains what it may request; that is a safeguard, not a guarantee, and not a substitute for your own judgment.
+Installing one builds it from the publisher's own instructions, which execute on your server. You are choosing to trust that publisher — not My Own Suite — and the decision, along with anything that follows from it, is yours. MOS shows you what a package asks for before you install it and constrains what it may request; that is a safeguard, not a guarantee, and not a substitute for your own judgement.
 
 ## Logos in the planner
 
