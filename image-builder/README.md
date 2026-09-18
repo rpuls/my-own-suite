@@ -150,9 +150,12 @@ Written to a USB stick with Rufus (DD mode) or balenaEtcher, and booted:
   internal disk big enough, in kernel-name order so the numbers do not move
   between boots, each annotated with what it already holds — a picker that printed
   only NAME/SIZE/MODEL would trade a safe refusal for a confident mistake. The
-  last option declines. A number then `ERASE` copies the image over, expands it to
-  fill the disk, and asks you to remove the stick and reboot. Anything it does not
-  recognise asks again —
+  last option declines. A number then `ERASE` freezes the stick's filesystem,
+  copies it over, gives the copy its own identity, and restarts on Enter; you
+  pull the stick as the screen goes dark, never before, because the running
+  system is on it. Every step after the copy reports its failure on screen and
+  waits, rather than continuing to a disk that is not a finished install.
+  Anything it does not recognise asks again —
   **not installing has to be chosen, never arrived at.** The prompt this replaced
   compared the answer to `YES` exactly, so a lowercase `yes` cancelled, the suite
   came up on the stick looking installed, and the machine stopped booting the
@@ -162,8 +165,11 @@ Written to a USB stick with Rufus (DD mode) or balenaEtcher, and booted:
 - `mos-ssh-hostkeys` gives the machine its own identity, and `mos-console-login`
   its own server login. The installer clears the stick's host keys, machine-id
   and journal from the copy it makes, so nothing of the stick's identity reaches
-  the disk. The disk itself belongs to `mos-vault.service`, which grows the
-  system partition to its cap and gives the rest to the encrypted vault; it skips
+  the disk. The disk itself belongs to `mos-vault.service`, which fits the copied
+  partition table to the disk it landed on, grows the system partition to its
+  cap and gives the rest to the encrypted vault; the installer lays out nothing,
+  so the same first boot happens whether the image arrived by stick or was
+  written straight to the disk, which is what the release verify does. It skips
   removable media, so choosing not to install leaves the stick a working
   installer rather than expanding it to fill itself, and it creates no vault
   there either. It leaves `/run/mos/installer-media` behind on the stick, which

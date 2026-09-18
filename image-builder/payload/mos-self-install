@@ -165,43 +165,63 @@ while :; do
 done
 
 printf '\n  Copying. This takes a few minutes and must not be interrupted.\n\n'
+# The stick is a live, writable root while it is copied, and remounting a running
+# root read-only fails, so the filesystem is frozen instead: writes wait until the
+# copy is done, and the copy is one consistent moment rather than a smear.
 sync
-mount -o remount,ro / 2>/dev/null || true
-
+fsfreeze -f /
+trap 'fsfreeze -u / 2>/dev/null || true' EXIT
 dd if="$root_disk" of="$target" bs=4M conv=fsync status=progress
+fsfreeze -u /
+trap - EXIT
 sync
 
-printf '\n  Expanding the system to fill the disk.\n'
-partprobe "$target" 2>/dev/null || true
-sgdisk -e "$target" >/dev/null 2>&1 || true
-partprobe "$target" 2>/dev/null || true
+# Everything after the copy says what failed and waits to be read. The first
+# install that skipped its identity clean did so silently, and the only evidence
+# was a disk carrying the stick's host keys.
+fail_after_copy() {
+  printf '\n  The copy is on %s, but this step failed:\n\n      %s\n\n' "$target_name" "$1"
+  printf '  That disk may boot, but it is not a finished install. Photograph this\n'
+  printf '  screen, then press Enter to continue from the USB stick.\n'
+  printf '  > '
+  read -r _ || true
+  exit 1
+}
 
-last_partition="$(lsblk -nrpo NAME,TYPE "$target" | awk '$2 == "part" { print $1 }' | tail -n1)"
-if [ -n "$last_partition" ]; then
-  partition_number="$(printf '%s' "$last_partition" | grep -oE '[0-9]+$' || true)"
-  if [ -n "$partition_number" ]; then
-    growpart "$target" "$partition_number" >/dev/null 2>&1 || true
-    partprobe "$target" 2>/dev/null || true
-  fi
-  e2fsck -fy "$last_partition" >/dev/null 2>&1 || true
-  resize2fs "$last_partition" >/dev/null 2>&1 || true
+# Nothing here lays the disk out. The vault gate does that on the disk's first
+# boot: it fits the copied partition table to the disk, grows the system to its
+# cap and gives the rest to the vault. A copy step that grew the system to fill
+# the disk would leave the gate, which never shrinks, nowhere to put the vault.
+# Retried, because udev may still hold a partition open from probing the disk
+# that was just overwritten; three refusals in a row are a fault to read.
+for attempt in 1 2 3; do
+  if blockdev --rereadpt "$target" 2>/dev/null; then break; fi
+  [ "$attempt" -lt 3 ] || fail_after_copy 'the kernel would not re-read the copied partition table'
+  udevadm settle || true
+done
+udevadm settle || fail_after_copy 'the copied partitions did not appear'
+source_parts="$(lsblk -nro TYPE "$root_disk" | grep -c part || true)"
+target_parts="$(lsblk -nro TYPE "$target" | grep -c part || true)"
+[ "$source_parts" = "$target_parts" ] || fail_after_copy "the kernel still shows ${target_parts} partitions on the disk; the copy has ${source_parts}"
 
-  # The stick was running while it was copied, so the copy carries the stick's
-  # identity: its SSH host keys, its machine-id and its journal so far. Cleared
-  # here so the disk's first boot makes its own, as a fresh install would, and
-  # two machines installed from one stick never share a host key or a DHCP id.
-  target_root="$(mktemp -d)"
-  if mount "$last_partition" "$target_root" 2>/dev/null; then
-    rm -f "$target_root"/etc/ssh/ssh_host_*
-    : > "$target_root/etc/machine-id"
-    rm -f "$target_root/var/lib/dbus/machine-id"
-    rm -rf "$target_root"/var/log/journal/*
-    sync
-    umount "$target_root"
-  fi
-  rmdir "$target_root" 2>/dev/null || true
-fi
+# The stick was running while it was copied, so the copy carries the stick's
+# identity: its SSH host keys, its machine-id and its journal so far. Cleared
+# here so the disk's first boot makes its own, as a fresh install would, and
+# two machines installed from one stick never share a host key or a DHCP id.
+# The system partition is found by the number the stick's own root has, and
+# mounted under /run, a tmpfs, so nothing here depends on the root being writable.
+root_partn="$(lsblk -nro PARTN "$root_source")"
+system_partition="$(lsblk -nrpo NAME,PARTN "$target" | awk -v n="$root_partn" '$2 == n { print $1 }')"
+[ -n "$system_partition" ] || fail_after_copy "partition ${root_partn} did not appear on the disk"
+target_root=/run/mos-self-install/target
+mkdir -p "$target_root"
+mount_error="$(mount "$system_partition" "$target_root" 2>&1)" || fail_after_copy "could not open ${system_partition}: ${mount_error}"
+rm -f "$target_root"/etc/ssh/ssh_host_*
+: > "$target_root/etc/machine-id"
+rm -f "$target_root/var/lib/dbus/machine-id"
+rm -rf "$target_root"/var/log/journal/*
 sync
+umount "$target_root"
 
 # The image carries its bootloader at the removable-media fallback path only, so
 # a fixed disk boots solely on firmware that tries EFI/BOOT/BOOTX64.EFI unasked.
@@ -258,7 +278,11 @@ if [ "$boot_entry_registered" -eq 0 ]; then
   printf '  This machine'"'"'s firmware would not take a boot entry, so it may still\n'
   printf '  need %s selected as its boot device in the BIOS/UEFI setup screen.\n\n' "$target_name"
 fi
-printf '  Remove the USB stick now, then press Enter to restart.\n'
+# The restart comes first: this script, its shell and the reboot command all live
+# on the stick, and the first hardware install pulled it at this prompt and
+# watched the screen fill with read errors while Enter did nothing.
+printf '  Press Enter to restart. Remove the USB stick as soon as the screen goes\n'
+printf '  dark; the machine then starts from its own disk.\n'
 printf '  > '
 read -r _ || true
 sync

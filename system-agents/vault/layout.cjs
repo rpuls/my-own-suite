@@ -77,9 +77,10 @@ function planLayout({ diskBytes, lastUsableSector: reportedLastUsable, sectorSiz
 
   const sectorsPerAlignment = Math.max(1, Math.floor(ALIGNMENT_BYTES / sectorSize));
   // The partition table's own last usable LBA when the caller has it, because a
-  // table that reserves more than the standard 33 sectors — or one written for
-  // a disk that has since been imaged onto a slightly different one — knows
-  // better than this arithmetic does.
+  // table that reserves more than the standard 33 sectors knows better than
+  // this arithmetic does. The caller has fitted the table to the disk first;
+  // an image's table otherwise ends where the build's disk did, and the
+  // arithmetic below would read that as a disk that is already full.
   const lastUsable = Number.isInteger(reportedLastUsable)
     ? Math.min(reportedLastUsable, lastUsableSector({ diskBytes, sectorSize }))
     : lastUsableSector({ diskBytes, sectorSize });

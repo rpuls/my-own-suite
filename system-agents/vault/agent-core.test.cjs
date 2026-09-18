@@ -60,6 +60,7 @@ function adapter(overrides = {}) {
     enableSwapfile: record('enableSwapfile'),
     ensureDirectory: record('ensureDirectory'),
     enrollTpm: record('enrollTpm', overrides.enrollTpm ?? { enrolled: true, pcrs: [7] }),
+    fitTableToDisk: record('fitTableToDisk'),
     generateRecoveryKey: record('generateRecoveryKey', { key: KEY }),
     growFilesystem: record('growFilesystem'),
     inspectDisk: record('inspectDisk', overrides.disk ?? disk()),
@@ -107,6 +108,10 @@ test('first boot claims the disk, encrypts the vault and moves owner data into i
   const result = await new VaultAgentCore(fake).open();
 
   assert.deepEqual(result, { created: true, opened: true, vault: true });
+  // The image's table ends where the build's disk did; read before it is fitted,
+  // a 40 GB disk plans as "already full". The release verify boots exactly that.
+  const order = fake.calls.map((call) => call[0]);
+  assert.ok(order.indexOf('fitTableToDisk') < order.indexOf('inspectDisk'), 'the table is fitted to this disk before the layout reads it');
   assert.equal(named(fake.calls, 'resizePartition').length, 1, 'the system partition grows to its cap');
   assert.equal(named(fake.calls, 'luksFormat').length, 1);
   assert.equal(named(fake.calls, 'luksFormat')[0][1].key, KEY, 'the vault is formatted with the recovery key');
@@ -132,6 +137,7 @@ test('a machine that has not been armed creates nothing and records nothing', as
 
   assert.deepEqual(result, { opened: true, reason: 'not-armed', vault: false });
   assert.equal(named(fake.calls, 'luksFormat').length, 0);
+  assert.equal(named(fake.calls, 'fitTableToDisk').length, 0, 'the bake disk\'s table is not touched');
   assert.equal(named(fake.calls, 'inspectDisk').length, 0);
   assert.equal(named(fake.calls, 'writeDescriptor').length, 0, 'no descriptor travels in the image');
   assert.equal(fake.state.descriptor, null);
@@ -255,6 +261,7 @@ test('a machine booted from the installer stick is never partitioned and records
   const result = await new VaultAgentCore(fake).open();
 
   assert.deepEqual(result, { opened: true, reason: 'running-from-installer-media', vault: false });
+  assert.equal(named(fake.calls, 'fitTableToDisk').length, 0, 'the stick\'s table is not touched');
   assert.equal(named(fake.calls, 'inspectDisk').length, 0, 'the disk is not even inspected');
   assert.equal(named(fake.calls, 'resizePartition').length, 0);
   assert.equal(named(fake.calls, 'writeDescriptor').length, 0, 'no descriptor is dd-ed onto the target');

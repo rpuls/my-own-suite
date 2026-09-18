@@ -454,6 +454,12 @@ class VaultAgentCore {
    * First boot. Claims the rest of the disk, encrypts the part of it that holds
    * owner data, and moves what already exists on the system partition into it.
    *
+   * The image was written to this disk byte for byte, so its partition table
+   * still ends where the build's disk did. It is fitted to this disk before the
+   * layout reads it — the only step here that runs whatever the plan turns out
+   * to be, because a plan made on the build's geometry is a plan for a disk
+   * that is not there.
+   *
    * The move happens here, once, while dockerd and Suite Manager have never
    * started — that is the only moment these directories can be relocated without
    * anything holding them open, and it is why this runs before them rather than
@@ -467,6 +473,7 @@ class VaultAgentCore {
    * settings, by an owner who has had a chance to understand the trade.
    */
   async create() {
+    await this.adapter.fitTableToDisk();
     const disk = await this.adapter.inspectDisk();
     const plan = planLayout(disk);
 

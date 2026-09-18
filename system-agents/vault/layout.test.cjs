@@ -113,8 +113,9 @@ test('a 4K-native disk is aligned and reserved in its own sectors', () => {
 });
 
 // The image is shrunk and its GPT rewritten at build time, then written to a
-// disk of some other size. When the table reports a last usable sector, that is
-// the authority — but never past the end of the disk actually underneath it.
+// disk of some other size, and the gate fits the table to that disk before it
+// plans. When the fitted table reports a last usable sector, that is the
+// authority — but never past the end of the disk actually underneath it.
 test('a partition table that reports its own last usable sector is believed', () => {
   const layout = freshImage({ diskGib: 256 });
   const reserved = Math.floor(layout.diskBytes / SECTOR) - 5000;

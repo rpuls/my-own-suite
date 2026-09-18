@@ -152,18 +152,39 @@ class SystemVaultAdapter {
     await atomicWriteJson(descriptorPath, descriptor);
   }
 
+  // The partition the root filesystem is on, and the whole disk under it.
+  async rootDisk() {
+    const source = await quiet('findmnt', ['-no', 'SOURCE', '/']);
+    const parent = source ? (await quiet('lsblk', ['-no', 'PKNAME', source])).split('\n')[0].trim() : '';
+    return { device: parent ? `/dev/${parent}` : null, parent, source };
+  }
+
   // The same guard the installer carries: a machine running from the stick is a
   // machine whose owner declined the install, and partitioning it would eat the
   // installer they are still running.
   async isRemovableRoot() {
-    const source = await quiet('findmnt', ['-no', 'SOURCE', '/']);
-    if (!source) return true;
-    const parent = (await quiet('lsblk', ['-no', 'PKNAME', source])).split('\n')[0].trim();
-    if (!parent) return true;
-    const transport = (await quiet('lsblk', ['-dno', 'TRAN', `/dev/${parent}`])).trim();
+    const { device, parent } = await this.rootDisk();
+    if (!device) return true;
+    const transport = (await quiet('lsblk', ['-dno', 'TRAN', device])).trim();
     let removable = '0';
     try { removable = (await fsp.readFile(`/sys/block/${parent}/removable`, 'utf8')).trim(); } catch {}
     return transport === 'usb' || removable === '1';
+  }
+
+  /**
+   * Moves the backup GPT to the end of the disk and sets the table's last
+   * usable sector to match. The image's table was written for the disk it was
+   * built on; copied onto any other it still ends where that one did, and every
+   * sector past that is invisible to the layout until this has run.
+   */
+  async fitTableToDisk() {
+    const { device } = await this.rootDisk();
+    if (!device) throw fail('VAULT_DISK_UNREADABLE', 'MOS could not tell which disk it is running from.');
+    try {
+      await run('sfdisk', ['--no-reread', '--force', '--relocate', 'gpt-bak-std', device]);
+    } catch (error) {
+      throw fail('VAULT_DISK_UNREADABLE', 'MOS could not fit this machine\'s partition table to its disk.', error);
+    }
   }
 
   /**
@@ -173,11 +194,8 @@ class SystemVaultAdapter {
    * needs and exactly what it must not guess.
    */
   async inspectDisk() {
-    const source = await quiet('findmnt', ['-no', 'SOURCE', '/']);
-    if (!source) throw fail('VAULT_DISK_UNREADABLE', 'MOS could not tell which disk it is running from.');
-    const parent = (await quiet('lsblk', ['-no', 'PKNAME', source])).split('\n')[0].trim();
-    if (!parent) throw fail('VAULT_DISK_UNREADABLE', 'MOS could not tell which disk it is running from.');
-    const device = `/dev/${parent}`;
+    const { device, source } = await this.rootDisk();
+    if (!device) throw fail('VAULT_DISK_UNREADABLE', 'MOS could not tell which disk it is running from.');
 
     let table;
     try {
