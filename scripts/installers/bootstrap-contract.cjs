@@ -197,10 +197,14 @@ fi
 
 apt-get update
 apt-get install -y bzip2 ca-certificates curl cryptsetup-bin docker.io git gnupg ufw
-# The TPM half is best effort: these package names moved between releases, and a
-# machine without them still gets an encrypted vault that its owner unlocks by
-# hand. Failing the whole install over them would be the wrong trade.
-apt-get install -y systemd-cryptsetup tpm2-tools libcryptsetup-token-systemd-tpm2 >/dev/null 2>&1 || true
+# The TPM half is best effort: a machine without these still gets an encrypted
+# vault that its owner unlocks by hand, so failing the whole install over them
+# would be the wrong trade. On Ubuntu 24.04 systemd-cryptenroll and the TPM2
+# token plugin ship inside the systemd package, but the three tss2 libraries
+# systemd loads for them on demand are only Suggests, and a server install has
+# been seen with two of the three. tpm2-tools reads the chip's lockout counter.
+apt-get install -y libtss2-esys-3.0.2-0t64 libtss2-mu-4.0.1-0t64 libtss2-rc0t64 tpm2-tools \\
+  || echo '[mos] The TPM libraries did not install; this machine will ask for its recovery key after every restart unless a later update installs them.' >&2
 systemctl enable --now docker.service
 echo '[mos] Pulling the pinned Homepage image while the control plane builds.'
 docker pull ${shellQuote(HOMEPAGE_IMAGE)} &
@@ -604,8 +608,8 @@ MOS_DIAGNOSTICS_AGENT_UNIT
 cat > /etc/systemd/system/mos-lab-reset-agent.service <<MOS_LAB_RESET_AGENT_UNIT
 [Unit]
 Description=MOS lab reset agent
-After=network-online.target docker.service
-Requires=docker.service
+After=mos-vault.service network-online.target docker.service
+Requires=mos-vault.service docker.service
 Wants=network-online.target
 
 [Service]

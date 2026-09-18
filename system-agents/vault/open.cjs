@@ -30,10 +30,17 @@ async function main() {
   }
   if (result.created) {
     log('created the encrypted vault and moved app data, agent state and secrets into it');
+    if (result.chip) {
+      log(result.chip.reason === 'no-tpm'
+        ? 'no security chip found; this machine asks for its recovery key after every restart'
+        : 'the security chip could not be taught the key; this machine asks for its recovery key until Suite Manager repairs the chip');
+      for (const line of result.chip.detail || []) log(line);
+    }
     return 0;
   }
   if (result.opened) {
     log(`vault open${result.unlockedBy ? ` (${result.unlockedBy})` : ''}`);
+    if (result.resealed) log('the security chip was taught the key again; the next restart opens on its own');
     return 0;
   }
 

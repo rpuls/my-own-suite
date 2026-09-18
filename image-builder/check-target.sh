@@ -102,6 +102,17 @@ if [ -e /mnt/target/etc/mos/vault.json ]; then
   else
     fail "the vault was created without a working TPM keyslot — this machine would ask for the recovery key after every restart"
   fi
+  # Nobody has signed in to this machine, so the key must still be escrowed on
+  # the plaintext side: the owner has not been shown it, and a vault that could
+  # lock before that would lock them out of a key they never had.
+  pending=/mnt/target/etc/mos/vault-recovery-key
+  if [ -s "$pending" ] && [ "$(stat -c %a "$pending")" = '600' ]; then
+    pass "the recovery key is escrowed, root-only, until the owner confirms they have saved it"
+  elif [ -e "$pending" ]; then
+    fail "the escrowed recovery key has mode $(stat -c %a "$pending"), not 600"
+  else
+    fail "no escrowed recovery key — a chip that refuses before the owner has signed in would lock them out of a key they were never shown"
+  fi
 else
   fail "no /etc/mos/vault.json — the first boot never recorded what it did to the disk"
 fi
@@ -153,6 +164,18 @@ fi
 # all. That is the check working, not the check failing, and the assertion it
 # used to make belongs in the browser suite that can sign in and look at the
 # panel. The offline check still runs on an image that has no vault.
+# The login itself stays on the console, as its own file after the address
+# banner, until the owner confirms it in Suite Manager. The banner clears the
+# screen before it paints, so a login block anywhere before it would be painted
+# and wiped in the same instant — the first hardware install hid its login that
+# way, and the owner wrote down the installer stick's instead.
+login_block=/mnt/target/etc/issue.d/20-mos-server-login.issue
+if [ -s "$login_block" ] && grep -q 'password' "$login_block"; then
+  pass "the server login is on the console, after the banner, until the owner confirms it"
+else
+  fail "no server login on the console — the owner has no way to reach this machine's shell"
+fi
+
 handover=/mnt/target/var/lib/mos/suite-manager/console-login.json
 if [ ! -e "$handover" ] && [ -e /mnt/target/etc/mos/vault.json ]; then
   pass "console login handover is inside the encrypted vault, so it is not readable from a powered-off disk"

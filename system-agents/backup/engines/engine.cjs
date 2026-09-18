@@ -20,8 +20,8 @@ const REPOSITORY_DIRNAME = 'repository';
 const RESTORE_POINTS_DIRNAME = 'restore-points';
 const REPOSITORY_SIDECAR_FILENAME = 'MOS-REPOSITORY.json';
 
-function createEngine({ agentStateDir, binaryDir, keyFile, onKeyUsed } = {}) {
-  return new ResticEngine({ agentStateDir, binaryDir, keyFile, onKeyUsed });
+function createEngine({ agentStateDir, binaryDir, keys, onKeyUsed } = {}) {
+  return new ResticEngine({ agentStateDir, binaryDir, keys, onKeyUsed });
 }
 
 function backupsRoot(destinationId) { return path.join(destinationId, BACKUPS_DIRNAME); }

@@ -253,6 +253,9 @@ export function ConsoleLoginCard() {
             run on their own and the disk can open after a restart. What you are saving is a second copy, for
             the day this machine cannot be asked: a security chip that refuses after a firmware change, or a
             server that is gone and a backup drive that is all that is left.
+            {vault?.vault.handover === 'pending'
+              ? ' Until you confirm below, a copy also sits on the unencrypted part of the disk so this server can always open; confirming removes it, and from then on the encryption is protecting your data.'
+              : ''}
           </p>
         </Notice>
       </> : null}

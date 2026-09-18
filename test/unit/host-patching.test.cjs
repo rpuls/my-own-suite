@@ -114,7 +114,12 @@ test('an empty hold list is written, not skipped', () => {
 
 test('the post-patch check runs at boot and after an unattended run', () => {
   const unit = renderPostPatchUnit('/opt/mos/repo', '/var/lib/mos');
-  assert.match(unit, /After=network-online\.target docker\.service apt-daily-upgrade\.service/u);
+  // It writes its report under the state root, which the vault mounts over, so
+  // it waits for the gate like everything else that touches owner data: on a
+  // locked boot it would otherwise write a false "everything is down" report to
+  // the plaintext side, which is what the first hardware install found.
+  assert.match(unit, /^Requires=mos-vault\.service$/mu);
+  assert.match(unit, /After=mos-vault\.service network-online\.target docker\.service apt-daily-upgrade\.service/u);
   assert.match(unit, /WantedBy=multi-user\.target apt-daily-upgrade\.service/u);
   // Wanted by a target and ordered after it is an ordering cycle, which systemd
   // resolves by dropping a job from the boot.

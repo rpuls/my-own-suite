@@ -463,8 +463,8 @@ function renderHomepageSystemdUnit({
 } = {}) {
   return `[Unit]
 Description=MOS Homepage dashboard
-After=docker.service network-online.target
-Requires=docker.service
+After=mos-vault.service docker.service network-online.target
+Requires=mos-vault.service docker.service
 Wants=network-online.target
 
 [Service]

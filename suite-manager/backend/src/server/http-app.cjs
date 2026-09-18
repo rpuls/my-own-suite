@@ -860,6 +860,17 @@ function createMOSServer({
         }
         let enrolled;
         try {
+          // A password the owner may forget must not become the only way in
+          // before they hold the key that is the other way in — and while the
+          // key is still escrowed on the plaintext side, the switch would
+          // protect nothing anyway.
+          if (wanted && (await vaultAgent.status()).handover === 'pending') {
+            jsonResponse(response, 409, {
+              code: 'VAULT_KEY_UNSAVED',
+              error: 'Save your recovery key from the Home page first. It is the only way back in if you forget your password.',
+            });
+            return;
+          }
           enrolled = await vaultAgent.enrollChip({
             mode: wanted ? VAULT_TPM_MODES.PASSWORD : VAULT_TPM_MODES.AUTOMATIC,
             pin: wanted ? String(body.password) : null,

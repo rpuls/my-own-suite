@@ -46,7 +46,10 @@ test('a machine with no descriptor, or an unreadable one, has no vault', (contex
   fs.writeFileSync(descriptor, JSON.stringify({ reason: 'disk-already-full', state: 'unsupported', version: 1 }));
   assert.equal(machineHasVault(descriptor), false);
 
-  fs.writeFileSync(descriptor, JSON.stringify({ device: '/dev/sda3', state: 'unlocked', version: 1 }));
+  // The descriptor names the device and never a state: whether the vault is open
+  // is the agent's answer, and a file that claimed it would go stale at the next
+  // locked boot.
+  fs.writeFileSync(descriptor, JSON.stringify({ device: '/dev/sda3', tpm: null, version: 1 }));
   assert.equal(machineHasVault(descriptor), true);
 });
 

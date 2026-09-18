@@ -159,14 +159,24 @@ Written to a USB stick with Rufus (DD mode) or balenaEtcher, and booted:
   moment the stick came out.
 - On the internal disk it sees non-removable media and does nothing, so the same
   image is both the installer and the installed system.
-- `mos-ssh-hostkeys` and `mos-first-boot` give the machine its own identity and
-  its own server login. The disk itself belongs to `mos-vault.service`, which
-  grows the system partition to its cap and gives the rest to the encrypted
-  vault; it skips removable media, so choosing not to install leaves the stick a
-  working installer rather than expanding it to fill itself, and it creates no
-  vault there either.
+- `mos-ssh-hostkeys` gives the machine its own identity, and `mos-console-login`
+  its own server login. The installer clears the stick's host keys, machine-id
+  and journal from the copy it makes, so nothing of the stick's identity reaches
+  the disk. The disk itself belongs to `mos-vault.service`, which grows the
+  system partition to its cap and gives the rest to the encrypted vault; it skips
+  removable media, so choosing not to install leaves the stick a working
+  installer rather than expanding it to fill itself, and it creates no vault
+  there either. It leaves `/run/mos/installer-media` behind on the stick, which
+  is how the units after it know which medium they are on.
+- `mos-console-login` waits for the vault, because its run-once record lives
+  inside it, and never runs on the stick, whose login would be dead the moment
+  the disk is written. It writes the login as its own file under `/etc/issue.d/`,
+  after the banner, where it stays until the owner confirms it in Suite Manager.
 - Running from the stick, `mos-first-boot` leads with **RUNNING FROM THE USB
   STICK** and says nothing is installed, instead of the completion banner below.
+  On an installed machine whose vault did not open it leads with **Locked.** and
+  says where to enter the key; only a machine whose gate succeeded reads
+  **Installed and running.**
 - `mos-first-boot` then writes the completion banner to `/etc/issue.d/`. It states
   the address reservation both doors need, then offers each door in one line, and
   points at the docs for the rest; a login screen is the wrong place for a guide.

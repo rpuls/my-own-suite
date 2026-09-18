@@ -52,12 +52,20 @@ async function withServer(fn, options = {}) {
     async status() { return { contractVersion: APP_AGENT_CONTRACT_VERSION }; },
     ...(options.appAgent || {}),
   };
+  // A vault agent that is up and has no vault, so the sign-in and password
+  // hooks that ask it have something to ask; tests about a vault pass their own.
+  const vaultAgent = {
+    async enrollChip() { return { ok: true, vault: false }; },
+    async status() { return { state: 'unknown' }; },
+    ...(options.vaultAgent || {}),
+  };
   const server = createMOSServer({
     frontendDistDir: await tempFrontendDistDir(),
     homeHost: '127.0.0.1',
     stateDir: await tempStateDir(),
     ...options,
     appAgent,
+    vaultAgent,
   });
   const baseUrl = await listen(server);
 
@@ -3035,6 +3043,37 @@ test('startup protection is confirmed with the owner password, which is also wha
     });
     assert.equal(off.status, 200);
     assert.deepEqual(enrollments[1], { mode: 'automatic', pin: null }, 'turning it off enrolls no password at all');
+  }, { homeHost: 'home.test', vaultAgent });
+});
+
+// While the key is still escrowed on the plaintext side the switch would protect
+// nothing, and a password the owner may forget must not become the only way in
+// before they hold the key that is the other way in.
+test('startup protection cannot be turned on before the recovery key has been handed over', async () => {
+  const enrollments = [];
+  const vaultAgent = {
+    async enrollChip(input) { enrollments.push(input); return { mode: input.mode, ok: true, slot: 'enrolled' }; },
+    async status() { return { handover: 'pending', state: 'unlocked', tpm: { mode: 'automatic', slot: 'enrolled' }, unlocksItself: true }; },
+  };
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const refused = await hostRequest(baseUrl, '/suite-manager/api/settings/vault/startup-password', {
+      body: JSON.stringify({ enabled: true, password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(refused.status, 409);
+    assert.equal(refused.json().code, 'VAULT_KEY_UNSAVED');
+    assert.equal(enrollments.length, 0);
+
+    // Turning it off is always allowed: that is the direction that cannot lock anyone out.
+    const off = await hostRequest(baseUrl, '/suite-manager/api/settings/vault/startup-password', {
+      body: JSON.stringify({ enabled: false, password: 'correct horse battery' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(off.status, 200);
   }, { homeHost: 'home.test', vaultAgent });
 });
 

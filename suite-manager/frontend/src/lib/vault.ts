@@ -11,6 +11,9 @@ export type VaultView = {
   encrypted: boolean;
   recoveryKey: { acknowledged?: boolean; fingerprint?: string } | null;
   vault: {
+    // `pending` until the owner confirms they saved the key: a copy still sits
+    // on the unencrypted part of the disk so the server can always open.
+    handover?: 'done' | 'pending';
     sentence?: string | null;
     state: 'absent' | 'locked' | 'unknown' | 'unlocked' | 'unsupported';
     tpm?: { mode: 'automatic' | 'password'; slot: 'enrolled' | 'needs-repair' } | null;

@@ -53,8 +53,8 @@ const VAULT_TPM_MODES = { AUTOMATIC: 'automatic', PASSWORD: 'password' };
 const VAULT_TPM_SLOTS = { ENROLLED: 'enrolled', NEEDS_REPAIR: 'needs-repair' };
 
 /**
- * Whether this machine has a vault, given a descriptor, an agent status, or a
- * bare state string.
+ * Whether this machine has a vault, given an agent status or a bare state
+ * string. For the descriptor on disk, ask `machineHasVault`.
  *
  * `unknown` is deliberately false-y here and must never be shown to an owner as
  * "not encrypted" — it means MOS could not tell. Callers that put words on a
@@ -99,8 +99,11 @@ function readVaultDescriptor(descriptorPath = VAULT_DESCRIPTOR_PATH) {
   }
 }
 
+// A descriptor records decisions, not state: it names the device a vault was
+// made on, or the reason none was. Whether that vault is open right now is the
+// agent's to answer, never the file's.
 function machineHasVault(descriptorPath = VAULT_DESCRIPTOR_PATH) {
-  return vaultIsPresent(readVaultDescriptor(descriptorPath));
+  return Boolean(readVaultDescriptor(descriptorPath)?.device);
 }
 
 module.exports = {

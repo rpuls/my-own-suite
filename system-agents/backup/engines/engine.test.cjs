@@ -9,7 +9,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { ensureRepositoryKey, maskSecrets, repositoryProbeCause, repositoryProbeVerdict } = require('./engine-restic.cjs');
+const { maskSecrets, repositoryProbeCause, repositoryProbeVerdict } = require('./engine-restic.cjs');
 const { generate, isRecoveryKey } = require('../recovery-key.cjs');
 const { assertRepositoryEngine, createEngine, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage, writeRepositoryDescriptor } = require('./engine.cjs');
 const { assetFor, downloadUrl, ENGINE_RELEASES } = require('./engine-install.cjs');
@@ -26,19 +26,6 @@ test('the single engine exposes the whole surface under its own binary name', ()
   assert.equal(engine.name, ENGINE_NAME);
   assert.equal(path.basename(engine.binaryPath), ENGINE_NAME);
   for (const method of surface) assert.equal(typeof engine[method], 'function', `${ENGINE_NAME}.${method}`);
-});
-
-// The password is what makes the repository readable at all, so it is
-// generated once and reused; regenerating it would strand every earlier
-// backup on the drive. It is a recovery key rather than raw hex because the
-// owner holds the same string on paper.
-test('the repository key is a recovery key, generated once, kept private, and reused', async () => {
-  const root = await scratch();
-  const keyFile = path.join(root, 'agent-state', 'engine-key');
-  const key = ensureRepositoryKey(keyFile);
-  assert.equal(isRecoveryKey(key), true);
-  assert.equal(ensureRepositoryKey(keyFile), key);
-  if (process.platform !== 'win32') assert.equal(fs.statSync(keyFile).mode & 0o777, 0o600);
 });
 
 // Pre-release machines hold a 64-hex password. It is moved aside so the owner

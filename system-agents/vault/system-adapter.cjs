@@ -14,15 +14,15 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 
-const { VaultError } = require('./agent-core.cjs');
+const { INSTALLER_MEDIA_MARKER, VaultError } = require('./agent-core.cjs');
 const { describeFailure, runCommand } = require('../lib/command-output.cjs');
 const { fingerprint, generate } = require('../backup/recovery-key.cjs');
+const { RecoveryKeyStore } = require('../lib/recovery-key-store.cjs');
 
 // The GPT type GUID for a LUKS partition. Naming the partition for what it is
 // keeps a future MOS, a rescue disk and a curious owner from having to guess.
 const LUKS_PARTITION_TYPE = 'CA7D7CCB-63ED-4C53-861C-1742536059CC';
 const FILESYSTEM_LABEL = 'mos-vault';
-const BACKUP_AGENT_KEY_PATH = '/var/lib/mos/backup-agent/engine-key';
 // Written by `mos-image-finalize` as the last step of turning a baked VM into
 // the published image. Its absence is what stops the bake itself, and a cloud
 // install where MOS does not own the disk layout, from creating a vault.
@@ -93,6 +93,10 @@ function partitionNumber(node) {
 }
 
 class SystemVaultAdapter {
+  constructor({ keys = new RecoveryKeyStore() } = {}) {
+    this.keys = keys;
+  }
+
   now() {
     return new Date().toISOString();
   }
@@ -103,6 +107,37 @@ class SystemVaultAdapter {
 
   async isVaultArmed() {
     return fs.existsSync(VAULT_ARMED_PATH);
+  }
+
+  // The recovery key's files are the store's; this agent only ever asks. The
+  // acknowledgement is written to the same record by the backup agent, which is
+  // how "the owner has been shown the key" reaches the escrow without a socket.
+  async escrowKey(key) {
+    this.keys.escrow(key);
+  }
+
+  async hasEscrow() {
+    return this.keys.hasEscrow();
+  }
+
+  async readEscrow() {
+    return this.keys.readEscrow();
+  }
+
+  async keyAcknowledged() {
+    return this.keys.acknowledged();
+  }
+
+  async discardEscrow() {
+    this.keys.discardEscrow();
+  }
+
+  // Left for the units that run after the gate: the address banner and the
+  // login generator both behave differently on the installer stick, and this is
+  // the one place the answer is worked out.
+  async markInstallerMedia() {
+    await fsp.mkdir(path.dirname(INSTALLER_MEDIA_MARKER), { recursive: true });
+    await fsp.writeFile(INSTALLER_MEDIA_MARKER, '');
   }
 
   async readDescriptor(descriptorPath) {
@@ -395,8 +430,8 @@ class SystemVaultAdapter {
         timeoutMs: 120_000,
       });
       return { enrolled: true, pcrs: [Number(TPM_PCRS)], withPin: Boolean(pin) };
-    } catch {
-      return { enrolled: false, reason: 'tpm-refused' };
+    } catch (error) {
+      return { detail: describeFailure(error, 'systemd-cryptenroll'), enrolled: false, reason: 'tpm-refused' };
     } finally {
       try { await fsp.rm(unlockFile, { force: true }); } catch {}
     }
@@ -535,12 +570,7 @@ class SystemVaultAdapter {
   // file the backup agent uses as its repository password. Read rather than
   // held, because the only moment it is needed is a rekey.
   async readOwnKey() {
-    try {
-      const key = (await fsp.readFile(BACKUP_AGENT_KEY_PATH, 'utf8')).trim();
-      return key || null;
-    } catch {
-      return null;
-    }
+    return this.keys.readKey();
   }
 
   /**
@@ -613,10 +643,8 @@ class SystemVaultAdapter {
    * agent and no second secret for the owner to keep.
    */
   async publishRecoveryKey({ key }) {
-    if (fs.existsSync(BACKUP_AGENT_KEY_PATH)) return { published: false, reason: 'already-present' };
-    await fsp.mkdir(path.dirname(BACKUP_AGENT_KEY_PATH), { mode: 0o700, recursive: true });
-    await fsp.writeFile(BACKUP_AGENT_KEY_PATH, `${key}\n`, { encoding: 'utf8', mode: 0o600 });
-    await fsp.chmod(BACKUP_AGENT_KEY_PATH, 0o600);
+    if (this.keys.readKey()) return { published: false, reason: 'already-present' };
+    this.keys.writeKey(key);
     return { fingerprint: fingerprint(key), published: true };
   }
 
@@ -648,4 +676,4 @@ class SystemVaultAdapter {
   }
 }
 
-module.exports = { BACKUP_AGENT_KEY_PATH, LUKS_PARTITION_TYPE, SystemVaultAdapter, TPM_PCRS, VAULT_ARMED_PATH };
+module.exports = { LUKS_PARTITION_TYPE, SystemVaultAdapter, TPM_PCRS, VAULT_ARMED_PATH };

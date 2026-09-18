@@ -128,16 +128,11 @@ rm -rf /var/lib/cloud/instance /var/lib/cloud/instances /var/lib/cloud/data
 stage 'Resetting the server login so every machine generates its own'
 rm -f "$state_dir/console-login.json" "$state_dir/console-login.acknowledged"
 usermod -p '!' "$username"
-if [ -f /etc/issue ]; then
-  awk -v b='@@ISSUE_BEGIN@@' -v e='@@ISSUE_END@@' \
-    'index($0, b) { skip = 1 } !skip { print } index($0, e) { skip = 0 }' /etc/issue > /etc/issue.next
-  mv /etc/issue.next /etc/issue
-  chmod 0644 /etc/issue
-fi
+rm -f '@@ISSUE_FILE@@'
 
 stage 'Arming the first-boot units'
 systemctl daemon-reload
-systemctl enable mos-ssh-hostkeys.service mos-self-install.service mos-first-boot.service
+systemctl enable mos-ssh-hostkeys.service mos-self-install.service mos-console-login.service mos-first-boot.service
 systemctl disable mos-image-finalize.service
 
 stage 'Pruning container build cache'
@@ -213,7 +208,7 @@ stage 'Checking no vault was created during the bake'
 # refuses to create one until armed, and this is the second lock on that door:
 # it is release-stopping rather than best effort, because the failure is
 # invisible from outside and unfixable afterwards.
-if [ -e /etc/mos/vault.json ] || [ -e /etc/mos/vault-armed ]; then
+if [ -e /etc/mos/vault.json ] || [ -e /etc/mos/vault-armed ] || [ -e /etc/mos/vault-recovery-key ]; then
   log 'FATAL: this bake has vault state on it.'
   exit 1
 fi

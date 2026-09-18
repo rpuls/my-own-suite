@@ -197,6 +197,9 @@ const apiServer = http.createServer(async (request, response) => {
   const url = new URL(request.url || '/', 'http://localhost');
   if (request.method === 'GET' && url.pathname === '/v1/status') {
     try {
+      // Suite Manager asks here right after the owner acknowledges the key, so
+      // this is where the escrowed copy is discarded.
+      await core.settleHandover();
       respondJson(response, 200, await core.status());
     } catch (error) {
       respondJson(response, 500, { code: error?.code || 'VAULT_STATUS_FAILED', message: error?.message || 'The vault could not be read.' });
@@ -330,9 +333,10 @@ async function main() {
   await fsp.mkdir(path.dirname(socketPath), { recursive: true });
   if (fs.existsSync(socketPath)) await fsp.rm(socketPath, { force: true });
 
+  await core.settleHandover().catch((error) => log(`could not settle the key handover: ${error?.message || 'unknown error'}`));
   const status = await core.status().catch(() => ({ state: STATES.LOCKED }));
   await syncStatusPage(status);
-  log(`vault is ${status.state}${status.reason ? ` (${status.reason})` : ''}`);
+  log(`vault is ${status.state}${status.reason ? ` (${status.reason})` : ''}${status.handover === 'pending' ? ', recovery key not yet handed over' : ''}`);
 
   apiServer.listen(socketPath, () => fs.chmodSync(socketPath, 0o660));
   pageServer.listen(port, '127.0.0.1', () => log(`listening for the unlock form on 127.0.0.1:${port}`));

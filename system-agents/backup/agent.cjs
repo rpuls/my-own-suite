@@ -25,7 +25,8 @@ const { isObjectDestinationId, normalizeObjectDestination, ObjectDestinationRegi
 const { createEngine, ENGINE_MISSING_MESSAGE, ENGINE_NAME, readRepositoryDescriptor, repositoryUsage } = require('./engines/engine.cjs');
 const { fingerprint: recoveryKeyFingerprint, normalize: normalizeRecoveryKey } = require('./recovery-key.cjs');
 const { GuestKeyStore } = require('./guest-keys.cjs');
-const { RecoveryKeyRecord, recoveryKitFilename, recoveryKitText } = require('./recovery-kit.cjs');
+const { recoveryKitFilename, recoveryKitText } = require('./recovery-kit.cjs');
+const { RecoveryKeyStore } = require('../lib/recovery-key-store.cjs');
 const { rotateRecoveryKey: rotateKey } = require('./key-rotation.cjs');
 const { KnownDrives } = require('./known-drives.cjs');
 const { machineHasVault, readVaultDescriptor, vaultAsksForPassword } = require('../../shared/vault-contract.cjs');
@@ -714,7 +715,7 @@ const identity = {
     }
 
     engine.adoptRecoveryKey(key);
-    recoveryRecord.adopt(recoveryKeyFingerprint(key));
+    keyStore.adopt(recoveryKeyFingerprint(key));
     guestKeys.forget(destinationId);
     destinationResolver.forgetAll();
     return true;
@@ -787,13 +788,13 @@ const RECOVERY_KEY_GATED_ROUTES = Object.freeze(['/v1/backups', '/v1/schedule'])
 // Enforced by the agent as well as by the screen, so a page left open from
 // before the key existed cannot get past it.
 function assertRecoveryKeyAcknowledged(pathname, body = {}) {
-  if (!RECOVERY_KEY_GATED_ROUTES.includes(pathname) || recoveryRecord.acknowledged()) return;
+  if (!RECOVERY_KEY_GATED_ROUTES.includes(pathname) || keyStore.acknowledged()) return;
   if (pathname === '/v1/schedule' && body.enabled !== true) return;
   throw Object.assign(new Error(RECOVERY_KEY_UNACKNOWLEDGED), { code: 'RECOVERY_KEY_UNACKNOWLEDGED' });
 }
 
 function recoveryKeyStatus() {
-  const record = recoveryRecord.read();
+  const record = keyStore.readRecord();
   return {
     acknowledged: Boolean(record.acknowledgedAt),
     acknowledgedAt: record.acknowledgedAt,
@@ -878,7 +879,7 @@ async function rotateRecoveryKey() {
     attached: attachedDestinations,
     destinations: destinationResolver,
     engine,
-    record: recoveryRecord,
+    record: keyStore,
     rekeyDisk: async (nextKey) => {
       try {
         const result = await vaultAgent.rekey(nextKey);
@@ -988,10 +989,10 @@ async function scheduledRestorePoints(destinationId) {
   return points.map((point) => ({ automatic: point.automatic, createdAt: point.createdAt, initiator: point.initiator, path: point.locator }));
 }
 
-const recoveryRecord = new RecoveryKeyRecord({ agentStateDir });
+const keyStore = new RecoveryKeyStore({ stateDir: agentStateDir });
 const knownDrives = new KnownDrives({ agentStateDir });
 const progressPublisher = new ProgressPublisher({ dir: statusDir, filename: PROGRESS_FILENAME });
-const engine = createEngine({ agentStateDir, onKeyUsed: () => recoveryRecord.noteFirstUse() });
+const engine = createEngine({ agentStateDir, keys: keyStore, onKeyUsed: () => keyStore.noteFirstUse() });
 const objectRegistry = new ObjectDestinationRegistry({ agentStateDir });
 const backupSystem = new BackupSystemAdapter({ agentStateDir, repoDir, stateDir, stateRoot });
 const guestKeys = new GuestKeyStore({ agentStateDir });
@@ -1200,7 +1201,7 @@ if (require.main === module && process.argv[2] === '--worker') {
         return;
       }
       if (request.method === 'POST' && url.pathname === '/v1/recovery-key/acknowledge') {
-        recoveryRecord.acknowledge(recoveryKeyFingerprint(engine.recoveryKey()));
+        keyStore.acknowledge(recoveryKeyFingerprint(engine.recoveryKey()));
         respond(response, 200, { recoveryKey: recoveryKeyStatus() });
         return;
       }

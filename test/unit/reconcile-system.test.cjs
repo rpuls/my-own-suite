@@ -7,6 +7,7 @@ const test = require('node:test');
 const {
   homepageUnit,
   resolveRuntimeConfig,
+  renderUnits,
   suiteManagerUnit,
   vaultGateUnit,
 } = require('../../scripts/reconcile-system.cjs');
@@ -196,35 +197,27 @@ test('reconciliation gives an existing machine the vault gate the new Caddy rout
   // the internal disk, so anything written ahead of it travels in that copy.
   assert.match(gate, /After=.*mos-self-install\.service/u);
 
+  const units = renderUnits();
+  assert.equal(units['mos-vault.service'], vaultGateUnit());
+  assert.ok(units['mos-vault-agent.service']);
   const reconciler = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8');
-  assert.match(reconciler, /unit\('mos-vault\.service', vaultGateUnit\(\)\)/u);
-  assert.match(reconciler, /unit\('mos-vault-agent\.service'/u);
   assert.match(reconciler, /docker\.socket\.d/u);
-  // The Docker requirement follows the disk, not the release. A machine with no
-  // vault has nothing to wait for, and a requirement there is only a new way for
-  // a working headless server to fail to come back from a reboot.
-  assert.match(reconciler, /if \(runtimeConfig\.vault\) \{/u);
-  assert.match(reconciler, /fs\.rmSync\(dropInPath, \{ force: true \}\)/u);
   // The one unit that speaks for a locked machine must never wait for it.
-  assert.match(reconciler, /name: 'mos-vault-agent\.service',[\s\S]{0,200}gated: false|gated: false,[\s\S]{0,200}name: 'mos-vault-agent\.service'/u);
+  assert.doesNotMatch(units['mos-vault-agent.service'], /mos-vault\.service/u);
 });
 
 // The installer writes `Requires=mos-vault.service` into Suite Manager and every
 // agent; the reconciler rewrites those same units on every platform update. If
 // its renderers left the requirement out, the first update after install would
 // let Suite Manager start against the empty directory the vault mounts over and
-// initialise a fresh store on the plaintext partition.
-test('reconciled units wait for the vault exactly where the disk has one', () => {
+// initialise a fresh store on the plaintext partition. The requirement is not
+// decided per machine: the gate exits 0 where there is no vault, so every unit
+// carries it everywhere, and the whole rule is held in one place — see
+// test/unit/vault-gating.test.cjs for the rule over every unit source.
+test('reconciled units always wait for the vault gate', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-reconcile-vault-'));
-  const descriptor = path.join(tempDir, 'vault.json');
-  fs.writeFileSync(descriptor, JSON.stringify({ state: 'unlocked', version: 1 }));
-
-  const withVault = resolveRuntimeConfig({ MOS_REPO_DIR: '/opt/mos/repo', MOS_STATE_ROOT: tempDir, MOS_VAULT_DESCRIPTOR: descriptor });
-  assert.equal(withVault.vault, true);
-  assert.match(suiteManagerUnit(withVault), /^Requires=mos-vault\.service$/mu);
-  assert.match(suiteManagerUnit(withVault), /^After=mos-vault\.service$/mu);
-
-  const without = resolveRuntimeConfig({ MOS_REPO_DIR: '/opt/mos/repo', MOS_STATE_ROOT: tempDir, MOS_VAULT_DESCRIPTOR: path.join(tempDir, 'missing.json') });
-  assert.equal(without.vault, false);
-  assert.doesNotMatch(suiteManagerUnit(without), /mos-vault\.service/u);
+  const config = resolveRuntimeConfig({ MOS_REPO_DIR: '/opt/mos/repo', MOS_STATE_ROOT: tempDir });
+  assert.equal('vault' in config, false, 'nothing about the units depends on reading the disk');
+  assert.match(suiteManagerUnit(config), /^Requires=mos-vault\.service$/mu);
+  assert.match(suiteManagerUnit(config), /^After=mos-vault\.service$/mu);
 });

@@ -12,6 +12,7 @@ const { spawnSync } = require('node:child_process');
 const YAML = require('yaml');
 
 const {
+  consoleLoginIssuePath,
   loadSmokeConfig,
   renderSeed,
 } = require('../scripts/installers/render-hyperv-usb-seed.cjs');
@@ -19,12 +20,6 @@ const {
 const repoRoot = path.resolve(__dirname, '..');
 const payloadDir = path.join(__dirname, 'payload');
 const outputDir = path.join(__dirname, '.work', 'seed');
-
-// Copied from render-hyperv-usb-seed.cjs, which does not export them. Asserted
-// against the rendered seed below, so a drift fails the build instead of
-// silently leaving the bake VM's login in the published image.
-const consoleIssueBeginMarker = '### My Own Suite server login (begin)';
-const consoleIssueEndMarker = '### My Own Suite server login (end)';
 
 // The console banner says a DNS override is needed and points here rather than
 // explaining hosts files on a login screen. Step 4 of that page is the override.
@@ -111,10 +106,12 @@ function main() {
   const config = loadSmokeConfig();
   const rendered = renderSeed(config, { profile, repoRef });
 
-  if (!rendered.userData.includes(consoleIssueBeginMarker)) {
+  // Asserted against the rendered seed, so a drift fails the build instead of
+  // silently leaving the bake VM's login on the console of the published image.
+  if (!rendered.userData.includes(consoleLoginIssuePath)) {
     throw new Error(
-      `The rendered seed no longer contains '${consoleIssueBeginMarker}'. ` +
-      'The finalize step strips the console-login block by that marker; update image-builder to match.',
+      `The rendered seed no longer writes '${consoleLoginIssuePath}'. ` +
+      'The finalize step removes the console login by that path; update image-builder to match.',
     );
   }
 
@@ -128,8 +125,7 @@ function main() {
     DOMAIN: rendered.plan.config.domain,
     EASY_DOCS_URL: easyAddressDocsUrl,
     HOME_URL: rendered.plan.config.publicUrls.home,
-    ISSUE_BEGIN: consoleIssueBeginMarker,
-    ISSUE_END: consoleIssueEndMarker,
+    ISSUE_FILE: consoleLoginIssuePath,
     REPO_REF: repoRef,
     STATE_DIR: stateDir,
     USERNAME: rendered.linuxUsername,

@@ -17,6 +17,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync, spawn } = require('node:child_process');
 const { generate, isRecoveryKey } = require('../recovery-key.cjs');
+const { RecoveryKeyStore } = require('../../lib/recovery-key-store.cjs');
 
 const ENGINE_BINARY_DIR = '/usr/local/libexec/mos';
 // Named once because it is both what a started job fails with and what every
@@ -24,7 +25,6 @@ const ENGINE_BINARY_DIR = '/usr/local/libexec/mos';
 // no usable destination, and the owner should read that on the screen rather
 // than discover it from a failed backup.
 const ENGINE_MISSING_MESSAGE = 'The backup storage engine is not installed on this machine. Run a platform update to install it, then try again.';
-const REPOSITORY_KEY_FILENAME = 'engine-key';
 // tmpfs, so a key handed to one command never reaches a disk — least of all
 // the plaintext system partition the vault exists to keep owner data off.
 const RUNTIME_SECRET_DIR = '/run/mos-backup-agent';
@@ -53,26 +53,12 @@ const DATA_TIMEOUT_MS = 86_400_000;
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 
-// The operational copy of the recovery key: the same string the owner holds on
-// paper. It is written root-only into the agent state directory, which
-// `managedStateTargets` classifies machine-local and never backs up, so a
-// backup can never carry its own key. The server keeps it so unattended
-// scheduled backups run, and the owner keeps it so a replacement machine can.
-// A key on the server protects against a stolen drive or a breached bucket, not
-// against a compromised server.
-function ensureRepositoryKey(keyFile) {
-  if (fs.existsSync(keyFile)) {
-    const existing = fs.readFileSync(keyFile, 'utf8').trim();
-    if (existing) return existing;
-  }
-  return writeRepositoryKey(keyFile, generate().key);
-}
-
-function writeRepositoryKey(keyFile, key) {
-  ensureDir(path.dirname(keyFile));
-  fs.writeFileSync(keyFile, `${key}\n`, { encoding: 'utf8', mode: 0o600 });
-  fs.chmodSync(keyFile, 0o600);
-  return key;
+// The engine's own bookkeeping beside the key: which earlier passwords its
+// repositories may still answer to. The key itself is the store's.
+function writeSecretFile(filePath, value) {
+  ensureDir(path.dirname(filePath));
+  fs.writeFileSync(filePath, `${value}\n`, { encoding: 'utf8', mode: 0o600 });
+  fs.chmodSync(filePath, 0o600);
 }
 
 const PROGRESS_LINE = /^\[[\d:]|%|\bETA\b|\bprocessed\b/iu;
@@ -200,10 +186,11 @@ function repositoryProbeVerdict(output) {
 }
 
 class ResticEngine {
-  constructor({ agentStateDir, binaryDir = ENGINE_BINARY_DIR, keyFile, onKeyUsed } = {}) {
+  constructor({ agentStateDir, binaryDir = ENGINE_BINARY_DIR, keys, onKeyUsed } = {}) {
     this.agentStateDir = agentStateDir;
     this.binaryDir = binaryDir;
-    this.keyFile = keyFile || path.join(agentStateDir || '.', REPOSITORY_KEY_FILENAME);
+    // The machine's recovery key, which is also every repository's password.
+    this.keys = keys || new RecoveryKeyStore({ stateDir: agentStateDir || '.' });
     // Told whenever this machine's key created or opened a repository, which is
     // what decides later whether a machine may adopt someone else's key or has
     // to add its own beside it.
@@ -223,13 +210,15 @@ class ResticEngine {
 
   cacheDir() { return path.join(this.agentStateDir, 'engine-cache', this.name); }
 
+  get keyFile() { return this.keys.keyPath; }
+
   get legacyKeyFile() { return `${this.keyFile}${LEGACY_KEY_SUFFIX}`; }
 
   get supersededKeyFile() { return `${this.keyFile}${SUPERSEDED_KEY_SUFFIX}`; }
 
-  recoveryKey() { return ensureRepositoryKey(this.keyFile); }
+  recoveryKey() { return this.keys.ensureKey(); }
 
-  adoptRecoveryKey(key) { return writeRepositoryKey(this.keyFile, key); }
+  adoptRecoveryKey(key) { return this.keys.writeKey(key); }
 
   /**
    * Makes a new key this machine's own and remembers the one it replaces.
@@ -243,10 +232,8 @@ class ResticEngine {
     const current = this.recoveryKey();
     if (!next || next === current) return current;
     const kept = [current, ...this.rotatedKeys()].filter((key, index, all) => key !== next && all.indexOf(key) === index);
-    ensureDir(path.dirname(this.supersededKeyFile));
-    fs.writeFileSync(this.supersededKeyFile, `${JSON.stringify(kept, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-    fs.chmodSync(this.supersededKeyFile, 0o600);
-    return writeRepositoryKey(this.keyFile, next);
+    writeSecretFile(this.supersededKeyFile, JSON.stringify(kept, null, 2));
+    return this.keys.writeKey(next);
   }
 
   rotatedKeys() {
@@ -283,8 +270,8 @@ class ResticEngine {
     if (!fs.existsSync(this.keyFile)) return false;
     const existing = fs.readFileSync(this.keyFile, 'utf8').trim();
     if (!existing || isRecoveryKey(existing)) return false;
-    writeRepositoryKey(this.legacyKeyFile, existing);
-    writeRepositoryKey(this.keyFile, generate().key);
+    writeSecretFile(this.legacyKeyFile, existing);
+    this.keys.writeKey(generate().key);
     return true;
   }
 
@@ -339,7 +326,7 @@ class ResticEngine {
   // the key that opens every backup this machine has. The file it points at is
   // the one the key already lives in.
   environmentFor(env = {}) {
-    ensureRepositoryKey(this.keyFile);
+    this.keys.ensureKey();
     const environment = { ...process.env, HOME: this.agentStateDir, RESTIC_PASSWORD_FILE: this.keyFile };
     // A repository that carries no credentials is addressed with none: without
     // this, a stray AWS key in the agent's own environment would be signed onto
@@ -737,12 +724,10 @@ module.exports = {
   DATA_TIMEOUT_MS,
   ENGINE_BINARY_DIR,
   ENGINE_MISSING_MESSAGE,
-  ensureRepositoryKey,
   LEGACY_KEY_SUFFIX,
   lockedRepositoryMessage,
   maskSecrets,
   PROBE_TIMEOUT_MS,
-  REPOSITORY_KEY_FILENAME,
   repositoryProbeCause,
   repositoryProbeVerdict,
   ResticEngine,

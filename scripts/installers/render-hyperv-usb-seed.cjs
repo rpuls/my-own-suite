@@ -240,13 +240,16 @@ ${renderConsoleIssueBlockWriter({ setupUrl })}
 `;
 }
 
-const consoleIssueBeginMarker = '### My Own Suite server login (begin)';
-const consoleIssueEndMarker = '### My Own Suite server login (end)';
+// Its own file under /etc/issue.d, sorted after the address banner: agetty
+// prints the banner, then this, then the login prompt. One writer replaces it
+// and one remover deletes it, so nothing is ever appended to /etc/issue and a
+// re-run cannot stack a second block under the first.
+const consoleLoginIssuePath = '/etc/issue.d/20-mos-server-login.issue';
 
 function renderConsoleIssueBlockWriter({ setupUrl }) {
-  return `cat >> /etc/issue <<MOS_CONSOLE_ISSUE
+  return `install -d -m 0755 /etc/issue.d
+cat > ${consoleLoginIssuePath} <<MOS_CONSOLE_ISSUE
 
-${consoleIssueBeginMarker}
   Server login for this machine (not your My Own Suite account):
 
       user      $username
@@ -255,28 +258,22 @@ ${consoleIssueBeginMarker}
   Save it, then confirm in Suite Manager at
   ${setupUrl}
   and these lines disappear from this screen.
-${consoleIssueEndMarker}
 
-MOS_CONSOLE_ISSUE`;
+MOS_CONSOLE_ISSUE
+chmod 0644 ${consoleLoginIssuePath}`;
 }
 
 // Removes the password from the physical console once Suite Manager reports the
-// owner has saved it. Suite Manager runs unprivileged and cannot edit /etc/issue
-// itself, so it drops a sentinel file and this runs as root in response.
+// owner has saved it. Suite Manager runs unprivileged and cannot touch the
+// console's files itself, so it drops a sentinel and this runs as root in
+// response.
 function renderConsoleLoginClearScript({ stateDir }) {
   return `#!/usr/bin/env bash
 set -euo pipefail
 
 state_dir=${shellQuote(stateDir)}
-issue=/etc/issue
 
-if [ -f "$issue" ]; then
-  awk -v b=${shellQuote(consoleIssueBeginMarker)} -v e=${shellQuote(consoleIssueEndMarker)} \\
-    'index($0, b) { skip = 1 } !skip { print } index($0, e) { skip = 0 }' "$issue" > "$issue.mos-next"
-  mv "$issue.mos-next" "$issue"
-  chmod 0644 "$issue"
-fi
-
+rm -f ${consoleLoginIssuePath}
 rm -f "$state_dir/${consoleLoginFileName}"
 
 # One-shot by design: the handover happens once per install, so the watcher has
@@ -285,11 +282,37 @@ systemctl disable --now mos-console-login-clear.path >/dev/null 2>&1 || true
 `;
 }
 
+// The generator waits for the vault, because its run-once record lives inside
+// it: on a locked boot the directory it would look in is the empty one the
+// vault mounts over, and a generator that ran there would set a password the
+// owner has never seen. It never runs on the installer stick either, whose
+// login would otherwise be shown and then lost the moment the disk is written.
 function renderConsoleLoginUnits({ stateDir }) {
   return [
     {
       content: `[Unit]
+Description=Generate this machine's own server login
+Requires=mos-vault.service
+After=mos-vault.service
+Before=mos-first-boot.service
+ConditionPathExists=!/run/mos/installer-media
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/mos-console-login-init
+
+[Install]
+WantedBy=multi-user.target
+`,
+      path: '/etc/systemd/system/mos-console-login.service',
+      permissions: '0644',
+    },
+    {
+      content: `[Unit]
 Description=Clear the My Own Suite server login from the console banner
+Requires=mos-vault.service
+After=mos-vault.service
 
 [Service]
 Type=oneshot
@@ -371,6 +394,7 @@ function renderSeed(config, options = {}) {
     ['bash', '/usr/local/sbin/mos-console-login-init'],
     renderBackupDiskSetupCommand(),
     ...(firstBoot.runcmd || []),
+    ['systemctl', 'enable', 'mos-console-login.service'],
     ['systemctl', 'enable', '--now', 'mos-console-login-clear.path'],
   ];
 
@@ -454,6 +478,7 @@ module.exports = {
   assertSmokeRepoRefIsPushed,
   consoleLoginAcknowledgedFileName,
   consoleLoginFileName,
+  consoleLoginIssuePath,
   labLinuxPassword,
   loadSmokeConfig,
   parseEnvFile,

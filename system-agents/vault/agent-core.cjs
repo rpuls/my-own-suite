@@ -27,6 +27,14 @@
 // which is the only thing on this layout that a stolen machine does not have.
 // It is off by default because it costs an absent owner their apps until they
 // type it, and the copy beside the switch says exactly that.
+//
+// Until the owner has confirmed they saved the recovery key, a copy of it sits
+// on the plaintext partition and opens the vault whatever the chip does. The key
+// is first shown after sign-in, and sign-in needs an open vault: without this a
+// chip that refused on the second boot would lock an owner out of a key they
+// were never given. The copy is discarded the moment the acknowledgement lands,
+// so the encryption starts protecting at the same moment the owner can recover
+// from it, and never earlier than they could.
 
 const path = require('node:path');
 
@@ -37,6 +45,7 @@ const {
   VAULT_TPM_MODES,
   VAULT_TPM_SLOTS,
 } = require('../../shared/vault-contract.cjs');
+const { HANDOVER } = require('../lib/recovery-key-store.cjs');
 
 const MAPPER_NAME = 'mos-vault';
 const MOUNTPOINT = '/var/lib/mos-vault';
@@ -60,6 +69,9 @@ const SWAPFILE_NAME = 'swap.img';
 // Where swap goes on a machine that has no vault to put it in: the same path
 // Ubuntu and the first-boot script this replaces both used.
 const SYSTEM_SWAPFILE_PATH = '/swap.img';
+// Left by the gate on a boot from the installer stick, for the units after it
+// that behave differently there. Per boot, because /run is.
+const INSTALLER_MEDIA_MARKER = '/run/mos/installer-media';
 
 class VaultError extends Error {
   constructor(code, message, details = {}) {
@@ -157,6 +169,9 @@ class VaultAgentCore {
     return {
       createdAt: descriptor.createdAt,
       device: descriptor.device,
+      // `pending` means a copy of the key still sits on the plaintext partition
+      // and the encryption protects nothing yet; the screens say so.
+      handover: (await this.adapter.hasEscrow()) ? HANDOVER.PENDING : HANDOVER.DONE,
       protects: PROTECTED_PATHS.map((entry) => entry.target),
       reason,
       sentence: reason ? sentenceFor(reason) : null,
@@ -193,11 +208,14 @@ class VaultAgentCore {
 
     if (!descriptor) {
       if (!(await this.adapter.isVaultArmed())) return { opened: true, reason: 'not-armed', vault: false };
-      if (await this.adapter.isRemovableRoot()) return { opened: true, reason: 'running-from-installer-media', vault: false };
+      if (await this.adapter.isRemovableRoot()) {
+        await this.adapter.markInstallerMedia();
+        return { opened: true, reason: 'running-from-installer-media', vault: false };
+      }
 
-      descriptor = await this.create();
-      if (descriptor.state === STATES.UNSUPPORTED) return { opened: true, reason: descriptor.reason, vault: false };
-      return { created: true, opened: true, vault: true };
+      const created = await this.create();
+      if (created.descriptor.state === STATES.UNSUPPORTED) return { opened: true, reason: created.descriptor.reason, vault: false };
+      return { created: true, opened: true, vault: true, ...(created.enrollment.enrolled ? {} : { chip: created.enrollment }) };
     }
     if (descriptor.state === STATES.UNSUPPORTED) return { opened: true, reason: descriptor.reason, vault: false };
 
@@ -215,12 +233,21 @@ class VaultAgentCore {
     }
 
     await this.mountAll(descriptor);
+    // Inside the handover window the escrow is the key, and the key is what
+    // authorises teaching the chip again. A chip that refused before the owner
+    // ever signed in heals here, so the first restart after the handover does
+    // not ask for a key the escrow has just been destroyed to protect.
+    if (unlocked.by === 'escrow') {
+      const resealed = await this.reseal({ key: await this.adapter.readEscrow() });
+      return { opened: true, resealed: Boolean(resealed.resealed), unlockedBy: unlocked.by, vault: true };
+    }
     return { opened: true, unlockedBy: unlocked.by, vault: true };
   }
 
   /**
    * The chip where the chip can answer, the owner's password where the mode
-   * says the chip needs one, and the recovery key behind both.
+   * says the chip needs one, the typed recovery key behind both — and, until
+   * the owner has been handed that key, the escrowed copy behind everything.
    *
    * The chip is never tried in password mode without a password: it would only
    * fail slowly, and on a mode-`password` machine `mos-vault.service` calls
@@ -231,25 +258,48 @@ class VaultAgentCore {
     if (await this.adapter.mapperExists(MAPPER_NAME)) return { by: 'already-open', ok: true };
 
     const chip = chipState(descriptor);
+    let refused;
     if (chip.enrolled && chip.mode === TPM_MODES.PASSWORD) {
       if (pin) {
         const viaPin = await this.adapter.luksOpenWithTpm({ device: descriptor.device, mapper: MAPPER_NAME, pin });
         if (viaPin.ok) return { by: 'password', ok: true };
-        if (!key) return { lockoutSeconds: viaPin.lockoutSeconds, ok: false, reason: viaPin.reason || 'wrong-password' };
-      } else if (!key) {
-        return { ok: false, reason: 'needs-password' };
+        refused = { lockoutSeconds: viaPin.lockoutSeconds, ok: false, reason: viaPin.reason || 'wrong-password' };
+      } else {
+        refused = { ok: false, reason: 'needs-password' };
       }
     } else if (chip.enrolled) {
       const viaTpm = await this.adapter.luksOpenWithTpm({ device: descriptor.device, mapper: MAPPER_NAME });
       if (viaTpm.ok) return { by: 'tpm', ok: true };
-      if (!key) return { ok: false, reason: 'tpm-refused' };
-    } else if (!key) {
-      return { ok: false, reason: lockedReason(descriptor) };
+      refused = { ok: false, reason: 'tpm-refused' };
+    } else {
+      refused = { ok: false, reason: lockedReason(descriptor) };
     }
 
-    const viaKey = await this.adapter.luksOpen({ device: descriptor.device, key, mapper: MAPPER_NAME });
-    if (!viaKey.ok) return { ok: false, reason: 'wrong-key' };
-    return { by: 'key', ok: true };
+    if (key) {
+      const viaKey = await this.adapter.luksOpen({ device: descriptor.device, key, mapper: MAPPER_NAME });
+      return viaKey.ok ? { by: 'key', ok: true } : { ok: false, reason: 'wrong-key' };
+    }
+
+    const escrowed = await this.adapter.readEscrow();
+    if (escrowed) {
+      const viaEscrow = await this.adapter.luksOpen({ device: descriptor.device, key: escrowed, mapper: MAPPER_NAME });
+      if (viaEscrow.ok) return { by: 'escrow', ok: true };
+    }
+    return refused;
+  }
+
+  /**
+   * Discards the escrowed key once the owner has confirmed they hold theirs.
+   *
+   * The acknowledgement is the backup agent's record, read here rather than
+   * pushed over a socket, so an acknowledgement recorded while this agent was
+   * down still takes effect the next time anything asks about the vault.
+   */
+  async settleHandover() {
+    if (!await this.adapter.hasEscrow()) return { discarded: false };
+    if (!await this.adapter.keyAcknowledged()) return { discarded: false };
+    await this.adapter.discardEscrow();
+    return { discarded: true };
   }
 
   /**
@@ -420,11 +470,11 @@ class VaultAgentCore {
     const disk = await this.adapter.inspectDisk();
     const plan = planLayout(disk);
 
-    if (plan.action === 'none') return this.recordUnsupported(plan.reason);
+    if (plan.action === 'none') return { descriptor: await this.recordUnsupported(plan.reason), enrollment: null };
     if (plan.action === 'grow-system') {
       await this.growSystem(disk, plan.systemEndSector);
       await this.adapter.enableSwapfile({ path: SYSTEM_SWAPFILE_PATH });
-      return this.recordUnsupported(plan.reason);
+      return { descriptor: await this.recordUnsupported(plan.reason), enrollment: null };
     }
 
     await this.growSystem(disk, plan.systemEndSector);
@@ -452,23 +502,25 @@ class VaultAgentCore {
     await this.adapter.enableSwapfile({ path: path.posix.join(this.mountpoint, SWAPFILE_NAME) });
 
     const tpm = await this.adapter.enrollTpm({ device, key });
-    await this.adapter.publishRecoveryKey({ key, vaultCreatedAt: this.adapter.now() });
+    await this.adapter.publishRecoveryKey({ key });
+    await this.adapter.escrowKey(key);
 
     let chip = null;
     if (tpm.enrolled) chip = { enrolledAt: this.adapter.now(), mode: TPM_MODES.AUTOMATIC, pcrs: tpm.pcrs, slot: TPM_SLOTS.ENROLLED };
     else if (tpm.reason !== 'no-tpm') chip = { enrolledAt: null, mode: TPM_MODES.AUTOMATIC, pcrs: null, slot: TPM_SLOTS.NEEDS_REPAIR };
 
+    // Decisions only, never state: whether the vault is open is asked of the
+    // mapper, and a stored answer would be stale by the first locked boot.
     const descriptor = {
       createdAt: this.adapter.now(),
       device,
       mapper: MAPPER_NAME,
       mountpoint: this.mountpoint,
-      state: STATES.UNLOCKED,
       tpm: chip,
       version: 1,
     };
     await this.adapter.writeDescriptor(this.descriptorPath, descriptor);
-    return descriptor;
+    return { descriptor, enrollment: tpm };
   }
 
   async growSystem(disk, systemEndSector) {
@@ -493,6 +545,7 @@ class VaultAgentCore {
 
 module.exports = {
   DESCRIPTOR_PATH,
+  INSTALLER_MEDIA_MARKER,
   SYSTEM_SWAPFILE_PATH,
   MAPPER_NAME,
   MOUNTPOINT,

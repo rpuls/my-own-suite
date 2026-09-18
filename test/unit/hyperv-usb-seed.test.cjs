@@ -10,6 +10,7 @@ const {
   assertSmokeRepoRefIsPushed,
   consoleLoginAcknowledgedFileName,
   consoleLoginFileName,
+  consoleLoginIssuePath,
   labLinuxPassword,
   loadSmokeConfig,
   renderSeed,
@@ -110,13 +111,47 @@ test('first boot generates the console password on the installed machine', () =>
   );
 });
 
+// The login is its own file under /etc/issue.d, after the address banner. The
+// banner clears the screen before it paints, so a block appended to /etc/issue
+// is painted and wiped in the same instant — the first hardware install hid its
+// own login that way. One file, replaced by its writer and removed by its
+// remover, cannot stack and cannot be hidden.
+test('the server login is its own console file, written after the banner and never appended', () => {
+  const rendered = renderSeed({}, { profile: 'release', repoRef: 'staging' });
+  const init = fileAt(rendered, '/usr/local/sbin/mos-console-login-init');
+
+  assert.equal(consoleLoginIssuePath, '/etc/issue.d/20-mos-server-login.issue');
+  assert.match(init.content, new RegExp(`cat > ${consoleLoginIssuePath} <<`, 'u'));
+  assert.doesNotMatch(init.content, />> \/etc\/issue\b/u, 'nothing is appended to /etc/issue');
+  assert.ok('20-mos-server-login' > '10-mos-address', 'sorted after the address banner, which clears the screen');
+});
+
+// On the image path the generator is a unit of its own, and it waits for the
+// vault: its run-once record lives inside it, so a locked boot would otherwise
+// find the empty directory the vault mounts over and set a password the owner
+// has never seen. The first hardware install rotated its login twice that way.
+test('the login generator waits for the vault and never runs on the installer stick', () => {
+  const rendered = renderSeed({}, { profile: 'release', repoRef: 'staging' });
+  const unit = fileAt(rendered, '/etc/systemd/system/mos-console-login.service');
+  const firstBoot = YAML.parse(rendered.userData).autoinstall['user-data'];
+
+  assert.ok(unit);
+  assert.match(unit.content, /^Requires=mos-vault\.service$/mu);
+  assert.match(unit.content, /^After=mos-vault\.service$/mu);
+  assert.match(unit.content, /^ConditionPathExists=!\/run\/mos\/installer-media$/mu);
+  assert.match(unit.content, /ExecStart=\/usr\/local\/sbin\/mos-console-login-init/u);
+  const commands = firstBoot.runcmd.map((entry) => (Array.isArray(entry) ? entry.join(' ') : String(entry)));
+  assert.ok(commands.some((entry) => entry === 'systemctl enable mos-console-login.service'));
+});
+
 test('the console banner clears itself once the owner confirms', () => {
   const rendered = renderSeed({}, { profile: 'release', repoRef: 'staging' });
   const clear = fileAt(rendered, '/usr/local/sbin/mos-console-login-clear');
   const pathUnit = fileAt(rendered, '/etc/systemd/system/mos-console-login-clear.path');
 
   assert.ok(clear && pathUnit);
-  assert.match(clear.content, /\/etc\/issue/u);
+  assert.match(clear.content, new RegExp(`rm -f ${consoleLoginIssuePath}`, 'u'));
+  assert.doesNotMatch(clear.content, /awk/u, 'nothing is edited out of /etc/issue, because nothing was put in it');
   assert.match(clear.content, new RegExp(`rm -f .*${consoleLoginFileName}`, 'u'));
   // Suite Manager runs unprivileged and cannot edit /etc/issue, so the sentinel
   // it can write is what triggers the root-side cleanup.

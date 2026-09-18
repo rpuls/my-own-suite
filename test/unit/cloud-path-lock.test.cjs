@@ -52,6 +52,17 @@
 // that holds owner data gained `Requires=mos-vault.service`. All five again. The
 // thirteen `echo` lines of every rendering were compared before and after and not
 // one changed, so the walkthrough recording still shows what an install prints.
+//
+// Moved again 2026-09-18, on evidence from the first hardware install: the TPM
+// apt line now names the three tss2 libraries systemd loads on demand (Ubuntu
+// ships them as Suggests; the lab machine had two of three, and enrollment failed
+// with "TPM2 support is not installed") plus tpm2-tools, with a warning `echo`
+// that prints only when that run fails. A normal install prints exactly what it did.
+//
+// Moved once more the same day: the Homepage and lab-reset units gained
+// `Requires=mos-vault.service`, so every unit the installer writes now carries
+// the same requirement (test/unit/vault-gating.test.cjs holds that rule). No
+// `echo` line changed.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -65,25 +76,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: 'acf9d2b2e3e638c7be7d871085e46c77937d15807e32907e470f158e48613a4c',
+    digest: '8beeaa75f26dae19efe2d5aec8d64333a516a22dc61609d78604537b4cbb279b',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '2dc21e448ca359a995ac93f862512a231cfb71e87b48ec601f703172b6d3e5b8',
+    digest: '627d804abf669db5f87c4c847ff78e3a0bfff6517fe6e7dd2e1945f15d9b797d',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: 'e694878a6f8d9d434cdcde387cbb98a39f54167ed6c55faf2286ab01e98a246d',
+    digest: 'eaecf685c7aba52fca0e24ae96694c76cd7174000fbda16954dc04b2b6552b52',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: '151ed9b46bc8c032c0a1274db4b4d0d1b746f5e3ae6f46823c4bde87754f3c1c',
+    digest: '1f83b68a981be8836bd7a54f583e058e7c3179f4b44957e9098d45e789b64c22',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -93,7 +104,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '2640dd345d7e790e94b2d1b25bc32876b4691fae070b75572109899bb4cb9dac',
+    digest: 'c29f18f193d592892a5d6d990bbf65a6be59e5bb560100116e8e214cab94e95e',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

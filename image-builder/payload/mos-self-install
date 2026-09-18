@@ -185,6 +185,21 @@ if [ -n "$last_partition" ]; then
   fi
   e2fsck -fy "$last_partition" >/dev/null 2>&1 || true
   resize2fs "$last_partition" >/dev/null 2>&1 || true
+
+  # The stick was running while it was copied, so the copy carries the stick's
+  # identity: its SSH host keys, its machine-id and its journal so far. Cleared
+  # here so the disk's first boot makes its own, as a fresh install would, and
+  # two machines installed from one stick never share a host key or a DHCP id.
+  target_root="$(mktemp -d)"
+  if mount "$last_partition" "$target_root" 2>/dev/null; then
+    rm -f "$target_root"/etc/ssh/ssh_host_*
+    : > "$target_root/etc/machine-id"
+    rm -f "$target_root/var/lib/dbus/machine-id"
+    rm -rf "$target_root"/var/log/journal/*
+    sync
+    umount "$target_root"
+  fi
+  rmdir "$target_root" 2>/dev/null || true
 fi
 sync
 

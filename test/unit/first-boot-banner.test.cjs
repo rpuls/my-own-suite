@@ -170,3 +170,22 @@ test('the Easy Door CLI answers with the name the host gate admits', () => {
   assert.equal(cli(['home-host', '192.168.123.45'], closed), '');
   assert.equal(cli(['home-host', ''], closed), '');
 });
+
+// The banner runs on every boot whether the vault opened or not, so it may read
+// nothing the vault protects, it may not run the login generator (which waits
+// for the vault and writes its own file after this one), and it has to say
+// "locked" when the gate failed rather than "running" over a suite that is not.
+test('the banner is vault-independent, runs no generator, and never claims a locked machine is running', () => {
+  assert.doesNotMatch(script, /mos-console-login-init|chpasswd|\/var\/lib\/mos\b|\/var\/lib\/docker|\/etc\/mos\/secrets/u);
+  // The medium is the gate's decision, read from /run, not a second lsblk.
+  assert.match(script, /-e \/run\/mos\/installer-media/u);
+  assert.doesNotMatch(script, /lsblk|findmnt|\/sys\/block/u);
+  // Nothing is stripped out of /etc/issue, because nothing is written into it.
+  assert.doesNotMatch(script, /awk -v b=/u);
+
+  assert.match(script, /systemctl is-failed --quiet mos-vault\.service/u);
+  const locked = script.split('if [ "$vault_locked" = yes ]; then')[1].split('else')[0];
+  assert.match(locked, /Locked\./u);
+  assert.match(locked, /recovery key/u);
+  assert.doesNotMatch(locked, /Installed and running/u);
+});

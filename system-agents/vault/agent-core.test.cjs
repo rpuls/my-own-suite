@@ -39,9 +39,11 @@ function adapter(overrides = {}) {
     return typeof result === 'function' ? result(...args) : result;
   };
   const state = {
+    acknowledged: overrides.acknowledged ?? false,
     descriptor: overrides.descriptor ?? null,
     mapperExists: false,
     mounted: overrides.mounted ?? false,
+    pendingKey: overrides.pendingKey ?? null,
   };
 
   return {
@@ -49,6 +51,12 @@ function adapter(overrides = {}) {
     state,
     bind: record('bind'),
     createVaultPartition: record('createVaultPartition', '/dev/sda3'),
+    discardEscrow: record('discardEscrow', () => { state.pendingKey = null; }),
+    escrowKey: record('escrowKey', (key) => { state.pendingKey = key; }),
+    hasEscrow: record('hasEscrow', () => state.pendingKey !== null),
+    keyAcknowledged: record('keyAcknowledged', () => state.acknowledged),
+    markInstallerMedia: record('markInstallerMedia'),
+    readEscrow: record('readEscrow', () => state.pendingKey),
     enableSwapfile: record('enableSwapfile'),
     ensureDirectory: record('ensureDirectory'),
     enrollTpm: record('enrollTpm', overrides.enrollTpm ?? { enrolled: true, pcrs: [7] }),
@@ -129,17 +137,101 @@ test('a machine that has not been armed creates nothing and records nothing', as
   assert.equal(fake.state.descriptor, null);
 });
 
+// --- The handover ------------------------------------------------------------
+//
+// The key is first shown after sign-in, and sign-in needs an open vault. So
+// until the owner has confirmed they hold the key, a copy stays on the plaintext
+// partition and opens the vault whatever the chip does: the first lab install
+// had a chip that refused on the second boot, and the owner was looking at a
+// page asking for a key nobody had ever shown them.
+
+test('first boot escrows the recovery key beside the descriptor until the owner has it', async () => {
+  const fake = adapter();
+  await new VaultAgentCore(fake).open();
+
+  assert.equal(fake.state.pendingKey, KEY);
+  assert.equal((await new VaultAgentCore(fake).status()).handover, 'pending');
+});
+
+test('before the handover, a chip that refuses does not lock the owner out', async () => {
+  const fake = adapter({
+    descriptor: { device: '/dev/sda3', tpm: { mode: TPM_MODES.AUTOMATIC, pcrs: [7], slot: TPM_SLOTS.ENROLLED }, version: 1 },
+    pendingKey: KEY,
+    tpmUnlocks: false,
+  });
+  const result = await new VaultAgentCore(fake).open();
+
+  // The escrow is the key, and the key authorises teaching the chip again, so
+  // the refusal heals inside the window instead of surfacing on the first
+  // restart after the owner has confirmed their key and the escrow is gone.
+  assert.deepEqual(result, { opened: true, resealed: true, unlockedBy: 'escrow', vault: true });
+  assert.equal(named(fake.calls, 'enrollTpm')[0][1].key, KEY, 'the escrowed key authorises the re-seal');
+  assert.equal(fake.state.descriptor.tpm.slot, TPM_SLOTS.ENROLLED);
+});
+
+test('before the handover, a chip that refused at creation is taught the key on the next boot', async () => {
+  const fake = adapter({
+    descriptor: { device: '/dev/sda3', tpm: { enrolledAt: null, mode: TPM_MODES.AUTOMATIC, pcrs: null, slot: TPM_SLOTS.NEEDS_REPAIR }, version: 1 },
+    pendingKey: KEY,
+  });
+  const result = await new VaultAgentCore(fake).open();
+
+  assert.equal(result.resealed, true);
+  assert.equal(named(fake.calls, 'luksOpenWithTpm').length, 0, 'a slot needing repair is never tried');
+  assert.deepEqual(fake.state.descriptor.tpm, { enrolledAt: '2026-09-17T10:00:00Z', mode: TPM_MODES.AUTOMATIC, pcrs: [7], slot: TPM_SLOTS.ENROLLED });
+});
+
+test('before the handover, a machine with no chip opens too', async () => {
+  const fake = adapter({ descriptor: { device: '/dev/sda3', tpm: null, version: 1 }, pendingKey: KEY });
+  const result = await new VaultAgentCore(fake).open();
+  assert.equal(result.unlockedBy, 'escrow');
+  assert.equal(result.resealed, false, 'no chip, nothing to teach');
+  assert.equal(named(fake.calls, 'enrollTpm').length, 0);
+});
+
+// The acknowledgement is the backup agent's record, which Suite Manager writes.
+// The copy goes the moment it is seen, and only then: an owner who clicked
+// "Not yet" still has a machine that opens.
+test('the escrowed key is discarded once the owner has acknowledged theirs, and not before', async () => {
+  const fake = adapter({ descriptor: { device: '/dev/sda3', tpm: null, version: 1 }, mounted: true, pendingKey: KEY });
+  const core = new VaultAgentCore(fake);
+
+  assert.deepEqual(await core.settleHandover(), { discarded: false });
+  assert.equal(fake.state.pendingKey, KEY);
+
+  fake.state.acknowledged = true;
+  assert.deepEqual(await core.settleHandover(), { discarded: true });
+  assert.equal(fake.state.pendingKey, null);
+  assert.equal((await core.status()).handover, 'done');
+  assert.deepEqual(await core.settleHandover(), { discarded: false }, 'nothing left to discard');
+});
+
+test('after the handover, a chip that refuses asks for the key the owner now has', async () => {
+  const fake = adapter({
+    descriptor: { device: '/dev/sda3', tpm: { mode: TPM_MODES.AUTOMATIC, pcrs: [7], slot: TPM_SLOTS.ENROLLED }, version: 1 },
+    tpmUnlocks: false,
+  });
+  const result = await new VaultAgentCore(fake).open();
+
+  assert.equal(result.opened, false);
+  assert.equal(result.reason, 'tpm-refused');
+  assert.equal(named(fake.calls, 'luksOpen').length, 0, 'no escrowed key, nothing tried');
+});
+
 // A chip that refused at first boot is a chip to try again after the first key
 // entry, not a machine to believe chipless for good. A machine with no chip at
 // all records none, so nothing ever tries one.
 test('a chip that refuses at creation is recorded as needing repair, not as absent', async () => {
-  const refused = adapter({ enrollTpm: { enrolled: false, reason: 'tpm-refused' } });
-  await new VaultAgentCore(refused).open();
+  const enrollTpm = { detail: ['systemd-cryptenroll exited with code 1.', 'Last output:\n  TPM2 support is not installed.'], enrolled: false, reason: 'tpm-refused' };
+  const refused = adapter({ enrollTpm });
+  const result = await new VaultAgentCore(refused).open();
   assert.deepEqual(refused.state.descriptor.tpm, { enrolledAt: null, mode: TPM_MODES.AUTOMATIC, pcrs: null, slot: TPM_SLOTS.NEEDS_REPAIR });
+  assert.deepEqual(result.chip, enrollTpm, 'the gate is told why, so the first-boot journal says it');
 
   const chipless = adapter({ enrollTpm: { enrolled: false, reason: 'no-tpm' } });
-  await new VaultAgentCore(chipless).open();
+  const chiplessResult = await new VaultAgentCore(chipless).open();
   assert.equal(chipless.state.descriptor.tpm, null);
+  assert.equal(chiplessResult.chip.reason, 'no-tpm');
 });
 
 test('the swapfile is created inside the vault and nowhere else', async () => {
@@ -153,7 +245,7 @@ test('the swapfile is created inside the vault and nowhere else', async () => {
 test('the recovery key is published once, at creation, for Suite Manager to show', async () => {
   const fake = adapter();
   await new VaultAgentCore(fake).open();
-  assert.deepEqual(named(fake.calls, 'publishRecoveryKey')[0][1], { key: KEY, vaultCreatedAt: '2026-09-17T10:00:00Z' });
+  assert.deepEqual(named(fake.calls, 'publishRecoveryKey')[0][1], { key: KEY });
 });
 
 // mos-self-install copies the stick onto the internal disk with `dd`, so
@@ -186,7 +278,7 @@ test('a disk too small for a vault grows the system and says why, and the suite 
 });
 
 test('a machine with a TPM opens itself with no key and no owner', async () => {
-  const fake = adapter({ descriptor: { device: '/dev/sda3', state: STATES.UNLOCKED, tpm: { pcrs: [7] }, version: 1 } });
+  const fake = adapter({ descriptor: { device: '/dev/sda3', tpm: { pcrs: [7] }, version: 1 } });
   const result = await new VaultAgentCore(fake).open();
 
   assert.deepEqual(result, { opened: true, unlockedBy: 'tpm', vault: true });
@@ -196,7 +288,7 @@ test('a machine with a TPM opens itself with no key and no owner', async () => {
 
 test('a TPM that refuses leaves the machine locked, with the reason it refused', async () => {
   const fake = adapter({
-    descriptor: { device: '/dev/sda3', state: STATES.UNLOCKED, tpm: { pcrs: [7] }, version: 1 },
+    descriptor: { device: '/dev/sda3', tpm: { pcrs: [7] }, version: 1 },
     tpmUnlocks: false,
   });
   const result = await new VaultAgentCore(fake).open();
@@ -209,7 +301,7 @@ test('a TPM that refuses leaves the machine locked, with the reason it refused',
 
 test('the owner key opens a vault the TPM refused', async () => {
   const fake = adapter({
-    descriptor: { device: '/dev/sda3', state: STATES.UNLOCKED, tpm: { pcrs: [7] }, version: 1 },
+    descriptor: { device: '/dev/sda3', tpm: { pcrs: [7] }, version: 1 },
     tpmUnlocks: false,
   });
   const result = await new VaultAgentCore(fake).open({ key: KEY });
@@ -219,7 +311,7 @@ test('the owner key opens a vault the TPM refused', async () => {
 });
 
 test('a machine with no TPM waits for its owner and says so in those words', async () => {
-  const fake = adapter({ descriptor: { device: '/dev/sda3', state: STATES.UNLOCKED, tpm: null, version: 1 } });
+  const fake = adapter({ descriptor: { device: '/dev/sda3', tpm: null, version: 1 } });
   const result = await new VaultAgentCore(fake).open();
 
   assert.equal(result.opened, false);
@@ -230,7 +322,7 @@ test('a machine with no TPM waits for its owner and says so in those words', asy
 
 test('a key that is valid but from another machine is named as exactly that', async () => {
   const fake = adapter({
-    descriptor: { device: '/dev/sda3', state: STATES.UNLOCKED, tpm: null, version: 1 },
+    descriptor: { device: '/dev/sda3', tpm: null, version: 1 },
     storedKey: 'MOS-9999-9999-9999-9999-9999-9999-9999-9999',
   });
   const result = await new VaultAgentCore(fake).open({ key: KEY });
@@ -242,7 +334,7 @@ test('a key that is valid but from another machine is named as exactly that', as
 
 test('an already mounted vault is left alone', async () => {
   const fake = adapter({
-    descriptor: { device: '/dev/sda3', state: STATES.UNLOCKED, tpm: { pcrs: [7] }, version: 1 },
+    descriptor: { device: '/dev/sda3', tpm: { pcrs: [7] }, version: 1 },
     mounted: true,
   });
   const result = await new VaultAgentCore(fake).open();
@@ -254,7 +346,7 @@ test('an already mounted vault is left alone', async () => {
 
 test('status reports what is protected, and whether the machine can open itself', async () => {
   const fake = adapter({
-    descriptor: { createdAt: '2026-09-17T09:00:00Z', device: '/dev/sda3', state: STATES.UNLOCKED, tpm: { enrolledAt: '2026-09-17T09:00:00Z', pcrs: [7] }, version: 1 },
+    descriptor: { createdAt: '2026-09-17T09:00:00Z', device: '/dev/sda3', tpm: { enrolledAt: '2026-09-17T09:00:00Z', pcrs: [7] }, version: 1 },
     mounted: true,
   });
   const status = await new VaultAgentCore(fake).status();
@@ -279,7 +371,7 @@ test('a locked status names why, so the page can choose its form', async () => {
   assert.equal(waiting.reason, 'needs-password');
 
   const repairing = await new VaultAgentCore(adapter(sealed({
-    descriptor: { device: '/dev/sda3', state: STATES.UNLOCKED, tpm: { enrolledAt: null, mode: TPM_MODES.PASSWORD, pcrs: [7], slot: TPM_SLOTS.NEEDS_REPAIR }, version: 1 },
+    descriptor: { device: '/dev/sda3', tpm: { enrolledAt: null, mode: TPM_MODES.PASSWORD, pcrs: [7], slot: TPM_SLOTS.NEEDS_REPAIR }, version: 1 },
   }))).status();
   assert.equal(repairing.reason, 'chip-needs-repair');
 
@@ -300,7 +392,7 @@ test('a locked status names why, so the page can choose its form', async () => {
 
 test('a takeover points the vault at the adopted key and leaves the data alone', async () => {
   const fake = adapter({
-    descriptor: { device: '/dev/sda3', state: STATES.UNLOCKED, tpm: { pcrs: [7] }, version: 1 },
+    descriptor: { device: '/dev/sda3', tpm: { pcrs: [7] }, version: 1 },
     mounted: true,
   });
   const result = await new VaultAgentCore(fake).rekey({ nextKey: OTHER_KEY });
@@ -324,7 +416,7 @@ test('a disk MOS refused to encrypt reports nothing to do too', async () => {
 
 test('a locked vault is not rekeyed', async () => {
   const fake = adapter({
-    descriptor: { device: '/dev/sda3', state: STATES.UNLOCKED, tpm: { pcrs: [7] }, version: 1 },
+    descriptor: { device: '/dev/sda3', tpm: { pcrs: [7] }, version: 1 },
     mounted: false,
   });
   assert.deepEqual(await new VaultAgentCore(fake).rekey({ nextKey: OTHER_KEY }), { ok: false, reason: 'locked' });
@@ -335,7 +427,7 @@ test('a locked vault is not rekeyed', async () => {
 // that already happened.
 test('a vault already using the adopted key is left alone and reported as fine', async () => {
   const fake = adapter({
-    descriptor: { device: '/dev/sda3', state: STATES.UNLOCKED, tpm: { pcrs: [7] }, version: 1 },
+    descriptor: { device: '/dev/sda3', tpm: { pcrs: [7] }, version: 1 },
     mounted: true,
   });
   const result = await new VaultAgentCore(fake).rekey({ nextKey: KEY });
@@ -346,7 +438,7 @@ test('a vault already using the adopted key is left alone and reported as fine',
 
 test('a vault whose own key cannot be read is not rekeyed', async () => {
   const fake = adapter({
-    descriptor: { device: '/dev/sda3', state: STATES.UNLOCKED, tpm: { pcrs: [7] }, version: 1 },
+    descriptor: { device: '/dev/sda3', tpm: { pcrs: [7] }, version: 1 },
     mounted: true,
     ownKey: null,
   });
@@ -355,7 +447,7 @@ test('a vault whose own key cannot be read is not rekeyed', async () => {
 
 test('a rekey the disk refused is reported with its reason, never as success', async () => {
   const fake = adapter({
-    descriptor: { device: '/dev/sda3', state: STATES.UNLOCKED, tpm: { pcrs: [7] }, version: 1 },
+    descriptor: { device: '/dev/sda3', tpm: { pcrs: [7] }, version: 1 },
     mounted: true,
     rekey: { ok: false, reason: 'current-key-rejected' },
   });
@@ -381,7 +473,7 @@ test('no key is no rekey', async () => {
 const sealed = (overrides = {}) => ({
   descriptor: {
     device: '/dev/sda3',
-    state: STATES.UNLOCKED,
+   
     tpm: { enrolledAt: '2026-09-17T09:00:00Z', mode: TPM_MODES.PASSWORD, pcrs: [7], slot: TPM_SLOTS.ENROLLED },
     version: 1,
   },
@@ -463,7 +555,7 @@ test('after a recovery-key unlock, an automatic machine re-seals itself on the s
   const fake = adapter({
     descriptor: {
       device: '/dev/sda3',
-      state: STATES.UNLOCKED,
+     
       tpm: { enrolledAt: '2026-09-17T09:00:00Z', mode: TPM_MODES.AUTOMATIC, pcrs: [7], slot: TPM_SLOTS.ENROLLED },
       version: 1,
     },
@@ -481,7 +573,7 @@ test('after a recovery-key unlock, an automatic machine re-seals itself on the s
 });
 
 test('a machine with no chip has nothing to re-seal', async () => {
-  const fake = adapter({ descriptor: { device: '/dev/sda3', state: STATES.UNLOCKED, tpm: null, version: 1 }, mounted: true });
+  const fake = adapter({ descriptor: { device: '/dev/sda3', tpm: null, version: 1 }, mounted: true });
   assert.deepEqual(await new VaultAgentCore(fake).reseal({ key: KEY }), { reason: 'no-chip', resealed: false });
 });
 
@@ -489,7 +581,7 @@ test('turning startup protection on teaches the chip the password and records th
   const fake = adapter({
     descriptor: {
       device: '/dev/sda3',
-      state: STATES.UNLOCKED,
+     
       tpm: { enrolledAt: '2026-09-17T09:00:00Z', mode: TPM_MODES.AUTOMATIC, pcrs: [7], slot: TPM_SLOTS.ENROLLED },
       version: 1,
     },
@@ -536,7 +628,7 @@ test('a chip waiting for repair is not tried, and the page says why', async () =
   const fake = adapter({
     descriptor: {
       device: '/dev/sda3',
-      state: STATES.UNLOCKED,
+     
       tpm: { enrolledAt: null, mode: TPM_MODES.PASSWORD, pcrs: [7], slot: TPM_SLOTS.NEEDS_REPAIR },
       version: 1,
     },
@@ -555,7 +647,7 @@ test('a password change on a machine that opens itself has no chip work to do', 
   const fake = adapter({
     descriptor: {
       device: '/dev/sda3',
-      state: STATES.UNLOCKED,
+     
       tpm: { enrolledAt: '2026-09-17T09:00:00Z', mode: TPM_MODES.AUTOMATIC, pcrs: [7], slot: TPM_SLOTS.ENROLLED },
       version: 1,
     },
@@ -608,7 +700,7 @@ test('status says a machine only opens itself when it really does', async () => 
   const broken = adapter({
     descriptor: {
       device: '/dev/sda3',
-      state: STATES.UNLOCKED,
+     
       tpm: { enrolledAt: null, mode: TPM_MODES.AUTOMATIC, pcrs: [7], slot: TPM_SLOTS.NEEDS_REPAIR },
       version: 1,
     },
@@ -622,7 +714,7 @@ test('status says a machine only opens itself when it really does', async () => 
 // hardware this machine does not have.
 test('a password change on a machine with no chip reports nothing to do', async () => {
   const fake = adapter({
-    descriptor: { device: '/dev/sda3', state: STATES.UNLOCKED, tpm: null, version: 1 },
+    descriptor: { device: '/dev/sda3', tpm: null, version: 1 },
     mounted: true,
   });
   const result = await new VaultAgentCore(fake).enrollChip({ mode: 'current', pin: PASSWORD });
@@ -637,7 +729,7 @@ test('a chip waiting for repair is repaired by a password change', async () => {
   const fake = adapter({
     descriptor: {
       device: '/dev/sda3',
-      state: STATES.UNLOCKED,
+     
       tpm: { enrolledAt: null, mode: TPM_MODES.PASSWORD, pcrs: [7], slot: TPM_SLOTS.NEEDS_REPAIR },
       version: 1,
     },
