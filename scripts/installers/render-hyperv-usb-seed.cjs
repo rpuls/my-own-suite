@@ -175,6 +175,13 @@ function renderSeed(config, options = {}) {
   const explicitPassword = String(config.LINUX_PASSWORD || '').trim();
   const fixedPassword = explicitPassword || (profile === 'lab' ? labLinuxPassword : '');
   const consoleLoginHandover = fixedPassword ? 'preconfigured' : 'first-boot';
+  // The lab profile's way in once the image is finalized, which locks the
+  // password: an SSH key. Refused outside that profile rather than omitted, so
+  // no release seed can carry one by accident.
+  const authorizedKeys = (options.authorizedKeys || []).map((key) => String(key).trim()).filter(Boolean);
+  if (authorizedKeys.length > 0 && profile !== 'lab') {
+    throw new Error('SSH keys can only be baked into the lab profile.');
+  }
 
   if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$/u.test(hostname)) throw new Error('HOSTNAME is invalid.');
   if (!/^[a-z_][a-z0-9_-]*[$]?$/u.test(username)) throw new Error('USERNAME is invalid.');
@@ -209,6 +216,15 @@ function renderSeed(config, options = {}) {
       permissions: '0755',
     },
     ...renderConsoleLoginUnits({ stateDir: suiteManagerStateDir }),
+    // Finalize locks the console password, which also leaves sudo with nothing
+    // to accept, so the key above could read a broken machine but never repair
+    // one. Tied to the same condition as the key itself, and the payload check
+    // fails a release image that carries this file.
+    ...(authorizedKeys.length > 0 ? [{
+      content: `${username} ALL=(ALL) NOPASSWD:ALL\n`,
+      path: '/etc/sudoers.d/90-mos-debug',
+      permissions: '0440',
+    }] : []),
   ];
   firstBoot.runcmd = [
     // Before the control-plane bootstrap, so the machine is reachable even if
@@ -232,7 +248,11 @@ function renderSeed(config, options = {}) {
       locale: 'en_US.UTF-8',
       keyboard: { layout: 'us' },
       timezone,
-      ssh: { 'install-server': true, 'allow-pw': true },
+      ssh: {
+        'install-server': true,
+        'allow-pw': true,
+        ...(authorizedKeys.length > 0 ? { 'authorized-keys': authorizedKeys } : {}),
+      },
       // No extra packages: anything listed here is downloaded from the Ubuntu
       // archive mid-install, making the offline-capable install phase fail on
       // machines without working DHCP/DNS. First boot has the network steps.

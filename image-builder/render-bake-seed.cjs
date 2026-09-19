@@ -104,8 +104,15 @@ function main() {
   // the summary below records which profile was used.
   const profile = process.env.MOS_IMAGE_BAKE_DEBUG === '1' ? 'lab' : 'release';
 
+  // The lab image's way in is an SSH key read from the git-ignored work folder:
+  // a release bake has nothing to read, and the renderer refuses a key anyway.
+  const debugKeyPath = path.join(__dirname, '.work', 'debug-ssh-key.pub');
+  const authorizedKeys = profile === 'lab' && fs.existsSync(debugKeyPath)
+    ? [fs.readFileSync(debugKeyPath, 'utf8').trim()]
+    : [];
+
   const config = loadSmokeConfig();
-  const rendered = renderSeed(config, { profile, repoRef });
+  const rendered = renderSeed(config, { authorizedKeys, profile, repoRef });
 
   // Asserted against the rendered seed, so a drift fails the build instead of
   // silently leaving the bake VM's login on the console of the published image.
@@ -129,6 +136,7 @@ function main() {
     EASY_DOCS_URL: easyAddressDocsUrl,
     HOME_URL: rendered.plan.config.publicUrls.home,
     ISSUE_FILE: CONSOLE_LOGIN_ISSUE_PATH,
+    PROFILE: profile,
     REPO_REF: repoRef,
     STATE_DIR: stateDir,
     USERNAME: rendered.linuxUsername,
@@ -202,7 +210,9 @@ function main() {
   console.log(`[mos-image] Stealth-door URL baked into the banner: ${summary.home}`);
   console.log(`[mos-image] Seed: ${outputDir}`);
   if (profile === 'lab') {
-    console.log('[mos-image] WARNING: debug bake. This image carries a fixed password and must not be published.');
+    console.log(authorizedKeys.length > 0
+      ? `[mos-image] WARNING: debug bake. The key in ${debugKeyPath} logs in as ${rendered.linuxUsername}; this image must not be published.`
+      : `[mos-image] WARNING: debug bake with no way in. Put a public key at ${debugKeyPath} (ssh-keygen -t ed25519 -f ${path.join(__dirname, '.work', 'debug-ssh-key')}).`);
   }
 }
 

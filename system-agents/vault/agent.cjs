@@ -330,7 +330,16 @@ const pageServer = http.createServer(async (request, response) => {
 });
 
 async function main() {
-  await fsp.mkdir(path.dirname(socketPath), { recursive: true });
+  // The directory can already be there, made by a process that is not this
+  // agent: `mos-vault.service` runs as plain root before it and stages the key
+  // it teaches the chip here. A recursive mkdir over a directory that already
+  // exists keeps whatever mode and group it was made with, and Suite Manager
+  // reaches the socket through this directory — so both are set on every start
+  // rather than inherited from whoever got here first.
+  const runtimeDir = path.dirname(socketPath);
+  await fsp.mkdir(runtimeDir, { recursive: true });
+  await fsp.chown(runtimeDir, 0, process.getgid());
+  await fsp.chmod(runtimeDir, 0o2770);
   if (fs.existsSync(socketPath)) await fsp.rm(socketPath, { force: true });
 
   await core.settleHandover().catch((error) => log(`could not settle the key handover: ${error?.message || 'unknown error'}`));

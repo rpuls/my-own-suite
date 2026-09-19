@@ -216,6 +216,48 @@ function Get-SuiteManagerStatus([string]$Address, [string]$HomeHost) {
   catch { return 0 }
 }
 
+# Suite Manager reaches every system agent through a unix socket, and one it
+# cannot reach reads as a machine MOS knows nothing about rather than a broken
+# one: a vault agent that is running and answers root still leaves the handover
+# page waiting for a recovery key it cannot be told. The first boot this VM has
+# just done - make the vault, teach the chip the key - is the boot where that
+# goes wrong, so it is asked here instead of on hardware.
+function Assert-AgentSocketsReachable([string]$Address) {
+  $key = Join-Path $WorkRoot 'debug-ssh-key'
+  if (-not (Test-Path $key)) {
+    Say 'Skipped the agent socket check: this bake has no debug key to log in with.'
+    return
+  }
+  $hostsFile = Join-Path $WorkRoot 'verify-known-hosts'
+  Remove-Item $hostsFile -Force -ErrorAction SilentlyContinue
+  $probe = @'
+# Asked of the units rather than of a glob: the paths are read as root, from
+# the same environment the agents were told to listen on, because a glob run
+# as the unprivileged user silently drops the one directory it cannot list -
+# which is exactly the fault being looked for.
+user="$(systemctl show mos-suite-manager -p User --value)"
+units="$(systemctl list-units --all --no-legend --plain 'mos-*-agent.service' | awk '{print $1}')"
+[ -n "$units" ] || { echo "NO-AGENTS this image has no agent units to check"; exit 0; }
+socks="$(for unit in $units; do systemctl show "$unit" -p Environment --value | tr ' ' '\n'; done \
+  | sed -n 's/^MOS_[A-Z_]*_AGENT_SOCKET=//p' | sort -u)"
+bad=0
+for sock in $socks; do
+  sudo test -S "$sock" || { echo "MISSING $sock"; bad=1; continue; }
+  sudo -u "$user" test -w "$sock" || { echo "UNREACHABLE $sock"; bad=1; }
+done
+[ "$bad" = 0 ] && echo "SOCKETS-OK all $(echo "$socks" | wc -l) agent sockets reachable as $user"
+'@
+  # Fed on stdin rather than as an argument so the quoting stays in one place,
+  # and with Unix line endings because bash reads a CR as part of the command.
+  $output = $probe.Replace("`r`n", "`n") |
+    & ssh.exe -i $key -o StrictHostKeyChecking=no -o UserKnownHostsFile=$hostsFile `
+      -o BatchMode=yes -o ConnectTimeout=20 -o LogLevel=ERROR "mos@$Address" 'bash -s' 2>&1
+  Remove-Item $hostsFile -Force -ErrorAction SilentlyContinue
+  $ok = @($output | Where-Object { $_ -match 'SOCKETS-OK' })
+  if ($ok.Count -gt 0) { Say ([string]$ok[0]); return }
+  Fail ("Suite Manager cannot reach every system agent socket on the booted image. " + (($output | ForEach-Object { [string]$_ }) -join ' | '))
+}
+
 function Invoke-Verify {
   Assert-HyperV
   $imageName = "my-own-suite-$RepoRef.img"
@@ -292,6 +334,8 @@ function Invoke-Verify {
   }
   Say "Suite Manager answered 200 at http://$address/suite-manager/ (Host: $homeHost)."
 
+  Assert-AgentSocketsReachable $address
+
   # Shut it down rather than turning it off, so the filesystem it is about to be
   # judged on is consistent.
   Say 'Shutting it down to check what its first boot did to the disk.'
@@ -339,6 +383,13 @@ function Invoke-Convert {
   Invoke-Native 'Image shrink failed.' {
     & docker run --rm --privileged -v "${WorkRoot}:/work" $ToolingImage `
       shrink-image.sh "/work/out/$imageName" $SlackMB
+  }
+
+  # An image built before an edit landed looks exactly like one built after it,
+  # so the finished file is asked what it carries rather than the checkout.
+  Invoke-Native 'The image does not carry what this checkout says it should.' {
+    & docker run --rm --privileged -v "${WorkRoot}:/work" $ToolingImage `
+      check-image-payload.sh "/work/out/$imageName"
   }
 
   Say ''

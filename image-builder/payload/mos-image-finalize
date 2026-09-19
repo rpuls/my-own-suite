@@ -229,7 +229,7 @@ chmod 0644 /etc/mos/vault-armed
 stage 'Zeroing free space so the image compresses'
 fstrim -av || true
 
-printf '{"ok":true,"builtAt":"%s","repoRef":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '@@REPO_REF@@' > "$esp/mos-image.json"
+printf '{"ok":true,"builtAt":"%s","repoRef":"%s","profile":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '@@REPO_REF@@' '@@PROFILE@@' > "$esp/mos-image.json"
 cp -f "$esp/mos-image.json" "$status_dir/mos-image.json" 2>/dev/null || true
 log 'Image finalized. Powering off.'
 sync

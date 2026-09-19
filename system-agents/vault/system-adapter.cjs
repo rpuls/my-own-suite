@@ -48,6 +48,11 @@ const SYSTEMD_CRYPTSETUP_PATHS = ['/usr/lib/systemd/systemd-cryptsetup', '/lib/s
 // tmpfs, so nothing written here to hand a secret to a command ever reaches a
 // disk — least of all the plaintext one next to the vault.
 const AGENT_RUNTIME_DIR = '/run/mos-vault-agent';
+// Secrets are staged one level down, because the directory above them holds the
+// socket Suite Manager connects to. Staging used to create that directory
+// itself, from a root-only process that runs before the agent, and a directory
+// private to root is one Suite Manager cannot reach the socket through.
+const AGENT_SECRET_DIR = path.join(AGENT_RUNTIME_DIR, 'secrets');
 // The system credential systemd-cryptsetup reads a TPM2 PIN from when it is not
 // allowed to ask a human. See `stagePin` for why both this and `$PIN` are set.
 const TPM_PIN_CREDENTIAL = 'cryptsetup.tpm2-pin';
@@ -59,6 +64,15 @@ const SWAPFILE_BYTES = 2 * 1024 * 1024 * 1024;
 // Left free after the swapfile, and the smallest swapfile worth making.
 const SWAPFILE_HEADROOM_BYTES = 2 * 1024 * 1024 * 1024;
 const SWAPFILE_FLOOR_BYTES = 512 * 1024 * 1024;
+
+// The parent is created without a mode of its own, so a directory that is
+// already there keeps the one the agent gave it; only the staging directory
+// inside is private to root.
+async function stagingDir() {
+  await fsp.mkdir(AGENT_RUNTIME_DIR, { recursive: true });
+  await fsp.mkdir(AGENT_SECRET_DIR, { mode: 0o700, recursive: true });
+  return AGENT_SECRET_DIR;
+}
 
 function fail(code, message, error) {
   const details = error ? [describeFailure(error)] : [];
@@ -327,8 +341,7 @@ class SystemVaultAdapter {
    * removed whether the attempt worked or not.
    */
   async stagePin(pin) {
-    await fsp.mkdir(AGENT_RUNTIME_DIR, { mode: 0o700, recursive: true });
-    const directory = await fsp.mkdtemp(path.join(AGENT_RUNTIME_DIR, 'pin-'));
+    const directory = await fsp.mkdtemp(path.join(await stagingDir(), 'pin-'));
     await fsp.writeFile(path.join(directory, TPM_PIN_CREDENTIAL), pin, { mode: 0o600 });
     return {
       directory,
@@ -437,11 +450,11 @@ class SystemVaultAdapter {
     // not sit in an environment at all. The PIN has no file form —
     // systemd-cryptenroll takes it only as `$NEWPIN` — so it stays where it is
     // and the process lives for one command.
-    const unlockFile = path.join(AGENT_RUNTIME_DIR, `enroll-${process.pid}.key`);
+    const unlockFile = path.join(AGENT_SECRET_DIR, `enroll-${process.pid}.key`);
     const args = ['--wipe-slot=tpm2', `--unlock-key-file=${unlockFile}`, '--tpm2-device=auto', `--tpm2-pcrs=${TPM_PCRS}`];
     if (pin) args.push('--tpm2-with-pin=yes');
     try {
-      await fsp.mkdir(AGENT_RUNTIME_DIR, { mode: 0o700, recursive: true });
+      await stagingDir();
       await fsp.writeFile(unlockFile, key, { mode: 0o600 });
       await run('systemd-cryptenroll', [...args, device], {
         env: pin ? { ...process.env, NEWPIN: pin } : undefined,
@@ -611,9 +624,9 @@ class SystemVaultAdapter {
     // which is already holding the key that authorises it. /run is tmpfs, so
     // this never reaches a disk — least of all the plaintext one next to the
     // vault it would be the key to.
-    const keyFile = path.join(AGENT_RUNTIME_DIR, `rekey-${process.pid}.key`);
+    const keyFile = path.join(AGENT_SECRET_DIR, `rekey-${process.pid}.key`);
     try {
-      await fsp.mkdir(path.dirname(keyFile), { recursive: true });
+      await stagingDir();
       await fsp.writeFile(keyFile, toKey, { mode: 0o600 });
 
       try {

@@ -4,6 +4,51 @@
 # an internal disk and reboots into it.
 set -euo pipefail
 
+# The copy gives the disk the stick's own filesystem UUIDs, so for a moment two
+# disks answer to the same /dev/disk/by-uuid name. udev hands that name to the
+# newcomer, boot-efi.mount loses the device it is bound to, systemd stops
+# local-fs.target, and everything ordered under it stops with it. That killed
+# this script 59ms after the copy finished, every time, before it could give the
+# disk identifiers of its own. Holding udev's queue keeps the duplicate out of
+# /dev until the rewrite below has made the two disks tell themselves apart.
+udev_held=no
+hold_udev() {
+  udevadm control --stop-exec-queue || return 0
+  udev_held=yes
+}
+release_udev() {
+  [ "$udev_held" = 'yes' ] || return 0
+  udev_held=no
+  udevadm control --start-exec-queue 2>/dev/null || true
+  udevadm settle 2>/dev/null || true
+}
+
+# The stick installs or it stops: every way out that is not a finished install
+# leaves its reason on the screen until someone has read it, then restarts.
+# Nothing ever runs from the stick.
+stop_here() {
+  printf '\n  %s\n\n  %s\n  > ' "$1" "${2:-Press Enter to restart.}"
+  read -r _ || true
+  fsfreeze -u / 2>/dev/null || true
+  release_udev
+  sync
+  reboot -f
+}
+
+# A step without a message of its own would otherwise end the script silently.
+# Names the step on the screen and in the kernel log, which the journal keeps.
+on_error() {
+  local status=$1 line=$2 command=$3
+  local message="[mos-self-install] failed at line ${line} (exit ${status}): ${command}"
+  printf '%s\n' "$message" > /dev/kmsg 2>/dev/null || true
+  stop_here "$message" 'Photograph this screen, then press Enter to restart.'
+}
+trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
+
+stage() {
+  printf '\n  [%s] %s\n\n' "$(date +%H:%M:%S)" "$1"
+}
+
 image_id_file=/boot/efi/mos-image.json
 
 root_source="$(findmnt -no SOURCE / || true)"
@@ -17,6 +62,14 @@ removable="$(cat "/sys/block/$root_parent/removable" 2>/dev/null || echo 0)"
 if [ "$transport" != "usb" ] && [ "$removable" != "1" ]; then
   exit 0
 fi
+
+# Everything shown from here on is also appended to a log on the stick's EFI
+# partition, which any Windows or Mac PC can read when the stick is plugged in,
+# and copied onto the disk at the end. That partition is not the root, so the
+# freeze during the copy does not hold it up.
+install_log=/boot/efi/mos-install.log
+printf '\n=== My Own Suite installer, %s ===\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$install_log" 2>/dev/null || install_log=/dev/null
+exec > >(tee -a "$install_log") 2>&1
 
 source_bytes="$(blockdev --getsize64 "$root_disk")"
 
@@ -39,11 +92,8 @@ printf '  ----------------------\n\n'
 
 if [ "${#candidates[@]}" -eq 0 ]; then
   printf '  No internal disk large enough for this image was found.\n'
-  printf '  This image needs at least %s GB.\n\n' "$((source_bytes / 1000000000 + 1))"
-  printf '  Press Enter to continue booting from the USB stick. Nothing will be\n'
-  printf '  installed, and this machine will not boot once the stick is removed.\n'
-  read -r _ || true
-  exit 0
+  printf '  This image needs at least %s GB.\n' "$((source_bytes / 1000000000 + 1))"
+  stop_here 'Nothing was installed.' 'Remove the USB stick, then press Enter to restart.'
 fi
 
 # NAME/SIZE/MODEL cannot tell the spare disk from the one holding the family
@@ -103,7 +153,7 @@ for candidate in "${candidates[@]}"; do
   printf '     %s\n\n' "$(describe_contents "$candidate")"
 done
 decline_option=$((option + 1))
-printf "  %d) Don't install  -  run from this USB stick (not recommended)\n\n" "$decline_option"
+printf "  %d) Don't install\n\n" "$decline_option"
 
 if [ "$decline_option" -eq 2 ]; then
   choice_hint='1 or 2'
@@ -120,8 +170,7 @@ while :; do
   printf '  Choose %s, then press Enter.\n' "$choice_hint"
   printf '  > '
   if ! read -r answer; then
-    printf '\n  No console input. Continuing to boot from the USB stick.\n\n'
-    exit 0
+    stop_here 'No console input, so nothing was installed.' 'Remove the USB stick, then press Enter to restart.'
   fi
   case "$answer" in
     '')
@@ -135,11 +184,7 @@ while :; do
   esac
 
   if [ "$answer" -eq "$decline_option" ]; then
-    printf '\n  Not installing.\n\n'
-    printf '  This machine runs My Own Suite from the USB stick. Nothing is installed\n'
-    printf '  on its internal disks, and it will not boot once the stick is removed.\n'
-    printf '  Reboot with the stick attached to install.\n\n'
-    exit 0
+    stop_here 'Not installing. Nothing on this machine has changed.' 'Remove the USB stick, then press Enter to restart.'
   fi
 
   if [ "$answer" -lt 1 ] || [ "$answer" -gt "$decline_option" ]; then
@@ -164,13 +209,25 @@ while :; do
   printf '\n  Not confirmed, nothing has changed.\n\n'
 done
 
-printf '\n  Copying. This takes a few minutes and must not be interrupted.\n\n'
+stage 'Copying. This takes a few minutes and must not be interrupted.'
+# The freeze below holds every write to the root for the length of the copy, and
+# systemd reads a service that has not checked in as a hung one: journald's
+# watchdog is three minutes, so it was killed and restarted mid-copy and took the
+# log of the install with it. The override lives in /run, so it is gone on the
+# next boot and is never part of what is copied to the disk.
+for watchdog_unit in systemd-journald systemd-timesyncd; do
+  mkdir -p "/run/systemd/system/${watchdog_unit}.service.d"
+  printf '[Service]\nWatchdogSec=0\n' > "/run/systemd/system/${watchdog_unit}.service.d/mos-install.conf"
+done
+systemctl daemon-reload || true
+
 # The stick is a live, writable root while it is copied, and remounting a running
 # root read-only fails, so the filesystem is frozen instead: writes wait until the
 # copy is done, and the copy is one consistent moment rather than a smear.
 sync
+hold_udev
 fsfreeze -f /
-trap 'fsfreeze -u / 2>/dev/null || true' EXIT
+trap 'fsfreeze -u / 2>/dev/null || true; release_udev' EXIT
 dd if="$root_disk" of="$target" bs=4M conv=fsync status=progress
 fsfreeze -u /
 trap - EXIT
@@ -180,12 +237,8 @@ sync
 # install that skipped its identity clean did so silently, and the only evidence
 # was a disk carrying the stick's host keys.
 fail_after_copy() {
-  printf '\n  The copy is on %s, but this step failed:\n\n      %s\n\n' "$target_name" "$1"
-  printf '  That disk may boot, but it is not a finished install. Photograph this\n'
-  printf '  screen, then press Enter to continue from the USB stick.\n'
-  printf '  > '
-  read -r _ || true
-  exit 1
+  printf '\n  The copy is on %s, but this step failed:\n\n      %s\n' "$target_name" "$1"
+  stop_here 'That disk may boot, but it is not a finished install.' 'Photograph this screen, then press Enter to restart.'
 }
 
 # Nothing here lays the disk out. The vault gate does that on the disk's first
@@ -193,27 +246,52 @@ fail_after_copy() {
 # cap and gives the rest to the vault. A copy step that grew the system to fill
 # the disk would leave the gate, which never shrinks, nowhere to put the vault.
 # Retried, because udev may still hold a partition open from probing the disk
-# that was just overwritten; three refusals in a row are a fault to read.
+# that was just overwritten; three refusals in a row are a fault to read. It does
+# not settle udev: the queue is held here on purpose, so settling would wait for
+# events that are not being processed. The partition nodes this needs are made by
+# the kernel, and the count checked after each call is what proves they arrived.
 reread_partitions() {
   local attempt
   for attempt in 1 2 3; do
-    if blockdev --rereadpt "$target" 2>/dev/null; then break; fi
+    if blockdev --rereadpt "$target" 2>/dev/null; then return 0; fi
     [ "$attempt" -lt 3 ] || fail_after_copy "the kernel would not re-read the disk's partition table"
-    udevadm settle || true
+    sleep 2
   done
-  udevadm settle || fail_after_copy 'the partitions on the disk did not appear'
 }
+# Asked of the kernel and of the disk itself, never of lsblk: lsblk reads PARTN
+# and PARTTYPE out of udev's database, and udev is held here on purpose, so it
+# would answer with a blank for every partition that was just created and the
+# EFI partition would look as though it had never appeared.
+partitions_of() {
+  local disk_name part
+  disk_name="$(basename "$1")"
+  for part in "/sys/class/block/${disk_name}"/*/partition; do
+    [ -e "$part" ] || continue
+    printf '/dev/%s\n' "$(basename "$(dirname "$part")")"
+  done
+}
+partition_number() { cat "/sys/class/block/$(basename "$1")/partition" 2>/dev/null || true; }
+
 reread_partitions
-source_parts="$(lsblk -nro TYPE "$root_disk" | grep -c part || true)"
-target_parts="$(lsblk -nro TYPE "$target" | grep -c part || true)"
+source_parts="$(partitions_of "$root_disk" | grep -c . || true)"
+target_parts="$(partitions_of "$target" | grep -c . || true)"
 [ "$source_parts" = "$target_parts" ] || fail_after_copy "the kernel still shows ${target_parts} partitions on the disk; the copy has ${source_parts}"
 
 # The system partition is found by the number the stick's own root has, the EFI
 # partition by its type.
-root_partn="$(lsblk -nro PARTN "$root_source")"
-system_partition="$(lsblk -nrpo NAME,PARTN "$target" | awk -v n="$root_partn" '$2 == n { print $1 }')"
+root_partn="$(partition_number "$root_source")"
+[ -n "$root_partn" ] || fail_after_copy 'could not read which partition the stick boots from'
+system_partition=''
+esp_partition=''
+while read -r part; do
+  [ -n "$part" ] || continue
+  [ "$(partition_number "$part")" != "$root_partn" ] || system_partition="$part"
+  if [ -z "$esp_partition" ] \
+    && [ "$(blkid -p -s PART_ENTRY_TYPE -o value "$part" 2>/dev/null || true)" = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b' ]; then
+    esp_partition="$part"
+  fi
+done < <(partitions_of "$target")
 [ -n "$system_partition" ] || fail_after_copy "partition ${root_partn} did not appear on the disk"
-esp_partition="$(lsblk -nrpo NAME,PARTTYPE "$target" | awk '$2 == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" { print $1 }' | head -n1)"
 [ -n "$esp_partition" ] || fail_after_copy 'no EFI system partition appeared on the disk'
 
 # The copy is the stick byte for byte, identifiers included: the same disk and
@@ -225,7 +303,7 @@ esp_partition="$(lsblk -nrpo NAME,PARTTYPE "$target" | awk '$2 == "c12a7328-f81f
 # it that names the old ones is rewritten, because one left behind is a disk
 # that boots only while the stick is in. Read with a raw probe: blkid's cache
 # still answers the old value after a change.
-printf '\n  Giving the disk its own identity.\n'
+stage 'Giving the disk its own identity.'
 fs_uuid() { blkid -p -s UUID -o value "$1" 2>/dev/null || true; }
 old_system_uuid="$(fs_uuid "$system_partition")"
 old_esp_uuid="$(fs_uuid "$esp_partition")"
@@ -241,6 +319,19 @@ new_system_uuid="$(fs_uuid "$system_partition")"
 new_esp_uuid="$(fs_uuid "$esp_partition")"
 { [ -n "$new_system_uuid" ] && [ "$new_system_uuid" != "$old_system_uuid" ]; } || fail_after_copy 'the system partition kept its identifier'
 { [ -n "$new_esp_uuid" ] && [ "$new_esp_uuid" != "$old_esp_uuid" ]; } || fail_after_copy 'the EFI partition kept its identifier'
+
+# The two disks answer to different names now, so udev may see the new one. The
+# mount is checked rather than assumed: if /boot/efi had followed the duplicate
+# to the copy, every line logged above was written to the disk being installed
+# instead of to the stick the owner takes away.
+release_udev
+boot_efi_source="$(findmnt -no SOURCE /boot/efi 2>/dev/null || true)"
+boot_efi_is_the_stick=no
+while read -r part; do
+  [ "$part" != "$boot_efi_source" ] || boot_efi_is_the_stick=yes
+done < <(partitions_of "$root_disk")
+[ -z "$boot_efi_source" ] || [ "$boot_efi_is_the_stick" = 'yes' ] \
+  || fail_after_copy "the disk's EFI partition took over /boot/efi from the stick"
 
 # Mounted under /run, a tmpfs, so nothing here depends on the root being writable.
 target_root=/run/mos-self-install/target
@@ -269,6 +360,7 @@ done
 grep -q "$new_system_uuid" "$target_root/etc/fstab" || fail_after_copy 'fstab does not name the system partition'
 grep -q "$new_system_uuid" "$target_root/boot/grub/grub.cfg" || fail_after_copy 'the GRUB menu does not name the system partition'
 grep -q "$new_system_uuid" "$target_root/boot/efi/EFI/BOOT/grub.cfg" || fail_after_copy 'the EFI loader config does not name the system partition'
+cp -f "$install_log" "$target_root/var/log/mos-install.log" 2>/dev/null || true
 sync
 umount "$target_root/boot/efi"
 umount "$target_root"
@@ -308,7 +400,7 @@ register_boot_entry() {
     --loader '\EFI\BOOT\BOOTX64.EFI' --label 'My Own Suite' >/dev/null 2>&1 || return 1
 }
 
-printf '\n  Registering the disk with this machine'"'"'s firmware.\n'
+stage "Registering the disk with this machine's firmware."
 if register_boot_entry; then
   boot_entry_registered=1
 else

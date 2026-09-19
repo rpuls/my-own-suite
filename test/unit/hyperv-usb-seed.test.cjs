@@ -265,3 +265,28 @@ test('ambient shell HOSTNAME cannot leak the build machine name into the seed', 
     }
   }
 });
+
+test('only a lab seed carries the development SSH key', () => {
+  const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholderPlaceholderPlaceholderPlaceholderPl mos-debug-bake';
+  const lab = YAML.parse(renderSeed({}, { authorizedKeys: [key], profile: 'lab', repoRef: 'staging' }).userData).autoinstall.ssh;
+  assert.deepEqual(lab['authorized-keys'], [key]);
+
+  const release = YAML.parse(renderSeed({}, { profile: 'release', repoRef: 'staging' }).userData).autoinstall.ssh;
+  assert.equal(release['authorized-keys'], undefined);
+
+  assert.throws(() => renderSeed({}, { authorizedKeys: [key], profile: 'release', repoRef: 'staging' }), /lab profile/u);
+});
+
+test('passwordless sudo ships with the development key and never without it', () => {
+  const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholderPlaceholderPlaceholderPlaceholderPl mos-debug-bake';
+  const sudoersOf = (options) => YAML.parse(renderSeed({}, options).userData)
+    .autoinstall['user-data'].write_files
+    .find((file) => file.path === '/etc/sudoers.d/90-mos-debug');
+
+  const lab = sudoersOf({ authorizedKeys: [key], profile: 'lab', repoRef: 'staging' });
+  assert.match(lab.content, /^mos ALL=\(ALL\) NOPASSWD:ALL$/mu);
+  assert.equal(lab.permissions, '0440');
+
+  assert.equal(sudoersOf({ profile: 'lab', repoRef: 'staging' }), undefined);
+  assert.equal(sudoersOf({ profile: 'release', repoRef: 'staging' }), undefined);
+});
