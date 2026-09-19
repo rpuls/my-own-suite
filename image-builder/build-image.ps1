@@ -344,8 +344,8 @@ function Invoke-Convert {
   Say ''
   Say "Image ready: $(Join-Path $OutputDir $imageName)"
   Say ''
-  Say 'Write it to a USB stick with Rufus (DD mode) or balenaEtcher, boot the target'
-  Say 'machine from it, pick the disk by number and type ERASE when it asks.'
+  Say 'Write the .img.xz to a USB stick with balenaEtcher or Rufus (both read it as it is),'
+  Say 'boot the target machine from it, pick the disk by number and type ERASE when it asks.'
 }
 
 function Invoke-Inspect {

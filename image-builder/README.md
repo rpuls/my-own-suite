@@ -87,8 +87,9 @@ Output lands in `image-builder/.work/out/`, which is git-ignored.
    removable-media fallback path, cloud-init disabled, SSH host keys and
    machine-id removed, server login reset so each machine generates its own.
 4. It powers off. The host converts the disk with `qemu-img`, shrinks the
-   filesystem and root partition to the actual contents, truncates the file, and
-   compresses it with `xz`. The target grows the filesystem back on first boot.
+   filesystem and root partition to the actual contents, zeroes the free blocks,
+   truncates the file, and compresses it with `xz`. The target grows the
+   filesystem back on first boot.
 
 ## What verify proves
 
@@ -133,9 +134,16 @@ Measured on the first bake, before any of this was done: 16 GB file, 8.0 GB used
 `/opt/mos` 182 MB, and 6.3 GB of empty space that existed only because the bake
 disk was 16 GB.
 
-So the build now removes the swapfile (`mos-grow-root` makes a new one on the
-target, sized to a disk the build cannot know), prunes the container build cache,
-shrinks to contents plus `-SlackMB` headroom, and ships `.img.xz`.
+So the build now removes the swapfile (the vault gate makes a new one on the
+target on first boot, sized to a disk the build cannot know), prunes the
+container build cache, shrinks to contents plus `-SlackMB` headroom, zeroes the
+free blocks left inside that filesystem, and ships `.img.xz`.
+
+The zeroing is worth a gigabyte. Free blocks keep whatever the bake deleted —
+pruned build cache, apt lists, the blocks `resize2fs` moved — and `xz` cannot
+compress that, so the download had swung between 2.2 and 2.9 GB for the same
+contents. Measured on one bake on 2026-09-19: 2.86 GB with the free blocks as the
+bake left them, 1.80 GB with them zeroed.
 
 For comparison, Home Assistant OS is a few hundred MB because it is a Buildroot
 appliance rather than a distro, **and** because it downloads its application on

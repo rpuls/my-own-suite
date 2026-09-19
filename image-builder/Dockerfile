@@ -9,7 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV MTOOLS_SKIP_CHECK=1
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends qemu-utils mtools fdisk gdisk e2fsprogs xz-utils \
+  && apt-get install -y --no-install-recommends qemu-utils mtools fdisk gdisk e2fsprogs xz-utils zerofree \
   && rm -rf /var/lib/apt/lists/*
 
 COPY check-target.sh /usr/local/bin/check-target.sh
