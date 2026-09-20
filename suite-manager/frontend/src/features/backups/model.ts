@@ -90,9 +90,13 @@ export type JobProgress = {
 export type JobExpectation = { basis: 'guess' | 'measured' | 'partly'; note: string | null; sentence: string };
 
 export type BackupJob = {
-  // What a restore did about the domain the backup carried: `same` on the
-  // machine that wrote it, otherwise the owner's `move` or `copy`.
-  address?: { domain: string | null; plan: 'copy' | 'move' | 'same' } | null;
+  // The domain the backup carried and the restore set aside, or null when the
+  // backup came from this machine and there was nothing to set aside.
+  address?: { domain: string | null } | null;
+  // Whether the restored routes went live. A web server that refused the new
+  // config keeps serving the old one, so this is the difference between a
+  // restored suite and a restored suite its owner can reach.
+  controlPlane?: { detail: string | null; routesLive: boolean } | null;
   error: string | null;
   id: string;
   kind: string | null;
@@ -348,11 +352,14 @@ export function writtenElsewhere(backup: BackupEntry, status: BackupStatus | nul
   return backup.sourceHostname || 'another server';
 }
 
-// The one question a restore onto another machine has to ask: a domain can
-// point at one machine at a time. Asked when the backup carries one, and when
-// it is too old to say; never when it is known to carry none.
-export function needsAddressChoice(backup: BackupEntry, status: BackupStatus | null | undefined) {
-  return Boolean(writtenElsewhere(backup, status)) && Boolean(backup.sourceDomain);
+// The domain a restore onto this machine will set aside, or null. It used to be
+// a question — move the name here, or keep this machine's own address — asked
+// before a restore and acted on in the middle of one, which is the stretch
+// where Suite Manager is down and no screen can report what happened. It is a
+// statement now: the suite comes back on this machine's own address, and the
+// name is offered back afterwards, in the open.
+export function carriedDomain(backup: BackupEntry, status: BackupStatus | null | undefined) {
+  return writtenElsewhere(backup, status) ? backup.sourceDomain || null : null;
 }
 
 // Which server's backups a destination holds, when it is not this one. Read off
@@ -516,31 +523,6 @@ function reachOf(destination: BackupDestination) {
   return '';
 }
 
-/**
- * Whether the owner has a copy out of reach, and how old it is.
- *
- * One line at the right moment is what gets a drive plugged in; an article
- * reaches people after something has already gone wrong. It says where they
- * stand and never scolds, because the goal is moving an owner from one copy to
- * two, not teaching them a practice they did not ask to learn.
- */
-export function offlineCopyLine(views: DestinationView[]) {
-  const away = views.filter((view) => view.away);
-  const reachable = views.filter((view) => !view.away && !view.destination.locked && (view.destination.ready || view.destination.mountState === 'mounted'));
-  if (!away.length) {
-    if (!reachable.length) return '';
-    return 'Every copy you have is somewhere this server can reach, so anything that gets into this server can erase all of them. A drive you plug in, back up to, and unplug again is the one copy that survives that.';
-  }
-  const freshest = away
-    .map((view) => daysSince(view.destination.lastBackupAt || null))
-    .filter((days): days is number => days !== null)
-    .sort((left, right) => left - right)[0] ?? null;
-  const drive = away.length === 1 ? away[0]?.label || 'Your unplugged drive' : `${away.length} drives you keep unplugged`;
-  if (freshest === null) return `${drive} is unplugged, out of reach of anything that gets into this server. MOS does not know how old the copy on it is.`;
-  if (freshest > 30) return `Your copy that is out of reach is on ${drive}, and it is ${freshest} days old. Plugging it in brings it up to date.`;
-  return `${drive} holds a copy from ${freshest === 0 ? 'today' : freshest === 1 ? 'yesterday' : `${freshest} days ago`} that nothing on this server can reach.`;
-}
-
 // The list the page draws, in the order it draws it: the selected place first,
 // then whatever is usable, then whatever needs attention, then whatever is
 // away. A selected destination that is not in the list at all — a drive in a
@@ -576,12 +558,8 @@ export function keyCoverage(views: DestinationView[]) {
     return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels[0] || '';
   };
 
-  const guests = views.filter((view) => view.destination.borrowedKey === true);
   const strangers = views.filter((view) => view.destination.locked);
-  const detail = [
-    guests.length ? `${names(guests)} opens with the key of the server that wrote it, kept here.` : '',
-    strangers.length ? `${names(strangers)} still needs the key of the server that wrote it.` : '',
-  ].filter(Boolean).join(' ');
+  const detail = strangers.length ? `${names(strangers)} still needs the key of the server that wrote it.` : '';
   return { detail, summary: 'One recovery key opens everything this server made.' };
 }
 
@@ -749,11 +727,24 @@ export function activityLine(job: RecentJob, destinations: DestinationView[]) {
   return `Backup finished${at}${job.note ? `, with your note "${job.note}"` : ''}.`;
 }
 
-export function restoreAddressNote(job: BackupJob | null) {
-  if (job?.kind !== 'restore' || job.status !== 'succeeded' || !job.address?.domain) return null;
-  if (job.address.plan === 'copy') return `This machine was restored as a copy. Apps answer on this machine's own address, and ${job.address.domain} still points at the machine that wrote the backup; Settings offers to move it here.`;
-  if (job.address.plan === 'move') return `This machine now serves ${job.address.domain}. To finish the move, point that name at this machine's address; Settings shows how.`;
-  return null;
+// What is left over after a restore that worked. A restore onto new hardware
+// finishes with the suite reachable and some of its owner's world still
+// pointing at the machine they came from, and a screen that answers "done" to
+// that is the failure this reports around: the phone apps keep saying error
+// while the browser says everything is fine.
+export type RestoreAftermath = {
+  // The name the backup carried, set aside and offered back under Settings.
+  domain: string | null;
+  routesDetail: string | null;
+  routesLive: boolean;
+};
+
+export function restoreAftermath(job: BackupJob | null | undefined): RestoreAftermath | null {
+  if (job?.kind !== 'restore' || job.status !== 'succeeded') return null;
+  const domain = job.address?.domain || null;
+  const routesLive = job.controlPlane ? job.controlPlane.routesLive : true;
+  if (!domain && routesLive) return null;
+  return { domain, routesDetail: job.controlPlane?.detail || null, routesLive };
 }
 
 // The kit is text the browser saves, not a file the server serves: it holds the

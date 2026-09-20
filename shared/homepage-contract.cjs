@@ -379,7 +379,11 @@ function publicUrlFor(proxy, domainState) {
   if (!HOST_PATTERN.test(baseDomain) || baseDomain === 'localhost') {
     throw new HomepageConfigError('PUBLIC_DOMAIN_REQUIRED', 'Configure a usable MOS domain before adding a home service.');
   }
-  return `${domainState?.tlsMode === 'cloudflare-dns01' ? 'https' : 'http'}://${proxy.subdomain}.${baseDomain}/`;
+  // A served domain is an HTTPS domain, whichever module served it. Naming one
+  // provider here would silently put every Homepage link back on http the day a
+  // second one ships.
+  const secure = Boolean(domainState?.tlsMode) && domainState.tlsMode !== 'off';
+  return `${secure ? 'https' : 'http'}://${proxy.subdomain}.${baseDomain}/`;
 }
 
 function projectServices(content, domainState) {

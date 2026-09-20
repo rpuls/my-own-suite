@@ -167,16 +167,28 @@ test('appliedBaseDomain names the domain apps are served on, and nothing before 
   assert.equal(service.appliedBaseDomain({ baseDomain: null, pendingBaseDomain: 'mos.example.com', tlsMode: 'off' }), null);
 });
 
-test('easyDoorHost returns null for cloudflare-dns01 TLS mode', () => {
-  const settings = { tlsMode: 'cloudflare-dns01' };
-
-  const service = new HttpsSettingsService({
+// The door closes because a domain is being served, not because of which
+// module serves it: a second provider that this test did not know about must
+// close it too, or the machine keeps answering on an address its own routes
+// have stopped naming.
+test('easyDoorHost returns null whenever a domain is served, whichever provider serves it', () => {
+  const service = (settings) => new HttpsSettingsService({
     agent: {},
     bootstrapHost: 'bootstrap.test',
+    detectAddress: () => '10.0.1.30',
     store: { getHttpsSettings: () => settings },
   });
 
-  assert.equal(service.easyDoorHost(settings), null);
+  const served = { baseDomain: 'example.com', tlsMode: 'cloudflare-dns01' };
+  assert.equal(service(served).easyDoorHost(served), null);
+
+  const servedByAnother = { baseDomain: 'example.com', tlsMode: 'some-future-provider' };
+  assert.equal(service(servedByAnother).easyDoorHost(servedByAnother), null);
+
+  // Set aside by a restore: the domain is remembered, nothing serves it, and
+  // the door is the only way in until the owner applies it here.
+  const setAside = { baseDomain: null, pendingBaseDomain: 'example.com', tlsMode: 'off' };
+  assert.equal(service(setAside).easyDoorHost(setAside), 'home.10-0-1-30.local.myownsuite.org');
 });
 
 test('easyDoorHost is derived from the current detected address for non-cloudflare modes', () => {
@@ -200,7 +212,7 @@ test('allowedHosts includes bootstrap, active home, pending home, and easy door 
   const settings = {
     baseDomain: 'example.com',
     pendingBaseDomain: 'pending.example.com',
-    tlsMode: 'http',
+    tlsMode: 'off',
   };
 
   const service = new HttpsSettingsService({

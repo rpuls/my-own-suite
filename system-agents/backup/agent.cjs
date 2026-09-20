@@ -12,8 +12,10 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { execFile, execFileSync, spawn } = require('node:child_process');
-const { BackupAgentCore, isRestorePointPath, RESTORE_ADDRESS_PLANS, restorePublicIdentity, sha256, UNREADABLE_LEGACY_BACKUP, validatePackagePayloads } = require('./agent-core.cjs');
-const { PROGRESS_FILENAME, UNAVAILABLE_PAGE_ROOT, renderHttpsCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
+const { BackupAgentCore, isRestorePointPath, restorePublicIdentity, sha256, UNREADABLE_LEGACY_BACKUP, validatePackagePayloads } = require('./agent-core.cjs');
+const { PROGRESS_FILENAME, UNAVAILABLE_PAGE_ROOT } = require('../../infrastructure/control-plane-runtime.cjs');
+const { detectEasyDoorBase } = require('../../shared/easy-door.cjs');
+const { servedDomain } = require('../../shared/served-address.cjs');
 const { BUILD_TIMINGS_FILENAME, expectedBuildSeconds, readBuildTimings } = require('../lib/app-build-timings.cjs');
 const { checkExpectation, restoreExpectation, runningExpectation } = require('./expectations.cjs');
 const { ProgressPublisher, advanceTimeline, closeTimeline, progressFor, stageSentence } = require('./progress.cjs');
@@ -425,7 +427,7 @@ function expectationInputs({ apps, sizeBytes }) {
 }
 function summarizeJob(job) {
   if (!job) return null;
-  return { address: job.address && typeof job.address === 'object' ? job.address : null, backupPath: job.backupPath || null, destinationId: job.destinationId || null, error: job.error || null, id: job.id, kind: job.kind || null, logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [], outputPath: job.outputPath || null, progress: job.progress || null, rescuePath: job.rescuePath || null, stage: job.stage || null, status: job.status || null, summary: job.summary || null, updatedAt: job.updatedAt || null, validation: job.validation || null, verification: job.verification || null };
+  return { address: job.address && typeof job.address === 'object' ? job.address : null, backupPath: job.backupPath || null, controlPlane: job.controlPlane || null, destinationId: job.destinationId || null, error: job.error || null, id: job.id, kind: job.kind || null, logs: Array.isArray(job.logs) ? job.logs.slice(-20) : [], outputPath: job.outputPath || null, progress: job.progress || null, rescuePath: job.rescuePath || null, stage: job.stage || null, status: job.status || null, summary: job.summary || null, updatedAt: job.updatedAt || null, validation: job.validation || null, verification: job.verification || null };
 }
 function isActive(job) { return job && (job.status === 'queued' || job.status === 'running'); }
 function jobPath(id) { return path.join(jobsDir, `${id}.json`); }
@@ -443,8 +445,6 @@ function createJob(kind, payload) {
   const destinationId = kind === 'backup' ? normalizeDestinationId(payload.destinationId) : null;
   const backupPath = kind === 'restore' || kind === 'validate' || kind === 'delete' ? normalizeBackupLocator(payload.backupPath) : null;
   const note = kind === 'backup' ? String(payload.note || '').trim().slice(0, 500) : '';
-  const address = kind === 'restore' && payload.address !== undefined && payload.address !== null ? String(payload.address) : null;
-  if (address !== null && !RESTORE_ADDRESS_PLANS.includes(address)) throw new Error('Choose whether to move the address to this machine or to restore as a copy.');
   if (kind === 'backup' && !destinationId) throw new Error('Choose a connected drive or a storage connection to back up to.');
   if ((kind === 'restore' || kind === 'validate' || kind === 'delete') && !backupPath) throw new Error('Choose a detected backup from a connected destination.');
   // A leftover backup in the retired tar format can be deleted but never read,
@@ -453,7 +453,7 @@ function createJob(kind, payload) {
   if (kind === 'restore' && payload.confirmation !== 'RESTORE') throw new Error('Type RESTORE to confirm this destructive restore.');
   const initiator = payload.initiator === 'schedule' || payload.initiator === 'update' ? payload.initiator : 'owner';
   const updateTarget = kind === 'backup' && initiator === 'update' ? String(payload.updateTarget || '').trim().slice(0, 60) : '';
-  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator, kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(note ? { note } : {}), ...(address ? { address } : {}), ...(updateTarget ? { updateTarget } : {}) };
+  const job = { backupPath, createdAt: now, destinationId, error: null, id, initiator, kind, logs: [], outputPath: null, rescuePath: null, stage: 'queued', status: 'queued', updatedAt: now, ...(note ? { note } : {}), ...(updateTarget ? { updateTarget } : {}) };
   writeJson(jobPath(id), job);
   writeJson(currentJobPath, job);
   spawn(process.execPath, [__filename, '--worker', jobPath(id)], { cwd: repoDir, detached: true, env: process.env, stdio: 'ignore' }).unref();
@@ -656,7 +656,16 @@ function readBootstrapContract() {
 function restoreBaseUrl(store) {
   let httpsSettings = null;
   try { httpsSettings = store ? store.getHttpsSettings() : null; } catch {}
-  return restorePublicIdentity({ bootstrapContract: readBootstrapContract(), environment: process.env, httpsSettings });
+  // Read from the live Caddyfile and the live address, so a machine that has
+  // just taken over another machine's suite is named by where it is rather
+  // than by where the backup was written.
+  const easyDoorBase = detectEasyDoorBase({ caddyfilePath });
+  return restorePublicIdentity({
+    bootstrapContract: readBootstrapContract(),
+    easyDoorHost: easyDoorBase ? `home.${easyDoorBase}` : null,
+    environment: process.env,
+    httpsSettings,
+  });
 }
 function withStore(work) {
   const store = new SuiteManagerStore(stateDir);
@@ -667,8 +676,7 @@ function withStore(work) {
   }
 }
 function appliedDomain(store) {
-  const settings = store.getHttpsSettings();
-  return settings?.tlsMode === 'cloudflare-dns01' && settings.baseDomain ? settings.baseDomain : null;
+  return servedDomain(store.getHttpsSettings());
 }
 // Generated once, on this machine's first agent start, and kept beside the
 // engine key where nothing backs it up: the one fact a restore point can carry
@@ -683,13 +691,14 @@ function installId() {
   fs.writeFileSync(installIdPath, `${id}\n`, 'utf8');
   return id;
 }
-// Who this machine is, and the two things a restore can do with a domain the
-// backup carried. Parking keeps the domain in the restored settings as pending
-// and switches HTTPS off, so apps are rebuilt on this machine's own address and
-// the Settings form offers the domain back. Serving rewrites the restored
-// Caddyfile for this machine's own bootstrap name; the certificate follows from
-// the restored token once Caddy starts, and pointing the name here is the
-// owner's step, as it is after any HTTPS apply.
+// Who this machine is, and the one thing a restore does with a domain the
+// backup carried: set it aside. The domain stays in the restored settings as
+// pending and HTTPS is switched off, so the apps are rebuilt on an address this
+// machine can serve with no DNS and no credential, and the Settings form offers
+// the domain back whenever the owner is ready for it. Serving a name is the
+// domain module's job and happens nowhere else — a restore that wrote its own
+// TLS config was how a machine came back serving a name its own Suite Manager
+// refused.
 const identity = {
   // A restore that takes another machine's place makes that machine's key this
   // machine's own, and the borrowed copy is dropped: the two are now one server
@@ -726,18 +735,6 @@ const identity = {
   parkRestoredDomain: async () => withStore((store) => {
     const domain = appliedDomain(store);
     if (domain) store.parkHttpsDomain(new Date().toISOString());
-    return domain;
-  }),
-  serveRestoredDomain: async () => withStore((store) => {
-    const domain = appliedDomain(store);
-    if (!domain) return null;
-    const { homeHost } = restorePublicIdentity({ bootstrapContract: readBootstrapContract(), environment: process.env });
-    fs.writeFileSync(caddyfilePath, renderHttpsCaddyfile({
-      acmeEmail: store.getHttpsSettings().acmeEmail,
-      baseDomain: domain,
-      bootstrapHost: homeHost,
-      suiteManagerPort: process.env.MOS_SUITE_MANAGER_PORT || '3100',
-    }), { encoding: 'utf8', mode: 0o644 });
     return domain;
   }),
 };

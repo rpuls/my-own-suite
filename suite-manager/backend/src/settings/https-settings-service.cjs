@@ -1,5 +1,6 @@
 const { HttpsSettingsError, validateHttpsInput } = require('../../../../shared/https-contract.cjs');
 const { detectServerAddress, easyDoorHomeHost } = require('../../../../shared/easy-door.cjs');
+const { servedDomain } = require('../../../../shared/served-address.cjs');
 const { buildOperationDiagnostics } = require('../diagnostics/operation-diagnostics.cjs');
 const { HttpsAgentError } = require('./https-agent-client.cjs');
 
@@ -36,7 +37,7 @@ function publicStatus(settings, bootstrapHost, agentAvailable, {
     provider: settings.provider,
     serverAddress,
     tlsMode: settings.tlsMode,
-    tokenConfigured: settings.tlsMode === 'cloudflare-dns01',
+    tokenConfigured: Boolean(servedDomain(settings)),
   };
 }
 
@@ -55,7 +56,7 @@ class HttpsSettingsService {
   // to stop being served the moment a real domain takes over, which is the same
   // moment Caddy stops serving the door.
   easyDoorHost(settings = this.store.getHttpsSettings()) {
-    if (settings.tlsMode === 'cloudflare-dns01') return null;
+    if (servedDomain(settings)) return null;
     return easyDoorHomeHost(this.detectAddress());
   }
 
@@ -63,7 +64,7 @@ class HttpsSettingsService {
   // every app route names exactly one host under it, so the address an app is
   // reached on no longer depends on which door the owner came in through.
   appliedBaseDomain(settings = this.store.getHttpsSettings()) {
-    return settings.tlsMode === 'cloudflare-dns01' && settings.baseDomain ? settings.baseDomain : null;
+    return servedDomain(settings);
   }
 
   allowedHosts() {
@@ -79,7 +80,7 @@ class HttpsSettingsService {
   publicUrlSchemeForHost(host, fallback = 'http') {
     const settings = this.store.getHttpsSettings();
     const normalizedHost = String(host || '').trim().toLowerCase();
-    if (settings.tlsMode === 'cloudflare-dns01' && normalizedHost === homeHostFor(settings.baseDomain)) {
+    if (servedDomain(settings) && normalizedHost === homeHostFor(settings.baseDomain)) {
       return 'https';
     }
     return fallback === 'https' ? 'https' : 'http';

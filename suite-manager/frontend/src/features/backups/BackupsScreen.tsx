@@ -28,7 +28,7 @@ import {
   isRunning,
   jobLine,
   jobWorkingLine,
-  restoreAddressNote,
+  restoreAftermath,
   restorePhaseWords,
   scheduleLive,
   scheduleSummary,
@@ -39,6 +39,7 @@ import {
   type BackupSchedule,
   type BackupStatus,
   type DestinationView,
+  type JobProgress,
   type ObjectDraft,
   type ArchiveKey,
   type RotationResult,
@@ -59,14 +60,42 @@ type Dialog =
   | { kind: 'wizard'; start: '' | 'drive' | 'online' }
   | null;
 
+// `at` is when MOS last answered, kept across failures so the screen can say
+// how long the silence has lasted rather than only that there is one.
+type Contact = { at: number; state: 'ok' | 'unreachable' | 'wrong-address' };
+
+// A restore stops Suite Manager for the whole middle of its run, so silence is
+// expected for minutes at a time and saying so early would cry wolf through
+// every normal restore. Long enough to outlast a service restart, short enough
+// that nobody watches a lie for a quarter of an hour.
+const SILENCE_BEFORE_SAYING_SO_MS = 90_000;
+
+function silenceWords(since: number, now: number) {
+  const minutes = Math.floor((now - since) / 60_000);
+  if (minutes < 2) return 'for a minute or so';
+  if (minutes < 60) return `for ${minutes} minutes`;
+  const hours = Math.floor(minutes / 60);
+  return hours === 1 ? 'for over an hour' : `for over ${hours} hours`;
+}
+
 export function BackupsScreen() {
   const [status, setStatus] = useState<BackupStatus | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [backupTargetId, setBackupTargetId] = useState('');
   const [backupNote, setBackupNote] = useState('');
   const [restoreConfirmation, setRestoreConfirmation] = useState('');
-  const [restoreAddress, setRestoreAddress] = useState<'' | 'copy' | 'move'>('');
   const [restoreStarted, setRestoreStarted] = useState(false);
+  // Whether MOS is answering this page, and since when. Every poll used to end
+  // in `.catch(() => undefined)`, so a page whose server had stopped answering
+  // kept rendering its last good read: during a restore that is a confident
+  // spinner on step 1 of 9 while the machine is at step 7, or has finished, or
+  // is refusing this address outright. Silence is a state, and it is shown.
+  const [contact, setContact] = useState<Contact>({ at: Date.now(), state: 'ok' });
+  // The progress file Caddy serves itself, which is the only thing still
+  // answering while Suite Manager is deliberately down. Read only when the API
+  // is not answering, so the normal path is unchanged.
+  const [publicProgress, setPublicProgress] = useState<JobProgress | null>(null);
+  const [now, setNow] = useState(Date.now());
   const [sessionEnded, setSessionEnded] = useState<'restore' | 'expired' | ''>('');
   const [activityOpen, setActivityOpen] = useState(false);
   const [error, setError] = useState('');
@@ -105,25 +134,66 @@ export function BackupsScreen() {
   // the dialog instead. The agent refuses them too, so a page left open from
   // before cannot slip past this.
   const keySaved = recoveryKey === null || recoveryKey.acknowledged;
+  // A restore that succeeded and left something for its owner to finish. Null
+  // once nothing is outstanding, which is what keeps this from becoming a
+  // notice people learn to scroll past.
+  const aftermath = restoreAftermath(status?.lastJob);
 
   // Reads the status and nothing else. Every action calls this when it is done
   // and the idle poll calls it on its own, so it must not touch the busy state:
   // whichever action is in flight is what the screen should still be showing.
+  //
+  // What it must not do is fail quietly. A poll ends in exactly one of four
+  // places, and the screen is told which: signed out, refused because this
+  // machine no longer answers for this address, unreachable, or answered.
   async function load() {
     setError('');
-    const response = await fetch('/suite-manager/api/backups/status');
+    let response: Response;
+    try {
+      response = await fetch('/suite-manager/api/backups/status');
+    } catch {
+      setContact((previous) => previous.state === 'ok' ? { at: previous.at, state: 'unreachable' } : previous);
+      return;
+    }
     if (response.status === 401) {
       // A restore replaces Suite Manager state, so the session that started it
       // no longer exists once the restored control plane comes back.
+      setContact({ at: Date.now(), state: 'ok' });
       setSessionEnded(restoreInFlight ? 'restore' : 'expired');
       setStatus(null);
       setRestoreStarted(false);
       return;
     }
+    // MOS is running and refusing this address: the suite is being served under
+    // a name this one is not. That is an answer, not a wait, so it ends the
+    // spinner rather than feeding it.
+    if (response.status === 421) {
+      setContact((previous) => ({ at: previous.at, state: 'wrong-address' }));
+      return;
+    }
+    if (!response.ok) {
+      setContact((previous) => previous.state === 'ok' ? { at: previous.at, state: 'unreachable' } : previous);
+      return;
+    }
     const next = await jsonResponse<BackupStatus>(response, 'Unable to load backups.');
+    setContact({ at: Date.now(), state: 'ok' });
+    setPublicProgress(null);
     setStatus(next);
     if (!isRunning(next.currentJob) && restoreStarted) setRestoreStarted(false);
     if (!isRunning(next.currentJob) && checking) setChecking('');
+  }
+
+  // Caddy answers this itself while Suite Manager is stopped, and 204 when the
+  // agent is running no job at all — which during a restore means the job is
+  // over, however the page looked a moment ago.
+  async function loadPublicProgress() {
+    try {
+      const response = await fetch('/mos-status/progress.json', { cache: 'no-store' });
+      if (response.status === 204) { setPublicProgress(null); return; }
+      if (!response.ok) return;
+      const next = await response.json() as JobProgress;
+      setPublicProgress(next && typeof next === 'object' && next.steps ? next : null);
+    } catch {}
   }
 
   useEffect(() => { void load().catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load backups.')); }, []);
@@ -145,6 +215,22 @@ export function BackupsScreen() {
     const timer = window.setInterval(() => { void load().catch(() => undefined); }, running ? 4000 : 30000);
     return () => window.clearInterval(timer);
   }, [running, status?.schedule?.enabled]);
+  // While MOS is not answering this page, the only thing that still knows where
+  // the job is is the file Caddy serves. Polled only then, and stopped the
+  // moment the API answers again.
+  useEffect(() => {
+    if (contact.state !== 'unreachable') return undefined;
+    void loadPublicProgress();
+    const timer = window.setInterval(() => { void loadPublicProgress(); }, 4000);
+    return () => window.clearInterval(timer);
+  }, [contact.state]);
+  // Silence has to age on screen even when nothing else changes, or a page left
+  // open says "for a minute or so" an hour later.
+  useEffect(() => {
+    if (contact.state === 'ok') return undefined;
+    const timer = window.setInterval(() => { setNow(Date.now()); }, 15000);
+    return () => window.clearInterval(timer);
+  }, [contact.state]);
   // Leaving or refreshing mid-restore drops the operator onto a raw server
   // error page while the control plane is intentionally down; browsers only
   // show a generic confirmation, so the patient-waiting guidance lives in the
@@ -435,13 +521,11 @@ export function BackupsScreen() {
     setError('');
     try {
       await post('restore', {
-        ...(restoreAddress ? { address: restoreAddress } : {}),
         backupPath: backup.path,
         confirmation: restoreConfirmation,
       }, 'Unable to start restore.');
       setDialog(null);
       setRestoreConfirmation('');
-      setRestoreAddress('');
       setRestoreStarted(true);
       await load().catch(() => undefined);
     } catch (caught) {
@@ -490,14 +574,35 @@ export function BackupsScreen() {
   // A restore takes the page over. Nothing else on it is reachable or true
   // while the machine is being replaced by the backup.
   if (restoreInFlight) {
-    const progress = activeJob?.progress || null;
+    // The API's answer when there is one, the file Caddy serves when there is
+    // not. Never the last thing the API said before it went quiet: that is a
+    // photograph of a stage the machine left minutes ago, and rendering it
+    // under a live spinner is the whole failure this guards against.
+    const stale = contact.state !== 'ok';
+    const progress = stale ? publicProgress : activeJob?.progress || null;
+    const silent = stale && now - contact.at > SILENCE_BEFORE_SAYING_SO_MS;
     const count = progress?.count || null;
     return <section className="mos-shell suite-backups">
       <div className="mos-page">
         {hero}
+
+        {contact.state === 'wrong-address' ? <Notice title="This machine no longer answers at this address" variant="warning">
+          <p>MOS is running here and refused this address, which means the restored suite is being served under a different name than the one in your browser. Nothing is wrong with the restore or your data.</p>
+          <p>Open MOS at the address of the server you restored from. If that name does not point at this machine yet, reach it on this machine&rsquo;s own address — the one printed on its screen when it starts.</p>
+        </Notice> : null}
+
+        {silent && contact.state === 'unreachable' ? <Notice title={progress ? 'MOS is not answering this page' : 'MOS has stopped answering'} variant={progress ? 'info' : 'warning'}>
+          {progress
+            ? <p>Suite Manager is stopped for the middle of a restore, which is expected. The steps below are coming from the server itself, so they are current even though this page cannot reach it. Leave the machine on.</p>
+            : <p>This page has had no answer {silenceWords(contact.at, now)}, and the server is not reporting a restore running either. It may have finished and signed you out, or it may have stopped. Leave the machine on and reload this page; if it does not come back, the machine&rsquo;s own screen shows its address and what it is doing.</p>}
+        </Notice> : null}
+
         <Panel>
           <PanelHead title={progress?.headline || 'Restoring your backup'}>
-            <p className="suite-bk-working"><Spinner />{stageWords(activeJob)}{stepLine(progress)}</p>
+            <p className="suite-bk-working">
+              {progress || !silent ? <Spinner /> : null}
+              {progress ? progress.sentence : silent ? 'MOS is not saying where this has got to.' : stageWords(activeJob)}{stepLine(progress)}
+            </p>
             {count ? <>
               <p className="suite-meta">{count.sentence}{count.note ? ` ${count.note}` : ''}</p>
               <div className="suite-bk-bar"><span style={{ width: `${countShare(count)}%` }} /></div>
@@ -534,6 +639,28 @@ export function BackupsScreen() {
       </Notice> : null}
 
       {status?.serviceAvailable ? <div className="suite-bk-page" aria-busy={running}>
+        {/* What a restore that worked has left undone. It sits at the top of
+            the page rather than inside the activity list it used to hide in: a
+            suite whose owner's phones and laptops are still asking for another
+            machine is not finished, and the browser looking fine is exactly why
+            nobody would go looking for this. It clears itself — the domain
+            leaves the moment it is served here, the routes line the moment the
+            web server takes them. */}
+        {aftermath ? <Notice title="Your suite is restored — two things are left" variant="warning">
+          {aftermath.routesLive ? null : <p><strong>This machine is still serving the routes it had before the restore.</strong> The web server refused the restored ones, so some apps may not open yet. Restarting this server picks them up.</p>}
+          {aftermath.domain ? <>
+            <p>Your suite is running here, on this machine&rsquo;s own address, and you are signed in to it. Anything set up against <strong>{aftermath.domain}</strong> — phone apps, sync clients, browser extensions — keeps failing until that name points at this machine, because it still points at the server this backup came from.</p>
+            <p>Settings names <strong>{aftermath.domain}</strong> and fills the HTTPS form in with it, so applying it here is your provider&rsquo;s API token and a confirm. Pointing the name at this machine is the part MOS cannot do for you — change it at your DNS provider, and in any override your own network holds for it.</p>
+            <p className="suite-meta">Turn the old server off first if it is still running. Two machines answering for one suite means two copies of your data drifting apart.</p>
+            <a className="mos-btn mos-btn-primary" href="/suite-manager/settings">Finish moving {aftermath.domain}</a>
+          </> : null}
+          {aftermath.routesDetail ? <AdvancedPanel
+            facts={[{ label: 'Restored domain', value: aftermath.domain || 'none' }]}
+            output={aftermath.routesDetail}
+            reveal="on-failure"
+          /> : null}
+        </Notice> : null}
+
         {/* A block is the answer to "am I safe", so it takes that slot rather
             than sitting beside it. Never more than one at a time. */}
         {status.interruptedRestore ? <Notice title="A restore did not finish" variant="error">
@@ -650,7 +777,7 @@ export function BackupsScreen() {
           onCheck={(backup) => void checkBackup(backup)}
           onDelete={(backup) => setDialog({ kind: 'delete', backup })}
           onEditNote={(backup) => setDialog({ kind: 'note', backup, value: backup.note || '' })}
-          onRestore={(backup) => { setRestoreConfirmation(''); setRestoreAddress(''); setDialog({ kind: 'restore', backup }); }}
+          onRestore={(backup) => { setRestoreConfirmation(''); setDialog({ kind: 'restore', backup }); }}
           running={running}
           status={status}
           views={views}
@@ -667,7 +794,6 @@ export function BackupsScreen() {
               <span className="suite-bk-point-when">{whenWords(job.updatedAt)}</span>
               <span>{activityLine(job, views)}</span>
             </p>)}
-            {restoreAddressNote(status.lastJob) ? <p className="suite-meta">{restoreAddressNote(status.lastJob)}</p> : null}
             <AdvancedPanel
               facts={[
                 { label: 'Detected apps', value: String(status.inventory?.summary.appCount ?? 0) },
@@ -742,11 +868,9 @@ export function BackupsScreen() {
       /> : null}
 
       {dialog?.kind === 'restore' ? <RestoreDialog
-        address={restoreAddress}
         backup={dialog.backup}
         busy={busy}
         confirmation={restoreConfirmation}
-        onAddress={setRestoreAddress}
         onCancel={closeDialog}
         onConfirmation={setRestoreConfirmation}
         onStart={() => void startRestore(dialog.backup)}

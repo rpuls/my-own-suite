@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { AdvancedPanel, Checkbox, Choice, Dialog, Icon, Notice, Panel, PanelItem, PanelList, Select, Spinner, Stepper, TextArea, TextInput } from '../../components/ui';
+import { AdvancedPanel, Checkbox, Dialog, Icon, Notice, Panel, PanelItem, PanelList, Select, Spinner, Stepper, TextArea, TextInput } from '../../components/ui';
 import { RecoveryKeySecret, type RevealedRecoveryKey } from '../../components/RecoveryKeySecret';
 import { type VaultStartup } from '../../lib/vault';
 import {
@@ -11,7 +11,7 @@ import {
   clockValue,
   archiveKeyLine,
   destinationIconName,
-  needsAddressChoice,
+  carriedDomain,
   whenWords,
   writtenElsewhere,
   type ArchiveKey,
@@ -359,28 +359,27 @@ export function ScheduleDialog({ busy, onCancel, onSave, schedule, selected }: {
 }
 
 // Putting a backup back. Everything that cannot be undone is said before the
-// confirmation field, and the one question a restore onto another machine has
-// to ask — which machine answers for the address — is asked as a choice, before
-// anything is touched.
-export function RestoreDialog({ backup, busy, address, confirmation, onCancel, onAddress, onConfirmation, onStart, status }: {
-  address: '' | 'copy' | 'move';
+// confirmation field, and a restore onto another machine states what will
+// happen to the address the backup carried rather than asking. The question it
+// used to ask was answered blind — the consequences only became visible twenty
+// minutes later, on a screen the answer could take away.
+export function RestoreDialog({ backup, busy, confirmation, onCancel, onConfirmation, onStart, status }: {
   backup: BackupEntry;
   busy: string;
   confirmation: string;
-  onAddress: (next: 'copy' | 'move') => void;
   onCancel: () => void;
   onConfirmation: (next: string) => void;
   onStart: () => void;
   status: BackupStatus;
 }) {
   const elsewhere = writtenElsewhere(backup, status);
-  const asksAddress = needsAddressChoice(backup, status);
+  const domain = carriedDomain(backup, status);
 
   return <Dialog
     footer={<>
       <button
         className="mos-btn mos-btn-primary"
-        disabled={confirmation.trim().toUpperCase() !== 'RESTORE' || (asksAddress && !address) || Boolean(busy)}
+        disabled={confirmation.trim().toUpperCase() !== 'RESTORE' || Boolean(busy)}
         onClick={onStart}
         type="button"
       >{busy === 'restore' ? <><Spinner />Starting</> : 'Restore'}</button>
@@ -403,25 +402,11 @@ export function RestoreDialog({ backup, busy, address, confirmation, onCancel, o
       <p>This machine will become that server. After restoring, sign in with that server&rsquo;s owner password. This machine keeps its own console and SSH login; the other server&rsquo;s does not come along.</p>
     </Notice> : null}
 
-    {asksAddress ? <>
-      <p>This backup carries the address <strong>{backup.sourceDomain}</strong>. A name can point at one machine at a time, so choose before anything is touched:</p>
-      <div role="radiogroup" aria-label="What to do with the address">
-        <Choice
-          checked={address === 'move'}
-          description={`Apps answer at their old addresses again, so links, phone apps and browser extensions keep working. You point the name at this machine yourself afterwards, as after any address change.`}
-          name="restore-address"
-          onChange={() => onAddress('move')}
-          value="move"
-        >Move the address here</Choice>
-        <Choice
-          checked={address === 'copy'}
-          description="Keep this machine's own address. The old machine keeps answering for that name, so links and connected devices still point at it. You can move the address here later under Settings."
-          name="restore-address"
-          onChange={() => onAddress('copy')}
-          value="copy"
-        >Restore as a copy</Choice>
-      </div>
-    </> : null}
+    {domain ? <Notice title={`${domain} does not come with it`} variant="info">
+      <p>That is the address of the server this backup was written on, and a name points at one machine at a time. Your suite comes back on <strong>this machine&rsquo;s own address</strong> — the one you are reading this on — so you can sign in and use it as soon as the restore finishes.</p>
+      <p>Anything set up against the old address keeps failing until that name points here: phone apps, desktop sync clients, browser extensions. Afterwards <strong>Settings</strong> offers <strong>{domain}</strong> back, and Backup &amp; Restore says what is left to do.</p>
+      <p className="suite-meta">If the server that wrote this backup is still running, turn it off before pointing the name here. Two machines answering for one suite means two copies of your data drifting apart.</p>
+    </Notice> : null}
 
     <TextInput
       autoFocus

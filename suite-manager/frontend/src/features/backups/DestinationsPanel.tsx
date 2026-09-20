@@ -1,5 +1,5 @@
 import { ActionMenu, Icon, Panel, PanelBand, PanelHead, PanelItem, PanelList, Spinner } from '../../components/ui';
-import { destinationIconName, keyCoverage, offlineCopyLine, type DestinationView } from './model';
+import { destinationIconName, keyCoverage, type DestinationView } from './model';
 
 // Where backups go. One list, one row per place, sorted so the selected one is
 // first. A row has exactly three zones — the radio that chooses it, what it is
@@ -23,10 +23,9 @@ export function DestinationsPanel({ busy, onAdd, onAction, onDisconnect, onEdit,
   const coverage = keyCoverage(views);
   const local = views.filter((view) => !view.foreign && !view.destination.locked);
   const guests = views.filter((view) => view.foreign || view.destination.locked);
-  const offline = offlineCopyLine(views);
   // Per-row reach lines only once there is a difference to show. With nothing
-  // unplugged the band above already says every copy is within reach, and
-  // repeating it under each row is the same sentence three times.
+  // unplugged every row would say the same sentence, which reads as noise
+  // rather than as the contrast it is there to draw.
   const showReach = views.some((view) => view.away);
 
   const row = (view: DestinationView) => <DestinationRow
@@ -63,18 +62,6 @@ export function DestinationsPanel({ busy, onAdd, onAction, onDisconnect, onEdit,
         Show key
       </button>
     </PanelBand>
-
-    {/* Where the owner stands on the one thing no setting here can fix. It sits
-        with the list rather than in a notice, because it is a fact about these
-        places and not something that has gone wrong, and it carries the one
-        link on this screen to the page that explains the practice — the line is
-        what changes behaviour, the article is what answers "why". */}
-    {offline ? <PanelBand icon="usb-drive" title={offline} tone="info">
-      <a className="mos-btn mos-btn-ghost mos-btn-sm" href="https://myownsuite.org/docs/guides/keeping-copies/" rel="noreferrer" target="_blank">
-        <Icon name="external" />
-        How many copies to keep
-      </a>
-    </PanelBand> : null}
 
     {local.length ? <PanelList>{local.map(row)}</PanelList> : null}
 

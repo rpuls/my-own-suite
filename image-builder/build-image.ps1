@@ -247,11 +247,14 @@ for sock in $socks; do
 done
 [ "$bad" = 0 ] && echo "SOCKETS-OK all $(echo "$socks" | wc -l) agent sockets reachable as $user"
 '@
-  # Fed on stdin rather than as an argument so the quoting stays in one place,
-  # and with Unix line endings because bash reads a CR as part of the command.
-  $output = $probe.Replace("`r`n", "`n") |
-    & ssh.exe -i $key -o StrictHostKeyChecking=no -o UserKnownHostsFile=$hostsFile `
-      -o BatchMode=yes -o ConnectTimeout=20 -o LogLevel=ERROR "mos@$Address" 'bash -s' 2>&1
+  # Sent as base64 rather than on stdin: PowerShell puts a byte-order mark in
+  # front of what it pipes to a native command, and bash reads it as the first
+  # word of the first line. Unix line endings for the same reason - a CR would
+  # otherwise be part of every command in the script.
+  $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($probe.Replace("`r`n", "`n")))
+  $output = & ssh.exe -i $key -o StrictHostKeyChecking=no -o UserKnownHostsFile=$hostsFile `
+    -o BatchMode=yes -o ConnectTimeout=20 -o LogLevel=ERROR "mos@$Address" `
+    "echo $encoded | base64 -d | bash" 2>&1
   Remove-Item $hostsFile -Force -ErrorAction SilentlyContinue
   $ok = @($output | Where-Object { $_ -match 'SOCKETS-OK' })
   if ($ok.Count -gt 0) { Say ([string]$ok[0]); return }

@@ -703,9 +703,13 @@ class SuiteManagerStore {
     `).run(at, at, at);
   }
 
-  // A restore onto another machine that kept the backup's domain aside: the
-  // domain moves to pending, where the Settings form picks it up, and HTTPS is
-  // off, so this machine answers on its own address until the owner applies it.
+  // A restore onto another machine sets the backup's domain aside: the domain
+  // moves to pending, where the Settings form picks it up, and HTTPS is off, so
+  // this machine answers on its own address until the owner applies it.
+  //
+  // The guard is "a domain is being served", never which provider serves it. A
+  // second provider matching no row here would silently leave the machine
+  // serving a name it cannot reach and refusing the one it can.
   parkHttpsDomain(at) {
     this.database.prepare(`
       UPDATE https_settings
@@ -713,7 +717,7 @@ class SuiteManagerStore {
           base_domain = NULL, tls_mode = 'off', provider = NULL,
           last_apply_status = 'never', last_apply_at = NULL,
           last_apply_error_code = NULL, last_apply_diagnostics = NULL, updated_at = ?
-      WHERE id = 1 AND tls_mode = 'cloudflare-dns01'
+      WHERE id = 1 AND tls_mode != 'off'
     `).run(at);
   }
 

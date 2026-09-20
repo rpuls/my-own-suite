@@ -1277,7 +1277,6 @@ function createMOSServer({
         }
         const body = await readJsonBody(request, 8 * 1024);
         jsonResponse(response, 202, await backupAgent.startRestore({
-          ...(body.address ? { address: String(body.address) } : {}),
           backupPath: String(body.backupPath || ''),
           confirmation: String(body.confirmation || ''),
         }));

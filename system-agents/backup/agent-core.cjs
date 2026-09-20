@@ -52,6 +52,7 @@ const {
 } = require('../../infrastructure/persistent-state.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
+const { servedAddress } = require('../../shared/served-address.cjs');
 const { RESTORE_POINTS_DIRNAME } = require('./engines/engine.cjs');
 const { parseObjectLocator, readRestorePoint, sha256, writeRestorePoint } = require('./destinations.cjs');
 
@@ -113,25 +114,13 @@ function validatePackagePayloads(root, packages) {
   }
 }
 
-// The public address apps are rebuilt on during a restore. The restored Suite
-// Manager database is the authority: a domain the owner applied after install
-// exists nowhere else the restore can reach, while MOS_HOME_HOST and the
-// bootstrap contract only describe the install-time address — on a USB install
-// that is the LAN name, and rebuilding routes from it takes every app off its
-// HTTPS address.
-function restorePublicIdentity({ bootstrapContract = {}, environment = {}, httpsSettings = null } = {}) {
-  if (httpsSettings?.tlsMode === 'cloudflare-dns01' && httpsSettings.baseDomain) {
-    return { homeHost: `home.${httpsSettings.baseDomain}`, scheme: 'https' };
-  }
-  if (environment.MOS_HOME_HOST) return { homeHost: environment.MOS_HOME_HOST, scheme: 'http' };
-  if (bootstrapContract.MOS_HOME_URL) {
-    try {
-      const parsed = new URL(bootstrapContract.MOS_HOME_URL);
-      return { homeHost: parsed.hostname, scheme: parsed.protocol === 'https:' ? 'https' : 'http' };
-    } catch {}
-  }
-  if (bootstrapContract.MOS_DOMAIN) return { homeHost: `home.${bootstrapContract.MOS_DOMAIN}`, scheme: 'http' };
-  return { homeHost: 'home.mos.home', scheme: 'http' };
+// The public address apps are rebuilt on during a restore, which is the same
+// question every other module asks about this machine and so is answered in the
+// same place. A restore only has to hand over what it can see: the restored
+// settings, this machine's environment, and whether its Easy Door is open.
+function restorePublicIdentity({ bootstrapContract = {}, easyDoorHost = null, environment = {}, httpsSettings = null } = {}) {
+  const { host, scheme } = servedAddress({ bootstrapContract, easyDoorHost, environment, httpsSettings });
+  return { homeHost: host, scheme };
 }
 
 // Whether a restore point was written by another machine. The install id is
@@ -141,23 +130,24 @@ function writtenByAnotherMachine(source = {}, current = {}) {
   return source.installId !== current.installId;
 }
 
-const RESTORE_ADDRESS_PLANS = Object.freeze(['copy', 'move']);
-
 // The one thing in a backup that is portable between machines is a domain;
-// every other address is bound to the machine, so there is nothing to choose.
-// A restore onto another machine of a backup that carries a domain needs the
-// owner's answer before anything is touched: `move` serves the domain from
-// this machine, `copy` parks it and rebuilds the apps on this machine's own
-// address.
-function restoreAddressPlan({ current = {}, manifest = {}, requested = null } = {}) {
+// every other address is bound to the machine it was installed on. A restore
+// used to ask the owner which machine should answer for that name, and then
+// act on the answer in the middle of the restore — the one stretch where Suite
+// Manager is deliberately down and no screen can report what happened. Serving
+// the name from here changed the address the owner was standing on, so a
+// failure at that step left them with no way back in and nothing to read.
+//
+// So restore no longer decides addresses at all. A carried domain is set aside
+// and reported, the suite comes back on an address this machine can serve with
+// no DNS and no credential, and serving the name here is offered afterwards by
+// the module that owns domains — in the open, where it can be checked, undone
+// and explained.
+function carriedAddress({ current = {}, manifest = {} } = {}) {
   const source = manifest.source || {};
   const foreign = writtenByAnotherMachine(source, current);
   const domain = source.domain || null;
-  if (!foreign || !domain) return { domain, foreign, plan: 'same' };
-  if (!RESTORE_ADDRESS_PLANS.includes(requested)) {
-    throw new Error(`This backup was written by another machine and carries the address ${domain}. Choose whether to move that address to this machine or to restore as a copy before restoring.`);
-  }
-  return { domain, foreign, plan: requested };
+  return { domain: foreign ? domain : null, foreign };
 }
 
 // MOS versions are the plain semver of the VERSION file. Restore asks only
@@ -238,7 +228,6 @@ class BackupAgentCore {
       hostname: () => os.hostname(),
       installId: () => null,
       parkRestoredDomain: async () => null,
-      serveRestoredDomain: async () => null,
       ...identity,
     };
     this.jobs = jobs;
@@ -744,12 +733,11 @@ class BackupAgentCore {
     jobs.update(jobFile, (job) => { job.validation = report; });
     let runtimeStopped = false;
     try {
-      const address = restoreAddressPlan({
+      const address = carriedAddress({
         current: { hostname: this.identity.hostname(), installId: this.identity.installId() },
         manifest,
-        requested: started.address,
       });
-      jobs.update(jobFile, (job) => { job.address = { domain: address.domain, plan: address.plan }; });
+      jobs.update(jobFile, (job) => { job.address = { domain: address.domain }; });
       jobs.stage(jobFile, 'Checking required space');
       const targets = this.stateTargets();
       let currentStateBytes = 0;
@@ -822,20 +810,20 @@ class BackupAgentCore {
 
       this.advanceJournal('restoring-state', { rescuePath: rescueDir });
       jobs.stage(jobFile, 'Restoring suite state');
-      // A copy keeps this machine's own Caddy files: they carry its own address
-      // and Easy Door, and the backup's would carry the other machine's domain.
-      for (const target of targets.filter((entry) => address.plan !== 'copy' || !entry.id.startsWith('caddy-'))) {
+      // This machine keeps its own Caddy files. They carry its address and its
+      // Easy Door; the backup's carry the address of the machine it was written
+      // on, which is the one address this machine is certain not to answer for.
+      for (const target of targets.filter((entry) => !entry.id.startsWith('caddy-'))) {
         await system.removeTree(target.path);
         const staged = path.join(stagedState, target.stagePath);
         if (fs.existsSync(staged)) await system.copyTree(staged, target.path, { excludeNames: [] });
         else jobs.log(jobFile, `The backup does not contain ${target.id}; it is left absent.`);
       }
-      if (address.plan === 'copy') {
-        const parked = await this.identity.parkRestoredDomain();
-        if (parked) jobs.log(jobFile, `Kept the address ${parked} aside: this machine answers on its own address, and Settings offers to move ${parked} here later.`);
-      } else if (address.plan === 'move') {
-        const served = await this.identity.serveRestoredDomain();
-        if (served) jobs.log(jobFile, `This machine now serves ${served}. Point that name at this machine's address to finish the move; Settings shows how.`);
+      // Before the apps are rebuilt, so they are rebuilt on the address this
+      // machine can actually serve rather than the one the backup arrived with.
+      if (address.domain) {
+        const setAside = await this.identity.parkRestoredDomain();
+        if (setAside) jobs.log(jobFile, `Set ${setAside} aside: this suite comes back on this machine's own address, and Settings offers to serve ${setAside} from here when you are ready.`);
       }
 
       this.advanceJournal('restoring-volumes');
@@ -870,9 +858,11 @@ class BackupAgentCore {
 
       // Taking another machine's place is the one moment this machine may make
       // that machine's key its own: the restore has succeeded, so it now holds
-      // that machine's data and answers for it. A copy stays itself and keeps
-      // borrowing the key. Either way the archive was never touched.
-      if (address.foreign && address.plan !== 'copy') {
+      // that machine's data. The key follows the data and not the address —
+      // which is why this no longer asks what the owner chose to do about the
+      // address, and why a machine that holds a suite is never left with its
+      // own key for the disk and a borrowed one for the archive.
+      if (address.foreign) {
         const assumed = await this.identity.assumeArchiveKey(repository.destinationId);
         // Three outcomes, and each is said in full. `true` is the adoption; a
         // refusal names what stopped it and what still works, because the
@@ -894,7 +884,17 @@ class BackupAgentCore {
         jobs.stage(jobFile, 'Starting restored control plane');
         await system.startService('mos-homepage.service');
         await system.startService('mos-suite-manager.service');
-        await system.reloadCaddy();
+        // Routes that did not go live are the difference between a restored
+        // suite and a restored suite the owner can reach, so the answer is
+        // recorded rather than dropped. It does not fail the restore: the data
+        // is back either way, and a machine whose routes are stale needs its
+        // owner told, not a success turned into an error they cannot act on.
+        const reloaded = await system.reloadCaddy();
+        const routesLive = reloaded === undefined || reloaded === null || reloaded.ok !== false;
+        jobs.update(jobFile, (job) => { job.controlPlane = { detail: routesLive ? null : reloaded.detail || null, routesLive }; });
+        if (!routesLive) {
+          jobs.log(jobFile, `Your suite is restored, but this machine is still serving the routes it had before the restore: the web server refused to load the new ones${reloaded.detail ? ` (${reloaded.detail})` : ''}. Restart this server to pick them up.`);
+        }
       }
     }
     jobs.update(jobFile, (job) => { job.stage = 'completed'; job.status = 'succeeded'; });
@@ -939,13 +939,12 @@ class BackupAgentCore {
 
 module.exports = {
   BackupAgentCore,
+  carriedAddress,
   isRestorePointLocator,
   isRestorePointPath,
   readRestorePoint,
-  RESTORE_ADDRESS_PLANS,
   RESTORE_JOURNAL_FILENAME,
   RESTORE_PHASES,
-  restoreAddressPlan,
   restorePublicIdentity,
   UNREADABLE_LEGACY_BACKUP,
   sha256,
