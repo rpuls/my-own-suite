@@ -430,6 +430,32 @@ const MIGRATIONS = [
     `,
     version: 18,
   },
+  {
+    // The address the suite publishes on lives in a machine-local file, not in
+    // this database: the database travels with a backup and the address does
+    // not. What stays here is the bookkeeping of the one change of address that
+    // can run at a time — its stage, its target and how it ended — so the
+    // Settings screen can poll it while the web server restarts underneath.
+    name: 'suite-address-changes',
+    sql: `
+      DROP TABLE https_settings;
+
+      CREATE TABLE address_changes (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        status TEXT NOT NULL DEFAULT 'never' CHECK (status IN ('never', 'applying', 'applied', 'failed')),
+        stage TEXT,
+        target_json TEXT,
+        result_json TEXT,
+        started_at TEXT,
+        finished_at TEXT,
+        error_code TEXT,
+        diagnostics TEXT
+      ) STRICT;
+
+      INSERT INTO address_changes (id) VALUES (1);
+    `,
+    version: 19,
+  },
 ];
 
 class OwnerAlreadyExistsError extends Error {}
@@ -660,75 +686,59 @@ class SuiteManagerStore {
     this.database.prepare('DELETE FROM login_throttle WHERE last_seen_at <= ?').run(lastSeenAtOrBefore);
   }
 
-  getHttpsSettings() {
-    return this.database.prepare(`
-      SELECT
-        acme_email AS acmeEmail,
-        base_domain AS baseDomain,
-        configured_at AS configuredAt,
-        last_apply_at AS lastApplyAt,
-        last_apply_diagnostics AS lastApplyDiagnostics,
-        last_apply_error_code AS lastApplyErrorCode,
-        last_apply_status AS lastApplyStatus,
-        pending_acme_email AS pendingAcmeEmail,
-        pending_base_domain AS pendingBaseDomain,
-        provider,
-        tls_mode AS tlsMode,
-        updated_at AS updatedAt
-      FROM https_settings
+  // The one change of address that can run at a time, and how the last one
+  // ended. `target` is the address being moved to, never a credential.
+  getAddressChange() {
+    const row = this.database.prepare(`
+      SELECT status, stage, target_json AS targetJson, result_json AS resultJson,
+             started_at AS startedAt, finished_at AS finishedAt,
+             error_code AS errorCode, diagnostics
+      FROM address_changes
       WHERE id = 1
     `).get();
+    const parse = (json) => { try { return json ? JSON.parse(json) : null; } catch { return null; } };
+    return {
+      diagnostics: row.diagnostics,
+      errorCode: row.errorCode,
+      finishedAt: row.finishedAt,
+      result: parse(row.resultJson),
+      stage: row.stage,
+      startedAt: row.startedAt,
+      status: row.status,
+      target: parse(row.targetJson),
+    };
   }
 
-  beginHttpsApply({ acmeEmail, baseDomain, at }) {
+  // Refuses a second change while one is running: the update is conditional on
+  // the row, so two requests racing for it cannot both begin.
+  beginAddressChange({ at, target }) {
+    const result = this.database.prepare(`
+      UPDATE address_changes
+      SET status = 'applying', stage = NULL, target_json = ?, result_json = NULL,
+          started_at = ?, finished_at = NULL, error_code = NULL, diagnostics = NULL
+      WHERE id = 1 AND status != 'applying'
+    `).run(JSON.stringify(target), at);
+    return result.changes === 1;
+  }
+
+  advanceAddressChange({ stage }) {
+    this.database.prepare(`UPDATE address_changes SET stage = ? WHERE id = 1 AND status = 'applying'`).run(stage);
+  }
+
+  completeAddressChange({ at, result = null }) {
     this.database.prepare(`
-      UPDATE https_settings
-      SET pending_base_domain = ?, pending_acme_email = ?, last_apply_status = 'applying',
-          last_apply_at = ?, last_apply_error_code = NULL, last_apply_diagnostics = NULL,
-          updated_at = ?
+      UPDATE address_changes
+      SET status = 'applied', result_json = ?, finished_at = ?, error_code = NULL, diagnostics = NULL
       WHERE id = 1
-    `).run(baseDomain, acmeEmail, at, at);
+    `).run(result ? JSON.stringify(result) : null, at);
   }
 
-  completeHttpsApply(at) {
+  failAddressChange({ at, diagnostics = null, errorCode }) {
     this.database.prepare(`
-      UPDATE https_settings
-      SET base_domain = pending_base_domain, acme_email = pending_acme_email,
-          provider = 'cloudflare', tls_mode = 'cloudflare-dns01',
-          configured_at = COALESCE(configured_at, ?), updated_at = ?,
-          pending_base_domain = NULL, pending_acme_email = NULL,
-          last_apply_status = 'applied', last_apply_at = ?,
-          last_apply_error_code = NULL, last_apply_diagnostics = NULL
+      UPDATE address_changes
+      SET status = 'failed', finished_at = ?, error_code = ?, diagnostics = ?
       WHERE id = 1
-    `).run(at, at, at);
-  }
-
-  // A restore onto another machine sets the backup's domain aside: the domain
-  // moves to pending, where the Settings form picks it up, and HTTPS is off, so
-  // this machine answers on its own address until the owner applies it.
-  //
-  // The guard is "a domain is being served", never which provider serves it. A
-  // second provider matching no row here would silently leave the machine
-  // serving a name it cannot reach and refusing the one it can.
-  parkHttpsDomain(at) {
-    this.database.prepare(`
-      UPDATE https_settings
-      SET pending_base_domain = base_domain, pending_acme_email = acme_email,
-          base_domain = NULL, tls_mode = 'off', provider = NULL,
-          last_apply_status = 'never', last_apply_at = NULL,
-          last_apply_error_code = NULL, last_apply_diagnostics = NULL, updated_at = ?
-      WHERE id = 1 AND tls_mode != 'off'
-    `).run(at);
-  }
-
-  failHttpsApply({ at, diagnostics = null, errorCode }) {
-    this.database.prepare(`
-      UPDATE https_settings
-      SET pending_base_domain = NULL, pending_acme_email = NULL,
-          last_apply_status = 'failed', last_apply_at = ?,
-          last_apply_error_code = ?, last_apply_diagnostics = ?, updated_at = ?
-      WHERE id = 1
-    `).run(at, errorCode, diagnostics, at);
+    `).run(at, errorCode, diagnostics);
   }
 
   getSmtpSettings() {

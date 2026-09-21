@@ -53,6 +53,10 @@ const server = http.createServer(async (request, response) => {
       respond(response, 200, await core.rollback(body.rollbackId));
       return;
     }
+    if (request.method === 'POST' && url.pathname === '/v1/https/discard-parked') {
+      respond(response, 200, await core.discardParkedCredential());
+      return;
+    }
     respond(response, 404, { code: 'NOT_FOUND', error: 'Not found.' });
   } catch (error) {
     // Only an error the agent authored is worth repeating: its message is a

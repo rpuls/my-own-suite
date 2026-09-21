@@ -133,9 +133,9 @@ This is what the recovery key is for: the server is gone — fire, theft, a dead
 
 ### If the old server used a domain
 
-Your suite comes back on **this machine's own address** — the one you were using while you restored. That address needs no DNS and no certificate, so it works straight away: you can sign in, open your password manager and read everything in it.
+Your suite comes back on **this machine's own address** — the one you were using while you restored. A restore never changes that, whichever address it is: the Easy Door, the name your own network holds, or a domain you set this machine up with before restoring. If you had already given this server a domain, that is what your suite comes back on, and nothing about it changes.
 
-The domain itself is set aside rather than moved, because a name points at one machine at a time. **Settings → HTTPS** names it and fills the form in with it, so applying it here is entering your DNS provider's API token and confirming.
+The old server's domain is set aside rather than moved, because a name points at one machine at a time. **Settings** names it and offers to serve it from this machine in one step: MOS kept the domain's credential from the backup, so you enter no token, and MOS reports success only once the certificate has been issued and the name answers here.
 
 Until that name points at this machine, anything set up against the old address keeps failing — phone apps, desktop sync clients, browser extensions. Three things fix that, and Backup & Restore says which one you are missing:
 

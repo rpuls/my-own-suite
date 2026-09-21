@@ -14,7 +14,8 @@ const { HttpsAgentClient } = require('../settings/https-agent-client.cjs');
 const { HttpsSettingsError } = require('../../../../shared/https-contract.cjs');
 const { SmtpSettingsError } = require('../../../../shared/smtp-contract.cjs');
 const { MANAGED_APP_HREF_PREFIX } = require('../../../../shared/homepage-contract.cjs');
-const { HttpsSettingsService } = require('../settings/https-settings-service.cjs');
+const { SuiteAddressService } = require('../address/suite-address-service.cjs');
+const { SuiteAddressFile, baseHostOf, suiteAddressDir } = require('../../../../shared/suite-address.cjs');
 const { SmtpSettingsService } = require('../settings/smtp-settings-service.cjs');
 const { LabResetAgentClient } = require('../lab/lab-reset-agent-client.cjs');
 const { createHomepageProxy } = require('./homepage-proxy.cjs');
@@ -51,6 +52,16 @@ const SUITE_MANAGER_BASE_PATH = '/suite-manager/';
 const SUITE_MANAGER_API_PREFIX = `${SUITE_MANAGER_BASE_PATH}api`;
 const FRONTEND_ASSET_PREFIX = `${SUITE_MANAGER_BASE_PATH}assets/`;
 const MANAGED_APP_HREF_PATTERN = new RegExp(`^${MANAGED_APP_HREF_PREFIX}([0-9a-f-]{36})$`, 'u');
+// Front doors whose install-time name is served over HTTPS from the first boot.
+const PUBLIC_CLOUD_FRONT_DOORS = ['cloud-init', 'digitalocean-smoke', 'public-vps'];
+
+// The directory the machine-local state lives under. Suite Manager's own state
+// is one directory inside it, so the root is that directory's parent unless the
+// environment names it outright.
+function stateRootOf(stateDir) {
+  if (process.env.MOS_STATE_ROOT) return process.env.MOS_STATE_ROOT;
+  return path.dirname(path.resolve(stateDir));
+}
 
 const MIME_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'],
@@ -282,13 +293,14 @@ function appHostLabelFor(packageId, hostFor) {
   return typeof host === 'string' && host ? host : packageId;
 }
 
-function appPublicUrlFor(request, packageId, httpsSettings = null, hostFor = null) {
-  const appliedDomain = typeof httpsSettings?.appliedBaseDomain === 'function' ? httpsSettings.appliedBaseDomain() : null;
-  const homeHost = appliedDomain ? `home.${appliedDomain}` : normalizedHost(request);
-  const baseHost = homeHost.startsWith('home.') ? homeHost.slice(5) : homeHost;
+// An app's public URL is built from the suite's one recorded address and nothing
+// else — not the request's Host, not a settings row — so a request through any
+// door, a reconcile at boot and a restore with no browser in hand all name the
+// same place.
+function appPublicUrlFor(address, packageId, hostFor = null) {
+  const baseHost = baseHostOf(address);
   const appHost = `${appHostLabelFor(packageId, hostFor)}.${baseHost}`;
-  const fallbackScheme = isHttpsRequest(request) ? 'https' : 'http';
-  const scheme = httpsSettings?.publicUrlSchemeForHost(homeHost, fallbackScheme) || fallbackScheme;
+  const scheme = address.scheme === 'https' ? 'https' : 'http';
   return {
     appHost,
     baseHost,
@@ -297,33 +309,8 @@ function appPublicUrlFor(request, packageId, httpsSettings = null, hostFor = nul
   };
 }
 
-function appPublicUrlResolver(request, httpsSettings = null, hostFor = null) {
-  return (packageId) => appPublicUrlFor(request, packageId, httpsSettings, hostFor);
-}
-
-function appPublicUrlResolverForBase(baseHost, scheme = 'http', hostFor = null) {
-  const normalizedBase = String(baseHost || '').trim().toLowerCase();
-  const normalizedScheme = scheme === 'https' ? 'https' : 'http';
-  return (packageId) => {
-    const appHost = `${appHostLabelFor(packageId, hostFor)}.${normalizedBase}`;
-    return {
-      appHost,
-      baseHost: normalizedBase,
-      publicUrl: `${normalizedScheme}://${appHost}/`,
-      scheme: normalizedScheme,
-    };
-  };
-}
-
-// The same resolver for work that runs without a request to derive a host from
-// — startup recovery. The configured home host stands in for the Host header,
-// and the scheme comes from the stored HTTPS settings exactly as it does for a
-// real request, so a reconcile at boot cannot rewrite a public URL back to http
-// on an HTTPS install.
-function appPublicUrlResolverAtBoot(homeHost, httpsSettings = null) {
-  const normalizedHome = String(homeHost || '').toLowerCase().replace(/:\d+$/u, '');
-  const baseHost = normalizedHome.startsWith('home.') ? normalizedHome.slice(5) : normalizedHome;
-  return appPublicUrlResolverForBase(baseHost, httpsSettings?.publicUrlSchemeForHost(normalizedHome, 'http') || 'http');
+function appPublicUrlResolver(address, hostFor = null) {
+  return (packageId) => appPublicUrlFor(address, packageId, hostFor);
 }
 
 function isSignedIn(setup, sessionToken) {
@@ -391,6 +378,7 @@ function createMOSServer({
   securityEventRecorder = null,
   ownerClaimToken = process.env.MOS_OWNER_CLAIM_TOKEN || '',
   stateDir = path.join(process.cwd(), '.state'),
+  suiteAddress = new SuiteAddressFile({ dir: suiteAddressDir(stateRootOf(stateDir)) }),
   officialCatalog = null,
   externalSources = null,
 } = {}) {
@@ -402,12 +390,6 @@ function createMOSServer({
   // source serving a package the gate refused, and a catalog that cannot refresh
   // are all counted in the same durable place.
   const recordSecurityEvent = securityEventRecorder || ((event) => setup.store.recordSecurityEvent(event));
-  const httpsSettings = new HttpsSettingsService({
-    agent: httpsAgent,
-    bootstrapHost: homeHost,
-    frontDoor,
-    store: setup.store,
-  });
   const consoleLogin = new ConsoleLoginService({ stateDir });
   // The whole of Suite Manager waits on the handover, so no route gates itself.
   const handover = new HandoverService({ consoleLogin, logger, vaultAgent });
@@ -458,8 +440,8 @@ function createMOSServer({
   const homepage = createHomepageProxy({ upstream: homepageUpstream, upstreamHost: homeHost });
   const homepageConfig = new HomepageService({
     agent: homepageAgent,
-    bootstrapHost: homeHost,
     store: setup.store,
+    suiteAddress,
   });
   // One limiter for every app package operation on this host. The bounds are only
   // meaningful shared: two services each allowing their own three concurrent
@@ -540,6 +522,21 @@ function createMOSServer({
   // Resolves an installed app's real host label, so every public URL this layer
   // builds names the address the app actually serves rather than its package id.
   const appHostFor = (packageId) => appPackages.publicRouteHostFor(packageId);
+  // Where the suite is published, and the one transaction that moves it. Built
+  // after the app and Homepage services because a move re-bakes both.
+  const addressService = new SuiteAddressService({
+    agent: httpsAgent,
+    bootstrapHost: homeHost,
+    bootstrapScheme: PUBLIC_CLOUD_FRONT_DOORS.includes(frontDoor) ? 'https' : 'http',
+    frontDoor,
+    logger,
+    rebake: (address) => appPackages.reconcilePublicUrls(homepageConfig, { publicUrlFor: appPublicUrlResolver(address, appHostFor) }),
+    store: setup.store,
+    suiteAddress,
+  });
+  addressService.start();
+  const publicUrls = () => appPublicUrlResolver(suiteAddress.read(), appHostFor);
+  const publicUrlOf = (packageId) => publicUrls()(packageId);
   const externalSourceService = externalSources || new ExternalSourceService({
     allowLocalSources: process.env.MOS_ALLOW_LOCAL_APP_SOURCES === '1',
     appPackages,
@@ -562,7 +559,7 @@ function createMOSServer({
     const sessionToken = cookies[SESSION_COOKIE] || '';
 
     try {
-      if (!httpsSettings.allowedHosts().has(requestHost)) {
+      if (!addressService.allowedHosts().has(requestHost)) {
         jsonResponse(response, 421, { error: 'Unknown MOS host.' });
         return;
       }
@@ -632,6 +629,14 @@ function createMOSServer({
           return;
         }
         const result = await setup.createOwner(body);
+        // The owner finished setup through this door, so this is where the suite
+        // is published from now on. Recorded after the owner exists so a refused
+        // attempt from another door cannot move the address.
+        try {
+          addressService.recordDoor(requestHost, { scheme: isHttpsRequest(request) ? 'https' : 'http' });
+        } catch (error) {
+          logger.error('suite-address-record-failed', { error, host: requestHost });
+        }
         jsonResponse(response, 201, { owner: result.owner, status: result.status }, {
           'Set-Cookie': sessionCookie(result.sessionToken, isHttpsRequest(request)),
         });
@@ -877,39 +882,34 @@ function createMOSServer({
         return;
       }
 
-      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/https`) {
+      if (request.method === 'GET' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/address`) {
         if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage HTTPS settings.' });
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the suite address.' });
           return;
         }
-        jsonResponse(response, 200, await httpsSettings.status());
+        jsonResponse(response, 200, await addressService.status());
         return;
       }
 
-      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/https/apply`) {
+      // Answers 202 before the change runs: for a domain the web server restarts
+      // under this very connection, so the screen polls the status above rather
+      // than waiting for a reply that cannot arrive.
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/address/change`) {
         if (!isSignedIn(setup, sessionToken)) {
-          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage HTTPS settings.' });
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the suite address.' });
           return;
         }
         const body = await readJsonBody(request, 16 * 1024);
-        const applied = await httpsSettings.apply(body);
-        let appReconciliation = { skipped: true };
-        try {
-          const baseDomain = new URL(applied.homeUrl).hostname.replace(/^home\./u, '');
-          appReconciliation = await appPackages.reconcilePublicUrls(homepageConfig, {
-            publicUrlFor: appPublicUrlResolverForBase(baseDomain, 'https', appHostFor),
-          });
-        } catch (error) {
-          // The owner is handed a code and the apply still reports success, so
-          // without this the reason every app kept its old address is gone.
-          logger.error('app-public-url-reconcile-failed', { error });
-          appReconciliation = {
-            errorCode: error.code || 'APP_PUBLIC_URL_RECONCILE_FAILED',
-            skipped: false,
-            status: 'failed',
-          };
+        jsonResponse(response, 202, await addressService.change(body));
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === `${SUITE_MANAGER_API_PREFIX}/settings/address/offer/dismiss`) {
+        if (!isSignedIn(setup, sessionToken)) {
+          jsonResponse(response, 401, { code: 'AUTH_REQUIRED', error: 'Sign in to manage the suite address.' });
+          return;
         }
-        jsonResponse(response, 200, { ...applied, appReconciliation });
+        jsonResponse(response, 200, await addressService.dismissOffer());
         return;
       }
 
@@ -1328,10 +1328,11 @@ function createMOSServer({
           appAgent,
           catalogStatus: catalogService.status(),
           frontDoor,
-          homeHost,
+          homeHost: suiteAddress.readOrNull()?.host || homeHost,
           platformVersion: catalogService.platformVersion,
           secretDir: appPackages.secretDir,
           store: setup.store,
+          suiteAddress: suiteAddress.readOrNull(),
           updateStatus: await updates.status().catch(() => null),
         });
         response.writeHead(200, {
@@ -1492,9 +1493,9 @@ function createMOSServer({
         const body = await readJsonBody(request, 4 * 1024);
         const packageId = decodeURIComponent(appStageUpdateMatch[1]);
         jsonResponse(response, 200, await appPackages.stagePackageUpdate(packageId, body, {
-          ...appPublicUrlResolver(request, httpsSettings, appHostFor)(packageId),
+          ...publicUrlOf(packageId),
           homepageService: homepageConfig,
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
+          publicUrlFor: publicUrls(),
         }));
         return;
       }
@@ -1507,9 +1508,9 @@ function createMOSServer({
         }
         const packageId = decodeURIComponent(appRecoverUpdateMatch[1]);
         jsonResponse(response, 200, await appPackages.recoverPackageUpdate(packageId, {
-          ...appPublicUrlResolver(request, httpsSettings, appHostFor)(packageId),
+          ...publicUrlOf(packageId),
           homepageService: homepageConfig,
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
+          publicUrlFor: publicUrls(),
         }));
         return;
       }
@@ -1531,7 +1532,7 @@ function createMOSServer({
           return;
         }
         const packageId = decodeURIComponent(appHomepageMatch[1]);
-        jsonResponse(response, 200, await appPackages.addPackageToHomepage(packageId, homepageConfig, appPublicUrlFor(request, packageId, httpsSettings, appHostFor)));
+        jsonResponse(response, 200, await appPackages.addPackageToHomepage(packageId, homepageConfig, publicUrlOf(packageId)));
         return;
       }
 
@@ -1543,8 +1544,8 @@ function createMOSServer({
         }
         const packageId = decodeURIComponent(appRuntimeMatch[1]);
         jsonResponse(response, 200, await appPackages.applyPackageRuntime(packageId, {
-          ...appPublicUrlFor(request, packageId, httpsSettings, appHostFor),
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
+          ...publicUrlOf(packageId),
+          publicUrlFor: publicUrls(),
         }));
         return;
       }
@@ -1559,7 +1560,7 @@ function createMOSServer({
           consumerPackageId: String(body.consumerPackageId || ''),
           providerCapabilityId: String(body.providerCapabilityId || ''),
           providerPackageId: String(body.providerPackageId || ''),
-          requestContext: { publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor) },
+          requestContext: { publicUrlFor: publicUrls() },
           slotId: String(body.slotId || ''),
         }));
         return;
@@ -1595,8 +1596,8 @@ function createMOSServer({
         }
         const packageId = decodeURIComponent(appEnableMatch[1]);
         jsonResponse(response, 200, await appPackages.enablePackage(packageId, {
-          ...appPublicUrlFor(request, packageId, httpsSettings, appHostFor),
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
+          ...publicUrlOf(packageId),
+          publicUrlFor: publicUrls(),
         }));
         return;
       }
@@ -1609,8 +1610,8 @@ function createMOSServer({
         }
         const packageId = decodeURIComponent(appRestartMatch[1]);
         jsonResponse(response, 200, await appPackages.restartPackageRuntime(packageId, {
-          ...appPublicUrlFor(request, packageId, httpsSettings, appHostFor),
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
+          ...publicUrlOf(packageId),
+          publicUrlFor: publicUrls(),
         }));
         return;
       }
@@ -1624,8 +1625,8 @@ function createMOSServer({
         const packageId = decodeURIComponent(appEnvMatch[1]);
         const body = await readJsonBody(request, 64 * 1024);
         jsonResponse(response, 200, await appPackages.savePackageEnvironment(packageId, body, {
-          ...appPublicUrlFor(request, packageId, httpsSettings, appHostFor),
-          publicUrlFor: appPublicUrlResolver(request, httpsSettings, appHostFor),
+          ...publicUrlOf(packageId),
+          publicUrlFor: publicUrls(),
         }));
         return;
       }
@@ -1689,7 +1690,7 @@ function createMOSServer({
         }
         response.writeHead(302, {
           'Cache-Control': 'no-store',
-          Location: appPublicUrlFor(request, packageId, httpsSettings, appHostFor).publicUrl,
+          Location: publicUrlOf(packageId).publicUrl,
         });
         response.end();
         return;
@@ -1763,7 +1764,7 @@ function createMOSServer({
     const cookies = parseCookies(request.headers.cookie);
     const sessionToken = cookies[SESSION_COOKIE] || '';
 
-    if (!httpsSettings.allowedHosts().has(requestHost) || !isSignedIn(setup, sessionToken)) {
+    if (!addressService.allowedHosts().has(requestHost) || !isSignedIn(setup, sessionToken)) {
       socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
       return;
     }
@@ -1779,7 +1780,7 @@ function createMOSServer({
   server.on('close', () => { catalogService.stop(); setup.close(); });
   server.migrateAppPackages = () => appPackages.migrateLegacyPackages();
   server.recoverAppPackageUpdates = () => appPackages.recoverInterruptedUpdates({
-    publicUrlFor: appPublicUrlResolverAtBoot(homeHost, httpsSettings),
+    publicUrlFor: publicUrls(),
   });
   // Candidate downloads from a Suite Manager that was killed mid-operation are
   // owned by nobody once it restarts. Downloads sweep before they run, so this is

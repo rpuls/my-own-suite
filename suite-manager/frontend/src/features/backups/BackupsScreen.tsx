@@ -650,7 +650,7 @@ export function BackupsScreen() {
           {aftermath.routesLive ? null : <p><strong>This machine is still serving the routes it had before the restore.</strong> The web server refused the restored ones, so some apps may not open yet. Restarting this server picks them up.</p>}
           {aftermath.domain ? <>
             <p>Your suite is running here, on this machine&rsquo;s own address, and you are signed in to it. Anything set up against <strong>{aftermath.domain}</strong> — phone apps, sync clients, browser extensions — keeps failing until that name points at this machine, because it still points at the server this backup came from.</p>
-            <p>Settings names <strong>{aftermath.domain}</strong> and fills the HTTPS form in with it, so applying it here is your provider&rsquo;s API token and a confirm. Pointing the name at this machine is the part MOS cannot do for you — change it at your DNS provider, and in any override your own network holds for it.</p>
+            <p>Settings offers to serve <strong>{aftermath.domain}</strong> from here in one step: MOS kept that domain&rsquo;s credential from the backup, so it needs no token from you. Pointing the name at this machine is the part MOS cannot do for you — change it at your DNS provider, and in any override your own network holds for it.</p>
             <p className="suite-meta">Turn the old server off first if it is still running. Two machines answering for one suite means two copies of your data drifting apart.</p>
             <a className="mos-btn mos-btn-primary" href="/suite-manager/settings">Finish moving {aftermath.domain}</a>
           </> : null}

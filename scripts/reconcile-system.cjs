@@ -440,6 +440,10 @@ function main() {
   installDir('/etc/mos/secrets', 0o750);
   installDir(`${stateRoot}/suite-manager`, 0o755);
   installDir(`${stateRoot}/homepage/config`, 0o755);
+  // Suite Manager records the suite's address here and the root agents read it,
+  // so the directory is the runtime user's and world-readable.
+  installDir(`${stateRoot}/suite-address`, 0o755);
+  if (!dryRun) run('chown', [`${runtimeUser}:${runtimeUser}`, `${stateRoot}/suite-address`]);
   installDir(`${stateRoot}/https-agent/transactions`, 0o700);
   installDir(`${stateRoot}/homepage-agent/transactions`, 0o700);
   installDir(`${stateRoot}/homepage-agent/history`, 0o700);

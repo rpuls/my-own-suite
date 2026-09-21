@@ -50,6 +50,7 @@ test('fresh state creates the SQLite schema and records every migration', async 
   database.close();
 
   assert.deepEqual(tables, [
+    'address_changes',
     'app_instance_config',
     'app_instance_env',
     'app_instance_guides',
@@ -60,7 +61,6 @@ test('fresh state creates the SQLite schema and records every migration', async 
     'app_sources',
     'homepage_operations',
     'homepage_revisions',
-    'https_settings',
     'known_browsers',
     'login_throttle',
     'owner_preferences',
@@ -95,25 +95,40 @@ test('owner preferences round-trip per key, survive restart, and belong to an ow
   store.close();
 });
 
-test('HTTPS settings keep pending state separate and never persist the Cloudflare token', async () => {
+// The address itself is not in this database — it travels with a backup and
+// the address does not. What is here is the bookkeeping of one change at a
+// time: which stage it reached and how it ended, never a credential.
+test('an address change is bookkept one at a time, stage by stage, and never persists a token', async () => {
   const stateDir = await tempStateDir();
   const store = new SuiteManagerStore(stateDir);
-  store.beginHttpsApply({
-    acmeEmail: 'owner@example.com',
-    at: '2026-06-20T11:00:00.000Z',
-    baseDomain: 'mos.example.com',
-  });
-  assert.equal(store.getHttpsSettings().baseDomain, null);
-  assert.equal(store.getHttpsSettings().pendingBaseDomain, 'mos.example.com');
-  store.completeHttpsApply('2026-06-20T11:01:00.000Z');
-  assert.equal(store.getHttpsSettings().baseDomain, 'mos.example.com');
-  assert.equal(store.getHttpsSettings().tlsMode, 'cloudflare-dns01');
+  assert.deepEqual(store.getAddressChange(), { diagnostics: null, errorCode: null, finishedAt: null, result: null, stage: null, startedAt: null, status: 'never', target: null });
+
+  const target = { baseDomain: 'mos.example.com', host: 'home.mos.example.com', kind: 'domain' };
+  assert.equal(store.beginAddressChange({ at: 'one', target }), true);
+  assert.equal(store.beginAddressChange({ at: 'two', target }), false, 'a second change cannot begin while one runs');
+  store.advanceAddressChange({ stage: 'caddy' });
+  assert.deepEqual(store.getAddressChange(), { diagnostics: null, errorCode: null, finishedAt: null, result: null, stage: 'caddy', startedAt: 'one', status: 'applying', target });
+  store.completeAddressChange({ at: 'three', result: { status: 'applied' } });
+  const applied = store.getAddressChange();
+  assert.equal(applied.status, 'applied');
+  assert.equal(applied.finishedAt, 'three');
+  assert.deepEqual(applied.result, { status: 'applied' });
+
+  assert.equal(store.beginAddressChange({ at: 'four', target: { host: 'home.10-0-0-5.local.myownsuite.org', kind: 'easy-door' } }), true);
+  store.failAddressChange({ at: 'five', diagnostics: 'HTTPS could not be applied.', errorCode: 'ADDRESS_CHANGE_FAILED' });
+  const failed = store.getAddressChange();
+  assert.equal(failed.status, 'failed');
+  assert.equal(failed.errorCode, 'ADDRESS_CHANGE_FAILED');
+  assert.equal(failed.target.kind, 'easy-door');
+  assert.equal(store.beginAddressChange({ at: 'six', target }), true, 'a finished change makes way for the next');
   store.close();
 
   const database = new DatabaseSync(path.join(stateDir, DATABASE_FILENAME), { readOnly: true });
-  const columns = database.prepare('PRAGMA table_info(https_settings)').all().map(({ name }) => name);
+  const columns = database.prepare('PRAGMA table_info(address_changes)').all().map(({ name }) => name);
+  const tables = database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'https_settings'").all();
   database.close();
-  assert.equal(columns.some((name) => /token|caddy/u.test(name)), false);
+  assert.equal(columns.some((name) => /token|caddy|domain/u.test(name)), false);
+  assert.deepEqual(tables, [], 'the row that used to hold the address is gone');
 });
 
 test('security events aggregate, persist, expire, and stay hard-capped', async () => {
@@ -249,7 +264,7 @@ test('an existing version-one database receives the named HTTPS migration', asyn
   database.close();
 
   const upgraded = new SuiteManagerStore(stateDir);
-  assert.equal(upgraded.getHttpsSettings().tlsMode, 'off');
+  assert.equal(upgraded.getAddressChange().status, 'never');
   const migrations = upgraded.database.prepare('SELECT name FROM schema_migrations ORDER BY version').all();
   assert.deepEqual(migrations.map(({ name }) => name), [
     'owner-and-sessions',
@@ -270,6 +285,7 @@ test('an existing version-one database receives the named HTTPS migration', asyn
     'smtp-settings',
     'login-throttle-persistence',
     'known-browsers-and-sign-in-alerts',
+    'suite-address-changes',
   ]);
   upgraded.close();
 });
@@ -610,43 +626,6 @@ test('app guide state is persisted per app instance', async () => {
   assert.equal(guide.firstViewedAt, '2026-06-27T10:01:00.000Z');
   assert.equal(guide.completedAt, '2026-06-27T10:02:00.000Z');
   assert.equal(guide.manifestDigest, 'sha256:manifest');
-  store.close();
-});
-
-test('parking a domain moves it to pending, switches HTTPS off, and does nothing without one', async () => {
-  const store = new SuiteManagerStore(await tempStateDir());
-  store.parkHttpsDomain('zero');
-  assert.equal(store.getHttpsSettings().pendingBaseDomain, null);
-  store.beginHttpsApply({ acmeEmail: 'owner@example.com', at: 'one', baseDomain: 'mos.example.com' });
-  store.completeHttpsApply('two');
-  store.parkHttpsDomain('three');
-  const settings = store.getHttpsSettings();
-  assert.equal(settings.baseDomain, null);
-  assert.equal(settings.pendingBaseDomain, 'mos.example.com');
-  assert.equal(settings.pendingAcmeEmail, 'owner@example.com');
-  assert.equal(settings.acmeEmail, 'owner@example.com');
-  assert.equal(settings.tlsMode, 'off');
-  assert.equal(settings.provider, null);
-  assert.equal(settings.lastApplyStatus, 'never');
-  // The parked domain is what the next apply picks up, exactly as before.
-  store.beginHttpsApply({ acmeEmail: 'owner@example.com', at: 'four', baseDomain: 'mos.example.com' });
-  store.completeHttpsApply('five');
-  assert.equal(store.getHttpsSettings().baseDomain, 'mos.example.com');
-  assert.equal(store.getHttpsSettings().tlsMode, 'cloudflare-dns01');
-  store.close();
-});
-
-test('failed HTTPS apply retains the previously active configuration', async () => {
-  const store = new SuiteManagerStore(await tempStateDir());
-  store.beginHttpsApply({ acmeEmail: 'first@example.com', at: 'one', baseDomain: 'first.example.com' });
-  store.completeHttpsApply('two');
-  store.beginHttpsApply({ acmeEmail: 'second@example.com', at: 'three', baseDomain: 'second.example.com' });
-  store.failHttpsApply({ at: 'four', errorCode: 'HTTPS_APPLY_FAILED' });
-
-  const settings = store.getHttpsSettings();
-  assert.equal(settings.baseDomain, 'first.example.com');
-  assert.equal(settings.pendingBaseDomain, null);
-  assert.equal(settings.lastApplyStatus, 'failed');
   store.close();
 });
 

@@ -227,7 +227,7 @@ if ! id -u "$MOS_RUNTIME_USER" >/dev/null 2>&1; then
   useradd --system --create-home --shell /usr/sbin/nologin "$MOS_RUNTIME_USER"
 fi
 
-install -d -m 0755 "$MOS_INSTALL_ROOT" "$MOS_STATE_ROOT" "$MOS_STATE_ROOT/suite-manager" "$MOS_STATE_ROOT/homepage/config"
+install -d -m 0755 "$MOS_INSTALL_ROOT" "$MOS_STATE_ROOT" "$MOS_STATE_ROOT/suite-manager" "$MOS_STATE_ROOT/homepage/config" "$MOS_STATE_ROOT/suite-address"
 cat > "$MOS_STATE_ROOT/bootstrap-contract.env" <<MOS_BOOTSTRAP_ENV
 ${renderBootstrapEnv(config)}
 MOS_HOME_URL="$MOS_HOME_URL"

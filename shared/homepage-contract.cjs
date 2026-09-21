@@ -374,16 +374,15 @@ function reconcileManagedUrls(content, entries = []) {
   return { changed: true, content: next };
 }
 
+// `domainState` is the suite's recorded address as the base its hosts hang
+// under and the scheme it is served on: `{ baseDomain, scheme }`. Nothing here
+// decides whether a name is secure; the address that was recorded says so.
 function publicUrlFor(proxy, domainState) {
   const baseDomain = String(domainState?.baseDomain || '').trim().toLowerCase();
   if (!HOST_PATTERN.test(baseDomain) || baseDomain === 'localhost') {
     throw new HomepageConfigError('PUBLIC_DOMAIN_REQUIRED', 'Configure a usable MOS domain before adding a home service.');
   }
-  // A served domain is an HTTPS domain, whichever module served it. Naming one
-  // provider here would silently put every Homepage link back on http the day a
-  // second one ships.
-  const secure = Boolean(domainState?.tlsMode) && domainState.tlsMode !== 'off';
-  return `${secure ? 'https' : 'http'}://${proxy.subdomain}.${baseDomain}/`;
+  return `${domainState?.scheme === 'https' ? 'https' : 'http'}://${proxy.subdomain}.${baseDomain}/`;
 }
 
 function projectServices(content, domainState) {

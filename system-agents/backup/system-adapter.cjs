@@ -80,6 +80,11 @@ class BackupSystemAdapter {
     }
   }
 
+  async writeFile(target, content) {
+    ensureDir(path.dirname(target));
+    fs.writeFileSync(target, content, 'utf8');
+  }
+
   async archiveTree(sourceDir, archivePath, { entries } = {}) {
     ensureDir(path.dirname(archivePath));
     this.command('tar', ['-czf', archivePath, '-C', sourceDir, ...(entries || ['.'])], { timeout: 1_800_000 });

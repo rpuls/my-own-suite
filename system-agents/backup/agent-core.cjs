@@ -15,11 +15,13 @@
 //   copyTree(source, target, { excludeNames })  removeTree(target)
 //   availableBytes(dir) -> bytes|null     pathBytes(target) -> bytes|null
 //   destinationMounted(dir) -> boolean (optional; true when dir is a live mountpoint)
-//   snapshotSqlite(databasePath, targetPath)
+//   snapshotSqlite(databasePath, targetPath)  writeFile(path, content)
 //   restoreStateOwnership()               sourceInfo() -> { branch, commit, repoDir, version }
 //
 // `packages` = { inventory(), validatePayloads(stagedRoot, apps) }
 // `apps`     = { installedInstances() -> [{ enabled, instanceId, packageId }], reconcile(log, progress) }
+// `homepage` = { rebuild(log) }: re-renders Homepage's projection and routes from
+//   the restored config, on the address this machine is on.
 // `jobs`     = { log(file, message), stage(file, name), progress(file, count), update(file, mutator) }
 //   where a count is { done, total, unit: 'apps' | 'volumes', packageId, displayName? }:
 //   which item of how many the current stage is on, so the surfaces that show
@@ -52,7 +54,6 @@ const {
 } = require('../../infrastructure/persistent-state.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
-const { servedAddress } = require('../../shared/served-address.cjs');
 const { RESTORE_POINTS_DIRNAME } = require('./engines/engine.cjs');
 const { parseObjectLocator, readRestorePoint, sha256, writeRestorePoint } = require('./destinations.cjs');
 
@@ -114,15 +115,6 @@ function validatePackagePayloads(root, packages) {
   }
 }
 
-// The public address apps are rebuilt on during a restore, which is the same
-// question every other module asks about this machine and so is answered in the
-// same place. A restore only has to hand over what it can see: the restored
-// settings, this machine's environment, and whether its Easy Door is open.
-function restorePublicIdentity({ bootstrapContract = {}, easyDoorHost = null, environment = {}, httpsSettings = null } = {}) {
-  const { host, scheme } = servedAddress({ bootstrapContract, easyDoorHost, environment, httpsSettings });
-  return { homeHost: host, scheme };
-}
-
 // Whether a restore point was written by another machine. The install id is
 // the only answer: a standby may carry the same hostname on purpose, and an
 // address changes on the same machine.
@@ -139,10 +131,10 @@ function writtenByAnotherMachine(source = {}, current = {}) {
 // failure at that step left them with no way back in and nothing to read.
 //
 // So restore no longer decides addresses at all. A carried domain is set aside
-// and reported, the suite comes back on an address this machine can serve with
-// no DNS and no credential, and serving the name here is offered afterwards by
-// the module that owns domains — in the open, where it can be checked, undone
-// and explained.
+// as an offer and reported, the suite comes back on the address this machine has
+// recorded — which the restore never reads or writes — and serving the name here
+// is offered afterwards by the module that owns domains, in the open, where it
+// can be checked, undone and explained.
 function carriedAddress({ current = {}, manifest = {} } = {}) {
   const source = manifest.source || {};
   const foreign = writtenByAnotherMachine(source, current);
@@ -215,19 +207,22 @@ const KEY_ADOPTION_REFUSALS = {
 };
 
 class BackupAgentCore {
-  constructor({ apps, destinations, engine, identity = {}, jobs, packages, paths, system }) {
+  constructor({ apps, destinations, engine, homepage = { rebuild: async () => null }, identity = {}, jobs, packages, paths, system }) {
     this.apps = apps;
     this.destinations = destinations;
     this.engine = engine;
-    // Who this machine is and what it does with a restored domain. The host
-    // wiring supplies the real answers; a core built without them has no
-    // install id or domain and treats every restore as its own.
+    this.homepage = homepage;
+    // Who this machine is, what address it publishes for the manifest, and how
+    // a carried domain is offered. The host wiring supplies the real answers; a
+    // core built without them has no install id or domain and treats every
+    // restore as its own.
     this.identity = {
+      acmeEmail: () => null,
       assumeArchiveKey: async () => null,
       domain: () => null,
       hostname: () => os.hostname(),
       installId: () => null,
-      parkRestoredDomain: async () => null,
+      offerAddress: async () => null,
       ...identity,
     };
     this.jobs = jobs;
@@ -511,7 +506,7 @@ class BackupAgentCore {
         // replacement takes over, and an owner about to restore has to be able
         // to see which one they are about to become and whether it carries an
         // address only one machine can answer on.
-        source: { ...await system.sourceInfo(), domain: this.identity.domain(), hostname: this.identity.hostname(), installId: this.identity.installId() },
+        source: { ...await system.sourceInfo(), acmeEmail: this.identity.acmeEmail(), domain: this.identity.domain(), hostname: this.identity.hostname(), installId: this.identity.installId() },
       };
       // Success requires the destination to still be the one this started
       // against: if a drive vanished mid-backup, everything above landed on the
@@ -810,20 +805,28 @@ class BackupAgentCore {
 
       this.advanceJournal('restoring-state', { rescuePath: rescueDir });
       jobs.stage(jobFile, 'Restoring suite state');
-      // This machine keeps its own Caddy files. They carry its address and its
-      // Easy Door; the backup's carry the address of the machine it was written
-      // on, which is the one address this machine is certain not to answer for.
-      for (const target of targets.filter((entry) => !entry.id.startsWith('caddy-'))) {
-        await system.removeTree(target.path);
+      for (const target of targets) {
+        // A target with a parked path is carried but never installed, so the
+        // restore cannot change what the machine is serving by writing a file.
+        const destination = target.parkedPath || target.path;
+        await system.removeTree(destination);
         const staged = path.join(stagedState, target.stagePath);
-        if (fs.existsSync(staged)) await system.copyTree(staged, target.path, { excludeNames: [] });
+        if (fs.existsSync(staged)) await system.copyTree(staged, destination, { excludeNames: [] });
         else jobs.log(jobFile, `The backup does not contain ${target.id}; it is left absent.`);
       }
-      // Before the apps are rebuilt, so they are rebuilt on the address this
-      // machine can actually serve rather than the one the backup arrived with.
+      // Projections are rebuilt from the restored data alone. Resetting them
+      // first is what stops a route this machine served before the restore from
+      // surviving beside the ones the backup names.
+      for (const target of managedStateTargets(this.paths)) {
+        if (typeof target.emptyContent === 'string') await system.writeFile(target.path, target.emptyContent);
+      }
+      // The address this machine publishes is never read or written here: it is
+      // machine-local state the restore does not reach. A domain the backup
+      // carried from another machine is offered, and serving it is the domain
+      // module's job, later, when the owner asks.
       if (address.domain) {
-        const setAside = await this.identity.parkRestoredDomain();
-        if (setAside) jobs.log(jobFile, `Set ${setAside} aside: this suite comes back on this machine's own address, and Settings offers to serve ${setAside} from here when you are ready.`);
+        await this.identity.offerAddress({ acmeEmail: manifest.source?.acmeEmail || null, baseDomain: address.domain });
+        jobs.log(jobFile, `Set ${address.domain} aside: this suite comes back on this machine's own address, and Settings offers to serve ${address.domain} from here when you are ready.`);
       }
 
       this.advanceJournal('restoring-volumes');
@@ -849,6 +852,15 @@ class BackupAgentCore {
       jobs.stage(jobFile, 'Rebuilding app runtime');
       await system.restoreStateOwnership();
       await apps.reconcile((message) => jobs.log(jobFile, message), (count) => jobs.progress(jobFile, count));
+      // Homepage's own routes — the home services an owner added — are a
+      // projection of the restored config too, and nothing else rebuilds them.
+      // A Homepage that cannot be re-rendered is reported, not a failed restore:
+      // the data is back, and the dashboard is one apply away.
+      try {
+        await this.homepage.rebuild((message) => jobs.log(jobFile, message));
+      } catch (error) {
+        jobs.log(jobFile, `Homepage could not be re-rendered after the restore: ${error.message}. Save any Homepage setting once to rebuild it.`);
+      }
 
       this.advanceJournal('verifying');
       jobs.stage(jobFile, 'Verifying restored state');
@@ -945,7 +957,6 @@ module.exports = {
   readRestorePoint,
   RESTORE_JOURNAL_FILENAME,
   RESTORE_PHASES,
-  restorePublicIdentity,
   UNREADABLE_LEGACY_BACKUP,
   sha256,
   validatePackagePayloads,

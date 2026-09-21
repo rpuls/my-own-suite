@@ -20,7 +20,7 @@ const seed = `# retained comment
         description: Control plane
         icon: mdi:cube
 `;
-const domainState = { baseDomain: 'mos.example.com', tlsMode: 'cloudflare-dns01' };
+const domainState = { baseDomain: 'mos.example.com', scheme: 'https' };
 const link = { description: 'Useful docs', group: 'Links', icon: 'mdi:link', name: 'Docs', url: 'https://example.com/docs' };
 const service = { description: 'Office printer', group: 'Home services', host: '192.168.1.20', icon: 'mdi:printer', name: 'Printer', port: 8080, protocol: 'http', subdomain: 'printer' };
 const calendarLink = {

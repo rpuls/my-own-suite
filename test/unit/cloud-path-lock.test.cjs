@@ -63,6 +63,11 @@
 // `Requires=mos-vault.service`, so every unit the installer writes now carries
 // the same requirement (test/unit/vault-gating.test.cjs holds that rule). No
 // `echo` line changed.
+//
+// Moved 2026-09-20 for the recorded suite address (roadmap A11): the installer
+// creates the `suite-address` directory Suite Manager records the address in.
+// One argument on one `install -d` line, in all five renderings; the thirteen
+// `echo` lines were compared before and after and not one changed.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -76,25 +81,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '8beeaa75f26dae19efe2d5aec8d64333a516a22dc61609d78604537b4cbb279b',
+    digest: '24d56dc4fed42c8471ca55dabcf84f479909b877acaadc53993535cef9597dcd',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '627d804abf669db5f87c4c847ff78e3a0bfff6517fe6e7dd2e1945f15d9b797d',
+    digest: 'b6c1ff5b6b52360a2cd1529785bf3dfd547403e2bc5d37186699f73a8ef180ea',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: 'eaecf685c7aba52fca0e24ae96694c76cd7174000fbda16954dc04b2b6552b52',
+    digest: 'f51eacdce9e5594566517053d83bb7132d87c31847cc9053898ed85fe02dad93',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: '1f83b68a981be8836bd7a54f583e058e7c3179f4b44957e9098d45e789b64c22',
+    digest: 'f2acfec950b02a2f429bb34ee91faa6106bc1d95ea9d54af6d6452ebc2dc023a',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -104,7 +109,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: 'c29f18f193d592892a5d6d990bbf65a6be59e5bb560100116e8e214cab94e95e',
+    digest: '214fba9086e73486e9e15d478d7fa9e8bbbd9f504273edf4d9e696a4b7136867',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

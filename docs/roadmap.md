@@ -52,14 +52,6 @@ all of it, and a replacement machine can take over a destination the original wr
 - **A7 — Decide a cleanup story for anonymous Docker volumes.** Unlabeled, hash-named volumes left
   behind by removed app containers are outside MOS ownership by design, so restore correctly refuses
   to claim them — and nothing else ever removes them either. *(Small — needs a decision first)*
-- **A9 — Serve a set-aside domain from this machine in one step, with the name checked.** A restore
-  onto other hardware now sets the carried domain aside (`docs/decisions.md`, 2026-09-20); what is
-  missing is the other half — an action under Settings that applies it using the credential restored
-  with the backup, so nobody has to find a token stored in the password manager they are recovering,
-  and that resolves the name first and says what actually answers for it rather than reporting
-  success on a certificate nobody can reach. Needs the domain module to accept "use the credential
-  already here", and the progress file moved out of the backup agent so a domain apply can publish
-  to it without the two modules depending on each other. *(Medium)*
 - **A10 — Let a replacement machine take the address of the server it replaces.** The recovery route
   that needs nothing outside MOS: when the old machine is off and its address is on a network this
   one is on, taking that address makes every phone, laptop and sync client work again with no DNS

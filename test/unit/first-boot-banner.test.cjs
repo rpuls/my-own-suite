@@ -150,26 +150,18 @@ test('the banner derives the Easy Door name rather than reimplementing it', () =
   assert.match(withAddress, /only from inside your own network/u);
 });
 
+// The door is always open on a LAN machine — a domain does not close it — so the
+// banner prints it for any private address without reading the Caddyfile.
 test('the Easy Door CLI answers with the name the host gate admits', () => {
-  const caddyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mos-first-boot-'));
-  const open = path.join(caddyDir, 'Caddyfile');
-  const closed = path.join(caddyDir, 'Caddyfile.https');
-  fs.writeFileSync(open, renderCaddyfile());
-  fs.writeFileSync(closed, 'http://home.mos.example.com {\n  reverse_proxy 127.0.0.1:3100\n}\n');
-
-  const cli = (args, caddyfilePath) => execFileSync(process.execPath, [easyDoorModule, ...args], {
-    encoding: 'utf8',
-    env: { ...process.env, MOS_CADDYFILE_PATH: caddyfilePath },
-  }).trim();
+  const cli = (args) => execFileSync(process.execPath, [easyDoorModule, ...args], { encoding: 'utf8' }).trim();
 
   for (const address of ['192.168.123.45', '10.0.0.5', '172.16.0.1']) {
-    assert.equal(cli(['home-host', address], open), easyDoorHomeHost(address));
+    assert.equal(cli(['home-host', address]), easyDoorHomeHost(address));
   }
   // A public address has no Easy Door: the nameserver refuses those names, so
   // the banner must print the first door alone rather than a dead second one.
-  assert.equal(cli(['home-host', '203.0.113.9'], open), '');
-  assert.equal(cli(['home-host', '192.168.123.45'], closed), '');
-  assert.equal(cli(['home-host', ''], closed), '');
+  assert.equal(cli(['home-host', '203.0.113.9']), '');
+  assert.equal(renderCaddyfile().includes('# mos-easy-door'), true);
 });
 
 // The banner runs on every boot whether the vault opened or not, so it may read

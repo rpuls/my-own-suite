@@ -328,6 +328,7 @@ async function assembleSupportBundle({
   platformVersion = 'unknown',
   secretDir,
   store,
+  suiteAddress = null,
   updateStatus = null,
 }) {
   // An unreachable diagnostics agent is not a failed export. It is the most
@@ -337,8 +338,8 @@ async function assembleSupportBundle({
     .then(() => agent.collect())
     .catch((error) => ({ containers: [], host: {}, hostPatches: null, incomplete: [`diagnostics agent unreachable (${error.code || 'unknown'})`], units: [] }));
 
-  const https = (() => {
-    try { return store.getHttpsSettings() || {}; } catch { return {}; }
+  const addressChange = (() => {
+    try { return store.getAddressChange() || {}; } catch { return {}; }
   })();
   const appAgentStatus = await Promise.resolve(appAgent?.status?.()).catch(() => null);
   const apps = store.getAppInstances().map((instance) => ({
@@ -362,10 +363,10 @@ async function assembleSupportBundle({
       appAgentContractVersion: appAgentContractVersionOf(appAgentStatus),
       frontDoor,
       lastHttpsApply: {
-        at: https.lastApplyAt || null,
-        diagnostics: https.lastApplyDiagnostics || null,
-        errorCode: https.lastApplyErrorCode || null,
-        status: https.lastApplyStatus || null,
+        at: addressChange.finishedAt || addressChange.startedAt || null,
+        diagnostics: addressChange.diagnostics || null,
+        errorCode: addressChange.errorCode || null,
+        status: addressChange.status && addressChange.status !== 'never' ? addressChange.status : null,
       },
       lastCheck: updateStatus?.serviceAvailable ? {
         at: updateStatus.checkedAt || null,
@@ -379,7 +380,7 @@ async function assembleSupportBundle({
         stage: updateStatus.currentJob.stage || null,
         status: updateStatus.currentJob.status || null,
       } : null,
-      tlsMode: https.tlsMode || 'unknown',
+      tlsMode: suiteAddress?.scheme === 'https' ? `https (${suiteAddress.kind})` : suiteAddress?.kind || 'unknown',
       updateTrack: updateStatus?.track?.label || 'unknown',
       version: platformVersion,
     },

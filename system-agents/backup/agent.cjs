@@ -12,10 +12,9 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { execFile, execFileSync, spawn } = require('node:child_process');
-const { BackupAgentCore, isRestorePointPath, restorePublicIdentity, sha256, UNREADABLE_LEGACY_BACKUP, validatePackagePayloads } = require('./agent-core.cjs');
+const { BackupAgentCore, isRestorePointPath, sha256, UNREADABLE_LEGACY_BACKUP, validatePackagePayloads } = require('./agent-core.cjs');
 const { PROGRESS_FILENAME, UNAVAILABLE_PAGE_ROOT } = require('../../infrastructure/control-plane-runtime.cjs');
-const { detectEasyDoorBase } = require('../../shared/easy-door.cjs');
-const { servedDomain } = require('../../shared/served-address.cjs');
+const { SuiteAddressFile, suiteAddressDir } = require('../../shared/suite-address.cjs');
 const { BUILD_TIMINGS_FILENAME, expectedBuildSeconds, readBuildTimings } = require('../lib/app-build-timings.cjs');
 const { checkExpectation, restoreExpectation, runningExpectation } = require('./expectations.cjs');
 const { ProgressPublisher, advanceTimeline, closeTimeline, progressFor, stageSentence } = require('./progress.cjs');
@@ -35,6 +34,8 @@ const { machineHasVault, readVaultDescriptor, vaultAsksForPassword } = require('
 const { VaultAgentClient } = require('../../suite-manager/backend/src/settings/vault-agent-client.cjs');
 const { AppAgentClient } = require('../../suite-manager/backend/src/apps/app-agent-client.cjs');
 const { AppPackageService } = require('../../suite-manager/backend/src/apps/app-package-service.cjs');
+const { HomepageAgentClient } = require('../../suite-manager/backend/src/homepage/homepage-agent-client.cjs');
+const { HomepageService } = require('../../suite-manager/backend/src/homepage/homepage-service.cjs');
 const { collectPackageFiles, verifySnapshotIdentity } = require('../../suite-manager/backend/src/apps/package-contracts.cjs');
 const { readAppPackageManifest } = require('../../suite-manager/backend/src/apps/package-manifest.cjs');
 const { SuiteManagerStore } = require('../../suite-manager/backend/src/state/suite-manager-store.cjs');
@@ -49,7 +50,9 @@ const bootstrapContractPath = path.join(stateRoot, 'bootstrap-contract.env');
 const jobsDir = path.join(agentStateDir, 'jobs');
 const currentJobPath = path.join(agentStateDir, 'current-job.json');
 const installIdPath = path.join(agentStateDir, 'install-id');
-const caddyfilePath = process.env.MOS_CADDYFILE_PATH || '/etc/caddy/Caddyfile';
+// The suite's one recorded address: read for the manifest and for the address
+// apps are rebuilt on, written only to offer a domain a restore carried.
+const suiteAddress = new SuiteAddressFile({ dir: suiteAddressDir(stateRoot) });
 // Where Caddy serves the busy page from, which is where the progress file
 // goes: the one place an owner can still read while Suite Manager is down.
 const statusDir = process.env.MOS_STATUS_DIR || UNAVAILABLE_PAGE_ROOT;
@@ -642,41 +645,15 @@ function installedAppInstances() {
     store.close();
   }
 }
-function readBootstrapContract() {
-  if (!fs.existsSync(bootstrapContractPath)) return {};
-  return Object.fromEntries(fs.readFileSync(bootstrapContractPath, 'utf8').split(/\r?\n/u).map((line) => {
-    const match = line.match(/^([A-Z0-9_]+)=(.*)$/u);
-    if (!match) return null;
-    return [match[1], match[2].trim().replace(/^['"]|['"]$/gu, '')];
-  }).filter(Boolean));
+// The address apps are rebuilt on during a restore: this machine's recorded
+// address, whatever the backup was written on. Nothing here derives it.
+function restoreBaseUrl() {
+  const address = suiteAddress.read();
+  return { homeHost: address.host, scheme: address.scheme };
 }
-// Derived from the restored database first (see restorePublicIdentity): the
-// owner's applied HTTPS domain must win over this machine's install-time env,
-// which is what answers when no domain has been applied.
-function restoreBaseUrl(store) {
-  let httpsSettings = null;
-  try { httpsSettings = store ? store.getHttpsSettings() : null; } catch {}
-  // Read from the live Caddyfile and the live address, so a machine that has
-  // just taken over another machine's suite is named by where it is rather
-  // than by where the backup was written.
-  const easyDoorBase = detectEasyDoorBase({ caddyfilePath });
-  return restorePublicIdentity({
-    bootstrapContract: readBootstrapContract(),
-    easyDoorHost: easyDoorBase ? `home.${easyDoorBase}` : null,
-    environment: process.env,
-    httpsSettings,
-  });
-}
-function withStore(work) {
-  const store = new SuiteManagerStore(stateDir);
-  try {
-    return work(store);
-  } finally {
-    store.close();
-  }
-}
-function appliedDomain(store) {
-  return servedDomain(store.getHttpsSettings());
+function recordedDomain() {
+  const address = suiteAddress.readOrNull();
+  return address?.kind === 'domain' ? address : null;
 }
 // Generated once, on this machine's first agent start, and kept beside the
 // engine key where nothing backs it up: the one fact a restore point can carry
@@ -691,15 +668,16 @@ function installId() {
   fs.writeFileSync(installIdPath, `${id}\n`, 'utf8');
   return id;
 }
-// Who this machine is, and the one thing a restore does with a domain the
-// backup carried: set it aside. The domain stays in the restored settings as
-// pending and HTTPS is switched off, so the apps are rebuilt on an address this
-// machine can serve with no DNS and no credential, and the Settings form offers
-// the domain back whenever the owner is ready for it. Serving a name is the
-// domain module's job and happens nowhere else — a restore that wrote its own
+// Who this machine is, and what a restore does about the address: nothing. The
+// address lives in a machine-local file the restore never touches, so the apps
+// come back on whatever door the owner came in through — the Easy Door, the
+// install-time name, or a domain this machine was already serving. The name the
+// backup carried becomes an offer in Settings instead, and serving it is the
+// domain module's job and happens nowhere else. A restore that wrote its own
 // TLS config was how a machine came back serving a name its own Suite Manager
 // refused.
 const identity = {
+  acmeEmail: () => recordedDomain()?.acmeEmail || null,
   // A restore that takes another machine's place makes that machine's key this
   // machine's own, and the borrowed copy is dropped: the two are now one server
   // with one key. Nothing is written to the archive to do it — adding this
@@ -729,26 +707,37 @@ const identity = {
     destinationResolver.forgetAll();
     return true;
   },
-  domain: () => { try { return withStore(appliedDomain); } catch { return null; } },
+  domain: () => recordedDomain()?.baseDomain || null,
   hostname: () => os.hostname(),
   installId,
-  parkRestoredDomain: async () => withStore((store) => {
-    const domain = appliedDomain(store);
-    if (domain) store.parkHttpsDomain(new Date().toISOString());
-    return domain;
-  }),
+  offerAddress: async ({ acmeEmail = null, baseDomain }) => suiteAddress.writeOffer({ acmeEmail, baseDomain, from: 'restore' }),
 };
-function restoreRequestContext(packageId, store) {
-  const { homeHost, scheme } = restoreBaseUrl(store);
+function restoreRequestContext(packageId) {
+  const { homeHost, scheme } = restoreBaseUrl();
   const baseHost = homeHost.startsWith('home.') ? homeHost.slice(5) : homeHost;
   const appHost = `${packageId}.${baseHost}`;
   return {
     appHost,
     baseHost,
     publicUrl: `${scheme}://${appHost}/`,
-    publicUrlFor: (nextPackageId) => restoreRequestContext(nextPackageId, store),
+    publicUrlFor: (nextPackageId) => restoreRequestContext(nextPackageId),
     scheme,
   };
+}
+// Homepage's services projection and its Caddy routes, re-rendered from the
+// restored config on this machine's address. The managed app tiles need their
+// widget endpoints re-derived the same way an address change does it.
+async function rebuildRestoredHomepage(logMessage) {
+  const store = new SuiteManagerStore(stateDir);
+  try {
+    const appPackages = new AppPackageService({ agent: new AppAgentClient(), appsDir: path.join(repoDir, 'apps'), store });
+    const homepageService = new HomepageService({ agent: new HomepageAgentClient(), store, suiteAddress });
+    const result = await appPackages.reconcileHomepageUrls(homepageService, { publicUrlFor: (packageId) => restoreRequestContext(packageId) });
+    if (result.homepage?.status === 'failed') throw new Error(result.homepage.errorCode || 'HOMEPAGE_PUBLIC_URL_RECONCILE_FAILED');
+    logMessage('Homepage re-rendered on this machine\'s address');
+  } finally {
+    store.close();
+  }
 }
 async function reconcileRestoredApps(logMessage, onProgress = () => {}) {
   const store = new SuiteManagerStore(stateDir);
@@ -767,7 +756,7 @@ async function reconcileRestoredApps(logMessage, onProgress = () => {}) {
       const displayName = instance.displayNameSnapshot || displayNameOf(instance.packageId);
       onProgress({ displayName, done: index, packageId: instance.packageId, total: instances.length, unit: 'apps' });
       logMessage(`Restoring ${displayName}`);
-      await appPackages.enablePackage(instance.packageId, restoreRequestContext(instance.packageId, store));
+      await appPackages.enablePackage(instance.packageId, restoreRequestContext(instance.packageId));
     }
   } finally {
     store.close();
@@ -1043,6 +1032,7 @@ const core = new BackupAgentCore({
   apps: { installedInstances: installedAppInstances, reconcile: reconcileRestoredApps },
   destinations: destinationResolver,
   engine,
+  homepage: { rebuild: rebuildRestoredHomepage },
   identity,
   jobs: { log, progress, stage, update: updateJob },
   packages: { inventory: packageBackupInventory, validatePayloads: validatePackagePayloads },

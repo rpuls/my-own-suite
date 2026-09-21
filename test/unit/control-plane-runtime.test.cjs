@@ -42,7 +42,10 @@ test('the Easy Door serves Suite Manager without changing what an unmatched host
   assert.match(caddyfile, /handle \{\n {4}respond 404\n {2}\}/u);
 });
 
-test('the Easy Door closes when a real domain takes over, and never opens on a cloud install', () => {
+// A door is not an address. An owner who applied HTTPS while standing on the
+// Easy Door or the install-time name keeps a working Suite Manager page there;
+// only the apps move to the domain. A cloud install never had the door.
+test('the Easy Door and the install-time name stay open for Suite Manager under a domain, and never open on a cloud install', () => {
   const https = renderHttpsCaddyfile({
     acmeEmail: 'owner@example.com',
     baseDomain: 'mos.example.com',
@@ -50,7 +53,14 @@ test('the Easy Door closes when a real domain takes over, and never opens on a c
     suiteManagerPort: '3100',
   });
 
-  assert.doesNotMatch(https, /mos-easy-door|myownsuite\.org/u);
+  assert.match(https, /# mos-easy-door\nhttp:\/\/ \{/u);
+  assert.match(https, /@mos-easy-door header_regexp Host \^home\\\./u);
+  assert.match(https, /http:\/\/home\.mos\.home \{/u);
+  assert.match(https, /https:\/\/home\.mos\.example\.com \{/u);
+  // Three site blocks proxy to the one Suite Manager: the install-time name, the
+  // Easy Door and the domain; the port is the resolved one throughout.
+  assert.equal((https.match(/reverse_proxy 127\.0\.0\.1:3100/gu) || []).length, 3);
+  assert.doesNotMatch(https, /\$MOS_SUITE_MANAGER_PORT/u);
   assert.doesNotMatch(renderPublicCloudCaddyfile(), /mos-easy-door|myownsuite\.org/u);
 });
 
@@ -166,10 +176,10 @@ test('every Suite Manager entrance answers a control-plane outage with the statu
   assert.equal(cloud.match(/handle_errors/gu).length, 2);
   assert.match(cloud, expected);
 
-  // On HTTPS, the two proxying blocks get it; the plain-HTTP redirect has no
+  // On HTTPS, the three proxying blocks get it; the plain-HTTP redirect has no
   // upstream to fail, so it stays a redirect.
   const https = renderHttpsCaddyfile({ acmeEmail: 'owner@example.com', baseDomain: 'example.com', bootstrapHost: 'boot.example.com' });
-  assert.equal(https.match(/handle_errors/gu).length, 2);
+  assert.equal(https.match(/handle_errors/gu).length, 3);
   assert.match(https, expected);
   assert.match(https, /http:\/\/home\.example\.com \{\s*redir https:\/\/home\.example\.com\{uri\} permanent\s*\}/u);
 });
@@ -210,7 +220,7 @@ test('the progress file has its own route in every proxying block, ahead of the 
   };
   for (const [name, rendered] of Object.entries(renderings)) {
     assert.match(rendered, route, `${name}: the route is rendered in full`);
-    assert.equal(rendered.match(/handle \/mos-status\/progress\.json \{/gu).length, 2, `${name}: one route per proxying block`);
+    assert.equal(rendered.match(/handle \/mos-status\/progress\.json \{/gu).length, name === 'https' ? 3 : 2, `${name}: one route per proxying block`);
     for (const block of siteBlocks(rendered)) {
       const proxies = /reverse_proxy\s+127\.0\.0\.1:/u.test(block);
       const routeAt = block.indexOf(`handle ${PROGRESS_ROUTE} {`);

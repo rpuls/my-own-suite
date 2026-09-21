@@ -1,7 +1,7 @@
 const crypto = require('node:crypto');
 
 const { renderHttpsCaddyfile } = require('../../infrastructure/control-plane-runtime.cjs');
-const { validateHttpsInput } = require('../../shared/https-contract.cjs');
+const { normalizeBaseDomain, validateHttpsInput } = require('../../shared/https-contract.cjs');
 const { describeFailure, maskValues } = require('../lib/command-output.cjs');
 
 // A failure the agent can explain. `message` is a fixed sentence the owner
@@ -34,6 +34,8 @@ function suiteManagerPort() {
   return port;
 }
 
+const APPLY_KEYS = 'acmeEmail,baseDomain,bootstrapHost';
+
 class HttpsAgentCore {
   constructor(adapter) {
     this.adapter = adapter;
@@ -48,39 +50,52 @@ class HttpsAgentCore {
     };
   }
 
+  // Serves a domain from this machine. Succeeds only once Caddy runs the new
+  // configuration and holds a trusted certificate for the name: "restarted" was
+  // reported as "applied" before this, and an owner read success while every
+  // device of theirs still failed.
+  //
+  // The credential is either the token in the request or the one a restore
+  // parked beside the live file for exactly this moment — so the owner of a
+  // recovered suite never has to find a token stored in the password manager
+  // they are recovering.
   async apply(rawInput) {
-    const keys = Object.keys(rawInput && typeof rawInput === 'object' ? rawInput : {}).sort();
-    if (keys.join(',') !== 'acmeEmail,baseDomain,bootstrapHost,cloudflareApiToken') {
+    const input = rawInput && typeof rawInput === 'object' ? rawInput : {};
+    const keys = Object.keys(input).sort().join(',');
+    const useParked = input.useParkedCredential === true;
+    if (keys !== `${APPLY_KEYS},${useParked ? 'useParkedCredential' : 'cloudflareApiToken'}`) {
       throw new HttpsAgentError('INVALID_REQUEST_SHAPE', 'The HTTPS request did not have the expected shape.', { statusCode: 400 });
     }
-    const input = validateHttpsInput(rawInput);
-    const bootstrapHost = String(rawInput?.bootstrapHost || '').trim().toLowerCase();
+    const bootstrapHost = String(input.bootstrapHost || '').trim().toLowerCase();
     if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u.test(bootstrapHost)) {
       throw new HttpsAgentError('INVALID_BOOTSTRAP_HOST', 'The bootstrap host name is not valid.', { statusCode: 400 });
     }
+    const cloudflareApiToken = useParked ? await this.adapter.readParkedCredential() : input.cloudflareApiToken;
+    const valid = validateHttpsInput({ ...input, cloudflareApiToken });
     if (!await this.adapter.hasCloudflareModule()) {
       throw new HttpsAgentError('CADDY_MODULE_UNAVAILABLE', 'The installed Caddy build has no Cloudflare DNS module.', { statusCode: 503 });
     }
-    await this.adapter.verifyCloudflareAccess(input.cloudflareApiToken, input.baseDomain);
+    await this.adapter.verifyCloudflareAccess(valid.cloudflareApiToken, valid.baseDomain);
 
     const rollbackId = crypto.randomUUID();
-    await this.adapter.createCheckpoint(rollbackId);
+    await this.adapter.createCheckpoint(rollbackId, { usesParkedCredential: useParked });
     try {
       const caddyfile = renderHttpsCaddyfile({
-        acmeEmail: input.acmeEmail,
-        baseDomain: input.baseDomain,
+        acmeEmail: valid.acmeEmail,
+        baseDomain: valid.baseDomain,
         bootstrapHost,
         suiteManagerPort: suiteManagerPort(),
       });
-      await this.adapter.installCandidate({ caddyfile, cloudflareApiToken: input.cloudflareApiToken });
-      await this.adapter.validateCandidate(input.cloudflareApiToken);
-      await this.adapter.reload(input.cloudflareApiToken);
+      await this.adapter.installCandidate({ caddyfile, cloudflareApiToken: valid.cloudflareApiToken });
+      await this.adapter.validateCandidate(valid.cloudflareApiToken);
+      await this.adapter.reload(valid.cloudflareApiToken);
+      await this.adapter.awaitCertificate(`home.${normalizeBaseDomain(valid.baseDomain)}`, valid.cloudflareApiToken);
       return { rollbackId, status: 'applied' };
     } catch (caught) {
       const error = await this.restore(rollbackId, asAgentError(caught, 'Applying the HTTPS configuration'));
       // The adapter masks the token out of anything a command wrote; this is
       // the same mask again, for a reason that came from anywhere else.
-      error.details = error.details.map((detail) => maskValues(detail, [input.cloudflareApiToken]));
+      error.details = error.details.map((detail) => maskValues(detail, [valid.cloudflareApiToken]));
       throw error;
     }
   }
@@ -100,8 +115,10 @@ class HttpsAgentCore {
     return error;
   }
 
+  // The change is final: the checkpoint goes, and so does a parked credential
+  // the apply consumed, because the live file now holds it.
   async commit(rollbackId) {
-    await this.adapter.removeCheckpoint(rollbackId);
+    await this.adapter.commitCheckpoint(rollbackId);
     return { status: 'committed' };
   }
 
@@ -110,6 +127,13 @@ class HttpsAgentCore {
     await this.adapter.reloadPrevious();
     await this.adapter.removeCheckpoint(rollbackId);
     return { status: 'rolled-back' };
+  }
+
+  // The owner declined the domain a restore offered, so the credential that
+  // came with it is not kept around.
+  async discardParkedCredential() {
+    await this.adapter.discardParkedCredential();
+    return { status: 'discarded' };
   }
 }
 

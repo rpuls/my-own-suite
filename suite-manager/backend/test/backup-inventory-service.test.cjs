@@ -8,7 +8,8 @@ const TEMP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-inventory-'));
 const STATE_DIR = path.join(TEMP_ROOT, 'state');
 const servicePath = require.resolve('../src/backups/backup-inventory-service.cjs');
 
-const { BackupInventoryService, DEFAULT_CADDY_FILES, DEFAULT_HTTPS_SECRET_PATH, HOMEPAGE_CONFIG_FILES, uniqueVolumesFor } = require(servicePath);
+const { BackupInventoryService, HOMEPAGE_CONFIG_FILES, uniqueVolumesFor } = require(servicePath);
+const { managedStateTargets } = require('../../../infrastructure/persistent-state.cjs');
 const { digestAppPackage } = require('../src/apps/package-contracts.cjs');
 
 test.after(() => {
@@ -74,12 +75,6 @@ function makeStore(instances, relationships = []) {
 }
 
 test('exports the expected default backup inventory constants', () => {
-  assert.deepEqual(DEFAULT_CADDY_FILES, [
-    '/etc/caddy/Caddyfile',
-    '/etc/caddy/mos-homepage-routes.caddy',
-    '/etc/caddy/mos-app-routes.caddy',
-  ]);
-  assert.equal(DEFAULT_HTTPS_SECRET_PATH, '/etc/mos/secrets/caddy-cloudflare.env');
   assert.deepEqual(HOMEPAGE_CONFIG_FILES, [
     'services.template.yaml',
     'bookmarks.yaml',
@@ -171,10 +166,13 @@ test('constructor resolves stateRoot to parent for non-suite-manager state dirs'
   }
 });
 
-test('constructor applies default caddy and secret paths', () => {
-  const service = new BackupInventoryService({ stateDir: TEMP_ROOT, store: {} });
-  assert.deepEqual(service.caddyFiles, DEFAULT_CADDY_FILES);
-  assert.equal(service.httpsSecretPath, DEFAULT_HTTPS_SECRET_PATH);
+// The state table is the one list of what a backup carries; the inventory used
+// to keep its own and disagreed with it.
+test('the inventory names exactly the files and directories of the state table', () => {
+  const service = new BackupInventoryService({ stateDir: path.join(TEMP_ROOT, 'suite-manager'), store: {} });
+  const ids = service.managedState().map((entry) => entry.id);
+  assert.deepEqual(ids, ['suite-manager-state', 'app-package-snapshots', 'homepage-config', 'suite-address', 'caddy-Caddyfile', 'caddy-mos-homepage-routes.caddy', 'caddy-mos-app-routes.caddy', 'https-provider-secret', 'owner-claim-secret', 'app-candidate-cache']);
+  assert.equal(service.managedState().find((entry) => entry.id === 'https-provider-secret').path, '/etc/mos/secrets/caddy-cloudflare.env');
 });
 
 test('inventory summarizes an empty store', () => {
@@ -355,30 +353,41 @@ test('inventory aggregates relationship statuses', () => {
   assert.equal(result.summary.relationshipCount, 3);
 });
 
-test('inventory reports filesystem path states for contents', () => {
+// The inventory's file list is the state table's, so it can never claim a file
+// is carried that the backup engine does not carry — which is what the
+// hardcoded list it replaced did for the three Caddy files.
+test('inventory reports filesystem path states for contents, read from the state table', () => {
   const root = fs.mkdtempSync(path.join(TEMP_ROOT, 'contents-'));
-  const caddyFile = path.join(root, 'Caddyfile');
-  fs.writeFileSync(caddyFile, '');
-  const caddyDir = path.join(root, 'caddy-conf');
+  const caddyDir = path.join(root, 'caddy');
   fs.mkdirSync(caddyDir);
-  const missing = path.join(root, 'missing');
-  const stateDir = path.join(root, 'state');
-  const homepageConfigRoot = path.join(root, 'homepage', 'config');
+  fs.writeFileSync(path.join(caddyDir, 'Caddyfile'), '');
+  const secretsDir = path.join(root, 'secrets');
+  const stateRoot = path.join(root, 'var-lib-mos');
+  const stateDir = path.join(stateRoot, 'suite-manager');
+  const homepageConfigRoot = path.join(stateRoot, 'homepage', 'config');
   fs.mkdirSync(homepageConfigRoot, { recursive: true });
+  fs.mkdirSync(path.join(stateRoot, 'suite-address'), { recursive: true });
 
   const service = new BackupInventoryService({
-    stateDir,
+    caddyDir,
     homepageConfigRoot,
-    caddyFiles: [caddyFile, caddyDir, missing],
+    secretsDir,
+    stateDir,
+    stateRoot,
     store: makeStore([]),
   });
   const result = service.inventory();
 
-  assert.deepEqual(result.contents.caddyFiles, [
-    { exists: true, kind: 'file', path: caddyFile },
-    { exists: true, kind: 'directory', path: caddyDir },
-    { exists: false, kind: 'missing', path: missing },
-  ]);
+  const expected = managedStateTargets({ caddyDir, secretsDir, stateDir, stateRoot })
+    .filter((target) => ['directory', 'file'].includes(target.kind) && !target.path.includes('{'));
+  assert.deepEqual(result.contents.managedState.map((entry) => entry.id), expected.map((target) => target.id));
+  const byId = Object.fromEntries(result.contents.managedState.map((entry) => [entry.id, entry]));
+  assert.deepEqual(byId['caddy-Caddyfile'], { backedUp: false, class: 'machine-local', exists: true, id: 'caddy-Caddyfile', kind: 'file', path: `${caddyDir}/Caddyfile` });
+  assert.deepEqual(byId['suite-address'], { backedUp: false, class: 'machine-local', exists: true, id: 'suite-address', kind: 'directory', path: `${stateRoot}/suite-address` });
+  assert.equal(byId['caddy-mos-app-routes.caddy'].exists, false);
+  assert.equal(byId['https-provider-secret'].backedUp, true);
+  assert.equal(result.contents.caddyFiles, undefined);
+  assert.equal(result.contents.httpsSecret, undefined);
   assert.equal(result.contents.homepageConfig.path, homepageConfigRoot);
   assert.deepEqual(
     result.contents.homepageConfig.files,

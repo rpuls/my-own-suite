@@ -10,6 +10,8 @@ const { loopbackPortFor } = require('../src/apps/app-package-service.cjs');
 const { LoginThrottle } = require('../src/auth/login-throttle.cjs');
 
 const { APP_AGENT_CONTRACT_VERSION } = require('../../../shared/app-agent-contract.cjs');
+const { SuiteAddressFile } = require('../../../shared/suite-address.cjs');
+const { detectServerAddress, easyDoorHomeHost } = require('../../../shared/easy-door.cjs');
 const { createMOSServer } = require('../src/server/http-app.cjs');
 const { createLogger } = require('../src/server/logger.cjs');
 const { TERMS_VERSION } = require('../src/setup/setup-service.cjs');
@@ -63,6 +65,9 @@ async function withServer(fn, options = {}) {
     frontendDistDir: await tempFrontendDistDir(),
     homeHost: '127.0.0.1',
     stateDir: await tempStateDir(),
+    // The recorded address lives beside the state a restore replaces, so each
+    // server under test gets its own directory for it.
+    suiteAddress: new SuiteAddressFile({ dir: path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'mos-address-')), 'suite-address') }),
     ...options,
     appAgent,
     vaultAgent,
@@ -162,14 +167,17 @@ test('static frontend assets are served from the reserved asset namespace', asyn
   });
 });
 
-async function createOwner(baseUrl, host = 'home.test') {
+// The door the owner completes setup on — host and scheme — is the address the
+// suite records and builds every URL from, so a test that expects https app
+// URLs onboards over https.
+async function createOwner(baseUrl, host = 'home.test', { secure = false } = {}) {
   const response = await hostRequest(baseUrl, '/suite-manager/api/setup/owner', {
     body: JSON.stringify({
       email: 'owner@example.com',
       name: 'Suite Owner',
       password: 'correct horse battery',
     }),
-    headers: { 'Content-Type': 'application/json', Host: host },
+    headers: { 'Content-Type': 'application/json', Host: host, ...(secure ? { 'X-Forwarded-Proto': 'https' } : {}) },
     method: 'POST',
   });
   return response.headers['set-cookie'][0];
@@ -956,7 +964,7 @@ test('Vaultwarden install generates a redacted secret and materializes it only f
   };
 
   await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
+    const cookie = await createOwner(baseUrl, 'home.test', { secure: true });
     const installed = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
@@ -1053,7 +1061,7 @@ test('app integration connect materializes provider exports into consumer runtim
   };
 
   await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
+    const cookie = await createOwner(baseUrl, 'home.test', { secure: true });
     await hostRequest(baseUrl, '/suite-manager/api/apps/packages/seafile/install', {
       body: JSON.stringify({ config: { adminEmail: 'owner@example.com', adminPassword: 'seafile-password' } }),
       headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
@@ -1129,7 +1137,7 @@ test('Radicale install stores user-supplied credentials with secret redaction an
   };
 
   await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
+    const cookie = await createOwner(baseUrl, 'home.test', { secure: true });
     const missing = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/radicale/install', {
       body: JSON.stringify({ config: { adminUsername: 'admin' } }),
       headers: { Cookie: cookie, Host: 'home.test' },
@@ -1263,7 +1271,7 @@ test('Installed app packages can apply their runtime through the app agent bound
     assert.equal(denied.status, 401);
     assert.equal(calls.length, 0);
 
-    const cookie = await createOwner(baseUrl);
+    const cookie = await createOwner(baseUrl, 'home.test', { secure: true });
     await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/install', {
       headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
@@ -1431,7 +1439,7 @@ test('Radicale Homepage projection adds a calendar widget without exposing crede
   };
 
   await withServer(async (baseUrl) => {
-    const cookie = await createOwner(baseUrl);
+    const cookie = await createOwner(baseUrl, 'home.test', { secure: true });
     const password = 'calendar widget passphrase';
     await hostRequest(baseUrl, '/suite-manager/api/apps/packages/radicale/install', {
       body: JSON.stringify({ config: { adminPassword: password, adminUsername: 'calendar-admin', calendarName: 'Family calendar' } }),
@@ -2196,54 +2204,93 @@ test('duplicate owner creation returns conflict', async () => {
   });
 });
 
-test('HTTPS Settings API requires authentication and never returns the submitted token', async () => {
-  const calls = [];
-  const httpsAgent = {
-    apply: async (input) => { calls.push(input); return { rollbackId: 'rollback-one' }; },
-    commit: async () => ({ status: 'committed' }),
-    rollback: async () => ({ status: 'rolled-back' }),
-    status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
+// The HTTPS agent as Suite Manager sees it. `apply` answers only once the name is
+// served with a certificate, so the fake stands for that too.
+function fakeHttpsAgent(overrides = {}) {
+  const calls = { apply: [], commit: [], discard: [], rollback: [] };
+  return {
+    calls,
+    agent: {
+      apply: async (input) => { calls.apply.push(input); return { rollbackId: 'rollback-one' }; },
+      commit: async (id) => { calls.commit.push(id); return { status: 'committed' }; },
+      discardParkedCredential: async () => { calls.discard.push(true); return { status: 'discarded' }; },
+      rollback: async (id) => { calls.rollback.push(id); return { status: 'rolled-back' }; },
+      status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
+      ...overrides,
+    },
   };
+}
+
+// A change answers 202 and runs on; the screen polls the status until the
+// change has an outcome, and so do these tests.
+async function awaitAddressChange(baseUrl, cookie, host = 'home.test') {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const status = await hostRequest(baseUrl, '/suite-manager/api/settings/address', { headers: { Cookie: cookie, Host: host } });
+    if (status.status === 200 && status.json().lastChange.status !== 'applying') return status.json();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error('the address change did not finish');
+}
+
+test('the suite address API requires authentication, changes to a domain in the background, and never returns the token', async () => {
+  const { agent: httpsAgent, calls } = fakeHttpsAgent();
   const homepageAgent = {
     async read(file) { return { content: '[]', file, revision: 'sha256:current' }; },
     async reconcileUrls(input) { return { changed: false, entries: input.entries, file: 'services.template.yaml', revision: 'sha256:next' }; },
   };
 
   await withServer(async (baseUrl) => {
-    const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/https', { headers: { Host: 'home.test' } });
+    const denied = await hostRequest(baseUrl, '/suite-manager/api/settings/address', { headers: { Host: 'home.test' } });
     assert.equal(denied.status, 401);
 
     const cookie = await createOwner(baseUrl);
+    const before = await hostRequest(baseUrl, '/suite-manager/api/settings/address', { headers: { Cookie: cookie, Host: 'home.test' } });
+    // Onboarding recorded the door the owner came through.
+    assert.deepEqual({ host: before.json().address.host, kind: before.json().address.kind, scheme: before.json().address.scheme }, { host: 'home.test', kind: 'lan-name', scheme: 'http' });
+    assert.equal(before.json().address.url, 'http://home.test/');
+    assert.equal(before.json().lastChange.status, 'never');
+
     const token = 'cloudflare_token_1234567890';
-    const applied = await hostRequest(baseUrl, '/suite-manager/api/settings/https/apply', {
-      body: JSON.stringify({ acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', cloudflareApiToken: token }),
+    const started = await hostRequest(baseUrl, '/suite-manager/api/settings/address/change', {
+      body: JSON.stringify({ acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', cloudflareApiToken: token, kind: 'domain' }),
       headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
-    assert.equal(applied.status, 200);
-    assert.equal(applied.json().homeUrl, 'https://home.mos.example.com/');
-    assert.equal(applied.json().appReconciliation.status, 'applied');
-    assert.doesNotMatch(applied.body, new RegExp(token, 'u'));
+    assert.equal(started.status, 202);
+    assert.equal(started.json().status, 'applying');
+    assert.deepEqual(started.json().target, { host: 'home.mos.example.com', kind: 'domain' });
+    assert.doesNotMatch(started.body, new RegExp(token, 'u'));
 
-    const status = await hostRequest(baseUrl, '/suite-manager/api/settings/https', {
-      headers: { Cookie: cookie, Host: 'home.mos.example.com' },
-    });
-    assert.equal(status.status, 200);
-    assert.equal(status.json().baseDomain, 'mos.example.com');
-    assert.equal(status.json().installContext, 'ssh-bootstrap');
-    assert.equal(status.json().privateHttpsAvailable, true);
-    assert.equal(status.json().tokenConfigured, true);
-    assert.ok(Object.hasOwn(status.json(), 'serverAddress'));
-    assert.doesNotMatch(status.body, new RegExp(token, 'u'));
-    assert.equal(calls[0].cloudflareApiToken, token);
+    // The new name is admitted while the change runs, so a screen that follows
+    // the redirect early is answered rather than refused.
+    const status = await awaitAddressChange(baseUrl, cookie, 'home.mos.example.com');
+    assert.equal(status.lastChange.status, 'applied');
+    assert.equal(status.lastChange.stage, 'apps');
+    assert.deepEqual(status.lastChange.result, { homepage: { changed: false, entries: [], file: 'services.template.yaml', operationId: status.lastChange.result.homepage.operationId, revision: 'sha256:next' }, homepageEntryFailures: [], runtime: [], status: 'applied' });
+    assert.equal(status.address.kind, 'domain');
+    assert.equal(status.address.baseDomain, 'mos.example.com');
+    assert.equal(status.address.url, 'https://home.mos.example.com/');
+    assert.equal(status.installContext, 'ssh-bootstrap');
+    assert.equal(status.privateHttpsAvailable, true);
+    assert.ok(Object.hasOwn(status, 'serverAddress'));
+    assert.ok(['boolean', 'object'].includes(typeof status.address.resolvesHere));
+    assert.doesNotMatch(JSON.stringify(status), new RegExp(token, 'u'));
+    assert.equal(calls.apply[0].cloudflareApiToken, token);
+    assert.equal(calls.apply[0].bootstrapHost, 'home.test');
+    assert.deepEqual(calls.commit, ['rollback-one']);
+
+    // A door is not an address: the install-time name still answers for Suite
+    // Manager after the move, and so does the domain.
+    const oldDoor = await hostRequest(baseUrl, '/suite-manager/api/settings/address', { headers: { Cookie: cookie, Host: 'home.test' } });
+    assert.equal(oldDoor.status, 200);
   }, { homeHost: 'home.test', homepageAgent, httpsAgent });
 });
 
 // Homepage serves one dashboard file to every visitor, so the tile cannot hold
-// an address. This endpoint is what makes it door-agnostic, and it is also the
-// one place a tile could become an open redirector if the target ever came from
-// the request rather than from installed state.
-test('a dashboard tile redirect resolves the app against the door it was reached through', async () => {
+// an address. The redirect resolves the app against the suite's one recorded
+// address, whichever door the visitor came through — and nothing in the URL or
+// query can steer it, so it is not an open redirector.
+test('a dashboard tile redirect resolves the app against the recorded address from every door', async () => {
   const appAgent = {
     async apply(input) { return { publicUrl: input.publicUrl, status: 'applied', steps: [] }; },
   };
@@ -2252,12 +2299,7 @@ test('a dashboard tile redirect resolves the app against the door it was reached
     async read(file) { return { content: '[]', file, revision: 'sha256:current' }; },
     async reconcileUrls() { return { changed: true, file: 'services.template.yaml', revision: 'sha256:reconciled' }; },
   };
-  const httpsAgent = {
-    apply: async () => ({ rollbackId: 'rollback-one' }),
-    commit: async () => ({ status: 'committed' }),
-    rollback: async () => ({ status: 'rolled-back' }),
-    status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
-  };
+  const { agent: httpsAgent } = fakeHttpsAgent();
 
   await withServer(async (baseUrl) => {
     const cookie = await createOwner(baseUrl);
@@ -2279,27 +2321,21 @@ test('a dashboard tile redirect resolves the app against the door it was reached
     assert.equal(firstDoor.status, 302);
     assert.equal(firstDoor.headers.location, 'http://stirling-pdf.test/');
 
-    await hostRequest(baseUrl, '/suite-manager/api/settings/https/apply', {
-      body: JSON.stringify({
-        acmeEmail: 'owner@example.com',
-        baseDomain: 'mos.example.com',
-        cloudflareApiToken: 'cloudflare_token_1234567890',
-      }),
+    await hostRequest(baseUrl, '/suite-manager/api/settings/address/change', {
+      body: JSON.stringify({ acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', cloudflareApiToken: 'cloudflare_token_1234567890', kind: 'domain' }),
       headers: { Cookie: cookie, 'Content-Type': 'application/json', Host: 'home.test' },
       method: 'POST',
     });
+    await awaitAddressChange(baseUrl, cookie);
 
-    // Same tile, second door, second answer — and neither was stamped anywhere.
-    const secondDoor = await hostRequest(baseUrl, `/suite-manager/open/${instanceId}`, { headers: { Host: 'home.mos.example.com' } });
-    assert.equal(secondDoor.status, 302);
-    assert.equal(secondDoor.headers.location, 'https://stirling-pdf.mos.example.com/');
-
-    // Once a domain is applied every app route names exactly one host under
-    // it, so the bootstrap door has to send the tile there too — the
-    // replacement-machine drill found it pointing at a host nothing served.
-    const bootstrapDoorAfterApply = await hostRequest(baseUrl, `/suite-manager/open/${instanceId}`, { headers: { Host: 'home.test' } });
-    assert.equal(bootstrapDoorAfterApply.status, 302);
-    assert.equal(bootstrapDoorAfterApply.headers.location, 'https://stirling-pdf.mos.example.com/');
+    // Same tile, either door, one answer: the apps are single-addressed on the
+    // recorded address. The replacement-machine drill found the bootstrap door
+    // pointing at a host nothing served.
+    for (const host of ['home.mos.example.com', 'home.test']) {
+      const door = await hostRequest(baseUrl, `/suite-manager/open/${instanceId}`, { headers: { Host: host } });
+      assert.equal(door.status, 302);
+      assert.equal(door.headers.location, 'https://stirling-pdf.mos.example.com/');
+    }
 
     const unknown = await hostRequest(baseUrl, '/suite-manager/open/00000000-0000-4000-8000-000000000000', { headers: { Host: 'home.test' } });
     assert.equal(unknown.status, 404);
@@ -2315,7 +2351,7 @@ test('a dashboard tile redirect resolves the app against the door it was reached
   }, { appAgent, homeHost: 'home.test', homepageAgent, httpsAgent });
 });
 
-test('HTTPS Settings apply reports partial app URL reconciliation without hiding HTTPS success', async () => {
+test('an address change reports the apps it could not rebuild without hiding that the address moved', async () => {
   const calls = [];
   const appAgent = {
     async apply(input) {
@@ -2340,42 +2376,30 @@ test('HTTPS Settings apply reports partial app URL reconciliation without hiding
       return { changed: true, file: 'services.template.yaml', revision: 'sha256:reconciled' };
     },
   };
-  const httpsAgent = {
-    apply: async () => ({ rollbackId: 'rollback-one' }),
-    commit: async () => ({ status: 'committed' }),
-    rollback: async () => ({ status: 'rolled-back' }),
-    status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
-  };
+  const { agent: httpsAgent } = fakeHttpsAgent();
 
   await withServer(async (baseUrl) => {
     const cookie = await createOwner(baseUrl);
-    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/install', {
-      headers: { Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/apply-runtime', {
-      headers: { Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
-    await hostRequest(baseUrl, '/suite-manager/api/apps/packages/stirling-pdf/add-to-homepage', {
-      headers: { Cookie: cookie, Host: 'home.test' },
-      method: 'POST',
-    });
+    for (const action of ['install', 'apply-runtime', 'add-to-homepage']) {
+      await hostRequest(baseUrl, `/suite-manager/api/apps/packages/stirling-pdf/${action}`, {
+        headers: { Cookie: cookie, Host: 'home.test' },
+        method: 'POST',
+      });
+    }
 
-    const applied = await hostRequest(baseUrl, '/suite-manager/api/settings/https/apply', {
-      body: JSON.stringify({
-        acmeEmail: 'owner@example.com',
-        baseDomain: 'mos.example.com',
-        cloudflareApiToken: 'cloudflare_token_1234567890',
-      }),
+    await hostRequest(baseUrl, '/suite-manager/api/settings/address/change', {
+      body: JSON.stringify({ acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', cloudflareApiToken: 'cloudflare_token_1234567890', kind: 'domain' }),
       headers: { Cookie: cookie, 'Content-Type': 'application/json', Host: 'home.test' },
       method: 'POST',
     });
+    const status = await awaitAddressChange(baseUrl, cookie);
 
-    assert.equal(applied.status, 200);
-    assert.equal(applied.json().homeUrl, 'https://home.mos.example.com/');
-    assert.equal(applied.json().appReconciliation.status, 'partial');
-    assert.deepEqual(applied.json().appReconciliation.runtime, [{
+    // The address is the new one — the web server serves it and the file
+    // records it — and the apps that did not follow are named.
+    assert.equal(status.address.url, 'https://home.mos.example.com/');
+    assert.equal(status.lastChange.status, 'applied');
+    assert.equal(status.lastChange.result.status, 'partial');
+    assert.deepEqual(status.lastChange.result.runtime, [{
       appHost: 'stirling-pdf.mos.example.com',
       errorCode: 'APP_AGENT_ROUTE_FAILED',
       packageId: 'stirling-pdf',
@@ -2391,7 +2415,7 @@ test('HTTPS Settings apply reports partial app URL reconciliation without hiding
   }, { appAgent, homeHost: 'home.test', homepageAgent, httpsAgent });
 });
 
-test('app package URLs use active DNS-01 HTTPS settings even without forwarded proto', async () => {
+test('app package URLs follow the recorded domain whichever door the request came through', async () => {
   const appCalls = [];
   const homepageCalls = [];
   const appAgent = {
@@ -2412,32 +2436,25 @@ test('app package URLs use active DNS-01 HTTPS settings even without forwarded p
       return { changed: false, file: 'services.template.yaml', revision: 'sha256:current' };
     },
   };
-  const httpsAgent = {
-    apply: async () => ({ rollbackId: 'rollback-one' }),
-    commit: async () => ({ status: 'committed' }),
-    rollback: async () => ({ status: 'rolled-back' }),
-    status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
-  };
+  const { agent: httpsAgent } = fakeHttpsAgent();
 
   await withServer(async (baseUrl) => {
     const cookie = await createOwner(baseUrl);
-    const applied = await hostRequest(baseUrl, '/suite-manager/api/settings/https/apply', {
-      body: JSON.stringify({
-        acmeEmail: 'owner@example.com',
-        baseDomain: 'mos.example.com',
-        cloudflareApiToken: 'cloudflare_token_1234567890',
-      }),
+    await hostRequest(baseUrl, '/suite-manager/api/settings/address/change', {
+      body: JSON.stringify({ acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', cloudflareApiToken: 'cloudflare_token_1234567890', kind: 'domain' }),
       headers: { Cookie: cookie, 'Content-Type': 'application/json', Host: 'home.test' },
       method: 'POST',
     });
-    assert.equal(applied.status, 200);
+    await awaitAddressChange(baseUrl, cookie);
 
+    // Through the install-time door, over plain HTTP: the apps still land on
+    // the recorded domain, because the request is not where the address lives.
     await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/install', {
-      headers: { Cookie: cookie, Host: 'home.mos.example.com' },
+      headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
     const runtime = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/apply-runtime', {
-      headers: { Cookie: cookie, Host: 'home.mos.example.com' },
+      headers: { Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
     const homepage = await hostRequest(baseUrl, '/suite-manager/api/apps/packages/vaultwarden/add-to-homepage', {
@@ -2452,17 +2469,46 @@ test('app package URLs use active DNS-01 HTTPS settings even without forwarded p
   }, { appAgent, homeHost: 'home.test', homepageAgent, httpsAgent });
 });
 
-test('HTTPS Settings status marks cloud installs as provider-managed domain guidance', async () => {
-  const httpsAgent = {
-    apply: async () => { throw new Error('must not run'); },
-    commit: async () => ({}),
-    rollback: async () => ({}),
-    status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
-  };
+// A failed change leaves the suite exactly where it was: the address file is
+// untouched, the web server was rolled back by the agent, and the reason is
+// recorded for the screen without the token.
+test('a change the HTTPS agent refuses leaves the recorded address alone and says why', async () => {
+  const { agent: httpsAgent, calls } = fakeHttpsAgent({
+    apply: async () => {
+      const error = new Error('No trusted certificate for home.mos.example.com was issued in time.');
+      throw Object.assign(error, { code: 'HTTPS_CERTIFICATE_NOT_ISSUED', details: ['The web server did not present a trusted certificate for home.mos.example.com within 180 seconds.'], statusCode: 502 });
+    },
+  });
 
   await withServer(async (baseUrl) => {
     const cookie = await createOwner(baseUrl);
-    const status = await hostRequest(baseUrl, '/suite-manager/api/settings/https', {
+    const token = 'cloudflare_token_1234567890';
+    const started = await hostRequest(baseUrl, '/suite-manager/api/settings/address/change', {
+      body: JSON.stringify({ acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', cloudflareApiToken: token, kind: 'domain' }),
+      headers: { Cookie: cookie, 'Content-Type': 'application/json', Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(started.status, 202);
+    const status = await awaitAddressChange(baseUrl, cookie);
+    assert.equal(status.lastChange.status, 'failed');
+    assert.equal(status.lastChange.stage, 'caddy');
+    assert.equal(status.lastChange.errorCode, 'HTTPS_CERTIFICATE_NOT_ISSUED');
+    assert.match(status.lastChange.diagnostics, /No trusted certificate for home\.mos\.example\.com/u);
+    assert.doesNotMatch(JSON.stringify(status), new RegExp(token, 'u'));
+    assert.equal(status.address.url, 'http://home.test/');
+    assert.deepEqual(calls.commit, []);
+    // The name that was never served is no longer admitted.
+    const refused = await hostRequest(baseUrl, '/suite-manager/api/settings/address', { headers: { Cookie: cookie, Host: 'home.mos.example.com' } });
+    assert.equal(refused.status, 421);
+  }, { homeHost: 'home.test', httpsAgent });
+});
+
+test('the suite address status marks cloud installs as provider-managed domain guidance', async () => {
+  const { agent: httpsAgent } = fakeHttpsAgent({ apply: async () => { throw new Error('must not run'); } });
+
+  await withServer(async (baseUrl) => {
+    const cookie = await createOwner(baseUrl);
+    const status = await hostRequest(baseUrl, '/suite-manager/api/settings/address', {
       headers: { Cookie: cookie, Host: 'home.test' },
     });
 
@@ -2472,22 +2518,13 @@ test('HTTPS Settings status marks cloud installs as provider-managed domain guid
   }, { frontDoor: 'cloud-init', homeHost: 'home.test', httpsAgent });
 });
 
-test('HTTPS Settings apply is blocked for cloud installs', async () => {
-  const httpsAgent = {
-    apply: async () => { throw new Error('must not run'); },
-    commit: async () => ({}),
-    rollback: async () => ({}),
-    status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
-  };
+test('a domain change is refused for cloud installs', async () => {
+  const { agent: httpsAgent } = fakeHttpsAgent({ apply: async () => { throw new Error('must not run'); } });
 
   await withServer(async (baseUrl) => {
     const cookie = await createOwner(baseUrl);
-    const response = await hostRequest(baseUrl, '/suite-manager/api/settings/https/apply', {
-      body: JSON.stringify({
-        acmeEmail: 'owner@example.com',
-        baseDomain: 'mos.example.com',
-        cloudflareApiToken: 'abcdefghijklmnopqrstuvwxyz',
-      }),
+    const response = await hostRequest(baseUrl, '/suite-manager/api/settings/address/change', {
+      body: JSON.stringify({ acmeEmail: 'owner@example.com', baseDomain: 'mos.example.com', cloudflareApiToken: 'abcdefghijklmnopqrstuvwxyz', kind: 'domain' }),
       headers: { Cookie: cookie, 'Content-Type': 'application/json', Host: 'home.test' },
       method: 'POST',
     });
@@ -2497,26 +2534,75 @@ test('HTTPS Settings apply is blocked for cloud installs', async () => {
   }, { frontDoor: 'cloud-init', homeHost: 'home.test', httpsAgent });
 });
 
-test('HTTPS input validation is sanitized and leaves the bootstrap host active', async () => {
-  const httpsAgent = {
-    apply: async () => { throw new Error('must not run'); },
-    commit: async () => {},
-    rollback: async () => {},
-    status: async () => ({ capabilities: ['cloudflare-dns01.apply'] }),
-  };
+test('address change input is validated before anything runs, without echoing the secret', async () => {
+  const { agent: httpsAgent } = fakeHttpsAgent({ apply: async () => { throw new Error('must not run'); } });
   await withServer(async (baseUrl) => {
     const cookie = await createOwner(baseUrl);
     const secret = 'secret-with-spaces-that-must-not-echo';
-    const response = await hostRequest(baseUrl, '/suite-manager/api/settings/https/apply', {
-      body: JSON.stringify({ acmeEmail: 'bad', baseDomain: 'localhost', cloudflareApiToken: secret }),
+    const response = await hostRequest(baseUrl, '/suite-manager/api/settings/address/change', {
+      body: JSON.stringify({ acmeEmail: 'bad', baseDomain: 'localhost', cloudflareApiToken: secret, kind: 'domain' }),
       headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
       method: 'POST',
     });
     assert.equal(response.status, 400);
     assert.doesNotMatch(response.body, new RegExp(secret, 'u'));
+    const unknownKind = await hostRequest(baseUrl, '/suite-manager/api/settings/address/change', {
+      body: JSON.stringify({ kind: 'raw-ip' }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: 'home.test' },
+      method: 'POST',
+    });
+    assert.equal(unknownKind.status, 400);
     const bootstrap = await hostRequest(baseUrl, '/suite-manager/', { headers: { Host: 'home.test' } });
     assert.equal(bootstrap.status, 200);
   }, { homeHost: 'home.test', httpsAgent });
+});
+
+// The door the owner completes setup on is recorded as the address, and a
+// domain a restore offered is served with the credential the restore parked —
+// no token to find — or dismissed, which discards that credential.
+test('onboarding records the Easy Door, and an offered domain is adopted with its parked credential or dismissed', async (t) => {
+  // The Easy Door is derived from this machine's live LAN address, the same
+  // way the host gate derives it; a machine with no private address has no
+  // door and nothing to test.
+  const liveEasyDoor = easyDoorHomeHost(detectServerAddress());
+  if (!liveEasyDoor) { t.skip('no private LAN address on this machine'); return; }
+  const { agent: httpsAgent, calls } = fakeHttpsAgent();
+  const homepageAgent = {
+    async read(file) { return { content: '[]', file, revision: 'sha256:current' }; },
+    async reconcileUrls(input) { return { changed: false, entries: input.entries, file: 'services.template.yaml', revision: 'sha256:next' }; },
+  };
+  const suiteAddress = new SuiteAddressFile({ dir: path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'mos-address-')), 'suite-address') });
+
+  await withServer(async (baseUrl) => {
+    const easyDoor = liveEasyDoor;
+    const cookie = await createOwner(baseUrl, easyDoor);
+    assert.deepEqual({ host: suiteAddress.read().host, kind: suiteAddress.read().kind, by: suiteAddress.read().by }, { by: 'onboarding', host: easyDoor, kind: 'easy-door' });
+
+    // What a restore leaves behind, exactly as the backup agent writes it.
+    suiteAddress.writeOffer({ acmeEmail: 'old@example.com', baseDomain: 'old.example.com', from: 'restore' });
+    const offered = await hostRequest(baseUrl, '/suite-manager/api/settings/address', { headers: { Cookie: cookie, Host: easyDoor } });
+    assert.deepEqual({ acmeEmail: offered.json().offered.acmeEmail, baseDomain: offered.json().offered.baseDomain }, { acmeEmail: 'old@example.com', baseDomain: 'old.example.com' });
+
+    const dismissed = await hostRequest(baseUrl, '/suite-manager/api/settings/address/offer/dismiss', { headers: { Cookie: cookie, Host: easyDoor }, method: 'POST' });
+    assert.deepEqual(dismissed.json(), { dismissed: true, offer: { baseDomain: 'old.example.com' } });
+    assert.equal(calls.discard.length, 1);
+    assert.equal(suiteAddress.readOffer(), null);
+
+    suiteAddress.writeOffer({ acmeEmail: 'old@example.com', baseDomain: 'old.example.com', from: 'restore' });
+    const started = await hostRequest(baseUrl, '/suite-manager/api/settings/address/change', {
+      body: JSON.stringify({ kind: 'domain', useOffered: true }),
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Host: easyDoor },
+      method: 'POST',
+    });
+    assert.equal(started.status, 202);
+    const status = await awaitAddressChange(baseUrl, cookie, easyDoor);
+    assert.equal(status.lastChange.status, 'applied');
+    assert.equal(status.address.url, 'https://home.old.example.com/');
+    assert.equal(status.offered, null);
+    assert.deepEqual(calls.apply[0], { acmeEmail: 'old@example.com', baseDomain: 'old.example.com', bootstrapHost: 'home.test', useParkedCredential: true });
+    // The Easy Door the owner is standing on still answers.
+    assert.equal(status.address.kind, 'domain');
+  }, { homeHost: 'home.test', homepageAgent, httpsAgent, suiteAddress });
 });
 
 // An external source service backed by an isolated temp store and a fake

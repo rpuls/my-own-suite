@@ -1,23 +1,22 @@
 const crypto = require('node:crypto');
 const { HOMEPAGE_FILES, HomepageConfigError, publicUrlFor, validateProxy } = require('../../../../shared/homepage-contract.cjs');
+const { baseHostOf } = require('../../../../shared/suite-address.cjs');
 
-function domainStateFor(settings, bootstrapHost) {
-  const bootstrapBase = bootstrapHost.startsWith('home.') ? bootstrapHost.slice(5) : bootstrapHost;
-  return {
-    baseDomain: settings.baseDomain || bootstrapBase,
-    tlsMode: settings.tlsMode,
-  };
+// The suite's recorded address in the shape the Homepage contract builds hosts
+// from: the base every home-service host hangs under, and the scheme.
+function domainStateFor(address) {
+  return { baseDomain: baseHostOf(address), scheme: address.scheme };
 }
 
 class HomepageService {
-  constructor({ agent, bootstrapHost, now = () => new Date(), store }) {
+  constructor({ agent, now = () => new Date(), store, suiteAddress }) {
     this.agent = agent;
-    this.bootstrapHost = bootstrapHost;
     this.now = now;
     this.store = store;
+    this.suiteAddress = suiteAddress;
   }
 
-  domainState() { return domainStateFor(this.store.getHttpsSettings(), this.bootstrapHost); }
+  domainState() { return domainStateFor(this.suiteAddress.read()); }
 
   async status() {
     try {

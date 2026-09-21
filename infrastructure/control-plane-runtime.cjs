@@ -352,10 +352,25 @@ function renderUnavailablePageScript() {
 // The fallback keeps the 404 an unmatched site address already returned, so a
 // request to the bare address still says nothing about what runs here.
 //
-// Nothing closes this door explicitly: applying a real domain with DNS-01
-// replaces this whole file with `renderHttpsCaddyfile()` output, which has no
-// Easy Door block, and plain HTTP on a globally resolvable name stops being
-// served the moment there is a better address.
+// Nothing closes this door, ever: a door is not an address. Applying a real
+// domain changes where apps and Homepage are published, and the HTTPS Caddyfile
+// keeps this block so Suite Manager itself still answers on the name the owner
+// may be standing on when the change lands.
+function easyDoorSiteBlock(suiteManagerPort = '$MOS_SUITE_MANAGER_PORT') {
+  return `${EASY_DOOR_CADDY_MARKER}
+http:// {
+${statusRoutes()}
+  @mos-easy-door header_regexp Host ${EASY_DOOR_HOME_HOST_REGEXP}
+  handle @mos-easy-door {
+    reverse_proxy 127.0.0.1:${suiteManagerPort}
+  }
+  handle {
+    respond 404
+  }
+${unavailableHandler()}
+}`;
+}
+
 function renderCaddyfile() {
   return `http://$MOS_HOME_HOST {
 ${statusRoutes()}
@@ -363,18 +378,7 @@ ${statusRoutes()}
 ${unavailableHandler()}
 }
 
-${EASY_DOOR_CADDY_MARKER}
-http:// {
-${statusRoutes()}
-  @mos-easy-door header_regexp Host ${EASY_DOOR_HOME_HOST_REGEXP}
-  handle @mos-easy-door {
-    reverse_proxy 127.0.0.1:$MOS_SUITE_MANAGER_PORT
-  }
-  handle {
-    respond 404
-  }
-${unavailableHandler()}
-}
+${easyDoorSiteBlock()}
 
 import /etc/caddy/mos-homepage-routes.caddy
 import /etc/caddy/mos-app-routes.caddy
@@ -399,6 +403,10 @@ import /etc/caddy/mos-app-routes.caddy
 `;
 }
 
+// The install-time name and the Easy Door stay open for Suite Manager beside the
+// domain: an owner who applied HTTPS from either door keeps a working page while
+// their devices learn the new name, and the apps — single-addressed on the
+// domain — are what the door does not carry.
 function renderHttpsCaddyfile({ acmeEmail, baseDomain, bootstrapHost, suiteManagerPort = '$MOS_SUITE_MANAGER_PORT' }) {
   const homeHost = `home.${baseDomain}`;
   return `{
@@ -411,6 +419,8 @@ ${statusRoutes()}
   reverse_proxy 127.0.0.1:${suiteManagerPort}
 ${unavailableHandler()}
 }
+
+${easyDoorSiteBlock(suiteManagerPort)}
 
 http://${homeHost} {
   redir https://${homeHost}{uri} permanent
