@@ -626,8 +626,11 @@ class BackupAgentCore {
   // snapshots on purpose: a whole-repository read costs every backup ever
   // taken and sits on the restore path, so it would grow until validate times
   // out exactly when recovery matters.
-  async validateRestorePoint(locator, { keepStagedState = false, onManifest = null } = {}) {
+  // `onStep` is how the minutes inside this one stage reach the screen: three
+  // reads of a remote repository, none of which says anything on its own.
+  async validateRestorePoint(locator, { keepStagedState = false, onManifest = null, onStep = null } = {}) {
     const { packages } = this;
+    const step = (name) => { if (onStep) onStep(name); };
     if (!isRestorePointLocator(locator)) throw new Error(UNREADABLE_LEGACY_BACKUP);
     const { destination, pointId } = this.resolveBackup(locator);
     const manifest = await destination.points.read(pointId);
@@ -636,6 +639,7 @@ class BackupAgentCore {
     // it is checking, and how long that usually takes, while it checks.
     if (onManifest) onManifest(manifest);
     const repository = await destination.repository({ create: false });
+    step('Verifying the backup is undamaged');
     try {
       await this.engine.verifySnapshots({ repository, snapshotIds: snapshotIdsOfRestorePoint(manifest) });
     } catch (error) {
@@ -650,7 +654,9 @@ class BackupAgentCore {
     try {
       const stateSnapshot = manifest.contents?.stateSnapshot;
       if (!stateSnapshot?.snapshotId) throw new Error('This restore point does not record the suite state it was supposed to contain.');
+      step('Reading the suite state');
       await this.engine.restoreSnapshot({ repository, snapshotId: stateSnapshot.snapshotId, sourcePath: stateSnapshot.sourcePath, targetDir: stagedState });
+      step('Checking every app package');
       packages.validatePayloads(stagedState, manifest.contents?.apps);
       keepStaged = keepStagedState;
     } finally {
@@ -704,7 +710,10 @@ class BackupAgentCore {
     const { jobs } = this;
     const started = jobs.update(jobFile, (job) => { job.status = 'running'; job.stage = 'starting'; });
     jobs.stage(jobFile, 'Checking the backup');
-    const { report } = await this.validateRestorePoint(started.backupPath, { onManifest: (manifest) => jobs.update(jobFile, (job) => { job.subject = subjectOf(manifest); }) });
+    const { report } = await this.validateRestorePoint(started.backupPath, {
+      onManifest: (manifest) => jobs.update(jobFile, (job) => { job.subject = subjectOf(manifest); }),
+      onStep: (name) => jobs.substage(jobFile, name),
+    });
     for (const warning of report.warnings) jobs.log(jobFile, warning);
     jobs.update(jobFile, (job) => {
       job.stage = 'completed';
@@ -723,7 +732,11 @@ class BackupAgentCore {
     const backupPath = started.backupPath;
 
     jobs.stage(jobFile, 'Checking the backup');
-    const { manifest, report, repository, stagedStatePath: stagedState } = await this.validateRestorePoint(backupPath, { keepStagedState: true, onManifest: (read) => jobs.update(jobFile, (job) => { job.subject = subjectOf(read); }) });
+    const { manifest, report, repository, stagedStatePath: stagedState } = await this.validateRestorePoint(backupPath, {
+      keepStagedState: true,
+      onManifest: (read) => jobs.update(jobFile, (job) => { job.subject = subjectOf(read); }),
+      onStep: (name) => jobs.substage(jobFile, name),
+    });
     for (const warning of report.warnings) jobs.log(jobFile, warning);
     jobs.update(jobFile, (job) => { job.validation = report; });
     let runtimeStopped = false;

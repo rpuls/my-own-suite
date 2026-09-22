@@ -1,5 +1,5 @@
 import { ActionMenu, Icon, Panel, PanelBand, PanelHead, PanelItem, PanelList, Spinner } from '../../components/ui';
-import { destinationIconName, keyCoverage, type DestinationView } from './model';
+import { destinationIconName, type DestinationView } from './model';
 
 // Where backups go. One list, one row per place, sorted so the selected one is
 // first. A row has exactly three zones — the radio that chooses it, what it is
@@ -20,7 +20,6 @@ export function DestinationsPanel({ busy, onAdd, onAction, onDisconnect, onEdit,
   views: DestinationView[];
 }) {
   const locked = Boolean(busy) || running;
-  const coverage = keyCoverage(views);
   const local = views.filter((view) => !view.foreign && !view.destination.locked);
   const guests = views.filter((view) => view.foreign || view.destination.locked);
   // Per-row reach lines only once there is a difference to show. With nothing
@@ -56,7 +55,7 @@ export function DestinationsPanel({ busy, onAdd, onAction, onDisconnect, onEdit,
 
     {/* The key is a property of the list, so it sits against it: the owner
         reads the places, then reads which key opens them. */}
-    <PanelBand icon="key" note={coverage.detail} title={coverage.summary} tone="accent">
+    <PanelBand icon="key" title="One recovery key opens everything this server made." tone="accent">
       <button className="mos-btn mos-btn-ghost mos-btn-sm" disabled={locked} onClick={onShowKey} type="button">
         <Icon name="eye" />
         Show key

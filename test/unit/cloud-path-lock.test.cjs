@@ -68,6 +68,12 @@
 // creates the `suite-address` directory Suite Manager records the address in.
 // One argument on one `install -d` line, in all five renderings; the thirteen
 // `echo` lines were compared before and after and not one changed.
+//
+// Moved 2026-09-22 for grouped restore progress: the status page lists the
+// job's groups rather than its stages, opens the one that is running, and
+// styles the parts inside it. Page markup, CSS and script only, in all five
+// renderings; the thirteen `echo` lines were compared before and after and not
+// one changed.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -81,25 +87,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '24d56dc4fed42c8471ca55dabcf84f479909b877acaadc53993535cef9597dcd',
+    digest: '3be27eddcadaaf997c05ce6a739af7de60aa9eaff0e8209e8bb506dd99b98fb4',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: 'b6c1ff5b6b52360a2cd1529785bf3dfd547403e2bc5d37186699f73a8ef180ea',
+    digest: '7cf15c851bc078b2865636d9892c9bdfb1d925a814f54dce6ec1aaaa1cf3d05b',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: 'f51eacdce9e5594566517053d83bb7132d87c31847cc9053898ed85fe02dad93',
+    digest: '675857e712a4fa66745da9e27d5925ce14e49f79ac8a38502a75f62bfd909274',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: 'f2acfec950b02a2f429bb34ee91faa6106bc1d95ea9d54af6d6452ebc2dc023a',
+    digest: '0d9ca6ab01b627e544f2b4dd14bca220bd03a766d029968b6a97d960c1b96acf',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -109,7 +115,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: '214fba9086e73486e9e15d478d7fa9e8bbbd9f504273edf4d9e696a4b7136867',
+    digest: 'f54da13ce668427782ef8eb1cdbc373a64dae9f8f5a9094c0fc9ff115d4543e1',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

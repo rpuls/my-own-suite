@@ -216,7 +216,7 @@ function renderUnavailablePage() {
     overflow: hidden;
   }
   #mos-progress-fill { background: #1c9e6d; border-radius: 999px; display: block; height: 100%; width: 0; }
-  #mos-progress-plan { list-style: none; margin: 0 0 0.75rem; padding: 0; }
+  #mos-progress-plan, #mos-progress-plan ul { list-style: none; margin: 0 0 0.75rem; padding: 0; }
   #mos-progress-plan li { padding: 0.15rem 0 0.15rem 1.4rem; position: relative; }
   #mos-progress-plan li::before {
     background: rgba(9, 30, 54, 0.14);
@@ -233,6 +233,26 @@ function renderUnavailablePage() {
   #mos-progress-plan li.is-now { font-weight: 600; }
   #mos-progress-plan li.is-now::before { background: #1c9e6d; box-shadow: 0 0 0 3px rgba(40, 188, 132, 0.24); }
   #mos-progress-plan li.is-next { color: #4a6076; }
+  /* The group's own parts: one indent in, smaller, and only worth reading
+     while that group is the one running — which is when it opens itself. */
+  #mos-progress-plan summary { cursor: pointer; list-style: none; }
+  #mos-progress-plan summary::-webkit-details-marker { display: none; }
+  #mos-progress-plan summary::after {
+    border-bottom: 2px solid currentColor;
+    border-right: 2px solid currentColor;
+    content: "";
+    display: inline-block;
+    height: 0.32rem;
+    margin: 0 0 0.12rem 0.45rem;
+    opacity: 0.5;
+    transform: rotate(45deg);
+    width: 0.32rem;
+  }
+  #mos-progress-plan details[open] summary::after { margin-bottom: -0.05rem; transform: rotate(-135deg); }
+  #mos-progress-plan ul { font-size: 0.9rem; margin: 0.1rem 0 0.3rem; }
+  #mos-progress-plan ul li { font-weight: 400; padding-left: 1.1rem; }
+  #mos-progress-plan ul li::before { height: 0.35rem; left: 0.33rem; top: 0.6rem; width: 0.35rem; }
+  #mos-progress-plan ul li.is-now { font-weight: 600; }
   @media (prefers-color-scheme: dark) {
     body { background: #061526; color: #eef4ff; }
     .meta { color: #b8c9de; }
@@ -293,6 +313,65 @@ function renderUnavailablePageScript() {
     if (minutes < 1) return 'Started under a minute ago.';
     return 'Started ' + (minutes === 1 ? 'a minute' : minutes + ' minutes') + ' ago.';
   }
+  function stateWord(value) { return value === 'done' || value === 'now' ? value : 'next'; }
+  function lines(entry) { return Array.isArray(entry.steps) ? entry.steps.filter(function (line) { return line && typeof line.sentence === 'string'; }) : []; }
+  // The groups are built once and then only repainted, because the owner may
+  // have opened a finished group to read it and a rebuild every few seconds
+  // would close it under them.
+  var groups = [];
+  var built = '';
+  function buildPlan(list, plan) {
+    while (list.firstChild) list.removeChild(list.firstChild);
+    groups = [];
+    for (var i = 0; i < plan.length; i += 1) {
+      var entry = plan[i];
+      var item = document.createElement('li');
+      var steps = lines(entry);
+      var detail = null;
+      var rows = [];
+      if (steps.length) {
+        detail = document.createElement('details');
+        var summary = document.createElement('summary');
+        summary.textContent = entry.sentence;
+        detail.appendChild(summary);
+        var sub = document.createElement('ul');
+        for (var j = 0; j < steps.length; j += 1) {
+          var row = document.createElement('li');
+          row.textContent = steps[j].sentence;
+          sub.appendChild(row);
+          rows.push(row);
+        }
+        detail.appendChild(sub);
+        item.appendChild(detail);
+      } else {
+        item.textContent = entry.sentence;
+      }
+      list.appendChild(item);
+      groups.push({ detail: detail, item: item, rows: rows, state: '' });
+    }
+  }
+  function paintPlan(list, plan) {
+    var usable = [];
+    for (var i = 0; i < plan.length; i += 1) {
+      if (plan[i] && typeof plan[i].sentence === 'string') usable.push(plan[i]);
+    }
+    var shape = [];
+    for (i = 0; i < usable.length; i += 1) shape.push(usable[i].sentence + '/' + lines(usable[i]).length);
+    var key = shape.join('|');
+    if (key !== built) { buildPlan(list, usable); built = key; }
+    for (i = 0; i < usable.length; i += 1) {
+      var group = groups[i];
+      var state = stateWord(usable[i].state);
+      group.item.className = 'is-' + state;
+      // The running group opens itself and folds away when it is done — but
+      // only as it changes, so a group the owner opened stays open.
+      if (group.detail && state !== group.state) group.detail.open = state === 'now';
+      group.state = state;
+      var steps = lines(usable[i]);
+      for (var j = 0; j < group.rows.length; j += 1) group.rows[j].className = 'is-' + stateWord(steps[j] && steps[j].state);
+    }
+    list.hidden = !list.firstChild;
+  }
   function render(data, now) {
     if (!data || typeof data !== 'object' || typeof data.headline !== 'string' || typeof data.sentence !== 'string' || !Array.isArray(data.plan)) { hide(); return false; }
     var updated = Date.parse(data.updatedAt);
@@ -309,18 +388,7 @@ function renderUnavailablePageScript() {
     if (bar) bar.hidden = share === null;
     if (fill) fill.style.width = (share === null ? 0 : Math.round(share * 100)) + '%';
     var list = el('mos-progress-plan');
-    if (list) {
-      while (list.firstChild) list.removeChild(list.firstChild);
-      for (var i = 0; i < data.plan.length; i += 1) {
-        var entry = data.plan[i];
-        if (!entry || typeof entry.sentence !== 'string') continue;
-        var item = document.createElement('li');
-        item.className = 'is-' + (entry.state === 'done' || entry.state === 'now' ? entry.state : 'next');
-        item.textContent = entry.sentence;
-        list.appendChild(item);
-      }
-      list.hidden = !list.firstChild;
-    }
+    if (list) paintPlan(list, data.plan);
     var started = Date.parse(data.startedAt);
     var timing = [];
     if (data.expect && typeof data.expect.sentence === 'string') timing.push(data.expect.sentence);

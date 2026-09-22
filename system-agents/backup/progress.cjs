@@ -6,8 +6,9 @@
 // release.
 //
 // Three things are produced from one job record:
-//   - the plan: the stages a job of this kind always runs, in order, which is
-//     what makes "step 4 of 9" a fact rather than a guess kept by a reader;
+//   - the plan: the groups a job of this kind always runs, in order, which is
+//     what makes "step 2 of 4" a fact rather than a guess kept by a reader,
+//     each holding the stages it is made of;
 //   - the progress record kept in the job file (`job.progress`), which the
 //     Backups screen reads through the agent's status;
 //   - the public file the busy page polls, which carries only what an owner
@@ -22,12 +23,14 @@ const { PROGRESS_FILENAME } = require('../../infrastructure/control-plane-runtim
 // A job in the owner's words. The stage names the engine writes are its own
 // step; these are what that step means to someone whose photos are in it.
 const STAGE_WORDS = Object.freeze({
+  'Checking every app package': 'Checking every app package is there',
   'Checking required space': 'Checking there is room',
   'Checking the backup': 'Reading the backup',
   'Copying suite state': 'Copying your settings and accounts',
   'Deleting backup and reclaiming space': 'Removing it and freeing the space',
   'Opening the backup repository on the destination': 'Opening the backup store',
   'Preparing backup': 'Getting ready',
+  'Reading the suite state': 'Reading your settings and accounts',
   'Rebuilding app runtime': 'Building your apps again',
   'Reclaiming space from an interrupted backup': 'Tidying up after a backup that stopped',
   'Restarting runtime': 'Starting your apps again',
@@ -39,20 +42,52 @@ const STAGE_WORDS = Object.freeze({
   'Stopping current runtime': 'Stopping your apps',
   'Storing app volumes': 'Copying your app data',
   'Verifying restored state': 'Checking the result against the backup',
-  'Writing manifest': 'Finishing up',
+  'Verifying the backup is undamaged': 'Checking nothing in it is damaged',
+  'Writing manifest': 'Recording what is in it',
 });
 
-// The stages every job of a kind runs, in the order the engine runs them. A
-// stage the engine adds only sometimes — reclaiming space left by an earlier
-// interrupted backup — is not a step: it reports its own sentence and keeps
-// the position of the step it runs inside, so the count never changes shape
-// between two backups of the same suite.
-const JOB_PLANS = Object.freeze({
-  backup: Object.freeze(['Preparing backup', 'Checking required space', 'Opening the backup repository on the destination', 'Stopping app runtime for a consistent snapshot', 'Copying suite state', 'Storing app volumes', 'Writing manifest', 'Restarting runtime']),
-  delete: Object.freeze(['Deleting backup and reclaiming space']),
-  restore: Object.freeze(['Checking the backup', 'Checking required space', 'Stopping current runtime', 'Saving pre-restore rescue copy', 'Restoring suite state', 'Restoring app volumes', 'Rebuilding app runtime', 'Verifying restored state', 'Starting restored control plane']),
-  validate: Object.freeze(['Checking the backup']),
+// Stages that are one call to the engine and minutes of waiting for an owner.
+// They report which part they are on, and that report is the only thing that
+// moves while they run — a stage that says nothing for seven minutes is
+// indistinguishable from one that has hung.
+const STAGE_STEPS = Object.freeze({
+  'Checking the backup': Object.freeze(['Verifying the backup is undamaged', 'Reading the suite state', 'Checking every app package']),
 });
+
+function stepsOfStage(stage) { return STAGE_STEPS[stage] || []; }
+
+// The stages every job of a kind runs, in the order the engine runs them,
+// gathered into the few things an owner would say a restore consists of. The
+// group is the counted step, because the group is what the screen lists: nine
+// equal lines are a wall to read, four with the running one opened are a
+// place in a process. A stage the engine adds only sometimes — reclaiming
+// space left by an earlier interrupted backup — is not a step: it reports its
+// own sentence and keeps the position of the step it runs inside, so the
+// count never changes shape between two backups of the same suite.
+const JOB_GROUPS = Object.freeze({
+  backup: Object.freeze([
+    Object.freeze({ stages: Object.freeze(['Preparing backup', 'Checking required space', 'Opening the backup repository on the destination']), title: 'Getting set up' }),
+    Object.freeze({ stages: Object.freeze(['Stopping app runtime for a consistent snapshot', 'Copying suite state', 'Storing app volumes']), title: 'Copying your suite' }),
+    Object.freeze({ stages: Object.freeze(['Writing manifest', 'Restarting runtime']), title: 'Finishing' }),
+  ]),
+  delete: Object.freeze([
+    Object.freeze({ stages: Object.freeze(['Deleting backup and reclaiming space']), title: 'Removing it and freeing the space' }),
+  ]),
+  restore: Object.freeze([
+    Object.freeze({ stages: Object.freeze(['Checking the backup']), title: 'Reading the backup' }),
+    Object.freeze({ stages: Object.freeze(['Checking required space', 'Stopping current runtime', 'Saving pre-restore rescue copy']), title: 'Making room for it' }),
+    Object.freeze({ stages: Object.freeze(['Restoring suite state', 'Restoring app volumes', 'Rebuilding app runtime']), title: 'Putting your suite back' }),
+    Object.freeze({ stages: Object.freeze(['Verifying restored state', 'Starting restored control plane']), title: 'Checking it and starting it' }),
+  ]),
+  validate: Object.freeze([
+    Object.freeze({ stages: Object.freeze(['Checking the backup']), title: 'Reading the backup' }),
+  ]),
+});
+
+// Derived, never written twice: a stage that is in the plan but in no group
+// would be a step the count cannot place.
+const JOB_PLANS = Object.freeze(Object.fromEntries(Object.entries(JOB_GROUPS)
+  .map(([kind, groups]) => [kind, Object.freeze(groups.flatMap((group) => [...group.stages]))])));
 
 const HEADLINES = Object.freeze({
   backup: 'Backing up your suite',
@@ -69,6 +104,31 @@ function stageSentence(stage) {
 }
 
 function planFor(kind) { return JOB_PLANS[kind] || []; }
+
+function groupsFor(kind) { return JOB_GROUPS[kind] || []; }
+
+function positionState(position, current) { return position < current ? 'done' : position === current ? 'now' : 'next'; }
+
+// The lines inside one group: its stages, except where a stage reports its own
+// parts, which stand in for it. A stage already passed shows all of its parts
+// ticked; one not reached yet shows none.
+function groupLines(group, plan, stageIndex, substage) {
+  const lines = [];
+  // A group that is one plain stage is that stage: opening it would show its
+  // own title back.
+  if (group.stages.length === 1 && !stepsOfStage(group.stages[0]).length) return lines;
+  for (const stage of group.stages) {
+    const position = plan.indexOf(stage);
+    const parts = stepsOfStage(stage);
+    if (!parts.length) {
+      lines.push({ sentence: stageSentence(stage), state: positionState(position, stageIndex) });
+      continue;
+    }
+    const at = position === stageIndex ? Math.max(0, parts.indexOf(substage)) : position < stageIndex ? parts.length : -1;
+    parts.forEach((part, index) => lines.push({ sentence: stageSentence(part), state: positionState(index, at) }));
+  }
+  return lines;
+}
 
 function headlineFor(kind) { return HEADLINES[kind] || 'Working'; }
 
@@ -107,23 +167,33 @@ function countRecord(count) {
 // step it runs inside, and keeps the start time the first stage set.
 function progressFor(job, { count = null, now = new Date().toISOString() } = {}) {
   const plan = planFor(job.kind);
+  const groups = groupsFor(job.kind);
   const previous = job.progress && typeof job.progress === 'object' ? job.progress : null;
-  const index = plan.indexOf(job.stage);
-  const step = index >= 0 ? index + 1 : (previous?.step || 0);
+  // A stage outside the plan reports its own sentence but holds the place of
+  // the one it interrupted, so the lines below it stay where they were.
+  const placed = plan.includes(job.stage) ? job.stage : (previous?.placed || previous?.stage);
+  const stageIndex = plan.indexOf(placed);
+  const groupIndex = groups.findIndex((group) => group.stages.includes(placed));
+  const step = groupIndex >= 0 ? groupIndex + 1 : (previous?.step || 0);
+  const substage = stepsOfStage(job.stage).includes(job.substage) ? job.substage : null;
   return {
     count: countRecord(count),
     expect: job.expect?.sentence ? { sentence: job.expect.sentence } : null,
     headline: headlineFor(job.kind),
     kind: job.kind || null,
-    plan: plan.map((stage, position) => ({
-      sentence: stageSentence(stage),
-      state: position + 1 < step ? 'done' : position + 1 === step ? 'now' : 'next',
+    placed: placed || null,
+    plan: groups.map((group, position) => ({
+      sentence: group.title,
+      state: positionState(position + 1, step),
+      steps: groupLines(group, plan, stageIndex, substage),
     })),
-    sentence: stageSentence(job.stage),
+    // The finest thing that is true: the part of a stage when it reports one,
+    // because that is the line the owner watches for movement.
+    sentence: stageSentence(substage || job.stage),
     stage: job.stage || null,
     startedAt: previous?.startedAt || now,
     step,
-    steps: plan.length,
+    steps: groups.length,
     updatedAt: now,
   };
 }
@@ -154,7 +224,11 @@ function publicProgress(progress) {
     count: progress.count ? { current: progress.count.current, done: progress.count.done, note: progress.count.note, sentence: progress.count.sentence, total: progress.count.total } : null,
     expect: progress.expect?.sentence ? { sentence: progress.expect.sentence } : null,
     headline: progress.headline,
-    plan: (progress.plan || []).map((entry) => ({ sentence: entry.sentence, state: entry.state })),
+    plan: (progress.plan || []).map((entry) => ({
+      sentence: entry.sentence,
+      state: entry.state,
+      steps: (entry.steps || []).map((line) => ({ sentence: line.sentence, state: line.state })),
+    })),
     sentence: progress.sentence,
     startedAt: progress.startedAt,
     step: progress.step,
@@ -209,18 +283,22 @@ class ProgressPublisher {
 
 module.exports = {
   HEADLINES,
+  JOB_GROUPS,
   JOB_PLANS,
   PROGRESS_FILENAME,
   PUBLIC_PROGRESS_KEYS,
   ProgressPublisher,
+  STAGE_STEPS,
   STAGE_WORDS,
   advanceTimeline,
   closeTimeline,
   countRecord,
+  groupsFor,
   headlineFor,
   minutesWords,
   planFor,
   progressFor,
   publicProgress,
   stageSentence,
+  stepsOfStage,
 };

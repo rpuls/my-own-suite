@@ -3542,17 +3542,85 @@
   max-width: 24rem;
 }
 
-/* The restore's plan, one row per stage: done, now, and still to come. */
+/* The restore's plan, one row per group of stages: done, now, and still to
+   come. The row holds its own inset, because the group opens into the stages
+   it is made of and those sit under its line rather than beside it. */
 .suite-bk-step {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
+  display: grid;
+  gap: 0.2rem;
+  padding: var(--mos-space-4) var(--mos-panel-pad);
   color: var(--mos-color-text-muted);
 }
 
 .suite-bk-step.is-now {
   color: var(--mos-color-text);
   font-weight: 700;
+}
+
+/* The group's line, whether or not it opens: the same row either way, so a
+   plan does not shift sideways between a group that has parts and one that
+   does not. */
+.suite-bk-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+button.suite-bk-group {
+  cursor: pointer;
+}
+
+.suite-bk-group-mark {
+  display: inline-flex;
+  color: var(--mos-color-text-muted);
+  transition: transform 0.15s ease;
+}
+
+.suite-bk-group-mark.is-open {
+  transform: rotate(90deg);
+}
+
+.suite-bk-group-mark svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+/* The stages inside the group that is running. Quieter than the group line
+   and indented under it, so the eye reads the groups first. */
+.suite-bk-substeps {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0.1rem 0 0.15rem;
+  padding: 0 0 0 1.2rem;
+  list-style: none;
+  color: var(--mos-color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+.suite-bk-substeps li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.suite-bk-substeps li.is-now {
+  color: var(--mos-color-text);
+  font-weight: 700;
+}
+
+.suite-bk-substeps .suite-bk-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-top: 0;
 }
 
 @media (max-width: 47.9375rem) {

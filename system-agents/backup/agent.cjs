@@ -596,7 +596,15 @@ function refreshProgress(job, now, count) {
 }
 function log(file, message) { updateJob(file, (job) => { job.logs.push({ at: new Date().toISOString(), message }); }); }
 function stage(file, name) {
-  updateJob(file, (job) => { advanceTimeline(job, name); job.stage = name; job.status = 'running'; }, { count: null });
+  updateJob(file, (job) => { advanceTimeline(job, name); job.stage = name; job.substage = null; job.status = 'running'; }, { count: null });
+  log(file, name);
+}
+// Which part of a long stage is running. It is not a stage: it opens no
+// timeline entry, because the estimates are read off whole stages and a stage
+// that suddenly measures as three would make this machine's history
+// unreadable.
+function substage(file, name) {
+  updateJob(file, (job) => { job.substage = name; });
   log(file, name);
 }
 // Which item of how many the current stage is on. The engine names the app by
@@ -1034,7 +1042,7 @@ const core = new BackupAgentCore({
   engine,
   homepage: { rebuild: rebuildRestoredHomepage },
   identity,
-  jobs: { log, progress, stage, update: updateJob },
+  jobs: { log, progress, stage, substage, update: updateJob },
   packages: { inventory: packageBackupInventory, validatePayloads: validatePackagePayloads },
   paths: { agentStateDir, stateDir, stateRoot },
   system: backupSystem,

@@ -292,6 +292,23 @@ function runPageScript(responder) {
   return { nodes, timers };
 }
 
+// The plan as the page drew it: one row per group, with the lines inside the
+// groups that are open. A group with no parts is a row with text and nothing
+// to open.
+function planRows(list) {
+  return list.children.map((item) => {
+    const detail = item.children[0];
+    if (!detail) return { open: null, state: item.className, steps: [], title: item.textContent };
+    const [summary, sub] = detail.children;
+    return {
+      open: detail.open === true,
+      state: item.className,
+      steps: sub.children.map((row) => [row.className, row.textContent]),
+      title: summary.textContent,
+    };
+  });
+}
+
 function response({ body = '', ok = true, status = 200, type = 'application/json' }) {
   return { headers: { get: () => type }, json: async () => JSON.parse(body), ok, status };
 }
@@ -304,11 +321,15 @@ function freshProgress(overrides = {}) {
     count: { current: 'ONLYOFFICE', done: 2, note: 'ONLYOFFICE usually takes 6 minutes on this machine.', sentence: 'ONLYOFFICE — 3 of 6 apps', total: 6 },
     expect: { sentence: 'On this machine this usually takes about 19 minutes.' },
     headline: 'Restoring your backup',
-    plan: [{ sentence: 'Reading the backup', state: 'done' }, { sentence: 'Building your apps again', state: 'now' }, { sentence: 'Checking the result against the backup', state: 'next' }],
+    plan: [
+      { sentence: 'Reading the backup', state: 'done', steps: [{ sentence: 'Checking nothing in it is damaged', state: 'done' }, { sentence: 'Reading your settings and accounts', state: 'done' }] },
+      { sentence: 'Putting your suite back', state: 'now', steps: [{ sentence: 'Putting your app data back', state: 'done' }, { sentence: 'Building your apps again', state: 'now' }] },
+      { sentence: 'Checking it and starting it', state: 'next', steps: [] },
+    ],
     sentence: 'Building your apps again',
     startedAt: new Date(Date.now() - 9 * 60 * 1000).toISOString(),
-    step: 7,
-    steps: 9,
+    step: 3,
+    steps: 4,
     updatedAt: now,
     ...overrides,
   };
@@ -336,28 +357,74 @@ test('the status page shows the stage, the counts, the plan and the expectation 
   await settle();
   assert.equal(nodes.get('mos-progress').hidden, false);
   assert.equal(nodes.get('mos-progress-headline').textContent, 'Restoring your backup');
-  assert.equal(nodes.get('mos-progress-now').textContent, 'Building your apps again — step 7 of 9');
+  assert.equal(nodes.get('mos-progress-now').textContent, 'Building your apps again — step 3 of 4');
   assert.equal(nodes.get('mos-progress-count').textContent, 'ONLYOFFICE — 3 of 6 apps');
   assert.equal(nodes.get('mos-progress-count').hidden, false);
   assert.equal(nodes.get('mos-progress-note').textContent, 'ONLYOFFICE usually takes 6 minutes on this machine.');
   assert.equal(nodes.get('mos-progress-bar').hidden, false);
   assert.equal(nodes.get('mos-progress-fill').style.width, '33%');
-  assert.deepEqual(nodes.get('mos-progress-plan').children.map((item) => [item.className, item.textContent]), [
-    ['is-done', 'Reading the backup'],
-    ['is-now', 'Building your apps again'],
-    ['is-next', 'Checking the result against the backup'],
+  // The group that is running is open; the one that is done is not, and the
+  // one that has not started has nothing to open yet.
+  assert.deepEqual(planRows(nodes.get('mos-progress-plan')), [
+    {
+      open: false,
+      state: 'is-done',
+      steps: [['is-done', 'Checking nothing in it is damaged'], ['is-done', 'Reading your settings and accounts']],
+      title: 'Reading the backup',
+    },
+    {
+      open: true,
+      state: 'is-now',
+      steps: [['is-done', 'Putting your app data back'], ['is-now', 'Building your apps again']],
+      title: 'Putting your suite back',
+    },
+    { open: null, state: 'is-next', steps: [], title: 'Checking it and starting it' },
   ]);
   assert.equal(nodes.get('mos-progress-expect').textContent, 'On this machine this usually takes about 19 minutes. Started 9 minutes ago.');
   // It keeps asking, and a single-step job says no step count.
   assert.equal(timers.length, 1);
   assert.equal(timers[0].ms, 5000);
 
-  const single = runPageScript(() => response({ body: JSON.stringify(freshProgress({ count: null, expect: null, headline: 'Checking a backup', plan: [{ sentence: 'Reading the backup', state: 'now' }], sentence: 'Reading the backup', step: 1, steps: 1 })) }));
+  const single = runPageScript(() => response({ body: JSON.stringify(freshProgress({ count: null, expect: null, headline: 'Checking a backup', plan: [{ sentence: 'Reading the backup', state: 'now', steps: [] }], sentence: 'Reading the backup', step: 1, steps: 1 })) }));
   await settle();
   assert.equal(single.nodes.get('mos-progress-now').textContent, 'Reading the backup');
   assert.equal(single.nodes.get('mos-progress-bar').hidden, true);
   assert.equal(single.nodes.get('mos-progress-count').hidden, true);
   assert.equal(single.nodes.get('mos-progress-fill').style.width, '0%');
+});
+
+// The page re-reads the file every few seconds. Rebuilding the list each time
+// would shut a group the owner opened to read, so the rows are kept and only
+// a group that has actually moved is opened or folded away.
+test('the running group opens itself, and a group opened by hand survives the next poll', async () => {
+  const moved = (states) => freshProgress({
+    plan: [
+      { sentence: 'Reading the backup', state: states[0], steps: [{ sentence: 'Checking nothing in it is damaged', state: 'done' }] },
+      { sentence: 'Putting your suite back', state: states[1], steps: [{ sentence: 'Building your apps again', state: states[1] === 'done' ? 'done' : 'now' }] },
+      { sentence: 'Checking it and starting it', state: states[2], steps: [{ sentence: 'Starting the restored server', state: states[2] === 'now' ? 'now' : 'next' }] },
+    ],
+  });
+  const answers = [moved(['done', 'now', 'next']), moved(['done', 'now', 'next']), moved(['done', 'done', 'now'])];
+  let poll = 0;
+  const { nodes, timers } = runPageScript(() => response({ body: JSON.stringify(answers[Math.min(poll++, answers.length - 1)]) }));
+  await settle();
+  const list = nodes.get('mos-progress-plan');
+  assert.deepEqual(planRows(list).map((row) => row.open), [false, true, false]);
+
+  // Opened by hand, then a poll that changes nothing.
+  const rows = list.children;
+  rows[0].children[0].open = true;
+  timers[0].callback();
+  await settle();
+  assert.deepEqual(planRows(list).map((row) => row.open), [true, true, false], 'a poll that changes nothing leaves the rows alone');
+  assert.equal(list.children[0], rows[0], 'the rows are the same nodes, not rebuilt ones');
+
+  // The job moves on: the group that finished folds away and the next opens,
+  // whatever the owner had done to them.
+  timers[0].callback();
+  await settle();
+  assert.deepEqual(planRows(list).map((row) => row.open), [true, false, true]);
+  assert.deepEqual(planRows(list).map((row) => row.state), ['is-done', 'is-done', 'is-now']);
 });
 
 test('a progress file a dead worker left behind does not make the page claim a job is running', async () => {

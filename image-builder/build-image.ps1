@@ -127,7 +127,10 @@ function Invoke-Bake {
   Assert-HyperV
   if (-not (Test-Path $IsoPath)) { Fail 'No bake ISO found. Run the iso stage first.' }
 
+  # Both VMs, because the verify VM holds the disk this is about to delete and a
+  # verify run that was interrupted leaves it attached and running.
   Remove-BakeVm $VmName
+  Remove-BakeVm $VerifyVmName
   foreach ($stale in @($BakeDiskPath, $VerifyDiskPath)) {
     if (Test-Path $stale) { Remove-Item $stale -Force }
   }

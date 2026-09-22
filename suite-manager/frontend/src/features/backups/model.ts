@@ -70,12 +70,15 @@ export type JobCount = { current: string | null; done: number; note: string | nu
 // sequence, so the step count and the plan are facts it reports, not a guess
 // this screen keeps beside it; the busy page Caddy serves reads the same
 // record, so the two never drift.
+export type PlanState = 'done' | 'next' | 'now';
+
 export type JobProgress = {
   count: JobCount | null;
   expect: { sentence: string } | null;
   headline: string;
   kind: string | null;
-  plan: Array<{ sentence: string; state: 'done' | 'next' | 'now' }>;
+  // One entry per group of stages, each carrying the stages it is made of.
+  plan: Array<{ sentence: string; state: PlanState; steps: Array<{ sentence: string; state: PlanState }> }>;
   sentence: string;
   stage: string | null;
   startedAt: string | null;
@@ -547,20 +550,6 @@ export function destinationViews(status: BackupStatus | null | undefined): Desti
   return withAbsent
     .map((destination) => destinationView(destination, status, selectedId))
     .sort((left, right) => rank(left) - rank(right));
-}
-
-// What the recovery key opens, said as one sentence beside the list it
-// describes. Before the first backup it is the only thing on the row that
-// matters; afterwards it is a quiet fact with the exceptions named.
-export function keyCoverage(views: DestinationView[]) {
-  const names = (list: DestinationView[]) => {
-    const labels = list.map((view) => view.label);
-    return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels[0] || '';
-  };
-
-  const strangers = views.filter((view) => view.destination.locked);
-  const detail = strangers.length ? `${names(strangers)} still needs the key of the server that wrote it.` : '';
-  return { detail, summary: 'One recovery key opens everything this server made.' };
 }
 
 export type ArchiveKey = {

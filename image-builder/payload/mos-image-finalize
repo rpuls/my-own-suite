@@ -68,6 +68,17 @@ update-grub
 
 stage 'Making the network configuration hardware-independent'
 # The bake VM's NIC name is not the target machine's NIC name.
+#
+# `dhcp-identifier: mac` is the whole reason this suite keeps its address. The
+# default identifies the machine to the router by a DUID derived from
+# /etc/machine-id, which mos-self-install clears so every install makes its
+# own — so every reinstall, and anything else that remakes that id, arrives at
+# the router as a machine it has never seen and is given a new address. The
+# suite is published at a name that spells out that address, so a new address
+# means every app's name is wrong and the owner has to notice and fix it. The
+# MAC is what the router already knows this machine by, it is unique without
+# being remade, and it is the only identifier an owner who cannot open their
+# router can rely on.
 rm -f /etc/netplan/*.yaml
 cat > /etc/netplan/01-mos.yaml <<'NETPLAN'
 network:
@@ -78,10 +89,19 @@ network:
         name: "e*"
       dhcp4: true
       dhcp6: false
+      dhcp-identifier: mac
       optional: true
 NETPLAN
 chmod 0600 /etc/netplan/01-mos.yaml
 netplan generate
+
+# And the other half: a lease this machine cannot remember is one it cannot ask
+# for again. systemd-networkd keeps leases under /run, which a shutdown empties,
+# so a machine that reboots asks for any address rather than the one it had.
+# With persistent storage the lease survives and the boot asks the router for
+# the same address back. The unit is Ubuntu's own; if a future base drops it,
+# this bake fails here rather than shipping an image that quietly forgets.
+systemctl enable systemd-networkd-persistent-storage.service
 
 stage 'Replacing the login message'
 # `00-mos` was written by cloud-init on the previous boot; everything else in

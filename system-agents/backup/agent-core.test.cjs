@@ -293,7 +293,8 @@ class FakeWorld {
       jobs: {
         log: (file, message) => this.updateJob(file, (job) => { job.logs.push({ message }); }),
         progress: (file, count) => { this.progressCalls.push({ ...count, stage: readJson(file).stage }); },
-        stage: (file, name) => this.updateJob(file, (job) => { job.stage = name; job.status = 'running'; job.logs.push({ message: name }); }),
+        stage: (file, name) => this.updateJob(file, (job) => { job.stage = name; job.substage = null; job.status = 'running'; job.logs.push({ message: name }); }),
+        substage: (file, name) => this.updateJob(file, (job) => { job.substage = name; job.logs.push({ message: name }); }),
         update: (file, mutator) => this.updateJob(file, mutator),
       },
       packages: {

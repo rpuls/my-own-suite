@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { AdvancedPanel, Icon, Notice, Panel, PanelBody, PanelHead, PanelItem, PanelList, Select, Spinner } from '../../components/ui';
 import { jsonResponse } from '../../lib/api';
 import { DestinationsPanel } from './DestinationsPanel';
+import { ProgressPlan } from './ProgressPlan';
 import { RestorePointsPanel } from './RestorePointsPanel';
 import {
   AddDestinationWizard,
@@ -608,12 +609,7 @@ export function BackupsScreen() {
               <div className="suite-bk-bar"><span style={{ width: `${countShare(count)}%` }} /></div>
             </> : null}
           </PanelHead>
-          {progress?.plan.length ? <PanelList>
-            {progress.plan.map((entry, index) => <PanelItem className={`suite-bk-step is-${entry.state}`} key={index} quiet={entry.state === 'next'}>
-              <span className={`suite-bk-dot is-${entry.state === 'next' ? 'muted' : 'ready'}`} />
-              <span>{entry.sentence}</span>
-            </PanelItem>)}
-          </PanelList> : null}
+          {progress?.plan.length ? <ProgressPlan plan={progress.plan} /> : null}
           <PanelBody>
             <p className="suite-meta">{progress?.expect?.sentence ? `${progress.expect.sentence} ` : ''}Your apps are stopped while it runs. <strong>Do not turn the machine off.</strong> When it is done everyone is signed out, because this becomes the restored server.</p>
           </PanelBody>
