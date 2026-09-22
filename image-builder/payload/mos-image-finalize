@@ -64,6 +64,18 @@ if [ -d "$esp/EFI/ubuntu" ]; then
 fi
 sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2/' /etc/default/grub
 sed -i 's/\bconsole=ttyS0[^ "]*//g' /etc/default/grub
+# The console is the only screen this machine has, and the banner mos-first-boot
+# paints on it is the whole of the install instructions. Ubuntu leaves the kernel
+# at loglevel 7, so a link-up, a USB enumeration or an EXT4 line lands on top of
+# that banner minutes after it was painted, and a console has no scrollback to
+# recover it from. loglevel=3 still prints errors, which are the only kernel
+# messages worth interrupting those instructions for.
+cmdline='quiet loglevel=3'
+if grep -q '^GRUB_CMDLINE_LINUX_DEFAULT=' /etc/default/grub; then
+  sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"$cmdline\"/" /etc/default/grub
+else
+  printf 'GRUB_CMDLINE_LINUX_DEFAULT="%s"\n' "$cmdline" >> /etc/default/grub
+fi
 update-grub
 
 stage 'Making the network configuration hardware-independent'

@@ -86,18 +86,19 @@ ${renderConsoleIssueBlockWriter({ setupUrl })}
 
 // One writer replaces the console file and one remover deletes it, so nothing
 // is ever appended to /etc/issue and a re-run cannot stack a second block.
+//
+// Four rows, and they are the last four of a twenty-five-row console: the
+// address banner spends twenty and agetty spends the twenty-fifth on the prompt.
+// This file used to be ten rows laid out for reading, which on an 80x25 machine
+// pushed the top ten rows of that banner off the screen - the logo and the whole
+// of the first address - so the one screen that cannot be corrected afterwards
+// showed a password and no way to use it.
 function renderConsoleIssueBlockWriter({ setupUrl }) {
   return `install -d -m 0755 /etc/issue.d
 cat > ${CONSOLE_LOGIN_ISSUE_PATH} <<MOS_CONSOLE_ISSUE
 
-  Server login for this machine (not your My Own Suite account):
-
-      user      $username
-      password  $password
-
-  Save it, then confirm in Suite Manager at
-  ${setupUrl}
-  and these lines disappear from this screen.
+  Server login (not your My Own Suite account):  $username / $password
+  Save it, then confirm at ${setupUrl} to hide this.
 
 MOS_CONSOLE_ISSUE
 chmod 0644 ${CONSOLE_LOGIN_ISSUE_PATH}`;

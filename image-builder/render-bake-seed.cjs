@@ -26,12 +26,12 @@ const outputDir = path.join(__dirname, '.work', 'seed');
 // explaining hosts files on a login screen. Step 4 of that page is the override.
 const networkDocsUrl = 'https://myownsuite.org/docs/install/own-hardware/';
 
-// The banner stopped explaining DNS on a login screen, so this page carries what
-// it no longer says: that the second address is resolved by a My Own Suite
-// nameserver, that those lookups are not logged, and that the answer only ever
-// points back at the machine. Those are commitments in CHANGELOG.md and
-// docs/decisions.md — they moved here, they did not go away.
-const easyAddressDocsUrl = 'https://myownsuite.org/docs/install/easy-address/';
+// The console no longer links the Easy Door explainer itself — twenty rows do
+// not stretch to a second URL — but nothing was dropped: what that page carries
+// (the second address is resolved by a My Own Suite nameserver, those lookups
+// are not logged, the answer only ever points back at the machine) are
+// commitments in CHANGELOG.md and docs/decisions.md, and the own-hardware page
+// the banner does link to links on to it.
 
 // The MOTD is read by someone who already has a shell, so it points at the docs
 // root rather than at the install page the console banner links to.
@@ -133,7 +133,6 @@ function main() {
     DOCS_ROOT_URL: docsRootUrl,
     DOCS_URL: networkDocsUrl,
     DOMAIN: rendered.plan.config.domain,
-    EASY_DOCS_URL: easyAddressDocsUrl,
     HOME_URL: rendered.plan.config.publicUrls.home,
     ISSUE_FILE: CONSOLE_LOGIN_ISSUE_PATH,
     PROFILE: profile,
