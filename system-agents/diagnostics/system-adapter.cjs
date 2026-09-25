@@ -17,6 +17,17 @@ const UNATTENDED_LOG_PATH = '/var/log/unattended-upgrades/unattended-upgrades.lo
 // similarly named update-success-stamp beside it belongs to update-notifier,
 // which not every install carries.
 const APT_UPDATE_STAMP_PATH = '/var/lib/apt/periodic/update-stamp';
+// What the web server is actually serving, in the order the Caddyfile imports
+// them. It is the only record of which names this machine answers on and what
+// each one is proxied to, and until it was collected here an address that
+// returned nothing could not be inspected at all without a shell. No secret
+// lives in these: the DNS credential is referenced as `{env.*}` and read from a
+// file mode 0600 that is not one of them.
+const CADDY_FILES = Object.freeze([
+  '/etc/caddy/Caddyfile',
+  '/etc/caddy/mos-app-routes.caddy',
+  '/etc/caddy/mos-homepage-routes.caddy',
+]);
 const COMMAND_TIMEOUT_MS = 20_000;
 // Docker caps a container's logs at 30 MB and journald at its own retention, so
 // a single `docker logs --tail 400` can legitimately return tens of megabytes if
@@ -176,6 +187,22 @@ class SystemDiagnosticsAdapter {
       try { facts[name] = await capture(file, args); } catch { /* one fact, not the section */ }
     }));
     return facts;
+  }
+
+  // The web server's configuration, whole. Read rather than summarised: a route
+  // that is missing is as much the answer as one that is wrong, and a summary
+  // decides in advance which of the two the reader is looking for.
+  async webServerConfig() {
+    return CADDY_FILES.map((filePath) => {
+      try {
+        return { content: fs.readFileSync(filePath, 'utf8'), path: filePath };
+      } catch (error) {
+        // A missing routes file is the ordinary state of a machine with no
+        // apps and no home services, and says so rather than looking like a
+        // failed read.
+        return { content: null, path: filePath, unreadable: error.code === 'ENOENT' ? null : error.code || 'unreadable' };
+      }
+    });
   }
 
   // Host patch state, as a fixed source like every other one here. The

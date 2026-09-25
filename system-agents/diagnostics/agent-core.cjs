@@ -158,9 +158,10 @@ class DiagnosticsAgentCore {
     // machine is by definition not well. Serialising forty reads behind a
     // twenty-second timeout each is how a diagnostic becomes a hang; running
     // them all at once is how it becomes the last straw.
-    const [host, hostPatches, units, containers] = await Promise.all([
+    const [host, hostPatches, webServer, units, containers] = await Promise.all([
       attempt('host', () => this.adapter.hostFacts(), {}),
       attempt('host-patches', () => this.adapter.hostPatches(), null),
+      attempt('web-server', () => this.adapter.webServerConfig(), []),
       mapWithLimit(MOS_UNITS, LIMITS.concurrency, async (name) => {
         const state = await attempt(`unit:${name}`, () => this.adapter.unitState(name), UNREAD_STATE);
         const troubled = name === PRIMARY_UNIT || unitLooksTroubled(state);
@@ -189,6 +190,10 @@ class DiagnosticsAgentCore {
       hostPatches,
       incomplete,
       units: fitted.units,
+      // Bounded like a log, and for the same reason: a Caddyfile on a machine
+      // with fifty apps is still the thing worth reading in full, but it must
+      // not be the thing that makes a bundle too large to send.
+      webServer: webServer.map((file) => ({ ...file, content: file.content === null ? null : boundText(file.content) })),
     };
   }
 }

@@ -22,6 +22,10 @@ function healthyCollection() {
     host: { disk: 'Filesystem Size Used Avail Use% Mounted\n/dev/sda2 60G 20G 38G 35% /', kernel: 'Linux mos 6.8.0' },
     incomplete: [],
     units: [{ active: 'active', enabled: 'enabled', log: 'ready', name: 'mos-suite-manager.service', sub: 'running', troubled: false }],
+    webServer: [
+      { content: 'home.mos.example.com {\n  reverse_proxy 127.0.0.1:3100\n}', path: '/etc/caddy/Caddyfile' },
+      { content: null, path: '/etc/caddy/mos-homepage-routes.caddy' },
+    ],
   };
 }
 
@@ -257,4 +261,18 @@ test('an advisory failure is reported on its own account only', () => {
 
   const withCatalogError = summarizeTrouble({ catalog: { ...base, advisories, error: { code: 'CATALOG_FETCH_FAILED', message: 'Official catalog request failed.' } } });
   assert.deepEqual(withCatalogError.filter((line) => line.includes('Privacy advisories could not be read')), []);
+});
+
+// "That address answers nothing" and "that address is proxied somewhere wrong"
+// are the same screen to an owner, and the web server's own configuration is
+// the only thing that tells them apart. A bundle that leaves it out cannot
+// answer the question it was collected for.
+test('the bundle carries the web server configuration, including the files that are not there', () => {
+  const { text } = buildSupportBundle({ collection: healthyCollection(), now, secrets: [] });
+
+  assert.match(text, /^WEB SERVER$/mu);
+  assert.match(text, /\/etc\/caddy\/Caddyfile/u);
+  assert.match(text, /reverse_proxy 127\.0\.0\.1:3100/u);
+  // A missing routes file is a fact about the machine, not a failed read.
+  assert.match(text, /mos-homepage-routes\.caddy\n {2}\(not present/u);
 });

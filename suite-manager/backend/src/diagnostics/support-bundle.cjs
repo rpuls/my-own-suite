@@ -221,6 +221,21 @@ function unitLines(units) {
   ].join('\n')).join('\n\n');
 }
 
+// The web server's configuration, whole and in the order it is imported. This
+// is where "my app returns 502" and "that address answers nothing" are told
+// apart: one has a route pointing somewhere wrong, the other has no route. The
+// DNS credential appears in it as `{env.CLOUDFLARE_API_TOKEN}` — a reference,
+// never the value — so nothing here is a secret before redaction even runs.
+function webServerLines(files) {
+  if (!files?.length) return 'The web server configuration could not be read.';
+  return files.map((file) => [
+    `${file.path}`,
+    file.content === null
+      ? `  (${file.unreadable ? `could not be read: ${file.unreadable}` : 'not present — this machine has no routes of that kind'})`
+      : indent(file.content),
+  ].join('\n')).join('\n\n');
+}
+
 function containerLines(containers) {
   if (!containers?.length) return 'No MOS containers are present.';
   return containers.map((container) => [
@@ -287,6 +302,7 @@ Logs are shortened newest-first, so this stays small enough to read in full.
       collection.host?.dockerDisk && `Docker disk:\n${collection.host.dockerDisk}`,
     ].filter(Boolean).join('\n')),
     section('HOST PATCHES', hostPatchLines(collection.hostPatches).join('\n')),
+    section('WEB SERVER', webServerLines(collection.webServer)),
     section('APPS', appLines(apps)),
     section('SERVICES', unitLines(collection.units)),
     section('CONTAINERS', containerLines(collection.containers)),
