@@ -2258,7 +2258,7 @@ test('the suite address API requires authentication, changes to a domain in the 
     });
     assert.equal(started.status, 202);
     assert.equal(started.json().status, 'applying');
-    assert.deepEqual(started.json().target, { host: 'home.mos.example.com', kind: 'domain' });
+    assert.deepEqual(started.json().target, { host: 'home.mos.example.com', kind: 'domain', scheme: 'https' });
     assert.doesNotMatch(started.body, new RegExp(token, 'u'));
 
     // The new name is admitted while the change runs, so a screen that follows

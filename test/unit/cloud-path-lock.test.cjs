@@ -74,6 +74,13 @@
 // styles the parts inside it. Page markup, CSS and script only, in all five
 // renderings; the thirteen `echo` lines were compared before and after and not
 // one changed.
+//
+// Moved 2026-09-25: each agent unit now declares the `/run` directory its socket
+// lives in, and the eight `install -d` lines that made those directories once at
+// install time are gone — `/run` is emptied by every boot, so they covered the
+// install's own boot and nothing after it. Unit directives and one removed block
+// of `install -d`, in all five renderings; the thirteen `echo` lines were
+// compared before and after and not one changed.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -87,25 +94,25 @@ function digest(value) {
 
 const lockedRenderings = [
   {
-    digest: '3be27eddcadaaf997c05ce6a739af7de60aa9eaff0e8209e8bb506dd99b98fb4',
+    digest: '18c78355052ac018942b659a73458dfc3cf61263115df2514d1efad834877bcb',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS one-line installer',
     output: 'sshBootstrap',
   },
   {
-    digest: '7cf15c851bc078b2865636d9892c9bdfb1d925a814f54dce6ec1aaaa1cf3d05b',
+    digest: '32669b888e28f244480baff1c41d4e4f2fd39647ba3982b3db7657e961d823bf',
     input: { frontDoor: 'public-vps', publicIpv4: '203.0.113.10' },
     name: 'the public VPS cloud-init payload',
     output: 'cloudInit',
   },
   {
-    digest: '675857e712a4fa66745da9e27d5925ce14e49f79ac8a38502a75f62bfd909274',
+    digest: '055d263bd69b609dce26e193da83e079cf20a14b07861b7338bf71ec396e121c',
     input: { frontDoor: 'cloud-init', publicIpv4: '203.0.113.10' },
     name: 'the cloud-init front door',
     output: 'cloudInit',
   },
   {
-    digest: '0d9ca6ab01b627e544f2b4dd14bca220bd03a766d029968b6a97d960c1b96acf',
+    digest: 'd50e6fe26caadb74bcb71f72459934292b5babf57807cd6a4d3d7a968433a2ab',
     input: { frontDoor: 'digitalocean-smoke' },
     name: 'the DigitalOcean smoke front door',
     output: 'cloudInit',
@@ -115,7 +122,7 @@ const lockedRenderings = [
     // `renderPublicCloudCaddyfile()`, so a change to the local Caddyfile lands
     // here and nowhere else in this list. Moved once, for the Easy Door site
     // block; nothing the installer prints changed.
-    digest: 'f54da13ce668427782ef8eb1cdbc373a64dae9f8f5a9094c0fc9ff115d4543e1',
+    digest: 'de773dca99c02b2e4c211b5def6a6b84b4dca399f77fed4c2ab0af3b5c538e92',
     input: {},
     name: 'the default SSH bootstrap',
     output: 'sshBootstrap',

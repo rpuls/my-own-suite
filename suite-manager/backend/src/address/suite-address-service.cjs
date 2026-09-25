@@ -178,11 +178,14 @@ class SuiteAddressService {
     if (!CHANGE_KINDS.includes(input.kind)) throw new HttpsSettingsError('INVALID_ADDRESS_CHANGE', 'Only a domain or the Easy Door can be the suite address.');
     const { credential, target } = input.kind === 'domain' ? this.domainTarget(input) : this.easyDoorTarget();
     const startedAt = this.now().toISOString();
-    if (!this.store.beginAddressChange({ at: startedAt, target: { host: target.host, kind: target.kind, ...(target.baseDomain ? { baseDomain: target.baseDomain } : {}) } })) {
+    // The scheme travels with the target, because the screen has to be able to
+    // link to where the suite went and only the address module decides whether
+    // a kind is served over TLS.
+    if (!this.store.beginAddressChange({ at: startedAt, target: { host: target.host, kind: target.kind, scheme: target.scheme, ...(target.baseDomain ? { baseDomain: target.baseDomain } : {}) } })) {
       throw new HttpsSettingsError('ADDRESS_CHANGE_IN_PROGRESS', 'The suite address is already being changed. Wait for that change to finish.', 409);
     }
     this.running = this.run(target, credential).finally(() => { this.running = null; });
-    return { startedAt, status: 'applying', target: { host: target.host, kind: target.kind } };
+    return { startedAt, status: 'applying', target: { host: target.host, kind: target.kind, scheme: target.scheme } };
   }
 
   domainTarget(input) {

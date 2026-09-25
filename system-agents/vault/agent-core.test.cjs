@@ -55,7 +55,6 @@ function adapter(overrides = {}) {
     escrowKey: record('escrowKey', (key) => { state.pendingKey = key; }),
     hasEscrow: record('hasEscrow', () => state.pendingKey !== null),
     keyAcknowledged: record('keyAcknowledged', () => state.acknowledged),
-    markInstallerMedia: record('markInstallerMedia'),
     readEscrow: record('readEscrow', () => state.pendingKey),
     enableSwapfile: record('enableSwapfile'),
     ensureDirectory: record('ensureDirectory'),
@@ -94,6 +93,7 @@ function adapter(overrides = {}) {
     publishRecoveryKey: record('publishRecoveryKey'),
     readDescriptor: record('readDescriptor', () => state.descriptor),
     readOwnKey: record('readOwnKey', overrides.ownKey === undefined ? KEY : overrides.ownKey),
+    opensWith: record('opensWith', ({ key }) => key === (overrides.diskKey ?? overrides.storedKey ?? KEY)),
     rekey: record('rekey', overrides.rekey ?? { ok: true }),
     resizePartition: record('resizePartition'),
     wipeTpmEnrollment: record('wipeTpmEnrollment', overrides.wipeTpmEnrollment ?? { wiped: true }),
@@ -140,6 +140,21 @@ test('a machine that has not been armed creates nothing and records nothing', as
   assert.equal(named(fake.calls, 'fitTableToDisk').length, 0, 'the bake disk\'s table is not touched');
   assert.equal(named(fake.calls, 'inspectDisk').length, 0);
   assert.equal(named(fake.calls, 'writeDescriptor').length, 0, 'no descriptor travels in the image');
+  assert.equal(fake.state.descriptor, null);
+});
+
+// The descriptor is written last, so a first boot that dies during the copy
+// leaves a vault partition with nothing beside it. Recording that as a disk MOS
+// will not take would make one interrupted copy permanent: the machine would
+// run unencrypted for good, and the only reason on offer would be one no screen
+// has words for. No owner data exists yet, so failing is the honest answer and
+// reinstalling is the whole of the recovery.
+test('a first boot that died partway through fails loudly instead of recording the machine unsupported', async () => {
+  const fake = adapter({ disk: { ...disk(), vaultPresent: true } });
+
+  await assert.rejects(() => new VaultAgentCore(fake).open(), { code: 'VAULT_FIRST_BOOT_UNFINISHED' });
+  assert.equal(named(fake.calls, 'writeDescriptor').length, 0, 'nothing permanent is recorded');
+  assert.equal(named(fake.calls, 'luksFormat').length, 0, 'the half-made vault is not formatted over');
   assert.equal(fake.state.descriptor, null);
 });
 
@@ -254,13 +269,14 @@ test('the recovery key is published once, at creation, for Suite Manager to show
   assert.deepEqual(named(fake.calls, 'publishRecoveryKey')[0][1], { key: KEY });
 });
 
-// mos-self-install copies the stick onto the internal disk with `dd`, so
-// anything written here is what the installed machine reads first.
-test('a machine booted from the installer stick is never partitioned and records nothing', async () => {
+// Nothing runs from the stick: the installer copies itself onto a disk with
+// `dd` and restarts into it. Reaching the gate from removable media therefore
+// means the install never happened, and the one thing that must not follow is a
+// vault laid out across the installer itself.
+test('a boot from removable media is refused before any disk is touched', async () => {
   const fake = adapter({ removableRoot: true });
-  const result = await new VaultAgentCore(fake).open();
 
-  assert.deepEqual(result, { opened: true, reason: 'running-from-installer-media', vault: false });
+  await assert.rejects(() => new VaultAgentCore(fake).open(), { code: 'VAULT_REMOVABLE_ROOT' });
   assert.equal(named(fake.calls, 'fitTableToDisk').length, 0, 'the stick\'s table is not touched');
   assert.equal(named(fake.calls, 'inspectDisk').length, 0, 'the disk is not even inspected');
   assert.equal(named(fake.calls, 'resizePartition').length, 0);
@@ -459,6 +475,22 @@ test('a rekey the disk refused is reported with its reason, never as success', a
     rekey: { ok: false, reason: 'current-key-rejected' },
   });
   assert.deepEqual(await new VaultAgentCore(fake).rekey({ nextKey: OTHER_KEY }), { ok: false, reason: 'current-key-rejected' });
+});
+
+// The key file is not always the key the disk has: a rotation interrupted
+// between the two leaves a vault only the new key opens. The caller resuming
+// that rotation has to be able to finish it, so an "already there" is answered
+// as done rather than refused.
+test('a disk that has already moved to the key being asked for is reported as done', async () => {
+  const fake = adapter({
+    descriptor: { device: '/dev/sda3', tpm: { pcrs: [7] }, version: 1 },
+    diskKey: OTHER_KEY,
+    mounted: true,
+    rekey: { ok: false, reason: 'current-key-rejected' },
+  });
+
+  assert.deepEqual(await new VaultAgentCore(fake).rekey({ nextKey: OTHER_KEY }), { ok: true, unchanged: true, vault: true });
+  assert.deepEqual(named(fake.calls, 'opensWith')[0][1], { device: '/dev/sda3', key: OTHER_KEY });
 });
 
 test('no key is no rekey', async () => {

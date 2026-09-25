@@ -15,7 +15,6 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 
 const { VaultError } = require('./agent-core.cjs');
-const { INSTALLER_MEDIA_MARKER } = require('../../shared/vault-contract.cjs');
 const { describeFailure, runCommand } = require('../lib/command-output.cjs');
 const { fingerprint, generate } = require('../backup/recovery-key.cjs');
 const { RecoveryKeyStore } = require('../lib/recovery-key-store.cjs');
@@ -147,14 +146,6 @@ class SystemVaultAdapter {
     this.keys.discardEscrow();
   }
 
-  // Left for the units that run after the gate: the address banner and the
-  // login generator both behave differently on the installer stick, and this is
-  // the one place the answer is worked out.
-  async markInstallerMedia() {
-    await fsp.mkdir(path.dirname(INSTALLER_MEDIA_MARKER), { recursive: true });
-    await fsp.writeFile(INSTALLER_MEDIA_MARKER, '');
-  }
-
   async readDescriptor(descriptorPath) {
     try {
       return JSON.parse(await fsp.readFile(descriptorPath, 'utf8'));
@@ -175,11 +166,13 @@ class SystemVaultAdapter {
   }
 
   // The same guard the installer carries: a machine running from the stick is a
-  // machine whose owner declined the install, and partitioning it would eat the
-  // installer they are still running.
+  // machine the install never finished on, and partitioning it would eat the
+  // installer someone is still holding. A disk this cannot read is a separate
+  // question with its own answer — `fitTableToDisk` refuses on it — so it is not
+  // folded in here.
   async isRemovableRoot() {
     const { device, parent } = await this.rootDisk();
-    if (!device) return true;
+    if (!device) return false;
     const transport = (await quiet('lsblk', ['-dno', 'TRAN', device])).trim();
     let removable = '0';
     try { removable = (await fsp.readFile(`/sys/block/${parent}/removable`, 'utf8')).trim(); } catch {}
@@ -605,6 +598,19 @@ class SystemVaultAdapter {
     return this.keys.readKey();
   }
 
+  // Whether a key opens this device, asked without opening anything. The caller
+  // already holds the key it is asking about, so this tells it nothing it did
+  // not bring: it exists so a rekey can tell "the key file is stale" from "this
+  // key is wrong".
+  async opensWith({ device, key }) {
+    try {
+      await run('cryptsetup', ['open', '--test-passphrase', '--key-file', '-', device], { input: key, mask: [key] });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Points the vault at a different key, leaving the data alone.
    *
@@ -681,30 +687,28 @@ class SystemVaultAdapter {
   }
 
   /**
-   * Starts what was held back while the vault was locked. The list is asked of
-   * systemd rather than kept here, so a unit that gains
-   * `Requires=mos-vault.service` is started after an unlock without anyone
-   * remembering to add it to a second list that would quietly drift.
+   * Finishes the boot the locked vault stopped.
+   *
+   * The boot is re-run rather than the gate's dependents started one by one.
+   * Everything with `Requires=mos-vault.service` is not the same list as
+   * everything this boot still owes: it also holds one-shots that only ever run
+   * when their own trigger fires, and starting those by hand performs actions
+   * nobody asked for — the login-clear would delete a server login the owner has
+   * not been shown. Asking systemd to reach the default target queues exactly
+   * the jobs that are missing: units already running are no-ops, the ones the
+   * gate held back start, and a path- or timer-triggered unit stays where it is
+   * until its own trigger fires.
    */
   async startDependents() {
-    const output = await quiet('systemctl', ['list-dependencies', '--reverse', '--plain', '--no-pager', 'mos-vault.service']);
-    const units = output.split('\n')
-      .map((line) => line.replace(/[^A-Za-z0-9@._-]/gu, '').trim())
-      .filter((line) => line.endsWith('.service') || line.endsWith('.socket'))
-      .filter((line) => line !== 'mos-vault.service');
-
-    const started = [];
-    for (const unit of units) {
-      try {
-        await run('systemctl', ['start', unit], { timeoutMs: 300_000 });
-        started.push(unit);
-      } catch {}
-    }
+    // `--no-block` because reaching the target means dockerd and every app,
+    // which takes minutes, and the owner is looking at a form. Not `quiet`: a
+    // systemd that would not take the job is the one failure here worth a line
+    // in the journal.
+    await run('systemctl', ['start', '--no-block', 'default.target']);
     // Caddy stays up while the vault is locked so it can serve the page that
     // asks for the key, which means it started without the secrets that live in
     // the vault. Now that they are there, it gets to read them.
     await quiet('systemctl', ['try-restart', 'caddy.service']);
-    return started;
   }
 }
 

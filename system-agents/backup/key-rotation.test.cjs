@@ -9,7 +9,7 @@ const NEXT = 'MOS-9999-8888-7777-6666-5555-4444-3333-2222';
 
 function harness(overrides = {}) {
   const calls = [];
-  const state = { current: CURRENT, record: { acknowledgedAt: '2026-09-01T00:00:00Z', fingerprint: fingerprint(CURRENT) }, superseded: [] };
+  const state = { current: CURRENT, record: { acknowledgedAt: '2026-09-01T00:00:00Z', fingerprint: fingerprint(CURRENT) }, staged: overrides.staged ?? null, superseded: [] };
 
   const destination = (id, { kind = 'disk', label = id, password = null, probe = 'open' } = {}) => ({
     id,
@@ -38,6 +38,13 @@ function harness(overrides = {}) {
           calls.push(['rotateRecoveryKey', next]);
           state.superseded.unshift(state.current);
           state.current = next;
+          state.staged = null;
+          return next;
+        },
+        stagedRecoveryKey: () => state.staged,
+        stageRecoveryKey: (next) => {
+          calls.push(['stageRecoveryKey', next]);
+          state.staged = next;
           return next;
         },
       },
@@ -72,6 +79,36 @@ test('the disk is re-keyed first, and a vault that refuses stops everything', as
   assert.equal(fake.state.current, CURRENT);
 });
 
+// The disk and the key file cannot move in the same instant, so a machine can
+// stop between them. The half that must never happen is the disk moving to a
+// key no file holds: the key file would still have the old one, the owner's kit
+// would still have the old one, and only the chip would open the disk.
+test('the new key is on disk before the vault is asked to move to it', async () => {
+  const fake = harness({ disk: { ok: false, reason: 'rekey-failed' } });
+  await rotateRecoveryKey(fake.options);
+
+  const order = fake.calls.map((call) => call[0]);
+  assert.ok(order.indexOf('stageRecoveryKey') < order.indexOf('rekeyDisk'), 'the key is staged before the disk moves');
+  assert.equal(fake.state.staged, NEXT, 'a rotation that stopped at the disk still has its key on disk');
+});
+
+// Which is the recovery: the staged key may already be the one the disk opens
+// with, so it is finished rather than replaced. Generating a second key here
+// would leave the first opening a disk nothing names.
+test('a later rotation finishes the interrupted one instead of starting a new one', async () => {
+  const interrupted = 'MOS-1111-2222-3333-4444-5555-6666-7777-8888';
+  const fake = harness({ staged: interrupted });
+  fake.options.generateKey = () => { throw new Error('a second key must not be made'); };
+
+  const result = await rotateRecoveryKey(fake.options);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.key, interrupted);
+  assert.deepEqual(named(fake.calls, 'rekeyDisk')[0], ['rekeyDisk', interrupted]);
+  assert.equal(fake.state.current, interrupted);
+  assert.equal(fake.state.staged, null, 'the staged copy goes once the key file holds it');
+});
+
 test('a rotation replaces the key everywhere it can reach, and says what it reached', async () => {
   const fake = harness();
   const drive = fake.destination('/media/backup', { label: 'Backup drive' });
@@ -83,8 +120,9 @@ test('a rotation replaces the key everywhere it can reach, and says what it reac
 
   assert.equal(result.ok, true);
   assert.equal(result.key, NEXT);
-  assert.deepEqual(fake.calls[0], ['rekeyDisk', NEXT], 'the disk goes first');
-  assert.deepEqual(fake.calls[1], ['rotateRecoveryKey', NEXT]);
+  assert.deepEqual(fake.calls[0], ['stageRecoveryKey', NEXT], 'the key is written down before anything moves to it');
+  assert.deepEqual(fake.calls[1], ['rekeyDisk', NEXT], 'the disk goes next');
+  assert.deepEqual(fake.calls[2], ['rotateRecoveryKey', NEXT]);
   assert.deepEqual(named(fake.calls, 'forgetAll').length, 1, 'every held answer about what opens is stale');
   assert.deepEqual(result.destinations.map((entry) => entry.state), ['rotated', 'rotated']);
   assert.deepEqual(result.pending, []);

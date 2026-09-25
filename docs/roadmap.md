@@ -120,7 +120,8 @@ act on.
   "on the way". Hosting must respect the page's own privacy claim — self-hosted file or a no-cookie
   embed, not a plain YouTube iframe. *(Owner-run)*
 - **C6 — Record the own-hardware install walkthrough.** The second video: download → Etcher → boot →
-  choose 1 and confirm → save the server login → owner account. Unblocked — the disk image is the flow we intend
+  pick the disk and type ERASE → owner account → terms → the handover page with the server login and
+  the recovery key. Unblocked — the disk image is the flow we intend
   to keep — but it needs a release first, because the walkthrough films a published download and not a
   branch. *(Owner-run)*
 - **C2 — "What it costs" docs page.** Apps running × VPS size × monthly range, provider-neutral, with
@@ -225,6 +226,21 @@ the list that keeps "we'll harden it at alpha" from being a sentence nobody wrot
   end to end, and the two that prove the theft claim — boot a signed live USB, and edit the plaintext
   root offline and boot it back, in both modes, recording that both succeed in the default one so the
   claim made there is written from evidence. *(Small)*
+- **AL13 — The five owner-facing decisions the vault slice left open.** Each one is a small change
+  whose shape is a choice rather than a fix, raised by the 2026-09-25 branch review and deliberately
+  not built with it. (a) The handover page currently offers Ubuntu recovery mode as the way back
+  from a lost server login, which is the screwdriver fallback the product forbids: either cut the
+  sentence and offer nothing, or build a product path back. (b) The startup-protection control is a
+  switch that opens a password dialog and only moves when the password is accepted, which is neither
+  of the two controls `AGENTS.md` names — decide whether a password-gated setting is a button or a
+  third named control before the next screen invents a fourth. (c) There is no way to leave a domain
+  on purpose: `change({ kind: 'easy-door' })` exists on the backend and is offered only inside the
+  drift notice, so an owner whose domain expired has no button. (d) A drive that catches up with a
+  rotated key on plug-in says so nowhere, so the owner keeps the superseded kit forever; an activity
+  line at that moment is the candidate. (e) A key rotation interrupted between the disk and the key
+  file now leaves the new key staged and finishes on the next rotation — decide whether the machine
+  should instead finish it unprompted at startup, which hands an owner a new key for a rotation they
+  were told had failed. *(Small each)*
 - **AL11 — Encrypt the system half too, opened in early boot.** The vault leaves Ubuntu, the kernel
   and the MOS checkout in the clear, and nothing measures them, so a thief with the machine in hand
   edits that half offline and boots it back with every PCR unchanged. Password-protected startup

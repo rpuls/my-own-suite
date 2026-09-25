@@ -98,6 +98,23 @@ test('home services generate a clean projection and a separate escaped Caddy rou
   assert.deepEqual(publicUrlFor({ subdomain: 'printer' }, domainState), 'https://printer.mos.example.com/');
 });
 
+// An app already served over HTTPS at home is reached at `https://<address>`,
+// with no port in it, and the URL parser drops `:443` from the long form too —
+// so both arrived here as "no port" and the form refused the one address its
+// owner actually uses. The recorded upstream still names a port; the scheme is
+// what supplies it.
+test('an app on its scheme default port is accepted and recorded with that port', () => {
+  for (const [protocol, port] of [['https', 443], ['http', 80]]) {
+    const entry = { ...service, host: '192.168.60.10', port, protocol, subdomain: 'kvm1' };
+    const added = addEntry(seed, entry, { homeService: true, id });
+    assert.equal(
+      renderCaddyRoutes(added.content, domainState),
+      `https://kvm1.mos.example.com {\n  reverse_proxy ${protocol}://192.168.60.10:${port}\n}\n`,
+      `${protocol} on ${port}`,
+    );
+  }
+});
+
 test('strict proxy metadata rejects duplicates, credentials, directives, and reserved hosts', () => {
   const added = addEntry(seed, service, { homeService: true, id });
   assert.throws(() => addEntry(added.content, { ...service, name: 'Other' }, { homeService: true }), /already used/u);

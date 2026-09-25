@@ -642,7 +642,7 @@ export function BackupsScreen() {
             nobody would go looking for this. It clears itself — the domain
             leaves the moment it is served here, the routes line the moment the
             web server takes them. */}
-        {aftermath ? <Notice title="Your suite is restored — two things are left" variant="warning">
+        {aftermath ? <Notice title={`Your suite is restored — ${aftermath.domain && !aftermath.routesLive ? 'two things are' : 'one thing is'} left`} variant="warning">
           {aftermath.routesLive ? null : <p><strong>This machine is still serving the routes it had before the restore.</strong> The web server refused the restored ones, so some apps may not open yet. Restarting this server picks them up.</p>}
           {aftermath.domain ? <>
             <p>Your suite is running here, on this machine&rsquo;s own address, and you are signed in to it. Anything set up against <strong>{aftermath.domain}</strong> — phone apps, sync clients, browser extensions — keeps failing until that name points at this machine, because it still points at the server this backup came from.</p>

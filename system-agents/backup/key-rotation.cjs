@@ -62,7 +62,16 @@ async function rotateRecoveryKey({
   rekeyDisk,
   record,
 }) {
-  const next = generateKey();
+  // A rotation that stopped partway through is finished rather than started
+  // again. Its key may already be the one the disk opens with, and generating a
+  // second one here would leave the first opening a disk nothing names.
+  const next = engine.stagedRecoveryKey() || generateKey();
+  // Written down before anything moves to it. Between the disk and the key file
+  // there is a moment where the only copy would otherwise be this function's
+  // local variable, and a machine that stops there comes back with a disk whose
+  // key nobody holds — not the key file, not the owner's kit, nothing but the
+  // chip. The staged copy is what the resume above reads.
+  engine.stageRecoveryKey(next);
 
   // The disk goes first, and a disk that will not follow stops the whole
   // rotation before anything else moves. The other order would leave a machine
@@ -71,6 +80,8 @@ async function rotateRecoveryKey({
   // the server it came from.
   const disk = await rekeyDisk(next);
   if (disk && disk.ok === false) {
+    // The staged key stays: a refusal here is a rotation this machine still
+    // owes, and the next attempt resumes the same key rather than adding one.
     return { ok: false, reason: disk.reason || 'rekey-failed', sentence: refusalSentence(disk.reason) };
   }
 

@@ -153,7 +153,7 @@ async function unlock({ password = null, rawKey = null, source = 'local' }) {
   // Not awaited: starting dockerd and every app takes minutes, and the owner is
   // looking at a form that has to answer now.
   adapter.startDependents()
-    .then((units) => log(`started after unlock: ${units.join(', ') || 'nothing'}`))
+    .then(() => log('asked systemd to finish the boot the locked vault stopped'))
     .catch((startError) => log(`could not start the suite after unlock: ${startError?.message || 'unknown error'}`));
   return { repairPending: Boolean(resealed.repairPending), resealed: Boolean(resealed.resealed), unlocked: true };
 }

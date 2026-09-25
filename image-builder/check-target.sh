@@ -170,7 +170,7 @@ fi
 # and wiped in the same instant — the first hardware install hid its login that
 # way, and the owner wrote down the installer stick's instead.
 login_block=/mnt/target/etc/issue.d/20-mos-server-login.issue
-if [ -s "$login_block" ] && grep -q 'password' "$login_block"; then
+if [ -s "$login_block" ] && grep -q 'Server login' "$login_block"; then
   pass "the server login is on the console, after the banner, until the owner confirms it"
 else
   fail "no server login on the console — the owner has no way to reach this machine's shell"

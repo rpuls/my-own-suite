@@ -11,7 +11,6 @@ const {
   CONSOLE_LOGIN_HANDOVER_FILE,
   CONSOLE_LOGIN_ISSUE_PATH,
 } = require('../../shared/console-login-contract.cjs');
-const { INSTALLER_MEDIA_MARKER } = require('../../shared/vault-contract.cjs');
 const {
   assertSmokeRepoRefIsPushed,
   labLinuxPassword,
@@ -133,7 +132,7 @@ test('the server login is its own console file, written after the banner and nev
 // vault: its run-once record lives inside it, so a locked boot would otherwise
 // find the empty directory the vault mounts over and set a password the owner
 // has never seen. The first hardware install rotated its login twice that way.
-test('the login generator waits for the vault and never runs on the installer stick', () => {
+test('the login generator and its watcher both wait for the vault', () => {
   const rendered = renderSeed({}, { profile: 'release', repoRef: 'staging' });
   const unit = fileAt(rendered, '/etc/systemd/system/mos-console-login.service');
   const firstBoot = YAML.parse(rendered.userData).autoinstall['user-data'];
@@ -141,7 +140,13 @@ test('the login generator waits for the vault and never runs on the installer st
   assert.ok(unit);
   assert.match(unit.content, /^Requires=mos-vault\.service$/mu);
   assert.match(unit.content, /^After=mos-vault\.service$/mu);
-  assert.ok(unit.content.includes(`ConditionPathExists=!${INSTALLER_MEDIA_MARKER}\n`), 'never runs on the installer stick');
+  // The watcher too, and for a reason of its own: started on a locked boot it
+  // would set its inotify watch on the plaintext directory and hold it there
+  // after the vault mounts over, so the acknowledgement would never reach it.
+  const watcher = fileAt(rendered, '/etc/systemd/system/mos-console-login-clear.path');
+  assert.ok(watcher);
+  assert.match(watcher.content, /^Requires=mos-vault\.service$/mu);
+  assert.match(watcher.content, /^After=mos-vault\.service$/mu);
   assert.match(unit.content, /ExecStart=\/usr\/local\/sbin\/mos-console-login-init/u);
   const commands = firstBoot.runcmd.map((entry) => (Array.isArray(entry) ? entry.join(' ') : String(entry)));
   assert.ok(commands.some((entry) => entry === 'systemctl enable mos-console-login.service'));

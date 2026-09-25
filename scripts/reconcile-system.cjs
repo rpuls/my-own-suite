@@ -181,18 +181,16 @@ function ensureAgentGroup() {
   }
 }
 
-function installSocketDir(dirPath) {
-  installDir(dirPath, 0o2770);
-  if (!dryRun) {
-    run('chown', ['root:mos-agent', dirPath]);
-    fs.chmodSync(dirPath, 0o2770);
-  }
-}
-
 function unit(name, content) {
   writeFile(path.join('/etc/systemd/system', name), content, 0o644);
 }
 
+// Every agent's socket lives in a runtime directory named after its unit, and
+// systemd is told to make it rather than the agent making one whose group
+// ownership happens to come out right from `Group=` and `UMask=`. `/run` is
+// emptied on every boot, so the installer's one-time `install -d` never covered
+// any boot but its own, and a directory Suite Manager cannot enter is a socket
+// it cannot reach.
 function agentUnit({ after, description, env, gated = true, name, script, wants = 'network-online.target' }) {
   const envLines = Object.entries(env).map(([key, value]) => `Environment=${key}=${value}`).join('\n');
   return `[Unit]
@@ -205,6 +203,8 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=${name.replace(/\.service$/u, '')}
+RuntimeDirectoryMode=2770
 WorkingDirectory=${mosRoot}
 Environment=NODE_ENV=production
 ${envLines}
@@ -462,10 +462,6 @@ function main() {
   // nothing in here is a secret, and a mode that hid it would only hide it from
   // the reader it exists for.
   installDir(`${stateRoot}/host-patches`, 0o755);
-
-  for (const socketDir of ['https', 'homepage', 'app', 'backup', 'update', 'diagnostics', 'lab-reset', 'vault']) {
-    installSocketDir(`/run/mos-${socketDir}-agent`);
-  }
 
   // Rewritten on every managed update rather than only at install, because the
   // installer is the one path a machine that already exists never runs again.

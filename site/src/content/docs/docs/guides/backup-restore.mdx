@@ -137,10 +137,10 @@ Your suite comes back on **this machine's own address** — the one you were usi
 
 The old server's domain is set aside rather than moved, because a name points at one machine at a time. **Settings** names it and offers to serve it from this machine in one step: MOS kept the domain's credential from the backup, so you enter no token, and MOS reports success only once the certificate has been issued and the name answers here.
 
-Until that name points at this machine, anything set up against the old address keeps failing — phone apps, desktop sync clients, browser extensions. Three things fix that, and Backup & Restore says which one you are missing:
+Until that name points at this machine, anything set up against the old address keeps failing — phone apps, desktop sync clients, browser extensions. Three things fix that:
 
 - **Point the name here.** Change the record at your DNS provider, and any override your own network holds for it, to this machine's address. MOS reads that name and tells you what it currently answers, but it never changes DNS for you.
-- **Give this machine the old server's address**, if the old server is off and both are on the same network. Nothing at your DNS provider has to change.
+- **Give this machine the old server's network address**, if the old server is off and both are on the same network. That is a change on your router — a DHCP reservation for the new machine — and nothing at your DNS provider has to change. It happens outside MOS, so MOS neither does it for you nor sees that you have.
 - **Point your devices at the new address** instead, one app at a time.
 
 **Turn the old server off before you point the name here.** Two machines answering for one suite means two copies of your data drifting apart, and no way to merge them afterwards.

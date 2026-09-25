@@ -40,7 +40,6 @@ const path = require('node:path');
 
 const { planLayout } = require('./layout.cjs');
 const {
-  INSTALLER_MEDIA_MARKER,
   VAULT_DESCRIPTOR_PATH,
   VAULT_HANDOVER,
   VAULT_STATES,
@@ -91,6 +90,7 @@ const SENTENCES = {
   'disk-already-full': 'This machine was installed before MOS encrypted app data, so its disk has no room for a vault. Encrypting it means a fresh install and a restore from backup.',
   'disk-too-small-for-vault': 'This machine\'s disk is too small to hold an encrypted vault alongside the system, so app data is stored unencrypted.',
   'unrecognised-partitions-after-system': 'This disk holds partitions MOS did not create, so MOS left it alone. App data is stored unencrypted.',
+  'system-partition-unknown': 'MOS could not work out how this machine\'s disk is laid out, so it left it alone. App data is stored unencrypted.',
   'no-tpm': 'This machine has no security chip, so it cannot unlock its own disk. Enter your recovery key after every restart.',
   'tpm-refused': 'This machine\'s security chip would not release the key. That happens after a firmware change, or if the disk has been moved to another machine.',
   'wrong-key': 'That is a valid recovery key, but not the one this machine\'s vault was created with.',
@@ -206,9 +206,13 @@ class VaultAgentCore {
 
     if (!descriptor) {
       if (!(await this.adapter.isVaultArmed())) return { opened: true, reason: 'not-armed', vault: false };
+      // Nothing runs from the stick: the installer copies itself onto a disk and
+      // restarts into it, so reaching here from removable media means that never
+      // happened. Refusing is the whole of the answer, and it is kept as a
+      // refusal rather than deleted because the alternative is laying a vault
+      // out across the installer somebody is still holding.
       if (await this.adapter.isRemovableRoot()) {
-        await this.adapter.markInstallerMedia();
-        return { opened: true, reason: 'running-from-installer-media', vault: false };
+        throw new VaultError('VAULT_REMOVABLE_ROOT', 'MOS is running from removable media, so it touched no disk. Restart with the installer attached and install it.');
       }
 
       const created = await this.create();
@@ -432,7 +436,17 @@ class VaultAgentCore {
     if (currentKey === nextKey) return { ok: true, unchanged: true, vault: true };
 
     const result = await this.adapter.rekey({ device: descriptor.device, fromKey: currentKey, toKey: nextKey });
-    if (!result.ok) return { ok: false, reason: result.reason || 'rekey-failed' };
+    if (!result.ok) {
+      // The key file is not always the key the disk has. A rotation interrupted
+      // between the two leaves a vault only the new key opens, and the caller
+      // resuming that rotation is the recovery: answering "already done" lets it
+      // finish by writing the key file, where a refusal would leave the machine
+      // sitting on a disk its owner's kit no longer opens.
+      if (result.reason === 'current-key-rejected' && await this.adapter.opensWith({ device: descriptor.device, key: nextKey })) {
+        return { ok: true, unchanged: true, vault: true };
+      }
+      return { ok: false, reason: result.reason || 'rekey-failed' };
+    }
     return { ok: true, vault: true };
   }
 
@@ -475,6 +489,15 @@ class VaultAgentCore {
     const disk = await this.adapter.inspectDisk();
     const plan = planLayout(disk);
 
+    // A vault on the disk with no descriptor beside it is not a disk MOS will
+    // not take: it is this same first boot, stopped partway through on an
+    // earlier attempt. Recording it as unsupported would make one interrupted
+    // copy a permanent answer, and the machine would run unencrypted for good
+    // with no way to say why. It fails loudly instead — no owner data exists
+    // yet, so reinstalling is the whole of the recovery.
+    if (plan.reason === 'vault-exists') {
+      throw new VaultError('VAULT_FIRST_BOOT_UNFINISHED', 'This machine\'s first start did not finish, so its disk is half laid out. Install it again from the stick.');
+    }
     if (plan.action === 'none') return { descriptor: await this.recordUnsupported(plan.reason), enrollment: null };
     if (plan.action === 'grow-system') {
       await this.growSystem(disk, plan.systemEndSector);

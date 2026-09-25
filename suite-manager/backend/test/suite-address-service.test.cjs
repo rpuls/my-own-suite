@@ -119,10 +119,10 @@ test('a domain change runs its stages in order, records the address only after t
   service.start();
 
   const started = await service.change(domainInput);
-  assert.deepEqual(started, { startedAt: '2026-09-20T12:00:00.000Z', status: 'applying', target: { host: 'home.mos.example.com', kind: 'domain' } });
+  assert.deepEqual(started, { startedAt: '2026-09-20T12:00:00.000Z', status: 'applying', target: { host: 'home.mos.example.com', kind: 'domain', scheme: 'https' } });
   assert.equal(store.getAddressChange().status, 'applying');
   assert.equal(store.getAddressChange().stage, 'caddy');
-  assert.deepEqual(store.getAddressChange().target, { baseDomain: 'mos.example.com', host: 'home.mos.example.com', kind: 'domain' });
+  assert.deepEqual(store.getAddressChange().target, { baseDomain: 'mos.example.com', host: 'home.mos.example.com', kind: 'domain', scheme: 'https' });
   // Nothing is recorded while the web server is still being configured.
   assert.equal(suiteAddress.read().kind, 'lan-name');
   assert.equal(service.allowedHosts().has('home.mos.example.com'), true);

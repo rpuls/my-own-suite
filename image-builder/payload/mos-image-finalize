@@ -107,13 +107,19 @@ NETPLAN
 chmod 0600 /etc/netplan/01-mos.yaml
 netplan generate
 
-# And the other half: a lease this machine cannot remember is one it cannot ask
-# for again. systemd-networkd keeps leases under /run, which a shutdown empties,
-# so a machine that reboots asks for any address rather than the one it had.
-# With persistent storage the lease survives and the boot asks the router for
-# the same address back. The unit is Ubuntu's own; if a future base drops it,
-# this bake fails here rather than shipping an image that quietly forgets.
-systemctl enable systemd-networkd-persistent-storage.service
+# And the other half, where the base has it: a lease this machine cannot
+# remember is one it cannot ask for again. systemd-networkd keeps leases under
+# /run, which a shutdown empties, so a machine that reboots asks for any address
+# rather than the one it had. Persistent storage lets the lease survive, and the
+# boot asks the router for the same address back. systemd 256 introduced it and
+# the pinned base is 255, which has no persistent lease storage to enable at
+# all — so it is taken where it exists and the log says which of the two this
+# image got, rather than the bake dying on a unit this base never shipped.
+if [ -f /usr/lib/systemd/system/systemd-networkd-persistent-storage.service ]; then
+  systemctl enable systemd-networkd-persistent-storage.service
+else
+  log 'No systemd-networkd-persistent-storage.service on this base; the address is kept by dhcp-identifier: mac alone.'
+fi
 
 stage 'Replacing the login message'
 # `00-mos` was written by cloud-init on the previous boot; everything else in
@@ -240,13 +246,17 @@ stage 'Checking no vault was created during the bake'
 # refuses to create one until armed, and this is the second lock on that door:
 # it is release-stopping rather than best effort, because the failure is
 # invisible from outside and unfixable afterwards.
+#
+# `false` rather than `exit`: the ERR trap is what records the failed stage and
+# powers the VM off, and an `exit` here would stop the release for a reason the
+# build never gets to read, waiting on a machine that is never coming back.
 if [ -e /etc/mos/vault.json ] || [ -e /etc/mos/vault-armed ] || [ -e /etc/mos/vault-recovery-key ]; then
   log 'FATAL: this bake has vault state on it.'
-  exit 1
+  false
 fi
 if lsblk -no FSTYPE 2>/dev/null | grep -q crypto_LUKS; then
   log 'FATAL: this bake has an encrypted partition on it.'
-  exit 1
+  false
 fi
 
 stage 'Arming the vault for the machine this image lands on'

@@ -24,6 +24,23 @@ const path = require('node:path');
 
 const RECORD_FILENAME = 'known-drives.json';
 const RECORD_VERSION = 1;
+// How stale "last seen" is allowed to get before the record is rewritten for
+// that alone. Every status poll reconciles, the Backups screen polls every few
+// seconds, and a write per poll on the disk the machine boots from adds up over
+// a year. Nothing on screen reads a drawer drive's last-seen time more finely
+// than this.
+const SEEN_INTERVAL_MS = 15 * 60 * 1000;
+
+// Anything but a drive's last-seen time is written the moment it changes; a
+// last-seen time that has only moved on is written when it has drifted far
+// enough to be worth a disk write. See SEEN_INTERVAL_MS.
+function worthWriting(before, next, now) {
+  const withoutSeen = (list) => JSON.stringify(list.map(({ lastSeenAt, ...rest }) => rest));
+  if (withoutSeen(before) !== withoutSeen(next)) return true;
+  const recorded = new Map(before.map((drive) => [drive.fsUuid, drive.lastSeenAt]));
+  return next.some((drive) => drive.lastSeenAt !== recorded.get(drive.fsUuid)
+    && now - new Date(recorded.get(drive.fsUuid) || 0) >= SEEN_INTERVAL_MS);
+}
 
 class KnownDrives {
   constructor({ agentStateDir, recordPath } = {}) {
@@ -63,7 +80,8 @@ class KnownDrives {
    */
   reconcile({ attached = [], lastBackupAt = () => null, now = new Date() } = {}) {
     const seenAt = now.toISOString();
-    const drives = new Map(this.list().map((drive) => [drive.fsUuid, drive]));
+    const before = this.list();
+    const drives = new Map(before.map((drive) => [drive.fsUuid, drive]));
 
     for (const entry of attached) {
       if (!entry.fsUuid) continue;
@@ -81,10 +99,11 @@ class KnownDrives {
         lastSeenAt: seenAt,
       });
     }
-    this.write([...drives.values()]);
+    const next = [...drives.values()];
+    if (worthWriting(before, next, now)) this.write(next);
 
     const present = new Set(attached.map((entry) => entry.fsUuid).filter(Boolean));
-    return [...drives.values()].filter((drive) => !present.has(drive.fsUuid));
+    return next.filter((drive) => !present.has(drive.fsUuid));
   }
 }
 

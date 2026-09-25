@@ -91,6 +91,12 @@ Output lands in `image-builder/.work/out/`, which is git-ignored.
    truncates the file, and compresses it with `xz`. The target grows the
    filesystem back on first boot.
 
+Everything under `payload/` is read out of the working tree at seed time, and
+nothing else in the repo runs it. **A payload edit is not done until a bake has
+said so**: unit tests cannot tell whether a line works on the base image, and a
+commit that breaks a bake or the verify looks exactly like one that does not
+until an image is built from it. Commit the bake, not the edit.
+
 ## What verify proves
 
 The `verify` stage boots the **published** image — after the shrink and the GPT
@@ -119,10 +125,11 @@ Suite Manager never answers, and the run fails for a reason that has nothing to
 do with the image. `bake.sh` refuses to start the verify stage if `swtpm` is not
 installed rather than producing that failure.
 
-The free-space check is not hypothetical. The first version of `mos-grow-root`
-created a flat 2 GB swapfile regardless of what was left, filled the root
+The free-space check is not hypothetical. The first version of the grow-to-fill
+step created a flat 2 GB swapfile regardless of what was left, filled the root
 filesystem to 100%, and still booted and served traffic for a few minutes before
-returning 502.
+returning 502. The vault gate owns that arithmetic now, and the swapfile lives
+inside the vault.
 
 ## Size
 
@@ -183,20 +190,17 @@ Written to a USB stick with Rufus (DD mode) or balenaEtcher, and booted:
   partition table to the disk it landed on, grows the system partition to its
   cap and gives the rest to the encrypted vault; the installer lays out nothing,
   so the same first boot happens whether the image arrived by stick or was
-  written straight to the disk, which is what the release verify does. It skips
-  removable media, so choosing not to install leaves the stick a working
-  installer rather than expanding it to fill itself, and it creates no vault
-  there either. It leaves `/run/mos/installer-media` behind on the stick, which
-  is how the units after it know which medium they are on.
-- `mos-console-login` waits for the vault, because its run-once record lives
-  inside it, and never runs on the stick, whose login would be dead the moment
-  the disk is written. It writes the login as its own file under `/etc/issue.d/`,
-  after the banner, where it stays until the owner confirms it in Suite Manager.
-- Running from the stick, `mos-first-boot` leads with **RUNNING FROM THE USB
-  STICK** and says nothing is installed, instead of the completion banner below.
-  On an installed machine whose vault did not open it leads with **Locked.** and
-  says where to enter the key; only a machine whose gate succeeded reads
-  **Installed and running.**
+  written straight to the disk, which is what the release verify does. It
+  refuses outright on removable media: nothing runs from the stick, so reaching
+  the gate there means the install never happened, and laying a vault out would
+  partition the installer somebody is still holding.
+- `mos-console-login` and its watcher both wait for the vault, because the
+  record they read and write lives inside it. It writes the login as its own
+  file under `/etc/issue.d/`, after the banner, where it stays until the owner
+  confirms it in Suite Manager.
+- `mos-first-boot` leads with **Locked.** on an installed machine whose vault
+  did not open, and says where to enter the key; only a machine whose gate
+  succeeded reads **Installed and running.**
 - `mos-first-boot` then writes the completion banner to `/etc/issue.d/`. It states
   the address reservation both doors need, then offers each door in one line, and
   points at the docs for the rest; a login screen is the wrong place for a guide.

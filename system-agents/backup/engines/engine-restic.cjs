@@ -37,6 +37,13 @@ const LEGACY_KEY_SUFFIX = '.legacy';
 // one it had: a drive in a drawer may be months behind, and dropping the key
 // that opens it would strand the copy an owner is most likely to need.
 const SUPERSEDED_KEY_SUFFIX = '.superseded';
+// A key written down before anything is moved to it. The disk and the key file
+// cannot change in the same instant, so one of them goes first and there is a
+// moment where the machine could stop between them. Staging is what makes that
+// moment survivable: whichever half moved, the key is on disk and a later
+// rotation finishes the one that was interrupted rather than inventing a second
+// key and leaving the first opening a disk nobody can name.
+const STAGED_KEY_SUFFIX = '.staged';
 const DEFAULT_TIMEOUT_MS = 3_600_000;
 // Reaching a bucket must answer while an owner is still looking at the dialog.
 // restic prints why a storage request failed straight away and then waits
@@ -216,9 +223,26 @@ class ResticEngine {
 
   get supersededKeyFile() { return `${this.keyFile}${SUPERSEDED_KEY_SUFFIX}`; }
 
+  get stagedKeyFile() { return `${this.keyFile}${STAGED_KEY_SUFFIX}`; }
+
   recoveryKey() { return this.keys.ensureKey(); }
 
   adoptRecoveryKey(key) { return this.keys.writeKey(key); }
+
+  // Written before the disk is asked to move to it, and cleared once the key
+  // file holds it. See STAGED_KEY_SUFFIX.
+  stageRecoveryKey(next) {
+    writeSecretFile(this.stagedKeyFile, next);
+    return next;
+  }
+
+  stagedRecoveryKey() {
+    try {
+      return fs.readFileSync(this.stagedKeyFile, 'utf8').trim() || null;
+    } catch {
+      return null;
+    }
+  }
 
   /**
    * Makes a new key this machine's own and remembers the one it replaces.
@@ -227,13 +251,22 @@ class ResticEngine {
    * is re-keyed the first time it is seen with the wrong key, which is what
    * lets a rotation finish on a bucket immediately and on a drawer drive in six
    * months, with the same code and nothing to keep in step.
+   *
+   * The staged copy is dropped last, so the one order this cannot be
+   * interrupted into is "staged key gone, key file not yet written".
    */
   rotateRecoveryKey(next) {
     const current = this.recoveryKey();
-    if (!next || next === current) return current;
+    if (!next) return current;
+    if (next === current) {
+      fs.rmSync(this.stagedKeyFile, { force: true });
+      return current;
+    }
     const kept = [current, ...this.rotatedKeys()].filter((key, index, all) => key !== next && all.indexOf(key) === index);
     writeSecretFile(this.supersededKeyFile, JSON.stringify(kept, null, 2));
-    return this.keys.writeKey(next);
+    const written = this.keys.writeKey(next);
+    fs.rmSync(this.stagedKeyFile, { force: true });
+    return written;
   }
 
   rotatedKeys() {

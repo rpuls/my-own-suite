@@ -25,7 +25,7 @@ type AddressChange = {
   stage: string | null;
   stages: string[];
   status: 'applied' | 'applying' | 'failed' | 'never';
-  target: { host: string; kind: string } | null;
+  target: { host: string; kind: string; scheme: string } | null;
 };
 
 type AddressStatus = {
@@ -770,7 +770,7 @@ export function SettingsScreen() {
     <GetHelpPanel />
     {loadError && !status ? <Notice title="Settings unavailable" variant="error"><p>{loadError}</p></Notice> : null}
     {contact === 'signed-out' ? <Notice title="Your session ended" variant="warning"><p>Sign in again to see where the address change ended up.</p><a className="mos-btn mos-btn-primary" href="/suite-manager/">Sign in</a></Notice> : null}
-    {contact === 'refused' && change?.target ? <Notice title="This address no longer answers for Settings" variant="info"><p>MOS is running, and the suite has moved. Continue at <a href={`https://${change.target.host}/suite-manager/settings`}>{`https://${change.target.host}/`}</a>.</p></Notice> : null}
+    {contact === 'refused' && change?.target ? <Notice title="This address no longer answers for Settings" variant="info"><p>MOS is running, and the suite has moved. Continue at <a href={`${change.target.scheme}://${change.target.host}/suite-manager/settings`}>{`${change.target.scheme}://${change.target.host}/`}</a>.</p></Notice> : null}
     {status && address && change ? !status.privateHttpsAvailable ? <div className="mos-panel suite-card suite-settings-panel">
       <div><h2 className="mos-card-title">Custom domains are handled by your provider</h2><p className="suite-meta">This install looks like it is hosted on an external provider. MOS does not manage public DNS, provider routing, or public TLS from here.</p></div>
       <Notice title="Use your provider guide" variant="info"><p>To use a real domain with this cloud install, follow your hosting provider's custom-domain and HTTPS instructions, then point that domain at the provider endpoint or server they give you.</p></Notice>

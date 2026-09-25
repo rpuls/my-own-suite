@@ -93,6 +93,67 @@ test('the installer and the reconciler render the same set of gated MOS units', 
   assert.deepEqual(reconciler, installer);
 });
 
+// Every directive, not only the name. The two vault units are the ones where a
+// drift between the installer's heredoc and the reconciler's template is worst:
+// a fresh machine and an updated one would disagree about when the disk is
+// opened and by what, and neither would say so.
+test('the installer and the reconciler render the same two vault units, directive for directive', () => {
+  const installer = bootstrapUnits().units;
+  const reconciler = renderUnits();
+  // The repo path is the one legitimate difference: the installer writes a
+  // shell variable the bootstrap expands, the reconciler writes the resolved
+  // path it is running from.
+  const reconcilerRoot = /^WorkingDirectory=(.+)$/mu.exec(reconciler['mos-vault-agent.service'])[1];
+  const directives = (content, root) => content
+    .split(root).join('<repo>')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'));
+
+  for (const name of ['mos-vault.service', 'mos-vault-agent.service']) {
+    assert.deepEqual(
+      directives(reconciler[name], reconcilerRoot),
+      directives(installer[name], '$MOS_INSTALL_ROOT/repo'),
+      `${name} differs between the installer and the reconciler`,
+    );
+  }
+});
+
+// The agent makes the mounts the whole suite then reads through. systemd's
+// filesystem sandboxing gives a unit its own mount namespace, so a mount made
+// inside one is invisible to everything else: the vault would open, the agent
+// would report success, and every path behind it would still be the empty
+// directory. Nothing would fail, which is why this is a test and not a comment.
+test('the vault units are never given a mount namespace of their own', () => {
+  for (const [source, units] of Object.entries(SOURCES)) {
+    for (const name of ['mos-vault.service', 'mos-vault-agent.service']) {
+      const content = units[name];
+      if (!content) continue;
+      assert.doesNotMatch(content, /^(ProtectSystem|ProtectHome|PrivateMounts|PrivateTmp|ReadOnlyPaths|MountFlags)=/mu, `${name} from ${source} sandboxes mounts, which silently unmakes the vault`);
+    }
+  }
+});
+
+// /run is emptied on every boot, so a socket directory made once at install time
+// covered exactly one boot. Declaring it on the unit is what makes systemd
+// create it, with the group Suite Manager reaches the socket through, every
+// time the agent starts.
+test('every agent unit declares the runtime directory its socket lives in', () => {
+  for (const [source, units] of Object.entries(SOURCES)) {
+    for (const [name, content] of Object.entries(units)) {
+      if (!/^mos-[a-z-]+-agent\.service$/u.test(name)) continue;
+      const directory = name.replace(/\.service$/u, '');
+      assert.match(content, new RegExp(`^RuntimeDirectory=${directory}$`, 'mu'), `${name} from ${source} does not declare its runtime directory`);
+      assert.match(content, /^RuntimeDirectoryMode=2770$/mu, `${name} from ${source} does not set the mode Suite Manager needs`);
+      // Its own socket, not the other agents' it is given to talk to them.
+      const own = `${directory.replace(/-/gu, '_').toUpperCase()}_SOCKET`;
+      const socket = new RegExp(`^Environment=${own}=(\\S+)$`, 'mu').exec(content);
+      assert.ok(socket, `${name} from ${source} is not told where its own socket goes`);
+      assert.equal(path.posix.dirname(socket[1]), `/run/${directory}`, `${name} from ${source} puts its socket outside its runtime directory`);
+    }
+  }
+});
+
 // Docker's units are not MOS-owned, so their gate is a drop-in. The socket
 // matters as much as the service: it is socket-activated, so anything touching
 // /var/run/docker.sock would otherwise start a dockerd whose /var/lib/docker is

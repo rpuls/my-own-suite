@@ -297,14 +297,10 @@ MOS_OWNER_CLAIM
   ufw allow 443/tcp >/dev/null
   ufw --force enable >/dev/null
 fi
-install -d -m 2770 -o root -g mos-agent /run/mos-https-agent
-install -d -m 2770 -o root -g mos-agent /run/mos-homepage-agent
-install -d -m 2770 -o root -g mos-agent /run/mos-app-agent
-install -d -m 2770 -o root -g mos-agent /run/mos-backup-agent
-install -d -m 2770 -o root -g mos-agent /run/mos-update-agent
-install -d -m 2770 -o root -g mos-agent /run/mos-vault-agent
-install -d -m 2770 -o root -g mos-agent /run/mos-diagnostics-agent
-install -d -m 2770 -o root -g mos-agent /run/mos-lab-reset-agent
+# The agents' /run directories are declared on their units, not made here: /run
+# is emptied on every boot, so a directory made at install time covered exactly
+# one of them and every boot after it relied on the agent making its own with
+# the right group by accident.
 install -d -m 0700 /var/lib/mos/https-agent/transactions
 install -d -m 0700 /var/lib/mos/homepage-agent/transactions /var/lib/mos/homepage-agent/history
 install -d -m 0700 /var/lib/mos/backup-agent
@@ -380,10 +376,12 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=mos-vault-agent
+RuntimeDirectoryMode=2770
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
-Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=MOS_VAULT_AGENT_SOCKET=/run/mos-vault-agent/agent.sock
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/usr/bin/node $MOS_INSTALL_ROOT/repo/system-agents/vault/agent.cjs
 Restart=always
 RestartSec=3
@@ -460,6 +458,8 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=mos-https-agent
+RuntimeDirectoryMode=2770
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_HTTPS_AGENT_SOCKET=/run/mos-https-agent/agent.sock
@@ -485,6 +485,8 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=mos-homepage-agent
+RuntimeDirectoryMode=2770
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_HOMEPAGE_AGENT_SOCKET=/run/mos-homepage-agent/agent.sock
@@ -512,6 +514,8 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=mos-app-agent
+RuntimeDirectoryMode=2770
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_APP_AGENT_SOCKET=/run/mos-app-agent/agent.sock
@@ -538,6 +542,8 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=mos-backup-agent
+RuntimeDirectoryMode=2770
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_BACKUP_AGENT_SOCKET=/run/mos-backup-agent/agent.sock
@@ -567,6 +573,8 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=mos-update-agent
+RuntimeDirectoryMode=2770
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_UPDATE_AGENT_SOCKET=/run/mos-update-agent/agent.sock
@@ -593,6 +601,8 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=mos-diagnostics-agent
+RuntimeDirectoryMode=2770
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_DIAGNOSTICS_AGENT_SOCKET=/run/mos-diagnostics-agent/agent.sock
@@ -617,6 +627,8 @@ Type=simple
 User=root
 Group=mos-agent
 UMask=0007
+RuntimeDirectory=mos-lab-reset-agent
+RuntimeDirectoryMode=2770
 WorkingDirectory=$MOS_INSTALL_ROOT/repo
 Environment=NODE_ENV=production
 Environment=MOS_LAB_RESET_AGENT_SOCKET=/run/mos-lab-reset-agent/agent.sock

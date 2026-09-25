@@ -20,7 +20,6 @@ const {
   CONSOLE_LOGIN_HANDOVER_FILE,
   CONSOLE_LOGIN_ISSUE_PATH,
 } = require('../../shared/console-login-contract.cjs');
-const { INSTALLER_MEDIA_MARKER } = require('../../shared/vault-contract.cjs');
 
 function renderConsoleLoginInitScript({ fixedPassword, runtimeUser, setupUrl, stateDir, username }) {
   const choosePassword = fixedPassword
@@ -123,11 +122,14 @@ systemctl disable --now mos-console-login-clear.path >/dev/null 2>&1 || true
 `;
 }
 
-// The generator waits for the vault, because its run-once record lives inside
-// it: on a locked boot the directory it would look in is the empty one the
-// vault mounts over, and a generator that ran there would set a password the
-// owner has never seen. It never runs on the installer stick either, whose
-// login would otherwise be shown and then lost the moment the disk is written.
+// All three wait for the vault, because the record they read and write lives
+// inside it. On a locked boot the directory they would look in is the empty one
+// the vault mounts over: a generator that ran there would set a password the
+// owner has never seen, and a watcher that started there would hold its inotify
+// watch on the plaintext inode for good, so the acknowledgement written inside
+// the vault afterwards would never reach it and the login would stay on the
+// console. Failing on a locked boot is what gets them a fresh start from the
+// unlock instead.
 function renderConsoleLoginUnits({ stateDir }) {
   return [
     {
@@ -136,7 +138,6 @@ Description=Generate this machine's own server login
 Requires=mos-vault.service
 After=mos-vault.service
 Before=mos-first-boot.service
-ConditionPathExists=!${INSTALLER_MEDIA_MARKER}
 
 [Service]
 Type=oneshot
@@ -165,6 +166,8 @@ ExecStart=/usr/local/sbin/mos-console-login-clear
     {
       content: `[Unit]
 Description=Watch for the owner confirming they saved the server login
+Requires=mos-vault.service
+After=mos-vault.service
 
 [Path]
 PathExists=${stateDir}/${CONSOLE_LOGIN_ACKNOWLEDGED_FILE}

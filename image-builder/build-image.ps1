@@ -29,10 +29,11 @@ param(
   [int]$BakeTimeoutMinutes = 120,
   # Free space at the end of the filesystem is unwritten, so it compresses to
   # nothing and costs the download almost nothing. Being stingy here only buys a
-  # brick if mos-grow-root ever fails to expand on the target.
+  # brick if the vault gate ever fails to grow the system partition on the target.
   [int]$SlackMB = 1024,
   # Deliberately larger than the image: nobody installs onto a disk exactly the
-  # size of the download, and the difference is what mos-grow-root is judged on.
+  # size of the download, and the difference is what the first boot's layout is
+  # judged on.
   [int]$VerifyDiskGB = 40,
   [string]$RepoRef = 'staging',
   [switch]$DebugBake

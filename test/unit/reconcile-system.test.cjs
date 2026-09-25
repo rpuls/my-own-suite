@@ -171,11 +171,15 @@ ${page}MOS_UNAVAILABLE_PAGE`),
 test('the diagnostics agent socket is owned by root and reachable only through mos-agent', () => {
   const installer = renderBootstrapPlan({}).sshBootstrap;
 
-  assert.ok(installer.includes('install -d -m 2770 -o root -g mos-agent /run/mos-diagnostics-agent'));
   const unit = installer.slice(installer.indexOf('mos-diagnostics-agent.service <<'), installer.indexOf('MOS_DIAGNOSTICS_AGENT_UNIT\n\n'));
   assert.match(unit, /^User=root$/mu);
   assert.match(unit, /^Group=mos-agent$/mu);
   assert.match(unit, /^UMask=0007$/mu);
+  // The directory the socket lives in is systemd's to make, on every boot, with
+  // this mode. /run is emptied by each one, so an install-time mkdir covered the
+  // install's own boot and nothing after it.
+  assert.match(unit, /^RuntimeDirectory=mos-diagnostics-agent$/mu);
+  assert.match(unit, /^RuntimeDirectoryMode=2770$/mu);
 });
 
 // AGENTS.md rule 7: a managed update may not leave a machine running half of a
