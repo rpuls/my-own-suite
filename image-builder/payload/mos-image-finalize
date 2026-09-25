@@ -171,6 +171,9 @@ rm -f '@@ISSUE_FILE@@'
 stage 'Arming the first-boot units'
 systemctl daemon-reload
 systemctl enable mos-ssh-hostkeys.service mos-self-install.service mos-console-login.service mos-first-boot.service
+# The timer, not its service: the service is what the timer starts, and enabling
+# it would run the banner once more at boot for nothing.
+systemctl enable mos-address-watch.timer
 systemctl disable mos-image-finalize.service
 
 stage 'Pruning container build cache'

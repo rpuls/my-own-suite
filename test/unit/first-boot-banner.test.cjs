@@ -53,7 +53,7 @@ const PROMPT_ROWS = 1;
 
 function bannerLines() {
   const block = script.split('banner=/etc/issue.d/10-mos-address.issue')[1];
-  return block.split('} > "$banner"')[0].split('\n');
+  return block.split('} > "$staged"')[0].split('\n');
 }
 
 // The rows of /etc/issue.d/20-mos-server-login.issue, which agetty prints below
@@ -220,4 +220,59 @@ test('the banner is vault-independent, runs no generator, and never claims a loc
   assert.match(locked, /Locked\./u);
   assert.match(locked, /recovery key/u);
   assert.doesNotMatch(locked, /Installed and running/u);
+});
+
+// An address that moves under a running machine leaves this screen the only
+// surface still telling the truth, so a timer runs the banner again rather than
+// waiting for a reboot nobody knows to perform. That makes one property load
+// bearing that was free while this only ran at boot: the console is repainted
+// only when the screen would actually say something different. Repainting
+// unconditionally would throw whoever is signed in at tty1 off every couple of
+// minutes, forever, on every machine — so the order below is the feature, and
+// it is asserted on the source because the alternative needs systemd and a tty.
+test('the banner repaints only when it changed, so a timer can run it', () => {
+  const staged = script.indexOf('staged="${banner}.tmp"');
+  const compared = script.indexOf('cmp -s "$staged" "$banner"');
+  const moved = script.indexOf('mv "$staged" "$banner"');
+  const repainted = script.indexOf('systemctl restart getty@tty1.service');
+
+  assert.ok(staged > 0, 'the banner is rendered to a staged file');
+  assert.ok(compared > staged, 'the staged banner is compared against the one on screen');
+  assert.ok(moved > compared, 'the staged banner replaces the live one only after the comparison');
+  assert.ok(repainted > moved, 'the console is repainted only after the banner actually changed');
+
+  // The early return is what makes the run free. Without it the comparison
+  // would be decoration and the timer would repaint regardless.
+  const unchanged = script.slice(compared, moved);
+  assert.match(unchanged, /exit 0/u, 'an unchanged banner leaves without touching the console');
+
+  // Atomic, and invisible to agetty while it is being written: agetty expands
+  // `*.issue` in this directory every time it paints.
+  assert.doesNotMatch(script, /\} > "\$banner"/u, 'the banner is never written in place');
+  assert.match(script, /staged="\$\{banner\}\.tmp"/u);
+});
+
+// A unit that is written but never enabled is the shape this would most likely
+// fail in, and it would fail silently: the banner would simply go on being
+// correct only at boot, which is exactly what it does today.
+test('the address watch is wired into the image and enabled on it', () => {
+  const units = path.resolve(__dirname, '..', '..', 'image-builder', 'payload', 'units');
+  const service = fs.readFileSync(path.join(units, 'mos-address-watch.service'), 'utf8');
+  const timer = fs.readFileSync(path.join(units, 'mos-address-watch.timer'), 'utf8');
+  const seed = fs.readFileSync(path.resolve(__dirname, '..', '..', 'image-builder', 'render-bake-seed.cjs'), 'utf8');
+  const finalize = fs.readFileSync(path.resolve(__dirname, '..', '..', 'image-builder', 'payload', 'mos-image-finalize'), 'utf8');
+
+  // The same script as the boot unit, not a second copy of the logic.
+  assert.match(service, /^ExecStart=\/usr\/local\/sbin\/mos-first-boot$/mu);
+  assert.match(timer, /^OnUnitActiveSec=/mu);
+  assert.match(timer, /^WantedBy=timers\.target$/mu);
+  // Timer-activated only: a [Install] section on the service would run the
+  // banner a second time at boot for nothing.
+  assert.doesNotMatch(service, /^\[Install\]$/mu);
+
+  for (const name of ['mos-address-watch.service', 'mos-address-watch.timer']) {
+    assert.ok(seed.includes(`'${name}'`), `${name} is not written into the image`);
+  }
+  assert.match(finalize, /systemctl enable mos-address-watch\.timer/u);
+  assert.doesNotMatch(finalize, /systemctl enable[^\n]*mos-address-watch\.service/u);
 });

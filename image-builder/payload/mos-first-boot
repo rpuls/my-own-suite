@@ -22,9 +22,20 @@
 # off the top of the screen, silently, on exactly the machines least able to
 # afford it - which is how the logo and the whole of door A once scrolled away.
 #
-# There is no run-once guard on the unit: this re-renders on every boot, which is
-# the recovery path when the machine's address changes. It reads nothing under a
-# protected path, so it runs whether the vault opened or not - and says which.
+# There is no run-once guard on the unit: this re-renders on every boot, and
+# mos-address-watch.timer runs it again every couple of minutes. An address that
+# moves under a running machine leaves this screen the only surface still telling
+# the truth - Suite Manager knows its address drifted and offers to follow, but
+# an owner who cannot reach Suite Manager cannot be told that. Waiting for a
+# reboot to say so is the difference between a minute and an evening for someone
+# who does not know a reboot is what is called for.
+#
+# Being safe to run on a timer is the whole of what that costs: the banner is
+# written and the console repainted only when what it would say has changed,
+# because restarting agetty throws off whoever is signed in at the console.
+#
+# It reads nothing under a protected path, so it runs whether the vault opened
+# or not - and says which.
 set -euo pipefail
 
 home_url='@@HOME_URL@@'
@@ -78,6 +89,11 @@ fi
 
 install -d -m 0755 /etc/issue.d
 banner=/etc/issue.d/10-mos-address.issue
+# Staged beside the real file so replacing it is an atomic rename on the same
+# filesystem: agetty reads this directory every time it paints, and must never
+# catch a half-written screen. The suffix keeps the staged copy out of the
+# `*.issue` glob agetty expands while it is being written.
+staged="${banner}.tmp"
 {
   # agetty renders /etc/issue before this file and hands whatever is in it
   # straight to the terminal, so clearing here puts the banner on a blank console
@@ -132,8 +148,17 @@ banner=/etc/issue.d/10-mos-address.issue
     printf '  \033[2maddress and the last setup step.\033[0m\n'
   fi
   printf '  \033[2mNeed help?\033[0m  \033[36m%s\033[0m\n' "$docs_url"
-} > "$banner"
-chmod 0644 "$banner"
+} > "$staged"
+chmod 0644 "$staged"
+
+# The screen already says this. Leaving without touching it is what makes the
+# timer harmless: a repaint every couple of minutes would throw off whoever is
+# signed in at the console, forever, on every machine.
+if cmp -s "$staged" "$banner"; then
+  rm -f "$staged"
+  exit 0
+fi
+mv "$staged" "$banner"
 
 # agetty renders /etc/issue when it paints a prompt and never redraws one it has
 # already painted, so without this the machine sits on the pre-install banner

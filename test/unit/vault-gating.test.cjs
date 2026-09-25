@@ -20,6 +20,7 @@ const { renderUnits } = require('../../scripts/reconcile-system.cjs');
 // The protected paths, as `system-agents/vault/agent-core.cjs` lists them. A
 // unit that reads or writes under any of these waits for the gate.
 const VAULT_INDEPENDENT = {
+  'mos-address-watch.service': 'repaints that same banner when the address moves, and runs the same script; a locked machine is exactly when its address has to stay readable',
   'mos-first-boot.service': 'paints the address banner from /run and the network; reads nothing under a protected path',
   'mos-image-finalize.service': 'runs once at bake time, before the image is armed and before a vault can exist',
   'mos-self-install.service': 'copies the installer stick to the disk; a vault does not exist yet',

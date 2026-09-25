@@ -55,6 +55,8 @@ const payloadUnits = [
   'mos-ssh-hostkeys.service',
   'mos-self-install.service',
   'mos-first-boot.service',
+  'mos-address-watch.service',
+  'mos-address-watch.timer',
 ];
 
 function git(args) {
