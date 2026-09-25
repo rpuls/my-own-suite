@@ -30,6 +30,13 @@ const VAULT_INDEPENDENT = {
 
 const GATED = /^Requires=.*\bmos-vault\.service\b/mu;
 
+// Two tests below assert on the reconciler's own source. A Windows checkout has
+// CRLF line endings, so the source is read the way git stores it; otherwise a
+// regex spanning lines matches on CI and fails on the machine that wrote it.
+function reconcilerSource() {
+  return fs.readFileSync(path.resolve(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8').replace(/\r\n/gu, '\n');
+}
+
 function bootstrapUnits() {
   const shell = renderBootstrapPlan({}).sshBootstrap;
   const units = {};
@@ -163,7 +170,7 @@ test('dockerd and its socket wait for the gate on every path', () => {
   for (const dropIn of ['docker.service.d', 'docker.socket.d']) {
     assert.match(dropIns[`/etc/systemd/system/${dropIn}/mos-vault.conf`] || '', GATED, `the installer does not gate ${dropIn}`);
   }
-  const reconciler = fs.readFileSync(path.resolve(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8');
+  const reconciler = reconcilerSource();
   assert.match(reconciler, /for \(const dropIn of \['docker\.service\.d', 'docker\.socket\.d'\]\) \{\n\s+installDir\([^\n]+\n\s+writeFile\([^\n]*vaultRequirement\(\)/u);
 });
 
@@ -171,7 +178,7 @@ test('dockerd and its socket wait for the gate on every path', () => {
 // the gate exits 0 where there is nothing to open. A conditional here is how one
 // product grows a second, ungated shape that nobody meant to build.
 test('no unit source decides the gate per machine', () => {
-  const reconciler = fs.readFileSync(path.resolve(__dirname, '..', '..', 'scripts', 'reconcile-system.cjs'), 'utf8');
+  const reconciler = reconcilerSource();
   assert.doesNotMatch(reconciler, /machineHasVault|runtimeConfig\.vault|config\.vault/u);
   assert.doesNotMatch(renderBootstrapPlan({}).sshBootstrap, /vault\.json/u);
 });
